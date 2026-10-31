@@ -48,7 +48,7 @@ export function tokenize(src: string): PyTok[] {
       if (depth === 0) toks.push({ type: 'newline', value: '', start: i, end: i, line });
       line++;
       i++;
-      atLineStart = true;
+      if (depth === 0) atLineStart = true; // inside brackets, a newline is just whitespace
       continue;
     }
     if (c === ' ' || c === '\t' || c === '\r') { i++; continue; }

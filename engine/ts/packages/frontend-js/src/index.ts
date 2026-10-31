@@ -37,7 +37,7 @@ export function jsPlugin(opts: { parser?: 'acorn' | 'mini'; typescript?: boolean
       // A trailing comment (code before it on its line) annotates that line only;
       // a comment on a line of its own annotates the next line.
       const annotations = new Map<BindingId, Annotation>();
-      const srcLines = js.split('\n');
+      const srcLines = js.split(/\r\n?|\n|\u2028|\u2029/); // the line breaks acorn counts
       for (const cm of comments) {
         const m = ANN.exec(cm.value);
         if (!m) continue;

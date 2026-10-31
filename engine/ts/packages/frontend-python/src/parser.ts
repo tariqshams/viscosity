@@ -32,7 +32,7 @@ export function parsePython(src: string): PyNode {
     p++;
     return { type: 'Name', id: t.value, start: t.start, end: t.end, line: t.line };
   };
-  const unsupported = (what: string): never => fail(`${what} is not supported by Viscosity's Python subset`);
+  const unsupported = (what: string): never => fail(`${what}: not supported by Viscosity's Python subset`);
 
   function block(): PyNode[] {
     op(':');
