@@ -1,6 +1,6 @@
 //! TS ↔ Rust parity: for every corpus program, end-to-end benchmark and
-//! extra test program, the Rust engine's output code and explain text must
-//! equal the TypeScript engine's, byte for byte.
+//! extra test program, JavaScript and Python, the Rust engine's output code
+//! and explain text must equal the TypeScript engine's, byte for byte.
 //!
 //! The expectations in `tests/expected/` are generated from the TypeScript
 //! reference by `scripts/gen_expected.mjs`; regenerate them with
@@ -12,12 +12,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::process::Command;
 
-use common::{expected_dir, programs, VARIANTS};
+use common::{expected_dir, programs, Lang, Program, VARIANTS};
 
-fn expected(name: &str) -> (String, String) {
+fn expected(p: &Program, name: &str) -> (String, String) {
     let dir = expected_dir();
     let read = |f: String| fs::read_to_string(dir.join(&f)).unwrap_or_else(|e| panic!("missing fixture {f}: {e}"));
-    (read(format!("{name}.js")), read(format!("{name}.explain.txt")))
+    (read(format!("{name}.{}", p.ext())), read(format!("{name}.explain.txt")))
 }
 
 /// The first line where two texts differ, for readable failures.
@@ -38,7 +38,7 @@ fn rust_output_equals_typescript_output() {
         for (suffix, bounds) in VARIANTS {
             total += 1;
             let name = format!("{}{suffix}", p.name);
-            let (want_code, want_explain) = expected(&name);
+            let (want_code, want_explain) = expected(&p, &name);
             let r = p.compile(bounds);
             if r.code != want_code {
                 failures.push(format!("{name}.js: {}", first_difference(&want_code, &r.code)));
@@ -49,8 +49,10 @@ fn rust_output_equals_typescript_output() {
         }
     }
     assert!(total >= 66, "expected at least 33 programs x 2 variants, found {total}");
+    let py = 2 * programs().iter().filter(|p| p.lang == Lang::Python).count();
+    assert!(py >= 30, "expected at least 15 Python programs x 2 variants, found {py}");
     assert!(failures.is_empty(), "{} of {total} differ:\n{}", failures.len(), failures.join("\n"));
-    println!("parity: {total}/{total}");
+    println!("parity: {total}/{total} ({py} Python)");
 }
 
 #[test]
@@ -59,7 +61,7 @@ fn fixtures_match_the_programs_exactly() {
     let mut want = BTreeSet::new();
     for p in programs() {
         for (suffix, _) in VARIANTS {
-            want.insert(format!("{}{suffix}.js", p.name));
+            want.insert(format!("{}{suffix}.{}", p.name, p.ext()));
             want.insert(format!("{}{suffix}.explain.txt", p.name));
         }
     }
@@ -99,13 +101,38 @@ fn corpus_layout_decisions_match_their_headers() {
 }
 
 #[test]
+fn python_corpus_layout_decisions_match_their_headers() {
+    // `# viscosity: ps=soa` (possibly empty), as in the TS Python
+    // differential test, which compiles with `pythonAuto: true`.
+    for p in programs().into_iter().filter(|p| p.suite == "pycorpus") {
+        let at = p.source.find("# viscosity: ").expect("a header");
+        let spec = p.source[at + "# viscosity: ".len()..].lines().next().unwrap_or("");
+        let want: BTreeMap<String, String> = spec
+            .split(',')
+            .filter(|kv| !kv.trim().is_empty())
+            .map(|kv| {
+                let mut parts = kv.trim().split('=');
+                (parts.next().unwrap_or("").to_string(), parts.next().unwrap_or("").to_string())
+            })
+            .collect();
+        let r = p.compile(viscosity_core::Bounds::Check);
+        let got: BTreeMap<String, String> =
+            r.plan.collections.iter().map(|c| (c.collection.name.clone(), c.layout.as_str().to_string())).collect();
+        assert_eq!(got, want, "{}:\n{}", p.name, r.explain);
+    }
+}
+
+#[test]
 fn the_cli_binary_gives_the_same_output() {
     let bin = env!("CARGO_BIN_EXE_viscosity");
     for p in programs() {
         for (suffix, bounds) in VARIANTS {
             let name = format!("{}{suffix}", p.name);
-            let (want_code, want_explain) = expected(&name);
+            let (want_code, want_explain) = expected(&p, &name);
             let mut args = vec![p.path.to_string_lossy().to_string()];
+            if p.python_auto() {
+                args.push("--python-auto".into());
+            }
             if p.mode() == viscosity_core::Mode::OptIn {
                 args.extend(["--mode".into(), "opt-in".into()]);
             }
@@ -145,4 +172,24 @@ fn export_default_class_and_function_round_trip() {
     ] {
         assert_eq!(compile(src, &JsPlugin, CompileOptions::default()).expect("compiles").code, src);
     }
+}
+
+#[test]
+fn python_cli_flags_and_errors_match_the_typescript_cli() {
+    let bin = env!("CARGO_BIN_EXE_viscosity");
+    let file = common::root().join("../ts/packages/frontend-python/test/corpus/particles.py");
+    let run = |args: &[&str]| Command::new(bin).args(args).arg(&file).output().expect("runs");
+    // `profile` rejects Python with the reference's message, without the
+    // usage text (it is not a usage error).
+    let out = run(&["profile"]);
+    assert!(!out.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr),
+        "viscosity: profile runs JavaScript programs only; Python profiling is not supported yet\n"
+    );
+    // Without --python-auto, CPython keeps objects; with it, ps becomes columns.
+    let plain = String::from_utf8(run(&["explain"]).stdout).expect("utf-8");
+    assert!(plain.contains("kept as array of objects") && plain.contains("CPython"), "{plain}");
+    let auto = String::from_utf8(run(&["build", "--python-auto"]).stdout).expect("utf-8");
+    assert!(auto.contains("ps = _Vsc_ps()"), "{auto}");
 }

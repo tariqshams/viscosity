@@ -1,0 +1,6 @@
+ps (line 10) {x, y} → struct of arrays
+  · annotated @viscosity soa at line 9
+  · loop at line 13 in <module>() touches 2 of 2 fields (x, y)
+  · typed array('d') columns for all 2 fields
+  · about 100 elements
+  · 1 of 2 element accesses proven in bounds

@@ -1,12 +1,14 @@
 # Viscosity in Rust
 
 The Rust port of the Viscosity compiler, which is taught in Part XI of
-*Viscosity*. Viscosity rewrites JavaScript arrays of objects into
-struct-of-arrays (or AoSoA) layouts when it can prove the rewrite is safe and
-expects it to pay off. It explains every decision.
+*Viscosity*. Viscosity rewrites JavaScript arrays of objects, and Python
+lists of dataclass instances, into struct-of-arrays (or, for JavaScript,
+AoSoA) layouts when it can prove the rewrite is safe and expects it to pay
+off. It explains every decision.
 
 The TypeScript implementation in [`../ts`](../ts) is the reference. This port
-makes the same decisions and emits byte-identical JavaScript and explain text.
+makes the same decisions and emits byte-identical JavaScript, Python and
+explain text.
 The parity test checks this for every test program (see
 [Parity](#the-parity-guarantee)).
 
@@ -23,19 +25,24 @@ ps (line 3) {x, y, vx, vy, mass, age, r, g} → struct of arrays
 ## Architecture
 
 ```text
- source ──► frontend-js: parse (oxc) ─► resolve scopes ─► lower ──► VIR (SSA)
+ .js ──► frontend-js: parse (oxc) ─► resolve scopes ─► lower ──┐
+ .py ──► frontend-python: tokenize ─► parse ─► scopes ─► lower ─┴─► VIR (SSA)
                                                                      │
           core: cfg (dominators, loops) · analysis (collections, shapes,
                 known functions, numeric fixpoint, escapes, bounds,
                 access patterns, sizes)  ─► plan + explain
                                                                      │
- output ◄── frontend-js: emit (splice source ranges, container classes) ◄┘
+ output ◄── frontend-js / frontend-python: emit (splice source ranges,
+            container classes)  ◄────────────────────────────────────┘
 ```
 
 A language plugin (`LanguagePlugin`) lowers its syntax to VIR and later
 rewrites its own source from the plan. The core sees only VIR, so the
-analyses and the planner have no JavaScript-specific code. They include the
-reference's Python semantics, so a Python front end could reuse them.
+analyses and the planner have no language-specific syntax. Where JavaScript
+and Python semantics differ (a Python `array('d')` column may only hold
+floats, so ints are tracked apart; `/` always gives a float; `**` gives a
+float only with an int exponent), the core switches on `Module.language`, as
+the reference does.
 
 ## Crate map
 
@@ -44,15 +51,18 @@ reference's Python semantics, so a Python front end could reuse them.
 | `viscosity-vir` | `crates/vir` | The IR. A `Module` owns arenas of functions, blocks, bindings and instructions, referred to by typed ids (`ValueId`, `BlockId`, `FuncId`, `BindingId`). Also use lists, a printer, and `js_number` (JavaScript's number formatting). |
 | `viscosity-core` | `crates/core` | `builder`: on-the-fly SSA construction (Braun et al., CC 2013). `cfg`: reverse postorder, Cooper–Harvey–Kennedy dominators, natural loops. `analysis`: the layout analyses. `plan`: the cost model and `explain`. `plugin`: the `LanguagePlugin` trait. `compile`: the pipeline. |
 | `viscosity-frontend-js` | `crates/frontend-js` | The JavaScript plugin: parse with oxc, `resolve` (scopes), `lower` (oxc AST → VIR), `emit` (range splicing, SoA/AoSoA container classes, bounds-check helper), and `@viscosity` annotations. |
-| `viscosity-cli` | `crates/cli` | The `viscosity` binary: `build`, `explain`, `profile`; `--mode`, `--bounds`, `--min-size`, `--profile`, `--explain`, `-o`. It also holds the parity and differential tests. |
-| `viscosity-wasm` | `crates/wasm` | A wasm-bindgen wrapper: `compile(source) -> { code, explain }` and `compileWith(source, mode, bounds, minSize)`. |
+| `viscosity-frontend-python` | `crates/frontend-python` | The Python plugin: `tokens` (INDENT/DEDENT, bracket depth), `parser` (the supported subset, as an arena AST), `lower` (scopes, cells, dataclasses → VIR), `emit` (container classes with `array('d')` or list columns, `_vsc_iter`, `_vsc_ix`), and `# @viscosity` annotations. No dependencies beyond the core. |
+| `viscosity-cli` | `crates/cli` | The `viscosity` binary: `build`, `explain`, `profile`; `--mode`, `--bounds`, `--min-size`, `--profile`, `--python-auto`, `--explain`, `-o`. `.py` files use the Python plugin. It also holds the parity and differential tests. |
+| `viscosity-wasm` | `crates/wasm` | A wasm-bindgen wrapper: `compile(source) -> { code, explain }`, `compileWith(source, mode, bounds, minSize)` (both JavaScript), and `compileLanguage(language, source, mode, bounds, minSize, pythonAuto)` with `language` `"javascript"` or `"python"`. |
 
 Each Rust module corresponds to one TypeScript file: `vir.ts` → `vir`,
 `builder.ts` → `core::builder`, `cfg.ts` → `core::cfg`, `analysis.ts` →
 `core::analysis`, `plan.ts` → `core::plan`, `plugin.ts` → `core::plugin`,
 `resolve.ts` → `frontend_js::resolve`, `lower.ts` → `frontend_js::lower`,
 `emit.ts` → `frontend_js::emit`, `index.ts` → `frontend_js` (lib), and
-`cli.ts`/`profile.ts` → `viscosity-cli`.
+`cli.ts`/`profile.ts` → `viscosity-cli`. In `frontend-python`, `tokens.ts`,
+`parser.ts`, `lower.ts` and `emit.ts` map to the modules of the same name,
+and `index.ts` to the crate root.
 
 ### From ESTree to oxc
 
@@ -88,6 +98,35 @@ differs in ways that matter for parity:
   `lines::LineIndex` counts them as acorn does (`\r\n`, `\r`, `\n`, U+2028,
   U+2029).
 
+### The Python plugin
+
+The reference parses Python with its own tokenizer and recursive-descent
+parser, so the port is a direct translation, with three differences of form:
+
+- **Arena AST.** The reference builds plain objects and walks them
+  generically (every key, in insertion order, skipping decorators). The port
+  keeps nodes in an arena (`parser::Ast`, `NodeId`), and `Ast::children`
+  lists each kind's children in the reference's key order, so every walk
+  (scopes, cells, the names an unmodelled node reads, parents) visits the
+  same nodes in the same order. `SourceRef.node` holds the `NodeId`.
+- **Offsets.** The tokenizer works on UTF-8 bytes. Everything it inspects is
+  ASCII (non-ASCII text can only appear in strings and comments), so byte
+  offsets cut the source exactly where the reference's UTF-16 offsets do.
+- **Fail closed.** Syntax outside the subset (comprehensions, `lambda`,
+  `try`, slices, dict literals, base classes, default parameters, complex
+  numbers, ...) is a `PySyntaxError`. As in the reference, the plugin then
+  lowers an empty module: the file is left unchanged and `explain` reports
+  nothing ("No arrays of objects found." from the CLI). The reason is kept in
+  `PyExtra::unsupported`.
+
+As in the reference, only dataclass defaults that are literals are modelled
+(the emitter copies a default's text to each call site), columns are
+`array('d')` only for fields proven to hold floats, element loops become
+`for p in _vsc_iter(ps)`, unproven accesses go through `_vsc_ix`, and
+container classes are named `_Vsc_<name>`, `_Vsc_<name>_2`, ... with
+renamed columns that never clash. Python collections are transformed only
+when annotated `# @viscosity soa`, or with `--python-auto`.
+
 ## Building and testing
 
 ```sh
@@ -99,6 +138,9 @@ wasm-bindgen --target web --out-dir pkg \
   target/wasm32-unknown-unknown/release/viscosity_wasm.wasm  # wasm-bindgen-cli 0.2.106
 ```
 
+`.cargo/config.toml` turns debug info off for the `dev` and `test` profiles,
+which keeps `target/` several times smaller.
+
 The tests:
 
 - **Unit tests** (`cargo test -p viscosity-core` and friends):
@@ -109,17 +151,26 @@ The tests:
     VIR, including the fail-closed fixpoint.
   - The JS plugin has tests for line counting, annotations, column naming and
     prelude placement.
+  - The Python plugin has tests for INDENT/DEDENT and bracket depth, string
+    prefixes, number literals (including one at the very end of the file),
+    precedence, unsupported syntax, annotations, column naming and prelude
+    placement, and the CPython default (keep objects unless annotated).
+  - The wasm crate checks compiling Python by name.
 - **Parity** (`crates/cli/tests/parity.rs`): every program compiled with
   default options and with `--bounds assume`, compared against the TS
   engine's output. The test also checks that the fixture set exactly matches
-  the programs, that each corpus program's `// viscosity: name=layout` header
-  decision holds, and that the `viscosity` binary prints the same output.
+  the programs, that each corpus program's `// viscosity: name=layout` (or
+  `# viscosity: name=layout`) header decision holds, and that the
+  `viscosity` binary prints the same output.
 - **Differential** (`crates/cli/tests/differential.rs`): runs each original
-  and compiled program with `node` and compares their behaviour. Corpus and
-  extra programs run in an isolated VM context (`tests/run_isolated.cjs`, a
-  copy of the TS runner) and must print the same output and throw the same
-  errors. The benchmarks are compared by their checksums. The test is skipped,
-  with a message, when `node` is not installed.
+  and compiled JavaScript program with `node` and compares their behaviour.
+  Corpus and extra programs run in an isolated VM context
+  (`tests/run_isolated.cjs`, a copy of the TS runner) and must print the
+  same output and throw the same errors. The benchmarks are compared by
+  their checksums. Python programs run with `python3`, as in the TS Python
+  differential test: the same stdout and the same exception (the last line
+  of stderr); the Python benchmark is compared by its checksum. Each half is
+  skipped, with a message, when its interpreter is not installed.
 
 ### Test programs and fixtures
 
@@ -129,8 +180,19 @@ The tests:
   corpus barely touches: closures, `switch`, labels, destructuring, classes,
   exports, directives and shebangs, parentheses, non-ASCII source,
   annotations, line breaks and upper-bound sizes.
-- `tests/expected/<suite>_<name>[.assume].js` and `.explain.txt`: the TS
-  engine's output, generated by `scripts/gen_expected.mjs`.
+- `../ts/packages/frontend-python/test/corpus/*.py`: the reference's Python
+  corpus (suite `pycorpus`), and `../ts/packages/bench/e2e-py/particles.py`
+  (suite `pye2e`). Like the TS Python differential test, they compile with
+  `pythonAuto: true`.
+- `tests/extra/*.py` (suite `pyextra`): Python programs written for the
+  port: annotations under the default options, docstring and
+  `from __future__` prelude placement, CRLF, tabs, backslash continuations,
+  semicolons, adjacent strings, keyword and default arguments, `global`,
+  closures, `break`/`continue`/early returns, renamed columns, numbered
+  container classes, and a tokenizer error. A `# viscosity(no-auto):` header
+  compiles without `pythonAuto`.
+- `tests/expected/<suite>_<name>[.assume].js` (or `.py`) and `.explain.txt`:
+  the TS engine's output, generated by `scripts/gen_expected.mjs`.
 
 After the TypeScript reference changes, regenerate the fixtures with
 `node scripts/gen_expected.mjs` (Node ≥ 22.18, which strips types natively),
@@ -138,9 +200,10 @@ then run `cargo test`.
 
 ## The parity guarantee
 
-For every program in the three suites, and for both bounds modes, the Rust
+For every program in the six suites, and for both bounds modes, the Rust
 engine's `code` and `explain` equal the TypeScript engine's, byte for byte.
-Today that is 61 programs × 2 = 122 fixture pairs, and all 122 match. The
+Today that is 88 programs × 2 = 176 fixture pairs (61 JavaScript programs,
+122 pairs; 27 Python programs, 54 pairs), and all 176 match. The
 WebAssembly build reproduces all of them as well. The decisions match because
 the analyses are ported step by step and visit things in the same order. That
 order decides the order of the messages in `viscosity explain`, so the port
@@ -148,8 +211,9 @@ keeps the reference's insertion-ordered maps and sets, stable sorts, use
 lists with duplicates, and Gauss–Seidel fixpoint order. Numbers in text are
 formatted with JavaScript's algorithm (`vir::js_number`).
 
-Failures are reported as a `CompileError`. Syntax errors come from oxc rather
-than acorn, so their wording differs from the reference's.
+Failures are reported as a `CompileError`. JavaScript syntax errors come from
+oxc rather than acorn, so their wording differs from the reference's. Python
+source outside the subset is not an error (see above).
 
 ### Reference bugs found while porting
 
@@ -178,7 +242,54 @@ cover the first three.
    engines now split at every ECMAScript line break
    (`tests/extra/annotation_line_breaks.js`).
 
-Two minor quirks remain, kept for parity:
+Porting the Python plugin turned up these. All are fixed in both engines,
+each with a new program in the reference's Python corpus:
+
+6. **A number literal at the very end of the file** (`tokens.ts`). Past the
+   end, `src[i]` is `undefined`, and a regex tests `undefined` as the string
+   `"undefined"`. So `/[eE]/` matched, and a file ending in `k = 1` (no line
+   break) made `1` a float, which could change int/float decisions (an
+   index stored there was no longer provably an int). A file ending in a hex
+   literal (`k = 0x1`) hung: `/[0-9a-fA-F_]/` matches `"undefined"` forever.
+   The tokenizer now reads with `charAt` (`eof_int_literal.py`,
+   `eof_hex_literal.py`).
+7. **f-string defaults** (`lower.ts`, `isLiteralDefault`). An f-string is a
+   `Constant` node, so `tag: str = f"k={K}"` counted as a literal default.
+   Python evaluates it once, at class definition, but the emitter copied it
+   to every call site, so the compiled program printed `k=2.0` where the
+   original printed `k=1.0` after `K` changed. That was a soundness bug.
+   f-strings no longer count as literals (`fstring_default.py`).
+8. **`global` of a name the module never assigns** (`lower.ts`). `def f():
+   global g; g = 1` crashed the compiler ("Cannot read properties of null")
+   because the module scope had no `g`. Such names now get a module binding
+   (`global_undeclared.py`).
+9. **`len()` of an element** (`lower.ts`, `analysis.ts`). `len(x)` lowers to
+   `field.get length`, so for a dataclass with a field named `length`,
+   `len(ps[i])` counted as a read of that field, and the emitter crashed
+   ("Cannot read properties of undefined"). The read now carries the note
+   `"len"`, which the analysis reports as "passed to len()"; the collection
+   stays as objects, since the original raises a TypeError there
+   (`len_of_element.py`).
+10. **Rebound dataclass names** (`lower.ts`). After `P = Twice` (or a second
+    `class P`), every `P(...)` call was still compiled as a record of the
+    dataclass (the last definition winning), so a program printed `4.0`
+    where the original printed `7.0`. That was a soundness bug. A dataclass
+    is now modelled only when its class statement is the only module-level
+    statement binding the name (a function's `global P` counts as one)
+    (`rebound_class.py`).
+
+The Rust core also lagged the reference on two Python rules, now ported: `**`
+gives a float only with an int exponent (`(-1.0) ** 0.5` is complex), and
+the bailouts for list literals and appends use the Python wording
+(dataclass constructor calls, non-literal defaults).
+
+Python quirks found but left as they are (in both engines):
+
+- Raw strings do not skip escaped quotes, so `r'\''` ends early. That almost
+  always becomes a syntax error, and so leaves the file unchanged.
+- `ClassVar` annotations in a dataclass are treated as fields.
+
+Two minor JavaScript quirks remain, kept for parity:
 
 - `p.#x` is treated as the public field `x` in assignment targets and method
   calls (`// NOTE` in `lower.rs`). This is observable only in programs that
@@ -192,10 +303,12 @@ Two minor quirks remain, kept for parity:
   compiling and emits the stripped JavaScript. Reproducing sucrase's exact
   output is out of scope, so the CLI rejects `.ts`/`.mts`/`.tsx` with a clear
   message.
-- **Python input** (the reference's `frontend-python`). The core keeps the
-  Python semantics, but there is no Python plugin.
-- **`--parser mini` and `--python-auto`**: there is one parser (oxc), and no
-  Python plugin.
+- **`--parser mini`**: there is one JavaScript parser (oxc), so the CLI
+  rejects `--parser`. (Python is supported: `.py` files, `--python-auto`,
+  and the reference's error for `profile` on Python.)
+- **Python profiling**, as in the reference: `viscosity profile x.py` fails
+  with "profile runs JavaScript programs only; Python profiling is not
+  supported yet".
 - **Plan options given as `undefined`** are ignored by the reference's
   `compile()`. Rust options are typed, so they cannot be undefined.
 - **AoSoA block sizes of 2^64 and above** saturate in the port (they are
@@ -204,7 +317,7 @@ Two minor quirks remain, kept for parity:
 
 ### PGO
 
-`viscosity profile <file>` instruments the program and runs it with **`node`**,
+`viscosity profile <file>` instruments a JavaScript program and runs it with **`node`**,
 exactly as the TS CLI does, so it needs Node.js on the `PATH`. Its JSON output
 is byte-identical to the TS CLI's. `--profile profile.json` feeds the measured
 sizes to the planner.

@@ -1,0 +1,5 @@
+ps (line 9) {x, y} → struct of arrays
+  · loop at line 18 in accumulate() touches 2 of 2 fields (x, y)
+  · typed array('d') columns for all 2 fields
+  · size unknown statically
+  · 1 of 1 element accesses proven in bounds

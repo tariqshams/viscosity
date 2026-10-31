@@ -1,0 +1,15 @@
+ps (line 11) {n, append, f1_, _of} → struct of arrays
+  · loop at line 41 in <module>() touches 3 of 4 fields (n, f1_, append)
+  · typed array('d') columns for n, append, f1_; list columns for _of (may hold non-floats)
+  · size unknown statically
+  · 0 of 3 element accesses proven in bounds
+ps (line 21) {n, append, f1_, _of} → struct of arrays
+  · loop at line 25 in local_copy() touches 4 of 4 fields (n, append, f1_, _of)
+  · typed array('d') columns for n, append, f1_; list columns for _of (may hold non-floats)
+  · size unknown statically
+  · 1 of 1 element accesses proven in bounds
+ps (line 30) {n, append, f1_, _of} → struct of arrays
+  · loop at line 34 in another_copy() touches 2 of 4 fields (_of, n)
+  · typed array('d') columns for n, append, f1_; list columns for _of (may hold non-floats)
+  · size unknown statically
+  · 2 of 2 element accesses proven in bounds

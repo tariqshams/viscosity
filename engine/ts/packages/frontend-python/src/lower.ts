@@ -9,8 +9,9 @@ import type { PyNode } from './parser.ts';
 
 const MATH = new Set(['sqrt', 'sin', 'cos', 'tan', 'atan2', 'exp', 'log', 'log10', 'log2', 'fabs', 'floor', 'ceil', 'trunc', 'pow', 'hypot', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh']);
 
+// An f-string is not a literal: it reads variables when it runs.
 const isLiteralDefault = (e: PyNode): boolean =>
-  e.type === 'Constant' ||
+  (e.type === 'Constant' && !e.fstring) ||
   (e.type === 'UnaryOp' && (e.op === '-' || e.op === '+') && e.operand.type === 'Constant' && (e.operand.kind === 'int' || e.operand.kind === 'float'));
 
 export interface Dataclass { name: string; fields: string[]; defaults: (PyNode | null)[]; node: PyNode }
@@ -48,6 +49,10 @@ export function lowerPython(mod: PyNode, source: string): PyLowered {
   const globalsDecl = new Map<PyNode, Set<string>>();
   let nextId = 0;
   const dataclasses = new Map<string, Dataclass>();
+  // How many statements bind each module-level name. A dataclass is only
+  // modelled when its class statement is the only one: after `P = Other`,
+  // a call P(...) may not construct the dataclass.
+  const moduleDefs = new Map<string, number>();
 
   const collectScope = (fn: PyNode, outer: PyNode | null) => {
     const names = new Map<string, PyBinding>();
@@ -57,6 +62,7 @@ export function lowerPython(mod: PyNode, source: string): PyLowered {
     globalsDecl.set(fn, glob);
     const add = (name: string, kind: PyBinding['kind'], extra: Partial<PyBinding> = {}) => {
       if (glob.has(name)) return;
+      if (fn === mod) moduleDefs.set(name, (moduleDefs.get(name) ?? 0) + 1);
       if (!names.has(name)) names.set(name, { id: nextId++, name, owner: fn, kind, mode: 'ssa', ...extra });
     };
     if (fn.type === 'FunctionDef') for (const prm of fn.params) add(prm.id, 'param');
@@ -80,6 +86,15 @@ export function lowerPython(mod: PyNode, source: string): PyLowered {
     visit(fn.body);
   };
   collectScope(mod, null);
+  // A `global g` names a module variable even when the module itself never
+  // assigns g (a function may create it).
+  for (const [f, glob] of globalsDecl) {
+    for (const g of glob) {
+      // A function that declares `global g` may bind it.
+      if (f !== mod) moduleDefs.set(g, (moduleDefs.get(g) ?? 0) + 1);
+      if (!scopes.get(mod)!.has(g)) scopes.get(mod)!.set(g, { id: nextId++, name: g, owner: mod, kind: 'let', mode: 'ssa' });
+    }
+  }
 
   // Dataclasses: module-level @dataclass classes with only annotated fields.
   for (const s of mod.body) {
@@ -100,7 +115,7 @@ export function lowerPython(mod: PyNode, source: string): PyLowered {
       else if (b.type === 'Pass' || (b.type === 'Expr' && b.value.type === 'Constant' && b.value.kind === 'str')) continue;
       else ok = false;
     }
-    if (ok && fields.length) dataclasses.set(s.name, { name: s.name, fields, defaults, node: s });
+    if (ok && fields.length && moduleDefs.get(s.name) === 1) dataclasses.set(s.name, { name: s.name, fields, defaults, node: s });
   }
 
   const lookup = (fn: PyNode, name: string): PyBinding | null => {
@@ -399,7 +414,7 @@ export function lowerPython(mod: PyNode, source: string): PyLowered {
           return r;
         }
       }
-      if (builtin('len') && e.args.length === 1 && !e.keywords.length) return fb.emit('field.get', [expr(e.args[0])], { field: 'length', src: src(e) });
+      if (builtin('len') && e.args.length === 1 && !e.keywords.length) return fb.emit('field.get', [expr(e.args[0])], { field: 'length', note: 'len', src: src(e) });
       if ((builtin('float') || builtin('int')) && e.args.length === 1 && !e.keywords.length) return fb.emit('intrinsic', [expr(e.args[0])], { name: f.id, src: src(e) });
       if (f.type === 'Attribute' && f.value.type === 'Name') {
         const mb2 = lookup(fnNode, f.value.id);

@@ -159,6 +159,7 @@ export function analyze(m: Module): Analysis {
     if (v !== undefined && i.op === 'field.set' && i.args[0] === v) return `modified directly (its .${i.field} is assigned) at line ${line(i)}`;
     if (v !== undefined && i.op === 'index.set' && i.args[0] === v) return `written with an index store at line ${line(i)}`;
     if (v !== undefined && (i.op === 'index.set' || i.op === 'index.get') && i.args[1] === v) return `used as an index at line ${line(i)}`;
+    if (i.op === 'field.get' && i.note === 'len') return `passed to len() at line ${line(i)}`;
     switch (i.op) {
       case 'call': return i.note === 'method' ? `passed to a method call at line ${line(i)}` : `passed to a function call at line ${line(i)}`;
       case 'storeBinding': return `stored in another variable (${m.bindings[i.binding!].name}) at line ${line(i)}`;
@@ -390,7 +391,8 @@ export function analyze(m: Module): Analysis {
     for (const ig of c.indexGets) {
       for (const u of usesOf(ig.inst.id)) {
         const i = u.inst;
-        if (i && i.op === 'field.get' && i.args[0] === ig.inst.id) {
+        // Python's len(e) lowers to e.length, but it never reads a field.
+        if (i && i.op === 'field.get' && i.args[0] === ig.inst.id && i.note !== 'len') {
           if (!c.fields.includes(i.field!)) c.bailouts.push(`line ${line(i)}: reads .${i.field}, which the records don't have`);
           else c.accesses.push({ inst: i, element: ig.inst, field: i.field!, kind: 'read' });
           continue;

@@ -235,6 +235,7 @@ pub struct Inst {
     /// A short annotation: for `opaque`, a description used in explain
     /// output; `"method"` on method calls; `"for-of"` on the element read of
     /// a `for...of` loop; `"int"`/`"float"` on Python numeric constants.
+    /// `"len"` on the `field.get length` of Python's `len(x)`.
     pub note: Option<String>,
     pub src: Option<SourceRef>,
 }

@@ -73,14 +73,16 @@ export function tokenize(src: string): PyTok[] {
       toks.push({ type: 'str', value: src.slice(start, i), start, end: i, line, fstring: isF });
       continue;
     }
-    if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1]))) {
+    if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src.charAt(i + 1)))) {
       let isFloat = false;
-      if (c === '0' && /[xXoObB]/.test(src[i + 1])) { i += 2; while (/[0-9a-fA-F_]/.test(src[i])) i++; }
+      // charAt, not src[i]: past the end, src[i] is undefined, and a regex
+      // tests undefined as the string "undefined" (which contains e, d, f).
+      if (c === '0' && /[xXoObB]/.test(src.charAt(i + 1))) { i += 2; while (/[0-9a-fA-F_]/.test(src.charAt(i))) i++; }
       else {
-        while (/[0-9_]/.test(src[i])) i++;
-        if (src[i] === '.') { isFloat = true; i++; while (/[0-9_]/.test(src[i])) i++; }
-        if (/[eE]/.test(src[i])) { isFloat = true; i++; if (/[+-]/.test(src[i])) i++; while (/[0-9]/.test(src[i])) i++; }
-        if (/[jJ]/.test(src[i])) err('complex numbers are not supported');
+        while (/[0-9_]/.test(src.charAt(i))) i++;
+        if (src.charAt(i) === '.') { isFloat = true; i++; while (/[0-9_]/.test(src.charAt(i))) i++; }
+        if (/[eE]/.test(src.charAt(i))) { isFloat = true; i++; if (/[+-]/.test(src.charAt(i))) i++; while (/[0-9]/.test(src.charAt(i))) i++; }
+        if (/[jJ]/.test(src.charAt(i))) err('complex numbers are not supported');
       }
       toks.push({ type: 'num', value: src.slice(start, i), start, end: i, line, isFloat });
       continue;

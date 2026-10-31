@@ -1,0 +1,6 @@
+# Debug info off: the build is much smaller and faster to link.
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0

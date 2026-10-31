@@ -732,6 +732,7 @@ dependencies = [
  "serde_json",
  "viscosity-core",
  "viscosity-frontend-js",
+ "viscosity-frontend-python",
 ]
 
 [[package]]
@@ -762,6 +763,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "viscosity-frontend-python"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "viscosity-core",
+ "viscosity-vir",
+]
+
+[[package]]
 name = "viscosity-vir"
 version = "0.1.0"
 
@@ -771,6 +781,7 @@ version = "0.1.0"
 dependencies = [
  "viscosity-core",
  "viscosity-frontend-js",
+ "viscosity-frontend-python",
  "wasm-bindgen",
 ]
 

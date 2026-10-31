@@ -1,9 +1,12 @@
-//! `viscosity`: an automatic data-layout optimizer for JavaScript.
+//! `viscosity`: an automatic data-layout optimizer for JavaScript and
+//! Python.
 //!
 //! The Rust port of `engine/ts/packages/cli`. `build`, `explain` and their
-//! options behave exactly like the TypeScript CLI. `profile` (PGO) runs the
-//! instrumented program with `node`, like the TS version, so it needs Node.js
-//! on the `PATH`. TypeScript and Python input are not supported by the port.
+//! options behave exactly like the TypeScript CLI; `.py` files use the
+//! Python plugin. `profile` (PGO) runs the instrumented program with `node`,
+//! like the TS version, so it needs Node.js on the `PATH`; like the TS
+//! version, it rejects Python. TypeScript input is not supported by the
+//! port.
 
 mod profile;
 
@@ -15,8 +18,9 @@ use std::process::ExitCode;
 
 use viscosity_core::{compile, Bounds, CompileOptions, Mode};
 use viscosity_frontend_js::JsPlugin;
+use viscosity_frontend_python::PyPlugin;
 
-const HELP: &str = "viscosity: rewrites arrays of objects (JavaScript) into struct-of-arrays layouts
+const HELP: &str = "viscosity: rewrites arrays of objects (JavaScript, Python) into struct-of-arrays layouts
 when it can prove it is safe and expects it to be faster.
 
 Usage:
@@ -33,7 +37,23 @@ Options:
   --min-size <n>            leave collections smaller than n alone (default 64)
   --profile <profile.json>  use measured sizes from `viscosity profile`
   --explain                 also print the explanation when building
+  --python-auto             Python: transform without annotations (CPython
+                            column access is slower; the gain is memory)
 ";
+
+/// A failure. As in the TS CLI, only a usage error (the command line itself
+/// was wrong) is followed by the help text.
+#[derive(Debug)]
+enum CliError {
+    Usage(String),
+    Other(String),
+}
+
+impl From<String> for CliError {
+    fn from(e: String) -> Self {
+        CliError::Other(e)
+    }
+}
 
 /// Parsed command-line arguments.
 #[derive(Debug, Default)]
@@ -46,14 +66,14 @@ struct Args {
     opts: CompileOptions,
 }
 
-fn parse_args(argv: &[String]) -> Result<Args, String> {
+fn parse_args(argv: &[String]) -> Result<Args, CliError> {
     let mut args = Args { cmd: argv[0].clone(), ..Args::default() };
     let mut i = 1;
     while i < argv.len() {
         let a = argv[i].as_str();
         let mut next = || {
             i += 1;
-            argv.get(i).cloned().ok_or_else(|| format!("{a} needs a value"))
+            argv.get(i).cloned().ok_or_else(|| CliError::Usage(format!("{a} needs a value")))
         };
         match a {
             "-o" | "--out" => args.out = next()?,
@@ -62,20 +82,21 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
                 args.opts.mode = match next()?.as_str() {
                     "auto" => Mode::Auto,
                     "opt-in" => Mode::OptIn,
-                    _ => return Err("--mode must be auto or opt-in".into()),
+                    _ => return Err(CliError::Usage("--mode must be auto or opt-in".into())),
                 }
             }
             "--bounds" => {
                 args.opts.bounds = match next()?.as_str() {
                     "check" => Bounds::Check,
                     "assume" => Bounds::Assume,
-                    _ => return Err("--bounds must be check or assume".into()),
+                    _ => return Err(CliError::Usage("--bounds must be check or assume".into())),
                 }
             }
             "--min-size" => args.opts.min_size = js_to_number(&next()?),
             "--profile" => args.profile = next()?,
+            "--python-auto" => args.opts.python_auto = true,
             _ if !a.starts_with('-') && args.file.is_empty() => args.file = a.to_string(),
-            _ => return Err(format!("unknown option {a}")),
+            _ => return Err(CliError::Usage(format!("unknown option {a}"))),
         }
         i += 1;
     }
@@ -110,21 +131,23 @@ fn js_to_number(s: &str) -> f64 {
     }
 }
 
-fn run(argv: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Result<(), String> {
+fn run(argv: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Result<(), CliError> {
     let mut a = parse_args(argv)?;
     if a.file.is_empty() {
-        return Err("missing <file>".into());
+        return Err(CliError::Usage("missing <file>".into()));
     }
     let ext = Path::new(&a.file).extension().and_then(|e| e.to_str()).unwrap_or("");
-    match ext {
-        "py" => return Err("Python input is not supported by the Rust port (use the TypeScript engine)".into()),
-        "ts" | "mts" | "tsx" => {
-            return Err("TypeScript input is not supported by the Rust port (the TypeScript engine strips types with sucrase first)".into())
-        }
-        _ => {}
+    let python = ext == "py";
+    if matches!(ext, "ts" | "mts" | "tsx") {
+        return Err(CliError::Usage("TypeScript input is not supported by the Rust port (the TypeScript engine strips types with sucrase first)".into()));
     }
-    let io = |e: std::io::Error| e.to_string();
+    let io = |e: std::io::Error| CliError::Other(e.to_string());
     if a.cmd == "profile" {
+        if python {
+            return Err("profile runs JavaScript programs only; Python profiling is not supported yet"
+                .to_string()
+                .into());
+        }
         let text = profile::profile(&a.file)? + "\n";
         if a.out.is_empty() {
             stdout.write_all(text.as_bytes()).map_err(io)?;
@@ -137,7 +160,8 @@ fn run(argv: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Res
         a.opts.profile = Some(read_profile(&a.profile)?);
     }
     let src = fs::read_to_string(&a.file).map_err(io)?;
-    let r = compile(&src, &JsPlugin, a.opts).map_err(|e| e.to_string())?;
+    let r = if python { compile(&src, &PyPlugin, a.opts) } else { compile(&src, &JsPlugin, a.opts) };
+    let r = r.map_err(|e| e.to_string())?;
     match a.cmd.as_str() {
         "explain" => {
             let text = if r.explain.is_empty() { "No arrays of objects found." } else { &r.explain };
@@ -153,7 +177,7 @@ fn run(argv: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Res
                 writeln!(stderr, "{}", r.explain).map_err(io)?;
             }
         }
-        cmd => return Err(format!("unknown command \"{cmd}\"")),
+        cmd => return Err(CliError::Usage(format!("unknown command \"{cmd}\""))),
     }
     Ok(())
 }
@@ -182,8 +206,12 @@ fn main() -> ExitCode {
     }
     match run(&argv, &mut stdout, &mut stderr) {
         Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
+        Err(CliError::Usage(e)) => {
             let _ = write!(stderr, "viscosity: {e}\n\n{HELP}");
+            ExitCode::FAILURE
+        }
+        Err(CliError::Other(e)) => {
+            let _ = writeln!(stderr, "viscosity: {e}");
             ExitCode::FAILURE
         }
     }
