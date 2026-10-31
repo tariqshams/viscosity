@@ -24,8 +24,9 @@ async function newPage(opts = IPHONE) {
 const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
 // 1. Every page: no console errors, no sideways scrolling on a phone.
-const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/days/', '/review/', '/bibliography/', '/acknowledgements/',
-  '/chapters/001-functions/', '/chapters/002-arrays/', '/chapters/003-objects/', '/chapters/004-references/'];
+import { readdirSync } from 'node:fs';
+const chapterPaths = readdirSync(join(dist, 'chapters')).sort().map((d) => `/chapters/${d}/`);
+const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/days/', '/review/', '/bibliography/', '/acknowledgements/', ...chapterPaths];
 {
   const { page, errors } = await newPage();
   for (const p of paths) {
@@ -121,6 +122,21 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/days/',
   await page.locator('[data-review-empty]').waitFor();
   const after = await page.evaluate(() => JSON.parse(localStorage.getItem('viscosity:srs:v1')));
   check(after.cards['4.ref-what'].reps === 2 && new Date(after.cards['4.ref-what'].due) > new Date(), 'reviewing reschedules the card into the future');
+}
+
+// 2b. A Drip program runs on the real interpreter in the page.
+{
+  const { page, errors } = await newPage();
+  await page.goto(url + '/chapters/026-meet-drip/', { waitUntil: 'networkidle' });
+  const r = page.locator('[data-runner]').first();
+  await r.scrollIntoViewIfNeeded();
+  await r.locator('.cm-content').waitFor();
+  await r.locator('[data-run]').click();
+  await r.locator('[data-output]').waitFor();
+  await page.waitForTimeout(800);
+  const out = await r.locator('[data-output]').innerText();
+  check(out.trim().length > 0 && !/Error/.test(out), `Drip example runs in the page: ${JSON.stringify(out.slice(0, 60))}`);
+  check(errors.length === 0, 'Drip runner: no console errors');
 }
 
 // 3. Dark mode and desktop layout.
