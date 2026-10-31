@@ -15,7 +15,7 @@ export interface WrongAttempt { code?: string; why: string }
 export interface RunnerProps {
   id: string;
   code: string;
-  lang?: 'js' | 'ts';
+  lang?: 'js' | 'ts' | 'drip' | 'drip-vm';
   title?: string;
   /** exercise mode when tests are given */
   tests?: string;
@@ -91,7 +91,7 @@ export default function Runner(props: RunnerProps) {
             ...cmds.defaultKeymap,
             ...cmds.historyKeymap,
           ]),
-          lang_.javascript({ typescript: lang === 'ts' }),
+          lang_.javascript({ typescript: lang === 'ts' }), // Drip's syntax is close enough to JS to highlight
           syntaxHighlighting(classHighlighter),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({

@@ -145,3 +145,46 @@ build` (the maintainer does).
 - Short sentences, and concrete examples before abstractions.
 - No hype and no filler.
 - Spelling as in the existing chapters: "colour", "behaviour".
+
+## Special components
+
+**Benchmark charts (Part II onward).** Never type a performance number into
+prose by hand. Show it from the committed results:
+
+```mdx
+import BenchBars from '../../../components/bench/BenchBars';
+
+<BenchBars suite="update-xy" n={100000} title="Moving particles: x += vx"
+  highlight={['soa']} layouts={['aos', 'aos-packed', 'soa']}
+  caption="One takeaway sentence." />
+```
+
+- Suites: `update-xy`, `sum-one-field`, `read-all`, `random-x`,
+  `get-objects`, `materialize`, `construct`.
+- Layouts: `aos`, `aos-class`, `aos-ctor`, `aos-packed`, `soa`, `aosoa8`.
+- Sizes: 1000, 100000, 1000000.
+- Data: `src/data/bench/baseline-node-2026-10-31.json`. Engine findings:
+  `../engine/ts/packages/bench/FINDINGS.md`.
+- When prose quotes a number, say where it came from ("in this book's
+  benchmark run").
+
+**Measure on your own device:**
+
+```mdx
+import LiveBench from '../../../components/bench/LiveBench';
+
+<LiveBench client:visible />
+```
+
+**Drip programs (Part III onward).** Examples and exercises can use
+`lang: 'drip'` (the tree-walking interpreter) or `lang: 'drip-vm'` (the
+bytecode VM). For a Drip exercise, `tests` is the exact expected output
+(one line per `print`), and the checker runs it.
+
+- Drip is Lox with `fn` and `let`. Its source is in `companion/ts/src`
+  (tree-walker) and `companion/ts/src/vm` (VM).
+- Chapters that build the interpreter should show and explain the real
+  companion code, simplified where needed to fit the 44-character width.
+  Exercises that build interpreter pieces (e.g. "write `isDigit`") are
+  ordinary `js`/`ts` exercises.
+- Benchmark results for Drip: `companion/ts/results/drip-bench-*.md`.

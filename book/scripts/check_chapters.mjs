@@ -19,6 +19,7 @@ import { ASSUMED, CONCEPTS, knownBefore } from '../src/data/concepts.js';
 import { OUTLINE } from '../src/data/outline/index.js';
 import { references, pending } from '../src/data/references.js';
 import { runWithTests } from '../src/lib/minitest.js';
+import { runDrip, checkDripOutput } from '../src/lib/drip.js';
 import { estimateMinutesExact, proseWords } from '../src/lib/minutes.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -146,23 +147,33 @@ for (const folder of folders) {
   for (const [k, e] of Object.entries(cards.exercises ?? {})) {
     for (const f of ['title', 'prompt', 'starter', 'solution', 'tests', 'walkthrough']) if (!e[f]) err(folder, `exercise ${k} has no ${f}`);
     if (!e.hints?.length) err(folder, `exercise ${k} has no hints`);
-    const sol = runWithTests(e.solution, e.tests, silent);
+    const isDrip = e.lang === 'drip' || e.lang === 'drip-vm';
+    const runEx = async (code) => isDrip
+      ? { results: checkDripOutput(await runDrip(code, e.lang), e.tests), error: null }
+      : runWithTests(code, e.tests, silent);
+    const sol = await runEx(e.solution);
     if (sol.error || !sol.results.length || sol.results.some((r) => !r.ok)) {
       err(folder, `exercise ${k}: reference solution fails its tests: ${sol.error ?? JSON.stringify(sol.results.filter((r) => !r.ok))}`);
     }
-    const st = runWithTests(e.starter, e.tests, silent);
+    const st = await runEx(e.starter);
     if (!st.error && st.results.length && st.results.every((r) => r.ok)) err(folder, `exercise ${k}: the starter code already passes every test`);
     for (const w of e.wrong ?? []) {
       if (!w.code) continue;
-      const r = runWithTests(w.code, e.tests, silent);
+      const r = await runEx(w.code);
       if (!r.error && r.results.every((t) => t.ok)) err(folder, `exercise ${k}: a "wrong attempt" passes all tests, so it isn't wrong`);
     }
     if (!body.includes(`<Exercise id="${k}"`)) err(folder, `exercise "${k}" is never placed in the text`);
   }
   for (const k of Object.keys(cards.examples ?? {})) {
     if (!body.includes(`<Run id="${k}"`)) err(folder, `example "${k}" is never placed in the text`);
-    const r = runWithTests(cards.examples[k].code, '', silent);
-    if (r.error && !cards.examples[k].expectError) err(folder, `example "${k}" throws: ${r.error}`);
+    const ex = cards.examples[k];
+    if (ex.lang === 'drip' || ex.lang === 'drip-vm') {
+      const r = await runDrip(ex.code, ex.lang);
+      if (r.exitCode !== 0 && !ex.expectError) err(folder, `Drip example "${k}" fails: ${r.stderr.join(' ')}`);
+    } else if (ex.lang !== 'ts') {
+      const r = runWithTests(ex.code, '', silent);
+      if (r.error && !ex.expectError) err(folder, `example "${k}" throws: ${r.error}`);
+    }
   }
 
   // 7. citations
