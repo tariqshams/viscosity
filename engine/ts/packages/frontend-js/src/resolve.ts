@@ -79,7 +79,7 @@ export function resolveScopes(program: Node): Resolution {
         for (const d of n.declarations) for (const id of patternNames(d.id)) declare(scope, id, 'var', d.id.type === 'Identifier' ? d.init : null);
       }
       if (n.type === 'FunctionDeclaration' && n !== node) {
-        declare(scope, n.id, 'function');
+        if (n.id) declare(scope, n.id, 'function'); // `export default function () {}` has no name
         return; // its body has its own scope
       }
       if (isFunction(n) && n !== node) return;

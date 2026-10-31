@@ -94,6 +94,9 @@ export function emitJs(source: string, program: Node, res: Resolution, p: Plan):
     if (!prev || (!write && prev.write)) fieldEdits.set(k, { ...e, write });
   };
   const text = (n: Node) => source.slice(n.start, n.end);
+  // A value spliced into an argument list: (a, b) must keep its parentheses,
+  // or the comma would separate arguments.
+  const argText = (n: Node) => (n.type === 'SequenceExpression' ? `(${text(n)})` : text(n));
   const nodeOf = (i: Inst) => i.src!.node as Node;
 
   const classNames = new Set<string>();
@@ -125,7 +128,7 @@ export function emitJs(source: string, program: Node, res: Resolution, p: Plan):
     if (c.init.op === 'array.empty') {
       edits.push({ start: init.start, end: init.end, text: `new ${cls}()` });
     } else {
-      const vals = c.initRecords.map((r) => (nodeOf(r).properties as Node[]).map((pr) => text(pr.value)).join(', '));
+      const vals = c.initRecords.map((r) => (nodeOf(r).properties as Node[]).map((pr) => argText(pr.value)).join(', '));
       edits.push({ start: init.start, end: init.end, text: `${cls}.of(${vals.join(', ')})` });
     }
 
@@ -133,7 +136,7 @@ export function emitJs(source: string, program: Node, res: Resolution, p: Plan):
     for (const pu of c.pushes) {
       const call = nodeOf(pu);
       const obj = call.arguments[0];
-      edits.push({ start: obj.start, end: obj.end, text: (obj.properties as Node[]).map((pr) => text(pr.value)).join(', ') });
+      edits.push({ start: obj.start, end: obj.end, text: (obj.properties as Node[]).map((pr) => argText(pr.value)).join(', ') });
     }
 
     // 3. Elements. Decide, for each index.get, whether it is used directly

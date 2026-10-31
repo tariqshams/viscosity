@@ -142,7 +142,12 @@ export function lower(program: Node, source: string, res: Resolution): Lowered {
     const hoist = (stmts: Node[]) => {
       for (const s of stmts) {
         const d = s.type === 'ExportNamedDeclaration' || s.type === 'ExportDefaultDeclaration' ? s.declaration : s;
-        if (d && d.type === 'FunctionDeclaration') {
+        if (d && d.type === 'FunctionDeclaration' && !d.id) {
+          // `export default function () {}`: no binding; the closure escapes.
+          const fid = lowerFunction(d, 'default');
+          const c = fb.emit('closure', [], { func: fid, src: src(d) });
+          fb.emit('opaque', [c], { note: 'export', src: src(s) });
+        } else if (d && d.type === 'FunctionDeclaration') {
           const fid = lowerFunction(d, d.id.name);
           const c = fb.emit('closure', [], { func: fid, src: src(d) });
           const b = binding(d.id);
@@ -402,7 +407,9 @@ export function lower(program: Node, source: string, res: Resolution): Lowered {
           }
           return;
         case 'ExportDefaultDeclaration':
-          if (s.declaration.type === 'FunctionDeclaration' && s.declaration.id) {
+          if (s.declaration.type === 'FunctionDeclaration' && !s.declaration.id) {
+            // handled when hoisting
+          } else if (s.declaration.type === 'FunctionDeclaration' && s.declaration.id) {
             fb.emit('opaque', [read(binding(s.declaration.id), s.declaration.id)], { note: 'export', src: src(s) });
           } else if (s.declaration.type === 'ClassDeclaration') {
             stmt(s.declaration);
