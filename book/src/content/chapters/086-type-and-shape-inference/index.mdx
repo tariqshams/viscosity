@@ -110,8 +110,9 @@ for (let changed = true; changed; ) {
 ```
 
 A fact can only fall, from *number* to *maybe not*, and there are
-finitely many facts, so the loop must end. The real code also stops after
-100 rounds, as a guard.
+finitely many facts, so the loop must end. As a guard, the real code
+also stops after 1000 rounds, and if it hasn't settled by then it gives
+up on every guess (fails closed) rather than keep an unproven one.
 
 <Callout kind="definition">
 An **optimistic** analysis starts from the best possible answer and
