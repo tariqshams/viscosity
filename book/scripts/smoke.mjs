@@ -25,6 +25,25 @@ const noOverflow = (page) => page.evaluate(() => document.documentElement.scroll
 
 // 1. Every page: no console errors, no sideways scrolling on a phone.
 import { readdirSync } from 'node:fs';
+
+// Islands hydrate when scrolled into view; on a busy machine that can lag
+// behind the click. Wait until the enclosing <astro-island> has hydrated.
+async function hydrated(loc) {
+  await loc.scrollIntoViewIfNeeded();
+  const h = await loc.elementHandle();
+  await h.evaluate((el) => new Promise((done) => {
+    const isl = el.closest('astro-island');
+    const ok = () => !isl || !isl.hasAttribute('ssr');
+    if (ok()) return done();
+    const t = setInterval(() => { if (ok()) { clearInterval(t); done(); } }, 50);
+    setTimeout(() => { clearInterval(t); done(); }, 15000);
+  }));
+}
+// Poll a condition for up to 5 s before giving up.
+async function eventually(fn) {
+  for (let i = 0; i < 50; i++) { if (await fn()) return true; await new Promise((r) => setTimeout(r, 100)); }
+  return false;
+}
 const chapterPaths = readdirSync(join(dist, 'chapters')).sort().map((d) => `/chapters/${d}/`);
 const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/days/', '/review/', '/bibliography/', '/acknowledgements/', ...chapterPaths];
 {
@@ -86,24 +105,26 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/days/',
 
   // Recall prompt collects a card.
   const prompt = page.locator('[data-prompt="4.ref-what"]');
-  await prompt.scrollIntoViewIfNeeded();
+  await hydrated(prompt);
   await prompt.locator('[data-reveal]').click();
   await prompt.locator('[data-remembered]').click();
   const deck = await page.evaluate(() => JSON.parse(localStorage.getItem('viscosity:srs:v1')));
-  check(deck?.cards?.['4.ref-what']?.reps === 1, 'answering a prompt adds it to the review deck');
+  await eventually(() => page.evaluate(() => !!localStorage.getItem('viscosity:srs:v1')));
+  const deck2 = await page.evaluate(() => JSON.parse(localStorage.getItem('viscosity:srs:v1')));
+  check((deck2 ?? deck)?.cards?.['4.ref-what']?.reps === 1, 'answering a prompt adds it to the review deck');
 
   // Quiz scoring.
   const quiz = page.locator('[data-quiz]');
-  await quiz.scrollIntoViewIfNeeded();
+  await hydrated(quiz);
   const qs = await quiz.locator('[data-question]').count();
   for (let i = 0; i < qs; i++) await quiz.locator(`[data-question="${i}"] [data-option="0"]`).click();
-  check(await quiz.locator('[data-quiz-score]').isVisible(), 'quiz shows a score when finished');
+  check(await eventually(() => quiz.locator('[data-quiz-score]').isVisible()), 'quiz shows a score when finished');
 
   // Stepper
   const st = page.locator('[data-stepper]').first();
-  await st.scrollIntoViewIfNeeded();
+  await hydrated(st);
   await st.locator('[data-next]').click();
-  check((await st.innerText()).includes('2/7'), 'stepper advances');
+  check(await eventually(async () => (await st.innerText()).includes('2/7')), 'stepper advances');
 
   check(errors.length === 0, `chapter interactions: no console errors ${JSON.stringify(errors)}`);
   check(await noOverflow(page), 'chapter still fits 440px after interacting');
