@@ -17,7 +17,8 @@ use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use indexmap::{IndexMap, IndexSet};
 use viscosity_vir::{
-    build_uses, BindingId, BindingKind, BlockId, Const, Func, FuncId, Inst, Module, Op, Terminator, Use, Uses, ValueId,
+    build_uses, BindingId, BindingKind, BlockId, Const, Func, FuncId, Inst, Module, Op, SourceRef, Terminator, Use,
+    Uses, ValueId,
 };
 
 use crate::cfg::{dominators, loop_of, natural_loops, Dominators, Loop};
@@ -58,6 +59,22 @@ pub struct ElementAccess {
     pub element: ValueId,
     pub field: String,
     pub kind: AccessKind,
+    /// For writes, what evaluating the rest of the assignment (besides the
+    /// element and, for `+=` and friends, its old value) can do. The emitter
+    /// must then keep the original order of the index check, the right-hand
+    /// side and the store. Always [`RhsEffect::Inert`] for reads.
+    pub rhs: RhsEffect,
+}
+
+/// What the right-hand side of a field write can do, from least to worst.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum RhsEffect {
+    /// Nothing observable.
+    Inert,
+    /// Only throw (an element read out of bounds, say).
+    MayThrow,
+    /// Run code and have effects (a call, an assignment, ...).
+    Effects,
 }
 
 /// An `index.get` that reads an element, and whether it is provably in
@@ -95,6 +112,9 @@ pub struct Collection {
     pub numeric_fields: IndexSet<String>,
     /// Why the collection can't be transformed (empty = safe).
     pub bailouts: Vec<String>,
+    /// Where in the source each bailout (by message) was first found, for
+    /// `viscosity explain --frames`; `None` when it has no single position.
+    pub bailout_sites: IndexMap<String, Option<SourceRef>>,
     /// The source line of the declaration.
     pub line: u32,
 }
@@ -129,6 +149,14 @@ fn line_of(m: &Module, i: &Inst) -> u32 {
         Some(s) if s.line != 0 => s.line,
         _ if matches!(i.op, Op::Phi) => i.args.iter().map(|&a| m.inst(a).line()).max().unwrap_or(0),
         _ => 0,
+    }
+}
+
+impl Collection {
+    /// Records a bailout and, the first time this message is seen, where.
+    fn bail(&mut self, msg: String, at: Option<SourceRef>) {
+        self.bailout_sites.entry(msg.clone()).or_insert(at);
+        self.bailouts.push(msg);
     }
 }
 
@@ -214,6 +242,7 @@ impl<'m> Analyzer<'m> {
         self.numeric_inference();
         self.element_uses();
         self.bounds_loops_and_sizes();
+        self.write_right_hand_sides();
         // Deduplicate bailout messages, keeping the first of each.
         for c in &mut self.collections {
             let unique: IndexSet<String> = c.bailouts.drain(..).collect();
@@ -300,15 +329,19 @@ impl<'m> Analyzer<'m> {
                 size_is_upper_bound: false,
                 numeric_fields: IndexSet::new(),
                 bailouts: Vec::new(),
+                bailout_sites: IndexMap::new(),
                 line: init.line(),
             };
             if st.len() > 1 {
                 let last = self.inst(*st.last().expect("non-empty"));
-                c.bailouts.push(format!(
-                    "\"{}\" is reassigned (line {}), so it may not always hold this array",
-                    binding.name,
-                    line_of(self.m, last)
-                ));
+                c.bail(
+                    format!(
+                        "\"{}\" is reassigned (line {}), so it may not always hold this array",
+                        binding.name,
+                        line_of(self.m, last)
+                    ),
+                    last.src,
+                );
             }
             if matches!(init.op, Op::ArrayNew) {
                 for &a in &init.args {
@@ -319,7 +352,7 @@ impl<'m> Analyzer<'m> {
                         } else {
                             "array literal is not a plain object literal"
                         };
-                        c.bailouts.push(format!("line {line}: an element of the {what}"));
+                        c.bail(format!("line {line}: an element of the {what}"), self.inst(a).src.or(init.src));
                         break;
                     }
                     c.init_records.push(a);
@@ -330,6 +363,22 @@ impl<'m> Analyzer<'m> {
             for &l in self.loads.get(&binding.id).map_or(&[][..], Vec::as_slice) {
                 self.collection_of_load.insert(l, ci);
             }
+        }
+    }
+
+    /// Where use `u` of `v` is: `v` itself when it loads a binding (the name
+    /// in the source), otherwise the instruction or terminator that uses it.
+    fn use_site(&self, u: Use, v: ValueId) -> Option<SourceRef> {
+        let x = self.inst(v);
+        if matches!(x.op, Op::LoadBinding { .. }) && x.src.is_some() {
+            return x.src;
+        }
+        match u {
+            Use::Inst(i) => self.inst(i).src,
+            Use::Term { func, block } => match &self.m.func(func).block(block).term {
+                Terminator::CondBr { src, .. } | Terminator::Return { src, .. } | Terminator::Throw { src, .. } => *src,
+                _ => None,
+            },
         }
     }
 
@@ -378,18 +427,22 @@ impl<'m> Analyzer<'m> {
     fn set_shape(&mut self, ci: usize, r: ValueId, location: &str) {
         let Op::RecordNew { fields } = &self.inst(r).op else { unreachable!("set_shape on a record.new") };
         let aliased = self.uses.of(r).len() != 1;
+        let at = self.inst(r).src;
         let c = &mut self.collections[ci];
         if c.fields.is_empty() {
             c.fields = fields.clone();
         } else if c.fields != *fields {
-            c.bailouts.push(format!(
-                "{location}: records with different fields or field order ({{{}}} vs {{{}}})",
-                fields.join(", "),
-                c.fields.join(", ")
-            ));
+            c.bail(
+                format!(
+                    "{location}: records with different fields or field order ({{{}}} vs {{{}}})",
+                    fields.join(", "),
+                    c.fields.join(", ")
+                ),
+                at,
+            );
         }
         if aliased {
-            c.bailouts.push(format!("{location}: the new record is also referenced elsewhere, so it could be aliased"));
+            c.bail(format!("{location}: the new record is also referenced elsewhere, so it could be aliased"), at);
         }
     }
 
@@ -401,8 +454,9 @@ impl<'m> Analyzer<'m> {
             }
             let init = self.collections[ci].init;
             if self.uses.of(init).len() != 1 {
+                let at = self.inst(init).src;
                 let c = &mut self.collections[ci];
-                c.bailouts.push(format!("line {}: the array is used before being stored in \"{}\"", c.line, c.name));
+                c.bail(format!("line {}: the array is used before being stored in \"{}\"", c.line, c.name), at);
             }
             let mut work: Vec<ValueId> = self.loads.get(&self.collections[ci].binding).cloned().unwrap_or_default();
             let mut seen_param: HashSet<ValueId> = HashSet::default();
@@ -415,7 +469,7 @@ impl<'m> Analyzer<'m> {
             }
             let c = &mut self.collections[ci];
             if c.fields.is_empty() && c.bailouts.is_empty() {
-                c.bailouts.push("no records are ever added, so there is nothing to lay out".into());
+                c.bail("no records are ever added, so there is nothing to lay out".into(), None);
             }
         }
     }
@@ -431,7 +485,8 @@ impl<'m> Analyzer<'m> {
     ) -> Option<ValueId> {
         let Some(iv) = u.inst() else {
             let msg = self.describe_use(u, l);
-            self.collections[ci].bailouts.push(msg);
+            let at = self.use_site(u, l);
+            self.collections[ci].bail(msg, at);
             return None;
         };
         let i = self.inst(iv);
@@ -464,13 +519,16 @@ impl<'m> Analyzer<'m> {
                     return Some(value);
                 }
                 if !all_same {
-                    self.collections[ci]
-                        .bailouts
-                        .push(format!("line {line}: passed to {}(), which is also called with other values", f.name));
+                    let at = self.use_site(u, l);
+                    self.collections[ci].bail(
+                        format!("line {line}: passed to {}(), which is also called with other values", f.name),
+                        at,
+                    );
                     return None;
                 }
             }
         }
+        let site = self.use_site(u, l);
         let c = &mut self.collections[ci];
         match &i.op {
             Op::FieldGet { field } if field == "length" && i.args[0] == l => {
@@ -479,10 +537,13 @@ impl<'m> Analyzer<'m> {
             }
             Op::Push if i.args[0] == l => {
                 if i.args.len() != 2 {
-                    c.bailouts.push(format!(
-                        "line {line}: push with {} arguments (only one record at a time is supported)",
-                        i.args.len() - 1
-                    ));
+                    c.bail(
+                        format!(
+                            "line {line}: push with {} arguments (only one record at a time is supported)",
+                            i.args.len() - 1
+                        ),
+                        i.src,
+                    );
                     return None;
                 }
                 let r = i.args[1];
@@ -492,7 +553,7 @@ impl<'m> Analyzer<'m> {
                     } else {
                         "pushes something that is not a fresh object literal"
                     };
-                    c.bailouts.push(format!("line {line}: {what}"));
+                    c.bail(format!("line {line}: {what}"), self.m.inst(r).src.or(i.src));
                     return None;
                 }
                 self.set_shape(ci, r, &format!("line {line}"));
@@ -506,14 +567,16 @@ impl<'m> Analyzer<'m> {
                 return None;
             }
             Op::FieldGet { field } if i.args[0] == l => {
-                c.bailouts
-                    .push(format!("line {line}: uses .{field} on the array (only .length and .push are supported)"));
+                c.bail(
+                    format!("line {line}: uses .{field} on the array (only .length and .push are supported)"),
+                    i.src,
+                );
                 return None;
             }
             _ => {}
         }
         let msg = format!("the array is {}", self.describe_use(u, l));
-        self.collections[ci].bailouts.push(msg);
+        self.collections[ci].bail(msg, site);
         None
     }
 
@@ -707,9 +770,9 @@ impl<'m> Analyzer<'m> {
             if !ok {
                 let what = if self.py { "an int" } else { "a number" };
                 let line = line_of(self.m, self.inst(iv));
+                let at = self.inst(idx).src.or(self.inst(iv).src);
                 self.collections[ci]
-                    .bailouts
-                    .push(format!("line {line}: indexes the array with something that may not be {what}"));
+                    .bail(format!("line {line}: indexes the array with something that may not be {what}"), at);
             }
         }
     }
@@ -759,12 +822,16 @@ impl<'m> Analyzer<'m> {
                                     element: ig.inst,
                                     field: field.clone(),
                                     kind: AccessKind::Read,
+                                    rhs: RhsEffect::Inert,
                                 });
                             } else {
-                                c.bailouts.push(format!(
-                                    "line {}: reads .{field}, which the records don't have",
-                                    line_of(self.m, i)
-                                ));
+                                c.bail(
+                                    format!(
+                                        "line {}: reads .{field}, which the records don't have",
+                                        line_of(self.m, i)
+                                    ),
+                                    i.src,
+                                );
                             }
                         }
                         Some((i, Op::FieldSet { field })) if i.args[0] == ig.inst => {
@@ -774,12 +841,13 @@ impl<'m> Analyzer<'m> {
                                     element: ig.inst,
                                     field: field.clone(),
                                     kind: AccessKind::Write,
+                                    rhs: RhsEffect::Inert,
                                 });
                             } else {
-                                c.bailouts.push(format!(
-                                    "line {}: adds a new property .{field} to an element",
-                                    line_of(self.m, i)
-                                ));
+                                c.bail(
+                                    format!("line {}: adds a new property .{field} to an element", line_of(self.m, i)),
+                                    i.src,
+                                );
                             }
                         }
                         _ => {
@@ -793,7 +861,8 @@ impl<'m> Analyzer<'m> {
                                 .find_map(|p| why.strip_suffix(&format!("{p}{line}")))
                                 .unwrap_or(&why);
                             let msg = format!("line {line}: an element is {why}");
-                            self.collections[ci].bailouts.push(msg);
+                            let at = self.inst(ig.inst).src;
+                            self.collections[ci].bail(msg, at);
                         }
                     }
                 }
@@ -928,6 +997,90 @@ impl<'m> Analyzer<'m> {
             ok &= region_ok(Some(l), must(k + 1));
         }
         ok
+    }
+
+    // ---- 6. right-hand sides of field writes ------------------------------------
+
+    /// `p.x = f()` is emitted as `ps.x[i] = f()`, which checks the index and
+    /// fetches the column before `f` runs. If `f` pushes (so the column grows
+    /// into a new array) or throws, or the index check fails, the order
+    /// shows. So look at everything evaluated within the assignment, in its
+    /// block before it: the worst of what each instruction can do.
+    fn write_right_hand_sides(&mut self) {
+        // element -> (proven in bounds, collection has no bailouts)
+        let mut facts: HashMap<ValueId, (bool, bool)> = HashMap::default();
+        for c in &self.collections {
+            for g in &c.index_gets {
+                facts.insert(g.inst, (g.bounds_proven, c.bailouts.is_empty()));
+            }
+        }
+        // An element of a collection with no bailouts is a plain record:
+        // reading it runs no code, and in bounds it cannot throw.
+        let element = |v: ValueId| match facts.get(&v) {
+            Some(&(true, true)) => RhsEffect::Inert,
+            Some(&(false, true)) => RhsEffect::MayThrow,
+            _ => RhsEffect::Effects,
+        };
+        let effect = |x: &Inst| -> RhsEffect {
+            let numeric = |k: usize| self.n(x.args[k]);
+            let inert_if = |ok: bool| if ok { RhsEffect::Inert } else { RhsEffect::Effects };
+            match &x.op {
+                Op::Const(_)
+                | Op::LoadBinding { .. }
+                | Op::Closure { .. }
+                | Op::RecordNew { .. }
+                | Op::ArrayNew
+                | Op::ArrayEmpty
+                | Op::Select
+                | Op::Logical { .. }
+                | Op::Phi
+                | Op::Param { .. } => RhsEffect::Inert,
+                Op::Unop { operator } => inert_if(matches!(operator.as_str(), "!" | "typeof" | "void") || numeric(0)),
+                Op::Binop { operator } => inert_if(
+                    matches!(operator.as_str(), "===" | "!==")
+                        || (!matches!(operator.as_str(), "in" | "instanceof") && numeric(0) && numeric(1)),
+                ),
+                Op::Intrinsic { .. } => inert_if((0..x.args.len()).all(numeric)),
+                Op::IndexGet => element(x.id),
+                Op::FieldGet { field } if field == "length" && self.collection_of_load.contains_key(&x.args[0]) => {
+                    RhsEffect::Inert
+                }
+                Op::FieldGet { .. } => element(x.args[0]),
+                _ => RhsEffect::Effects,
+            }
+        };
+        let mut found = Vec::new();
+        for (ci, c) in self.collections.iter().enumerate() {
+            for (ai, a) in c.accesses.iter().enumerate() {
+                if a.kind != AccessKind::Write {
+                    continue;
+                }
+                let w = self.inst(a.inst);
+                let func = self.m.func(self.func_of[a.inst.index()].expect("a live instruction"));
+                let block = func.block(w.block);
+                let Some(ws) = w.src else { continue };
+                let mut worst = if w.note_is("assigns") { RhsEffect::Effects } else { RhsEffect::Inert };
+                for &xv in &block.insts {
+                    if xv == a.inst || worst == RhsEffect::Effects {
+                        break;
+                    }
+                    let x = self.inst(xv);
+                    let within = x.src.is_some_and(|s| s.start >= ws.start && s.end <= ws.end);
+                    if !within || xv == a.element {
+                        continue;
+                    }
+                    // The old value of a compound assignment is read first, as in the original.
+                    if matches!(&x.op, Op::FieldGet { field } if *field == a.field) && x.args[0] == a.element {
+                        continue;
+                    }
+                    worst = worst.max(effect(x));
+                }
+                found.push((ci, ai, worst));
+            }
+        }
+        for (ci, ai, worst) in found {
+            self.collections[ci].accesses[ai].rhs = worst;
+        }
     }
 
     fn bounds_loops_and_sizes(&mut self) {

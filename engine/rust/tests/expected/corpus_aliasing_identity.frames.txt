@@ -1,0 +1,17 @@
+ps (line 2) {x} → kept as array of objects
+  · unsafe: line 7: an element is compared or combined with "==="
+    7 | console.log(ps[0].x, keep[0] === ps[0]);
+      |                                  ^^^^^
+  · unsafe: line 5: an element is used by push
+    5 | for (let i = 0; i < ps.length; i++) keep.push(ps[i]);
+      |                                               ^^^^^
+keep (line 4) {} → kept as array of objects
+  · unsafe: line 5: pushes something that is not a fresh object literal
+    5 | for (let i = 0; i < ps.length; i++) keep.push(ps[i]);
+      |                                               ^^^^^
+  · unsafe: line 7: an element is compared or combined with "==="
+    7 | console.log(ps[0].x, keep[0] === ps[0]);
+      |                      ^^^^^^^
+  · unsafe: line 6: adds a new property .x to an element
+    6 | keep[0].x = 42;
+      | ^^^^^^^^^^^^^^

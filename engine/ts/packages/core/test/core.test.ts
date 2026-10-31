@@ -85,3 +85,22 @@ console.log(ps[1].x);`;
     expect(r.code).not.toMatch(/interface|: number/);
   });
 });
+
+describe('field writes', () => {
+  it('say what the rest of the assignment can do', () => {
+    const src = [
+      'const ps = [];',
+      'for (let i = 0; i < 100; i++) ps.push({ x: i });',
+      'function f() { return 1; }',
+      'let t = 0;',
+      'for (let i = 0; i < ps.length; i++) { ps[i].x = 1; ps[i].x = ps[i].x + 1; ps[i].x = (f(), 2); ps[i].x += ps.length; ps[i].x = (t = 3); ps[i].x++; }',
+      'ps[5].x = ps[6].x;',
+    ].join('\n');
+    const c = analyze(jsPlugin().lower(src).module).collections[0];
+    const writes = c.accesses.filter((a) => a.kind === 'write').map((a) => a.rhs);
+    // In access order: ps[6] is not proven in bounds; f() is a call; (t = 3)
+    // assigns an SSA variable.
+    expect(writes).toEqual(['mayThrow', 'inert', 'effects', 'inert', 'effects', 'inert', 'inert']);
+    expect(c.accesses.filter((a) => a.kind === 'read').every((a) => a.rhs === 'inert')).toBe(true);
+  });
+});

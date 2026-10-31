@@ -1,0 +1,4 @@
+ps (line 2) {x} → kept as array of objects
+  · unsafe: "ps" is reassigned (line 5), so it may not always hold this array
+    5 | ps = [];
+      | ^^^^^^^

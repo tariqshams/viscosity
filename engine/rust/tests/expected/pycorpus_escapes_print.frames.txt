@@ -1,0 +1,4 @@
+ps (line 8) {x} → kept as array of objects
+  · unsafe: line 13: an element is passed to a function call
+    13 | print(ps[0])
+       |       ^^^^^

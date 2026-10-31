@@ -1,0 +1,11 @@
+ps (line 4) {x} → struct of arrays
+  · loop at line 7 in <module>() touches 1 of 1 fields (x)
+  · typed Float64Array columns for all 1 fields
+  · size unknown statically
+  · 1 of 5 element accesses proven in bounds
+qs (line 12) {a, b} → AoSoA, blocks of 4
+  · annotated @viscosity aosoa(4) at line 11
+  · loop at line 15 in <module>() touches 2 of 2 fields (a, b)
+  · typed Float64Array columns for all 2 fields
+  · size unknown statically
+  · 2 of 8 element accesses proven in bounds

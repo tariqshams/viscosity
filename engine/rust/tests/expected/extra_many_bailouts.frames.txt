@@ -1,0 +1,31 @@
+ps (line 1) {x} → kept as array of objects
+  · unsafe: line 11: uses .slice on the array (only .length and .push are supported)
+    11 | console.log(other === ps, keep.ps.length, ps.slice(0, 1));
+       |                                           ^^^^^^^^
+  · unsafe: the array is passed to a method call at line 11
+    11 | console.log(other === ps, keep.ps.length, ps.slice(0, 1));
+       |                                           ^^
+  · unsafe: the array is compared or combined with "===" at line 11
+    11 | console.log(other === ps, keep.ps.length, ps.slice(0, 1));
+       |                       ^^
+  · unsafe: the array is put inside another object at line 8
+    8 | const keep = { ps };
+      |                ^^
+  · unsafe: the array is written with an index store at line 6
+    6 | ps[0] = { x: 3 };
+      | ^^
+  · unsafe: the array is modified directly (its .foo is assigned) at line 5
+    5 | ps.foo = 1;
+      | ^^
+  · unsafe: line 4: pushes something that is not a fresh object literal
+    4 | ps.push(makeOne());
+      |         ^^^^^^^^^
+  · unsafe: line 3: push with 2 arguments (only one record at a time is supported)
+    3 | ps.push({ x: 1 }, { x: 2 });
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  · unsafe: line 10: reads .y, which the records don't have
+    10 | for (let i = 0; i < ps.length; i++) { ps[i].z = 1; console.log(ps[i].y); }
+       |                                                                ^^^^^^^
+  · unsafe: line 10: adds a new property .z to an element
+    10 | for (let i = 0; i < ps.length; i++) { ps[i].z = 1; console.log(ps[i].y); }
+       |                                       ^^^^^^^^^^^

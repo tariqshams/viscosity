@@ -62,12 +62,17 @@ pub enum JsNode {
         property: Span,
         /// The index is an identifier or a literal (safe to repeat).
         simple_property: bool,
+        /// The index is a sequence expression (`a[(i, j)]`), whose span
+        /// excludes its parentheses.
+        sequence_property: bool,
         /// The expression is itself the object of a member expression
         /// (`a[i].x`), rather than stored somewhere (`const p = a[i]`).
         direct: bool,
     },
-    /// An assignment or update whose target is a member expression.
-    Write { member: Span, object: Span },
+    /// An assignment or update whose target is a member expression;
+    /// `operator` is the assignment operator (`=`, `+=`, ...), `None` for
+    /// an update (`++`, `--`).
+    Write { member: Span, object: Span, operator: Option<String> },
     /// An object literal: its property values.
     Object { values: Vec<Value> },
     /// A call; if its first argument is an object literal, that argument
@@ -1004,18 +1009,42 @@ impl<'s> Lowerer<'s> {
     }
 
     fn member_facts(&self, m: &MemberExpression, direct: bool) -> JsNode {
-        let (property, simple_property) = match m {
-            MemberExpression::ComputedMemberExpression(c) => {
-                (c.expression.span(), is_identifier_or_literal(&c.expression))
-            }
-            MemberExpression::StaticMemberExpression(s) => (s.property.span, true),
-            MemberExpression::PrivateFieldExpression(p) => (p.field.span, false),
+        let (property, simple_property, sequence_property) = match m {
+            MemberExpression::ComputedMemberExpression(c) => (
+                c.expression.span(),
+                is_identifier_or_literal(&c.expression),
+                matches!(c.expression, Expression::SequenceExpression(_)),
+            ),
+            MemberExpression::StaticMemberExpression(s) => (s.property.span, true, false),
+            MemberExpression::PrivateFieldExpression(p) => (p.field.span, false, false),
         };
-        JsNode::Member { object: m.object().span(), property, simple_property, direct }
+        JsNode::Member { object: m.object().span(), property, simple_property, sequence_property, direct }
     }
 
-    fn write_facts(m: &MemberExpression) -> JsNode {
-        JsNode::Write { member: m.span(), object: m.object().span() }
+    fn write_facts(m: &MemberExpression, operator: Option<&str>) -> JsNode {
+        JsNode::Write { member: m.span(), object: m.object().span(), operator: operator.map(str::to_string) }
+    }
+
+    /// `"assigns"` when the right-hand side of an assignment assigns or
+    /// updates something (`rhsNote` in the reference): writes to SSA
+    /// variables leave no instruction, but the emitter must know the
+    /// right-hand side has an effect.
+    fn rhs_note(rhs: Option<&Expression>) -> Option<&'static str> {
+        #[derive(Default)]
+        struct Assigns(bool);
+        impl<'a> Visit<'a> for Assigns {
+            fn visit_assignment_expression(&mut self, _: &AssignmentExpression<'a>) {
+                self.0 = true;
+            }
+            fn visit_update_expression(&mut self, _: &UpdateExpression<'a>) {
+                self.0 = true;
+            }
+        }
+        let mut v = Assigns::default();
+        if let Some(e) = rhs {
+            v.visit_expression(e);
+        }
+        v.0.then_some("assigns")
     }
 
     /// The field name of a non-computed member (`p.x`; also `p.#x`, whose
@@ -1067,8 +1096,18 @@ impl<'s> Lowerer<'s> {
         }
     }
 
-    fn place_set(&mut self, p: &Place, v: ValueId, at: Span, target: &SimpleAssignmentTarget) {
-        let facts = target.as_member_expression().map_or(JsNode::Plain, Self::write_facts);
+    /// Stores `v` in place `p`; `assign` is the assignment's operator and
+    /// right-hand side (`None` for an update).
+    fn place_set(
+        &mut self,
+        p: &Place,
+        v: ValueId,
+        at: Span,
+        target: &SimpleAssignmentTarget,
+        assign: Option<(&str, &Expression)>,
+    ) {
+        let operator = assign.map(|(op, _)| op);
+        let facts = target.as_member_expression().map_or(JsNode::Plain, |m| Self::write_facts(m, operator));
         match p {
             Place::Var { binding, .. } => self.write(*binding, v, at),
             Place::Index { obj, idx, .. } => {
@@ -1077,7 +1116,8 @@ impl<'s> Lowerer<'s> {
             }
             Place::Field { obj, field, .. } => {
                 let src = self.src_with(at, facts);
-                self.emit(Op::FieldSet { field: field.clone() }, vec![*obj, v], None, Some(src));
+                let note = Self::rhs_note(assign.map(|(_, rhs)| rhs));
+                self.emit(Op::FieldSet { field: field.clone() }, vec![*obj, v], note, Some(src));
             }
         }
     }
@@ -1095,14 +1135,14 @@ impl<'s> Lowerer<'s> {
             if let MemberExpression::ComputedMemberExpression(c) = m {
                 let idx = self.expr(&c.expression)?;
                 let v = self.expr(value)?;
-                let src = self.src_with(at, Self::write_facts(m));
+                let src = self.src_with(at, Self::write_facts(m, Some("=")));
                 self.emit(Op::IndexSet, vec![obj, idx, v], None, Some(src));
                 return Ok(v);
             }
             let v = self.expr(value)?;
-            let src = self.src_with(at, Self::write_facts(m));
+            let src = self.src_with(at, Self::write_facts(m, Some("=")));
             let field = Self::field_name(m).expect("non-computed");
-            self.emit(Op::FieldSet { field }, vec![obj, v], None, Some(src));
+            self.emit(Op::FieldSet { field }, vec![obj, v], Self::rhs_note(Some(value)), Some(src));
             return Ok(v);
         }
         // Destructuring assignment: everything involved escapes.
@@ -1183,7 +1223,7 @@ impl<'s> Lowerer<'s> {
                 let one = self.constant(Const::Number(1.0), None);
                 let op = if u.operator == UpdateOperator::Increment { "+" } else { "-" };
                 let next = self.emit(Op::Binop { operator: op.into() }, vec![old, one], None, Some(src));
-                self.place_set(&t, next, u.span, &u.argument);
+                self.place_set(&t, next, u.span, &u.argument, None);
                 if u.prefix {
                     next
                 } else {
@@ -1209,7 +1249,7 @@ impl<'s> Lowerer<'s> {
                 } else {
                     self.emit(Op::Binop { operator: op.into() }, vec![got, r], None, Some(src))
                 };
-                self.place_set(&t, v, a.span, simple);
+                self.place_set(&t, v, a.span, simple, Some((full, &a.right)));
                 v
             }
             Expression::ComputedMemberExpression(_)

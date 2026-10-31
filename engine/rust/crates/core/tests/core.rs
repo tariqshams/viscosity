@@ -122,3 +122,44 @@ fn leaves_programs_with_nothing_to_transform_byte_identical() {
     let src = "const a = [1, 2, 3];\n// a comment\nconsole.log(a.length);\n";
     assert_eq!(compile(src, &JsPlugin, CompileOptions::default()).expect("compiles").code, src);
 }
+
+#[test]
+fn code_frames_count_code_points_stop_at_the_line_end_and_show_a_caret() {
+    // Mirrors the TS CLI test: offsets here are UTF-8 bytes.
+    use viscosity_core::code_frame;
+    use viscosity_core::vir::{NodeRef, SourceRef};
+    let s = "let a = \"é🎉\"; f(xs,\n  y);\n";
+    let at = |start: usize, end: usize| SourceRef { node: NodeRef(0), start: start as u32, end: end as u32, line: 1 };
+    let x = s.find("xs").expect("xs");
+    let pad = |n: usize| " ".repeat(n);
+    assert_eq!(code_frame(s, at(x, x + 2), "    "), format!("    1 | let a = \"é🎉\"; f(xs,\n      | {}^^", pad(16)));
+    assert_eq!(
+        code_frame(s, at(x - 2, s.len()), "    "),
+        format!("    1 | let a = \"é🎉\"; f(xs,\n      | {}^^^^^", pad(14))
+    );
+    assert_eq!(code_frame(s, at(x, x), ""), format!("1 | let a = \"é🎉\"; f(xs,\n  | {}^", pad(16)));
+    // A tab before the code stays a tab under it; trailing blanks are dropped.
+    let t = "a;\r\n\tb(c);  \t\n";
+    let c = t.find('c').expect("c");
+    assert_eq!(code_frame(t, at(c, c + 1), ""), "1 | \tb(c);\n  | \t  ^");
+}
+
+#[test]
+fn field_writes_say_what_the_rest_of_the_assignment_can_do() {
+    // Mirrors the TS test: ps[6] is not proven in bounds; f() is a call;
+    // (t = 3) assigns an SSA variable.
+    use viscosity_core::{AccessKind, RhsEffect::*};
+    let src = [
+        "const ps = [];",
+        "for (let i = 0; i < 100; i++) ps.push({ x: i });",
+        "function f() { return 1; }",
+        "let t = 0;",
+        "for (let i = 0; i < ps.length; i++) { ps[i].x = 1; ps[i].x = ps[i].x + 1; ps[i].x = (f(), 2); ps[i].x += ps.length; ps[i].x = (t = 3); ps[i].x++; }",
+        "ps[5].x = ps[6].x;",
+    ]
+    .join("\n");
+    let c = coll(&src);
+    let writes: Vec<_> = c.accesses.iter().filter(|a| a.kind == AccessKind::Write).map(|a| a.rhs).collect();
+    assert_eq!(writes, [MayThrow, Inert, Effects, Inert, Effects, Inert, Inert]);
+    assert!(c.accesses.iter().filter(|a| a.kind == AccessKind::Read).all(|a| a.rhs == Inert));
+}

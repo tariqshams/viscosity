@@ -1,0 +1,43 @@
+ps (line 2) {x} → kept as array of objects
+  · unsafe: the array is used as an index at line 6
+    6 | table[ps] = 1;
+      |       ^^
+  · unsafe: the array is used as an index at line 5
+    5 | console.log(table[ps]);
+      |                   ^^
+table (line 4) {} → kept as array of objects
+  · unsafe: line 4: an element of the array literal is not a plain object literal
+    4 | const table = [10, 20, 30];
+      |                ^^
+  · unsafe: the array is written with an index store at line 9
+    9 | for (let i = 0; i < qs.length; i++) { qs[i].x += 1; table[qs[i]] = 2; }
+      |                                                     ^^^^^
+  · unsafe: the array is written with an index store at line 6
+    6 | table[ps] = 1;
+      | ^^^^^
+  · unsafe: line 10: indexes the array with something that may not be a number
+    10 | console.log(table[qs[3]]);
+       |                   ^^^^^
+  · unsafe: line 5: indexes the array with something that may not be a number
+    5 | console.log(table[ps]);
+      |                   ^^
+  · unsafe: line 10: an element is passed to a method call
+    10 | console.log(table[qs[3]]);
+       |             ^^^^^^^^^^^^
+  · unsafe: line 5: an element is passed to a method call
+    5 | console.log(table[ps]);
+      |             ^^^^^^^^^
+qs (line 7) {x} → kept as array of objects
+  · unsafe: line 11: an element is written with an index store
+    11 | qs[4][0] = 5;
+       | ^^^^^
+  · unsafe: line 10: an element is used as an index
+    10 | console.log(table[qs[3]]);
+       |                   ^^^^^
+  · unsafe: line 9: an element is used as an index
+    9 | for (let i = 0; i < qs.length; i++) { qs[i].x += 1; table[qs[i]] = 2; }
+      |                                                           ^^^^^
+rs (line 12) {x} → kept as array of objects
+  · unsafe: line 15: an element is stored into an object property
+    15 | holder.k = rs[1];
+       |            ^^^^^

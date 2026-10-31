@@ -19,9 +19,10 @@ byte.
   - `packages/bench`: the benchmark harness, suites, end-to-end programs and
     committed results. See [FINDINGS.md](ts/packages/bench/FINDINGS.md).
 - [`rust/`](rust/): the Rust port (cargo workspace: `vir`, `core`,
-  `frontend-js` on oxc, `cli`, `wasm`). JavaScript input only; 122/122 parity
-  fixtures identical to the TypeScript engine. See its
-  [README](rust/README.md).
+  `frontend-js` on oxc, `frontend-python`, `cli`, `wasm`). JavaScript and
+  Python input (no TypeScript); 186/186 parity fixtures identical to the
+  TypeScript engine, checked further by a differential fuzzer
+  (`rust/scripts/fuzz.mjs`). See its [README](rust/README.md).
 
 ## Architecture
 

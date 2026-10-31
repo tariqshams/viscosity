@@ -1,0 +1,9 @@
+ps (line 3) {x, s} → kept as array of objects
+  · unsafe: line 7: an element is used by push
+  · unsafe: line 10: an element is passed to a method call at line 9
+  · unsafe: line 9: an element is compared or combined with "==="
+keep (line 5) {} → kept as array of objects
+  · unsafe: line 7: pushes something that is not a fresh object literal
+qs (line 13) {v} → kept as array of objects
+  · unsafe: the array is used by unop at line 17
+  · unsafe: line 17: an element is put inside another array

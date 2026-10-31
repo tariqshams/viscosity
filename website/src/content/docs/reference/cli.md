@@ -12,11 +12,20 @@ when it can prove it is safe and expects it to be faster.
 
 Usage:
   viscosity build <file> [-o out.js] [options]   compile a file
-  viscosity explain <file> [options]             show every decision and why
+  viscosity build <file>... -o <dir> [options]   compile several files into dir/
+  viscosity explain <file>... [options]          show every decision and why
   viscosity profile <file> [-o profile.json]     run the program and record collection sizes
   viscosity --help | --version
 
 Options:
+  -o, --out <path>          build: the output file, or a directory (several
+                            files, or a path ending in /) that gets one file
+                            per input, named after it
+  --frames                  explain: under each refusal, show the source line
+                            with carets under the code it is about
+  --jobs <n>                compile up to n files at once (default: one per
+                            CPU in the Rust CLI; this CLI compiles one at a
+                            time)
   --mode auto|opt-in        auto (default) decides everything; opt-in only
                             transforms collections marked // @viscosity soa
   --bounds check|assume     check (default) keeps out-of-bounds behaviour
@@ -33,7 +42,9 @@ Options:
 
 ```sh
 viscosity explain src/particles.js
+viscosity explain --frames src/particles.js
 viscosity build src/particles.js -o dist/particles.js --explain
+viscosity build src/*.js -o dist/
 viscosity profile src/particles.js -o profile.json
 viscosity build src/particles.js --profile profile.json -o dist/particles.js
 ```
