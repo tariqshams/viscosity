@@ -1,0 +1,18 @@
+/* Viscosity's amber-on-ink palette, matching the book. */
+:root {
+  --sl-color-accent-low: #3b2a0c;
+  --sl-color-accent: #f5ac3a;
+  --sl-color-accent-high: #ffe2b0;
+  --sl-color-white: #f3f1ea;
+  --sl-color-gray-1: #e6e3da;
+  --sl-color-black: #12141b;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #fbe7c4;
+  --sl-color-accent: #bf7312;
+  --sl-color-accent-high: #5c3605;
+  --sl-color-white: #1e2029;
+  --sl-color-black: #faf7f0;
+}
+.vsc-compare pre { font-size: 0.85rem; }
+footer .vsc-footer { margin-top: 2rem; font-size: 0.85rem; opacity: 0.8; }

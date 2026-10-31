@@ -1,0 +1,43 @@
+---
+title: Viscosity
+description: Write ordinary arrays of objects. Get struct-of-arrays speed. By Tariq Shams.
+template: splash
+hero:
+  tagline: An automatic data-layout optimizer. You write ordinary arrays of objects; Viscosity rewrites them into struct-of-arrays storage when it can prove the change is safe and expects it to be faster, and tells you why.
+  actions:
+    - text: Quick start
+      link: /start/quick-start/
+      icon: right-arrow
+    - text: Read the book
+      link: https://viscosity-book.vercel.app
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Up to 5× faster hot loops" icon="rocket">
+    On whole JavaScript programs measured in this repository: ledger 5.1×, particles 4.3×, heat diffusion 3.3×. See [Benchmarks](/project/benchmarks/).
+  </Card>
+  <Card title="Safe by proof" icon="approve-check">
+    Viscosity only rewrites a collection when no code could notice. Aliasing, escaping elements, unknown callers or non-numeric data mean it leaves your code alone and says why.
+  </Card>
+  <Card title="It explains itself" icon="information">
+    `viscosity explain` lists every collection, the layout chosen, which loops touch which fields, and every reason it refused.
+  </Card>
+  <Card title="Many languages, one engine" icon="puzzle">
+    JavaScript, TypeScript and a Python subset lower into one language-neutral IR (VIR), and every language shares the same analyses.
+  </Card>
+</CardGrid>
+
+```js
+// you write:
+const ps = [];
+for (let i = 0; i < n; i++) ps.push({ x: i, vx: 1 });
+for (const p of ps) p.x += p.vx * dt;
+
+// Viscosity emits (abridged):
+const ps = new __Vsc_ps();            // one Float64Array per field
+for (let i = 0; i < n; i++) ps.push(i, 1);
+for (let p = 0; p < ps.length; p++) ps.x[p] += ps.vx[p] * dt;
+```
