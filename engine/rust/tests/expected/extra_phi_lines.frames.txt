@@ -1,0 +1,14 @@
+ps (line 1) {x} → kept as array of objects
+  · unsafe: line 4: an element is merged with other values (a variable reassigned along different paths) near line 6
+    4 | let cur = ps[0];
+      |           ^^^^^
+qs (line 2) {x} → kept as array of objects
+  · unsafe: line 10: an element is merged with other values (a variable reassigned along different paths)
+    10 | for (let i = 0; i < qs.length; i++) { qs[i].x += 1; if (i > 1000) el = qs[2]; }
+       |                                                                        ^^^^^
+  · unsafe: line 9: an element is merged with other values (a variable reassigned along different paths)
+    9 | let el = qs[1];
+      |          ^^^^^
+  · unsafe: line 6: an element is merged with other values (a variable reassigned along different paths)
+    6 |   cur = qs[0];
+      |         ^^^^^

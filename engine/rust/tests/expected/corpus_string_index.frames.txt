@@ -1,0 +1,4 @@
+ps (line 2) {x} → kept as array of objects
+  · unsafe: line 6: indexes the array with something that may not be a number
+    4 | const k = '5';
+      |           ^^^

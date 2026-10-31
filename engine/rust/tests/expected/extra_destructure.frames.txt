@@ -1,0 +1,10 @@
+ps (line 1) {x, y} → kept as array of objects
+  · unsafe: the array is used by code Viscosity doesn't model (parameter pattern) at line 8
+    8 | function f({ q = ps.length } = {}, ...rest) { return q + rest.length; }
+      |                  ^^
+  · unsafe: line 4: an element is used by code Viscosity doesn't model (destructuring)
+    4 | const { x } = ps[1];
+      |               ^^^^^
+  · unsafe: line 3: an element is put inside another array
+    3 | const [first] = [ps[0]];
+      |                  ^^^^^

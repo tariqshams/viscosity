@@ -440,7 +440,7 @@ export function lower(program: Node, source: string, res: Resolution): Lowered {
           return v;
         }
         const v = value();
-        fb.emit('field.set', [obj, v], { field: target.property.name, src: src(at) });
+        fb.emit('field.set', [obj, v], { field: target.property.name, note: rhsNote(at), src: src(at) });
         return v;
       }
       // Destructuring assignment: everything involved escapes.
@@ -448,6 +448,14 @@ export function lower(program: Node, source: string, res: Resolution): Lowered {
       const o = fb.emit('opaque', [v, ...mentioned(target)], { note: 'destructuring', src: src(at) });
       for (const id of patternNames(target)) write(binding(id), o, id);
       return v;
+    }
+
+    /** 'assigns' when the right-hand side of assignment `at` assigns or
+     *  updates something: writes to SSA variables leave no instruction, but
+     *  the emitter must know the right-hand side has an effect. */
+    function rhsNote(at: Node): string | undefined {
+      const assigns = (n: Node): boolean => n.type === 'AssignmentExpression' || n.type === 'UpdateExpression' || children(n).some(assigns);
+      return at.type === 'AssignmentExpression' && assigns(at.right) ? 'assigns' : undefined;
     }
 
     function readTarget(target: Node, at: Node): { get: () => ValueId; set: (v: ValueId) => void } | null {
@@ -467,7 +475,7 @@ export function lower(program: Node, source: string, res: Resolution): Lowered {
         const f = target.property.name;
         return {
           get: () => fb.emit('field.get', [obj], { field: f, src: src(target) }),
-          set: (v) => { fb.emit('field.set', [obj, v], { field: f, src: src(at) }); },
+          set: (v) => { fb.emit('field.set', [obj, v], { field: f, note: rhsNote(at), src: src(at) }); },
         };
       }
       return null;

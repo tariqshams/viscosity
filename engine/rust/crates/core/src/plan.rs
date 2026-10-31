@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
-use viscosity_vir::{js_number, BindingId};
+use viscosity_vir::{js_number, BindingId, SourceRef};
 
 use crate::analysis::{Analysis, Collection};
 
@@ -225,6 +225,17 @@ fn describe(c: &Collection, size: Option<f64>, measured: bool, language: &str) -
 
 /// The text of `viscosity explain` (book chapter 110).
 pub fn explain(p: &Plan) -> String {
+    explain_text(p, None)
+}
+
+/// `viscosity explain --frames`: [`explain`], with a code frame (see
+/// [`code_frame`]) under each refusal that has a source position. `source`
+/// is the source the plan was made from.
+pub fn explain_with_frames(p: &Plan, source: &str) -> String {
+    explain_text(p, Some(source))
+}
+
+fn explain_text(p: &Plan, frames: Option<&str>) -> String {
     let mut lines = Vec::new();
     for cp in &p.collections {
         let c = &cp.collection;
@@ -234,9 +245,48 @@ pub fn explain(p: &Plan) -> String {
             Layout::Aosoa => format!("AoSoA, blocks of {}", js_number(cp.block_size as f64)),
         };
         lines.push(format!("{} (line {}) {{{}}} → {verdict}", c.name, c.line, c.fields.join(", ")));
-        for r in &cp.reasons {
+        // A collection with bailouts is kept with exactly one reason per bailout.
+        let refused = !c.bailouts.is_empty() && cp.reasons.len() == c.bailouts.len();
+        for (k, r) in cp.reasons.iter().enumerate() {
             lines.push(format!("  · {r}"));
+            let at = if refused { c.bailout_sites.get(&c.bailouts[k]).copied().flatten() } else { None };
+            let site = frames.zip(at);
+            if let Some((src, at)) = site {
+                lines.push(code_frame(src, at, "    "));
+            }
         }
     }
     lines.join("\n")
+}
+
+fn is_line_break(c: char) -> bool {
+    matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
+/// A code frame, as rustc and tsc print them: the source line where `at`
+/// starts, with its line number, and carets under the code `at` covers (to
+/// the end of that line). Columns count code points; tabs before the code
+/// are kept in the caret line so the carets line up. Two lines, no final
+/// line break:
+///
+/// ```text
+///     5 | keep.push(ps[i]);
+///       |           ^^^^^
+/// ```
+pub fn code_frame(source: &str, at: SourceRef, indent: &str) -> String {
+    let start = (at.start as usize).min(source.len());
+    let s =
+        source[..start].rfind(is_line_break).map_or(0, |i| i + source[i..].chars().next().map_or(1, char::len_utf8));
+    let e = source[start..].find(is_line_break).map_or(source.len(), |i| start + i);
+    let text = source[s..e].trim_end_matches([' ', '\t']);
+    let before = &source[s..start];
+    let col = before.chars().count();
+    let end = (at.end as usize).max(start).min(e);
+    let up_to = source[s..end].chars().count();
+    let width = up_to.min(text.chars().count()).saturating_sub(col).max(1);
+    let pad: String = before.chars().map(|c| if c == '\t' { '\t' } else { ' ' }).collect();
+    let num = at.line.to_string();
+    let gutter = " ".repeat(num.len());
+    let text = if text.is_empty() { String::new() } else { format!(" {text}") };
+    format!("{indent}{num} |{text}\n{indent}{gutter} | {pad}{}", "^".repeat(width))
 }

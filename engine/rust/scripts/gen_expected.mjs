@@ -21,6 +21,11 @@
 // `# viscosity(no-auto):` (then annotations decide, as with the CLI's
 // defaults). They are written as `<name>[.assume].py` plus the explain text.
 //
+// A handful of programs with refusals also get `<name>.frames.txt`: the
+// explain text with code frames (`viscosity explain --frames`), compiled
+// with the default options. The list is FRAMES below; the Rust parity test
+// checks every `.frames.txt` it finds.
+//
 // Usage (Node >= 22.18, which strips TypeScript types natively):
 //   node scripts/gen_expected.mjs
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -30,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const rust = join(here, '..');
 const ts = join(rust, '..', 'ts', 'packages');
-const { compile } = await import(join(ts, 'core', 'src', 'index.ts'));
+const { compile, explain } = await import(join(ts, 'core', 'src', 'index.ts'));
 const { jsPlugin } = await import(join(ts, 'frontend-js', 'src', 'index.ts'));
 const { pythonPlugin } = await import(join(ts, 'frontend-python', 'src', 'index.ts'));
 
@@ -43,6 +48,19 @@ const sources = [
   { dir: join(rust, 'tests', 'extra'), prefix: 'extra_' },
 ];
 const out = join(rust, 'tests', 'expected');
+const FRAMES = new Set([
+  'corpus_aliasing_identity', 'corpus_escapes_log', 'corpus_reassigned', 'corpus_shape_mismatch',
+  'corpus_string_index', 'corpus_throw_from_loop', 'extra_destructure', 'extra_frames_columns',
+  'extra_many_bailouts', 'extra_operand_uses', 'extra_phi_lines', 'pycorpus_escapes_print',
+  'pycorpus_len_of_element',
+]);
+let frames = 0;
+const writeFrames = (base, r) => {
+  if (!FRAMES.has(base)) return;
+  writeFileSync(join(out, `${base}.frames.txt`), explain(r.plan, { frames: r.analysis.module.source }));
+  FRAMES.delete(base);
+  frames++;
+};
 mkdirSync(out, { recursive: true });
 
 let n = 0;
@@ -53,6 +71,7 @@ for (const { dir, prefix } of sources) {
     const base = prefix + f.replace(/\.js$/, '');
     for (const [suffix, extra] of [['', {}], ['.assume', { bounds: 'assume' }]]) {
       const r = compile(src, jsPlugin(), { ...(optIn ? { mode: 'opt-in' } : {}), ...extra });
+      if (!suffix) writeFrames(base, r);
       writeFileSync(join(out, `${base}${suffix}.js`), r.code);
       writeFileSync(join(out, `${base}${suffix}.explain.txt`), r.explain);
       n++;
@@ -71,10 +90,12 @@ for (const { dir, prefix, only } of pySources) {
     const base = prefix + f.replace(/\.py$/, '');
     for (const [suffix, extra] of [['', {}], ['.assume', { bounds: 'assume' }]]) {
       const r = compile(src, pythonPlugin(), { pythonAuto, ...extra });
+      if (!suffix) writeFrames(base, r);
       writeFileSync(join(out, `${base}${suffix}.py`), r.code);
       writeFileSync(join(out, `${base}${suffix}.explain.txt`), r.explain);
       n++;
     }
   }
 }
-console.log(`wrote ${n} fixture pairs to ${out}`);
+if (FRAMES.size) throw new Error(`FRAMES names unknown programs: ${[...FRAMES].join(', ')}`);
+console.log(`wrote ${n} fixture pairs and ${frames} code-frame fixtures to ${out}`);

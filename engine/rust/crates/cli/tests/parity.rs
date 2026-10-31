@@ -55,10 +55,49 @@ fn rust_output_equals_typescript_output() {
     println!("parity: {total}/{total} ({py} Python)");
 }
 
+/// The programs with a `--frames` fixture (`<name>.frames.txt`), which
+/// `scripts/gen_expected.mjs` chooses.
+fn frames_fixtures() -> Vec<(Program, String)> {
+    programs()
+        .into_iter()
+        .filter_map(|p| {
+            let f = expected_dir().join(format!("{}.frames.txt", p.name));
+            fs::read_to_string(f).ok().map(|text| (p, text))
+        })
+        .collect()
+}
+
+#[test]
+fn code_frames_equal_typescript_code_frames() {
+    let fixtures = frames_fixtures();
+    assert!(fixtures.len() >= 10, "expected at least 10 frames fixtures, found {}", fixtures.len());
+    let bin = env!("CARGO_BIN_EXE_viscosity");
+    for (p, want) in &fixtures {
+        let src = &p.source;
+        let r = p.compile(viscosity_core::Bounds::Check);
+        let got = viscosity_core::explain_with_frames(&r.plan, src);
+        assert_eq!(&got, want, "{}.frames.txt: {}", p.name, first_difference(want, &got));
+        // The frames come under the plain explain lines, which stay unchanged.
+        let plain: Vec<&str> = got.lines().filter(|l| !l.starts_with("    ")).collect();
+        assert_eq!(plain.join("\n"), r.explain, "{}: frames must only add lines", p.name);
+        let mut cmd = Command::new(bin);
+        cmd.args(["explain", "--frames"]).arg(&p.path);
+        if p.python_auto() {
+            cmd.arg("--python-auto");
+        }
+        let out = cmd.output().expect("runs");
+        assert!(out.status.success(), "{}: {}", p.name, String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8(out.stdout).expect("utf-8"), format!("{want}\n"), "{}: CLI", p.name);
+    }
+}
+
 #[test]
 fn fixtures_match_the_programs_exactly() {
     // Every program has fixtures, and no fixture is stale.
     let mut want = BTreeSet::new();
+    for (p, _) in frames_fixtures() {
+        want.insert(format!("{}.frames.txt", p.name));
+    }
     for p in programs() {
         for (suffix, _) in VARIANTS {
             want.insert(format!("{}{suffix}.{}", p.name, p.ext()));

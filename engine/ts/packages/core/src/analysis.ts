@@ -10,7 +10,7 @@
 //  access       per loop: which fields are read and written
 //  size         an estimate of how many elements the collection holds
 import { dominators, dominates, loopOf, naturalLoops, successors, type Loop } from './cfg.ts';
-import { buildUses, type BindingId, type BlockId, type Func, type Inst, type Module, type Use, type ValueId } from './vir.ts';
+import { buildUses, type BindingId, type BlockId, type Func, type Inst, type Module, type SourceRef, type Use, type ValueId } from './vir.ts';
 
 const ARITH = new Set(['-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>', '>>>', '+']);
 
@@ -31,7 +31,16 @@ export interface ElementAccess {
   element: Inst;
   field: string;
   kind: 'read' | 'write';
+  /** For writes, what evaluating the rest of the assignment (besides the
+   *  element and, for `+=` and friends, its old value) can do: nothing
+   *  observable ('inert'), only throw ('mayThrow', e.g. an element read out
+   *  of bounds), or run code and have effects ('effects', e.g. a call). The
+   *  emitter must then keep the original order of the index check, the
+   *  right-hand side and the store. Always 'inert' for reads. */
+  rhs: RhsEffect;
 }
+
+export type RhsEffect = 'inert' | 'mayThrow' | 'effects';
 
 export interface Collection {
   binding: BindingId;
@@ -54,6 +63,9 @@ export interface Collection {
   numericFields: Set<string>;
   /** why the collection can't be transformed (empty = safe) */
   bailouts: string[];
+  /** where in the source each bailout (by message) was first found, for
+   *  `viscosity explain --frames`; null when it has no single position */
+  bailoutSites: Map<string, SourceRef | null>;
   /** the source line of the declaration */
   line: number;
 }
@@ -75,6 +87,20 @@ export function analyze(m: Module): Analysis {
     if (i.src?.line) return i.src.line;
     if (i.op === 'phi') return Math.max(0, ...i.args.map((a) => m.values[a]?.src?.line ?? 0));
     return 0;
+  };
+  /** Records a bailout and, the first time this message is seen, where. */
+  const bail = (c: Collection, msg: string, at?: SourceRef) => {
+    c.bailouts.push(msg);
+    if (!c.bailoutSites.has(msg)) c.bailoutSites.set(msg, at ?? null);
+  };
+  /** Where use u of v is: v itself when it loads a binding (the name in the
+   *  source), otherwise the instruction or terminator that uses it. */
+  const useSite = (u: Use, v: ValueId): SourceRef | undefined => {
+    const x = m.values[v];
+    if (x?.op === 'loadBinding' && x.src) return x.src;
+    if (u.inst) return u.inst.src;
+    const t = u.term!.block.term;
+    return 'src' in t ? t.src : undefined;
   };
   const funcOf = new Map<Inst, Func>();
   for (const f of m.functions) for (const b of f.blocks) for (const i of b.insts) funcOf.set(i, f);
@@ -130,14 +156,14 @@ export function analyze(m: Module): Analysis {
     const c: Collection = {
       binding: binding.id, name: binding.name, fields: [], init, initRecords: [], pushes: [], indexGets: [],
       accesses: [], lengthReads: [], loops: [], sizeEstimate: null, sizeIsUpperBound: false, bailouts: [], line: init.src?.line ?? 0,
-      numericFields: new Set(),
+      numericFields: new Set(), bailoutSites: new Map(),
     };
-    if (st.length > 1) c.bailouts.push(`"${binding.name}" is reassigned (line ${line(st[st.length - 1])}), so it may not always hold this array`);
+    if (st.length > 1) bail(c, `"${binding.name}" is reassigned (line ${line(st[st.length - 1])}), so it may not always hold this array`, st[st.length - 1].src);
     if (init.op === 'array.new') {
       for (const a of init.args) {
         const r = inst(a);
         if (r.op !== 'record.new') {
-          c.bailouts.push(`line ${init.src?.line}: an element of the ${m.language === 'python' ? 'list literal is not a dataclass constructor call' : 'array literal is not a plain object literal'}`);
+          bail(c, `line ${init.src?.line}: an element of the ${m.language === 'python' ? 'list literal is not a dataclass constructor call' : 'array literal is not a plain object literal'}`, r.src ?? init.src);
           break;
         }
         c.initRecords.push(r);
@@ -178,23 +204,23 @@ export function analyze(m: Module): Analysis {
   const setShape = (c: Collection, r: Inst, where: string) => {
     if (c.fields.length === 0) c.fields = [...r.fields!];
     else if (JSON.stringify(c.fields) !== JSON.stringify(r.fields)) {
-      c.bailouts.push(`${where}: records with different fields or field order ({${r.fields!.join(', ')}} vs {${c.fields.join(', ')}})`);
+      bail(c, `${where}: records with different fields or field order ({${r.fields!.join(', ')}} vs {${c.fields.join(', ')}})`, r.src);
     }
     const ru = usesOf(r.id);
-    if (ru.length !== 1) c.bailouts.push(`${where}: the new record is also referenced elsewhere, so it could be aliased`);
+    if (ru.length !== 1) bail(c, `${where}: the new record is also referenced elsewhere, so it could be aliased`, r.src);
   };
 
   for (const c of collections) {
     for (const r of c.initRecords) setShape(c, r, `line ${line(r)}`);
     const initUses = usesOf(c.init.id);
-    if (initUses.length !== 1) c.bailouts.push(`line ${c.line}: the array is used before being stored in "${c.name}"`);
+    if (initUses.length !== 1) bail(c, `line ${c.line}: the array is used before being stored in "${c.name}"`, c.init.src);
     const work = [...refsOf.get(c)!];
     const seenParam = new Set<ValueId>();
     while (work.length) {
       const l = work.pop()!;
       for (const u of usesOf(l.id)) {
         const i = u.inst;
-        if (!i) { c.bailouts.push(describeUse(u, l.id)); continue; }
+        if (!i) { bail(c, describeUse(u, l.id), useSite(u, l.id)); continue; }
         // Passed to a known function: follow it into the parameter.
         if (i.op === 'call' && i.note !== 'method' && i.args.indexOf(l.id) > 0) {
           const callee = inst(i.args[0]);
@@ -215,14 +241,14 @@ export function analyze(m: Module): Analysis {
               work.push(inst(p.value));
               continue;
             }
-            if (!allSame) { c.bailouts.push(`line ${line(i)}: passed to ${f.name}(), which is also called with other values`); continue; }
+            if (!allSame) { bail(c, `line ${line(i)}: passed to ${f.name}(), which is also called with other values`, useSite(u, l.id)); continue; }
           }
         }
         if (i.op === 'field.get' && i.field === 'length' && i.args[0] === l.id) { c.lengthReads.push(i); continue; }
         if (i.op === 'push' && i.args[0] === l.id) {
-          if (i.args.length !== 2) { c.bailouts.push(`line ${line(i)}: push with ${i.args.length - 1} arguments (only one record at a time is supported)`); continue; }
+          if (i.args.length !== 2) { bail(c, `line ${line(i)}: push with ${i.args.length - 1} arguments (only one record at a time is supported)`, i.src); continue; }
           const r = inst(i.args[1]);
-          if (r.op !== 'record.new') { c.bailouts.push(`line ${line(i)}: ${m.language === 'python' ? 'appends something that is not a fresh dataclass instance (dataclasses with non-literal defaults are not modelled)' : 'pushes something that is not a fresh object literal'}`); continue; }
+          if (r.op !== 'record.new') { bail(c, `line ${line(i)}: ${m.language === 'python' ? 'appends something that is not a fresh dataclass instance (dataclasses with non-literal defaults are not modelled)' : 'pushes something that is not a fresh object literal'}`, r.src ?? i.src); continue; }
           setShape(c, r, `line ${line(i)}`);
           c.pushes.push(i);
           continue;
@@ -234,13 +260,13 @@ export function analyze(m: Module): Analysis {
           continue;
         }
         if (i.op === 'field.get' && i.args[0] === l.id) {
-          c.bailouts.push(`line ${line(i)}: uses .${i.field} on the array (only .length and .push are supported)`);
+          bail(c, `line ${line(i)}: uses .${i.field} on the array (only .length and .push are supported)`, i.src);
           continue;
         }
-        c.bailouts.push(`the array is ${describeUse(u, l.id)}`);
+        bail(c, `the array is ${describeUse(u, l.id)}`, useSite(u, l.id));
       }
     }
-    if (c.fields.length === 0 && c.bailouts.length === 0) c.bailouts.push('no records are ever added, so there is nothing to lay out');
+    if (c.fields.length === 0 && c.bailouts.length === 0) bail(c, 'no records are ever added, so there is nothing to lay out');
   }
 
   // ---- 3. numeric inference (optimistic fixpoint) ------------------------
@@ -383,7 +409,7 @@ export function analyze(m: Module): Analysis {
   // A valid index: a JS number, or a Python int.
   isNumberLater = py ? (v: ValueId) => int.get(v) ?? false : isNumber;
   for (const { c, i } of indexChecks) {
-    if (!isNumberLater(i.args[1])) c.bailouts.push(`line ${line(i)}: indexes the array with something that may not be ${py ? 'an int' : 'a number'}`);
+    if (!isNumberLater(i.args[1])) bail(c, `line ${line(i)}: indexes the array with something that may not be ${py ? 'an int' : 'a number'}`, m.values[i.args[1]].src ?? i.src);
   }
 
   // ---- 4. element uses -----------------------------------------------------
@@ -393,19 +419,19 @@ export function analyze(m: Module): Analysis {
         const i = u.inst;
         // Python's len(e) lowers to e.length, but it never reads a field.
         if (i && i.op === 'field.get' && i.args[0] === ig.inst.id && i.note !== 'len') {
-          if (!c.fields.includes(i.field!)) c.bailouts.push(`line ${line(i)}: reads .${i.field}, which the records don't have`);
-          else c.accesses.push({ inst: i, element: ig.inst, field: i.field!, kind: 'read' });
+          if (!c.fields.includes(i.field!)) bail(c, `line ${line(i)}: reads .${i.field}, which the records don't have`, i.src);
+          else c.accesses.push({ inst: i, element: ig.inst, field: i.field!, kind: 'read', rhs: 'inert' });
           continue;
         }
         if (i && i.op === 'field.set' && i.args[0] === ig.inst.id) {
-          if (!c.fields.includes(i.field!)) c.bailouts.push(`line ${line(i)}: adds a new property .${i.field} to an element`);
-          else c.accesses.push({ inst: i, element: ig.inst, field: i.field!, kind: 'write' });
+          if (!c.fields.includes(i.field!)) bail(c, `line ${line(i)}: adds a new property .${i.field} to an element`, i.src);
+          else c.accesses.push({ inst: i, element: ig.inst, field: i.field!, kind: 'write', rhs: 'inert' });
           continue;
         }
         const why = describeUse(u, ig.inst.id);
         // Don't repeat the line: "line 5: an element is ... at line 5".
         const at = new RegExp(` (?:at|near) line ${line(ig.inst)}$`);
-        c.bailouts.push(`line ${line(ig.inst)}: an element is ${why.replace(at, '')}`);
+        bail(c, `line ${line(ig.inst)}: an element is ${why.replace(at, '')}`, ig.inst.src);
       }
     }
     // Fields that may hold non-numbers still get a column, just a plain
@@ -541,6 +567,58 @@ export function analyze(m: Module): Analysis {
     }
     c.sizeEstimate = known ? size : null;
     c.sizeIsUpperBound = known && upper;
+  }
+
+  // ---- 6. right-hand sides of field writes ---------------------------------
+  // `p.x = f()` is emitted as `ps.x[i] = f()`, which checks the index and
+  // fetches the column before f runs. If f pushes (so the column grows into
+  // a new array) or throws, or the index check fails, the order shows. So
+  // look at everything evaluated within the assignment, in its block before
+  // it: the worst of what each instruction can do.
+  const elementFacts = new Map<ValueId, { proven: boolean; plain: boolean }>();
+  for (const c of collections) {
+    for (const g of c.indexGets) elementFacts.set(g.inst.id, { proven: g.boundsProven, plain: c.bailouts.length === 0 });
+  }
+  const RANK: Record<RhsEffect, number> = { inert: 0, mayThrow: 1, effects: 2 };
+  /** An element of a collection with no bailouts is a plain record: reading
+   *  it runs no code, and in bounds it cannot throw. */
+  const element = (v: ValueId): RhsEffect => {
+    const e = elementFacts.get(v);
+    return !e || !e.plain ? 'effects' : e.proven ? 'inert' : 'mayThrow';
+  };
+  const effect = (x: Inst): RhsEffect => {
+    const numeric = (k: number) => isNumber(x.args[k]);
+    switch (x.op) {
+      case 'const': case 'loadBinding': case 'closure': case 'record.new': case 'array.new': case 'array.empty':
+      case 'select': case 'logical': case 'phi': case 'param':
+        return 'inert';
+      case 'unop': return x.operator === '!' || x.operator === 'typeof' || x.operator === 'void' || numeric(0) ? 'inert' : 'effects';
+      case 'binop':
+        if (x.operator === '===' || x.operator === '!==') return 'inert';
+        return x.operator !== 'in' && x.operator !== 'instanceof' && numeric(0) && numeric(1) ? 'inert' : 'effects';
+      case 'intrinsic': return x.args.every((_, k) => numeric(k)) ? 'inert' : 'effects';
+      case 'index.get': return element(x.id);
+      case 'field.get': return x.field === 'length' && collectionOfLoad.has(x.args[0]) ? 'inert' : element(x.args[0]);
+      default: return 'effects';
+    }
+  };
+  for (const c of collections) {
+    for (const a of c.accesses) {
+      if (a.kind !== 'write') continue;
+      const w = a.inst;
+      const block = funcOf.get(w)!.blocks.find((b) => b.id === w.block)!;
+      const within = (x: Inst) => !!x.src && !!w.src && x.src.start >= w.src.start && x.src.end <= w.src.end;
+      let worst: RhsEffect = w.note === 'assigns' ? 'effects' : 'inert';
+      for (const x of block.insts) {
+        if (x === w || worst === 'effects') break;
+        if (!within(x) || x === a.element) continue;
+        // The old value of a compound assignment is read first, as in the original.
+        if (x.op === 'field.get' && x.args[0] === a.element.id && x.field === a.field) continue;
+        const e = effect(x);
+        if (RANK[e] > RANK[worst]) worst = e;
+      }
+      a.rhs = worst;
+    }
   }
 
   // Deduplicate bailout messages.
