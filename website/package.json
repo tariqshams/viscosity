@@ -1,0 +1,24 @@
+{
+  "name": "viscosity-website",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "viscosity.dev: the landing page and user documentation for Viscosity, by Tariq Shams.",
+  "author": "Tariq Shams",
+  "license": "MIT",
+  "scripts": {
+    "gen": "node scripts/gen.mjs",
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "node scripts/check_links.mjs"
+  },
+  "overrides": {
+    "rollup": "4.67.2"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.37.7",
+    "astro": "^5.18.2",
+    "sharp": "^0.35.5"
+  }
+}

@@ -1,15 +1,16 @@
 # viscosity.dev
 
-The landing page and user documentation for the Viscosity compiler: how to
-install it, the CLI, configuration, the `@viscosity` annotations,
-`viscosity explain`, plugin authoring and benchmarks.
+The landing page and user docs for Viscosity, by Tariq Shams. Built with
+Astro + Starlight. **How** Viscosity works is the subject of the book
+(`../book`); this site is about **using** it.
 
-**Status:** not started. Following the roadmap, this site begins once the
-opt-in SoA transform (milestone M4) ships, so it documents real behaviour. It
-will be an Astro + Starlight site. Its reference pages will be generated from
-the engine's CLI help and config schema, so they can't drift out of date. It
-will also have a "Prior art & credits" page generated from the shared
-bibliography.
+```sh
+npm install
+npm run gen     # regenerate the CLI reference, benchmark and credits pages from the code and data
+npm run build && npm run check
+```
 
-Deployment and the viscosity.dev domain will be set up only once Tariq
-approves them.
+The generated pages (`reference/cli.md`, `project/benchmarks.md`,
+`project/credits.md`) come from the engine's `--help` text, the committed
+benchmark results and the book's verified bibliography, so they can't drift
+from the code. Re-run `npm run gen` after changing any of those.
