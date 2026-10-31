@@ -24,7 +24,7 @@ import { Worker } from 'node:worker_threads';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync as writeFile } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { compile as compileMdx } from '@mdx-js/mdx';
+import { compile as compileMdx, createProcessor } from '@mdx-js/mdx';
 import { testCrate, parseTestOutput } from '../src/lib/rust.js';
 
 // Rust is compiled locally with rustc (the browser uses the Rust Playground).
@@ -111,6 +111,19 @@ for (const folder of folders) {
   const body = mdx.replace(/^---[\s\S]*?---/, '');
   const cards = await import(pathToFileURL(cardsPath).href);
 
+  // Prose like {B} is a JS expression in MDX: it renders "B is not defined".
+  {
+    const tree = createProcessor().parse(body);
+    const declared = new Set([...body.matchAll(/^(?:import|export)\s[^\n]*?\b([A-Za-z_$][\w$]*)\b/gm)].map((x) => x[1]));
+    for (const m of body.matchAll(/^import\s+\{?([^}\n]*?)\}?\s+from/gm)) for (const n of m[1].split(/[\s,]+/)) if (n) declared.add(n);
+    const walk = (n) => {
+      if ((n.type === 'mdxTextExpression' || n.type === 'mdxFlowExpression') && /^\s*[A-Za-z_$][\w$.]*\s*$/.test(n.value) && !declared.has(n.value.trim().split('.')[0])) {
+        err(folder, `prose {${n.value.trim()}} near line ${n.position.start.line} is a JS expression, not text: escape it as \\{${n.value.trim()}\\}`);
+      }
+      for (const c of n.children ?? []) walk(c);
+    };
+    walk(tree);
+  }
   // MDX must compile (stray { } or < in prose break the build).
   try { await compileMdx(body); }
   catch (e) {
