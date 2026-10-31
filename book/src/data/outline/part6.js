@@ -1,0 +1,22 @@
+export default {
+  id: 'VI', track: 'A', days: '19–22', title: 'The compiler middle-end',
+  blurb: 'Intermediate representations, control-flow graphs, dominators, SSA, dataflow analysis, classic optimizations, alias and escape analysis, and pass managers.',
+  chapters: [
+    { n: 73, title: 'What an IR is for', introduces: { ir: 'intermediate representation: the compiler’s working form of a program', lowering: 'translating to a lower-level form' } },
+    { n: 74, title: 'Three-address code', introduces: { 'three-address-code': 'instructions like t1 = a + b', temporary: 'a compiler-made variable' } },
+    { n: 75, title: 'Basic blocks and control-flow graphs', introduces: { 'basic-block': 'straight-line code with one entry and one exit', cfg: 'control-flow graph: blocks joined by edges' } },
+    { n: 76, title: 'Dominators', introduces: { dominator: 'a block every path to another block must pass through', 'dominator-tree': 'the tree of immediate dominators' } },
+    { n: 77, title: 'SSA form', introduces: { ssa: 'static single assignment: each variable assigned once', 'phi-node': 'choosing a value by which edge was taken' } },
+    { n: 78, title: 'Building SSA', introduces: { 'ssa-construction': 'Braun et al.’s on-the-fly SSA construction' } },
+    { n: 79, title: 'Dataflow analysis', introduces: { dataflow: 'computing facts that flow along CFG edges', lattice: 'an ordering of facts used to merge them', fixpoint: 'iterating until nothing changes', worklist: 'the queue of blocks still to process' } },
+    { n: 80, title: 'Constant folding and propagation', introduces: { 'constant-folding': 'computing constant expressions at compile time', 'constant-propagation': 'replacing variables known to be constant' } },
+    { n: 81, title: 'Dead code elimination', introduces: { dce: 'removing code whose results are never used', liveness: 'whether a value may still be used later' } },
+    { n: 82, title: 'Inlining', introduces: { inlining: 'replacing a call with the callee’s body', 'call-graph': 'which functions call which' } },
+    { n: 83, title: 'Loops', introduces: { 'natural-loop': 'a loop found from a back edge in the CFG', 'loop-invariant': 'a value that doesn’t change inside a loop', 'induction-variable': 'a variable that steps regularly, like i' } },
+    { n: 84, title: 'Alias analysis', introduces: { 'alias-analysis': 'deciding which references may point at the same object', 'points-to': 'the set of objects a reference may point at' } },
+    { n: 85, title: 'Escape analysis', introduces: { 'escape-analysis': 'deciding whether a reference can leave a region of code', 'escape-sites': 'the places a value can escape: stores, calls, returns' } },
+    { n: 86, title: 'Type and shape inference', introduces: { 'type-inference': 'deducing types without annotations', 'shape-inference': 'deducing object shapes statically' } },
+    { n: 87, title: 'Pass managers', introduces: { 'compiler-pass': 'one analysis or transformation over the IR', 'pass-manager': 'the scheduler that runs passes and caches analyses', 'analysis-invalidation': 'throwing away cached facts after a change' } },
+    { n: 88, title: 'Testing compilers', introduces: { 'differential-testing': 'comparing two implementations on many inputs', fuzzing: 'generating random programs to find bugs', 'round-trip-testing': 'parse → print → parse gives the same tree' } },
+  ],
+};
