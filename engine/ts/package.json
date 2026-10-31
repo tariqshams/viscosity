@@ -1,0 +1,22 @@
+{
+  "name": "viscosity-engine",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Viscosity: an automatic data-layout optimizer (AoS → SoA / AoSoA). TypeScript reference implementation.",
+  "author": "Tariq Shams",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "bench": "node packages/bench/src/run.ts",
+    "bench:quick": "node packages/bench/src/run.ts --quick"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
