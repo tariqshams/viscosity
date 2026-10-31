@@ -1,0 +1,239 @@
+---
+n: 11
+day: 3
+part: I
+title: 'Errors and exceptions'
+tagline: 'A function that cannot do its job should say so loudly, not quietly return nonsense. Exceptions let a problem deep in the call stack jump straight to the code that knows how to handle it.'
+objectives:
+  - Signal a problem with throw new Error(...), and explain why that beats returning a strange value.
+  - Handle errors with try, catch and finally, and say when each block runs.
+  - Read an error's name and message, and make your own error class.
+  - Trace a thrown error as it unwinds the call stack to the nearest catch.
+introduces: [throw, try-catch, error-object, error-propagation]
+uses: [function, parameter, return, call, undefined, object, property, dot-access, class, constructor, new, this, instanceof, call-stack, recursion, stack-overflow, string-index, char-code, template-literal, variables, numbers, strings, comparison, booleans, if, for-loop, console-log]
+sources: [mdn-control-flow, mdn-error]
+---
+import UnwindSteps from '../../../components/diagrams/ch011/UnwindSteps';
+
+## A quiet wrong answer
+
+In the last chapter you turned digit strings into numbers. Here's that
+function again:
+
+```js
+function toNumber(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    n = n * 10 + (s.charCodeAt(i) - 48);
+  }
+  return n;
+}
+
+console.log(toNumber('42')); // 42
+console.log(toNumber('4x')); // 112 (!)
+```
+
+`'4x'` isn't a number at all, but the function happily answers 112,
+because `'x'` has code 120, and 120 − 48 is 72. Nothing crashes. The
+nonsense value just flows on into the rest of the program, and the bug
+shows up somewhere far away, much later, looking like something else.
+
+A quiet wrong answer is the worst kind of bug. What `toNumber` needs is a
+way to refuse: "I can't do this, and here's why."
+
+<Callout kind="intuition">
+Throwing an error is pulling the fire alarm. Everyone stops what they're
+doing, mid-sentence, and leaves. They don't go back to finish their work.
+Someone whose job is to deal with fires takes over. If nobody has that
+job, the whole building shuts down.
+</Callout>
+
+## throw
+
+```js
+function toNumber(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 48 || c > 57) {
+      throw new Error(`bad digit at ${i}`);
+    }
+    n = n * 10 + (c - 48);
+  }
+  return n;
+}
+
+toNumber('4x');
+// Error: bad digit at 1
+```
+
+(`||` means "or": true if either side is true.) `throw` stops the
+function on the spot. It doesn't return anything, not even `undefined`.
+If nothing handles the error, the whole program stops and the error is
+reported, so you find out about the problem exactly where it happened.
+
+<Callout kind="definition">
+`throw value` stops the current code immediately and raises an
+**exception**. You can throw any value, but the convention is to throw
+an **Error object**, made with `new Error(message)`. An exception that
+nothing handles stops the program<Cite id="mdn-control-flow" />.
+</Callout>
+
+<Prompts ids={['throw-what', 'throw-vs-return']} />
+
+## try and catch
+
+Sometimes a problem is expected, and you know what to do about it.
+Wrap the risky code in `try`, and say what to do if it throws in
+`catch`:
+
+```js
+try {
+  const n = toNumber('4x');
+  console.log('got', n); // skipped
+} catch (e) {
+  console.log('oops: ' + e.message);
+} finally {
+  console.log('done');
+}
+// oops: bad digit at 1
+// done
+```
+
+The moment `toNumber` throws, the rest of the `try` block is skipped and
+control jumps into `catch`. The thrown value arrives as `e`. If nothing
+throws, `catch` is skipped completely. And `finally` runs **either way**,
+which makes it the place for clean-up that must always happen.
+
+<Callout kind="definition">
+A **try/catch** statement runs the `try` block. If anything in it throws,
+the rest of the block is skipped and the `catch (e)` block runs, with `e`
+holding the thrown value. An optional `finally` block runs afterwards,
+whether or not anything was thrown<Cite id="mdn-control-flow" />.
+</Callout>
+
+<Run id="try-it" />
+
+<Callout kind="pitfall">
+An empty `catch {}` swallows every error, including bugs you didn't
+expect, and brings back the quiet wrong answer. Catch only where you can
+genuinely do something useful, such as showing the user a message.
+</Callout>
+
+<Prompts ids={['catch-when', 'finally-when', 'try-skip']} />
+
+## What's inside an Error
+
+An Error object is an ordinary object with two properties you'll use
+constantly: `message`, the text you gave it, and `name`, the kind of
+error<Cite id="mdn-error" />. JavaScript itself throws several kinds.
+You've already met some of them:
+
+```js
+null.x;      // TypeError
+missing + 1; // ReferenceError
+forever(0);  // RangeError (chapter 9)
+let 1x = 0;  // SyntaxError
+```
+
+You can make your own kinds of error with a class. A scanner, for
+example, wants to say *where* the problem is:
+
+```js
+class ParseError extends Error {
+  constructor(message, pos) {
+    super(message);
+    this.name = 'ParseError';
+    this.pos = pos;
+  }
+}
+```
+
+Two new words here. `extends Error` makes `ParseError` a special kind of
+`Error`: it gets everything an Error has. And `super(message)` runs
+Error's own constructor first, so the message is set up properly. Then
+`instanceof` lets a `catch` tell the kinds apart:
+
+```js
+try {
+  throw new ParseError('bad digit', 1);
+} catch (e) {
+  if (e instanceof ParseError) {
+    console.log(`${e.message} at ${e.pos}`);
+  } else {
+    throw e; // not ours: pass it on
+  }
+}
+```
+
+That last line matters. A `catch` that doesn't recognize an error can
+**rethrow** it, so it keeps travelling to code that does.
+
+<Callout kind="definition">
+An **Error object** has a `name` (like `'TypeError'`) and a `message`.
+`new Error(message)` makes one. A **custom error class**
+(`class ParseError extends Error`) adds its own name and extra
+properties, and `instanceof` tells kinds apart in a `catch`.
+</Callout>
+
+<Prompts ids={['error-props', 'custom-error', 'rethrow']} />
+
+## How an error travels
+
+When something throws, where does it go? Not just to the function that
+called it. It goes back down the call stack, frame by frame, until it
+finds a `try`. Step through it:
+
+<UnwindSteps client:visible />
+
+<Callout kind="definition">
+**Error propagation**: a thrown error **unwinds** the call stack. Each
+frame without a surrounding `try` is popped immediately, without
+returning and without finishing its line. The first frame inside a `try`
+catches it. If the error unwinds all the way to the bottom of the stack,
+the program stops.
+</Callout>
+
+This is what makes exceptions so useful. The function that *notices* a
+problem (`digit`) is often deep in the stack, and has no idea what to
+do about it. The code that *knows* what to do (show a message, skip one
+line of input) is often far below. Throwing connects the two without
+every function in between having to check for and pass along error
+values.
+
+<Prompts ids={['unwind-what']} />
+
+<Callout kind="engine" label="Where this goes">
+Your Drip interpreter in Part III will throw errors of its own: syntax
+errors from the parser, and runtime errors such as adding a number to a
+string. Each will carry a line and column, like the `pos` above. You'll
+also see that exceptions are one way to make Drip's `return` jump out of
+several nested statements at once. Most engines also give Error objects a
+`stack` property listing the calls that were active, which is what you
+see in browser consoles. It isn't part of the language standard, though,
+so its contents differ between engines<Cite id="mdn-error" />. In
+Part IV, your VM keeps its own frames in an array, so it will have to do
+the unwinding by hand.
+</Callout>
+
+## Your turn
+
+<Exercise id="parseDigits" />
+
+<Exercise id="attempt" />
+
+## What you learned
+
+- `throw new Error(message)` stops the code immediately. It's far
+  better than returning a quiet wrong answer.
+- **try/catch** handles errors: if the `try` block throws, the rest of it
+  is skipped and `catch (e)` runs. `finally` runs either way.
+- An **Error object** has a `name` and a `message`. Custom error classes
+  `extends Error` and carry extra details, like a position.
+- A thrown error **propagates**: it unwinds the call stack, popping
+  frames, until it reaches the nearest `try`. Unhandled, it stops the
+  program.
+
+Last chapter of the day: splitting a program across files.
+
+<Quiz />

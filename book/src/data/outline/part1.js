@@ -54,7 +54,8 @@ export default {
     { n: 13, title: 'TypeScript I: types as labels', introduces: {
       typescript: 'JavaScript plus a type checker', 'type-annotation': 'x: number, labelling what a value may be',
       'type-checking': 'catching mistakes before the program runs', interface: 'describing the shape of an object',
-      'type-erasure': 'types are removed before the code runs' } },
+      'type-erasure': 'types are removed before the code runs',
+      typeof: 'typeof x: asking a value what kind it is at run time' } },
     { n: 14, title: 'TypeScript II: unions, narrowing and generics', introduces: {
       'union-type': 'A | B: a value that may be one of several types', narrowing: 'TypeScript learning a more exact type from a check',
       'discriminated-union': 'unions tagged by a kind field: the shape of every AST', generic: 'types with type parameters: Array<T>',

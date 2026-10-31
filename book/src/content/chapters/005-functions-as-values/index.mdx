@@ -1,0 +1,278 @@
+---
+n: 5
+day: 2
+part: I
+title: 'Functions as values'
+tagline: 'A function is a value, just like 3 or a string. You can store it, hand it to another function, and get one back. That one fact turns a pile of nearly identical loops into one.'
+objectives:
+  - Store a function in a variable and pass it to another function as a callback.
+  - Write arrow functions, and say when they need braces and a return.
+  - Transform, select and combine arrays with map, filter and reduce.
+  - Write a while loop, and stop or skip with break and continue.
+introduces: [first-class-function, callback, arrow-function, higher-order-function, map-filter-reduce, while-loop]
+uses: [function, parameter, argument, return, call, undefined, array, index, length, push, array-loop, object, property, dot-access, array-of-objects, reference, aliasing, variables, numbers, strings, booleans, comparison, if, for-loop, console-log]
+sources: [mdn-first-class-function, mdn-callback-function, mdn-function-object, mdn-arrow-functions, mdn-array-reduce, mdn-while]
+---
+import FnArrows from '../../../components/diagrams/ch005/FnArrows';
+import PipelineSteps from '../../../components/diagrams/ch005/PipelineSteps';
+
+## Two loops, one shape
+
+Here are some particles, and two jobs: collect every `x`, and collect
+the particles that move right.
+
+```js
+const ps = [
+  { x: 1, vx: 2, mass: 5 },
+  { x: 4, vx: -1, mass: 2 },
+  { x: 9, vx: 3, mass: 1 },
+];
+
+const xs = [];
+for (let i = 0; i < ps.length; i++) {
+  xs.push(ps[i].x);
+}
+
+const right = [];
+for (let i = 0; i < ps.length; i++) {
+  if (ps[i].vx > 0) {
+    right.push(ps[i]);
+  }
+}
+```
+
+Apart from one line each, these are the same loop. Chapter 1 said: when
+work repeats, name it. But here the part that *differs* is itself a piece
+of work: "take the `x`", "is it moving right?". To write the loop once, you
+need to hand a piece of work *to* a function.
+
+<Callout kind="intuition">
+So far a function has been a recipe card on a shelf. But a card is also a
+thing you can hand to a friend: "do this to every item in the box". The
+friend runs the loop. You only supply the recipe for one item.
+</Callout>
+
+## A function is a value
+
+```js
+function double(n) {
+  return n * 2;
+}
+
+const twice = double;
+const ops = [double];
+
+console.log(twice(5));         // 10
+console.log(ops[0](7));        // 14
+console.log(twice === double); // true
+```
+
+`const twice = double` has no parentheses, so nothing runs: it copies the
+function into a new name. In JavaScript every function is an
+object<Cite id="mdn-function-object" />, so chapter 4's rules apply: the
+variable holds an arrow, and copying it makes an alias.
+
+<Figure takeaway="Function names hold arrows, like any object." caption="double, twice and the array slot ops[0] all point at one function object. Calling any of them runs the same code.">
+  <FnArrows />
+</Figure>
+
+<Callout kind="definition">
+JavaScript has **first-class functions**: a function is a value like any
+other. It can be stored in a variable, an array or an object, passed as an
+argument, and returned from another function<Cite id="mdn-first-class-function" />.
+`double` *is* the function. `double(5)` *calls* it and is the result, `10`.
+</Callout>
+
+<Prompts ids={['fn-is-value', 'name-vs-call']} />
+
+## Handing work over: callbacks
+
+Now the loop can be written once. The part that differs comes in as a
+parameter, `get`:
+
+```js
+function pluck(ps, get) {
+  const out = [];
+  for (let i = 0; i < ps.length; i++) {
+    out.push(get(ps[i]));
+  }
+  return out;
+}
+
+function getX(p) {
+  return p.x;
+}
+
+console.log(pluck(ps, getX)); // [ 1, 4, 9 ]
+```
+
+We pass `getX`, not `getX()`. `pluck` decides when to call it, and with
+which particle. Passing `getX(ps[0])` would hand over the *result*, the
+number `1`, and `pluck` would fail trying to call a number.
+
+A function can also *return* a function. The `function (n) { ... }` here
+has no name: it's a function written where a value goes.
+
+```js
+function times(k) {
+  return function (n) {
+    return n * k;
+  };
+}
+
+const triple = times(3);
+console.log(triple(5)); // 15
+```
+
+<Callout kind="definition">
+A **callback** is a function passed to another function, which calls it
+when it needs to<Cite id="mdn-callback-function" />. A function that takes
+a function as an argument, or returns one, is a **higher-order
+function**. `pluck` and `times` are both higher-order.
+</Callout>
+
+Something odd is going on in `times`. Chapter 1 said a call's page is
+thrown away when it returns. So how does `triple` still know that `k` is
+`3`? Hold that thought: it is the next chapter.
+
+<Prompts ids={['callback-what', 'pass-not-call', 'hof-what']} />
+
+## Arrow functions
+
+Small callbacks are so common that JavaScript has a short way to write
+them<Cite id="mdn-arrow-functions" />:
+
+```js
+const double = (n) => n * 2;
+const add = (a, b) => a + b;
+const getX = (p) => p.x;
+```
+
+Read `=>` as "becomes": "`n` becomes `n * 2`".
+
+<Callout kind="definition">
+An **arrow function** is written `(params) => expression` or
+`(params) => { statements }`. The first form returns the expression. The
+second, for longer bodies, needs a `return` like any other function.
+</Callout>
+
+<Callout kind="pitfall">
+`(n) => { n * 2 }` returns `undefined`. The braces turn `n * 2` into a
+statement, and nothing returns it. Drop the braces or add `return`.
+</Callout>
+
+<Prompts ids={['arrow-braces']} />
+
+## map, filter and reduce
+
+Arrays come with higher-order methods that run the common loops for you.
+
+<Callout kind="intuition">
+Think of a factory line. **map** is a station that changes every item that
+passes. **filter** is an inspector who lets only some items through.
+**reduce** is the box at the end that combines everything into one thing.
+</Callout>
+
+Step through all three. Watch what happens to each value your callback
+returns:
+
+<PipelineSteps client:visible />
+
+<Callout kind="definition">
+`arr.map(f)` returns a **new** array of the same length, holding `f(item)`
+for every item. `arr.filter(f)` returns a **new** array of the items for
+which `f` returned `true`. `arr.reduce(f, start)` keeps a running value
+that begins as `start`. For each item it sets that value to
+`f(value, item)`, and at the end it returns the value. None of them change
+the original array.
+</Callout>
+
+So the two loops from the start of the chapter shrink to one line each:
+
+```js
+const xs = ps.map((p) => p.x);
+const right = ps.filter((p) => p.vx > 0);
+```
+
+Always give `reduce` its starting value. Without one, it uses the first
+item instead, and on an empty array there is no first item, so it throws a
+`TypeError`<Cite id="mdn-array-reduce" />.
+
+<Run id="pipeline" />
+
+<Prompts ids={['map-length', 'filter-returns', 'reduce-init']} />
+
+## Loops that don't count: while
+
+A `for` loop is built for counting. A `while` loop just repeats while a
+condition holds, and you move things along yourself. `break` leaves a loop
+at once. `continue` skips the rest of this pass and goes back to the check.
+Both work in `for` loops too.
+
+```js
+const vs = [3, -1, 8, 12, 5];
+let i = 0;
+let total = 0;
+while (i < vs.length) {
+  const v = vs[i];
+  i++;
+  if (v < 0) {
+    continue; // skip negatives
+  }
+  if (v > 10) {
+    break; // stop at the first big one
+  }
+  total = total + v;
+}
+console.log(total); // 11
+```
+
+<Callout kind="definition">
+A **while loop**, `while (cond) { ... }`, checks `cond` before every pass
+and runs the body while it is true<Cite id="mdn-while" />. If `cond` starts
+out false, the body never runs. **`break`** jumps out of the loop.
+**`continue`** jumps to the next check.
+</Callout>
+
+Notice that `i++` comes *before* the `continue`. If it came after, a
+negative number would skip the `i++`, `i` would never move again, and the
+loop would run forever.
+
+<Prompts ids={['while-check', 'break-continue']} />
+
+<Callout kind="engine" label="Under the hood">
+In the interpreter you'll write in Part III, a function value is literally
+a small object holding the parameter names and the body. Calling it means
+running that body on a fresh page. To the interpreter, a function is just
+one more kind of value, which is why it can be passed around.
+
+Look again at `ps.map((p) => p.x)`. It reads one field from every record.
+That is the access pattern a struct of arrays makes cheap, because every
+`x` is already side by side. To choose a layout, Viscosity has to see
+inside callbacks like this one and work out which fields a loop touches.
+</Callout>
+
+## Your turn
+
+<Exercise id="countIf" />
+
+<Exercise id="sumBy" />
+
+<Exercise id="doublings" />
+
+## What you learned
+
+- Functions are **first-class**: values you can store, pass and return.
+  `f` is the function; `f()` calls it.
+- A **callback** is a function you hand to another function to call. A
+  **higher-order function** takes or returns functions.
+- **Arrow functions**: `(x) => x * 2` returns its expression. With braces,
+  you need `return`.
+- `map` transforms every item, `filter` keeps some, `reduce` combines them
+  into one. All three build new values and leave the array alone.
+- A **while loop** runs while its condition holds. `break` leaves,
+  `continue` skips ahead.
+
+Next: how `triple` remembered its `k`.
+
+<Quiz />
