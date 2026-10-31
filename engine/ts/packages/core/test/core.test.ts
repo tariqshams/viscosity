@@ -63,3 +63,19 @@ describe('explain', () => {
     expect(r.explain).toMatch(/passed to a method call/);
   });
 });
+
+describe('TypeScript input', () => {
+  it('strips types and transforms TypeScript sources', () => {
+    const src = `interface P { x: number; vx: number }
+const ps: P[] = [];
+for (let i: number = 0; i < 500; i++) ps.push({ x: i, vx: 1 });
+function step(arr: P[], dt: number): void {
+  for (const p of arr) p.x += p.vx * dt;
+}
+step(ps, 0.5);
+console.log(ps[1].x);`;
+    const r = compile(src, jsPlugin({ typescript: true }));
+    expect(r.plan.collections[0].layout).toBe('soa');
+    expect(r.code).not.toMatch(/interface|: number/);
+  });
+});
