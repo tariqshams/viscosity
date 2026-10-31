@@ -1,0 +1,21 @@
+{
+  "name": "@viscosity/drip",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Drip: the small language built in Viscosity, the book. A tree-walking interpreter (Part III) and a bytecode VM (Part IV), in TypeScript.",
+  "author": "Tariq Shams",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "drip": "src/cli.ts" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "corpus:import": "node scripts/import_lox_tests.mjs ../../../../refs/craftinginterpreters/test",
+    "bench": "node scripts/bench.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
