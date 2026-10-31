@@ -54,7 +54,7 @@ export default function CpuSteps() {
             <T x={344} y={50 + k * 34} size={13} mono anchor="middle">xs[{k}] = {v}</T>
           </g>
         ))}
-        {st.mem && <Arrow x1={294} y1={50} x2={104} y2={98} bend={0.25} color={tok('accent')} dash />}
+        {st.mem && <Arrow x1={300} y1={64} x2={104} y2={98} bend={0.25} color={tok('accent')} dash />}
       </Svg>
     </StepFrame>
   );

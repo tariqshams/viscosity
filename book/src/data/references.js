@@ -1471,6 +1471,90 @@ export const references = [
     "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/main/Python/flowgraph.c (make_super_instruction and insert_superinstructions: within each basic block, adjacent LOAD_FAST pairs become LOAD_FAST_LOAD_FAST when both opargs are below 16, packed as (a << 4) | b, and the second instruction becomes a NOP) and https://raw.githubusercontent.com/python/cpython/main/Doc/library/dis.rst (LOAD_FAST_LOAD_FAST, “versionadded 3.13”)",
     "shaped": "Chapter 60: a real interpreter’s compiler inserting superinstructions for a common instruction pair."
   },
+  {
+    "id": "v8-constant-folding-reducer",
+    "authors": [
+      "The V8 project authors"
+    ],
+    "title": "constant-folding-reducer.cc: TurboFan’s ConstantFoldingReducer (V8 source code)",
+    "venue": "V8 JavaScript engine, official source repository (github.com/v8/v8), src/compiler",
+    "year": 2018,
+    "doi": null,
+    "url": "https://github.com/v8/v8/blob/main/src/compiler/constant-folding-reducer.cc",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8/main/src/compiler/constant-folding-reducer.cc and constant-folding-reducer.h (TryGetConstant and ConstantFoldingReducer::Reduce; copyright 2018 the V8 project authors)",
+    "shaped": "Chapter 80: TurboFan replaces an eliminatable, typed node whose type is a single value (null, undefined, -0, NaN, one heap constant, or one plain number) with that constant."
+  },
+  {
+    "id": "v8-release-61",
+    "authors": [
+      "The V8 team"
+    ],
+    "title": "V8 release v6.1",
+    "venue": "V8 blog (v8.dev), 3 August 2017",
+    "year": 2017,
+    "doi": null,
+    "url": "https://v8.dev/blog/v8-release-61",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/v8-release-61.md (front matter: title, author “the V8 team”, date 2017-08-03; the sentence “Array.prototype.forEach is now inlined in TurboFan and optimized for all major non-holey elements kinds”)",
+    "shaped": "Chapter 82: an example of V8’s optimizing compiler (TurboFan) inlining a call, Array.prototype.forEach."
+  },
+  {
+    "id": "v8-array-sort",
+    "authors": [
+      "Simon Zünd"
+    ],
+    "title": "Getting things sorted in V8",
+    "venue": "V8 blog (v8.dev), 28 September 2018",
+    "year": 2018,
+    "doi": null,
+    "url": "https://v8.dev/blog/array-sort",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/array-sort.md (front matter: title, author Simon Zünd, date 2018-09-28; the Microbenchmarks section: the JavaScript version “allows the optimizing compiler to inline the comparison function”, while the Torque version has call overhead from the builtin to JavaScript)",
+    "shaped": "Chapter 82: when Array.prototype.sort was written in JavaScript, V8’s optimizing compiler could inline the user’s comparison function."
+  },
+  {
+    "id": "v8-retiring-octane",
+    "authors": [
+      "The V8 team"
+    ],
+    "title": "Retiring Octane",
+    "venue": "V8 blog (v8.dev), 12 April 2017",
+    "year": 2017,
+    "doi": null,
+    "url": "https://v8.dev/blog/retiring-octane",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/retiring-octane.md (front matter: title, author “the V8 team”, date 2017-04-12; the paragraph saying Octane “encourages aggressive inlining to minimize the overhead of function calls, but inlining strategies that are tailored to Octane have led to regressions from increased compilation costs and higher memory usage in real-world use cases”)",
+    "shaped": "Chapter 82: the cost side of inlining: heuristics tuned to a benchmark increased compile time and memory use in real code."
+  },
+  {
+    "id": "llvm-loop-terminology",
+    "authors": [
+      "The LLVM Project"
+    ],
+    "title": "LLVM Loop Terminology (and Canonical Forms)",
+    "venue": "LLVM documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://llvm.org/docs/LoopTerminology.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/docs/LoopTerminology.md (“Loop Definition”: a strongly connected subset of CFG nodes whose entry edges all go to one header, which dominates the loop, “often called a natural loop”; “Terminology”: entering block, preheader, latch, backedge, exiting and exit blocks)",
+    "shaped": "Chapter 83: the definition of a natural loop and the names header, latch, back edge and preheader."
+  },
+  {
+    "id": "llvm-alias-analysis",
+    "authors": [
+      "The LLVM Project"
+    ],
+    "title": "LLVM Alias Analysis Infrastructure",
+    "venue": "LLVM documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://llvm.org/docs/AliasAnalysis.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/docs/AliasAnalysis.md (Introduction: alias analysis “attempt[s] to determine whether or not two pointers ever can point to the same object in memory”, answering Must, May or No; “The alias method”: returns MustAlias, PartialAlias, MayAlias, or NoAlias)",
+    "shaped": "Chapter 84: the must / may / no alias answers, and alias analysis as deciding whether two pointers can refer to the same object."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.

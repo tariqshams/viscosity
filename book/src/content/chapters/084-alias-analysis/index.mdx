@@ -1,0 +1,251 @@
+---
+n: 84
+day: 21
+part: VI
+title: 'Alias analysis'
+tagline: 'Chapter 4 showed that two names can share one object. A compiler that wants to change how objects are stored has to know, for every name, which objects it might be sharing. When it can’t tell, it must assume the worst.'
+objectives:
+  - Compute points-to sets for simple assignments, and use them to decide whether two references may alias.
+  - Distinguish must-alias, may-alias and no-alias answers, and say which one an optimizer may act on.
+  - Explain Viscosity's alias reasoning, which trusts only references it can follow and bails out on every other use.
+  - Predict which uses of an element (a store, a call, `===`, a closure, a phi) stop Viscosity changing an array's layout.
+introduces: [alias-analysis, points-to]
+uses: [reference, aliasing, identity, mutation, closure, captured-environment, array-of-objects, push, index, aos-vs-soa, materialization, ssa, phi-node, dataflow, fixpoint, lattice, inlining, call-graph, natural-loop, loop-invariant, induction-variable, comparison, object, property, array, function, call, parameter, console-log, set]
+sources: [llvm-alias-analysis, llvm-passes, makor2022]
+---
+import AliasSteps from '../../../components/diagrams/ch084/AliasSteps';
+import Playground from '../../../components/playground/Playground';
+
+## Chapter 4, at compiler scale
+
+Here is the puzzle from chapter 4, grown up:
+
+```js
+const ps = [];
+for (let i = 0; i < 100; i++) {
+  ps.push({ x: i });
+}
+const p = ps[3];
+p.x = 42;
+const keep = [];
+keep.push(p);
+keep[0].x = 7;
+for (let i = 0; i < ps.length; i++) {
+  ps[i].x += 1;
+}
+console.log(ps[3].x);
+```
+
+It prints `8`. `keep[0]` and `ps[3]` are the same object, so the `7`
+written through `keep` is what the final loop increments. Delete the
+three lines that mention `keep`, and it prints `43`, and Viscosity turns
+`ps` into a struct of arrays. With them, it refuses:
+
+```text
+ps (line 1) {x} → kept as array of objects
+  · unsafe: line 5: an element is used by
+    push at line 8
+```
+
+Not because the loop got harder. Because one element now has a second
+name that Viscosity can't keep track of.
+
+<Prompts ids={['alias-what']} />
+
+## Who might point at what?
+
+<Callout kind="intuition">
+Give every name in the program a list of the houses its address card
+*might* lead to. If two names' lists share a house, they might be
+aliases. If the lists don't overlap, a change made through one name can
+never be seen through the other.
+</Callout>
+
+That list is a **points-to set**. A program can create millions of
+objects, so the analysis names them by where they are created: every
+object made by the `{ x: i }` on line 3 is the one abstract object
+“line 3”, however many times the loop runs.
+
+The rules for simple assignments are short:
+
+```text
+a = {}    (site o1)  o1 is in pts(a)
+b = a                pts(b) ⊇ pts(a)
+a.f = b   for each o in pts(a):
+                     pts(o.f) ⊇ pts(b)
+c = a.f   for each o in pts(a):
+                     pts(c) ⊇ pts(o.f)
+```
+
+Apply them over and over until no set grows: a fixpoint, as in chapter
+79. For example:
+
+```js
+const a = { x: 1 };  // site o1
+const b = { x: 2 };  // site o2
+let c = a;
+if (flag) c = b;
+```
+
+`pts(a) = {o1}`, `pts(b) = {o2}`, `pts(c) = {o1, o2}`. So `c` *may*
+alias `a` and *may* alias `b`, but `a` and `b` can never alias: their
+sets don't overlap.
+
+<Callout kind="definition">
+**Alias analysis** decides, for two references, whether they **must**
+point at the same object, **may** point at the same object, or
+**never** do. A reference's **points-to set** is the set of abstract
+objects (usually allocation sites) it may point at. Two references may
+alias if their points-to sets intersect. LLVM's alias analysis
+interface returns exactly these kinds of answers: `MustAlias`,
+`MayAlias` and `NoAlias` (plus `PartialAlias` for overlapping
+memory)<Cite id="llvm-alias-analysis" />.
+</Callout>
+
+An optimizer may act on “must” and “no”. “May” means it has to keep
+both possibilities alive, which usually means doing nothing clever. The
+whole game of alias analysis is turning as many “may” answers as
+possible into “must” or “no”, without ever being wrong.
+
+<Prompts ids={['points-to-what', 'alloc-site', 'may-alias-test', 'must-may-no']} />
+
+## Why `keep.push(p)` is fatal
+
+Step through the program from the top of the chapter as a graph of
+arrows:
+
+<AliasSteps client:visible />
+
+The problem in the last step is general. In struct-of-arrays form an
+element *is not an object any more*: it is a position in some columns.
+Any reference to it that survives the transformation needs to become an
+index. Viscosity can make that change only for references it can see
+and rewrite. Here is what it does with `const p = ps[3]` when there is
+no `keep`:
+
+```js
+const p = 3;
+ps.x[__vsc_bc(ps, p, 'x', true)] = 42;
+```
+
+`p` became the number 3. That works because `p` is an SSA value whose
+target is known exactly: a must-alias of “element 3 of `ps`”. An arrow
+stored inside `keep` is different. Whatever reads `keep[0]` later
+expects an object, and there is none to give it.
+
+<Prompts ids={['element-not-object', 'ssa-alias-ok']} />
+
+## Viscosity's rule: account for every use
+
+Viscosity doesn't build general points-to sets. It asks a narrower
+question about each candidate array, with a deliberately simple answer.
+
+The references it understands are SSA values: loads of the array's own
+variable (even `const q = ps` is fine, since `q` is the same SSA value),
+the results of `ps[i]`, and parameters of known functions that every
+call site fills with this same array (chapter 82). For each of these it
+knows the points-to set exactly: {this array}, or {an element of this
+array}. Every *use* of such a value must be one it can rewrite: `.length`,
+`.push` of a fresh object literal, `ps[i]`, and reading or writing a
+field the records have. Anything else is a place where an arrow may leave
+its sight, so it is treated as a possible alias, and the array stays as
+it is.
+
+Here is what the engine says when one line is added after the `push`
+loop of a particle program (messages trimmed to the reason):
+
+```text
+const peek = () => keep.x;  (keep = ps[0])
+  an element is stored in another
+  variable (keep)
+const other = [ps[0]];
+  an element is put inside another array
+const box = { p: ps[0] };
+  an element is put inside another object
+console.log(ps[0]);
+  an element is passed to a method call
+console.log(ps[0] === ps[1]);
+  an element is compared or combined
+  with "==="
+```
+
+Each one is a different way of creating a second name:
+
+- **A captured variable.** `keep` is read by a closure, so it is not an
+  SSA value but a variable living in memory, and the closure can read it
+  whenever it likes.
+- **Inside another object or array.** The arrow is now data. Anything
+  that reaches `other` or `box` reaches the element.
+- **Passed to code it doesn't model.** `console.log` could do anything
+  with the object, including keep it.
+- **Compared with `===`.** Identity needs an object. After the
+  transformation there is no object to compare.
+- **Merged in a phi.** `let p = ps[0]; if (c) p = ps[5];` makes `p` one
+  of two elements. Viscosity reports that “an element is merged with
+  other values” rather than tracking a reference that could be either.
+
+The same logic covers whole arrays passed to functions. In chapter 82,
+`total(xs)` was called with `a` and with `b`. In points-to terms,
+`pts(xs) = {a, b}`. Viscosity treats a parameter as the collection only
+when that set is exactly one array.
+
+<Prompts ids={['captured-var', 'identity-use', 'two-arrays']} />
+
+Try it in the real compiler. `peek` captures `keep`, so `ps` is kept as
+objects. Delete the `peek` line and print `keep.x` directly instead:
+`keep` becomes an index, and `ps` becomes a struct of arrays. Run both
+versions to see that they agree either way.
+
+<Playground client:visible title="A captured element" initial={`const ps = [];
+for (let i = 0; i < 1000; i++) {
+  ps.push({ x: i, vx: 1 });
+}
+const keep = ps[0];
+const peek = () => keep.x;
+for (let i = 0; i < ps.length; i++) {
+  ps[i].x += ps[i].vx;
+}
+console.log(peek(), ps[1].x);`} />
+
+<Callout kind="engine" label="Under the hood">
+General-purpose compilers use alias analysis everywhere, mostly to move
+and delete memory operations. LLVM's simplest alias analysis, `basic-aa`,
+“implements identities (two different globals cannot alias, etc)”
+without any stateful analysis, and its loop-invariant code motion pass
+uses alias analysis to decide whether a load inside a loop can be
+hoisted (chapter 83)<Cite id="llvm-passes" />.
+
+Viscosity uses aliasing for a different decision: is it safe to
+change how an entire collection is stored? Research systems that switch
+JavaScript arrays to columnar storage automatically face the same
+requirement<Cite id="makor2022" />. Viscosity's answer is all or nothing
+per collection: one use it can't account for, and the whole array keeps
+its layout. That gives up some programs that a cleverer analysis could
+transform, and in exchange it is easy to check and never wrong in the
+direction that matters. The next chapter makes “an arrow leaves its
+sight” precise: escape analysis.
+</Callout>
+
+## Your turn
+
+<Exercise id="pointsTo" />
+
+<Exercise id="fieldPointsTo" />
+
+## What you learned
+
+- **Alias analysis** decides whether two references must, may or never
+  point at the same object. Optimizers can act on “must” and “no”; “may”
+  forces them to be careful.
+- A **points-to set** lists the abstract objects (allocation sites) a
+  reference may point at. Copies and field stores make sets grow, and the
+  rules are iterated to a fixpoint. Two references may alias if their
+  sets intersect.
+- In struct-of-arrays form an element is a position, not an object, so
+  every reference to it must be rewritable as an index.
+- Viscosity trusts only references it can follow (SSA values for the
+  array, its elements, and parameters every call fills with the same
+  array) and bails out on any other use: stored elsewhere, captured,
+  passed to unknown code, compared with `===`, or merged in a phi.
+
+<Quiz />

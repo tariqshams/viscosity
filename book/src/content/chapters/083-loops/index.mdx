@@ -1,0 +1,283 @@
+---
+n: 83
+day: 21
+part: VI
+title: 'Loops'
+tagline: 'Programs spend their time in loops, but a control-flow graph has no loops in it, only blocks and arrows. This chapter finds them, finds the counter that drives each one, and uses both to prove that `ps[i]` never runs off the end.'
+objectives:
+  - Find the natural loops of a CFG from its back edges, and compute each loop's nesting depth.
+  - Recognize a counting induction variable as a phi in the loop header.
+  - Explain how Viscosity proves an element access in bounds from the loop header's test and dominance.
+  - Say which values are loop-invariant, and why hoisting one can depend on what the loop writes.
+introduces: [natural-loop, loop-invariant, induction-variable]
+uses: [cfg, basic-block, dominator, dominator-tree, ssa, phi-node, ir, three-address-code, dataflow, constant-folding, dce, inlining, for-loop, while-loop, jump, array, index, length, push, typed-array, runtime-error, aos-vs-soa, logical-operators, comparison]
+sources: [llvm-loop-terminology, llvm-passes]
+---
+import LoopSteps from '../../../components/diagrams/ch083/LoopSteps';
+
+## Where are the loops?
+
+Viscosity needs loops for three decisions: which fields each loop
+touches, how many times a loop runs (to estimate sizes), and whether an
+index can run off the end of the array. But in the IR, the `for` is
+gone. Here is the outer loop of this function as Viscosity sees it:
+
+```js
+function sum(g) {
+  let s = 0;
+  for (let i = 0; i < g.length; i++) {
+    for (let k = 0; k < 3; k++) {
+      s += g[i].x;
+    }
+  }
+  return s;
+}
+```
+
+```text
+  b1:  ; preds b0 b3
+    %20 = phi %1, %11
+    %3 = phi %2, %23
+    %5 = field.get %0 .length
+    %6 = binop < %3, %5
+    condbr %6, b2, b4
+  ...
+  b3:  ; preds b8
+    %21 = unop + %3
+    %22 = const 1
+    %23 = binop + %21, %22
+    br b1
+```
+
+The loop is just the arrow from `b3` back up to `b1`. The compiler has
+to rediscover it.
+
+## Back edges
+
+<Callout kind="intuition">
+Walking through a building, you find a door that leads back to a
+hallway you *had* to pass through to get here. That door makes a loop.
+</Callout>
+
+“Had to pass through” is dominance, from chapter 76. An edge `t → h`
+whose target `h` dominates its source `t` is a **back edge**. Step
+through how Viscosity's `naturalLoops` finds both loops in `sum`:
+
+<LoopSteps client:visible />
+
+<Callout kind="definition">
+A **back edge** is a CFG edge `t → h` where `h` dominates `t`. Its
+**natural loop** is `h` (the **header**) plus every block that can reach
+`t` without passing through `h`. Every block in the loop is dominated by
+the header, so the header is the loop's only way in. A loop's **depth** is
+the number of loops that contain it: 1 for an outermost loop.
+</Callout>
+
+The heart of it, from `cfg.ts` (simplified: the real code also merges
+back edges that share a header):
+
+```ts
+for (const s of successors(f, b.id)) {
+  if (!dominates(idom, s, b.id)) continue;
+  // b → s is a back edge; s is the header
+  const body = new Set([s]);
+  const stack = [b.id];
+  while (stack.length) {
+    const x = stack.pop();
+    if (body.has(x)) continue;
+    body.add(x);
+    for (const p of f.blocks[x].preds)
+      stack.push(p);
+  }
+}
+```
+
+For `sum`, it returns (printed one loop per entry):
+
+```text
+header b1  depth 1
+  body b1 b2 b3 b5 b6 b7 b8
+header b5  depth 2
+  body b5 b6 b7
+```
+
+LLVM uses the same definition, and calls a block with a back edge a
+**latch** and the single block that enters the loop from outside its
+**preheader**<Cite id="llvm-loop-terminology" />.
+
+<Prompts ids={['back-edge', 'natural-loop', 'loop-depth']} />
+
+## The counter that drives the loop
+
+Look again at `b1`. In SSA, `i` is a phi, `%3 = phi %2, %23`: coming
+from `b0` it is `%2` (the `0`); coming back from `b3` it is `%23`,
+which is `%3` plus one.
+
+<Callout kind="definition">
+An **induction variable** is a variable that changes by a fixed amount on
+every trip around a loop. The basic one is a phi in the header whose
+inputs are a start value from outside the loop and `phi + step` from
+inside it. Other values computed from it, such as `2 * i + 1`, are
+derived induction variables.
+</Callout>
+
+Viscosity's `isCountingPhi` checks for this pattern with a step of
+exactly `+1` and a start that is provably a non-negative integer (a
+constant, a sum or product of non-negative integers, or a phi of them).
+The core of it, from `analysis.ts`:
+
+```ts
+const [x, y] = step.args.map(inst);
+const unary = x.op === 'unop' &&
+  x.operator === '+';
+const base = unary ? inst(x.args[0]) : x;
+if (base.id === phi.id && y.op === 'const'
+    && y.value === 1 && nonNegInt(start))
+  return true;
+```
+
+The unary `+` is there because `i++` first converts `i` to a number:
+`%21 = unop + %3`, then `%23 = %21 + 1`.
+
+With a counting phi from 0 and a test like `i < 100`, Viscosity knows
+the **trip count**: 100. A `push` inside nested loops of 10 and 20 trips
+gives `about 200 elements` in explain; a non-constant bound gives
+`size unknown statically`.
+
+<Prompts ids={['iv-what', 'trip-count']} />
+
+## Proving `ps[i]` is in bounds
+
+When `ps` becomes a struct of arrays, `ps[i].x` becomes `ps.x[i]`. In
+the original, `ps[i]` past the end is `undefined`, and `.x` on it throws
+a `TypeError`. The typed array just returns `undefined`. So Viscosity
+wraps the index in a check that throws the original error, unless it
+can prove the check never fires.
+
+The proof uses everything in this chapter. For an access `ps[idx]`:
+
+1. `idx` is a counting phi (start ≥ 0, step +1), so it is a whole number
+   ≥ 0.
+2. Some loop containing the access has `idx`'s block as its header, and
+   the header's test (or one of its `&&` parts) is `idx < ps.length`.
+3. The test's “true” successor **dominates** the access: you can't reach
+   the access without the test having just passed.
+
+```ts
+const guarded = conjuncts(inst(t.cond))
+  .some((c) => c.op === 'binop' &&
+    c.operator === '<' &&
+    c.args[0] === idx.id &&
+    isLengthOf(c.args[1], coll));
+if (guarded &&
+    dominates(idom, t.then, access.block))
+  ig.boundsProven = true;
+```
+
+(Simplified: `t` is the header's branch, and `isLengthOf` stands for an
+inline check that the bound is the same collection's `.length`.) The
+length can only grow meanwhile, because Viscosity bails out on anything
+that could shrink the array, such as `.pop()`.
+
+Here are seven loops over `ps`, each followed by one
+`console.log(ps[0].x)` (outside any loop, so never proven), with the
+last line of `explain`:
+
+```text
+loop                         proven
+i < ps.length                2 of 3
+i < n   (const n = 1000)     0 of 3
+i < ps.length && go          2 of 3
+i <= ps.length               0 of 3
+i < ps.length; i += 2        0 of 3
+ps[i] in an inner k loop     2 of 3
+ps[i - 1], i from 1          1 of 3
+```
+
+Each failure breaks a condition: the bound isn't `ps.length`, `<=`
+allows `i === length`, the step isn't `+1`, `i - 1` isn't a counting
+phi. In the compiled code:
+
+```js
+// i < ps.length: proven, no check
+ps.x[i] += ps.vx[i];
+
+// i < n: checked
+ps.x[__vsc_bc(ps, i, 'x', true)] +=
+  ps.vx[__vsc_bc(ps, i, 'vx', false)];
+```
+
+This mattered. The engine's history records that extending the proofs
+to outer-loop indexes, non-negative starts and `&&` guards removed the
+checks that had made n-body and boids slower than the original. n-body
+reads `b[i].x` inside its `j` loop; boids runs `j` from `i + 1` while
+`j < i + 64 && j < b.length`. In the engine's committed end-to-end run
+(`bench/results/e2e-node-2026-10-31.md`), both are now faster than the
+original (1.09× and 1.18×), with every element access proven.
+
+<Prompts ids={['bounds-dominate', 'and-guard']} />
+
+## Loop invariants
+
+In the inner loop of `sum`, block `b6` starts with
+`%14 = index.get %0, %3`: that is `g[i]`. Both operands come from
+outside the `k` loop (`%0` is the parameter, `%3` the *outer* counter),
+so every trip around the `k` loop computes the same thing.
+
+<Callout kind="definition">
+A value is **loop-invariant** if it is the same on every trip around the
+loop: each operand is defined outside the loop, or is itself
+loop-invariant. **Loop-invariant code motion** (LICM) moves such
+computations to the preheader, so they run once instead of once per
+trip.
+</Callout>
+
+For arithmetic that rule is enough. For memory reads it isn't: `g[i]`
+is invariant only if nothing in the loop changes what is stored there,
+and `g.length` in a loop that pushes onto `g` changes every trip, though
+`g` itself never does. Hoisting a read needs to know which writes might
+touch the same memory. LLVM's `licm` pass says this directly: it uses alias
+analysis to decide whether a load in a loop can be hoisted<Cite id="llvm-passes" />.
+
+<Callout kind="pitfall">
+Hoisting can also run work that never would have happened. If the `k`
+loop runs zero times, `g[i].x` is never read; hoisted, it could throw a
+`TypeError` the original never threw.
+</Callout>
+
+<Prompts ids={['invariant-what', 'length-not-invariant', 'hoist-safe']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity does **not** move code. It uses loops to *describe* the
+program (access patterns, size estimates, bounds proofs), keeps your
+loops exactly as written, and leaves LICM to the engine that runs it.
+
+Its outer-loop bounds proof does rely on invariance, though: `%3` never
+changes inside the `k` loop, so the outer test `i < g.length` still
+holds when `g[i]` is read there. That is why it searches *every* loop
+containing the access for the one whose header defines the index.
+</Callout>
+
+## Your turn
+
+<Exercise id="findLoops" />
+
+<Exercise id="invariants" />
+
+## What you learned
+
+- A **natural loop** comes from a back edge `t → h`, where `h` dominates
+  `t`: it is `h` plus every block that reaches `t` without passing through
+  `h`. Walk predecessors backwards from `t`, stopping at `h`.
+- Loops nest; a loop's depth is how many loops contain it.
+- An **induction variable** steps by a fixed amount each trip. In SSA, the
+  basic one is a phi in the header: start from outside, `phi + step` from
+  the latch. With a constant bound, it gives the trip count.
+- Viscosity proves `ps[i]` in bounds when `i` is a counting phi, the
+  header tests `i < ps.length` (perhaps inside `&&`), and the test's true
+  branch dominates the access.
+- A **loop-invariant** value is the same on every trip. Moving a memory
+  read out of a loop also needs to know that nothing in the loop writes
+  there: that is alias analysis, next.
+
+<Quiz />
