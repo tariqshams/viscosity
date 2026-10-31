@@ -1,0 +1,1747 @@
+{
+  "meta": {
+    "date": "2026-10-31T22:55:46.894Z",
+    "machine": {
+      "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+      "logicalCpus": 4,
+      "memoryGiB": 16,
+      "os": "Linux 6.18.44-fc-v185 x64",
+      "loadAverageAtStart": [
+        3.76,
+        3.24,
+        3.5
+      ]
+    },
+    "versions": {
+      "node": "v22.23.4",
+      "v8": "12.4.254.21-node.57",
+      "bun": "1.4.4",
+      "bunRevision": "1.4.4+38afee6c8",
+      "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)"
+    },
+    "settings": {
+      "e2eRuns": 9,
+      "cliRuns": 5,
+      "inProcessWarmup": 50,
+      "inProcessRuns": 200,
+      "bunOptionsRemoved": "--smol"
+    },
+    "noise": "A shared 4-vCPU cloud VM: other tenants share the CPUs, so individual timings vary (up to about 2x between runs on this VM). Each e2e figure is from fresh processes, original and compiled interleaved; best (min) is the most stable figure, median shows the spread. Treat differences under about 10% as noise.",
+    "loadAverageAtEnd": [
+      4.47,
+      3.47,
+      3.55
+    ]
+  },
+  "e2e": {
+    "method": "Each program's own timed section (performance.now()), 9 fresh processes per version per runtime, original and compiled interleaved, after one discarded run of each. Compiled with the TS engine (default options); the Rust CLI's output is compared too.",
+    "rows": [
+      {
+        "program": "boids",
+        "layouts": "fl=soa",
+        "rustCompilerIdentical": true,
+        "node": {
+          "check": "13978796.1833",
+          "originalMs": {
+            "best": 57.4,
+            "median": 68.6,
+            "all": [
+              103.2,
+              68.6,
+              66,
+              60.1,
+              92,
+              63.3,
+              57.4,
+              121.9,
+              111.4
+            ]
+          },
+          "viscosityMs": {
+            "best": 43.8,
+            "median": 56.6,
+            "all": [
+              43.8,
+              49.2,
+              53,
+              78.8,
+              66.6,
+              71.9,
+              46.1,
+              82.1,
+              56.6
+            ]
+          },
+          "speedupBest": 1.31,
+          "speedupMedian": 1.21,
+          "processWallMs": {
+            "original": 119.3,
+            "viscosity": 105.6
+          }
+        },
+        "bun": {
+          "check": "13978796.1833",
+          "originalMs": {
+            "best": 64.1,
+            "median": 75.4,
+            "all": [
+              96.4,
+              101,
+              67.6,
+              75.4,
+              73,
+              90.1,
+              83.4,
+              71.9,
+              64.1
+            ]
+          },
+          "viscosityMs": {
+            "best": 34.6,
+            "median": 49.7,
+            "all": [
+              58.3,
+              55.9,
+              58,
+              39,
+              49.7,
+              61.2,
+              34.6,
+              37.2,
+              40.3
+            ]
+          },
+          "speedupBest": 1.85,
+          "speedupMedian": 1.52,
+          "processWallMs": {
+            "original": 92.1,
+            "viscosity": 64.8
+          }
+        },
+        "sameChecksumOnBothRuntimes": true
+      },
+      {
+        "program": "heat",
+        "layouts": "cells=soa",
+        "rustCompilerIdentical": true,
+        "node": {
+          "check": "127409.455456",
+          "originalMs": {
+            "best": 352.4,
+            "median": 407.3,
+            "all": [
+              352.4,
+              407.3,
+              523.5,
+              448.2,
+              372.3,
+              416.7,
+              382.4,
+              440.2,
+              369.2
+            ]
+          },
+          "viscosityMs": {
+            "best": 85.7,
+            "median": 93.6,
+            "all": [
+              89.3,
+              154.7,
+              90.6,
+              93.6,
+              100.5,
+              163.8,
+              100.3,
+              85.7,
+              88.4
+            ]
+          },
+          "speedupBest": 4.11,
+          "speedupMedian": 4.35,
+          "processWallMs": {
+            "original": 509.5,
+            "viscosity": 155.4
+          }
+        },
+        "bun": {
+          "check": "127409.455456",
+          "originalMs": {
+            "best": 96.4,
+            "median": 102.6,
+            "all": [
+              102.4,
+              97.2,
+              125.7,
+              96.4,
+              97.6,
+              129.1,
+              102.6,
+              116.2,
+              111.1
+            ]
+          },
+          "viscosityMs": {
+            "best": 94.5,
+            "median": 118.9,
+            "all": [
+              111.4,
+              94.5,
+              152.6,
+              140.1,
+              135.7,
+              143.9,
+              101.9,
+              118.9,
+              105.6
+            ]
+          },
+          "speedupBest": 1.02,
+          "speedupMedian": 0.86,
+          "processWallMs": {
+            "original": 135.7,
+            "viscosity": 152
+          }
+        },
+        "sameChecksumOnBothRuntimes": true
+      },
+      {
+        "program": "ledger",
+        "layouts": "tx=soa",
+        "rustCompilerIdentical": true,
+        "node": {
+          "check": "999001644.0400",
+          "originalMs": {
+            "best": 167.5,
+            "median": 198.3,
+            "all": [
+              211.9,
+              167.5,
+              186.7,
+              182,
+              224.1,
+              188.7,
+              198.3,
+              207.9,
+              232.7
+            ]
+          },
+          "viscosityMs": {
+            "best": 44.6,
+            "median": 48.7,
+            "all": [
+              52.6,
+              45.3,
+              44.6,
+              62.3,
+              45.2,
+              74,
+              48.7,
+              55.9,
+              47.4
+            ]
+          },
+          "speedupBest": 3.75,
+          "speedupMedian": 4.08,
+          "processWallMs": {
+            "original": 462.5,
+            "viscosity": 139.1
+          }
+        },
+        "bun": {
+          "check": "999001644.0400",
+          "originalMs": {
+            "best": 117.5,
+            "median": 126.1,
+            "all": [
+              126.8,
+              117.6,
+              134.5,
+              131.1,
+              125.1,
+              135.1,
+              117.5,
+              126.1,
+              118
+            ]
+          },
+          "viscosityMs": {
+            "best": 40.8,
+            "median": 52.4,
+            "all": [
+              51.9,
+              53.7,
+              56.4,
+              40.8,
+              51.7,
+              55.5,
+              49.2,
+              52.4,
+              53.3
+            ]
+          },
+          "speedupBest": 2.88,
+          "speedupMedian": 2.41,
+          "processWallMs": {
+            "original": 189.9,
+            "viscosity": 117.9
+          }
+        },
+        "sameChecksumOnBothRuntimes": true
+      },
+      {
+        "program": "nbody",
+        "layouts": "bs=soa",
+        "rustCompilerIdentical": true,
+        "node": {
+          "check": "0.000343848911040",
+          "originalMs": {
+            "best": 61.6,
+            "median": 71.3,
+            "all": [
+              62.6,
+              71.3,
+              63.4,
+              81.2,
+              92.6,
+              62,
+              73.6,
+              72.8,
+              61.6
+            ]
+          },
+          "viscosityMs": {
+            "best": 51.3,
+            "median": 63.5,
+            "all": [
+              51.3,
+              72.9,
+              72.9,
+              71.9,
+              57,
+              57.3,
+              68.1,
+              62.8,
+              63.5
+            ]
+          },
+          "speedupBest": 1.2,
+          "speedupMedian": 1.12,
+          "processWallMs": {
+            "original": 106.4,
+            "viscosity": 104.8
+          }
+        },
+        "bun": {
+          "check": "0.000343848911040",
+          "originalMs": {
+            "best": 50,
+            "median": 62.8,
+            "all": [
+              53,
+              66.3,
+              57.2,
+              74.6,
+              76.9,
+              62.8,
+              91.1,
+              50,
+              53.6
+            ]
+          },
+          "viscosityMs": {
+            "best": 51.6,
+            "median": 55.3,
+            "all": [
+              53.2,
+              55.3,
+              52.5,
+              56.3,
+              59.7,
+              54,
+              62.5,
+              56.9,
+              51.6
+            ]
+          },
+          "speedupBest": 0.97,
+          "speedupMedian": 1.13,
+          "processWallMs": {
+            "original": 75.9,
+            "viscosity": 70.2
+          }
+        },
+        "sameChecksumOnBothRuntimes": true
+      },
+      {
+        "program": "particles",
+        "layouts": "ps=soa",
+        "rustCompilerIdentical": true,
+        "node": {
+          "check": "199800000.000",
+          "originalMs": {
+            "best": 393,
+            "median": 423.3,
+            "all": [
+              410.6,
+              393,
+              497.3,
+              429,
+              399.3,
+              395.8,
+              423.3,
+              459.9,
+              574.4
+            ]
+          },
+          "viscosityMs": {
+            "best": 90,
+            "median": 114,
+            "all": [
+              118.1,
+              94.2,
+              114,
+              95.3,
+              117.7,
+              90,
+              135,
+              123.9,
+              103.7
+            ]
+          },
+          "speedupBest": 4.37,
+          "speedupMedian": 3.71,
+          "processWallMs": {
+            "original": 527.4,
+            "viscosity": 182.7
+          }
+        },
+        "bun": {
+          "check": "199800000.000",
+          "originalMs": {
+            "best": 155.2,
+            "median": 178.9,
+            "all": [
+              169.5,
+              156.1,
+              188.2,
+              228.2,
+              220.4,
+              200,
+              178.9,
+              155.2,
+              157.6
+            ]
+          },
+          "viscosityMs": {
+            "best": 51.7,
+            "median": 56.6,
+            "all": [
+              60.1,
+              56,
+              85.7,
+              56.6,
+              88.6,
+              86.8,
+              55.7,
+              51.7,
+              56.1
+            ]
+          },
+          "speedupBest": 3,
+          "speedupMedian": 3.16,
+          "processWallMs": {
+            "original": 220,
+            "viscosity": 97.2
+          }
+        },
+        "sameChecksumOnBothRuntimes": true
+      }
+    ],
+    "summary": {
+      "node": {
+        "geomeanSpeedupBest": 2.54,
+        "geomeanSpeedupMedian": 2.46
+      },
+      "bun": {
+        "geomeanSpeedupBest": 1.74,
+        "geomeanSpeedupMedian": 1.62
+      },
+      "bunVsNode": {
+        "originalGeomean": 1.71,
+        "viscosityGeomean": 1.17,
+        "note": "Node best ms / Bun best ms: above 1 means Bun is faster."
+      }
+    }
+  },
+  "compileSpeed": {
+    "corpus": "engine/ts/packages/frontend-js/test/corpus/*.js",
+    "programs": 40,
+    "cli": {
+      "method": "viscosity build <file> (stdout), one fresh process per compile, 5 runs each, alternating TS and Rust. Wall time of the whole process, from Node's child_process.",
+      "tsCli": "node packages/cli/bin/viscosity.mjs (esbuild bundle)",
+      "rustCli": "engine/rust/target/release/viscosity",
+      "rows": [
+        {
+          "program": "alias_forof",
+          "lines": 15,
+          "tsMs": {
+            "best": 95.3,
+            "median": 111.5
+          },
+          "rustMs": {
+            "best": 4.92,
+            "median": 7.25
+          },
+          "speedupMedian": 15.4,
+          "identical": true
+        },
+        {
+          "program": "aliasing_identity",
+          "lines": 8,
+          "tsMs": {
+            "best": 102,
+            "median": 118.8
+          },
+          "rustMs": {
+            "best": 9.67,
+            "median": 11.1
+          },
+          "speedupMedian": 10.7,
+          "identical": true
+        },
+        {
+          "program": "all_generic",
+          "lines": 7,
+          "tsMs": {
+            "best": 78.5,
+            "median": 81.7
+          },
+          "rustMs": {
+            "best": 7.28,
+            "median": 7.46
+          },
+          "speedupMedian": 10.9,
+          "identical": true
+        },
+        {
+          "program": "aosoa",
+          "lines": 15,
+          "tsMs": {
+            "best": 95.5,
+            "median": 98
+          },
+          "rustMs": {
+            "best": 7.57,
+            "median": 11.3
+          },
+          "speedupMedian": 8.7,
+          "identical": true
+        },
+        {
+          "program": "aosoa_bad_block",
+          "lines": 8,
+          "tsMs": {
+            "best": 100.8,
+            "median": 112.7
+          },
+          "rustMs": {
+            "best": 8.41,
+            "median": 10.27
+          },
+          "speedupMedian": 11,
+          "identical": true
+        },
+        {
+          "program": "basic_soa",
+          "lines": 13,
+          "tsMs": {
+            "best": 87,
+            "median": 98.7
+          },
+          "rustMs": {
+            "best": 6.63,
+            "median": 7.37
+          },
+          "speedupMedian": 13.4,
+          "identical": true
+        },
+        {
+          "program": "closure_alias",
+          "lines": 8,
+          "tsMs": {
+            "best": 81,
+            "median": 90.3
+          },
+          "rustMs": {
+            "best": 6.7,
+            "median": 8.56
+          },
+          "speedupMedian": 10.5,
+          "identical": true
+        },
+        {
+          "program": "comma_field_name",
+          "lines": 8,
+          "tsMs": {
+            "best": 110.5,
+            "median": 120
+          },
+          "rustMs": {
+            "best": 7.05,
+            "median": 9.65
+          },
+          "speedupMedian": 12.4,
+          "identical": true
+        },
+        {
+          "program": "compound_out_of_bounds",
+          "lines": 16,
+          "tsMs": {
+            "best": 85.1,
+            "median": 113.1
+          },
+          "rustMs": {
+            "best": 8.21,
+            "median": 10.54
+          },
+          "speedupMedian": 10.7,
+          "identical": true
+        },
+        {
+          "program": "escapes_log",
+          "lines": 6,
+          "tsMs": {
+            "best": 98.8,
+            "median": 105.8
+          },
+          "rustMs": {
+            "best": 8.04,
+            "median": 8.3
+          },
+          "speedupMedian": 12.7,
+          "identical": true
+        },
+        {
+          "program": "growth",
+          "lines": 11,
+          "tsMs": {
+            "best": 100.2,
+            "median": 109.4
+          },
+          "rustMs": {
+            "best": 8.46,
+            "median": 10.85
+          },
+          "speedupMedian": 10.1,
+          "identical": true
+        },
+        {
+          "program": "interproc_mixed",
+          "lines": 11,
+          "tsMs": {
+            "best": 114.3,
+            "median": 127.7
+          },
+          "rustMs": {
+            "best": 8.46,
+            "median": 11.25
+          },
+          "speedupMedian": 11.4,
+          "identical": true
+        },
+        {
+          "program": "interproc_ok",
+          "lines": 16,
+          "tsMs": {
+            "best": 99.6,
+            "median": 106.2
+          },
+          "rustMs": {
+            "best": 8.29,
+            "median": 10.64
+          },
+          "speedupMedian": 10,
+          "identical": true
+        },
+        {
+          "program": "literal_init",
+          "lines": 7,
+          "tsMs": {
+            "best": 89.9,
+            "median": 104.6
+          },
+          "rustMs": {
+            "best": 8.32,
+            "median": 9.36
+          },
+          "speedupMedian": 11.2,
+          "identical": true
+        },
+        {
+          "program": "map_method",
+          "lines": 6,
+          "tsMs": {
+            "best": 91.5,
+            "median": 114.2
+          },
+          "rustMs": {
+            "best": 8.53,
+            "median": 9.75
+          },
+          "speedupMedian": 11.7,
+          "identical": true
+        },
+        {
+          "program": "mixed_columns",
+          "lines": 14,
+          "tsMs": {
+            "best": 86,
+            "median": 101.8
+          },
+          "rustMs": {
+            "best": 9.25,
+            "median": 11.17
+          },
+          "speedupMedian": 9.1,
+          "identical": true
+        },
+        {
+          "program": "nested_loops",
+          "lines": 16,
+          "tsMs": {
+            "best": 94.8,
+            "median": 117.4
+          },
+          "rustMs": {
+            "best": 8.16,
+            "median": 10
+          },
+          "speedupMedian": 11.7,
+          "identical": true
+        },
+        {
+          "program": "nested_rewrites",
+          "lines": 14,
+          "tsMs": {
+            "best": 100.1,
+            "median": 111.1
+          },
+          "rustMs": {
+            "best": 8.37,
+            "median": 10.3
+          },
+          "speedupMedian": 10.8,
+          "identical": true
+        },
+        {
+          "program": "no_loops",
+          "lines": 5,
+          "tsMs": {
+            "best": 116.2,
+            "median": 129
+          },
+          "rustMs": {
+            "best": 7.56,
+            "median": 8.07
+          },
+          "speedupMedian": 16,
+          "identical": true
+        },
+        {
+          "program": "opt_in_mode",
+          "lines": 12,
+          "tsMs": {
+            "best": 109.7,
+            "median": 144.1
+          },
+          "rustMs": {
+            "best": 8.69,
+            "median": 12.96
+          },
+          "speedupMedian": 11.1,
+          "identical": true
+        },
+        {
+          "program": "out_of_bounds",
+          "lines": 9,
+          "tsMs": {
+            "best": 111.1,
+            "median": 142.2
+          },
+          "rustMs": {
+            "best": 8.1,
+            "median": 11.31
+          },
+          "speedupMedian": 12.6,
+          "identical": true
+        },
+        {
+          "program": "out_of_bounds_write",
+          "lines": 6,
+          "tsMs": {
+            "best": 102.6,
+            "median": 135.5
+          },
+          "rustMs": {
+            "best": 7.81,
+            "median": 12.87
+          },
+          "speedupMedian": 10.5,
+          "identical": true
+        },
+        {
+          "program": "param_unknown",
+          "lines": 9,
+          "tsMs": {
+            "best": 98.7,
+            "median": 141.8
+          },
+          "rustMs": {
+            "best": 8.48,
+            "median": 14.21
+          },
+          "speedupMedian": 10,
+          "identical": true
+        },
+        {
+          "program": "reassigned",
+          "lines": 7,
+          "tsMs": {
+            "best": 87.3,
+            "median": 139.5
+          },
+          "rustMs": {
+            "best": 13.42,
+            "median": 14.12
+          },
+          "speedupMedian": 9.9,
+          "identical": true
+        },
+        {
+          "program": "record_shared",
+          "lines": 11,
+          "tsMs": {
+            "best": 85.4,
+            "median": 111.9
+          },
+          "rustMs": {
+            "best": 7.77,
+            "median": 8.72
+          },
+          "speedupMedian": 12.8,
+          "identical": true
+        },
+        {
+          "program": "renamed_column_clash",
+          "lines": 9,
+          "tsMs": {
+            "best": 101.7,
+            "median": 114.5
+          },
+          "rustMs": {
+            "best": 7.57,
+            "median": 8.02
+          },
+          "speedupMedian": 14.3,
+          "identical": true
+        },
+        {
+          "program": "same_name_collections",
+          "lines": 21,
+          "tsMs": {
+            "best": 134.6,
+            "median": 159
+          },
+          "rustMs": {
+            "best": 11.32,
+            "median": 15.34
+          },
+          "speedupMedian": 10.4,
+          "identical": true
+        },
+        {
+          "program": "sequence_index",
+          "lines": 14,
+          "tsMs": {
+            "best": 115.4,
+            "median": 126.2
+          },
+          "rustMs": {
+            "best": 10.16,
+            "median": 10.86
+          },
+          "speedupMedian": 11.6,
+          "identical": true
+        },
+        {
+          "program": "sequence_value",
+          "lines": 8,
+          "tsMs": {
+            "best": 102.5,
+            "median": 115.2
+          },
+          "rustMs": {
+            "best": 8.22,
+            "median": 10.64
+          },
+          "speedupMedian": 10.8,
+          "identical": true
+        },
+        {
+          "program": "shape_mismatch",
+          "lines": 10,
+          "tsMs": {
+            "best": 111.3,
+            "median": 134
+          },
+          "rustMs": {
+            "best": 11.22,
+            "median": 13.84
+          },
+          "speedupMedian": 9.7,
+          "identical": true
+        },
+        {
+          "program": "small_auto",
+          "lines": 6,
+          "tsMs": {
+            "best": 111,
+            "median": 132.6
+          },
+          "rustMs": {
+            "best": 8.35,
+            "median": 11.46
+          },
+          "speedupMedian": 11.6,
+          "identical": true
+        },
+        {
+          "program": "string_field",
+          "lines": 7,
+          "tsMs": {
+            "best": 91.4,
+            "median": 105.8
+          },
+          "rustMs": {
+            "best": 8.25,
+            "median": 10.37
+          },
+          "speedupMedian": 10.2,
+          "identical": true
+        },
+        {
+          "program": "string_index",
+          "lines": 7,
+          "tsMs": {
+            "best": 97.4,
+            "median": 135.3
+          },
+          "rustMs": {
+            "best": 8.68,
+            "median": 13.58
+          },
+          "speedupMedian": 10,
+          "identical": true
+        },
+        {
+          "program": "throw_from_loop",
+          "lines": 11,
+          "tsMs": {
+            "best": 92.9,
+            "median": 118.2
+          },
+          "rustMs": {
+            "best": 8.24,
+            "median": 10.41
+          },
+          "speedupMedian": 11.3,
+          "identical": true
+        },
+        {
+          "program": "trailing_annotation",
+          "lines": 8,
+          "tsMs": {
+            "best": 94.4,
+            "median": 135.3
+          },
+          "rustMs": {
+            "best": 9.77,
+            "median": 12.82
+          },
+          "speedupMedian": 10.5,
+          "identical": true
+        },
+        {
+          "program": "try_catch",
+          "lines": 12,
+          "tsMs": {
+            "best": 108.7,
+            "median": 120.5
+          },
+          "rustMs": {
+            "best": 9.27,
+            "median": 10.74
+          },
+          "speedupMedian": 11.2,
+          "identical": true
+        },
+        {
+          "program": "typed_column_semantics",
+          "lines": 6,
+          "tsMs": {
+            "best": 96.9,
+            "median": 115.6
+          },
+          "rustMs": {
+            "best": 13.49,
+            "median": 14.51
+          },
+          "speedupMedian": 8,
+          "identical": true
+        },
+        {
+          "program": "update_ops",
+          "lines": 13,
+          "tsMs": {
+            "best": 105.9,
+            "median": 114.1
+          },
+          "rustMs": {
+            "best": 8.09,
+            "median": 8.38
+          },
+          "speedupMedian": 13.6,
+          "identical": true
+        },
+        {
+          "program": "write_rhs_first",
+          "lines": 19,
+          "tsMs": {
+            "best": 103.6,
+            "median": 131.5
+          },
+          "rustMs": {
+            "best": 11.84,
+            "median": 13.34
+          },
+          "speedupMedian": 9.9,
+          "identical": true
+        },
+        {
+          "program": "write_rhs_grows",
+          "lines": 20,
+          "tsMs": {
+            "best": 103.7,
+            "median": 119.8
+          },
+          "rustMs": {
+            "best": 8.92,
+            "median": 14.16
+          },
+          "speedupMedian": 8.5,
+          "identical": true
+        }
+      ],
+      "totalMedianMs": {
+        "ts": 4764.6,
+        "rust": 435.8
+      },
+      "allIdentical": true,
+      "totalSpeedup": 10.9
+    },
+    "inProcess": {
+      "method": "compile() in one Node process: 50 warm-up calls, then 200 timed calls per program. TS: the reference engine from source; Rust: @viscosity/wasm (nodejs target) on the same Node.",
+      "wasmAvailable": true,
+      "rows": [
+        {
+          "program": "alias_forof",
+          "tsUs": {
+            "best": 638,
+            "median": 1085.1
+          },
+          "wasmUs": {
+            "best": 199.4,
+            "median": 353.1
+          },
+          "speedupMedian": 3.07,
+          "identical": true
+        },
+        {
+          "program": "aliasing_identity",
+          "tsUs": {
+            "best": 214,
+            "median": 474
+          },
+          "wasmUs": {
+            "best": 45.3,
+            "median": 76.1
+          },
+          "speedupMedian": 6.23,
+          "identical": true
+        },
+        {
+          "program": "all_generic",
+          "tsUs": {
+            "best": 142.2,
+            "median": 198.3
+          },
+          "wasmUs": {
+            "best": 31.5,
+            "median": 35.1
+          },
+          "speedupMedian": 5.65,
+          "identical": true
+        },
+        {
+          "program": "aosoa",
+          "tsUs": {
+            "best": 398.1,
+            "median": 746.3
+          },
+          "wasmUs": {
+            "best": 116.2,
+            "median": 143.9
+          },
+          "speedupMedian": 5.19,
+          "identical": true
+        },
+        {
+          "program": "aosoa_bad_block",
+          "tsUs": {
+            "best": 118,
+            "median": 160.9
+          },
+          "wasmUs": {
+            "best": 27.6,
+            "median": 32.7
+          },
+          "speedupMedian": 4.92,
+          "identical": true
+        },
+        {
+          "program": "basic_soa",
+          "tsUs": {
+            "best": 419.8,
+            "median": 543.4
+          },
+          "wasmUs": {
+            "best": 75.2,
+            "median": 87.6
+          },
+          "speedupMedian": 6.21,
+          "identical": true
+        },
+        {
+          "program": "closure_alias",
+          "tsUs": {
+            "best": 155.1,
+            "median": 258.6
+          },
+          "wasmUs": {
+            "best": 28.9,
+            "median": 32.8
+          },
+          "speedupMedian": 7.87,
+          "identical": true
+        },
+        {
+          "program": "comma_field_name",
+          "tsUs": {
+            "best": 139,
+            "median": 191.2
+          },
+          "wasmUs": {
+            "best": 29.1,
+            "median": 32.3
+          },
+          "speedupMedian": 5.93,
+          "identical": true
+        },
+        {
+          "program": "compound_out_of_bounds",
+          "tsUs": {
+            "best": 298.7,
+            "median": 554.6
+          },
+          "wasmUs": {
+            "best": 72.5,
+            "median": 90.4
+          },
+          "speedupMedian": 6.14,
+          "identical": true
+        },
+        {
+          "program": "escapes_log",
+          "tsUs": {
+            "best": 98.3,
+            "median": 120.6
+          },
+          "wasmUs": {
+            "best": 25.4,
+            "median": 29.1
+          },
+          "speedupMedian": 4.14,
+          "identical": true
+        },
+        {
+          "program": "growth",
+          "tsUs": {
+            "best": 292.3,
+            "median": 365.1
+          },
+          "wasmUs": {
+            "best": 53.4,
+            "median": 61
+          },
+          "speedupMedian": 5.98,
+          "identical": true
+        },
+        {
+          "program": "interproc_mixed",
+          "tsUs": {
+            "best": 208.9,
+            "median": 515.4
+          },
+          "wasmUs": {
+            "best": 32.3,
+            "median": 36.9
+          },
+          "speedupMedian": 13.96,
+          "identical": true
+        },
+        {
+          "program": "interproc_ok",
+          "tsUs": {
+            "best": 400.4,
+            "median": 747.3
+          },
+          "wasmUs": {
+            "best": 92.1,
+            "median": 116.2
+          },
+          "speedupMedian": 6.43,
+          "identical": true
+        },
+        {
+          "program": "literal_init",
+          "tsUs": {
+            "best": 185.6,
+            "median": 307.9
+          },
+          "wasmUs": {
+            "best": 42.6,
+            "median": 47.2
+          },
+          "speedupMedian": 6.52,
+          "identical": true
+        },
+        {
+          "program": "map_method",
+          "tsUs": {
+            "best": 128.8,
+            "median": 202.7
+          },
+          "wasmUs": {
+            "best": 29,
+            "median": 33
+          },
+          "speedupMedian": 6.15,
+          "identical": true
+        },
+        {
+          "program": "mixed_columns",
+          "tsUs": {
+            "best": 391.6,
+            "median": 515.1
+          },
+          "wasmUs": {
+            "best": 73.9,
+            "median": 91.5
+          },
+          "speedupMedian": 5.63,
+          "identical": true
+        },
+        {
+          "program": "nested_loops",
+          "tsUs": {
+            "best": 403.4,
+            "median": 565.5
+          },
+          "wasmUs": {
+            "best": 76.9,
+            "median": 91
+          },
+          "speedupMedian": 6.22,
+          "identical": true
+        },
+        {
+          "program": "nested_rewrites",
+          "tsUs": {
+            "best": 546.2,
+            "median": 967.4
+          },
+          "wasmUs": {
+            "best": 180.1,
+            "median": 233.9
+          },
+          "speedupMedian": 4.14,
+          "identical": true
+        },
+        {
+          "program": "no_loops",
+          "tsUs": {
+            "best": 81.9,
+            "median": 104
+          },
+          "wasmUs": {
+            "best": 20.8,
+            "median": 24.9
+          },
+          "speedupMedian": 4.17,
+          "identical": true
+        },
+        {
+          "program": "opt_in_mode",
+          "tsUs": {
+            "best": 135.5,
+            "median": 297.6
+          },
+          "wasmUs": {
+            "best": 55.6,
+            "median": 62.5
+          },
+          "speedupMedian": 4.76,
+          "identical": true
+        },
+        {
+          "program": "out_of_bounds",
+          "tsUs": {
+            "best": 225.9,
+            "median": 298.4
+          },
+          "wasmUs": {
+            "best": 47.8,
+            "median": 55.3
+          },
+          "speedupMedian": 5.4,
+          "identical": true
+        },
+        {
+          "program": "out_of_bounds_write",
+          "tsUs": {
+            "best": 89.4,
+            "median": 108.6
+          },
+          "wasmUs": {
+            "best": 29.9,
+            "median": 34.3
+          },
+          "speedupMedian": 3.16,
+          "identical": true
+        },
+        {
+          "program": "param_unknown",
+          "tsUs": {
+            "best": 182.4,
+            "median": 450
+          },
+          "wasmUs": {
+            "best": 35.4,
+            "median": 43.9
+          },
+          "speedupMedian": 10.26,
+          "identical": true
+        },
+        {
+          "program": "reassigned",
+          "tsUs": {
+            "best": 112.5,
+            "median": 135.3
+          },
+          "wasmUs": {
+            "best": 26.6,
+            "median": 29.5
+          },
+          "speedupMedian": 4.58,
+          "identical": true
+        },
+        {
+          "program": "record_shared",
+          "tsUs": {
+            "best": 125.9,
+            "median": 150.8
+          },
+          "wasmUs": {
+            "best": 35.1,
+            "median": 39.8
+          },
+          "speedupMedian": 3.79,
+          "identical": true
+        },
+        {
+          "program": "renamed_column_clash",
+          "tsUs": {
+            "best": 107.4,
+            "median": 224.8
+          },
+          "wasmUs": {
+            "best": 40.3,
+            "median": 58.2
+          },
+          "speedupMedian": 3.86,
+          "identical": true
+        },
+        {
+          "program": "same_name_collections",
+          "tsUs": {
+            "best": 253.4,
+            "median": 575
+          },
+          "wasmUs": {
+            "best": 56.3,
+            "median": 73.7
+          },
+          "speedupMedian": 7.8,
+          "identical": true
+        },
+        {
+          "program": "sequence_index",
+          "tsUs": {
+            "best": 217.5,
+            "median": 303.9
+          },
+          "wasmUs": {
+            "best": 64.1,
+            "median": 111.8
+          },
+          "speedupMedian": 2.72,
+          "identical": true
+        },
+        {
+          "program": "sequence_value",
+          "tsUs": {
+            "best": 111.4,
+            "median": 135.5
+          },
+          "wasmUs": {
+            "best": 35.5,
+            "median": 42.4
+          },
+          "speedupMedian": 3.19,
+          "identical": true
+        },
+        {
+          "program": "shape_mismatch",
+          "tsUs": {
+            "best": 118.8,
+            "median": 271.6
+          },
+          "wasmUs": {
+            "best": 40.8,
+            "median": 48.4
+          },
+          "speedupMedian": 5.61,
+          "identical": true
+        },
+        {
+          "program": "small_auto",
+          "tsUs": {
+            "best": 90.3,
+            "median": 105.4
+          },
+          "wasmUs": {
+            "best": 19.4,
+            "median": 23.8
+          },
+          "speedupMedian": 4.44,
+          "identical": true
+        },
+        {
+          "program": "string_field",
+          "tsUs": {
+            "best": 133.8,
+            "median": 197.3
+          },
+          "wasmUs": {
+            "best": 32.2,
+            "median": 38.7
+          },
+          "speedupMedian": 5.1,
+          "identical": true
+        },
+        {
+          "program": "string_index",
+          "tsUs": {
+            "best": 118.1,
+            "median": 160.3
+          },
+          "wasmUs": {
+            "best": 25.5,
+            "median": 33.5
+          },
+          "speedupMedian": 4.79,
+          "identical": true
+        },
+        {
+          "program": "throw_from_loop",
+          "tsUs": {
+            "best": 193.3,
+            "median": 280.7
+          },
+          "wasmUs": {
+            "best": 30.2,
+            "median": 34.5
+          },
+          "speedupMedian": 8.14,
+          "identical": true
+        },
+        {
+          "program": "trailing_annotation",
+          "tsUs": {
+            "best": 139.5,
+            "median": 183.4
+          },
+          "wasmUs": {
+            "best": 36.4,
+            "median": 40.7
+          },
+          "speedupMedian": 4.51,
+          "identical": true
+        },
+        {
+          "program": "try_catch",
+          "tsUs": {
+            "best": 231.2,
+            "median": 280.1
+          },
+          "wasmUs": {
+            "best": 54.8,
+            "median": 59.3
+          },
+          "speedupMedian": 4.72,
+          "identical": true
+        },
+        {
+          "program": "typed_column_semantics",
+          "tsUs": {
+            "best": 133.2,
+            "median": 167.5
+          },
+          "wasmUs": {
+            "best": 35.8,
+            "median": 42.8
+          },
+          "speedupMedian": 3.91,
+          "identical": true
+        },
+        {
+          "program": "update_ops",
+          "tsUs": {
+            "best": 271,
+            "median": 542.4
+          },
+          "wasmUs": {
+            "best": 63.2,
+            "median": 90.6
+          },
+          "speedupMedian": 5.99,
+          "identical": true
+        },
+        {
+          "program": "write_rhs_first",
+          "tsUs": {
+            "best": 271.8,
+            "median": 446.1
+          },
+          "wasmUs": {
+            "best": 69.2,
+            "median": 76.8
+          },
+          "speedupMedian": 5.81,
+          "identical": true
+        },
+        {
+          "program": "write_rhs_grows",
+          "tsUs": {
+            "best": 840.6,
+            "median": 1041.6
+          },
+          "wasmUs": {
+            "best": 130.9,
+            "median": 157.6
+          },
+          "speedupMedian": 6.61,
+          "identical": true
+        }
+      ],
+      "totalMedianUs": {
+        "ts": 14979.7,
+        "wasm": 2846.8
+      },
+      "allIdentical": true,
+      "totalSpeedup": 5.26
+    }
+  },
+  "drip": {
+    "sources": [
+      "book/companion/ts/results/drip-bench-2026-10-31.json",
+      "book/companion/rust/results/drip-rs-bench-2026-10-31.json"
+    ],
+    "tsEnv": {
+      "node": "v22.23.4",
+      "v8": "12.4.254.21-node.57",
+      "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+      "date": "2026-10-31T18:28:28.987Z",
+      "runs": 1,
+      "note": "Best of N, each in a fresh process. Includes compile time. Shared cloud VM."
+    },
+    "rustEnv": {
+      "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+      "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+      "date": "2026-10-31T19:55:24.609Z",
+      "runs": 3,
+      "tsResults": "drip-bench-2026-10-31.json",
+      "note": "drip-rs: best of N wall-clock runs, each a fresh process, compile time included. TypeScript numbers are copied from tsResults (one run per program, each in a fresh process, per that file's own note). Same shared cloud VM for both, so expect noise."
+    },
+    "method": "Copied from the committed results (not re-run here). Wall-clock milliseconds, compile time included, each a fresh process; see each file's own note for its run count.",
+    "rows": [
+      {
+        "program": "binary_trees",
+        "treeMs": 19018,
+        "vmMs": 13078,
+        "vmError": null,
+        "rustMs": 2672,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 1.45,
+        "rustVsVm": 4.89,
+        "rustVsTree": 7.12
+      },
+      {
+        "program": "equality",
+        "treeMs": 15533,
+        "vmMs": 16501,
+        "vmError": null,
+        "rustMs": 4220,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 0.94,
+        "rustVsVm": 3.91,
+        "rustVsTree": 3.68
+      },
+      {
+        "program": "fib",
+        "treeMs": 23695,
+        "vmMs": 5685,
+        "vmError": null,
+        "rustMs": 1460,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 4.17,
+        "rustVsVm": 3.89,
+        "rustVsTree": 16.23
+      },
+      {
+        "program": "instantiation",
+        "treeMs": 2742,
+        "vmMs": 3570,
+        "vmError": null,
+        "rustMs": 628,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 0.77,
+        "rustVsVm": 5.68,
+        "rustVsTree": 4.37
+      },
+      {
+        "program": "invocation",
+        "treeMs": 2962,
+        "vmMs": 2042,
+        "vmError": null,
+        "rustMs": 577,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 1.45,
+        "rustVsVm": 3.54,
+        "rustVsTree": 5.13
+      },
+      {
+        "program": "method_call",
+        "treeMs": 4106,
+        "vmMs": 1085,
+        "vmError": null,
+        "rustMs": 316,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 3.78,
+        "rustVsVm": 3.43,
+        "rustVsTree": 12.99
+      },
+      {
+        "program": "properties",
+        "treeMs": 11853,
+        "vmMs": 2781,
+        "vmError": null,
+        "rustMs": 795,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 4.26,
+        "rustVsVm": 3.5,
+        "rustVsTree": 14.91
+      },
+      {
+        "program": "string_equality",
+        "treeMs": 13874,
+        "vmMs": null,
+        "vmError": "[line 32] Error at 'a4': Too many constants in one chunk.",
+        "rustMs": null,
+        "rustError": "[line 32] Error at 'a4': Too many constants in one chunk.",
+        "fixedTime": false,
+        "vmVsTree": null,
+        "rustVsVm": null,
+        "rustVsTree": null
+      },
+      {
+        "program": "trees",
+        "treeMs": 53136,
+        "vmMs": 21327,
+        "vmError": null,
+        "rustMs": 4858,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 2.49,
+        "rustVsVm": 4.39,
+        "rustVsTree": 10.94
+      },
+      {
+        "program": "zoo",
+        "treeMs": 8358,
+        "vmMs": 1749,
+        "vmError": null,
+        "rustMs": 528,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 4.78,
+        "rustVsVm": 3.31,
+        "rustVsTree": 15.83
+      },
+      {
+        "program": "zoo_batch",
+        "treeMs": 10027,
+        "vmMs": 10011,
+        "vmError": null,
+        "rustMs": 10004,
+        "rustError": null,
+        "fixedTime": true,
+        "vmVsTree": null,
+        "rustVsVm": null,
+        "rustVsTree": null
+      }
+    ],
+    "geomean": {
+      "vmVsTree": 2.2,
+      "rustVsVm": 4,
+      "rustVsTree": 8.81
+    }
+  }
+}

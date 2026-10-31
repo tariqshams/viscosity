@@ -206,6 +206,28 @@ which checks that both versions print the same thing. The engine source is
 `node engine/ts/packages/playground/build.mjs`. End-to-end results:
 `../engine/ts/packages/bench/results/e2e-node-*.md`.
 
+The Playground has two engines with identical output (the parity
+guarantee): the TypeScript reference, which is the default, and the Rust
+port compiled to WebAssembly. Readers switch with the small **TS / Rust**
+toggle in its header. Props:
+
+- `engine="rust"` starts on the Rust engine (default `"ts"`). Use it only
+  where the chapter is about the Rust port (Part XI): the `.wasm` is about
+  1.1 MB (0.4 MB gzipped), fetched the first time the Rust engine is used.
+- `engineToggle={false}` hides the toggle.
+
+```mdx
+<Playground client:visible engine="rust" title="Same decisions, in Rust" initial={`...`} />
+```
+
+The Rust engine runs in a worker (`play.worker.ts`). Its glue is
+`src/vendor/viscosity_wasm.js` and the module is
+`public/wasm/viscosity_wasm_bg.wasm`, both committed so the book builds
+without Rust. Rebuild them with
+`node engine/rust/packages/wasm/build.mjs --book`. Syntax errors are worded
+differently (oxc, not acorn); everything else matches, and
+`scripts/smoke.mjs` checks one Playground on both engines.
+
 **Rust (Track B).** Examples and exercises can use `lang: 'rust'`.
 
 - In the browser the code is compiled and run by the official Rust

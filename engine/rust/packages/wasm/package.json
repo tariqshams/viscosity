@@ -1,0 +1,61 @@
+{
+  "name": "@viscosity/wasm",
+  "version": "0.1.0",
+  "description": "The Viscosity compiler (Rust engine) as WebAssembly: compile JavaScript or Python and explain every layout decision, in Node or the browser.",
+  "author": "Tariq Shams",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/node/viscosity_wasm.js",
+  "module": "./dist/web/viscosity_wasm.js",
+  "types": "./dist/node/viscosity_wasm.d.ts",
+  "exports": {
+    ".": {
+      "node": {
+        "types": "./dist/node/viscosity_wasm.d.ts",
+        "default": "./dist/node/viscosity_wasm.js"
+      },
+      "browser": {
+        "types": "./dist/web/viscosity_wasm.d.ts",
+        "default": "./dist/web/viscosity_wasm.js"
+      },
+      "types": "./dist/web/viscosity_wasm.d.ts",
+      "default": "./dist/web/viscosity_wasm.js"
+    },
+    "./web": {
+      "types": "./dist/web/viscosity_wasm.d.ts",
+      "default": "./dist/web/viscosity_wasm.js"
+    },
+    "./node": {
+      "types": "./dist/node/viscosity_wasm.d.ts",
+      "default": "./dist/node/viscosity_wasm.js"
+    },
+    "./viscosity_wasm_bg.wasm": "./dist/web/viscosity_wasm_bg.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/node/viscosity_wasm.js",
+    "dist/node/viscosity_wasm.d.ts",
+    "dist/node/viscosity_wasm_bg.wasm",
+    "dist/node/viscosity_wasm_bg.wasm.d.ts",
+    "dist/node/package.json",
+    "dist/web/viscosity_wasm.js",
+    "dist/web/viscosity_wasm.d.ts",
+    "dist/web/viscosity_wasm_bg.wasm",
+    "dist/web/viscosity_wasm_bg.wasm.d.ts",
+    "LICENSE",
+    "THIRD_PARTY_LICENSES.txt"
+  ],
+  "sideEffects": false,
+  "engines": { "node": ">=18" },
+  "keywords": ["viscosity", "compiler", "struct-of-arrays", "soa", "data-layout", "webassembly", "wasm"],
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "node build.mjs",
+    "smoke": "node smoke.mjs"
+  },
+  "repository": { "type": "git", "url": "git+https://github.com/tariqshams/viscosity.git", "directory": "engine/rust/packages/wasm" },
+  "homepage": "https://viscosity.dev",
+  "devDependencies": {
+    "binaryen": "132.0.0"
+  }
+}
