@@ -1,2 +1,2 @@
 ps (line 2) {x} → kept as array of objects
-  · unsafe: line 4: an element is stored in another variable (p) at line 4
+  · unsafe: line 4: an element is stored in another variable (p)

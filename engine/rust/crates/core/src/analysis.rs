@@ -330,13 +330,22 @@ impl<'m> Analyzer<'m> {
         }
     }
 
-    /// Why a use makes a value escape, for explain output.
-    fn describe_use(&self, u: Use) -> String {
+    /// Why use `u` of value `v` makes `v` escape, for explain output.
+    fn describe_use(&self, u: Use, v: ValueId) -> String {
         let i = match u {
             Use::Term { func, .. } => return format!("returned or branched on in {}()", self.m.func(func).name),
             Use::Inst(i) => self.inst(i),
         };
         let line = line_of(self.m, i);
+        // Stores: say which operand v was, not just that a store happened.
+        match &i.op {
+            Op::FieldSet { field } if i.args[0] == v => {
+                return format!("modified directly (its .{field} is assigned) at line {line}")
+            }
+            Op::IndexSet if i.args[0] == v => return format!("written with an index store at line {line}"),
+            Op::IndexSet | Op::IndexGet if i.args[1] == v => return format!("used as an index at line {line}"),
+            _ => {}
+        }
         match &i.op {
             Op::Call if i.note_is("method") => format!("passed to a method call at line {line}"),
             Op::Call => format!("passed to a function call at line {line}"),
@@ -417,7 +426,7 @@ impl<'m> Analyzer<'m> {
         seen_param: &mut HashSet<ValueId>,
     ) -> Option<ValueId> {
         let Some(iv) = u.inst() else {
-            let msg = self.describe_use(u);
+            let msg = self.describe_use(u, l);
             self.collections[ci].bailouts.push(msg);
             return None;
         };
@@ -494,7 +503,7 @@ impl<'m> Analyzer<'m> {
             }
             _ => {}
         }
-        let msg = format!("the array is {}", self.describe_use(u));
+        let msg = format!("the array is {}", self.describe_use(u, l));
         self.collections[ci].bailouts.push(msg);
         None
     }
@@ -760,11 +769,12 @@ impl<'m> Analyzer<'m> {
                             }
                         }
                         _ => {
-                            let msg = format!(
-                                "line {}: an element is {}",
-                                line_of(self.m, self.inst(ig.inst)),
-                                self.describe_use(u)
-                            );
+                            // Don't repeat the line: "line 5: an element is ... at line 5".
+                            let line = line_of(self.m, self.inst(ig.inst));
+                            let why = self.describe_use(u, ig.inst);
+                            let at = format!(" at line {line}");
+                            let why = why.strip_suffix(at.as_str()).unwrap_or(&why);
+                            let msg = format!("line {line}: an element is {why}");
                             self.collections[ci].bailouts.push(msg);
                         }
                     }

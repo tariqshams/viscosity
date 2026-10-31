@@ -1,4 +1,4 @@
 ps (line 1) {x, y} → kept as array of objects
   · unsafe: the array is used by code Viscosity doesn't model (parameter pattern) at line 8
-  · unsafe: line 4: an element is used by code Viscosity doesn't model (destructuring) at line 4
-  · unsafe: line 3: an element is put inside another array at line 3
+  · unsafe: line 4: an element is used by code Viscosity doesn't model (destructuring)
+  · unsafe: line 3: an element is put inside another array

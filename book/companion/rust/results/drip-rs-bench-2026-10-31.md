@@ -2,7 +2,7 @@
 
 Intel(R) Xeon(R) Processor @ 2.10GHz, 2026-10-31T19:55:24.609Z. rustc 1.97.0 (2d8144b78 2026-07-07); TypeScript on Node v22.23.4.
 
-drip-rs: best of N wall-clock runs, each a fresh process, compile time included. TypeScript numbers are copied from tsResults (measured in-process, best of 1). Same shared cloud VM for both, so expect noise.
+drip-rs: best of N wall-clock runs, each a fresh process, compile time included. TypeScript numbers are copied from tsResults (one run per program, each in a fresh process, per that file's own note). Same shared cloud VM for both, so expect noise.
 
 | program | TS tree-walker (ms) | TS VM (ms) | drip-rs (ms) | drip-rs vs TS VM | drip-rs vs tree-walker |
 |---|---:|---:|---:|---:|---:|

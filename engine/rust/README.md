@@ -140,7 +140,7 @@ then run `cargo test`.
 
 For every program in the three suites, and for both bounds modes, the Rust
 engine's `code` and `explain` equal the TypeScript engine's, byte for byte.
-Today that is 60 programs × 2 = 120 fixture pairs, and all 120 match. The
+Today that is 61 programs × 2 = 122 fixture pairs, and all 122 match. The
 WebAssembly build reproduces all of them as well. The decisions match because
 the analyses are ported step by step and visit things in the same order. That
 order decides the order of the messages in `viscosity explain`, so the port

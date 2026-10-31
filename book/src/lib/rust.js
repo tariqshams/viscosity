@@ -12,7 +12,8 @@ export function playgroundLink(code) {
 
 /** Put the reader's code and the exercise's tests into one test crate. */
 export function testCrate(code, tests) {
-  return `${code}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n${tests.replace(/^/gm, '    ')}\n}\n`;
+  // Tests are not re-indented: that would change multi-line string literals.
+  return `${code}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n${tests}\n}\n`;
 }
 
 /** Parse `cargo test` output into per-test results. */
