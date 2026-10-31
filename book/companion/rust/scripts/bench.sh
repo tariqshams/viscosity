@@ -86,7 +86,7 @@ const env = {
   tsEnv: ts.env,
   note:
     'drip-rs: best of N wall-clock runs, each a fresh process, compile time ' +
-    'included. TypeScript numbers are copied from tsResults (measured in-process, ' +
+    'included. TypeScript numbers are copied from tsResults (each a fresh process, ' +
     `best of ${ts.env.runs}). Same shared cloud VM for both, so expect noise.`,
 };
 const stamp = date.slice(0, 10);

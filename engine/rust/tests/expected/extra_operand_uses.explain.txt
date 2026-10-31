@@ -1,0 +1,17 @@
+ps (line 2) {x} → kept as array of objects
+  · unsafe: the array is used as an index at line 6
+  · unsafe: the array is used as an index at line 5
+table (line 4) {} → kept as array of objects
+  · unsafe: line 4: an element of the array literal is not a plain object literal
+  · unsafe: the array is written with an index store at line 9
+  · unsafe: the array is written with an index store at line 6
+  · unsafe: line 10: indexes the array with something that may not be a number
+  · unsafe: line 5: indexes the array with something that may not be a number
+  · unsafe: line 10: an element is passed to a method call
+  · unsafe: line 5: an element is passed to a method call
+qs (line 7) {x} → kept as array of objects
+  · unsafe: line 11: an element is written with an index store
+  · unsafe: line 10: an element is used as an index
+  · unsafe: line 9: an element is used as an index
+rs (line 12) {x} → kept as array of objects
+  · unsafe: line 15: an element is stored into an object property

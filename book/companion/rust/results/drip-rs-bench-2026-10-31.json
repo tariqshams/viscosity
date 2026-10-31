@@ -13,7 +13,7 @@
       "runs": 1,
       "note": "Best of N, each in a fresh process. Includes compile time. Shared cloud VM."
     },
-    "note": "drip-rs: best of N wall-clock runs, each a fresh process, compile time included. TypeScript numbers are copied from tsResults (measured in-process, best of 1). Same shared cloud VM for both, so expect noise."
+    "note": "drip-rs: best of N wall-clock runs, each a fresh process, compile time included. TypeScript numbers are copied from tsResults (one run per program, each in a fresh process, per that file's own note). Same shared cloud VM for both, so expect noise."
   },
   "rows": [
     {

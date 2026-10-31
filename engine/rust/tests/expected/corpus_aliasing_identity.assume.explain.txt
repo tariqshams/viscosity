@@ -1,7 +1,7 @@
 ps (line 2) {x} → kept as array of objects
-  · unsafe: line 7: an element is compared or combined with "===" at line 7
-  · unsafe: line 5: an element is used by push at line 5
+  · unsafe: line 7: an element is compared or combined with "==="
+  · unsafe: line 5: an element is used by push
 keep (line 4) {} → kept as array of objects
   · unsafe: line 5: pushes something that is not a fresh object literal
-  · unsafe: line 7: an element is compared or combined with "===" at line 7
+  · unsafe: line 7: an element is compared or combined with "==="
   · unsafe: line 6: adds a new property .x to an element

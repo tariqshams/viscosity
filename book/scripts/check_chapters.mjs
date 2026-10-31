@@ -245,12 +245,15 @@ for (const folder of folders) {
     if (ex.lang === 'rust') {
       const r = runRust(ex.code, null);
       if (r.error && !ex.expectError) err(folder, `Rust example "${k}" fails: ${r.error}`);
+      if (!r.error && ex.expectError) err(folder, `Rust example "${k}" is marked expectError but compiles and runs`);
     } else if (ex.lang === 'drip' || ex.lang === 'drip-vm') {
       const r = await runDrip(ex.code, ex.lang);
       if (r.exitCode !== 0 && !ex.expectError) err(folder, `Drip example "${k}" fails: ${r.stderr.join(' ')}`);
+      if (r.exitCode === 0 && ex.expectError) err(folder, `Drip example "${k}" is marked expectError but succeeds`);
     } else {
       const r = runWithTests(ex.lang === 'ts' ? stripTs(ex.code) : ex.code, '', silent);
       if (r.error && !ex.expectError) err(folder, `example "${k}" throws: ${r.error}`);
+      if (!r.error && ex.expectError) err(folder, `example "${k}" is marked expectError but runs without an error`);
     }
   }
 
