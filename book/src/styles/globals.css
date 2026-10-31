@@ -179,7 +179,8 @@ body {
 
 /* Diagrams */
 .viz { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--font-sans); }
-.viz text { font-family: var(--font-sans); fill: rgb(var(--ink)); }
+.viz text { font-family: var(--font-sans); }
+.viz text:not([fill]) { fill: rgb(var(--ink)); } /* explicit fill colours win */
 .viz .mono { font-family: var(--font-mono); }
 .viz .muted { fill: rgb(var(--muted)); }
 .viz rect, .viz circle, .viz path, .viz line, .viz text, .viz g {
