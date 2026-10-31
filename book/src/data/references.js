@@ -1117,6 +1117,76 @@ export const references = [
     "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/api/performance/now/index.md",
     "shaped": "Chapter 24: performance.now() is a high-resolution timer, coarsened in browsers to 100 microseconds (5 in cross-origin-isolated pages)."
   },
+  {
+    "id": "mdn-execution-model",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "JavaScript execution model",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Execution_model",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/execution_model/index.md",
+    "shaped": "Chapter 17: a JavaScript agent keeps a heap of objects (a large, mostly unstructured region filled as objects are created) and a stack of execution contexts, one frame per active call."
+  },
+  {
+    "id": "slotin-amh-prefetching",
+    "authors": [
+      "Sergey Slotin"
+    ],
+    "title": "Prefetching, in Algorithms for Modern Hardware",
+    "venue": "algorithmica.org (open online book)",
+    "year": null,
+    "doi": null,
+    "url": "https://en.algorithmica.org/hpc/cpu-cache/prefetching/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/algorithmica-org/algorithmica/blob/master/content/english/hpc/cpu-cache/prefetching.md",
+    "shaped": "Chapter 20: the hardware prefetcher watches memory accesses and loads the next cache lines early; it detects only simple patterns (forward or backward, several arrays at once, small-to-medium strides)."
+  },
+  {
+    "id": "slotin-amh-latency",
+    "authors": [
+      "Sergey Slotin"
+    ],
+    "title": "Memory Latency, in Algorithms for Modern Hardware",
+    "venue": "algorithmica.org (open online book)",
+    "year": null,
+    "doi": null,
+    "url": "https://en.algorithmica.org/hpc/cpu-cache/latency/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/algorithmica-org/algorithmica/blob/master/content/english/hpc/cpu-cache/latency.md",
+    "shaped": "Chapter 20: following a random permutation (pointer chasing) is orders of magnitude slower than linear iteration, because each load waits for the previous one; common in heap-allocated, pointer-heavy data structures."
+  },
+  {
+    "id": "slotin-amh-branching",
+    "authors": [
+      "Sergey Slotin"
+    ],
+    "title": "The Cost of Branching, in Algorithms for Modern Hardware",
+    "venue": "algorithmica.org (open online book)",
+    "year": null,
+    "doi": null,
+    "url": "https://en.algorithmica.org/hpc/pipelining/branching/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/algorithmica-org/algorithmica/blob/master/content/english/hpc/pipelining/branching.md",
+    "shaped": "Chapter 20: CPUs speculatively execute the likelier side of a branch; a mispredicted branch discards the pipeline; summing elements below 50 of random data is several times slower than the same loop over sorted data; predictors learn patterns, and almost-never-taken checks cost almost nothing."
+  },
+  {
+    "id": "slotin-amh-mlp",
+    "authors": [
+      "Sergey Slotin"
+    ],
+    "title": "Memory-Level Parallelism, in Algorithms for Modern Hardware",
+    "venue": "algorithmica.org (open online book)",
+    "year": null,
+    "doi": null,
+    "url": "https://en.algorithmica.org/hpc/cpu-cache/mlp/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/algorithmica-org/algorithmica/blob/master/content/english/hpc/cpu-cache/mlp.md",
+    "shaped": "Chapter 20: memory requests can overlap; linear iteration is far faster than pointer jumping because the CPU knows the next addresses and sends requests ahead of time."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.
