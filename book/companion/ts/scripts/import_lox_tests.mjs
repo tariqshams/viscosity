@@ -23,7 +23,11 @@ function rewriteCode(code) {
 }
 
 function rewriteComment(c) {
-  return c.replace(/'fun'/g, "'fn'").replace(/'var'/g, "'let'");
+  return c
+    .replace(/'fun'/g, "'fn'").replace(/'var'/g, "'let'")
+    // scanning tests print TOKEN_TYPE lexeme literal
+    .replace(/expect: FUN fun null/, 'expect: FN fn null')
+    .replace(/expect: VAR var null/, 'expect: LET let null');
 }
 
 export function convert(text) {

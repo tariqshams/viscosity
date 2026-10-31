@@ -1187,6 +1187,104 @@ export const references = [
     "checkedAgainst": "https://github.com/algorithmica-org/algorithmica/blob/master/content/english/hpc/cpu-cache/mlp.md",
     "shaped": "Chapter 20: memory requests can overlap; linear iteration is far faster than pointer jumping because the CPU knows the next addresses and sends requests ahead of time."
   },
+  {
+    "id": "v8-ignition",
+    "authors": [
+      "Ross McIlroy"
+    ],
+    "title": "Firing up the Ignition interpreter",
+    "venue": "V8 blog (v8.dev), 23 August 2016",
+    "year": 2016,
+    "doi": null,
+    "url": "https://v8.dev/blog/ignition-interpreter",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/ignition-interpreter.md (the post’s source in the v8.dev repository; v8.dev itself was not reachable from the writing session)",
+    "shaped": "Chapter 25: V8 compiles JavaScript functions to a compact bytecode that an interpreter (Ignition) runs, with optimizing compilers re-compiling hot code; Ignition is a register machine with an accumulator rather than a stack machine."
+  },
+  {
+    "id": "ecma262",
+    "authors": [
+      "Ecma International, Technical Committee 39 (TC39)"
+    ],
+    "title": "ECMAScript® Language Specification (ECMA-262), current draft",
+    "venue": "Ecma International; living draft at tc39.es/ecma262, source at github.com/tc39/ecma262",
+    "year": null,
+    "doi": null,
+    "url": "https://tc39.es/ecma262/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/tc39/ecma262 (README.md: “the source for the current draft of ECMA-262, the ECMAScript® Language Specification”; spec.html metadata title “ECMAScript 2027 Language Specification”, and the opening paragraphs of clause “ECMAScript Language: Lexical Grammar”). tc39.es was not reachable from the writing session.",
+    "shaped": "Chapter 26: JavaScript’s language specification as the example of a precise spec. Chapter 28: the spec’s rule that source text is scanned left to right, “repeatedly taking the longest possible sequence of code points as the next input element” (maximal munch), and the following paragraph: which lexical goal symbol applies (e.g. InputElementDiv vs InputElementRegExp) depends on the syntactic grammar context, because `/` may begin division or a regular expression."
+  },
+  {
+    "id": "ecma262-keywords",
+    "authors": [
+      "Ecma International, TC39"
+    ],
+    "title": "ECMAScript Language Specification (ECMA-262), “Keywords and Reserved Words”",
+    "venue": "Ecma International; living draft at tc39.es/ecma262",
+    "year": null,
+    "doi": null,
+    "url": "https://tc39.es/ecma262/#sec-keywords-and-reserved-words",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/tc39/ecma262/blob/main/spec.html (the source the draft is built from, commit 0de5cb15; emu-clause id=\"sec-keywords-and-reserved-words\"). tc39.es itself was not fetched from this session.",
+    "shaped": "Chapter 29: JavaScript separates keywords from reserved words; `if` and `while` are both, while `async` is a keyword that is not reserved and may be used as a variable name."
+  },
+  {
+    "id": "ecma262-grammar",
+    "authors": [
+      "Ecma International, TC39"
+    ],
+    "title": "ECMAScript Language Specification (ECMA-262), “Notational Conventions: Syntactic and Lexical Grammars”",
+    "venue": "Ecma International; living draft at tc39.es/ecma262",
+    "year": null,
+    "doi": null,
+    "url": "https://tc39.es/ecma262/#sec-syntactic-and-lexical-grammars",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/tc39/ecma262/blob/main/spec.html (the source the draft is built from, commit 0de5cb15; clauses “Context-Free Grammars” and “Grammar Notation”, including the WhileStatement and ArgumentList examples and the “opt” suffix). tc39.es itself was not fetched from this session.",
+    "shaped": "Chapter 30: JavaScript’s syntax is specified as a context-free grammar of productions, with nonterminals on the left, tokens as terminal symbols, recursive rules for lists, and an “opt” suffix for optional symbols."
+  },
+  {
+    "id": "ecma262-operators",
+    "authors": [
+      "Ecma International, TC39"
+    ],
+    "title": "ECMAScript Language Specification (ECMA-262), “Multiplicative Operators” and “Additive Operators”",
+    "venue": "Ecma International; living draft at tc39.es/ecma262",
+    "year": null,
+    "doi": null,
+    "url": "https://tc39.es/ecma262/#sec-additive-operators",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/tc39/ecma262/blob/main/spec.html (the source the draft is built from, commit 0de5cb15; emu-clauses id=\"sec-multiplicative-operators\" and id=\"sec-additive-operators\", whose Syntax sections define AdditiveExpression in terms of MultiplicativeExpression). tc39.es itself was not fetched from this session.",
+    "shaped": "Chapter 32: JavaScript’s grammar encodes precedence with one nonterminal per level (AdditiveExpression built from MultiplicativeExpression), using left-recursive rules for left associativity."
+  },
+  {
+    "id": "mdn-logical-or",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Logical OR (||)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Logical_OR",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/operators/logical_or/index.md (MDN’s own source repository): “the || operator actually returns the value of one of the specified operands”, and the section on short-circuit evaluation",
+    "shaped": "Chapter 38: JavaScript’s || short-circuits and returns one of its operands rather than a boolean, just like Drip’s or."
+  },
+  {
+    "id": "mdn-function-length",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Function: length",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/length",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/function/length/index.md (MDN’s own source repository): “indicates the number of parameters expected by the function”, contrasted with arguments.length, the number actually passed",
+    "shaped": "Chapter 39: JavaScript records a function’s arity as f.length but does not enforce it, unlike Drip."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.
