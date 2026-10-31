@@ -1,0 +1,192 @@
+---
+n: 25
+day: 7
+part: III
+title: 'A map of the territory'
+tagline: 'You type one line, press Run, and a 7 appears. Between those two moments the line passes through a short chain of programs, each with one job. This chapter draws the map you will follow for the rest of the book.'
+objectives:
+  - Name the stages that take a line of source code to its output, and what each stage hands to the next.
+  - Explain the difference between an interpreter and a compiler, and why many real systems are both.
+  - Split a language implementation into its front end and back end.
+  - Place Drip, Drip's VM, V8 and Viscosity on the same map.
+introduces: [compiler-pipeline, interpreter, compiler, front-end-back-end]
+uses: [function, call, return, array, string-index, tree, recursion, module, program-structure, typescript, discriminated-union, aos-vs-soa, typed-array, variables, strings, numbers]
+sources: [nystrom2021, coopertorczon2022, v8-ignition, makor2022]
+---
+import PipelineSteps from '../../../components/diagrams/ch025/PipelineSteps';
+import TwoPipelines from '../../../components/diagrams/ch025/TwoPipelines';
+
+## A string goes in, a 7 comes out
+
+Here is a complete program in Drip, the small language you are about to
+build:
+
+```
+print 1 + 2 * 3;
+```
+
+Run it and you see `7`. That feels like nothing. But think about what
+your program actually receives. Not a sum. Not even the word `print`.
+It receives a string, and you know from chapter 10 what a string is: a
+row of characters, `'p'`, `'r'`, `'i'` and so on, numbered from 0.
+
+Somewhere between that row of characters and the `7`, a program has to
+notice that `print` is one word, that `2 * 3` happens before the `+`,
+and that the answer should be shown. Nobody does all that in one go.
+The work is split into stages.
+
+<Callout kind="intuition">
+Think about how you read a sentence in a language you are still
+learning. First your eyes see letters. Then you group them into words.
+Then you work out which words go together: this is the subject, that is
+the verb. Only then do you understand it, and maybe act on it. A
+language implementation does the same, one stage at a time.
+</Callout>
+
+## The pipeline
+
+Step through what happens to that one line. Watch the strip along the
+top: it shows which stage you're in.
+
+<PipelineSteps client:visible />
+
+Each stage is just a function. It takes the previous stage's output and
+returns something more organised. Here is the heart of Drip's `run`,
+simplified from `companion/ts/src/drip.ts`:
+
+```ts
+const tokens = scan(source, reporter);
+const program = parse(tokens, reporter);
+const locals = resolve(program, reporter);
+interp.interpret(program, locals);
+```
+
+Four calls, four modules, one job each, just as chapter 12 promised. The
+`reporter` collects error messages along the way. The `resolve` step is
+an extra check over the tree that you'll meet in chapter 42.
+
+<Callout kind="definition">
+A **compiler pipeline** is a chain of stages where each stage's output is
+the next stage's input. For Drip: **source** (a string) → the scanner →
+**tokens** → the parser → a **syntax tree** → then either an interpreter
+that produces **output**, or a compiler that produces another form of the
+program, sometimes via an **intermediate representation** (IR).
+</Callout>
+
+The runner below sends your code through those same four calls. Change
+the numbers, add brackets, or add a second `print`.
+
+<Run id="first-line" />
+
+<Prompts ids={['pipeline-order', 'scanner-io', 'parser-io', 'why-stages']} />
+
+## Interpreters and compilers
+
+The diagram showed two ways to finish the journey. They have names.
+
+<Callout kind="intuition">
+Picture two ways to get a speech in Japanese to an English audience. An
+**interpreter** stands beside the speaker and says each sentence in
+English as it is spoken. A **translator** takes the whole speech home and
+returns with an English text. The translator never gives the speech.
+Someone else reads the text out later.
+</Callout>
+
+An **interpreter** runs the program itself. Part III's interpreter walks
+the syntax tree, and every node it visits *does* something: an addition
+adds, a `print` prints.
+
+A **compiler** doesn't run anything. It reads a program and writes out
+the same program in another form. That form might be machine code for
+the processor, bytecode for a virtual machine, or source code in another
+language. Then something else runs the result.
+
+The two ideas mix freely. Drip's VM in Part IV is both: a compiler turns
+the source into bytecode, then an interpreter loop runs the bytecode.
+Try the same line on the other back end:
+
+<Run id="same-line-vm" />
+
+<Callout kind="definition">
+An **interpreter** is a program that runs another program directly,
+producing its output. A **compiler** is a program that translates a
+program into another form (machine code, bytecode, or source code) without
+running it. A **bytecode VM** combines them: compile to bytecode, then
+interpret the bytecode.
+</Callout>
+
+<Prompts ids={['interp-def', 'compiler-def', 'vm-both']} />
+
+## Front end and back end
+
+Look at the pipeline again and you can cut it in two. The **front end**
+reads the program and works out what it says. The **back end** makes it
+happen. The front end cares about the language you write in: the
+scanner must know that `fn` and `let` are Drip words. The back end cares
+about the target: a tree-walker, a bytecode VM, or a processor.
+
+The point of the cut is that the middle, the tree or IR, is shared. One
+front end can feed several back ends, which is exactly what Drip's two
+implementations show. Production compilers go further, with a whole
+"middle end" of analysis and optimization passes between the two
+halves<Cite id="coopertorczon2022" />.
+
+<Figure takeaway="Front end, middle, back end: the same map fits a tiny interpreter and a layout optimizer." caption="Drip’s tree-walker (top) and the planned Viscosity compiler (bottom). Viscosity’s front end lowers JavaScript into its own IR, called VIR. The middle analyses how arrays of objects are used and plans their layout, and the back end writes JavaScript out again.">
+  <TwoPipelines />
+</Figure>
+
+<Callout kind="definition">
+The **front end** of a language implementation turns source text into a
+structured form (tokens, then a tree or IR) and reports errors in the
+source. It depends on the **source language**. The **back end** turns that
+structure into the result: output, bytecode or code. It depends on the
+**target**.
+</Callout>
+
+That bottom row is where this whole book is heading. Viscosity is a
+**source-to-source** compiler: JavaScript in, JavaScript out. Your
+arrays of objects go in, and where it is safe, the same program comes
+out with the data stored as a struct of arrays in typed arrays, the
+layouts you measured in Part II. That idea comes from research on doing
+this transformation automatically<Cite id="makor2022" />. To build it you
+need every stage on this map, so Part III starts at the very front.
+
+<Prompts ids={['front-end', 'ir-why', 'viscosity-kind']} />
+
+<Callout kind="engine" label="Under the hood">
+The JavaScript engine running this page is both kinds of program. V8
+compiles each function to a compact bytecode, which its interpreter,
+Ignition, runs. Code that runs often is compiled again by an optimizing
+compiler into machine code<Cite id="v8-ignition" />. One difference from
+Drip: Ignition is a *register* machine with a special accumulator, while
+Drip's VM, like the one in Crafting Interpreters, keeps its values on a
+stack<Cite id="nystrom2021" />. You'll build that stack in Part IV, and
+take V8's pipeline apart in Part V.
+</Callout>
+
+## Your turn
+
+The core exercise builds a complete, tiny interpreter: a scanner and an
+evaluator for sums like `1 + 2 - 4`. The extra one turns the same
+evaluator into a compiler that outputs instructions instead of answers.
+
+<Exercise id="mini-interp" />
+
+<Exercise id="mini-compile" />
+
+## What you learned
+
+- A **compiler pipeline** passes a program through stages: source →
+  **tokens** → **tree** → output (or another form). Each stage is a
+  function with one job.
+- An **interpreter** runs a program directly. A **compiler** translates
+  it into another form without running it. A bytecode VM does both.
+- The **front end** understands the source language. The **back end**
+  produces the result for a target. A tree or **IR** in the middle lets
+  them be mixed and matched.
+- **Viscosity** is a source-to-source compiler with an IR (VIR) in the
+  middle. Drip is where you learn to build each stage.
+
+Next: meet Drip itself, the language your pipeline will run.
+
+<Quiz />
