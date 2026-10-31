@@ -3,11 +3,11 @@ n: 112
 day: 28
 part: VII
 title: 'Differential testing at scale'
-tagline: 'Chapter 88 showed how one program can test a compiler. This chapter is about the folder of programs: what goes into each file, how 44 programs become 94 tests and 132 fixtures, and what the folder still can’t find.'
+tagline: 'Chapter 88 showed how one program can test a compiler. This chapter is about the folder of programs: what goes into each file, how 55 programs become 115 tests and the Rust port’s fixtures, and what the folder still can’t find.'
 objectives:
   - Explain what a test corpus is, and the rules each corpus file follows.
   - Describe how Viscosity’s programs multiply into checks across parsers, languages and implementations.
-  - Say how the TypeScript compiler will serve as the oracle for the Rust port.
+  - Say how the TypeScript compiler serves as the oracle for the Rust port.
   - Build a seeded random-program generator and use it to find a bug in a toy compiler.
 introduces: [test-corpus]
 uses: [test, assertion, edge-case, differential-testing, fuzzing, round-trip-testing, identity-transform, parser-adapter, estree, bailout, safety-analysis, column-storage, typed-array, ieee754, optimization-report, end-to-end-benchmark, try-catch, error-object, closure]
@@ -20,7 +20,7 @@ import MatrixSteps from '../../../components/diagrams/ch112/MatrixSteps';
 Chapter 88 gave you the method: compile a program, run both versions,
 and the original is the oracle. One program checks one thing. Viscosity
 has to be right about escapes, aliases, `try`, `NaN`, strings in number
-fields, Python’s integers, two parsers and, soon, a second
+fields, Python’s integers, two parsers and a second
 implementation in Rust. That takes many programs, and a way of using
 each one many times.
 
@@ -29,18 +29,18 @@ Here is the whole TypeScript test suite, run for this chapter:
 ```
 $ cd engine/ts && npx vitest run
  ✓ frontend-js/test/mini-parser.test.ts
-     (35 tests)
+     (43 tests)
  ✓ frontend-js/test/differential.test.ts
-     (29 tests)
- ✓ core/test/core.test.ts (10 tests)
+     (38 tests)
  ✓ bench/test/layouts.test.ts (8 tests)
+ ✓ core/test/core.test.ts (11 tests)
  ✓ frontend-python/test/differential...
-     (12 tests)
+     (15 tests)
  Test Files  5 passed (5)
-      Tests  94 passed (94)
+      Tests  115 passed (115)
 ```
 
-(Paths shortened and wrapped.) 72 of those 94 tests were never written
+(Paths shortened and wrapped.) 91 of those 115 tests were never written
 one by one: they are generated, one per program, from folders of
 programs.
 
@@ -62,7 +62,7 @@ not writing test code.
 
 ## What goes in a corpus file
 
-The JavaScript corpus has 28 files, each probing one decision. Here is
+The JavaScript corpus has 36 files, each probing one decision. Here is
 `try_catch.js`:
 
 ```js
@@ -159,18 +159,21 @@ Part XI rebuilds Viscosity in Rust. How do you know the Rust version
 decides and emits the same things? The same way: differential testing,
 with the TypeScript compiler as the oracle.
 
-`engine/rust/scripts/gen_expected.mjs` already exists. For every JS
-corpus file and every benchmark program, it runs the TypeScript compiler
+`engine/rust/scripts/gen_expected.mjs` makes the fixtures. For every JS
+corpus file, every benchmark program and 20 extra programs written for
+the port, it runs the TypeScript compiler
 twice, once with the default `bounds: 'check'` and once with
 `bounds: 'assume'` (so the unchecked code paths are covered too), and
-writes both the compiled code and the explain report. That is 33
-programs, 2 modes and 2 files: 132 fixture files, in
+writes both the compiled code and the explain report. That is 61
+programs, 2 modes and 2 files: 244 fixture files, in
 `engine/rust/tests/expected/`.
 
-The Rust side so far has only its IR crate. The parity test that will
-recompile each source in Rust and compare byte for byte is named in the
-script’s comments, but isn’t written yet; it belongs to Part XI. Until
-then, the fixtures are a promise, not a result.
+The parity test, `engine/rust/crates/cli/tests/parity.rs`, recompiles
+each source in Rust and compares byte for byte. Run for this chapter,
+all 122 fixture pairs match. Part XI builds the port that passes it.
+The parity work also paid the reference back. It found bugs in the
+TypeScript compiler, among them a soundness bug: an element thrown from
+inside a loop wasn’t seen as escaping. All are fixed now.
 
 <Prompts ids={['corpus-rust', 'corpus-assume']} />
 
@@ -210,10 +213,10 @@ generator that keeps adding the unknown ones.
 - A good corpus file probes one idea, states the expected decisions,
   prints what could differ, and is deterministic.
 - Each program feeds several checks: decisions, behaviour, parser
-  equivalence and, for the Rust port, stored fixtures. 44 programs give
-  94 tests and 132 fixture files.
-- The TypeScript compiler will be the Rust port’s oracle; that parity
-  test is Part XI’s.
+  equivalence and, for the Rust port, stored fixtures. 55 programs give
+  115 tests.
+- The TypeScript compiler is the Rust port’s oracle: 244 fixture files,
+  compared byte for byte by the Rust parity test.
 - A corpus keeps known bugs found. Random programs find unknown ones.
 
 <Quiz />

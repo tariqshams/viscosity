@@ -16,7 +16,7 @@ const STATES: S[] = [
       { t: 'const p = ps[3]', kind: 'storeBinding', bad: true },
       { t: '() => p.x', kind: 'not followed' },
     ],
-    reason: 'line 4: an element is stored in another variable (p) at line 4',
+    reason: 'line 4: an element is stored in another variable (p)',
     note: 'The element gets a second name, p, and a closure keeps it. After a rewrite there is no object for p to hold, so f() could no longer see the loop’s += 1. Viscosity stops at the store; it doesn’t follow p.',
   },
   {
@@ -27,7 +27,7 @@ const STATES: S[] = [
       { t: 'keep.push(ps[i])', kind: 'push', bad: true },
       { t: 'keep[0].x = 42', kind: 'not followed' },
     ],
-    reason: 'line 5: an element is used by push at line 5',
+    reason: 'line 5: an element is used by push',
     note: 'Now another array holds the same objects. The write through keep[0] must show up in ps[0]. That only works if both arrays point at one real object, which a struct of arrays doesn’t have.',
   },
   {
@@ -37,7 +37,7 @@ const STATES: S[] = [
       { t: 'ps[0]', kind: 'index.get → element' },
       { t: 'keep[0] === ps[0]', kind: 'binop ===', bad: true },
     ],
-    reason: 'line 7: an element is compared or combined with "===" at line 7',
+    reason: 'line 7: an element is compared or combined with "==="',
     note: 'Nothing is stored here, yet this is the hardest one to fake. === asks whether two references name the same object. With columns there are no element objects, so there is nothing to be the same.',
   },
   {
@@ -47,7 +47,7 @@ const STATES: S[] = [
       { t: 'ps[3]', kind: 'index.get → element' },
       { t: 'console.log(ps[3])', kind: 'call (method)', bad: true },
     ],
-    reason: 'line 5: an element is passed to a method call at line 5',
+    reason: 'line 5: an element is passed to a method call',
     note: 'console.log prints the whole object, { x: 4, y: 3 }. Any function Viscosity can’t see into could keep the element, compare it, or list its keys. Unknown code counts as code that observes.',
   },
   {

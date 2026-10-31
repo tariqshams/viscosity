@@ -65,10 +65,9 @@ console.log(ps[0].x, keep[0] === ps[0]);
 ps (line 2) {x} → kept as array of
   objects
   · unsafe: line 7: an element is
-    compared or combined with "===" at
-    line 7
+    compared or combined with "==="
   · unsafe: line 5: an element is used
-    by push at line 5
+    by push
 ```
 
 It prints `42 true`: one object, two names (chapter 4). In a struct of
@@ -98,7 +97,7 @@ console.log(f());
 
 ```text
 · unsafe: line 4: an element is stored
-  in another variable (p) at line 4
+  in another variable (p)
 ```
 
 `f()` must print `4`, the value *after* the loop. Only a real object
@@ -126,7 +125,7 @@ From `escapes_log.js` and `map_method.js`:
 ```text
 // console.log(ps[3]);
 · unsafe: line 5: an element is passed
-  to a method call at line 5
+  to a method call
 
 // ps.map((p) => p.x).slice(0, 3)
 · unsafe: line 5: uses .map on the

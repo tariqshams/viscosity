@@ -292,7 +292,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`viscosity explain` says “an element is compared or combined with "===" at line 7”. What did Viscosity do?',
+    q: '`viscosity explain` says “line 8: an element is compared or combined with "==="”. What did Viscosity do?',
     options: [
       { t: 'Generated cached handles for `ps`.', why: 'Viscosity has no handle mode.' },
       { t: 'Kept `ps` as an array of objects.', correct: true, why: 'An escaping element is a bailout; the explanation names the line.' },

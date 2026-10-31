@@ -22,13 +22,15 @@ import { runWithTests } from '../src/lib/minitest.js';
 import { checkDripOutput } from '../src/lib/drip.js';
 import { Worker } from 'node:worker_threads';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync as writeFile } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync as writeFile } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { compile as compileMdx, createProcessor } from '@mdx-js/mdx';
 import { testCrate, parseTestOutput } from '../src/lib/rust.js';
 
 // Rust is compiled locally with rustc (the browser uses the Rust Playground).
 const rustDir = mkdtempSync(join(tmpdir(), 'book-rust-'));
+// Compiled Rust binaries add up (hundreds of MB per run): remove them on exit.
+process.on('exit', () => { try { rmSync(rustDir, { recursive: true, force: true }); } catch {} });
 let rustN = 0;
 function runRust(code, tests) {
   const n = rustN++;

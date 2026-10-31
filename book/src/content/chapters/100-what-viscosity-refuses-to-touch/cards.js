@@ -88,10 +88,10 @@ console.log(refusal({
 }`,
     tests: `test('one reason', () => {
   expect(refusal({ name: 'ps', line: 2, fields: ['x'],
-    bailouts: ['line 4: an element is stored in another variable (p) at line 4'] }))
+    bailouts: ['line 4: an element is stored in another variable (p)'] }))
     .toEqual([
       'ps (line 2) {x} → kept as array of objects',
-      '  · unsafe: line 4: an element is stored in another variable (p) at line 4',
+      '  · unsafe: line 4: an element is stored in another variable (p)',
     ]);
 });
 test('several fields, two reasons', () => {
@@ -189,13 +189,13 @@ function lesson(reason) {
   return 'other';
 }`,
     tests: `test('===', () => {
-  expect(lesson('line 7: an element is compared or combined with "===" at line 7')).toBe('identity');
+  expect(lesson('line 7: an element is compared or combined with "==="')).toBe('identity');
 });
 test('a second name', () => {
-  expect(lesson('line 4: an element is stored in another variable (p) at line 4')).toBe('identity');
+  expect(lesson('line 4: an element is stored in another variable (p)')).toBe('identity');
 });
 test('console.log', () => {
-  expect(lesson('line 5: an element is passed to a method call at line 5')).toBe('unknown code');
+  expect(lesson('line 5: an element is passed to a method call')).toBe('unknown code');
 });
 test('.map', () => {
   expect(lesson('line 5: uses .map on the array (only .length and .push are supported)')).toBe('unknown code');

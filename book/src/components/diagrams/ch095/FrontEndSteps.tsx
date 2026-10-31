@@ -81,7 +81,7 @@ export default function FrontEndSteps() {
           <g>
             <T x={200} y={140} size={11} anchor="middle" mono>expect(m.code).toBe(a.code)</T>
             <T x={200} y={160} size={11} anchor="middle" mono>expect(m.explain).toBe(a.explain)</T>
-            <T x={200} y={186} size={10} anchor="middle" fill={tok('muted')}>28 corpus files + 5 benchmark programs</T>
+            <T x={200} y={186} size={10} anchor="middle" fill={tok('muted')}>36 corpus files + 5 benchmark programs</T>
           </g>
         )}
         {st.k === 'scale' && (

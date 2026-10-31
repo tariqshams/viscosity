@@ -34,7 +34,7 @@ export const prompts = {
     a: 'So you can fix them all in one go, instead of discovering them one compile at a time.',
   },
   'rep-act': {
-    q: 'The report says “an element is passed to a method call at line 9” for `console.log(ps[3])`. What change lets Viscosity transform `ps`?',
+    q: 'The report says “line 9: an element is passed to a method call” for `console.log(ps[3])`. What change lets Viscosity transform `ps`?',
     a: 'Print fields instead of the element, e.g. `console.log(ps[3].x)`, so no real element object is needed.',
   },
   'rep-tested': {
@@ -298,7 +298,7 @@ export const quiz = [
     options: [
       { t: 'Reports are not tested because they are just text', why: 'They are compared byte for byte in two places.' },
       { t: 'The differential test checks the report’s wording', why: 'It checks layouts and behaviour; it shows the report when a layout is wrong.' },
-      { t: 'The Rust port already passes all 66 stored reports', why: 'The fixtures exist, but the Rust parity test hasn’t been written yet.' },
+      { t: 'The Rust port’s parity test compares the compiled code but not the report', why: 'It compares both, byte for byte, for every stored program in both bounds modes, and every pair matches.' },
       { t: 'The mini-parser test requires identical reports from both parsers', correct: true, why: 'It compares both the compiled code and the explanation for every corpus and benchmark program.' },
     ],
   },

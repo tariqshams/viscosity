@@ -97,8 +97,11 @@ if (!c.loops.some((l) => l.depth > 0))
 const measured =
   opts.profile?.[c.name]?.maxLength;
 const size = measured ?? c.sizeEstimate;
+const about = measured === undefined
+  && c.sizeIsUpperBound
+  ? 'at most' : 'about';
 if (size !== null && size < opts.minSize)
-  return keep(`about ${size} …`);
+  return keep(`${about} ${size} …`);
 return 'soa';
 ```
 
