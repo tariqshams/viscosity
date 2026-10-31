@@ -53,6 +53,12 @@ describe('analyses', () => {
   it('estimates sizes from constant loop bounds', () => {
     const c = coll('const b = []; for (let i = 0; i < 40; i++) for (let j = 0; j < 5; j++) b.push({ x: j });');
     expect(c.sizeEstimate).toBe(200);
+    expect(c.sizeIsUpperBound).toBe(false);
+  });
+  it('marks the size as a maximum when pushes run only on some paths', () => {
+    const c = coll('const b = []; for (let i = 0; i < 100; i++) { if (i % 2) b.push({ x: i }); else b.push({ x: 0 }); }');
+    expect(c.sizeEstimate).toBe(200);
+    expect(c.sizeIsUpperBound).toBe(true);
   });
 });
 

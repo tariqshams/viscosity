@@ -77,7 +77,7 @@ export function plan(a: Analysis, opts: PlanOptions = DEFAULT_OPTIONS): Plan {
     const measured = opts.profile?.[c.name]?.maxLength;
     const size = measured ?? c.sizeEstimate;
     if (size !== null && size < opts.minSize) {
-      out.push(keep(`about ${size} elements${measured !== undefined ? ' (measured)' : ''}: below the ${opts.minSize}-element threshold, where the benefit is too small`));
+      out.push(keep(`${measured === undefined && c.sizeIsUpperBound ? 'at most' : 'about'} ${size} elements${measured !== undefined ? ' (measured)' : ''}: below the ${opts.minSize}-element threshold, where the benefit is too small`));
       continue;
     }
     out.push({ collection: c, layout: 'soa', blockSize: 0, reasons: describe(c, size, measured !== undefined, a.module.language) });
@@ -98,7 +98,7 @@ function describe(c: Collection, size: number | null = c.sizeEstimate, measured 
   r.push(generic.length
     ? `typed ${typedName} columns for ${c.fields.filter((f) => c.numericFields.has(f)).join(', ') || 'no fields'}; ${plainName} columns for ${generic.join(', ')} (${language === 'python' ? 'may hold non-floats' : 'may hold non-numbers'})`
     : `typed ${typedName} columns for all ${c.fields.length} fields`);
-  r.push(size === null ? 'size unknown statically' : `about ${size} elements${measured ? ' (measured by profiling)' : ''}`);
+  r.push(size === null ? 'size unknown statically' : `${!measured && c.sizeIsUpperBound ? 'at most' : 'about'} ${size} elements${measured ? ' (measured by profiling)' : ''}`);
   const proven = c.indexGets.filter((g) => g.boundsProven).length;
   r.push(`${proven} of ${c.indexGets.length} element accesses proven in bounds`);
   return r;

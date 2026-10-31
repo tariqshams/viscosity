@@ -9,8 +9,8 @@
 //  bounds       which element accesses provably stay in bounds
 //  access       per loop: which fields are read and written
 //  size         an estimate of how many elements the collection holds
-import { dominators, dominates, loopOf, naturalLoops, type Loop } from './cfg.ts';
-import { buildUses, type BindingId, type Func, type Inst, type Module, type Use, type ValueId } from './vir.ts';
+import { dominators, dominates, loopOf, naturalLoops, successors, type Loop } from './cfg.ts';
+import { buildUses, type BindingId, type BlockId, type Func, type Inst, type Module, type Use, type ValueId } from './vir.ts';
 
 const ARITH = new Set(['-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>', '>>>', '+']);
 
@@ -48,6 +48,8 @@ export interface Collection {
   lengthReads: Inst[];
   loops: LoopAccess[];
   sizeEstimate: number | null;
+  /** true when some push runs only on some paths, so sizeEstimate is a maximum */
+  sizeIsUpperBound: boolean;
   /** fields provably always numbers: these get Float64Array columns */
   numericFields: Set<string>;
   /** why the collection can't be transformed (empty = safe) */
@@ -67,7 +69,13 @@ export function analyze(m: Module): Analysis {
   const uses = buildUses(m);
   const inst = (v: ValueId) => m.values[v];
   const usesOf = (v: ValueId) => uses.get(v) ?? [];
-  const line = (i: Inst) => i.src?.line ?? 0;
+  // Phis carry no source position of their own; use the latest line among
+  // the values they merge (the reassignment that created the phi).
+  const line = (i: Inst): number => {
+    if (i.src?.line) return i.src.line;
+    if (i.op === 'phi') return Math.max(0, ...i.args.map((a) => m.values[a]?.src?.line ?? 0));
+    return 0;
+  };
   const funcOf = new Map<Inst, Func>();
   for (const f of m.functions) for (const b of f.blocks) for (const i of b.insts) funcOf.set(i, f);
 
@@ -121,7 +129,7 @@ export function analyze(m: Module): Analysis {
     const init = inst(arrayStores[0].args[0]);
     const c: Collection = {
       binding: binding.id, name: binding.name, fields: [], init, initRecords: [], pushes: [], indexGets: [],
-      accesses: [], lengthReads: [], loops: [], sizeEstimate: null, bailouts: [], line: init.src?.line ?? 0,
+      accesses: [], lengthReads: [], loops: [], sizeEstimate: null, sizeIsUpperBound: false, bailouts: [], line: init.src?.line ?? 0,
       numericFields: new Set(),
     };
     if (st.length > 1) c.bailouts.push(`"${binding.name}" is reassigned (line ${line(st[st.length - 1])}), so it may not always hold this array`);
@@ -155,7 +163,7 @@ export function analyze(m: Module): Analysis {
       case 'array.new': return `put inside another array at line ${line(i)}`;
       case 'binop': return `compared or combined with "${i.operator}" at line ${line(i)}`;
       case 'opaque': return `used by code Viscosity doesn't model (${i.note}) at line ${line(i)}`;
-      case 'phi': return `merged with other values (a variable reassigned along different paths) near line ${line(i)}`;
+      case 'phi': return `merged with other values (a variable reassigned along different paths) ${line(i) ? `near line ${line(i)}` : ''}`.trimEnd();
       default: return `used by ${i.op} at line ${line(i)}`;
     }
   };
@@ -487,10 +495,29 @@ export function analyze(m: Module): Analysis {
     // Size estimate: literal elements + pushes inside loops with known trip counts.
     let size = c.initRecords.length;
     let known = true;
+    let upper = false;
     for (const p of c.pushes) {
       const f = funcOf.get(p)!;
-      const { loops } = info(f);
+      const { loops, idom } = info(f);
+      // A push that does not dominate every way out of its region (a loop's
+      // latches, or the function's returns) runs only on some paths: then
+      // counting it every time gives a maximum, not an estimate.
+      const regionExits = (inLoop: (b: BlockId) => boolean, header: BlockId | null) =>
+        f.blocks.filter((b) => idom.has(b.id) && inLoop(b.id) && (header === null
+          ? b.term.kind === 'return' || b.term.kind === 'throw'
+          : successors(f, b.id).includes(header)));
       let mult = 1;
+      const enclosing = loops.filter((l) => l.body.has(p.block));
+      // Regions from outermost (the function) to innermost loop. In each, the
+      // thing that must run on every path is the next region in — the inner
+      // loop's header — or, innermost, the push itself.
+      enclosing.sort((a, b) => b.body.size - a.body.size);
+      const regions = [{ exits: regionExits(() => true, null) },
+        ...enclosing.map((l) => ({ exits: regionExits((b) => l.body.has(b), l.header) }))];
+      regions.forEach((r, k) => {
+        const must = k < enclosing.length ? enclosing[k].header : p.block;
+        if (!r.exits.every((b) => dominates(idom, must, b.id))) upper = true;
+      });
       for (const l of loops) {
         if (!l.body.has(p.block)) continue;
         const t = tripCount(f, l);
@@ -501,6 +528,7 @@ export function analyze(m: Module): Analysis {
       size += mult;
     }
     c.sizeEstimate = known ? size : null;
+    c.sizeIsUpperBound = known && upper;
   }
 
   // Deduplicate bailout messages.
