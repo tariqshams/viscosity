@@ -1,0 +1,47 @@
+{
+  "env": {
+    "node": "v22.23.4",
+    "v8": "12.4.254.21-node.57",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "date": "2026-10-31T18:38:42.543Z",
+    "runs": 3,
+    "note": "Median of N fresh-process runs of each program’s own timed section. Shared cloud VM."
+  },
+  "rows": [
+    {
+      "program": "boids",
+      "layouts": "fl=soa",
+      "originalMs": 84,
+      "viscosityMs": 71,
+      "speedup": 1.18
+    },
+    {
+      "program": "heat",
+      "layouts": "cells=soa",
+      "originalMs": 364,
+      "viscosityMs": 110,
+      "speedup": 3.3
+    },
+    {
+      "program": "ledger",
+      "layouts": "tx=soa",
+      "originalMs": 237,
+      "viscosityMs": 46,
+      "speedup": 5.11
+    },
+    {
+      "program": "nbody",
+      "layouts": "bs=soa",
+      "originalMs": 67,
+      "viscosityMs": 61,
+      "speedup": 1.09
+    },
+    {
+      "program": "particles",
+      "layouts": "ps=soa",
+      "originalMs": 405,
+      "viscosityMs": 94,
+      "speedup": 4.3
+    }
+  ]
+}

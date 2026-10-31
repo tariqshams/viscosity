@@ -44,6 +44,10 @@ export function plan(a: Analysis, opts: PlanOptions = DEFAULT_OPTIONS): Plan {
       out.push(keep(...c.bailouts.map((b) => `unsafe: ${b}`)));
       continue;
     }
+    if (ann && ann.layout === 'aosoa' && c.numericFields.size !== c.fields.length) {
+      out.push(keep(`annotated aosoa, but fields ${c.fields.filter((f) => !c.numericFields.has(f)).join(', ')} may hold non-numbers`));
+      continue;
+    }
     if (ann) {
       if (ann.layout === 'aos') { out.push(keep(`annotated @viscosity aos at line ${ann.line}`)); continue; }
       out.push({
@@ -53,6 +57,10 @@ export function plan(a: Analysis, opts: PlanOptions = DEFAULT_OPTIONS): Plan {
       continue;
     }
     if (opts.mode === 'opt-in') { out.push(keep('opt-in mode: not annotated')); continue; }
+    if (c.numericFields.size === 0) {
+      out.push(keep('no field is provably numeric, so there are no typed columns to gain'));
+      continue;
+    }
     const fieldLoops = c.loops.filter((l) => l.depth > 0);
     if (fieldLoops.length === 0) {
       out.push(keep('no loop reads or writes its fields, so a new layout cannot pay off'));
@@ -76,6 +84,10 @@ function describe(c: Collection, size: number | null = c.sizeEstimate, measured 
     const touched = new Set([...l.reads, ...l.writes]).size;
     r.push(`loop at line ${l.line} in ${l.func}() touches ${touched} of ${F} fields (${[...new Set([...l.reads, ...l.writes])].join(', ')})`);
   }
+  const generic = c.fields.filter((f) => !c.numericFields.has(f));
+  r.push(generic.length
+    ? `typed Float64Array columns for ${c.fields.filter((f) => c.numericFields.has(f)).join(', ') || 'no fields'}; plain array columns for ${generic.join(', ')} (may hold non-numbers)`
+    : `typed Float64Array columns for all ${c.fields.length} fields`);
   r.push(size === null ? 'size unknown statically' : `about ${size} elements${measured ? ' (measured by profiling)' : ''}`);
   const proven = c.indexGets.filter((g) => g.boundsProven).length;
   r.push(`${proven} of ${c.indexGets.length} element accesses proven in bounds`);

@@ -1,4 +1,4 @@
-// viscosity: ps=aos
+// viscosity: ps=soa
 const ps = [];
 for (let i = 0; i < 100; i++) ps.push({ x: i, name: 'p' + i });
 let s = 0;
