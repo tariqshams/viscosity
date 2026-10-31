@@ -1,0 +1,9 @@
+{
+  "name": "@viscosity/core",
+  "version": "0.1.0",
+  "description": "Viscosity core: VIR (a language-neutral SSA IR), the pass manager, the layout analyses and the planner.",
+  "author": "Tariq Shams",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts"
+}

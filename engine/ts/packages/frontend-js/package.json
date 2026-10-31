@@ -1,0 +1,9 @@
+{
+  "name": "@viscosity/frontend-js",
+  "version": "0.1.0",
+  "description": "Viscosity's JavaScript/TypeScript language plugin: parse (acorn or the book's hand-written parser), lower to VIR, and rewrite source from a layout plan.",
+  "author": "Tariq Shams",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts"
+}
