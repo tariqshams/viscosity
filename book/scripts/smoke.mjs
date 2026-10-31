@@ -160,6 +160,44 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/days/',
   check(errors.length === 0, 'Drip runner: no console errors');
 }
 
+// 2c. The Playground's two engines (TypeScript, and Rust as WebAssembly)
+// give identical decisions and code (the parity guarantee), and the .wasm is
+// fetched only when the Rust engine is chosen.
+{
+  const { page, errors } = await newPage();
+  const wasmRequests = [];
+  page.on('request', (r) => { if (r.url().endsWith('.wasm')) wasmRequests.push(r.url()); });
+  await page.goto(url + '/chapters/094-emitting-javascript/', { waitUntil: 'networkidle' });
+  const pg = page.locator('[data-playground]').first();
+  await hydrated(pg);
+  const status = pg.locator('[data-engine-status]');
+  const read = async (eng) => {
+    await eventually(async () => (await status.getAttribute('data-engine-status')) === eng && /compiled in/.test(await status.innerText()));
+    await pg.getByRole('button', { name: 'Decisions' }).click();
+    const explain = await pg.locator('[data-explain]').innerText();
+    await pg.getByRole('button', { name: 'Compiled code' }).click();
+    const code = await pg.locator('[data-code]').innerText();
+    return { explain, code };
+  };
+  const ts = await read('ts');
+  check(wasmRequests.length === 0, 'Playground: no .wasm fetched while the TS engine is in use');
+  const btn = pg.locator('[data-engine="rust"]');
+  const box = await btn.boundingBox();
+  check(box && box.height >= 44 && box.width >= 44, `Playground engine toggle is a 44px tap target (${box && `${box.width.toFixed(0)}x${box.height.toFixed(0)}`})`);
+  await btn.click();
+  const rs = await read('rust');
+  check(wasmRequests.length === 1 && wasmRequests[0].endsWith('/wasm/viscosity_wasm_bg.wasm'), `Playground: the Rust engine loads /wasm/viscosity_wasm_bg.wasm once (${wasmRequests.length})`);
+  check(ts.code.length > 0 && ts.code === rs.code, `Playground: TS and Rust engines emit identical code (${ts.code.length} chars)`);
+  check(ts.explain.length > 0 && ts.explain === rs.explain, `Playground: TS and Rust engines give identical decisions: ${JSON.stringify(rs.explain.split('\n')[0])}`);
+  await pg.locator('[data-run-both]').click();
+  check(await eventually(async () => (await pg.locator('[data-runs]').count()) > 0 && (await pg.locator('[data-runs]').innerText()).includes('Same output')), 'Playground: Run both on the Rust engine\'s output prints the same thing');
+  await pg.locator('[data-engine="ts"]').click();
+  const back = await read('ts');
+  check(back.code === ts.code, 'Playground: switching back to the TS engine works');
+  check(errors.length === 0, `Playground engines: no console errors ${JSON.stringify(errors)}`);
+  check(await noOverflow(page), 'Playground with the engine toggle fits 440px');
+}
+
 // 3. Dark mode and desktop layout.
 {
   const { page, errors } = await newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });

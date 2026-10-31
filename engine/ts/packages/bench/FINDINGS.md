@@ -80,3 +80,37 @@ explains why. `# @viscosity soa` (or `--python-auto`) opts in when memory
 matters more. The JavaScript result is the opposite, because V8's optimizing
 compiler reads Float64Array elements as raw doubles. The same IR and analyses
 serve both languages; only the cost model's verdict differs.
+
+## 7. Node (V8) vs Bun (JavaScriptCore): the gain depends on the engine
+
+The benchmark matrix ([`results/matrix-2026-10-31.md`](results/matrix-2026-10-31.md),
+generated from the `.json` next to it by `src/matrix.ts`) runs the five
+end-to-end programs, original and compiled, on Node 22 (V8 12.4) and Bun
+1.4.4 (JavaScriptCore). Each figure is the best of 9 fresh processes on a
+shared VM. The checksums match on both runtimes.
+
+- **Viscosity speeds up every program on V8 (2.5× geomean), but only about
+  1.7× on JSC.** `ledger` (3.8× on Node, 2.9× on Bun) and `particles` (4.4×,
+  3.0×) gain on both. `boids` gains more on Bun (1.9× against 1.3×).
+- **`heat` gains 4× on V8 and nothing on JSC (1.02×, within the noise).**
+  `nbody` gains little on either (1.2×, 0.97×). SoA was not clearly slower
+  on JSC for any program, but it is not always faster either. (An earlier
+  run the same day gave the same picture, within about 10%.)
+- **The difference is in the originals.** Bun runs the original
+  (array-of-objects) programs 1.7× faster than Node (geomean), and the
+  compiled ones only 1.2× faster. On `heat` the original takes about 350 ms
+  on Node and 96 ms on Bun; compiled, both take 85–95 ms.
+
+A likely cause (not yet confirmed with engine traces): V8 keeps a double in
+an object field as a separate heap number, so every `c[i].h` is one more
+pointer chase. JSC stores the double inline in the object (NaN-boxing).
+SoA's `Float64Array` columns hold raw doubles on both engines, so on V8 the
+rewrite fixes the storage *and* the locality, while on JSC it only fixes the
+locality. That fits section 5, where packed typed storage alone recovered
+much of the gain on V8.
+
+**For the cost model:** the size and access-pattern rules still hold, but
+the expected gain depends on the target engine. A program that wins 4× on
+Node may win nothing on Bun or Safari. The explain text says why a
+collection was transformed, not how much it will gain, and that is the
+right claim to make.
