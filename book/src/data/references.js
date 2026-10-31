@@ -3107,6 +3107,177 @@ export const references = [
     "checkedAgainst": "library/core/src/array/mod.rs on the master branch of github.com/rust-lang/rust, read raw: “Tries to create an array ref `&[T; N]` from a slice ref `&[T]`. Succeeds if `slice.len() == N`.”, with the example `let bytes_tail: &[u8; 2] = bytes[1..3].try_into().unwrap();`; stable since 1.34.0.",
     "shaped": "Chapter 166: one length check up front turns a slice into a fixed-size array, so u8 indexes need no checks."
   },
+  {
+    "id": "cargo-workspaces",
+    "authors": [
+      "The Cargo Team"
+    ],
+    "title": "Workspaces (The Cargo Book)",
+    "venue": "The Cargo Book; source in doc/book/src/reference/workspaces.md of github.com/rust-lang/cargo",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/cargo/reference/workspaces.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/book/src/reference/workspaces.md in github.com/rust-lang/cargo (master), read raw: all packages share a common Cargo.lock and output directory (`target` in the workspace root); “The [patch], [replace] and [profile.*] sections in Cargo.toml are only recognized in the root manifest, and ignored in member crates’ manifests”; “The workspace.package table is where you define keys that can be inherited by members of a workspace. These keys can be inherited by defining them in the member package with {key}.workspace = true” (supported keys include edition, license, rust-version and version); the workspace.dependencies table, inherited with `dep.workspace = true`, also from [dev-dependencies].",
+    "shaped": "Chapter 169: how engine/rust’s members inherit versions and dependencies key by key, and why its profiles live in the root manifest."
+  },
+  {
+    "id": "cargo-specifying-deps",
+    "authors": [
+      "The Cargo Team"
+    ],
+    "title": "Specifying Dependencies (The Cargo Book)",
+    "venue": "The Cargo Book; source in doc/book/src/reference/specifying-dependencies.md of github.com/rust-lang/cargo",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/book/src/reference/specifying-dependencies.md in github.com/rust-lang/cargo (master), read raw: “Default requirements” (“Versions are considered compatible if their left-most non-zero major/minor/patch component is the same”, with the table `0.2 := >=0.2.0, <0.3.0` and `1.2 := >=1.2.0, <2.0.0`) and “Comparison requirements”, including the exact form `= 1.2.3`.",
+    "shaped": "Chapter 169: what `\"0.156\"`, `\"2\"` and `\"=0.2.106\"` accept in engine/rust’s Cargo.toml."
+  },
+  {
+    "id": "cargo-config",
+    "authors": [
+      "The Cargo Team"
+    ],
+    "title": "Configuration (The Cargo Book)",
+    "venue": "The Cargo Book; source in doc/book/src/reference/config.md of github.com/rust-lang/cargo",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/cargo/reference/config.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/book/src/reference/config.md in github.com/rust-lang/cargo (master), read raw: “Hierarchical structure” (“It looks for configuration files in the current directory and all parent directories”, e.g. /projects/foo/bar/baz/.cargo/config.toml up to /.cargo/config.toml and then $CARGO_HOME/config.toml; deeper directories take precedence) and the `[profile]` section (“can be used to globally change profile settings, and override settings specified in Cargo.toml”).",
+    "shaped": "Chapter 169: where cargo finds engine/rust/.cargo/config.toml, and how its [profile.dev] and [profile.test] tables override the manifest."
+  },
+  {
+    "id": "cargo-profiles-debug-lto",
+    "authors": [
+      "The Cargo Team"
+    ],
+    "title": "Profiles: the debug and lto settings (The Cargo Book)",
+    "venue": "The Cargo Book; source in doc/book/src/reference/profiles.md of github.com/rust-lang/cargo",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/cargo/reference/profiles.html#debug",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/book/src/reference/profiles.md in github.com/rust-lang/cargo (master), read raw: `debug`: “0, false, or \"none\": no debug info at all, default for release” and “2, true, or \"full\": full debug info, default for dev”; `lto`: “\"thin\": Performs \"thin\" LTO. This is similar to \"fat\", but takes substantially less time to run while still achieving performance gains similar to \"fat\".”",
+    "shaped": "Chapter 169: what `debug = 0` in engine/rust’s config turns off, and what `lto = \"thin\"` in its release profile does."
+  },
+  {
+    "id": "wasm-bindgen-schema",
+    "authors": [
+      "The wasm-bindgen Developers"
+    ],
+    "title": "wasm-bindgen-cli-support 0.2.106: the schema version check (src/wit/mod.rs)",
+    "venue": "Source of the wasm-bindgen-cli-support crate, version 0.2.106, on crates.io (github.com/wasm-bindgen/wasm-bindgen)",
+    "year": null,
+    "doi": null,
+    "url": "https://crates.io/crates/wasm-bindgen-cli-support/0.2.106",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/wit/mod.rs of the published wasm-bindgen-cli-support 0.2.106 crate (as downloaded by cargo), read in full around the error: “it looks like the Rust project used to create this Wasm file was linked against version of wasm-bindgen that uses a different bindgen format than this binary … Currently the bindgen format is unstable enough that these two schema versions must exactly match.” The installed CLI on the writing machine reported `wasm-bindgen 0.2.106`.",
+    "shaped": "Chapter 169: why engine/rust pins wasm-bindgen with \"=0.2.106\"."
+  },
+  {
+    "id": "indexmap-docs",
+    "authors": [
+      "The indexmap developers (bluss, Josh Stone and contributors)"
+    ],
+    "title": "indexmap 2: IndexMap and IndexSet",
+    "venue": "Source and API documentation of the indexmap crate, version 2.14.2, on crates.io (github.com/indexmap-rs/indexmap)",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.rs/indexmap/2/indexmap/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/lib.rs and src/map.rs of the published indexmap 2.14.2 crate (as downloaded by cargo for engine/rust), read raw: “IndexMap is a hash table where the iteration order of the key-value pairs is independent of the hash values of the keys”; map.rs “Order”: “a consistent order that is determined by the sequence of insertion and removal calls on the map. The order does not depend on the keys or the hash function at all … The insertion order is preserved, with notable exceptions like the .remove() or .swap_remove() methods.”",
+    "shaped": "Chapter 169: why the port keeps the reference’s insertion-ordered Map and Set with IndexMap and IndexSet."
+  },
+  {
+    "id": "rustc-hash-readme",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "rustc-hash: a speedy, non-cryptographic hashing algorithm used by rustc",
+    "venue": "README of the rustc-hash crate (github.com/rust-lang/rustc-hash); also in the published 2.1.3 crate",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/rust-lang/rustc-hash",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/rust-lang/rustc-hash/master/README.md and the README.md of the published 2.1.3 crate: “The hash map in std uses SipHash by default, which provides resistance against DOS attacks. These attacks aren’t a concern in the compiler so we prefer to use a quicker, non-cryptographic hash algorithm”; “This crate provides FxHashMap and FxHashSet as collections. They are simply type aliases for their std::collection counterparts using the Fx hasher.”",
+    "shaped": "Chapter 169: why the port uses FxHashMap where iteration order is never observed."
+  },
+  {
+    "id": "rustref-dyn-compatibility",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Traits: Dyn compatibility (The Rust Reference)",
+    "venue": "The Rust Reference (rust-lang/reference on GitHub, rendered at doc.rust-lang.org/reference)",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/items/traits.md on the master branch of github.com/rust-lang/reference, read raw, section items.traits.dyn-compatible: “A dyn-compatible trait can be the base trait of a trait object”; the conditions: all supertraits dyn compatible; Sized not a supertrait; “It must not have any associated constants”; “It must not have any associated types with generics”; every associated function dispatchable (no type parameters, a method that does not use Self except in the type of the receiver, a receiver such as &Self, &mut Self, Box<Self>, Rc<Self>, Arc<Self> or Pin<P>, no opaque return type, no where Self: Sized) or explicitly non-dispatchable. Also checked with rustc 1.97: `&dyn LanguagePlugin<Extra = JsExtra>` compiles against engine/rust’s crates.",
+    "shaped": "Chapter 171: LanguagePlugin is dyn compatible; what stops one trait-object type for both plugins is its associated type, not the trait’s methods."
+  },
+  {
+    "id": "rustc-e0191",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Error code E0191 (Rust compiler error index)",
+    "venue": "Rust compiler error index; source in compiler/rustc_error_codes/src/error_codes/E0191.md of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/error_codes/E0191.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "compiler/rustc_error_codes/src/error_codes/E0191.md on the main branch of github.com/rust-lang/rust, read raw: “An associated type wasn’t specified for a trait object”, with the example `type Foo = dyn Trait;` (“the value of the associated type `Bar` (from the trait `Trait`) must be specified”), “Trait objects need to have all associated types specified”, and the fix `dyn Trait<Bar=i32>`. The same error, worded “the value of the associated type `Extra` in `LanguagePlugin` must be specified”, was produced with rustc 1.97 against engine/rust.",
+    "shaped": "Chapter 171: why Vec<&dyn LanguagePlugin> doesn’t compile."
+  },
+  {
+    "id": "oxc-project",
+    "authors": [
+      "Boshen",
+      "VoidZero Inc. and contributors"
+    ],
+    "title": "Oxc, the Oxidation Compiler (README)",
+    "venue": "github.com/oxc-project/oxc (MIT License)",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/oxc-project/oxc",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/oxc-project/oxc/main/README.md (“The Oxidation Compiler is a collection of high-performance tools for JavaScript and TypeScript written in Rust”; tools listed: Oxlint, Oxfmt, Parser, Transformer, Minifier, Resolver) and LICENSE (“MIT License. Copyright (c) 2024-present VoidZero Inc. & Contributors. Copyright (c) 2023 Boshen”). oxc.rs itself was not opened.",
+    "shaped": "Chapter 172: what oxc is, and which of its parts the Rust port uses."
+  },
+  {
+    "id": "oxc-parser-docs",
+    "authors": [
+      "Boshen",
+      "VoidZero Inc. and contributors"
+    ],
+    "title": "oxc_parser 0.156.0: crate documentation and ParserReturn",
+    "venue": "Source of the oxc_parser crate, version 0.156.0, on crates.io (github.com/oxc-project/oxc)",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.rs/oxc_parser/0.156.0/oxc_parser/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/lib.rs of the published oxc_parser 0.156.0 crate (as downloaded by cargo for engine/rust), read raw: the crate docs (“The parser has a minimal API with three inputs (a memory arena, a source string, and a SourceType) and one return struct (a ParserReturn)”; performance: “AST is allocated in a memory arena (oxc_allocator) for fast AST drop”, “oxc_span::Span offsets uses u32 instead of usize”, “Scope binding, symbol resolution and complicated syntax errors are not done in the parser, they are delegated to the semantic analyzer”); ParserReturn’s docs on `diagnostics` (“Syntax errors encountered while parsing. This list is not comprehensive. Oxc offloads more-expensive checks to semantic analysis”). And oxc_span 0.156.0 src/span.rs: Span holds u32 start and end offsets, with the example `&text[span]`. That spans are UTF-8 byte offsets was confirmed by parsing engine/rust/tests/extra/unicode_offsets.js (const ps = []; at 126..140).",
+    "shaped": "Chapter 172: oxc’s parser API, its byte-offset spans, and which syntax errors it leaves to semantic analysis."
+  },
+  {
+    "id": "oxc-allocator-docs",
+    "authors": [
+      "Boshen",
+      "VoidZero Inc. and contributors"
+    ],
+    "title": "oxc_allocator 0.156.0: Allocator",
+    "venue": "Source of the oxc_allocator crate, version 0.156.0, on crates.io (github.com/oxc-project/oxc)",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.rs/oxc_allocator/0.156.0/oxc_allocator/struct.Allocator.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/lib.rs and src/allocator.rs of the published oxc_allocator 0.156.0 crate (as downloaded by cargo for engine/rust), read raw: “Oxc uses a bump-based memory arena for faster AST allocations”, with arena versions of Box, Vec, String, HashMap and HashSet; Allocator’s docs (“A bump-allocated memory arena”, built from chunks that each at least double; “For good performance, it’s ideal to create an Allocator, and re-use it over and over”, with reset between uses; “No Drops”: “Objects allocated into Oxc memory arenas are never Dropped. Memory is released in bulk when the allocator is dropped”, and alloc, Box::new_in, Vec::new_in and HashMap::new_in “will refuse to compile if called with a Drop type”).",
+    "shaped": "Chapter 172: the arena behind oxc’s AST, why its nodes are never dropped one by one, and the advice to reuse allocators."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.
