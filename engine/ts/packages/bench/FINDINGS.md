@@ -61,3 +61,22 @@ the source declared.
 2–3× faster than objects on most suites, while still loading every field. So
 part of SoA's advantage is *typed storage*, and part is *access locality*.
 The Part II chapters separate the two.
+
+## 6. Python (M7): columns save memory, not time, in CPython
+
+`packages/bench/e2e-py/layouts.py` (CPython 3.13, 100,000 elements) gave these
+results, saved in `results/python-layouts-*.json`:
+
+| layout | ns per element (update loop) | memory |
+|---|---:|---:|
+| dataclass objects | 26.7 | 16.0 MB |
+| list columns | 43.3 | — |
+| `array('d')` columns | 72.7 | 3.3 MB |
+
+CPython is an interpreter, and reading an `array('d')` element creates a new
+float object each time, so the cache-friendlier layout loses on time. It wins
+about **4.9×** on memory. So the Python plugin keeps objects by default and
+explains why. `# @viscosity soa` (or `--python-auto`) opts in when memory
+matters more. The JavaScript result is the opposite, because V8's optimizing
+compiler reads Float64Array elements as raw doubles. The same IR and analyses
+serve both languages; only the cost model's verdict differs.
