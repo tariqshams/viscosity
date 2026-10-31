@@ -1,0 +1,221 @@
+---
+n: 160
+day: 40
+part: X
+title: 'Classes and instances in Rust'
+tagline: 'An instance in drip-rs is a class handle and a hash table, living in an arena slot. Reading a field is one lookup and a copy; writing one is a single line, once you have read everything you need first.'
+objectives:
+  - Map drip-rs’s ObjClass and ObjInstance to the TypeScript objects, and explain what the field table is.
+  - Trace how calling a class makes an instance, and why the class stays on the stack meanwhile.
+  - Explain the GetProperty and SetProperty arms, and the borrow error that shapes SetProperty.
+  - Write property access for a small VM, with tests.
+introduces: [rust-instances]
+uses: [drip-rs, object-handle, string-interner, arena-gc, frame-stack, value-enum, drip-class, instance, field, class, property, dot-access, hash-table, keyword, struct, impl, enum, match, pattern, option, borrow, shared-vs-mutable, borrow-checker, self-receiver, runtime-error, roots, size-of, typescript, drip]
+sources: [klabnik2026, rustref-keywords]
+---
+import InstanceSteps from '../../../components/diagrams/ch160/InstanceSteps';
+
+## Fields in a table
+
+```
+class Point {}
+let p = Point();
+p.x = 3;
+print p.x; // 3
+print p;   // Point instance
+```
+
+A Drip instance is a bag of fields that you can add to at any time, as
+in chapter 43. Chapter 59 put that bag in the TypeScript VM as a hash
+table on each instance. drip-rs does the same, adapted from
+`src/object.rs`:
+
+```rust
+pub struct ObjClass {
+    pub name: StrRef,
+    pub methods: Table,
+}
+
+pub struct ObjInstance {
+    pub class: Gc<ObjClass>,
+    pub fields: Table,
+}
+```
+
+The TypeScript field is called `klass`, because `class` is a reserved
+word in JavaScript. In Rust, `class` is not a keyword
+<Cite id="rustref-keywords" />, so drip-rs uses the plain word.
+
+`Table` is chapter 154's table: open addressing, keys and values in two
+columns, keyed by `StrRef`. Field names are interned strings whose
+handle carries the hash, so looking up `x` never visits the string
+arena. The table is a plain Rust value inside the instance. Its two
+`Vec`s are owned by the instance and freed with it when sweep drops the
+object.
+
+<Callout kind="intuition">
+A luggage tag tied to a notebook. The tag says which class the instance
+came from. The notebook has one line per field, and you can add a line
+whenever you like. Everyone holding the instance's number opens the
+same notebook.
+</Callout>
+
+<Prompts ids={['ri-shape', 'ri-class-word', 'ri-table']} />
+
+## Making an instance
+
+`OpCode::Class` allocates an `ObjClass` with its name and an empty
+method table, and pushes `Value::Class(handle)`. Calling that value
+makes an instance, adapted from `call_value`:
+
+```rust
+Value::Class(class) => {
+    let instance = self.alloc(ObjInstance {
+        class, fields: Table::new() });
+    self.set_peek(argc,
+        Value::Instance(instance));
+    // ...run `init` if the class has one
+    // (chapter 161), else check argc == 0
+}
+```
+
+`alloc` may collect first, and the new instance holds `class`. That is
+safe because the class is still on the stack, in the callee's slot, the
+rule from chapter 159. Only then does `set_peek` overwrite that slot
+with the instance, which is where an initializer will find `this`.
+
+<Prompts ids={['ri-alloc-safe', 'ri-slot']} />
+
+## Get and set
+
+Adapted from the `GetProperty` and `SetProperty` arms:
+
+```rust
+OpCode::GetProperty => {
+    let Value::Instance(inst) = self.peek(0)
+    else { /* "Only instances have
+               properties." */ };
+    let name = self.read_string();
+    if let Some(v) =
+        self.heap[inst].fields.get(name)
+    {
+        self.pop();
+        self.push(v);
+    } else {
+        let class = self.heap[inst].class;
+        self.bind_method(class, name)?;
+    }
+}
+OpCode::SetProperty => {
+    let Value::Instance(inst) = self.peek(1)
+    else { /* "Only instances have
+               fields." */ };
+    let name = self.read_string();
+    let value = self.peek(0);
+    self.heap[inst].fields.set(name, value);
+    self.pop();
+    self.pop();
+    self.push(value);
+}
+```
+
+`fields.get` returns `Option<Value>`, a copy, so the borrow of the heap
+ends before `pop` and `push` need `&mut self`. A field shadows a method
+of the same name, because fields are checked first; a missing field
+falls through to the class's methods, which is chapter 161.
+
+<InstanceSteps client:visible />
+
+The TypeScript `SET_PROPERTY` writes it in one line,
+`inst.fields.set(readString(), this.peek(0))`. On a toy Rust VM, the
+same one-liner:
+
+```rust
+self.insts[i].fields
+    .insert(self.read_byte() as u32, v);
+```
+
+rustc 1.97 (trimmed):
+
+```
+error[E0499]: cannot borrow `*self` as
+  mutable more than once at a time
+16 | self.insts[i].fields
+   | ---------- first mutable borrow
+   |            occurs here
+17 |     .insert(self.read_byte() as u32..
+   |      ------ ^^^^ second mutable borrow
+   |      |           occurs here
+   |      first borrow later used by call
+```
+
+The receiver, the field table, is borrowed mutably first, and then the
+argument wants `&mut self` too, to advance `ip`. drip-rs reads the name
+and the value into locals before it touches the table. It's the same
+habit as chapter 156's `patch_jump`: finish reading, then borrow to
+write.
+
+<Callout kind="definition">
+In drip-rs, an **instance** is an `ObjInstance` in the heap's instance
+arena: a `Gc<ObjClass>` handle to its class and a **field table**, a
+`Table` from interned names to values that the instance owns.
+`Value::Instance(handle)` refers to it. `GetProperty` reads a field
+with one table lookup, falling back to the class's methods;
+`SetProperty` adds or overwrites one. Both check that the receiver is
+an instance first.
+</Callout>
+
+<Run id="read-then-write" />
+
+<Prompts ids={['ri-copy', 'ri-shadow', 'ri-e0499', 'ri-result']} />
+
+## When it goes wrong
+
+The type checks come first, so the error names the operation. Each of
+these lines fails with exit code 70, and drip-rs and the TypeScript VM
+print the same text:
+
+```
+print p.z;  Undefined property 'z'.
+n.x = 2;    Only instances have fields.
+123.foo;    Only instances have
+            properties.
+```
+
+I ran the first two in small programs, with `p` an instance and `n` a
+number. The third is the corpus program `field/get_on_num.drip`.
+
+<Prompts ids={['ri-errors']} />
+
+<Callout kind="engine" label="Under the hood">
+To the collector, an instance is two references, adapted from
+`blacken`: `instance.class.trace(marks)` and
+`instance.fields.trace(marks)`, which marks every key and every value.
+Its size for pacing is `size_of::<ObjInstance>()`: 64 bytes, measured
+with rustc 1.97 on x86-64 Linux. That leaves out the field table's
+buffers, which grow with the fields, so a wide instance counts for less
+than it holds. The TypeScript heap has the same blind spot, with a
+fixed 48. In the committed benchmark run, `instantiation.drip` took
+628 ms on drip-rs and 3570 ms on the TypeScript VM, and
+`properties.drip`, which reads and writes fields in a loop, 795 ms and
+2781 ms.
+</Callout>
+
+## Your turn
+
+<Exercise id="properties" />
+
+## What you learned
+
+- An **instance** is an `ObjInstance`: a class handle and a **field
+  table** it owns, keyed by interned names that carry their hash.
+- **Calling a class** allocates the instance while the class is still
+  on the stack, then `set_peek` puts the instance in the callee's slot.
+- `GetProperty` **copies** the field's value out, so the heap borrow
+  ends at once; fields shadow methods.
+- `SetProperty` **reads its operands first**, then borrows the table:
+  the TypeScript one-liner is E0499 in Rust.
+- Both arms check the receiver's type first, giving "Only instances
+  have properties." or "... fields.".
+
+<Quiz />

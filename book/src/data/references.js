@@ -2980,6 +2980,48 @@ export const references = [
     "checkedAgainst": "src/expressions/operator-expr.md in github.com/rust-lang/reference (master), read raw, rule expr.as.numeric.int-truncation: “Casting from a larger integer to a smaller integer (e.g. u32 -> u8) will truncate”, with the examples 1234u16 as u8 == 210 and 0xabcdu16 as u8 == 0xcd.",
     "shaped": "Chapter 156: patch_jump writes `(jump >> 8) as u8` and `jump as u8`, where the TypeScript compiler masks with & 0xff."
   },
+  {
+    "id": "rust-std-vec-insert",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Vec::insert (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/alloc/src/vec/mod.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/vec/struct.Vec.html#method.insert",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/alloc/src/vec/mod.rs on the master branch of github.com/rust-lang/rust, read raw: the doc comment of Vec::insert (“Inserts an element at position `index` within the vector, shifting all elements after it to the right”; “Panics if `index > len`”; “Takes *O*([`Vec::len`]) time. All items after the insertion index must be shifted to the right. In the worst case, all elements are shifted when the insertion index is 0.”).",
+    "shaped": "Chapter 158: what inserting into drip-rs’s sorted open-upvalue list costs."
+  },
+  {
+    "id": "rust-std-mem-take",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Function std::mem::take (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/core/src/mem/mod.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/mem/fn.take.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/mem/mod.rs on the master branch of github.com/rust-lang/rust, read raw: the doc comment of take (“Replaces `dest` with the default value of `T`, returning the previous `dest` value.”; “`take` allows taking ownership of a struct field by replacing it with an \\\"empty\\\" value”, with the Buffer example where `let buf = self.buf;` fails with E0507 and `mem::take(&mut self.buf)` works).",
+    "shaped": "Chapter 159: drip-rs lifts the mark bitmap out of the heap with mem::take for the length of a collection."
+  },
+  {
+    "id": "rustref-keywords",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Keywords (The Rust Reference)",
+    "venue": "The Rust Reference; source in src/keywords.md of github.com/rust-lang/reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/keywords.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/keywords.md on the master branch of github.com/rust-lang/reference, read raw: the three categories (strict, reserved, weak); the strict list (_, as, async, await, break, const, continue, crate, dyn, else, enum, extern, false, fn, for, if, impl, in, let, loop, match, mod, move, mut, pub, ref, return, self, Self, static, struct, super, trait, true, type, unsafe, use, where, while), the reserved list (abstract, become, box, do, final, gen, macro, override, priv, try, typeof, unsized, virtual, yield) and the weak list ('static, macro_rules, raw, safe, union). `class` is in none of them.",
+    "shaped": "Chapter 160: drip-rs can name the field `class`, where the TypeScript VM needed `klass`."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.

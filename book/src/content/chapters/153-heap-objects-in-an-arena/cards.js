@@ -868,7 +868,7 @@ heap[sub].methods.add_all(&m);
     options: [
       { t: 'It reads whatever object moved into that slot', why: 'In debug and stress modes freed slots are never reused, so nothing moves in.' },
       { t: 'Undefined behaviour', why: 'drip-rs forbids `unsafe`, so a stale handle can’t cause undefined behaviour.' },
-      { t: 'The slot is `None`, so `use_after_free` panics with a message naming the type', correct: true, why: 'Something like “use after free: a ObjClass was collected while still in use”.' },
+      { t: 'The slot is `None`, so `use_after_free` panics with a message naming the type', correct: true, why: 'Something like “use after free: an object of type ObjClass was collected while still in use”.' },
       { t: 'The compiler rejects the program', why: 'Whether a handle is stale is only known at run time.' },
     ],
   },
