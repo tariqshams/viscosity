@@ -1285,6 +1285,192 @@ export const references = [
     "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/function/length/index.md (MDN’s own source repository): “indicates the number of parameters expected by the function”, contrasted with arguments.length, the number actually passed",
     "shaped": "Chapter 39: JavaScript records a function’s arity as f.length but does not enforce it, unlike Drip."
   },
+  {
+    "id": "v8-sparkplug",
+    "authors": [
+      "Leszek Swirski"
+    ],
+    "title": "Sparkplug — a non-optimizing JavaScript compiler",
+    "venue": "V8 blog (v8.dev), 27 May 2021",
+    "year": 2021,
+    "doi": null,
+    "url": "https://v8.dev/blog/sparkplug",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/sparkplug.md (the post’s source in the v8.dev repository; read in full from the writing session, v8.dev itself not opened)",
+    "shaped": "Chapters 45, 47 and 48: interpreters have inherent bytecode-decoding and dispatch overheads; dispatching to the next bytecode depends on branch prediction; Ignition’s interpreter frame keeps a pointer to the bytecode array and the offset of the current bytecode; Sparkplug compiles bytecode to machine code in one linear pass, its core a switch inside a for loop, with no intermediate representation, relying on the bytecode compiler having already done work such as variable resolution."
+  },
+  {
+    "id": "lcn2-fnv",
+    "authors": [
+      "Landon Curt Noll"
+    ],
+    "title": "fnv: Fowler/Noll/Vo hash (reference implementation)",
+    "venue": "Source repository by Landon Curt Noll, github.com/lcn2/fnv (README, hash_32a.c, fnv.h, test_fnv.c)",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/lcn2/fnv",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/lcn2/fnv/master/README.md, hash_32a.c (FNV_32_PRIME 0x01000193; xor each octet, then multiply mod 2^32), fnv.h (FNV1_32A_INIT 0x811c9dc5) and test_fnv.c (FNV-1a 32 test vectors: \"\" = 0x811c9dc5, \"a\" = 0xe40c292c, \"foobar\" = 0xbf9cf968). isthe.com and the IETF datatracker/rfc-editor were not reachable from the writing session, so the author’s own GitHub source was used.",
+    "shaped": "Chapter 51: FNV-1a, its 32-bit offset basis and prime, the xor-then-multiply order, its authors, and the test vectors the exercise checks against."
+  },
+  {
+    "id": "mdn-math-imul",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Math.imul()",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/imul",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/math/imul/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 51: Math.imul performs C-like 32-bit integer multiplication, which FNV-1a needs."
+  },
+  {
+    "id": "mdn-unsigned-right-shift",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Unsigned right shift (>>>)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Unsigned_right_shift",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/operators/unsigned_right_shift/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 51: >>> fills with zero bits so the result is never negative; x >>> 0 reads a 32-bit pattern as an unsigned number."
+  },
+  {
+    "id": "cpython-dictobject",
+    "authors": [
+      "Python Software Foundation and CPython contributors"
+    ],
+    "title": "Objects/dictobject.c (CPython dictionary implementation, design comments)",
+    "venue": "CPython source repository, github.com/python/cpython, main branch",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/python/cpython/blob/main/Objects/dictobject.c",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/main/Objects/dictobject.c (comments on slot states incl. Dummy slots that cannot become Unused again; resize at USABLE_FRACTION, two-thirds full; probe recurrence j = 5*j + 1 + perturb mixing in higher hash bits)",
+    "shaped": "Chapter 51: a production open-addressing table with tombstone-like dummy slots, a two-thirds load limit and non-linear probing."
+  },
+  {
+    "id": "python-sys-intern",
+    "authors": [
+      "Python Software Foundation"
+    ],
+    "title": "sys.intern(string), in: sys — System-specific parameters and functions",
+    "venue": "The Python Standard Library documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.python.org/3/library/sys.html#sys.intern",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/main/Doc/library/sys.rst (the source the documentation is built from; docs.python.org itself was unreachable from this session)",
+    "shaped": "Chapter 52: Python interns names automatically, and interned dictionary keys let key comparisons after hashing be a pointer compare; interned strings are not immortal."
+  },
+  {
+    "id": "openjdk-string-intern",
+    "authors": [
+      "OpenJDK contributors"
+    ],
+    "title": "java.lang.String#intern() (Javadoc in String.java)",
+    "venue": "OpenJDK source repository, github.com/openjdk/jdk, master branch",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/lang/String.java",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/openjdk/jdk/master/src/java.base/share/classes/java/lang/String.java (Javadoc of intern(): a pool of strings maintained by String; s.intern() == t.intern() iff s.equals(t); all literal strings and string-valued constant expressions are interned)",
+    "shaped": "Chapter 52: Java interns every string literal and offers intern() for other strings."
+  },
+  {
+    "id": "cpython-dis",
+    "authors": [
+      "Python Software Foundation"
+    ],
+    "title": "dis: Disassembler for Python bytecode",
+    "venue": "The Python Standard Library documentation (Python 3, current development version)",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.python.org/3/library/dis.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/main/Doc/library/dis.rst (the source the page is built from; docs.python.org was not reachable from the writing session). Entries read: LOAD_GLOBAL (namei) “Loads the global named co_names[namei>>1] onto the stack”; LOAD_FAST (var_num) “Pushes a reference to the local co_varnames[var_num] onto the stack”; STORE_FAST; JUMP_FORWARD (delta) “Increments bytecode counter by delta”; JUMP_BACKWARD (delta); POP_JUMP_IF_FALSE (delta) “If STACK[-1] is false, increments the bytecode counter by delta. STACK[-1] is popped.”",
+    "shaped": "Chapters 53–55: CPython names globals by an index into a table of names but locals by a plain index, and its conditional jump pops the condition (unlike Drip’s JUMP_IF_FALSE, which peeks)."
+  },
+  {
+    "id": "lua-lfunc",
+    "authors": [
+      "Roberto Ierusalimschy",
+      "Luiz Henrique de Figueiredo",
+      "Waldemar Celes"
+    ],
+    "title": "lfunc.c: auxiliary functions to manipulate prototypes and closures (Lua source code)",
+    "venue": "The Lua programming language, official source repository (github.com/lua/lua), Lua.org, PUC-Rio",
+    "year": 2026,
+    "doi": null,
+    "url": "https://github.com/lua/lua/blob/master/lfunc.c",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/lua/lua/master/lfunc.c (luaF_findupval and luaF_closeupval) and lua.h (LUA_AUTHORS, copyright 1994–2026 Lua.org, PUC-Rio)",
+    "shaped": "Chapter 57: open upvalues kept on a list in stack order and reused when found (luaF_findupval), and closing an upvalue by moving the value into the upvalue and repointing its value pointer there (luaF_closeupval)."
+  },
+  {
+    "id": "v8-trash-talk",
+    "authors": [
+      "Peter Marshall"
+    ],
+    "title": "Trash talk: the Orinoco garbage collector",
+    "venue": "V8 blog (v8.dev), 3 January 2019",
+    "year": 2019,
+    "doi": null,
+    "url": "https://v8.dev/blog/trash-talk",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/trash-talk.md (the post’s source in the v8.dev repository)",
+    "shaped": "Chapters 58 and 60: marking from a root set that includes the execution stack and the global object; sweeping into free-lists and compacting some pages; the generational hypothesis (most objects die young); the young generation (nursery and intermediate) and the old generation; the Scavenger copying survivors, with old-to-new references kept by write barriers as extra roots."
+  },
+  {
+    "id": "v8-concurrent-marking",
+    "authors": [
+      "Ulan Degenbaev",
+      "Michael Lippautz",
+      "Hannes Payer"
+    ],
+    "title": "Concurrent marking in V8",
+    "venue": "V8 blog (v8.dev), 11 June 2018",
+    "year": 2018,
+    "doi": null,
+    "url": "https://v8.dev/blog/concurrent-marking",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/concurrent-marking.md (the post’s source in the v8.dev repository)",
+    "shaped": "Chapter 58: tri-colour marking with two mark bits per object (white, grey, black) and a marking worklist; the write barrier that keeps a black object from pointing at a white one while marking runs concurrently."
+  },
+  {
+    "id": "spidermonkey-value",
+    "authors": [
+      "Mozilla contributors"
+    ],
+    "title": "js/public/Value.h: JS::Value, SpiderMonkey’s representation of JavaScript values (Firefox source code)",
+    "venue": "Firefox source repository (github.com/mozilla-firefox/firefox), Mozilla",
+    "year": 2026,
+    "doi": null,
+    "url": "https://github.com/mozilla-firefox/firefox/blob/main/js/public/Value.h",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mozilla-firefox/firefox/main/js/public/Value.h (header comment: non-number values stored in NaN bit patterns with a tag field; NUNBOX32 and PUNBOX64 boxing modes; in PUNBOX64 the tag is stored in the 5 most significant fraction bits next to the exponent, with 47 pointer bits; setDouble and setNumber canonicalize NaNs)",
+    "shaped": "Chapter 60: a production JavaScript engine that NaN-boxes its values, packing a tag next to the exponent and a pointer into the remaining bits, and canonicalizing NaNs."
+  },
+  {
+    "id": "cpython-superinstructions",
+    "authors": [
+      "Python Software Foundation and CPython contributors"
+    ],
+    "title": "CPython: Python/flowgraph.c (insert_superinstructions) and the dis module documentation (LOAD_FAST_LOAD_FAST)",
+    "venue": "CPython source repository (github.com/python/cpython), main branch; docs.python.org",
+    "year": 2026,
+    "doi": null,
+    "url": "https://github.com/python/cpython/blob/main/Python/flowgraph.c",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/main/Python/flowgraph.c (make_super_instruction and insert_superinstructions: within each basic block, adjacent LOAD_FAST pairs become LOAD_FAST_LOAD_FAST when both opargs are below 16, packed as (a << 4) | b, and the second instruction becomes a NOP) and https://raw.githubusercontent.com/python/cpython/main/Doc/library/dis.rst (LOAD_FAST_LOAD_FAST, “versionadded 3.13”)",
+    "shaped": "Chapter 60: a real interpreter’s compiler inserting superinstructions for a common instruction pair."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.

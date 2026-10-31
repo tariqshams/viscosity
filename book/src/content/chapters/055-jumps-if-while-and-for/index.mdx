@@ -1,0 +1,259 @@
+---
+n: 55
+day: 14
+part: IV
+title: 'Jumps: if, while and for'
+tagline: 'Bytecode is one flat line of instructions, with no nesting to hide an if inside. To choose and to repeat, the VM needs just one power: moving its instruction pointer somewhere else.'
+objectives:
+  - Explain how JUMP, JUMP_IF_FALSE and LOOP move the instruction pointer.
+  - Use backpatching to emit a forward jump before its target is known.
+  - Read the jumps that if, while and for compile to, with their real offsets.
+  - Explain how and and or become jumps that skip their right operand.
+introduces: [jump, backpatching]
+uses: [instruction-pointer, dispatch-loop, bytecode, opcode, chunk, disassembler, stack-machine, virtual-machine, single-pass-compiler, emit, stack-slot, compile-time-scope, control-flow, desugaring, short-circuit, truthiness, tree-walking-interpreter, ast, global-table, byte, bit-ops, while-loop, for-loop, if, logical-operators, array, index, drip, numbers]
+sources: [nystrom2021, cpython-dis]
+---
+import PatchSteps from '../../../components/diagrams/ch055/PatchSteps';
+
+## No nesting to lean on
+
+In chapter 38 the tree-walker ran an `if` with TypeScript's own `if`.
+The syntax tree did the hard part: the branches were *inside* the
+`if` node.
+
+Bytecode has no inside. A chunk is a flat row of bytes, and the
+dispatch loop of chapter 47 only ever does one thing: run the
+instruction at `ip`, then the next one. To skip a branch, or to go
+round a loop again, the VM must change `ip` itself.
+
+<Callout kind="intuition">
+A choose-your-own-adventure book. The pages are in one fixed order,
+and normally you read straight on. But at the bottom of page 12 it
+says "if you open the door, turn to page 40". The story branches and
+loops, yet the book itself is perfectly flat.
+</Callout>
+
+## Three jumps
+
+Drip's VM has three jump instructions. Each carries a 16-bit distance
+in two operand bytes, high byte first. From `vm.ts`:
+
+```ts
+case OP.JUMP:
+  frame.ip += readShort();
+  break;
+case OP.JUMP_IF_FALSE: {
+  const off = readShort();
+  if (isFalsey(this.peek(0)))
+    frame.ip += off;
+  break;
+}
+case OP.LOOP:
+  frame.ip -= readShort();
+  break;
+```
+
+`readShort` reads the two bytes as `(hi << 8) | lo` and moves `ip`
+past them, so a distance is counted from the byte just *after* the
+instruction. `LOOP` jumps backwards: its distance is subtracted.
+
+Notice that `JUMP_IF_FALSE` only *peeks* at the condition. It leaves
+the value on the stack, so the compiler must emit a `POP` on each path
+that continues. You'll see why at the end of the chapter.
+
+<Callout kind="definition">
+A **jump** is an instruction that changes the instruction pointer, so
+that execution continues somewhere other than the next instruction.
+Drip's `JUMP` always moves forward by its operand, `JUMP_IF_FALSE`
+moves forward only if the value on top of the stack is falsey (without
+popping it), and `LOOP` moves backward. The operand is a 16-bit
+distance, so a jump can cover at most 65,535 bytes.
+</Callout>
+
+<Prompts ids={['jump-what', 'jif-peeks', 'offset-from']} />
+
+## Jumping to code that doesn’t exist yet
+
+Here is the problem with a single-pass compiler. When it reaches the
+`)` of `if (cond)`, it must emit the `JUMP_IF_FALSE` *now*, before the
+then-branch. But the jump's distance is the size of the then-branch,
+which hasn't been compiled. The answer: write a placeholder, remember
+where it is, and come back.
+
+```ts
+function emitJump(op: number) {
+  emit(op, 0xff, 0xff);
+  return chunk().code.length - 2;
+}
+function patchJump(offset: number) {
+  const jump = chunk().code.length
+    - offset - 2;
+  if (jump > 0xffff) error(
+    'Too much code to jump over.');
+  chunk().code[offset] =
+    (jump >> 8) & 0xff;
+  chunk().code[offset + 1] =
+    jump & 0xff;
+}
+```
+
+`patchJump` is called when the compiler reaches the target: "the jump
+should land *here*", where here is the next byte to be written. The
+`- 2` accounts for the two operand bytes themselves. Here is
+`ifStatement`:
+
+```ts
+expression(); // the condition
+const thenJump =
+  emitJump(OP.JUMP_IF_FALSE);
+emit(OP.POP);
+statement();  // then-branch
+const elseJump = emitJump(OP.JUMP);
+patchJump(thenJump);
+emit(OP.POP);
+if (match('else')) statement();
+patchJump(elseJump);
+```
+
+Step through it over the real bytes of a two-line program:
+
+<PatchSteps client:visible />
+
+<Callout kind="definition">
+**Backpatching** is emitting an instruction with a placeholder operand
+and filling the operand in later, once the information it needs (here,
+the target of a forward jump) is known. Drip's `emitJump` returns the
+placeholder's position, and `patchJump` writes the distance from there
+to the current end of the code.
+</Callout>
+
+<Prompts ids={['why-placeholder', 'patch-math', 'if-has-jump']} />
+
+## while: one jump back
+
+A loop needs a jump backwards, and that one is easy. `whileStatement`
+records `loopStart`, the offset where the condition begins, compiles
+the condition and an exit `JUMP_IF_FALSE`, then the body, and ends
+with `emitLoop(loopStart)`. The target has already been compiled, so
+the distance is known when `LOOP` is emitted. No patching. Only the
+exit jump is patched, after the `LOOP`.
+
+The disassembler prints each jump as *where it is* `->` *where it
+lands*, worked out from the stored distance. Here is the real output
+for `while (i < 3) i = i + 1;`, with `i` a global:
+
+```text
+0004    2 OP_GET_GLOBAL       2 'i'
+0006    | OP_CONSTANT         3 '3'
+0008    | OP_LESS
+0009    | OP_JUMP_IF_FALSE    9 -> 24
+0012    | OP_POP
+0013    | OP_GET_GLOBAL       5 'i'
+0015    | OP_CONSTANT         6 '1'
+0017    | OP_ADD
+0018    | OP_SET_GLOBAL       4 'i'
+0020    | OP_POP
+0021    | OP_LOOP            21 -> 4
+0024    | OP_POP
+```
+
+`LOOP` sends `ip` back to offset 4, the condition. When the condition
+finally fails, `JUMP_IF_FALSE` leaps past the `LOOP` to 24, where the
+last `POP` drops the `false`.
+
+<Prompts ids={['loop-no-patch']} />
+
+## for: jumping around the increment
+
+Chapter 38's parser desugared `for` into a `while`. With no tree to
+rewrite, `forStatement` emits the jumps directly. The awkward part is the increment: it is *written* before the body but must
+*run* after it. So the compiler emits it where it appears, jumps over
+it on the way in, and points the body's `LOOP` back at it. Here is
+`for (let i = 0; i < 2; i = i + 1) print i;`:
+
+```text
+0000    1 OP_CONSTANT         0 '0'
+0002    | OP_GET_LOCAL        1
+0004    | OP_CONSTANT         1 '2'
+0006    | OP_LESS
+0007    | OP_JUMP_IF_FALSE    7 -> 31
+0010    | OP_POP
+0011    | OP_JUMP            11 -> 25
+0014    | OP_GET_LOCAL        1
+0016    | OP_CONSTANT         2 '1'
+0018    | OP_ADD
+0019    | OP_SET_LOCAL        1
+0021    | OP_POP
+0022    | OP_LOOP            22 -> 2
+0025    2 OP_GET_LOCAL        1
+0027    | OP_PRINT
+0028    | OP_LOOP            28 -> 14
+0031    | OP_POP
+0032    | OP_POP
+```
+
+Follow it once: the condition (2–6), then `JUMP` over the increment
+to the body (25). The body's `LOOP` goes back to the increment (14),
+whose own `LOOP` goes back to the condition (2). On exit, the first
+`POP` drops the condition, and the second is `endScope` freeing `i`:
+the whole loop is wrapped in a scope, so `i` is a local in slot 1.
+
+<Prompts ids={['for-increment']} />
+
+## and, or: jumps in disguise
+
+`and` needs no new instruction. If the left side is falsey, that value
+*is* the answer, and the right side must be skipped:
+
+```ts
+const and_ = () => {
+  const endJump =
+    emitJump(OP.JUMP_IF_FALSE);
+  emit(OP.POP);
+  parsePrecedence(Prec.AND);
+  patchJump(endJump);
+};
+```
+
+This is why `JUMP_IF_FALSE` peeks: when it jumps, the left value is
+still on the stack as the result. `or` is the mirror image, built
+from a `JUMP_IF_FALSE` that hops over an unconditional `JUMP`.
+
+<Run id="short" />
+
+<Prompts ids={['and-peek', 'or-two-jumps']} />
+
+<Callout kind="engine" label="Under the hood">
+CPython's bytecode has the same three ideas: `JUMP_FORWARD` and
+`JUMP_BACKWARD` adjust the bytecode counter by a distance, and
+`POP_JUMP_IF_FALSE` jumps when the top of the stack is false. Its
+conditional jump pops the value, though<Cite id="cpython-dis" />, so
+short-circuit operators need different code there. Drip's
+placeholder-and-patch scheme, its 16-bit distances and its peeking
+`JUMP_IF_FALSE` follow clox from *Crafting
+Interpreters*<Cite id="nystrom2021" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="patch" />
+
+<Exercise id="powers" />
+
+## What you learned
+
+- A **jump** changes `ip`. `JUMP` and `LOOP` always move (forward and
+  back); `JUMP_IF_FALSE` moves only if the top of the stack is falsey,
+  and doesn't pop it.
+- Distances are 16-bit and counted from just after the instruction.
+- **Backpatching**: `emitJump` writes `0xff 0xff` and returns its
+  position; `patchJump` fills in the distance once the target is the
+  current end of the code.
+- `if` uses two forward jumps, `while` a forward exit plus a `LOOP`,
+  and `for` jumps over its increment on the way in.
+- `and` and `or` are jumps that skip the right operand, leaving the
+  left value as the result.
+
+Next: functions, calls and call frames.
+
+<Quiz />
