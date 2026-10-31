@@ -24,6 +24,7 @@ import { Worker } from 'node:worker_threads';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync as writeFile } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { compile as compileMdx } from '@mdx-js/mdx';
 import { testCrate, parseTestOutput } from '../src/lib/rust.js';
 
 // Rust is compiled locally with rustc (the browser uses the Rust Playground).
@@ -109,6 +110,13 @@ for (const folder of folders) {
   const fm = parseYaml(mdx.match(/^---\n([\s\S]*?)\n---/)[1]);
   const body = mdx.replace(/^---[\s\S]*?---/, '');
   const cards = await import(pathToFileURL(cardsPath).href);
+
+  // MDX must compile (stray { } or < in prose break the build).
+  try { await compileMdx(body); }
+  catch (e) {
+    const ln = (e.place?.start?.line ?? e.place?.line ?? e.line ?? 0) + (mdx.match(/^---[\s\S]*?---/)[0].split('\n').length - 1);
+    err(folder, `MDX does not compile near line ${ln}: ${String(e.reason ?? e.message).split('\n')[0]} (escape literal braces as \\{ \\} and < as &lt;)`);
+  }
 
   // 0. frontmatter types (what Astro's schema will demand)
   for (const k of ['objectives', 'introduces', 'uses', 'sources']) {

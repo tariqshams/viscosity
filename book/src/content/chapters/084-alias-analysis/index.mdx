@@ -144,8 +144,8 @@ The references it understands are SSA values: loads of the array's own
 variable (even `const q = ps` is fine, since `q` is the same SSA value),
 the results of `ps[i]`, and parameters of known functions that every
 call site fills with this same array (chapter 82). For each of these it
-knows the points-to set exactly: {this array}, or {an element of this
-array}. Every *use* of such a value must be one it can rewrite: `.length`,
+knows the points-to set exactly: \{this array\}, or \{an element of this
+array\}. Every *use* of such a value must be one it can rewrite: `.length`,
 `.push` of a fresh object literal, `ps[i]`, and reading or writing a
 field the records have. Anything else is a place where an arrow may leave
 its sight, so it is treated as a possible alias, and the array stays as
