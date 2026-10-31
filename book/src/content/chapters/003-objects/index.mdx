@@ -1,0 +1,180 @@
+---
+n: 3
+day: 1
+part: I
+title: 'Objects: things with named parts'
+tagline: 'Arrays number their values; objects name them. Put objects inside an array and you have the shape at the heart of this whole book.'
+objectives:
+  - Create an object, and read, change and add properties with dot and bracket access.
+  - Explain when you need brackets (a computed key) instead of a dot.
+  - Store records in an array of objects and loop over them.
+  - Describe the array-of-structs (AoS) layout and how a struct of arrays (SoA) differs.
+introduces: [object, property, dot-access, bracket-access, array-of-objects]
+uses: [array, index, length, push, array-loop, function, parameter, return, undefined, variables, strings, numbers, for-loop, console-log]
+sources: [mdn-objects, bynensmeurer2018, makor2022]
+---
+import ObjectCard from '../../../components/diagrams/ch003/ObjectCard';
+import AosPicture, { SoaTeaser } from '../../../components/diagrams/ch003/AosPicture';
+
+## Values that belong together
+
+A particle in a game has a position and a velocity: four numbers. You
+*could* keep them in an array, `[3, 4, 1, 2]`, but then you have to
+remember that slot 2 means "horizontal speed". Six months later, nobody
+remembers.
+
+<Callout kind="intuition">
+An object is a filled-in form. Each line of the form has a **label** ("x",
+"y", "speed") and a **value** written next to it. You look things up by
+label, not by position, so the meaning is right there in the code.
+</Callout>
+
+<Figure takeaway="An object maps names to values." caption="The object p has four properties. Each property is a key (its name) and a value. These four colours are the book's permanent colour code: x is always orange, y blue, vx teal, vy violet.">
+  <ObjectCard />
+</Figure>
+
+```js
+const p = { x: 3, y: 4, vx: 1, vy: 2 };
+
+console.log(p.x);   // 3
+console.log(p.vx);  // 1
+```
+
+Curly braces with `key: value` pairs *make* an object. A dot followed by a
+name *reads* one property.
+
+<Callout kind="definition">
+An **object** is a collection of **properties**. Each property is a
+**key** (a name, which is a string) paired with a **value**. `obj.key`
+reads or writes the property called `key`. This is **dot access**.
+</Callout>
+
+## Change it, grow it
+
+Properties can be changed and added at any time:
+
+```js
+const p = { x: 3, y: 4 };
+p.x = 10;           // change
+p.color = 'red';    // add a new one
+
+console.log(p);
+// { x: 10, y: 4, color: 'red' }
+console.log(p.size); // undefined
+```
+
+Reading a property that doesn’t exist gives `undefined`, just like reading
+past the end of an array.
+
+<Prompts ids={['object-what', 'missing-prop', 'add-prop']} />
+
+## Brackets: when the name is in a variable
+
+Sometimes you don’t know which property you want until the program runs.
+Maybe the user picks "x" or "y". Dot access needs the name written
+literally in the code, so there’s a second way:
+
+```js
+const p = { x: 3, y: 4 };
+const key = 'y';
+
+console.log(p['x']);  // 3
+console.log(p[key]);  // 4  (looks up 'y')
+console.log(p.key);   // undefined!
+```
+
+That last line is a classic bug. `p.key` means "the property literally
+named `key`", and there isn’t one. `p[key]` means "evaluate the variable
+`key` first, then look up whatever string it holds".
+
+<Callout kind="definition">
+**Bracket access** `obj[expr]` works out `expr` first and uses the result
+as the key. Use it when the key is computed at run time. `obj.name` and
+`obj['name']` mean the same thing.
+</Callout>
+
+<Run id="objects-basics" />
+
+<Prompts ids={['dot-vs-bracket', 'p-dot-key']} />
+
+## Arrays of objects
+
+Now combine this chapter with the last one. A game doesn’t have one
+particle, it has thousands. So you put them in an array:
+
+```js
+const particles = [
+  { x: 0, y: 0, vx: 1, vy: 2 },
+  { x: 5, y: 5, vx: -1, vy: 0 },
+  { x: 9, y: 1, vx: 0, vy: 3 },
+];
+
+for (let i = 0; i < particles.length; i++) {
+  const p = particles[i];
+  p.x = p.x + p.vx;
+  p.y = p.y + p.vy;
+}
+```
+
+`particles[i]` is an object, so `particles[i].x` (or `p.x` after
+`const p = particles[i]`) reaches inside it. This is the most natural way
+to write it, and it has a name you’ll see all through this book: an **array
+of structs**, or **AoS**. ("Struct" is the old C word for a record with
+named fields.)
+
+<Figure takeaway="AoS: each slot holds a whole record." caption="An array of three particles. Each particle's x, y, vx and vy travel together as one object.">
+  <AosPicture />
+</Figure>
+
+Here’s the question this book is built around. The loop above only
+touches `x`, `y`, `vx` and `vy`. What if each particle *also* had a
+`mass`, a `color`, a `name` and a `health`, none of which the loop needs?
+Is it a problem that they’re all packed in alongside?
+
+Turn the picture sideways. Instead of one object per particle, keep **one
+array per property**: all the `x` values together, then all the `y`
+values, and so on. That is a **struct of arrays**, or **SoA**:
+
+<Figure takeaway="SoA: each property gets its own array." caption="The same three particles stored as a struct of arrays. The colours (properties) are now grouped, instead of the particles.">
+  <SoaTeaser />
+</Figure>
+
+Same data, different arrangement. In Part II you’ll learn why the
+arrangement can make a loop several times faster or slower, and you’ll
+measure it yourself. Researchers have even built JavaScript runtimes that
+switch an array of objects to columns automatically while the program
+runs<Cite id="makor2022" />. Viscosity’s job will be to make that choice,
+safely, for you.
+
+<Callout kind="engine" label="Under the hood">
+Engines notice when many objects have the same properties, added in the
+same order, and give them a shared hidden description called a **shape**
+(V8 calls it a *map*, or *hidden class*). Then reading `p.x` doesn’t have to
+search for "x" every time: the engine already knows where `x` lives in
+every object of that shape<Cite id="bynensmeurer2018" />. Part V opens this
+up properly.
+</Callout>
+
+<Prompts ids={['aos-what', 'soa-what', 'particles-i-x']} />
+
+## Your turn
+
+<Exercise id="centerX" />
+
+<Exercise id="step" />
+
+## What you learned
+
+- An **object** stores **properties**: named keys with values.
+- `obj.key` is **dot access**. `obj[expr]` is **bracket access**, which
+  computes the key at run time.
+- Missing properties read as `undefined`. New ones can be added at any
+  time.
+- An **array of objects** is the *array of structs* (AoS) layout: each slot
+  holds a whole record. A *struct of arrays* (SoA) keeps one array per
+  property instead.
+
+Next comes the chapter that explains what a variable *really* holds when it
+holds an object. It’s the key to the hardest problem Viscosity has to solve.
+
+<Quiz />

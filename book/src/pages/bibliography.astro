@@ -1,0 +1,16 @@
+---
+import Book from '../layouts/Book.astro';
+import RefList from '../components/book/RefList.astro';
+import { references, pending } from '../data/references.js';
+const sorted = [...references].sort((a, b) => a.authors[0].localeCompare(b.authors[0]));
+---
+<Book title="Bibliography · Viscosity" current="bibliography">
+  <div class="mx-auto max-w-reading px-4 pb-16 pt-8 sm:px-6 lg:pt-12" data-pagefind-body>
+    <h1 class="font-display text-[2.2rem] font-semibold leading-tight">Bibliography</h1>
+    <p class="mb-6 mt-2 font-serif text-[1.08rem] leading-relaxed text-ink/85">
+      Every work the book or the engine relies on. Each entry was checked against a primary source (the publisher, the official site, or the authors’ own pages) on the date shown. Nothing here was written from memory.
+    </p>
+    <RefList ids={sorted.map((r) => r.id)} numbered={false} />
+    <p class="mt-8 font-sans text-sm text-muted">{pending.length} more works that shaped later parts of the book are still being checked against their primary sources. They will appear here once confirmed.</p>
+  </div>
+</Book>

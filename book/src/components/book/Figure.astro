@@ -1,0 +1,9 @@
+---
+// A diagram with a one-takeaway caption. Diagrams are SVG so they stay sharp
+// at any zoom; on a phone you can pinch to zoom.
+const { caption, takeaway } = Astro.props as { caption: string; takeaway?: string };
+---
+<figure class="figure not-prose">
+  <div class="fig-card"><slot /></div>
+  <figcaption>{takeaway && <b>{takeaway} </b>}{caption}</figcaption>
+</figure>

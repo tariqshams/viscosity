@@ -1,0 +1,250 @@
+---
+n: 1
+day: 1
+part: I
+title: 'Functions: naming a piece of work'
+tagline: 'Every interpreter, compiler and engine in this book is built out of one humble idea: give a piece of work a name, then use it as often as you like.'
+objectives:
+  - Write a function with parameters and a return value, and call it.
+  - Explain the difference between a parameter and an argument.
+  - Predict what a function returns, including when it returns nothing.
+  - Explain why variables made inside a function vanish when it finishes.
+introduces: [function, parameter, argument, return, call, local-variable, undefined]
+uses: [variables, numbers, strings, if, for-loop, console-log, comparison]
+sources: [mdn-functions, mdn-console-log, nystrom2021]
+---
+import FunctionMachine from '../../../components/diagrams/ch001/FunctionMachine';
+import CallSteps from '../../../components/diagrams/ch001/CallSteps';
+
+## Same work, written twice
+
+You already know enough JavaScript to get real work done. Say you're
+working out the area of two rectangles:
+
+```js
+const w1 = 3;
+const h1 = 4;
+console.log(w1 * h1); // 12
+
+const w2 = 5;
+const h2 = 2;
+console.log(w2 * h2); // 10
+```
+
+That works. But look at what's going on: the *idea* "multiply width by
+height" appears twice, glued to particular numbers each time. If you had a
+hundred rectangles you'd write it a hundred times. And if you got it wrong
+(say you meant to add a border first), you'd have to fix it in a hundred
+places.
+
+What you really want is to write the idea down **once**, give it a name,
+and then just say the name.
+
+<Callout kind="intuition">
+A function is a recipe card. You write the steps once ("multiply the width
+by the height"), give the card a title (`area`), and put it on the shelf.
+Whenever you need an area, you don't rewrite the recipe. You say "do
+`area`, with these numbers", and you get the answer back.
+</Callout>
+
+## A machine with a slot and a chute
+
+Here is the picture to keep in your head. A function is a little machine.
+You drop a value in the top. The machine does its work. A value comes out
+of the bottom.
+
+<Figure takeaway="A function turns an input into an output." caption="The value you pass in (the argument, 3) lands in the function's parameter n. The body does the work. The value after return (6) comes out.">
+  <FunctionMachine />
+</Figure>
+
+In code, that machine looks like this:
+
+```js
+function double(n) {
+  return n * 2;
+}
+
+console.log(double(3)); // 6
+console.log(double(10)); // 20
+```
+
+Read it out loud: "*function double, taking n: return n times two.*" The
+first three lines **define** the function: they build the machine and put
+it on the shelf. Nothing is computed yet. The `console.log` lines
+**call** it: each `double(...)` runs the machine once.
+
+<Callout kind="definition">
+A **function** is a named block of code that can be run on demand. You
+**call** it by writing its name followed by parentheses: `double(3)`.
+Inside the parentheses go the **arguments**: the values you hand it.
+In the definition, the names in parentheses (`n`) are the
+**parameters**: the names the function uses for whatever it was handed.
+</Callout>
+
+People mix up *parameter* and *argument* all the time, so here's the trick
+for keeping them apart. The **p**arameter is the **p**laceholder name,
+written once in the definition. The **a**rgument is the **a**ctual
+value, and it can be different on every call. In `double(3)`, the
+argument is `3` and the parameter `n` holds it for the length of that call.
+
+Try it. Change the numbers, call `double` a few more times, or make a
+`triple` function of your own.
+
+<Run id="double" />
+
+<Prompts ids={['fn-what', 'param-vs-arg', 'define-vs-call']} />
+
+## Getting a value back out: `return`
+
+The word `return` does two jobs at once:
+
+1. It decides **what value comes out** of the call. The call
+   `double(3)` *becomes* `6`, as if you'd typed `6` there yourself. That's
+   why you can use a call anywhere you could use a value:
+   `double(3) + 1` is `7`.
+2. It **stops the function immediately**. Any lines after a `return` that
+   runs are skipped.
+
+The second job makes `return` handy inside an `if`:
+
+```js
+function sign(x) {
+  if (x < 0) {
+    return 'negative';
+  }
+  if (x === 0) {
+    return 'zero';
+  }
+  return 'positive';
+}
+
+console.log(sign(-5)); // negative
+console.log(sign(7));  // positive
+```
+
+When `x` is `-5`, the first `return` runs and the function is finished.
+The other two checks never happen.
+
+What if a function never reaches a `return`? Then the call still produces
+a value: the special value `undefined`, which is JavaScript's way of
+saying "nothing".
+
+```js
+function greet(name) {
+  console.log('Hello, ' + name);
+}
+
+const result = greet('Ada');
+console.log(result); // undefined
+```
+
+`greet` *prints* something, but it doesn't *return* anything. Printing and
+returning are different things, and mixing them up is one of the most common
+beginner bugs. Printing shows a value to a human. Returning hands a value
+back to the code that made the call, so that code can keep working with it.
+
+<Callout kind="pitfall">
+`console.log` inside a function does not give the value back to the caller.
+If you write `const a = double(3);` and `double` only *prints* `6`, then
+`a` is `undefined`. If the caller needs the value, `return` it.
+</Callout>
+
+<Prompts ids={['return-two-jobs', 'no-return', 'print-vs-return']} />
+
+## Each call gets a fresh page
+
+Here is the idea that matters most later in the book. Every time you call
+a function, JavaScript gives that call its own **fresh, private page** to
+write on. The parameters are written on it first, holding the arguments.
+Any variables the body creates with `let` or `const` go on that page too.
+They are called **local variables**.
+
+When the call finishes, the page is thrown away. Only the returned value
+survives. Step through it:
+
+<CallSteps client:visible />
+
+That's why this doesn't work:
+
+```js
+function area(w, h) {
+  const a = w * h;
+  return a;
+}
+
+area(3, 4);
+console.log(a);
+// ReferenceError: a is not defined
+```
+
+`a` existed only on the page for that one call, and that page is gone. The
+outside code never sees it. This is a good thing: two functions can both
+use a variable called `a` without stepping on each other, because each call
+writes on its own page.
+
+<Callout kind="engine" label="Why this matters for engines">
+That "fresh page per call" really exists inside every JavaScript engine,
+and you'll build one yourself. In Part III, our interpreter keeps an
+*environment* for each call: literally a little table of names and values.
+In Part IV, the virtual machine keeps them in a *stack frame*. In Part VII,
+you'll see why it matters to Viscosity whether a value can *escape* its
+page, because values that never escape can be stored however we like.
+</Callout>
+
+<Prompts ids={['fresh-page', 'local-gone']} />
+
+## Functions that use functions
+
+Once a piece of work has a name, other functions can use it. That's how
+big programs get built: small, named, trustworthy pieces, stacked up.
+
+```js
+function square(x) {
+  return x * x;
+}
+
+function hypot(a, b) {
+  return Math.sqrt(square(a) + square(b));
+}
+
+console.log(hypot(3, 4)); // 5
+```
+
+`hypot` calls `square` twice, and each of those calls gets its own page
+(with its own `x`). `Math.sqrt` is a function too: it's built into
+JavaScript, and you call it exactly the same way.
+
+Every program in this book, from a 50-line calculator to Viscosity itself,
+is just this idea repeated: name a piece of work, then build bigger work
+out of named pieces. Crafting Interpreters, the book this one borrows its
+shape from, builds a whole programming language this way, one small
+function at a time<Cite id="nystrom2021" />.
+
+<Prompts ids={['fn-calls-fn']} />
+
+## Your turn
+
+Each exercise has tests that check your function, hints if you get stuck,
+and a full worked solution. Try for a few minutes before peeking: the
+struggle is where the learning happens. The second one is extra practice:
+do it if you have time, or come back to it later.
+
+<Exercise id="average" />
+
+<Exercise id="clamp" />
+
+## What you learned
+
+- A **function** names a piece of work. Defining it puts it on the shelf.
+  **Calling** it (`name(args)`) runs it.
+- **Parameters** are the placeholder names in the definition.
+  **Arguments** are the actual values in a call.
+- `return` sends a value back *and* stops the function. With no `return`,
+  a call produces `undefined`.
+- Printing is not returning.
+- Each call gets a fresh page for its **local variables**, and the page is
+  thrown away when the call ends.
+
+Next, you'll meet the first way of holding *many* values at once: arrays.
+
+<Quiz />

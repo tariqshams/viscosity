@@ -1,0 +1,70 @@
+---
+import { render } from 'astro:content';
+import Book from '../../layouts/Book.astro';
+import Callout from '../../components/book/Callout.astro';
+import Figure from '../../components/book/Figure.astro';
+import PromptsSet from '../../components/book/PromptsSet.astro';
+import ExerciseSet from '../../components/book/ExerciseSet.astro';
+import RunSet from '../../components/book/RunSet.astro';
+import QuizSet from '../../components/book/QuizSet.astro';
+import RefList from '../../components/book/RefList.astro';
+import ChapterDone from '../../components/book/ChapterDone';
+import { makeCite } from '../../components/book/Cite';
+import { allChapters, chapterHref, cardsFor, type Chapter } from '../../lib/chapters';
+import { estimateMinutes } from '../../lib/minutes.js';
+import { PARTS } from '../../data/book.js';
+
+export async function getStaticPaths() {
+  const chapters = await allChapters();
+  return chapters.map((c, i) => ({
+    params: { slug: c.id },
+    props: { chapter: c, prev: chapters[i - 1] ?? null, next: chapters[i + 1] ?? null },
+  }));
+}
+const { chapter, prev, next } = Astro.props as { chapter: Chapter; prev: Chapter | null; next: Chapter | null };
+const { Content } = await render(chapter);
+const d = chapter.data;
+const part = PARTS.find((p) => p.id === d.part)!;
+const minutes = estimateMinutes(chapter.body ?? '', cardsFor(chapter.id));
+const components = {
+  Callout, Figure, Prompts: PromptsSet, Exercise: ExerciseSet, Run: RunSet, Quiz: QuizSet,
+  Cite: makeCite(d.sources),
+};
+---
+<Book title={`${d.n}. ${d.title} · Viscosity`} description={d.tagline} current={chapterHref(chapter)} currentPart={d.part} progress>
+  <article class="mx-auto max-w-reading px-4 pb-16 pt-8 sm:px-6 lg:pt-12" data-pagefind-body>
+    <div class="font-sans text-xs font-semibold uppercase tracking-[0.08em] text-muted">
+      Part {part.id} · {part.title} · Day {d.day}
+    </div>
+    <h1 class="mt-2 font-display text-[2.1rem] font-semibold leading-[1.1] sm:text-[2.6rem]">
+      <span class="text-brand">{d.n}.</span> {d.title}
+    </h1>
+    <p class="mt-3 font-serif text-[1.15rem] italic leading-snug text-ink/80">{d.tagline}</p>
+    <div class="mt-3 font-sans text-sm text-muted">About {minutes} minutes, including the exercises and quiz</div>
+
+    <div class="mt-6 border-y border-line py-4 font-sans">
+      <div class="text-[0.75rem] font-bold uppercase tracking-[0.08em] text-muted">By the end you will be able to</div>
+      <ul class="mt-1.5 list-disc pl-5 text-[0.98rem] leading-relaxed">
+        {d.objectives.map((o) => <li class="my-1">{o}</li>)}
+      </ul>
+    </div>
+
+    <div class="prose-body">
+      <Content components={components} />
+    </div>
+
+    <section class="mt-12 border-t border-line pt-6" aria-labelledby="refs">
+      <h2 id="refs" class="font-display text-xl font-semibold">References</h2>
+      <div class="mt-2"><RefList ids={d.sources} /></div>
+    </section>
+
+    <div class="mt-10 flex flex-wrap items-center gap-3">
+      <ChapterDone client:visible n={d.n} slug={chapter.id} />
+    </div>
+
+    <nav class="mt-8 grid gap-3 font-sans sm:grid-cols-2" aria-label="Chapter navigation">
+      {prev ? <a href={chapterHref(prev)} class="btn-3d block px-4 py-3"><span class="block text-xs text-muted">← Previous</span><span class="font-semibold">{prev.data.n}. {prev.data.title}</span></a> : <span />}
+      {next && <a href={chapterHref(next)} class="btn-3d block px-4 py-3 text-right"><span class="block text-xs text-muted">Next →</span><span class="font-semibold">{next.data.n}. {next.data.title}</span></a>}
+    </nav>
+  </article>
+</Book>

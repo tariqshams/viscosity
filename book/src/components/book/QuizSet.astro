@@ -1,0 +1,6 @@
+---
+import Quiz from '../quiz/Quiz';
+import { chapterFromUrl, cardsFor } from '../../lib/chapters';
+const { chapterId, n } = chapterFromUrl(Astro.url);
+---
+<Quiz client:visible ch={n} questions={cardsFor(chapterId).quiz} />

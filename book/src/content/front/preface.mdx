@@ -1,0 +1,62 @@
+---
+title: Preface
+order: 1
+---
+
+I had a question I couldn't shake: what if you could write ordinary
+JavaScript (a plain array of objects, the way everyone writes it) and have a
+compiler quietly rearrange how that data sits in memory, so your hot loops
+ran several times faster? Languages like Odin and ISPC let you ask for this
+by hand. Research groups have done it inside experimental runtimes. Nobody,
+as far as I could find, had built it as an everyday tool for the JavaScript
+and TypeScript people actually ship.
+
+So I decided to build it, and to call it **Viscosity**.
+
+Rather than simply have AI explore this problem I was thinking of solving,
+I also had it generate this book, as a way of understanding in depth what it
+built. The AI was guided by authoritative sources to produce pedagogically
+accurate content: the research papers, the engine teams’ own writing, the
+classic compiler texts, and the learning-science research on how people
+actually remember things. Every one of those sources is listed and credited,
+with what it contributed, on the [acknowledgements page](/acknowledgements/)
+and in the [bibliography](/bibliography/). Nothing was cited from memory;
+each reference was checked against its original source.
+
+This book is a different take on the traditional documentation site that
+explains a project’s internals. There is still a documentation site, at
+[viscosity.dev](https://viscosity.dev), for *using* the compiler, along with
+the [GitHub repository](https://github.com/tariqshams/viscosity). This book
+is about *why it works*, and about everything you need to know to build
+something like it yourself.
+
+It is written for me first, so I truly understand every layer of what I’m
+building. It’s also for future collaborators, so they can get up to speed on
+a codebase like this one in a month instead of a year. And I hope it is
+simply a good resource for teaching: one that starts from a few `if`
+statements and `for` loops and ends with engines and compilers. If it helps
+my competition do even better than me, good. That is how a field moves
+forward.
+
+The book’s shape is borrowed, with gratitude, from Robert Nystrom’s
+*Crafting Interpreters*, which builds a language twice: once simply, once
+fast. Here, the first 30 days build everything in TypeScript. The last 20
+teach Rust and rebuild it all again.
+
+A few promises about how it works:
+
+- **Nothing is used before it is explained.** Each idea arrives as a casual
+  explanation, then a picture, then a tiny example, and only then the precise
+  definition.
+- **You will remember it.** Short recall prompts are woven into the text, and
+  they come back over the following days and weeks, just before you would
+  forget them. This idea comes from Andy Matuschak and Michael Nielsen’s
+  *Quantum Country*.
+- **Everything runs here.** The code examples and exercises run in your
+  browser, phone included. You don’t need to install anything.
+- **The numbers are real.** Every benchmark in the book was run on the code in
+  the repository, and the raw results are committed next to it.
+
+Fifteen minutes at a time. Let’s begin.
+
+— Tariq Shams

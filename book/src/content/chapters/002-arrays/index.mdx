@@ -1,0 +1,184 @@
+---
+n: 2
+day: 1
+part: I
+title: 'Arrays: a row of numbered boxes'
+tagline: 'One name, many values, in order. Arrays are the first data structure, and the one every engine is secretly obsessed with.'
+objectives:
+  - Create an array, read and change any slot by its index, and add to the end with push.
+  - Explain why the first index is 0 and the last is length − 1.
+  - Visit every slot with a for loop and combine the values.
+  - Pass an array to a function and return a result from it.
+introduces: [array, index, length, push, array-loop]
+uses: [function, parameter, return, call, undefined, variables, numbers, comparison, if, for-loop, console-log]
+sources: [mdn-typed-arrays, nystrom2021]
+---
+import ArrayBoxes from '../../../components/diagrams/ch002/ArrayBoxes';
+import SumLoop from '../../../components/diagrams/ch002/SumLoop';
+
+## Too many variables
+
+Imagine tracking the scores of four players:
+
+```js
+const score0 = 90;
+const score1 = 72;
+const score2 = 85;
+const score3 = 64;
+```
+
+Now find the highest score. Or add a fifth player. Or a thousand. With
+one variable per value, the code grows with the data, and no function can
+take "however many scores there are".
+
+<Callout kind="intuition">
+An array is a row of lockers in a corridor. The whole row has one name.
+Each locker has a number painted on it, starting at **0**. To find
+something, you don’t need a new name: you say "the row called `scores`,
+locker number 2".
+</Callout>
+
+## The picture
+
+<Figure takeaway="One name, numbered slots." caption="The array scores has four slots. Each slot's number is its index, starting at 0. Square brackets with an index read one slot: scores[2] is 85.">
+  <ArrayBoxes />
+</Figure>
+
+In code:
+
+```js
+const scores = [90, 72, 85, 64];
+
+console.log(scores[0]);      // 90
+console.log(scores[2]);      // 85
+console.log(scores.length);  // 4
+```
+
+Square brackets do two jobs here. `[90, 72, 85, 64]` *makes* an array
+holding those values, in that order. `scores[2]` *reads* the slot with
+index 2.
+
+<Callout kind="definition">
+An **array** is an ordered list of values stored under one name. Each
+value sits in a slot with an **index**, a whole number counting from
+`0`. `arr[i]` reads slot `i`. `arr.length` is how many slots there are,
+so the last index is always `arr.length - 1`.
+</Callout>
+
+### Why start counting at 0?
+
+It feels odd at first, but the index isn’t "which locker in the line".
+It’s **how many steps from the start**. The first locker is zero steps
+away. You’ll see in Part II that this is literally how the computer finds a
+slot: start where the array begins in memory, and step forward `index`
+slots. That’s also why reading a slot is just as quick whether it’s number 2
+or number 2,000,000.
+
+And reading past the end? There’s no locker there, so you get
+`undefined`, the "nothing" value from the last chapter:
+
+```js
+console.log(scores[4]);  // undefined
+```
+
+<Prompts ids={['array-what', 'first-index', 'last-index', 'past-end']} />
+
+## Changing and growing
+
+Writing to a slot looks like reading it, but with `=`:
+
+```js
+const scores = [90, 72, 85, 64];
+scores[1] = 75;
+scores.push(100);
+
+console.log(scores);
+// [ 90, 75, 85, 64, 100 ]
+console.log(scores.length); // 5
+```
+
+`scores.push(100)` adds a new slot at the end, and the length grows by
+one. (You might wonder how we can change `scores` when it was declared with
+`const`. `const` only means the *name* can’t be pointed at a different
+array. The array itself can still change. Chapter 4 explains exactly why.)
+
+<Run id="arrays-basics" />
+
+<Prompts ids={['push']} />
+
+## Visiting every slot
+
+Here is the loop you’ll write more often than any other code in this book:
+
+```js
+for (let i = 0; i < a.length; i++) {
+  // do something with a[i]
+}
+```
+
+`i` starts at `0` (the first index). The test `i < a.length` stops the
+loop *before* `i` reaches `length`, which is one past the last index.
+Step through it and watch `i` walk along the array:
+
+<SumLoop client:visible />
+
+Notice the pattern: a variable *outside* the loop (`total`) collects
+something as `i` visits each slot. Summing, counting, finding the biggest:
+they’re all this same shape.
+
+<Prompts ids={['loop-bound', 'accumulator']} />
+
+## Arrays meet functions
+
+Put the loop inside a function and it works for *any* array, of any
+length:
+
+```js
+function sum(arr) {
+  let total = 0;
+  for (let i = 0; i < arr.length; i++) {
+    total = total + arr[i];
+  }
+  return total;
+}
+
+console.log(sum([4, 8, 15]));  // 27
+console.log(sum([1, 2]));      // 3
+console.log(sum([]));          // 0
+```
+
+That last line matters. An empty array has length `0`, so the test
+`0 < 0` fails straight away, the body never runs, and `total` stays `0`.
+Good code handles the empty case without any special effort.
+
+<Callout kind="engine" label="Under the hood">
+When an array holds only numbers, engines can store those numbers packed
+side by side in memory, and walking them in order with a loop like `sum` is
+one of the fastest things a computer can do. JavaScript even has special
+arrays that guarantee this packing, called *typed arrays*, such as
+`Float64Array` <Cite id="mdn-typed-arrays" />. They are what Viscosity
+produces, and you’ll meet them properly in chapter 16.
+</Callout>
+
+<Prompts ids={['empty-array']} />
+
+## Your turn
+
+<Exercise id="max" />
+
+<Exercise id="countAbove" />
+
+## What you learned
+
+- An **array** stores many values in order under one name.
+- `arr[i]` reads or writes the slot at **index** `i`. Indexes start at
+  `0`, and the last one is `arr.length - 1`. Past the end you get
+  `undefined`.
+- `push` adds a value to the end, and `length` grows.
+- `for (let i = 0; i < arr.length; i++)` visits every slot exactly once,
+  in order. A variable outside the loop collects the answer.
+
+Arrays hold values in *numbered* slots. Next: objects, which hold values in
+*named* ones. Combine the two and you get the shape this whole book is about.
+
+<Quiz />

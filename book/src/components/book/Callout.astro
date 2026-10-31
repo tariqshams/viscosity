@@ -1,0 +1,10 @@
+---
+// Boxes in the text. Kinds: intuition (the plain-language picture first),
+// definition (the precise version), pitfall, engine (how real engines do it).
+const { kind = 'intuition', label } = Astro.props as { kind?: 'intuition' | 'definition' | 'pitfall' | 'engine'; label?: string };
+const labels = { intuition: 'Intuition', definition: 'Definition', pitfall: 'Pitfall', engine: 'Under the hood' };
+---
+<div class={`callout callout-${kind}`}>
+  <div class="callout-label">{label ?? labels[kind]}</div>
+  <div class="callout-body"><slot /></div>
+</div>

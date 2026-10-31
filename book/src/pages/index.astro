@@ -1,0 +1,72 @@
+---
+import Book from '../layouts/Book.astro';
+import { BOOK, PARTS } from '../data/book.js';
+import { curriculum } from '../lib/chapters';
+const { entries } = await curriculum();
+const written = entries.filter((e) => e.href);
+const firstHref = written[0]?.href ?? '/front/preface/';
+---
+<Book title={`${BOOK.title}: ${BOOK.subtitle}`} current="home">
+  <div class="mx-auto max-w-reading px-4 pb-16 pt-10 sm:px-6 lg:pt-16">
+    <div class="font-sans text-xs font-semibold uppercase tracking-[0.1em] text-brand">An interactive book</div>
+    <h1 class="mt-3 font-display text-[3rem] font-semibold leading-[1] sm:text-[4rem]">{BOOK.title}</h1>
+    <p class="mt-3 font-display text-[1.45rem] leading-snug text-ink/85 sm:text-[1.7rem]">{BOOK.subtitle}</p>
+    <p class="mt-4 font-sans text-lg">by <b>{BOOK.author}</b></p>
+
+    <figure class="not-prose my-8" aria-label="The same particles stored two ways">
+      <svg viewBox="0 0 400 150" class="viz" role="img" aria-labelledby="hero-t">
+        <title id="hero-t">Array of structs on top: each particle keeps x, y and vx together. Struct of arrays below: all the x values sit together, then all the y values, then all the vx values.</title>
+        <text x="0" y="14" class="muted" font-size="12" font-weight="600">How you write it: an array of objects</text>
+        {[0,1,2,3].map((i) => (
+          <g transform={`translate(${i * 100},22)`}>
+            <rect x="0" y="0" width="94" height="34" rx="4" fill="rgb(var(--panel))" stroke="rgb(var(--line))" />
+            <rect x="5" y="5" width="26" height="24" rx="3" fill="rgb(var(--f1))" />
+            <rect x="34" y="5" width="26" height="24" rx="3" fill="rgb(var(--f2))" />
+            <rect x="63" y="5" width="26" height="24" rx="3" fill="rgb(var(--f3))" />
+          </g>
+        ))}
+        <text x="0" y="86" class="muted" font-size="12" font-weight="600">What Viscosity can turn it into: a struct of arrays</text>
+        {[0,1,2].map((f) => (
+          <g transform={`translate(${f * 134},94)`}>
+            <rect x="0" y="0" width="128" height="34" rx="4" fill="rgb(var(--panel))" stroke="rgb(var(--line))" />
+            {[0,1,2,3].map((i) => <rect x={5 + i * 30} y="5" width="28" height="24" rx="3" fill={`rgb(var(--f${f + 1}))`} />)}
+          </g>
+        ))}
+        <text x="0" y="146" font-size="11" class="muted"><tspan fill="rgb(var(--f1))" font-weight="700">x</tspan>   <tspan fill="rgb(var(--f2))" font-weight="700">y</tspan>   <tspan fill="rgb(var(--f3))" font-weight="700">vx</tspan>: the same colour always means the same field</text>
+      </svg>
+    </figure>
+
+    <div class="prose-body">
+      <p>If you can write an <code>if</code> and a <code>for</code> loop, this book will take you the rest of the way: from your first function to building a programming language, a virtual machine and a garbage collector, and then <b>Viscosity</b>, a compiler that reads ordinary JavaScript and reorganizes how its data sits in memory so it runs faster.</p>
+      <p>It is built for 15 minutes at a time, four chapters a day. Every chapter has diagrams you can step through, code you can edit and run right here (on your phone too), questions that come back over the following weeks so you remember them, and a short quiz. You don’t need to install anything.</p>
+      <p>The first 30 days build everything in TypeScript. The next 20 teach Rust and rebuild it all again, the way <i>Crafting Interpreters</i> builds its language twice.</p>
+    </div>
+
+    <div class="mt-7 flex flex-wrap gap-3 font-sans">
+      <a href={firstHref} class="btn-3d btn-3d-primary px-5 py-2.5 text-base font-semibold">Start reading →</a>
+      <a href="/front/preface/" class="btn-3d px-5 py-2.5 text-base">Read the preface</a>
+      <a href="/days/" class="btn-3d px-5 py-2.5 text-base">See the 50-day plan</a>
+    </div>
+
+    <h2 class="mt-14 font-display text-2xl font-semibold">Contents</h2>
+    <p class="mt-1 font-sans text-sm text-muted">{written.length} of {entries.length} chapters written so far. Planned chapters are greyed out.</p>
+    <ol class="mt-4 grid list-none gap-3 p-0 font-sans">
+      {PARTS.map((p) => (
+        <li class="border border-line bg-panel px-4 py-3">
+          <div class="flex items-baseline gap-2">
+            <span class="font-display text-lg font-semibold">Part {p.id}. {p.title}</span>
+            <span class="ml-auto shrink-0 text-xs text-muted">Days {p.days}</span>
+          </div>
+          {p.id === 'I' && <div class="text-xs font-semibold uppercase tracking-[0.06em] text-brand">Track A · TypeScript</div>}
+          {p.id === 'IX' && <div class="text-xs font-semibold uppercase tracking-[0.06em] text-brand">Track B · Rust</div>}
+          <p class="mt-1 text-[0.95rem] text-ink/80">{p.blurb}</p>
+          <ul class="mt-2 list-none p-0 text-[0.95rem]">
+            {entries.filter((e) => e.part === p.id && e.href).map((e) => (
+              <li class="flex gap-2 py-0.5"><span class="w-7 shrink-0 text-right tabular-nums text-muted">{e.n}</span><a class="text-brand hover:underline" href={e.href}>{e.title}</a></li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ol>
+  </div>
+</Book>
