@@ -1,0 +1,15 @@
+[package]
+name = "viscosity-wasm"
+description = "Viscosity compiled to WebAssembly: compile(source) -> { code, explain }."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+viscosity-core.workspace = true
+viscosity-frontend-js.workspace = true
+wasm-bindgen.workspace = true

@@ -1,0 +1,2 @@
+ws (line 2) {word} → kept as array of objects
+  · no field is provably numeric, so there are no typed columns to gain

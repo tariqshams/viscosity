@@ -1,0 +1,16 @@
+blocks (line 2) {x, y} → AoSoA, blocks of 4
+  · annotated @viscosity aosoa(4) at line 1
+  · loop at line 10 in <module>() touches 2 of 2 fields (y, x)
+  · typed Float64Array columns for all 2 fields
+  · about 300 elements
+  · 2 of 4 element accesses proven in bounds
+plain (line 4) {x} → kept as array of objects
+  · annotated @viscosity aos at line 3
+small (line 5) {v} → struct of arrays
+  · annotated @viscosity soa at line 5
+  · loop at line 10 in <module>() touches 1 of 1 fields (v)
+  · typed Float64Array columns for all 1 fields
+  · about 300 elements
+  · 0 of 2 element accesses proven in bounds
+mixed (line 7) {n, s} → kept as array of objects
+  · annotated aosoa, but fields s may hold non-numbers

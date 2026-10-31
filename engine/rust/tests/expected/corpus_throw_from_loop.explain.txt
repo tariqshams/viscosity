@@ -1,0 +1,2 @@
+ps (line 3) {x} → kept as array of objects
+  · unsafe: line 5: an element is returned or branched on in <module>()

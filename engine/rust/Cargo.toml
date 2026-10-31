@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["crates/vir", "crates/core", "crates/frontend-js", "crates/cli", "crates/wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Tariq Shams"]
+license = "MIT"
+repository = "https://github.com/tariqshams/viscosity"
+rust-version = "1.85"
+
+[workspace.dependencies]
+viscosity-vir = { path = "crates/vir" }
+viscosity-core = { path = "crates/core" }
+viscosity-frontend-js = { path = "crates/frontend-js" }
+oxc_allocator = "0.156"
+oxc_ast = "0.156"
+oxc_parser = "0.156"
+oxc_span = "0.156"
+oxc_syntax = "0.156"
+oxc_ast_visit = "0.156"
+wasm-bindgen = "=0.2.106"
+indexmap = "2"
+rustc-hash = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

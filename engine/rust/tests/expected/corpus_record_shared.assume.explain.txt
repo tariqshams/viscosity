@@ -1,0 +1,2 @@
+ps (line 2) {x} → kept as array of objects
+  · unsafe: line 6: the new record is also referenced elsewhere, so it could be aliased

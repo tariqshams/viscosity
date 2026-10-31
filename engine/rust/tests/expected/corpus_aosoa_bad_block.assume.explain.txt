@@ -1,0 +1,2 @@
+ps (line 3) {x} → kept as array of objects
+  · annotated aosoa(6), but the block size must be a power of two (2, 4, 8, 16, ...)

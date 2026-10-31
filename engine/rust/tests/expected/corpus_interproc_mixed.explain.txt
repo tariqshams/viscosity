@@ -1,0 +1,4 @@
+a (line 2) {x} → kept as array of objects
+  · unsafe: line 10: passed to total(), which is also called with other values
+b (line 3) {x} → kept as array of objects
+  · unsafe: line 10: passed to total(), which is also called with other values

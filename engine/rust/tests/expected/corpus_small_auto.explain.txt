@@ -1,0 +1,2 @@
+pts (line 2) {x, y} → kept as array of objects
+  · about 2 elements: below the 64-element threshold, where the benefit is too small

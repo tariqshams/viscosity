@@ -1,0 +1,14 @@
+a (line 1) {x} → struct of arrays
+  · loop at line 8 in <module>() touches 1 of 1 fields (x)
+  · typed Float64Array columns for all 1 fields
+  · about 300 elements
+  · 1 of 1 element accesses proven in bounds
+b (line 3) {x} → kept as array of objects
+  · annotated @viscosity aos at line 2
+c (line 4) {x} → kept as array of objects
+  · annotated @viscosity aos at line 4
+d (line 5) {x} → struct of arrays
+  · loop at line 8 in <module>() touches 1 of 1 fields (x)
+  · typed Float64Array columns for all 1 fields
+  · about 300 elements
+  · 0 of 1 element accesses proven in bounds

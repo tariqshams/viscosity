@@ -1,0 +1,5 @@
+ps (line 2) {length, f0_} → struct of arrays
+  · loop at line 6 in <module>() touches 2 of 2 fields (f0_, length)
+  · typed Float64Array columns for all 2 fields
+  · about 100 elements
+  · 2 of 2 element accesses proven in bounds

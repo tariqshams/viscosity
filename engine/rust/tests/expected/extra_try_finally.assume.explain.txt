@@ -1,0 +1,5 @@
+ps (line 1) {x} → struct of arrays
+  · loop at line 10 in <module>() touches 1 of 1 fields (x)
+  · typed Float64Array columns for all 1 fields
+  · size unknown statically
+  · 2 of 3 element accesses proven in bounds

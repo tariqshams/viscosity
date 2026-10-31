@@ -1,0 +1,148 @@
+//! TS ↔ Rust parity: for every corpus program, end-to-end benchmark and
+//! extra test program, the Rust engine's output code and explain text must
+//! equal the TypeScript engine's, byte for byte.
+//!
+//! The expectations in `tests/expected/` are generated from the TypeScript
+//! reference by `scripts/gen_expected.mjs`; regenerate them with
+//! `node scripts/gen_expected.mjs` after changing the reference.
+
+mod common;
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::process::Command;
+
+use common::{expected_dir, programs, VARIANTS};
+
+fn expected(name: &str) -> (String, String) {
+    let dir = expected_dir();
+    let read = |f: String| fs::read_to_string(dir.join(&f)).unwrap_or_else(|e| panic!("missing fixture {f}: {e}"));
+    (read(format!("{name}.js")), read(format!("{name}.explain.txt")))
+}
+
+/// The first line where two texts differ, for readable failures.
+fn first_difference(want: &str, got: &str) -> String {
+    for (i, (w, g)) in want.lines().zip(got.lines()).enumerate() {
+        if w != g {
+            return format!("line {}:\n  want: {w}\n  got:  {g}", i + 1);
+        }
+    }
+    format!("lengths differ ({} vs {} bytes)", want.len(), got.len())
+}
+
+#[test]
+fn rust_output_equals_typescript_output() {
+    let mut failures = Vec::new();
+    let mut total = 0;
+    for p in programs() {
+        for (suffix, bounds) in VARIANTS {
+            total += 1;
+            let name = format!("{}{suffix}", p.name);
+            let (want_code, want_explain) = expected(&name);
+            let r = p.compile(bounds);
+            if r.code != want_code {
+                failures.push(format!("{name}.js: {}", first_difference(&want_code, &r.code)));
+            }
+            if r.explain != want_explain {
+                failures.push(format!("{name}.explain.txt: {}", first_difference(&want_explain, &r.explain)));
+            }
+        }
+    }
+    assert!(total >= 66, "expected at least 33 programs x 2 variants, found {total}");
+    assert!(failures.is_empty(), "{} of {total} differ:\n{}", failures.len(), failures.join("\n"));
+    println!("parity: {total}/{total}");
+}
+
+#[test]
+fn fixtures_match_the_programs_exactly() {
+    // Every program has fixtures, and no fixture is stale.
+    let mut want = BTreeSet::new();
+    for p in programs() {
+        for (suffix, _) in VARIANTS {
+            want.insert(format!("{}{suffix}.js", p.name));
+            want.insert(format!("{}{suffix}.explain.txt", p.name));
+        }
+    }
+    let have: BTreeSet<String> = fs::read_dir(expected_dir())
+        .expect("fixtures")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into())
+        .collect();
+    let missing: Vec<_> = want.difference(&have).collect();
+    let stale: Vec<_> = have.difference(&want).collect();
+    assert!(
+        missing.is_empty() && stale.is_empty(),
+        "run `node scripts/gen_expected.mjs`; missing {missing:?}, stale {stale:?}"
+    );
+}
+
+#[test]
+fn corpus_layout_decisions_match_their_headers() {
+    // The `// viscosity: ps=soa, keep=aos` header of each corpus program
+    // states the expected decision, as in the TS differential test.
+    for p in programs().into_iter().filter(|p| p.suite == "corpus") {
+        let header = p.source.lines().find(|l| l.starts_with("// viscosity")).expect("a header");
+        let spec = header.split_once(": ").expect("name=layout list").1;
+        // Like `Object.fromEntries` in the TS test: one entry per name, the
+        // last one winning (two collections may share a name).
+        let want: BTreeMap<String, String> = spec
+            .split(',')
+            .map(|kv| {
+                let (k, v) = kv.trim().split_once('=').expect("name=layout");
+                (k.to_string(), v.to_string())
+            })
+            .collect();
+        let r = p.compile(viscosity_core::Bounds::Check);
+        let got: BTreeMap<String, String> =
+            r.plan.collections.iter().map(|c| (c.collection.name.clone(), c.layout.as_str().to_string())).collect();
+        assert_eq!(got, want, "{}:\n{}", p.name, r.explain);
+    }
+}
+
+#[test]
+fn the_cli_binary_gives_the_same_output() {
+    let bin = env!("CARGO_BIN_EXE_viscosity");
+    for p in programs() {
+        for (suffix, bounds) in VARIANTS {
+            let name = format!("{}{suffix}", p.name);
+            let (want_code, want_explain) = expected(&name);
+            let mut args = vec![p.path.to_string_lossy().to_string()];
+            if p.mode() == viscosity_core::Mode::OptIn {
+                args.extend(["--mode".into(), "opt-in".into()]);
+            }
+            if bounds == viscosity_core::Bounds::Assume {
+                args.extend(["--bounds".into(), "assume".into()]);
+            }
+            let run = |cmd: &str| {
+                let out = Command::new(bin).arg(cmd).args(&args).output().expect("runs");
+                assert!(out.status.success(), "{name}: {}", String::from_utf8_lossy(&out.stderr));
+                String::from_utf8(out.stdout).expect("utf-8")
+            };
+            assert_eq!(run("build"), want_code, "{name}: build");
+            let explain =
+                if want_explain.is_empty() { "No arrays of objects found.".to_string() } else { want_explain };
+            assert_eq!(run("explain"), explain + "\n", "{name}: explain");
+        }
+    }
+}
+
+#[test]
+fn syntax_errors_are_reported() {
+    use viscosity_core::{compile, CompileOptions};
+    use viscosity_frontend_js::JsPlugin;
+    let err = compile("const = ;", &JsPlugin, CompileOptions::default()).expect_err("fails").to_string();
+    assert!(err.starts_with("SyntaxError"), "{err}");
+}
+
+#[test]
+fn export_default_class_and_function_round_trip() {
+    // Mirrors the TS round-trip test (named and anonymous).
+    use viscosity_core::{compile, CompileOptions};
+    use viscosity_frontend_js::JsPlugin;
+    for src in [
+        "export default class A { m() { return 1; } }\n",
+        "export default class {}\n",
+        "export default function () { return 1; }\n",
+    ] {
+        assert_eq!(compile(src, &JsPlugin, CompileOptions::default()).expect("compiles").code, src);
+    }
+}

@@ -1,0 +1,2 @@
+ps (line 2) {x, y} → kept as array of objects
+  · unsafe: line 5: an element is passed to a method call at line 5

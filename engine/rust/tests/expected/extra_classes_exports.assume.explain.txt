@@ -1,0 +1,7 @@
+qs (line 1) {v} → kept as array of objects
+  · unsafe: the array is used by code Viscosity doesn't model (export) at line 1
+rs (line 4) {v, w} → struct of arrays
+  · loop at line 6 in <module>() touches 1 of 2 fields (v)
+  · typed Float64Array columns for v; plain array columns for w (may hold non-numbers)
+  · about 100 elements
+  · 1 of 2 element accesses proven in bounds

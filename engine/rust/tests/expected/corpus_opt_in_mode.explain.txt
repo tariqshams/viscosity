@@ -1,0 +1,8 @@
+marked (line 3) {v} → struct of arrays
+  · annotated @viscosity soa at line 2
+  · loop at line 10 in <module>() touches 1 of 1 fields (v)
+  · typed Float64Array columns for all 1 fields
+  · about 300 elements
+  · 1 of 1 element accesses proven in bounds
+unmarked (line 4) {v} → kept as array of objects
+  · opt-in mode: not annotated
