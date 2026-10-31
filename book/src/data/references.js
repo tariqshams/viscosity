@@ -2335,6 +2335,62 @@ export const references = [
     "checkedAgainst": "https://github.com/rust-lang/reference/blob/master/src/items/enumerations.md",
     "shaped": "Each enum value has a discriminant, an integer saying which variant it holds; without a primitive representation the compiler may use a smaller type or another means of distinguishing variants in memory."
   },
+  {
+    "id": "rust-std-option",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Module core::option (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/core/src/option.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/option/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/option.rs on the main branch of github.com/rust-lang/rust, read raw: the “Representation” section (Rust guarantees that Option<T> has the same size, alignment and call ABI as T for Box<U>, &U, &mut U, fn pointers, NonZero integers and NonNull<U>; for these, the all-zero bit pattern is None; “This is called the null pointer optimization or NPO”) and the module docs on using ? with Option for early return of None.",
+    "shaped": "Chapter 129: why Option<&T> costs no extra space."
+  },
+  {
+    "id": "rust-std-vec",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Struct std::vec::Vec (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/alloc/src/vec/mod.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/vec/struct.Vec.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/alloc/src/vec/mod.rs on the main branch of github.com/rust-lang/rust, read raw: “Capacity and reallocation” and “Guarantees” (a Vec is a pointer to a heap allocation, a length and a capacity; the allocation is a contiguous block; push reallocates only when len == capacity; Vec does not guarantee any particular growth strategy, but push is amortized O(1); vec![x; n] and Vec::with_capacity(n) request exactly n elements; a Vec never shrinks automatically).",
+    "shaped": "Chapter 130: what a Vec is in memory, and what its growth does and doesn’t promise."
+  },
+  {
+    "id": "rust-std-hashmap",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Struct std::collections::HashMap (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/std/src/collections/hash/map.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/collections/struct.HashMap.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/std/src/collections/hash/map.rs on the main branch of github.com/rust-lang/rust, read raw: the type’s doc comment (“implemented with quadratic probing and SIMD lookup”; a randomly seeded hashing algorithm chosen to resist HashDoS; “currently SipHash 1-3, though this is subject to change”; keys must implement Eq and Hash, with k1 == k2 implying equal hashes; “a Rust port of Google’s SwissTable”), and the iteration methods (“visiting all keys in arbitrary order”).",
+    "shaped": "Chapter 130: how std’s hash map differs from Drip’s table, and why its order is arbitrary."
+  },
+  {
+    "id": "rust-reference-trait-object",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Trait objects (The Rust Reference)",
+    "venue": "The Rust Reference; source in src/types/trait-object.md of github.com/rust-lang/reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/types/trait-object.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/types/trait-object.md on the master branch of github.com/rust-lang/reference, read raw: trait objects are dynamically sized and used behind a pointer such as &dyn SomeTrait or Box<dyn SomeTrait>; each such pointer holds a pointer to the value and a pointer to a vtable containing, for each method of the trait and its supertraits, a pointer to the type’s implementation; calling a method loads a function pointer from the vtable and calls it indirectly (“virtual dispatch”).",
+    "shaped": "Chapters 131 and 132: the fat pointer and vtable behind dyn Trait."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.
