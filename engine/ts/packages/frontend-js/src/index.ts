@@ -34,13 +34,17 @@ export function jsPlugin(opts: { parser?: 'acorn' | 'mini'; typescript?: boolean
       const resolution = resolveScopes(program);
       const lowered = lower(program, js, resolution);
       // `// @viscosity soa` (or aos, aosoa(8)) on the line before a declaration.
+      // A trailing comment (code before it on its line) annotates that line only;
+      // a comment on a line of its own annotates the next line.
       const annotations = new Map<BindingId, Annotation>();
+      const srcLines = js.split('\n');
       for (const cm of comments) {
         const m = ANN.exec(cm.value);
         if (!m) continue;
+        const own = /^\s*(\/\/|\/\*|\*)/.test(srcLines[cm.line - 1] ?? '');
         for (const [jb, id] of lowered.bindingOf) {
           const line = jb.decl?.loc?.start.line;
-          if (line === cm.line + 1 || line === cm.line) {
+          if (own ? line === cm.line + 1 : line === cm.line) {
             annotations.set(id, { layout: m[1] as Annotation['layout'], blockSize: m[2] ? Number(m[2]) : undefined, line: cm.line });
           }
         }

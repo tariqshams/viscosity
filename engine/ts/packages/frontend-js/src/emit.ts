@@ -24,11 +24,22 @@ const RESERVED = new Set(['length', 'push', 'grow', 'of', 'constructor', 'protot
 export const columnName = (field: string, i: number) =>
   /^[A-Za-z_$][\w$]*$/.test(field) && !RESERVED.has(field) ? field : `f${i}_`;
 
-export function containerClass(cp: CollectionPlan): string {
+/** Column names for a record's fields, renamed where needed and never clashing. */
+export function columnNames(fields: string[]): string[] {
+  const used = new Set<string>();
+  const kept = new Set(fields.filter((f, i) => columnName(f, i) === f));
+  return fields.map((f, i) => {
+    let n = columnName(f, i);
+    if (n !== f) while (kept.has(n) || used.has(n)) n += '_';
+    used.add(n);
+    return n;
+  });
+}
+
+export function containerClass(cp: CollectionPlan, cls = `__Vsc_${cp.collection.name}`): string {
   const c = cp.collection;
-  const cls = `__Vsc_${c.name}`;
   const F = c.fields.length;
-  const cols = c.fields.map(columnName);
+  const cols = columnNames(c.fields);
   const params = c.fields.map((_, i) => `v${i}`).join(', ');
   if (cp.layout === 'aosoa') {
     if (c.numericFields.size !== c.fields.length) throw new Error(`AoSoA needs every field of "${c.name}" to be numeric`);
@@ -73,22 +84,29 @@ export function emitJs(source: string, program: Node, res: Resolution, p: Plan):
   let needBounds = false;
   let needAosoa = false;
   // Field edits keyed by range: a compound assignment (p.x += 1) reads and
-  // writes the same member, so it would otherwise be edited twice.
+  // writes the same member, so it would otherwise be edited twice. Keep the
+  // read: JavaScript reads p.x first, so out of bounds it throws "Cannot
+  // read properties of undefined", not "Cannot set".
   const fieldEdits = new Map<string, Edit & { write: boolean }>();
   const fieldEdit = (e: Edit, write: boolean) => {
     const k = `${e.start}:${e.end}`;
     const prev = fieldEdits.get(k);
-    if (!prev || (write && !prev.write)) fieldEdits.set(k, { ...e, write });
+    if (!prev || (!write && prev.write)) fieldEdits.set(k, { ...e, write });
   };
   const text = (n: Node) => source.slice(n.start, n.end);
   const nodeOf = (i: Inst) => i.src!.node as Node;
 
+  const classNames = new Set<string>();
   for (const cp of p.collections) {
     if (cp.layout === 'aos') continue;
     const c = cp.collection;
-    const cls = `__Vsc_${c.name}`;
-    const col = (f: string) => columnName(f, c.fields.indexOf(f));
-    prelude.push(containerClass(cp));
+    // Two collections can share a name (in different functions): number them.
+    let cls = `__Vsc_${c.name}`;
+    for (let k = 2; classNames.has(cls); k++) cls = `__Vsc_${c.name}_${k}`;
+    classNames.add(cls);
+    const cols = columnNames(c.fields);
+    const col = (f: string) => cols[c.fields.indexOf(f)];
+    prelude.push(containerClass(cp, cls));
     const F = c.fields.length;
     const B = cp.blockSize;
     const slot = (arr: string, f: string, idx: string, simpleIdx: boolean): string => {
