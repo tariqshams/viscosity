@@ -1,0 +1,230 @@
+---
+n: 147
+day: 37
+part: X
+title: 'The scanner in Rust'
+tagline: 'The TypeScript scanner read one character at a time. Rust won’t even let you index a string, and that turns out to be a gift: drip-rs scans raw bytes, and UTF-8 guarantees it can never land in the middle of a character by accident. Almost never.'
+objectives:
+  - Explain why drip-rs scans a &[u8] alongside the &str, and write peek and advance over bytes.
+  - Use UTF-8’s byte patterns to explain why comparing bytes with ASCII is safe.
+  - Explain the continuation-byte skip in the scanner, and what it changes compared with the TypeScript VM.
+  - Port the number scanner, including the rule that 1. is not a fraction.
+introduces: [byte-scanning]
+uses: [drip-rs, token-enum, scanner, lookahead, maximal-munch, token, lexeme, literal, identifier, keyword, panic-mode, string-index, char-code, byte, binary, bit-ops, slice, string-vs-str, lifetime, scalar-types, struct, impl, self-receiver, match, pattern, option, typescript]
+sources: [klabnik2026, rust-std-str, nystrom2021]
+---
+import ByteSteps from '../../../components/diagrams/ch147/ByteSteps';
+
+## One character, please
+
+The TypeScript scanner's helpers, from `companion/ts/src/vm/scanner.ts`:
+
+```ts
+private advance() {
+  return this.source[this.current++];
+}
+private peek() {
+  return this.atEnd()
+    ? '\0' : this.source[this.current];
+}
+```
+
+`this.source[i]` hands back a one-character string, and the scanner
+compares it with `'('` or tests `c >= '0' && c <= '9'`. Write the same
+thing in Rust and it doesn't compile (1.97, trimmed):
+
+```
+error[E0277]: the type `str` cannot be
+  indexed by `{integer}`
+  ^ string indices are ranges of
+    `usize`
+```
+
+A `str` is UTF-8, where a character takes one to four bytes. "The
+character at index 5" would mean walking from the start to count them,
+so Rust refuses to pretend it is a cheap lookup<Cite id="klabnik2026" />.
+You can slice a `str` with a byte range, or you can look at its bytes.
+
+## Two views of one text
+
+drip-rs keeps both (from `scanner.rs`, trimmed):
+
+```rust
+pub struct Scanner<'src> {
+    source: &'src str,
+    bytes: &'src [u8],
+    start: usize,
+    current: usize,
+    line: usize,
+}
+```
+
+`Scanner::new` fills `bytes` with `source.as_bytes()`. That copies
+nothing: it is the same memory, typed as a slice of `u8`<Cite id="rust-std-str" />.
+The scanner reads `bytes` to decide what each token is, and slices
+`source` to make the lexeme. The helpers become:
+
+```rust
+fn advance(&mut self) -> u8 {
+    self.current += 1;
+    self.bytes[self.current - 1]
+}
+
+fn peek(&self) -> u8 {
+    self.bytes.get(self.current)
+        .copied()
+        .unwrap_or(b'\0')
+}
+```
+
+`get` returns `None` past the end, so `peek` needs no separate `atEnd`
+test: it turns `None` into the NUL byte, as the TypeScript version did
+with `'\0'`. And `b'('` is a **byte literal**, the `u8` 40, so the big
+`match` in `scan_token` reads almost like the TypeScript `switch`:
+
+```rust
+match c {
+    b'(' => self.make(T::LeftParen),
+    b'!' => self.make_if_equal(
+        T::BangEqual, T::Bang),
+    b'"' => self.string(),
+    // ...
+}
+```
+
+<Callout kind="definition">
+**Byte scanning** means reading source text as a `&[u8]` and comparing
+bytes with byte literals like `b'('`, instead of reading characters. A
+`&str`'s `as_bytes()` gives that view for free. Lexemes are still made
+by slicing the `&str` with byte ranges, `&source[start..current]`.
+</Callout>
+
+<Prompts ids={['no-index', 'as-bytes', 'byte-literal', 'peek-nul']} />
+
+## Why bytes are safe
+
+Scanning bytes would be a disaster if a byte of `é` could look like a
+quote. UTF-8 was designed so it can't.
+
+<Callout kind="intuition">
+UTF-8 is like a train with labelled carriages. A one-carriage train is
+plain ASCII. A longer train has an engine that says how many carriages
+follow, and every carriage is stamped "carriage". No carriage can be
+mistaken for an engine, or for a one-carriage train.
+</Callout>
+
+In bits: an ASCII byte is `0xxxxxxx`, 0 to 127. A character that needs
+more bytes starts with a lead byte, `110xxxxx`, `1110xxxx` or
+`11110xxx`, and every byte after it is a **continuation byte**,
+`10xxxxxx`. So every byte of a non-ASCII character is 128 or more, and
+comparing a byte with `b'"'` or `b'\n'` can only match a real quote or
+newline. Step through the scanner on `s="é";é`:
+
+<ByteSteps client:visible />
+
+That is why `&self.source[self.start..self.current]` never panics.
+Chapter 126 showed what slicing in the middle of `é` does. A token
+starts and ends only just after an ASCII byte, after a whole skipped
+character (next section), or at the end, and all three are character
+boundaries. In the middle of a string, `current` does pass through the
+inside of `é`, but nothing is sliced until the closing quote.
+
+<Prompts ids={['utf8-ascii', 'utf8-cont']} />
+
+## The one non-ASCII case
+
+Outside a string, Drip has no use for `é`. The `_` arm of the match
+reports it:
+
+```rust
+_ => {
+    // Skip the rest of a multi-byte
+    // UTF-8 character.
+    while is_continuation(self.peek()) {
+        self.current += 1;
+    }
+    self.error("Unexpected character.")
+}
+```
+
+and the test is one mask, `c & 0b1100_0000 == 0b1000_0000`. Why bother?
+I removed the loop from a copy of the scanner and ran it on `é`: it
+gave **two** error tokens, one for byte 195 and one for byte 169. With
+the loop it gives one, like the TypeScript scanner, which sees `é` as a
+single UTF-16 code unit.
+
+It is not a perfect match. An emoji such as 😀 is four UTF-8 bytes but
+two UTF-16 code units, so the TypeScript scanner returns two error
+tokens and drip-rs one. Nobody sees the difference: after the first
+error the compiler is in panic mode (chapter 34) and stays quiet until
+the next statement. I ran both VMs on a file with a 😀 on line 2, and
+both printed `[line 2] Error: Unexpected character.` and exited with 65.
+
+<Prompts ids={['skip-why', 'emoji']} />
+
+## The rest of the scanner
+
+Everything else is the TypeScript logic with `u8`s. Numbers, from
+`scanner.rs`:
+
+```rust
+fn number(&mut self) -> Token<'src> {
+    while self.peek().is_ascii_digit() {
+        self.current += 1;
+    }
+    // `1.` is `1` then `.`
+    if self.peek() == b'.'
+        && self.peek_next()
+            .is_ascii_digit()
+    {
+        self.current += 1;
+        while self.peek()
+            .is_ascii_digit() {
+            self.current += 1;
+        }
+    }
+    self.make(TokenKind::Number)
+}
+```
+
+Strings loop to the closing `b'"'`, counting `b'\n'`s as they go.
+Comments run to the next `b'\n'`. Identifiers continue while bytes are
+ASCII letters, digits or `_`, then go through chapter 146's `keyword`.
+Here is a cut-down scanner you can run, with the skip in it:
+
+<Run id="mini-scanner" />
+
+<Callout kind="engine" label="Under the hood">
+The standard library uses the same rule. `str::is_char_boundary(i)` is
+true when byte `i` starts a character or is the end, and the helper
+behind it is commented "equivalent to: b &lt; 128 || b &gt;= 192"<Cite id="rust-std-str" />:
+not a continuation byte. clox scans a C string, which is bytes too, so
+here drip-rs is closer to clox than the TypeScript port was<Cite id="nystrom2021" />.
+The TypeScript scanner counts UTF-16 code units, while clox and
+drip-rs count bytes, and they agree because everything Drip's grammar
+cares about is ASCII.
+</Callout>
+
+<Prompts ids={['std-boundary']} />
+
+## Your turn
+
+<Exercise id="scanNumber" />
+
+<Exercise id="charEnd" />
+
+## What you learned
+
+- Rust won't index a `str` by integer. drip-rs **scans bytes**: it
+  keeps `bytes: &[u8]` (from `as_bytes()`, free) beside `source: &str`.
+- `peek` uses `get(..).copied().unwrap_or(b'\0')`, and the match is on
+  **byte literals** like `b'('`.
+- In UTF-8 every byte of a non-ASCII character is ≥ 128, and
+  **continuation bytes** look like `10xxxxxx`. So ASCII comparisons are
+  safe, and lexeme slices always land on character boundaries.
+- For an unexpected non-ASCII character the scanner skips its
+  continuation bytes, giving one error per character.
+- Numbers, strings, comments and identifiers are the TypeScript logic
+  on `u8`s.
+
+<Quiz />

@@ -1,0 +1,207 @@
+---
+n: 139
+day: 35
+part: IX
+title: 'Memory layout in Rust'
+tagline: 'In JavaScript you never learn how many bytes an object takes. In Rust you can ask, and the answer explains a lot: why drip-rs’s values are 16 bytes, why field order can cost a third of a struct, and how many of your records fit in one cache line.'
+objectives:
+  - Measure the size and alignment of any type with size_of and align_of.
+  - Work out where padding goes in a struct, and why a struct’s size is a multiple of its alignment.
+  - Say what repr(C) and repr(u8) promise, and when you need them.
+  - Explain the size of drip-rs’s Value and relate struct sizes to 64-byte cache lines.
+introduces: [size-of, alignment, padding, repr]
+uses: [rust, rust-functions, scalar-types, struct, enum, option, vec, rust-generics, box, arena, typed-index, byte, memory, address, pointer, contiguous, cache-line, spatial-locality, tagged-value, value-representation, nan-boxing, float64, opcode, chunk, hash-table, aos-vs-soa, webassembly, linear-memory]
+sources: [rustref-type-layout, rust-std-size-of, rust-std-option]
+---
+import PadSteps from '../../../components/diagrams/ch139/PadSteps';
+
+## How big is a value?
+
+Chapter 49 drew a Drip value as a tag that says what kind of value it
+is, plus a payload, and let the TypeScript VM borrow JavaScript's own
+tags. Chapter 60 squeezed a value into 8 bytes with NaN-boxing. drip-rs keeps the plain tagged enum. How big
+is it? In TypeScript you could only guess. In Rust you ask.
+
+<Callout kind="intuition">
+Think of a car park with bays of fixed widths. Motorbikes can park in
+any bay, but a lorry only fits where a lorry bay begins, every eighth
+metre. Park a motorbike, then a lorry, and the gap in between is just
+wasted tarmac. Rearrange the order you park in, and the gaps change.
+</Callout>
+
+## size_of and align_of
+
+`std::mem::size_of::<T>()` gives a type's size in bytes, and
+`align_of::<T>()` its alignment. Both are worked out at compile time.
+
+<Run id="sizes" />
+
+On this machine (x86-64 Linux, rustc 1.97) the run prints, among
+others:
+
+```
+type        size align
+u8            1   1
+f64           8   8
+&f64          8   8
+Opt<&f64>     8   8
+Opt<f64>     16   8
+Vec<f64>     24   8
+(u8, u32)     8   4
+```
+
+A few of these deserve a look. A reference is one 8-byte address, and
+`Option<&f64>` is no bigger, because a null address is never a valid
+reference, so it can mean `None`<Cite id="rust-std-option" />. An
+`f64` has no such spare pattern: every 64 bits are some number, so
+`Option<f64>` needs a separate tag, which with padding costs 8 bytes.
+A `Vec` is a pointer, a length and a capacity. And `(u8, u32)` is 8
+bytes, not 5. Those 3 extra bytes are the subject of this chapter.
+
+<Callout kind="definition">
+**`size_of::<T>()`** is the number of bytes between one `T` and the
+next in an array, padding included<Cite id="rust-std-size-of" />.
+A type's **alignment** is a power of two, and a value of that type may
+only be stored at an address that is a multiple of it. A type's size is
+always a multiple of its alignment<Cite id="rustref-type-layout" />.
+</Callout>
+
+<Prompts ids={['size-what', 'align-what']} />
+
+## Padding
+
+Here an `f64` has alignment 8. So when a field would land at the wrong
+offset, the compiler skips bytes. Step through
+a `u8`, an `f64` and another `u8`:
+
+<PadSteps client:visible />
+
+<Callout kind="definition">
+**Padding** is bytes the compiler leaves unused inside a struct: before
+a field, so it starts at a multiple of its alignment, and at the end, so
+the size is a multiple of the struct's alignment and the *next* element
+of an array is aligned too<Cite id="rustref-type-layout" />.
+</Callout>
+
+The last step is the surprise. Without an attribute, Rust uses its
+default representation, which only promises that each field is aligned
+and that fields don't overlap. It may reorder them, and rustc 1.97 did:
+the run's `R3` line shows `b@0`, `a@8` and `c@9`, 16 bytes. Don't build
+on that order, though. The Reference says the default representation
+guarantees no particular layout<Cite id="rustref-type-layout" />.
+
+<Prompts ids={['pad-what', 'tail-pad', 'reorder']} />
+
+## repr(C) and friends
+
+Sometimes you need the layout pinned down: a C library will read your
+struct, a WebAssembly host will read bytes in linear memory (chapter
+117), or a file format fixes the offsets. For that:
+
+<Callout kind="definition">
+A **`#[repr(..)]`** attribute chooses a type's **representation**.
+`#[repr(C)]` lays fields out in declaration order using C's rules, so
+the layout is fixed. On an enum without data, a primitive representation
+such as `#[repr(u8)]` makes the tag exactly that integer type.
+`#[repr(align(N))]` raises the alignment to `N`, and `#[repr(packed)]`
+removes padding (at the cost of misaligned fields)<Cite id="rustref-type-layout" />.
+</Callout>
+
+drip-rs uses one of them. Its opcodes are an enum:
+
+```rust
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpCode {
+    Constant,
+    Nil,
+    // ...
+}
+```
+
+`#[repr(u8)]` makes each variant exactly the byte that encodes it, so
+writing an instruction into a chunk is `op as u8`, and the numbering
+matches the TypeScript VM's `OP` table. A `#[repr(align(64))]` struct,
+by the way, measured 64 bytes with alignment 64 here: one per cache
+line.
+
+<Prompts ids={['repr-c', 'repr-u8']} />
+
+## drip-rs's Value: 16 bytes
+
+Here is drip-rs's `Value`, from `value.rs`:
+
+```rust
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Value {
+    Nil,
+    Bool(bool),
+    Number(f64),
+    String(StrRef),
+    Function(Gc<ObjFunction>),
+    // Native, Closure, Class,
+    // Instance, BoundMethod: all Gc
+}
+```
+
+drip-rs's own types, measured by linking a small program against the
+crate (rustc 1.97, release build):
+
+```
+Value            16  align 8
+Option<Value>    16
+StrRef            8  align 4
+Option<StrRef>   12
+Gc<ObjClass>      4
+ObjInstance      64
+```
+
+The biggest payloads are 8 bytes: an `f64`, or a `StrRef`, which is a
+4-byte handle (chapter 138) plus the string's 4-byte hash. Add a tag,
+and round up to the alignment of 8: 16. The hash rides along in space
+an `f64` needed anyway: the README notes that it costs nothing. `Option<Value>` is
+also 16, because the tag has values to spare. `Option<StrRef>` has no
+spare pattern (every `u32` is a valid index), so it grows to 12.
+
+<Prompts ids={['value-16', 'opt-value']} />
+
+Now connect it to chapter 19. Memory moves in 64-byte cache lines, so
+one line holds four `Value`s. The VM's stack is a `Vec<Value>`,
+contiguous, so pushing and popping walks along lines. NaN-boxed
+values (chapter 60) would fit eight; drip-rs keeps the plain enum and
+pays in cache space. And chapter 140's particle, six `f64`s, is
+48 bytes: a line holds one and a third of them, and a loop that only
+reads `x` and `vx` uses 16 of every 48 bytes it pulls in.
+
+<Prompts ids={['line-values']} />
+
+<Callout kind="engine" label="Under the hood">
+drip-rs's hash table stores its keys and values in two `Vec`s, as the
+TypeScript table does. Layout shows what that buys. One `Vec<(Option<StrRef>, Value)>` would need 32 bytes per entry,
+4 of them padding; the two `Vec`s need 12 + 16 = 28. And `find` reads a
+value only at an empty key: probing past occupied slots touches the
+12-byte keys alone, five to a cache line. That is struct-of-arrays
+again, chosen by hand. Chapter 140 does the same for particles.
+</Callout>
+
+## Your turn
+
+<Exercise id="cLayout" />
+
+<Exercise id="tightLayout" />
+
+## What you learned
+
+- **`size_of`** and **`align_of`** tell you a type's size and
+  alignment; a size is always a multiple of the alignment.
+- **Alignment** says which addresses a value may start at; an `f64`
+  needs a multiple of 8.
+- **Padding** fills gaps before misaligned fields and after the last
+  one. Field order changes how much you need.
+- The default representation may reorder fields; **`#[repr(C)]`** fixes
+  declaration order, **`#[repr(u8)]`** fixes an enum's tag, and
+  `align` and `packed` adjust alignment.
+- drip-rs's `Value` is 16 bytes, four per cache line; `Option<Value>`
+  costs nothing extra.
+
+<Quiz />

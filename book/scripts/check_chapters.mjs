@@ -31,6 +31,8 @@ import { testCrate, parseTestOutput } from '../src/lib/rust.js';
 const rustDir = mkdtempSync(join(tmpdir(), 'book-rust-'));
 // Compiled Rust binaries add up (hundreds of MB per run): remove them on exit.
 process.on('exit', () => { try { rmSync(rustDir, { recursive: true, force: true }); } catch {} });
+// ...also when interrupted (Ctrl-C, a killed CI job), which skips 'exit'.
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(130));
 let rustN = 0;
 function runRust(code, tests) {
   const n = rustN++;
