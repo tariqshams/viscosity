@@ -102,7 +102,10 @@ impl Heap {
     }
 
     /// Like [`Heap::intern`], but takes ownership of a string just built,
-    /// such as the result of `+`, to save copying it.
+    /// such as the result of `+`. `into_boxed_str` drops any spare
+    /// capacity, which reallocates if there is some; `Vm::add` builds its
+    /// strings with `concat`, which reserves exactly the joined length, so
+    /// in practice the bytes are not copied again.
     pub fn intern_owned(&mut self, chars: String) -> StrRef {
         let hash = hash_string(&chars);
         match self.interned.find_string(&self.strings, &chars, hash) {
