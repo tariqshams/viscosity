@@ -15,6 +15,7 @@ ln -sfn "$repo/book/node_modules" "$wt/book/node_modules"
 ln -sfn "$repo/book/companion/ts/node_modules" "$wt/book/companion/ts/node_modules"
 cd "$wt/book"
 node scripts/check_chapters.mjs | tail -1
+node scripts/merge_refs.mjs --all | tail -1   # what the Vercel prebuild does
 npm run build > /tmp/clean-build.log 2>&1 || { tail -30 /tmp/clean-build.log; exit 1; }
 node scripts/check_site.mjs
 node scripts/smoke.mjs | grep -E "✗|smoke:"
