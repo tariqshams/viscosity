@@ -19,7 +19,7 @@ export default function LatencyLadder() {
   const hi = log(100);
   const w = (ns: number) => ((log(ns) - lo) / (hi - lo)) * span;
   return (
-    <Svg w={400} h={258} title="Latency ladder: registers, L1, L2, L3 and main memory. Each level is bigger and slower than the one above. Rough figures: L1 about 2 ns, L2 about 5, L3 about 20, main memory about 100 nanoseconds.">
+    <Svg w={400} h={272} title="Latency ladder: registers, L1, L2, L3 and main memory. Each level is bigger and slower than the one above. Rough figures: L1 about 2 ns, L2 about 5, L3 about 20, main memory about 100 nanoseconds.">
       {LEVELS.map((l, i) => {
         const y = 14 + i * 48;
         const bw = l.ns === null ? 4 : w(l.ns);
@@ -33,7 +33,7 @@ export default function LatencyLadder() {
           </g>
         );
       })}
-      <T x={x0} y={252} size={10} fill={tok('muted')}>bar length on a log scale: each step is a multiple</T>
+      <T x={x0} y={264} size={10} fill={tok('muted')}>bar length on a log scale: each step is a multiple</T>
     </Svg>
   );
 }

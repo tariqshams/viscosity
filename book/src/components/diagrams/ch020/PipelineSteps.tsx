@@ -39,7 +39,7 @@ export default function PipelineSteps() {
           </g>
         ))}
         {st.mark !== undefined && (
-          <rect x={X0 + st.mark * CW - 1.5} y={Y0 + 2 * RH - 1.5} width={CW} height={RH - 1} rx={4} fill="none" stroke={tok('warn')} strokeWidth={2.5} />
+          <rect x={X0 + st.mark * CW - 1.5} y={Y0 + 2 * RH - 1.5} width={CW} height={RH - 1} rx={4} fill="none" stroke={tok('danger')} strokeWidth={2.5} />
         )}
         {st.ins.flatMap((ins) =>
           STAGES.map((_, r) => {
@@ -49,7 +49,7 @@ export default function PipelineSteps() {
             const y = Y0 + r * RH;
             const dead = ins.kind === 'dead';
             if (dead && t > 3) return null;
-            const col = ins.kind === 'branch' ? 'warn' : ins.kind === 'fixed' ? 'safe' : 'brand';
+            const col = ins.kind === 'branch' ? 'accent' : ins.kind === 'fixed' ? 'safe' : 'brand';
             return (
               <g key={`${ins.name}-${r}`} opacity={dead ? 0.45 : 1}>
                 <rect x={x + 2} y={y + 2} width={CW - 7} height={RH - 8} rx={3} fill={tok(col, ins.kind === 'guess' || dead ? 0.15 : 0.7)} stroke={tok(col)} strokeDasharray={ins.kind === 'guess' ? '4 3' : undefined} />
