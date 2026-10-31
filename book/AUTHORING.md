@@ -1,0 +1,147 @@
+# Writing a chapter of *Viscosity*
+
+This guide is for anyone (human or AI) adding chapters. Read chapters
+001–004 first: they are the reference template. Copy their structure, voice
+and density.
+
+## Files
+
+```
+src/content/chapters/NNN-slug/index.mdx    the chapter text
+src/content/chapters/NNN-slug/cards.js     prompts, examples, exercises, quiz
+src/components/diagrams/chNNN/*.tsx        the chapter's diagrams (React SVG)
+src/data/refs-new/NNN-slug.js              NEW references (see "Citations")
+```
+
+`NNN` is the zero-padded chapter number. The title and the concepts the
+chapter introduces are fixed by the outline in `src/data/outline/partN.js`.
+Don't change the outline: if it is really wrong, say so in your report.
+
+## Frontmatter
+
+```yaml
+---
+n: 5
+day: 2                 # ceil(n / 4)
+part: I
+title: 'Functions as values'          # exactly as in the outline
+tagline: 'One or two sentences that make the reader want to read on.'
+objectives:            # 3-4 "By the end you will be able to ..." items
+  - ...
+introduces: [first-class-function, callback, ...]   # exactly the outline's ids
+uses: [function, array, ...]          # every earlier concept you rely on
+sources: [mdn-functions, ...]         # bibliography ids you cite or rely on
+---
+```
+
+`uses` may only list concepts from `ASSUMED` (in `src/data/concepts.js`)
+or concepts that an **earlier** chapter introduces in the outline. If you need
+something later, explain it informally without the jargon, or rethink the
+example.
+
+## Shape of a chapter (about 15 minutes)
+
+1. A hook: a small, concrete problem the reader can feel.
+2. For each new idea, in this order:
+   1. an `<Callout kind="intuition">` with a casual, everyday picture
+   2. a diagram: a `<Figure>`, or a step-through component with `client:visible`
+   3. a tiny code example
+   4. a `<Callout kind="definition">` with the precise version, terms in **bold**
+   5. practice: a `<Run id="..."/>` example, and a `<Prompts ids={[...]}/>` group
+3. A `<Callout kind="engine" label="Under the hood">` connecting the idea
+   to engines, compilers or Viscosity. Engine facts must be cited.
+4. `## Your turn` with `<Exercise id="..."/>`: one core exercise, plus
+   optional extras marked `optional: true` in cards.js.
+5. `## What you learned`: a bullet summary in bold key terms.
+6. `<Quiz />` as the last line.
+
+Components available in MDX without importing: `Callout`
+(`kind`: intuition | definition | pitfall | engine), `Figure` (`caption`,
+`takeaway`), `Prompts`, `Run`, `Exercise`, `Quiz`, `Cite`. Diagram
+components are imported at the top of the MDX file:
+`import X from '../../../components/diagrams/chNNN/X';`. Use
+`<X client:visible />` for interactive ones, and a plain `<X />` inside a
+`<Figure>` for static ones.
+
+## Diagrams
+
+- Build them with `src/components/viz/svg.tsx` (`Svg`, `Box`, `T`, `Arrow`,
+  `tok`) and `src/components/viz/stepper.tsx` (`useSteps`, `StepFrame`,
+  `CodeTrace`). See `diagrams/ch001/CallSteps.tsx` and
+  `diagrams/ch004/RefSteps.tsx`.
+- Use a 400-unit-wide viewBox, designed for a phone held upright.
+- Colours always come from tokens (`tok('brand')`). Field colours are
+  permanent: x = `f1`, y = `f2`, vx = `f3`, vy = `f4`, mass = `f5`,
+  health = `f6`.
+- Step-through diagrams never autoplay. Each step's `note` says what to
+  notice now.
+- At least one diagram per chapter. Most chapters should have a
+  step-through one.
+
+## cards.js
+
+```js
+export const prompts = {            // 8-15; keys are PERMANENT ids
+  'key': { q: 'Question (markdown)', a: 'Short, atomic answer' },
+};
+export const examples = {           // runnable <Run id> blocks
+  'key': { title: '...', code: `...` },
+};
+export const exercises = {
+  'key': {
+    title, prompt, starter, solution, tests,   // tests use test()/expect()
+    hints: ['...', '...'],                     // progressive
+    walkthrough: `...`,                        // detailed, explains WHY
+    wrong: [{ code: `...`, why: '...' }],      // common wrong attempts
+    optional: true,                            // extra practice only
+  },
+};
+export const quiz = [                // 5-8 questions
+  { q: '...', options: [ { t: '...', correct: true, why: '...' }, { t: '...', why: '...' } ] },
+];
+```
+
+- `expect` supports `toBe`, `toEqual`, `toBeCloseTo`, `toBeTruthy`,
+  `toBeFalsy` and `toThrow`.
+- Every quiz option needs a `why`.
+- Vary which position holds the correct answer.
+- Prompts are atomic: one fact each, with a short answer. Include some
+  "why" and "what happens if" prompts, not only "what".
+- Each prompt key is placed exactly once in the text.
+
+## Hard rules (enforced by `node scripts/check_chapters.mjs`)
+
+- Static code lines are at most **44** characters. Runnable code (examples,
+  starters, solutions, wrong attempts) is at most **40**. Prefer short names
+  (`ps`, `xs`).
+- 8–15 prompts, a 5–8 question quiz, and at least one exercise.
+- Each solution passes its tests. Each starter and each wrong attempt fails
+  them.
+- The estimated time is 12–18 minutes.
+- `introduces` matches the outline, and `uses` contains only earlier concepts.
+- Every `<Cite id>` and every `sources` id is a verified reference.
+
+Run `node scripts/check_chapters.mjs` until it passes. Don't run `astro
+build` (the maintainer does).
+
+## Citations (accuracy is non-negotiable)
+
+- Existing verified references are in `src/data/references.js`.
+- To add one, **verify it yourself** with WebSearch / WebFetch against the
+  publisher, official site, DOI page or the authors' own page. Never cite
+  from memory.
+- Put new references in `src/data/refs-new/NNN-slug.js` as
+  `export default [ { id, authors, title, venue, year, doi, url, accessed, checkedAgainst, shaped } ]`,
+  with the same fields as `references.js`.
+- Any claim about how V8 or another engine behaves, or any number, must be
+  cited, or must come from this repo's own benchmark results
+  (`engine/ts/packages/bench/results`). When in doubt, say less.
+- Never copy or closely paraphrase prose from *Crafting Interpreters* or
+  any other book. Explanations and diagrams must be original.
+
+## Voice
+
+- Warm, plain and direct. Talk to the reader as "you".
+- Short sentences, and concrete examples before abstractions.
+- No hype and no filler.
+- Spelling as in the existing chapters: "colour", "behaviour".

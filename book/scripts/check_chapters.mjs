@@ -15,7 +15,8 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { ASSUMED, CONCEPTS } from '../src/data/concepts.js';
+import { ASSUMED, CONCEPTS, knownBefore } from '../src/data/concepts.js';
+import { OUTLINE } from '../src/data/outline/index.js';
 import { references, pending } from '../src/data/references.js';
 import { runWithTests } from '../src/lib/minitest.js';
 import { estimateMinutesExact, proseWords } from '../src/lib/minutes.js';
@@ -24,18 +25,33 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dir = join(root, 'src/content/chapters');
 const STATIC_MAX = 44;
 const RUN_MAX = 40;
-const refIds = new Set(references.map((r) => r.id));
+const errors = [];
+// Verified references: the main bibliography plus not-yet-merged files in
+// src/data/refs-new/ (one per chapter, written by chapter authors).
+const newRefs = [];
+const newDir = join(root, 'src/data/refs-new');
+if (existsSync(newDir)) {
+  for (const f of readdirSync(newDir).filter((f) => f.endsWith('.js'))) {
+    const m = await import(pathToFileURL(join(newDir, f)).href);
+    for (const r of m.default ?? []) {
+      for (const k of ['id', 'authors', 'title', 'url', 'accessed', 'checkedAgainst', 'shaped']) {
+        if (!r[k]) errors.push(`refs-new/${f}: reference ${r.id ?? '?'} is missing "${k}"`);
+      }
+      newRefs.push(r);
+    }
+  }
+}
+const refIds = new Set([...references, ...newRefs].map((r) => r.id));
 const pendingIds = new Set(pending.map((r) => r.id));
 
-const errors = [];
 const warn = [];
 const err = (ch, msg) => errors.push(`${ch}: ${msg}`);
 
-const known = new Set(Object.keys(ASSUMED));
 const silent = { log() {}, info() {}, warn() {}, error() {}, table() {} };
 
 const folders = readdirSync(dir).filter((d) => /^\d{3}-/.test(d)).sort();
 let expectN = 1;
+let prevN = 0;
 const summary = [];
 for (const folder of folders) {
   const mdxPath = join(dir, folder, 'index.mdx');
@@ -48,21 +64,26 @@ for (const folder of folders) {
   const cards = await import(pathToFileURL(cardsPath).href);
 
   // 1. numbering
-  if (fm.n !== expectN) err(folder, `chapter number ${fm.n}, expected ${expectN}`);
+  if (fm.n <= prevN) err(folder, `chapter number ${fm.n} is not after ${prevN}`);
+  prevN = fm.n;
   if (Number(folder.slice(0, 3)) !== fm.n) err(folder, `folder number does not match n=${fm.n}`);
   if (fm.day !== Math.ceil(fm.n / 4)) err(folder, `day ${fm.day} should be ${Math.ceil(fm.n / 4)}`);
   expectN++;
 
-  // 2. concepts
+  // 2. concepts: introduces must match the outline; uses must be known.
+  const plan = OUTLINE.find((c) => c.n === fm.n);
+  if (!plan) err(folder, `chapter ${fm.n} is not in the outline`);
+  else {
+    if (plan.title !== fm.title) err(folder, `title "${fm.title}" differs from the outline ("${plan.title}")`);
+    const want = Object.keys(plan.introduces).sort().join(',');
+    const got = [...(fm.introduces ?? [])].sort().join(',');
+    if (want !== got) err(folder, `introduces [${got}] must match the outline [${want}]`);
+  }
+  const known = knownBefore(fm.n);
   for (const c of fm.uses ?? []) {
     if (!(c in ASSUMED) && !(c in CONCEPTS)) err(folder, `uses unknown concept "${c}"`);
-    else if (!known.has(c)) err(folder, `uses "${c}" before any chapter introduces it`);
+    else if (!known.has(c)) err(folder, `uses "${c}" before it is introduced (chapter ${CONCEPTS[c]?.n})`);
   }
-  for (const c of fm.introduces ?? []) {
-    if (!(c in CONCEPTS)) err(folder, `introduces unregistered concept "${c}" (add it to src/data/concepts.js)`);
-    if (known.has(c) && !(c in ASSUMED)) err(folder, `re-introduces "${c}"`);
-  }
-  for (const c of fm.introduces ?? []) known.add(c);
 
   // 3. code width
   const fences = body.match(/```[^\n]*\n[\s\S]*?```/g) ?? [];
