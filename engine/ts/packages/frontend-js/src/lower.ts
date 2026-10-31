@@ -517,7 +517,7 @@ export function lower(program: Node, source: string, res: Resolution): Lowered {
           if (e.optional || e.arguments.some((a: Node) => a.type === 'SpreadElement')) return opaque(e, 'call');
           const c = e.callee;
           if (c.type === 'MemberExpression' && !c.computed && !c.optional) {
-            // Math.sqrt(x) etc.: known pure numeric functions.
+            // Math.sqrt(x) etc.: known numeric functions (they return a number and keep no reference to their arguments; Math.random is not pure, but that doesn't matter for layout).
             if (c.object.type === 'Identifier' && c.object.name === 'Math' && res.refs.get(c.object)?.kind === 'global' && PURE_MATH.has(c.property.name)) {
               return fb.emit('intrinsic', e.arguments.map(expr), { name: `Math.${c.property.name}`, src: src(e) });
             }
