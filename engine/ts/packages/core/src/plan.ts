@@ -48,6 +48,11 @@ export function plan(a: Analysis, opts: PlanOptions = DEFAULT_OPTIONS): Plan {
       out.push(keep(...c.bailouts.map((b) => `unsafe: ${b}`)));
       continue;
     }
+    const B = ann?.blockSize ?? 8;
+    if (ann && ann.layout === 'aosoa' && !(B >= 2 && Number.isInteger(Math.log2(B)))) {
+      out.push(keep(`annotated aosoa(${B}), but the block size must be a power of two (2, 4, 8, 16, ...)`));
+      continue;
+    }
     if (ann && ann.layout === 'aosoa' && c.numericFields.size !== c.fields.length) {
       out.push(keep(`annotated aosoa, but fields ${c.fields.filter((f) => !c.numericFields.has(f)).join(', ')} may hold non-numbers`));
       continue;

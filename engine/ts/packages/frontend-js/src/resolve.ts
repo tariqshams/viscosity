@@ -89,7 +89,7 @@ export function resolveScopes(program: Node): Resolution {
   };
   const declareLexical = (stmts: Node[], scope: Scope) => {
     for (const s of stmts) {
-      const d = s.type === 'ExportNamedDeclaration' && s.declaration ? s.declaration : s;
+      const d = (s.type === 'ExportNamedDeclaration' || s.type === 'ExportDefaultDeclaration') && s.declaration ? s.declaration : s;
       if (d.type === 'VariableDeclaration' && d.kind !== 'var') {
         for (const decl of d.declarations) for (const id of patternNames(decl.id)) declare(scope, id, d.kind, decl.id.type === 'Identifier' ? decl.init : null);
       } else if (d.type === 'ClassDeclaration' && d.id) {

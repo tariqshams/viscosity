@@ -383,7 +383,7 @@ export function lower(program: Node, source: string, res: Resolution): Lowered {
         }
         case 'ClassDeclaration': {
           const c = opaque(s, 'class');
-          write(binding(s.id), c, s.id);
+          if (s.id) write(binding(s.id), c, s.id); // `export default class {}` has no name
           return;
         }
         case 'ImportDeclaration':

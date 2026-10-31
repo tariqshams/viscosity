@@ -19,7 +19,9 @@ export interface CompileResult {
 export function compile(source: string, plugin: LanguagePlugin, opts: Partial<PlanOptions> = {}): CompileResult {
   const lowered = plugin.lower(source);
   const analysis = analyze(lowered.module);
-  const p = plan(analysis, { ...DEFAULT_OPTIONS, ...opts, annotations: opts.annotations ?? lowered.annotations });
+  // Options given as undefined (e.g. { minSize: undefined }) keep their defaults.
+  const given = Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined));
+  const p = plan(analysis, { ...DEFAULT_OPTIONS, ...given, annotations: opts.annotations ?? lowered.annotations });
   const code = plugin.emit(source, lowered, p);
   return { code, plan: p, analysis, explain: explain(p) };
 }
