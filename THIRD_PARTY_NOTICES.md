@@ -11,10 +11,23 @@ adapts the following third-party works.
 | Astro, @astrojs/mdx, @astrojs/react | Book site | MIT |
 | React, React DOM | Interactive islands | MIT |
 | CodeMirror 6 (@codemirror/*, @lezer/*) | In-browser code editor | MIT |
-| sucrase | TypeScript → JavaScript in the browser runner | MIT |
+| sucrase | TypeScript → JavaScript in the browser runner and the engine's TypeScript input; bundled into the CLI | MIT |
+| acorn, acorn-walk (Marijn Haverbeke and contributors) | The engine's default JavaScript parser; bundled into the CLI and the book's Playground | MIT |
+| esbuild | Bundling the CLI and the Playground | MIT |
+| Starlight (@astrojs/starlight) | The viscosity.dev docs site | MIT |
 | Tailwind CSS | Styling | MIT |
 | Pagefind | Search | MIT |
 | Vitest, TypeScript | Tests and type checking | MIT / Apache-2.0 |
+
+## Rust crates (Track B, from crates.io)
+
+| Crate | Used for | License |
+|---|---|---|
+| oxc (oxc_allocator, oxc_ast, oxc_parser, …; Boshen and the oxc contributors) | The Rust engine's JavaScript parser | MIT |
+| wasm-bindgen | The Rust engine's WebAssembly build | MIT OR Apache-2.0 |
+| rustc-hash | Fast hash maps in the Rust engine | Apache-2.0 OR MIT |
+
+drip-rs (`book/companion/rust`) has no dependencies.
 
 Licences of the exact installed versions are in each package's `LICENSE`
 file under `node_modules`.
