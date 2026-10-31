@@ -15,6 +15,7 @@ export const ASSUMED = {
   strings: 'text in quotes, joined with +',
   booleans: 'true and false',
   comparison: '=== !== < > <= >=',
+  'logical-operators': '&& || ! for combining conditions',
   if: 'if / else',
   'for-loop': 'for (let i = 0; i < n; i++)',
   'console-log': 'console.log(...) to print',

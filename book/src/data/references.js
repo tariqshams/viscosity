@@ -281,6 +281,842 @@ export const references = [
     checkedAgainst: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Typed_arrays',
     shaped: 'Float64Array and friends: the storage Viscosity generates.',
   },
+  {
+    "id": "mdn-first-class-function",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "First-class function (Glossary)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Glossary/First-class_Function",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/glossary/first-class_function/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "The definition of first-class functions in chapter 5."
+  },
+  {
+    "id": "mdn-callback-function",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Callback function (Glossary)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Glossary/Callback_function",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/glossary/callback_function/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "The definition of a callback in chapter 5."
+  },
+  {
+    "id": "mdn-function-object",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Function",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/function/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "The fact that every JavaScript function is an object (chapter 5)."
+  },
+  {
+    "id": "mdn-arrow-functions",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Arrow function expressions",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/Arrow_functions",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/functions/arrow_functions/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "Arrow function syntax in chapter 5."
+  },
+  {
+    "id": "mdn-array-reduce",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Array.prototype.reduce()",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/reduce",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/array/reduce/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "reduce, and the TypeError on an empty array with no initial value (chapter 5)."
+  },
+  {
+    "id": "mdn-while",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "while",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/while",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/statements/while/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "The while loop, break and continue in chapter 5."
+  },
+  {
+    "id": "mdn-closures",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Closures (JavaScript Guide)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Closures",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/guide/closures/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "The definitions of closures, lexical scoping and block scope in chapter 6."
+  },
+  {
+    "id": "mdn-classes",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Classes",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/classes/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "Class syntax in chapter 7, including that class bodies always run in strict mode."
+  },
+  {
+    "id": "mdn-using-classes",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Using classes (JavaScript Guide)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_classes",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/guide/using_classes/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "Chapter 7: methods are stored once and shared by every instance."
+  },
+  {
+    "id": "mdn-this",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "this",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/this",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/operators/this/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "Chapter 7: this is the object a method is accessed on, decided by how the function is called."
+  },
+  {
+    "id": "mdn-instanceof",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "instanceof",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/instanceof",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/operators/instanceof/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "The instanceof operator in chapter 7."
+  },
+  {
+    "id": "mdn-map",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Map",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/map/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "Chapter 8: Map keys of any type, SameValueZero equality, insertion order, and the specification’s sublinear access-time requirement."
+  },
+  {
+    "id": "mdn-set",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Set",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/set/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "Set in chapter 8: unique values, insertion order."
+  },
+  {
+    "id": "mdn-for-of",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "for...of",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/for...of",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/statements/for...of/index.md (MDN’s own source repository, github.com/mdn/content; developer.mozilla.org was not reachable from the writing session)",
+    "shaped": "The for...of loop over arrays, Maps and Sets in chapter 8."
+  },
+  {
+    "id": "gunasekaran2018",
+    "authors": [
+      "Sathya Gunasekaran"
+    ],
+    "title": "Optimizing hash tables: hiding the hash code",
+    "venue": "V8 blog (v8.dev), 29 January 2018",
+    "year": 2018,
+    "doi": null,
+    "url": "https://v8.dev/blog/hash-code",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/hash-code.md (the post’s source in the v8.dev repository; v8.dev itself was not reachable from the writing session)",
+    "shaped": "Chapter 8: V8’s Map and Set are hash tables, and an object key’s hash code is a stored random number."
+  },
+  {
+    "id": "mdn-call-stack",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Call stack (Glossary)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Glossary/Call_stack",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/glossary/call_stack/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 9: the call stack, one entry per active call, and the stack overflow error."
+  },
+  {
+    "id": "mdn-recursion",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Recursion (Glossary)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Glossary/Recursion",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/glossary/recursion/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 9: recursion, base cases and recursive cases."
+  },
+  {
+    "id": "mdn-too-much-recursion",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "InternalError: too much recursion",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Errors/Too_much_recursion",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/errors/too_much_recursion/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 9: the error each browser reports when recursion never stops (RangeError in Chrome and Safari, InternalError in Firefox)."
+  },
+  {
+    "id": "mdn-string",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "String",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/string/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 10: character access with str[i], and strings as sequences of UTF-16 code units."
+  },
+  {
+    "id": "mdn-charcodeat",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "String.prototype.charCodeAt()",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/charCodeAt",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/string/charcodeat/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 10: char codes are integers from 0 to 65535 (one UTF-16 code unit)."
+  },
+  {
+    "id": "mdn-template-literals",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Template literals (Template strings)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/template_literals/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 10: backtick strings with ${expression} placeholders."
+  },
+  {
+    "id": "mdn-primitive",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Primitive (Glossary)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Glossary/Primitive",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/glossary/primitive/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 10: strings are primitives, and all primitives are immutable."
+  },
+  {
+    "id": "mdn-control-flow",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Control flow and error handling (JavaScript Guide)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Control_flow_and_error_handling",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/guide/control_flow_and_error_handling/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 11: throw, try...catch and finally (finally runs whether or not an exception was thrown)."
+  },
+  {
+    "id": "mdn-error",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Error",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/error/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 11: Error objects, their name and message, the built-in error types, custom error classes, and the non-standard stack property."
+  },
+  {
+    "id": "mdn-modules",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "JavaScript modules (JavaScript Guide)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/guide/modules/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 12: export and import, module scope, strict mode in modules, modules run once, and the dependency graph evaluated depth-first."
+  },
+  {
+    "id": "mdn-strict-mode",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Strict mode",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Strict_mode",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/strict_mode/index.md (the source MDN publishes the page from; developer.mozilla.org itself was unreachable from this session)",
+    "shaped": "Chapter 12: strict mode turns some silent errors into thrown errors."
+  },
+  {
+    "id": "ts-basics",
+    "authors": [
+      "The TypeScript team (Microsoft)"
+    ],
+    "title": "The Basics (TypeScript Handbook)",
+    "venue": "typescriptlang.org",
+    "year": null,
+    "doi": null,
+    "url": "https://www.typescriptlang.org/docs/handbook/2/basic-types.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/microsoft/TypeScript-Website/blob/v2/packages/documentation/copy/en/handbook-v2/Basics.md",
+    "shaped": "Chapter 13: static type checking with tsc, tsc still emitting JavaScript when it finds errors (unless --noEmitOnError), and erased types (“type annotations never change the runtime behavior of your program”)."
+  },
+  {
+    "id": "ts-everyday-types",
+    "authors": [
+      "The TypeScript team (Microsoft)"
+    ],
+    "title": "Everyday Types (TypeScript Handbook)",
+    "venue": "typescriptlang.org",
+    "year": null,
+    "doi": null,
+    "url": "https://www.typescriptlang.org/docs/handbook/2/everyday-types.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/microsoft/TypeScript-Website/blob/v2/packages/documentation/copy/en/handbook-v2/Everyday%20Types.md",
+    "shaped": "Chapters 13 and 14: annotations on variables, parameters and return values, inference, any, object types, interfaces, union types and literal types."
+  },
+  {
+    "id": "ts-narrowing",
+    "authors": [
+      "The TypeScript team (Microsoft)"
+    ],
+    "title": "Narrowing (TypeScript Handbook)",
+    "venue": "typescriptlang.org",
+    "year": null,
+    "doi": null,
+    "url": "https://www.typescriptlang.org/docs/handbook/2/narrowing.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/microsoft/TypeScript-Website/blob/v2/packages/documentation/copy/en/handbook-v2/Narrowing.md",
+    "shaped": "Chapter 14: typeof type guards, discriminated unions, the never type and exhaustiveness checking."
+  },
+  {
+    "id": "ts-generics",
+    "authors": [
+      "The TypeScript team (Microsoft)"
+    ],
+    "title": "Generics (TypeScript Handbook)",
+    "venue": "typescriptlang.org",
+    "year": null,
+    "doi": null,
+    "url": "https://www.typescriptlang.org/docs/handbook/2/generics.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/microsoft/TypeScript-Website/blob/v2/packages/documentation/copy/en/handbook-v2/Type%20Manipulation/Generics.md",
+    "shaped": "Chapter 14: type parameters, Array<Type>, and generic functions."
+  },
+  {
+    "id": "estree",
+    "authors": [
+      "ESTree contributors"
+    ],
+    "title": "The ESTree Spec (es5.md: Node objects)",
+    "venue": "github.com/estree/estree",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/estree/estree/blob/master/es5.md",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/estree/estree/blob/master/es5.md",
+    "shaped": "Chapter 14: real JavaScript ASTs are a discriminated union; every ESTree node has a string `type` field that says which kind of node it is."
+  },
+  {
+    "id": "node-test",
+    "authors": [
+      "Node.js contributors"
+    ],
+    "title": "Test runner (node:test)",
+    "venue": "Node.js documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://nodejs.org/api/test.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/nodejs/node/blob/main/doc/api/test.md",
+    "shaped": "Chapter 15: Node’s built-in test runner, for running tests outside the book."
+  },
+  {
+    "id": "node-assert",
+    "authors": [
+      "Node.js contributors"
+    ],
+    "title": "Assert (node:assert)",
+    "venue": "Node.js documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://nodejs.org/api/assert.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/nodejs/node/blob/main/doc/api/assert.md",
+    "shaped": "Chapter 15: assert.strictEqual, Node’s built-in assertion functions."
+  },
+  {
+    "id": "csmith",
+    "authors": [
+      "Xuejun Yang",
+      "Yang Chen",
+      "Eric Eide",
+      "John Regehr"
+    ],
+    "title": "Csmith: a random generator of C programs",
+    "venue": "github.com/csmith-project/csmith (README)",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/csmith-project/csmith",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/csmith-project/csmith/blob/master/README.md",
+    "shaped": "Chapter 15: a real tool that finds compiler bugs with random programs, “using differential testing as the test oracle”."
+  },
+  {
+    "id": "test262",
+    "authors": [
+      "Ecma TC39 and Test262 contributors"
+    ],
+    "title": "Test262: ECMAScript Test Suite",
+    "venue": "github.com/tc39/test262",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/tc39/test262",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/tc39/test262/blob/main/README.md",
+    "shaped": "Chapter 15: the official conformance test suite for the JavaScript language (over 50,000 test files as of May 2025, per its README)."
+  },
+  {
+    "id": "mdn-number",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Number",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/number/index.md",
+    "shaped": "Chapter 16: every JavaScript number is a double-precision 64-bit IEEE 754 value; integers are exact only up to 2^53 − 1."
+  },
+  {
+    "id": "mdn-arraybuffer",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "ArrayBuffer",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/arraybuffer/index.md",
+    "shaped": "Chapter 16: an ArrayBuffer is raw bytes that you read and write through views."
+  },
+  {
+    "id": "mdn-typedarray",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "TypedArray",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypedArray",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/typedarray/index.md",
+    "shaped": "Chapter 16: value encoding and normalization (two’s complement for signed integers, IEEE 754 for floats, out-of-range values normalized), the platform’s native byte order, zero-filled new typed arrays."
+  },
+  {
+    "id": "mdn-bitwise-and",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Bitwise AND (&)",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Bitwise_AND",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/operators/bitwise_and/index.md",
+    "shaped": "Chapter 16: bitwise operators convert numbers to 32-bit integers in two’s complement and work bit by bit."
+  },
+  {
+    "id": "apple-wwdc25-cpu",
+    "authors": [
+      "Apple Inc."
+    ],
+    "title": "Optimize CPU performance with Instruments (WWDC25 session 308)",
+    "venue": "Apple Developer",
+    "year": 2025,
+    "doi": null,
+    "url": "https://developer.apple.com/videos/play/wwdc2025/308/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://developer.apple.com/videos/play/wwdc2025/308/ (the session transcript on that page)",
+    "shaped": "Chapters 18–20: a CPU follows a list of instructions, modifying registers and memory; instructions are fetched and decoded, then executed; Apple silicon CPUs are pipelined and use branch predictors that guess wrong when a branch has no consistent pattern; L1 caches inside each CPU, a larger, slower L2, and main memory about 50 times slower than the fast path on those chips; caches move memory in 64- or 128-byte cache lines."
+  },
+  {
+    "id": "slotin-amh-hierarchy",
+    "authors": [
+      "Sergey Slotin"
+    ],
+    "title": "Memory Hierarchy, in Algorithms for Modern Hardware",
+    "venue": "algorithmica.org (open online book)",
+    "year": null,
+    "doi": null,
+    "url": "https://en.algorithmica.org/hpc/external-memory/hierarchy/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/algorithmica-org/algorithmica/blob/master/content/english/hpc/external-memory/hierarchy.md",
+    "shaped": "Chapter 18: the approximate 2021 commodity-hardware table (L1 about 2 ns, L2 about 5 ns, L3 about 20 ns, RAM about 100 ns, all moving 64-byte blocks); registers as the fastest storage; each level usually much faster but smaller than the next."
+  },
+  {
+    "id": "slotin-amh-pipelining",
+    "authors": [
+      "Sergey Slotin"
+    ],
+    "title": "Instruction-Level Parallelism, in Algorithms for Modern Hardware",
+    "venue": "algorithmica.org (open online book)",
+    "year": null,
+    "doi": null,
+    "url": "https://en.algorithmica.org/hpc/pipelining/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/algorithmica-org/algorithmica/blob/master/content/english/hpc/pipelining/_index.md",
+    "shaped": "Chapters 18 and 20: the stages of running an instruction (fetch, decode, execute, memory, write back); pipelining starts the next instruction before the previous one finishes; most modern CPUs are superscalar."
+  },
+  {
+    "id": "slotin-amh-cache-lines",
+    "authors": [
+      "Sergey Slotin"
+    ],
+    "title": "Cache Lines, in Algorithms for Modern Hardware",
+    "venue": "algorithmica.org (open online book)",
+    "year": null,
+    "doi": null,
+    "url": "https://en.algorithmica.org/hpc/cpu-cache/cache-lines/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/algorithmica-org/algorithmica/blob/master/content/english/hpc/cpu-cache/cache-lines.md",
+    "shaped": "Chapter 19: caches transfer whole cache lines, 64 bytes on most architectures; reading one byte fetches its neighbours too; a loop touching every 16th int takes about as long as touching every int once the array is large; count cache lines, not reads."
+  },
+  {
+    "id": "slotin-amh-locality",
+    "authors": [
+      "Sergey Slotin"
+    ],
+    "title": "Spatial and Temporal Locality, in Algorithms for Modern Hardware",
+    "venue": "algorithmica.org (open online book)",
+    "year": null,
+    "doi": null,
+    "url": "https://en.algorithmica.org/hpc/external-memory/locality/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/algorithmica-org/algorithmica/blob/master/content/english/hpc/external-memory/locality.md",
+    "shaped": "Chapter 19: definitions of temporal locality (the same data again soon) and spatial locality (nearby data next)."
+  },
+  {
+    "id": "linux-x86-kconfig-cpu",
+    "authors": [
+      "Linux kernel contributors"
+    ],
+    "title": "arch/x86/Kconfig.cpu (X86_L1_CACHE_SHIFT)",
+    "venue": "Linux kernel source",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/torvalds/linux/blob/master/arch/x86/Kconfig.cpu",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/torvalds/linux/master/arch/x86/Kconfig.cpu and https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/include/asm/cache.h",
+    "shaped": "Chapter 19: the kernel assumes a cache line of 2^6 = 64 bytes for 64-bit x86 (X86_L1_CACHE_SHIFT defaults to 6 for X86_64) and for arm64 (L1_CACHE_SHIFT is 6)."
+  },
+  {
+    "id": "wasm-simd",
+    "authors": [
+      "The WebAssembly Community Group (SIMD subgroup)"
+    ],
+    "title": "WebAssembly 128-bit packed SIMD Extension (proposal overview, SIMD.md)",
+    "venue": "WebAssembly/simd repository on GitHub",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/WebAssembly/simd/blob/main/proposals/simd/SIMD.md",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/WebAssembly/simd/main/proposals/simd/SIMD.md and https://raw.githubusercontent.com/WebAssembly/simd/main/README.md",
+    "shaped": "Chapter 21: WebAssembly’s single v128 type, its lane interpretations (f64x2, f32x4, i32x4, ...), and instructions such as f64x2.add and v128.load; the proposal grew out of the SIMD.js work."
+  },
+  {
+    "id": "wasm-finished-proposals",
+    "authors": [
+      "The WebAssembly Community Group"
+    ],
+    "title": "Finished Proposals",
+    "venue": "WebAssembly/proposals repository on GitHub",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/WebAssembly/proposals/blob/main/finished-proposals.md",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/WebAssembly/proposals/main/finished-proposals.md",
+    "shaped": "Chapter 21: fixed-width SIMD is a finished proposal, part of WebAssembly 2.0 (relaxed SIMD followed in 3.0)."
+  },
+  {
+    "id": "tc39-simdjs",
+    "authors": [
+      "Ecma TC39 (SIMD.js champions and contributors)"
+    ],
+    "title": "SIMD.js (ecmascript_simd): historical repository README",
+    "venue": "tc39/ecmascript_simd repository on GitHub",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/tc39/ecmascript_simd",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/tc39/ecmascript_simd/master/README.md",
+    "shaped": "Chapter 21: SIMD.js was taken out of active development, removed from Stage 3, and is not being implemented by browsers; SIMD on the web moved to WebAssembly."
+  },
+  {
+    "id": "llvm-vectorizers",
+    "authors": [
+      "The LLVM Project"
+    ],
+    "title": "Auto-Vectorization in LLVM",
+    "venue": "LLVM documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://llvm.org/docs/Vectorizers.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/docs/Vectorizers.md",
+    "shaped": "Chapter 21: what a loop vectorizer does (widens a loop to work on consecutive iterations), runtime overlap checks, why floating-point reductions need permission to reorder, and why strided gathers are often judged not worth it."
+  },
+  {
+    "id": "ispc-perfguide",
+    "authors": [
+      "The Intel ISPC project"
+    ],
+    "title": "Intel ISPC Performance Guide: Use “Structure of Arrays” Layout When Possible",
+    "venue": "ispc.github.io documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://ispc.github.io/perfguide.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/ispc/ispc/main/docs/perfguide.rst",
+    "shaped": "Chapters 21 and 23: contiguous data allows vector loads and stores, while AoS fields need gathers; blocks of 8 (SoA inside each block) are the blocked compromise."
+  },
+  {
+    "id": "v8-pointer-compression",
+    "authors": [
+      "Igor Sheludko",
+      "Santiago Aboy Solanes"
+    ],
+    "title": "Pointer Compression in V8",
+    "venue": "V8 blog (v8.dev), 30 March 2020",
+    "year": 2020,
+    "doi": null,
+    "url": "https://v8.dev/blog/pointer-compression",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/pointer-compression.md",
+    "shaped": "Chapter 22: value tagging (the lowest bit tells a Smi from a pointer), the 31-bit Smi payload with pointer compression and 32 bits on 64-bit builds without it, and the advice to keep number-crunching data in Float64 typed arrays."
+  },
+  {
+    "id": "v8-react-cliff",
+    "authors": [
+      "Benedikt Meurer",
+      "Mathias Bynens"
+    ],
+    "title": "The story of a V8 performance cliff in React",
+    "venue": "V8 blog (v8.dev), 28 August 2019",
+    "year": 2019,
+    "doi": null,
+    "url": "https://v8.dev/blog/react-cliff",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/react-cliff.md",
+    "shaped": "Chapter 22: Smi vs HeapNumber, immutable HeapNumbers (an update allocates), Smi and Double field representations, representation changes, and the advice not to start numeric fields as null."
+  },
+  {
+    "id": "v8-fast-properties",
+    "authors": [
+      "Camillo Bruni"
+    ],
+    "title": "Fast properties in V8",
+    "venue": "V8 blog (v8.dev), 30 August 2017",
+    "year": 2017,
+    "doi": null,
+    "url": "https://v8.dev/blog/fast-properties",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/fast-properties.md and its figure src/_img/fast-properties/in-object-properties.png",
+    "shaped": "Chapter 22: the object header (hidden class, properties and elements pointers) followed by in-object properties."
+  },
+  {
+    "id": "mdn-class-fields",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Public class fields",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/classes/public_class_fields/index.md",
+    "shaped": "Chapter 22: fields are added before the base-class constructor body runs, and fields without initializers start as undefined."
+  },
+  {
+    "id": "ts-use-define",
+    "authors": [
+      "The TypeScript team"
+    ],
+    "title": "TSConfig reference: useDefineForClassFields",
+    "venue": "typescriptlang.org",
+    "year": null,
+    "doi": null,
+    "url": "https://www.typescriptlang.org/tsconfig/#useDefineForClassFields",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/microsoft/TypeScript-Website/blob/v2/packages/tsconfig-reference/copy/en/options/useDefineForClassFields.md and the defaults table in packages/tsconfig-reference/scripts/tsconfigRules.ts (true when target is ES2022 or higher)",
+    "shaped": "Chapter 22: with modern targets, TypeScript emits standard class fields for declarations like x: number;."
+  },
+  {
+    "id": "ts-37-declare",
+    "authors": [
+      "The TypeScript team"
+    ],
+    "title": "TypeScript 3.7 release notes: the useDefineForClassFields flag and the declare property modifier",
+    "venue": "typescriptlang.org handbook",
+    "year": 2019,
+    "doi": null,
+    "url": "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/microsoft/TypeScript-Website/blob/v2/packages/documentation/copy/en/release-notes/TypeScript%203.7.md",
+    "shaped": "Chapter 22: a declare modifier on a field produces no output code, so the field is created only by the constructor."
+  },
+  {
+    "id": "v8-maglev",
+    "authors": [
+      "Toon Verwaest",
+      "Leszek Swirski",
+      "Victor Gomes",
+      "Olivier Flückiger",
+      "Darius Mercadier",
+      "Camillo Bruni"
+    ],
+    "title": "Maglev - V8’s Fastest Optimizing JIT",
+    "venue": "V8 blog (v8.dev), 5 December 2023",
+    "year": 2023,
+    "doi": null,
+    "url": "https://v8.dev/blog/maglev",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/v8/v8.dev/main/src/blog/maglev.md",
+    "shaped": "Chapter 24: V8’s tiers (Ignition, Sparkplug, Maglev, TurboFan), runtime feedback about object shapes and types, speculative optimized code and deoptimization."
+  },
+  {
+    "id": "llvm-passes",
+    "authors": [
+      "The LLVM Project"
+    ],
+    "title": "LLVM’s Analysis and Transform Passes",
+    "venue": "LLVM documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://llvm.org/docs/Passes.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/docs/Passes.md (the dce and adce entries)",
+    "shaped": "Chapter 24: dead code elimination as a standard optimizing-compiler pass."
+  },
+  {
+    "id": "mdn-performance-now",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Performance: now() method",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/API/Performance/now",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/mdn/content/blob/main/files/en-us/web/api/performance/now/index.md",
+    "shaped": "Chapter 24: performance.now() is a high-resolution timer, coarsened in browsers to 100 microseconds (5 in cross-origin-isolated pages)."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.

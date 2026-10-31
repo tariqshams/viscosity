@@ -1,0 +1,226 @@
+---
+n: 16
+day: 4
+part: I
+title: 'Bits, bytes and typed arrays'
+tagline: 'Underneath every variable is a row of switches. Learn to read them, and you can see why 0.1 + 0.2 isn’t 0.3, and what the code Viscosity generates is really made of.'
+objectives:
+  - Read and write small numbers in binary, and explain bits and bytes.
+  - Use the bitwise operators & | ^ << >> >>> on small integers.
+  - Explain what a float64 is, and two surprises it causes.
+  - Create an ArrayBuffer with typed-array views over it, and store particle fields as Float64Array columns.
+introduces: [binary, bit, byte, bit-ops, arraybuffer, typed-array, float64]
+uses: [array, index, length, push, array-loop, array-of-objects, object, property, dot-access, reference, aliasing, function, parameter, return, new, instanceof, for-of, while-loop, string-methods, test, assertion, edge-case, variables, numbers, strings, booleans, comparison, if, for-loop, console-log]
+sources: [mdn-number, mdn-bitwise-and, mdn-arraybuffer, mdn-typedarray, mdn-typed-arrays]
+---
+import BitSteps from '../../../components/diagrams/ch016/BitSteps';
+import Float64Bits from '../../../components/diagrams/ch016/Float64Bits';
+import ByteViews from '../../../components/diagrams/ch016/ByteViews';
+
+## What is a number made of?
+
+Last chapter, `0.1 + 0.2` came out as `0.30000000000000004`. That isn’t a
+bug in JavaScript. It’s a consequence of how numbers are stored: as rows
+of tiny switches. This chapter opens the box. By the end, you’ll be able
+to read the kind of storage Viscosity produces: one column of raw
+numbers per field.
+
+<Callout kind="intuition">
+A computer’s memory is a vast panel of light switches, each either off
+or on. Everything, from numbers to text to your particles, is a pattern
+of switches. The trick is agreeing what each pattern *means*.
+</Callout>
+
+## Counting with two digits
+
+We count in tens: the places are worth 1, 10, 100. With only the digits 0
+and 1, the places are worth 1, 2, 4, 8, 16, each double the last:
+
+<BitSteps client:visible />
+
+```js
+console.log((13).toString(2)); // 1101
+console.log(parseInt('1101', 2)); // 13
+console.log(0b1101); // 13
+```
+
+`toString(2)` writes a number in base 2, `parseInt(text, 2)` reads it
+back, and the `0b` prefix lets you type binary straight into your code.
+
+<Callout kind="definition">
+**Binary** is writing numbers in base 2, with place values 1, 2, 4, 8, …
+Each binary digit is a **bit**: a single 0 or 1. Eight bits make a
+**byte**, which has 2 × 2 × … × 2 = 256 possible patterns, so one byte
+can hold a whole number from 0 to 255.
+</Callout>
+
+<Prompts ids={['binary-what', 'bit-byte', 'byte-range']} />
+
+## Working on bits directly
+
+JavaScript has operators that work on the bits of a number, one position
+at a time:
+
+```js
+// 13 is 1101, 6 is 0110
+13 & 6    // 4   0100: on in both
+13 | 6    // 15  1111: on in either
+13 ^ 6    // 11  1011: on in exactly one
+1 << 3    // 8   1000: slid left 3
+13 >> 1   // 6   0110: slid right 1
+-1 >>> 0  // 4294967295
+```
+
+A common use is packing yes/no **flags** into one number, one bit each:
+
+```js
+const ALIVE = 1;   // 001
+const VISIBLE = 2; // 010
+let flags = ALIVE | VISIBLE; // 011
+
+(flags & VISIBLE) !== 0  // true: visible
+flags = flags ^ VISIBLE; // toggle it off
+(flags & VISIBLE) !== 0  // false
+```
+
+<Callout kind="definition">
+The **bitwise operators** are `&` (and: 1 where both bits are 1), `|`
+(or: 1 where either is), `^` (xor: 1 where exactly one is), `<<` (shift
+left), `>>` (shift right, keeping the sign) and `>>>` (shift right,
+filling with zeros). Before working, they convert numbers to **32-bit
+integers**, dropping any fraction and any higher bits, and negative
+numbers use a pattern called two’s complement<Cite id="mdn-bitwise-and" />.
+That is why `-1 >>> 0` is `4294967295`: all 32 bits on, read as unsigned.
+</Callout>
+
+<Run id="bits" />
+
+<Prompts ids={['and-or', 'shift-left', 'ops-32bit']} />
+
+## float64: what every number really is
+
+Those 32-bit integers are temporary. Every ordinary JavaScript number is
+stored as a **float64**: a 64-bit pattern in a format called IEEE 754
+double precision<Cite id="mdn-number" />. It works like scientific
+notation (6.02 × 10²³), but in binary: one bit for the sign, 11 bits for
+the exponent and 52 for the digits.
+
+<Figure takeaway="Every JavaScript number is 64 bits: sign, exponent, fraction." caption="The number 1 as a float64. Coloured cells are the bits that are on. The 11 exponent bits say “times 2 to the power 0”; the leading 1 of the number is implied, so the fraction bits are all zero.">
+  <Float64Bits />
+</Figure>
+
+Two surprises follow:
+
+- **Some decimals can’t be stored exactly.** In decimal, 1/3 goes on
+  forever: 0.333… In binary, so does 0.1. The stored value is the nearest
+  64-bit pattern, which is why `0.1 + 0.2` is off by a hair.
+- **Big integers run out of digits.** Whole numbers are exact only up to
+  2⁵³ − 1, `Number.MAX_SAFE_INTEGER`<Cite id="mdn-number" />. Past that,
+  `2 ** 53 + 1 === 2 ** 53` is `true`.
+
+<Callout kind="definition">
+A **float64** is a 64-bit (8-byte) floating-point number in the IEEE 754
+double-precision format. Every JavaScript number is one<Cite id="mdn-number" />.
+</Callout>
+
+<Prompts ids={['float64-what', 'why-point-one', 'safe-int']} />
+
+## Raw bytes, and views onto them
+
+Now that a number is just 8 bytes, you can ask for the bytes directly.
+
+<Callout kind="intuition">
+An `ArrayBuffer` is a strip of blank tiles. A typed array is a stencil you
+lay over the strip: one stencil reads the tiles 8 at a time as decimals,
+another 4 at a time as whole numbers. Two stencils over the same strip see
+the same tiles.
+</Callout>
+
+<ByteViews client:visible />
+
+The diagram shows a little-endian layout, with the low byte first. Typed
+arrays use whatever byte order the machine natively has<Cite id="mdn-typedarray" />.
+
+```js
+const buf = new ArrayBuffer(16);
+const f64 = new Float64Array(buf);
+const i32 = new Int32Array(buf);
+console.log(f64.length, i32.length); // 2 4
+
+const xs = new Float64Array(3);
+console.log(xs); // [ 0, 0, 0 ]
+```
+
+You can also skip the buffer: `new Float64Array(3)` makes its own,
+filled with zeros. Typed arrays behave like arrays for reading and
+writing, `xs[i]`, but with three differences. Their length is fixed, so
+there is no `push`. Every element has the same type. And values are
+converted to fit: an `Int32Array` stores `3.7` as `3`, and a `Uint8Array`
+stores `256` as `0`<Cite id="mdn-typedarray" />.
+
+<Callout kind="definition">
+An **ArrayBuffer** is a fixed-size block of raw bytes, initially all zero.
+You can’t read it directly; you read it through a view<Cite id="mdn-arraybuffer" />.
+A **typed array** (`Float64Array`, `Int32Array`, `Uint8Array`, …) is a
+view that reads a buffer as numbers of one type and size<Cite id="mdn-typed-arrays" />.
+A `Float64Array` holds float64s, 8 bytes each, packed side by side.
+</Callout>
+
+<Prompts ids={['buffer-what', 'shared-bytes', 'no-push']} />
+
+## Columns of numbers
+
+Here’s the payoff. Chapter 3 showed the struct-of-arrays idea: one array
+per field instead of one object per particle. With typed arrays, each
+column is one solid block of float64s:
+
+```js
+const n = 3;
+const x = new Float64Array(n);
+const vx = new Float64Array([2, 0, -1]);
+
+for (let i = 0; i < n; i++) {
+  x[i] = x[i] + vx[i] * 0.5;
+}
+console.log(x); // [ 1, 0, -0.5 ]
+```
+
+No objects and no arrows to follow: `x` is 3 × 8 = 24 bytes of numbers in
+a row.
+
+<Callout kind="engine" label="Under the hood">
+This is exactly the storage Viscosity generates: one `Float64Array` per
+field. The benchmark in this repository compares it with plain objects
+(`engine/ts/packages/bench/results`, Node 22 on a shared cloud machine,
+so treat the numbers as rough). Summing one field over a million
+particles took about 1.1 ns per particle with `Float64Array` columns,
+against about 8.9 ns with an array of objects. But when the program needed a
+real object for every one of those million particles, the columns had to
+build them all, and came out over 30 times *slower* than objects that
+already existed. Neither layout always wins. That is why
+Viscosity has to analyse how your program uses its data before choosing.
+</Callout>
+
+## Your turn
+
+<Exercise id="toSoa" />
+
+<Exercise id="countBits" />
+
+## What you learned
+
+- **Binary** writes numbers with place values 1, 2, 4, 8, … Each digit is a
+  **bit**; eight bits are a **byte**, holding 0 to 255.
+- The **bitwise operators** `& | ^ << >> >>>` work on 32-bit integer
+  patterns, bit by bit.
+- Every JavaScript number is a **float64**: 64 bits, IEEE 754. So `0.1`
+  isn’t exact, and integers are exact only up to 2⁵³ − 1.
+- An **ArrayBuffer** is raw bytes. A **typed array** is a fixed-length,
+  single-type view of them. Two views of one buffer alias the same bytes.
+- A `Float64Array` per field is the struct-of-arrays layout Viscosity
+  generates.
+
+That’s the end of Part I. You now have every JavaScript tool the engines
+in this book are built from.
+
+<Quiz />

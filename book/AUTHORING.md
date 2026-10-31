@@ -188,3 +188,20 @@ bytecode VM). For a Drip exercise, `tests` is the exact expected output
   Exercises that build interpreter pieces (e.g. "write `isDigit`") are
   ordinary `js`/`ts` exercises.
 - Benchmark results for Drip: `companion/ts/results/drip-bench-*.md`.
+
+**The real compiler, in the page (Part VII onward):**
+
+```mdx
+import Playground from '../../../components/playground/Playground';
+
+<Playground client:visible title="Particles" initial={`const ps = [];
+for (let i = 0; i < 1000; i++) ps.push({ x: i, vx: 1 });
+for (const p of ps) p.x += p.vx;
+console.log(ps[0].x);`} />
+```
+
+It shows Viscosity's decisions (explain), the compiled code, and "Run both",
+which checks that both versions print the same thing. The engine source is
+`../engine/ts/packages/{core,frontend-js}`; rebuild the bundle with
+`node engine/ts/packages/playground/build.mjs`. End-to-end results:
+`../engine/ts/packages/bench/results/e2e-node-*.md`.

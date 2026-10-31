@@ -20,6 +20,10 @@ import { OUTLINE } from '../src/data/outline/index.js';
 import { references, pending } from '../src/data/references.js';
 import { runWithTests } from '../src/lib/minitest.js';
 import { runDrip, checkDripOutput } from '../src/lib/drip.js';
+import { transform as sucrase } from 'sucrase';
+
+// TypeScript cards are stripped of types exactly as the browser runner does.
+const stripTs = (code) => sucrase(code, { transforms: ['typescript'], disableESTransforms: true }).code;
 import { estimateMinutesExact, proseWords } from '../src/lib/minutes.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -150,7 +154,7 @@ for (const folder of folders) {
     const isDrip = e.lang === 'drip' || e.lang === 'drip-vm';
     const runEx = async (code) => isDrip
       ? { results: checkDripOutput(await runDrip(code, e.lang), e.tests), error: null }
-      : runWithTests(code, e.tests, silent);
+      : runWithTests(e.lang === 'ts' ? stripTs(code) : code, e.tests, silent);
     const sol = await runEx(e.solution);
     if (sol.error || !sol.results.length || sol.results.some((r) => !r.ok)) {
       err(folder, `exercise ${k}: reference solution fails its tests: ${sol.error ?? JSON.stringify(sol.results.filter((r) => !r.ok))}`);
@@ -170,8 +174,8 @@ for (const folder of folders) {
     if (ex.lang === 'drip' || ex.lang === 'drip-vm') {
       const r = await runDrip(ex.code, ex.lang);
       if (r.exitCode !== 0 && !ex.expectError) err(folder, `Drip example "${k}" fails: ${r.stderr.join(' ')}`);
-    } else if (ex.lang !== 'ts') {
-      const r = runWithTests(ex.code, '', silent);
+    } else {
+      const r = runWithTests(ex.lang === 'ts' ? stripTs(ex.code) : ex.code, '', silent);
       if (r.error && !ex.expectError) err(folder, `example "${k}" throws: ${r.error}`);
     }
   }
