@@ -26,7 +26,7 @@ export function jsPlugin(opts: { parser?: 'acorn' | 'mini'; typescript?: boolean
       const js = opts.typescript ? stripTypes(source) : source;
       const comments: { value: string; line: number }[] = [];
       const program = opts.parser === 'mini'
-        ? parseMini(js)
+        ? parseMini(js, comments)
         : (acorn.parse(js, {
             ecmaVersion: 'latest', sourceType: 'module', locations: true,
             onComment: (_block, value, _s, _e, startLoc, endLoc) => comments.push({ value, line: endLoc?.line ?? startLoc?.line ?? 0 }),

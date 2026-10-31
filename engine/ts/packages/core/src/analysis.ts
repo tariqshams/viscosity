@@ -48,6 +48,8 @@ export interface Collection {
   lengthReads: Inst[];
   loops: LoopAccess[];
   sizeEstimate: number | null;
+  /** fields provably always numbers: these get Float64Array columns */
+  numericFields: Set<string>;
   /** why the collection can't be transformed (empty = safe) */
   bailouts: string[];
   /** the source line of the declaration */
@@ -120,6 +122,7 @@ export function analyze(m: Module): Analysis {
     const c: Collection = {
       binding: binding.id, name: binding.name, fields: [], init, initRecords: [], pushes: [], indexGets: [],
       accesses: [], lengthReads: [], loops: [], sizeEstimate: null, bailouts: [], line: init.src?.line ?? 0,
+      numericFields: new Set(),
     };
     if (st.length > 1) c.bailouts.push(`"${binding.name}" is reassigned (line ${line(st[st.length - 1])}), so it may not always hold this array`);
     if (init.op === 'array.new') {
@@ -317,9 +320,9 @@ export function analyze(m: Module): Analysis {
         c.bailouts.push(`line ${line(ig.inst)}: an element is ${describeUse(u)}`);
       }
     }
-    for (const f of c.fields) {
-      if (!colNumeric.get(`${c.binding}.${f}`)) c.bailouts.push(`field "${f}" may hold something other than a number`);
-    }
+    // Fields that may hold non-numbers still get a column, just a plain
+    // JavaScript array instead of a Float64Array (book chapter 108).
+    for (const f of c.fields) if (colNumeric.get(`${c.binding}.${f}`)) c.numericFields.add(f);
   }
 
   // ---- 5. bounds, loops, access patterns, size ---------------------------
@@ -334,16 +337,37 @@ export function analyze(m: Module): Analysis {
     return x;
   };
 
-  /** Is `v` an induction variable 0, 1, 2, ... of the loop headed at its block? */
-  const isCountingPhi = (phi: Inst): boolean => {
-    if (phi.op !== 'phi' || phi.args.length !== 2) return false;
-    const [a, b] = phi.args.map(inst);
-    const start = a.op === 'const' && a.value === 0 ? b : b.op === 'const' && b.value === 0 ? a : null;
-    if (!start || start.op !== 'binop' || start.operator !== '+') return false;
-    const [x, y] = start.args.map(inst);
-    const base = x.op === 'unop' && x.operator === '+' ? inst(x.args[0]) : x;
-    return base.id === phi.id && y.op === 'const' && y.value === 1;
+  /** Is v provably a non-negative integer? (constants, sums, counting loops) */
+  const nonNegInt = (v: Inst, seen = new Set<ValueId>()): boolean => {
+    if (seen.has(v.id)) return true; // assume, for cycles through phis
+    seen.add(v.id);
+    switch (v.op) {
+      case 'const': return typeof v.value === 'number' && Number.isInteger(v.value) && v.value >= 0;
+      case 'binop': return (v.operator === '+' || v.operator === '*') && v.args.every((a) => nonNegInt(inst(a), seen));
+      case 'unop': return v.operator === '+' && nonNegInt(inst(v.args[0]), seen);
+      case 'phi': return v.args.every((a) => nonNegInt(inst(a), seen));
+      default: return false;
+    }
   };
+
+  /** Is phi a counting induction variable: start >= 0, step +1 each trip? */
+  const isCountingPhi = (phi: Inst, zeroStart = false): boolean => {
+    if (phi.op !== 'phi' || phi.args.length !== 2) return false;
+    for (const [s0, s1] of [[0, 1], [1, 0]]) {
+      const start = inst(phi.args[s0]);
+      const step = inst(phi.args[s1]);
+      if (step.op !== 'binop' || step.operator !== '+') continue;
+      const [x, y] = step.args.map(inst);
+      const base = x.op === 'unop' && x.operator === '+' ? inst(x.args[0]) : x;
+      if (base.id !== phi.id || y.op !== 'const' || y.value !== 1) continue;
+      if (zeroStart ? start.op === 'const' && start.value === 0 : nonNegInt(start)) return true;
+    }
+    return false;
+  };
+
+  /** The conjuncts of a branch condition: a && b && c -> [a, b, c]. */
+  const conjuncts = (v: Inst): Inst[] =>
+    v.op === 'logical' && v.operator === '&&' ? v.args.flatMap((a) => conjuncts(inst(a))) : [v];
 
   const tripCount = (f: Func, l: Loop): number | null => {
     const t = f.blocks[l.header].term;
@@ -351,7 +375,7 @@ export function analyze(m: Module): Analysis {
     const cond = inst(t.cond);
     if (cond.op !== 'binop' || (cond.operator !== '<' && cond.operator !== '<=')) return null;
     const [iv, bound] = cond.args.map(inst);
-    if (!isCountingPhi(iv) || bound.op !== 'const' || typeof bound.value !== 'number') return null;
+    if (!isCountingPhi(iv, true) || bound.op !== 'const' || typeof bound.value !== 'number') return null;
     return cond.operator === '<' ? bound.value : bound.value + 1;
   };
 
@@ -360,15 +384,18 @@ export function analyze(m: Module): Analysis {
       const f = funcOf.get(ig.inst)!;
       const { loops, idom } = info(f);
       const idx = inst(ig.inst.args[1]);
-      const l = loopOf(loops, ig.inst.block);
-      if (!l || !isCountingPhi(idx) || idx.block !== l.header) continue;
+      // The loop that counts with idx: any loop (not just the innermost)
+      // whose header defines idx and which contains this access.
+      const l = loops.find((lp) => lp.header === idx.block && lp.body.has(ig.inst.block));
+      if (!l || !isCountingPhi(idx)) continue;
       const t = f.blocks[l.header].term;
       if (t.kind !== 'condbr') continue;
-      const cond = inst(t.cond);
-      if (cond.op !== 'binop' || cond.operator !== '<' || cond.args[0] !== idx.id) continue;
-      const bound = inst(cond.args[1]);
-      const lenOfSame = bound.op === 'field.get' && bound.field === 'length' && collectionOfLoad.get(bound.args[0]) === c;
-      if (lenOfSame && dominates(idom, t.then, ig.inst.block)) ig.boundsProven = true;
+      const guarded = conjuncts(inst(t.cond)).some((cond) => {
+        if (cond.op !== 'binop' || cond.operator !== '<' || cond.args[0] !== idx.id) return false;
+        const bound = inst(cond.args[1]);
+        return bound.op === 'field.get' && bound.field === 'length' && collectionOfLoad.get(bound.args[0]) === c;
+      });
+      if (guarded && dominates(idom, t.then, ig.inst.block)) ig.boundsProven = true;
     }
 
     // Access patterns per loop.
