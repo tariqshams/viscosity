@@ -402,8 +402,8 @@ export function analyze(m: Module): Analysis {
         }
         const why = describeUse(u, ig.inst.id);
         // Don't repeat the line: "line 5: an element is ... at line 5".
-        const at = ` at line ${line(ig.inst)}`;
-        c.bailouts.push(`line ${line(ig.inst)}: an element is ${why.endsWith(at) ? why.slice(0, -at.length) : why}`);
+        const at = new RegExp(` (?:at|near) line ${line(ig.inst)}$`);
+        c.bailouts.push(`line ${line(ig.inst)}: an element is ${why.replace(at, '')}`);
       }
     }
     // Fields that may hold non-numbers still get a column, just a plain

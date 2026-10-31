@@ -1,6 +1,6 @@
 ps (line 1) {x} → kept as array of objects
   · unsafe: line 4: an element is merged with other values (a variable reassigned along different paths) near line 6
 qs (line 2) {x} → kept as array of objects
-  · unsafe: line 10: an element is merged with other values (a variable reassigned along different paths) near line 10
-  · unsafe: line 9: an element is merged with other values (a variable reassigned along different paths) near line 9
-  · unsafe: line 6: an element is merged with other values (a variable reassigned along different paths) near line 6
+  · unsafe: line 10: an element is merged with other values (a variable reassigned along different paths)
+  · unsafe: line 9: an element is merged with other values (a variable reassigned along different paths)
+  · unsafe: line 6: an element is merged with other values (a variable reassigned along different paths)

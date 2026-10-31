@@ -21,7 +21,10 @@ export function parsePython(src: string): PyNode {
   const peek = (o = 0) => toks[p + o];
   const isOp = (v: string, o = 0) => peek(o).type === 'op' && peek(o).value === v;
   const isKw = (v: string, o = 0) => peek(o).type === 'name' && peek(o).value === v;
-  const fail = (m: string): never => { throw new PySyntaxError(`${m} at line ${peek().line} near '${peek().value}'`); };
+  const fail = (m: string): never => {
+    const t = peek();
+    throw new PySyntaxError(`${m} at line ${t.line}${t.value ? ` near '${t.value}'` : ''}`);
+  };
   const op = (v: string) => (isOp(v) ? toks[p++] : fail(`expected '${v}'`));
   const kw = (v: string) => (isKw(v) ? toks[p++] : fail(`expected '${v}'`));
   const node = (type: string, start: PyTok, extra: Record<string, unknown>): PyNode =>
