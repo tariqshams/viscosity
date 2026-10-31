@@ -4,9 +4,10 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { compile, type PlanOptions } from '../../core/src/index.ts';
 import { jsPlugin } from '../../frontend-js/src/index.ts';
+import { pythonPlugin } from '../../frontend-python/src/index.ts';
 import { profile } from './profile.ts';
 
-export const HELP = `viscosity: rewrites arrays of objects into struct-of-arrays layouts
+export const HELP = `viscosity: rewrites arrays of objects (JavaScript, TypeScript, Python) into struct-of-arrays layouts
 when it can prove it is safe and expects it to be faster.
 
 Usage:
@@ -24,6 +25,8 @@ Options:
   --profile <profile.json>  use measured sizes from \`viscosity profile\`
   --parser acorn|mini       JavaScript parser (default acorn)
   --explain                 also print the explanation when building
+  --python-auto             Python: transform without annotations (CPython
+                            column access is slower; the gain is memory)
 `;
 
 export function parseArgs(argv: string[]) {
@@ -47,6 +50,7 @@ export function parseArgs(argv: string[]) {
       args.opts.bounds = v;
     } else if (a === '--min-size') args.opts.minSize = Number(next());
     else if (a === '--profile') args.profile = next();
+    else if (a === '--python-auto') args.opts.pythonAuto = true;
     else if (a === '--parser') {
       const v = next();
       if (v !== 'acorn' && v !== 'mini') throw new Error('--parser must be acorn or mini');
@@ -69,7 +73,8 @@ export function main(argv: string[]): number {
   try {
     const a = parseArgs(argv);
     if (!a.file) throw new Error('missing <file>');
-    const plugin = jsPlugin({ parser: a.parser, typescript: ['.ts', '.mts', '.tsx'].includes(extname(a.file)) });
+    const ext = extname(a.file);
+    const plugin = ext === '.py' ? pythonPlugin() : jsPlugin({ parser: a.parser, typescript: ['.ts', '.mts', '.tsx'].includes(ext) });
     if (a.cmd === 'profile') {
       const p = profile(a.file, plugin);
       const text = JSON.stringify(p, null, 2) + '\n';

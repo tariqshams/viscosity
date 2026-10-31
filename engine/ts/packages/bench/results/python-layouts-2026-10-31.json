@@ -1,0 +1,1 @@
+{"python": "3.13.18", "implementation": "CPython", "n": 100000, "ns_per_element": {"objects": 26.66, "typed_columns": 72.7, "list_columns": 43.31}, "memory_bytes": {"objects": 15998528, "typed_columns": 3266592}}

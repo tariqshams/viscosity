@@ -1,0 +1,9 @@
+{
+  "name": "@viscosity/frontend-python",
+  "version": "0.1.0",
+  "description": "Viscosity's Python language plugin (milestone M7): a Python subset lowered to the same VIR as JavaScript, proving the plugin architecture.",
+  "author": "Tariq Shams",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts"
+}

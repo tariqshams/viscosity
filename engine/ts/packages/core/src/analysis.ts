@@ -241,8 +241,55 @@ export function analyze(m: Module): Analysis {
     return c && c.fields.includes(i.field!) ? { c, f: i.field! } : null;
   };
 
+  // Language semantics differ: in JavaScript every number is a double, so
+  // "numeric" means "a JS number". In Python a typed array('d') column may
+  // only hold floats (an int would come back as a float and print as 1.0),
+  // so "numeric" means "a Python float", and ints are tracked separately.
+  const py = m.language === 'python';
+  const int = new Map<ValueId, boolean>();
+  const INT_RESULT = new Set(['math.floor', 'math.ceil', 'math.trunc', 'len', 'int', 'round']);
+  const computeInt = (i: Inst): boolean => {
+    if (!py) return false;
+    const I = (v: ValueId) => int.get(v) ?? false;
+    switch (i.op) {
+      case 'const': return i.note === 'int';
+      case 'binop': return ['+', '-', '*', '%', '//'].includes(i.operator!) && I(i.args[0]) && I(i.args[1]);
+      case 'unop': return (i.operator === '-' || i.operator === '+') && I(i.args[0]);
+      case 'intrinsic': return INT_RESULT.has(i.name!);
+      case 'phi': return i.args.every(I);
+      case 'loadBinding': return bindingInt.get(i.binding!) ?? false;
+      case 'param': {
+        const sites = callSites.get(funcOf.get(i)!);
+        return !!sites && sites.length > 0 && sites.every((site) => site.args[i.index! + 1] !== undefined && I(site.args[i.index! + 1]));
+      }
+      case 'field.get': return i.field === 'length' && collectionOfLoad.has(i.args[0]);
+      default: return false;
+    }
+  };
+  const bindingInt = new Map<BindingId, boolean>();
+  for (const b of m.bindings) bindingInt.set(b.id, py && (stores.get(b.id)?.length ?? 0) > 0);
+
   const compute = (i: Inst): boolean => {
     const n = (v: ValueId) => num.get(v) ?? false;
+    const I = (v: ValueId) => int.get(v) ?? false;
+    const nOrI = (v: ValueId) => n(v) || I(v);
+    if (py) {
+      switch (i.op) {
+        case 'const': return typeof i.value === 'number' && i.note === 'float';
+        case 'binop': {
+          const [a, b] = i.args;
+          if (i.operator === '/') return nOrI(a) && nOrI(b);
+          if (['+', '-', '*', '%', '//', '**'].includes(i.operator!)) return (n(a) && nOrI(b)) || (I(a) && n(b));
+          return false;
+        }
+        case 'unop': return (i.operator === '-' || i.operator === '+') && n(i.args[0]);
+        case 'intrinsic': return !INT_RESULT.has(i.name!);
+        case 'push': return false;
+        case 'field.get':
+          if (i.field === 'length') return false;
+          break;
+      }
+    }
     switch (i.op) {
       case 'const': return typeof i.value === 'number';
       case 'binop': return ARITH.has(i.operator!) && n(i.args[0]) && n(i.args[1]);
@@ -268,12 +315,21 @@ export function analyze(m: Module): Analysis {
     }
   };
   // Start optimistic for values that depend on cycles, then iterate.
-  for (const v of m.values) num.set(v.id, v.op === 'phi' || v.op === 'loadBinding' || v.op === 'field.get' || v.op === 'param' ? true : compute(v));
+  const optimistic = (v: Inst) => v.op === 'phi' || v.op === 'loadBinding' || v.op === 'field.get' || v.op === 'param';
+  for (const v of m.values) int.set(v.id, py && (v.op === 'phi' || v.op === 'loadBinding' || v.op === 'param') ? true : computeInt(v));
+  for (const v of m.values) num.set(v.id, optimistic(v) ? true : compute(v));
   for (let changed = true, rounds = 0; changed && rounds < 100; rounds++) {
     changed = false;
     for (const v of m.values) {
+      const ni = computeInt(v);
+      if (int.get(v.id) !== ni) { int.set(v.id, ni); changed = true; }
       const nv = compute(v);
       if (num.get(v.id) !== nv) { num.set(v.id, nv); changed = true; }
+    }
+    for (const b of m.bindings) {
+      const st = stores.get(b.id) ?? [];
+      const nb = (bindingInt.get(b.id) ?? false) && st.every((s) => int.get(s.args[0]));
+      if (bindingInt.get(b.id) !== nb) { bindingInt.set(b.id, nb); changed = true; }
     }
     for (const b of m.bindings) {
       const st = stores.get(b.id) ?? [];
@@ -297,9 +353,10 @@ export function analyze(m: Module): Analysis {
     }
   }
   const isNumber = (v: ValueId) => num.get(v) ?? false;
-  isNumberLater = isNumber;
+  // A valid index: a JS number, or a Python int.
+  isNumberLater = py ? (v: ValueId) => int.get(v) ?? false : isNumber;
   for (const { c, i } of indexChecks) {
-    if (!isNumber(i.args[1])) c.bailouts.push(`line ${line(i)}: indexes the array with something that may not be a number`);
+    if (!isNumberLater(i.args[1])) c.bailouts.push(`line ${line(i)}: indexes the array with something that may not be ${py ? 'an int' : 'a number'}`);
   }
 
   // ---- 4. element uses -----------------------------------------------------

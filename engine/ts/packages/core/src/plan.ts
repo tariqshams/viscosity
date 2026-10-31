@@ -19,6 +19,10 @@ export interface PlanOptions {
   annotations: Map<BindingId, Annotation>;
   /** element counts measured by a profiling run (PGO), keyed by binding name */
   profile?: Record<string, { maxLength: number; fieldReads?: Record<string, number> }>;
+  /** Python only: transform without annotations. Off by default because in
+   *  CPython column access measured slower per element than attribute access
+   *  (the win is memory, about 5x less). */
+  pythonAuto?: boolean;
 }
 
 export const DEFAULT_OPTIONS: PlanOptions = { mode: 'auto', minSize: 64, bounds: 'check', annotations: new Map() };
@@ -52,11 +56,15 @@ export function plan(a: Analysis, opts: PlanOptions = DEFAULT_OPTIONS): Plan {
       if (ann.layout === 'aos') { out.push(keep(`annotated @viscosity aos at line ${ann.line}`)); continue; }
       out.push({
         collection: c, layout: ann.layout, blockSize: ann.blockSize ?? 8,
-        reasons: [`annotated @viscosity ${ann.layout}${ann.layout === 'aosoa' ? `(${ann.blockSize ?? 8})` : ''} at line ${ann.line}`, ...describe(c)],
+        reasons: [`annotated @viscosity ${ann.layout}${ann.layout === 'aosoa' ? `(${ann.blockSize ?? 8})` : ''} at line ${ann.line}`, ...describe(c, c.sizeEstimate, false, a.module.language)],
       });
       continue;
     }
     if (opts.mode === 'opt-in') { out.push(keep('opt-in mode: not annotated')); continue; }
+    if (a.module.language === 'python' && !opts.pythonAuto) {
+      out.push(keep('CPython: column access measured slower per element than objects (the win is about 5x less memory); add "# @viscosity soa" above the list to opt in'));
+      continue;
+    }
     if (c.numericFields.size === 0) {
       out.push(keep('no field is provably numeric, so there are no typed columns to gain'));
       continue;
@@ -72,12 +80,14 @@ export function plan(a: Analysis, opts: PlanOptions = DEFAULT_OPTIONS): Plan {
       out.push(keep(`about ${size} elements${measured !== undefined ? ' (measured)' : ''}: below the ${opts.minSize}-element threshold, where the benefit is too small`));
       continue;
     }
-    out.push({ collection: c, layout: 'soa', blockSize: 0, reasons: describe(c, size, measured !== undefined) });
+    out.push({ collection: c, layout: 'soa', blockSize: 0, reasons: describe(c, size, measured !== undefined, a.module.language) });
   }
   return { collections: out, options: opts };
 }
 
-function describe(c: Collection, size: number | null = c.sizeEstimate, measured = false): string[] {
+function describe(c: Collection, size: number | null = c.sizeEstimate, measured = false, language = 'javascript'): string[] {
+  const typedName = language === 'python' ? "array('d')" : 'Float64Array';
+  const plainName = language === 'python' ? 'list' : 'plain array';
   const r: string[] = [];
   const F = c.fields.length;
   for (const l of c.loops.filter((l) => l.depth > 0)) {
@@ -86,8 +96,8 @@ function describe(c: Collection, size: number | null = c.sizeEstimate, measured 
   }
   const generic = c.fields.filter((f) => !c.numericFields.has(f));
   r.push(generic.length
-    ? `typed Float64Array columns for ${c.fields.filter((f) => c.numericFields.has(f)).join(', ') || 'no fields'}; plain array columns for ${generic.join(', ')} (may hold non-numbers)`
-    : `typed Float64Array columns for all ${c.fields.length} fields`);
+    ? `typed ${typedName} columns for ${c.fields.filter((f) => c.numericFields.has(f)).join(', ') || 'no fields'}; ${plainName} columns for ${generic.join(', ')} (${language === 'python' ? 'may hold non-floats' : 'may hold non-numbers'})`
+    : `typed ${typedName} columns for all ${c.fields.length} fields`);
   r.push(size === null ? 'size unknown statically' : `about ${size} elements${measured ? ' (measured by profiling)' : ''}`);
   const proven = c.indexGets.filter((g) => g.boundsProven).length;
   r.push(`${proven} of ${c.indexGets.length} element accesses proven in bounds`);
