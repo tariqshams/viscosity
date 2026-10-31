@@ -151,9 +151,14 @@ export function analyze(m: Module): Analysis {
   const refsOf = new Map<Collection, Inst[]>();
   for (const c of collections) refsOf.set(c, [...(loads.get(c.binding) ?? [])]);
 
-  const describeUse = (u: Use): string => {
+  /** Why use u of value v is one Viscosity can't rewrite, for explain. */
+  const describeUse = (u: Use, v?: ValueId): string => {
     if (u.term) return `returned or branched on in ${u.term.func.name}()`;
     const i = u.inst!;
+    // Stores: say which operand v was, not just that a store happened.
+    if (v !== undefined && i.op === 'field.set' && i.args[0] === v) return `modified directly (its .${i.field} is assigned) at line ${line(i)}`;
+    if (v !== undefined && i.op === 'index.set' && i.args[0] === v) return `written with an index store at line ${line(i)}`;
+    if (v !== undefined && (i.op === 'index.set' || i.op === 'index.get') && i.args[1] === v) return `used as an index at line ${line(i)}`;
     switch (i.op) {
       case 'call': return i.note === 'method' ? `passed to a method call at line ${line(i)}` : `passed to a function call at line ${line(i)}`;
       case 'storeBinding': return `stored in another variable (${m.bindings[i.binding!].name}) at line ${line(i)}`;
@@ -188,7 +193,7 @@ export function analyze(m: Module): Analysis {
       const l = work.pop()!;
       for (const u of usesOf(l.id)) {
         const i = u.inst;
-        if (!i) { c.bailouts.push(describeUse(u)); continue; }
+        if (!i) { c.bailouts.push(describeUse(u, l.id)); continue; }
         // Passed to a known function: follow it into the parameter.
         if (i.op === 'call' && i.note !== 'method' && i.args.indexOf(l.id) > 0) {
           const callee = inst(i.args[0]);
@@ -231,7 +236,7 @@ export function analyze(m: Module): Analysis {
           c.bailouts.push(`line ${line(i)}: uses .${i.field} on the array (only .length and .push are supported)`);
           continue;
         }
-        c.bailouts.push(`the array is ${describeUse(u)}`);
+        c.bailouts.push(`the array is ${describeUse(u, l.id)}`);
       }
     }
     if (c.fields.length === 0 && c.bailouts.length === 0) c.bailouts.push('no records are ever added, so there is nothing to lay out');
@@ -395,7 +400,10 @@ export function analyze(m: Module): Analysis {
           else c.accesses.push({ inst: i, element: ig.inst, field: i.field!, kind: 'write' });
           continue;
         }
-        c.bailouts.push(`line ${line(ig.inst)}: an element is ${describeUse(u)}`);
+        const why = describeUse(u, ig.inst.id);
+        // Don't repeat the line: "line 5: an element is ... at line 5".
+        const at = ` at line ${line(ig.inst)}`;
+        c.bailouts.push(`line ${line(ig.inst)}: an element is ${why.endsWith(at) ? why.slice(0, -at.length) : why}`);
       }
     }
     // Fields that may hold non-numbers still get a column, just a plain

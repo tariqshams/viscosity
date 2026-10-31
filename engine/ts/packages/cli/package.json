@@ -5,5 +5,13 @@
   "author": "Tariq Shams",
   "license": "MIT",
   "type": "module",
-  "bin": { "viscosity": "src/cli.ts" }
+  "bin": { "viscosity": "bin/viscosity.mjs" },
+  "files": ["bin", "dist"],
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "node build.mjs",
+    "prepack": "node build.mjs"
+  },
+  "repository": { "type": "git", "url": "git+https://github.com/tariqshams/viscosity.git", "directory": "engine/ts/packages/cli" },
+  "homepage": "https://viscosity.dev"
 }

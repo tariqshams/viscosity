@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // viscosity: an automatic data-layout optimizer for JavaScript and TypeScript.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { extname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { compile, type PlanOptions } from '../../core/src/index.ts';
 import { jsPlugin } from '../../frontend-js/src/index.ts';
 import { pythonPlugin } from '../../frontend-python/src/index.ts';
@@ -67,7 +69,9 @@ export function main(argv: string[]): number {
     return 0;
   }
   if (argv[0] === '--version') {
-    process.stdout.write('viscosity 0.1.0\n');
+    // package.json sits one level up from both src/cli.ts and dist/viscosity.mjs.
+    const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
+    process.stdout.write(`viscosity ${version}\n`);
     return 0;
   }
   try {
@@ -76,6 +80,7 @@ export function main(argv: string[]): number {
     const ext = extname(a.file);
     const plugin = ext === '.py' ? pythonPlugin() : jsPlugin({ parser: a.parser, typescript: ['.ts', '.mts', '.tsx'].includes(ext) });
     if (a.cmd === 'profile') {
+      if (ext === '.py') throw new Error('profile runs JavaScript programs only; Python profiling is not supported yet');
       const p = profile(a.file, plugin);
       const text = JSON.stringify(p, null, 2) + '\n';
       if (a.out) writeFileSync(a.out, text);
@@ -102,4 +107,6 @@ export function main(argv: string[]): number {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) process.exit(main(process.argv.slice(2)));
+// Run directly (node src/cli.ts ...). Compare real paths so symlinks work.
+const self = process.argv[1] ? pathToFileURL(realpathSync(process.argv[1])).href : '';
+if (import.meta.url === self) process.exit(main(process.argv.slice(2)));
