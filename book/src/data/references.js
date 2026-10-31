@@ -3278,6 +3278,77 @@ export const references = [
     "checkedAgainst": "src/lib.rs and src/allocator.rs of the published oxc_allocator 0.156.0 crate (as downloaded by cargo for engine/rust), read raw: “Oxc uses a bump-based memory arena for faster AST allocations”, with arena versions of Box, Vec, String, HashMap and HashSet; Allocator’s docs (“A bump-allocated memory arena”, built from chunks that each at least double; “For good performance, it’s ideal to create an Allocator, and re-use it over and over”, with reset between uses; “No Drops”: “Objects allocated into Oxc memory arenas are never Dropped. Memory is released in bulk when the allocator is dropped”, and alloc, Box::new_in, Vec::new_in and HashMap::new_in “will refuse to compile if called with a Drop type”).",
     "shaped": "Chapter 172: the arena behind oxc’s AST, why its nodes are never dropped one by one, and the advice to reuse allocators."
   },
+  {
+    "id": "oxc-ast-visit",
+    "authors": [
+      "Boshen",
+      "Oxc contributors"
+    ],
+    "title": "oxc_ast_visit: the generated Visit trait (crates/oxc_ast_visit/src/generated/visit.rs)",
+    "venue": "The Oxc project, github.com/oxc-project/oxc (version 0.156 on crates.io is the one engine/rust uses)",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/oxc-project/oxc/blob/main/crates/oxc_ast_visit/src/generated/visit.rs",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "crates/oxc_ast_visit/src/generated/visit.rs on the main branch, read raw from raw.githubusercontent.com, and the same file in the oxc_ast_visit 0.156.0 crate source downloaded by cargo: the file header says “Auto-generated code, DO NOT EDIT DIRECTLY!” and “Visitor Pattern”; `pub trait Visit<'a>: Sized`; every visit method has a default body calling the matching walk function, e.g. `fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) { walk_identifier_reference(self, it); }`. Counted in 0.156.0: 263 `fn visit_` methods in the trait.",
+    "shaped": "Chapter 173: the visitor pattern as oxc implements it, and the claim that its defaults walk every node’s children so a visitor overrides only a few methods."
+  },
+  {
+    "id": "rust-std-fmt-write",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Trait std::fmt::Write, and std::fmt::format (Rust standard library)",
+    "venue": "Rust standard library; source in library/core/src/fmt/mod.rs, library/alloc/src/fmt.rs and library/alloc/src/string.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/fmt/trait.Write.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "Read raw from github.com/rust-lang/rust (master): library/core/src/fmt/mod.rs, `pub trait Write` (“A trait for writing or formatting into Unicode-accepting buffers or streams. This trait only accepts UTF-8–encoded data and is not flushable”), whose required method is `fn write_str(&mut self, s: &str) -> Result;`, with default bodies for `write_char` and `write_fmt`; library/alloc/src/fmt.rs, `pub fn format(args: Arguments<'_>) -> string::String`, whose inner function creates `String::with_capacity(args.estimated_capacity())` and calls `output.write_fmt(args)`; library/alloc/src/string.rs, `impl fmt::Write for String`, where `write_str` calls `self.push_str(s)` and returns `Ok(())`.",
+    "shaped": "Chapter 174: fmt::Write as the way to build output text, format! as write! into a new String, and why unwrap on write! into a String cannot fail."
+  },
+  {
+    "id": "rust-std-string-replace-range",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "String::replace_range (Rust standard library)",
+    "venue": "Rust standard library; source in library/alloc/src/string.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/string/struct.String.html#method.replace_range",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/alloc/src/string.rs on master, read raw: “Removes the specified range in the string, and replaces it with the given string. The given string doesn’t need to be the same length as the range.” and “Panics if the range has `start_bound > end_bound`, or, if the range is bounded on either end and does not lie on a [`char`] boundary.” Also run locally with rustc 1.97: replacing 4..5 of \"// é😀\\nps[i].x\" panics with “start of range should be a character boundary”.",
+    "shaped": "Chapter 174: emit.rs applies each edit with replace_range on byte offsets, and a mis-cut offset panics."
+  },
+  {
+    "id": "rust-std-slice-sort-by-key",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "slice::sort_by_key (Rust standard library)",
+    "venue": "Rust standard library; source in library/alloc/src/slice.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/primitive.slice.html#method.sort_by_key",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/alloc/src/slice.rs on master, read raw, the documentation of `pub fn sort_by_key`: “This sort is stable (i.e., does not reorder equal elements) and O(m * n * log(n)) worst-case, where the key function is O(m).”",
+    "shaped": "Chapter 174: the emitter sorts edits with sort_by_key(Reverse(start)) and relies on the sort being stable."
+  },
+  {
+    "id": "ecma262-sort-stable",
+    "authors": [
+      "Ecma International, TC39"
+    ],
+    "title": "ECMAScript Language Specification: Array.prototype.sort and SortIndexedProperties",
+    "venue": "ECMA-262, current draft; source spec.html in github.com/tc39/ecma262",
+    "year": null,
+    "doi": null,
+    "url": "https://tc39.es/ecma262/#sec-array.prototype.sort",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "spec.html on the main branch of github.com/tc39/ecma262, read raw: the introduction says ECMAScript 2019 included “requiring that `Array.prototype.sort` be a stable sort”; the sort’s requirements end “if ℝ(_sortCompare_(old[_j_], old[_k_])) = 0, then π(_j_) < π(_k_); i.e., the sort is stable.”",
+    "shaped": "Chapter 174: the TypeScript emitter’s edit sort is stable, as Rust’s is, so ties are applied in the same order."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.
