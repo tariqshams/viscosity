@@ -171,7 +171,7 @@ export function analyze(m: Module): Analysis {
   // ---- 2. shapes and uses ------------------------------------------------------
   const setShape = (c: Collection, r: Inst, where: string) => {
     if (c.fields.length === 0) c.fields = [...r.fields!];
-    else if (c.fields.join(',') !== r.fields!.join(',')) {
+    else if (JSON.stringify(c.fields) !== JSON.stringify(r.fields)) {
       c.bailouts.push(`${where}: records with different fields or field order ({${r.fields!.join(', ')}} vs {${c.fields.join(', ')}})`);
     }
     const ru = usesOf(r.id);

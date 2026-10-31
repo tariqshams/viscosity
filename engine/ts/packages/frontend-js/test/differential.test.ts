@@ -31,8 +31,8 @@ describe('round trip', () => {
     const src = 'const a = [1, 2, 3];\n// a comment\nconsole.log(a.length);\n';
     expect(compile(src, jsPlugin()).code).toBe(src);
   });
-  it('handles export default class (named and anonymous)', () => {
-    for (const src of ['export default class A { m() { return 1; } }\n', 'export default class {}\n']) {
+  it('handles export default class and function (named and anonymous)', () => {
+    for (const src of ['export default class A { m() { return 1; } }\n', 'export default class {}\n', 'export default function () { return 1; }\n']) {
       expect(compile(src, jsPlugin()).code).toBe(src);
     }
   });

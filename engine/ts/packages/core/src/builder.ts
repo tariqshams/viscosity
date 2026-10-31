@@ -172,6 +172,7 @@ export class FunctionBuilder {
         const t = b.term;
         if (t.kind === 'condbr' && t.cond === phi.id) t.cond = same;
         if (t.kind === 'return' && t.value === phi.id) t.value = same;
+        if (t.kind === 'throw' && t.value === phi.id) t.value = same;
       }
     }
     for (const m of this.defs.values()) for (const [k, val] of m) if (val === phi.id) m.set(k, same);
