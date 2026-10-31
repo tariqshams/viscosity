@@ -68,6 +68,12 @@ for (const folder of folders) {
   const body = mdx.replace(/^---[\s\S]*?---/, '');
   const cards = await import(pathToFileURL(cardsPath).href);
 
+  // 0. frontmatter types (what Astro's schema will demand)
+  for (const k of ['objectives', 'introduces', 'uses', 'sources']) {
+    if (!Array.isArray(fm[k]) || fm[k].some((x) => typeof x !== 'string')) err(folder, `frontmatter "${k}" must be a list of plain strings (quote items containing ": ")`);
+  }
+  for (const k of ['title', 'tagline', 'part']) if (typeof fm[k] !== 'string') err(folder, `frontmatter "${k}" must be a string`);
+
   // 1. numbering
   if (fm.n <= prevN) err(folder, `chapter number ${fm.n} is not after ${prevN}`);
   prevN = fm.n;
