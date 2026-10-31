@@ -9,6 +9,10 @@ import type { PyNode } from './parser.ts';
 
 const MATH = new Set(['sqrt', 'sin', 'cos', 'tan', 'atan2', 'exp', 'log', 'log10', 'log2', 'fabs', 'floor', 'ceil', 'trunc', 'pow', 'hypot', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh']);
 
+const isLiteralDefault = (e: PyNode): boolean =>
+  e.type === 'Constant' ||
+  (e.type === 'UnaryOp' && (e.op === '-' || e.op === '+') && e.operand.type === 'Constant' && (e.operand.kind === 'int' || e.operand.kind === 'float'));
+
 export interface Dataclass { name: string; fields: string[]; defaults: (PyNode | null)[]; node: PyNode }
 
 export interface PyLowered {
@@ -86,7 +90,13 @@ export function lowerPython(mod: PyNode, source: string): PyLowered {
     const defaults: (PyNode | null)[] = [];
     let ok = true;
     for (const b of s.body) {
-      if (b.type === 'AnnAssign' && b.target.type === 'Name') { fields.push(b.target.id); defaults.push(b.value); }
+      if (b.type === 'AnnAssign' && b.target.type === 'Name') {
+        // Python evaluates a default once, when the class is defined; the
+        // emitter copies its text to each call site. That is only the same
+        // for literal constants, so anything else leaves the class unmodelled.
+        if (b.value && !isLiteralDefault(b.value)) ok = false;
+        fields.push(b.target.id); defaults.push(b.value);
+      }
       else if (b.type === 'Pass' || (b.type === 'Expr' && b.value.type === 'Constant' && b.value.kind === 'str')) continue;
       else ok = false;
     }

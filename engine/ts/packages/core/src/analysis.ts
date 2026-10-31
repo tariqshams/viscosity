@@ -137,7 +137,7 @@ export function analyze(m: Module): Analysis {
       for (const a of init.args) {
         const r = inst(a);
         if (r.op !== 'record.new') {
-          c.bailouts.push(`line ${init.src?.line}: an element of the array literal is not a plain object literal`);
+          c.bailouts.push(`line ${init.src?.line}: an element of the ${m.language === 'python' ? 'list literal is not a dataclass constructor call' : 'array literal is not a plain object literal'}`);
           break;
         }
         c.initRecords.push(r);
@@ -216,7 +216,7 @@ export function analyze(m: Module): Analysis {
         if (i.op === 'push' && i.args[0] === l.id) {
           if (i.args.length !== 2) { c.bailouts.push(`line ${line(i)}: push with ${i.args.length - 1} arguments (only one record at a time is supported)`); continue; }
           const r = inst(i.args[1]);
-          if (r.op !== 'record.new') { c.bailouts.push(`line ${line(i)}: pushes something that is not a fresh object literal`); continue; }
+          if (r.op !== 'record.new') { c.bailouts.push(`line ${line(i)}: ${m.language === 'python' ? 'appends something that is not a fresh dataclass instance (dataclasses with non-literal defaults are not modelled)' : 'pushes something that is not a fresh object literal'}`); continue; }
           setShape(c, r, `line ${line(i)}`);
           c.pushes.push(i);
           continue;
@@ -287,7 +287,9 @@ export function analyze(m: Module): Analysis {
         case 'binop': {
           const [a, b] = i.args;
           if (i.operator === '/') return nOrI(a) && nOrI(b);
-          if (['+', '-', '*', '%', '//', '**'].includes(i.operator!)) return (n(a) && nOrI(b)) || (I(a) && n(b));
+          // ** with a non-integer exponent can be complex: (-1.0) ** 0.5 is 1j.
+          if (i.operator === '**') return n(a) && I(b);
+          if (['+', '-', '*', '%', '//'].includes(i.operator!)) return (n(a) && nOrI(b)) || (I(a) && n(b));
           return false;
         }
         case 'unop': return (i.operator === '-' || i.operator === '+') && n(i.args[0]);

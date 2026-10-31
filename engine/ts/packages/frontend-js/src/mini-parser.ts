@@ -21,6 +21,8 @@ export class MiniSyntaxError extends SyntaxError { override name = 'MiniSyntaxEr
 
 export interface MiniComment { value: string; line: number }
 
+const isBreak = (c: string) => c === '\n' || c === '\r' || c === '\u2028' || c === '\u2029';
+
 function tokenize(src: string, comments: MiniComment[] = []): Tok[] {
   const toks: Tok[] = [];
   let i = 0;
@@ -29,18 +31,19 @@ function tokenize(src: string, comments: MiniComment[] = []): Tok[] {
   const err = (m: string) => { throw new MiniSyntaxError(`${m} (line ${line})`); };
   while (i < src.length) {
     const c = src[i];
-    if (c === '\n') { line++; nl = true; i++; continue; }
+    // Line breaks as JavaScript (and acorn) count them: \n, \r\n, \r, U+2028, U+2029.
+    if (c === '\n' || c === '\u2028' || c === '\u2029' || (c === '\r' && src[i + 1] !== '\n')) { line++; nl = true; i++; continue; }
     if (c === ' ' || c === '\t' || c === '\r') { i++; continue; }
     if (c === '/' && src[i + 1] === '/') {
       const s0 = i + 2;
-      while (i < src.length && src[i] !== '\n') i++;
+      while (i < src.length && !isBreak(src[i])) i++;
       comments.push({ value: src.slice(s0, i), line });
       continue;
     }
     if (c === '/' && src[i + 1] === '*') {
       const j = src.indexOf('*/', i + 2);
       if (j < 0) err('unterminated comment');
-      for (let k = i; k < j; k++) if (src[k] === '\n') { line++; nl = true; }
+      for (let k = i; k < j; k++) if (isBreak(src[k]) && !(src[k] === '\r' && src[k + 1] === '\n')) { line++; nl = true; }
       comments.push({ value: src.slice(i + 2, j), line });
       i = j + 2;
       continue;
