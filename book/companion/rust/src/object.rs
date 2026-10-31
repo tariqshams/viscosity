@@ -139,7 +139,7 @@ impl<T> std::ops::IndexMut<Gc<T>> for Arena<T> {
 #[cold]
 fn use_after_free<T>() -> ! {
     let kind = std::any::type_name::<T>().rsplit("::").next().unwrap_or("");
-    panic!("use after free: a {kind} was collected while still in use")
+    panic!("use after free: an object of type {kind} was collected while still in use")
 }
 
 // ---- the objects ---------------------------------------------------------

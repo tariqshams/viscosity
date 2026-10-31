@@ -257,7 +257,22 @@ pub fn run_suite(suite: &str, select: impl Fn(&str) -> bool, options: Options) {
     let mut failed = Vec::new();
     for test in &tests {
         let source = std::fs::read_to_string(corpus_dir().join(test)).expect("test file");
-        let fails = check(&source, &drip::run(&source, options), "c");
+        // A panic (e.g. a use-after-free caught by stress mode) fails this
+        // program only, and says which program it was.
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            drip::run(&source, options)
+        }));
+        let fails = match run {
+            Ok(outcome) => check(&source, &outcome, "c"),
+            Err(payload) => {
+                let msg = payload
+                    .downcast_ref::<String>()
+                    .map(String::as_str)
+                    .or_else(|| payload.downcast_ref::<&str>().copied())
+                    .unwrap_or("(non-string panic)");
+                vec![format!("panicked: {msg}")]
+            }
+        };
         if fails.is_empty() {
             println!("test {test} ... ok");
         } else {
