@@ -1,0 +1,215 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# A newer push to the same branch or PR cancels the run it supersedes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  engine-ts:
+    name: engine (TypeScript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: engine/ts/package-lock.json
+
+      # The Python plugin's differential tests run the programs under CPython.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install
+        working-directory: engine/ts
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: engine/ts
+        run: npx tsc -p tsconfig.json --noEmit
+
+      - name: Test
+        working-directory: engine/ts
+        run: npx vitest run
+
+      - name: Pack the CLI and run it from a clean install
+        working-directory: engine/ts/packages/cli
+        run: |
+          version=$(node -p "require('./package.json').version")
+          npm pack --pack-destination "$RUNNER_TEMP"
+          mkdir "$RUNNER_TEMP/cli-install"
+          cd "$RUNNER_TEMP/cli-install"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund "$RUNNER_TEMP/viscosity-cli-$version.tgz"
+          npx --no-install viscosity --version | tee version.txt
+          grep -qx "viscosity $version" version.txt
+          npx --no-install viscosity explain "$GITHUB_WORKSPACE/engine/ts/packages/frontend-js/test/corpus/basic_soa.js" | tee explain.txt
+          grep -q "struct of arrays" explain.txt
+
+  engine-rust:
+    name: engine (Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine/rust
+
+      # The differential tests run the original and compiled programs under
+      # Node (JavaScript) and CPython (Python).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Test
+        working-directory: engine/rust
+        run: cargo test --workspace
+
+      - name: Clippy
+        working-directory: engine/rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build for WebAssembly
+        working-directory: engine/rust
+        run: cargo build --target wasm32-unknown-unknown -p viscosity-wasm
+
+  drip:
+    name: drip (book companion)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: book/companion/ts/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: book/companion/rust
+
+      - name: Install (TypeScript)
+        working-directory: book/companion/ts
+        run: npm ci
+
+      - name: Test (TypeScript)
+        working-directory: book/companion/ts
+        run: npx vitest run
+
+      - name: Test (Rust)
+        working-directory: book/companion/rust
+        run: cargo test --release
+
+      - name: Clippy (Rust)
+        working-directory: book/companion/rust
+        run: cargo clippy --all-targets -- -D warnings
+
+  book:
+    name: book
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: book/package-lock.json
+
+      # check_chapters compiles and runs the Rust exercises with rustc.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install
+        working-directory: book
+        run: npm ci
+
+      - name: Check chapters
+        working-directory: book
+        run: node scripts/check_chapters.mjs
+
+      - name: Test
+        working-directory: book
+        run: npx vitest run
+
+      # As the Vercel prebuild and scripts/clean_check.sh do: fold the
+      # chapter authors' src/data/refs-new/ files into the bibliography, or
+      # the build fails on references only listed there.
+      - name: Merge new references
+        working-directory: book
+        run: node scripts/merge_refs.mjs --all
+
+      - name: Build
+        working-directory: book
+        run: npm run build
+
+      - name: Check site links
+        working-directory: book
+        run: node scripts/check_site.mjs
+
+      # scripts/lib/playwright.mjs loads Playwright from the global npm root,
+      # so install it globally (same version as the dev machines).
+      - name: Install Playwright Chromium
+        run: |
+          npm install -g playwright@1.63.0
+          playwright install --with-deps chromium
+
+      - name: Smoke test
+        working-directory: book
+        run: node scripts/smoke.mjs
+
+  website:
+    name: website
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install
+        working-directory: website
+        run: npm ci
+
+      - name: Build
+        working-directory: website
+        run: npm run build
+
+      - name: Check links
+        working-directory: website
+        run: node scripts/check_links.mjs

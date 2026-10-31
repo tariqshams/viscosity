@@ -2615,6 +2615,371 @@ export const references = [
     "checkedAgainst": "doc/api/typescript.md in github.com/nodejs/node (v22.x branch), read raw: type stripping is enabled by default from v22.18.0; inline types are replaced with whitespace, nothing is type-checked, features that need transformation (such as enums) are not run by default, and no source maps are needed; “To discourage package authors from publishing packages written in TypeScript, Node.js refuses to handle TypeScript files inside folders under a node_modules path.” Confirmed by installing the packed @viscosity/cli tarball, which fails with ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING on Node v22.23.4.",
     "shaped": "Chapter 119: why the CLI must be compiled to JavaScript before it can be published."
   },
+  {
+    "id": "rustref-lifetime-elision",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "The Rust Reference: Lifetime elision",
+    "venue": "The Rust Reference (rust-lang/reference on GitHub, rendered at doc.rust-lang.org/reference)",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/lifetime-elision.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/lifetime-elision.md on the master branch of github.com/rust-lang/reference, read raw: “Each elided lifetime in the parameters becomes a distinct lifetime parameter” (lifetime-elision.function.implicit-lifetime-parameters); “If there is exactly one lifetime used in the parameters (elided or not), that lifetime is assigned to all elided output lifetimes” (…output-lifetime); in methods, “If the receiver has type &Self or &mut Self, then the lifetime of that reference to Self is assigned to all elided output lifetime parameters” (…receiver-lifetime); “It is an error to elide lifetime parameters that cannot be inferred.”",
+    "shaped": "Chapter 133: the three elision rules, and why rule 3 is the wrong default for a scanner."
+  },
+  {
+    "id": "rustref-closure-types",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "The Rust Reference: Closure types",
+    "venue": "The Rust Reference (rust-lang/reference on GitHub, rendered at doc.rust-lang.org/reference)",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/types/closure.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/types/closure.md on the master branch of github.com/rust-lang/reference, read raw: “A closure expression produces a closure value with a unique, anonymous type that cannot be written out. A closure type is approximately equivalent to a struct which contains the captured values” (type.closure.intro, with an illustrative struct holding &mut captures and an FnOnce impl); “Closure types all implement FnOnce … A closure which does not move out of any captured variables implements FnMut” (type.closure.call); the note that move closures may still implement Fn or FnMut, because the traits depend on what the closure does with captures, not how it captures them.",
+    "shaped": "Chapter 134: a closure as a struct of its captures, and which Fn traits it gets."
+  },
+  {
+    "id": "rust-std-iter",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Module std::iter (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/core/src/iter/mod.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/iter/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/iter/mod.rs on the main branch of github.com/rust-lang/rust, read raw: the section “for loops and IntoIterator” (“Rust’s for loop syntax is actually sugar for iterators”, with the de-sugaring into IntoIterator::into_iter and a loop calling next until None); “Iterating by reference” (for x in &values is the same as values.iter(), &mut values as iter_mut()); “Adapters”; and “Laziness” (“Iterators (and iterator adapters) are lazy … Nothing really happens until you call next”, with the warning “iterators are lazy and do nothing unless consumed”).",
+    "shaped": "Chapter 134: how for uses IntoIterator, and why adapter chains are lazy."
+  },
+  {
+    "id": "rustref-visibility",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "The Rust Reference: Visibility and privacy",
+    "venue": "The Rust Reference (rust-lang/reference on GitHub, rendered at doc.rust-lang.org/reference)",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/visibility-and-privacy.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/visibility-and-privacy.md on the master branch of github.com/rust-lang/reference, read raw: the Visibility grammar (pub, pub(crate), pub(self), pub(super), pub(in path)); vis.default: “By default, everything is private, with two exceptions: Associated items in a pub Trait are public by default; Enum variants in a pub enum are also public by default”; vis.access: a public item “can be accessed externally from some module m if you can access all the item’s ancestor modules from m”, and a private item “may be accessed by the current module and its descendants”, with the unit-test idiom of a child mod test reaching its parent’s private items.",
+    "shaped": "Chapter 135: the exact privacy rule, and why a tests module can see private items."
+  },
+  {
+    "id": "rust-std-rc",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Module alloc::rc (std::rc), Rust standard library documentation",
+    "venue": "Rust standard library API documentation; source in library/alloc/src/rc.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/rc/index.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/alloc/src/rc.rs at tag 1.97.0 of github.com/rust-lang/rust, read raw: the module docs (“Rc<T> provides shared ownership of a value of type T, allocated in the heap”; clone “produces a new pointer to the same allocation”; when the last Rc is destroyed the inner value is dropped; “you cannot generally obtain a mutable reference to something inside an Rc. If you need mutability, put a Cell or RefCell inside the Rc”; “A cycle between Rc pointers will never be deallocated. For this reason, Weak is used to break cycles”, with strong parent-to-child and Weak child-to-parent pointers as the example).",
+    "shaped": "Chapter 137: what Rc::clone copies, when the value is dropped, why Rc gives only shared access, and why cycles leak."
+  },
+  {
+    "id": "rust-std-cell",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Module core::cell (std::cell), Rust standard library documentation",
+    "venue": "Rust standard library API documentation; source in library/core/src/cell.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/cell/index.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/cell.rs at tag 1.97.0 of github.com/rust-lang/rust, read raw: the module docs (“RefCell<T> uses Rust’s lifetimes to implement dynamic borrowing”; “Borrows for RefCell<T>s are tracked at runtime, unlike Rust’s native reference types which are entirely tracked statically, at compile time”; borrow and borrow_mut first verify that any number of immutable borrows or a single mutable borrow is allowed, “If a borrow is attempted that would violate these rules, the thread will panic”) and the panic messages “RefCell already borrowed” and “RefCell already mutably borrowed”. The second message was also seen by running a program with rustc 1.97.0.",
+    "shaped": "Chapter 137: RefCell’s run-time borrow checking and its double-borrow panic."
+  },
+  {
+    "id": "rust-std-size-of",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Function core::mem::size_of (std::mem::size_of), Rust standard library documentation",
+    "venue": "Rust standard library API documentation; source in library/core/src/mem/mod.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/mem/fn.size_of.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/mem/mod.rs at tag 1.97.0 of github.com/rust-lang/rust, read raw: the doc comment of size_of (“the offset in bytes between successive elements in an array with that item type including alignment padding”, so [T; n] has size n * size_of::<T>(); “the size of a type is not stable across compilations, but specific types such as primitives are”; the table of primitive sizes; *const T, &T, Box<T>, Option<&T> and Option<Box<T>> all have the same size; the #[repr(C)] struct algorithm: add each field’s size, round up to the next field’s alignment, finally round to the struct’s alignment, “usually the largest alignment of all its fields”). Sizes quoted in the chapter were measured with rustc 1.97.0 on x86-64 Linux.",
+    "shaped": "Chapter 139: what size_of measures, and the repr(C) size rule."
+  },
+  {
+    "id": "rust-std-black-box",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Function core::hint::black_box (std::hint::black_box), Rust standard library documentation",
+    "venue": "Rust standard library API documentation; source in library/core/src/hint.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/hint/fn.black_box.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/hint.rs at tag 1.97.0 of github.com/rust-lang/rust, read raw: the doc comment of black_box (“only (and can only be) provided on a best-effort basis”; it “can generally be relied upon for benchmarking, and should be used there”; when benchmarking “you usually want to wrap its inputs in black_box so the compiler cannot make optimizations that would be unrealistic”; it treats its argument as unpredictable and its result as used, so a pure call whose result is otherwise unused is not removed).",
+    "shaped": "Chapter 140: why the hand-made benchmark wraps its data in black_box."
+  },
+  {
+    "id": "rustref-unsafety",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "Unsafety",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/unsafety.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/unsafety.md in github.com/rust-lang/reference (master), read raw: unsafe operations are those that can potentially violate memory safety; the list is dereferencing a raw pointer, reading or writing a mutable or unsafe external static, accessing a union field other than to assign to it, calling an unsafe function, calling a target_feature function from one without those features, implementing an unsafe trait, declaring an extern block (unsafe from the 2024 edition), and applying an unsafe attribute.",
+    "shaped": "Chapter 141: the full list of what unsafe unlocks, beyond the Rust book’s five."
+  },
+  {
+    "id": "rustref-raw-pointer",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "Pointer types: raw pointers (*const and *mut)",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/types/pointer.html#raw-pointers-const-and-mut",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/types/pointer.md in github.com/rust-lang/reference (master), read raw: raw pointers are pointers without safety or liveness guarantees, written *const T or *mut T; copying or dropping one has no effect on the lifecycle of any other value; dereferencing one is an unsafe operation; they are compared by address; they can be created directly with &raw const and &raw mut.",
+    "shaped": "Chapter 141: what a raw pointer is and isn’t, and how to make one."
+  },
+  {
+    "id": "cargo-profiles",
+    "authors": [
+      "The Cargo Team"
+    ],
+    "title": "Profiles (The Cargo Book)",
+    "venue": "The Cargo Book",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/cargo/reference/profiles.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/book/src/reference/profiles.md in github.com/rust-lang/cargo (master), read raw: opt-level 0 means no optimizations and 3 all optimizations; overflow-checks makes overflow panic; the default dev profile has opt-level = 0, debug-assertions = true, overflow-checks = true, codegen-units = 256; the release profile (used with --release) has opt-level = 3, debug-assertions = false, overflow-checks = false, codegen-units = 16; the bench profile inherits from release; lto = true is “fat” whole-graph LTO; more codegen units may produce slower code.",
+    "shaped": "Chapter 142: what a release build changes, and drip-rs’s lto and codegen-units settings."
+  },
+  {
+    "id": "rustref-int-overflow",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "Operator expressions: Overflow",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/expressions/operator-expr.html#overflow",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/expressions/operator-expr.md in github.com/rust-lang/reference (master), read raw: “Integer operators will panic when they overflow when compiled in debug mode”, controlled by -C debug-assertions and -C overflow-checks. The wrap to 0 in an optimized build was observed by running the chapter’s program with rustc 1.97 -O.",
+    "shaped": "Chapter 142: overflow panics in a debug build and wraps in a release build."
+  },
+  {
+    "id": "cargo-bench-docs",
+    "authors": [
+      "The Cargo Team"
+    ],
+    "title": "cargo bench (The Cargo Book)",
+    "venue": "The Cargo Book",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/cargo/commands/cargo-bench.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/book/src/commands/cargo-bench.md and doc/book/src/reference/cargo-targets.md in github.com/rust-lang/cargo (master), read raw: the #[bench] attribute is unstable and only available on nightly; packages on crates.io such as Criterion help with benchmarks on stable; harness = false means the bench target supplies its own main; cargo bench uses the bench profile, which enables optimizations.",
+    "shaped": "Chapter 142: why stable Rust benchmarks use criterion, and how a benches/ target with harness = false runs."
+  },
+  {
+    "id": "criterion-analysis",
+    "authors": [
+      "Brook Heisler",
+      "the Criterion.rs contributors"
+    ],
+    "title": "Criterion.rs User Guide: Analysis Process",
+    "venue": "Criterion.rs documentation (github.com/criterion-rs/criterion.rs, formerly bheisler/criterion.rs; the README links the user guide at this URL)",
+    "year": null,
+    "doi": null,
+    "url": "https://criterion-rs.github.io/book/index.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "book/src/analysis.md in github.com/criterion-rs/criterion.rs (master; identical in bheisler/criterion.rs), read raw: warm-up runs the routine 1, 2, 4… times until the warm-up time has passed; samples have d, 2d, … Nd iterations; Tukey’s fences at 1.5 IQR and extra fences at 3 IQR for severe outliers, which are not dropped; a line is fitted and bootstrap resampling gives a confidence interval for the slope; runs are compared with a bootstrapped T-test; the comparison is very sensitive on small deterministic benchmarks, with a configurable noise threshold. Defaults (3 s warm-up, 5 s measurement, 100 samples, 100,000 resamples, noise threshold 0.01, significance 0.05) read from src/lib.rs of the criterion 0.5.1 crate source that cargo 1.97 downloaded.",
+    "shaped": "Chapter 142: what criterion measures, its output, and why it can report noise as a change."
+  },
+  {
+    "id": "wasm-bindgen-guide",
+    "authors": [
+      "The wasm-bindgen contributors"
+    ],
+    "title": "The wasm-bindgen Guide",
+    "venue": "wasm-bindgen documentation (github.com/wasm-bindgen/wasm-bindgen, formerly rustwasm/wasm-bindgen; the README links the rendered guide at this URL)",
+    "year": null,
+    "doi": null,
+    "url": "https://wasm-bindgen.github.io/wasm-bindgen/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "guide/src in github.com/wasm-bindgen/wasm-bindgen (main), read raw: introduction.md (a Rust library and CLI tool for high-level interactions between Wasm modules and JavaScript: strings, objects, classes); reference/types/str.md (a &str parameter is copied into Wasm linear memory with TextEncoder; unpaired surrogates in the JS string are replaced with U+FFFD); reference/types/result.md (an exported function’s Err is thrown as a JS exception, and the Err type must implement Into<JsValue>); reference/attributes/on-rust-exports/getter_with_clone.md (getters normally require Copy fields; getter_with_clone requires Clone instead); reference/deployment.md (the bundler, web, no-modules and nodejs targets). The generated glue described in the chapter was produced by running wasm-bindgen-cli 0.2.106 on engine/rust’s viscosity-wasm crate.",
+    "shaped": "Chapter 143: what #[wasm_bindgen] and the CLI generate, how strings and Results cross, and the getter_with_clone attribute the engine uses."
+  },
+  {
+    "id": "rust-std-from",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Trait core::convert::From (std::convert::From), Rust standard library documentation",
+    "venue": "Rust standard library API documentation; source in library/core/src/convert/mod.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/convert/trait.From.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/convert/mod.rs in github.com/rust-lang/rust (main), read raw: From<U> for T implies Into<T> for U through a blanket implementation, so library authors should implement From rather than Into; From and Into are reflexive; From is “very useful when performing error handling”, letting a function return a single error type that encapsulates several, and “the ? operator automatically converts the underlying error type to our custom error type with From::from”, with a CliError enum wrapping io::Error and ParseIntError as the example.",
+    "shaped": "Chapter 144: From, the free Into, and how ? uses From to convert errors into an error enum."
+  },
+  {
+    "id": "thiserror-readme",
+    "authors": [
+      "David Tolnay"
+    ],
+    "title": "thiserror: derive(Error) (README)",
+    "venue": "thiserror crate, github.com/dtolnay/thiserror",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/dtolnay/thiserror",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "README.md of the thiserror 2.0.21 crate source, as downloaded by cargo 1.97 from crates.io (repository field: https://github.com/dtolnay/thiserror): a derive macro for std::error::Error; a Display impl is generated from #[error(\"...\")]; a From impl is generated for each variant containing a #[from] field.",
+    "shaped": "Chapter 144: the crate that writes an error enum’s Display and From impls for you."
+  },
+  {
+    "id": "rust-std-str",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Primitive type str (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/core/src/str/mod.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/primitive.str.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/str/mod.rs on the main branch of github.com/rust-lang/rust, read raw: as_bytes (“Converts a string slice to a byte slice”) and is_char_boundary (“Checks that index-th byte is the first byte in a UTF-8 code point sequence or the end of the string”, with the examples that the second byte of ö and the third byte of 老 are not boundaries); and library/core/src/num/mod.rs, u8::is_utf8_char_boundary, whose comment reads “This is bit magic equivalent to: b < 128 || b >= 192”.",
+    "shaped": "Chapter 147: a byte is inside a character exactly when it is a continuation byte (128 to 191, bit pattern 10xxxxxx), which is what drip-rs’s is_continuation tests."
+  },
+  {
+    "id": "rust-std-flt2dec",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "core::num::imp::flt2dec (float-to-decimal conversion) and core::fmt::float",
+    "venue": "Rust standard library source, rust-lang/rust repository on GitHub",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/rust-lang/rust/blob/master/library/core/src/num/imp/flt2dec/mod.rs",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/num/imp/flt2dec/mod.rs and library/core/src/fmt/float.rs (master), read raw. flt2dec’s module doc defines the “shortest” mode: digits that are correctly rounded when parsed back, with no shorter such representation. fmt/float.rs: Display for f64 calls float_to_decimal_common_shortest and LowerExp calls float_to_exponential_common_shortest when no precision is given, both via flt2dec::strategy::grisu::format_shortest.",
+    "shaped": "Chapter 149: why Rust’s `{}` and `{:e}` give the same digits as JavaScript’s String(n), so drip-rs’s format_number only has to change the layout."
+  },
+  {
+    "id": "rustref-fn-pointer",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "Function pointer types",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/types/function-pointer.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/rust-lang/reference/blob/master/src/types/function-pointer.md (read raw): “A function pointer type, written using the `fn` keyword, refers to a function whose identity is not necessarily known at compile-time”; the `type Binop = fn(i32, i32) -> i32; let bo: Binop = add;` example; function pointers can be created by coercion from function items and non-capturing closures.",
+    "shaped": "Chapter 151: the cells of drip-rs’s parse-rule table are `fn(&mut Compiler, bool)` pointers."
+  },
+  {
+    "id": "rust-std-fn-primitive",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Primitive type fn (function pointers)",
+    "venue": "Rust standard library documentation (library/core/src/primitive_docs.rs)",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/primitive.fn.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/primitive_docs.rs in rust-lang/rust (master), read raw: “Like references, function pointers are, among other things, assumed to not be null, so if you want to pass a function pointer over FFI and be able to accommodate null pointers, make your type Option<fn()>”.",
+    "shaped": "Chapter 151: why Option<fn(..)> is the same size as a bare function pointer."
+  },
+  {
+    "id": "rust-std-ord",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Trait Ord (and PartialOrd): derivable ordering",
+    "venue": "Rust standard library documentation (library/core/src/cmp.rs)",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/cmp/trait.Ord.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/cmp.rs in rust-lang/rust (master), read raw: “When derived on enums, variants are ordered primarily by their discriminants … By default, the discriminant is smallest for variants at the top, and largest for variants at the bottom.”",
+    "shaped": "Chapter 151: drip-rs’s Precedence enum derives Ord, so precedences compare by declaration order."
+  },
+  {
+    "id": "rust-std-ops-index",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Trait std::ops::Index (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/core/src/ops/index.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/ops/trait.Index.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/ops/index.rs on the master branch of github.com/rust-lang/rust, read raw: “`container[index]` is actually syntactic sugar for `*container.index(index)`, but only when used as an immutable value. If a mutable value is requested, [`IndexMut`] is used instead. This allows nice things such as `let value = v[index]` if the type of `value` implements [`Copy`].”",
+    "shaped": "Chapter 153: heap[handle] calls drip-rs’s Index and IndexMut impls for Heap."
+  },
+  {
+    "id": "rust-std-type-name",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Function std::any::type_name (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/core/src/any.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/any/fn.type_name.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/any.rs on the master branch of github.com/rust-lang/rust, read raw: “This is intended for diagnostic use. The exact contents and format of the string returned are not specified, other than being a best-effort description of the type.” and “the output may change between versions of the compiler.”",
+    "shaped": "Chapter 153: drip-rs names the freed type in its use-after-free panic; the text is for people, not for code to compare."
+  },
+  {
+    "id": "rust-std-string",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Struct std::string::String (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/alloc/src/string.rs and library/alloc/src/str.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/string/struct.String.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/alloc/src/string.rs on the master branch of github.com/rust-lang/rust, read raw: String::into_boxed_str, “Before doing the conversion, this method discards excess capacity like [`shrink_to_fit`]. Note that this call may reallocate and copy the bytes of the string.” And library/alloc/src/str.rs, join_generic_copy (behind [str]::concat): it computes `reserved_len`, the total length, and allocates `Vec::with_capacity(reserved_len)` before copying the pieces in.",
+    "shaped": "Chapter 154: intern_owned keeps the String the VM built for `+`, because concat reserves exactly the joined length and into_boxed_str only reallocates to drop spare capacity."
+  },
+  {
+    "id": "rustref-numeric-cast",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "Operator expressions: Numeric cast",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/expressions/operator-expr.html#numeric-cast",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/expressions/operator-expr.md in github.com/rust-lang/reference (master), read raw, rule expr.as.numeric.int-truncation: “Casting from a larger integer to a smaller integer (e.g. u32 -> u8) will truncate”, with the examples 1234u16 as u8 == 210 and 0xabcdu16 as u8 == 0xcd.",
+    "shaped": "Chapter 156: patch_jump writes `(jump >> 8) as u8` and `jump as u8`, where the TypeScript compiler masks with & 0xff."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.

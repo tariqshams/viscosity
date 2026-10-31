@@ -1,0 +1,254 @@
+---
+n: 148
+day: 37
+part: X
+title: 'Chunks and opcodes in Rust'
+tagline: 'Turning an opcode into a byte is free in Rust. Turning a byte back into an opcode is the interesting half, and drip-rs does it with a table, no unsafe code, and an Option that still fits in one byte.'
+objectives:
+  - Declare an opcode enum with #[repr(u8)] and encode opcodes with as u8.
+  - Decode a byte safely with a table of every opcode, and explain why b as OpCode doesn’t compile.
+  - Derive the disassembler’s OP_ names from Debug, and port Chunk to Vec<u8>.
+  - Read drip-rs’s disassembler and say what each difference from debug.ts is for.
+introduces: [opcode-enum]
+uses: [drip-rs, token-enum, byte-scanning, opcode, bytecode, chunk, constant-pool, disassembler, jump, upvalue, enum, match, pattern, repr, size-of, option, vec, struct, impl, trait, unsafe, scalar-types, slice, string-vs-str, byte, bit-ops, typescript, heap-object]
+sources: [rustref-enum, rustref-type-layout]
+---
+import DisasmSteps from '../../../components/diagrams/ch148/DisasmSteps';
+
+## Thirty-seven numbers
+
+Chapter 45's instruction set lives in `companion/ts/src/vm/chunk.ts` as
+an object of numbers:
+
+```ts
+export const OP = {
+  CONSTANT: 0, NIL: 1, TRUE: 2,
+  // ...
+  INHERIT: 35, METHOD: 36,
+} as const;
+```
+
+The compiler writes `OP.ADD` into `code`, an array of JavaScript
+numbers, and the VM's `switch` compares bytes with `OP.ADD`. A second
+table, `OP_NAMES`, is built from the keys for the disassembler. Three
+things to keep in step by hand: the numbers, the names, and every place
+that tests them.
+
+<Callout kind="intuition">
+A café menu with numbered dishes. The kitchen hears "number 18" and
+knows it means the toastie. Rust lets you print the menu once, as a
+type, and the numbers come from where each dish sits on it.
+</Callout>
+
+## OpCode
+
+drip-rs's `chunk.rs`:
+
+```rust
+#[repr(u8)]
+#[derive(Clone, Copy, Debug,
+         PartialEq, Eq)]
+pub enum OpCode {
+    Constant,
+    Nil,
+    True,
+    // ... 33 more
+    Method,
+}
+```
+
+Variants without an explicit value are numbered from 0 in the order
+they are written<Cite id="rustref-enum" />. The variants are listed in
+the same order as the `OP` table, so `Constant` is 0, `Add` 18 and
+`Method` 36, and both VMs produce the same bytes for the same program.
+I checked the two name lists against each other: all 37 line up.
+
+`#[repr(u8)]` pins the representation. A fieldless enum with a primitive
+representation has the size and alignment of that integer, and its
+discriminants are of that type<Cite id="rustref-type-layout" />. So an
+`OpCode` *is* its byte, and encoding is a cast the compiler's `emit_op`
+does in one line:
+
+```rust
+fn emit_op(&mut self, op: OpCode) {
+    self.emit(op as u8);
+}
+```
+
+<Callout kind="definition">
+An **opcode enum** is a fieldless enum with one variant per instruction,
+marked **`#[repr(u8)]`** so each value is stored as, and casts with
+**`as u8`** to, the byte that encodes it. Variant order fixes the
+numbering. drip-rs's `OpCode` has 37 variants numbered like the
+TypeScript `OP` table.
+</Callout>
+
+<Prompts ids={['repr-u8', 'implicit-numbers', 'encode-free']} />
+
+## Bytes back into opcodes
+
+The VM reads a `u8` and needs an `OpCode`. The obvious cast doesn't
+exist (1.97, trimmed):
+
+```
+error[E0605]: non-primitive cast:
+  `u8` as `Op`
+  an `as` expression can only be
+  used to convert between
+  primitive types
+```
+
+It can't, because most bytes aren't opcodes: 37 to 255 have no variant.
+There are three ways out. Reinterpret the byte with `unsafe` code, which
+`#![forbid(unsafe_code)]` rules out, and which would be undefined
+behaviour for a bad byte anyway. Write a 37-arm `match`. Or do what
+drip-rs does, and keep a table:
+
+```rust
+pub const ALL: [OpCode; 37] = {
+    use OpCode::*;
+    [Constant, Nil, True, False,
+     // ...
+     Inherit, Method]
+};
+
+pub fn from_byte(b: u8)
+    -> Option<OpCode> {
+    OpCode::ALL.get(b as usize).copied()
+}
+```
+
+`ALL[op as usize] == op` for every opcode, and a unit test checks exactly
+that, so a variant added out of order fails `cargo test`. `get` returns
+`None` past the end, so a bad byte is an ordinary value, not a crash.
+The VM, which trusts its own compiler, calls
+`from_byte(byte).expect("the compiler emits valid opcodes")`.
+
+And the `Option` is free: `size_of::<Option<OpCode>>()` is 1. Bytes 37
+to 255 are never a valid `OpCode`, and rustc uses one of those spare
+values to mean `None`.
+
+<Prompts ids={['no-cast', 'all-table', 'option-one-byte']} />
+
+## Names for free
+
+TypeScript built `OP_NAMES` from the keys of `OP`. drip-rs builds a name
+from the variant's `Debug` text, putting `_` before each capital:
+
+```rust
+pub fn name(self) -> String {
+    let mut name = String::from("OP");
+    for c in format!("{self:?}").chars() {
+        if c.is_ascii_uppercase() {
+            name.push('_');
+        }
+        name.push(c.to_ascii_uppercase());
+    }
+    name
+}
+```
+
+`JumpIfFalse` becomes `OP_JUMP_IF_FALSE`. There is no second list to
+forget to update.
+
+<Prompts ids={['name-debug']} />
+
+## The chunk
+
+`Chunk` is chapter 46's three arrays, typed:
+
+```rust
+#[derive(Default)]
+pub struct Chunk {
+    pub code: Vec<u8>,
+    pub lines: Vec<usize>,
+    pub constants: Vec<Value>,
+}
+```
+
+`write` pushes a byte and its line; `add_constant` pushes a value and
+returns its index. Both are line-for-line the TypeScript methods. The
+difference is in the types: `code` holds real bytes, so
+`chunk.write(300, 1)` doesn't compile ("literal out of range for `u8`")
+instead of being a bug the disassembler finds later. `Value` is
+chapter 149's subject. `#[derive(Default)]` writes the
+`Chunk::default()` that starts all three empty.
+
+## The disassembler
+
+`debug.rs` prints the same text as `debug.ts`, column for column. Step
+through it on chapter 46's eleven bytes:
+
+<DisasmSteps client:visible />
+
+Its signature has one extra parameter:
+
+```rust
+pub fn disassemble_instruction(
+    heap: &Heap,
+    chunk: &Chunk,
+    offset: usize,
+) -> (String, usize)
+```
+
+A string constant in drip-rs is a handle into the heap (chapter 145), so
+printing `'hi'` means asking the heap for the text. The TypeScript
+version just reads the object. The rest is translation. `padStart` and
+`padEnd` become format specs, `{offset:04}`, `{:>4}` and `{name:<16}`.
+An unknown byte is handled up front with `let ... else`:
+
+```rust
+let Some(op) = OpCode::from_byte(b)
+else {
+    return (format!(
+        "{prefix}Unknown opcode {b}"),
+        offset + 1);
+};
+```
+
+And jumps had to change. TypeScript computed `offset + 3 + sign * j`
+with `sign = -1` for loops. A `usize` can't be negative, so the `Loop`
+arm subtracts instead, `offset + 3 - jump`. If that ever went below
+zero, a debug build would panic on the overflow instead of printing a
+nonsense target.
+
+<Run id="opcodes" />
+
+<Prompts ids={['disasm-heap', 'jump-usize']} />
+
+<Callout kind="engine" label="Under the hood">
+Does it really match? The TypeScript CLI has no disassembly flag, so I
+wrote a short script that compiles each program with the TypeScript
+compiler and calls `disassembleChunk` on every function, and compared
+its output with `drip-rs --disassemble` for all 265 `.drip` files in the
+corpus. 199 compile, and all 199 listings are identical. The other 66
+fail to compile in both, with the same exit code. `drip-rs` also has a
+`disassemble_function` that prints nested functions after their parent,
+which my script did by hand for the TypeScript side. Two small Rust
+details make the closure arm work: `let Value::Function(f) = ... else`
+pulls the function handle out of the constant, and each upvalue is
+printed as a continuation line, `local 1` or `upvalue 0`.
+</Callout>
+
+## Your turn
+
+<Exercise id="opcodeRoundTrip" />
+
+<Exercise id="jumpTarget" />
+
+## What you learned
+
+- An **opcode enum** is fieldless and **`#[repr(u8)]`**. Variant order
+  fixes the numbers, which match the TypeScript `OP` table, and
+  `op as u8` encodes for free.
+- `u8 as OpCode` doesn't compile. drip-rs decodes with a table,
+  **`ALL.get(b as usize).copied()`**, returning `Option<OpCode>`, which
+  is still 1 byte. No `unsafe` needed.
+- Names like `OP_GET_LOCAL` come from the `Debug` name.
+- `Chunk` holds `Vec<u8>`, `Vec<usize>` and `Vec<Value>`.
+- The disassembler takes `&Heap` to print string constants, uses format
+  specs for padding, and subtracts for loops because `usize` can't be
+  negative. Its output matched the TypeScript one on every corpus
+  program that compiles.
+
+<Quiz />
