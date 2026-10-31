@@ -9,7 +9,7 @@ describe('bytecode VM passes the Drip corpus (clox expectations)', () => {
     if (shouldSkip(t, 'vm')) continue;
     it(t, () => {
       const src = readFileSync(join(CORPUS, t), 'utf8');
-      expect(check(t, src, runVm(src), 'c')).toEqual([]);
+      expect(check(t, src, runVm(src, { debugGC: true }), 'c')).toEqual([]);
     });
   }
 });

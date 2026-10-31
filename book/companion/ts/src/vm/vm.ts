@@ -39,8 +39,9 @@ export class VM {
   private out: string[] = [];
   private err: string[] = [];
 
-  constructor(opts: { stressGC?: boolean } = {}) {
+  constructor(opts: { stressGC?: boolean; debugGC?: boolean } = {}) {
     this.heap.stress = !!opts.stressGC;
+    this.heap.poisonFreed = !!(opts.stressGC || opts.debugGC);
     this.heap.vm = this;
     this.initString = this.heap.copyString('init');
     this.defineNative('clock', 0, () => performance.now() / 1000);
@@ -50,12 +51,10 @@ export class VM {
     for (let i = 0; i < this.sp; i++) mark(this.stack[i]);
     for (const f of this.frames) mark(f.closure);
     for (let u = this.openUpvalues; u; u = u.nextOpen) mark(u);
-    for (const e of this.globals.entries) {
-      if (e.key) {
-        mark(e.key);
-        mark(e.value);
-      }
-    }
+    this.globals.forEach((k, v) => {
+      mark(k);
+      mark(v);
+    });
     mark(this.initString);
   }
 

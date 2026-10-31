@@ -30,6 +30,10 @@ export class Heap {
   bytesAllocated = 0;
   nextGC = 1024 * 1024;
   stress = false;
+  /** Poison freed objects so any use-after-free throws. Debug-only: it costs
+   *  real time, because it pushes each dead object into V8's slow
+   *  dictionary mode. Profiling the VM found it was over half the runtime. */
+  poisonFreed = false;
   collections = 0;
   freed = 0;
   /** functions under construction by the compiler */
@@ -94,12 +98,10 @@ export class Heap {
   }
 
   private markTable(t: Table) {
-    for (const e of t.entries) {
-      if (e.key) {
-        this.markObject(e.key);
-        this.markValue(e.value);
-      }
-    }
+    t.forEach((k, v) => {
+      this.markObject(k);
+      this.markValue(v);
+    });
   }
 
   private blacken(o: Obj) {
@@ -154,7 +156,7 @@ export class Heap {
         else this.objects = o;
         this.bytesAllocated -= SIZE[dead.type];
         this.freed++;
-        poison(dead);
+        if (this.poisonFreed) poison(dead);
       }
     }
     this.nextGC = Math.max(1024 * 1024, this.bytesAllocated * GC_HEAP_GROW_FACTOR);
