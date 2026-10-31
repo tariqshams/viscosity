@@ -6,8 +6,12 @@
   "author": "Tariq Shams",
   "license": "MIT",
   "type": "module",
-  "workspaces": ["packages/*"],
-  "engines": { "node": ">=22.18" },
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -18,5 +22,10 @@
     "@types/node": "22.10.2",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
+  },
+  "dependencies": {
+    "acorn": "^8.19.0",
+    "acorn-walk": "^8.3.5",
+    "sucrase": "^3.35.1"
   }
 }
