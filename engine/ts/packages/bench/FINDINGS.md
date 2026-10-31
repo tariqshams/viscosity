@@ -31,13 +31,13 @@ At n = 1,000 the gains shrink to about 1.3–2.3×, and AoSoA<8> is often
 *slower* than plain AoS. The data already fits in cache, and AoSoA's index
 arithmetic costs more than it saves. The cost model must look at size.
 
-## 4. TypeScript class fields can be 5–7× slower than object literals
+## 4. TypeScript class fields can be 3–7× slower than object literals
 
 `aos-class` uses TypeScript-style field declarations (`x: number;`). With
 modern targets these become real class fields, initialized to `undefined`
-before the constructor runs. In `update-xy` this layout was **5–7× slower**
-than both object literals and the same class without declarations
-(`aos-ctor`).
+before the constructor runs. In `update-xy` this layout was **about 3× slower at 100,000 elements and
+5–7× slower at 1,000 and 1,000,000** than both object literals and the same
+class without declarations (`aos-ctor`).
 
 Cause, observed with `node --trace-generalization`: the field starts as a
 heap-object (`undefined`) field, then storing a number generalizes it to a
