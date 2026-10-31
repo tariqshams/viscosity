@@ -769,11 +769,15 @@ impl<'m> Analyzer<'m> {
                             }
                         }
                         _ => {
-                            // Don't repeat the line: "line 5: an element is ... at line 5".
+                            // Don't repeat the line: "line 5: an element is ... at line 5"
+                            // (or "... near line 5", for phis).
                             let line = line_of(self.m, self.inst(ig.inst));
                             let why = self.describe_use(u, ig.inst);
-                            let at = format!(" at line {line}");
-                            let why = why.strip_suffix(at.as_str()).unwrap_or(&why);
+                            // (`/ (?:at|near) line N$/` in the reference.)
+                            let why = [" at line ", " near line "]
+                                .iter()
+                                .find_map(|p| why.strip_suffix(&format!("{p}{line}")))
+                                .unwrap_or(&why);
                             let msg = format!("line {line}: an element is {why}");
                             self.collections[ci].bailouts.push(msg);
                         }

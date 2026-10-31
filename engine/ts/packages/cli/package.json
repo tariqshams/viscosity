@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "bin": { "viscosity": "bin/viscosity.mjs" },
-  "files": ["bin", "dist"],
+  "files": ["bin", "dist", "LICENSE", "THIRD_PARTY_LICENSES.txt"],
   "engines": { "node": ">=18" },
   "scripts": {
     "build": "node build.mjs",

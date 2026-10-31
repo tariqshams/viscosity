@@ -9,6 +9,8 @@ import { jsPlugin } from '../../frontend-js/src/index.ts';
 import { pythonPlugin } from '../../frontend-python/src/index.ts';
 import { profile } from './profile.ts';
 
+class UsageError extends Error {}
+
 export const HELP = `viscosity: rewrites arrays of objects (JavaScript, TypeScript, Python) into struct-of-arrays layouts
 when it can prove it is safe and expects it to be faster.
 
@@ -37,28 +39,28 @@ export function parseArgs(argv: string[]) {
     const a = argv[i];
     const next = () => {
       const v = argv[++i];
-      if (v === undefined) throw new Error(`${a} needs a value`);
+      if (v === undefined) throw new UsageError(`${a} needs a value`);
       return v;
     };
     if (a === '-o' || a === '--out') args.out = next();
     else if (a === '--explain') args.explain = true;
     else if (a === '--mode') {
       const v = next();
-      if (v !== 'auto' && v !== 'opt-in') throw new Error('--mode must be auto or opt-in');
+      if (v !== 'auto' && v !== 'opt-in') throw new UsageError('--mode must be auto or opt-in');
       args.opts.mode = v;
     } else if (a === '--bounds') {
       const v = next();
-      if (v !== 'check' && v !== 'assume') throw new Error('--bounds must be check or assume');
+      if (v !== 'check' && v !== 'assume') throw new UsageError('--bounds must be check or assume');
       args.opts.bounds = v;
     } else if (a === '--min-size') args.opts.minSize = Number(next());
     else if (a === '--profile') args.profile = next();
     else if (a === '--python-auto') args.opts.pythonAuto = true;
     else if (a === '--parser') {
       const v = next();
-      if (v !== 'acorn' && v !== 'mini') throw new Error('--parser must be acorn or mini');
+      if (v !== 'acorn' && v !== 'mini') throw new UsageError('--parser must be acorn or mini');
       args.parser = v;
     } else if (!a.startsWith('-') && !args.file) args.file = a;
-    else throw new Error(`unknown option ${a}`);
+    else throw new UsageError(`unknown option ${a}`);
   }
   return args;
 }
@@ -76,7 +78,7 @@ export function main(argv: string[]): number {
   }
   try {
     const a = parseArgs(argv);
-    if (!a.file) throw new Error('missing <file>');
+    if (!a.file) throw new UsageError('missing <file>');
     const ext = extname(a.file);
     const plugin = ext === '.py' ? pythonPlugin() : jsPlugin({ parser: a.parser, typescript: ['.ts', '.mts', '.tsx'].includes(ext) });
     if (a.cmd === 'profile') {
@@ -100,9 +102,11 @@ export function main(argv: string[]): number {
       if (a.explain) process.stderr.write(r.explain + '\n');
       return 0;
     }
-    throw new Error(`unknown command "${a.cmd}"`);
+    throw new UsageError(`unknown command "${a.cmd}"`);
   } catch (e) {
-    process.stderr.write(`viscosity: ${(e as Error).message}\n\n${HELP}`);
+    // Usage text only helps when the command line itself was wrong.
+    const usage = e instanceof UsageError;
+    process.stderr.write(`viscosity: ${(e as Error).message}\n${usage ? `\n${HELP}` : ''}`);
     return 1;
   }
 }
