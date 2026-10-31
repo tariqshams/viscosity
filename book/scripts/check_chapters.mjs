@@ -21,6 +21,32 @@ import { references, pending } from '../src/data/references.js';
 import { runWithTests } from '../src/lib/minitest.js';
 import { checkDripOutput } from '../src/lib/drip.js';
 import { Worker } from 'node:worker_threads';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync as writeFile } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { testCrate, parseTestOutput } from '../src/lib/rust.js';
+
+// Rust is compiled locally with rustc (the browser uses the Rust Playground).
+const rustDir = mkdtempSync(join(tmpdir(), 'book-rust-'));
+let rustN = 0;
+function runRust(code, tests) {
+  const n = rustN++;
+  const file = join(rustDir, `c${n}.rs`);
+  const bin = join(rustDir, `c${n}`);
+  writeFile(file, tests ? testCrate(code, tests) : code);
+  try {
+    execFileSync('rustc', ['--edition', '2021', ...(tests ? ['--test'] : []), '-A', 'dead_code', '-A', 'unused', '-o', bin, file], { stdio: 'pipe', timeout: 120000 });
+  } catch (e) {
+    return { results: [], error: `compile error: ${String(e.stderr ?? e).split('\n').slice(0, 6).join(' ')}` };
+  }
+  try {
+    const out = execFileSync(bin, [], { encoding: 'utf8', stdio: 'pipe', timeout: 20000 });
+    return { results: tests ? parseTestOutput(out) : [], error: null, stdout: out };
+  } catch (e) {
+    const out = String(e.stdout ?? '');
+    return { results: tests ? parseTestOutput(out) : [], error: tests ? null : `runtime error: ${String(e.stderr ?? e).slice(0, 200)}`, stdout: out };
+  }
+}
 
 // Drip programs run in a worker with a time limit, so an exercise that
 // loops forever fails the check instead of hanging it.
@@ -174,7 +200,9 @@ for (const folder of folders) {
     for (const f of ['title', 'prompt', 'starter', 'solution', 'tests', 'walkthrough']) if (!e[f]) err(folder, `exercise ${k} has no ${f}`);
     if (!e.hints?.length) err(folder, `exercise ${k} has no hints`);
     const isDrip = e.lang === 'drip' || e.lang === 'drip-vm';
-    const runEx = async (code) => isDrip
+    const runEx = async (code) => e.lang === 'rust'
+      ? runRust(code, e.tests)
+      : isDrip
       ? { results: checkDripOutput(await runDrip(code, e.lang), e.tests), error: null }
       : runWithTests(e.lang === 'ts' ? stripTs(code) : code, e.tests, silent);
     const sol = await runEx(e.solution);
@@ -193,7 +221,10 @@ for (const folder of folders) {
   for (const k of Object.keys(cards.examples ?? {})) {
     if (!body.includes(`<Run id="${k}"`)) err(folder, `example "${k}" is never placed in the text`);
     const ex = cards.examples[k];
-    if (ex.lang === 'drip' || ex.lang === 'drip-vm') {
+    if (ex.lang === 'rust') {
+      const r = runRust(ex.code, null);
+      if (r.error && !ex.expectError) err(folder, `Rust example "${k}" fails: ${r.error}`);
+    } else if (ex.lang === 'drip' || ex.lang === 'drip-vm') {
       const r = await runDrip(ex.code, ex.lang);
       if (r.exitCode !== 0 && !ex.expectError) err(folder, `Drip example "${k}" fails: ${r.stderr.join(' ')}`);
     } else {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { md } from '../../lib/md.js';
+import { playgroundLink as playgroundUrl, testCrate as testCrateSrc } from '../../lib/rust.js';
 
 /**
  * An editable, runnable code block that works on a phone.
@@ -15,7 +16,7 @@ export interface WrongAttempt { code?: string; why: string }
 export interface RunnerProps {
   id: string;
   code: string;
-  lang?: 'js' | 'ts' | 'drip' | 'drip-vm';
+  lang?: 'js' | 'ts' | 'drip' | 'drip-vm' | 'rust';
   title?: string;
   /** exercise mode when tests are given */
   tests?: string;
@@ -41,6 +42,7 @@ const KEYS: [string, string][] = [
 ];
 
 const TIME_LIMIT_MS = 3000;
+const RUST_TIME_LIMIT_MS = 30000; // compiling on the Playground takes a few seconds
 
 export default function Runner(props: RunnerProps) {
   const { id, lang = 'js', tests } = props;
@@ -91,7 +93,7 @@ export default function Runner(props: RunnerProps) {
             ...cmds.defaultKeymap,
             ...cmds.historyKeymap,
           ]),
-          lang_.javascript({ typescript: lang === 'ts' }), // Drip's syntax is close enough to JS to highlight
+          lang === 'rust' ? (await import('@codemirror/lang-rust')).rust() : lang_.javascript({ typescript: lang === 'ts' }), // Drip highlights well enough as JS
           syntaxHighlighting(classHighlighter),
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({
@@ -152,9 +154,10 @@ export default function Runner(props: RunnerProps) {
     };
     w.onerror = (e) => { setError(e.message || 'The worker crashed.'); stop(); };
     w.postMessage({ code, tests: isExercise ? tests : undefined, lang });
+    const limit = lang === 'rust' ? RUST_TIME_LIMIT_MS : TIME_LIMIT_MS;
     timer.current = window.setTimeout(
-      () => stop(`Stopped after ${TIME_LIMIT_MS / 1000} seconds. Is there a loop that never ends?`),
-      TIME_LIMIT_MS,
+      () => stop(`Stopped after ${limit / 1000} seconds. Is there a loop that never ends?`),
+      limit,
     );
   }, [isExercise, lang, props.code, stop, tests]);
 
@@ -189,6 +192,7 @@ export default function Runner(props: RunnerProps) {
   }, [full]);
 
   const passed = results?.filter((r) => r.ok).length ?? 0;
+  const rustLink = lang === 'rust' ? playgroundUrl(isExercise && tests ? testCrateSrc(props.code, tests) : props.code) : '';
 
   return (
     <section
@@ -249,6 +253,20 @@ export default function Runner(props: RunnerProps) {
           <button type="button" className="btn-3d btn-3d-sm px-3 py-1 text-sm" onClick={() => setShowSolution((s) => !s)} aria-expanded={showSolution}>
             {showSolution ? 'Hide solution' : 'Solution'}
           </button>
+        )}
+        {lang === 'rust' && (
+          <a
+            className="text-sm text-brand underline underline-offset-2"
+            target="_blank"
+            rel="noreferrer"
+            href={rustLink}
+            onClick={(e) => {
+              const code: string = view.current ? view.current.state.doc.toString() : props.code;
+              (e.currentTarget as HTMLAnchorElement).href = playgroundUrl(isExercise && tests ? testCrateSrc(code, tests) : code);
+            }}
+          >
+            Open in Rust Playground ↗
+          </a>
         )}
         <span className="ml-auto hidden text-xs text-muted sm:inline">⌘/Ctrl + Enter runs</span>
       </div>

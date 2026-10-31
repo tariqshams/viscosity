@@ -9,9 +9,9 @@ export interface Cards {
   quiz: { q: string; options: { t: string; correct?: boolean; why: string }[] }[];
   exercises?: Record<string, {
     title: string; prompt: string; starter: string; solution: string; tests: string;
-    hints?: string[]; walkthrough?: string; optional?: boolean; wrong?: { code?: string; why: string }[]; lang?: 'js' | 'ts' | 'drip' | 'drip-vm';
+    hints?: string[]; walkthrough?: string; optional?: boolean; wrong?: { code?: string; why: string }[]; lang?: 'js' | 'ts' | 'drip' | 'drip-vm' | 'rust';
   }>;
-  examples?: Record<string, { title?: string; code: string; lang?: 'js' | 'ts' | 'drip' | 'drip-vm' }>;
+  examples?: Record<string, { title?: string; code: string; lang?: 'js' | 'ts' | 'drip' | 'drip-vm' | 'rust' }>;
 }
 
 const cardModules = import.meta.glob<Cards>('../content/chapters/*/cards.js', { eager: true });
