@@ -97,16 +97,16 @@ Run for this chapter, the whole package:
 
 ```
 $ npx vitest run packages/frontend-js
- ✓ mini-parser.test.ts (40 tests)
- ✓ differential.test.ts (35 tests)
-      Tests  75 passed (75)
+ ✓ mini-parser.test.ts (43 tests)
+ ✓ differential.test.ts (38 tests)
+      Tests  81 passed (81)
 ```
 
-The 35 are the 33 corpus files plus two round-trip tests (the tiny
-program, and the `export default class` case you are about to meet).
-The 40 are those 33 files and 5 benchmark programs through both
+The 38 are the 36 corpus files plus two round-trip tests (the tiny
+program, and the `export default` cases you are about to meet).
+The 43 are those 36 files and 5 benchmark programs through both
 parsers, plus 2 tests of the mini parser itself. One more fact,
-measured for this chapter: 14 of the 33 corpus files keep every collection as an array of
+measured for this chapter: 16 of the 36 corpus files keep every collection as an array of
 objects, and their compiled code is byte-identical to the source. The
 identity property holds inside the differential suite too, even
 though nothing there checks it.
@@ -146,7 +146,10 @@ and gets `undefined`. The repository's corpus is about arrays and
 loops; one file has an `export function`, none a default export, so
 no existing test could see it. The fix was one line: `resolve.ts`
 now declares names from `export default` declarations too, and a
-round-trip test for it joined the suite. Rerun on the same files:
+round-trip test for it joined the suite. (An anonymous
+`export default function () {}` crashed the resolver too. The Rust
+port's parity work found it later, and the same test covers it now.)
+Rerun on the same files:
 
 ```
 same: 514   changed: 0   failed: 0

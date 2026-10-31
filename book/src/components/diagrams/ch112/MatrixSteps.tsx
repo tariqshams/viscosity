@@ -2,13 +2,13 @@ import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
 // How Viscosity's test programs multiply into checks. Counts are from the
-// repository: 28 JS corpus files, 5 end-to-end programs, 11 Python corpus
-// files, and `npx vitest run` in engine/ts reporting 94 tests (run for
-// chapter 112). The Rust fixtures exist; the Rust parity test does not yet.
+// repository: 36 JS corpus files, 5 end-to-end programs, 14 Python corpus
+// files, and `npx vitest run` in engine/ts reporting 115 tests. The Rust
+// parity test matches all 122 fixture pairs.
 const ROWS = [
-  { name: 'JS corpus', n: 28 },
+  { name: 'JS corpus', n: 36 },
   { name: 'e2e programs', n: 5 },
-  { name: 'Python corpus', n: 11 },
+  { name: 'Python corpus', n: 14 },
 ];
 const COLS = ['decision', 'behaviour', 'two parsers', 'Rust fixtures'];
 
@@ -25,12 +25,12 @@ const TEXT: string[][] = [
 ];
 
 const STATES: { k: number; total: string; note: string }[] = [
-  { k: 0, total: 'programs: 44', note: 'The raw material: 28 small JavaScript corpus files, 5 end-to-end benchmark programs, and 11 Python corpus files. Each row is a folder of programs; each column is a kind of check.' },
-  { k: 1, total: '29 tests', note: 'differential.test.ts: for each JS corpus file, check every decision against the header, then compare the original and compiled runs in fresh VM contexts. 28 tests, plus the round-trip identity test.' },
-  { k: 2, total: '29 + 35 tests', note: 'mini-parser.test.ts: for every corpus file AND every benchmark program, the hand-written parser must give byte-identical code and reports to acorn. 33 tests, plus 2 targeted ones.' },
-  { k: 3, total: '29 + 35 + 12 tests', note: 'The Python differential test runs each original and compiled program with real python3 and compares stdout and the final exception line. 11 tests, plus one for the default policy.' },
-  { k: 4, total: 'all: 94 tests', note: 'Outside the test suite, the end-to-end benchmark is a behaviour check too: its checksums must match. Back in the suite, add 10 core unit tests (SSA, CFG, analyses) and 8 layout tests: 29 + 35 + 12 + 10 + 8 = 94 tests, all passing.' },
-  { k: 5, total: '+ 132 fixture files', note: 'For the Rust port: every JS program is compiled in both bounds modes, and the code and report are stored. 33 × 2 × 2 = 132 files. The Rust test that will compare against them is Part XI’s job.' },
+  { k: 0, total: 'programs: 55', note: 'The raw material: 36 small JavaScript corpus files, 5 end-to-end benchmark programs, and 14 Python corpus files. Each row is a folder of programs; each column is a kind of check.' },
+  { k: 1, total: '38 tests', note: 'differential.test.ts: for each JS corpus file, check every decision against the header, then compare the original and compiled runs in fresh VM contexts. 36 tests, plus two round-trip identity tests.' },
+  { k: 2, total: '38 + 43 tests', note: 'mini-parser.test.ts: for every corpus file AND every benchmark program, the hand-written parser must give byte-identical code and reports to acorn. 41 tests, plus 2 targeted ones.' },
+  { k: 3, total: '38 + 43 + 15 tests', note: 'The Python differential test runs each original and compiled program with real python3 and compares stdout and the final exception line. 14 tests, plus one for the default policy.' },
+  { k: 4, total: 'all: 115 tests', note: 'Outside the test suite, the end-to-end benchmark is a behaviour check too: its checksums must match. Back in the suite, add 11 core unit tests (SSA, CFG, analyses) and 8 layout tests: 38 + 43 + 15 + 11 + 8 = 115 tests, all passing.' },
+  { k: 5, total: '+ 164 fixture files', note: 'For the Rust port: every JS program is compiled in both bounds modes, and the code and report are stored. 41 × 2 × 2 = 164 files (20 extra programs written for the port add 80 more). The Rust parity test compares against them byte for byte, and all match.' },
   { k: 6, total: 'one new file: +2 tests', note: 'Add one JS corpus file: it gets a differential test and a parser test, and 4 Rust fixtures, with zero lines of new test code. The tests are generated from the folder listing.' },
 ];
 

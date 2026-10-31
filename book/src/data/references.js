@@ -2391,6 +2391,230 @@ export const references = [
     "checkedAgainst": "src/types/trait-object.md on the master branch of github.com/rust-lang/reference, read raw: trait objects are dynamically sized and used behind a pointer such as &dyn SomeTrait or Box<dyn SomeTrait>; each such pointer holds a pointer to the value and a pointer to a vtable containing, for each method of the trait and its supertraits, a pointer to the type’s implementation; calling a method loads a function pointer from the vtable and calls it indirectly (“virtual dispatch”).",
     "shaped": "Chapters 131 and 132: the fat pointer and vtable behind dyn Trait."
   },
+  {
+    "id": "llvm-readme",
+    "authors": [
+      "The LLVM Project"
+    ],
+    "title": "The LLVM Compiler Infrastructure (README)",
+    "venue": "github.com/llvm/llvm-project",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/llvm/llvm-project",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/llvm/llvm-project/main/README.md (“a toolkit for the construction of highly optimized compilers, optimizers, and run-time environments”; the core, itself called “LLVM”, “contains all of the tools, libraries, and header files needed to process intermediate representations and convert them into object files”; “C-like languages use the Clang frontend. This component compiles C, C++, Objective-C, and Objective-C++ code into LLVM bitcode”)",
+    "shaped": "Chapter 113: a well-known compiler split into per-language front-ends and a shared core working on one IR."
+  },
+  {
+    "id": "python-lexical",
+    "authors": [
+      "Python Software Foundation"
+    ],
+    "title": "The Python Language Reference: 2. Lexical analysis",
+    "venue": "Python 3.13 documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.python.org/3.13/reference/lexical_analysis.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/reference/lexical_analysis.rst (sections “Implicit line joining”: expressions in parentheses, brackets or braces can span lines, with no NEWLINE token between them; “Blank lines”; “Indentation”: tabs replaced by one to eight spaces up to a multiple of eight; INDENT and DEDENT generated “using a stack”, a single zero pushed first and never popped, a larger level pushed with one INDENT, a smaller one must be on the stack and each popped number gives a DEDENT, remaining levels popped at end of file; only the inconsistent dedent is found by the lexical analyzer, the other indentation errors by the parser)",
+    "shaped": "Chapter 114: the INDENT/DEDENT algorithm Viscosity’s Python tokenizer implements, and implicit line joining inside brackets."
+  },
+  {
+    "id": "cpython-tokenize",
+    "authors": [
+      "Python Software Foundation"
+    ],
+    "title": "tokenize — Tokenizer for Python source",
+    "venue": "Python 3.13 documentation (The Python Standard Library)",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.python.org/3.13/library/tokenize.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/library/tokenize.rst (“provides a lexical scanner for Python source code, implemented in Python”; generate_tokens(readline) for str input). The token stream for the chapter’s example was produced locally with Python 3.13.18’s tokenize.generate_tokens and compared with Viscosity’s tokenizer.",
+    "shaped": "Chapter 114: comparing Viscosity’s INDENT/DEDENT/NEWLINE tokens with CPython’s own."
+  },
+  {
+    "id": "python-expressions",
+    "authors": [
+      "Python Software Foundation"
+    ],
+    "title": "The Python Language Reference: 6. Expressions",
+    "venue": "Python 3.13 documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.python.org/3.13/reference/expressions.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/reference/expressions.rst (“Comparisons can be chained arbitrarily, e.g., x < y <= z is equivalent to x < y and y <= z”; subscriptions: built-in sequences interpret negative indices by adding the length; “Division of integers yields a float, while floor division of integers results in an integer”)",
+    "shaped": "Chapters 114 and 115: chained comparisons, negative indexing and division, where Python and JavaScript differ."
+  },
+  {
+    "id": "python-dataclasses",
+    "authors": [
+      "Python Software Foundation"
+    ],
+    "title": "dataclasses — Data Classes",
+    "venue": "Python 3.13 documentation (The Python Standard Library)",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.python.org/3.13/library/dataclasses.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/library/dataclasses.rst (“provides a decorator and functions for automatically adding generated special methods such as __init__”; the InventoryItem example’s generated __init__ assigns each annotated field in order, with defaults for fields that have them; the decorator “examines the class to find fields”)",
+    "shaped": "Chapter 115: why a dataclass call is the Python equivalent of a record, and how its arguments map to fields."
+  },
+  {
+    "id": "python-array",
+    "authors": [
+      "Python Software Foundation"
+    ],
+    "title": "array — Efficient arrays of numeric values",
+    "venue": "Python 3.13 documentation (The Python Standard Library)",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.python.org/3.13/library/array.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/library/array.rst (“compactly represent an array of basic values”; arrays “behave very much like lists, except that the type of objects stored in them is constrained”, the type being fixed by a type code at creation; type code 'd': C double, Python float, minimum size 8 bytes; the itemsize attribute; ordinary mutable sequence operations: indexing, slicing, concatenation, multiplication). Behaviour shown in the chapter (int stored and read back as 1.0, TypeError for a str, OverflowError for array('q', [2**63])) was run locally with Python 3.13.18.",
+    "shaped": "Chapter 116: the typed columns the Python emitter generates, and why only floats go in them."
+  },
+  {
+    "id": "cpython-arraymodule",
+    "authors": [
+      "Python Software Foundation"
+    ],
+    "title": "Modules/arraymodule.c (CPython 3.13 source)",
+    "venue": "github.com/python/cpython, branch 3.13",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/python/cpython/blob/3.13/Modules/arraymodule.c",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Modules/arraymodule.c (d_getitem: “return PyFloat_FromDouble(((double *)ap->ob_item)[i]);”, so each read of an array('d') item builds a new float object; d_setitem parses the value as a double)",
+    "shaped": "Chapter 116: why array('d') columns measured slower per element than dataclass objects in CPython."
+  },
+  {
+    "id": "python-datamodel",
+    "authors": [
+      "Python Software Foundation"
+    ],
+    "title": "The Python Language Reference: 3. Data model",
+    "venue": "Python 3.13 documentation",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.python.org/3.13/reference/datamodel.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/python/cpython/3.13/Doc/reference/datamodel.rst (Integers (int): “These represent numbers in an unlimited range, subject to available (virtual) memory only”; __slots__ “allow us to explicitly declare data members … and deny the creation of __dict__ and __weakref__”, reserving space for the declared variables)",
+    "shaped": "Chapter 116: why the generated container uses __slots__, and why int fields can’t use a fixed-width integer column."
+  },
+  {
+    "id": "wasm-spec-core",
+    "authors": [
+      "W3C WebAssembly Community Group (editor: Andreas Rossberg)"
+    ],
+    "title": "WebAssembly Core Specification",
+    "venue": "WebAssembly/spec repository on GitHub (rendered at webassembly.github.io/spec/core)",
+    "year": null,
+    "doi": null,
+    "url": "https://webassembly.github.io/spec/core/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "Sources in github.com/WebAssembly/spec, read raw: document/core/intro/introduction.rst and conf.py on main (version 3.0; “safe, portable, low-level code format”); on the wg-2.0 tag: intro/overview.rst (stack machine; linear memory is a contiguous, mutable array of raw bytes; a trap on out-of-bounds access), binary/modules.rst (preamble 00 61 73 6D, version 01 00 00 00; a section is a one-byte id, a u32 size and the contents; ids 1 type, 3 function, 5 memory, 7 export, 10 code; at most one memory per module in that version), binary/types.rst (0x60 function type; 0x7F i32, 0x7C f64; limits 0x00 min), binary/instructions.rst (0x20 local.get, 0x41 i32.const, 0x6A i32.add, 0x6C i32.mul, 0x2B f64.load with a memarg of align and offset, 0x0B end), binary/values.rst (LEB128 integers; IEEE 754 floats in little-endian order), exec/runtime.rst (page size 65536) and exec/numerics.rst (iadd modulo 2^N; little-endian stores).",
+    "shaped": "Chapter 117: the hand-written module, byte by byte; linear memory, pages and traps; how SoA columns would sit in one memory."
+  },
+  {
+    "id": "wasm-spec-jsapi",
+    "authors": [
+      "W3C WebAssembly Community Group (editor: Ms2ger)"
+    ],
+    "title": "WebAssembly JavaScript Interface",
+    "venue": "WebAssembly/spec repository on GitHub (rendered at webassembly.github.io/spec/js-api)",
+    "year": null,
+    "doi": null,
+    "url": "https://webassembly.github.io/spec/js-api/",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "document/js-api/index.bs on the wg-2.0 tag of github.com/WebAssembly/spec, read raw: WebAssembly.instantiate(bytes, importObject) asynchronously compiles and instantiates; the exports object is frozen; Memory.prototype.buffer is an ArrayBuffer over the memory; growing a memory detaches a fixed-length buffer and creates a new one (“refresh the Memory buffer”).",
+    "shaped": "Chapter 117: calling a module from JavaScript, and why a Float64Array view of linear memory must be rebuilt after memory.grow."
+  },
+  {
+    "id": "odin-overview-soa",
+    "authors": [
+      "The Odin project (odin-lang.org documentation contributors)"
+    ],
+    "title": "Overview: SOA data types",
+    "venue": "Odin programming language documentation, odin-lang.org",
+    "year": null,
+    "doi": null,
+    "url": "https://odin-lang.org/docs/overview/#soa-data-types",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "content/docs/overview.md in github.com/odin-lang/odin-lang.org (master), read raw: section “SOA data types”: `v_soa: #soa[N]Vector3` is used with the same indexing syntax as an ordinary array (`v_soa[0].x = 1`), and `v_soa.x[0]` reaches the column directly; “Same pointer addresses with both syntaxes”.",
+    "shaped": "Chapter 118: a language where the programmer chooses SoA with one keyword, the opposite of Viscosity’s automatic choice."
+  },
+  {
+    "id": "semver2",
+    "authors": [
+      "Tom Preston-Werner (original author) and the semver contributors"
+    ],
+    "title": "Semantic Versioning 2.0.0",
+    "venue": "semver.org (source in the semver/semver repository on GitHub), CC BY 3.0",
+    "year": null,
+    "doi": null,
+    "url": "https://semver.org/spec/v2.0.0.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "semver.md in github.com/semver/semver (master), read raw: MAJOR for incompatible API changes, MINOR for backward compatible functionality, PATCH for backward compatible bug fixes; a public API must be declared; a released version’s contents must not be modified; 0.y.z is initial development where anything may change; patch and minor reset to 0; pre-release versions (1.0.0-alpha) have lower precedence; build metadata is ignored for precedence; numbers compare numerically.",
+    "shaped": "Chapter 119: the rules for Viscosity’s version numbers, and what its public API is."
+  },
+  {
+    "id": "node-semver-ranges",
+    "authors": [
+      "npm, Inc. and the node-semver contributors"
+    ],
+    "title": "node-semver README: Caret Ranges and Tilde Ranges",
+    "venue": "npm/node-semver repository on GitHub",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/npm/node-semver#caret-ranges-123-025-004",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "README.md in github.com/npm/node-semver (main), read raw: ^1.2.3 := >=1.2.3 <2.0.0-0; ^0.2.3 := >=0.2.3 <0.3.0-0; ^0.0.3 := >=0.0.3 <0.0.4-0; caret “allows changes that do not modify the left-most non-zero element”; ~1.2.3 := >=1.2.3 <1.3.0-0.",
+    "shaped": "Chapter 119: what a user’s `^0.1.0` dependency on Viscosity would accept."
+  },
+  {
+    "id": "npm-package-json",
+    "authors": [
+      "npm, Inc. (GitHub) and the npm CLI contributors"
+    ],
+    "title": "package.json (npm CLI documentation)",
+    "venue": "docs.npmjs.com (source in the npm/cli repository on GitHub)",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.npmjs.com/cli/configuring-npm/package-json",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "docs/lib/content/configuring-npm/package-json.md in github.com/npm/cli (latest branch), read raw: name and version are required to publish and together identify the package; version must be parseable by node-semver; “files” defaults to everything, and package.json, README, LICENSE and the bin files are always included; “bin” maps a command to a file, which must start with #!/usr/bin/env node; dependencies map names to version ranges; \"private\": true prevents accidental publication.",
+    "shaped": "Chapter 119: the fields a publishable @viscosity/cli needs."
+  },
+  {
+    "id": "npm-publish-docs",
+    "authors": [
+      "npm, Inc. (GitHub) and the npm CLI contributors"
+    ],
+    "title": "npm-publish and Scope (npm CLI documentation)",
+    "venue": "docs.npmjs.com (source in the npm/cli repository on GitHub)",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.npmjs.com/cli/commands/npm-publish",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "docs/lib/content/commands/npm-publish.md and docs/lib/content/using-npm/scope.md in github.com/npm/cli (latest branch), read raw: “Once a package is published with a given name and version, that specific name and version combination can never be used again, even if it is removed with npm unpublish”; `npm pack --dry-run` shows what will be included; scoped packages are not public by default and need --access public; publishing to an organization scope needs that organization.",
+    "shaped": "Chapter 119: versions are immutable once published, and what publishing @viscosity/cli would require."
+  },
+  {
+    "id": "node-typescript-docs",
+    "authors": [
+      "The Node.js project contributors"
+    ],
+    "title": "Modules: TypeScript (Node.js v22 documentation)",
+    "venue": "nodejs.org documentation (source in the nodejs/node repository on GitHub)",
+    "year": null,
+    "doi": null,
+    "url": "https://nodejs.org/docs/latest-v22.x/api/typescript.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/api/typescript.md in github.com/nodejs/node (v22.x branch), read raw: type stripping is enabled by default from v22.18.0; inline types are replaced with whitespace, nothing is type-checked, features that need transformation (such as enums) are not run by default, and no source maps are needed; “To discourage package authors from publishing packages written in TypeScript, Node.js refuses to handle TypeScript files inside folders under a node_modules path.” Confirmed by installing the packed @viscosity/cli tarball, which fails with ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING on Node v22.23.4.",
+    "shaped": "Chapter 119: why the CLI must be compiled to JavaScript before it can be published."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.

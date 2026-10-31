@@ -34,7 +34,7 @@ const STATES: S[] = [
   { line: 4, v: ['ok', 'ok', 'elem', W, W, W, W], note: 'ps[i] hands out an element. That element is a new value to watch: if it escapes, the old layout can be observed through it. So its uses join the list.' },
   { line: 4, v: ['ok', 'ok', 'elem', 'ok', 'ok', W, W], note: 'The element is only used for .x and .vx: field reads and writes, which become ps.x[i] and ps.vx[i]. The element never leaves this line.' },
   { line: 5, v: ['ok', 'ok', 'elem', 'ok', 'ok', 'elem', W], note: 'ps[3] hands out another element. Follow its uses too.' },
-  { line: 5, v: ['ok', 'ok', 'elem', 'ok', 'ok', 'elem', 'esc'], end: 'aos', note: 'The element is passed to a call. console.log will print the whole object, and after the rewrite there is no object. That is an escape site, so the verdict is: “unsafe: an element is passed to a method call at line 6”.' },
+  { line: 5, v: ['ok', 'ok', 'elem', 'ok', 'ok', 'elem', 'esc'], end: 'aos', note: 'The element is passed to a call. console.log will print the whole object, and after the rewrite there is no object. That is an escape site, so the verdict is: “unsafe: line 6: an element is passed to a method call”.' },
   { line: 5, v: ['ok', 'ok', 'elem', 'ok', 'ok', 'elem', 'ok'], end: 'soa', note: 'Change the last line to console.log(ps[3].x). Now the element is only used for a field read, nothing escapes, and Viscosity picks struct of arrays.' },
 ];
 

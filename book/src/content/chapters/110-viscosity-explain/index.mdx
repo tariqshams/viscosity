@@ -39,7 +39,7 @@ console.log(ps[3]);
 ps (line 2) {x, y} → kept as array of
   objects
   · unsafe: line 5: an element is passed
-    to a method call at line 5
+    to a method call
 ```
 
 (Line numbers refer to the real file, which has a header comment on
@@ -197,9 +197,10 @@ the repository do:
   decided what it did.
 - The **mini-parser test** compiles every corpus and benchmark program
   with both parsers and requires byte-identical reports, not just code.
-- For the **Rust port** (Part XI), 66 reports are already stored, one
-  per corpus and benchmark program in each of the two bounds modes.
-  The port will have to reproduce them byte for byte.
+- For the **Rust port** (Part XI), the reference's report and compiled
+  code are stored for every test program in both bounds modes. A parity
+  test requires the port to reproduce them byte for byte, and it does:
+  all 122 fixture pairs match.
 
 So changing a word in a reason is a visible diff in a review. That’s
 deliberate: if people read the reports, the reports are part of the

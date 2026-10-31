@@ -172,14 +172,17 @@ match the first, order included:
 ```ts
 if (c.fields.length === 0)
   c.fields = [...r.fields];
-else if (c.fields.join(',')
-         !== r.fields.join(','))
+else if (JSON.stringify(c.fields)
+         !== JSON.stringify(r.fields))
   c.bailouts.push('records with ' +
     'different fields or field order');
 ```
 
 That is the simplest possible way to unify shapes: they must be equal.
-Two corpus programs show both ways to fail:
+(An earlier version compared `join(',')` strings, so a field named
+`'a,b'` matched the two fields `a` and `b`. Comparing the lists exactly
+fixed it.)
+Two small programs show both ways to fail:
 
 ```
 · unsafe: line 3: records with different

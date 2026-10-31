@@ -30,7 +30,7 @@ export const prompts = {
     a: 'Round trip: untouched code stays byte-identical. Differential: compiled code behaves the same. Parser equivalence: acorn and mini give the same output.',
   },
   'header-aos': {
-    q: 'What did 14 of the 33 corpus files show about the identity property?',
+    q: 'What did 16 of the 36 corpus files show about the identity property?',
     a: 'Every collection in them stays an array of objects, and their compiled code is byte-identical to the source.',
   },
   'scale-free': {

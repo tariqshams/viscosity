@@ -136,8 +136,8 @@ push, goes through `setShape`:
 const setShape = (c, r, where) => {
   if (c.fields.length === 0)
     c.fields = [...r.fields];
-  else if (c.fields.join(',')
-      !== r.fields.join(','))
+  else if (JSON.stringify(c.fields)
+      !== JSON.stringify(r.fields))
     c.bailouts.push(`${where}: records ` +
       `with different fields or ` +
       `field order (…)`);
