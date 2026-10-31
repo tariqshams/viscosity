@@ -1,0 +1,30 @@
+[package]
+name = "drip-rs"
+version = "0.1.0"
+edition = "2024"
+authors = ["Tariq Shams"]
+license = "MIT"
+description = "Drip's bytecode VM in Rust: the port taught in Part X of the book Viscosity."
+publish = false
+
+[lib]
+name = "drip"
+path = "src/lib.rs"
+
+[[bin]]
+name = "drip-rs"
+path = "src/main.rs"
+
+# Both corpus suites print one line per program, like the book's TypeScript
+# runner, so they bring their own `main` instead of libtest's harness.
+[[test]]
+name = "corpus"
+harness = false
+
+[[test]]
+name = "stress_gc"
+harness = false
+
+[profile.release]
+codegen-units = 1
+lto = true
