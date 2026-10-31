@@ -3,7 +3,7 @@
 import { formatArgs } from '../../lib/format.js';
 import { runWithTests } from '../../lib/minitest.js';
 
-type Msg = { code: string; tests?: string; lang: 'js' | 'ts' | 'drip' | 'drip-vm' };
+type Msg = { code: string; tests?: string; lang: 'js' | 'ts' | 'drip' | 'drip-vm' | 'rust' };
 
 self.onmessage = async (e: MessageEvent<Msg>) => {
   const { tests, lang } = e.data;
@@ -21,6 +21,21 @@ self.onmessage = async (e: MessageEvent<Msg>) => {
     for (const l of r.stdout) post({ type: 'log', level: 'log', text: l });
     const error = r.stderr.length ? r.stderr.join('\n') : null;
     post({ type: 'done', results: tests === undefined ? [] : checkDripOutput(r, tests), error, ms: performance.now() - t0 });
+    return;
+  }
+  // Rust is compiled and run by the official Rust Playground.
+  if (lang === 'rust') {
+    const r = await import('../../lib/rust.js');
+    const t0 = performance.now();
+    try {
+      const out = await r.runRustInPlayground(code, tests);
+      for (const l of out.stdout.split('\n').filter(Boolean)) post({ type: 'log', level: 'log', text: l });
+      const results = tests ? r.parseTestOutput(out.stdout) : [];
+      const compileError = !out.success && results.length === 0 ? out.stderr.split('\n').filter((l: string) => !/^\s*(Compiling|Finished|Running)/.test(l)).join('\n').trim() : null;
+      post({ type: 'done', results, error: compileError, ms: performance.now() - t0 });
+    } catch (err) {
+      post({ type: 'done', results: [], error: `Couldn't reach the Rust Playground (${(err as Error).message}). Use “Open in Rust Playground” below.`, ms: 0, offline: true });
+    }
     return;
   }
   if (lang === 'ts') {

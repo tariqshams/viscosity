@@ -205,3 +205,19 @@ which checks that both versions print the same thing. The engine source is
 `../engine/ts/packages/{core,frontend-js}`; rebuild the bundle with
 `node engine/ts/packages/playground/build.mjs`. End-to-end results:
 `../engine/ts/packages/bench/results/e2e-node-*.md`.
+
+**Rust (Track B).** Examples and exercises can use `lang: 'rust'`.
+
+- In the browser the code is compiled and run by the official Rust
+  Playground. An "Open in Rust Playground" link is always shown as a
+  fallback.
+- An example's `code` is a full program with `fn main()`.
+- An exercise's `starter`/`solution` are library code (functions, structs,
+  impls). Its `tests` are `#[test] fn ...` items, which are wrapped in a
+  `mod tests { use super::*; ... }`. Test function names become the test
+  labels (underscores turn into spaces).
+- The checker compiles everything with the local `rustc --edition 2021`
+  (`--test` for exercises). The solution must pass every test, and the
+  starter and wrong attempts must fail at least one.
+- Runnable Rust is held to the same 40-character limit. Use 4-space
+  indentation and short names; split long signatures over lines.
