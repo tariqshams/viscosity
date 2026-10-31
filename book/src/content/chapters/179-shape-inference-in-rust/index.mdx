@@ -1,0 +1,229 @@
+---
+n: 179
+day: 45
+part: XI
+title: 'Shape inference in Rust'
+tagline: 'A shape is a list of field names, and Rust compares lists exactly, which is how the port caught the reference treating one field called `a,b` as two. Then the other half of a shape: what each field may hold, where Python’s ints and floats need rules JavaScript never did.'
+objectives:
+  - Read set_shape in analysis.rs and explain the exact field-list comparison and the comma bug it replaced.
+  - Explain why set_shape can hold the record’s fields while changing the collection.
+  - Say how a field earns a typed column, in JavaScript and in Python.
+  - Apply Python’s int and float rules for `/`, `**` and mixed arithmetic.
+introduces: [rust-shape-pass]
+uses: [rust-collections-pass, generic-dataflow, record-shape, shape-stability, shape-inference, type-inference, collection-discovery, bailout, fixpoint, lattice, column-storage, typed-array, float64, python-array-module, semantic-differences, python-subset, multi-language-ir, viscosity-rs, cross-implementation-tests, fuzzing, struct, impl, lifetime, lifetime-annotation, borrow, borrow-checker, vec, match, option, string-vs-str, slice]
+sources: [python-array, python-expressions]
+---
+import KindSteps from '../../../components/diagrams/ch179/KindSteps';
+
+## One field or two?
+
+This is `comma_field_name.js`, a program in the reference’s corpus:
+
+```js
+const ps = [];
+for (let i = 0; i < 100; i++) {
+  ps.push({ 'a,b': i });
+  ps.push({ a: i, b: 2 });
+}
+```
+
+(Rewrapped: the real file has the loop on one line.) The first record
+has one field, named `a,b`. The second has two. They are different
+shapes, so `ps` must stay an array of objects. Both engines now say so
+(real output of the Rust CLI, wrapped):
+
+```
+ps (line 3) {a, b} → kept as array of
+  objects
+  · unsafe: line 4: records with
+    different fields or field order
+    ({a,b} vs {a, b})
+```
+
+The reference used to get it wrong. It compared shapes by their field
+names joined into one string, and `["a,b"]` and `["a", "b"]` join to
+the same thing. It is bug 3 in the port’s README, found during porting,
+now fixed in both engines and pinned by that corpus program. Notice the
+message still prints the one field without quotes: `{a,b}`.
+
+## set_shape
+
+The Rust version, trimmed:
+
+```rust
+fn set_shape(&mut self, ci: usize,
+        r: ValueId, location: &str) {
+    let Op::RecordNew { fields } =
+        &self.inst(r).op
+    else { unreachable!() };
+    let aliased =
+        self.uses.of(r).len() != 1;
+    let at = self.inst(r).src;
+    let c = &mut self.collections[ci];
+    if c.fields.is_empty() {
+        c.fields = fields.clone();
+    } else if c.fields != *fields {
+        // bail: "records with different
+        // fields or field order (...)"
+    }
+    if aliased {
+        // bail: "...could be aliased"
+    }
+}
+```
+
+`c.fields != *fields` compares two `Vec<String>`s: same length, then
+each name in order. Nothing gets joined, so no name can run into
+another. The fixed TypeScript compares `JSON.stringify` of both
+arrays, which quotes every name. Two engines, two spellings, one
+answer, and the parity fixtures check that it stays one answer.
+
+The second check is chapter 96’s: the new record must have exactly one
+use, the push. A second use, such as `r.x = 500`, would still expect
+an object `r` after the rewrite.
+
+<Prompts ids={['shr-what', 'shr-exact', 'shr-comma', 'shr-alias']} />
+
+## Holding the fields, changing the collection
+
+`fields` is borrowed from an instruction, and two lines later the
+function takes `&mut self.collections[ci]`. That only compiles because
+of chapter 178’s `'m`: `inst` returns `&'m Inst`, a borrow of the
+module, which `self` merely points to. Give the accessor the elided
+lifetime, tied to `&self`, and rustc 1.97 says (a small copy, trimmed
+and rewrapped):
+
+```
+error[E0502]: cannot borrow `self.cols`
+  as mutable because it is also
+  borrowed as immutable
+  | let fields = self.rec(r);
+  |              ---- immutable borrow
+  | let c = &mut self.cols[ci];
+  |         ^^^^^^^^^ mutable borrow
+  |     c.fields = fields.clone();
+  |                ------ immutable
+  |                borrow later used
+```
+
+The runnable copy has the `'m` in place. Delete it and see; it also
+prints what joining does to `["a,b"]` and `["a", "b"]`:
+
+<Run id="shape-play" />
+
+<Prompts ids={['shr-tick-m']} />
+
+## What a field may hold
+
+<Callout kind="intuition">
+A shelf of egg boxes is only useful if nothing but eggs goes in. One
+cupcake and the boxes are just boxes again. A typed column is the egg
+box: one value that isn’t a number, anywhere, and the field gets a
+plain column instead.
+</Callout>
+
+A shape is the field names plus what each field may hold (chapter 97).
+The second half comes from chapter 177’s fixpoint. Each field of each
+collection is a node, starting optimistic. `field_stays_numeric` keeps
+it only if every record added puts a provable number in that position
+and every `field.set` on an element writes one. Fields that survive go
+into `numeric_fields` and get `Float64Array` columns; the rest get
+plain arrays.
+
+In JavaScript every number is a double, so the arithmetic rule is
+short: an operator from `ARITH` is a number if both sides are. Python
+is different.
+
+<Callout kind="definition">
+**The shape pass in Rust** is `set_shape` plus the numeric facts. The
+first record a collection receives fixes its field list. Every later
+record must have exactly the same `Vec<String>` and exactly one use.
+Each field is then typed by the fixpoint: in JavaScript, numeric if
+every value stored is a JS number; in Python, if every value stored is
+a `float`, with ints tracked as a separate fact.
+</Callout>
+
+<Prompts ids={['shr-numeric-fields']} />
+
+## Python: ints are not floats
+
+A Python column becomes `array('d')`, an array of C doubles that only
+holds floats<Cite id="python-array" />. An int goes in, but a float
+comes out. With Python 3.13.18, here:
+
+```python
+a = array('d', [0.0])
+a[0] = 1
+print(a[0], type(a[0]).__name__)
+print(7 / 2, 6 / 2, 7 // 2)
+print(2 ** 3, 2 ** -1, 2.0 ** 3)
+print((-1.0) ** 0.5)
+```
+
+```
+1.0 float
+3.5 3.0 3
+8 0.5 8.0
+(6.123233995736766e-17+1j)
+```
+
+So in Python “numeric” must mean “provably a float”, or a program that
+printed `1` would print `1.0`. Ints get their own fact (`compute_int`),
+because they still matter: an int times a float is a float. True
+division always gives a float<Cite id="python-expressions" />. And
+`**` is treacherous: an int to an int power can be an int or a float,
+and a float to a float power can be complex. The float rule for a
+binary operator, trimmed from `compute`:
+
+```rust
+match operator.as_str() {
+    "/" => n_or_i(a) && n_or_i(b),
+    // (-1.0) ** 0.5 is 1j
+    "**" => n(a) && self.i(b),
+    "+" | "-" | "*" | "%" | "//" =>
+        (n(a) && n_or_i(b))
+            || (self.i(a) && n(b)),
+    _ => false,
+}
+```
+
+`n` is “a float”, `i` is “an int”. The analyzer decides which rules
+apply once, `py: m.language == "python"`, as the reference does. Watch
+them type a real corpus program, `ints_stay_ints.py`:
+
+<KindSteps client:visible />
+
+<Prompts ids={['shr-py-float', 'shr-why-float', 'shr-div', 'shr-pow', 'shr-mixed', 'shr-lang']} />
+
+<Callout kind="engine" label="Under the hood">
+The README lists the Python rules where the Rust core lagged the
+reference, now ported: `**` gives a float only with an int exponent,
+and the Python wording of the list-literal and append bailouts. The
+corpus program `power_complex.py` pins the first: its only field is
+written with `p.x ** 0.5`, so no field is provably numeric and the
+collection is kept (“no field is provably numeric, so there are no
+typed columns to gain”). The fuzzer generates JavaScript only, so for
+Python the corpus and the differential runs with `python3` carry the
+weight.
+</Callout>
+
+## Your turn
+
+<Exercise id="kinds" />
+
+<Exercise id="shape" />
+
+## What you learned
+
+- **The shape pass in Rust**: `set_shape` compares field lists as
+  `Vec<String>`s, exactly. Comparing joined names let `{'a,b'}` pass
+  for `{a, b}`; the port found it.
+- The record must have exactly one use, or it could be **aliased**.
+- `inst` returns `&'m Inst`, so `set_shape` can hold the fields while
+  it changes `self.collections` (E0502 otherwise).
+- A field is typed if every value stored in it is a number. In Python
+  that means a **float**: `/` always gives one, `**` only for a float
+  base and an int exponent, and an int anywhere else keeps a list
+  column.
+
+<Quiz />
