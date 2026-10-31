@@ -19,7 +19,23 @@ import { ASSUMED, CONCEPTS, knownBefore } from '../src/data/concepts.js';
 import { OUTLINE } from '../src/data/outline/index.js';
 import { references, pending } from '../src/data/references.js';
 import { runWithTests } from '../src/lib/minitest.js';
-import { runDrip, checkDripOutput } from '../src/lib/drip.js';
+import { checkDripOutput } from '../src/lib/drip.js';
+import { Worker } from 'node:worker_threads';
+
+// Drip programs run in a worker with a time limit, so an exercise that
+// loops forever fails the check instead of hanging it.
+const dripLib = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), '../src/lib/drip.js')).href;
+function runDrip(code, lang) {
+  return new Promise((resolve) => {
+    const w = new Worker(`import(${JSON.stringify(dripLib)}).then(async (m) => {
+      const { parentPort, workerData } = await import('node:worker_threads');
+      parentPort.postMessage(await m.runDrip(workerData.code, workerData.lang));
+    });`, { eval: true, workerData: { code, lang } });
+    const t = setTimeout(() => { w.terminate(); resolve({ stdout: [], stderr: ['timed out after 10 seconds'], exitCode: 70 }); }, 10000);
+    w.on('message', (r) => { clearTimeout(t); w.terminate(); resolve(r); });
+    w.on('error', (e) => { clearTimeout(t); resolve({ stdout: [], stderr: [String(e)], exitCode: 70 }); });
+  });
+}
 import { transform as sucrase } from 'sucrase';
 
 // TypeScript cards are stripped of types exactly as the browser runner does.
