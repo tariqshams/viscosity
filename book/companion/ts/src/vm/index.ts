@@ -5,6 +5,6 @@ export { compile } from './compiler.ts';
 export { disassembleChunk } from './debug.ts';
 export { Heap } from './heap.ts';
 
-export function runVm(source: string, opts: { stressGC?: boolean } = {}): VmResult {
+export function runVm(source: string, opts: { stressGC?: boolean; debugGC?: boolean } = {}): VmResult {
   return new VM(opts).interpret(source);
 }

@@ -34,12 +34,17 @@ for (const p of programs) {
     let best = Infinity;
     for (let i = 0; i < runs; i++) {
       const r = timeOne(engine, file);
-      if (r.exit !== 0) throw new Error(`${engine} ${p} failed: ${r.err.join(' ')}`);
+      if (r.exit !== 0) {
+        // e.g. the VM's 256-constants-per-chunk limit: report, don't crash.
+        row[engine + 'Error'] = r.err[0];
+        best = NaN;
+        break;
+      }
       best = Math.min(best, r.ms);
     }
     row[engine] = Math.round(best);
   }
-  row.speedup = +(row.tree / row.vm).toFixed(2);
+  row.speedup = Number.isFinite(row.tree / row.vm) ? +(row.tree / row.vm).toFixed(2) : null;
   rows.push(row);
   console.log(`${row.program.padEnd(20)} tree ${String(row.tree).padStart(7)} ms   vm ${String(row.vm).padStart(7)} ms   ${row.speedup}×`);
 }
@@ -50,5 +55,9 @@ mkdirSync(dir, { recursive: true });
 const stamp = env.date.slice(0, 10);
 writeFileSync(join(dir, `drip-bench-${stamp}.json`), JSON.stringify({ env, rows }, null, 2) + '\n');
 let md = `# Drip: tree-walker vs bytecode VM (${env.node}, V8 ${env.v8})\n\n${env.cpu}, ${env.date}. ${env.note}\n\n| program | tree-walker (ms) | VM (ms) | VM speed-up |\n|---|---:|---:|---:|\n`;
-for (const r of rows) md += `| ${r.program} | ${r.tree} | ${r.vm} | ${r.speedup}× |\n`;
+for (const r of rows) {
+  md += r.speedup === null
+    ? `| ${r.program} | ${r.tree ?? '—'} | — | VM: ${r.vmError ?? r.treeError} |\n`
+    : `| ${r.program} | ${r.tree} | ${r.vm} | ${r.speedup}× |\n`;
+}
 writeFileSync(join(dir, `drip-bench-${stamp}.md`), md);
