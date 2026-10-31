@@ -204,7 +204,7 @@ where Viscosity's change of layout pays off.
 
 - A **dominates** B if every path from the entry to B goes through A.
   Every block dominates itself; the entry dominates everything reachable.
-- Dominator sets satisfy Dom(B) = {B} ∪ the intersection of its
+- Dominator sets satisfy Dom(B) = \{B\} ∪ the intersection of its
   predecessors' sets. Start from "all", repeat until **nothing
   changes**; sets only shrink. **Reverse postorder** makes it quick.
 - The **immediate dominator** is the closest strict dominator. Joining
