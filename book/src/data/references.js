@@ -3022,6 +3022,91 @@ export const references = [
     "checkedAgainst": "src/keywords.md on the master branch of github.com/rust-lang/reference, read raw: the three categories (strict, reserved, weak); the strict list (_, as, async, await, break, const, continue, crate, dyn, else, enum, extern, false, fn, for, if, impl, in, let, loop, match, mod, move, mut, pub, ref, return, self, Self, static, struct, super, trait, true, type, unsafe, use, where, while), the reserved list (abstract, become, box, do, final, gen, macro, override, priv, try, typeof, unsized, virtual, yield) and the weak list ('static, macro_rules, raw, safe, union). `class` is in none of them.",
     "shaped": "Chapter 160: drip-rs can name the field `class`, where the TypeScript VM needed `klass`."
   },
+  {
+    "id": "rust-std-exitcode",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Struct std::process::ExitCode (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/std/src/process.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/process/struct.ExitCode.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/std/src/process.rs on the master branch of github.com/rust-lang/rust, read raw: “This type represents the status code the current process can return to its parent under normal termination.”, “The standard library provides the canonical `SUCCESS` and `FAILURE` exit codes as well as `From<u8> for ExitCode` for constructing other arbitrary exit codes.”, the example `fn main() -> ExitCode { ... return ExitCode::from(42); ... }`, and `impl From<u8> for ExitCode` (“Constructs an `ExitCode` from an arbitrary u8 value.”).",
+    "shaped": "Chapter 163: drip-rs’s main returns ExitCode::from(outcome.exit_code as u8)."
+  },
+  {
+    "id": "cargo-targets",
+    "authors": [
+      "The Cargo Team"
+    ],
+    "title": "Cargo Targets (The Cargo Book)",
+    "venue": "The Cargo Book; source in doc/book/src/reference/cargo-targets.md of github.com/rust-lang/cargo",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/cargo/reference/cargo-targets.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/book/src/reference/cargo-targets.md in github.com/rust-lang/cargo (master), read raw: “Files located under the `tests` directory are integration tests. When you run `cargo test`, Cargo will compile each of these files as a separate crate, and execute them.”; “If you want to share code among multiple integration tests, you can place it in a separate module such as `tests/common/mod.rs` and then put `mod common;` in each test to import it.”; the harness field: “If set to `false`, then you are responsible for defining a `main()` function to run tests and benchmarks.”; and “The `CARGO_BIN_EXE_<name>` environment variable is set when the integration test is built and run”.",
+    "shaped": "Chapter 164: drip-rs’s tests/corpus.rs and tests/stress_gc.rs are integration tests with harness = false that share tests/common/mod.rs."
+  },
+  {
+    "id": "valgrind-callgrind-manual",
+    "authors": [
+      "Josef Weidendorfer",
+      "The Valgrind Developers"
+    ],
+    "title": "Callgrind: a call-graph generating cache and branch prediction profiler (Valgrind User Manual, chapter 6)",
+    "venue": "Valgrind documentation; source in callgrind/docs/cl-manual.xml of the Valgrind repository",
+    "year": null,
+    "doi": null,
+    "url": "https://valgrind.org/docs/manual/cl-manual.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "valgrind.org could not be reached from the book’s VM, so the text was read from the same file, callgrind/docs/cl-manual.xml, in a GitHub mirror of the Valgrind tree (raw.githubusercontent.com/LouisBrunner/valgrind-macos/main/callgrind/docs/cl-manual.xml): “By default, the collected data consists of the number of instructions executed, their relationship to source lines, the caller/callee relationship between functions, and the numbers of such calls.”; “This cost attribution mechanism is called self or exclusive attribution.”; inclusive costs, “where the cost of each function includes the costs of all functions it called, directly or indirectly”; “the inclusive cost of main should be almost 100 percent”; “--inclusive=yes: Instead of using exclusive cost of functions as sorting order, use and show inclusive cost.”; and the section on cycles: “inclusive costs for calls inside of a cycle are meaningless”. The commands and output in chapter 165 were run with the local valgrind 3.22.0.",
+    "shaped": "Chapter 165: self versus inclusive cost, and what callgrind counts."
+  },
+  {
+    "id": "gregg-flamegraph",
+    "authors": [
+      "Brendan Gregg"
+    ],
+    "title": "FlameGraph: stack trace visualizer (README and flamegraph.pl)",
+    "venue": "github.com/brendangregg/FlameGraph",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/brendangregg/FlameGraph",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "README.md and flamegraph.pl on the master branch, read raw from raw.githubusercontent.com/brendangregg/FlameGraph/master/. The README: flame graphs are made in three steps, “Capture stacks”, “Fold stacks”, “flamegraph.pl”. The header of flamegraph.pl: “The input is stack frames and sample counts formatted as single lines. Each frame in the stack is semicolon separated, with a space and count at the end of the line”; “The ordering on the x-axis has no meaning; since the data is samples, time order of events is not known. The order used sorts function names alphabetically.”; “While intended to process stack samples, this can also process stack traces.”",
+    "shaped": "Chapter 165: folded stacks, box widths, and the meaningless x order."
+  },
+  {
+    "id": "rust-std-slice-get-unchecked",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Method slice::get_unchecked (Rust core library documentation)",
+    "venue": "Rust standard library API documentation; source in library/core/src/slice/mod.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/primitive.slice.html#method.get_unchecked",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/slice/mod.rs on the master branch of github.com/rust-lang/rust, read raw: the doc comment of `pub const unsafe fn get_unchecked` (“Returns a reference to an element or subslice, without doing bounds checking.”; “For a safe alternative see [`get`].”; “Calling this method with an out-of-bounds index is *[undefined behavior]* even if the resulting reference is not used.”; “You can think of this like `.get(index).unwrap_unchecked()`.”).",
+    "shaped": "Chapter 166: what an unchecked read in drip-rs would require."
+  },
+  {
+    "id": "rust-std-array-tryfrom-slice",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "impl TryFrom<&[T]> for &[T; N] (Rust core library documentation)",
+    "venue": "Rust standard library API documentation; source in library/core/src/array/mod.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/primitive.array.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/array/mod.rs on the master branch of github.com/rust-lang/rust, read raw: “Tries to create an array ref `&[T; N]` from a slice ref `&[T]`. Succeeds if `slice.len() == N`.”, with the example `let bytes_tail: &[u8; 2] = bytes[1..3].try_into().unwrap();`; stable since 1.34.0.",
+    "shaped": "Chapter 166: one length check up front turns a slice into a fixed-size array, so u8 indexes need no checks."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.
