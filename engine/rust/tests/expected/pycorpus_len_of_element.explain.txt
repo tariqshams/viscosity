@@ -1,0 +1,7 @@
+gs (line 9) {length} → struct of arrays
+  · loop at line 15 in <module>() touches 1 of 1 fields (length)
+  · typed array('d') columns for all 1 fields
+  · about 100 elements
+  · 1 of 1 element accesses proven in bounds
+ss (line 10) {length} → kept as array of objects
+  · unsafe: line 20: an element is passed to len()

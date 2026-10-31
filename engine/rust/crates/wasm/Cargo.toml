@@ -1,6 +1,6 @@
 [package]
 name = "viscosity-wasm"
-description = "Viscosity compiled to WebAssembly: compile(source) -> { code, explain }."
+description = "Viscosity compiled to WebAssembly: compile(source) -> { code, explain }, for JavaScript and Python."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -12,4 +12,5 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 viscosity-core.workspace = true
 viscosity-frontend-js.workspace = true
+viscosity-frontend-python.workspace = true
 wasm-bindgen.workspace = true

@@ -1,0 +1,6 @@
+ps (line 13) {x, y, vx, vy, m} → struct of arrays
+  · loop at line 18 in step() touches 2 of 5 fields (x, vx)
+  · loop at line 26 in <module>() touches 1 of 5 fields (x)
+  · typed array('d') columns for all 5 fields
+  · about 100000 elements
+  · 2 of 2 element accesses proven in bounds

@@ -1,0 +1,2 @@
+cs (line 9) {v, hits} → kept as array of objects
+  · no field is provably numeric, so there are no typed columns to gain

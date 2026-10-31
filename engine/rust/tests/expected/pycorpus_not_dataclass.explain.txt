@@ -1,0 +1,3 @@
+xs (line 6) {} → kept as array of objects
+  · unsafe: line 8: appends something that is not a fresh dataclass instance (dataclasses with non-literal defaults are not modelled)
+  · unsafe: line 11: reads .x, which the records don't have

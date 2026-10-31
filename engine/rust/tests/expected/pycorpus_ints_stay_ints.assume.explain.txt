@@ -1,0 +1,5 @@
+cs (line 9) {count, weight} → struct of arrays
+  · loop at line 12 in <module>() touches 2 of 2 fields (weight, count)
+  · typed array('d') columns for weight; list columns for count (may hold non-floats)
+  · about 300 elements
+  · 2 of 5 element accesses proven in bounds

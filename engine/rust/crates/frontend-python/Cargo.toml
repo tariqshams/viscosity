@@ -1,0 +1,12 @@
+[package]
+name = "viscosity-frontend-python"
+description = "Viscosity's Python plugin: a Python subset (dataclass records, lists, loops) lowered to VIR, and rewritten to column storage from a layout plan."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+viscosity-vir.workspace = true
+viscosity-core.workspace = true
+indexmap.workspace = true

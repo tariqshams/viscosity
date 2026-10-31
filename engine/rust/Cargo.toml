@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/vir", "crates/core", "crates/frontend-js", "crates/cli", "crates/wasm"]
+members = ["crates/vir", "crates/core", "crates/frontend-js", "crates/frontend-python", "crates/cli", "crates/wasm"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,6 +14,7 @@ rust-version = "1.85"
 viscosity-vir = { path = "crates/vir" }
 viscosity-core = { path = "crates/core" }
 viscosity-frontend-js = { path = "crates/frontend-js" }
+viscosity-frontend-python = { path = "crates/frontend-python" }
 oxc_allocator = "0.156"
 oxc_ast = "0.156"
 oxc_parser = "0.156"

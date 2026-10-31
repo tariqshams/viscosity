@@ -1,0 +1,5 @@
+ps (line 14) {x} → struct of arrays
+  · loop at line 17 in <module>() touches 1 of 1 fields (x)
+  · typed array('d') columns for all 1 fields
+  · about 100 elements
+  · 1 of 2 element accesses proven in bounds

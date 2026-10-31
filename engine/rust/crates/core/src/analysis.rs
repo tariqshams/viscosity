@@ -314,9 +314,12 @@ impl<'m> Analyzer<'m> {
                 for &a in &init.args {
                     if !matches!(self.inst(a).op, Op::RecordNew { .. }) {
                         let line = init.src.map_or("undefined".to_string(), |s| s.line.to_string());
-                        c.bailouts.push(format!(
-                            "line {line}: an element of the array literal is not a plain object literal"
-                        ));
+                        let what = if self.py {
+                            "list literal is not a dataclass constructor call"
+                        } else {
+                            "array literal is not a plain object literal"
+                        };
+                        c.bailouts.push(format!("line {line}: an element of the {what}"));
                         break;
                     }
                     c.init_records.push(a);
@@ -347,6 +350,7 @@ impl<'m> Analyzer<'m> {
             _ => {}
         }
         match &i.op {
+            Op::FieldGet { .. } if i.note_is("len") => format!("passed to len() at line {line}"),
             Op::Call if i.note_is("method") => format!("passed to a method call at line {line}"),
             Op::Call => format!("passed to a function call at line {line}"),
             Op::StoreBinding { binding } => {
@@ -483,7 +487,12 @@ impl<'m> Analyzer<'m> {
                 }
                 let r = i.args[1];
                 if !matches!(self.m.inst(r).op, Op::RecordNew { .. }) {
-                    c.bailouts.push(format!("line {line}: pushes something that is not a fresh object literal"));
+                    let what = if self.py {
+                        "appends something that is not a fresh dataclass instance (dataclasses with non-literal defaults are not modelled)"
+                    } else {
+                        "pushes something that is not a fresh object literal"
+                    };
+                    c.bailouts.push(format!("line {line}: {what}"));
                     return None;
                 }
                 self.set_shape(ci, r, &format!("line {line}"));
@@ -572,7 +581,10 @@ impl<'m> Analyzer<'m> {
                     let (a, b) = (i.args[0], i.args[1]);
                     return match operator.as_str() {
                         "/" => n_or_i(a) && n_or_i(b),
-                        "+" | "-" | "*" | "%" | "//" | "**" => (n(a) && n_or_i(b)) || (self.i(a) && n(b)),
+                        // `**` with a non-integer exponent can be complex:
+                        // (-1.0) ** 0.5 is 1j.
+                        "**" => n(a) && self.i(b),
+                        "+" | "-" | "*" | "%" | "//" => (n(a) && n_or_i(b)) || (self.i(a) && n(b)),
                         _ => false,
                     };
                 }
@@ -738,7 +750,9 @@ impl<'m> Analyzer<'m> {
                     let i = u.inst().map(|i| self.inst(i));
                     let c = &mut self.collections[ci];
                     match i.map(|i| (i, &i.op)) {
-                        Some((i, Op::FieldGet { field })) if i.args[0] == ig.inst => {
+                        // Python's `len(e)` lowers to `e.length`, but it
+                        // never reads a field.
+                        Some((i, Op::FieldGet { field })) if i.args[0] == ig.inst && !i.note_is("len") => {
                             if c.fields.contains(field) {
                                 c.accesses.push(ElementAccess {
                                     inst: i.id,

@@ -1,0 +1,11 @@
+vs (line 17) {x, y, w} → struct of arrays
+  · annotated @viscosity soa at line 16
+  · loop at line 29 in norm_vs() touches 3 of 3 fields (x, y, w)
+  · loop at line 40 in <module>() touches 2 of 3 fields (y, x)
+  · typed array('d') columns for all 3 fields
+  · about 200 elements
+  · 3 of 6 element accesses proven in bounds
+keep (line 19) {x, y, w} → kept as array of objects
+  · annotated @viscosity aos at line 18
+others (line 20) {x, y, w} → kept as array of objects
+  · CPython: column access measured slower per element than objects (the win is about 5x less memory); add "# @viscosity soa" above the list to opt in

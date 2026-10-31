@@ -1,6 +1,6 @@
 [package]
 name = "viscosity-cli"
-description = "The `viscosity` command: compile and explain JavaScript data layouts."
+description = "The `viscosity` command: compile and explain JavaScript and Python data layouts."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -13,4 +13,5 @@ path = "src/main.rs"
 [dependencies]
 viscosity-core.workspace = true
 viscosity-frontend-js.workspace = true
+viscosity-frontend-python.workspace = true
 serde_json = "1"

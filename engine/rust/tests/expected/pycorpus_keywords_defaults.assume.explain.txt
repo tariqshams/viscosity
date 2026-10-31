@@ -1,0 +1,5 @@
+bs (line 10) {x, y, m} → struct of arrays
+  · loop at line 17 in <module>() touches 3 of 3 fields (x, m, y)
+  · typed array('d') columns for all 3 fields
+  · at most 400 elements
+  · 1 of 1 element accesses proven in bounds
