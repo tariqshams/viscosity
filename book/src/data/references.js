@@ -2237,6 +2237,104 @@ export const references = [
     "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/typedarray/set/index.md (“stores multiple values in the typed array, reading input values from a specified array”; targetOffset defaults to 0; RangeError if the values would be stored beyond the end)",
     "shaped": "Chapter 105: grow() copies an old column into its bigger replacement with one set() call."
   },
+  {
+    "id": "rust-reference-destructors",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "The Rust Reference: Destructors",
+    "venue": "The Rust Reference (rust-lang/reference on GitHub, rendered at doc.rust-lang.org/reference)",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/destructors.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/destructors.md on the master branch of github.com/rust-lang/reference, read raw: “When an initialized variable or temporary goes out of scope, its destructor is run or it is dropped. Assignment also runs the destructor of its left-hand operand, if it’s initialized” (destructors.intro); “When control flow leaves a drop scope all variables associated to that scope are dropped in reverse order of declaration” (destructors.scope.intro). The reverse order was also checked by running a program with rustc 1.97.0.",
+    "shaped": "Chapter 124: when values are dropped (end of scope, reverse declaration order, on assignment)."
+  },
+  {
+    "id": "rustref-ub",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "Behavior considered undefined",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/behavior-considered-undefined.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/rust-lang/reference/blob/master/src/behavior-considered-undefined.md",
+    "shaped": "The pointer aliasing rules: memory behind a live &T is not mutated, and nothing but a live &mut T (and pointers derived from it) reads or writes the memory it points at."
+  },
+  {
+    "id": "rustref-slice",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "Slice types",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/types/slice.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/rust-lang/reference/blob/master/src/types/slice.md",
+    "shaped": "A slice is a view into a sequence of elements; &[T] borrows the data it points to; access to a slice is always bounds-checked in safe methods and operators."
+  },
+  {
+    "id": "rustref-dst",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "Dynamically sized types",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/dynamically-sized-types.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/rust-lang/reference/blob/master/src/dynamically-sized-types.md",
+    "shaped": "Slices and str are dynamically sized; pointers to them are twice the size of pointers to sized types because they also store metadata (the length)."
+  },
+  {
+    "id": "rustref-type-layout",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "Type layout",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/type-layout.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/rust-lang/reference/blob/master/src/type-layout.md",
+    "shaped": "The default Rust representation only guarantees field offsets divisible by their alignment and non-overlapping struct fields, in any order; an array [T; N] puts element n at offset n * size_of::<T>()."
+  },
+  {
+    "id": "rustref-match",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "match expressions",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/expressions/match-expr.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/rust-lang/reference/blob/master/src/expressions/match-expr.md",
+    "shaped": "A match compares its scrutinee with the arms’ patterns in order and enters the first arm that matches; the scrutinee and the patterns must have the same type; pattern variables are scoped to their arm."
+  },
+  {
+    "id": "rustref-enum",
+    "authors": [
+      "The Rust Reference contributors"
+    ],
+    "title": "Enumerations",
+    "venue": "The Rust Reference",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/reference/items/enumerations.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/rust-lang/reference/blob/master/src/items/enumerations.md",
+    "shaped": "Each enum value has a discriminant, an integer saying which variant it holds; without a primitive representation the compiler may use a smaller type or another means of distinguishing variants in memory."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.

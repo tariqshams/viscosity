@@ -1,0 +1,197 @@
+---
+n: 124
+day: 31
+part: IX
+title: 'Ownership'
+tagline: 'Rust frees memory without a garbage collector by keeping one simple promise: every value has exactly one owner, and when the owner goes away, so does the value.'
+objectives:
+  - State Rust’s three ownership rules.
+  - Predict when an assignment or a function call moves a value, and when it copies.
+  - Say where and in what order values are dropped.
+  - Compare ownership with the tracing garbage collector you built in chapter 58.
+introduces: [ownership, move, drop]
+uses: [rust, let-mut, scalar-types, rust-functions, expression-oriented, reference, aliasing, copy-spread, garbage-collection, roots, mark-sweep, stack-and-heap, pointer, memory, block-scope, scope, heap-object, string-building, function, parameter, return, virtual-machine, drip]
+sources: [klabnik2026, rust-reference-destructors]
+---
+import OwnerSteps from '../../../components/diagrams/ch124/OwnerSteps';
+
+## Two names, one string?
+
+Chapter 4 began with a puzzle about two names for one object. Here is
+the Rust version:
+
+```rust
+let a = String::from("fib");
+let b = a;
+println!("{a}");
+```
+
+`String` is Rust's growable, heap-allocated text, much like a JavaScript
+string you can build on (chapter 126 has the details). In TypeScript,
+`const b = a` makes two arrows to one object, and the garbage collector
+later works out when no arrows are left. Rust has no collector. So who
+frees the text, and when? rustc 1.97 answers by rejecting the program:
+
+```
+error[E0382]: borrow of moved value: `a`
+ --> o1.rs:4:16
+  |
+2 | let a = String::from("fib");
+  |     - move occurs because `a` has
+  |       type `String`, which does not
+  |       implement the `Copy` trait
+3 | let b = a;
+  |         - value moved here
+4 | println!("{a}");
+  |            ^ value borrowed here
+  |              after move
+```
+
+(Indentation trimmed and wrapped to fit.) Read it from the top: `a` was
+**moved** into `b`, so `a` can't be used any more. ("Borrowed" is the
+subject of chapter 125.)
+
+<Callout kind="intuition">
+Think of the deed to a house. Exactly one person holds it. You can hand
+it to someone, and then it's theirs, not yours: you can't sell the
+house again. When the deed holder leaves town for good, the house is
+demolished. Nobody has to go round checking which houses are empty.
+</Callout>
+
+## The three rules
+
+Ownership comes down to three rules<Cite id="klabnik2026" />:
+
+1. Each value in Rust has an **owner**, a variable.
+2. There is only one owner at a time.
+3. When the owner goes out of scope, the value is **dropped**.
+
+Watch them work. On the left is `main`'s stack frame (chapter 17); on
+the right, the heap. The arrow is drawn only from a box's one owner:
+
+<OwnerSteps client:visible />
+
+<Callout kind="definition">
+**Ownership**: every value has exactly one owning variable. A **move**
+transfers ownership: `let b = a;`, passing `a` to a function, or
+returning it. After a move the old variable can't be used, and the
+compiler checks this. **Drop**: when an owner goes out of scope, its
+value is destroyed and any heap memory it holds is freed.
+</Callout>
+
+<Prompts ids={['own-rules', 'own-move-what', 'own-after-move']} />
+
+## Copy and clone
+
+Moves copy only the small part on the stack: pointer, length and
+capacity. The heap text stays put. Nothing deep is ever copied unless you
+ask<Cite id="klabnik2026" />. You ask with `clone`:
+
+```rust
+let a = String::from("fib");
+let b = a.clone();
+println!("{a} {b}"); // fib fib
+```
+
+Now there are two heap boxes and two owners. Compare chapter 4's
+`{ ...obj }`, which copied only the top layer. A `String`'s `clone`
+copies the text too.
+
+The scalars from chapter 122 behave differently. `let m = n;` with an
+`i32` leaves both usable, because `i32` is a **Copy** type. Copying four
+bytes is cheap, and nothing on the heap needs a single owner. Integers,
+floats, `bool` and `char` are all Copy.
+
+<Prompts ids={['own-clone', 'own-copy']} />
+
+## Moving into and out of functions
+
+Passing a value to a function moves it, exactly like `let`:
+
+```rust
+fn eat(s: String) {
+    println!("ate {s}");
+} // s is dropped here
+
+fn main() {
+    let a = String::from("fib");
+    eat(a);
+    // a can't be used here
+}
+```
+
+`eat` now owns the string, and drops it at its closing brace. Returning
+a value moves it out to the caller:
+
+```rust
+fn make() -> String {
+    String::from("vm")
+}
+```
+
+The `String` was built inside `make`, but the caller owns it now, so it
+outlives the call. Giving things away and getting them back would be
+exhausting. Chapter 125's *borrowing* lets a function use a value
+without owning it.
+
+<Prompts ids={['own-fn-move', 'own-return']} />
+
+<Run id="moves" />
+
+## When drop happens
+
+Drop points come from the code's shape, not from a collector's
+schedule:
+
+- At the closing `}` of the owner's scope. Several variables in one
+  scope drop in **reverse** order of
+  declaration<Cite id="rust-reference-destructors" />.
+- When you assign a new value to a `mut` variable, the old value is
+  dropped right then<Cite id="rust-reference-destructors" />.
+- When you call `drop(x)`. It's an ordinary function that takes
+  ownership and does nothing, so `x` is dropped at its end.
+- A moved-from variable owns nothing, so nothing is dropped twice.
+
+<Prompts ids={['own-drop-order', 'own-gc-diff']} />
+
+## Ownership versus your collector
+
+In chapter 58 your VM's collector started at the roots, marked everything
+reachable, and swept the rest. That costs time while the program runs,
+but it lets any object point at any other. Ownership does its work in
+the compiler instead. Each heap value has one owner, so the drop point
+is known before the program runs, and nothing is traced at run time.
+The price is that "many arrows to one object" doesn't come for free.
+Chapter 137's `Rc` brings counted sharing back, and chapter 138's arenas
+sidestep the question.
+
+<Callout kind="engine" label="Under the hood">
+drip-rs still has a garbage collector. Drip programs share objects
+freely, as JavaScript does, so the Drip heap needs mark and sweep. In
+drip-rs, Drip objects live in arenas inside a `Heap`, and values refer
+to them by typed handles, not by owning pointers. Ownership handles
+everything else: the stack, the frames, the chunks, the heap's own
+storage. When the `Vm` is dropped, all of it is freed, with no
+collector involved.
+</Callout>
+
+## Your turn
+
+<Exercise id="duplicate" />
+
+<Exercise id="longer" />
+
+## What you learned
+
+- **Ownership**: each value has one owner, and is **dropped** when that
+  owner goes out of scope.
+- `let b = a;`, passing `a` to a function and returning a value all
+  **move** ownership. A moved-from variable is unusable, and the
+  compiler checks this.
+- **Copy** types (integers, floats, `bool`, `char`) are copied instead.
+  `clone()` makes an explicit deep copy.
+- Drops happen at the end of scope in reverse declaration order, on
+  reassignment, or at `drop(x)`. No collector runs. The cost is that
+  sharing needs extra tools, starting with borrowing.
+
+<Quiz />
