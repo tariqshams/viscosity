@@ -1,0 +1,18 @@
+---
+import { getCollection, render } from 'astro:content';
+import Book from '../../layouts/Book.astro';
+import Callout from '../../components/book/Callout.astro';
+import Figure from '../../components/book/Figure.astro';
+export async function getStaticPaths() {
+  const front = await getCollection('front');
+  return front.map((f) => ({ params: { slug: f.id }, props: { entry: f } }));
+}
+const { entry } = Astro.props as any;
+const { Content } = await render(entry);
+---
+<Book title={`${entry.data.title} · Viscosity`} current={entry.id}>
+  <article class="mx-auto max-w-reading px-4 pb-16 pt-8 sm:px-6 lg:pt-12" data-pagefind-body>
+    <h1 class="font-display text-[2.2rem] font-semibold leading-tight">{entry.data.title}</h1>
+    <div class="prose-body"><Content components={{ Callout, Figure }} /></div>
+  </article>
+</Book>

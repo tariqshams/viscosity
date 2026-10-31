@@ -1,0 +1,15 @@
+---
+import Book from '../layouts/Book.astro';
+import DayPlan from '../components/book/DayPlan';
+import { curriculum } from '../lib/chapters';
+const { days } = await curriculum();
+---
+<Book title="The 50-day plan · Viscosity" current="days">
+  <div class="mx-auto max-w-reading px-4 pb-16 pt-8 sm:px-6 lg:pt-12">
+    <h1 class="font-display text-[2.2rem] font-semibold leading-tight">The 50-day plan</h1>
+    <p class="mb-6 mt-2 font-serif text-[1.08rem] leading-relaxed text-ink/85">
+      About an hour a day: your reviews first (a few minutes), then four 15-minute chapters. Days 1–30 are Track A in TypeScript. Days 31–50 are Track B, where you learn Rust and rebuild everything.
+    </p>
+    <DayPlan client:load days={days} />
+  </div>
+</Book>

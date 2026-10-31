@@ -1,0 +1,46 @@
+{
+  "name": "viscosity-book",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Viscosity: From a Little JavaScript to Engines and Compilers. An interactive book by Tariq Shams.",
+  "author": "Tariq Shams",
+  "license": "SEE LICENSE IN ../LICENSE",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && pagefind --site dist",
+    "preview": "astro preview",
+    "test": "vitest run",
+    "check": "node scripts/check_chapters.mjs && node scripts/check_site.mjs",
+    "check:chapters": "node scripts/check_chapters.mjs",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^4.3.14",
+    "@astrojs/react": "^4.4.2",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.34.1",
+    "@lezer/highlight": "^1.2.5",
+    "astro": "^5.18.2",
+    "clsx": "^2.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sucrase": "^3.35.1",
+    "ts-fsrs": "^5.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.1",
+    "autoprefixer": "^10.4.20",
+    "pagefind": "^1.4.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "yaml": "^2.9.1"
+  }
+}

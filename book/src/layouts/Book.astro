@@ -1,0 +1,95 @@
+---
+import '../styles/globals.css';
+import Sidebar from '../components/book/Sidebar.astro';
+import { ThemeToggle } from '../components/ui/ThemeToggle';
+import { MobileNav } from '../components/ui/MobileNav';
+import DueBadge from '../components/srs/DueBadge';
+import { BOOK } from '../data/book.js';
+
+const { title, description = BOOK.description, current, currentPart, progress = false } = Astro.props as {
+  title: string; description?: string; current?: string; currentPart?: string; progress?: boolean;
+};
+const themeScript = `(function(){try{var t=localStorage.getItem('theme');if(!t)t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();`;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="author" content={BOOK.author} />
+    <meta name="theme-color" content="#faf7f0" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12141b" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script is:inline set:html={themeScript}></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet" />
+  </head>
+  <body class="min-h-screen font-sans">
+    {progress && <div id="progress-bar" class="fixed left-0 top-0 z-40 h-0.5 bg-brand lg:left-[18rem]" style="width:0%"></div>}
+    <div class="flex min-h-screen">
+      <Sidebar current={current} currentPart={currentPart} />
+      <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:pl-[18rem]">
+        <header class="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-paper/95 px-3 backdrop-blur sm:px-4 lg:px-8" style="padding-top: env(safe-area-inset-top)">
+          <MobileNav client:idle />
+          <a href="/" class="min-w-0 truncate font-display text-base font-semibold lg:hidden">{BOOK.title}</a>
+          <div class="ml-auto flex items-center gap-2">
+            <button id="search-open" type="button" aria-label="Search the book" aria-expanded="false" aria-controls="search-panel" class="btn-3d btn-3d-sm grid h-9 w-9 place-items-center sm:flex sm:w-auto sm:gap-2 sm:px-3">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <span class="hidden text-sm sm:inline">Search</span>
+            </button>
+            <DueBadge client:idle />
+            <ThemeToggle client:idle />
+          </div>
+          <div id="search-panel" class="search-panel absolute left-0 right-0 top-14 hidden border-b border-line bg-paper px-4 py-4 shadow-[0_8px_24px_rgb(0_0_0/0.08)] lg:px-8" role="search">
+            <div class="mx-auto max-w-reading">
+              <div id="search-ui"></div>
+              <p id="search-missing" class="hidden text-sm text-muted">Search is built with the site (npm run build); it is not available in dev mode.</p>
+            </div>
+          </div>
+        </header>
+        <main class="min-w-0 flex-1"><slot /></main>
+        <footer class="border-t border-line px-5 py-6 text-center font-sans text-xs text-muted sm:px-8" style="padding-bottom: max(1.5rem, env(safe-area-inset-bottom))">
+          <i>{BOOK.title}: {BOOK.subtitle}</i> · © {new Date().getFullYear()} {BOOK.author} ·
+          <a class="underline underline-offset-4" href="/acknowledgements/">Acknowledgements</a> ·
+          <a class="underline underline-offset-4" href="https://github.com/tariqshams/viscosity">GitHub</a>
+        </footer>
+      </div>
+    </div>
+    <script is:inline>
+      (function () {
+        var btn = document.getElementById('search-open');
+        var panel = document.getElementById('search-panel');
+        var loaded = false;
+        function load() {
+          if (loaded) return; loaded = true;
+          var css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/pagefind/pagefind-ui.css';
+          document.head.appendChild(css);
+          var s = document.createElement('script'); s.src = '/pagefind/pagefind-ui.js';
+          s.onload = function () {
+            new window.PagefindUI({ element: '#search-ui', showSubResults: true, showImages: false, resetStyles: false, autofocus: true, translations: { placeholder: 'Search the book' } });
+            var input = panel.querySelector('input'); if (input) input.focus();
+          };
+          s.onerror = function () { document.getElementById('search-missing').classList.remove('hidden'); };
+          document.body.appendChild(s);
+        }
+        function open() { panel.classList.remove('hidden'); btn.setAttribute('aria-expanded', 'true'); load(); var i = panel.querySelector('input'); if (i) i.focus(); }
+        function close() { panel.classList.add('hidden'); btn.setAttribute('aria-expanded', 'false'); }
+        btn.addEventListener('click', function () { panel.classList.contains('hidden') ? open() : close(); });
+        document.addEventListener('keydown', function (e) {
+          var a = document.activeElement;
+          if (e.key === '/' && a && !/INPUT|TEXTAREA/.test(a.tagName) && !a.isContentEditable) { e.preventDefault(); open(); }
+          if (e.key === 'Escape') close();
+        });
+        document.addEventListener('click', function (e) { if (!panel.contains(e.target) && !btn.contains(e.target)) close(); });
+        var bar = document.getElementById('progress-bar');
+        if (bar) {
+          var up = function () { var h = document.documentElement; var m = h.scrollHeight - h.clientHeight; bar.style.width = (m > 0 ? (h.scrollTop / m) * 100 : 0) + '%'; };
+          up(); addEventListener('scroll', up, { passive: true }); addEventListener('resize', up);
+        }
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,77 @@
+---
+// The contents drawer. Desktop: a fixed column. Phone: a slide-in drawer
+// opened by MobileNav. Planned chapters are shown greyed out, so you can
+// see the whole road ahead.
+import { BOOK, PARTS } from '../../data/book.js';
+import { curriculum } from '../../lib/chapters';
+const { current, currentPart } = Astro.props as { current?: string; currentPart?: string };
+const { entries } = await curriculum();
+const front = [
+  { href: '/front/preface/', label: 'Preface', slug: 'preface' },
+  { href: '/front/how-to-use-this-book/', label: 'How to use this book', slug: 'how-to-use-this-book' },
+  { href: '/days/', label: 'The 50-day plan', slug: 'days' },
+  { href: '/review/', label: 'Review deck', slug: 'review' },
+];
+const back = [
+  { href: '/acknowledgements/', label: 'Acknowledgements & influences', slug: 'acknowledgements' },
+  { href: '/bibliography/', label: 'Bibliography', slug: 'bibliography' },
+];
+---
+<div id="nav-backdrop" class="fixed inset-0 z-40 hidden bg-ink/40 backdrop-blur-sm lg:!hidden" data-nav-close></div>
+<aside id="book-nav" class="fixed inset-y-0 left-0 z-50 hidden w-[86%] max-w-[21rem] flex-col border-r border-line bg-paper lg:z-20 lg:flex lg:w-[18rem] lg:max-w-none" aria-label="Book contents">
+  <div class="flex items-start border-b border-line">
+    <a href="/" class="block flex-1 px-5 py-4">
+      <span class="block font-display text-[1.25rem] font-semibold leading-tight">{BOOK.title}</span>
+      <span class="mt-0.5 block font-sans text-xs text-muted">by {BOOK.author}</span>
+    </a>
+    <button type="button" data-nav-close aria-label="Close" class="btn-3d btn-3d-sm mr-4 mt-4 grid h-9 w-9 shrink-0 place-items-center lg:hidden">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="flex-1 overflow-y-auto overscroll-contain" id="nav-scroll">
+    <nav class="px-5 pb-10 pt-3 font-sans text-[0.92rem]">
+      {front.map((f) => (
+        <a href={f.href} aria-current={current === f.slug ? 'page' : undefined} class={`block py-1.5 ${current === f.slug ? 'font-semibold text-ink' : 'text-ink/75 hover:text-ink'}`}>{f.label}</a>
+      ))}
+      {PARTS.map((part) => {
+        const chs = entries.filter((e) => e.part === part.id);
+        return (
+          <details class="nav-part mt-3" open={currentPart === part.id}>
+            <summary class="flex items-start gap-2 py-1 text-muted hover:text-ink">
+              <svg class="chev mt-[0.4rem] h-2.5 w-2.5 shrink-0" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5 L7 5 L3 8.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+              <span class="text-[0.85rem] font-semibold uppercase tracking-[0.06em]">
+                {part.id === 'IX' && <span class="block text-[0.7rem] text-brand">Track B · Rust</span>}
+                {part.id === 'I' && <span class="block text-[0.7rem] text-brand">Track A · TypeScript</span>}
+                Part {part.id} · {part.title}
+              </span>
+            </summary>
+            {chs.map((c) => c.href ? (
+              <a href={c.href} aria-current={current === c.href ? 'page' : undefined}
+                 class={`flex gap-2.5 py-1.5 leading-snug ${current === c.href ? 'font-semibold text-ink' : 'text-ink/80 hover:text-ink'}`}>
+                <span class="w-7 shrink-0 text-right tabular-nums text-muted">{c.n}</span>
+                <span class={current === c.href ? 'underline decoration-brand decoration-2 underline-offset-4' : ''}>{c.title}</span>
+              </a>
+            ) : (
+              <span class="flex gap-2.5 py-1 leading-snug text-muted/70">
+                <span class="w-7 shrink-0 text-right tabular-nums">{c.n}</span>
+                <span>{c.title}</span>
+              </span>
+            ))}
+          </details>
+        );
+      })}
+      <div class="mt-5 border-t border-line pt-3">
+        {back.map((f) => (
+          <a href={f.href} aria-current={current === f.slug ? 'page' : undefined} class={`block py-1.5 ${current === f.slug ? 'font-semibold text-ink' : 'text-ink/75 hover:text-ink'}`}>{f.label}</a>
+        ))}
+      </div>
+    </nav>
+  </div>
+</aside>
+<script is:inline>
+  (function () {
+    var cur = document.querySelector('#book-nav [aria-current="page"]');
+    var box = document.getElementById('nav-scroll');
+    if (cur && box) box.scrollTop = Math.max(0, cur.offsetTop - box.clientHeight / 3);
+  })();
+</script>

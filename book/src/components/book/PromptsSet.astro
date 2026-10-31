@@ -1,0 +1,14 @@
+---
+// <Prompts ids={['a', 'b']} /> in a chapter: the chapter's review prompts.
+import Prompts from '../srs/Prompts';
+import { chapterFromUrl, cardsFor, promptId } from '../../lib/chapters';
+const { ids } = Astro.props as { ids: string[] };
+const { chapterId, n } = chapterFromUrl(Astro.url);
+const cards = cardsFor(chapterId);
+const items = ids.map((k) => {
+  const p = cards.prompts[k];
+  if (!p) throw new Error(`chapter ${chapterId}: no prompt "${k}" in cards.js`);
+  return { id: promptId(n, k), q: p.q, a: p.a };
+});
+---
+<Prompts client:visible ch={n} items={items} />

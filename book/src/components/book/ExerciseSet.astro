@@ -1,0 +1,19 @@
+---
+// <Exercise id="..." /> or <Run id="..." /> in a chapter.
+import Runner from '../runner/Runner';
+import { chapterFromUrl, cardsFor } from '../../lib/chapters';
+const { id, kind = 'exercise' } = Astro.props as { id: string; kind?: 'exercise' | 'example' };
+const { chapterId } = chapterFromUrl(Astro.url);
+const cards = cardsFor(chapterId);
+let props: Record<string, unknown>;
+if (kind === 'exercise') {
+  const ex = cards.exercises?.[id];
+  if (!ex) throw new Error(`chapter ${chapterId}: no exercise "${id}"`);
+  props = { code: ex.starter, tests: ex.tests, prompt: ex.prompt, hints: ex.hints, solution: ex.solution, walkthrough: ex.walkthrough, wrong: ex.wrong, title: ex.title, lang: ex.lang ?? 'js', optional: !!ex.optional };
+} else {
+  const ex = cards.examples?.[id];
+  if (!ex) throw new Error(`chapter ${chapterId}: no example "${id}"`);
+  props = { code: ex.code, title: ex.title, lang: ex.lang ?? 'js', optional: !!ex.optional };
+}
+---
+<Runner client:visible id={`${chapterId}/${id}`} {...props as any} />

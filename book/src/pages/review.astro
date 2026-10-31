@@ -1,0 +1,21 @@
+---
+import Book from '../layouts/Book.astro';
+import ReviewSession from '../components/srs/ReviewSession';
+import { allChapters, cardsFor, chapterHref, promptId } from '../lib/chapters';
+const catalog: Record<string, any> = {};
+for (const c of await allChapters()) {
+  const cards = cardsFor(c.id);
+  for (const [k, p] of Object.entries(cards.prompts)) {
+    catalog[promptId(c.data.n, k)] = { id: promptId(c.data.n, k), q: p.q, a: p.a, ch: c.data.n, chTitle: c.data.title, href: chapterHref(c) };
+  }
+}
+---
+<Book title="Review · Viscosity" current="review">
+  <div class="mx-auto max-w-reading px-4 pb-16 pt-8 sm:px-6 lg:pt-12">
+    <h1 class="font-display text-[2.2rem] font-semibold leading-tight">Review</h1>
+    <p class="mb-6 mt-2 font-serif text-[1.08rem] leading-relaxed text-ink/85">
+      These are the prompts you answered while reading, coming back just before you would forget them. Try to recall each answer before you reveal it, then be honest. A few minutes a day is enough. Cards you remember come back less and less often: days, then weeks, then months.
+    </p>
+    <ReviewSession client:load catalog={catalog} />
+  </div>
+</Book>
