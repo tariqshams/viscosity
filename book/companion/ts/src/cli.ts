@@ -9,7 +9,14 @@ if (!file) {
   console.error('Usage: drip [--vm] script.drip');
   process.exit(64);
 }
-const source = readFileSync(file, 'utf8');
+let source: string;
+try {
+  source = readFileSync(file, 'utf8');
+} catch (e) {
+  // Like clox and drip-rs: report and exit 74 (EX_IOERR), no stack trace.
+  console.error(`Could not read "${file}": ${(e as Error).message}`);
+  process.exit(74);
+}
 const result = args.includes('--vm')
   ? (await import('./vm/index.ts')).runVm(source)
   : run(source);

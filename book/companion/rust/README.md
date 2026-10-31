@@ -25,8 +25,8 @@ error, or 64 when used wrongly, like `drip --vm` and clox.
 
 The tests:
 
-- `tests/corpus.rs` runs every corpus program the VM is meant to run: all
-  246 except the `scanning`, `expressions` and `benchmark` folders, the
+- `tests/corpus.rs` runs every corpus program the VM is meant to run: 246
+  of the 265, skipping the `scanning`, `expressions` and `benchmark` folders, the
   same skip list as `SKIP.vm` in `../ts/test/corpus.ts`. It checks each
   one with a port of `check()` from that file: expected output, compile
   errors with their line numbers, the runtime error message and its line,

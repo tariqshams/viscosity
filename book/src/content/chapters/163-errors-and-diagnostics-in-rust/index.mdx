@@ -1,0 +1,253 @@
+---
+n: 163
+day: 41
+part: X
+title: 'Errors and diagnostics in Rust'
+tagline: 'A Drip program can fail in two ways, and drip-rs reports each on its own path: compile errors pile up in a Vec, a runtime error stops the VM with a stack trace. Both end as an exit code, and every byte on stderr matches the TypeScript VM.'
+objectives:
+  - Follow a compile error through error_at and panic mode, and a runtime error through runtime_error to the exit code.
+  - Explain why runtime_error may push to self.stderr while it walks self.frames, and what a stale ip does to a trace.
+  - Map drip-rs’s exit codes 0, 64, 65, 70 and 74 to the TypeScript CLI’s.
+  - Write error_at with panic mode for a small compiler, with tests.
+introduces: [runtime-stack-trace]
+uses: [drip-rs, frame-stack, rust-bound-method, method-copy-down, compiler-state, match-dispatch, value-enum, runtime-error, syntax-error, panic-mode, error-recovery, call-stack, call-frame, instruction-pointer, result, question-mark, option, from-trait, error-enum, struct, enum, match, pattern, borrow, shared-vs-mutable, borrow-checker, self-receiver, vec, slice, string-vs-str, test-corpus, differential-testing, drip, typescript]
+sources: [nystrom2021, rust-std-exitcode, rustref-numeric-cast]
+---
+import ErrorSteps from '../../../components/diagrams/ch163/ErrorSteps';
+
+## Five lines on stderr
+
+```
+class Oven {
+  bake(n) { return this.heat(n); }
+  heat(n) { return n * nil; }
+}
+fn go() {
+  return Oven().bake(3);
+}
+go();
+```
+
+`drip-rs oven.drip` prints nothing on stdout, this on stderr, and exits
+with 70:
+
+```
+Operands must be numbers.
+[line 3] in heat()
+[line 2] in bake()
+[line 6] in go()
+[line 8] in script
+```
+
+`drip --vm` prints the same five lines and exits with 70 too. A Drip
+program fails either before it runs, with compile errors, or while it
+runs, with one runtime error. drip-rs reports the two on different
+paths, and both paths end in `main` as an exit code.
+
+## Compile errors: one per statement
+
+The compiler pushes messages into `errors: &mut Vec<String>` and keeps
+going. Adapted from `src/compiler.rs`:
+
+```rust
+fn error_at(
+    &mut self, token: Token<'src>,
+    message: &str,
+) {
+    if self.panic_mode {
+        return;
+    }
+    self.panic_mode = true;
+    let location = match token.kind {
+        TokenKind::Eof =>
+            " at end".to_string(),
+        TokenKind::Error => String::new(),
+        _ => format!(" at '{}'",
+            token.lexeme),
+    };
+    let line = token.line;
+    self.errors.push(format!(
+        "[line {line}] Error{location}: \
+         {message}"));
+    self.had_error = true;
+}
+```
+
+`Token` is `Copy`, so `error` can pass `self.previous` by value. An
+`Error` token is one the scanner made for a bad character, and its
+lexeme is the message, so it gets no location. `panic_mode` is chapter
+34's idea: after the first error in a statement, the rest are probably
+echoes of it, so they are dropped until `synchronize` reaches the next
+statement. Three statements, three errors:
+
+```
+print (1 + ;) * ;
+print @;
+print 2
+```
+
+```
+[line 1] Error at ';': Expect expression.
+[line 2] Error: Unexpected character.
+[line 3] Error at end: Expect ';' after
+  value.
+```
+
+(The last line is wrapped here.) That is what both VMs print, with exit
+code 65. The tree-walker, `drip` without `--vm`, prints five errors for
+the same file, the scanner's first, because it scans the whole file
+before parsing. Chapter 164 shows how the test corpus copes with that.
+
+<Prompts ids={['de-two-paths', 'de-location', 'de-panic']} />
+
+## Runtime errors: a message and a trace
+
+<Callout kind="intuition">
+A lost-luggage report: what went wrong, then every airport the bag
+passed through, last stop first.
+</Callout>
+
+Chapter 157 wrote the trace loop. Here is the whole route, from the
+failing instruction to the exit code:
+
+<ErrorSteps client:visible />
+
+The function's signature is
+`fn runtime_error(&mut self, message: impl Into<String>) -> RuntimeError`.
+`impl Into<String>` lets callers pass a literal like `"Stack overflow."`
+or a `String` from `format!` (chapter 144). Inside, the loop reads
+`self.frames` and `self.heap` while it pushes to `self.stderr`. That is
+allowed: they are different fields, borrowed separately in one function
+body. Move the push into a helper, as TypeScript could, and it isn't. On
+a toy, rustc 1.97 (trimmed):
+
+```
+error[E0502]: cannot borrow `*self` as
+  mutable because it is also borrowed
+  as immutable
+16 | for f in self.frames.iter().rev() {
+   |          ------------------------
+   |          immutable borrow occurs here
+17 |     self.say(format!("ip {}", f.ip));
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     mutable borrow occurs here
+```
+
+`self.say` needs all of `self`, and `self.frames` is still borrowed.
+
+What if the trace forgot that the top frame's `ip` lives in the
+register? I changed that one line in a copy of drip-rs to read
+`frame.ip` for every frame. On `print 1; print -nil;`, the debug build
+panicked with `attempt to subtract with overflow` and exit code 101,
+because the script's saved `ip` was still 0. Worse, with
+`fn f() {} f();` on lines 1 and 2 and `print -nil;` on line 3, it printed
+`[line 2] in script`: a wrong line, silently.
+
+<Callout kind="definition">
+A **runtime stack trace** names where a runtime error happened in every
+call in progress: the message, then one `[line N] in name()` line per
+frame, innermost first, with `script` for the top level. Each line is
+`lines[ip - 1]` of that frame's chunk, because `ip` is already past the
+failing instruction. In drip-rs the innermost frame's `ip` is the VM's
+register, and the others' are the values `call` saved.
+</Callout>
+
+<Prompts ids={['de-into', 'de-fields', 'de-stale']} />
+
+## After the error
+
+`run` returns `Err(RuntimeError)` through its `?`s (chapter 150), and
+`interpret` tidies up:
+
+```rust
+Err(RuntimeError) => {
+    self.stack.clear();
+    self.frames.clear();
+    self.chunk = Rc::default();
+    self.open_upvalues.clear();
+    EXIT_RUNTIME_ERROR
+}
+```
+
+The globals stay, so the VM can run another program, as a REPL would.
+`tests/vm.rs` checks that: after `f()` fails with
+`Operand must be a number.`, `[line 2] in f()`, `[line 3] in script`,
+the same VM runs `print x;` and prints `1`.
+
+<Prompts ids={['de-reset']} />
+
+## Exit codes
+
+`main`, adapted from `src/main.rs`:
+
+```rust
+let [path] = files.as_slice() else {
+    eprintln!("{USAGE}");
+    return ExitCode::from(64);
+};
+// read the file, or exit with 74
+let outcome = Vm::new(Options::default())
+    .interpret(&source);
+// stdout lines, then stderr lines
+ExitCode::from(outcome.exit_code as u8)
+```
+
+`let [path] = ... else` is a slice pattern: exactly one file argument,
+or the usage message. `main` returns a `std::process::ExitCode`, built
+from a `u8`<Cite id="rust-std-exitcode" />, so the `i32` in the
+`Outcome` is cast with `as u8`, which is safe for 0, 65 and
+70<Cite id="rustref-numeric-cast" />. The codes are clox's: 65 for a
+compile error, 70 for a runtime error, 64 for bad usage, 74 when the
+file can't be read<Cite id="nystrom2021" />.
+
+The TypeScript CLI also prints all of stdout and then all of stderr, and
+exits with 64, 65 or 70 in the same cases. Writing this chapter turned up
+one difference outside the corpus. Given a file that doesn't exist,
+drip-rs printed
+`Could not read "nope.drip": No such file or directory (os error 2)` and
+exited with 74, while Node printed its own report of an uncaught
+exception and exited with 1. The TypeScript CLI now catches the error
+too and exits with 74; only the wording after the colon still differs,
+because it comes from each platform's own error message.
+
+<Prompts ids={['de-codes', 'de-ts-74']} />
+
+## The same bytes on stderr
+
+To check "the same messages", I ran every one of the corpus's 265
+programs through both VMs, kept stdout, stderr and the exit code of each
+in files, and compared them with `cmp`. stderr was byte-identical for
+all 265, 128 of which print something there, and so was every exit
+code: 137 programs exit with 0, 66 with 65 and 62 with 70. stdout is
+chapter 164's story.
+
+<Prompts ids={['de-same']} />
+
+<Callout kind="engine" label="Under the hood">
+Nothing here is new to Drip. clox stops at the first runtime error,
+prints the message and one line per frame from the innermost out, and
+uses the same exit codes<Cite id="nystrom2021" />. What Rust changed is
+plumbing: errors are values carried by `?`, the messages are buffered
+in the `Outcome` instead of written as they happen, and the compiler,
+not a code review, checks that the trace loop and the stderr buffer
+don't fight over `self`.
+</Callout>
+
+## Your turn
+
+<Exercise id="errorAt" />
+
+## What you learned
+
+- **Compile errors** are collected in a `Vec<String>`. `error_at`
+  formats the location from the token's kind, and **panic mode** keeps
+  one error per statement. Exit code 65.
+- A **runtime error** writes its message and a **stack trace**, innermost
+  first, then returns `Err` through every `?`. Exit code 70.
+- Pushing to `self.stderr` while iterating `self.frames` is fine; calling
+  a `&mut self` helper in that loop is **E0502**.
+- Reading a frame's stale `ip` gives a **panic or a wrong line**.
+- `main` maps an `Outcome` to an **`ExitCode`**; stderr and exit codes
+  match the TypeScript VM on all 265 corpus programs.
+
+<Quiz />

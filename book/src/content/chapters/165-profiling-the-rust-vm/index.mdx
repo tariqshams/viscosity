@@ -1,0 +1,215 @@
+---
+n: 165
+day: 42
+part: X
+title: 'Profiling the Rust VM'
+tagline: 'drip-rs runs fib in about a second and a half. A timer can tell you that; it can’t tell you where the second and a half goes. A profiler can, down to the line, and it brings a surprise about what it is really counting.'
+objectives:
+  - Profile a release build of drip-rs with callgrind and read callgrind_annotate’s output.
+  - Tell self cost from inclusive cost, and check a profile against what you can count by hand.
+  - Explain why inlining hides functions, and how line tables bring them back.
+  - Read a flame graph, and say what its width, height and order mean.
+introduces: [profiling, flamegraph]
+uses: [drip-rs, release-build, match-dispatch, frame-stack, rust-functions, vec, slice, hash-table, global-table, upvalue, call-frame, dispatch-loop, bytecode, virtual-machine, call-stack, recursion, inlining, call-graph, instrumentation, benchmark-isolation, cache-miss, branch-prediction, cargo]
+sources: [valgrind-callgrind-manual, gregg-flamegraph]
+---
+import FlameSteps from '../../../components/diagrams/ch165/FlameSteps';
+
+## Where does the second and a half go?
+
+In the committed benchmark run, drip-rs ran `fib.drip` in 1460 ms. That
+number came from a stopwatch around the whole process. It says nothing
+about what the VM was doing inside. Chapter 24 warned against guessing,
+and guesses about hot code are wrong surprisingly often. So before the
+next chapter changes anything, we measure where the work goes.
+
+<Callout kind="intuition">
+A stopwatch tells you that your day lasted sixteen hours. A diary,
+filled in every few minutes, tells you that four of them went on email.
+A profiler is the diary.
+</Callout>
+
+## Two ways to watch a program
+
+A **sampling** profiler such as Linux `perf` interrupts the program
+many times a second and writes down the call stack. Functions that show
+up in more samples took more time. It sees real time, cache misses and
+all, but its numbers are estimates.
+
+The book's VM has no `perf`, but it has Valgrind. Its tool **callgrind**
+runs the program on a simulated CPU and counts every machine instruction
+it executes, with the function and source line each belongs to, and who
+called whom, how often<Cite id="valgrind-callgrind-manual" />. Nothing
+is estimated. The event it counts is called `Ir`, instructions read.
+
+<Callout kind="definition">
+**Profiling** is measuring where a program spends its time (or
+instructions, or memory), per function or per line. A **sampling**
+profiler records stacks at intervals and measures time statistically.
+An **instrumenting** or simulating profiler, like callgrind, counts
+events exactly, at the cost of running much slower.
+</Callout>
+
+<Prompts ids={['prof-what', 'prof-sample', 'cg-ir']} />
+
+## A profile of fib
+
+I built drip-rs with `cargo build --release` (rustc 1.97, into a scratch
+directory) and ran it under valgrind 3.22 on the book's shared VM:
+
+```
+valgrind --tool=callgrind \
+  --callgrind-out-file=cg.out \
+  target/release/drip-rs fib.drip
+callgrind_annotate cg.out
+```
+
+It took 89 seconds, and fib's own clock printed 88.6. That's about 60
+times slower than a normal run. The top of the report, with the names
+trimmed from forms like `???:<drip::vm::Vm>::run [path]`:
+
+```
+20,186,274,402 (100.0%)  PROGRAM TOTALS
+15,676,869,738 (77.66%)  Vm::run
+ 2,418,717,018 (11.98%)  Vm::call
+ 1,194,428,240 ( 5.92%)  Table::get
+   716,657,004 ( 3.55%)  Vm::call_value
+```
+
+Twenty billion instructions. The slowdown doesn't change the count: these
+are the instructions the program runs at full speed too. And the count
+barely moves between runs. I profiled `zoo.drip` twice and got
+7,528,846,449 and 7,528,846,360. On a machine where wall times wander by
+a quarter, that steadiness is worth a lot.
+
+<Prompts ids={['cg-slow']} />
+
+## Self and inclusive
+
+That list is sorted by **self** cost: instructions in the function's own
+code. `--inclusive=yes` adds in everything each function
+called<Cite id="valgrind-callgrind-manual" />:
+
+```
+20,185,841,592 (100.0%)  Vm::run
+ 3,135,374,121 (15.53%)  Vm::call_value
+ 2,418,717,118 (11.98%)  Vm::call
+ 1,194,428,240 ( 5.92%)  Table::get
+   179,164,224 ( 0.89%)  Vm::close_upvalues
+```
+
+`call_value` does 3.55% itself, and 15.53% counting `call`. Now check
+the profile against something you can count. `--tree=calling` says `run`
+called `call_value` 29,860,705 times. `fib(35)` makes 29,860,703 calls
+(twice `fib(36)`, minus one), and the script calls `clock()` twice. It
+matches exactly.
+
+More arithmetic. A call to fib runs 7 bytecodes if `n < 2` and 17 if
+not. That's 358,328,431 bytecodes, about 56 machine instructions each.
+`Table::get` costs 40 instructions per call: every recursive call looks
+up the global `fib` by name. And `close_upvalues` runs on every return,
+though fib captures nothing.
+
+<Prompts ids={['self-incl', 'call-check']} />
+
+## Where are push and pop?
+
+`run` does 77.66% itself. Where are `read_byte`, `push`, `pop` and
+`peek`? With `lto` and optimization, rustc **inlined** them: their code
+was copied into `run`, so there's no function left to charge. To see
+inside, I rebuilt with line tables,
+`CARGO_PROFILE_RELEASE_DEBUG=line-tables-only`. The instruction count
+stayed within 0.00001%: 20,186,276,675. Now callgrind_annotate splits
+`run` by the file each instruction came from (std paths trimmed):
+
+```
+6,464,842,447 (32.03%)  vm.rs
+2,911,418,677 (14.42%)  vec/mod.rs
+2,523,229,490 (12.50%)  slice/index.rs
+1,060,055,003 ( 5.25%)  raw_vec/mod.rs
+```
+
+`vec/mod.rs` is `Vec::push`, `pop` and `len`; `slice/index.rs` is
+indexing, bounds check included; `raw_vec` is the capacity check in
+`push`. Per line, the top two are fetching the next byte:
+
+```
+1,328,801,331 ( 6.58%)
+    let byte = self.chunk.code[self.ip];
+1,224,288,866 ( 6.06%)
+    self.ip += 1;
+```
+
+<Prompts ids={['inlined']} />
+
+## Flame graphs
+
+A long list is hard to read as a shape. A **flame graph** draws one:
+each function on a stack is a box, stacked on its caller, and as wide as
+its share of the samples<Cite id="gregg-flamegraph" />. `cargo
+flamegraph` would make one from `perf`. Neither is installed here, so the
+diagram below is built from callgrind's inclusive numbers by hand. Each
+box is as wide as its instructions, not its time.
+
+<FlameSteps client:visible />
+
+The input is **folded stacks**: one line per distinct stack, with a
+count, such as `main;run;call_value;call 2418717018`. Width means share;
+left-to-right order means nothing, and `flamegraph.pl` sorts the boxes
+alphabetically<Cite id="gregg-flamegraph" />.
+
+<Callout kind="definition">
+A **flame graph** draws a profile as stacked boxes. The bottom is the
+outermost function; each box sits on its caller. A box's **width** is
+the share of samples (or counted cost) in which that function was on the
+stack at that spot. Its **height** is stack depth. The uncovered top of
+a box is its self cost.
+</Callout>
+
+Notice how short the tower is. fib recurses 35 deep in Drip, but Drip's
+calls are entries in the VM's `frames` vector, not Rust calls. A profile
+of drip-rs shows the VM. To profile the *Drip* program, the VM itself
+would have to count per Drip function, chapter 109's instrumentation.
+drip-rs doesn't.
+
+<Prompts ids={['flame-what', 'flame-x', 'flame-two', 'flame-flat']} />
+
+<Callout kind="engine" label="Under the hood">
+Instructions are not time. callgrind's default counts ignore cache misses
+(chapter 18), mispredicted branches (chapter 20) and how many
+instructions the CPU overlaps. In chapter 166, two loops differ by a
+factor of three in instructions and not at all in time. So treat a
+callgrind profile as a map of where the work is, and confirm every change
+with a timing. Recursion has its own trap: in a cycle of calls, inclusive
+costs stop meaning anything<Cite id="valgrind-callgrind-manual" />.
+drip-rs avoids that, because its Rust stack never recurses.
+</Callout>
+
+<Prompts ids={['cg-not-time']} />
+
+Instrumenting is the other road: make the program count for itself.
+Here is a toy VM tallying its opcodes:
+
+<Run id="count-ops" />
+
+## Your turn
+
+<Exercise id="annotate" />
+
+<Exercise id="fold" />
+
+## What you learned
+
+- **Profiling** measures where the work goes. Sampling profilers
+  estimate time; **callgrind** counts instructions exactly, about 60×
+  slower.
+- **Self** cost is a function's own instructions; **inclusive** adds its
+  callees. Check a profile against counts you know: 29,860,703 calls.
+- Inlining folds small functions into their callers. Line tables bring
+  the lines back without changing the code.
+- A **flame graph** stacks boxes by call depth, width by share. Order
+  means nothing. drip-rs's graph is flat because Drip calls aren't Rust
+  calls.
+- Instruction counts are steady but are not time.
+
+<Quiz />

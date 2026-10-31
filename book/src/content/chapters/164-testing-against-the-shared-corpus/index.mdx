@@ -1,0 +1,254 @@
+---
+n: 164
+day: 41
+part: X
+title: 'Testing against the shared corpus'
+tagline: 'Three Drip implementations, one folder of 265 programs with their expected behaviour written in comments. Here is how drip-rs reads those comments without a regex crate, why its corpus suite brings its own main, and what a byte-for-byte diff against the TypeScript VM found.'
+objectives:
+  - Read the corpus’s expectation comments, and say which apply to the VM.
+  - Explain what tests/common/mod.rs checks, and what harness = false gains and costs.
+  - Say what the skip lists and the stress-GC suite cover.
+  - Write an expectation-comment parser in Rust, with tests.
+introduces: [shared-corpus]
+uses: [drip-rs, runtime-stack-trace, method-copy-down, rust-bound-method, arena-gc, test-corpus, differential-testing, cargo-test, assert-macros, cargo, crate, rust-module, garbage-collection, roots, runtime-error, syntax-error, panic-mode, option, question-mark, slice, string-vs-str, struct, vec, match, pattern, rust-iterator, drip, typescript]
+sources: [nystrom2021, cargo-targets]
+---
+import CheckSteps from '../../../components/diagrams/ch164/CheckSteps';
+
+## One folder, three interpreters
+
+`book/companion/corpus` holds 265 `.drip` files, in 30 folders and three
+loose files. Here is one, `super/extra_arguments.drip`, with its two
+comments taken off the ends of lines 9 and 10:
+
+```
+class Base {
+  foo(a, b) {
+    print "Base.foo(" + a + ", " + b + ")";
+  }
+}
+
+class Derived < Base {
+  foo() {
+    print "Derived.foo()";
+    super.foo("a", "b", "c", "d");
+  }
+}
+
+Derived().foo();
+```
+
+Line 9 ends with `// expect: Derived.foo()`, and line 10 with
+`// expect runtime error: Expected 2 arguments but got 4.`
+
+The comments are the test. Three suites read the same files: the
+tree-walker's and the TypeScript VM's, under vitest, and drip-rs's
+`tests/corpus.rs`. None of them has its own copy of the programs or of
+the answers.
+
+<Callout kind="intuition">
+One exam paper, with the answer key printed in the margin. Every
+student sits the same paper, and nobody can quietly mark themselves
+against an easier key.
+</Callout>
+
+The programs are adapted from the test suite of *Crafting
+Interpreters*, which is MIT-licensed, Copyright (c) 2015 Robert
+Nystrom<Cite id="nystrom2021" />. The licence sits beside them in
+`LICENSE-craftinginterpreters`, and the folder's README says what
+changed: `fun` became `fn`, `var` became `let`, and identifiers that
+would clash with the new keywords were renamed. `npm run corpus:import`
+in `book/companion/ts` regenerates them.
+
+<Prompts ids={['sc-what', 'sc-origin']} />
+
+## Answers in the margin
+
+Five kinds of comment carry expectations:
+
+```
+// expect: <one line of stdout>
+// expect runtime error: <message>
+// Error ...            (on this line)
+// [line N] Error ...   (on line N)
+// [c line N] Error ... / [java line N]
+```
+
+The last kind exists because the two interpreters in *Crafting
+Interpreters* report compile errors differently. `unexpected_character
+.drip` starts:
+
+```
+// [line 3] Error: Unexpected character.
+// [java line 3] Error at 'b': Expect ')'
+//   after arguments.
+foo(a | b);
+```
+
+The VM is clox's twin, so `c` expectations apply to it and `java` ones
+don't. The tree-walker is jlox's twin and takes the `java` ones, which
+is chapter 163's difference: it scans the whole file first and reports
+more errors. A `// nontest` comment would turn a file off; none of the
+265 has one. All together the corpus has 504 `// expect:` lines, in 133
+files.
+
+<Prompts ids={['sc-forms', 'sc-lang']} />
+
+## A runner without regexes
+
+The TypeScript runner's `check()` matches each comment with a regular
+expression. drip-rs has no dependencies, so `tests/common/mod.rs`, a
+port of `check()`, matches each by hand and keeps the regex in the doc
+comment:
+
+```rust
+/// `// expect: ?(.*)`: the text after
+/// `// expect:` and one optional space.
+fn expect_output(line: &str)
+    -> Option<&str>
+{
+    let rest = after(line, "// expect:")?;
+    Some(rest.strip_prefix(' ')
+        .unwrap_or(rest))
+}
+```
+
+`after` returns the rest of the line after a marker, cut at any `\r`,
+because JavaScript's `.` doesn't match `\r` and the port must agree
+with it on every file. Then `check` compares, in order:
+
+- a runtime error: `stderr[0]` must be the message, and the first
+  `[line N]` in the trace must be the comment's line;
+- otherwise every stderr line must be an expected compile error, and
+  every expected one must appear;
+- the exit code: 0, 65 or 70;
+- stdout, line by line.
+
+<CheckSteps client:visible />
+
+`tests/common/mod.rs` is shared by two test files, each of which says
+`mod common;`. Cargo compiles every file in `tests/` as its own crate,
+and a module in a subfolder is the documented way to share code between
+them<Cite id="cargo-targets" />. Each crate uses a different part of
+it, so the module starts with `#![allow(dead_code)]`.
+
+<Prompts ids={['sc-no-regex', 'sc-check', 'sc-common']} />
+
+## Its own main
+
+`Cargo.toml` turns the usual test harness off for both corpus suites:
+
+```toml
+[[test]]
+name = "corpus"
+harness = false
+```
+
+With `harness = false` the file must define `main()`
+itself<Cite id="cargo-targets" />. `tests/corpus.rs`'s `main` is two
+lines: build the `Options`, and call `run_suite`. That buys one line per program, like the
+TypeScript runner, where libtest would have seen a single `#[test]`
+function. Arguments that don't start with `-` filter by substring:
+
+```
+$ cargo test --test corpus -- super/
+test super/bound_method.drip ... ok
+...
+corpus result: ok. 20 passed; 0 failed
+```
+
+The cost: libtest catches each test's panic so that it fails only that
+test, and a hand-written `main` has to do that itself. The first version
+of this runner didn't. With chapter 163's broken copy of drip-rs it
+printed eight `ok` lines, the ninth program,
+`assignment/undefined.drip`, panicked, and the other 237 never ran. So
+the runner now wraps each program in `catch_unwind`:
+
+```rust
+let run = std::panic::catch_unwind(
+    AssertUnwindSafe(|| {
+        drip::run(&src, opts)
+    }),
+);
+```
+
+An `Err` becomes a failure that names the program and quotes the panic
+message (`panicked: use after free: …`), and the loop moves on.
+
+<Prompts ids={['sc-harness', 'sc-panic']} />
+
+## What runs, and how hard
+
+`SKIP_VM` is `["scanning", "expressions", "benchmark"]`, exactly the
+TypeScript suite's `SKIP.vm`: the first two hold early-chapter tests
+that aren't whole programs, and the benchmarks are slow. 265 − 6 − 2 −
+11 leaves 246. The tree-walker's list skips six `limit/` programs too,
+because jlox has none of clox's limits.
+
+The 246 run with `debug_gc`, so a freed arena slot is never reused and
+a missed root panics instead of reading another object. `tests/stress_gc.rs`
+runs the 95 programs in `closure/`, `class/`, `inheritance/`,
+`string/`, `function/`, `super/`, `method/` and `field/` with
+`stress_gc`, a collection before every allocation. With rustc 1.97 both
+end `ok`: 246 passed, and 95 passed.
+
+<Prompts ids={['sc-skip', 'sc-stress']} />
+
+## The stronger check: a diff
+
+Comments check what a test's author thought to write down. A diff
+checks everything. As in chapter 163, I ran all 265 programs, benchmarks
+included, through `drip-rs` and through `drip --vm`, saved stdout,
+stderr and the exit code of each, and compared the files with `cmp`.
+stderr and exit codes matched for all 265. stdout matched for 255. The
+other ten are benchmarks that print times measured with `clock()`, such
+as `fib.drip`'s `print clock() - start;`, plus `zoo_batch.drip`, which
+counts how much work it finishes in ten seconds. In those ten, every
+line that doesn't come from the clock matched too.
+
+<Callout kind="definition">
+A **shared corpus** is one set of test programs, each with its expected
+behaviour written beside it, that every implementation of a language
+runs and is judged against: here, 265 Drip programs for the
+tree-walker, the TypeScript VM and drip-rs. Each implementation has its
+own runner and skip list, but none has its own expectations, so they
+can't drift apart without a test failing.
+</Callout>
+
+<Prompts ids={['sc-diff']} />
+
+<Callout kind="engine" label="Under the hood">
+This is chapter 112's differential testing, with the corpus as the
+oracle and the TypeScript VM as a second one. The comments are what let
+three runners share the programs: the expected behaviour travels inside
+each file, in a form that a 280-line Rust module, a TypeScript function
+and the original Dart runner can all read. Both checks matter. The
+corpus can say "this should fail on line 10" in a way a diff can't, and
+the diff notices things nobody wrote a comment for.
+</Callout>
+
+## Your turn
+
+<Exercise id="parseExpect" />
+
+<Exercise id="atLine" />
+
+<Exercise id="shouldSkip" />
+
+## What you learned
+
+- The **shared corpus** is 265 programs adapted from *Crafting
+  Interpreters*' MIT-licensed tests, read by all three implementations.
+- Expectations live in **comments**: output, runtime errors, and compile
+  errors, some only for `c` or `java`.
+- `tests/common/mod.rs` ports `check()` **without regexes**, and two test
+  crates share it as `mod common;`.
+- **`harness = false`** gives one line per program and a substring
+  filter. It must catch panics itself (`catch_unwind`), or one panic
+  would stop the whole run.
+- The VM suite runs **246** programs with `debug_gc`, and **95** more
+  under the stress collector.
+- A **diff** of all 265 against the TypeScript VM matched on stderr and
+  exit codes everywhere, and on stdout everywhere except clock readings.
+
+<Quiz />
