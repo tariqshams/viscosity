@@ -40,8 +40,8 @@ cd engine/rust && cargo test --workspace
 
 ```bash
 # The book's companion code: Drip in TypeScript (tree-walker + VM) and in Rust
-cd book/companion/ts && npm install && npm test
-cd book/companion/rust && cargo test
+(cd book/companion/ts && npm install && npm test)
+(cd book/companion/rust && cargo test)
 ```
 
 ```bash
