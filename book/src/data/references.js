@@ -2151,6 +2151,92 @@ export const references = [
     "checkedAgainst": "https://raw.githubusercontent.com/v8/v8/12.4.254.21/src/interpreter/interpreter-generator.cc (“Ldar <src>: Load accumulator with value from register <src>”; “Add <src>: Add register <src> to accumulator”, implemented by BinaryOpWithFeedback, whose second operand is the slot index into the feedback vector) and src/interpreter/bytecodes.h (Add takes OperandType::kReg and OperandType::kIdx)",
     "shaped": "Chapter 72: reading a --print-bytecode listing: what Ldar and Add do, and that [0] is a feedback slot."
   },
+  {
+    "id": "acorn",
+    "authors": [
+      "Acorn contributors"
+    ],
+    "title": "Acorn: a tiny, fast JavaScript parser written in JavaScript (README)",
+    "venue": "github.com/acornjs/acorn",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/acornjs/acorn/tree/master/acorn",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/acornjs/acorn/master/acorn/README.md (“A tiny, fast JavaScript parser written in JavaScript”; MIT license; `parse(input, options)` returns “an abstract syntax tree object as specified by the ESTree spec”; options ecmaVersion (“latest”), sourceType, locations, onComment; only stage-4 features are implemented; LICENSE: MIT, “various contributors (see AUTHORS)”)",
+    "shaped": "Chapter 92: the default parser of Viscosity’s JavaScript plugin, wrapped behind the plugin API."
+  },
+  {
+    "id": "estree-readme",
+    "authors": [
+      "ESTree contributors"
+    ],
+    "title": "The ESTree Spec (README)",
+    "venue": "github.com/estree/estree",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/estree/estree",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/estree/estree/master/README.md (began as the documented format of the SpiderMonkey Parser API in Firefox, which “caught on as a lingua franca for tools that manipulate JavaScript source code”; now a community standard with a steering committee from ESLint, Acorn and Babel)",
+    "shaped": "Chapter 92: where ESTree came from, and why parsers and tools share it."
+  },
+  {
+    "id": "sucrase",
+    "authors": [
+      "Alan Pierce",
+      "Sucrase contributors"
+    ],
+    "title": "Sucrase (README)",
+    "venue": "github.com/alangpierce/sucrase",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/alangpierce/sucrase",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/alangpierce/sucrase/main/README.md (an alternative to Babel focused on compiling non-standard extensions: JSX, TypeScript and Flow; parser forked from Babel’s; options disableESTransforms and keepUnusedImports; package.json author Alan Pierce)",
+    "shaped": "Chapter 92: how Viscosity strips TypeScript types before parsing JavaScript."
+  },
+  {
+    "id": "recast",
+    "authors": [
+      "Ben Newman",
+      "Recast contributors"
+    ],
+    "title": "Recast: JavaScript syntax tree transformer, nondestructive pretty-printer, and automatic source map generator (README)",
+    "venue": "github.com/benjamn/recast",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/benjamn/recast",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://github.com/benjamn/recast (README: tagline “JavaScript syntax tree transformer, nondestructive pretty-printer, and automatic source map generator”; recast.print “reprints only those parts of the syntax tree that you modify”, and printing an unmodified tree gives back the original source; recast.prettyPrint drops the original formatting)",
+    "shaped": "Chapter 94: a tree-based printer that, like Viscosity’s splicing emitter, keeps the original text wherever nothing changed."
+  },
+  {
+    "id": "node-vm",
+    "authors": [
+      "Node.js contributors"
+    ],
+    "title": "VM (executing JavaScript), Node.js documentation",
+    "venue": "nodejs.org",
+    "year": null,
+    "doi": null,
+    "url": "https://nodejs.org/api/vm.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://nodejs.org/api/vm.html (vm.createContext: inside scripts run in the context, “the global object will be wrapped by the contextObject … also having the built-in objects and functions any standard global object has”; “Outside of scripts run by the vm module, global variables will remain unchanged”; warning: “The node:vm module is not a security mechanism. Do not use it to run untrusted code.”)",
+    "shaped": "Chapter 95: why each run in Viscosity’s differential test gets its own fresh global object, and why that is isolation for testing, not a sandbox."
+  },
+  {
+    "id": "mdn-typedarray-set",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "TypedArray.prototype.set()",
+    "venue": "MDN Web Docs",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypedArray/set",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/typedarray/set/index.md (“stores multiple values in the typed array, reading input values from a specified array”; targetOffset defaults to 0; RangeError if the values would be stored beyond the end)",
+    "shaped": "Chapter 105: grow() copies an old column into its bigger replacement with one set() call."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.

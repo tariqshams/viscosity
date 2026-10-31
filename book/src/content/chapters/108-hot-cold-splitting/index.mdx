@@ -1,0 +1,210 @@
+---
+n: 108
+day: 27
+part: VII
+title: 'Hot/cold splitting'
+tagline: 'Fields that are used together should live together, and fields that are hardly used should stay out of the way. Here is how to measure that, and how Viscosity’s mixed columns relate to it.'
+objectives:
+  - Explain a classic hot/cold split, and what it saves a hot loop.
+  - Compute field hotness and field affinity from loops and how often they run.
+  - Describe Viscosity’s real per-field policy, typed columns for proven numbers and plain columns for the rest, and how it relates to hot/cold splitting.
+introduces: [field-affinity]
+uses: [hot-cold-split, aos-vs-soa, aosoa, block-size, cache-line, spatial-locality, object-header, field-representation, typed-array, column-storage, soa-container, access-pattern, hot-loop, record-shape, type-inference, cost-model, capacity]
+sources: [slotin-amh-cache-lines, v8-fast-properties, mdn-typed-arrays]
+---
+import AffinitySteps from '../../../components/diagrams/ch108/AffinitySteps';
+import BenchBars from '../../../components/bench/BenchBars';
+import Playground from '../../../components/playground/Playground';
+
+## The fields nobody reads
+
+A game keeps its entities in an array of objects:
+
+```js
+const es = [];
+es.push({
+  x: 0, y: 0, vx: 1, vy: 0,
+  health: 100, name: 'goblin',
+});
+```
+
+Every frame a loop moves every entity, using `x`, `y`, `vx` and `vy`. The
+name is printed when an entity dies. Yet V8 keeps an object’s fields
+together, right after its header<Cite id="v8-fast-properties" />, and a cache
+works in whole 64-byte lines<Cite id="slotin-amh-cache-lines" />. So the
+movement loop drags `health` and a pointer to `name` through the cache
+for every entity, and never looks at them.
+
+<Callout kind="intuition">
+A toolbox has a top tray and a bottom drawer. The hammer and screwdriver
+you use every day go in the tray; the pipe wrench you need twice a year
+goes in the drawer. You don’t throw the wrench away. You just stop lifting
+it every time you reach for the hammer.
+</Callout>
+
+## Splitting hot from cold
+
+Chapter 23 named the fix: a **hot/cold split**. Put the busy fields in one
+place and the rest in another, both indexed by the same `i`:
+
+```js
+const hot = {
+  x: [0], y: [0], vx: [1], vy: [0],
+};
+const cold = [
+  { health: 100, name: 'goblin' },
+];
+// the movement loop:
+for (let i = 0; i < n; i++)
+  hot.x[i] += hot.vx[i];
+```
+
+The movement loop now streams only hot data. The price is on the cold
+side: code that wants a whole entity has to look in two places.
+
+<Prompts ids={['hc-why', 'hc-price']} />
+
+## Which fields go together?
+
+“Hot” is a matter of counting. Count, for each field, how many times the
+program touches it. Then count, for each *pair* of fields, how often a
+loop uses both. Weight each loop by how many times it runs:
+
+<AffinitySteps client:visible />
+
+<Callout kind="definition">
+**Field affinity** measures which fields are used together. A simple
+score for a pair of fields is the total run count of the loops that use
+both. Fields with high affinity belong in the same group; a field’s
+**hotness** (how often it is used at all) decides whether its group is
+hot or cold.
+</Callout>
+
+The run counts matter. Counted by loop alone, `report` would look as
+important as `move`. Weighted by runs, `name` scores 1 and `x` scores
+1,100.
+
+<Prompts ids={['hc-affinity', 'hc-hotness', 'hc-weight', 'hc-zero']} />
+
+## What leaving fields out is worth
+
+The `sum-one-field` suite reads one of six particle fields:
+
+<BenchBars suite="sum-one-field" n={100000} title="Summing one field of six" highlight={['soa']} layouts={['aos', 'aos-packed', 'soa']} caption="Packed AoS still loads all six fields; SoA loads only the one it uses." />
+
+Packed AoS already drops the headers and pointers, but its cache lines
+still carry five unused fields. SoA carries none. That is the hot/cold
+argument taken to its limit.
+
+<Prompts ids={['hc-packed']} />
+
+## What Viscosity does
+
+Viscosity doesn’t build a hot struct and a cold struct. It gives every
+field its own column, which is the finest split there is: each field is
+its own group, and each loop loads exactly the columns it touches. A
+`move` loop over Viscosity’s columns never reads `name` at all, whatever
+its affinity.
+
+What Viscosity *does* decide per field is the representation. The corpus
+program `mixed_columns.js` shows it:
+
+```js
+for (let i = 0; i < 300; i++)
+  es.push({
+    id: 'e' + i, hp: 100, x: i,
+    tag: i % 3 ? null : { boss: true },
+  });
+for (let r = 0; r < 3; r++) {
+  for (let i = 0; i < es.length; i++) {
+    es[i].x += 1;
+    if (es[i].tag !== null) es[i].hp -= 10;
+  }
+}
+es[4].id = 42;
+```
+
+(Long lines are wrapped here; the declaration of `es` and the printing
+at the end are left out.)
+`viscosity explain` says:
+
+```
+es (line 2) {id, hp, x, tag} → struct of
+  arrays
+  · loop at line 5 in <module>() touches
+    3 of 4 fields (hp, tag, x)
+  · loop at line 12 in <module>() touches
+    2 of 4 fields (hp, x)
+  · typed Float64Array columns for hp, x;
+    plain array columns for id, tag (may
+    hold non-numbers)
+```
+
+And the generated constructor, reformatted:
+
+```js
+constructor(cap = 16) {
+  this.length = 0;
+  this.cap = cap;
+  this.hp = new Float64Array(cap);
+  this.x = new Float64Array(cap);
+  this.id = [];
+  this.tag = [];
+}
+```
+
+The type analysis proved `hp` and `x` are always numbers, so they get
+`Float64Array` columns of raw doubles<Cite id="mdn-typed-arrays" />. `id`
+holds strings and, after `es[4].id = 42`, a number; `tag` holds `null` or an
+object. Those get plain array columns, which store any value.
+
+<Prompts ids={['hc-viscosity', 'hc-policy', 'hc-tag-hot']} />
+
+Notice that this split is by *type*, not by heat. `tag` is read in the
+hottest loop, yet it is a plain column, because a `Float64Array` can’t
+hold an object. And a numeric field that is almost never read still gets
+a typed column. The per-loop lines in the explanation (“touches 3 of 4
+fields (hp, tag, x)”) are exactly the raw data an affinity analysis
+needs, but Viscosity doesn’t group fields with them today. Try the
+policy: make `id` a number, and it gets a typed column too.
+
+<Playground client:visible title="Typed and plain columns" initial={`const es = [];
+for (let i = 0; i < 300; i++)
+  es.push({ id: 'e' + i, hp: 100, x: i });
+for (let r = 0; r < 3; r++)
+  for (let i = 0; i < es.length; i++)
+    es[i].x += 1;
+let s = 0;
+for (const e of es) s += e.hp + e.x;
+console.log(s, es[3].id);`} />
+
+<Callout kind="engine" label="Under the hood">
+Affinity becomes important when fields share storage. In packed AoS, and
+in chapter 107’s AoSoA blocks, all of a record’s fields sit in one
+array, so the order and grouping of fields decide what each cache line
+carries. A layout that grouped hot fields into one AoSoA array and kept
+cold ones in plain columns would need exactly the counts in this
+chapter. Viscosity sidesteps the question by giving each field a column,
+which is why its only per-field decision is typed or plain.
+</Callout>
+
+## Your turn
+
+<Exercise id="coAccess" />
+
+<Exercise id="groupFields" />
+
+## What you learned
+
+- A **hot/cold split** moves rarely used fields out of the hot loop’s
+  way. Code that wants a whole record pays by looking in two places.
+- **Field affinity** measures which fields are used together: for each
+  pair, add the runs of every loop using both. **Hotness** is the same
+  count per field.
+- SoA is the finest split: each field is its own column, and a loop loads
+  only what it touches.
+- Viscosity’s real per-field decision is **typed or plain**:
+  `Float64Array` for fields proven numeric, plain arrays for the rest.
+  It doesn’t group fields by affinity.
+
+<Quiz />

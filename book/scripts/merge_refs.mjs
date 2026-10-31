@@ -11,7 +11,7 @@ const target = join(root, 'src/data/references.js');
 const { references } = await import(pathToFileURL(target).href);
 const have = new Map(references.map((r) => [r.id, r]));
 const args = process.argv.slice(2);
-const files = (args[0] === '--all' ? readdirSync(dir).filter((f) => f.endsWith('.js')) : args.map((a) => `${a}.js`))
+const files = (args[0] === '--all' ? (existsSync(dir) ? readdirSync(dir) : []).filter((f) => f.endsWith('.js')) : args.map((a) => `${a}.js`))
   .filter((f) => existsSync(join(dir, f)));
 const added = [];
 for (const f of files) {
