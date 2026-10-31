@@ -318,8 +318,10 @@ export function analyze(m: Module): Analysis {
   const optimistic = (v: Inst) => v.op === 'phi' || v.op === 'loadBinding' || v.op === 'field.get' || v.op === 'param';
   for (const v of m.values) int.set(v.id, py && (v.op === 'phi' || v.op === 'loadBinding' || v.op === 'param') ? true : computeInt(v));
   for (const v of m.values) num.set(v.id, optimistic(v) ? true : compute(v));
-  for (let changed = true, rounds = 0; changed && rounds < 100; rounds++) {
-    changed = false;
+  const MAX_ROUNDS = 1000;
+  let converged = false;
+  for (let rounds = 0; rounds < MAX_ROUNDS; rounds++) {
+    let changed = false;
     for (const v of m.values) {
       const ni = computeInt(v);
       if (int.get(v.id) !== ni) { int.set(v.id, ni); changed = true; }
@@ -351,6 +353,15 @@ export function analyze(m: Module): Analysis {
         if (ok !== colNumeric.get(k)) { colNumeric.set(k, ok); changed = true; }
       }
     }
+    if (!changed) {
+      converged = true;
+      break;
+    }
+  }
+  // Fail closed: if the fixpoint did not converge, nothing is proven.
+  if (!converged) {
+    for (const v of m.values) { num.set(v.id, false); int.set(v.id, false); }
+    for (const k of colNumeric.keys()) colNumeric.set(k, false);
   }
   const isNumber = (v: ValueId) => num.get(v) ?? false;
   // A valid index: a JS number, or a Python int.
