@@ -44,7 +44,7 @@ export type Op =
   | 'index.set'    // args [arr, index, value]
   | 'length'       // args [arr]
   | 'push'         // args [arr, ...values]
-  | 'intrinsic'    // name (e.g. 'Math.sqrt'): a known pure numeric function
+  | 'intrinsic'    // name (e.g. 'Math.sqrt'): a known numeric function that keeps no reference to its arguments
   | 'call'         // args [callee, ...args]: an unknown call
   | 'closure'      // func: a function value; captured bindings are on the Func
   | 'opaque';      // anything not modelled: every arg escapes, result unknown

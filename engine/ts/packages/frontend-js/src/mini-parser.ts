@@ -17,7 +17,7 @@ const PUNCT = ['>>>=', '...', '===', '!==', '**=', '<<=', '>>=', '>>>', '&&=', '
   '=>', '==', '!=', '<=', '>=', '&&', '||', '??', '++', '--', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '**', '<<', '>>', '?.',
   '{', '}', '(', ')', '[', ']', ';', ',', '<', '>', '+', '-', '*', '/', '%', '&', '|', '^', '!', '~', '?', ':', '=', '.'];
 
-export class MiniSyntaxError extends SyntaxError {}
+export class MiniSyntaxError extends SyntaxError { override name = 'MiniSyntaxError'; }
 
 export interface MiniComment { value: string; line: number }
 
