@@ -3349,6 +3349,90 @@ export const references = [
     "checkedAgainst": "spec.html on the main branch of github.com/tc39/ecma262, read raw: the introduction says ECMAScript 2019 included “requiring that `Array.prototype.sort` be a stable sort”; the sort’s requirements end “if ℝ(_sortCompare_(old[_j_], old[_k_])) = 0, then π(_j_) < π(_k_); i.e., the sort is stable.”",
     "shaped": "Chapter 174: the TypeScript emitter’s edit sort is stable, as Rust’s is, so ties are applied in the same order."
   },
+  {
+    "id": "rust-std-hashset-insert",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "HashSet::insert (Rust standard library)",
+    "venue": "Rust standard library; source in library/std/src/collections/hash/set.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.insert",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/std/src/collections/hash/set.rs on master, read raw: the documentation of `pub fn insert(&mut self, value: T) -> bool`: “Returns whether the value was newly inserted. That is: If the set did not previously contain this value, `true` is returned. If the set already contained this value, `false` is returned, and the set is not modified”, with the example `assert_eq!(set.insert(2), true); assert_eq!(set.insert(2), false);`.",
+    "shaped": "Chapter 181: non_neg_int in analysis.rs uses `if !seen.insert(v.id) { return true; }` both to stop at cycles through phis and to assume the repeated value is fine."
+  },
+  {
+    "id": "rust-std-option-or",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Option::or (Rust standard library)",
+    "venue": "Rust standard library; source in library/core/src/option.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/option/enum.Option.html#method.or",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/option.rs on master, read raw: the documentation of `or`: “Returns the option if it contains a value, otherwise returns `optb`. Arguments passed to `or` are eagerly evaluated”, with the examples `Some(2).or(None) == Some(2)`, `None.or(Some(100)) == Some(100)` and `Some(2).or(Some(100)) == Some(2)`.",
+    "shaped": "Chapter 182: plan_one takes `measured.or(c.size_estimate)`, so a profiled size wins over the static estimate."
+  },
+  {
+    "id": "rust-std-is-power-of-two",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "is_power_of_two and trailing_zeros on unsigned integers (Rust standard library)",
+    "venue": "Rust standard library; source in library/core/src/num/uint_macros.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/primitive.u64.html#method.is_power_of_two",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/num/uint_macros.rs on master, read raw: `is_power_of_two`: “Returns `true` if and only if `self == 2^k` for some unsigned integer `k`”, implemented as `self.count_ones() == 1` (so 1 = 2^0 is a power of two and 0 is not); `trailing_zeros`: “Returns the number of trailing zeros in the binary representation of `self`”, with the example `0b0101000.trailing_zeros() == 3`.",
+    "shaped": "Chapters 182 and 184: the planner refuses aosoa(N) unless N >= 2 and N.is_power_of_two(), and the emitter takes the shift as N.trailing_zeros()."
+  },
+  {
+    "id": "ecma262-assignment-order",
+    "authors": [
+      "Ecma International, TC39"
+    ],
+    "title": "ECMAScript Language Specification: Assignment Operators, Runtime Semantics: Evaluation; and PutValue",
+    "venue": "ECMA-262, current draft; source spec.html in github.com/tc39/ecma262",
+    "year": null,
+    "doi": null,
+    "url": "https://tc39.es/ecma262/#sec-assignment-operators-runtime-semantics-evaluation",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "spec.html on the main branch of github.com/tc39/ecma262, read raw. For `LeftHandSideExpression = AssignmentExpression`: “Let _leftRef_ be ? Evaluation of |LeftHandSideExpression|”, then “Let _rightRef_ be ? Evaluation of |AssignmentExpression|”, “Let _rightValue_ be ? GetValue(_rightRef_)”, then “Perform ? PutValue(_leftRef_, _rightValue_)”. For compound assignment, “Let _leftValue_ be ? GetValue(_leftRef_)” comes before the right-hand side is evaluated. PutValue (sec-putvalue): for a property reference, “Let _baseObj_ be ? ToObject(_refRecord_.[[Base]])”, which throws for undefined.",
+    "shaped": "Chapter 183: why `ps[i].x = rhs` out of bounds runs rhs before failing, why `ps.x[i] = rhs` fetches the column and runs the index check before rhs, and why `+=` reads first."
+  },
+  {
+    "id": "rustc-e0499",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Error code E0499 (Rust compiler error index)",
+    "venue": "Rust compiler error index; source in compiler/rustc_error_codes/src/error_codes/E0499.md of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/error_codes/E0499.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "compiler/rustc_error_codes/src/error_codes/E0499.md on master, read raw: “A variable was borrowed as mutable more than once”, with the example `let mut x = &mut i; let mut a = &mut i; x;` (“error: cannot borrow `i` as mutable more than once at a time”) and “in Rust, you can either have many immutable references, or one mutable reference”. The same error, “cannot borrow `ps` as mutable more than once at a time”, was produced with rustc 1.97 on the chapter’s example.",
+    "shaped": "Chapter 183: Rust rejects the order that lost a write in the old emitter’s output (hold a column, grow the container, store into the column)."
+  },
+  {
+    "id": "ecma262-signed-right-shift",
+    "authors": [
+      "Ecma International, TC39"
+    ],
+    "title": "ECMAScript Language Specification: Number::signedRightShift",
+    "venue": "ECMA-262, current draft; source spec.html in github.com/tc39/ecma262",
+    "year": null,
+    "doi": null,
+    "url": "https://tc39.es/ecma262/#sec-numeric-types-number-signedRightShift",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "spec.html on the main branch of github.com/tc39/ecma262, read raw, clause sec-numeric-types-number-signedRightShift: “Let _leftNumber_ be ! ToInt32(_x_). Let _rightNumber_ be ! ToUint32(_y_). Let _shiftCount_ be ℝ(_rightNumber_) modulo 32.”, then a sign-extending right shift by _shiftCount_ bits.",
+    "shaped": "Chapter 184: the AoSoA index `(i >> sh) * stride + off + (i & mask)` is only right while sh < 32, because JavaScript takes shift counts modulo 32."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.

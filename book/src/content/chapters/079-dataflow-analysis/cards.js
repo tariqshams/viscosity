@@ -43,7 +43,7 @@ export const prompts = {
   },
   'viscosity-rounds': {
     q: 'How does Viscosity’s numeric inference iterate, instead of using a worklist?',
-    a: 'In rounds: it reruns every rule each round until a round changes nothing (capped at 100 rounds).',
+    a: 'In rounds: it reruns every rule each round until a round changes nothing (capped at 1000 rounds; if it never settles, it fails closed).',
   },
 };
 
@@ -336,7 +336,7 @@ export const quiz = [
       { t: 'The worklist never holds more than one item.', why: 'It can hold many. What matters is how often each value can change.' },
       { t: 'Programs have no infinite loops.', why: 'The analysis doesn’t run the program. It terminates even on programs that loop forever.' },
       { t: 'Each fact can only drop from "number" to "maybe-not", once, and values are only requeued when something changed.', correct: true, why: 'Finite height plus one-way movement bounds the number of changes, so the queue eventually empties.' },
-      { t: 'The cap of 100 rounds.', why: 'Viscosity’s round-based loop has a cap, but a worklist solver on this lattice ends without one.' },
+      { t: 'The cap of 1000 rounds.', why: 'Viscosity’s round-based loop has a cap, but a worklist solver on this lattice ends without one.' },
     ],
   },
   {

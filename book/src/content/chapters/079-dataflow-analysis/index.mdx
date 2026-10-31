@@ -149,7 +149,7 @@ Viscosity's numeric inference is exactly this optimistic analysis,
 over SSA values plus the bindings and collection fields that values
 flow through. It skips the worklist: each round, it reruns every
 rule, and it repeats rounds until a whole round changes nothing (with
-a cap of 100 rounds). Simplified from `analysis.ts`:
+a cap of 1000 rounds, after which it gives up every guess: it fails closed). Simplified from `analysis.ts`:
 
 ```ts
 for (const v of m.values)
