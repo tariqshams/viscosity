@@ -1,0 +1,2 @@
+ps (line 2) {x} → kept as array of objects
+  · no loop reads or writes its fields, so a new layout cannot pay off

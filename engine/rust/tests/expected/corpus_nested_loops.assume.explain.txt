@@ -1,0 +1,7 @@
+grid (line 2) {h, t} → struct of arrays
+  · loop at line 6 in <module>() touches 2 of 2 fields (h, t)
+  · loop at line 11 in <module>() touches 2 of 2 fields (t, h)
+  · loop at line 14 in <module>() touches 1 of 2 fields (h)
+  · typed Float64Array columns for all 2 fields
+  · size unknown statically
+  · 3 of 8 element accesses proven in bounds

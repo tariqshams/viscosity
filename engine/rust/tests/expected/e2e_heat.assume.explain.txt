@@ -1,0 +1,7 @@
+cells (line 3) {h, next, k, solid} → struct of arrays
+  · loop at line 9 in diffuse() touches 4 of 4 fields (h, k, solid, next)
+  · loop at line 15 in diffuse() touches 2 of 4 fields (next, h)
+  · loop at line 21 in <module>() touches 1 of 4 fields (h)
+  · typed Float64Array columns for all 4 fields
+  · size unknown statically
+  · 3 of 12 element accesses proven in bounds

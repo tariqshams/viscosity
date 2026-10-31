@@ -1,0 +1,2 @@
+ps (line 1) {a, b-c, length} → kept as array of objects
+  · unsafe: line 5: an element is used by index.get at line 5

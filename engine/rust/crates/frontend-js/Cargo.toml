@@ -1,0 +1,20 @@
+[package]
+name = "viscosity-frontend-js"
+description = "Viscosity's JavaScript plugin: parse with oxc, resolve scopes, lower to VIR, and rewrite source from a layout plan."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+viscosity-vir.workspace = true
+viscosity-core.workspace = true
+oxc_allocator.workspace = true
+oxc_ast.workspace = true
+oxc_parser.workspace = true
+oxc_span.workspace = true
+oxc_syntax.workspace = true
+oxc_ast_visit.workspace = true
+indexmap.workspace = true
+rustc-hash.workspace = true
+oxc_str = "0.156"

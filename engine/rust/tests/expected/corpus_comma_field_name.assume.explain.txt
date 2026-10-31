@@ -1,0 +1,2 @@
+ps (line 3) {a, b} → kept as array of objects
+  · unsafe: line 4: records with different fields or field order ({a,b} vs {a, b})

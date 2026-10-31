@@ -1,0 +1,7 @@
+ps (line 3) {x, y, z} → AoSoA, blocks of 8
+  · annotated @viscosity aosoa(8) at line 2
+  · loop at line 6 in <module>() touches 3 of 3 fields (x, z, y)
+  · loop at line 13 in <module>() touches 2 of 3 fields (x, y)
+  · typed Float64Array columns for all 3 fields
+  · about 1003 elements
+  · 2 of 5 element accesses proven in bounds

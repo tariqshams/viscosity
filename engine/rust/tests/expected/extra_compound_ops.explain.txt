@@ -1,0 +1,6 @@
+cs (line 1) {a, b, c, d} → struct of arrays
+  · loop at line 3 in <module>() touches 4 of 4 fields (b, a, c, d)
+  · loop at line 10 in <module>() touches 4 of 4 fields (a, b, c, d)
+  · typed Float64Array columns for a, b, c; plain array columns for d (may hold non-numbers)
+  · about 128 elements
+  · 12 of 14 element accesses proven in bounds

@@ -1,0 +1,6 @@
+bodies (line 2) {x, y, m} → struct of arrays
+  · loop at line 7 in centerOfMass() touches 2 of 3 fields (x, m)
+  · loop at line 11 in drift() touches 1 of 3 fields (x)
+  · typed Float64Array columns for all 3 fields
+  · about 200 elements
+  · 2 of 2 element accesses proven in bounds

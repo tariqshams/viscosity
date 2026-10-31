@@ -1,0 +1,6 @@
+grid (line 1) {h, t} → struct of arrays
+  · loop at line 4 in relax() touches 2 of 2 fields (h, t)
+  · loop at line 8 in <module>() touches 2 of 2 fields (t, h)
+  · typed Float64Array columns for all 2 fields
+  · about 256 elements
+  · 2 of 6 element accesses proven in bounds

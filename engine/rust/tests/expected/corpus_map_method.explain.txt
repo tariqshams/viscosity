@@ -1,0 +1,3 @@
+ps (line 2) {x} → kept as array of objects
+  · unsafe: line 5: uses .map on the array (only .length and .push are supported)
+  · unsafe: the array is passed to a method call at line 5

@@ -1,0 +1,7 @@
+[package]
+name = "viscosity-vir"
+description = "VIR: Viscosity's language-neutral SSA intermediate representation."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true

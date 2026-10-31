@@ -1,0 +1,8 @@
+fl (line 3) {x, y, vx, vy, hue} → struct of arrays
+  · loop at line 8 in flock() touches 2 of 5 fields (vx, vy)
+  · loop at line 11 in flock() touches 2 of 5 fields (vx, vy)
+  · loop at line 18 in flock() touches 4 of 5 fields (x, vx, y, vy)
+  · loop at line 27 in <module>() touches 2 of 5 fields (x, y)
+  · typed Float64Array columns for all 5 fields
+  · about 20000 elements
+  · 11 of 11 element accesses proven in bounds

@@ -1,0 +1,8 @@
+bs (line 3) {x, y, vx, vy, m} → struct of arrays
+  · loop at line 8 in step() touches 2 of 5 fields (vx, vy)
+  · loop at line 11 in step() touches 3 of 5 fields (x, y, m)
+  · loop at line 22 in step() touches 4 of 5 fields (x, vx, y, vy)
+  · loop at line 31 in <module>() touches 2 of 5 fields (vx, vy)
+  · typed Float64Array columns for all 5 fields
+  · about 1500 elements
+  · 12 of 12 element accesses proven in bounds

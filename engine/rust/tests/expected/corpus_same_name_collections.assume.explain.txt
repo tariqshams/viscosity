@@ -1,0 +1,10 @@
+ps (line 3) {x} → struct of arrays
+  · loop at line 7 in a() touches 1 of 1 fields (x)
+  · typed Float64Array columns for all 1 fields
+  · size unknown statically
+  · 1 of 1 element accesses proven in bounds
+ps (line 12) {y, z} → struct of arrays
+  · loop at line 16 in b() touches 2 of 2 fields (z, y)
+  · typed Float64Array columns for all 2 fields
+  · size unknown statically
+  · 2 of 2 element accesses proven in bounds

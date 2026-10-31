@@ -1,0 +1,15 @@
+[package]
+name = "viscosity-core"
+description = "Viscosity core: SSA construction, CFG utilities, the layout analyses, the planner and explain."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+viscosity-vir.workspace = true
+indexmap.workspace = true
+rustc-hash.workspace = true
+
+[dev-dependencies]
+viscosity-frontend-js.workspace = true

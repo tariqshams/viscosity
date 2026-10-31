@@ -1,0 +1,6 @@
+pts (line 3) {x, y} → struct of arrays
+  · annotated @viscosity soa at line 2
+  · loop at line 5 in <module>() touches 1 of 2 fields (x)
+  · typed Float64Array columns for all 2 fields
+  · about 3 elements
+  · 1 of 3 element accesses proven in bounds

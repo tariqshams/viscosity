@@ -1,0 +1,6 @@
+tx (line 3) {amount, fee, account, day, flags, tax} → struct of arrays
+  · loop at line 9 in total() touches 1 of 6 fields (amount)
+  · loop at line 14 in feesOn() touches 2 of 6 fields (day, fee)
+  · typed Float64Array columns for all 6 fields
+  · about 500000 elements
+  · 3 of 3 element accesses proven in bounds
