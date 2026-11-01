@@ -2,7 +2,7 @@
 //  - { code }: runs one program (original or compiled) and reports its
 //    console output and how long it took. A fresh worker per run.
 //  - { compile, id }: compiles with the Rust engine (WebAssembly). The
-//    playground keeps one such worker; the .wasm (about 1.1 MB) is fetched
+//    playground keeps one such worker; the .wasm (about 1.4 MB) is fetched
 //    the first time, only when a reader picks the Rust engine.
 import { formatArgs } from '../../lib/format.js';
 
