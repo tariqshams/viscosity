@@ -224,8 +224,9 @@ The Rust engine runs in a worker (`play.worker.ts`). Its glue is
 `src/vendor/viscosity_wasm.js` and the module is
 `public/wasm/viscosity_wasm_bg.wasm`, both committed so the book builds
 without Rust. Rebuild them with
-`node engine/rust/packages/wasm/build.mjs --book`. Syntax errors are worded
-differently (oxc, not acorn); everything else matches, and
+`node engine/rust/packages/wasm/build.mjs --book`. Syntax errors share the
+form `<message> (line:col)`, but the message (and for some early errors
+the position) comes from oxc rather than acorn; everything else matches, and
 `scripts/smoke.mjs` checks one Playground on both engines.
 
 **Rust (Track B).** Examples and exercises can use `lang: 'rust'`.

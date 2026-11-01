@@ -136,8 +136,11 @@ fn parse_args(argv: &[OsString]) -> Result<Args, CliError> {
                 }
             }
             "--min-size" => {
-                let v = js_to_number(&next()?);
-                if v.is_nan() || v < 0.0 {
+                let raw = next()?;
+                let v = js_to_number(&raw);
+                // JavaScript's Number("") is 0, so a blank value is refused explicitly.
+                let blank = raw.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}').is_empty();
+                if blank || v.is_nan() || v < 0.0 {
                     return Err(CliError::Usage("--min-size must be a non-negative number".into()));
                 }
                 args.opts.min_size = v;

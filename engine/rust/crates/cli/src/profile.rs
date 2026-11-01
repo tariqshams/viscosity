@@ -58,7 +58,7 @@ impl Drop for TempDir {
 /// error, as in the TypeScript CLI: a partial run's sizes could mislead the
 /// planner. The temporary directory is removed in every case.
 pub fn profile(file: &Path) -> Result<String, String> {
-    let source = fs::read_to_string(file).map_err(|e| e.to_string())?;
+    let source = fs::read_to_string(file).map_err(|e| format!("cannot read {}: {e}", file.display()))?;
     let dir = TempDir(std::env::temp_dir().join(format!("vsc-prof-{}", std::process::id())));
     fs::create_dir_all(&dir.0).map_err(|e| e.to_string())?;
     let dir = &dir.0;

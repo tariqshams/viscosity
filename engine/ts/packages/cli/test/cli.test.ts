@@ -41,7 +41,7 @@ describe('several files', () => {
     expect(run('build', files[0], files[0], '-o', dir).err).toMatch(/would both be written to/);
     expect(run('profile', files[0], files[1]).err).toMatch(/^viscosity: profile takes one file\n/);
     expect(run('explain', '--jobs', '0', files[0]).err).toMatch(/^viscosity: --jobs must be a whole number of at least 1\n/);
-    for (const v of ['abc', '-1', 'NaN']) {
+    for (const v of ['abc', '-1', 'NaN', '', ' ']) {
       const r = run('explain', '--min-size', v, files[0]);
       expect(r.status).toBe(1);
       expect(r.err).toMatch(/^viscosity: --min-size must be a non-negative number\n/);
@@ -59,7 +59,7 @@ describe('several files', () => {
   });
   it('names a single file it cannot read', () => {
     const nope = join(mkdtempSync(join(tmpdir(), 'vsc-cli-')), 'nope.js');
-    for (const cmd of ['explain', 'build']) {
+    for (const cmd of ['explain', 'build', 'profile']) {
       const r = run(cmd, nope);
       expect(r.status).toBe(1);
       expect(r.err).toBe(`viscosity: cannot read ${nope}: ENOENT: no such file or directory, open '${nope}'\n`);
