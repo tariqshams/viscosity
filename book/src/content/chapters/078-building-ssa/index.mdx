@@ -11,7 +11,7 @@ objectives:
   - Contrast on-the-fly construction with the dominance-frontier approach.
 introduces: [ssa-construction]
 uses: [ssa, phi-node, ir, lowering, three-address-code, basic-block, cfg, dominator, dominator-tree, single-pass-compiler, recursion, map, compiler, ignition, bytecode, register, for-loop]
-sources: [braun2013, llvm-passes, v8-maglev]
+sources: [braun2013, llvm-passes, v8-maglev, cytron1991]
 ---
 import BraunSteps from '../../../components/diagrams/ch078/BraunSteps';
 
@@ -204,7 +204,8 @@ is left behind as a dead entry noted `removed-trivial-phi`.
 
 ## The other way: dominance frontiers
 
-The classic algorithm works on a finished CFG. For a definition of `x`
+The classic algorithm, from Cytron and colleagues in
+1991<Cite id="cytron1991" />, works on a finished CFG. For a definition of `x`
 in block *B*, follow the dominator tree (chapter 76): the blocks where
 *B*'s dominance stops, the first ones *B* does not strictly dominate,
 are its **dominance frontier**. Those are exactly the joins where a

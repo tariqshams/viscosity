@@ -11,7 +11,7 @@ objectives:
   - Make an operator group to the left or to the right by changing one number.
 introduces: [pratt-parser, binding-power, prefix-infix]
 uses: [parser, recursive-descent, precedence, associativity, grammar, ast, ast-node, tree-printer, expression-vs-statement, token, token-type, lookahead, literal, drip, function, return, recursion, call-stack, tree, object, bracket-access, array, nested-function, discriminated-union, typescript, for-loop, comparison, if]
-sources: [nystrom2021]
+sources: [nystrom2021, pratt1973]
 ---
 import PrattSteps from '../../../components/diagrams/ch033/PrattSteps';
 import BpLadder from '../../../components/diagrams/ch033/BpLadder';
@@ -32,7 +32,7 @@ operator means adding a rung to the ladder.
 The real Drip parser in `companion/ts/src/parser.ts` reads expressions
 differently: with one small table of numbers and one loop. The technique
 is named after Vaughan Pratt, who described it in 1973 as “top down
-operator precedence”.
+operator precedence”<Cite id="pratt1973" />.
 
 ## Binding power
 

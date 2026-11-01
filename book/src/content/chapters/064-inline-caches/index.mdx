@@ -11,7 +11,7 @@ objectives:
   - Write code that keeps hot property accesses monomorphic, and build a tiny inline cache yourself.
 introduces: [inline-cache, monomorphic, polymorphic, megamorphic]
 uses: [shape, transition-tree, dictionary-mode, ignition, optimizing-tiers, tiering, bytecode, opcode, constant-pool, hash-table, property, dot-access, object, function, closure, array-of-objects, for-of, class, inheritance, super, aos-vs-soa, typed-array]
-sources: [v8-src-interpreter-12-4, v8-src-ic-12-4, v8-src-tiering-12-4, v8-improved-code-caching, v8-maglev, v8-sparkplug, v8-fast-properties, v8-fast-super]
+sources: [v8-src-interpreter-12-4, v8-src-ic-12-4, v8-src-tiering-12-4, v8-improved-code-caching, v8-maglev, v8-sparkplug, v8-fast-properties, v8-fast-super, holzle1991]
 ---
 import ICSteps from '../../../components/diagrams/ch064/ICSteps';
 
@@ -125,7 +125,10 @@ And in 2023 the V8 team described what Maglev does with a monomorphic
 `o.x`: it emits a check that `o` still has that shape, then a plain load
 at a fixed offset. After that it knows the shape, and doesn’t check it
 again<Cite id="v8-maglev" />. A megamorphic site gives it nothing to
-specialize on.
+specialize on. The idea is old: Hölzle, Chambers and Ungar introduced
+polymorphic inline caches for Self in 1991, and noted that the receiver
+types a cache records are information an optimizing compiler can
+use<Cite id="holzle1991" />.
 
 The word *inline* is historical. V8’s old baseline compiler patched the
 fast path into its machine code. Since Ignition (Chrome 59), the ICs are

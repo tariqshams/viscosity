@@ -11,7 +11,7 @@ objectives:
   - Split hot fields from cold ones.
 introduces: [aos-vs-soa, aosoa, hot-cold-split, materialization]
 uses: [array-of-objects, object, property, function, identity, reference, typed-array, contiguous, cpu-cache, cache-line, cache-miss, spatial-locality, stride, prefetcher, pointer-chasing, simd, lane, object-header, heap-number, field-representation, for-loop, array-loop]
-sources: [makor2022, kloibhofer2023, ziap2025, pharrmark2012, ispcdocs, ispc-perfguide, mdn-typed-arrays]
+sources: [makor2022, kloibhofer2023, ziap2025, pharrmark2012, ispcdocs, ispc-perfguide, mdn-typed-arrays, acton2014]
 ---
 import LayoutSteps from '../../../components/diagrams/ch023/LayoutSteps';
 import BenchBars from '../../../components/bench/BenchBars';
@@ -187,7 +187,9 @@ different caches and a different engine version. Run it:
 <Callout kind="engine" label="Under the hood">
 Choosing a layout means weighing everything above: how many elements,
 which fields each loop touches, whether access is sequential, and whether
-objects escape. Research on JavaScript arrays makes this decision at run
+objects escape. Mike Acton’s 2014 talk on data-oriented design puts it
+bluntly: “If you have different data, you have a different
+problem”<Cite id="acton2014" />. Research on JavaScript arrays makes this decision at run
 time: a JIT watches an array of objects and switches it to columnar
 storage automatically<Cite id="makor2022" />, then generates specialized
 code paths for the transformed arrays<Cite id="kloibhofer2023" />.

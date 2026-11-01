@@ -3,10 +3,10 @@ import Book from '../layouts/Book.astro';
 import { references } from '../data/references.js';
 // Credit people, not just papers: what each person's work shaped here.
 const groups: { title: string; ids: string[] }[] = [
-  { title: 'The problem Viscosity attacks', ids: ['makor2022', 'kloibhofer2023', 'ziap2025', 'pharrmark2012', 'ispcdocs', 'wurthinger2013'] },
-  { title: 'How the book teaches languages and compilers', ids: ['nystrom2021', 'coopertorczon2022', 'braun2013', 'llvmnewpm', 'bynensmeurer2018', 'klabnik2026'] },
+  { title: 'The problem Viscosity attacks', ids: ['makor2022', 'kloibhofer2023', 'ziap2025', 'pharrmark2012', 'ispcdocs', 'odin-overview-soa', 'acton2014', 'wurthinger2013'] },
+  { title: 'How the book teaches languages and compilers', ids: ['nystrom2021', 'pratt1973', 'coopertorczon2022', 'cytron1991', 'braun2013', 'llvmnewpm', 'bynensmeurer2018', 'holzle1991', 'klabnik2026', 'oxc-project'] },
   { title: 'How the book helps you remember', ids: ['roediger2006', 'paivio1986', 'ye2022', 'fsrs', 'tsfsrs'] },
-  { title: 'Reference documentation', ids: ['mdn-functions', 'mdn-objects', 'mdn-equality', 'mdn-console-log', 'mdn-typed-arrays'] },
+  { title: 'Reference documentation', ids: ['mdn-functions', 'mdn-objects', 'mdn-equality', 'mdn-console-log', 'mdn-typed-arrays', 'mdn-array'] },
 ];
 const byId = Object.fromEntries(references.map((r) => [r.id, r]));
 ---
