@@ -48,8 +48,8 @@ export const prompts = {
     a: 'A block of one element isn’t AoSoA. The planner requires `b >= 2` as well as `b.is_power_of_two()`.',
   },
   'ao-huge': {
-    q: 'What goes wrong with `// @viscosity aosoa(1073741824)`?',
-    a: 'Both engines accept it, and the compiled program fails with “RangeError: Array buffer allocation failed”: the constructor asks for 2³¹ blocks’ worth of slots.',
+    q: 'What went wrong with `// @viscosity aosoa(1073741824)` before the size limit?',
+    a: 'Both engines accepted it, and the compiled program failed with “RangeError: Array buffer allocation failed”. Now both refuse it: the block size must be at most 65536.',
   },
   'ao-type-not-heat': {
     q: 'In Viscosity, what decides whether a field gets a `Float64Array` column or a plain array?',
@@ -239,9 +239,9 @@ export const quiz = [
   {
     q: 'What happens with `// @viscosity aosoa(1073741824)` on a small numeric collection?',
     options: [
-      { t: 'The planner refuses it as too big', why: 'Neither engine has an upper limit; it is a power of two, so it is accepted.' },
-      { t: 'It works, just with one huge block', why: 'The constructor’s allocation fails first.' },
-      { t: 'Both engines accept it, and the compiled program throws a RangeError allocating the data array', correct: true, why: 'The original runs fine, so this is a miscompile that a size limit would prevent.' },
+      { t: 'The planner refuses it: the block size must be at most 65536', correct: true, why: 'Both engines check the 2¹⁶ limit before the power-of-two rule, and keep the array of objects.' },
+      { t: 'It works, just with one huge block', why: 'Before the limit, the constructor’s allocation failed first.' },
+      { t: 'Both engines accept it, and the compiled program throws a RangeError allocating the data array', why: 'That is what happened before the limit was added: a miscompile, since the original runs fine.' },
     ],
   },
   {

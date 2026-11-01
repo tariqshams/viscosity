@@ -8,7 +8,7 @@ objectives:
   - 'Declare modules inline and in files, and refer to items with use, crate:: and super::.'
   - Explain Rust's privacy rule, including private fields in public structs, and read E0603, E0616 and E0624.
   - Re-export items with pub use to shape a crate's public face.
-  - Describe drip-rs's module tree and engine/rust's workspace of five crates.
+  - Describe drip-rs's module tree and engine/rust's workspace of six crates.
 introduces: [rust-module, visibility, workspace]
 uses: [rust, cargo, crate, rust-functions, struct, impl, self-receiver, enum, vec, trait, rust-generics, module, import-export, program-structure, language-plugin, vir, ir, scanner, compiler, virtual-machine, garbage-collection, hash-table, open-addressing, aos-vs-soa, webassembly, npm-package, test]
 sources: [klabnik2026, rustref-visibility]
@@ -181,26 +181,27 @@ public API, and changing it is what breaks other people's code.
 ## Workspaces
 
 drip-rs is one package holding two crates. The Rust Viscosity is bigger:
-five packages, each with its own `Cargo.toml`, built together as one
+six packages, each with its own `Cargo.toml`, built together as one
 **workspace**. Its root `Cargo.toml` has no code, only this (trimmed):
 
 ```toml
 [workspace]
 members = ["crates/vir", "crates/core",
-    "crates/frontend-js", "crates/cli",
-    "crates/wasm"]
+    "crates/frontend-js",
+    "crates/frontend-python",
+    "crates/cli", "crates/wasm"]
 
 [workspace.dependencies]
-viscosity-vir = { path = "crates/vir" }
-viscosity-core = { path = "crates/core" }
+viscosity-vir = { path = "crates/vir",
+    version = "0.1.0" }
 oxc_parser = "0.156"
 ```
 
-A member then writes `viscosity-core.workspace = true` instead of a
-path or a version, so every crate agrees on one version of oxc. (As
-this chapter was checked, a sixth member, `crates/frontend-python`, had
-just joined the list for chapter 187's Python plugin; the five here are
-the ones Part IX uses.) A
+(The real file keeps each entry on one line.) A member then writes
+`viscosity-vir.workspace = true` instead of a path or a version, so
+every crate agrees on one version of oxc. The diagram leaves out
+`frontend-python`, chapter 187's Python plugin, which sits beside
+`frontend-js`; the five here are the ones Part IX uses. A
 package named `viscosity-core` is `viscosity_core` in Rust code, since
 `-` can't appear in a path. Step through what depends on what:
 
@@ -248,7 +249,7 @@ over the same core.
 - Private fields let a type guard its invariants, like drip-rs's
   `Table`.
 - A **workspace** builds several crates together, with one lock file
-  and one `target/`. engine/rust's five crates make the plugin
+  and one `target/`. engine/rust's six crates make the plugin
   boundary a compile-time fact.
 
 <Quiz />

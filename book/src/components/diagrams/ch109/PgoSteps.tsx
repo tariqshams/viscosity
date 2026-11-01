@@ -75,7 +75,7 @@ export default function PgoSteps() {
               ? 'without a profile: ps → struct of arrays (size unknown)'
               : big
                 ? 'ps → struct of arrays · about 5000 (measured)'
-                : 'ps → kept as array of objects · about 20 (measured)'}
+                : 'ps → kept as objects · about 20 elements (measured)'}
           </T>
         </Box>
       </Svg>

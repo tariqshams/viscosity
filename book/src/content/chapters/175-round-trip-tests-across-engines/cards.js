@@ -46,7 +46,7 @@ export const prompts = {
   },
   'wasm-too': {
     q: 'How is the WebAssembly build held to the same contract?',
-    a: 'The same compile code runs in wasm; its output can be checked against the same fixtures (186 of 186 when this was written), and smoke.mjs compares the installed npm package with the TS CLI.',
+    a: 'The same compile code runs in wasm; its output can be checked against the same fixtures (190 of 190 at the last check), and smoke.mjs compares the installed npm package with the TS CLI.',
   },
 };
 

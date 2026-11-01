@@ -7,7 +7,7 @@ tagline: 'An aosoa(4) annotation turns every field access into a shift, a multip
 objectives:
   - Derive the AoSoA slot of field k of element i, and match it to the code emit.rs writes.
   - Explain why the planner refuses block sizes that aren’t powers of two, and where the check lives in Rust.
-  - Describe a limit on block sizes that neither engine checks.
+  - Describe the upper limit on block sizes, and what went wrong before both engines checked it.
   - Say precisely what Viscosity’s typed/plain split is, and what a split by heat would need.
 introduces: [rust-aosoa]
 uses: [viscosity-rs, rust-soa-codegen, rust-cost-model, rust-access-pass, aosoa, block-size, hot-cold-split, field-affinity, annotation, column-storage, typed-array, bit-ops, simd, option, match, rust-closure, rust-iterator, vec, cross-implementation-tests, ieee754]
@@ -150,18 +150,25 @@ again and returns a `CompileError`, and `slot` then relies on it with
 a program the CLI compiles. They are there so a mistake in one place
 shows up as an error, not as wrong arithmetic.
 
-There is no rule at the other end. Both engines accept
-`aosoa(1073741824)`, which is 2³⁰. The constructor then asks for
-`new Float64Array(2³¹ * 2)`, and node reports
-`RangeError: Array buffer allocation failed` for a program whose original
-runs fine. From `2³²` up, the arithmetic would be wrong as well, because
-JavaScript takes shift counts modulo 32<Cite id="ecma262-signed-right-shift" />:
-`i >> 32` is `i`. At `2⁶⁴` the engines even disagree. The port stores
-block sizes as `u64`, which saturates, and refuses the result as not a
-power of two. The reference's numbers don't saturate, so it accepts it.
-The README lists that last case, and treats such sizes as unusable. A
-real limit, say at most 2¹⁶, would close all three. Neither engine has
-one; I report it here rather than fix it.
+When this chapter was first written, there was no rule at the other
+end. Both engines accepted `aosoa(1073741824)`, which is 2³⁰. The
+constructor then asked for `new Float64Array(2³¹ * 2)`, and node
+reported `RangeError: Array buffer allocation failed` for a program
+whose original runs fine. From `2³²` up, the arithmetic would be wrong
+as well, because JavaScript takes shift counts modulo
+32<Cite id="ecma262-signed-right-shift" />: `i >> 32` is `i`. At `2⁶⁴`
+the engines even disagreed: the port stored block sizes as `u64`, which
+saturates, and refused the result, while the reference accepted it. A
+real limit closes all three, and both engines now have one, 2¹⁶
+(`MAX_BLOCK_SIZE` in Rust), checked before the power-of-two rule:
+
+```
+  · annotated aosoa(1073741824), but the
+    block size must be at most 65536
+```
+
+A size that isn't a whole number, such as `aosoa(x)`, is refused too,
+quoted as written, instead of quietly becoming the default 8.
 
 <Callout kind="definition">
 **AoSoA in Rust** stores a collection of `F` numeric fields in one
@@ -169,7 +176,7 @@ one; I report it here rather than fix it.
 inside each block. Field `k` of element `i` is at
 **`(i >> sh) * F·B + k·B + (i & (B − 1))`**, with `sh = log2 B`. The
 planner accepts `aosoa(B)` only when **`B ≥ 2` and `B` is a power of
-two**, and every field may only hold numbers.
+two**, at most 65536, and every field may only hold numbers.
 </Callout>
 
 <Prompts ids={['ao-refuse-1', 'ao-huge']} />
@@ -229,8 +236,8 @@ which is why Viscosity keeps AoSoA behind an annotation.
   (i & (B − 1))`**, in one `Float64Array`.
 - A **power of two** turns division and remainder into a **shift** and a
   **mask**. `log2_exact` is `is_power_of_two` then `trailing_zeros`.
-- The **planner** refuses other sizes and `1`. Nothing refuses **huge**
-  powers of two, which fail at run time.
+- The **planner** refuses other sizes, `1`, and **huge** powers of two
+  (above 65536), which once failed at run time.
 - Viscosity's "hot/cold" split is **by type**: typed columns for proven
   numbers, **plain** columns for the rest.
 

@@ -11,10 +11,10 @@ const STATES: S[] = [
   { hi: ['src'], line: 'const ps = [];', note: 'The input is the original spawn.js. Nothing about it changes on disk; the profile run uses a copy.' },
   { hi: ['inst'], line: 'const ps = __vsc_track("ps", []);', note: 'Rust: instrument() lowers the source with JsPlugin, runs analyze, and wraps each collection’s initializer. Edits go last-first, so earlier byte offsets stay valid.' },
   { hi: ['file'], line: 'PRELUDE + instrumented source', note: 'Rust writes instrumented.cjs to a temporary directory: the JavaScript prelude (copied from the TS CLI) followed by the edited program.' },
-  { hi: ['node'], line: 'Command::new("node")', note: 'node runs it, with VSC_PROFILE_OUT in its environment, stdin empty and stdout thrown away. Rust only waits for the exit status.' },
+  { hi: ['node'], line: 'Command::new("node")', note: 'node runs it, with VSC_PROFILE_OUT in its environment, stdin empty and stdout thrown away. Rust waits for the exit status: non-zero is an error. The temporary directory is removed either way.' },
   { hi: ['json'], line: '{ "ps": { "maxLength": 20 } }', note: 'At exit the hook reads each tracked array’s length and writes JSON.stringify(p, null, 2). Node wrote it, as in the TS CLI, so the bytes are the same.' },
-  { hi: ['read'], line: 'HashMap { "ps": 20.0 }', note: 'Later, --profile p.json: read_profile parses it with serde_json and keeps every entry whose maxLength is a number, keyed by name.' },
-  { hi: ['plan'], line: 'measured.or(c.size_estimate)', note: 'plan_one looks up the collection’s name. 20 is below the 64-element threshold, so ps is kept as objects, “(measured)”.' },
+  { hi: ['read'], line: 'HashMap { "ps": 20.0 }', note: 'Later, --profile p.json: read_profile parses it with serde_json and checks every entry: an object with a non-negative maxLength, keyed by name. Anything else is an error, worded as in the TS CLI.' },
+  { hi: ['plan'], line: 'measured.or(c.size_estimate)', note: 'plan_one looks up the collection’s name. 20 is below the 64-element threshold, so ps is kept as objects: “about 20 elements (measured)”.' },
 ];
 
 const B: Record<K, { x: number; y: number; w: number; label: string; who: 'rust' | 'node' | 'file' }> = {

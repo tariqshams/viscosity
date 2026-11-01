@@ -7,7 +7,8 @@ import { Svg, T, tok } from '../../viz/svg';
 // (release, thin LTO), wasm-bindgen 0.2.106 --target web, wasm-opt 132 -O3
 // with build.mjs's feature flags, gzip from Node's zlib at level 9. Section
 // sizes come from walking the module's section headers. The final file is
-// byte-identical to book/public/wasm/viscosity_wasm_bg.wasm.
+// byte-identical to book/public/wasm/viscosity_wasm_bg.wasm as it was then
+// (that file is now the 288e497 build, 1,373,390 bytes).
 type Part = { label: string; bytes: number; col: string };
 type Stage = { name: string; cmd: string; total: number; gzip: number; exports: number; parts: Part[] };
 
@@ -43,7 +44,7 @@ export default function PipelineSteps() {
   const max = STAGES[0].total;
   const x = (b: number) => (b / max) * W;
   return (
-    <StepFrame title="From cargo to a 1.1 MB .wasm" steps={s} note={st.note}>
+    <StepFrame title="From cargo to a 1.1 MB .wasm (at c68daec)" steps={s} note={st.note}>
       <Svg w={400} h={252} title="The size of the Rust engine's .wasm after cargo, wasm-bindgen and wasm-opt, by section, and gzipped">
         {[['code', 'brand'], ['data', 'accent'], ['names', 'danger'], ['other', 'muted']].map(([l, c], k) => (
           <g key={l}>

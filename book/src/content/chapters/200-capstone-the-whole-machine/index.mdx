@@ -139,15 +139,13 @@ machine, and the files record the noise beside them.
 An honest capstone lists what isn't done. Some items are chores; some
 are research.
 
-- **Nothing is published** (chapter 198). The crates can't be packaged
-  until their path dependencies get versions, and whether and when to
-  publish is Tariq's decision.
+- **Nothing is published** (chapter 198). Every crate now packages,
+  but there is no changelog yet, and whether and when to publish is
+  Tariq's decision.
 - **The Rust port has gaps.** It rejects TypeScript input (the reference
   strips types with sucrase, and copying sucrase's exact output is out
   of scope), and its syntax errors are worded by oxc, not acorn. Neither
   engine profiles Python programs.
-- **A rough edge in the CLI**: a non-UTF-8 file name panics before
-  parsing (chapter 197).
 - **The cost model can't see the engine.** It decides from size and
   access patterns, with a 64-element threshold, and the matrix showed
   the same output gaining a lot on V8 and nothing on JSC for heat. Why
@@ -178,8 +176,8 @@ If you want to keep going, each of these starts from code you have read:
 - **Grow the subset.** Pick one refusal from chapter 118, make the
   analysis prove it safe, and let the fuzzer tell you whether you were
   right (`node scripts/fuzz.mjs --count 20000`).
-- **Fix the small things**: `args_os()` in the CLI, versions on the
-  path dependencies, the wasm smoke test in CI.
+- **Fix the small things**: the wasm smoke test in CI, a changelog, a
+  Python fuzzer (chapter 188).
 
 <Callout kind="definition">
 **Mastery**, as this book means it, is being able to build the thing

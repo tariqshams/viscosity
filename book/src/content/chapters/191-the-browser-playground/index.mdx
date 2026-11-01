@@ -57,7 +57,7 @@ toggle or the `engine` prop.
 
 ## Only when asked
 
-The `.wasm` is 1.1 MB, so pages that never use it mustn't pay for it.
+The `.wasm` is 1.4 MB, so pages that never use it mustn't pay for it.
 Chapter 189's `build.mjs --book` copies the web glue into
 `book/src/vendor` and the module into `book/public/wasm`. Files in
 `public/` are served as they are, never bundled. That's why the script
@@ -161,8 +161,9 @@ post({ id, error: err.message,
 ```
 
 On a fatal reply the page calls `terminate()` on the
-worker<Cite id="mdn-web-workers" /> and forgets it. The next compile
-starts a new worker with a new instance, and new memory.
+worker<Cite id="mdn-web-workers" /> and forgets it. Requests still
+queued on it get an error at once, so none waits forever. The next
+compile starts a new worker with a new instance, and new memory.
 
 <Prompts ids={['panic-trap', 'refcell-stuck', 'fatal-new-worker']} />
 

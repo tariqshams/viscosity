@@ -6,7 +6,7 @@ title: 'Release engineering'
 tagline: 'Every version number in the repository says 0.1.0, and nothing has been published. A release would ship three things to two registries. Here is what each would need, what is already checked on every push, what isn’t, and the one step that only a person should take.'
 objectives:
   - Find every version number a Viscosity release would have to change, and apply Cargo’s rules for 0.y.z versions.
-  - Say what Cargo.toml metadata a crate needs to be published, and why the workspace’s crates can’t be yet.
+  - Say what Cargo.toml metadata a crate needs to be published, and what packaging the workspace’s crates first turned up.
   - Describe the two npm packages, how each is built and which licences each ships.
   - Write a release checklist from the scripts that really exist.
 introduces: [release-process]
@@ -89,15 +89,17 @@ users run.
 ## The crates
 
 The workspace `Cargo.toml` holds the shared metadata: version, edition,
-`authors = ["Tariq Shams"]`, `license = "MIT"`, the repository URL and a
-`rust-version`. Each crate adds its own one-line `description`. That
-covers most of what the Cargo book asks a crate to fill in before
-publishing: a licence, a description, a homepage, a repository and a
-readme<Cite id="cargo-publishing-guide" />. Homepage and readme are
+`authors = ["Tariq Shams"]`, `license = "MIT"`, the repository URL, a
+readme, keywords and a `rust-version`. Each crate adds its own one-line
+`description` and its categories. That covers most of what the Cargo
+book asks a crate to fill in before publishing: a licence, a
+description, a homepage, a repository and a
+readme<Cite id="cargo-publishing-guide" />. Only the homepage is
 missing.
 
 `cargo package` (which `cargo publish --dry-run` also runs) is the real
-test. On `viscosity-core` it stops at once:
+test, and packaging found two problems, both fixed now. When this
+chapter was first written, on `viscosity-core` it stopped at once:
 
 ```
 error: failed to verify manifest at
@@ -110,19 +112,23 @@ Caused by:
   specify a version
 ```
 
-(cargo 1.97, wrapped.) The workspace refers to its own crates by path
+(cargo 1.97, wrapped.) The workspace referred to its own crates by path
 only, as in `viscosity-vir = { path = "crates/vir" }`, and crates.io
 doesn't accept dependencies on code outside crates.io. The fix the
 Cargo book gives is to add a version next to the path, which is used
-when the crate is published<Cite id="cargo-specifying-deps" />. The
-crates would then go up in order, `viscosity-vir` first, since each
-needs the one below it on crates.io already.
+when the crate is published<Cite id="cargo-specifying-deps" />, and
+every internal entry now carries `version = "0.1.0"`. The crates would
+go up in order, `viscosity-vir` first, since each needs the one below
+it on crates.io already. `core`'s dev-dependency on `frontend-js`
+stays path-only: cargo leaves it out of the packaged manifest, which
+breaks the cycle.
 
-`viscosity-vir` has no path dependencies, so it does package. Its file
-list, from `cargo package --list`, holds `Cargo.toml`, `Cargo.lock` and
-`src/`, and no licence text, because `crates/vir` has no LICENSE file.
-The MIT licence asks for its notice to be "included in all copies or
-substantial portions of the Software", so that would need fixing too.
+The second problem: `viscosity-vir` packaged, but its file list, from
+`cargo package --list`, held `Cargo.toml`, `Cargo.lock` and `src/`,
+and no licence text, because `crates/vir` had no LICENSE file. The MIT
+licence asks for its notice to be "included in all copies or
+substantial portions of the Software". Each crate has a LICENSE now,
+and `cargo package --workspace` packages and verifies all six.
 
 <Prompts ids={['path-deps', 'crate-license']} />
 
@@ -160,11 +166,12 @@ tarball in an empty folder and runs `viscosity --version` and
 `viscosity explain` from there. The Rust job installs the TypeScript
 engine (the parity reference), checks formatting, runs
 `cargo test --workspace` (parity, differential, multi-file, and a
-fixed-seed run of the fuzzer) and clippy with warnings as errors, and
-builds the wasm crate in debug.
+fixed-seed run of the fuzzer) and clippy with warnings as errors,
+builds the wasm crate in debug, and runs `cargo package --workspace`
+(without the verifying build, to save time).
 
 What CI doesn't run: wasm-bindgen and the `@viscosity/wasm` smoke test,
-a long fuzzing campaign, the benchmarks, or `cargo package`.
+a long fuzzing campaign, or the benchmarks.
 
 ## A checklist from real scripts
 
@@ -173,7 +180,7 @@ Every command below exists in the repository today:
 1. Choose the version by Cargo's rules, and set it in all three files.
 2. In `engine/ts`: `npm ci`, `npm run typecheck`, `npm test`.
 3. In `engine/rust`: `cargo fmt --all --check`, the clippy command,
-   `cargo test --workspace`.
+   `cargo test --workspace`, `cargo package --workspace`.
 4. A long fuzzing campaign: `cargo build -p viscosity-cli`, then
    `node scripts/fuzz.mjs --count 20000 --seed 7`.
 5. `node packages/wasm/build.mjs`, then `node packages/wasm/smoke.mjs`,
@@ -185,9 +192,8 @@ Every command below exists in the repository today:
    from `engine/ts`.
 8. In `book`: `node scripts/check_chapters.mjs`.
 
-Two steps have no script yet: making the crates packageable (versions on
-the path dependencies, a licence file in each crate), and writing a
-changelog. The commit history is the only record of changes so far.
+One step has no script yet: writing a changelog. The commit history is
+the only record of changes so far.
 
 <Callout kind="engine" label="Under the hood">
 The last step, `npm publish --access public` and `cargo publish`, is
@@ -216,13 +222,13 @@ Viscosity's own 0.1.0.
   permanent on both crates.io and npm.
 - Viscosity's version lives in **three files**, kept equal by hand.
   Under Cargo's rules a breaking change to 0.1.0 is **0.2.0**.
-- The crates can't be packaged yet: their **path dependencies** need
-  versions, and a packaged crate would carry no licence text.
+- Packaging the crates found two problems, now fixed: **path
+  dependencies** without versions, and no licence text in a crate.
 - `@viscosity/cli` is one **esbuild bundle** with no runtime
   dependencies; `@viscosity/wasm` ships notices for 71 crates. Both
   need `--access public`.
-- CI packs and installs the CLI on every push; the wasm smoke test,
-  long fuzzing and benchmarks are run by hand. Publishing is Tariq's
-  call.
+- CI packs and installs the CLI and packages the crates on every push;
+  the wasm smoke test, long fuzzing and benchmarks are run by hand.
+  Publishing is Tariq's call.
 
 <Quiz />

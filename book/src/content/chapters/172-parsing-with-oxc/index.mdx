@@ -3,7 +3,7 @@ n: 172
 day: 43
 part: XI
 title: 'Parsing with oxc'
-tagline: 'acorn says the collection starts at offset 116. oxc says 126. Both are right, because one counts UTF-16 code units and the other counts bytes. Meet the Rust parser behind the port, its arena-allocated tree, and the rule that keeps every splice cutting at the same characters.'
+tagline: 'acorn says the collection starts at offset 266. oxc says 286. Both are right, because one counts UTF-16 code units and the other counts bytes. Meet the Rust parser behind the port, its arena-allocated tree, and the rule that keeps every splice cutting at the same characters.'
 objectives:
   - Call oxc’s parser the way engine/rust does, and relate its options to acorn’s.
   - Explain oxc’s arena-allocated AST, its 'a lifetime, and why the port keeps no AST after lowering.
@@ -18,17 +18,20 @@ import OxcSteps from '../../../components/diagrams/ch172/OxcSteps';
 ## Two right answers
 
 One of the programs written for the port,
-`tests/extra/unicode_offsets.js`, starts like this (first line cut):
+`tests/extra/unicode_offsets.js`, starts like this (trimmed; in `sep`
+each `…` is a U+2028 or U+2029, invisible line-break characters):
 
 ```js
 // Ünïcödé before the collection: …
-const label = 'héllo wörld 😀';
+/* U+2028 and U+2029 are line breaks … */
+const label = 'héllo wörld 😀 𝒳';
+const sep = 'a…b…c'; // …
 const ps = [];
 ```
 
 I parsed it with both parsers. acorn, the TypeScript engine's parser,
-says the statement `const ps = [];` runs from offset 116 to 130. oxc,
-the Rust engine's, says 126 to 140. Ten apart, and both correct. And
+says the statement `const ps = [];` runs from offset 266 to 280. oxc,
+the Rust engine's, says 286 to 300. Twenty apart, and both correct. And
 the parity test checks that both engines rewrite this file identically.
 This chapter is about how both can be true.
 
@@ -46,6 +49,7 @@ return struct"<Cite id="oxc-parser-docs" />. Here is the call in
 let allocator = Allocator::default();
 let options = ParseOptions {
     preserve_parens: false,
+    parse_regular_expression: true,
     ..ParseOptions::default()
 };
 let ret = Parser::new(&allocator, source,
@@ -54,17 +58,26 @@ let ret = Parser::new(&allocator, source,
     .parse();
 if let Some(e) =
     ret.diagnostics.errors().next() {
-    return Err(CompileError(
-        format!("SyntaxError: {e}")));
+    return Err(syntax_error(source, e));
 }
 let program = ret.program;
+let semantic = SemanticBuilder::new()
+    .with_check_syntax_error(true)
+    .build(&program);
+if let Some(e) =
+    semantic.diagnostics.errors().next() {
+    return Err(syntax_error(source, e));
+}
 ```
 
 Line it up with chapter 92's acorn adapter. `SourceType::mjs()` is
 acorn's `sourceType: 'module'`. `preserve_parens: false` matches
-acorn's default of not keeping parentheses as nodes. And errors come
-back as data in `ret`, not as an exception, so the plugin turns the
-first one into a `CompileError`.
+acorn's default of not keeping parentheses as nodes, and
+`parse_regular_expression` checks regex literals, as acorn does. Errors
+come back as data in `ret`, not as an exception, so the plugin turns
+the first one into a `CompileError`; `syntax_error` writes it as
+`message (line:column)`, the shape of acorn's messages. The second
+check is the pitfall below.
 
 <Callout kind="definition">
 **oxc** (the Oxidation Compiler) is a JavaScript and TypeScript
@@ -131,15 +144,16 @@ is two `u32`s with no lifetime.
 Now the two offsets. A JavaScript string is a sequence of UTF-16 code
 units, and acorn's "character offsets" count those. A Rust `String` is
 UTF-8 bytes, and oxc's spans count bytes. Before `const ps`, the file
-has accented letters (one code unit, two bytes each) and two 😀 (two
-code units, four bytes each). Measured on the same file:
+has accented letters (one code unit, two bytes each), 😀 and 𝒳 (two
+code units, four bytes each), and U+2028 and U+2029 (one code unit,
+three bytes each). Measured on the same file:
 
 ```
              acorn       oxc
              (UTF-16)    (UTF-8)
-const ps     116         126
-ps[i].x      247         258
-ps[3].name   290         305
+const ps     266         286
+ps[i].x      417         442
+ps[3].name   715         749
 ```
 
 Each engine splices its own string with its own offsets. The TypeScript
@@ -154,10 +168,11 @@ out.replace_range(
 
 `slice` counts code units and `replace_range` counts bytes, so both cut
 before the same `p` of `ps[i].x`. The fixture shows the result: the
-same `s += ps.x[i]; // ✓ — done` line from both engines.
+same `s += ps.x[i] + t.length; } // ✓ — done` line from both engines.
 
-The danger is mixing the two. Hand acorn's 116..130 to the Rust string
-and you get `"ld 😀';\ncons"`. Land inside a character and Rust panics,
+The danger is mixing the two. Hand acorn's 266..280 to the Rust string
+and you get `"9, and a line "`, from a comment two lines up. Land
+inside a character and Rust panics,
 because a string slice must start and end on a character
 boundary<Cite id="rust-std-str" />. When the port does need a
 JavaScript-style offset, `lines::utf16_offset` converts.
@@ -175,13 +190,18 @@ declarations to check it.
 <Callout kind="pitfall">
 oxc's parser doesn't report every syntax error. Its documentation says
 the list "is not comprehensive": more expensive checks are left to its
-semantic analyzer<Cite id="oxc-parser-docs" />, which the port doesn't
-run. I gave twelve small programs with early errors to acorn and
-to the Rust engine's `compile`. acorn rejected eleven (the twelfth, assigning to a `const`, is a
-run-time error). oxc's parser rejected one, a top-level `return`. So
-`let a = 1; let a = 2;` is a `SyntaxError` in the TypeScript engine,
-and the Rust engine compiles it. No fixture covers this, because every
-parity program is valid JavaScript.
+semantic analyzer<Cite id="oxc-parser-docs" />. When this chapter was
+first written the port ran only the parser. I gave twelve small
+programs with early errors to acorn and to the Rust engine's `compile`.
+acorn rejected eleven (the twelfth, assigning to a `const`, is a
+run-time error); oxc's parser rejected one, a top-level `return`. So
+`let a = 1; let a = 2;` compiled in Rust. No parity fixture caught it,
+because every parity program is valid JavaScript. The `SemanticBuilder`
+pass above is the fix, and `early_errors.rs` now runs 108 invalid
+programs through both CLIs. Both reject this one, each in its own
+words and not always at the same token: Rust says
+``Identifier `a` has already been declared (1:4)``, acorn
+`Identifier 'a' has already been declared (1:15)`.
 </Callout>
 
 <Prompts ids={['oxc-semantic']} />
@@ -214,7 +234,7 @@ that parses a file or two per run.
   both cut at the same characters.
 - Line numbers are counted by the plugin at every ECMAScript line
   break.
-- oxc's parser leaves some early errors to a semantic pass the port
-  doesn't run.
+- oxc's parser leaves some early errors to a semantic pass, so the
+  port runs that pass's syntax checks too.
 
 <Quiz />

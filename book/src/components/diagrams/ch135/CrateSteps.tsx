@@ -21,7 +21,7 @@ const H = 34;
 const ALL: [Id, Id][] = [['core', 'vir'], ['fe', 'vir'], ['fe', 'core'], ['cli', 'core'], ['cli', 'fe'], ['wasm', 'core'], ['wasm', 'fe']];
 
 const STATES: S[] = [
-  { on: ['vir', 'core', 'fe', 'cli', 'wasm'], edges: [], note: 'One workspace, five crates, listed in engine/rust/Cargo.toml as members. They share one Cargo.lock and one target/ folder, and cargo test --workspace builds and tests them all.' },
+  { on: ['vir', 'core', 'fe', 'cli', 'wasm'], edges: [], note: 'One workspace, listed in engine/rust/Cargo.toml as members: five of its six crates are drawn (the sixth, frontend-python, is chapter 187’s Python plugin). They share one Cargo.lock and one target/ folder, and cargo test --workspace builds and tests them all.' },
   { on: ['vir'], edges: [], show: 'vir', note: 'viscosity-vir is the IR. It depends on nothing. Everything other crates may use is marked pub; the rest is private to it.' },
   { on: ['vir', 'core'], edges: [['core', 'vir']], show: 'core', note: 'viscosity-core uses vir: the analyses, the planner, the LanguagePlugin trait and compile. It also re-exports the IR with pub use viscosity_vir as vir.' },
   { on: ['vir', 'core', 'fe'], edges: [['core', 'vir'], ['fe', 'vir'], ['fe', 'core']], show: 'fe', note: 'viscosity-frontend-js implements core’s LanguagePlugin for JavaScript, on top of oxc. It can only use what vir and core made pub.' },
@@ -47,7 +47,7 @@ export default function CrateSteps() {
   const st = s.state;
   return (
     <StepFrame title="The crates of engine/rust" steps={s} note={st.note}>
-      <Svg w={400} h={250} title="Five crates in a workspace, with arrows from each crate to the crates it depends on">
+      <Svg w={400} h={250} title="Five of the six crates in a workspace, with arrows from each crate to the crates it depends on">
         <rect x={20} y={22} width={372} height={226} rx={8} fill="none" stroke={tok('line')} strokeDasharray="5 4" />
         <T x={28} y={14} size={10} weight={700} fill={tok('muted')}>workspace engine/rust · one Cargo.lock · one target/</T>
         {st.edges.map(([a, b]) => {

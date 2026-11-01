@@ -93,6 +93,10 @@ section headers of the `.wasm` to see where the bytes were:
 
 <PipelineSteps client:visible />
 
+The engine has grown since. At commit `288e497`, which adds oxc's
+semantic checks (chapter 172), the same three steps give 1,844,560,
+1,759,791 and 1,373,390 bytes: about 1.4 MB, 486 KiB gzipped.
+
 A WebAssembly file is a list of numbered **sections**: types,
 functions, exports, code, data, and "custom" sections that engines may
 ignore. The run below walks a 52-byte module the same way, reading
@@ -148,8 +152,9 @@ Step 2 begins with the check you'll write below. It reads the
 `wasm-bindgen` version from `Cargo.lock`, asks the CLI for its own,
 and stops with the exact `cargo install` command if they differ. One
 more check is worth having for a committed binary. The web `.wasm`
-from my rebuild was byte-identical to `book/public/wasm`, so the file
-this book serves really is the engine at that commit.
+from my rebuild was byte-identical to the one `book/public/wasm` held
+then, and a rebuild at `288e497` matches today's file, so the file this
+book serves really is the engine at that commit.
 
 <Prompts ids={['version-check', 'reproducible']} />
 
@@ -160,7 +165,8 @@ memory, and wasm-bindgen's allocator, table and start functions. It
 imports just three functions from JavaScript: one throws an error, one
 makes an `Error` object, and one sets up the table of JavaScript
 values. Everything else, oxc's parser included, is Rust compiled into
-the code section: 1,040,082 of the 1,145,498 bytes. `build.mjs` also
+the code section: 1,040,082 of the 1,145,498 bytes at `c68daec`, and
+1,248,736 of 1,373,390 at `288e497`. `build.mjs` also
 passes wasm-opt the WebAssembly features rustc enables by default for
 this target (bulk memory, sign extension, reference types and three
 more)<Cite id="rustc-wasm32-unknown-unknown" />.

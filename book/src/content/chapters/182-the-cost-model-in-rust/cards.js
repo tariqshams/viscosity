@@ -108,12 +108,12 @@ export const prompts = {
     a: 'It becomes SoA: the maximum is compared as if it were the size. Only a profile (measured 25) makes the planner keep it.',
   },
   'cm-rs-nan': {
-    q: 'Why does `--min-size abc` turn the threshold off, in both engines?',
-    a: 'It parses like `Number("abc")`, which is `NaN`, and `size < NaN` is always false.',
+    q: 'Why would a `min_size` of `NaN` turn the threshold off, in both engines?',
+    a: '`size < NaN` is always false, so nothing is refused for its size. That is why both CLIs now refuse `--min-size abc`.',
   },
   'cm-rs-bug': {
-    q: 'Why did the 186 parity fixtures miss that the two engines word the “measured” threshold message differently?',
-    a: 'They compile with default options and with `--bounds assume`, never with `--profile`, and the fuzzer doesn’t pass a profile either.',
+    q: 'Why did the 186 parity fixtures miss that the two engines once worded the “measured” threshold message differently?',
+    a: 'They compiled with default options and with `--bounds assume`, never with `--profile`, and the fuzzer passed no profile either.',
   },
 };
 
@@ -141,7 +141,7 @@ fn main() {
         (None, Some(100.0), 200.0),
         (Some(25.0), Some(100.0), 64.0),
         (None, None, 64.0),
-        // --min-size abc: Number("abc")
+        // NaN: the CLIs now refuse it
         (None, Some(2.0), f64::NAN),
     ];
     for (m, e, min) in cases {
@@ -278,7 +278,7 @@ fn an_unknown_size_passes() {
 - **Why \`or\`.** A measurement is a fact about a run; an estimate is a guess, and maybe only a maximum. \`measured.or(estimate)\` prefers the fact.
 - **Why “about” after a measurement.** \`size_is_upper_bound\` describes the *estimate*. A measured 25 is not a maximum of anything, so the word is “about”.
 - **Why \`None\` passes.** The planner can’t refuse on a size it doesn’t have, and a collection it can’t count (pushes in a function, a \`while\` loop) may well be large.
-- **The wording.** The real port writes \`"{} {}{} elements: below …"\`, which puts “ (measured)” before “elements”. The reference, and this exercise, put it after. The test \`a_measurement_wins_with_the_reference_wording\` is the test the fixtures lack.`,
+- **The wording.** The port once wrote \`"{} {}{} elements: below …"\`, which put “ (measured)” before “elements”. The reference, this exercise and today’s port put it after. The test \`a_measurement_wins_with_the_reference_wording\` is the kind of test the fixtures lacked until profile fixtures were added.`,
     wrong: [
       {
         code: SOL.replace(`    if c.numeric == 0 {
@@ -306,7 +306,7 @@ fn an_unknown_size_passes() {
       },
       {
         code: SOL.replace('{s} elements{t}:', '{s}{t} elements:'),
-        why: 'This is the port’s current wording: “about 25 (measured) elements”. The reference says “about 25 elements (measured)”, so the engines’ explain texts differ.',
+        why: 'This was the port’s wording until it was fixed: “about 25 (measured) elements”. The reference says “about 25 elements (measured)”, so the engines’ explain texts differed.',
       },
       {
         code: SOL.replace('let size = o.measured.or(est);', 'let size = o.measured.or(est)\n        .or(Some(0.0));'),
@@ -350,19 +350,19 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `--min-size abc` do?',
+    q: 'What does `--min-size abc` do today?',
     options: [
-      { t: 'The CLI rejects it as a usage error', why: 'Both CLIs parse it like `Number(...)`, without checking.' },
-      { t: 'It becomes `NaN`, so `size < min_size` is never true and no collection is refused for its size', correct: true, why: 'Every comparison with `NaN` is false, in `f64` as in JavaScript.' },
+      { t: 'The CLI rejects it as a usage error: “--min-size must be a non-negative number”', correct: true, why: 'Both CLIs check it now, because a `NaN` threshold would make `size < min_size` never true.' },
+      { t: 'It becomes `NaN`, so no collection is refused for its size', why: 'That is what both CLIs once did, parsing it like `Number("abc")`; now they check first.' },
       { t: 'It falls back to 64', why: 'There is no fallback.' },
     ],
   },
   {
-    q: 'The Rust and TypeScript engines word the measured threshold message differently. Why do 186/186 fixtures still pass?',
+    q: 'The Rust and TypeScript engines once worded the measured threshold message differently. Why did 186/186 fixtures still pass?',
     options: [
-      { t: 'The fixtures never use `--profile`, so that message never appears in them', correct: true, why: 'Parity is checked for default options and `--bounds assume` only.' },
+      { t: 'The fixtures never used `--profile`, so that message never appeared in them', correct: true, why: 'Parity was checked for default options and `--bounds assume` only; profile fixtures came with the fix.' },
       { t: 'The parity test ignores explain text', why: 'It compares explain byte for byte.' },
-      { t: 'The difference is only in whitespace', why: 'Words are in a different order.' },
+      { t: 'The difference was only in whitespace', why: 'Words were in a different order.' },
       { t: 'The fixtures were generated by the Rust engine', why: 'They are generated by the TypeScript reference.' },
     ],
   },

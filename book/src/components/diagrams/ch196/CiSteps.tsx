@@ -6,8 +6,9 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 // cancel-in-progress). The two red steps are real reproductions run
 // locally, not GitHub runs: `npm ci` on engine/ts at cff36bb^ (npm
 // 10.9.9, EUSAGE "Missing: @viscosity/cli@0.1.0 from lock file"), and
-// `cargo test -p viscosity-cli` at HEAD with engine/ts/node_modules
+// `cargo test -p viscosity-cli` at c68daec with engine/ts/node_modules
 // removed (fuzz.rs and multi_file.rs fail: Cannot find package 'acorn').
+// The workflow has run `npm ci` in engine/ts before cargo test since 1be50ca.
 type J = 'engine-ts' | 'engine-rust' | 'drip' | 'book' | 'website';
 type S = { push: boolean; old?: boolean; jobs: J[]; cache?: boolean; red?: J; steps?: string[]; note: string };
 
@@ -19,7 +20,7 @@ const STATES: S[] = [
   { push: true, jobs: JOBS, note: 'Five jobs run side by side. None depends on another, so one red job doesn’t stop the others, and you see every failure from one push.' },
   { push: true, jobs: JOBS, cache: true, note: 'Caches: setup-node keeps npm’s download cache, keyed by the hash of each package-lock.json; rust-cache keeps ~/.cargo and the compiled dependencies, keyed by the rustc version and more.' },
   { push: true, jobs: JOBS, red: 'engine-ts', steps: ['npm ci', '  EUSAGE: not in sync', '  Missing: @viscosity/cli', '  from lock file'], note: 'Reproduced locally at the commit before cff36bb: npm ci refuses a lockfile that doesn’t match package.json. On a dev machine, npm install had quietly papered over it.' },
-  { push: true, jobs: JOBS, red: 'engine-rust', steps: ['cargo test --workspace', '  fuzz.rs: FAILED', '  Cannot find package', "  'acorn'"], note: 'Reproduced locally at HEAD by removing engine/ts/node_modules: the engine-rust job never runs npm ci in engine/ts, but two tests load the TS engine. Not yet seen on GitHub.' },
+  { push: true, jobs: JOBS, red: 'engine-rust', steps: ['cargo test --workspace', '  fuzz.rs: FAILED', '  Cannot find package', "  'acorn'"], note: 'Reproduced locally by removing engine/ts/node_modules: the engine-rust job as first committed never ran npm ci in engine/ts, but two tests load the TS engine. The job now installs it first.' },
 ];
 
 export default function CiSteps() {

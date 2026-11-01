@@ -62,15 +62,15 @@ export const prompts = {
   },
   'ci-fmt': {
     q: 'Is the Rust engine’s formatting checked in CI?',
-    a: 'No: ci.yml has no `cargo fmt --check` step. The code is formatted today (it exits 0), but nothing keeps it that way.',
+    a: 'Yes, now: the engine-rust job runs `cargo fmt --all --check` before the tests. At first it had no fmt step, so nothing kept the code formatted.',
   },
   'ci-fixtures': {
     q: 'You changed the TypeScript reference. What must you run before committing, and which test reminds you?',
     a: '`node scripts/gen_expected.mjs`, then `cargo test`. `fixtures_match_the_programs_exactly` fails with “missing …, stale …” if the fixtures don’t match the programs.',
   },
   'ci-runner-state': {
-    q: 'Why would the engine-rust job, as committed, most likely fail its first real run?',
-    a: 'It never runs `npm ci` in engine/ts, but fuzz.rs and multi_file.rs load the TS engine, which needs acorn from engine/ts/node_modules (reproduced locally: Cannot find package ’acorn’).',
+    q: 'Why would the engine-rust job, as first committed, most likely have failed its first real run?',
+    a: 'It never ran `npm ci` in engine/ts, but fuzz.rs and multi_file.rs load the TS engine, which needs acorn from engine/ts/node_modules (reproduced locally: Cannot find package ’acorn’). The job runs it now.',
   },
   'ci-honest': {
     q: 'What does this chapter claim about CI runs on GitHub?',
@@ -260,12 +260,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these does the committed workflow NOT check?',
+    q: 'Which of these does the committed workflow NOT run?',
     options: [
       { t: 'Clippy with warnings denied', why: 'The engine-rust and drip jobs run it.' },
       { t: 'The wasm32 build of viscosity-wasm', why: 'The engine-rust job builds it.' },
-      { t: '`cargo fmt --check`', correct: true, why: 'There is no fmt step; the code happens to be formatted today.' },
-      { t: 'The 200-program fuzz run', why: 'It is part of `cargo test --workspace`.' },
+      { t: 'A long fuzzing campaign (20,000 programs)', correct: true, why: 'Only the 200-program run inside `cargo test` happens in CI; long campaigns are run by hand.' },
+      { t: '`cargo fmt --check`', why: 'The engine-rust job runs `cargo fmt --all --check` (it was added after this chapter was first written).' },
     ],
   },
   {

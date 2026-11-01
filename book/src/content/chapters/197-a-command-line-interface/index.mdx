@@ -176,7 +176,7 @@ Given several files, `explain` prints each report under a
 `== a.js ==` header, in your order, however many threads compiled them
 (chapter 195). `build` needs `-o <dir>` and writes each file there
 under its own name. A file that fails is reported as
-`viscosity: bad.js: SyntaxError: Unexpected token (1:6)` while the others
+`viscosity: bad.js: Unexpected token (1:6)` while the others
 still compile: that is `Ok(false)`, status 1. A single file's error
 ends the run.
 
@@ -225,17 +225,19 @@ one way: the port promises to behave like the TypeScript CLI, and
 `multi_file.rs` runs both CLIs and compares their output, and, for bad
 `--min-size` values, their messages and exit statuses. With clap, those
 would be clap's to choose. Size is a weaker reason: clap's derive build
-added 17 crates, and the CLI already depends on 83.
+added 17 crates, and `cargo tree` already lists 84 outside the
+workspace under the CLI.
 
 <Prompts ids={['clap-diff', 'why-hand']} />
 
 <Callout kind="engine" label="Under the hood">
 A CLI's messages and exit statuses are part of its public API: scripts
-depend on them (chapter 198). One rough edge I found: `main` collects
-`std::env::args()`, so a file name that isn't valid UTF-8 panics before
-parsing, with exit status 101, as the standard library
-documents<Cite id="rust-std-env-args" />. `args_os()` would fix it. The
-TS CLI turns the bad byte into U+FFFD and then can't open the file.
+depend on them (chapter 198). One rough edge I found: `main` collected
+`std::env::args()`, so a file name that isn't valid UTF-8 panicked
+before parsing, with exit status 101, as the standard library
+documents<Cite id="rust-std-env-args" />. It now collects `args_os()`,
+and such a file compiles (`tests/os_args.rs`). The TS CLI turns the bad
+byte into U+FFFD and then can't open the file.
 </Callout>
 
 ## Your turn

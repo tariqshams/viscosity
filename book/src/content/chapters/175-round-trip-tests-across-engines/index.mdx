@@ -79,8 +79,8 @@ for p in programs() {
 It records every mismatch and fails once, listing them all. Each entry
 says where the texts first differ, which is your exercise. Other tests
 in the same file check that the fixture folder matches the programs
-exactly (none missing, none stale), that the 13 `explain --frames`
-fixtures match too, that each corpus program's
+exactly (none missing, none stale), that the 14 `explain --frames`
+fixtures and four `--profile` fixtures match too, that each corpus program's
 `// viscosity: ps=soa` header holds, and that the built `viscosity`
 binary prints the same output. Cargo tells the test where the binary is
 through `CARGO_BIN_EXE_viscosity`<Cite id="cargo-targets" />.
@@ -91,12 +91,12 @@ When I ran it (rustc 1.97, on a copy of the repo with its own target
 directory, so as not to disturb other work):
 
 ```
-parity: 186/186 (54 Python)
+parity: 190/190 (54 Python)
 ```
 
-That is 93 programs, each in two variants. The count grows as programs
-are added (the README said 176 a commit earlier). What matters is that
-the two numbers are equal.
+That is 95 programs, each in two variants. The count grows as programs
+are added (it was 186 when this chapter was first written). What
+matters is that the two numbers are equal.
 
 <Callout kind="definition">
 A **cross-implementation test** runs two implementations of the same
@@ -115,12 +115,13 @@ stale files.
 Two engines can agree on a wrong answer. So `differential.rs` runs each
 original and compiled JavaScript program with `node` (in an isolated VM
 context, by a copy of the TS runner) and compares everything they print
-and throw. Python programs run with `python3`. On my run, 66 of 66
+and throw. Python programs run with `python3`. On my run, 68 of 68
 JavaScript and 27 of 27 Python programs behaved identically.
 
 To see both tests at work, I deleted one line from a copy of
 `crates/core/src/builder.rs`: the case that rewrites a `throw` operand
-when a trivial phi is removed (chapter 176). Parity, trimmed:
+when a trivial phi is removed (chapter 176). Parity, trimmed (this was
+when it had 186 pairs):
 
 ```
 4 of 186 differ:
@@ -189,7 +190,7 @@ all, so the two engines disagreed.
 The wasm crate wraps the same `compile`, so the WebAssembly build is
 held to the same fixtures. I loaded the package's Node build
 (`packages/wasm/dist/node`) and compiled all six suites through
-`compileLanguage`: 186 of 186 fixture pairs were identical.
+`compileLanguage`: 190 of 190 fixture pairs were identical.
 `packages/wasm/smoke.mjs` goes further: it packs the npm package,
 installs it into an empty directory, and compares every corpus program
 with the TypeScript CLI three ways (CommonJS `require`, ES `import`, and

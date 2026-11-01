@@ -76,9 +76,11 @@ members = ["crates/vir", "crates/core",
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.97"
 
 [workspace.dependencies]
-viscosity-vir = { path = "crates/vir" }
+viscosity-vir = { path = "crates/vir",
+    … }
 oxc_parser = "0.156"
 wasm-bindgen = "=0.2.106"
 indexmap = "2"
@@ -91,7 +93,10 @@ codegen-units = 1
 
 A member opts in key by key. `crates/core/Cargo.toml` says
 `version.workspace = true` and `indexmap.workspace = true`, and gets the
-root's value<Cite id="cargo-workspaces" />.
+root's value<Cite id="cargo-workspaces" />. The trimmed `…` in the
+`viscosity-vir` entry is `version = "0.1.0"`: cargo uses the path
+inside the workspace and the version once the crate is packaged,
+which chapter 198 needs<Cite id="cargo-specifying-deps" />.
 
 The version requirements say different things. `"2"` accepts any 2.x.
 `"0.156"` is narrower: before 1.0, cargo treats each minor version as
@@ -112,11 +117,12 @@ produce slower code<Cite id="cargo-profiles" />. Chapter 142 met the
 same two keys in drip-rs.
 
 <Callout kind="pitfall">
-Inheritance is opt-in per key. The root also sets
-`rust-version = "1.85"`, but no member writes
-`rust-version.workspace = true`, so `cargo metadata` reports no
-minimum Rust version for any of them. It would be wrong anyway: oxc
-0.156's own manifest asks for Rust 1.97.0.
+Inheritance is opt-in per key. When this chapter was first written,
+the root set `rust-version = "1.85"` but no member wrote
+`rust-version.workspace = true`, so `cargo metadata` reported no
+minimum Rust version for any of them. It was wrong anyway: oxc
+0.156's own manifest asks for Rust 1.97.0. Now the root says `"1.97"`
+and every member opts in.
 </Callout>
 
 <Prompts ids={['vrs-inherit', 'vrs-caret', 'vrs-exact']} />
@@ -190,10 +196,11 @@ corpus_basic_soa.assume.explain.txt
 
 `crates/cli/tests/parity.rs` compiles the same programs with the Rust
 engine and compares strings. On a mismatch it prints the first line
-where the two differ, which is the exercise below. The README counts
-176 matching pairs; when I ran `cargo test -p viscosity-cli --test
-parity` for this chapter (cargo 1.97), it printed
-`parity: 178/178 (54 Python)`, because programs keep being added. Other
+where the two differ, which is the exercise below. When I ran
+`cargo test -p viscosity-cli --test parity` for this chapter (cargo
+1.97), it printed `parity: 178/178 (54 Python)`; at commit `288e497`
+it prints `parity: 190/190 (54 Python)`, because programs keep being
+added. Other
 tests in the file check that every program has fixtures and that the
 `viscosity` binary prints the same thing as the library.
 

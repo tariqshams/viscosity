@@ -30,7 +30,7 @@ export const prompts = {
     a: 'acorn: UTF-16 code units (JavaScript string indices). oxc: UTF-8 bytes (Rust string indices).',
   },
   'oxc-same-cut': {
-    q: 'acorn says 116 and oxc says 126 for the same statement. Why do both engines still splice at the same characters?',
+    q: 'acorn says 266 and oxc says 286 for the same statement. Why do both engines still splice at the same characters?',
     a: 'Each slices its own string in its own unit: the TS emitter a JavaScript string by code units, the Rust emitter a `String` by bytes.',
   },
   'oxc-lines': {
@@ -38,8 +38,8 @@ export const prompts = {
     a: '`\\n`, `\\r\\n`, a lone `\\r`, U+2028 and U+2029: the ECMAScript line breaks that acorn counts, so `explain` names the same lines.',
   },
   'oxc-semantic': {
-    q: 'Why does the Rust engine compile `let a = 1; let a = 2;` when the TypeScript engine reports a SyntaxError?',
-    a: 'oxc’s parser leaves such checks to its semantic analyzer, and the port runs only the parser. acorn checks them while parsing.',
+    q: 'oxc’s parser alone accepts `let a = 1; let a = 2;`. What makes the Rust engine reject it, as acorn does?',
+    a: 'A second pass: oxc’s `SemanticBuilder` with `with_check_syntax_error(true)`, which reports the early errors the parser leaves out.',
   },
 };
 
@@ -167,19 +167,19 @@ ${SIG}
 
 export const quiz = [
   {
-    q: 'For `const ps = [];` in `unicode_offsets.js`, acorn reports 116 and oxc 126. Which is right?',
+    q: 'For `const ps = [];` in `unicode_offsets.js`, acorn reports 266 and oxc 286. Which is right?',
     options: [
-      { t: 'acorn: oxc miscounts non-ASCII text', why: 'oxc counts bytes correctly; `&src[126..140]` is exactly `const ps = [];`.' },
-      { t: 'Both: acorn counts UTF-16 code units, oxc counts UTF-8 bytes', correct: true, why: 'The ten accented and emoji characters before it take more bytes than code units.' },
+      { t: 'acorn: oxc miscounts non-ASCII text', why: 'oxc counts bytes correctly; `&src[286..300]` is exactly `const ps = [];`.' },
+      { t: 'Both: acorn counts UTF-16 code units, oxc counts UTF-8 bytes', correct: true, why: 'The accented letters, emoji and line-separator characters before it take more bytes than code units.' },
       { t: 'oxc: acorn skips comments when counting', why: 'acorn counts every code unit, comments included.' },
       { t: 'Neither: offsets should count characters', why: 'Neither language indexes strings by characters; each uses its own unit.' },
     ],
   },
   {
-    q: 'What happens if the Rust emitter slices its `String` with acorn’s offsets 116..130?',
+    q: 'What happens if the Rust emitter slices its `String` with acorn’s offsets 266..280?',
     options: [
       { t: 'It gets the same text, because Rust converts offsets automatically', why: 'Rust indexes `str` by bytes and never converts.' },
-      { t: 'It gets `"ld 😀\';\\ncons"`, the wrong text, and an offset inside a character would panic', correct: true, why: 'Byte 116 is ten bytes before the statement. A slice must start and end on a character boundary.' },
+      { t: 'It gets `"9, and a line "`, the wrong text, and an offset inside a character would panic', correct: true, why: 'Byte 266 is twenty bytes before the statement. A slice must start and end on a character boundary.' },
       { t: 'It fails to compile', why: 'The offsets are run-time numbers; the compiler can’t check them.' },
     ],
   },
@@ -209,11 +209,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which statement about syntax errors is true for the port as checked here?',
+    q: 'Which statement about early errors in the port is true?',
     options: [
-      { t: 'It rejects exactly the programs acorn rejects, with different wording', why: 'Of the twelve early-error programs tried, acorn rejected eleven and oxc’s parser only one.' },
-      { t: 'It never reports syntax errors', why: 'It reports what oxc’s parser finds, such as a top-level `return`.' },
-      { t: 'oxc’s parser leaves some early errors, like a redeclared `let`, to a semantic pass the port doesn’t run', correct: true, why: 'So the TypeScript engine says SyntaxError and the Rust engine compiles the file.' },
+      { t: 'oxc’s parser alone reports every early error acorn reports', why: 'Of the twelve early-error programs tried, acorn rejected eleven and oxc’s parser alone only one.' },
+      { t: 'Both engines report every early error at the same line and column', why: 'oxc anchors some on a different token: for `let a = 1; let a = 2;` Rust says (1:4) and acorn (1:15).' },
+      { t: 'After parsing, the port runs oxc’s semantic syntax checks, so a redeclared `let` is rejected by both engines', correct: true, why: 'That pass was added after this chapter was first written; before it, the Rust engine compiled the file.' },
     ],
   },
 ];

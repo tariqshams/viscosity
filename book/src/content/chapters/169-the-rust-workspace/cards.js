@@ -200,9 +200,9 @@ export const quiz = [
     ],
   },
   {
-    q: 'The workspace root sets `rust-version = "1.85"` under `[workspace.package]`. What minimum Rust version do the member crates declare?',
+    q: 'A workspace root sets `rust-version = "1.85"` under `[workspace.package]`, and no member writes `rust-version.workspace = true` (engine/rust’s first manifest). What minimum Rust version do the members declare?',
     options: [
-      { t: 'None: no member writes `rust-version.workspace = true`', correct: true, why: 'Inheritance is opt-in per key; `cargo metadata` shows no `rust_version` for any member.' },
+      { t: 'None: no member writes `rust-version.workspace = true`', correct: true, why: 'Inheritance is opt-in per key; `cargo metadata` showed no `rust_version` for any member. Today every member opts in and declares 1.97.' },
       { t: '1.85, inherited automatically', why: 'Workspace keys are inherited only by members that ask for them.' },
       { t: '1.97, because oxc requires it', why: 'oxc’s manifest does ask for 1.97.0, but that is oxc’s field, not the members’.' },
     ],

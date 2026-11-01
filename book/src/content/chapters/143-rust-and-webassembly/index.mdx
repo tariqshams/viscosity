@@ -152,7 +152,7 @@ memory. Notice that the lengths differ: 23 UTF-8 bytes, 22 UTF-16 units.
 An `Err` takes the other branch. wasm-bindgen turns an exported
 function's `Err` into a JavaScript exception<Cite id="wasm-bindgen-guide" />.
 From Node, `compile("let = ;")` threw an `Error` whose message was
-`SyntaxError: Unexpected token`: the `CompileError` from oxc, through
+`Unexpected token (1:6)`: the `CompileError` from oxc, through
 `to_string()`, through `JsError`, into a `try`/`catch` you could write
 in chapter 11.
 
@@ -170,7 +170,7 @@ line of the glue connects back to chapter 117. Before each copy it
 checks its `Uint8Array` view of the memory, and if the view's
 `byteLength` is 0 it makes a new one. A `malloc` inside Rust may have
 grown the memory, which detaches the old buffer<Cite id="wasm-spec-jsapi" />.
-The book's playground still runs the TypeScript engine; chapter 189
+The book's playground starts on the TypeScript engine; chapter 189
 compiles the Rust one for the browser.
 </Callout>
 

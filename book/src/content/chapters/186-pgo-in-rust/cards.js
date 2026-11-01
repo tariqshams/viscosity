@@ -22,12 +22,12 @@ export const prompts = {
     a: 'Whatever `node` is on the `PATH`. The Rust binary has no Node of its own; if none is found it says profiling needs Node.js.',
   },
   'pg-filter-map': {
-    q: 'What does `read_profile` keep from the JSON?',
-    a: 'Each entry whose `maxLength` is a number, as `name -> f64`. Anything else is skipped; a non-object file is an error.',
+    q: 'What does `read_profile` accept from the JSON?',
+    a: 'An object whose every entry is an object with a finite, non-negative `maxLength`, as `name -> f64`. Anything else is an error.',
   },
   'pg-strict': {
     q: 'A hand-edited profile says `"maxLength": "20"`. What do the two CLIs do?',
-    a: 'Rust skips the entry (not a number). TypeScript uses it, because `"20" < 64` is true in JavaScript.',
+    a: 'Both stop with the same error: the entry must be an object whose maxLength is a non-negative number. (Once, Rust skipped it and TypeScript used it.)',
   },
   'pg-by-name': {
     q: 'Two functions each build an array called `ps`, of 1000 and 10 elements. What does the profile say?',
@@ -217,7 +217,7 @@ export const quiz = [
     q: 'An instrumented program prints its results and then throws. What does `viscosity profile` produce?',
     options: [
       { t: 'The JSON, since the exit hook ran', why: 'The hook did write the file, but the CLI checks the exit status first.' },
-      { t: 'An error: “the instrumented program failed (exit status: 1)”', correct: true, why: 'A non-zero status is a failure, and the temporary directory with the JSON is left behind.' },
+      { t: 'An error: “the profiled program failed (exit code 1)”', correct: true, why: 'A non-zero status is a failure, in both CLIs, and the temporary directory is removed anyway.' },
       { t: 'An empty profile `{}`', why: 'Nothing is printed on failure.' },
     ],
   },

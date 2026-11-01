@@ -23,7 +23,7 @@ export const prompts = {
   },
   'native-cli': {
     q: 'What does the Rust CLI from `cargo build --release` run on?',
-    a: 'Only x86-64 Linux with glibc: a 2.4 MB ELF executable. Every other platform needs its own build.',
+    a: 'Only x86-64 Linux with glibc: a 2.8 MB ELF executable. Every other platform needs its own build.',
   },
   'exports-order': {
     q: 'In a conditional `"exports"` map, which entry does Node pick?',
@@ -38,12 +38,12 @@ export const prompts = {
     a: 'The package says `"type": "module"`, but the nodejs glue is CommonJS. The nearer `package.json` tells Node how to read the files in that folder.',
   },
   'two-copies': {
-    q: 'Why does the tarball contain the 1.1 MB `.wasm` twice?',
-    a: 'Each glue file loads the module next to itself, and the node and web modules differ by 64 bytes. It costs about 1.1 MB unpacked.',
+    q: 'Why does the tarball contain the 1.4 MB `.wasm` twice?',
+    a: 'Each glue file loads the module next to itself, and the node and web modules differ by 64 bytes. It costs about 1.4 MB unpacked.',
   },
   'licences-67': {
     q: 'Why must `THIRD_PARTY_LICENSES.txt` ship with the `.wasm`?',
-    a: 'The `.wasm` statically links 67 third-party crates, and their licences require their notices to go wherever the code goes.',
+    a: 'The `.wasm` statically links 71 third-party crates, and their licences require their notices to go wherever the code goes.',
   },
   'oxc-licence': {
     q: 'What was missing from oxc’s published crates, and what does the build do about it?',
@@ -299,7 +299,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does the `.wasm` statically linking 67 crates mean for the package?',
+    q: 'What does the `.wasm` statically linking 71 crates mean for the package?',
     options: [
       { t: 'It must include their licence texts', correct: true, why: 'Their code is inside the file you distribute, so their notices must ship too. `build.mjs` collects them into `THIRD_PARTY_LICENSES.txt`.' },
       { t: 'Users must install those crates with cargo', why: 'Nothing is installed: the crates are compiled into the `.wasm`.' },

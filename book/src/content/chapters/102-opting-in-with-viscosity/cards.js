@@ -35,7 +35,7 @@ export const prompts = {
   },
   'ann-aosoa': {
     q: 'What does `@viscosity aosoa(N)` require?',
-    a: 'Every field provably numeric, and N a power of two (8 if omitted).',
+    a: 'Every field provably numeric, and N a power of two, at most 65536 (8 if omitted).',
   },
   'ann-unsafe': {
     q: 'Can an annotation make Viscosity transform a collection with a bailout?',
@@ -53,11 +53,12 @@ export const examples = {
     code: `// The pattern from frontend-js.
 const ANN = new RegExp(
   '@viscosity\\\\s+(aosoa|soa|aos)\\\\b'
-  + '(?:\\\\((\\\\d+)\\\\))?');
+  + '(?:\\\\(([^)]*)\\\\))?');
 
 const tests = [
   ' @viscosity soa',
   ' @viscosity aosoa(4)',
+  ' @viscosity aosoa(x)',
   ' @viscosity aosoa',
   ' @viscosity SoA',
   ' @viscosity soap',
