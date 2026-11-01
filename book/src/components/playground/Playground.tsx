@@ -9,7 +9,7 @@ import clsx from 'clsx';
  * Two engines, with identical output: the TypeScript reference (bundled from
  * engine/ts, the default) and the Rust port compiled to WebAssembly
  * (engine/rust/crates/wasm). The Rust engine runs in a worker and its .wasm
- * (about 1.1 MB) is fetched only when it is chosen, with `engine="rust"` or
+ * (about 1.4 MB) is fetched only when it is chosen, with `engine="rust"` or
  * the TS / Rust toggle.
  */
 type Engine = 'ts' | 'rust';
@@ -86,7 +86,7 @@ export default function Playground({ initial, title = 'Viscosity playground', en
     };
     if (e === 'rust') {
       rust.current ??= rustCompiler();
-      if (!rustReady.current) setStatus('Loading the Rust engine (WebAssembly, about 1.1 MB)…');
+      if (!rustReady.current) setStatus('Loading the Rust engine (WebAssembly, about 1.4 MB)…');
       const r = await rust.current(s);
       rustReady.current = !!r.res || !r.fatal;
       if (r.res) show(r.res, null, `Rust engine (WebAssembly), compiled in ${r.ms!.toFixed(1)} ms`);
@@ -128,7 +128,7 @@ export default function Playground({ initial, title = 'Viscosity playground', en
           <div role="group" aria-label="Compiler engine" className="flex shrink-0 gap-1" data-engine-toggle>
             {(['ts', 'rust'] as const).map((e) => (
               <button key={e} type="button" aria-pressed={eng === e} data-engine={e}
-                title={e === 'ts' ? 'TypeScript engine (the reference)' : 'Rust engine, compiled to WebAssembly (about 1.1 MB, loaded on first use)'}
+                title={e === 'ts' ? 'TypeScript engine (the reference)' : 'Rust engine, compiled to WebAssembly (about 1.4 MB, loaded on first use)'}
                 className={clsx('btn-3d btn-3d-sm px-2 py-0.5 text-xs', eng === e && 'is-pressed')} onClick={() => switchTo(e)}>
                 {e === 'ts' ? 'TS' : 'Rust'}
               </button>

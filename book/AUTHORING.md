@@ -213,7 +213,7 @@ toggle in its header. Props:
 
 - `engine="rust"` starts on the Rust engine (default `"ts"`). Use it only
   where the chapter is about the Rust port (Part XI): the `.wasm` is about
-  1.1 MB (0.4 MB gzipped), fetched the first time the Rust engine is used.
+  1.4 MB (0.5 MB gzipped), fetched the first time the Rust engine is used.
 - `engineToggle={false}` hides the toggle.
 
 ```mdx

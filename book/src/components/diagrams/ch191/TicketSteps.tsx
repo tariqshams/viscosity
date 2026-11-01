@@ -15,7 +15,7 @@ type Ev =
 type S = { evs: Ev[]; latest: number; showing: string; dead?: boolean; second?: boolean; note: string };
 
 const STATES: S[] = [
-  { evs: [{ k: 'send', id: 1, to: 0 }, { k: 'note', text: 'fetching 1.1 MB…', w: 0 }], latest: 1, showing: 'Loading the Rust engine…', note: 'The reader presses Rust. The page makes ticket 1 and starts a worker. Its first job is to fetch and instantiate /wasm/viscosity_wasm_bg.wasm, which takes a moment.' },
+  { evs: [{ k: 'send', id: 1, to: 0 }, { k: 'note', text: 'fetching about 1.4 MB…', w: 0 }], latest: 1, showing: 'Loading the Rust engine…', note: 'The reader presses Rust. The page makes ticket 1 and starts a worker. Its first job is to fetch and instantiate /wasm/viscosity_wasm_bg.wasm, which takes a moment.' },
   { evs: [{ k: 'send', id: 2, to: 0 }, { k: 'send', id: 3, to: 0 }], latest: 3, showing: 'Loading the Rust engine…', note: 'They type two characters. Each edit compiles again: tickets 2 and 3. All three requests wait in the worker for the same loading promise.' },
   { evs: [{ k: 'ts', id: 4 }], latest: 4, showing: '#4 (TypeScript)', note: 'Impatient, they switch to TS. The TypeScript engine runs on the page, synchronously: ticket 4 is compiled and shown at once.' },
   { evs: [{ k: 'reply', id: 1, from: 0, verdict: 'stale' }, { k: 'reply', id: 2, from: 0, verdict: 'stale' }, { k: 'reply', id: 3, from: 0, verdict: 'stale' }], latest: 4, showing: '#4 (TypeScript)', note: 'Now the module is ready and the worker answers 1, 2 and 3. None of them is ticket 4, so all three are dropped. Without tickets, Rust’s answer to an old edit would replace the newer TS one.' },

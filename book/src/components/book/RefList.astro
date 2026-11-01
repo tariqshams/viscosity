@@ -7,7 +7,7 @@ const refs = ids.map((id) => { const r = byId(id); if (!r) throw new Error(`unkn
   {refs.map((r, i) => (
     <li id={`ref-${r.id}`} class="flex gap-2 py-1.5">
       {numbered && <span class="w-7 shrink-0 text-right text-muted">[{i + 1}]</span>}
-      <span class="min-w-0">
+      <span class="min-w-0 [overflow-wrap:anywhere]">
         {r.authors.join(', ')}{r.year ? ` (${r.year})` : ''}. <i>{r.title}</i>. {r.venue}.{' '}
         {r.doi ? <a class="break-all text-brand underline" href={`https://doi.org/${r.doi}`}>doi:{r.doi}</a> : <a class="break-all text-brand underline" href={r.url}>{r.url.replace(/^https?:\/\//, '')}</a>}
         <span class="text-muted"> (checked {r.accessed})</span>
