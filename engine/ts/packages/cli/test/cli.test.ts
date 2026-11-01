@@ -57,6 +57,16 @@ describe('several files', () => {
     expect(r.out).toBe(`== ${files[0]} ==\n${run('explain', files[0]).out}`);
     expect(r.err).toMatch(new RegExp(`^viscosity: ${bad}: `));
   });
+  it('names a single file it cannot read', () => {
+    const nope = join(mkdtempSync(join(tmpdir(), 'vsc-cli-')), 'nope.js');
+    for (const cmd of ['explain', 'build']) {
+      const r = run(cmd, nope);
+      expect(r.status).toBe(1);
+      expect(r.err).toBe(`viscosity: cannot read ${nope}: ENOENT: no such file or directory, open '${nope}'\n`);
+    }
+    // With several files the line already starts with the name.
+    expect(run('explain', files[0], nope).err).toBe(`viscosity: ${nope}: ENOENT: no such file or directory, open '${nope}'\n`);
+  });
   it('names TypeScript outputs .js', () => {
     expect([outputName('a/b.ts'), outputName('c.mts'), outputName('d.tsx'), outputName('e.js')]).toEqual(['b.js', 'c.mjs', 'd.jsx', 'e.js']);
   });

@@ -77,7 +77,12 @@ differs in ways that matter for parity:
   the port parses with `parse_regular_expression` on and then runs
   `oxc_semantic`'s `SemanticBuilder` with `with_check_syntax_error(true)`,
   reporting its first error as a syntax error. Its scopes are not used
-  otherwise (`resolve` does the reference's own scope analysis).
+  otherwise (`resolve` does the reference's own scope analysis). Either
+  kind of error ends with acorn's ` (line:column)` (1-based line, 0-based
+  column in UTF-16 code units), taken from the start of the diagnostic's
+  first label. oxc sometimes blames another token than acorn does (a
+  redeclaration is labelled at the first declaration, acorn points at the
+  second), so the position can differ there.
 - **Generic traversal.** The reference often walks "all children" (to resolve
   names, or to collect the variables an unmodelled node mentions). The port
   uses `oxc_ast_visit::Visit` with overrides for the node kinds the reference
