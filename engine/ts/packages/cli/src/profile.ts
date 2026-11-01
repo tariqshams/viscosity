@@ -37,7 +37,12 @@ process.on('exit', () => {
  *  non-zero exit), that is an error: a partial run's sizes could mislead the
  *  planner. The temporary directory is removed in every case. */
 export function profile(file: string, plugin: LanguagePlugin): Profile {
-  const source = readFileSync(file, 'utf8');
+  let source: string;
+  try {
+    source = readFileSync(file, 'utf8');
+  } catch (e) {
+    throw new Error(`cannot read ${file}: ${(e as Error).message}`);
+  }
   const dir = mkdtempSync(join(tmpdir(), 'vsc-prof-'));
   try {
     const inst = join(dir, 'instrumented.cjs');

@@ -68,8 +68,10 @@ export function parseArgs(argv: string[]) {
       if (v !== 'check' && v !== 'assume') throw new UsageError('--bounds must be check or assume');
       args.opts.bounds = v;
     } else if (a === '--min-size') {
-      const v = Number(next());
-      if (Number.isNaN(v) || v < 0) throw new UsageError('--min-size must be a non-negative number');
+      const raw = next();
+      const v = Number(raw);
+      // Number('') is 0, so a blank value is refused explicitly.
+      if (raw.trim() === '' || Number.isNaN(v) || v < 0) throw new UsageError('--min-size must be a non-negative number');
       args.opts.minSize = v;
     } else if (a === '--profile') args.profile = next();
     else if (a === '--python-auto') args.opts.pythonAuto = true;

@@ -133,3 +133,27 @@ fn profiling_cleans_up_and_a_throwing_program_is_an_error() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn profiling_a_missing_file_names_it_in_both_engines() {
+    let dir = temp_dir("missing");
+    let nope = dir.join("nope.js");
+    let nope = nope.to_str().unwrap();
+    for (engine, out) in both(&["profile", nope], None) {
+        assert_eq!(out.status.code(), Some(1), "{engine}");
+        let err = String::from_utf8_lossy(&out.stderr);
+        let want = format!("viscosity: cannot read {nope}: ");
+        assert!(err.starts_with(&want), "{engine}: {err}");
+    }
+}
+
+#[test]
+fn a_blank_min_size_is_a_usage_error_in_both_engines() {
+    for v in ["", " "] {
+        for (engine, out) in both(&["explain", "--min-size", v, "x.js"], None) {
+            assert_eq!(out.status.code(), Some(1), "{engine}");
+            let err = String::from_utf8_lossy(&out.stderr);
+            assert!(err.starts_with("viscosity: --min-size must be a non-negative number\n"), "{engine}: {err}");
+        }
+    }
+}
