@@ -10,18 +10,18 @@ import QuizSet from '../../components/book/QuizSet.astro';
 import RefList from '../../components/book/RefList.astro';
 import ChapterDone from '../../components/book/ChapterDone';
 import { makeCite } from '../../components/book/Cite';
-import { allChapters, chapterHref, cardsFor, type Chapter } from '../../lib/chapters';
+import PrevNext from '../../components/book/PrevNext.astro';
+import { allChapters, chapterHref, cardsFor, neighbours, type Chapter } from '../../lib/chapters';
 import { estimateMinutes } from '../../lib/minutes.js';
 import { PARTS } from '../../data/book.js';
 
 export async function getStaticPaths() {
   const chapters = await allChapters();
-  return chapters.map((c, i) => ({
-    params: { slug: c.id },
-    props: { chapter: c, prev: chapters[i - 1] ?? null, next: chapters[i + 1] ?? null },
-  }));
+  return chapters.map((c) => ({ params: { slug: c.id }, props: { chapter: c } }));
 }
-const { chapter, prev, next } = Astro.props as { chapter: Chapter; prev: Chapter | null; next: Chapter | null };
+const { chapter } = Astro.props as { chapter: Chapter };
+// Chapter 1's Previous is the last front-matter page (About the author).
+const { prev, next } = await neighbours(`chapter:${chapter.id}`);
 const { Content } = await render(chapter);
 const d = chapter.data;
 const part = PARTS.find((p) => p.id === d.part)!;
@@ -62,9 +62,6 @@ const components = {
       <ChapterDone client:visible n={d.n} slug={chapter.id} />
     </div>
 
-    <nav class="mt-8 grid gap-3 font-sans sm:grid-cols-2" aria-label="Chapter navigation">
-      {prev ? <a href={chapterHref(prev)} class="btn-3d block px-4 py-3"><span class="block text-xs text-muted">← Previous</span><span class="font-semibold">{prev.data.n}. {prev.data.title}</span></a> : <span />}
-      {next && <a href={chapterHref(next)} class="btn-3d block px-4 py-3 text-right"><span class="block text-xs text-muted">Next →</span><span class="font-semibold">{next.data.n}. {next.data.title}</span></a>}
-    </nav>
+    <PrevNext prev={prev} next={next} label="Chapter navigation" />
   </article>
 </Book>

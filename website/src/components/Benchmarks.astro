@@ -1,0 +1,214 @@
+---
+// Landing-page benchmarks. Every number comes from the committed matrix file,
+// so nothing here is typed by hand. Re-run the matrix in engine/ts to update.
+import matrix from '../../../engine/ts/packages/bench/results/matrix-2026-10-31.json';
+
+const order = ['particles', 'heat', 'ledger', 'boids', 'nbody'];
+const names: Record<string, string> = { nbody: 'n-body' };
+const rows = order
+	.map((p) => matrix.e2e.rows.find((r) => r.program === p))
+	.filter((r): r is (typeof matrix.e2e.rows)[number] => Boolean(r));
+const runtimes = [
+	{ key: 'node', label: 'Node', engine: 'V8', version: matrix.meta.versions.node },
+	{ key: 'bun', label: 'Bun', engine: 'JavaScriptCore', version: matrix.meta.versions.bun },
+] as const;
+const max = Math.ceil(Math.max(...rows.flatMap((r) => runtimes.map((rt) => r[rt.key].speedupBest))));
+const pct = (x: number) => `${((x / max) * 100).toFixed(2)}%`;
+const fmt = (x: number) => `${x.toFixed(2)}×`;
+const { summary } = matrix.e2e;
+const cli = matrix.compileSpeed.cli;
+const runs = matrix.meta.settings.e2eRuns;
+const cpus = matrix.meta.machine.logicalCpus;
+const date = matrix.meta.date.slice(0, 10);
+---
+
+<section class="bench not-content" aria-labelledby="bench-title">
+	<header>
+		<h2 id="bench-title">Measured, not promised</h2>
+		<p>Whole JavaScript programs, original vs compiled by Viscosity, on two engines. Longer bars are faster.</p>
+	</header>
+
+	<div class="stats">
+		{runtimes.map((rt) => (
+			<div class="stat">
+				<span class="value">{fmt(summary[rt.key].geomeanSpeedupBest)}</span>
+				<span class="label">geometric mean on {rt.label} ({rt.engine})</span>
+			</div>
+		))}
+		<div class="stat">
+			<span class="value">{cli.totalSpeedup}×</span>
+			<span class="label">faster compiles: Rust CLI vs TS CLI over {matrix.compileSpeed.programs} programs</span>
+		</div>
+	</div>
+
+	<div class="legend" aria-hidden="true">
+		{runtimes.map((rt) => (
+			<span class={`key ${rt.key}`}><i></i>{rt.label} {rt.version.replace(/^v/, '')} ({rt.engine})</span>
+		))}
+		<span class="key one"><i></i>1× = no change</span>
+	</div>
+
+	<ul class="programs" style={`--one: ${pct(1)}`}>
+		{rows.map((r) => (
+			<li>
+				<span class="program">{names[r.program] ?? r.program} <code>{r.layouts}</code></span>
+				{runtimes.map((rt) => (
+					<div class={`bar-row ${rt.key}`}>
+						<span class="rt">{rt.label}</span>
+						<span class="track">
+							<span class="bar" style={`width: ${pct(r[rt.key].speedupBest)}`}></span>
+						</span>
+						<span class="num">{fmt(r[rt.key].speedupBest)}</span>
+					</div>
+				))}
+			</li>
+		))}
+	</ul>
+
+	<p class="caveat">
+		Speed-up = original time / compiled time of each program’s timed section, best of {runs} fresh
+		processes on a shared {cpus}-vCPU VM ({date}); checksums matched on every run. Differences under
+		about 10% are noise. <a href="/project/benchmarks/">Full tables and method →</a>
+	</p>
+</section>
+
+<style>
+	.bench {
+		margin-block: 1rem 3rem;
+	}
+	header h2 {
+		margin: 0 0 0.35rem;
+		font-size: var(--sl-text-2xl);
+		color: var(--sl-color-white);
+	}
+	header p {
+		margin: 0 0 1.25rem;
+		color: var(--sl-color-gray-3);
+	}
+	.stats {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.6rem;
+		margin-bottom: 1.5rem;
+	}
+	.stat {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		padding: 0.85rem 1.1rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.75rem;
+		background: #080807;
+	}
+	.stat .value {
+		font-size: var(--sl-text-3xl);
+		font-weight: 700;
+		line-height: 1.1;
+		color: var(--sl-color-accent);
+		font-variant-numeric: tabular-nums;
+	}
+	.stat .value { min-width: 4.5ch; }
+	.stat .label {
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-2);
+	}
+	@media (min-width: 40rem) {
+		.stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+		.stat { flex-direction: column; align-items: flex-start; gap: 0.25rem; padding: 1rem 1.25rem; }
+	}
+	.legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem 1.25rem;
+		margin-bottom: 1rem;
+		font-size: var(--sl-text-xs);
+		color: var(--sl-color-gray-3);
+	}
+	.key i {
+		display: inline-block;
+		width: 0.75rem;
+		height: 0.75rem;
+		margin-inline-end: 0.4rem;
+		border-radius: 2px;
+		vertical-align: -0.1em;
+	}
+	.key.node i { background: var(--sl-color-accent); }
+	.key.bun i { background: var(--bun); }
+	.key.one i { width: 2px; background: var(--sl-color-gray-3); }
+	.bench { --bun: #9c6a1f; }
+	.programs {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 1rem;
+	}
+	.programs li {
+		margin: 0;
+		padding: 0;
+	}
+	.program {
+		display: block;
+		margin-bottom: 0.35rem;
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+	.program code {
+		margin-inline-start: 0.4rem;
+		font-size: var(--sl-text-xs);
+		font-weight: 400;
+		color: var(--sl-color-gray-3);
+		background: none;
+		padding: 0;
+	}
+	.bar-row {
+		display: grid;
+		grid-template-columns: 2.75rem 1fr 3.5rem;
+		align-items: center;
+		gap: 0.6rem;
+		min-height: 1.5rem;
+		font-size: var(--sl-text-sm);
+	}
+	.rt {
+		color: var(--sl-color-gray-3);
+	}
+	.track {
+		position: relative;
+		height: 0.9rem;
+		border-radius: 999px;
+		background: #121110;
+	}
+	.track::after {
+		content: '';
+		position: absolute;
+		inset-block: -0.2rem;
+		left: var(--one);
+		width: 2px;
+		background: var(--sl-color-gray-4);
+	}
+	.bar {
+		position: absolute;
+		inset-block: 0;
+		left: 0;
+		border-radius: 999px;
+		min-width: 0.9rem;
+	}
+	.node .bar { background: linear-gradient(90deg, #c47f1c, var(--sl-color-accent)); }
+	.bun .bar { background: var(--bun); }
+	.num {
+		text-align: end;
+		font-variant-numeric: tabular-nums;
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+	.bun .num { color: var(--sl-color-gray-2); font-weight: 500; }
+	.caveat {
+		margin-top: 1.25rem;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+	.caveat a {
+		color: var(--sl-color-accent);
+		white-space: nowrap;
+	}
+</style>

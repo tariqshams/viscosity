@@ -14,3 +14,7 @@ The generated pages (`reference/cli.md`, `project/benchmarks.md`,
 `project/credits.md`) come from the engine's `--help` text, the committed
 benchmark results and the book's verified bibliography, so they can't drift
 from the code. Re-run `npm run gen` after changing any of those.
+
+The site ships together with the book: `../scripts/build_site.sh` builds both
+and puts the book at `/book/` inside `dist/` (the deploy output directory).
+`npm run check` checks links into `/book/` only after that combined build.

@@ -120,6 +120,13 @@ export const quiz = [                // 5-8 questions
 - The estimated time is 12–18 minutes.
 - `introduces` matches the outline, and `uses` contains only earlier concepts.
 - Every `<Cite id>` and every `sources` id is a verified reference.
+- Internal links are under the base path `/book/` (the book is served at
+  https://viscosity.dev/book/, beside the docs site at `/`). In MDX write
+  `[the plan](/book/days/)`, never `[the plan](/days/)`. In `.astro`,
+  `.ts` and `.tsx` code, never hard-code a path: always build it with the
+  helper, `href('/days/')` from `src/lib/url.ts` (or `chapterHref()` in
+  `src/lib/chapters.ts`). `scripts/check_site.mjs` fails the build check on
+  any internal URL outside `/book/`.
 
 Run `node scripts/check_chapters.mjs` until it passes. Don't run `astro
 build` (the maintainer does).

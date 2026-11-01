@@ -1,0 +1,96 @@
+---
+// Starlight's splash hero, with a byline under the title. Images are not used
+// on this site, so this override only renders the title, byline, tagline and
+// actions. '_top' is Starlight's PAGE_TITLE_ID (the "skip to title" target).
+import { LinkButton } from '@astrojs/starlight/components';
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, actions = [] } = data.hero || {};
+---
+
+<div class="hero">
+	<div class="sl-flex stack">
+		<div class="sl-flex copy">
+			<div class="title-block">
+				<h1 id="_top" data-page-title set:html={title} />
+				<p class="byline">by <span>Tariq Shams</span></p>
+			</div>
+			{tagline && <div class="tagline" set:html={tagline} />}
+		</div>
+		{
+			actions.length > 0 && (
+				<div class="sl-flex actions">
+					{actions.map(
+						({ attrs: { class: className, ...attrs } = {}, icon, link: href, text, variant }) => (
+							<LinkButton {href} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
+								{text}
+							</LinkButton>
+						)
+					)}
+				</div>
+			)
+		}
+	</div>
+</div>
+
+<style>
+	.hero {
+		padding-block: clamp(1.5rem, calc(0.5rem + 6vmin), 5rem) 1rem;
+	}
+	.stack {
+		flex-direction: column;
+		gap: clamp(1.5rem, calc(1.5rem + 1vw), 2rem);
+		text-align: center;
+	}
+	.copy {
+		flex-direction: column;
+		gap: 1.25rem;
+		align-items: center;
+	}
+	.title-block {
+		display: flex;
+		flex-direction: column;
+		align-items: inherit;
+		gap: 0.35rem;
+	}
+	h1 {
+		font-size: clamp(var(--sl-text-4xl), calc(0.25rem + 6vw), var(--sl-text-6xl));
+		line-height: 1;
+		font-weight: 700;
+		letter-spacing: -0.02em;
+		color: var(--sl-color-white);
+	}
+	.byline {
+		margin: 0;
+		font-size: var(--sl-text-sm);
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--sl-color-gray-3);
+	}
+	.byline span {
+		color: var(--sl-color-accent);
+		font-weight: 600;
+	}
+	.tagline {
+		max-width: 62ch;
+		font-size: clamp(var(--sl-text-base), calc(0.0625rem + 1.6vw), var(--sl-text-lg));
+		line-height: 1.6;
+		color: var(--sl-color-gray-2);
+	}
+	.tagline :global(strong) {
+		display: block;
+		margin-bottom: 0.5rem;
+		font-size: 1.2em;
+		color: var(--sl-color-white);
+	}
+	.actions {
+		gap: 1rem 2rem;
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+	@media (min-width: 50rem) {
+		.stack { text-align: start; }
+		.copy, .title-block { align-items: flex-start; }
+		.actions { justify-content: flex-start; }
+	}
+</style>

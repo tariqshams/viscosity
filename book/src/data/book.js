@@ -3,11 +3,11 @@ import { PARTS as OUTLINE_PARTS } from './outline/index.js';
 
 export const BOOK = {
   title: 'Viscosity',
-  subtitle: 'From a Little JavaScript to Engines and Compilers',
+  subtitle: 'Viscosity’s internals, and how to learn compiler engineering from scratch',
   author: 'Tariq Shams',
   edition: 'First edition',
   description:
-    'An interactive book by Tariq Shams. It takes you from knowing if and for loops to building interpreters, virtual machines and Viscosity, a compiler that changes how data is laid out in memory. Everything runs in your browser.',
+    'Tariq Shams’s book on how Viscosity, an automatic ahead-of-time Array of Structures to Structures of Arrays compiler, works, and how anyone, beginner or expert, can learn to build a language, a compiler and Viscosity itself, first in TypeScript and then in Rust.',
 };
 
 export const PARTS = OUTLINE_PARTS.map((p) => ({

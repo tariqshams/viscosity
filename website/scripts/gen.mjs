@@ -17,16 +17,33 @@ out('reference/cli.md', `---\ntitle: CLI reference\ndescription: Every viscosity
 
 const results = join(root, 'engine/ts/packages/bench/results');
 const latest = (prefix) => readdirSync(results).filter((f) => f.startsWith(prefix) && f.endsWith('.json')).sort().pop();
-const e2e = JSON.parse(readFileSync(join(results, latest('e2e-node-')), 'utf8'));
+const matrixFile = latest('matrix-');
+const m = JSON.parse(readFileSync(join(results, matrixFile), 'utf8'));
+const e2eFile = latest('e2e-node-');
+const e2e = JSON.parse(readFileSync(join(results, e2eFile), 'utf8'));
 const py = JSON.parse(readFileSync(join(results, latest('python-layouts-')), 'utf8'));
-let bench = `---\ntitle: Benchmarks\ndescription: Measured results, generated from the committed result files.\n---\n${banner}Every number here comes from a result file committed in the repository (\`engine/ts/packages/bench/results\`). Re-run them with \`npm run bench\` and \`node packages/bench/src/e2e.ts\` in \`engine/ts\`.\n\n## Whole programs: original vs Viscosity (JavaScript)\n\n${e2e.env.cpu}, Node ${e2e.env.node} (V8 ${e2e.env.v8}), ${e2e.env.date.slice(0, 10)}. ${e2e.env.note}\n\n| program | layout chosen | original (ms) | Viscosity (ms) | speed-up |\n|---|---|---:|---:|---:|\n`;
-for (const r of e2e.rows) bench += `| ${r.program} | \`${r.layouts}\` | ${r.originalMs} | ${r.viscosityMs} | **${r.speedup}×** |\n`;
-bench += `\nThe checksums of the original and compiled programs matched exactly in every run.\n\n## Python (CPython ${py.python})\n\n| layout | ns per element | memory (100,000 elements) |\n|---|---:|---:|\n| dataclass objects | ${py.ns_per_element.objects} | ${(py.memory_bytes.objects / 1e6).toFixed(1)} MB |\n| list columns | ${py.ns_per_element.list_columns} | |\n| \`array('d')\` columns | ${py.ns_per_element.typed_columns} | ${(py.memory_bytes.typed_columns / 1e6).toFixed(1)} MB |\n\nIn CPython, columns save memory but cost time, so the Python plugin only transforms collections you annotate. See [Python](/guides/python/).\n`;
+const x = (v) => `${v}×`;
+const bm = (s) => `${s.best} (${s.median})`;
+const v = m.meta.versions;
+let bench = `---\ntitle: Benchmarks\ndescription: Measured results on Node and Bun, generated from the committed result files.\n---\n${banner}Every number here comes from a result file committed in the repository (\`engine/ts/packages/bench/results\`). The current figures are from \`${matrixFile}\`, produced by \`engine/ts/packages/bench/src/matrix.ts\` (re-run with \`RUNS=9 CLI_RUNS=5 node packages/bench/src/matrix.ts\` in \`engine/ts\`).\n\n`;
+bench += `**Machine.** ${m.meta.machine.cpu}, ${m.meta.machine.logicalCpus} logical CPUs, ${m.meta.machine.memoryGiB} GiB, ${m.meta.machine.os}, ${m.meta.date.slice(0, 10)}. **Versions.** Node ${v.node} (V8 ${v.v8}); Bun ${v.bun} (JavaScriptCore); ${v.rustc}.\n\n**Noise.** ${m.meta.noise}\n\n`;
+bench += `## Whole programs: original vs Viscosity, Node and Bun\n\n${m.e2e.method}\n\nBest of ${m.meta.settings.e2eRuns} (median in brackets), milliseconds of each program's timed section; speed-up = original / Viscosity.\n\n| program | layout | Node original | Node Viscosity | Node speed-up | Bun original | Bun Viscosity | Bun speed-up |\n|---|---|---:|---:|---:|---:|---:|---:|\n`;
+for (const r of m.e2e.rows) bench += `| ${r.program} | \`${r.layouts}\` | ${bm(r.node.originalMs)} | ${bm(r.node.viscosityMs)} | **${x(r.node.speedupBest)}** (${x(r.node.speedupMedian)}) | ${bm(r.bun.originalMs)} | ${bm(r.bun.viscosityMs)} | **${x(r.bun.speedupBest)}** (${x(r.bun.speedupMedian)}) |\n`;
+const sm = m.e2e.summary;
+bench += `| **geometric mean** | | | | **${x(sm.node.geomeanSpeedupBest)}** (${x(sm.node.geomeanSpeedupMedian)}) | | | **${x(sm.bun.geomeanSpeedupBest)}** (${x(sm.bun.geomeanSpeedupMedian)}) |\n\n`;
+const sameRt = m.e2e.rows.every((r) => r.sameChecksumOnBothRuntimes);
+const rustSame = m.e2e.rows.every((r) => r.rustCompilerIdentical);
+bench += `The original and compiled programs' checksums matched on every run${sameRt ? ', and each program printed the same checksum on Node and on Bun' : ''}.${rustSame ? " The Rust CLI's compiled code is byte-identical to the TypeScript engine's for every program." : ''} Bun relative to Node (geometric mean of Node best / Bun best; above 1 means Bun is faster): original programs ${x(sm.bunVsNode.originalGeomean)}, compiled programs ${x(sm.bunVsNode.viscosityGeomean)}.\n\n`;
+const c = m.compileSpeed;
+bench += `## Compile speed: Rust CLI vs TypeScript CLI\n\n${c.cli.method.replace(/viscosity build <file>( \(stdout\))?/, 'Method: `viscosity build <file>` to stdout')}\n\n**Over the ${c.programs}-program corpus (sum of medians): TypeScript CLI ${c.cli.totalMedianMs.ts} ms, Rust CLI ${c.cli.totalMedianMs.rust} ms, ${x(c.cli.totalSpeedup)} faster.**${c.cli.allIdentical ? ' Outputs were byte-identical for every program.' : ''}\n\n**In process.** ${c.inProcess.method} Total of medians: TypeScript ${c.inProcess.totalMedianUs.ts} µs, Rust as WebAssembly ${c.inProcess.totalMedianUs.wasm} µs, ${x(c.inProcess.totalSpeedup)} faster.\n\nPer-program figures are in \`${matrixFile.replace(/\.json$/, '.md')}\`.\n\n`;
+bench += `## Earlier: Node only (superseded)\n\n:::caution[Superseded]\nThese figures, from \`${e2eFile}\`, were measured before a correctness fix to the compiler and are kept for the record only. Use the tables above.\n:::\n\n${e2e.env.cpu}, Node ${e2e.env.node} (V8 ${e2e.env.v8}), ${e2e.env.date.slice(0, 10)}. ${e2e.env.note}\n\n| program | layout chosen | original (ms) | Viscosity (ms) | speed-up |\n|---|---|---:|---:|---:|\n`;
+for (const r of e2e.rows) bench += `| ${r.program} | \`${r.layouts}\` | ${r.originalMs} | ${r.viscosityMs} | ${r.speedup}× |\n`;
+bench += `\n## Python (CPython ${py.python})\n\n| layout | ns per element | memory (100,000 elements) |\n|---|---:|---:|\n| dataclass objects | ${py.ns_per_element.objects} | ${(py.memory_bytes.objects / 1e6).toFixed(1)} MB |\n| list columns | ${py.ns_per_element.list_columns} | |\n| \`array('d')\` columns | ${py.ns_per_element.typed_columns} | ${(py.memory_bytes.typed_columns / 1e6).toFixed(1)} MB |\n\nIn CPython, columns save memory but cost time, so the Python plugin only transforms collections you annotate. See [Python](/guides/python/).\n`;
 out('project/benchmarks.md', bench);
 
 const { references } = await import(pathToFileURL(join(root, 'book/src/data/references.js')).href);
 const engineIds = ['makor2022', 'kloibhofer2023', 'ziap2025', 'pharrmark2012', 'ispcdocs', 'wurthinger2013', 'braun2013', 'coopertorczon2022', 'llvmnewpm', 'bynensmeurer2018', 'nystrom2021', 'estree'];
-let credits = `---\ntitle: Prior art & credits\ndescription: The people and work Viscosity builds on.\n---\n${banner}Viscosity is by Tariq Shams. It stands on other people's ideas. Each entry below was checked against a primary source; the full list (${references.length} works) is the [book's bibliography](https://viscosity-book.vercel.app/bibliography/).\n\n`;
+let credits = `---\ntitle: Prior art & credits\ndescription: The people and work Viscosity builds on.\n---\n${banner}Viscosity is by Tariq Shams. It stands on other people's ideas. Each entry below was checked against a primary source; the full list (${references.length} works) is the [book's bibliography](/book/bibliography/).\n\n`;
 for (const id of engineIds) {
   const r = references.find((x) => x.id === id);
   if (!r) continue;

@@ -1,18 +1,30 @@
-/* Viscosity's amber-on-ink palette, matching the book. */
+/* Viscosity: amber on pure black, matching the book. The site is always dark:
+   astro.config.mjs forces data-theme="dark" before paint and ThemeSelect is
+   overridden with an empty component, so there is no light palette. */
 :root {
   --sl-color-accent-low: #3b2a0c;
   --sl-color-accent: #f5ac3a;
   --sl-color-accent-high: #ffe2b0;
   --sl-color-white: #f3f1ea;
   --sl-color-gray-1: #e6e3da;
-  --sl-color-black: #12141b;
+  --sl-color-gray-2: #c9c6bd;
+  --sl-color-gray-3: #9a978f;
+  --sl-color-gray-4: #625f59;
+  --sl-color-gray-5: #2b2a27;
+  --sl-color-gray-6: #121211;
+  --sl-color-black: #000;
+  --sl-color-bg: #000;
+  --sl-color-bg-nav: #000;
+  --sl-color-bg-sidebar: #000;
+  --sl-color-hairline: #1d1c1a;
+  --sl-color-hairline-light: #2b2a27;
+  --sl-color-hairline-shade: #000;
+  color-scheme: dark;
 }
-:root[data-theme='light'] {
-  --sl-color-accent-low: #fbe7c4;
-  --sl-color-accent: #bf7312;
-  --sl-color-accent-high: #5c3605;
-  --sl-color-white: #1e2029;
-  --sl-color-black: #faf7f0;
-}
+body { background: #000; }
 .vsc-compare pre { font-size: 0.85rem; }
 footer .vsc-footer { margin-top: 2rem; font-size: 0.85rem; opacity: 0.8; }
+/* Landing page: three feature cards sit in one row on wide screens. */
+@media (min-width: 72rem) {
+  [data-has-hero] .card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

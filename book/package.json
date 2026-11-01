@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.1.0",
   "private": true,
-  "description": "Viscosity: From a Little JavaScript to Engines and Compilers. An interactive book by Tariq Shams.",
+  "description": "Viscosity’s internals, and how to learn compiler engineering from scratch. A book by Tariq Shams.",
   "author": "Tariq Shams",
   "license": "SEE LICENSE IN ../LICENSE",
   "scripts": {

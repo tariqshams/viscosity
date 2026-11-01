@@ -1,6 +1,7 @@
 ---
 import Book from '../layouts/Book.astro';
 import { references } from '../data/references.js';
+import { href } from '../lib/url';
 // Credit people, not just papers: what each person's work shaped here.
 const groups: { title: string; ids: string[] }[] = [
   { title: 'The problem Viscosity attacks', ids: ['makor2022', 'kloibhofer2023', 'ziap2025', 'pharrmark2012', 'ispcdocs', 'odin-overview-soa', 'acton2014', 'wurthinger2013'] },
@@ -14,7 +15,7 @@ const byId = Object.fromEntries(references.map((r) => [r.id, r]));
   <div class="mx-auto max-w-reading px-4 pb-16 pt-8 sm:px-6 lg:pt-12" data-pagefind-body>
     <h1 class="font-display text-[2.2rem] font-semibold leading-tight">Acknowledgements & influences</h1>
     <div class="prose-body">
-      <p>Viscosity and this book stand on other people’s work. This page names those people and says plainly what each one’s ideas shaped. Full citations are in the <a href="/bibliography/">bibliography</a>.</p>
+      <p>Viscosity and this book stand on other people’s work. This page names those people and says plainly what each one’s ideas shaped. Full citations are in the <a href={href('/bibliography/')}>bibliography</a>.</p>
       <p>A special note on <i>Crafting Interpreters</i>: Robert Nystrom’s code and test files are MIT-licensed, and this book’s Drip test suite is adapted from his Lox tests with that licence kept. His prose and illustrations are licensed CC BY-NC-ND 4.0, so nothing here copies or adapts them. The explanations and diagrams in this book are original, and his book is warmly recommended alongside it.</p>
     </div>
     {groups.map((g) => (

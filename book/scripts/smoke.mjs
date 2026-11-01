@@ -6,7 +6,9 @@ import { serve } from './lib/serve.mjs';
 import { chromium, IPHONE } from './lib/playwright.mjs';
 
 const dist = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
-const { server, url } = await serve(dist);
+// url is the book's root, under its base path: http://127.0.0.1:PORT/book
+const { server, url: origin, base } = await serve(dist);
+const url = origin + base.slice(0, -1);
 const browser = await chromium.launch();
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); console.log(`${ok ? '✓' : '✗'} ${msg}`); };
@@ -45,7 +47,7 @@ async function eventually(fn) {
   return false;
 }
 const chapterPaths = readdirSync(join(dist, 'chapters')).sort().map((d) => `/chapters/${d}/`);
-const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/days/', '/review/', '/bibliography/', '/acknowledgements/', ...chapterPaths];
+const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/about-the-author/', '/days/', '/review/', '/bibliography/', '/acknowledgements/', ...chapterPaths];
 {
   const { page, errors } = await newPage();
   for (const p of paths) {
@@ -56,6 +58,46 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/days/',
     check(errors.length === 0, `${p}: no console errors ${errors.length ? JSON.stringify(errors) : ''}`);
     check(await noOverflow(page), `${p}: no horizontal overflow at 440px`);
   }
+}
+
+// 1b. Served under /book/, the root redirects there, and the reading order
+// is Preface, How to use this book, About the author, chapter 1.
+{
+  const { page, errors } = await newPage();
+  await page.goto(origin + '/', { waitUntil: 'networkidle' });
+  check(new URL(page.url()).pathname === base, `/ redirects to ${base} (${new URL(page.url()).pathname})`);
+  const start = await page.locator('[data-start]').getAttribute('href');
+  check(start === base + 'front/preface/', `landing page starts with the preface (${start})`);
+  check(await page.title() === 'Viscosity’s internals, and how to learn compiler engineering from scratch', `landing page title (${await page.title()})`);
+  const internal = await page.evaluate((b) => [...document.querySelectorAll('a[href^="/"], link[href^="/"], script[src^="/"]')]
+    .map((e) => e.getAttribute('href') ?? e.getAttribute('src')).filter((h) => !h.startsWith(b)), base);
+  check(internal.length === 0, `landing page: every internal URL is under ${base} ${JSON.stringify(internal.slice(0, 5))}`);
+  const order = [];
+  await page.goto(url + '/front/preface/', { waitUntil: 'networkidle' });
+  check(await page.locator('[data-prev]').count() === 0, 'the preface has no Previous link');
+  for (let i = 0; i < 3; i++) {
+    await page.locator('[data-next]').click();
+    await page.waitForLoadState('networkidle');
+    order.push(new URL(page.url()).pathname);
+  }
+  check(JSON.stringify(order) === JSON.stringify([base + 'front/how-to-use-this-book/', base + 'front/about-the-author/', base + 'chapters/001-functions/']), `Next follows the reading order: ${order.join(' → ')}`);
+  const prev = await page.locator('[data-prev]').getAttribute('href');
+  check(prev === base + 'front/about-the-author/', `chapter 1's Previous is About the author (${prev})`);
+  check(errors.length === 0, `reading order: no console errors ${JSON.stringify(errors)}`);
+}
+
+// 1c. Search finds a chapter and links to it under /book/.
+{
+  const { page } = await newPage();
+  await page.goto(url + '/', { waitUntil: 'networkidle' });
+  await page.locator('#search-open').click();
+  const input = page.locator('#search-ui input');
+  await input.waitFor({ timeout: 10000 });
+  await input.fill('bytecode');
+  const first = page.locator('#search-ui .pagefind-ui__result-link').first();
+  const ok = await first.waitFor({ timeout: 10000 }).then(() => true, () => false);
+  const link = ok ? await first.getAttribute('href') : null;
+  check(!!link && link.startsWith(base), `search results link under ${base} (${link})`);
 }
 
 // 2. Chapter interactions.
@@ -186,7 +228,7 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/days/',
   check(box && box.height >= 44 && box.width >= 44, `Playground engine toggle is a 44px tap target (${box && `${box.width.toFixed(0)}x${box.height.toFixed(0)}`})`);
   await btn.click();
   const rs = await read('rust');
-  check(wasmRequests.length === 1 && wasmRequests[0].endsWith('/wasm/viscosity_wasm_bg.wasm'), `Playground: the Rust engine loads /wasm/viscosity_wasm_bg.wasm once (${wasmRequests.length})`);
+  check(wasmRequests.length === 1 && new URL(wasmRequests[0]).pathname === base + 'wasm/viscosity_wasm_bg.wasm', `Playground: the Rust engine loads ${base}wasm/viscosity_wasm_bg.wasm once (${wasmRequests.length})`);
   check(ts.code.length > 0 && ts.code === rs.code, `Playground: TS and Rust engines emit identical code (${ts.code.length} chars)`);
   check(ts.explain.length > 0 && ts.explain === rs.explain, `Playground: TS and Rust engines give identical decisions: ${JSON.stringify(rs.explain.split('\n')[0])}`);
   await pg.locator('[data-run-both]').click();

@@ -1,6 +1,7 @@
 // Loads the chapters and their companion cards.js modules.
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { PARTS, CHAPTERS_PER_DAY } from '../data/book.js';
+import { href } from './url';
 
 export type Chapter = CollectionEntry<'chapters'>;
 
@@ -36,7 +37,40 @@ export async function allChapters(): Promise<Chapter[]> {
   return (await getCollection('chapters')).sort((a, b) => a.data.n - b.data.n);
 }
 
-export const chapterHref = (c: Chapter) => `/chapters/${c.id}/`;
+export const chapterHref = (c: Chapter) => href(`/chapters/${c.id}/`);
+
+export type Front = CollectionEntry<'front'>;
+export const frontHref = (f: Front) => href(`/front/${f.id}/`);
+
+/** The front matter in reading order: Preface, How to use this book, About the author. */
+export async function frontMatter(): Promise<Front[]> {
+  return (await getCollection('front')).sort((a, b) => a.data.order - b.data.order);
+}
+
+/** Where reading starts: the first front-matter page (the preface). */
+export const START_HREF = href('/front/preface/');
+
+/** One link in the reading order (front matter, then chapters). */
+export interface ReadingLink { href: string; label: string }
+
+/**
+ * The whole book in reading order: every front-matter page, then every
+ * chapter. Previous / Next links on every page follow this list, so the
+ * preface always comes first and chapter 1's Previous is the last front page.
+ */
+export async function readingOrder(): Promise<(ReadingLink & { key: string })[]> {
+  const front = (await frontMatter()).map((f) => ({ key: `front:${f.id}`, href: frontHref(f), label: f.data.title }));
+  const chs = (await allChapters()).map((c) => ({ key: `chapter:${c.id}`, href: chapterHref(c), label: `${c.data.n}. ${c.data.title}` }));
+  return [...front, ...chs];
+}
+
+/** Previous and next pages around one entry of readingOrder(). */
+export async function neighbours(key: string): Promise<{ prev: ReadingLink | null; next: ReadingLink | null }> {
+  const all = await readingOrder();
+  const i = all.findIndex((e) => e.key === key);
+  if (i < 0) throw new Error(`not in the reading order: ${key}`);
+  return { prev: all[i - 1] ?? null, next: all[i + 1] ?? null };
+}
 
 /** The whole curriculum, written or planned, grouped into days. */
 export async function curriculum() {
