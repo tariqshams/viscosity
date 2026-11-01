@@ -1,0 +1,253 @@
+---
+n: 193
+day: 49
+part: XI
+title: 'Fuzzing the Rust engine'
+tagline: 'Every fixture passed, and random programs still found five bugs, all of them in both engines. A seeded generator, two oracles, a reducer, and an honest answer to “is it coverage-guided?”'
+objectives:
+  - Contrast coverage-guided fuzzing with the generator Viscosity uses, and say what each needs.
+  - Run scripts/fuzz.mjs, replay one program with --only, and read a failure.
+  - Explain line-based delta debugging, and implement it in Rust.
+  - Read a coverage measurement, and say what it does and doesn't tell you.
+introduces: [coverage-guided-fuzzing]
+uses: [viscosity-rs, fuzzing, differential-testing, test-corpus, engine-parity, cross-implementation-tests, rust-soa-codegen, capacity, amortized-growth, instrumentation, cargo-test, vec, slice, rust-closure, lifetime, string-vs-str, cfg]
+sources: [afl-technical-details, cargo-fuzz-book, csmith, ecma262-assignment-order, node-vm]
+---
+import FuzzLoopSteps from '../../../components/diagrams/ch193/FuzzLoopSteps';
+
+## Five bugs past every test
+
+When the fuzzer was written, `cargo test` was green: 186 of 186 parity
+fixtures, the node differential, every unit test. Then random programs
+found five bugs. Here is one, as the fuzzer's reducer left it
+(reformatted, and run with node 22):
+
+```js
+function local1(m) {
+  const ls = [];
+  for (let i = 0; i < 64; i++)
+    ls.push({ a: i, b: i });
+  let t = 0;
+  for (let i = 0; i < ls.length; i++) {
+    ls[i].b += m;
+    t += ls[i].b;
+  }
+  ls[1].a = (ls.push({ a: 0, b: 0 }), 7);
+  t += ls[1].a;
+  return t;
+}
+console.log(local1(0), local1(1));
+```
+
+The original prints `2023 2087`. Compiled by the engine as it was
+before the fix, it printed `2017 2081`. The store of `7` was lost. The
+compiled line was:
+
+```js
+ls.a[__vsc_bc(ls, 1, 'a', true)] =
+  (ls.push(0, 0), 7);
+```
+
+JavaScript evaluates `ls.a` before the right-hand side<Cite id="ecma262-assignment-order" />.
+The 65th push fills the capacity of 64, `grow()` installs a new, larger
+column, and the `7` goes into the old one. Chapter 183 showed the fix:
+`__vsc_set(ls, 'a', __vsc_bk(ls, 1), (ls.push(0, 0), 7), 'a')`, which
+checks the index first and stores last.
+
+Nobody writes that test, because nobody thinks of it. That is what
+fuzzing is for.
+
+<Callout kind="intuition">
+Two ways to find the weak spot in a maze of corridors. You can hire a
+writer who invents plausible floor plans and walks each one. Or you can
+drop a marble, mark every corridor it rolls through, and keep nudging
+the marbles that reached a corridor nobody had marked.
+</Callout>
+
+## Two ways to fuzz
+
+<FuzzLoopSteps client:visible />
+
+The second picture is **coverage-guided fuzzing**. AFL compiles the
+target with a few instructions at every branch:
+`shared_mem[cur ^ prev]++`, a counter per edge. An input whose run
+reaches a new edge is kept and mutated further; the rest are thrown
+away<Cite id="afl-technical-details" />. In Rust, `cargo fuzz` drives
+libFuzzer the same way: you write a `fuzz_target!` that takes `&[u8]`,
+and it needs a nightly compiler for its sanitizer flags<Cite id="cargo-fuzz-book" />.
+
+`scripts/fuzz.mjs` is the first picture. It is **generation-based**,
+like Csmith<Cite id="csmith" />: it knows the grammar and writes valid
+programs, and nothing from a run flows back.
+
+<Callout kind="definition">
+**Coverage-guided fuzzing** mutates inputs and keeps those whose run
+reaches **new coverage** (AFL counts branch **edges**), so the corpus
+grows toward code no input has reached. A **generation-based** fuzzer
+writes each input from a grammar or model instead, with no feedback.
+</Callout>
+
+Here is the feedback at toy size. The "bug" needs the bytes `FUZ`.
+The blind fuzzer guesses three letters at a time. The guided one
+changes one byte of an input it kept, and keeps a new input only when
+it passes a check none passed before:
+
+<Run id="guided-vs-blind" />
+
+With this seed, the guided search kept `FAA` at try 27 and `FUA` at
+try 114, and found `FUZ` at try 360. The blind one needed 11,524 (one
+chance in 26³ = 17,576 per try).
+
+<Prompts ids={['fz-coverage', 'fz-afl-edge', 'fz-generation']} />
+
+Why not bytes? Viscosity's oracles need programs that *run*: original
+against compiled, under node. Almost every mutated byte string is a
+syntax error, which the engine refuses while parsing, so the analyses
+never see it.
+
+<Prompts ids={['fz-valid']} />
+
+## Running it
+
+Program `k` of campaign `S` gets its own seed, mixed from `(S, k)`, so
+any program can be replayed alone. A run on my machine (a shared cloud
+VM, the engine at commit `c68daec`, release build, rustc 1.97;
+wrapped):
+
+```
+$ node scripts/fuzz.mjs --count 300 --seed 5
+  250/300 programs, 0 failing
+  300/300 programs, 0 failing
+fuzz: seed 5, 300 programs (143
+  transformed, 178 may go out of bounds),
+  0 failing, 3.0 s
+```
+
+`--seed 5 --only 3 --print` prints program 3, which starts (wrapped):
+
+```js
+let k = 1;
+const show = (v) => (Object.is(v, -0)
+  ? '-0' : String(v));
+// @viscosity aosoa(8)
+const pts = [];
+function add0(n) { for (let i = 0; i < n;
+  i++) pts.push({ y: NaN,
+  b: Math.sin(i) }); }
+```
+
+Each program runs in a fresh `vm` context<Cite id="node-vm" />. The
+Rust engine is reached through its CLI, one
+`viscosity build a.js b.js ... -o dir/` per 250 programs, so process
+starts are paid per batch (chapter 195 makes that call parallel).
+`crates/cli/tests/fuzz.rs` runs 200 programs with seed 1 on every
+`cargo test`. The campaign behind this chapter was about 50,000
+programs: about 8,000 found the five bugs, and 42,000 more, after the
+fixes and with the generator extended, found nothing.
+
+<Prompts ids={['fz-seed', 'fz-batch', 'fz-ci']} />
+
+## Shrinking a failure
+
+To see a failure today, I put the current `fuzz.mjs` next to the
+TypeScript engine from before the fix commit (`10b4a63^`) and ran
+`--no-rust --count 300 --seed 5 --max-fail 5`. It stopped after five
+failures (wrapped):
+
+```
+FAIL program 31 (--seed 5 --only 31):
+  ts-crash
+  [ts-crash] Error: internal error:
+  overlapping rewrites at 741-801
+...
+fuzz: seed 5, 91 programs (34
+  transformed, 51 may go out of bounds),
+  5 failing, 1.7 s (TS only)
+```
+
+Program 90 had 20 lines. `--reduce` cut it to the two lines at the top
+of this chapter (I only reformatted them). The reducer is **line-based
+delta debugging**: delete a chunk of lines; keep the deletion if the
+same *kind* of failure remains; halve the chunk; repeat down to single
+lines.
+
+It keeps the kind, not the meaning. Program 12 reduced to:
+
+```js
+const cells = [];
+for (let i = 0; i < 70; i++)
+  cells.push({ b: (i * 37) % 11 });
+for (let i = 0; i < cells.length; i++) {
+  const p = cells[(k++, i)]; s0 += p.b; }
+```
+
+`let k` and `s0` are gone, so the original now throws `ReferenceError:
+k is not defined`. The compiled program still differs, so the
+reduction was accepted: the old emitter wrote
+`const p = k++, i;`, a `SyntaxError`. The bug survived the shrinking;
+the program around it stopped making sense. Read a reduced program
+before you trust it.
+
+<Prompts ids={['fz-reduce', 'fz-reduce-trap']} />
+
+## What the five were
+
+```
+bug                     found as
+rhs ran after the check behaviour
+store into old column   behaviour
+rewrite in push/array   ts-crash
+rewrite in an index     ts-crash
+(k++, 7) as an index    behaviour
+```
+
+All five were in both engines, so parity was blind to them (chapter
+188). The README lists them as bugs 11 to 15, each with a corpus
+program.
+
+## Did coverage plateau?
+
+I measured line coverage of the TypeScript engine (core and
+frontend-js, without the two unused parsers) with c8 10.1.3 and
+`NODE_V8_COVERAGE`. Lines run, of 2,614:
+
+```
+66 corpus, extra, e2e programs   2,503
+fuzzer, 300 programs (seed 5)    2,430
+fuzzer, 3,000 programs (seed 5)  2,433
+```
+
+Ten times the programs ran three more lines. The fuzzer covers *fewer*
+lines than the hand-written programs, yet it found what they missed.
+Each of the five bugs needed a combination: a write whose right-hand
+side pushes, an access inside a push. Line coverage says a line ran,
+not with what. AFL counts edges and hit counts for this reason, and a
+generator gets new combinations only when someone teaches it new
+constructs, as happened after the first finds.
+
+<Prompts ids={['fz-plateau', 'fz-lines-not-bugs']} />
+
+<Callout kind="engine" label="Under the hood">
+A coverage-guided harness for the Rust engine is easy to write and
+hard to make useful. Fed bytes, it would test oxc's parser. A
+structure-aware target that builds programs from fuzzer bytes could
+reach the analyses, but its oracle would have to be Rust-only (no
+panics, output that re-parses), since node and the TypeScript engine
+live outside the process. That is design, not code in the repository.
+</Callout>
+
+## Your turn
+
+<Exercise id="reduceLines" />
+
+## What you learned
+
+- **Coverage-guided fuzzing** keeps mutated inputs that reach new
+  **edges**; a **generator** like `fuzz.mjs` writes valid programs with
+  no feedback.
+- A per-program **seed** makes every failure replayable with `--only`.
+- **Delta debugging** shrinks a failure while its kind remains, which
+  can strip away what made the program meaningful.
+- **Line coverage** plateaued while bugs hid in **combinations**.
+
+<Quiz />

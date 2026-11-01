@@ -3433,6 +3433,328 @@ export const references = [
     "checkedAgainst": "spec.html on the main branch of github.com/tc39/ecma262, read raw, clause sec-numeric-types-number-signedRightShift: “Let _leftNumber_ be ! ToInt32(_x_). Let _rightNumber_ be ! ToUint32(_y_). Let _shiftCount_ be ℝ(_rightNumber_) modulo 32.”, then a sign-extending right shift by _shiftCount_ bits.",
     "shaped": "Chapter 184: the AoSoA index `(i >> sh) * stride + off + (i & mask)` is only right while sh < 32, because JavaScript takes shift counts modulo 32."
   },
+  {
+    "id": "wasm-pack-book",
+    "authors": [
+      "The wasm-pack contributors"
+    ],
+    "title": "The wasm-pack book: wasm-pack build, and Cargo.toml configuration",
+    "venue": "wasm-pack documentation; source docs/src in github.com/wasm-bindgen/wasm-pack (moved from rustwasm/wasm-pack)",
+    "year": null,
+    "doi": null,
+    "url": "https://wasm-bindgen.github.io/wasm-pack/book/commands/build.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "README.md, docs/src/commands/build.md and docs/src/cargo-toml-configuration.md on the master branch of github.com/wasm-bindgen/wasm-pack, read raw (rustwasm/wasm-pack’s README now says “This repository has moved to wasm-bindgen/wasm-pack”). README: a tool to build Rust-generated WebAssembly packages “that you could publish to the npm registry”; commands new, build, test, pack and publish. build.md: “creates the files necessary for JavaScript interoperability and for publishing a package to npm”, compiling to wasm and generating a pkg folder with the wasm binary, a JS wrapper file, the README and a package.json; profiles --dev, --profiling and --release (the default); one --target per build: bundler (the default), nodejs, web, no-modules, deno; “By default, Rust panics in WebAssembly compile with panic=abort, which aborts the WebAssembly instance on panic”, and --panic-unwind needs nightly and -Z build-std. cargo-toml-configuration.md: per-profile wasm-opt arguments, and wasm-opt is on by default for the release profile.",
+    "shaped": "Chapters 189 and 191: what wasm-pack automates, which of its steps build.mjs does by hand, and what a panic does to a WebAssembly instance by default."
+  },
+  {
+    "id": "binaryen-readme",
+    "authors": [
+      "The Binaryen contributors (WebAssembly Community Group)"
+    ],
+    "title": "Binaryen: README (wasm-opt)",
+    "venue": "github.com/WebAssembly/binaryen",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/WebAssembly/binaryen",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "README.md on the main branch of github.com/WebAssembly/binaryen, read raw: “a compiler and toolchain infrastructure library for WebAssembly, written in C++”; its optimizer “has many passes … that can improve code size and speed”; wasm-opt “Loads WebAssembly and runs Binaryen IR passes on it”; “Builds are distributed by the various toolchains that use Binaryen, like Emscripten, `wasm-pack`, etc.”, official releases for Linux-x86_64, Linux-arm64, MacOS-x86_64, MacOS-arm64 and Windows-x86_64, and an experimental Node.js build, “A port of wasm-opt to JavaScript+WebAssembly … on any platform that Node.js runs on. Requires Node.js 18+”. The npm package binaryen 132.0.0 installed by engine/rust/packages/wasm was inspected: its bin/wasm-opt is one 11,279,933-byte file, a #!/usr/bin/env node loader with a WebAssembly module embedded at byte 3,456, and reports “wasm-opt version 132 (version_132)”.",
+    "shaped": "Chapters 189 and 190: what wasm-opt is, and the npm wasm-opt as an example of a native tool shipped as WebAssembly."
+  },
+  {
+    "id": "wasm-bindgen-cli-descriptors",
+    "authors": [
+      "The wasm-bindgen Developers"
+    ],
+    "title": "wasm-bindgen-cli-support 0.2.106: descriptor functions and the descriptor interpreter (src/descriptors.rs, src/interpreter/mod.rs)",
+    "venue": "Source of the wasm-bindgen-cli-support crate, version 0.2.106, on crates.io (github.com/wasm-bindgen/wasm-bindgen)",
+    "year": null,
+    "doi": null,
+    "url": "https://crates.io/crates/wasm-bindgen-cli-support/0.2.106",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "The published crate source as downloaded by cargo 1.97, read locally. descriptors.rs: “Execute all `__wbindgen_describe_*` functions in a module, inserting a custom section which represents the executed value of each descriptor. Afterwards this will delete all descriptor functions from the module.” interpreter/mod.rs: “A tiny and incomplete Wasm interpreter … only used to execute the various descriptor functions for wasm-bindgen”, which the macro generates as “a mapping of rustc’s trait resolution in executable code”. wit/mod.rs removes the “__wasm_bindgen_unstable” custom sections and decodes them. The counts in the chapter (75 exports, 58 of them __wbindgen_describe_ functions, 15 after the CLI) were read from the author’s build of engine/rust at commit c68daec with WebAssembly.Module.exports in Node v22.23.4.",
+    "shaped": "Chapter 189: what wasm-bindgen removes from the .wasm and why the file shrinks."
+  },
+  {
+    "id": "rustc-wasm32-unknown-unknown",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "The rustc book: wasm32-unknown-unknown",
+    "venue": "The rustc book, Platform Support; source src/doc/rustc/src/platform-support/wasm32-unknown-unknown.md in github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/rustc/platform-support/wasm32-unknown-unknown.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "The page’s source on the master branch of github.com/rust-lang/rust, read raw: the target “does not import any functions from the host for the standard library”; it “has support for the Rust standard library but many parts of the standard library do not work and return errors. For example `println!` does nothing, `std::fs` always return errors, and `std::thread::spawn` will panic”; the proposals enabled by default are multivalue, mutable-globals, reference-types, sign-ext, nontrapping-fptoint and bulk-memory (the last two since Rust 1.87). These six are exactly the --enable flags build.mjs passes to wasm-opt.",
+    "shaped": "Chapters 189 and 190: the features build.mjs passes to wasm-opt, and what the WebAssembly build cannot do (threads, files)."
+  },
+  {
+    "id": "node-packages-exports",
+    "authors": [
+      "The Node.js contributors"
+    ],
+    "title": "Node.js documentation: Modules: Packages (package entry points, conditional exports)",
+    "venue": "Node.js v22 documentation; source doc/api/packages.md in github.com/nodejs/node",
+    "year": null,
+    "doi": null,
+    "url": "https://nodejs.org/docs/latest-v22.x/api/packages.html#conditional-exports",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/api/packages.md on the v22.x branch of github.com/nodejs/node, read raw. Conditional exports: Node implements \"node-addons\", \"node\", \"import\", \"require\", \"module-sync\" and \"default\" (“the generic fallback that always matches … This condition should always come last”); “Within the \"exports\" object, key order is significant. During condition matching, earlier entries have higher priority and take precedence over later entries”; nested conditions: “If a nested condition does not have any mapping it will continue checking the remaining conditions of the parent condition.” Community conditions: \"types\" (“should always be included first”) and \"browser\" (“any web browser environment”).",
+    "shaped": "Chapter 190: how @viscosity/wasm’s exports map sends Node and browsers to different glue, and why the order of keys matters."
+  },
+  {
+    "id": "ts-modules-reference",
+    "authors": [
+      "The TypeScript team (Microsoft)"
+    ],
+    "title": "TypeScript Handbook: Modules Reference (package.json \"exports\")",
+    "venue": "typescriptlang.org documentation; source packages/documentation/copy/en/modules-reference/Reference.md in github.com/microsoft/TypeScript-Website",
+    "year": null,
+    "doi": null,
+    "url": "https://www.typescriptlang.org/docs/handbook/modules/reference.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "Reference.md on the v2 branch of github.com/microsoft/TypeScript-Website, read raw: “When resolving through conditional \"exports\", TypeScript always matches the \"types\" and \"default\" conditions if present”; other conditions depend on moduleResolution, and the worked examples use [\"types\", \"node\", \"import\"] and [\"types\", \"node\", \"require\"]; customConditions adds more.",
+    "shaped": "Chapter 190: which .d.ts file TypeScript picks from the same exports map."
+  },
+  {
+    "id": "npm-package-json-platform",
+    "authors": [
+      "npm, Inc. (GitHub) and the npm CLI contributors"
+    ],
+    "title": "package.json: optionalDependencies, os and cpu",
+    "venue": "npm Docs; source docs/lib/content/configuring-npm/package-json.md in github.com/npm/cli",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.npmjs.com/cli/configuring-npm/package-json",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "package-json.md on the latest branch of github.com/npm/cli, read raw: optionalDependencies — “If a dependency can be used, but you would like npm to proceed if it cannot be found or fails to install”, and “build failures do not cause installation to fail”; os — “You can specify which operating systems your module will run on”, determined by process.platform; cpu — “If your code only runs on certain cpu architectures”, determined by process.arch; libc applies only when os is linux; exports allows “conditional entry resolution support between environments”. Seen in practice in book/node_modules: esbuild 0.27.7 lists 26 @esbuild/* packages as optionalDependencies, and only @esbuild/linux-x64 (os [\"linux\"], cpu [\"x64\"], an 11,120,788-byte binary) was installed on the Linux x64 machine.",
+    "shaped": "Chapter 190: how a native tool ships one binary per platform through npm."
+  },
+  {
+    "id": "mdn-web-workers",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Using Web Workers",
+    "venue": "MDN Web Docs; source files/en-us/web/api/web_workers_api/using_web_workers/index.md in github.com/mdn/content",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "The page source on the main branch of github.com/mdn/content, read raw: “Web Workers are a simple means for web content to run scripts in background threads. The worker thread can perform tasks without interfering with the user interface”; workers can’t manipulate the DOM; “Data is sent between workers and the main thread via a system of messages — both sides send their messages using the postMessage() method, and respond to messages via the onmessage event handler”; messages are copied or transferred, not shared; “If you need to immediately terminate a running worker from the main thread, you can do so by calling the worker’s terminate method”; workers can use fetch().",
+    "shaped": "Chapter 191: why the Rust engine compiles in a worker, how the page talks to it, and how a broken worker is thrown away."
+  },
+  {
+    "id": "mdn-wasm-runtimeerror",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "WebAssembly.RuntimeError",
+    "venue": "MDN Web Docs; source files/en-us/webassembly/reference/javascript_interface/runtimeerror/index.md in github.com/mdn/content",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/RuntimeError",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "The page source on the main branch of github.com/mdn/content, read raw: “The WebAssembly.RuntimeError object is the error type that is thrown whenever WebAssembly specifies a trap.” A Rust panic in a wasm-bindgen 0.2.106 module built for wasm32-unknown-unknown was observed by the author (Node v22.23.4) to throw a WebAssembly.RuntimeError with the message “unreachable”.",
+    "shaped": "Chapter 191: what a Rust panic looks like from JavaScript, and how play.worker.ts recognizes one."
+  },
+  {
+    "id": "rust-std-catch-unwind",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "std::panic::catch_unwind",
+    "venue": "The Rust standard library; source library/std/src/panic.rs in github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/panic/fn.catch_unwind.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/std/src/panic.rs at tag 1.97.0 of github.com/rust-lang/rust, read raw: “Invokes a closure, capturing the cause of an unwinding panic if one occurs”; it returns Err(cause) if the closure panics; “It is **not** recommended to use this function for a general try/catch mechanism”; the closure must be UnwindSafe, and AssertUnwindSafe asserts it; “This function **might not catch all Rust panics**. A Rust panic is not always implemented via unwinding, but can be implemented by aborting the process as well. This function *only* catches unwinding panics.”",
+    "shaped": "Chapter 191: the native contrast to a panic in WebAssembly, where nothing unwinds."
+  },
+  {
+    "id": "afl-technical-details",
+    "authors": [
+      "Michal Zalewski"
+    ],
+    "title": "Technical “whitepaper” for afl-fuzz (american fuzzy lop, docs/technical_details.txt)",
+    "venue": "american fuzzy lop source distribution, github.com/google/AFL",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/google/AFL/blob/master/docs/technical_details.txt",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "docs/technical_details.txt and README.md on the master branch of github.com/google/AFL, read raw. README: “Originally developed by Michal Zalewski”. technical_details.txt, section 1 (Coverage measurements): the instrumentation “captures branch (edge) coverage, along with coarse branch-taken hit counts”, essentially `cur_location = <COMPILE_TIME_RANDOM>; shared_mem[cur_location ^ prev_location]++; prev_location = cur_location >> 1;`; “The shared_mem[] array is a 64 kB SHM region”; edge tuples distinguish A -> B -> C -> D -> E from A -> B -> D -> C -> E. Section 2 (Detecting new behaviors): “When a mutated input produces an execution trace containing new tuples, the corresponding input file is preserved and routed for additional processing later on … Inputs that do not trigger new local-scale state transitions … are discarded”; hit counts are bucketed 1, 2, 3, 4-7, 8-15, 16-31, 32-127, 128+.",
+    "shaped": "Chapter 193: what coverage-guided fuzzing keeps and why it counts edges rather than blocks."
+  },
+  {
+    "id": "cargo-fuzz-book",
+    "authors": [
+      "The rust-fuzz contributors"
+    ],
+    "title": "Rust Fuzz Book: Fuzzing with cargo-fuzz (setup and tutorial)",
+    "venue": "rust-fuzz.github.io/book; source in github.com/rust-fuzz/book",
+    "year": null,
+    "doi": null,
+    "url": "https://rust-fuzz.github.io/book/cargo-fuzz.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/cargo-fuzz.md, src/cargo-fuzz/setup.md and src/cargo-fuzz/tutorial.md on the master branch of github.com/rust-fuzz/book, read raw. cargo-fuzz.md: “cargo-fuzz is itself not a fuzzer, but a tool to invoke a fuzzer. Currently, the only fuzzer it supports is libFuzzer”. setup.md: “This project requires the nightly compiler since it uses the `-Z` compiler flag to provide address sanitization”; `cargo install cargo-fuzz`. tutorial.md: `cargo fuzz init`, a target `fuzz_target!(|data: &[u8]| { ... })` that libFuzzer “is going to repeatedly call … with a slice of pseudo-random bytes, until your program hits an error condition (segfault, panic, etc)”, run with `cargo fuzz run <fuzz target name>`, with sample output lines “NEW cov: 2066 corp: 110/4713b …”.",
+    "shaped": "Chapter 193: what a coverage-guided harness for the Rust engine would look like, and what it needs (nightly, a byte-slice target)."
+  },
+  {
+    "id": "rustc-dev-guide-diagnostics",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Rust Compiler Development Guide: Errors and lints (diagnostic structure)",
+    "venue": "rustc-dev-guide.rust-lang.org; source in github.com/rust-lang/rustc-dev-guide",
+    "year": null,
+    "doi": null,
+    "url": "https://rustc-dev-guide.rust-lang.org/diagnostics.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/diagnostics.md on the master branch of github.com/rust-lang/rustc-dev-guide, read raw. “Diagnostic structure”: “The main parts of a diagnostic error are the following”: Level (“error, warning, etc.”), Code (“for example, for “mismatched types”, it is E0308”; “Not all diagnostic have a code”), Message (“It should be general and able to stand on its own”), and the Diagnostic window (“The path, line number and column of the beginning of the primary span”, “The users’ affected code”, “Primary and secondary spans … can optionally contain one or more labels”; “Primary spans should have enough text to describe the problem in such a way that if it were the only thing being displayed (for example, in an IDE) it would still make sense”). “Error codes and explanations”: codes link to long-form explanations that “may be viewed with the `--explain` flag”, and “give an error a code … if the explanation would give more information than the error itself”.",
+    "shaped": "Chapter 194: what a diagnostic consists of, and what Viscosity’s frames and errors have and lack."
+  },
+  {
+    "id": "rust-std-thread-scope",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Function std::thread::scope and Scope::spawn (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/std/src/thread/scoped.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/thread/fn.scope.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/std/src/thread/scoped.rs on the master branch of github.com/rust-lang/rust, read raw: “Creates a scope for spawning scoped threads.”, “Unlike non-scoped threads, scoped threads can borrow non-`’static` data, as the scope guarantees all threads will be joined at the end of the scope.”, “All threads spawned within the scope that haven’t been manually joined will be automatically joined before this function returns.”, “If any of the automatically joined threads panicked, this function will panic.”; stable since 1.63.0. Scope::spawn: “Unlike non-scoped threads, threads spawned with this function may borrow non-`’static` data from outside the scope.”",
+    "shaped": "Chapter 195: why the CLI’s worker threads may borrow the file list, the counter and the result slots."
+  },
+  {
+    "id": "rust-std-atomic-fetch-add",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "AtomicUsize::fetch_add and enum Ordering (Rust core library documentation)",
+    "venue": "Rust core library API documentation; source in library/core/src/sync/atomic.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/sync/atomic/struct.AtomicUsize.html#method.fetch_add",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/core/src/sync/atomic.rs on the master branch of github.com/rust-lang/rust, read raw. fetch_add (in the atomic integer macro): “Adds to the current value, returning the previous value.”, “This operation wraps around on overflow.”, “`fetch_add` takes an [`Ordering`] argument which describes the memory ordering of this operation. All ordering modes are possible.” enum Ordering: “Memory orderings specify the way atomic operations synchronize memory. In its weakest [`Ordering::Relaxed`], only the memory directly touched by the operation is synchronized.”; Relaxed: “No ordering constraints, only atomic operations.”; “Rust’s memory orderings are the same as those of C++20”.",
+    "shaped": "Chapter 195: the shared work counter, and why Relaxed is enough for it."
+  },
+  {
+    "id": "rust-std-mutex",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Struct std::sync::Mutex (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/std/src/sync/poison/mutex.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/sync/struct.Mutex.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/std/src/sync/poison/mutex.rs on the master branch of github.com/rust-lang/rust, read raw: “A mutual exclusion primitive useful for protecting shared data”, “This mutex will block threads waiting for the lock to become available.”, “The data can only be accessed through the RAII guards returned from [`lock`] and [`try_lock`], which guarantees that the data is only ever accessed when the mutex is locked.” Poisoning: “a mutex becomes poisoned if it recognizes that the thread holding it has panicked”, after which `lock` and `try_lock` “return a [`Result`] which indicates whether a mutex has been poisoned or not. Most usage of a mutex will simply [`unwrap()`] these results”.",
+    "shaped": "Chapter 195: the result slots, and why the CLI’s `expect` on `lock()` cannot fire."
+  },
+  {
+    "id": "rust-std-available-parallelism",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Function std::thread::available_parallelism (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/std/src/thread/functions.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/thread/fn.available_parallelism.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/std/src/thread/functions.rs on the master branch of github.com/rust-lang/rust, read raw: “Returns an estimate of the default amount of parallelism a program should use.”; Limitations: it “does not account for differences in (co)processor capabilities or current system load”; “The value returned by this function should be considered a simplified approximation of the actual amount of parallelism available at any given time.”; On all targets: “It may overcount the amount of parallelism available when running in a VM with CPU usage limits (e.g. an overcommitted host).”",
+    "shaped": "Chapter 195: the default for --jobs, and why it can overcount on a shared VM."
+  },
+  {
+    "id": "npm-ci-docs",
+    "authors": [
+      "npm, Inc."
+    ],
+    "title": "npm-ci: Clean install a project (npm CLI documentation)",
+    "venue": "docs.npmjs.com; source docs/lib/content/commands/npm-ci.md in github.com/npm/cli",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.npmjs.com/cli/commands/npm-ci",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "docs/lib/content/commands/npm-ci.md on the latest branch of github.com/npm/cli, read raw: “This command is similar to npm install, except it’s meant to be used in automated environments such as test platforms, continuous integration, and deployment”; “The project **must** have an existing `package-lock.json`”; “If dependencies in the package lock do not match those in `package.json`, `npm ci` will exit with an error, instead of updating the package lock.”; “If a `node_modules` is already present, it will be automatically removed before `npm ci` begins its install.”; “It will never write to `package.json` or `package-lock.json`: installs are essentially frozen.” The behaviour was also reproduced locally with npm 10.9.9 on engine/ts at commit cff36bb^ (EUSAGE, “Missing: @viscosity/cli@0.1.0 from lock file”).",
+    "shaped": "Chapter 196: why the out-of-sync engine/ts lockfile broke a clean install but not the development machine."
+  },
+  {
+    "id": "gha-concurrency",
+    "authors": [
+      "GitHub, Inc."
+    ],
+    "title": "Control the concurrency of workflows and jobs (GitHub Actions documentation)",
+    "venue": "docs.github.com; source in github.com/github/docs (content/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency.md and data/reusables/actions)",
+    "year": null,
+    "doi": null,
+    "url": "https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "The page source and the reusables it includes (data/reusables/actions/jobs/section-using-concurrency.md and actions-group-concurrency.md) on the main branch of github.com/github/docs, read raw: “Use `concurrency` to ensure that only a single job or workflow using the same concurrency group will run at a time. A concurrency group can be any string or expression”; the expression may use the `github`, `inputs` and `vars` contexts; “When a concurrent job or workflow is queued, if another job or workflow using the same concurrency group in the repository is in progress, the queued job or workflow will be `pending`”; “To also cancel any currently running job or workflow in the same concurrency group, specify `cancel-in-progress: true`.”",
+    "shaped": "Chapter 196: what the workflow’s concurrency group does to an older run on the same branch."
+  },
+  {
+    "id": "setup-node-readme",
+    "authors": [
+      "GitHub, Inc."
+    ],
+    "title": "actions/setup-node: README (caching global packages data)",
+    "venue": "github.com/actions/setup-node",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/actions/setup-node",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "README.md on the main branch of github.com/actions/setup-node, read raw, section “Caching global packages data”: “It uses actions/cache under the hood for caching global packages data”; “The action defaults to search for the dependency file (`package-lock.json`, `npm-shrinkwrap.json` or `yarn.lock`) in the repository root, and uses its hash as a part of the cache key. Use `cache-dependency-path` for cases when multiple dependency files are used, or they are located in different subdirectories.”; “**Note:** The action does not cache `node_modules`”.",
+    "shaped": "Chapter 196: how the npm cache in ci.yml is keyed, per lockfile."
+  },
+  {
+    "id": "rust-cache-readme",
+    "authors": [
+      "Swatinem (GitHub account) and contributors"
+    ],
+    "title": "Swatinem/rust-cache: README (Rust Cache Action)",
+    "venue": "github.com/Swatinem/rust-cache",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/Swatinem/rust-cache",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "README.md on the master branch of github.com/Swatinem/rust-cache, read raw: “A GitHub Action that implements smart caching for rust/cargo projects”; “This action only caches the _dependencies_ of a crate”; it caches “`~/.cargo` (installed binaries, the cargo registry, cache, and git dependencies)” and “`./target` (build artifacts of dependencies)”; the key includes “the rustc release / host / hash”; “the workspace crates themselves are not cached since doing so is generally not effective”, and it sets `CARGO_INCREMENTAL=0`. The repository owner is github.com/Swatinem.",
+    "shaped": "Chapter 196: what the Rust jobs’ cache keeps and what is rebuilt on every run."
+  },
+  {
+    "id": "clippy-readme",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Clippy: README (usage in CI)",
+    "venue": "github.com/rust-lang/rust-clippy",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/rust-lang/rust-clippy",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "README.md on the master branch of github.com/rust-lang/rust-clippy, read raw, CI section: “Note that setting `CARGO_BUILD_WARNINGS=deny` will cause your build to fail if **any** warnings are found in your code”; “Also note that before Cargo 1.97, the usual way to deny all warnings was by using `-D warnings`: cargo clippy -- -D warnings”; “However, `CARGO_BUILD_WARNINGS` has the benefit of not invalidating build caches, and is thus to be preferred going forward.”",
+    "shaped": "Chapter 196: the clippy gate and a cache-friendlier way to deny warnings."
+  },
+  {
+    "id": "rustfmt-readme",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "rustfmt: README (verifying code is formatted)",
+    "venue": "github.com/rust-lang/rustfmt",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/rust-lang/rustfmt",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "README.md on the master branch of github.com/rust-lang/rustfmt, read raw: “When running with `--check`, Rustfmt will exit with `0` if Rustfmt would not make any formatting changes to the input, and `1` if Rustfmt would make changes.”; “Checking style on a CI server: To keep your code base consistently formatted, it can be helpful to fail the CI build when a pull request contains unformatted code. Using `--check` instructs rustfmt to exit with an error code if the input is not formatted correctly.”; the example `cargo fmt --all -- --check`.",
+    "shaped": "Chapter 196: the formatting check the workflow doesn’t run."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.
