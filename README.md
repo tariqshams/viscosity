@@ -9,13 +9,24 @@ rewrites the storage as a *struct of arrays* (SoA) or blocked *AoSoA* backed
 by typed arrays. Your code keeps the same behaviour.
 
 Status: **working, pre-release.** The TypeScript compiler (JavaScript,
-TypeScript and Python front-ends), its Rust port (byte-for-byte identical
-output, also built to WebAssembly) and both Drip implementations are built
-and tested. It is not yet published to npm or crates.io.
+TypeScript and Python front-ends) and its Rust port (JavaScript and Python;
+byte-for-byte identical output on 190 fixture pairs, kept honest by a
+differential fuzzer, also built to WebAssembly) are built and tested, as
+are three Drip implementations (tree-walker, TS VM, drip-rs). The book's
+200 chapters are written. Nothing is published to npm or crates.io yet.
 
-Measured end to end on Node 22 (committed results in
-[`engine/ts/packages/bench/results`](engine/ts/packages/bench/results)):
-particles 4.3×, ledger 5.1×, heat 3.3×, boids 1.18×, n-body 1.09× faster.
+Measured end to end, original vs compiled, best of 9 fresh processes on a
+shared 4-vCPU VM
+([`matrix-2026-10-31.md`](engine/ts/packages/bench/results/matrix-2026-10-31.md)):
+
+| program | Node 22 (V8) | Bun 1.4 (JavaScriptCore) |
+|---|---:|---:|
+| particles | 4.37× | 3.0× |
+| heat | 4.11× | 1.02× |
+| ledger | 3.75× | 2.88× |
+| boids | 1.31× | 1.85× |
+| n-body | 1.2× | 0.97× |
+| geometric mean | 2.54× | 1.74× |
 
 ## The monorepo
 
@@ -62,7 +73,8 @@ cd book && npm install && npm run check:chapters && npm run build && npm run che
 | M6 | AoSoA, mixed typed/plain columns, profile-guided sizes | ✅ (hot/cold is split by type only) |
 | M7 | Python front-end plugin (proves the multi-language architecture) | ✅ |
 | Track B | drip-rs (Rust VM) and the Rust engine, compiled to WebAssembly | ✅ `book/companion/rust`, `engine/rust` |
-| Next | Publish to npm and crates.io; a WebAssembly playground; more layouts | |
+| Tooling | Differential fuzzer, parallel multi-file builds, `explain --frames`, `@viscosity/wasm`, the book Playground on the Rust engine, CI | ✅ |
+| Next | Publish to npm and crates.io (packages and crates are ready to pack); hot/cold splitting by access frequency; more layouts | |
 
 ## Credits
 
