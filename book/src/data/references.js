@@ -3755,6 +3755,78 @@ export const references = [
     "checkedAgainst": "README.md on the master branch of github.com/rust-lang/rustfmt, read raw: “When running with `--check`, Rustfmt will exit with `0` if Rustfmt would not make any formatting changes to the input, and `1` if Rustfmt would make changes.”; “Checking style on a CI server: To keep your code base consistently formatted, it can be helpful to fail the CI build when a pull request contains unformatted code. Using `--check` instructs rustfmt to exit with an error code if the input is not formatted correctly.”; the example `cargo fmt --all -- --check`.",
     "shaped": "Chapter 196: the formatting check the workflow doesn’t run."
   },
+  {
+    "id": "rust-book-ch12-cli",
+    "authors": [
+      "Steve Klabnik",
+      "Carol Nichols",
+      "Chris Krycho"
+    ],
+    "title": "The Rust Programming Language, chapter 12: An I/O Project: Building a Command Line Program",
+    "venue": "The Rust Programming Language; source src/ch12-*.md in github.com/rust-lang/book",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/book/ch12-00-an-io-project.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "src/ch12-01-accepting-command-line-arguments.md, src/ch12-03-improving-error-handling-and-modularity.md and src/ch12-06-writing-to-stderr-instead-of-stdout.md on the main branch of github.com/rust-lang/book, read raw. 12-01: std::env::args returns an iterator of the arguments, collected into a Vec; the note “The args Function and Invalid Unicode”: std::env::args will panic if any argument contains invalid Unicode, and std::env::args_os returns OsString values instead. 12-03: “A nonzero exit status is a convention to signal to the process that called our program that the program exited with an error state”; process::exit returns the number passed as the exit status code. 12-06: “there are two kinds of output: standard output (stdout) for general information and standard error (stderr) for error messages. This distinction enables users to choose to direct the successful output of a program to a file but still print error messages to the screen.”",
+    "shaped": "Chapter 197: what a CLI receives and returns: arguments, stdout and stderr, and a non-zero exit status for failure."
+  },
+  {
+    "id": "rust-std-env-args",
+    "authors": [
+      "The Rust Project Developers"
+    ],
+    "title": "Function std::env::args (Rust standard library documentation)",
+    "venue": "Rust standard library API documentation; source in library/std/src/env.rs of github.com/rust-lang/rust",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/std/env/fn.args.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "library/std/src/env.rs on the main branch of github.com/rust-lang/rust, read raw: “Returns the arguments that this program was started with (normally passed via the command line). The first element is traditionally the path of the executable”; “# Panics: The returned iterator will panic during iteration if any argument to the process is not valid Unicode. If this is not desired, use the [`args_os`] function instead.”; `pub fn args() -> Args { Args { inner: args_os() } }`. Checked against the Viscosity CLI built with rustc 1.97: an argument containing the byte 0xFF panics in main with “called `Result::unwrap()` on an `Err` value” and exit status 101.",
+    "shaped": "Chapter 197: the CLI’s arguments come from std::env::args, and a non-UTF-8 argument panics before parsing."
+  },
+  {
+    "id": "clap-readme",
+    "authors": [
+      "The clap contributors"
+    ],
+    "title": "clap: README, and the exit codes in clap_builder (src/util/mod.rs), version 4.6.7",
+    "venue": "github.com/clap-rs/clap",
+    "year": null,
+    "doi": null,
+    "url": "https://github.com/clap-rs/clap",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "README.md on the master branch of github.com/clap-rs/clap, read raw: “Command Line Argument Parser for Rust”; “Create your command-line parser, with all of the bells and whistles, declaratively or procedurally.”; dual-licensed Apache 2.0 or MIT. clap_builder/src/util/mod.rs at tag v4.6.7, read raw: `SUCCESS_CODE: i32 = 0` and `USAGE_CODE: i32 = 2`, with the comment “While sysexists.h defines EX_USAGE as 64, this doesn’t seem to be used much in practice but instead 2 seems to be frequently used. Examples - GNU `ls` returns 2 - Python’s `argparse` returns 2”. The derive example in chapter 197 was compiled against clap 4.6.7 (features = [\"derive\"]) with rustc 1.97 and run: exit status 2 and “error: unexpected argument '--bogus' found” for an unknown flag; “invalid float literal” for --min-size 0x10; --min-size inf accepted.",
+    "shaped": "Chapter 197: what clap is, the status it exits with on a usage error, and how a clap version of the CLI would differ from the hand-written one."
+  },
+  {
+    "id": "cargo-publishing-guide",
+    "authors": [
+      "The Cargo Team"
+    ],
+    "title": "Publishing on crates.io (The Cargo Book)",
+    "venue": "The Cargo Book; source doc/book/src/reference/publishing.md in github.com/rust-lang/cargo",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/cargo/reference/publishing.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/book/src/reference/publishing.md on the master branch of github.com/rust-lang/cargo, read raw: “Take care when publishing a crate, because a publish is generally permanent. The version can never be overwritten, and the code cannot be deleted.”; crate names are first-come-first-serve; before publishing fill out `license` or `license-file`, `description`, `homepage`, `repository` and `readme`; `cargo publish` verifies the package, compresses it into a .crate file, extracts it and verifies that it compiles, then uploads it; run `cargo publish --dry-run` (or `cargo package`, which is equivalent) first; `cargo yank` does not delete any code. Also checked against cargo 1.97 run on engine/rust: `cargo package -p viscosity-core` stops with “all dependencies must have a version requirement specified when packaging. dependency `viscosity-vir` does not specify a version”, and `cargo package -p viscosity-vir --list` lists .cargo_vcs_info.json, Cargo.lock, Cargo.toml, Cargo.toml.orig and src/ only.",
+    "shaped": "Chapter 198: that publishing a crate is permanent, the metadata a crate should have, and what cargo package checks."
+  },
+  {
+    "id": "cargo-semver-guide",
+    "authors": [
+      "The Cargo Team"
+    ],
+    "title": "SemVer Compatibility (The Cargo Book)",
+    "venue": "The Cargo Book; source doc/book/src/reference/semver.md in github.com/rust-lang/cargo",
+    "year": null,
+    "doi": null,
+    "url": "https://doc.rust-lang.org/cargo/reference/semver.html",
+    "accessed": "2026-10-31",
+    "checkedAgainst": "doc/book/src/reference/semver.md on the master branch of github.com/rust-lang/cargo, read raw: “This guide uses the terms ‘major’ and ‘minor’ assuming this relates to a ‘1.0.0’ release or later. Initial development releases starting with ‘0.y.z’ can treat changes in ‘y’ as a major release, and ‘z’ as a minor release. ‘0.0.z’ releases are always major changes. This is because Cargo uses the convention that only changes in the left-most non-zero component are considered incompatible.”; the change categories major, minor and possibly-breaking; “These are only guidelines”.",
+    "shaped": "Chapter 198: how a 0.y.z crate’s version should change for a breaking change, a feature and a fix."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.
