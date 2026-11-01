@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { compile, explain, type PlanOptions } from '../../core/src/index.ts';
 import { jsPlugin } from '../../frontend-js/src/index.ts';
 import { pythonPlugin } from '../../frontend-python/src/index.ts';
-import { profile } from './profile.ts';
+import { profile, readProfile } from './profile.ts';
 
 class UsageError extends Error {}
 
@@ -67,8 +67,11 @@ export function parseArgs(argv: string[]) {
       const v = next();
       if (v !== 'check' && v !== 'assume') throw new UsageError('--bounds must be check or assume');
       args.opts.bounds = v;
-    } else if (a === '--min-size') args.opts.minSize = Number(next());
-    else if (a === '--profile') args.profile = next();
+    } else if (a === '--min-size') {
+      const v = Number(next());
+      if (Number.isNaN(v) || v < 0) throw new UsageError('--min-size must be a non-negative number');
+      args.opts.minSize = v;
+    } else if (a === '--profile') args.profile = next();
     else if (a === '--python-auto') args.opts.pythonAuto = true;
     else if (a === '--parser') {
       const v = next();
@@ -105,7 +108,7 @@ export function main(argv: string[]): number {
       else process.stdout.write(text);
       return 0;
     }
-    if (a.profile) a.opts.profile = JSON.parse(readFileSync(a.profile, 'utf8'));
+    if (a.profile) a.opts.profile = readProfile(a.profile);
     const several = a.files.length > 1;
     // build: where each output goes ('' for stdout).
     let outs = a.files.map(() => a.out);

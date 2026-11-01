@@ -117,7 +117,13 @@ fn parse_args(argv: &[String]) -> Result<Args, CliError> {
                     _ => return Err(CliError::Usage("--bounds must be check or assume".into())),
                 }
             }
-            "--min-size" => args.opts.min_size = js_to_number(&next()?),
+            "--min-size" => {
+                let v = js_to_number(&next()?);
+                if v.is_nan() || v < 0.0 {
+                    return Err(CliError::Usage("--min-size must be a non-negative number".into()));
+                }
+                args.opts.min_size = v;
+            }
             "--profile" => args.profile = next()?,
             "--python-auto" => args.opts.python_auto = true,
             _ if !a.starts_with('-') => args.files.push(a.to_string()),
@@ -310,15 +316,24 @@ fn output_name(file: &str) -> std::ffi::OsString {
     Path::new(file).file_name().map_or_else(|| file.into(), |n| n.to_os_string())
 }
 
-/// Reads a `viscosity profile` file: `{ name: { maxLength } }`.
+/// Reads a `--profile` file (as `viscosity profile` writes it): a JSON
+/// object mapping collection names to objects whose `maxLength` is a
+/// non-negative finite number (other keys are ignored). Anything else is an
+/// error, worded as in the TypeScript CLI.
 fn read_profile(path: &str) -> Result<HashMap<String, f64>, String> {
-    let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    let obj = json.as_object().ok_or("the profile must be a JSON object")?;
-    Ok(obj
-        .iter()
-        .filter_map(|(name, v)| v.get("maxLength").and_then(|n| n.as_f64()).map(|n| (name.clone(), n)))
-        .collect())
+    let text = fs::read_to_string(path).map_err(|_| format!("cannot read the profile {path}"))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|_| format!("the profile {path} is not valid JSON"))?;
+    let obj = json.as_object().ok_or(r#"the profile must be a JSON object: { "name": { "maxLength": n }, ... }"#)?;
+    obj.iter()
+        .map(|(name, v)| match v.as_object().and_then(|e| e.get("maxLength")).and_then(serde_json::Value::as_f64) {
+            Some(n) if n.is_finite() && n >= 0.0 => Ok((name.clone(), n)),
+            _ => Err(format!(
+                "the profile entry {} must be an object whose maxLength is a non-negative number",
+                serde_json::to_string(name).expect("strings serialize")
+            )),
+        })
+        .collect()
 }
 
 fn main() -> ExitCode {

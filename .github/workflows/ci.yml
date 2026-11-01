@@ -69,7 +69,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
           targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
@@ -85,6 +85,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+
+      # The parity, fuzz and multi-file tests run the TypeScript engine as the
+      # reference, so its dependencies (acorn, sucrase) must be installed.
+      - name: Install the TypeScript engine (the parity reference)
+        working-directory: engine/ts
+        run: npm ci
+
+      - name: Format
+        working-directory: engine/rust
+        run: cargo fmt --all --check
 
       - name: Test
         working-directory: engine/rust

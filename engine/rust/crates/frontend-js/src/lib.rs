@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use oxc_allocator::Allocator;
 use oxc_parser::{ParseOptions, Parser};
+use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
 use viscosity_core::{Annotation, CompileError, LanguagePlugin, Layout, LoweredModule, Plan};
 use viscosity_vir::BindingId;
@@ -60,13 +61,23 @@ impl LanguagePlugin for JsPlugin {
     fn lower(&self, source: &str) -> Result<LoweredModule<JsExtra>, CompileError> {
         let allocator = Allocator::default();
         // acorn's `sourceType: 'module'`, without JSX; parentheses are not
-        // kept as nodes (acorn's default `preserveParens: false`).
-        let options = ParseOptions { preserve_parens: false, ..ParseOptions::default() };
+        // kept as nodes (acorn's default `preserveParens: false`), and
+        // regular expressions are validated, as acorn does.
+        let options =
+            ParseOptions { preserve_parens: false, parse_regular_expression: true, ..ParseOptions::default() };
         let ret = Parser::new(&allocator, source, SourceType::mjs()).with_options(options).parse();
         if let Some(e) = ret.diagnostics.errors().next() {
             return Err(CompileError(format!("SyntaxError: {e}")));
         }
         let program = ret.program;
+        // acorn reports ECMAScript's early errors (redeclarations, `break`
+        // outside a loop, duplicate labels, undeclared exports, strict-mode
+        // rules, ...) while parsing. oxc's parser leaves many of them to
+        // semantic analysis, so run its syntax checks too.
+        let semantic = SemanticBuilder::new().with_check_syntax_error(true).build(&program);
+        if let Some(e) = semantic.diagnostics.errors().next() {
+            return Err(CompileError(format!("SyntaxError: {e}")));
+        }
         let lines = LineIndex::new(source);
         let mut comments = Vec::new();
         if let Some(h) = &program.hashbang {
@@ -90,7 +101,7 @@ impl LanguagePlugin for JsPlugin {
         // Split at the same line breaks the line numbers count.
         let src_lines = lines::split_lines(source);
         for cm in &comments {
-            let Some((layout, block_size)) = parse_annotation(cm.value) else {
+            let Some((layout, block_size, block_text)) = parse_annotation(cm.value) else {
                 continue;
             };
             let own = src_lines.get(cm.line as usize - 1).is_some_and(|l| starts_comment(l));
@@ -100,7 +111,10 @@ impl LanguagePlugin for JsPlugin {
                 };
                 let line = lines.line(decl.start);
                 if if own { line == cm.line + 1 } else { line == cm.line } {
-                    annotations.insert(id, Annotation { layout, block_size, line: cm.line });
+                    annotations.insert(
+                        id,
+                        Annotation { layout, block_size, block_text: block_text.map(str::to_string), line: cm.line },
+                    );
                 }
             }
         }
@@ -124,9 +138,10 @@ fn starts_comment(line: &str) -> bool {
     t.starts_with("//") || t.starts_with("/*") || t.starts_with('*')
 }
 
-/// Matches `/@viscosity\s+(aosoa|soa|aos)\b(?:\((\d+)\))?/` against a
-/// comment, returning the layout and the optional block size.
-pub fn parse_annotation(comment: &str) -> Option<(Layout, Option<u64>)> {
+/// Matches `/@viscosity\s+(aosoa|soa|aos)\b(?:\(([^)]*)\))?/` against a
+/// comment, returning the layout, the block size if the text between the
+/// parentheses is a whole number, and that text.
+pub fn parse_annotation(comment: &str) -> Option<(Layout, Option<u64>, Option<&str>)> {
     const TAG: &str = "@viscosity";
     let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
     let mut from = 0;
@@ -145,14 +160,13 @@ pub fn parse_annotation(comment: &str) -> Option<(Layout, Option<u64>)> {
             if tail.chars().next().is_some_and(is_word) {
                 continue; // `\b`
             }
-            let block = tail.strip_prefix('(').and_then(|t| {
-                let digits = t.len() - t.trim_start_matches(|c: char| c.is_ascii_digit()).len();
-                (digits > 0 && t[digits..].starts_with(')')).then(|| &t[..digits])
-            });
-            // `Number(digits)`; huge values saturate, as no block size that
-            // large is a usable power of two anyway.
-            let size = block.map(|d| d.parse::<f64>().expect("digits") as u64);
-            return Some((layout, size));
+            let block = tail.strip_prefix('(').and_then(|t| t.find(')').map(|end| &t[..end]));
+            // `Number(digits)`; huge values saturate, and are refused as
+            // larger than the maximum block size anyway.
+            let size = block
+                .filter(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
+                .map(|d| d.parse::<f64>().expect("digits") as u64);
+            return Some((layout, size, block));
         }
     }
     None
@@ -164,12 +178,14 @@ mod tests {
 
     #[test]
     fn annotations() {
-        assert_eq!(parse_annotation(" @viscosity soa"), Some((Layout::Soa, None)));
-        assert_eq!(parse_annotation(" @viscosity aosoa(16) please"), Some((Layout::Aosoa, Some(16))));
-        assert_eq!(parse_annotation(" @viscosity aosoa(x)"), Some((Layout::Aosoa, None)));
-        assert_eq!(parse_annotation(" @viscosity   aos"), Some((Layout::Aos, None)));
+        assert_eq!(parse_annotation(" @viscosity soa"), Some((Layout::Soa, None, None)));
+        assert_eq!(parse_annotation(" @viscosity aosoa(16) please"), Some((Layout::Aosoa, Some(16), Some("16"))));
+        assert_eq!(parse_annotation(" @viscosity aosoa(x)"), Some((Layout::Aosoa, None, Some("x"))));
+        assert_eq!(parse_annotation(" @viscosity aosoa()"), Some((Layout::Aosoa, None, Some(""))));
+        assert_eq!(parse_annotation(" @viscosity aosoa(8"), Some((Layout::Aosoa, None, None)));
+        assert_eq!(parse_annotation(" @viscosity   aos"), Some((Layout::Aos, None, None)));
         assert_eq!(parse_annotation(" @viscosity soap"), None);
         assert_eq!(parse_annotation(" @viscositysoa"), None);
-        assert_eq!(parse_annotation(" @viscosity x @viscosity soa"), Some((Layout::Soa, None)));
+        assert_eq!(parse_annotation(" @viscosity x @viscosity soa"), Some((Layout::Soa, None, None)));
     }
 }

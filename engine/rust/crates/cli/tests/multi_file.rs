@@ -167,3 +167,31 @@ fn the_typescript_cli_prints_the_same() {
     let _ = fs::remove_dir_all(&dr);
     let _ = fs::remove_dir_all(&dt);
 }
+
+#[test]
+fn min_size_must_be_a_non_negative_number_in_both_clis() {
+    let file = js_files().remove(0);
+    let ts_cli = root().join("../ts/packages/cli/src/cli.ts");
+    let node = Command::new("node").arg("--version").output().is_ok();
+    for (v, ok) in
+        [("abc", false), ("-1", false), ("NaN", false), ("1x", false), ("0", true), ("100", true), ("1e3", true)]
+    {
+        let rs = viscosity(&["explain", &file, "--min-size", v]);
+        assert_eq!(rs.status.success(), ok, "rust --min-size {v}");
+        let err = String::from_utf8_lossy(&rs.stderr);
+        if !ok {
+            assert!(err.starts_with("viscosity: --min-size must be a non-negative number\n"), "rust: {err}");
+        }
+        if node {
+            let ts =
+                Command::new("node").arg(&ts_cli).args(["explain", &file, "--min-size", v]).output().expect("node");
+            assert_eq!(ts.status.code(), rs.status.code(), "ts --min-size {v}");
+            if ok {
+                assert_eq!(ts.stdout, rs.stdout, "--min-size {v}");
+            } else {
+                let err = String::from_utf8_lossy(&ts.stderr);
+                assert!(err.starts_with("viscosity: --min-size must be a non-negative number\n"), "ts: {err}");
+            }
+        }
+    }
+}

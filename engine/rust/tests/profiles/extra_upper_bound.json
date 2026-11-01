@@ -1,0 +1,1 @@
+{ "evens": { "maxLength": 50 }, "small": { "maxLength": 1000 }, "both": { "maxLength": 30 } }

@@ -26,6 +26,11 @@
 // with the default options. The list is FRAMES below; the Rust parity test
 // checks every `.frames.txt` it finds.
 //
+// For each profile in tests/profiles/<name>.json (a `viscosity profile`
+// file: `{ "ps": { "maxLength": 10 } }`), program <name> is also compiled
+// with that profile (`explain --profile`), with the default options, into
+// `<name>.profile.js` (or `.py`) and `<name>.profile.explain.txt`.
+//
 // Usage (Node >= 22.18, which strips TypeScript types natively):
 //   node scripts/gen_expected.mjs
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -51,8 +56,8 @@ const out = join(rust, 'tests', 'expected');
 const FRAMES = new Set([
   'corpus_aliasing_identity', 'corpus_escapes_log', 'corpus_reassigned', 'corpus_shape_mismatch',
   'corpus_string_index', 'corpus_throw_from_loop', 'extra_destructure', 'extra_frames_columns',
-  'extra_many_bailouts', 'extra_operand_uses', 'extra_phi_lines', 'pycorpus_escapes_print',
-  'pycorpus_len_of_element',
+  'extra_many_bailouts', 'extra_operand_uses', 'extra_phi_lines', 'extra_unicode_offsets',
+  'pycorpus_escapes_print', 'pycorpus_len_of_element',
 ]);
 let frames = 0;
 const writeFrames = (base, r) => {
@@ -62,6 +67,18 @@ const writeFrames = (base, r) => {
   frames++;
 };
 mkdirSync(out, { recursive: true });
+const profileDir = join(rust, 'tests', 'profiles');
+const profiles = new Map(readdirSync(profileDir).filter((f) => f.endsWith('.json')).map((f) => [f.replace(/\.json$/, ''), JSON.parse(readFileSync(join(profileDir, f), 'utf8'))]));
+let profiled = 0;
+const writeProfiled = (base, ext, compileWith) => {
+  const profile = profiles.get(base);
+  if (!profile) return;
+  const r = compileWith({ profile });
+  writeFileSync(join(out, `${base}.profile.${ext}`), r.code);
+  writeFileSync(join(out, `${base}.profile.explain.txt`), r.explain);
+  profiles.delete(base);
+  profiled++;
+};
 
 let n = 0;
 for (const { dir, prefix } of sources) {
@@ -72,6 +89,7 @@ for (const { dir, prefix } of sources) {
     for (const [suffix, extra] of [['', {}], ['.assume', { bounds: 'assume' }]]) {
       const r = compile(src, jsPlugin(), { ...(optIn ? { mode: 'opt-in' } : {}), ...extra });
       if (!suffix) writeFrames(base, r);
+      if (!suffix) writeProfiled(base, 'js', (more) => compile(src, jsPlugin(), { ...(optIn ? { mode: 'opt-in' } : {}), ...more }));
       writeFileSync(join(out, `${base}${suffix}.js`), r.code);
       writeFileSync(join(out, `${base}${suffix}.explain.txt`), r.explain);
       n++;
@@ -91,6 +109,7 @@ for (const { dir, prefix, only } of pySources) {
     for (const [suffix, extra] of [['', {}], ['.assume', { bounds: 'assume' }]]) {
       const r = compile(src, pythonPlugin(), { pythonAuto, ...extra });
       if (!suffix) writeFrames(base, r);
+      if (!suffix) writeProfiled(base, 'py', (more) => compile(src, pythonPlugin(), { pythonAuto, ...more }));
       writeFileSync(join(out, `${base}${suffix}.py`), r.code);
       writeFileSync(join(out, `${base}${suffix}.explain.txt`), r.explain);
       n++;
@@ -98,4 +117,5 @@ for (const { dir, prefix, only } of pySources) {
   }
 }
 if (FRAMES.size) throw new Error(`FRAMES names unknown programs: ${[...FRAMES].join(', ')}`);
-console.log(`wrote ${n} fixture pairs and ${frames} code-frame fixtures to ${out}`);
+if (profiles.size) throw new Error(`tests/profiles names unknown programs: ${[...profiles.keys()].join(', ')}`);
+console.log(`wrote ${n} fixture pairs, ${frames} code-frame fixtures and ${profiled} profiled fixture pairs to ${out}`);

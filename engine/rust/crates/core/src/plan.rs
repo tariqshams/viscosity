@@ -31,14 +31,21 @@ impl Layout {
 }
 
 /// A `@viscosity soa` style annotation in the source.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Annotation {
     pub layout: Layout,
-    /// `aosoa(N)`: the block size N, if given.
+    /// `aosoa(N)`: the block size N, if given as a whole number.
     pub block_size: Option<u64>,
+    /// What was written between the parentheses, if anything (`aosoa(x)`:
+    /// `x`), for the planner's messages.
+    pub block_text: Option<String>,
     /// The line of the annotation comment.
     pub line: u32,
 }
+
+/// The largest AoSoA block size (2^16). Larger blocks gain nothing, cost a
+/// lot of memory per block, and break the shift arithmetic from 2^32 up.
+pub const MAX_BLOCK_SIZE: u64 = 65536;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 pub enum Mode {
@@ -122,11 +129,21 @@ fn plan_one(a: &Analysis, c: &Collection, opts: &PlanOptions) -> CollectionPlan 
         return keep(c.bailouts.iter().map(|b| format!("unsafe: {b}")).collect());
     }
     if let Some(ann) = ann.filter(|a| a.layout == Layout::Aosoa) {
-        let b = ann.block_size.unwrap_or(8);
-        if !(b >= 2 && b.is_power_of_two()) {
+        // A block size that is not a whole number (`aosoa(x)`) is refused,
+        // not replaced by the default.
+        let b = match (&ann.block_text, ann.block_size) {
+            (Some(_), None) => None,
+            (_, b) => Some(b.unwrap_or(8)),
+        };
+        let written = ann.block_text.clone().unwrap_or_else(|| js_number(b.unwrap_or(8) as f64));
+        if b.is_some_and(|b| b > MAX_BLOCK_SIZE) {
             return keep(vec![format!(
-                "annotated aosoa({}), but the block size must be a power of two (2, 4, 8, 16, ...)",
-                js_number(b as f64)
+                "annotated aosoa({written}), but the block size must be at most {MAX_BLOCK_SIZE}"
+            )]);
+        }
+        if !b.is_some_and(|b| b >= 2 && b.is_power_of_two()) {
+            return keep(vec![format!(
+                "annotated aosoa({written}), but the block size must be a power of two (2, 4, 8, 16, ...)"
             )]);
         }
     }
@@ -163,7 +180,7 @@ fn plan_one(a: &Analysis, c: &Collection, opts: &PlanOptions) -> CollectionPlan 
     if let Some(size) = size {
         if size < opts.min_size {
             return keep(vec![format!(
-                "{} {}{} elements: below the {}-element threshold, where the benefit is too small",
+                "{} {} elements{}: below the {}-element threshold, where the benefit is too small",
                 if measured.is_none() && c.size_is_upper_bound { "at most" } else { "about" },
                 js_number(size),
                 if measured.is_some() { " (measured)" } else { "" },

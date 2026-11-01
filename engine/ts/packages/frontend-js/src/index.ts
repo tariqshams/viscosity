@@ -16,7 +16,7 @@ interface JsLowered extends LoweredModule {
   js: string;
 }
 
-const ANN = /@viscosity\s+(aosoa|soa|aos)\b(?:\((\d+)\))?/;
+const ANN = /@viscosity\s+(aosoa|soa|aos)\b(?:\(([^)]*)\))?/;
 
 export function jsPlugin(opts: { parser?: 'acorn' | 'mini'; typescript?: boolean } = {}): LanguagePlugin {
   return {
@@ -45,7 +45,7 @@ export function jsPlugin(opts: { parser?: 'acorn' | 'mini'; typescript?: boolean
         for (const [jb, id] of lowered.bindingOf) {
           const line = jb.decl?.loc?.start.line;
           if (own ? line === cm.line + 1 : line === cm.line) {
-            annotations.set(id, { layout: m[1] as Annotation['layout'], blockSize: m[2] ? Number(m[2]) : undefined, line: cm.line });
+            annotations.set(id, { layout: m[1] as Annotation['layout'], blockSize: m[2] && /^\d+$/.test(m[2]) ? Number(m[2]) : undefined, blockText: m[2], line: cm.line });
           }
         }
       }

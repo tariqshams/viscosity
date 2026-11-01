@@ -29,7 +29,7 @@ const { code, explain } = compile(source);
 ```
 
 The raw module is exported as `@viscosity/wasm/viscosity_wasm_bg.wasm`
-(about 1.1 MB, 0.4 MB gzipped). Compile errors throw an `Error`. The
+(about 1.3 MB, 0.5 MB gzipped). Compile errors throw an `Error`. The
 TypeScript types use `Symbol.dispose`, so include `esnext.disposable` (or
 `esnext`) in `lib`.
 

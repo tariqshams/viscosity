@@ -76,7 +76,7 @@ impl LanguagePlugin for PyPlugin {
                 continue;
             };
             if let Some(b) = module.bindings.iter().find(|b| b.name == target && b.owner == Some(module.main)) {
-                annotations.insert(b.id, Annotation { layout, block_size: None, line: i as u32 + 1 });
+                annotations.insert(b.id, Annotation { layout, block_size: None, block_text: None, line: i as u32 + 1 });
             }
         }
         Ok(LoweredModule { module, annotations, extra: PyExtra { low: Some(low), unsupported: None } })

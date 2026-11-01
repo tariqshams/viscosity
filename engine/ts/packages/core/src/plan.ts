@@ -6,7 +6,13 @@ import type { BindingId, SourceRef } from './vir.ts';
 
 export type Layout = 'aos' | 'soa' | 'aosoa';
 
-export interface Annotation { layout: Layout; blockSize?: number; line: number }
+/** `blockSize` is N in `aosoa(N)` when N is a whole number; `blockText` is
+ *  whatever was written between the parentheses (`aosoa(x)`: `'x'`). */
+export interface Annotation { layout: Layout; blockSize?: number; blockText?: string; line: number }
+
+/** The largest AoSoA block size (2^16). Larger blocks gain nothing, cost a
+ *  lot of memory per block, and break the shift arithmetic from 2^32 up. */
+export const MAX_BLOCK_SIZE = 65536;
 
 export interface PlanOptions {
   /** auto: decide everything; opt-in: only touch annotated collections */
@@ -48,9 +54,16 @@ export function plan(a: Analysis, opts: PlanOptions = DEFAULT_OPTIONS): Plan {
       out.push(keep(...c.bailouts.map((b) => `unsafe: ${b}`)));
       continue;
     }
-    const B = ann?.blockSize ?? 8;
+    // A block size that is not a whole number (`aosoa(x)`) is refused, not
+    // replaced by the default.
+    const B = ann?.blockText !== undefined && ann.blockSize === undefined ? NaN : ann?.blockSize ?? 8;
+    const written = ann?.blockText ?? String(B);
+    if (ann && ann.layout === 'aosoa' && B > MAX_BLOCK_SIZE) {
+      out.push(keep(`annotated aosoa(${written}), but the block size must be at most ${MAX_BLOCK_SIZE}`));
+      continue;
+    }
     if (ann && ann.layout === 'aosoa' && !(B >= 2 && Number.isInteger(Math.log2(B)))) {
-      out.push(keep(`annotated aosoa(${B}), but the block size must be a power of two (2, 4, 8, 16, ...)`));
+      out.push(keep(`annotated aosoa(${written}), but the block size must be a power of two (2, 4, 8, 16, ...)`));
       continue;
     }
     if (ann && ann.layout === 'aosoa' && c.numericFields.size !== c.fields.length) {

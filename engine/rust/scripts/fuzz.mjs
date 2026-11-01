@@ -18,6 +18,13 @@
 //       compiled code (both bounds modes), the same explain text (both
 //       modes) and the same `explain --frames` text, byte for byte.
 //
+// Each batch also has a random profile (as `viscosity profile` writes it),
+// and the explain text with that profile (`explain --profile`) must match.
+//
+// About one program in 20 gets an ECMAScript early error inserted (a
+// redeclaration, `break` outside a loop, a duplicate label, an undeclared
+// export, a strict-mode error, ...). Both engines must reject it.
+//
 // It lives here, next to gen_expected.mjs, because two of its three oracles
 // are JavaScript: the TypeScript engine runs in-process, and so does the
 // node VM that executes the programs. The Rust engine is reached through
@@ -477,6 +484,78 @@ export function generate(seed) {
   return { code: out.join('\n') + '\n', oob };
 }
 
+// ---- early errors -----------------------------------------------------------------------
+
+/**
+ * Statements that are early errors anywhere at the top level of a module
+ * (acorn rejects them while parsing; oxc partly in semantic analysis).
+ * `name` is a collection the program declares; `n` a fresh number.
+ */
+const EARLY_ERRORS = [
+  ({ name }) => `var ${name};`,
+  ({ name }) => `let ${name} = [];`,
+  () => 'let k = 0;',
+  () => 'function k() {}',
+  () => 'break;',
+  () => 'continue;',
+  () => 'return 1;',
+  ({ n }) => `l${n}: l${n}: ;`,
+  ({ n }) => `l${n}: { continue l${n}; }`,
+  ({ name }) => `for (let i = 0; i < ${name}.length; i++) { break nope; }`,
+  ({ name }) => `for (let i = 0; i < ${name}.length; i++) { (() => { continue; })(); }`,
+  ({ name }) => `delete ${name};`,
+  ({ n }) => `let o${n} = 0${n % 8}7;`,
+  ({ n }) => `let s${n} = '\\0${n % 8}';`,
+  ({ name }) => `with (${name}) {}`,
+  ({ n }) => `export { undeclared${n} };`,
+  ({ name }) => `export { ${name} as e, k as e };`,
+  ({ n }) => `function f${n}(a, a) { return a; }`,
+  ({ n }) => `const f${n} = (a, a) => a;`,
+  ({ n }) => `class K${n} { constructor() {} constructor() {} }`,
+  ({ n }) => `class K${n} { #p; #p; }`,
+  ({ n }) => `class K${n} { m() { super(); } }`,
+  ({ n }) => `class K${n} { m() { return this.#q; } }`,
+  () => 'new.target;',
+  ({ n }) => `const c${n};`,
+  () => 'let eval = 1;',
+  () => 'arguments = 1;',
+  ({ n }) => `if (k) function g${n}() {}`,
+  ({ n }) => `const r${n} = /(?<g>.)(?<g>.)/;`,
+  ({ n }) => `const r${n} = /a{2,1}/;`,
+  () => '({ __proto__: 1, __proto__: 2 });',
+];
+
+/**
+ * Sometimes inserts one early error into a generated program, on a line
+ * of its own after the first line. The choice uses its own random stream,
+ * so the programs without one are exactly what `generate` made.
+ */
+export function withEarlyError(prog, seed) {
+  const R = rng(seed ^ 0x6ea41e);
+  if (!R.chance(0.05)) return prog;
+  const lines = prog.code.trimEnd().split('\n');
+  const names = [...prog.code.matchAll(/^(?:const|let) ([A-Za-z_$][\w$]*) = \[/gm)].map((m) => m[1]);
+  const stmt = R.pick(EARLY_ERRORS)({ name: names.length ? R.pick(names) : 'k', n: R.int(1, 99) });
+  lines.splice(R.int(1, lines.length), 0, stmt);
+  return { code: lines.join('\n') + '\n', oob: prog.oob, early: stmt };
+}
+
+/** The profile for the batch starting at program b: random measured sizes for some collection names. */
+function batchProfile(seed, b) {
+  const R = rng(programSeed(seed, b) ^ 0x9f0f11e);
+  const profile = {};
+  for (const name of COLL_NAMES) {
+    if (R.chance(0.6)) profile[name] = { maxLength: R.pick([0, 1, 10, 63, 64, 65, 200, 5000]) };
+  }
+  return profile;
+}
+
+/** Program k of campaign `seed`. */
+function programAt(seed, k) {
+  const s = programSeed(seed, k);
+  return withEarlyError(generate(s), s);
+}
+
 // ---- running programs ------------------------------------------------------------------
 
 /** Runs a program in a fresh VM context: its console output and uncaught error. */
@@ -494,8 +573,15 @@ function run(code) {
 }
 
 /** What the TypeScript engine makes of a program. */
-function tsOutputs(code) {
+function tsOutputs(code, profile) {
   const res = {};
+  if (profile) {
+    try {
+      res.profiled = compile(code, jsPlugin(), { profile }).explain || 'No arrays of objects found.';
+    } catch {
+      res.profiled = null;
+    }
+  }
   for (const [mode, opts] of [['check', {}], ['assume', { bounds: 'assume' }]]) {
     try {
       const r = compile(code, jsPlugin(), opts);
@@ -528,7 +614,7 @@ function splitSections(text, files) {
 }
 
 /** What the Rust engine makes of a batch of program files (one CLI call per mode). */
-function rustOutputs(bin, dir, files) {
+function rustOutputs(bin, dir, files, profile) {
   const res = new Map(files.map((f) => [f, {}]));
   const call = (args) => spawnSync(bin, args, { encoding: 'utf8', maxBuffer: 1 << 30 });
   const errorsOf = (stderr) => {
@@ -555,13 +641,25 @@ function rustOutputs(bin, dir, files) {
   const fr = call(['explain', '--frames', ...files]);
   const sections = splitSections(fr.stdout ?? '', files);
   for (const f of files) res.get(f).frames = sections.get(f) ?? null;
+  if (profile) {
+    const path = join(dir, 'profile.json');
+    writeFileSync(path, JSON.stringify(profile));
+    const pr = splitSections(call(['explain', '--profile', path, ...files]).stdout ?? '', files);
+    for (const f of files) res.get(f).profiled = pr.get(f) ?? null;
+  }
   return res;
 }
 
 /** Every way a program fails. `rust` is the Rust engine's outputs, or null. */
 function failuresOf(prog, rust, info = {}) {
   const fails = [];
-  const t = tsOutputs(prog.code);
+  const t = tsOutputs(prog.code, prog.profile);
+  if (prog.early) {
+    // Both engines must reject it, in both bounds modes.
+    if (!t.check.error) fails.push({ kind: 'early-accepted-ts', detail: prog.early });
+    if (rust && (!rust.check?.error || !rust.assume?.error)) fails.push({ kind: 'early-accepted-rust', detail: prog.early });
+    return fails;
+  }
   info.transformed = /\b__Vsc_/.test(t.check.code ?? '');
   if (t.check.error) fails.push({ kind: 'ts-crash', detail: t.check.error });
   else {
@@ -584,6 +682,9 @@ function failuresOf(prog, rust, info = {}) {
       if (a.explain !== b.explain) fails.push({ kind: `parity-explain-${mode}`, detail: firstDiff(a.explain, b.explain) });
     }
     if (!t.check.error && !rust.check?.error && t.frames !== rust.frames) fails.push({ kind: 'parity-frames', detail: firstDiff(t.frames, rust.frames) });
+    if (prog.profile && !t.check.error && !rust.check?.error && t.profiled !== rust.profiled) {
+      fails.push({ kind: 'parity-profile', detail: `profile ${JSON.stringify(prog.profile)}\n${firstDiff(t.profiled, rust.profiled)}` });
+    }
   }
   return fails;
 }
@@ -613,13 +714,13 @@ function parses(code) {
 function reduce(prog, kind, bin, dir) {
   const stillFails = (lines) => {
     const code = lines.join('\n') + '\n';
-    if (!parses(code)) return false;
-    const p = { code, oob: prog.oob };
+    if (!prog.early && !parses(code)) return false;
+    const p = { code, oob: prog.oob, early: prog.early, profile: prog.profile };
     let rust = null;
     if (kind.startsWith('parity') && bin) {
       const f = join(dir, 'reduce.js');
       writeFileSync(f, code);
-      rust = rustOutputs(bin, dir, [f]).get(f);
+      rust = rustOutputs(bin, dir, [f], prog.profile).get(f);
     }
     return failuresOf(p, rust).some((x) => x.kind === kind);
   };
@@ -643,7 +744,10 @@ function main() {
   const o = parseArgs(process.argv.slice(2));
   const indices = o.only !== null ? [o.only] : [...Array(o.count).keys()];
   if (o.print) {
-    for (const k of indices) process.stdout.write(`// ---- program ${k} (seed ${o.seed}) ${generate(programSeed(o.seed, k)).oob ? '(may go out of bounds)' : ''}\n${generate(programSeed(o.seed, k)).code}`);
+    for (const k of indices) {
+      const p = programAt(o.seed, k);
+      process.stdout.write(`// ---- program ${k} (seed ${o.seed}) ${p.oob ? '(may go out of bounds) ' : ''}${p.early ? '(an early error)' : ''}\n${p.code}`);
+    }
     return 0;
   }
   let bin = null;
@@ -657,19 +761,21 @@ function main() {
   const keep = o.keep || join(work, 'failures');
   mkdirSync(keep, { recursive: true });
   const t0 = Date.now();
-  const stats = { programs: 0, oob: 0, transformed: 0, failing: 0, kinds: {} };
+  const stats = { programs: 0, oob: 0, early: 0, transformed: 0, failing: 0, kinds: {} };
   const failing = [];
   for (let b = 0; b < indices.length && failing.length < o.maxFail; b += o.batch) {
-    const batch = indices.slice(b, b + o.batch).map((k) => ({ k, ...generate(programSeed(o.seed, k)) }));
+    const profile = batchProfile(o.seed, b);
+    const batch = indices.slice(b, b + o.batch).map((k) => ({ k, ...programAt(o.seed, k), profile }));
     const dir = join(work, `batch${b}`);
     mkdirSync(dir, { recursive: true });
     const files = batch.map((p) => join(dir, `p${p.k}.js`));
     batch.forEach((p, i) => writeFileSync(files[i], p.code));
-    const rust = bin ? rustOutputs(bin, dir, files) : null;
+    const rust = bin ? rustOutputs(bin, dir, files, profile) : null;
     batch.forEach((p, i) => {
       if (failing.length >= o.maxFail) return;
       stats.programs++;
       if (p.oob) stats.oob++;
+      if (p.early) stats.early++;
       const info = {};
       const fails = failuresOf(p, rust ? rust.get(files[i]) : null, info);
       if (info.transformed) stats.transformed++;
@@ -694,7 +800,7 @@ function main() {
     if (!o.quiet && indices.length > o.batch) process.stderr.write(`  ${Math.min(b + o.batch, indices.length)}/${indices.length} programs, ${stats.failing} failing\n`);
   }
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`fuzz: seed ${o.seed}, ${stats.programs} programs (${stats.transformed} transformed, ${stats.oob} may go out of bounds), ${stats.failing} failing, ${secs} s${bin ? '' : ' (TS only)'}`);
+  console.log(`fuzz: seed ${o.seed}, ${stats.programs} programs (${stats.transformed} transformed, ${stats.oob} may go out of bounds, ${stats.early} with an early error), ${stats.failing} failing, ${secs} s${bin ? '' : ' (TS only)'}`);
   if (stats.failing) console.log(`  by kind: ${JSON.stringify(stats.kinds)}\n  programs kept in ${keep}`);
   if (!stats.failing) rmSync(work, { recursive: true, force: true });
   return stats.failing ? 1 : 0;
