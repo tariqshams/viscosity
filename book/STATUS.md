@@ -1,10 +1,10 @@
 # Status
 
-Live: https://viscosity-book.vercel.app (Vercel project `viscosity-book`,
-team "Tariq Shams' projects", root `book/`). The docs site for the
-compiler is the separate `website/` project
-(https://viscosity-website-chi.vercel.app until viscosity.dev is pointed at
-it).
+Live: https://viscosity.dev/book/ (Vercel project `viscosity-book`,
+team "Tariq Shams' projects", root `book/`, built with Astro
+`base: '/book'`). The docs site for the compiler is the separate
+`website/` project, served at https://viscosity.dev/ with the book
+combined under `/book/` (previously https://viscosity-website-chi.vercel.app).
 
 All 200 chapters are written and pass `scripts/check_chapters.mjs`.
 
@@ -48,5 +48,5 @@ All 200 chapters are written and pass `scripts/check_chapters.mjs`.
   - Cooper, Harvey and Kennedy (2001).
   Their hosts were unreachable from the build environment.
 - **Chapter 71** summarises the two columnar-array papers (Makor et al. 2022; Kloibhofer et al. 2023) from their abstracts and publication lists, because the full texts were blocked. A callout in the chapter says so. Check the claims against the full papers.
-- **Publishing:** nothing is published. The npm packages (`@viscosity/cli`, `@viscosity/wasm`) pack and install cleanly, and the Rust crates `cargo package` cleanly, but publishing and the viscosity.dev domain are your decisions.
+- **Publishing:** nothing is published. The npm packages (`@viscosity/cli`, `@viscosity/wasm`) pack and install cleanly, and the Rust crates `cargo package` cleanly, but publishing and the viscosity.dev domain are your decisions. Everything is set to version 0.0.1 and ready to publish: create the npm organization `viscosity`, add `NPM_TOKEN` and `CARGO_REGISTRY_TOKEN` as environment secrets, then run `scripts/release.sh` (try `scripts/release.sh --dry-run` first; it needs no tokens). The steps are in `engine/rust/README.md`, under Releasing.
 - **Benchmarks** are from one shared cloud VM (4 vCPUs, noisy). Every number in the book comes from a committed results file; re-running on dedicated hardware would make them stronger.

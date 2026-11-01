@@ -1,7 +1,7 @@
 {
   "name": "viscosity-engine",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Viscosity: an automatic data-layout optimizer (AoS → SoA / AoSoA). TypeScript reference implementation.",
   "author": "Tariq Shams",
   "license": "MIT",

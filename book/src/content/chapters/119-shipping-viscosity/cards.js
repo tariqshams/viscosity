@@ -206,7 +206,7 @@ export const quiz = [
   {
     q: 'What happens today if someone runs `npm install viscosity`?',
     options: [
-      { t: 'They get this book’s compiler, version 0.1.0', why: 'Viscosity isn’t published, and the name belongs to someone else.' },
+      { t: 'They get this book’s compiler, version 0.0.1', why: 'Viscosity isn’t published, and the name belongs to someone else.' },
       { t: 'npm refuses, because the package doesn’t exist', why: 'A package with that name does exist; it just isn’t this one.' },
       { t: 'They get an unrelated Sass library that owns the name', correct: true, why: '`npm view viscosity` shows version 0.3.0, “a sass library for fluid containers…”.' },
       { t: 'They get `@viscosity/cli`, because npm adds the scope', why: 'npm never adds a scope by itself; `@viscosity/cli` returns 404.' },

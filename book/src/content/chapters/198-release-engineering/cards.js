@@ -35,13 +35,17 @@ export const prompts = {
     q: 'Under Cargo’s rules, what is the next version after 0.1.0 for a breaking change? For a new feature?',
     a: '0.2.0 for a breaking change (in 0.y.z, y counts as major). 0.1.1 for a feature (z counts as minor).',
   },
+  'zero-zero': {
+    q: 'Viscosity is at 0.0.1. Which later versions does Cargo’s caret requirement `"0.0.1"` accept, and why does that make 0.0.1 “experimental”?',
+    a: 'None: it means `>=0.0.1, <0.0.2`. In 0.0.z the left-most non-zero part is z, so every patch release counts as incompatible, and users only move when they ask to.',
+  },
   'api-surface': {
     q: 'Besides its functions, what counts as Viscosity’s public API?',
     a: 'The explain text, the CLI’s flags, messages and exit statuses, and the compiled code users run.',
   },
   'path-deps': {
     q: 'Why did `cargo package -p viscosity-core` fail at first?',
-    a: 'Its dependency `viscosity-vir` was given by path only. crates.io needs a version requirement, so each internal dependency now has `version = "0.1.0"` next to its `path`.',
+    a: 'Its dependency `viscosity-vir` was given by path only. crates.io needs a version requirement, so each internal dependency now has `version = "0.0.1"` next to its `path`.',
   },
   'crate-license': {
     q: 'What licence text did a packaged `viscosity-vir` crate first contain?',
@@ -53,15 +57,15 @@ export const prompts = {
   },
   'scoped-access': {
     q: 'What does publishing a scoped npm package like `@viscosity/cli` for the first time need?',
-    a: '`--access public` (scoped packages are not public by default), and the right to publish under the `@viscosity` organization scope.',
+    a: '`--access public` (scoped packages are not public by default; both packages set it in `publishConfig`), and the right to publish under the `@viscosity` organization scope.',
   },
   'ci-gap': {
     q: 'Name two release checks that CI does not run today.',
     a: 'Any two of: the `@viscosity/wasm` smoke test (`smoke.mjs`), wasm-bindgen, a long fuzzing campaign, the benchmarks.',
   },
   'who-publishes': {
-    q: 'Who decides when Viscosity is published, and why isn’t `npm publish` in the checklist?',
-    a: 'Tariq. Publishing is permanent and claims names, so it is left out of every script on purpose.',
+    q: 'Who decides when Viscosity is published, and what does `scripts/release.sh` need before it will publish?',
+    a: 'Tariq. Publishing is permanent and claims names, so the script stops without `NPM_TOKEN` and `CARGO_REGISTRY_TOKEN`, which he adds after creating the npm organization `viscosity`.',
   },
 };
 
@@ -119,7 +123,7 @@ fn from_one_point_oh_on() {
 }
 
 #[test]
-fn viscosity_today_is_zero_point() {
+fn zero_point_y() {
     let v = "0.1.0";
     assert_eq!(next(v, Break), "0.2.0");
     assert_eq!(next(v, Feat), "0.1.1");
@@ -129,6 +133,8 @@ fn viscosity_today_is_zero_point() {
 #[test]
 fn zero_zero_is_always_major() {
     for c in [Break, Feat, Fix] {
+        // Viscosity today
+        assert_eq!(next("0.0.1", c), "0.0.2");
         assert_eq!(next("0.0.3", c), "0.0.4");
     }
 }
@@ -140,6 +146,7 @@ fn caret_accepts_compatible() {
     assert!(accepts("1.2.0", "1.9.0"));
     assert!(!accepts("1.2.0", "2.0.0"));
     assert!(!accepts("0.0.3", "0.0.4"));
+    assert!(!accepts("0.0.1", "0.0.2"));
 }
 
 #[test]
@@ -168,7 +175,7 @@ fn every_bump_is_judged_right() {
     ],
     walkthrough: `Cargo reads \`viscosity-core = "0.1"\` as \`>=0.1.0, <0.2.0\`: it accepts versions whose left-most non-zero part matches. Everything here follows from that one rule.
 
-- **Why 0.y.z is special.** Semantic Versioning says that while the major number is 0, anything may change. Cargo turns that into something usable: in \`0.y.z\` it treats y as the major part, so \`0.1.0\` → \`0.2.0\` is a break and \`0.1.0\` → \`0.1.1\` is not. In \`0.0.z\` the left-most non-zero part is z, so every release is a break.
+- **Why 0.y.z is special.** Semantic Versioning says that while the major number is 0, anything may change. Cargo turns that into something usable: in \`0.y.z\` it treats y as the major part, so \`0.1.0\` → \`0.2.0\` is a break and \`0.1.0\` → \`0.1.1\` is not. In \`0.0.z\` the left-most non-zero part is z, so every release is a break: Viscosity’s \`"0.0.1"\` means \`>=0.0.1, <0.0.2\`.
 - **Why match on a tuple.** \`(x, y, c)\` puts all three facts in one place. The arms go from most to least specific, and \`match\` takes the first that fits, so \`(0, 0, _)\` must come before \`(0, _, Break)\`.
 - **Why the parts reset.** \`1.4.2\` plus a feature is \`1.5.0\`, not \`1.5.2\`: the patch number counts fixes *since that minor release*.
 - **Why \`b >= a\`.** A caret requirement is a range with a lower bound. \`"0.1.5"\` needs at least 0.1.5. Rust compares tuples element by element, which is exactly version order for numbers.
@@ -194,7 +201,7 @@ fn accepts(req: &str, v: &str) -> bool {
     let b = parts(v);
     a.0 == b.0 && b >= a
 }`,
-        why: 'This applies the 1.0 rules to every version. For Viscosity’s 0.1.0, a breaking change would become 1.0.0, and a feature 0.2.0, which Cargo users of `"0.1"` would never get.',
+        why: 'This applies the 1.0 rules to every version. For a crate at 0.1.0, a breaking change would become 1.0.0, and a feature 0.2.0, which Cargo users of `"0.1"` would never get.',
       },
       {
         code: `${PRE}
@@ -263,7 +270,7 @@ fn accepts(req: &str, v: &str) -> bool {
 
 export const quiz = [
   {
-    q: 'Viscosity is at 0.1.0 and a release changes the wording of an explain line. Under Cargo’s rules, what should the version be?',
+    q: 'Suppose Viscosity were at 0.1.0 and a release changed the wording of an explain line. Under Cargo’s rules, what should the version be?',
     options: [
       { t: '0.1.1: it is only text', why: 'Explain text is part of the API: tests and users compare it exactly. A change that can break them is a breaking change.' },
       { t: '0.2.0', correct: true, why: 'In 0.y.z Cargo treats y as the major part, so a breaking change bumps y and resets z.' },
@@ -273,10 +280,10 @@ export const quiz = [
   {
     q: 'What does `cargo package -p viscosity-core` do in the repository today?',
     options: [
-      { t: 'Builds a `.crate` file ready to upload, and checks that it builds', correct: true, why: 'Every internal path dependency now has a version, so the manifest check passes and the packaged crate is verified.' },
+      { t: 'Builds a `.crate` file and verifies it, ready to upload', why: 'Not on its own: the verifying build looks for `viscosity-vir` on crates.io, where it isn’t yet.' },
       { t: 'Uploads the crate to crates.io', why: '`cargo package` never uploads. That is `cargo publish`.' },
       { t: 'Stops: `viscosity-vir` is a path dependency without a version', why: 'That was the first result. crates.io needs a version requirement, and the workspace now gives one.' },
-      { t: 'Fails because the tests fail', why: '`cargo package` doesn’t run the tests, and they pass anyway.' },
+      { t: 'Packs it, then fails to verify it: `viscosity-vir` isn’t on crates.io yet', correct: true, why: 'The verifying build resolves dependencies from crates.io. `cargo package --workspace` packs `viscosity-vir` first and verifies against that instead.' },
     ],
   },
   {
@@ -293,7 +300,7 @@ export const quiz = [
       { t: 'Pack `@viscosity/cli`, install it in an empty folder and run it', correct: true, why: 'The TypeScript job does this, and checks `--version` against package.json.' },
       { t: 'The `@viscosity/wasm` smoke test', why: '`smoke.mjs` exists but is run by hand. CI only builds the crate for wasm32, in debug.' },
       { t: 'A 20,000-program fuzzing campaign', why: 'CI runs the fixed-seed fuzz test inside `cargo test`; long campaigns are run by hand.' },
-      { t: '`npm publish --dry-run`', why: 'Not there. It packs the CLI, but doesn’t try a publish.' },
+      { t: '`npm publish --dry-run`', why: 'Not there. It packs the CLI, but doesn’t try a publish; `scripts/release.sh --dry-run` does, by hand.' },
     ],
   },
   {
@@ -305,11 +312,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is `npm publish` not part of any script in the repository?',
+    q: '`scripts/release.sh` can publish everything. Why does it only do so with tokens Tariq adds himself?',
     options: [
-      { t: 'Because npm can’t publish scoped packages', why: 'It can, with `--access public`.' },
-      { t: 'Because the packages don’t build yet', why: 'Both npm packages build and pack. The crates are the ones that can’t be packaged yet.' },
-      { t: 'Because publishing is permanent, and whether and when to do it is the author’s decision', correct: true, why: 'A published version can’t be taken back, so it is left as a deliberate human step.' },
+      { t: 'Because npm can’t publish scoped packages without them', why: 'Scoped packages publish fine with `publishConfig.access` set to public. The tokens say who is publishing.' },
+      { t: 'Because the packages don’t build without them', why: 'Both npm packages build and pack, and `--dry-run` verifies all six crates, with no tokens at all.' },
+      { t: 'Because publishing is permanent, and whether and when to do it is the author’s decision', correct: true, why: 'A published version can’t be taken back. The script does the work; the tokens keep running it a deliberate human step.' },
     ],
   },
 ];

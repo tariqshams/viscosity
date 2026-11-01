@@ -771,7 +771,7 @@ checksum = "3a3b425286980a367278453f3b6d28cdcb134b574e5a35824a6ff5eebad50bb6"
 
 [[package]]
 name = "viscosity-cli"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "serde_json",
  "viscosity-core",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "viscosity-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "indexmap",
  "rustc-hash",
@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "viscosity-frontend-js"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "indexmap",
  "oxc_allocator",
@@ -810,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "viscosity-frontend-python"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "indexmap",
  "viscosity-core",
@@ -819,11 +819,11 @@ dependencies = [
 
 [[package]]
 name = "viscosity-vir"
-version = "0.1.0"
+version = "0.0.1"
 
 [[package]]
 name = "viscosity-wasm"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "viscosity-core",
  "viscosity-frontend-js",

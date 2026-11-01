@@ -1,7 +1,7 @@
 {
   "name": "viscosity-website",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "description": "viscosity.dev: the landing page and user documentation for Viscosity, by Tariq Shams.",
   "author": "Tariq Shams",

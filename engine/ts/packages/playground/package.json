@@ -1,6 +1,7 @@
 {
   "name": "@viscosity/playground",
-  "version": "0.1.0",
+  "private": true,
+  "version": "0.0.1",
   "description": "A browser bundle of the Viscosity engine, used by the book's playground.",
   "author": "Tariq Shams",
   "license": "MIT",

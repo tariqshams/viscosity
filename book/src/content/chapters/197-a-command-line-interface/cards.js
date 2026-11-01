@@ -425,7 +425,7 @@ export const quiz = [
       { t: '`viscosity explain missing.js` (no such file)', why: 'A missing file is `CliError::Other`: the command line was fine.' },
       { t: '`viscosity explain bad.js` (a syntax error)', why: 'Also `Other`. The help wouldn’t help.' },
       { t: '`viscosity explain a.js --mode fast`', correct: true, why: 'An invalid flag value is a usage error, so the message is followed by a blank line and the help.' },
-      { t: '`viscosity --version`', why: 'That succeeds and prints `viscosity 0.1.0`.' },
+      { t: '`viscosity --version`', why: 'That succeeds and prints `viscosity 0.0.1`.' },
     ],
   },
   {
@@ -438,7 +438,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Where does `viscosity --version` get `0.1.0` in the Rust CLI?',
+    q: 'Where does `viscosity --version` get `0.0.1` in the Rust CLI?',
     options: [
       { t: 'From `Cargo.toml`, at compile time, through `env!("CARGO_PKG_VERSION")`', correct: true, why: 'Cargo sets that variable while compiling, so the version is baked into the binary.' },
       { t: 'From `package.json`, read when it runs', why: 'That is how the TypeScript CLI does it.' },

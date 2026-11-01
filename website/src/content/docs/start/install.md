@@ -34,7 +34,7 @@ you can build the tarball yourself and install it:
 ```sh
 cd viscosity/engine/ts/packages/cli
 npm pack
-npm install -g ./viscosity-cli-0.1.0.tgz
+npm install -g ./viscosity-cli-0.0.1.tgz
 viscosity --version
 ```
 
@@ -78,7 +78,7 @@ target and `wasm-bindgen-cli` 0.2.106 (binaryen's `wasm-opt` is optional).
 cd viscosity/engine/rust/packages/wasm
 npm install          # binaryen, for the optional wasm-opt step
 npm pack             # runs build.mjs (Node and browser targets), then packs
-                     # viscosity-wasm-0.1.0.tgz, to install in your project
+                     # viscosity-wasm-0.0.1.tgz, to install in your project
 ```
 
 ```js
@@ -92,6 +92,6 @@ In a browser, call the default export (`await init()`) first; it fetches
 the `.wasm` file. Compile errors throw an `Error` whose message has the same
 `<message> (line:column)` form as the CLI's.
 
-The [book's](https://viscosity-book.vercel.app) Playground uses this
+The [book's](/book/) Playground uses this
 build: its TS / Rust toggle switches to the Rust engine, whose `.wasm` file
 is downloaded only when you pick it.
