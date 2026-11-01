@@ -47,7 +47,7 @@ Here is the CLI’s first `package.json`, in
 ```
 {
   "name": "@viscosity/cli",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "The viscosity command:
     build, explain and profile.",
   "author": "Tariq Shams",
@@ -143,9 +143,9 @@ installed in an empty folder:
 ```
 $ npm pack
 npm notice total files: 5
-$ npm install viscosity-cli-0.1.0.tgz
+$ npm install viscosity-cli-0.0.1.tgz
 $ npx viscosity --version
-viscosity 0.1.0
+viscosity 0.0.1
 $ npx viscosity explain p.js
 ps (line 1) {x, vx} → struct of arrays
   …
@@ -158,7 +158,7 @@ Viscosity still isn’t on the registry, but everything up to
 
 ## Version numbers that mean something
 
-The version `0.1.0` isn’t decoration. npm works in **Semantic
+The version `0.0.1` isn’t decoration. npm works in **Semantic
 Versioning**: it requires versions that its semver library can
 parse<Cite id="npm-package-json" />. The rules fit in a
 sentence: given MAJOR.MINOR.PATCH, bump MAJOR for incompatible API
@@ -178,7 +178,10 @@ major version zero is for initial development, and “anything MAY
 change at any time”<Cite id="semver2" />. npm’s caret ranges follow
 that: a dependency on `^1.2.3` accepts anything below `2.0.0`, but
 `^0.1.0` accepts only `0.1.x`, because in 0.x the minor number is
-treated as the breaking one<Cite id="node-semver-ranges" />.
+treated as the breaking one, and `^0.0.1` accepts no other version at
+all<Cite id="node-semver-ranges" />. That is why Viscosity starts at
+0.0.1: no project that depends on it gets a newer release without
+asking for it.
 
 <Callout kind="definition">
 **Semantic versioning** (semver) numbers releases MAJOR.MINOR.PATCH.
@@ -211,7 +214,7 @@ the differential tests check, so by semver’s letter it is a fix or a
 feature. A user who measured a speed-up may disagree. Deciding, and
 writing the decision down, is part of shipping. (One small thing was
 fixed on the way: `viscosity --version` used to print a hard-coded
-`0.1.0`, a second copy of the number in `package.json` that would one
+version, a second copy of the number in `package.json` that would one
 day disagree with it. Now it reads `package.json`.)
 
 <Callout kind="engine" label="Under the hood">
@@ -244,7 +247,7 @@ the edge of `node_modules`: the published CLI is plain JavaScript.
   `npm pack` plus an install now works.
 - **Semantic versioning**: MAJOR.MINOR.PATCH, compared numerically,
   immutable once released, with 0.y.z promising nothing. `^0.1.0`
-  accepts only `0.1.x`.
+  accepts only `0.1.x`, and `^0.0.1` only 0.0.1.
 - Versions are only meaningful against a declared **public API**,
   which for Viscosity includes its options, reports and decisions.
 

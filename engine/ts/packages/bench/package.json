@@ -1,7 +1,7 @@
 {
   "name": "@viscosity/bench",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Benchmark harness and AoS / SoA / AoSoA baseline suites for Viscosity.",
   "author": "Tariq Shams",
   "license": "MIT",

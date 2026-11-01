@@ -6,7 +6,7 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 // time of writing:
 //   versions:  engine/rust/Cargo.toml [workspace.package] version,
 //              engine/ts/packages/cli/package.json,
-//              engine/rust/packages/wasm/package.json (all 0.1.0)
+//              engine/rust/packages/wasm/package.json (all 0.0.1)
 //   build:     `cargo package --workspace` packages and verifies all six
 //              crates (at first it stopped: "all dependencies must have a
 //              version requirement specified when packaging");
@@ -16,7 +16,7 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 //   checks:    .github/workflows/ci.yml packs and installs @viscosity/cli,
 //              and runs cargo test and cargo package --workspace;
 //              packages/wasm/smoke.mjs is run by hand
-//   publish:   nothing is published.
+//   publish:   nothing is published; scripts/release.sh would do it.
 type Cell = { t: string; ok: 'yes' | 'no' | 'part' };
 type Row = { name: string; sub: string; cells: Cell[] };
 
@@ -24,7 +24,7 @@ const ROWS: Row[] = [
   {
     name: 'Rust crates', sub: 'crates.io',
     cells: [
-      { t: 'Cargo.toml 0.1.0', ok: 'yes' },
+      { t: 'Cargo.toml 0.0.1', ok: 'yes' },
       { t: 'cargo package works', ok: 'yes' },
       { t: 'LICENSE in each', ok: 'yes' },
       { t: 'test + package, CI', ok: 'yes' },
@@ -34,7 +34,7 @@ const ROWS: Row[] = [
   {
     name: '@viscosity/cli', sub: 'npm, TS engine',
     cells: [
-      { t: 'package.json 0.1.0', ok: 'yes' },
+      { t: 'package.json 0.0.1', ok: 'yes' },
       { t: 'esbuild bundle', ok: 'yes' },
       { t: 'LICENSE + 3 notices', ok: 'yes' },
       { t: 'CI packs, installs', ok: 'yes' },
@@ -44,7 +44,7 @@ const ROWS: Row[] = [
   {
     name: '@viscosity/wasm', sub: 'npm, Rust engine',
     cells: [
-      { t: 'package.json 0.1.0', ok: 'yes' },
+      { t: 'package.json 0.0.1', ok: 'yes' },
       { t: 'cargo + bindgen', ok: 'yes' },
       { t: 'LICENSE + 71 crates', ok: 'yes' },
       { t: 'smoke.mjs, by hand', ok: 'part' },
@@ -56,11 +56,11 @@ const ROWS: Row[] = [
 const COLS = ['version', 'build', 'licences', 'checked', 'published'];
 
 const STATES: { upto: number; note: string }[] = [
-  { upto: 0, note: 'Three numbers, all 0.1.0: one in the workspace Cargo.toml, which six crates inherit, and one in each npm package. Nothing keeps them equal except care; CI only checks that the packed CLI’s --version matches its own package.json.' },
+  { upto: 0, note: 'Three numbers, all 0.0.1: one in the workspace Cargo.toml, which six crates inherit, and one in each npm package. They are set by hand; scripts/release.sh refuses to run if they differ, and CI checks that the packed CLI’s --version matches its own package.json.' },
   { upto: 1, note: 'Building a package. Both npm packages have a build.mjs that npm runs as prepack. For the crates, cargo package --workspace packages all six. At first it stopped at once: the workspace’s own crates depended on each other by path only, and crates.io needs a version too.' },
   { upto: 2, note: 'Licences. Each npm package ships LICENSE and a THIRD_PARTY_LICENSES.txt with the full text of everything bundled into it. A packaged crate carries only the files in its own folder, so each crate folder now has a LICENSE (crates/vir had none at first).' },
   { upto: 3, note: 'Checks before a release. Every push packs @viscosity/cli, installs the tarball in an empty folder and runs it. CI also tests and packages the crates. @viscosity/wasm has the same kind of test in smoke.mjs, but CI doesn’t run it.' },
-  { upto: 4, note: 'And none of it is published. A crates.io version is permanent and an npm version can never be reused, so the first publish is a decision, and it is Tariq’s to make.' },
+  { upto: 4, note: 'And none of it is published. A crates.io version is permanent and an npm version can never be reused, so the first publish (scripts/release.sh, with his tokens) is a decision, and it is Tariq’s to make.' },
 ];
 
 const mark = (ok: Cell['ok']) => (ok === 'yes' ? '✓' : ok === 'no' ? '✗' : '~');

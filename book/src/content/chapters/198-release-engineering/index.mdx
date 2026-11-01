@@ -3,9 +3,9 @@ n: 198
 day: 50
 part: XII
 title: 'Release engineering'
-tagline: 'Every version number in the repository says 0.1.0, and nothing has been published. A release would ship three things to two registries. Here is what each would need, what is already checked on every push, what isn’t, and the one step that only a person should take.'
+tagline: 'Every version number in the repository says 0.0.1, and nothing has been published. A release ships three things to two registries. Here is what each needs, what is already checked on every push, what isn’t, and the one step that only a person should take.'
 objectives:
-  - Find every version number a Viscosity release would have to change, and apply Cargo’s rules for 0.y.z versions.
+  - Find every version number a Viscosity release would have to change, and apply Cargo’s rules for 0.y.z and 0.0.z versions.
   - Say what Cargo.toml metadata a crate needs to be published, and what packaging the workspace’s crates first turned up.
   - Describe the two npm packages, how each is built and which licences each ships.
   - Write a release checklist from the scripts that really exist.
@@ -15,10 +15,10 @@ sources: [semver2, cargo-semver-guide, cargo-specifying-deps, cargo-workspaces, 
 ---
 import ReleaseSteps from '../../../components/diagrams/ch198/ReleaseSteps';
 
-## Version 0.1.0, everywhere
+## Version 0.0.1, everywhere
 
 Ask the Rust CLI and the TypeScript CLI their version and both say
-`viscosity 0.1.0`. So does every package in the repository that could
+`viscosity 0.0.1`. So does every package in the repository that could
 ever be published. None of them is. The repository has no git tags and
 no changelog either: as far as any registry knows, Viscosity doesn't
 exist.
@@ -63,39 +63,46 @@ A release would change three version numbers by hand:
 - `engine/ts/packages/cli/package.json`, for `@viscosity/cli`.
 - `engine/rust/packages/wasm/package.json`, for `@viscosity/wasm`.
 
-Nothing makes them agree. CI checks one thing: that the packed
-TypeScript CLI's `--version` matches its own `package.json`. Should
-they agree at all? The two npm packages are the same compiler,
-promised byte-identical, so one number for both says so plainly. That
-is a choice the repository hasn't written down yet.
+CI checks one thing: that the packed TypeScript CLI's `--version`
+matches its own `package.json`. The release script (below) checks the
+rest, and stops unless both `package.json` files say what the crates
+say. The two npm packages are the same compiler, promised
+byte-identical, so one number for both says so plainly.
 
 What the next number should be follows Semantic Versioning: a major
 change for an incompatible API change, minor for a compatible feature,
 patch for a compatible fix, and "anything MAY change" while the major
 number is 0<Cite id="semver2" />. Cargo makes that last part precise.
 A requirement accepts versions whose left-most non-zero part is the
-same, so `"0.1"` accepts 0.1.9 but not 0.2.0<Cite id="cargo-specifying-deps" />.
+same, so `"0.1"` accepts 0.1.9 but not 0.2.0. For a 0.0.z version the
+left-most non-zero part is z itself: `"0.0.3"` means `>=0.0.3, <0.0.4`,
+so a caret requirement treats every patch release as
+incompatible<Cite id="cargo-specifying-deps" />.
 So for a 0.y.z crate, a change in y counts as major and a change in z
 as minor, and every 0.0.z release is a major change<Cite id="cargo-semver-guide" />.
-For Viscosity at 0.1.0, a breaking change means 0.2.0.
+
+That is why Viscosity's first version is 0.0.1, not 0.1.0. The number
+says "experimental": someone who depends on `"0.0.1"` never gets 0.0.2
+without asking for it. Moving to 0.1.0 would be the first promise that
+fixes arrive compatibly.
 
 What is the API, for Viscosity? The functions, yes, but also every
 `explain` line (the parity fixtures already treat it as exact), the CLI's
 flags, messages and exit statuses, and the compiled code itself, which
 users run.
 
-<Prompts ids={['three-numbers', 'zero-y', 'api-surface']} />
+<Prompts ids={['three-numbers', 'zero-y', 'zero-zero', 'api-surface']} />
 
 ## The crates
 
 The workspace `Cargo.toml` holds the shared metadata: version, edition,
-`authors = ["Tariq Shams"]`, `license = "MIT"`, the repository URL, a
-readme, keywords and a `rust-version`. Each crate adds its own one-line
-`description` and its categories. That covers most of what the Cargo
-book asks a crate to fill in before publishing: a licence, a
-description, a homepage, a repository and a
-readme<Cite id="cargo-publishing-guide" />. Only the homepage is
-missing.
+`authors = ["Tariq Shams"]`, `license = "MIT"`, the repository URL,
+`homepage = "https://viscosity.dev"`, a readme, keywords and a
+`rust-version`. Each crate adds its own one-line
+`description`, its categories and a `documentation` link (docs.rs for
+the libraries). That covers what the Cargo book asks a crate to fill
+in before publishing: a licence, a description, a homepage, a
+repository and a readme<Cite id="cargo-publishing-guide" />.
 
 `cargo package` (which `cargo publish --dry-run` also runs) is the real
 test, and packaging found two problems, both fixed now. When this
@@ -117,7 +124,7 @@ only, as in `viscosity-vir = { path = "crates/vir" }`, and crates.io
 doesn't accept dependencies on code outside crates.io. The fix the
 Cargo book gives is to add a version next to the path, which is used
 when the crate is published<Cite id="cargo-specifying-deps" />, and
-every internal entry now carries `version = "0.1.0"`. The crates would
+every internal entry now carries `version = "0.0.1"`. The crates would
 go up in order, `viscosity-vir` first, since each needs the one below
 it on crates.io already. `core`'s dev-dependency on `frontend-js`
 stays path-only: cargo leaves it out of the packaged manifest, which
@@ -152,8 +159,10 @@ without a licence file, so it uses committed copies of oxc's own.
 Both packages are scoped, under `@viscosity`. Scoped packages are
 private by default on npm, so a first publish would need
 `--access public`, and publishing under an organization's scope needs
-that organization<Cite id="npm-publish-docs" />. Neither
-`package.json` sets this yet.
+that organization<Cite id="npm-publish-docs" />. Both `package.json`
+files now set `"publishConfig": { "access": "public" }`, and the
+engine's other workspace packages say `"private": true`, so npm
+refuses to publish them by accident.
 
 <Prompts ids={['bundle-why', 'scoped-access']} />
 
@@ -192,17 +201,27 @@ Every command below exists in the repository today:
    from `engine/ts`.
 8. In `book`: `node scripts/check_chapters.mjs`.
 
+9. `scripts/release.sh --dry-run`: the tests again, then
+   `cargo publish --dry-run` and `npm publish --dry-run`. It needs no
+   tokens.
+
 One step has no script yet: writing a changelog. The commit history is
 the only record of changes so far.
 
 <Callout kind="engine" label="Under the hood">
-The last step, `npm publish --access public` and `cargo publish`, is
-deliberately not on the list. It is the only step that can't be undone,
-and it also claims names: crates.io names are first come, first
-served<Cite id="cargo-publishing-guide" />, and chapter 119 found that
-the plain `viscosity` name on npm already belongs to someone else.
-Whether and when Viscosity is published, and under what name, is
-Tariq's decision.
+The last step is `scripts/release.sh` without `--dry-run`. It stops
+unless `NPM_TOKEN` and `CARGO_REGISTRY_TOKEN` are set and the git tree
+is clean, runs the tests, then publishes the crates one at a time,
+`viscosity-vir` first, skipping any version crates.io already has and
+waiting for each to reach the index. The dry run can't check one crate
+at a time: `cargo package -p viscosity-core` fails to verify, because
+`viscosity-vir` isn't on crates.io yet. `--workspace` verifies each
+crate against the ones packed before it. Publishing is the only step
+that can't be undone, and it claims names: crates.io names are first
+come, first served<Cite id="cargo-publishing-guide" />, and chapter 119
+found that the plain `viscosity` name on npm belongs to someone else.
+So the tokens are Tariq's to add, after he creates the npm organization
+`viscosity`, and running the script is his decision.
 </Callout>
 
 <Prompts ids={['ci-gap', 'who-publishes']} />
@@ -211,7 +230,7 @@ Tariq's decision.
 
 Write Cargo's version arithmetic: the next version for a change, and
 whether a caret requirement accepts a version. The tests include
-Viscosity's own 0.1.0.
+Viscosity's own 0.0.1.
 
 <Exercise id="semver" />
 
@@ -220,15 +239,17 @@ Viscosity's own 0.1.0.
 - A **release process** is the same steps every time: version,
   changelog, build, check as a user would, publish. Publishing is
   permanent on both crates.io and npm.
-- Viscosity's version lives in **three files**, kept equal by hand.
-  Under Cargo's rules a breaking change to 0.1.0 is **0.2.0**.
+- Viscosity's version lives in **three files**, set by hand and checked
+  by the release script. It is **0.0.1**: under Cargo's caret rule
+  every 0.0.z release is incompatible with the next.
+  (At 0.1.0, a breaking change would be **0.2.0**.)
 - Packaging the crates found two problems, now fixed: **path
   dependencies** without versions, and no licence text in a crate.
 - `@viscosity/cli` is one **esbuild bundle** with no runtime
   dependencies; `@viscosity/wasm` ships notices for 71 crates. Both
-  need `--access public`.
+  set `publishConfig.access` to public.
 - CI packs and installs the CLI and packages the crates on every push;
   the wasm smoke test, long fuzzing and benchmarks are run by hand.
-  Publishing is Tariq's call.
+  `scripts/release.sh` publishes; running it is Tariq's call.
 
 <Quiz />

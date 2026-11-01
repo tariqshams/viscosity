@@ -168,7 +168,8 @@ book's Playground.
 The crates are packageable but not published. Internal dependencies carry
 a `version` as well as a `path`, each crate directory holds a copy of the
 repository's `LICENSE` (MIT), and the manifests carry the crates.io
-metadata (description, licence, repository, readme, keywords, categories).
+metadata (description, licence, repository, homepage, documentation,
+readme, keywords, categories).
 `viscosity-core`'s dev-dependency on `viscosity-frontend-js` is path-only,
 so packaging drops it (otherwise the two would need each other on
 crates.io first), and the tests of `core` and `cli`, which read the rest of
@@ -267,6 +268,43 @@ The tests:
 After the TypeScript reference changes, regenerate the fixtures with
 `node scripts/gen_expected.mjs` (Node ≥ 22.18, which strips types natively),
 then run `cargo test`.
+
+## Releasing
+
+`scripts/release.sh` (at the repository root) publishes version 0.0.1 of
+everything: the six crates to crates.io, then `@viscosity/cli` and
+`@viscosity/wasm` to npm. Before the first run, Tariq creates the npm
+organization `viscosity` and adds `NPM_TOKEN` (an npm access token with publish rights) and
+`CARGO_REGISTRY_TOKEN` (a crates.io token) as environment secrets. Then:
+
+```sh
+scripts/release.sh --dry-run   # no tokens: tests, cargo publish --dry-run, npm publish --dry-run
+scripts/release.sh             # needs both tokens and a clean git tree
+```
+
+The script checks the tokens (without printing them) and the git tree, runs
+the TypeScript and Rust test suites, then runs `cargo publish -p` for
+`viscosity-vir`, `viscosity-core`, `viscosity-frontend-js`,
+`viscosity-frontend-python`, `viscosity-cli` and `viscosity-wasm`, in that
+order (it checks the order against `cargo metadata`). A crate whose version
+is already on crates.io is skipped, so a failed run can be repeated. After
+each upload it waits until the crate is in the sparse index: cargo does
+that itself since 1.66, but gives up after 60 seconds. The npm token goes
+into a temporary npmrc selected with `NPM_CONFIG_USERCONFIG`, as the text
+`${NPM_TOKEN}` (npm expands it), never into the repository. `@viscosity/cli`
+is built by its `prepack`; `@viscosity/wasm` is built with
+`packages/wasm/build.mjs` first, so it also needs the wasm toolchain above.
+
+The dry run verifies the crates with `cargo publish --dry-run --workspace`
+rather than one `-p` at a time: a single crate whose internal dependencies
+are not on crates.io yet fails with "no matching package named
+`viscosity-vir` found", while `--workspace` verifies each crate against the
+ones packaged before it through a local registry (the script deletes
+`target/package` afterwards).
+
+Version 0.0.1 is deliberate. Under Cargo's caret rule every 0.0.z release
+is incompatible with every other (`0.0.1` means `>=0.0.1, <0.0.2`), so no
+dependent picks up 0.0.2 without asking for it.
 
 ## The parity guarantee
 

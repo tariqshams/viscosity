@@ -1,6 +1,6 @@
 {
   "name": "@viscosity/wasm",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "The Viscosity compiler (Rust engine) as WebAssembly: compile JavaScript or Python and explain every layout decision, in Node or the browser.",
   "author": "Tariq Shams",
   "license": "MIT",
@@ -55,6 +55,8 @@
   },
   "repository": { "type": "git", "url": "git+https://github.com/tariqshams/viscosity.git", "directory": "engine/rust/packages/wasm" },
   "homepage": "https://viscosity.dev",
+  "bugs": { "url": "https://github.com/tariqshams/viscosity/issues" },
+  "publishConfig": { "access": "public" },
   "devDependencies": {
     "binaryen": "132.0.0"
   }

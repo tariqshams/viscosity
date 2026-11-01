@@ -1,6 +1,6 @@
 {
   "name": "@viscosity/cli",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "The viscosity command: build, explain and profile.",
   "author": "Tariq Shams",
   "license": "MIT",
@@ -8,10 +8,13 @@
   "bin": { "viscosity": "bin/viscosity.mjs" },
   "files": ["bin", "dist", "LICENSE", "THIRD_PARTY_LICENSES.txt"],
   "engines": { "node": ">=18" },
+  "keywords": ["viscosity", "compiler", "cli", "struct-of-arrays", "soa", "data-layout", "javascript", "python"],
   "scripts": {
     "build": "node build.mjs",
     "prepack": "node build.mjs"
   },
   "repository": { "type": "git", "url": "git+https://github.com/tariqshams/viscosity.git", "directory": "engine/ts/packages/cli" },
-  "homepage": "https://viscosity.dev"
+  "homepage": "https://viscosity.dev",
+  "bugs": { "url": "https://github.com/tariqshams/viscosity/issues" },
+  "publishConfig": { "access": "public" }
 }
