@@ -1,0 +1,11 @@
+---
+// Previous / Next at the foot of every front-matter page and chapter. Both
+// follow readingOrder() in src/lib/chapters.ts: Preface, How to use this
+// book, About the author, then chapter 1 onwards.
+import type { ReadingLink } from '../../lib/chapters';
+const { prev, next, label = 'Book navigation' } = Astro.props as { prev: ReadingLink | null; next: ReadingLink | null; label?: string };
+---
+<nav class="mt-8 grid gap-3 font-sans sm:grid-cols-2" aria-label={label} data-prev-next>
+  {prev ? <a href={prev.href} rel="prev" class="btn-3d block px-4 py-3" data-prev><span class="block text-xs text-muted">← Previous</span><span class="font-semibold">{prev.label}</span></a> : <span />}
+  {next && <a href={next.href} rel="next" class="btn-3d block px-4 py-3 text-right" data-next><span class="block text-xs text-muted">Next →</span><span class="font-semibold">{next.label}</span></a>}
+</nav>

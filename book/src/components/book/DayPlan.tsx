@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { dueIds, loadDeck } from '../../lib/srs';
 import { loadProgress, type Progress } from '../../lib/progress';
+import { href } from '../../lib/url';
 
 type Ch = { n: number; title: string; href: string | null };
 type Day = { day: number; part: string; chapters: Ch[] };
@@ -20,7 +21,7 @@ export default function DayPlan({ days }: { days: Day[] }) {
         {p === null ? 'Loading your progress…' : (
           <>
             <b>Today:</b>{' '}
-            {due > 0 ? <><a className="text-brand underline" href="/review/">review {due} {due === 1 ? 'card' : 'cards'}</a>, then </> : null}
+            {due > 0 ? <><a className="text-brand underline" href={href('/review/')}>review {due} {due === 1 ? 'card' : 'cards'}</a>, then </> : null}
             {current ? <>continue with <b>Day {current.day}</b>.</> : <>you are all caught up on the written chapters.</>}
           </>
         )}

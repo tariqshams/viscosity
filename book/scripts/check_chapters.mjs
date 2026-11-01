@@ -11,6 +11,8 @@
 //     starter code does NOT (so the exercise actually asks for something).
 //  7. Citations: every <Cite> and source is a verified bibliography entry.
 //  8. The 15-minute budget: estimated time between 12 and 18 minutes.
+//  9. Internal links in MDX (chapters and front matter) start with the base
+//     path /book/, where the book is served (https://viscosity.dev/book/).
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -99,6 +101,20 @@ const pendingIds = new Set(pending.map((r) => r.id));
 const warn = [];
 const err = (ch, msg) => errors.push(`${ch}: ${msg}`);
 
+// 9. A root-relative link must be under the base path, or it 404s in
+// production: write [x](/book/days/), not [x](/days/).
+const LINK_BASE = '/book/';
+function checkLinks(where, body) {
+  const prose = body.replace(/^(```|~~~)[\s\S]*?^\1/gm, '').replace(/`[^`\n]*`/g, '');
+  for (const m of prose.matchAll(/\]\((\/[^)\s]*)|\bhref=["'{`]+(\/[^"'`}\s]*)/g)) {
+    const link = m[1] ?? m[2];
+    if (!link.startsWith('//') && !link.startsWith(LINK_BASE)) err(where, `link ${link} is outside the base path: write ${LINK_BASE}${link.replace(/^\/+/, '')}`);
+  }
+}
+for (const f of readdirSync(join(root, 'src/content/front')).filter((f) => f.endsWith('.mdx'))) {
+  checkLinks(`front/${f}`, readFileSync(join(root, 'src/content/front', f), 'utf8'));
+}
+
 const silent = { log() {}, info() {}, warn() {}, error() {}, table() {} };
 
 const folders = readdirSync(dir).filter((d) => /^\d{3}-/.test(d)).sort();
@@ -128,6 +144,7 @@ for (const folder of folders) {
     };
     walk(tree);
   }
+  checkLinks(folder, body);
   // MDX must compile (stray { } or < in prose break the build).
   try { await compileMdx(body); }
   catch (e) {

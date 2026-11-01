@@ -6,7 +6,10 @@ import react from '@astrojs/react';
 // React islands for the interactive parts: review prompts, quizzes, the code
 // runner and the diagrams that animate.
 export default defineConfig({
-  site: 'https://book.viscosity.dev',
+  // Served at https://viscosity.dev/book/, beside the docs site at /.
+  // Internal links go through href() in src/lib/url.ts.
+  site: 'https://viscosity.dev',
+  base: '/book',
   integrations: [react(), mdx()],
   build: { format: 'directory' },
   trailingSlash: 'ignore',

@@ -1,24 +1,24 @@
 ---
 title: Viscosity
-description: Write ordinary arrays of objects. Get struct-of-arrays speed. By Tariq Shams.
+description: Viscosity, by Tariq Shams, is the first automatic, ahead-of-time Array of Structures to Structures of Arrays compiler, starting with JavaScript and TypeScript.
 template: splash
 hero:
-  tagline: An automatic data-layout optimizer. You write ordinary arrays of objects; Viscosity rewrites them into struct-of-arrays storage when it can prove the change is safe and expects it to be faster, and tells you why.
+  tagline: "<strong>The world’s websites just got faster.</strong> Having found no project doing something which I expected to be deterministically possible, I created Viscosity, the world’s first automatic, ahead-of-time Array of Structures to Structures of Arrays compiler for any language, starting with JavaScript and TypeScript, with more languages to come.<br><em>Tariq Shams</em>"
   actions:
     - text: Quick start
       link: /start/quick-start/
       icon: right-arrow
-    - text: Read the book
-      link: https://viscosity-book.vercel.app
-      variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
+import BookCallout from '../../components/BookCallout.astro';
+import Benchmarks from '../../components/Benchmarks.astro';
+
+<BookCallout />
+
+<Benchmarks />
 
 <CardGrid>
-  <Card title="Up to 5× faster hot loops" icon="rocket">
-    On whole JavaScript programs measured in this repository: ledger 5.1×, particles 4.3×, heat diffusion 3.3×. See [Benchmarks](/project/benchmarks/).
-  </Card>
   <Card title="Safe by proof" icon="approve-check">
     Viscosity only rewrites a collection when no code could notice. Aliasing, escaping elements, unknown callers or non-numeric data mean it leaves your code alone and says why.
   </Card>
