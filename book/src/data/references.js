@@ -3827,26 +3827,100 @@ export const references = [
     "checkedAgainst": "doc/book/src/reference/semver.md on the master branch of github.com/rust-lang/cargo, read raw: “This guide uses the terms ‘major’ and ‘minor’ assuming this relates to a ‘1.0.0’ release or later. Initial development releases starting with ‘0.y.z’ can treat changes in ‘y’ as a major release, and ‘z’ as a minor release. ‘0.0.z’ releases are always major changes. This is because Cargo uses the convention that only changes in the left-most non-zero component are considered incompatible.”; the change categories major, minor and possibly-breaking; “These are only guidelines”.",
     "shaped": "Chapter 198: how a 0.y.z crate’s version should change for a breaking change, a feature and a fix."
   },
+  {
+    "id": "mdn-array",
+    "authors": [
+      "MDN contributors"
+    ],
+    "title": "Array",
+    "venue": "MDN Web Docs (JavaScript reference, Global Objects)",
+    "year": null,
+    "doi": null,
+    "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
+    "accessed": "2026-11-01",
+    "checkedAgainst": "https://raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/array/index.md (MDN’s own source repository, github.com/mdn/content; front matter `title: Array`, `slug: Web/JavaScript/Reference/Global_Objects/Array`): “JavaScript arrays are zero-indexed: the first element of an array is at index 0, the second is at index 1, and so on — and the last element is at the value of the array’s length property minus 1”; “JavaScript arrays are resizable”; push() and splice() “also result in updates to an array’s length property”. developer.mozilla.org was not reachable from this session.",
+    "shaped": "Chapter 2: arrays count from index 0, the last index is length − 1, and push grows the length."
+  },
+  {
+    "id": "acton2014",
+    "authors": [
+      "Mike Acton"
+    ],
+    "title": "Data-Oriented Design and C++",
+    "venue": "CppCon 2014 (talk); slides in the conference’s speaker-materials repository, github.com/CppCon/CppCon2014",
+    "year": 2014,
+    "doi": null,
+    "url": "https://github.com/CppCon/CppCon2014/tree/master/Presentations/Data-Oriented%20Design%20and%20C%2B%2B",
+    "accessed": "2026-11-01",
+    "checkedAgainst": "The slide deck itself, Presentations/Data-Oriented Design and C++/Data-Oriented Design and C++ - Mike Acton - CppCon 2014.pptx, downloaded raw from github.com/CppCon/CppCon2014 (whose README says it “is the canonical location for presentations and code from CppCon 2014”). Slide 1: “Data-Oriented Design and C++ / Mike Acton / Engine Director, Insomniac Games”; document properties: title “Data-Oriented Design and C++”, creator Mike Acton, created 2014-09-09. Principles slides: “The purpose of all programs, and all parts of those programs, is to transform data from one form to another”; “If you have different data, you have a different problem”; “If you don’t understand the hardware, you can’t reason about the cost of solving the problem”; “Where there is one, there are many”; and the “Extremely low information density” section on wasted cache-line bytes. The talk’s video was not opened (youtube.com was unreachable).",
+    "shaped": "Chapter 23 and the cost model behind it: the layout is chosen from the data and the loops that read it, not fixed in advance, because different data is a different problem."
+  },
+  {
+    "id": "pratt1973",
+    "authors": [
+      "Vaughan R. Pratt"
+    ],
+    "title": "Top Down Operator Precedence",
+    "venue": "First ACM Symposium on Principles of Programming Languages (POPL), pp. 41–51",
+    "year": 1973,
+    "doi": null,
+    "url": "https://tdop.github.io/",
+    "accessed": "2026-11-01",
+    "checkedAgainst": "The paper itself, in github.com/tdop/tdop.github.io (master), read raw: original.pdf, an archived copy of the ACM scan (PDF metadata: title “Top Down Operator Precedence”, author “V. Pratt”, subject “First ACM Symposium on Principles of Programming Languages”, produced by Sony Electronic Publishing Services in 1997 as ACM’s own back-file scans were); its 11 pages carry page numbers 42 to 51 from the second page on, so it runs 41–51; author line “Vaughan R. Pratt, Massachusetts Institute of Technology”. The repository’s remastered index.html (the page served at tdop.github.io) gives “Vaughan R. Pratt, Massachusetts Institute of Technology 1973”, and its README calls it “Vaughan Pratt’s original 1973 paper”. No DOI is given: the ACM Digital Library and doi.org were unreachable, so none was confirmed.",
+    "shaped": "Chapter 33’s Pratt parser, and every parser built on it after that: chapter 48’s single-pass compiler, chapter 92’s JavaScript expressions and the Rust compiler in chapters 151–152."
+  },
+  {
+    "id": "cytron1991",
+    "authors": [
+      "Ron Cytron",
+      "Jeanne Ferrante",
+      "Barry K. Rosen",
+      "Mark N. Wegman",
+      "F. Kenneth Zadeck"
+    ],
+    "title": "Efficiently Computing Static Single Assignment Form and the Control Dependence Graph",
+    "venue": "ACM Transactions on Programming Languages and Systems (TOPLAS), vol. 13, no. 4, October 1991, pp. 451–490",
+    "year": 1991,
+    "doi": null,
+    "url": "https://bernsteinbear.com/assets/img/cytron-ssa.pdf",
+    "accessed": "2026-11-01",
+    "checkedAgainst": "The paper itself: a copy of ACM’s scan kept at assets/img/cytron-ssa.pdf in github.com/tekknolagi/tekknolagi.github.com (Max Bernstein’s site, served at bernsteinbear.com per the repository’s CNAME), downloaded raw. PDF metadata (creator ACM): title “Efficiently computing static single assignment form and the control dependence graph”, subject “(0164-0925) 13:4 0451-0490 (Oct. 1991)”, keywords “ACM Transactions on Programming Languages and Systems”. First page: authors Ron Cytron, Jeanne Ferrante, Barry K. Rosen and Mark N. Wegman (IBM Research Division) and F. Kenneth Zadeck (Brown University); abstract “The algorithms use dominance frontiers, a new concept that may have other applications”; “© 1991 ACM 0164-0925/91/1000-0451”; running footer “ACM Transactions on Programming Languages and Systems, Vol. 13, No. 4, October 1991”. The paper prints no DOI, and doi.org and the ACM Digital Library were unreachable, so none is given here.",
+    "shaped": "Chapter 78’s “other way” to build SSA: placing phis at the dominance frontiers of each definition, then renaming over the dominator tree, which is what LLVM’s mem2reg does and what Braun et al.’s method avoids."
+  },
+  {
+    "id": "holzle1991",
+    "authors": [
+      "Urs Hölzle",
+      "Craig Chambers",
+      "David Ungar"
+    ],
+    "title": "Optimizing Dynamically-Typed Object-Oriented Programming Languages with Polymorphic Inline Caches",
+    "venue": "ECOOP ’91 Conference Proceedings, Geneva, Switzerland, July 1991; Springer Verlag LNCS 512",
+    "year": 1991,
+    "doi": null,
+    "url": "https://bibliography.selflanguage.org/pics.html",
+    "accessed": "2026-11-01",
+    "checkedAgainst": "The Self project’s own bibliography (“Self Papers”, Sphinx project in github.com/russellallen/self, docs/papers), read raw: docs/papers/pics.rst gives the title above, the authors Urs Hölzle, Craig Chambers and David Ungar, “ECOOP ’91 Conference Proceedings, Geneva, Switzerland, July, 1991” and “Published as Springer Verlag LNCS 512, 1991”, with the abstract: PICs extend inline caches “to include more than one cached lookup result per call site”, and “collect type information by recording all of the receiver types actually used at a given call site”, which a recompiling compiler can exploit. The rendered page at bibliography.selflanguage.org was not opened directly, and Springer’s pages and doi.org were unreachable, so no DOI is given.",
+    "shaped": "Chapter 64: the polymorphic inline cache, and the idea that what an IC has seen is type feedback for the optimizing tiers."
+  },
 ];
 
 // Not yet confirmed against a primary source. NOT rendered and NOT citable.
 // Each gets promoted once its publisher page or DOI has been checked
 // directly (doi.org, craftinginterpreters.com and quantum.country were
 // unreachable from the session that built this list).
+// On 2026-11-01, mdn-array, acton2014, pratt1973, cytron1991 and holzle1991
+// were promoted. The pending ids 'odinsoa' and 'oxc' were dropped because
+// those works were already verified above as 'odin-overview-soa' and
+// 'oxc-project'; cite those ids instead.
 export const pending = [
-  { id: 'matuschaknielsen2019', what: 'Andy Matuschak & Michael Nielsen, Quantum Country (“Quantum computing for the very curious”), 2019', why: 'quantum.country was unreachable; only the authors’ own notes pages were seen.' },
-  { id: 'ttft2019', what: 'Matuschak & Nielsen, “How can we develop transformative tools for thought?”, numinous.productions, 2019', why: 'Only an archived copy was seen.' },
-  { id: 'sweller1988', what: 'John Sweller, “Cognitive Load During Problem Solving: Effects on Learning”, Cognitive Science 12(2), 1988', why: 'The DOI comes only from secondary sources.' },
-  { id: 'swellercooper1985', what: 'Sweller & Cooper, worked examples in algebra, Cognition and Instruction 2(1), 1985', why: 'The DOI comes only from secondary sources.' },
-  { id: 'drepper2007', what: 'Ulrich Drepper, What Every Programmer Should Know About Memory, 2007', why: 'Couldn’t confirm the PDF is still live.' },
-  { id: 'acton2014', what: 'Mike Acton, “Data-Oriented Design and C++”, CppCon 2014', why: 'The video URL hasn’t been opened.' },
-  { id: 'odinsoa', what: 'Odin language overview, #soa (Bill “gingerBill” Hall)', why: 'The docs page text hasn’t been seen.' },
-  { id: 'pratt1973', what: 'Vaughan Pratt, “Top Down Operator Precedence”, POPL 1973', why: 'The ACM page wasn’t reachable.' },
-  { id: 'cytron1991', what: 'Cytron, Ferrante, Rosen, Wegman, Zadeck, SSA form, TOPLAS 1991', why: 'The DOI hasn’t been confirmed at ACM.' },
-  { id: 'holzle1991', what: 'Hölzle, Chambers, Ungar, polymorphic inline caches, ECOOP 1991', why: 'The exact title wording is unconfirmed.' },
-  { id: 'deutschschiffman1984', what: 'Deutsch & Schiffman, “Efficient Implementation of the Smalltalk-80 System”, POPL 1984', why: 'The DOI is unconfirmed.' },
-  { id: 'oxc', what: 'Oxc, the JavaScript Oxidation Compiler (Boshen and contributors)', why: 'oxc.rs and its LICENSE weren’t reachable.' },
-  { id: 'mdn-array', what: 'MDN, Array reference', why: 'The English page wasn’t seen directly.' },
+  { id: 'matuschaknielsen2019', what: 'Andy Matuschak & Michael Nielsen, Quantum Country (“Quantum computing for the very curious”), 2019', why: 'quantum.country was unreachable; only the authors’ own notes pages were seen.', note: '2026-11-01: quantum.country, andymatuschak.org and michaelnielsen.org still unreachable (proxy 403). The Readme of github.com/andymatuschak/orbit (Matuschak’s own repository, read raw) calls Quantum Country “a textbook on quantum computation” and an example of the mnemonic medium, at quantum.country, but names neither the authors nor the title or year, so the citation is still unconfirmed. Probed raw.githubusercontent.com for andymatuschak/quantum-country, quantum.country, mnielsen/* repos: none exist publicly.' },
+  { id: 'ttft2019', what: 'Matuschak & Nielsen, “How can we develop transformative tools for thought?”, numinous.productions, 2019', why: 'Only an archived copy was seen.', note: '2026-11-01: numinous.productions and web.archive.org unreachable. The Orbit Readme (github.com/andymatuschak/orbit) links “mnemonic medium” to https://numinous.productions/ttft/, which confirms the URL but not the title, authors or date. No GitHub source for the essay was found.' },
+  { id: 'sweller1988', what: 'John Sweller, “Cognitive Load During Problem Solving: Effects on Learning”, Cognitive Science 12(2), 1988', why: 'The DOI comes only from secondary sources.', note: '2026-11-01: onlinelibrary.wiley.com, doi.org, crossref, PubMed and Semantic Scholar all unreachable; no author or journal page on GitHub exists for a 1988 paper.' },
+  { id: 'swellercooper1985', what: 'Sweller & Cooper, worked examples in algebra, Cognition and Instruction 2(1), 1985', why: 'The DOI comes only from secondary sources.', note: '2026-11-01: tandfonline.com, doi.org and crossref unreachable; no primary source on GitHub.' },
+  { id: 'drepper2007', what: 'Ulrich Drepper, What Every Programmer Should Know About Memory, 2007', why: 'Couldn’t confirm the PDF is still live.', note: '2026-11-01: akkadia.org (the author’s site) and people.freebsd.org refused by the proxy (403); copies in third-party GitHub repositories are not the author’s and were not used.' },
+  { id: 'deutschschiffman1984', what: 'Deutsch & Schiffman, “Efficient Implementation of the Smalltalk-80 System”, POPL 1984', why: 'The DOI is unconfirmed.', note: '2026-11-01: dl.acm.org, doi.org and dblp unreachable; the only copies found by web search (cs.tufts.edu course archive) were unreachable, and no copy of the paper or authors’ page on GitHub was found. Web search alone (pp. 297–302, January 1984) is not a primary source.' },
+  { id: 'cooperharveykennedy2001', what: 'Keith D. Cooper, Timothy J. Harvey & Ken Kennedy, “A Simple, Fast Dominance Algorithm” (Rice University; usually cited as Software Practice & Experience 4, 2001)', why: 'Named in chapter 176 and in engine/ts/packages/core/src/cfg.ts and engine/rust/crates/core/src/cfg.rs, but never checked.', note: '2026-11-01: the authors’ copy at cs.rice.edu, the cs.tufts.edu archive copy, dblp and doi.org were all unreachable, and no copy on GitHub was found. The venue given in library docs (networkx: “Software Practice & Experience 4:110”) is secondary and looks garbled, so it was not used.' },
 ];
 
 export function byId(id) {

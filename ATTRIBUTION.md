@@ -18,22 +18,35 @@ Nothing in it was written from memory.
   source-to-source compiler, rather than inside a modified runtime.
 - **SoA / AoSoA types in a language.** Matt Pharr and William R. Mark, ISPC
   (`soa<N>`).
+- **SoA with ordinary indexing syntax.** Odin's `#soa` data types (the Odin
+  project's documentation).
+- **Choosing a layout from the data.** Mike Acton, *Data-Oriented Design and
+  C++* (CppCon 2014).
 - **SoA in TypeScript, and its trade-offs.** Bui Huy Giap (ziap), *Struct of
   Arrays (SoA) in TypeScript with metaprogramming* (2025).
-- **Shapes and inline caches.** Mathias Bynens and Benedikt Meurer.
+- **Shapes and inline caches.** Mathias Bynens and Benedikt Meurer; and
+  polymorphic inline caches, from Urs Hölzle, Craig Chambers and David Ungar
+  (ECOOP 1991).
+- **SSA via dominance frontiers.** Ron Cytron, Jeanne Ferrante, Barry K.
+  Rosen, Mark N. Wegman and F. Kenneth Zadeck (TOPLAS 1991).
 - **SSA construction.** Braun, Buchwald, Hack, Leißa, Mallon and Zwinkau (CC 2013).
 - **Pass-manager design.** The LLVM project's new pass manager.
 - **Compiler middle-end.** Keith D. Cooper and Linda Torczon, *Engineering a
   Compiler*.
 - **Truffle / Graal.** Würthinger et al., *One VM to Rule Them All* (2013).
+- **Parsing JavaScript in the Rust engine.** Oxc, by Boshen and the Oxc
+  contributors (MIT).
 
 ## Ideas the book is built on
 
 - **Crafting Interpreters** by Robert Nystrom: the "build it twice" structure.
   Its code and test files are MIT-licensed. Its prose and illustrations are
   CC BY-NC-ND 4.0, so nothing of them is copied or adapted here.
+- **Pratt parsing.** Vaughan R. Pratt, *Top Down Operator Precedence* (1973):
+  the expression parser of chapter 33 and every parser built on it.
 - **The mnemonic medium** (*Quantum Country*) by Andy Matuschak and Michael
-  Nielsen: review prompts embedded in the text.
+  Nielsen: review prompts embedded in the text. (Its bibliography entry is
+  still pending: quantum.country could not be reached to confirm it.)
 - **FSRS** by Jarrett Ye and the open-spaced-repetition project, and the
   ts-fsrs library: review scheduling.
 - **Retrieval practice** (Roediger & Karpicke, 2006) and **dual coding**
@@ -42,10 +55,12 @@ Nothing in it was written from memory.
 - **The Rust Programming Language** by Steve Klabnik, Carol Nichols and Chris
   Krycho: Track B.
 
-Some influences (for example Mike Acton's data-oriented design talk, Ulrich
-Drepper's memory paper, Odin's `#soa`, Vaughan Pratt's parser, and the SSA
-and inline-cache papers) are listed as *pending* in the bibliography. They
-will be credited here once each has been checked against its primary source.
+Some influences (for example Ulrich Drepper's memory paper, Deutsch and
+Schiffman's Smalltalk-80 implementation, Cooper, Harvey and Kennedy's
+dominance algorithm, and Sweller's papers on cognitive load and worked
+examples) are listed as *pending*
+in the bibliography. They will be credited here once each has been checked
+against its primary source.
 
 ## In the code
 
