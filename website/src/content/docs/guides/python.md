@@ -10,7 +10,11 @@ Viscosity reads a numeric subset of Python:
 - `for` loops over `range(...)` or over a list, `while` and `if`
 - functions, `global`, arithmetic, `math.*`
 
-Files outside the subset are left exactly as they are.
+Files outside the subset are left exactly as they are (this is not an
+error).
+
+Both engines read Python: the TypeScript CLI and the Rust CLI compile `.py`
+files with the same results, byte for byte.
 
 It lowers to the same IR and runs the same analyses as JavaScript. Typed
 `array('d')` columns are used only for fields that provably always hold

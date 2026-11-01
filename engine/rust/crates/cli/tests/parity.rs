@@ -260,7 +260,8 @@ fn the_cli_binary_gives_the_same_output() {
 #[test]
 fn syntax_errors_are_reported() {
     let err = compile("const = ;", &JsPlugin, CompileOptions::default()).expect_err("fails").to_string();
-    assert!(err.starts_with("SyntaxError"), "{err}");
+    // `<message> (line:column)`, as acorn words it (no `SyntaxError: `).
+    assert_eq!(err, "Unexpected token (1:6)");
 }
 
 #[test]

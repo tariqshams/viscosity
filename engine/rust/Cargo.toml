@@ -8,13 +8,15 @@ edition = "2021"
 authors = ["Tariq Shams"]
 license = "MIT"
 repository = "https://github.com/tariqshams/viscosity"
+readme = "README.md"
+keywords = ["compiler", "data-layout", "struct-of-arrays", "javascript", "python"]
 rust-version = "1.97"
 
 [workspace.dependencies]
-viscosity-vir = { path = "crates/vir" }
-viscosity-core = { path = "crates/core" }
-viscosity-frontend-js = { path = "crates/frontend-js" }
-viscosity-frontend-python = { path = "crates/frontend-python" }
+viscosity-vir = { path = "crates/vir", version = "0.1.0" }
+viscosity-core = { path = "crates/core", version = "0.1.0" }
+viscosity-frontend-js = { path = "crates/frontend-js", version = "0.1.0" }
+viscosity-frontend-python = { path = "crates/frontend-python", version = "0.1.0" }
 oxc_allocator = "0.156"
 oxc_ast = "0.156"
 oxc_parser = "0.156"

@@ -12,9 +12,9 @@ export default defineConfig({
       customCss: ['./src/styles/theme.css'],
       sidebar: [
         { label: 'Start here', items: ['start/introduction', 'start/install', 'start/quick-start'] },
-        { label: 'Guides', items: ['guides/how-it-decides', 'guides/annotations', 'guides/bounds', 'guides/profiling', 'guides/typescript', 'guides/python', 'guides/limitations'] },
-        { label: 'Reference', items: ['reference/cli', 'reference/options', 'reference/plugin-api', 'reference/layouts'] },
-        { label: 'Project', items: ['project/benchmarks', 'project/credits', { label: 'The book (how it works)', link: 'https://viscosity-book.vercel.app' }] },
+        { label: 'Guides', items: ['guides/how-it-decides', 'guides/explain', 'guides/annotations', 'guides/bounds', 'guides/profiling', 'guides/typescript', 'guides/python', 'guides/limitations'] },
+        { label: 'Reference', items: ['reference/cli', 'reference/options', 'reference/errors', 'reference/plugin-api', 'reference/layouts'] },
+        { label: 'Project', items: ['project/benchmarks', 'project/contributing', 'project/credits', { label: 'The book (how it works)', link: 'https://viscosity-book.vercel.app' }] },
       ],
       head: [{ tag: 'meta', attrs: { name: 'author', content: 'Tariq Shams' } }],
       credits: false,

@@ -104,4 +104,14 @@ mod tests {
         assert!(options("cobol", src, "auto", "check", 64.0, false).is_err());
         assert!(options("javascript", "const xs = [];\n", "auto", "check", 64.0, false).is_ok());
     }
+
+    /// The message a thrown `Error` carries (and the Playground shows): the
+    /// CLI's `<message> (line:column)`, as acorn words it, with no
+    /// `SyntaxError: ` prefix.
+    #[test]
+    fn syntax_errors_have_the_cli_form() {
+        let err = |src: &str| run_language("javascript", src, CompileOptions::default()).err().expect("fails");
+        assert_eq!(err("const ps = [;"), "Unexpected token (1:12)");
+        assert_eq!(err("let a = 1;\nlet a = 2;\n"), "Identifier `a` has already been declared (1:4)");
+    }
 }

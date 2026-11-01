@@ -6,7 +6,13 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories = ["compilers"]
 rust-version.workspace = true
+# The tests (and the benchmark example) read programs and fixtures from the
+# rest of the repository, so they are left out of the package.
+exclude = ["tests/"]
 
 [dependencies]
 viscosity-vir.workspace = true
@@ -14,4 +20,7 @@ indexmap.workspace = true
 rustc-hash.workspace = true
 
 [dev-dependencies]
-viscosity-frontend-js.workspace = true
+# Path only, no version: cargo drops such a dev-dependency when packaging,
+# which breaks the cycle (frontend-js depends on core). The tests that use
+# it run in the workspace, not from the packaged crate.
+viscosity-frontend-js = { path = "../frontend-js" }

@@ -24,6 +24,11 @@ Viscosity is a source-to-source compiler that makes that change for you:
 When it can't prove safety, it leaves the collection as it is and
 explains why. Run `viscosity explain` to see its reasoning.
 
+There are two engines with identical output: the TypeScript reference
+(JavaScript, TypeScript and Python) and a faster Rust port (JavaScript and
+Python), which also runs in the browser as WebAssembly. See
+[Install](/start/install/).
+
 Viscosity is by Tariq Shams. **How** it works, from first principles up,
 is the subject of [the book](https://viscosity-book.vercel.app). These docs
 are about **using** it.

@@ -38,6 +38,8 @@ Options:
                             column access is slower; the gain is memory)
 ```
 
+This is the TypeScript CLI's help. The Rust CLI (`engine/rust`) takes the same commands and options, except `--parser` (it has one JavaScript parser, oxc), and it does not read TypeScript files. Errors and their messages are described in [Errors and validation](/reference/errors/).
+
 ## Examples
 
 ```sh

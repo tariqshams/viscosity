@@ -311,7 +311,8 @@ fn an_early_error_is_reported_like_a_syntax_error() {
         assert_eq!(rs.status.code(), Some(1), "rust {cmd}");
         assert!(rs.stdout.is_empty(), "rust {cmd}: no output");
         let err = String::from_utf8_lossy(&rs.stderr);
-        assert!(err.starts_with("viscosity: SyntaxError: ") && err.lines().count() == 1, "rust {cmd}: {err}");
+        assert!(err.starts_with("viscosity: ") && !err.contains("SyntaxError"), "rust {cmd}: {err}");
+        assert!(err.trim_end().ends_with(')') && err.lines().count() == 1, "rust {cmd}: {err}");
         if let Some(mut ts) = ts_cli() {
             let ts = ts.arg(cmd).arg(&file).output().expect("node runs");
             assert_eq!(ts.status.code(), Some(1), "ts {cmd}");
@@ -438,7 +439,7 @@ fn a_single_syntax_error_ends_with_its_position() {
     let file = dir.join("ps.js");
     fs::write(&file, "const ps = [;\n").expect("writable");
     let rs = rust_cli().arg("explain").arg(&file).output().expect("runs");
-    assert_eq!(String::from_utf8_lossy(&rs.stderr), "viscosity: SyntaxError: Unexpected token (1:12)\n");
+    assert_eq!(String::from_utf8_lossy(&rs.stderr), "viscosity: Unexpected token (1:12)\n");
     if let Some(mut ts) = ts_cli() {
         let ts = ts.arg("explain").arg(&file).output().expect("node runs");
         assert_eq!(String::from_utf8_lossy(&ts.stderr), "viscosity: Unexpected token (1:12)\n");

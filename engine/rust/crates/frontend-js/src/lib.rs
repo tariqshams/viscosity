@@ -41,16 +41,18 @@ pub struct JsExtra {
 #[derive(Copy, Clone, Debug, Default)]
 pub struct JsPlugin;
 
-/// `SyntaxError: <message> (line:column)`, with the position acorn would
-/// append: the start of the first label, as a 1-based line and a 0-based
-/// column in UTF-16 code units. A diagnostic without labels has no position.
+/// `<message> (line:column)`, the form acorn's messages take (the TS CLI
+/// prints them without a `SyntaxError: ` prefix, and so does this one),
+/// with the position acorn would append: the start of the first label, as a
+/// 1-based line and a 0-based column in UTF-16 code units. A diagnostic
+/// without labels has no position. The wording is oxc's, not acorn's.
 fn syntax_error(source: &str, e: &OxcDiagnostic) -> CompileError {
     match e.labels.first() {
         Some(label) => {
             let (line, column) = LineIndex::new(source).line_column(source, label.offset());
-            CompileError(format!("SyntaxError: {e} ({line}:{column})"))
+            CompileError(format!("{e} ({line}:{column})"))
         }
-        None => CompileError(format!("SyntaxError: {e}")),
+        None => CompileError(e.to_string()),
     }
 }
 
