@@ -10,7 +10,8 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 //   viscosity explain l1.js --min-size 200
 //   viscosity profile l1.js -o p1.json   (maxLength 25)
 //   viscosity explain l1.js --profile p1.json
-// The last step is the TypeScript CLI on the same input.
+// The last step is the TypeScript CLI on the same input (identical since
+// 1be50ca fixed the Rust wording).
 const CODE = `if !c.bailouts.is_empty() {
     return keep(unsafe_reasons);
 }
@@ -42,8 +43,8 @@ const STATES: S[] = [
   { line: 15, opts: '(defaults)', size: 'Some(100.0), upper bound', out: [], note: 'No profile, so measured is None, and Option::or falls back to the estimate: 100. That is a maximum, but the rung below treats it as the size.' },
   { line: 21, opts: '(defaults)', size: 'Some(100.0), upper bound', out: ['ps (line 1) {x} → struct of arrays', '  · at most 100 elements'], note: '100 is not below 64, so the end: soa. describe() says “at most”, because the estimate is an upper bound and nothing was measured.' },
   { line: 18, opts: '--min-size 200', size: 'Some(100.0), upper bound', kept: true, out: ['ps (line 1) {x} → kept as array of objects', '  · at most 100 elements: below the', '    200-element threshold, where …'], note: 'With --min-size 200, the same maximum is below the threshold. A maximum below the threshold is a safe refusal: the real size can only be smaller.' },
-  { line: 15, opts: '--profile p1.json', size: 'measured: 25', kept: true, out: ['ps (line 1) {x} → kept as array of objects', '  · about 25 (measured) elements: below', '    the 64-element threshold, where …'], note: 'viscosity profile ran the original and recorded maxLength 25. measured is Some(25.0), which wins over the estimate, and 25 < 64 keeps it. “about”, never “at most”, for a measurement.' },
-  { line: null, opts: '--profile p1.json', size: 'measured: 25', kept: true, ts: true, out: ['ps (line 1) {x} → kept as array of objects', '  · about 25 elements (measured): below', '    the 64-element threshold, where …'], note: 'The TypeScript CLI on the same input. Same decision, different words: “(measured)” comes after “elements”. A parity bug in plan.rs that no fixture covers, because none uses --profile.' },
+  { line: 15, opts: '--profile p1.json', size: 'measured: 25', kept: true, out: ['ps (line 1) {x} → kept as array of objects', '  · about 25 elements (measured): below', '    the 64-element threshold, where …'], note: 'viscosity profile ran the original and recorded maxLength 25. measured is Some(25.0), which wins over the estimate, and 25 < 64 keeps it. “about”, never “at most”, for a measurement.' },
+  { line: null, opts: '--profile p1.json', size: 'measured: 25', kept: true, ts: true, out: ['ps (line 1) {x} → kept as array of objects', '  · about 25 elements (measured): below', '    the 64-element threshold, where …'], note: 'The TypeScript CLI on the same input: the same lines, byte for byte. When this chapter was first written, plan.rs put “(measured)” before “elements”, and no fixture used --profile. Four profile pairs in the parity fixtures now check it.' },
 ];
 
 export default function SizeRungSteps() {

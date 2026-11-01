@@ -7,12 +7,14 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 //   versions:  engine/rust/Cargo.toml [workspace.package] version,
 //              engine/ts/packages/cli/package.json,
 //              engine/rust/packages/wasm/package.json (all 0.1.0)
-//   build:     `cargo package -p viscosity-core` stops ("all dependencies
-//              must have a version requirement specified when packaging");
+//   build:     `cargo package --workspace` packages and verifies all six
+//              crates (at first it stopped: "all dependencies must have a
+//              version requirement specified when packaging");
 //              packages/cli/build.mjs (esbuild) and packages/wasm/build.mjs
-//   licences:  `cargo package -p viscosity-vir --list` has no LICENSE;
+//   licences:  each crate has a LICENSE (vir's was missing at first);
 //              THIRD_PARTY_LICENSES.txt in each npm package
-//   checks:    .github/workflows/ci.yml packs and installs @viscosity/cli;
+//   checks:    .github/workflows/ci.yml packs and installs @viscosity/cli,
+//              and runs cargo test and cargo package --workspace;
 //              packages/wasm/smoke.mjs is run by hand
 //   publish:   nothing is published.
 type Cell = { t: string; ok: 'yes' | 'no' | 'part' };
@@ -23,9 +25,9 @@ const ROWS: Row[] = [
     name: 'Rust crates', sub: 'crates.io',
     cells: [
       { t: 'Cargo.toml 0.1.0', ok: 'yes' },
-      { t: 'cargo package stops', ok: 'no' },
-      { t: 'no LICENSE in .crate', ok: 'no' },
-      { t: 'cargo test in CI', ok: 'part' },
+      { t: 'cargo package works', ok: 'yes' },
+      { t: 'LICENSE in each', ok: 'yes' },
+      { t: 'test + package, CI', ok: 'yes' },
       { t: 'not published', ok: 'no' },
     ],
   },
@@ -55,9 +57,9 @@ const COLS = ['version', 'build', 'licences', 'checked', 'published'];
 
 const STATES: { upto: number; note: string }[] = [
   { upto: 0, note: 'Three numbers, all 0.1.0: one in the workspace Cargo.toml, which six crates inherit, and one in each npm package. Nothing keeps them equal except care; CI only checks that the packed CLI’s --version matches its own package.json.' },
-  { upto: 1, note: 'Building a package. Both npm packages have a build.mjs that npm runs as prepack. For the crates, cargo package stops at once: the workspace’s own crates depend on each other by path only, and crates.io needs a version too.' },
-  { upto: 2, note: 'Licences. Each npm package ships LICENSE and a THIRD_PARTY_LICENSES.txt with the full text of everything bundled into it. A packaged crate would carry only the files in its own folder, and crates/vir has no LICENSE.' },
-  { upto: 3, note: 'Checks before a release. Every push packs @viscosity/cli, installs the tarball in an empty folder and runs it. @viscosity/wasm has the same kind of test in smoke.mjs, but CI doesn’t run it.' },
+  { upto: 1, note: 'Building a package. Both npm packages have a build.mjs that npm runs as prepack. For the crates, cargo package --workspace packages all six. At first it stopped at once: the workspace’s own crates depended on each other by path only, and crates.io needs a version too.' },
+  { upto: 2, note: 'Licences. Each npm package ships LICENSE and a THIRD_PARTY_LICENSES.txt with the full text of everything bundled into it. A packaged crate carries only the files in its own folder, so each crate folder now has a LICENSE (crates/vir had none at first).' },
+  { upto: 3, note: 'Checks before a release. Every push packs @viscosity/cli, installs the tarball in an empty folder and runs it. CI also tests and packages the crates. @viscosity/wasm has the same kind of test in smoke.mjs, but CI doesn’t run it.' },
   { upto: 4, note: 'And none of it is published. A crates.io version is permanent and an npm version can never be reused, so the first publish is a decision, and it is Tariq’s to make.' },
 ];
 

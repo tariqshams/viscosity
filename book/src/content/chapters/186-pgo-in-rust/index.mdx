@@ -3,7 +3,7 @@ n: 186
 day: 47
 part: XI
 title: 'PGO in Rust'
-tagline: 'The Rust engine profiles a JavaScript program by writing a slightly different JavaScript program and asking Node to run it. Sixty-seven lines of Rust, a profile byte-identical to the TypeScript one, and some honest limits.'
+tagline: 'The Rust engine profiles a JavaScript program by writing a slightly different JavaScript program and asking Node to run it. Eighty-two lines of Rust, a profile byte-identical to the TypeScript one, and some honest limits.'
 objectives:
   - Follow viscosity profile through profile.rs, from instrumenting to running node.
   - Explain why the profile JSON is byte-identical to the TypeScript CLI's.
@@ -56,16 +56,15 @@ $ viscosity explain spawn.js \
     --profile p.json
 ps (line 1) {x, vx} → kept as array of
   objects
-  · about 20 (measured) elements: below
+  · about 20 elements (measured): below
     the 64-element threshold, where the
     benefit is too small
 ```
 
-The decision flips, as it should. The last line is worded differently
-from the TypeScript CLI's ("about 20 elements (measured)"): that is
-the parity bug chapter 182 found, still there when I ran this. The JSON file,
-though, is byte-identical to the one the TypeScript CLI writes. The
-reason is worth a look.
+The decision flips, as it should, and every line matches the
+TypeScript CLI's (chapter 182 tells how the last one once didn't).
+The JSON file is byte-identical to the one the TypeScript CLI writes,
+too. The reason is worth a look.
 
 <Callout kind="intuition">
 To learn how full a stadium gets, you don't simulate the crowd. You
@@ -141,14 +140,22 @@ let status = Command::new("node")
          needs Node.js on the PATH): \
          {e}"))?;
 if !status.success() {
-    return Err(format!("the instrumented \
-        program failed ({status})"));
+    return Err(match status.code() {
+        Some(c) => format!(
+            "the profiled program \
+             failed (exit code {c})"),
+        None => "the profiled program \
+            failed (killed by a signal)"
+            .to_string(),
+    });
 }
 ```
 
 `std::process::Command` builds a child process, `.status()` runs it and
 waits, and the program's output is thrown away (stderr still shows).
-The instrumented file is `instrumented.cjs` in a temporary directory.
+The instrumented file is `instrumented.cjs` in a temporary directory,
+owned by a small guard value whose `Drop` deletes the directory on
+every way out of the function, error or not.
 The TypeScript CLI runs `process.execPath`, the very Node running it.
 The Rust binary has no Node of its own, so it looks `node` up on the
 `PATH`, and says so if that fails:
@@ -175,25 +182,33 @@ prefers over its estimate.
 ## Reading it back
 
 `read_profile` in `main.rs` parses the file with `serde_json` into a
-`Value`, requires an object, and keeps each entry whose `maxLength` is
-a number:
+`Value`, requires an object, and requires every entry to be an object
+with a finite, non-negative `maxLength` (adapted; `bad` stands for the
+error message):
 
 ```rust
-Ok(obj.iter().filter_map(|(name, v)| {
-    v.get("maxLength")
-        .and_then(|n| n.as_f64())
-        .map(|n| (name.clone(), n))
-}).collect())
+obj.iter().map(|(name, v)| {
+    let n = v.as_object()
+        .and_then(|e| e.get("maxLength"))
+        .and_then(Value::as_f64);
+    match n {
+        Some(n) if n.is_finite()
+            && n >= 0.0 =>
+            Ok((name.clone(), n)),
+        _ => Err(bad(name)),
+    }
+}).collect()
 ```
 
-The planner then looks up the collection's name, and a hit wins over
-the estimate (chapter 182). Typed parsing makes the Rust CLI stricter
-with hand-edited files. Given `[1]`, it stops with "the profile must be
-a JSON object", while the TypeScript CLI ignores it. Given
-`{"ps": {"maxLength": "20"}}`, a string, Rust skips the entry and
-transforms (size unknown), while TypeScript compares `"20" < 64` as
-JavaScript does, gets `true`, and keeps the array. No real profile
-looks like that, but the two engines do disagree on it.
+Collecting an iterator of `Result`s into one `Result` stops at the
+first `Err`. The planner then looks up the collection's name, and a hit
+wins over the estimate (chapter 182). When this chapter was first
+written, the CLIs disagreed on hand-edited files: given
+`{"ps": {"maxLength": "20"}}`, Rust skipped the entry while TypeScript
+compared `"20" < 64` as JavaScript does and kept the array. Now both
+apply this one rule, with the same words:
+`the profile entry "ps" must be an object whose maxLength is a
+non-negative number`.
 
 <Prompts ids={['pg-filter-map', 'pg-strict']} />
 
@@ -214,9 +229,9 @@ The code is short enough to read its limits straight off it.
   stdin.
 - **Scripts only.** The file is run as CommonJS, so a program with
   `import` fails ("Cannot use import statement outside a module"). A
-  program that throws fails too, even though its exit hook still wrote
-  the JSON (I found it in the temporary directory, which is only
-  removed on success).
+  program that throws is an error too, "the profiled program failed
+  (exit code 1)", even though its exit hook wrote the JSON: a partial
+  run's sizes could mislead the planner.
 - **JavaScript only.** `viscosity profile x.py` refuses, with the
   reference's words: "profile runs JavaScript programs only; Python
   profiling is not supported yet".
@@ -224,12 +239,14 @@ The code is short enough to read its limits straight off it.
 <Prompts ids={['pg-by-name', 'pg-cant']} />
 
 <Callout kind="engine" label="Under the hood">
-What tests this? At the commit these chapters describe, `parity.rs`
-checks the Python refusal message and `multi_file.rs` checks that
-`profile` takes one file. No fixture ran `--profile`, and neither did
-the fuzzer, so the "about 20 (measured) elements" wording passed every
-test. Chapter 188 asks which layer of
-testing should have caught it.
+What tests this? When this chapter was first written, `parity.rs`
+checked the Python refusal message and `multi_file.rs` that `profile`
+takes one file. No fixture ran `--profile`, and neither did the
+fuzzer, so the "about 20 (measured) elements" wording passed every
+test. Now four profile fixtures run through both the library and
+`--profile`, `profile_cli.rs` checks the file rule and the clean-up in
+both CLIs, and the fuzzer passes random profiles. Chapter 188 asks
+which layer of testing should have caught it first.
 </Callout>
 
 ## Your turn
@@ -244,8 +261,8 @@ testing should have caught it.
 - The JSON is written by **Node**, from a prelude copied from the
   TypeScript CLI, so it is **byte-identical**. Rust only starts `node`
   with `std::process::Command`.
-- `--profile` becomes a `HashMap<String, f64>`: typed, so stricter than
-  the TypeScript CLI with odd files.
+- `--profile` becomes a `HashMap<String, f64>`, under one rule both
+  CLIs share: every entry needs a non-negative `maxLength`.
 - Profiles are **keyed by name**, record the **length at exit**, and
   need a CommonJS script that exits cleanly. Python isn't profiled.
 

@@ -40,12 +40,12 @@ export const prompts = {
     a: 'The explain text, the CLI’s flags, messages and exit statuses, and the compiled code users run.',
   },
   'path-deps': {
-    q: 'Why does `cargo package -p viscosity-core` fail?',
-    a: 'Its dependency `viscosity-vir` is given by path only. crates.io needs a version requirement, so each internal dependency needs `version = …` next to its `path`.',
+    q: 'Why did `cargo package -p viscosity-core` fail at first?',
+    a: 'Its dependency `viscosity-vir` was given by path only. crates.io needs a version requirement, so each internal dependency now has `version = "0.1.0"` next to its `path`.',
   },
   'crate-license': {
-    q: 'What licence text would a packaged `viscosity-vir` crate contain today?',
-    a: 'None: `crates/vir` has no LICENSE file, so the `.crate` holds only the manifest, lockfile and sources. MIT asks for the notice to travel with copies.',
+    q: 'What licence text did a packaged `viscosity-vir` crate first contain?',
+    a: 'None: `crates/vir` had no LICENSE file, so the `.crate` held only the manifest, lockfile and sources. MIT asks for the notice to travel with copies, so each crate now has a LICENSE.',
   },
   'bundle-why': {
     q: 'Why does `@viscosity/cli` have no runtime dependencies?',
@@ -57,7 +57,7 @@ export const prompts = {
   },
   'ci-gap': {
     q: 'Name two release checks that CI does not run today.',
-    a: 'Any two of: the `@viscosity/wasm` smoke test (`smoke.mjs`), wasm-bindgen, a long fuzzing campaign, the benchmarks, `cargo package`.',
+    a: 'Any two of: the `@viscosity/wasm` smoke test (`smoke.mjs`), wasm-bindgen, a long fuzzing campaign, the benchmarks.',
   },
   'who-publishes': {
     q: 'Who decides when Viscosity is published, and why isn’t `npm publish` in the checklist?',
@@ -273,10 +273,10 @@ export const quiz = [
   {
     q: 'What does `cargo package -p viscosity-core` do in the repository today?',
     options: [
-      { t: 'Builds a `.crate` file ready to upload', why: 'It stops before that, while checking the manifest.' },
+      { t: 'Builds a `.crate` file ready to upload, and checks that it builds', correct: true, why: 'Every internal path dependency now has a version, so the manifest check passes and the packaged crate is verified.' },
       { t: 'Uploads the crate to crates.io', why: '`cargo package` never uploads. That is `cargo publish`.' },
-      { t: 'Stops: `viscosity-vir` is a path dependency without a version', correct: true, why: 'crates.io doesn’t allow dependencies outside crates.io, so every dependency needs a version requirement.' },
-      { t: 'Fails because the tests fail', why: 'The tests pass. The problem is in `Cargo.toml`.' },
+      { t: 'Stops: `viscosity-vir` is a path dependency without a version', why: 'That was the first result. crates.io needs a version requirement, and the workspace now gives one.' },
+      { t: 'Fails because the tests fail', why: '`cargo package` doesn’t run the tests, and they pass anyway.' },
     ],
   },
   {

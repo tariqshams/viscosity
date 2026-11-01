@@ -3,9 +3,9 @@
 // lower, the parser bump-allocates the AST into it, resolve and lower read
 // the AST and produce owned results (the VIR Module and JsExtra, whose node
 // facts hold oxc Spans: plain u32 pairs), and the arena is freed in one go
-// when lower returns. The 3,248 bytes were measured with
+// when lower returns. The 7,160 bytes were measured with
 // Allocator::used_bytes() after parsing tests/extra/unicode_offsets.js
-// (325 bytes of source) with oxc 0.156; the 16-byte Expression with
+// (762 bytes of source, as of 288e497) with oxc 0.156; the 16-byte Expression with
 // std::mem::size_of on the same machine.
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
@@ -26,7 +26,7 @@ const STATES: S[] = [
   { fill: true, note: 'The parser allocates every node into the arena, one after another, just bumping the cursor. An Expression is a 16-byte enum: a tag and oxc’s own Box, a pointer to the node in the arena.' },
   { fill: true, life: true, note: 'The tree’s type is Program<\'a>, where \'a is the borrow of the allocator. The tree can’t outlive the arena it lives in, so it can’t be stored in the Module that lower returns.' },
   { fill: true, life: true, out: true, note: 'Scope resolution and lowering read the tree and build owned results: the VIR Module, and JsExtra with node facts. Those facts keep oxc Spans, which are two u32s with no lifetime, so they outlive the tree.' },
-  { fill: true, out: true, gone: true, note: 'lower returns and the allocator is dropped. The whole arena goes back at once, with no Drop run for any node: for unicode_offsets.js, 3,248 bytes of nodes for a 325-byte file.' },
+  { fill: true, out: true, gone: true, note: 'lower returns and the allocator is dropped. The whole arena goes back at once, with no Drop run for any node: for unicode_offsets.js, 7,160 bytes of nodes for a 762-byte file.' },
   { fill: false, out: true, gone: true, emit: true, note: 'Later, emit gets the source, the plan and JsExtra. Everything it needs is a byte range in the source, so splicing never needs the tree again.' },
 ];
 

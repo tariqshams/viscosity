@@ -36,8 +36,8 @@ export const prompts = {
     a: 'A level, an optional error code, a message that stands on its own, and a window: file, line and column of the primary span, the code, and labelled spans.',
   },
   'dg-missing': {
-    q: 'What does `viscosity explain --frames` print that a plain syntax error from the Rust CLI lacks?',
-    a: 'A position: the line number, the source line, and carets under the span. The syntax error has only a message.',
+    q: 'What does `viscosity explain --frames` print that a syntax error from the Rust CLI lacks?',
+    a: 'A picture: the source line and carets under the span. The syntax error has a message and a `(line:col)`, nothing more.',
   },
   'dg-once': {
     q: 'Where is a refusal’s source position created in engine/rust?',
@@ -64,8 +64,8 @@ export const prompts = {
     a: 'It is reported as `viscosity: <file>: <error>`, the others are still printed, and the exit status is 1 at the end.',
   },
   'dg-oxc-label': {
-    q: 'oxc builds “Unexpected token” with `.with_label(span)`. Why does the Rust CLI still print no position?',
-    a: '`OxcDiagnostic`’s `Display` prints only the message, and the plugin formats the error with `format!("SyntaxError: {e}")`. The label is dropped.',
+    q: 'oxc builds “Unexpected token” with `.with_label(span)`. Why did the Rust CLI once print no position?',
+    a: '`OxcDiagnostic`’s `Display` prints only the message, and the plugin formatted it with `format!("SyntaxError: {e}")`, dropping the label. Now `syntax_error` adds the label’s `(line:col)`.',
   },
   'dg-acorn-col': {
     q: 'For `const s = "🎉"; [;`, why does acorn say column 17 when the `;` is byte 19?',
@@ -105,7 +105,8 @@ fn main() -> ExitCode {
                 .into(),
         ),
         CliError::Other(
-            "SyntaxError: ...".into(),
+            "Unexpected token (1:12)"
+                .into(),
         ),
     ];
     for e in &fails {
@@ -123,7 +124,7 @@ export const exercises = {
     lang: 'rust',
     title: 'acorn’s line and column',
     prompt:
-      'The Rust CLI could print `Unexpected token (1:12)` as the TypeScript one does, if it turned oxc’s byte offset into acorn’s position. Write `line_col(src, at)`: the line (from 1) and column (from 0) of byte offset `at`. Lines break at `\\n`, `\\r`, `\\r\\n` (one break), U+2028 and U+2029. Columns count UTF-16 units. Every expected value in the tests is what acorn printed.',
+      'The Rust CLI prints `Unexpected token (1:12)` as the TypeScript one does, by turning oxc’s byte offset into acorn’s position. Write `line_col(src, at)`: the line (from 1) and column (from 0) of byte offset `at`. Lines break at `\\n`, `\\r`, `\\r\\n` (one break), U+2028 and U+2029. Columns count UTF-16 units. Every expected value in the tests is what acorn printed.',
     starter: `fn line_col(
     src: &str,
     at: usize,
@@ -185,7 +186,7 @@ fn the_start_is_line_one_column_zero() {
 - **UTF-16 units** are what JavaScript strings, and so acorn’s columns, count. \`c.len_utf16()\` is 1 for é and 2 for 🎉 (a surrogate pair). Using \`len_utf8()\` gets the emoji and the accent wrong; counting 1 per char (code points, as the frames do) gets only the emoji wrong.
 - **Lines** follow ECMAScript’s line terminators, the same ones \`lines::LineIndex\` counts, with \`\\r\\n\` as one break. Forgetting that makes every CRLF file’s lines double.
 
-The column restarts after each break, so only the units on the error’s own line matter. With this function, the plugin could print acorn’s \`(line:column)\` from the start of oxc’s label span.`,
+The column restarts after each break, so only the units on the error’s own line matter. With a function like this (\`LineIndex::line_column\` in the port), the plugin prints acorn’s \`(line:column)\` from the start of oxc’s label span.`,
     wrong: [
       {
         code: SOL.replace('_ => col += c.len_utf16(),', '_ => col += c.len_utf8(),'),
@@ -207,8 +208,8 @@ export const quiz = [
   {
     q: 'Which of these is a diagnostic in this chapter’s sense?',
     options: [
-      { t: '`viscosity: SyntaxError: Unexpected token`', why: 'It has a message but no position.' },
-      { t: '`viscosity: No such file or directory (os error 2)`', why: 'It doesn’t even name the file.' },
+      { t: '`viscosity: SyntaxError: Unexpected token`, as the CLI once printed it', why: 'It has a message but no position.' },
+      { t: '`viscosity: No such file or directory (os error 2)`, as it once was', why: 'It doesn’t even name the file.' },
       { t: 'An `unsafe:` reason with its code frame', correct: true, why: 'A message plus a span, drawn as a line number, the code and carets.' },
     ],
   },
@@ -241,7 +242,7 @@ export const quiz = [
     q: 'Running `viscosity explain a.js bad.js b.js`, where bad.js has a syntax error: what happens?',
     options: [
       { t: 'Nothing is printed and the status is 1', why: 'The other files are still explained.' },
-      { t: 'a.js and b.js are explained, `viscosity: bad.js: SyntaxError: Unexpected token` goes to stderr, and the status is 1', correct: true, why: 'Each failing file costs only itself; the status records that something failed.' },
+      { t: 'a.js and b.js are explained, `viscosity: bad.js: Unexpected token (1:12)` goes to stderr, and the status is 1', correct: true, why: 'Each failing file costs only itself; the status records that something failed.' },
       { t: 'a.js is explained, then the run stops', why: 'A failing file doesn’t stop the others.' },
     ],
   },

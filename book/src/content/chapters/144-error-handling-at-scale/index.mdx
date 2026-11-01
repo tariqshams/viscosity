@@ -185,14 +185,14 @@ hand:
 let io = |e: std::io::Error| {
     CliError::Other(e.to_string())
 };
-let src = fs::read_to_string(&a.file)
-    .map_err(io)?;
+fs::write(&a.out, text).map_err(io)?;
 ```
 
 That is `map_err` doing what a `From<io::Error>` impl would do for
-`?`. And in one helper `?` converts on its own: `.ok_or("the profile
-must be a JSON object")?` works in a function returning a `String`
-error because the standard library has `impl From<&str> for String`.
+`?`. And in `read_profile` `?` converts on its own: `.ok_or("the
+profile must be a JSON object: …")?` works in a function returning a
+`String` error because the standard library has `impl From<&str> for
+String`.
 The WebAssembly crate of chapter 143 makes the last conversion,
 `CompileError` into `JsError`, with `map_err` too.
 

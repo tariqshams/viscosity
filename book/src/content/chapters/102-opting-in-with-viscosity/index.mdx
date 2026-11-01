@@ -51,11 +51,12 @@ The JavaScript plugin finds them with one regular expression, in
 
 ```js
 /@viscosity\s+(aosoa|soa|aos)\b
-  (?:\((\d+)\))?/
+  (?:\(([^)]*)\))?/
 ```
 
 That is: the word `@viscosity`, some space, one of the three layout
-names, a word boundary, and optionally a block size in parentheses. The
+names, a word boundary, and optionally whatever is in parentheses, the
+block size. The planner checks that it is a number later. The
 `\b` stops `@viscosity soap` from being read as `soa`. Try the pattern
 on a few comments:
 
@@ -167,9 +168,9 @@ es (line 2) {x, id} → kept as array of
     hold non-numbers
 ```
 
-And N must be a power of two (the default is 8). The planner checks
-this too, and keeps the collection with a reason rather than stopping
-the compile:
+And N must be a power of two, at most 65536 (the default is 8). The
+planner checks this too, and keeps the collection with a reason rather
+than stopping the compile:
 
 ```
 ps (line 2) {x, y} → kept as array of
@@ -247,7 +248,8 @@ engine and tool reads the program exactly as before.
 - Annotations sit below safety and above the cost model: `aos` stops a
   transform, `soa` skips the cost rules, and nothing forces an unsafe
   change.
-- `aosoa(N)` needs every field numeric, and N a power of two.
+- `aosoa(N)` needs every field numeric, and N a power of two up to
+  65536.
 - `--mode opt-in` transforms only annotated collections.
 - Check with `viscosity explain`: every annotation that landed is named
   in the reasons.

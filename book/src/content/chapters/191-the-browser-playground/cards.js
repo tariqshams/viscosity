@@ -216,7 +216,7 @@ fn a_stale_fatal_still_kills_it() {
 - **The ticket.** \`compileNow\` begins with \`const ticket = ++latest.current\`, and its \`show\` helper returns early when \`ticket !== latest.current\`. Your \`reply\` does the same. The TypeScript engine shares the counter, which is why switching engines also makes old Rust replies stale.
 - **Fatal first.** In \`rustCompiler\`, the callback for each request runs \`if (r.fatal) { w?.terminate(); w = null; }\` before anything is shown. A stale reply can still report a trap, and the instance it came from is just as broken. \`a_stale_fatal_still_kills_it\` checks that order.
 - **Lazy restart.** Nothing starts a new worker at the moment of the crash. \`(w ?? start()).postMessage(...)\` starts one when the next compile needs it, so a reader who stops typing costs nothing.
-- **What the model leaves out.** Messages, the 1.1 MB fetch, and the status line (“Loading the Rust engine…” comes back after a fatal reply, because \`rustReady\` is reset).`,
+- **What the model leaves out.** Messages, the 1.4 MB fetch, and the status line (“Loading the Rust engine…” comes back after a fatal reply, because \`rustReady\` is reset).`,
     wrong: [
       {
         code: `${TYPES}
@@ -287,7 +287,7 @@ export const quiz = [
   {
     q: 'A chapter page has one Playground with the default `engine="ts"`. When is the `.wasm` downloaded?',
     options: [
-      { t: 'When the page loads, so the toggle is instant', why: 'That would cost every reader 1.1 MB. The smoke test checks that nothing `.wasm` is fetched on TS.' },
+      { t: 'When the page loads, so the toggle is instant', why: 'That would cost every reader 1.4 MB. The smoke test checks that nothing `.wasm` is fetched on TS.' },
       { t: 'When the reader presses Rust for the first time', correct: true, why: 'The worker imports the glue and calls `init` only on the first Rust compile.' },
       { t: 'Never: the Rust engine is bundled into the page’s JavaScript', why: 'The module is served from `public/wasm` and never bundled.' },
     ],

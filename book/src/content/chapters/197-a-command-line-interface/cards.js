@@ -416,7 +416,7 @@ export const quiz = [
     options: [
       { t: 'Into `out.js`', why: 'Only stdout is redirected. Errors go to stderr, which still goes to the terminal.' },
       { t: 'To the terminal, on stderr', correct: true, why: 'That is the point of two streams: the results can go to a file while the errors stay visible.' },
-      { t: 'Nowhere: the CLI exits silently', why: 'It prints `viscosity: SyntaxError: …` and exits with status 1.' },
+      { t: 'Nowhere: the CLI exits silently', why: 'It prints `viscosity: Unexpected token (1:6)` or the like, a message and a position, and exits with status 1.' },
     ],
   },
   {

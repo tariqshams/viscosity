@@ -13,7 +13,7 @@ type Fields = { cmd?: string; files: string[]; out?: string; mode?: string };
 type S = { at: number[]; arm: string; f: Fields; err?: boolean; exit?: boolean; note: string };
 
 const STATES: S[] = [
-  { at: [], arm: '', f: { files: [] }, note: 'The shell splits the command line into words. std::env::args() hands them over as Strings, the program’s own name first, and main skips that: argv is these seven strings.' },
+  { at: [], arm: '', f: { files: [] }, note: 'The shell splits the command line into words. std::env::args_os() hands them over as OsStrings (a file name need not be UTF-8), the program’s own name first, and main skips that: argv is these seven strings.' },
   { at: [0], arm: 'cmd = argv[0]', f: { cmd: 'build', files: [] }, note: 'The first word is the command. parse_args stores it without checking it: run() checks it later and reports “unknown command” as a usage error.' },
   { at: [1], arm: '_ if !a.starts_with(\'-\')', f: { cmd: 'build', files: ['a.js'] }, note: 'Anything that does not start with a dash is a file. The match has no arm for it by name, so the guard arm near the end catches it.' },
   { at: [2], arm: '_ if !a.starts_with(\'-\')', f: { cmd: 'build', files: ['a.js', 'b.js'] }, note: 'A second file. Flags and files can come in any order, because each word is looked at on its own.' },

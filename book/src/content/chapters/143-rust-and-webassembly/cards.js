@@ -252,11 +252,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does JavaScript receive when Rust’s `compile` returns `Err(JsError::new("SyntaxError: Unexpected token"))`?',
+    q: 'What does JavaScript receive when Rust’s `compile` returns `Err(JsError::new("Unexpected token (1:6)"))`?',
     options: [
       { t: '`undefined`', why: 'An `Err` from an exported function becomes an exception, not a return value.' },
       { t: 'An `Output` with empty `code`', why: 'No `Output` is built on the error path.' },
-      { t: 'A thrown `Error` with that message', correct: true, why: 'Running `compile("let = ;")` from Node threw exactly this: an `Error` whose message is `SyntaxError: Unexpected token`.' },
+      { t: 'A thrown `Error` with that message', correct: true, why: 'Running `compile("let = ;")` from Node threw exactly this: an `Error` whose message is `Unexpected token (1:6)`.' },
       { t: 'A Rust panic message on the console', why: 'Nothing panics: the `Result` is handled and turned into an exception.' },
     ],
   },

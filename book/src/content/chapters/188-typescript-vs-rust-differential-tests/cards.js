@@ -11,7 +11,7 @@ export const prompts = {
   },
   'ep-diff-blind': {
     q: 'The node differential passes. What can still be wrong?',
-    a: 'Anything that doesn’t change behaviour (explain text, frames), anything outside its 66 programs, and anything only `--bounds assume` reaches.',
+    a: 'Anything that doesn’t change behaviour (explain text, frames), anything outside its 68 programs, and anything only `--bounds assume` reaches.',
   },
   'ep-wasm': {
     q: 'What can the wasm layer catch that native parity can’t, and what can’t it check?',
@@ -137,8 +137,10 @@ fn a_rust_only_wording_is_parity_only() {
 
 #[test]
 fn errors_are_compared_by_presence() {
-    let t: Res = Err("Unexpected token (1:4)".into());
-    let r: Res = Err("Expected \`;\` but found \`x\`".into());
+    let t: Res = Err(
+        "Identifier directly after number (1:5)".into());
+    let r: Res = Err(
+        "Invalid characters after number (1:5)".into());
     assert_eq!(verdict("let 1x", &t, &r, digits), vec!["ts-crash"]);
 }
 

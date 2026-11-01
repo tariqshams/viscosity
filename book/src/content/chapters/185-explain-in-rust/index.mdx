@@ -8,7 +8,7 @@ objectives:
   - Read explain_text in plan.rs, and say how one Option parameter gives both outputs.
   - Explain how a refusal finds its source position, and when a frame is printed.
   - Build a code frame from byte offsets, counting columns in code points and keeping tabs.
-  - Say what the 13 frames fixtures check, and what a frame still gets wrong.
+  - Say what the 14 frames fixtures check, and what a frame still gets wrong.
 introduces: [rust-explain]
 uses: [viscosity-rs, ir-arena, rust-cost-model, rust-escape-pass, optimization-report, bailout, cross-implementation-tests, test-corpus, fuzzing, source-location, ssa, option, match, struct, vec, hashmap, rust-iterator, rust-closure, string-vs-str, slice, char-code, cargo-test]
 sources: ['klabnik2026']
@@ -225,8 +225,8 @@ lines, which gets carets to the end of its first line.
 
 ## Held to the same bytes
 
-`scripts/gen_expected.mjs` writes a `.frames.txt` fixture for each of 13
-programs (its `FRAMES` list: 11 JavaScript, 2 Python), using the
+`scripts/gen_expected.mjs` writes a `.frames.txt` fixture for each of 14
+programs (its `FRAMES` list: 12 JavaScript, 2 Python), using the
 TypeScript `explain(plan, { frames: source })`. `parity.rs` checks every
 `.frames.txt` it finds, and when I ran it they all matched. The fuzzer
 also compares `explain --frames` on every program it generates, in
@@ -259,7 +259,7 @@ character widths, which neither engine has.
 - A **code frame** is the span's first line plus carets: clipped to that
   line, blanks trimmed, tabs copied into the pad.
 - Rust slices in UTF-8 bytes and TypeScript in UTF-16 units, but both
-  **count columns in code points**, so the 13 frames fixtures match byte
+  **count columns in code points**, so the 14 frames fixtures match byte
   for byte. Code points still aren't screen columns.
 
 <Quiz />

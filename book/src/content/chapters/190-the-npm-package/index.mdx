@@ -21,7 +21,7 @@ Chapter 119 packed the TypeScript CLI for npm: one JavaScript bundle,
 `dist/viscosity.mjs`, that runs on any computer with Node 18. Easy,
 because JavaScript is the same everywhere. The Rust engine is faster
 (chapter 192), but a compiled Rust program is not the same everywhere.
-`cargo build --release` gave me a 2,434,192-byte ELF executable for
+`cargo build --release` gave me a 2,785,400-byte ELF executable for
 x86-64 Linux, linked against glibc. A Mac can't run it, and neither can
 an ARM laptop.
 
@@ -100,21 +100,21 @@ through five importers:
 
 ## What is in the box
 
-Packed at commit `c68daec`, the package is 13 files, 834 KiB, and
-2,375 KiB once unpacked. Most of it is two copies of the same module:
-`dist/node/viscosity_wasm_bg.wasm` (1,145,562 bytes) and
-`dist/web/viscosity_wasm_bg.wasm` (1,145,498). Each glue file loads the
+Packed at commit `288e497`, the package is 13 files, 997 KiB, and
+2,840 KiB once unpacked. Most of it is two copies of the same module:
+`dist/node/viscosity_wasm_bg.wasm` (1,373,454 bytes) and
+`dist/web/viscosity_wasm_bg.wasm` (1,373,390). Each glue file loads the
 module sitting next to it, so sharing one would mean editing
-generated code. The build doesn't, and the price is 1.1 MB of disk.
+generated code. The build doesn't, and the price is 1.4 MB of disk.
 
 There is no `bin`. `@viscosity/cli` installs a `viscosity` command;
 `@viscosity/wasm` is a library, for programs that want to call
 `compile` themselves: an editor plugin, a bundler plugin, this book.
 
-The third big file is `THIRD_PARTY_LICENSES.txt`, 110,654 bytes. The
+The third big file is `THIRD_PARTY_LICENSES.txt`, 130,597 bytes. The
 TypeScript CLI has one too, because its bundle contains acorn and
 sucrase. The `.wasm` is the same situation, larger. It *statically
-links* 67 third-party Rust crates: oxc's parser, `indexmap`,
+links* 71 third-party Rust crates: oxc's parser, `indexmap`,
 `rustc-hash`, the ICU4X Unicode crates, wasm-bindgen itself. Their code
 is inside the file you hand out, so their licence notices must go with
 it. `build.mjs` asks `cargo tree` which crates are linked for
@@ -136,11 +136,11 @@ corpus program through the installed package, 40 JavaScript and 20
 Python, in three ways, and compare `code` and `explain` with what the
 TypeScript CLI prints. Finally it type-checks a small consumer under
 both the Node and the browser conditions. My run, at commit
-`c68daec`, trimmed:
+`288e497`, trimmed:
 
 ```
 packed viscosity-wasm-0.1.0.tgz:
-  13 files, 834 KiB (2375 KiB unpacked)
+  13 files, 997 KiB (2840 KiB unpacked)
 ✓ nodejs target, require():
   {"programs":60,"mismatches":0}
 ✓ nodejs target, import:
@@ -182,7 +182,7 @@ each `-O3` run.
 - An **exports map** is tried in key order: first active condition
   wins, `"default"` last, nested misses fall through.
 - A statically linked `.wasm` must carry its crates' **licences**:
-  67 of them here.
+  71 of them here.
 - `smoke.mjs` installs the tarball and checks 60 programs three ways
   against the TS CLI.
 

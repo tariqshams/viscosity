@@ -253,9 +253,9 @@ then asserts once: `assert!(failures.is_empty(), "{} of {total}
 differ:\n{}", ...)`. Another test in the file checks that every program has
 fixtures and no fixture is stale, so the suite can't silently shrink.
 Another runs the real `viscosity` binary, found through
-`env!("CARGO_BIN_EXE_viscosity")`, and compares its output too. Run on
-this machine with `--show-output`, the main test prints
-`parity: 122/122`.
+`env!("CARGO_BIN_EXE_viscosity")`, and compares its output too. With
+`--show-output`, the main test printed `parity: 122/122` when this
+chapter was written, and `parity: 190/190 (54 Python)` at `288e497`.
 </Callout>
 
 ## Your turn

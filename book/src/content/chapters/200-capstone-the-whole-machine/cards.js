@@ -58,11 +58,11 @@ export const prompts = {
   },
   'm-open': {
     q: 'Name three things about Viscosity that are unfinished or open.',
-    a: 'Any three of: not published; the port rejects TypeScript input; non-UTF-8 file names panic; the cost model is engine-blind (heat on JSC); many programs refused; no WebAssembly output; Drip’s 256-constant limit.',
+    a: 'Any three of: not published; the port rejects TypeScript input; syntax errors worded by oxc, not acorn; the cost model is engine-blind (heat on JSC); many programs refused; no WebAssembly output; Drip’s 256-constant limit.',
   },
   'm-chore': {
-    q: 'Which is research, and which a chore: adding versions to the path dependencies, or knowing how much a layout will gain on an engine?',
-    a: 'The path dependencies are a chore. Predicting the gain needs a model of engines the compiler never sees: research.',
+    q: 'Which is research, and which a chore: running the wasm smoke test in CI, or knowing how much a layout will gain on an engine?',
+    a: 'The smoke test in CI is a chore. Predicting the gain needs a model of engines the compiler never sees: research.',
   },
   'm-mastery': {
     q: 'What does mastery mean in this book?',

@@ -63,8 +63,9 @@ Five jobs run side by side on `ubuntu-latest`, each with a timeout:
 job          what it runs
 engine-ts    npm ci, tsc --noEmit, vitest,
              npm pack + install the CLI
-engine-rust  cargo test, clippy -D warnings,
-             wasm32 build
+engine-rust  npm ci (TS reference), fmt,
+             cargo test, clippy -D warnings,
+             wasm32 build, cargo package
 drip         vitest; cargo test --release,
              clippy (book/companion)
 book         check_chapters, vitest, build,
@@ -99,17 +100,20 @@ passes on your machine only because of something your machine has.
 
 The `engine-rust` job is mostly one command, `cargo test --workspace`,
 and everything in this Part hangs off it. When I ran it locally on the
-engine at commit `c68daec` (rustc 1.97), it passed 60 tests in 11 test
+engine at commit `288e497` (rustc 1.97), it passed 75 tests in 14 test
 binaries:
 
 ```
 binary         tests  what it holds
-parity           9    186 pairs, 13 frames,
-                      fixture set, the CLI
+parity          10    190 pairs, 14 frames,
+                      4 profiles, the CLI
 differential     2    node and python3
-multi_file       6    several files, jobs
+early_errors     6    108 invalid programs
+multi_file       8    several files, jobs
+profile_cli      2    odd profiles, cleanup
+os_args          2    non-UTF-8 file names
 fuzz             1    200 programs, seed 1
-unit + core     42    SSA, CFG, plugins...
+unit + core     44    SSA, CFG, plugins...
 ```
 
 Each is a **gate**: if one fails, the job is red. Parity holds the
@@ -124,10 +128,12 @@ Clippy's README now prefers `CARGO_BUILD_WARNINGS=deny` (Cargo 1.97
 and later), which "has the benefit of not invalidating build
 caches"<Cite id="clippy-readme" />, a good fit for a cached CI job.
 
-One check is missing. The workflow never runs `cargo fmt --check`,
-which exits with 1 when rustfmt would change a file<Cite id="rustfmt-readme" />.
-It exits 0 on the engine today (rustfmt 1.9.0, with the repository's
-`rustfmt.toml`), so the code is formatted, but nothing keeps it so.
+When this chapter was first written, one check was missing:
+`cargo fmt --check`, which exits with 1 when rustfmt would change a
+file<Cite id="rustfmt-readme" />. The code was formatted (rustfmt
+1.9.0, with the repository's `rustfmt.toml`), but nothing kept it so.
+The job now runs `cargo fmt --all --check` before the tests, and
+`cargo package --workspace` after them (chapter 198).
 
 <Prompts ids={['ci-gates', 'ci-clippy', 'ci-fmt']} />
 
@@ -149,11 +155,12 @@ missing [...], stale [...]". Your exercise is that check.
 I can't see GitHub from here, so this chapter describes the workflow
 as committed, not runs I watched. The commit says each job's commands
 were run locally first. But a local run has your machine's state, and
-I could simulate one difference. The `engine-rust` job installs node,
-but never runs `npm ci` in `engine/ts`. Two tests added after the
-workflow load the TypeScript engine from there: `fuzz.rs`, and the
-TypeScript half of `multi_file.rs`. With `engine/ts/node_modules`
-removed, `cargo test -p viscosity-cli` gave me (wrapped):
+I could simulate one difference. The `engine-rust` job, as first
+committed, installed node but never ran `npm ci` in `engine/ts`. Two
+tests added after the workflow load the TypeScript engine from there:
+`fuzz.rs`, and the TypeScript half of `multi_file.rs`. With
+`engine/ts/node_modules` removed, `cargo test -p viscosity-cli` gave me
+(wrapped):
 
 ```
 test a_fixed_seed_fuzz_run_finds_nothing
@@ -165,10 +172,10 @@ test the_typescript_cli_prints_the_same
   ... FAILED
 ```
 
-So the first real run of that job would most likely be red, for the
-same reason as the lockfile: something the repository doesn't install.
-The fix is one step, `npm ci` in `engine/ts` before `cargo test`. I've
-reported it rather than changed the workflow.
+So the first real run of that job would most likely have been red, for
+the same reason as the lockfile: something the repository didn't
+install. The fix was one step, `npm ci` in `engine/ts` before
+`cargo test`, and the workflow has it now.
 
 <Prompts ids={['ci-runner-state', 'ci-honest']} />
 
@@ -192,8 +199,9 @@ replace an assumption with a machine that doesn't share it.
   `npm install` would have rewritten it.
 - Caches are keyed by **lockfiles** and the **rustc version**; workspace
   crates are rebuilt each time.
-- The Rust gates: parity, differential, multi-file, **fuzz**, clippy
-  `-D warnings`, and a wasm build. `cargo fmt --check` is not one.
+- The Rust gates: `cargo fmt --check`, parity, differential, early
+  errors, multi-file, **fuzz**, clippy `-D warnings`, a wasm build and
+  `cargo package`.
 - Committed **fixtures** need regenerating after the reference changes.
 
 <Quiz />

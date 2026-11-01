@@ -35,7 +35,7 @@ export const prompts = {
   },
   'rx-fixtures': {
     q: 'What checks that `--frames` output matches across the engines?',
-    a: '13 `.frames.txt` fixtures written by `gen_expected.mjs` (checked by `parity.rs`), and the fuzzer on every program it generates.',
+    a: '14 `.frames.txt` fixtures written by `gen_expected.mjs` (checked by `parity.rs`), and the fuzzer on every program it generates.',
   },
   'rx-display': {
     q: 'What does a code frame still get wrong, in both engines?',

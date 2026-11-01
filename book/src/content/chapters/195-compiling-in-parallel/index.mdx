@@ -122,8 +122,9 @@ shared, which keeps the output identical for any number of threads.
 
 ## When one file goes wrong
 
-A file that fails to compile is just an `Err` in its slot. The main
-loop prints it as `viscosity: bad.js: SyntaxError: Unexpected token`,
+A file that fails to compile is just an `Err` in its slot. For a
+`bad.js` holding `const ps = [;`, the main loop prints
+`viscosity: bad.js: Unexpected token (1:12)`,
 prints the others, and returns `Ok(false)`, which `main` turns into exit
 status 1.
 

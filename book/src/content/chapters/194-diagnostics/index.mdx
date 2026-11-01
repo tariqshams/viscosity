@@ -3,7 +3,7 @@ n: 194
 day: 49
 part: XI
 title: 'Diagnostics'
-tagline: 'One of the CLI’s messages points at the exact code; two of them don’t say where at all. Follow a position from oxc to the caret, read the CLI’s errors and exit codes, and fix the missing position yourself.'
+tagline: 'One of the CLI’s messages pointed at the exact code; two of them didn’t say where at all. Follow a position from oxc to the caret, read the CLI’s errors and exit codes, and compute the missing position yourself.'
 objectives:
   - Say what makes a message a diagnostic, using rustc’s structure as the model.
   - Trace a source position from oxc’s span through SourceRef and bail to the caret.
@@ -30,7 +30,8 @@ ps (line 1) {x} → kept as array of objects
 ```
 
 The second, for a file holding `const ps = [;`, and the third, for a
-file that doesn't exist (wrapped):
+file that doesn't exist, are as the CLI printed them when this chapter
+was first written (wrapped):
 
 ```
 $ viscosity explain bad.js
@@ -44,6 +45,7 @@ The first tells you what and where, down to the character. The second
 tells you what, but not where. The third doesn't even say which file.
 The TypeScript CLI printed `Unexpected token (1:12)` and
 `ENOENT: no such file or directory, open 'nope.js'` for the same two.
+Both gaps are closed now; the last section shows how.
 
 <Callout kind="intuition">
 "Your car is making a noise" is a complaint. "The front left brake
@@ -59,7 +61,7 @@ makes sense on its own, and a window with the file, line and column of
 the **primary span**, the code itself, and labels under the spans
 <Cite id="rustc-dev-guide-diagnostics" />. Viscosity's frames have the
 message, a line, the code and carets. They have no level, no code and
-no file name. Its syntax errors have only a message.
+no file name. Its syntax errors had only a message.
 
 <Callout kind="definition">
 A **diagnostic** is a compiler message tied to the source: a
@@ -165,16 +167,35 @@ that you typed the command wrong when the problem is in your file.
 oxc knows where the syntax error is. Its parser builds it as
 `OxcDiagnostic::error("Unexpected token").with_label(span)`, and the
 label holds the span. But `OxcDiagnostic`'s `Display` prints only the
-message (I read both in the oxc 0.156 sources), and the plugin writes
-`format!("SyntaxError: {e}")`. The span is dropped on the floor.
+message (I read both in the oxc 0.156 sources), and the plugin wrote
+`format!("SyntaxError: {e}")`. The span was dropped on the floor.
 
 To print what acorn prints, `(1:12)`, the plugin needs the label's
 start and one more function: from a byte offset to acorn's line
 (counted from 1, at the same line breaks as `LineIndex`) and column
 (from 0, in UTF-16 units: for `const s = "🎉"; [;` acorn<Cite id="acorn" />
-says `(1:17)`, though that `;` is byte 19). That's your exercise. And the missing
-file name needs only `format!("{file}: {e}")` in the single-file case.
-I've reported both rather than fixed them.
+says `(1:17)`, though that `;` is byte 19). That's your exercise, and
+it is what the port does now, in `syntax_error` (adapted):
+
+```rust
+match e.labels.first() {
+    Some(l) => {
+        let ix = LineIndex::new(src);
+        let (line, col) =
+            ix.line_column(src, l.offset());
+        CompileError(format!(
+            "{e} ({line}:{col})"))
+    }
+    None => CompileError(e.to_string()),
+}
+```
+
+Both CLIs print `viscosity: Unexpected token (1:12)` for `bad.js`
+now, with no `SyntaxError: ` prefix in either. The words can still
+differ, since oxc writes its own messages, and so can the position of
+an early error that oxc anchors on another token (chapter 172). The
+file name came back the simple way: a single missing file now gives
+`cannot read nope.js: No such file or directory (os error 2)`.
 
 <Prompts ids={['dg-oxc-label', 'dg-acorn-col']} />
 
@@ -201,7 +222,7 @@ get whichever one was attached.
   the message's line and the frame come from it.
 - The CLI has two failure kinds: **usage** errors (help text) and
   **other** errors (one line); the exit status is 0 or 1.
-- oxc's span is **dropped** in syntax errors; acorn's column counts
-  **UTF-16 units**.
+- oxc's span was once **dropped** from syntax errors; now it becomes
+  acorn's `(line:col)`, whose column counts **UTF-16 units**.
 
 <Quiz />

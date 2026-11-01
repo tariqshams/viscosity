@@ -176,7 +176,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What do the five crates in engine/rust’s workspace share?',
+    q: 'What do the six crates in engine/rust’s workspace share?',
     options: [
       { t: 'Nothing: each is built entirely on its own', why: 'They share a lock file and an output folder.' },
       { t: 'One `Cargo.lock` and one `target/` folder', correct: true, why: 'That is what makes them a workspace; versions of dependencies agree across members.' },
