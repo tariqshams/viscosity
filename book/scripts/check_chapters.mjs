@@ -136,6 +136,7 @@ for (const folder of folders) {
   }
 
   // 0. frontmatter types (what Astro's schema will demand)
+  if (Array.isArray(fm.sources) && fm.sources.length === 0) err(folder, 'frontmatter "sources" must list at least one reference (the content schema requires it)');
   for (const k of ['objectives', 'introduces', 'uses', 'sources']) {
     if (!Array.isArray(fm[k]) || fm[k].some((x) => typeof x !== 'string')) err(folder, `frontmatter "${k}" must be a list of plain strings (quote items containing ": ")`);
   }

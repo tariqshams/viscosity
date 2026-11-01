@@ -11,7 +11,7 @@ objectives:
   - Read `explain --frames` output for a refusal, and write the operand-aware reasons.
 introduces: [rust-escape-pass]
 uses: [rust-collections-pass, rust-shape-pass, escape-analysis, escape-sites, alias-analysis, points-to, aliasing, safety-analysis, bailout, optimization-report, phi-node, ssa, call-graph, vir, viscosity-rs, cross-implementation-tests, fuzzing, differential-testing, match, pattern, enum, option, slice, string-vs-str, rust-iterator, rust-closure]
-sources: []
+sources: ['llvm-alias-analysis', 'coopertorczon2022']
 ---
 import OperandSteps from '../../../components/diagrams/ch180/OperandSteps';
 
