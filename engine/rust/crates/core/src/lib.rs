@@ -17,7 +17,8 @@ pub mod plugin;
 pub use analysis::{analyze, AccessKind, Analysis, Collection, ElementAccess, IndexGet, LoopAccess, RhsEffect};
 pub use cfg::{dominators, loop_of, natural_loops, reverse_postorder, Dominators, Loop};
 pub use plan::{
-    code_frame, explain, explain_with_frames, plan, Annotation, Bounds, CollectionPlan, Layout, Mode, Plan, PlanOptions,
+    code_frame, explain, explain_with_frames, plan, Annotation, Bounds, CollectionPlan, Layout, Mode, Plan,
+    PlanOptions, MAX_BLOCK_SIZE,
 };
 pub use plugin::{CompileError, LanguagePlugin, LayoutStrategy, LoweredModule, STRATEGIES};
 pub use viscosity_vir as vir;

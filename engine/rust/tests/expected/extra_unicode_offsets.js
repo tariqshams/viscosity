@@ -11,9 +11,17 @@ function __vsc_bc(c, i, f, w) {
   throw new TypeError(w ? `Cannot set properties of undefined (setting '${f}')` : `Cannot read properties of undefined (reading '${f}')`);
 }
 // Ünïcödé before the collection: offsets are UTF-8 bytes in Rust, UTF-16 in JS. 😀
-const label = 'héllo wörld 😀';
+/* U+2028 and U+2029 are line breaks, for line numbers: here and here. */
+const label = 'héllo wörld 😀 𝒳';
+const sep = 'a b c'; // legal in a string since ES2019, and a line break
 const ps = new __Vsc_ps();
 for (let i = 0; i < 200; i++) ps.push(i, 'é' + i);
 let s = 0;
-for (let i = 0; i < ps.length; i++) s += ps.x[i]; // ✓ — done
-console.log(label, s, ps.name[__vsc_bc(ps, 3, 'name', false)], ' ');
+for (let i = 0; i < ps.length; i++) { const t = '😀𝒳'; s += ps.x[i] + t.length; } // ✓ — done
+const qs = [];
+for (let i = 0; i < 50; i++) qs.push({ y: i });
+let u = 0;
+for (let i = 0; i < qs.length; i++) u += qs[i].y;
+const keep = [];
+/* 😀 𝒳 é */ keep.push(qs[1]); // a refusal, for the code frame's columns
+console.log(label, sep.length, s, u, keep[0].y, ps.name[__vsc_bc(ps, 3, 'name', false)]);

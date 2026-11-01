@@ -43,11 +43,24 @@ pub fn instrument(source: &str) -> Result<String, String> {
     Ok(format!("{PRELUDE}{out}"))
 }
 
-/// Runs `file` under node and returns the profile as pretty JSON.
+/// Removes the profiling directory when dropped, on every path out.
+struct TempDir(std::path::PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Runs `file` under node and returns the profile as pretty JSON. If the
+/// program fails (an uncaught exception, a non-zero exit), that is an
+/// error, as in the TypeScript CLI: a partial run's sizes could mislead the
+/// planner. The temporary directory is removed in every case.
 pub fn profile(file: &str) -> Result<String, String> {
     let source = fs::read_to_string(file).map_err(|e| e.to_string())?;
-    let dir = std::env::temp_dir().join(format!("vsc-prof-{}", std::process::id()));
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dir = TempDir(std::env::temp_dir().join(format!("vsc-prof-{}", std::process::id())));
+    fs::create_dir_all(&dir.0).map_err(|e| e.to_string())?;
+    let dir = &dir.0;
     let inst = dir.join("instrumented.cjs");
     let out = dir.join("profile.json");
     fs::write(&inst, instrument(&source)?).map_err(|e| e.to_string())?;
@@ -59,9 +72,10 @@ pub fn profile(file: &str) -> Result<String, String> {
         .status()
         .map_err(|e| format!("could not run node (profiling needs Node.js on the PATH): {e}"))?;
     if !status.success() {
-        return Err(format!("the instrumented program failed ({status})"));
+        return Err(match status.code() {
+            Some(code) => format!("the profiled program failed (exit code {code})"),
+            None => "the profiled program failed (killed by a signal)".to_string(),
+        });
     }
-    let json = fs::read_to_string(&out).map_err(|e| e.to_string())?;
-    let _ = fs::remove_dir_all(&dir);
-    Ok(json)
+    fs::read_to_string(&out).map_err(|e| e.to_string())
 }

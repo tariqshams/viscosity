@@ -51,7 +51,7 @@ the reference does.
 | `viscosity-vir` | `crates/vir` | The IR. A `Module` owns arenas of functions, blocks, bindings and instructions, referred to by typed ids (`ValueId`, `BlockId`, `FuncId`, `BindingId`). Also use lists, a printer, and `js_number` (JavaScript's number formatting). |
 | `viscosity-core` | `crates/core` | `builder`: on-the-fly SSA construction (Braun et al., CC 2013). `cfg`: reverse postorder, Cooper–Harvey–Kennedy dominators, natural loops. `analysis`: the layout analyses. `plan`: the cost model and `explain`. `plugin`: the `LanguagePlugin` trait. `compile`: the pipeline. |
 | `viscosity-frontend-js` | `crates/frontend-js` | The JavaScript plugin: parse with oxc, `resolve` (scopes), `lower` (oxc AST → VIR), `emit` (range splicing, SoA/AoSoA container classes, bounds-check helper), and `@viscosity` annotations. |
-| `viscosity-frontend-python` | `crates/frontend-python` | The Python plugin: `tokens` (INDENT/DEDENT, bracket depth), `parser` (the supported subset, as an arena AST), `lower` (scopes, cells, dataclasses → VIR), `emit` (container classes with `array('d')` or list columns, `_vsc_iter`, `_vsc_ix`), and `# @viscosity` annotations. No dependencies beyond the core. |
+| `viscosity-frontend-python` | `crates/frontend-python` | The Python plugin: `tokens` (INDENT/DEDENT, bracket depth), `parser` (the supported subset, as an arena AST), `lower` (scopes, cells, dataclasses → VIR), `emit` (container classes with `array('d')` or list columns, `_vsc_iter`, `_vsc_ix`), and `# @viscosity` annotations. Depends only on `viscosity-core`, `viscosity-vir` and `indexmap` (no parser crate). |
 | `viscosity-cli` | `crates/cli` | The `viscosity` binary: `build`, `explain`, `profile`; `--mode`, `--bounds`, `--min-size`, `--profile`, `--python-auto`, `--explain`, `--frames`, `--jobs`, `-o`. `.py` files use the Python plugin. `build` and `explain` take several files and compile them in parallel (see [below](#several-files-in-parallel)). It also holds the parity, differential, multi-file and fuzz tests. |
 | `viscosity-wasm` | `crates/wasm` | A wasm-bindgen wrapper: `compile(source) -> { code, explain }`, `compileWith(source, mode, bounds, minSize)` (both JavaScript), and `compileLanguage(language, source, mode, bounds, minSize, pythonAuto)` with `language` `"javascript"` or `"python"`. |
 
@@ -69,6 +69,15 @@ and `index.ts` to the crate root.
 The reference walks ESTree (from acorn). The port walks oxc's AST, which
 differs in ways that matter for parity:
 
+- **Early errors.** acorn reports ECMAScript's early errors (redeclared
+  bindings, `break` outside a loop, duplicate labels, undeclared exports,
+  strict-mode rules such as `delete x`, `with` or `010`, duplicate
+  constructors, top-level `return`, ...) and validates regular expressions
+  while parsing. oxc's parser leaves many of these to semantic analysis, so
+  the port parses with `parse_regular_expression` on and then runs
+  `oxc_semantic`'s `SemanticBuilder` with `with_check_syntax_error(true)`,
+  reporting its first error as a syntax error. Its scopes are not used
+  otherwise (`resolve` does the reference's own scope analysis).
 - **Generic traversal.** The reference often walks "all children" (to resolve
   names, or to collect the variables an unmodelled node mentions). The port
   uses `oxc_ast_visit::Visit` with overrides for the node kinds the reference
@@ -93,7 +102,10 @@ differs in ways that matter for parity:
   code units. Every splice in the port uses byte offsets on the Rust `String`,
   so it cuts at the same characters as the reference does on its JavaScript
   string. `tests/extra/unicode_offsets.js` checks this with accented letters,
-  emoji and U+2028 ahead of the rewritten code. Use `lines::utf16_offset` if
+  emoji and other astral characters, and U+2028/U+2029 (in a comment and in
+  a string), all ahead of rewritten code, so they shift both the splice
+  offsets and the line numbers in explain; its `--frames` fixture checks the
+  caret columns after them. Use `lines::utf16_offset` if
   you need JavaScript-style offsets. oxc reports no line numbers, so
   `lines::LineIndex` counts them as acorn does (`\r\n`, `\r`, `\n`, U+2028,
   U+2029).
@@ -129,6 +141,8 @@ when annotated `# @viscosity soa`, or with `--python-auto`.
 
 ## Building and testing
 
+The workspace needs Rust 1.97 or newer (`rust-version`, set by oxc 0.156).
+
 ```sh
 cargo build --release                                        # target/release/viscosity
 cargo test --workspace                                       # unit, parity and differential tests
@@ -163,10 +177,20 @@ The tests:
     precedence, unsupported syntax, annotations, column naming and prelude
     placement, and the CPython default (keep objects unless annotated).
   - The wasm crate checks compiling Python by name.
+- **Early errors** (`crates/cli/tests/early_errors.rs`): 108 programs
+  with an ECMAScript early error (or an invalid regular expression), which
+  both CLIs must reject (exit status 1, a `viscosity: ` line), and 77
+  valid programs close to one, which both must accept.
+- **Profiles** (`crates/cli/tests/profile_cli.rs`): both CLIs accept and
+  reject the same `--profile` files, with the same messages, and
+  `viscosity profile` leaves no temporary directory behind, whether the
+  program succeeds or throws (an error, with no profile).
 - **Parity** (`crates/cli/tests/parity.rs`): every program compiled with
   default options and with `--bounds assume`, compared against the TS
   engine's output. The test also checks that the fixture set exactly matches
-  the programs, that each corpus program's `// viscosity: name=layout` (or
+  the programs, that the programs with a profile in `tests/profiles/` give
+  the same explain text and code with `--profile` (in-process and through
+  the CLI), that each corpus program's `// viscosity: name=layout` (or
   `# viscosity: name=layout`) header decision holds, and that the
   `viscosity` binary prints the same output.
 - **Multi-file CLI** (`crates/cli/tests/multi_file.rs`): `explain a.js b.js`
@@ -209,7 +233,10 @@ The tests:
 - `tests/expected/<suite>_<name>[.assume].js` (or `.py`) and `.explain.txt`:
   the TS engine's output, generated by `scripts/gen_expected.mjs`. For 13
   programs with refusals (the `FRAMES` list in that script), also
-  `<name>.frames.txt`: `viscosity explain --frames`.
+  `<name>.frames.txt`: `viscosity explain --frames`. For each profile
+  `tests/profiles/<name>.json` (4 of them: small and large measured sizes,
+  JavaScript and Python), also `<name>.profile.js` (or `.py`) and
+  `<name>.profile.explain.txt`, compiled with that profile.
 
 After the TypeScript reference changes, regenerate the fixtures with
 `node scripts/gen_expected.mjs` (Node ≥ 22.18, which strips types natively),
@@ -219,9 +246,9 @@ then run `cargo test`.
 
 For every program in the six suites, and for both bounds modes, the Rust
 engine's `code` and `explain` equal the TypeScript engine's, byte for byte.
-Today that is 93 programs × 2 = 186 fixture pairs (66 JavaScript programs,
-132 pairs; 27 Python programs, 54 pairs), and all 186 match, as do the 13
-`--frames` fixtures. The
+Today that is 95 programs × 2 = 190 fixture pairs (68 JavaScript programs,
+136 pairs; 27 Python programs, 54 pairs), and all 190 match, as do the 14
+`--frames` fixtures and the 4 `--profile` fixture pairs. The
 WebAssembly build reproduces all of them as well. The decisions match because
 the analyses are ported step by step and visit things in the same order. That
 order decides the order of the messages in `viscosity explain`, so the port
@@ -229,9 +256,11 @@ keeps the reference's insertion-ordered maps and sets, stable sorts, use
 lists with duplicates, and Gauss–Seidel fixpoint order. Numbers in text are
 formatted with JavaScript's algorithm (`vir::js_number`).
 
-Failures are reported as a `CompileError`. JavaScript syntax errors come from
-oxc rather than acorn, so their wording differs from the reference's. Python
-source outside the subset is not an error (see above).
+Failures are reported as a `CompileError`. JavaScript syntax errors,
+early errors included, come from oxc rather than acorn, so their wording
+differs from the reference's; which programs are rejected does not (see
+*Early errors* above). Python source outside the subset is not an error
+(see above).
 
 ### Reference bugs found while porting
 
@@ -330,8 +359,9 @@ Two minor JavaScript quirks remain, kept for parity:
 - **Plan options given as `undefined`** are ignored by the reference's
   `compile()`. Rust options are typed, so they cannot be undefined.
 - **AoSoA block sizes of 2^64 and above** saturate in the port (they are
-  stored as `u64`). The reference's JavaScript numbers do not. No block size
-  that large is usable.
+  stored as `u64`); the reference's JavaScript numbers do not. Both engines
+  refuse any block size above 2^16 (bug 17), and the message quotes the
+  size as written, so the output is the same.
 
 ### Fuzzing
 
@@ -353,7 +383,16 @@ checked two ways:
    `--bounds assume`.
 2. **Parity**: the TypeScript and the Rust engine give the same code (both
    bounds modes), the same explain text (both modes) and the same
-   `explain --frames` text, byte for byte.
+   `explain --frames` text, byte for byte. Each batch also gets a random
+   profile (measured sizes for some collection names, around the 64-element
+   threshold), and `explain --profile` must agree too.
+
+About one program in 20 also gets an ECMAScript early error inserted on a
+line of its own (a redeclaration of a collection or of `k`, `break`
+outside a loop, a duplicate label, `delete x`, `with`, a legacy octal
+literal, an undeclared export, duplicate parameters or constructors, an
+invalid regular expression, ...). Both engines must reject it. The choice
+uses its own random stream, so the other programs are unchanged.
 
 ```sh
 cargo build -p viscosity-cli
@@ -419,6 +458,47 @@ compiled program reports the bounds error, not the `ReferenceError`), and
 an index expression that pushes (`ps[grow()].x`) reads the column fetched
 before the push.
 
+### Found while writing the book
+
+16. **Early errors** (port only). The port parsed with oxc's parser alone,
+    which leaves many ECMAScript early errors to semantic analysis, so it
+    compiled programs the reference rejects: `let a; let a;`, `x: x: ;`,
+    `break;`, `delete y;`, `010`, `with`, `export { undeclared }`,
+    `function f(a, a) {}`, two constructors, `let v; var v;`, top-level
+    `return`, and invalid regular expressions. It now also runs
+    `oxc_semantic`'s syntax checks and validates regular expressions (see
+    *Early errors* above; `crates/cli/tests/early_errors.rs`).
+17. **Huge AoSoA block sizes** (both). `// @viscosity aosoa(1073741824)`
+    compiled to a program that failed with "RangeError: Array buffer
+    allocation failed"; from 2^32 up the block arithmetic (JavaScript
+    shifts count mod 32) was wrong; and at 2^64 the port refused where the
+    reference accepted. Block sizes above 2^16 are now refused: "annotated
+    aosoa(N), but the block size must be at most 65536"
+    (`tests/extra/aosoa_block_sizes.js`).
+18. **`aosoa(x)`** (both). A block size that was not a whole number was
+    ignored: the collection got blocks of 8, and explain said "annotated
+    @viscosity aosoa(8)". It is now refused, quoting what was written:
+    "annotated aosoa(x), but the block size must be a power of two (2, 4,
+    8, 16, ...)". The same goes for `aosoa()`, `aosoa(-4)` and
+    `aosoa(8 rows)`; an `aosoa` without parentheses still means blocks of 8.
+19. **`--min-size abc`** (both). The value became `NaN`, which silently
+    turned the size threshold off. A value that is not a non-negative
+    number is now a usage error: "--min-size must be a non-negative number".
+20. **The measured-size message** (port only). Below the threshold with a
+    profile, the port printed "about 10 (measured) elements: below the
+    64-element threshold"; the reference prints "about 10 elements
+    (measured): ...". No fixture used `--profile`. Now four do
+    (`tests/profiles/`), and the fuzzer passes a profile to every batch.
+21. **Hand-edited profiles** (both). `{"ps":{"maxLength":"20"}}` was
+    skipped by the port (which then transformed `ps`) but used by the
+    reference (`"20" < 64` in JavaScript, so `ps` was kept); a top-level
+    `[1]` was an error in the port and ignored by the reference. Both now
+    validate the file by one rule (see [PGO](#pgo); `crates/cli/tests/profile_cli.rs`).
+22. **Temporary directories** (both). A failed `viscosity profile` left
+    `vsc-prof-<pid>/` behind in the port, which removed it only on success,
+    and the reference never removed its directory. Both now remove it in
+    every case.
+
 ### Several files in parallel
 
 `viscosity build a.js b.js c.js -o outdir/` compiles each file into
@@ -460,8 +540,22 @@ caret line so that it lines up.
 
 `viscosity profile <file>` instruments a JavaScript program and runs it with **`node`**,
 exactly as the TS CLI does, so it needs Node.js on the `PATH`. Its JSON output
-is byte-identical to the TS CLI's. `--profile profile.json` feeds the measured
-sizes to the planner.
+is byte-identical to the TS CLI's. If the program fails (an uncaught
+exception or a non-zero exit), there is no profile: both CLIs report
+"the profiled program failed (exit code N)" and exit with status 1, since a
+partial run's sizes could mislead the planner. Either way the temporary
+directory holding the instrumented program is removed.
+
+`--profile profile.json` feeds the measured sizes to the planner. Both CLIs
+accept the same files: a JSON object mapping collection names to objects
+whose `maxLength` is a non-negative finite number (other keys, such as
+`fieldReads`, are ignored). Anything else is an error with the same
+message in both ("the profile must be a JSON object: ...", "the profile
+entry "ps" must be an object whose maxLength is a non-negative number",
+"the profile p.json is not valid JSON", "cannot read the profile p.json").
+One difference in wording remains: a number too large for a double
+(`1e999`) is "not valid JSON" to the port's JSON parser, while JavaScript
+reads it as `Infinity` and reports the entry; both reject it.
 
 ## Performance
 
@@ -470,7 +564,14 @@ and, for many files at once, [`results/parallel-build-2026-10-31.md`](results/pa
 Warm and in-process, the Rust engine compiles the benchmark programs about 5
 to 8 times faster than the JIT-warmed TS engine (roughly 75–120 µs against
 350–820 µs). A whole CLI run is about 2 ms against about 200 ms, mostly
-because Node takes much longer to start.
+because Node takes much longer to start. (Those figures predate the
+early-error checks: `oxc_semantic` adds roughly 10 µs per benchmark
+program, about 10%.)
+
+Reusing one oxc `Allocator` per thread across the files of a multi-file
+build, as oxc's documentation advises, was tried and measured: no
+difference within noise, either in-process or for 450 files through the
+CLI, so each parse still creates its own.
 
 ## License
 

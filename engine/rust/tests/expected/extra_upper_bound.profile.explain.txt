@@ -1,0 +1,14 @@
+evens (line 1) {x, y} → kept as array of objects
+  · about 50 elements (measured): below the 64-element threshold, where the benefit is too small
+small (line 4) {x} → struct of arrays
+  · loop at line 6 in <module>() touches 1 of 1 fields (x)
+  · typed Float64Array columns for all 1 fields
+  · about 1000 elements (measured by profiling)
+  · 1 of 1 element accesses proven in bounds
+both (line 7) {x} → kept as array of objects
+  · about 30 elements (measured): below the 64-element threshold, where the benefit is too small
+early (line 10) {x} → struct of arrays
+  · loop at line 12 in <module>() touches 1 of 1 fields (x)
+  · typed Float64Array columns for all 1 fields
+  · about 80 elements
+  · 1 of 1 element accesses proven in bounds

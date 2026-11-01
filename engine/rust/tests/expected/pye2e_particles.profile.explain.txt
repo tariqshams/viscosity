@@ -1,0 +1,2 @@
+ps (line 13) {x, y, vx, vy, m} → kept as array of objects
+  · about 20 elements (measured): below the 64-element threshold, where the benefit is too small

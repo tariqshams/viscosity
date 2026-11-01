@@ -104,3 +104,25 @@ describe('field writes', () => {
     expect(c.accesses.filter((a) => a.kind === 'read').every((a) => a.rhs === 'inert')).toBe(true);
   });
 });
+
+describe('AoSoA block sizes', () => {
+  const reasonFor = (size: string) => {
+    const src = `// @viscosity aosoa(${size})\nconst ps = [];\nfor (let i = 0; i < 100; i++) ps.push({ x: i });\nfor (let i = 0; i < ps.length; i++) ps[i].x++;\n`;
+    const cp = compile(src, jsPlugin()).plan.collections[0];
+    return [cp.layout, cp.blockSize, cp.reasons[0]];
+  };
+  it('uses whole powers of two up to 2^16', () => {
+    expect(reasonFor('16')).toEqual(['aosoa', 16, 'annotated @viscosity aosoa(16) at line 1']);
+    expect(reasonFor('65536')[0]).toBe('aosoa');
+  });
+  it('refuses larger blocks', () => {
+    for (const s of ['131072', '1073741824', '4294967296', '18446744073709551616']) {
+      expect(reasonFor(s)).toEqual(['aos', 0, `annotated aosoa(${s}), but the block size must be at most 65536`]);
+    }
+  });
+  it('refuses a block size that is not a whole number, as written', () => {
+    for (const s of ['x', '', '-4', '8 rows', '3', '0']) {
+      expect(reasonFor(s)).toEqual(['aos', 0, `annotated aosoa(${s}), but the block size must be a power of two (2, 4, 8, 16, ...)`]);
+    }
+  });
+});

@@ -1,0 +1,34 @@
+a (line 4) {x, y} → AoSoA, blocks of 16
+  · annotated @viscosity aosoa(16) at line 3
+  · loop at line 45 in <module>() touches 1 of 2 fields (x)
+  · typed Float64Array columns for all 2 fields
+  · about 100 elements
+  · 0 of 1 element accesses proven in bounds
+b (line 6) {x, y} → AoSoA, blocks of 65536
+  · annotated @viscosity aosoa(65536) at line 5
+  · loop at line 45 in <module>() touches 1 of 2 fields (x)
+  · typed Float64Array columns for all 2 fields
+  · about 100 elements
+  · 0 of 1 element accesses proven in bounds
+c (line 8) {x, y} → kept as array of objects
+  · annotated aosoa(131072), but the block size must be at most 65536
+d (line 10) {x, y} → kept as array of objects
+  · annotated aosoa(1073741824), but the block size must be at most 65536
+e (line 12) {x, y} → kept as array of objects
+  · annotated aosoa(4294967296), but the block size must be at most 65536
+f (line 14) {x, y} → kept as array of objects
+  · annotated aosoa(18446744073709551616), but the block size must be at most 65536
+g (line 16) {x, y} → kept as array of objects
+  · annotated aosoa(99999999999999999999999), but the block size must be at most 65536
+h (line 18) {x, y} → kept as array of objects
+  · annotated aosoa(x), but the block size must be a power of two (2, 4, 8, 16, ...)
+i2 (line 20) {x, y} → kept as array of objects
+  · annotated aosoa(), but the block size must be a power of two (2, 4, 8, 16, ...)
+j (line 22) {x, y} → kept as array of objects
+  · annotated aosoa(-4), but the block size must be a power of two (2, 4, 8, 16, ...)
+k (line 24) {x, y} → kept as array of objects
+  · annotated aosoa(012), but the block size must be a power of two (2, 4, 8, 16, ...)
+l (line 26) {x, y} → kept as array of objects
+  · annotated aosoa(0), but the block size must be a power of two (2, 4, 8, 16, ...)
+m (line 28) {x, y} → kept as array of objects
+  · annotated aosoa(8 rows), but the block size must be a power of two (2, 4, 8, 16, ...)

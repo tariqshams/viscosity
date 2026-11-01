@@ -8,11 +8,14 @@
 
 mod common;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::process::Command;
 
 use common::{expected_dir, programs, Lang, Program, VARIANTS};
+use viscosity_core::{compile, CompileOptions};
+use viscosity_frontend_js::JsPlugin;
+use viscosity_frontend_python::PyPlugin;
 
 fn expected(p: &Program, name: &str) -> (String, String) {
     let dir = expected_dir();
@@ -41,7 +44,7 @@ fn rust_output_equals_typescript_output() {
             let (want_code, want_explain) = expected(&p, &name);
             let r = p.compile(bounds);
             if r.code != want_code {
-                failures.push(format!("{name}.js: {}", first_difference(&want_code, &r.code)));
+                failures.push(format!("{name}.{}: {}", p.ext(), first_difference(&want_code, &r.code)));
             }
             if r.explain != want_explain {
                 failures.push(format!("{name}.explain.txt: {}", first_difference(&want_explain, &r.explain)));
@@ -91,12 +94,75 @@ fn code_frames_equal_typescript_code_frames() {
     }
 }
 
+/// The programs with a profile (`tests/profiles/<name>.json`), with the
+/// profile's path and its sizes (`{ name: { maxLength } }`, as the CLI reads
+/// it). `scripts/gen_expected.mjs` writes `<name>.profile.*` for each.
+fn profiled_programs() -> Vec<(Program, std::path::PathBuf, HashMap<String, f64>)> {
+    let dir = common::root().join("tests/profiles");
+    let mut out = Vec::new();
+    for p in programs() {
+        let path = dir.join(format!("{}.json", p.name));
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let json: serde_json::Value = serde_json::from_str(&text).expect("a JSON profile");
+        let sizes = json
+            .as_object()
+            .expect("an object")
+            .iter()
+            .filter_map(|(name, v)| v.get("maxLength").and_then(serde_json::Value::as_f64).map(|n| (name.clone(), n)))
+            .collect();
+        out.push((p, path, sizes));
+    }
+    out
+}
+
+#[test]
+fn profiled_output_equals_typescript_output() {
+    let profiled = profiled_programs();
+    assert!(profiled.len() >= 4, "expected at least 4 profiles, found {}", profiled.len());
+    let bin = env!("CARGO_BIN_EXE_viscosity");
+    for (p, path, sizes) in &profiled {
+        let name = format!("{}.profile", p.name);
+        let (want_code, want_explain) = expected(p, &name);
+        let opts = CompileOptions {
+            mode: p.mode(),
+            python_auto: p.python_auto(),
+            profile: Some(sizes.clone()),
+            ..CompileOptions::default()
+        };
+        let r = match p.lang {
+            Lang::Js => compile(&p.source, &JsPlugin, opts),
+            Lang::Python => compile(&p.source, &PyPlugin, opts),
+        }
+        .unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(r.code, want_code, "{name}.{}: {}", p.ext(), first_difference(&want_code, &r.code));
+        assert_eq!(r.explain, want_explain, "{name}.explain.txt: {}", first_difference(&want_explain, &r.explain));
+        // And through the CLI's `--profile`.
+        let mut cmd = Command::new(bin);
+        cmd.arg("explain").arg(&p.path).arg("--profile").arg(path);
+        if p.python_auto() {
+            cmd.arg("--python-auto");
+        }
+        if p.mode() == viscosity_core::Mode::OptIn {
+            cmd.args(["--mode", "opt-in"]);
+        }
+        let out = cmd.output().expect("runs");
+        assert!(out.status.success(), "{name}: {}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8(out.stdout).expect("utf-8"), format!("{want_explain}\n"), "{name}: CLI");
+    }
+}
+
 #[test]
 fn fixtures_match_the_programs_exactly() {
     // Every program has fixtures, and no fixture is stale.
     let mut want = BTreeSet::new();
     for (p, _) in frames_fixtures() {
         want.insert(format!("{}.frames.txt", p.name));
+    }
+    for (p, _, _) in profiled_programs() {
+        want.insert(format!("{}.profile.{}", p.name, p.ext()));
+        want.insert(format!("{}.profile.explain.txt", p.name));
     }
     for p in programs() {
         for (suffix, _) in VARIANTS {
@@ -193,8 +259,6 @@ fn the_cli_binary_gives_the_same_output() {
 
 #[test]
 fn syntax_errors_are_reported() {
-    use viscosity_core::{compile, CompileOptions};
-    use viscosity_frontend_js::JsPlugin;
     let err = compile("const = ;", &JsPlugin, CompileOptions::default()).expect_err("fails").to_string();
     assert!(err.starts_with("SyntaxError"), "{err}");
 }

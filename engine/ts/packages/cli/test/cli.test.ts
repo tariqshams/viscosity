@@ -1,13 +1,14 @@
 // The CLI: several files at once (`build a.js b.js -o dir/`, `explain a.js
 // b.js`) and code frames (`explain --frames`).
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { codeFrame, compile, explain } from '../../core/src/index.ts';
 import { jsPlugin } from '../../frontend-js/src/index.ts';
 import { HELP, outputName } from '../src/cli.ts';
+import { readProfile } from '../src/profile.ts';
 
 const cli = join(import.meta.dirname, '..', 'src', 'cli.ts');
 const corpus = join(import.meta.dirname, '..', '..', 'frontend-js', 'test', 'corpus');
@@ -40,6 +41,12 @@ describe('several files', () => {
     expect(run('build', files[0], files[0], '-o', dir).err).toMatch(/would both be written to/);
     expect(run('profile', files[0], files[1]).err).toMatch(/^viscosity: profile takes one file\n/);
     expect(run('explain', '--jobs', '0', files[0]).err).toMatch(/^viscosity: --jobs must be a whole number of at least 1\n/);
+    for (const v of ['abc', '-1', 'NaN']) {
+      const r = run('explain', '--min-size', v, files[0]);
+      expect(r.status).toBe(1);
+      expect(r.err).toMatch(/^viscosity: --min-size must be a non-negative number\n/);
+    }
+    expect(run('explain', '--min-size', '0', files[0]).status).toBe(0);
   });
   it('a failing file does not stop the others', () => {
     const dir = mkdtempSync(join(tmpdir(), 'vsc-cli-'));
@@ -87,5 +94,36 @@ describe('code frames', () => {
     expect(codeFrame(s, at(x, x + 2))).toBe(`    1 | let a = "é🎉"; f(xs,\n      | ${' '.repeat(16)}^^`);
     expect(codeFrame(s, at(x - 2, s.length))).toBe(`    1 | let a = "é🎉"; f(xs,\n      | ${' '.repeat(14)}^^^^^`);
     expect(codeFrame(s, at(x, x), '')).toBe(`1 | let a = "é🎉"; f(xs,\n  | ${' '.repeat(16)}^`);
+  });
+});
+
+describe('profiles', () => {
+  const write = (text: string) => {
+    const f = join(mkdtempSync(join(tmpdir(), 'vsc-cli-')), 'p.json');
+    writeFileSync(f, text);
+    return f;
+  };
+  it('accept an object of objects with a non-negative maxLength', () => {
+    expect(readProfile(write('{"ps":{"maxLength":10,"fieldReads":{}}}'))).toEqual({ ps: { maxLength: 10, fieldReads: {} } });
+    expect(readProfile(write('{}'))).toEqual({});
+  });
+  it('reject anything else', () => {
+    for (const t of ['[1]', 'null', '5']) expect(() => readProfile(write(t))).toThrow(/^the profile must be a JSON object/);
+    for (const t of ['{"ps":{"maxLength":"20"}}', '{"ps":5}', '{"ps":{}}', '{"ps":{"maxLength":-1}}', '{"ps":{"maxLength":1e999}}']) {
+      expect(() => readProfile(write(t))).toThrow('the profile entry "ps" must be an object whose maxLength is a non-negative number');
+    }
+    expect(() => readProfile(write('{ ps: 1 }'))).toThrow(/is not valid JSON$/);
+  });
+  it('a program that throws gives no profile and leaves no temporary directory', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vsc-cli-'));
+    const tmp = join(dir, 'tmp');
+    mkdirSync(tmp);
+    const f = join(dir, 'throws.js');
+    writeFileSync(f, "const ps = [];\nps.push({ x: 1 });\nthrow new Error('boom');\n");
+    const r = spawnSync(process.execPath, [cli, 'profile', f], { encoding: 'utf8', env: { ...process.env, TMPDIR: tmp } });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toMatch(/viscosity: the profiled program failed \(exit code 1\)\n$/);
+    expect(readdirSync(tmp)).toEqual([]);
   });
 });
