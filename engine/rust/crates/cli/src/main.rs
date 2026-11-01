@@ -256,7 +256,14 @@ fn run(argv: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Res
 /// Compiles file `k` of `a.files`, writing the code to `out` if given.
 fn compile_file(a: &Args, k: usize, out: Option<&Path>) -> Result<Compiled, String> {
     let file = &a.files[k];
-    let src = fs::read_to_string(file).map_err(|e| e.to_string())?;
+    // With several files the error line already starts with the file name.
+    let src = fs::read_to_string(file).map_err(|e| {
+        if a.files.len() > 1 {
+            e.to_string()
+        } else {
+            format!("cannot read {file}: {e}")
+        }
+    })?;
     let opts = a.opts.clone();
     // A panic is a bug, but with many files it should cost only that file.
     let r = std::panic::catch_unwind(|| {

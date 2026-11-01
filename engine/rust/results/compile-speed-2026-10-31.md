@@ -80,3 +80,15 @@ comparison.
 - The WebAssembly build (`viscosity_wasm.wasm`, 1.25 MB before
   `wasm-bindgen` and before `wasm-opt`) was checked for correctness (114/114
   fixtures from Node) but not benchmarked.
+
+## Note (2026-11-01)
+
+Added later; the measurements above are unchanged. The WebAssembly build has
+since been timed in process: see
+[`matrix-2026-10-31`](../../ts/packages/bench/results/matrix-2026-10-31.md),
+section (b), which compares the TS engine with `@viscosity/wasm` (nodejs
+target) on the same Node over the 40-program JavaScript corpus (not the five
+programs above). The current size of the wasm module is in the
+[`packages/wasm` README](../packages/wasm/README.md): about 1.3 MB, 0.5 MB
+gzipped, for the module `packages/wasm/build.mjs` builds (after
+`wasm-bindgen`).

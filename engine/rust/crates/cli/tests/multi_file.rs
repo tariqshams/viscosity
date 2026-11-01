@@ -195,3 +195,36 @@ fn min_size_must_be_a_non_negative_number_in_both_clis() {
         }
     }
 }
+
+/// A single file that cannot be read is named in the error, by both CLIs.
+/// With several files the line already starts with the file's name.
+#[test]
+fn a_missing_file_is_named() {
+    let dir = temp_dir("missing");
+    let nope = dir.join("nope.js").to_string_lossy().into_owned();
+    let ts_cli = root().join("../ts/packages/cli/src/cli.ts");
+    let node = Command::new("node").arg("--version").output().is_ok();
+    for cmd in ["explain", "build"] {
+        let rs = viscosity(&[cmd, &nope]);
+        assert_eq!(rs.status.code(), Some(1), "rust {cmd}");
+        assert_eq!(
+            String::from_utf8_lossy(&rs.stderr),
+            format!("viscosity: cannot read {nope}: No such file or directory (os error 2)\n"),
+            "rust {cmd}"
+        );
+        if node {
+            let ts = Command::new("node").arg(&ts_cli).args([cmd, &nope]).output().expect("node runs");
+            assert_eq!(ts.status.code(), Some(1), "ts {cmd}");
+            assert_eq!(
+                String::from_utf8_lossy(&ts.stderr),
+                format!("viscosity: cannot read {nope}: ENOENT: no such file or directory, open '{nope}'\n"),
+                "ts {cmd}"
+            );
+        }
+    }
+    let good = js_files().remove(0);
+    let rs = viscosity(&["explain", &good, &nope]);
+    let err = String::from_utf8_lossy(&rs.stderr);
+    assert_eq!(err, format!("viscosity: {nope}: No such file or directory (os error 2)\n"), "rust, several files");
+    let _ = fs::remove_dir_all(&dir);
+}

@@ -17,6 +17,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use oxc_allocator::Allocator;
+use oxc_diagnostics::OxcDiagnostic;
 use oxc_parser::{ParseOptions, Parser};
 use oxc_semantic::SemanticBuilder;
 use oxc_span::SourceType;
@@ -39,6 +40,19 @@ pub struct JsExtra {
 /// The JavaScript plugin.
 #[derive(Copy, Clone, Debug, Default)]
 pub struct JsPlugin;
+
+/// `SyntaxError: <message> (line:column)`, with the position acorn would
+/// append: the start of the first label, as a 1-based line and a 0-based
+/// column in UTF-16 code units. A diagnostic without labels has no position.
+fn syntax_error(source: &str, e: &OxcDiagnostic) -> CompileError {
+    match e.labels.first() {
+        Some(label) => {
+            let (line, column) = LineIndex::new(source).line_column(source, label.offset());
+            CompileError(format!("SyntaxError: {e} ({line}:{column})"))
+        }
+        None => CompileError(format!("SyntaxError: {e}")),
+    }
+}
 
 /// A comment, as acorn reports it: the text without delimiters, and the
 /// line it ends on.
@@ -67,7 +81,7 @@ impl LanguagePlugin for JsPlugin {
             ParseOptions { preserve_parens: false, parse_regular_expression: true, ..ParseOptions::default() };
         let ret = Parser::new(&allocator, source, SourceType::mjs()).with_options(options).parse();
         if let Some(e) = ret.diagnostics.errors().next() {
-            return Err(CompileError(format!("SyntaxError: {e}")));
+            return Err(syntax_error(source, e));
         }
         let program = ret.program;
         // acorn reports ECMAScript's early errors (redeclarations, `break`
@@ -76,7 +90,7 @@ impl LanguagePlugin for JsPlugin {
         // semantic analysis, so run its syntax checks too.
         let semantic = SemanticBuilder::new().with_check_syntax_error(true).build(&program);
         if let Some(e) = semantic.diagnostics.errors().next() {
-            return Err(CompileError(format!("SyntaxError: {e}")));
+            return Err(syntax_error(source, e));
         }
         let lines = LineIndex::new(source);
         let mut comments = Vec::new();

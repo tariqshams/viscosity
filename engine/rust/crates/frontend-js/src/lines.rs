@@ -31,6 +31,20 @@ impl LineIndex {
     pub fn line(&self, offset: u32) -> u32 {
         self.starts.partition_point(|&s| s <= offset) as u32
     }
+
+    /// acorn's position of byte `offset` in `source` (the text this index
+    /// was built from): the 1-based line, and the 0-based column in UTF-16
+    /// code units. An offset past the end, or inside a character, is moved
+    /// back to the nearest character boundary.
+    pub fn line_column(&self, source: &str, offset: u32) -> (u32, u32) {
+        let mut at = (offset as usize).min(source.len());
+        while !source.is_char_boundary(at) {
+            at -= 1;
+        }
+        let line = self.line(at as u32);
+        let start = self.starts[line as usize - 1] as usize;
+        (line, source[start..at].encode_utf16().count() as u32)
+    }
 }
 
 /// The lines of `source`, split at every ECMAScript line break (acorn's
@@ -86,6 +100,17 @@ mod tests {
         for (offset, c) in src.char_indices().filter(|(_, c)| c.is_ascii_alphabetic()) {
             assert_eq!(lines[idx.line(offset as u32) as usize - 1], c.to_string());
         }
+    }
+
+    #[test]
+    fn line_columns_count_utf16_units_from_the_line_start() {
+        let src = "a\r\nb\u{2028}é😀x\ry";
+        let idx = LineIndex::new(src);
+        assert_eq!(idx.line_column(src, 0), (1, 0));
+        assert_eq!(idx.line_column(src, src.find('b').unwrap() as u32), (2, 0));
+        assert_eq!(idx.line_column(src, src.find('x').unwrap() as u32), (3, 3));
+        assert_eq!(idx.line_column(src, src.find('y').unwrap() as u32), (4, 0));
+        assert_eq!(idx.line_column(src, src.len() as u32 + 5), (4, 1));
     }
 
     #[test]

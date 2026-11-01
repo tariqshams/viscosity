@@ -128,7 +128,13 @@ export function main(argv: string[]): number {
       const tag = several ? `${file}: ` : '';
       let r, text;
       try {
-        const src = readFileSync(file, 'utf8');
+        let src;
+        try {
+          src = readFileSync(file, 'utf8');
+        } catch (e) {
+          // With several files the error line already starts with the file name.
+          throw several ? e : new Error(`cannot read ${file}: ${(e as Error).message}`);
+        }
         r = compile(src, pluginFor(file, a.parser), a.opts);
         text = a.frames ? explain(r.plan, { frames: r.analysis.module.source }) : r.explain;
         if (a.cmd === 'build' && outs[k]) writeFileSync(outs[k], r.code);

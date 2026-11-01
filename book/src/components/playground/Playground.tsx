@@ -30,15 +30,29 @@ function rustCompiler() {
   let w: Worker | null = null;
   let next = 0;
   const waiting = new Map<number, (r: Reply) => void>();
+  // A Rust panic (a fatal reply) or a worker error leaves the instance
+  // unusable. Requests still queued on it would never be answered, so each
+  // gets an error now; the next request starts a fresh worker.
+  const fail = (dead: Worker, error: string) => {
+    dead.terminate();
+    if (w === dead) w = null;
+    for (const [id, done] of waiting) done({ id, error, fatal: true });
+    waiting.clear();
+  };
   const start = () => {
-    w = new Worker(new URL('./play.worker.ts', import.meta.url), { type: 'module' });
-    w.onmessage = (e: MessageEvent<Reply>) => { waiting.get(e.data.id)?.(e.data); waiting.delete(e.data.id); };
-    w.onerror = (e) => { for (const [id, done] of waiting) done({ id, error: e.message || 'The Rust engine failed to load.', fatal: true }); waiting.clear(); };
-    return w;
+    const me = new Worker(new URL('./play.worker.ts', import.meta.url), { type: 'module' });
+    me.onmessage = (e: MessageEvent<Reply>) => {
+      const r = e.data;
+      waiting.get(r.id)?.(r);
+      waiting.delete(r.id);
+      if (r.fatal) fail(me, `The Rust engine stopped on an earlier request (${r.error ?? 'a panic'}); edit to compile again.`);
+    };
+    me.onerror = (e) => fail(me, e.message || 'The Rust engine failed to load.');
+    return (w = me);
   };
   return (compile: string) => new Promise<Reply>((resolve) => {
     const id = ++next;
-    waiting.set(id, (r) => { if (r.fatal) { w?.terminate(); w = null; } resolve(r); });
+    waiting.set(id, resolve);
     (w ?? start()).postMessage({ compile, id });
   });
 }

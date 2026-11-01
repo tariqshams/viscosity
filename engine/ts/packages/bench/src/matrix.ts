@@ -206,17 +206,19 @@ for (const f of corpus) {
   cliRows.push({ program: f.replace('.js', ''), lines: src.split('\n').length, tsMs: { best: r1(min(tsMs)), median: r1(median(tsMs)) }, rustMs: { best: r2(min(rsMs)), median: r2(median(rsMs)) }, speedupMedian: r1(median(tsMs) / median(rsMs)), identical: tsOut === rsOut });
 
   const plugin = jsPlugin();
-  const tsCode = compile(src, plugin).code;
   const measure = (fn: () => unknown) => { for (let i = 0; i < IN_WARMUP; i++) fn(); const us: number[] = []; for (let i = 0; i < IN_RUNS; i++) us.push(time(fn) / 1e3); return us; };
-  const tUs = measure(() => compile(src, plugin));
+  // Both sides end with the code and explain text as JavaScript strings.
+  // The TS result already holds them; the wasm result's getters copy them
+  // out of linear memory, so they are read inside the timed region.
+  let ts = { code: '', explain: '' };
+  const tUs = measure(() => { const r = compile(src, plugin); ts = { code: r.code, explain: r.explain }; });
   const row: Json = { program: f.replace('.js', ''), tsUs: { best: r1(min(tUs)), median: r1(median(tUs)) } };
   if (wasm) {
-    const wUs = measure(() => wasm.compile(src).free());
-    const o = wasm.compile(src);
+    let ws = { code: '', explain: '' };
+    const wUs = measure(() => { const o = wasm.compile(src); ws = { code: o.code, explain: o.explain }; o.free(); });
     row.wasmUs = { best: r1(min(wUs)), median: r1(median(wUs)) };
     row.speedupMedian = r2(median(tUs) / median(wUs));
-    row.identical = o.code === tsCode;
-    o.free();
+    row.identical = ws.code === ts.code && ws.explain === ts.explain;
   }
   inRows.push(row);
 }
@@ -307,7 +309,7 @@ function render(d: Json): string {
   p(`**Total over the corpus (sum of medians): TS ${cs.cli.totalMedianMs.ts} ms, Rust ${cs.cli.totalMedianMs.rust} ms, ${cs.cli.totalSpeedup}× faster.** Outputs ${cs.cli.allIdentical ? 'byte-identical for every program' : 'DIFFER for: ' + cs.cli.rows.filter((r: Json) => !r.identical).map((r: Json) => r.program).join(', ')}.`);
   p();
   if (cs.inProcess.wasmAvailable) {
-    p(`In-process (${cs.inProcess.method}): total of medians TS ${cs.inProcess.totalMedianUs.ts} µs, Rust as WebAssembly ${cs.inProcess.totalMedianUs.wasm} µs, ${cs.inProcess.totalSpeedup}× faster. Outputs ${cs.inProcess.allIdentical ? 'identical' : 'DIFFER'}.`);
+    p(`In-process (${cs.inProcess.method}): total of medians TS ${cs.inProcess.totalMedianUs.ts} µs, Rust as WebAssembly ${cs.inProcess.totalMedianUs.wasm} µs, ${cs.inProcess.totalSpeedup}× faster. Outputs (code and explain text) ${cs.inProcess.allIdentical ? 'identical' : 'DIFFER'}.`);
     p();
   }
   p(`| program | lines | TS CLI ms best (median) | Rust CLI ms best (median) | CLI speed-up (median) | TS in-process µs (median) | wasm in-process µs (median) | in-process speed-up |`);

@@ -3,7 +3,9 @@
 //! while parsing. oxc's parser leaves many to semantic analysis, so the
 //! port runs `oxc_semantic`'s syntax checks too. Both CLIs must reject
 //! every program in `EARLY_ERRORS` and accept every one in `VALID`. The
-//! wording of the errors may differ; the decision may not.
+//! wording of the errors may differ; the decision may not. Both end the
+//! message with acorn's `(line:column)`; `POSITIONED` lists programs where
+//! the two must point at the same place.
 
 mod common;
 
@@ -317,6 +319,129 @@ fn an_early_error_is_reported_like_a_syntax_error() {
             let err = String::from_utf8_lossy(&ts.stderr);
             assert!(err.starts_with("viscosity: ") && err.lines().count() == 1, "ts {cmd}: {err}");
         }
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Syntax errors and early errors where acorn and the port point at the
+/// same place. Line breaks of every kind (`\r\n`, `\r`, `\n`, U+2028,
+/// U+2029, also inside comments and template literals) and non-ASCII text
+/// (accented letters, astral characters, which count as two UTF-16 code
+/// units) come before the error, so they shift its line and column.
+const POSITIONED: &[&str] = &[
+    // Syntax errors.
+    "const ps = [;",
+    "x = 1 +;",
+    "let x = 1;\nlet y = ;",
+    "let x = 1;\r\nlet y = ;",
+    "let x = 1;\rlet y = ;",
+    "let x = 1;\r\n\r\n\rlet y = ;",
+    "var s = 'é';  x = (;",
+    "var s = '😀😀'; x = (;",
+    "// 😀 \u{2028} x = (;",
+    "var t = `a\nb\r\nc`; var = 1;",
+    "\tvar a = [1, 2;",
+    "var é = 1;\nvar 😀 = 2;",
+    "é\u{2028}😀;",
+    "function f() {\n  return (\n}",
+    "var a = 'unterminated;",
+    "var x = 0b12;",
+    "/* never closed",
+    // Early errors, some reported by oxc's parser and some by oxc_semantic.
+    "var s = '\u{2028}'; break;",
+    "/* \u{2029} */ continue;",
+    "var s = '😀';\r\nreturn 1;",
+    "var f = () => new.target;",
+    "function f() { super.x; }",
+    "class A { constructor() { super(); } }",
+    "class A { x = arguments; }",
+    "class A { static { return; } }",
+    "var \\u0061wait = 1;",
+    "async function g(a = await 1) {}",
+    "function* g() { yield = 1; }",
+    "with (o) {}",
+    "let c = 010;",
+    "var s = `\\1`;",
+    "var implements = 1;",
+    "let let = 1;",
+    "function f(eval) {}",
+    "({ eval } = {});",
+    "if (1) function iff() {}",
+    "class C { get constructor() {} }",
+    "/* é */ class C { m() { return this.#b; } }",
+    "var é = 1;\nexport { zz };",
+    "a?.b = 1;",
+    "var o = { set a(...b) {} };",
+    "for (var x = 1 of []) {}",
+    "var n = 1__0;",
+    "var a; new a?.b();",
+    "var r = /(/;",
+    "var r = /\\k<x>/u;",
+];
+
+/// The `(line:column)` at the end of each file's error line, if any.
+fn positions(out: &Output, files: &[String]) -> Vec<Option<String>> {
+    let err = String::from_utf8_lossy(&out.stderr);
+    files
+        .iter()
+        .map(|f| {
+            let line = err.lines().find(|l| l.starts_with(&format!("viscosity: {f}: ")))?;
+            let pos = line.strip_suffix(')')?.rsplit_once(" (")?.1;
+            let (l, c) = pos.split_once(':')?;
+            let num = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+            (num(l) && num(c)).then(|| pos.to_string())
+        })
+        .collect()
+}
+
+/// Both CLIs end a syntax error with acorn's `(line:column)`: a 1-based
+/// line and a 0-based column in UTF-16 code units.
+#[test]
+fn both_engines_report_the_same_error_positions() {
+    let dir = temp_dir("pos");
+    let files = write_programs(&dir, POSITIONED);
+    let rs = positions(&rust_cli().arg("explain").args(&files).output().expect("runs"), &files);
+    let Some(mut ts) = ts_cli() else {
+        assert!(rs.iter().all(Option::is_some), "rust: an error without a position: {rs:?}");
+        return;
+    };
+    let ts = positions(&ts.arg("explain").args(&files).output().expect("node runs"), &files);
+    let bad: Vec<String> = POSITIONED
+        .iter()
+        .zip(rs.iter().zip(&ts))
+        .filter(|(_, (r, t))| r.is_none() || t.is_none() || r != t)
+        .map(|(p, (r, t))| format!("  {p:?}: rust {r:?}, ts {t:?}"))
+        .collect();
+    assert!(bad.is_empty(), "positions differ:\n{}", bad.join("\n"));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Every early error the port reports carries a position, whether oxc's
+/// parser or oxc_semantic found it. (Where acorn and oxc blame different
+/// tokens, e.g. a redeclaration, which oxc labels at the first
+/// declaration, the positions may differ; `POSITIONED` lists programs where
+/// they agree.)
+#[test]
+fn every_early_error_has_a_position() {
+    let dir = temp_dir("haspos");
+    let files = write_programs(&dir, EARLY_ERRORS);
+    let rs = positions(&rust_cli().arg("explain").args(&files).output().expect("runs"), &files);
+    let missing: Vec<&&str> = EARLY_ERRORS.iter().zip(&rs).filter(|(_, p)| p.is_none()).map(|(p, _)| p).collect();
+    assert!(missing.is_empty(), "no position for {missing:?}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A single file's syntax error, exactly as both CLIs print it.
+#[test]
+fn a_single_syntax_error_ends_with_its_position() {
+    let dir = temp_dir("onepos");
+    let file = dir.join("ps.js");
+    fs::write(&file, "const ps = [;\n").expect("writable");
+    let rs = rust_cli().arg("explain").arg(&file).output().expect("runs");
+    assert_eq!(String::from_utf8_lossy(&rs.stderr), "viscosity: SyntaxError: Unexpected token (1:12)\n");
+    if let Some(mut ts) = ts_cli() {
+        let ts = ts.arg("explain").arg(&file).output().expect("node runs");
+        assert_eq!(String::from_utf8_lossy(&ts.stderr), "viscosity: Unexpected token (1:12)\n");
     }
     let _ = fs::remove_dir_all(&dir);
 }
