@@ -15,6 +15,7 @@
 mod profile;
 
 use std::collections::HashMap;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -69,31 +70,48 @@ impl From<String> for CliError {
     }
 }
 
-/// Parsed command-line arguments.
+/// Parsed command-line arguments. File names stay `OsString`s (`PathBuf`s),
+/// so a name that is not valid UTF-8 (which Linux allows) still works; it is
+/// shown lossily (`U+FFFD` for each bad byte) in messages.
 #[derive(Debug, Default)]
 struct Args {
     cmd: String,
-    files: Vec<String>,
-    out: String,
+    files: Vec<PathBuf>,
+    /// `-o`; empty when not given.
+    out: OsString,
     explain: bool,
     frames: bool,
     /// 0: one per CPU.
     jobs: usize,
-    profile: String,
+    /// `--profile`; empty when not given.
+    profile: OsString,
     opts: CompileOptions,
 }
 
-fn parse_args(argv: &[String]) -> Result<Args, CliError> {
-    let mut args = Args { cmd: argv[0].clone(), ..Args::default() };
+fn parse_args(argv: &[OsString]) -> Result<Args, CliError> {
+    let mut args = Args { cmd: argv[0].to_string_lossy().into_owned(), ..Args::default() };
     let mut i = 1;
     while i < argv.len() {
-        let a = argv[i].as_str();
-        let mut next = || {
+        let raw = &argv[i];
+        // Options are ASCII, so an argument that is not UTF-8 can only be a
+        // file name (or a mistake, reported lossily).
+        let Some(a) = raw.to_str() else {
+            if raw.as_encoded_bytes().starts_with(b"-") {
+                return Err(CliError::Usage(format!("unknown option {}", raw.to_string_lossy())));
+            }
+            args.files.push(PathBuf::from(raw));
+            i += 1;
+            continue;
+        };
+        let mut next_os = || {
             i += 1;
             argv.get(i).cloned().ok_or_else(|| CliError::Usage(format!("{a} needs a value")))
         };
+        // A value that must be text (a number or a keyword): one that is not
+        // UTF-8 is simply not one of the accepted values.
+        let mut next = || next_os().map(|v| v.to_string_lossy().into_owned());
         match a {
-            "-o" | "--out" => args.out = next()?,
+            "-o" | "--out" => args.out = next_os()?,
             "--explain" => args.explain = true,
             "--frames" => args.frames = true,
             "--jobs" | "-j" => {
@@ -124,9 +142,9 @@ fn parse_args(argv: &[String]) -> Result<Args, CliError> {
                 }
                 args.opts.min_size = v;
             }
-            "--profile" => args.profile = next()?,
+            "--profile" => args.profile = next_os()?,
             "--python-auto" => args.opts.python_auto = true,
-            _ if !a.starts_with('-') => args.files.push(a.to_string()),
+            _ if !a.starts_with('-') => args.files.push(PathBuf::from(a)),
             _ => return Err(CliError::Usage(format!("unknown option {a}"))),
         }
         i += 1;
@@ -170,7 +188,7 @@ struct Compiled {
     explain: String,
 }
 
-fn run(argv: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Result<bool, CliError> {
+fn run(argv: &[OsString], stdout: &mut impl Write, stderr: &mut impl Write) -> Result<bool, CliError> {
     let mut a = parse_args(argv)?;
     if a.files.is_empty() {
         return Err(CliError::Usage("missing <file>".into()));
@@ -200,22 +218,28 @@ fn run(argv: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Res
         return Ok(true);
     }
     if !a.profile.is_empty() {
-        a.opts.profile = Some(read_profile(&a.profile)?);
+        a.opts.profile = Some(read_profile(Path::new(&a.profile))?);
     }
     let several = a.files.len() > 1;
     let build = a.cmd == "build";
     // build: where each output goes (None: stdout).
     let mut outs: Vec<Option<PathBuf>> =
         a.files.iter().map(|_| (!a.out.is_empty()).then(|| PathBuf::from(&a.out))).collect();
-    if build && (several || a.out.ends_with('/') || (!a.out.is_empty() && Path::new(&a.out).is_dir())) {
+    let out_is_dir = a.out.as_encoded_bytes().ends_with(b"/") || (!a.out.is_empty() && Path::new(&a.out).is_dir());
+    if build && (several || out_is_dir) {
         if a.out.is_empty() {
             return Err(CliError::Usage("several files need an output directory: -o <dir>".into()));
         }
         outs = a.files.iter().map(|f| Some(Path::new(&a.out).join(output_name(f)))).collect();
-        let mut seen: HashMap<&PathBuf, &str> = HashMap::new();
+        let mut seen: HashMap<&PathBuf, &PathBuf> = HashMap::new();
         for (o, f) in outs.iter().flatten().zip(&a.files) {
             if let Some(first) = seen.insert(o, f) {
-                return Err(CliError::Usage(format!("{first} and {f} would both be written to {}", o.display())));
+                return Err(CliError::Usage(format!(
+                    "{} and {} would both be written to {}",
+                    first.display(),
+                    f.display(),
+                    o.display()
+                )));
             }
         }
         fs::create_dir_all(&a.out).map_err(io)?;
@@ -224,6 +248,7 @@ fn run(argv: &[String], stdout: &mut impl Write, stderr: &mut impl Write) -> Res
     let results = for_each_parallel(a.files.len(), jobs, |k| compile_file(&a, k, outs[k].as_deref()));
     let mut ok = true;
     for (k, (file, r)) in a.files.iter().zip(results).enumerate() {
+        let file = file.display();
         let r = match r {
             Ok(r) => r,
             // One file: the error ends the run, as it always did.
@@ -261,7 +286,7 @@ fn compile_file(a: &Args, k: usize, out: Option<&Path>) -> Result<Compiled, Stri
         if a.files.len() > 1 {
             e.to_string()
         } else {
-            format!("cannot read {file}: {e}")
+            format!("cannot read {}: {e}", file.display())
         }
     })?;
     let opts = a.opts.clone();
@@ -313,22 +338,25 @@ fn for_each_parallel<T: Send>(n: usize, jobs: usize, f: impl Fn(usize) -> T + Sy
     slots.into_inner().expect("not poisoned").into_iter().map(|r| r.expect("every index was run")).collect()
 }
 
-fn extension(file: &str) -> &str {
-    Path::new(file).extension().and_then(|e| e.to_str()).unwrap_or("")
+/// The file's extension, or `""` (also when it is not UTF-8, so such a file
+/// is read as JavaScript).
+fn extension(file: &Path) -> &str {
+    file.extension().and_then(OsStr::to_str).unwrap_or("")
 }
 
 /// The name a compiled file gets in an output directory: its own. (The
 /// TypeScript CLI also renames `.ts` inputs, which the port rejects.)
-fn output_name(file: &str) -> std::ffi::OsString {
-    Path::new(file).file_name().map_or_else(|| file.into(), |n| n.to_os_string())
+fn output_name(file: &Path) -> OsString {
+    file.file_name().map_or_else(|| file.as_os_str().to_os_string(), OsStr::to_os_string)
 }
 
 /// Reads a `--profile` file (as `viscosity profile` writes it): a JSON
 /// object mapping collection names to objects whose `maxLength` is a
 /// non-negative finite number (other keys are ignored). Anything else is an
 /// error, worded as in the TypeScript CLI.
-fn read_profile(path: &str) -> Result<HashMap<String, f64>, String> {
-    let text = fs::read_to_string(path).map_err(|_| format!("cannot read the profile {path}"))?;
+fn read_profile(path: &Path) -> Result<HashMap<String, f64>, String> {
+    let text = fs::read_to_string(path).map_err(|_| format!("cannot read the profile {}", path.display()))?;
+    let path = path.display();
     let json: serde_json::Value =
         serde_json::from_str(&text).map_err(|_| format!("the profile {path} is not valid JSON"))?;
     let obj = json.as_object().ok_or(r#"the profile must be a JSON object: { "name": { "maxLength": n }, ... }"#)?;
@@ -344,7 +372,8 @@ fn read_profile(path: &str) -> Result<HashMap<String, f64>, String> {
 }
 
 fn main() -> ExitCode {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
+    // `args_os`: `args` panics on an argument that is not UTF-8.
+    let argv: Vec<OsString> = std::env::args_os().skip(1).collect();
     let (mut stdout, mut stderr) = (std::io::stdout().lock(), std::io::stderr().lock());
     if argv.is_empty() || argv[0] == "--help" || argv[0] == "-h" {
         let _ = stdout.write_all(HELP.as_bytes());

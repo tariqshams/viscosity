@@ -3,9 +3,13 @@ title: TypeScript
 description: Compiling .ts files.
 ---
 
-`.ts` and `.mts` files are accepted. Types are stripped first (with
-sucrase), then the JavaScript is analysed and rewritten, so the output is
-JavaScript.
+The TypeScript engine accepts `.ts`, `.mts` and `.tsx` files. Types are
+stripped first (with sucrase), then the JavaScript is analysed and
+rewritten, so the output is JavaScript. With several files and `-o dir/`,
+the outputs are named `.js`, `.mjs` and `.jsx`.
+
+The Rust engine does not take TypeScript: it refuses these files with a
+message. Use the TypeScript CLI for them, or strip the types first.
 
 Viscosity doesn't rely on type annotations for safety: `x: number`
 doesn't stop a caller passing a string at run time. It proves numeric-ness

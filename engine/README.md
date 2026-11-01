@@ -20,7 +20,7 @@ byte.
     committed results. See [FINDINGS.md](ts/packages/bench/FINDINGS.md).
 - [`rust/`](rust/): the Rust port (cargo workspace: `vir`, `core`,
   `frontend-js` on oxc, `frontend-python`, `cli`, `wasm`). JavaScript and
-  Python input (no TypeScript); 186/186 parity fixtures identical to the
+  Python input (no TypeScript); 190/190 parity fixtures identical to the
   TypeScript engine, checked further by a differential fuzzer
   (`rust/scripts/fuzz.mjs`). See its [README](rust/README.md).
 

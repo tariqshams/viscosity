@@ -123,7 +123,7 @@ fn a_failing_file_does_not_stop_the_others() {
     let out = String::from_utf8_lossy(&o.stdout);
     assert_eq!(out, format!("== {good} ==\n{}", stdout(&viscosity(&["explain", &good]))));
     let err = String::from_utf8_lossy(&o.stderr);
-    assert!(err.starts_with(&format!("viscosity: {bad}: SyntaxError")), "{err}");
+    assert!(err.starts_with(&format!("viscosity: {bad}: Unexpected token (1:6)")), "{err}");
     let _ = fs::remove_dir_all(&dir);
 }
 

@@ -78,9 +78,10 @@ differs in ways that matter for parity:
   `oxc_semantic`'s `SemanticBuilder` with `with_check_syntax_error(true)`,
   reporting its first error as a syntax error. Its scopes are not used
   otherwise (`resolve` does the reference's own scope analysis). Either
-  kind of error ends with acorn's ` (line:column)` (1-based line, 0-based
-  column in UTF-16 code units), taken from the start of the diagnostic's
-  first label. oxc sometimes blames another token than acorn does (a
+  kind of error has acorn's form, `<message> (line:column)` (1-based line,
+  0-based column in UTF-16 code units, with no `SyntaxError: ` prefix), the
+  position taken from the start of the diagnostic's first label. Both CLIs
+  print `viscosity: Unexpected token (1:12)` for `const ps = [;`. oxc sometimes blames another token than acorn does (a
   redeclaration is labelled at the first declaration, acorn points at the
   second), so the position can differ there.
 - **Generic traversal.** The reference often walks "all children" (to resolve
@@ -164,6 +165,21 @@ The npm package `@viscosity/wasm` (`packages/wasm`) wraps this:
 corpus program with the TS CLI, and `--book` copies the web build into the
 book's Playground.
 
+The crates are packageable but not published. Internal dependencies carry
+a `version` as well as a `path`, each crate directory holds a copy of the
+repository's `LICENSE` (MIT), and the manifests carry the crates.io
+metadata (description, licence, repository, readme, keywords, categories).
+`viscosity-core`'s dev-dependency on `viscosity-frontend-js` is path-only,
+so packaging drops it (otherwise the two would need each other on
+crates.io first), and the tests of `core` and `cli`, which read the rest of
+the repository, are left out of the packages. Check with:
+
+```sh
+cargo package --workspace --allow-dirty   # packs and builds all six, in dependency order
+cargo package -p viscosity-cli --list     # what one crate ships
+rm -rf target/package
+```
+
 `.cargo/config.toml` turns debug info off for the `dev` and `test` profiles,
 which keeps `target/` several times smaller.
 
@@ -203,6 +219,11 @@ The tests:
   `--jobs` is; `build ... -o dir/` writes what single builds print; errors
   (no directory, two inputs with one name, a file that fails to compile)
   are reported; and the TypeScript CLI prints the same, frames included.
+- **Non-UTF-8 arguments** (`crates/cli/tests/os_args.rs`, Unix): the CLI
+  reads its arguments with `args_os`, so a file name such as `$'\xff.js'`
+  compiles (`build -o dir/` keeps its bytes) and is shown lossily (`U+FFFD`)
+  in headers and messages; a bad option or value that is not UTF-8 is a
+  usage error, never a panic.
 - **Fuzzing** (`crates/cli/tests/fuzz.rs`): a fixed-seed run of
   `scripts/fuzz.mjs` (200 programs) against this build. See
   [Fuzzing](#fuzzing).
@@ -263,7 +284,8 @@ formatted with JavaScript's algorithm (`vir::js_number`).
 
 Failures are reported as a `CompileError`. JavaScript syntax errors,
 early errors included, come from oxc rather than acorn, so their wording
-differs from the reference's; which programs are rejected does not (see
+can differ from the reference's (the form, `<message> (line:column)`, is
+the same); which programs are rejected does not (see
 *Early errors* above). Python source outside the subset is not an error
 (see above).
 
