@@ -65,7 +65,7 @@ export const prompts = {
   },
   'who-publishes': {
     q: 'Who decides when Viscosity is published, and what does `scripts/release.sh` need before it will publish?',
-    a: 'Tariq. Publishing is permanent and claims names, so the script stops without `NPM_TOKEN` and `CARGO_REGISTRY_TOKEN`, which he adds after creating the npm organization `viscosity`.',
+    a: 'Tariq. Publishing is permanent and claims names, so the script stops without `NPM_TOKEN` and `CARGO_REGISTRY_TOKEN`, which he added after creating the npm organization `viscosity`.',
   },
 };
 
@@ -278,12 +278,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `cargo package -p viscosity-core` do in the repository today?',
+    q: 'Before the first crates.io release, what did `cargo package -p viscosity-core` do in the repository?',
     options: [
-      { t: 'Builds a `.crate` file and verifies it, ready to upload', why: 'Not on its own: the verifying build looks for `viscosity-vir` on crates.io, where it isn’t yet.' },
-      { t: 'Uploads the crate to crates.io', why: '`cargo package` never uploads. That is `cargo publish`.' },
-      { t: 'Stops: `viscosity-vir` is a path dependency without a version', why: 'That was the first result. crates.io needs a version requirement, and the workspace now gives one.' },
-      { t: 'Packs it, then fails to verify it: `viscosity-vir` isn’t on crates.io yet', correct: true, why: 'The verifying build resolves dependencies from crates.io. `cargo package --workspace` packs `viscosity-vir` first and verifies against that instead.' },
+      { t: 'Built a `.crate` file and verified it, ready to upload', why: 'Not on its own: the verifying build looked for `viscosity-vir` on crates.io, where it wasn’t yet.' },
+      { t: 'Uploaded the crate to crates.io', why: '`cargo package` never uploads. That is `cargo publish`.' },
+      { t: 'Stopped: `viscosity-vir` was a path dependency without a version', why: 'That was the very first result. crates.io needs a version requirement, and the workspace now gives one.' },
+      { t: 'Packed it, then failed to verify it: `viscosity-vir` wasn’t on crates.io yet', correct: true, why: 'The verifying build resolves dependencies from crates.io. `cargo package --workspace` packs `viscosity-vir` first and verifies against that instead.' },
     ],
   },
   {

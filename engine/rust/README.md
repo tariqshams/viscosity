@@ -290,7 +290,10 @@ scripts/release.sh --npm-only  # npm packages only: needs NPM_TOKEN alone
 Status: on 2026-11-02 `scripts/release.sh --npm-only` published
 `@viscosity/cli@0.0.1` and `@viscosity/wasm@0.0.1`, and
 `scripts/release.sh --crates-only` published the six crates at 0.0.1. Both
-were verified by installing from the public registries.
+were verified by installing from the public registries. `viscosity-wasm`
+needed a second run: crates.io limits how many new crates one account can
+create in a short time, answered the sixth upload with HTTP 429, and the
+re-run about ten minutes later skipped the five already there.
 
 The script checks the tokens (without printing them) and the git tree, runs
 the TypeScript and Rust test suites, then runs `cargo publish -p` for
@@ -306,8 +309,8 @@ is built by its `prepack`; `@viscosity/wasm` is built with
 `packages/wasm/build.mjs` first, so it also needs the wasm toolchain above.
 
 The dry run verifies the crates with `cargo publish --dry-run --workspace`
-rather than one `-p` at a time: a single crate whose internal dependencies
-are not on crates.io yet fails with "no matching package named
+rather than one `-p` at a time: before the first release, a single crate
+whose internal dependencies were not on crates.io yet failed with "no matching package named
 `viscosity-vir` found", while `--workspace` verifies each crate against the
 ones packaged before it through a local registry (the script deletes
 `target/package` afterwards).

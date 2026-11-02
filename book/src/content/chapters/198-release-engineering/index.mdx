@@ -3,7 +3,7 @@ n: 198
 day: 50
 part: XII
 title: 'Release engineering'
-tagline: 'Every version number in the repository says 0.0.1. When this chapter was written nothing was published; the npm packages have been since, and the crates are next. A release ships three things to two registries. Here is what each needs, what is already checked on every push, what isn’t, and the one step that only a person should take.'
+tagline: 'Every version number in the repository says 0.0.1. When this chapter was written nothing was published; everything has been since. A release ships three things to two registries. Here is what each needs, what is already checked on every push, what isn’t, and the one step that only a person should take.'
 objectives:
   - Find every version number a Viscosity release would have to change, and apply Cargo’s rules for 0.y.z and 0.0.z versions.
   - Say what Cargo.toml metadata a crate needs to be published, and what packaging the workspace’s crates first turned up.
@@ -21,8 +21,8 @@ Ask the Rust CLI and the TypeScript CLI their version and both say
 `viscosity 0.0.1`. So does every package in the repository that could
 ever be published. When this chapter was written, none of them was.
 The repository had no git tags and no changelog either: as far as any
-registry knew, Viscosity didn't exist. (On 2026-11-02 the two npm
-packages were published; the end of the chapter says how.)
+registry knew, Viscosity didn't exist. (All of them are published
+now; the end of the chapter says how.)
 
 Chapter 119 packed the TypeScript CLI for npm and found three bugs on
 the way. Track B adds two more things to ship: the Rust crates, which
@@ -214,24 +214,26 @@ The last step is `scripts/release.sh` without `--dry-run`. It stops
 unless `NPM_TOKEN` and `CARGO_REGISTRY_TOKEN` are set and the git tree
 is clean, runs the tests, then publishes the crates one at a time,
 `viscosity-vir` first, skipping any version crates.io already has and
-waiting for each to reach the index. The dry run can't check one crate
-at a time: `cargo package -p viscosity-core` fails to verify, because
-`viscosity-vir` isn't on crates.io yet. `--workspace` verifies each
-crate against the ones packed before it. Publishing is the only step
-that can't be undone, and it claims names: crates.io names are first
+waiting for each to reach the index. Before the first publish, the dry
+run couldn't check one crate at a time: `cargo package -p viscosity-core`
+failed to verify, because `viscosity-vir` wasn't on crates.io yet.
+`--workspace` verifies each crate against the ones packed before it.
+Publishing is the only step that can't be undone, and it claims names: crates.io names are first
 come, first served<Cite id="cargo-publishing-guide" />, and chapter 119
 found that the plain `viscosity` name on npm belongs to someone else.
-So the tokens are Tariq's to add, after he creates the npm organization
-`viscosity`, and running the script is his decision.
+So the tokens were Tariq's to add (after creating the npm organization
+`viscosity`), and running the script his decision.
 </Callout>
 
-That is how it went. Nothing was published when this chapter was
-written. On 2026-11-02, with the organization and `NPM_TOKEN` in place,
-`scripts/release.sh --npm-only` published `@viscosity/cli` and
-`@viscosity/wasm` at 0.0.1, and `npm install -g @viscosity/cli` now
-gives you `viscosity 0.0.1`. The crates follow when a crates.io token
-is added: the script skips npm versions that are already there, so a
-plain `scripts/release.sh` finishes the job.
+That is how it went. On 2026-11-02 `scripts/release.sh --npm-only`
+published both npm packages, then `--crates-only` published the crates
+in dependency order, each waiting for the one below it to reach the
+sparse index. Five went out. The sixth, `viscosity-wasm`, got HTTP 429:
+"published too many new crates in a short period". crates.io limits
+how fast an account creates *new* names, and a first release creates
+them all at once. Ten minutes later a re-run skipped the five and
+published the last, which is why a release script must be safe to
+repeat. `cargo install viscosity-cli` now works too.
 
 <Prompts ids={['ci-gap', 'who-publishes']} />
 
@@ -259,8 +261,7 @@ Viscosity's own 0.0.1.
   set `publishConfig.access` to public.
 - CI packs and installs the CLI and packages the crates on every push;
   the wasm smoke test, long fuzzing and benchmarks are run by hand.
-  `scripts/release.sh` publishes; running it is Tariq's call. The npm
-  packages went out on 2026-11-02 (`--npm-only`); the crates wait for a
-  crates.io token.
+  `scripts/release.sh` publishes; running it is Tariq's call. crates.io's
+  **rate limit on new crates** stopped the sixth crate; a re-run finished.
 
 <Quiz />

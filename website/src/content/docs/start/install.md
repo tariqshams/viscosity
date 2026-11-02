@@ -3,8 +3,8 @@ title: Install
 description: Getting Viscosity running.
 ---
 
-Viscosity is in early development. Version 0.0.1 of its two npm
-packages is published:
+Viscosity is in early development. Version 0.0.1 is published: two npm
+packages and six Rust crates. From npm:
 
 ```sh
 npm install -g @viscosity/cli    # the `viscosity` command
@@ -13,8 +13,15 @@ npx @viscosity/cli explain app.js
 npm install @viscosity/wasm      # the Rust engine as WebAssembly
 ```
 
-The Rust crates are not on crates.io yet; build them from the repository
-(see below). There are two engines, which give the same output:
+From crates.io, the Rust CLI (it installs the same `viscosity` command,
+so pick one of the two CLIs):
+
+```sh
+cargo install viscosity-cli      # the `viscosity` command, in Rust
+viscosity --version              # viscosity 0.0.1
+```
+
+There are two engines, which give the same output:
 
 - the **TypeScript engine** (`engine/ts`), the reference, which reads
   JavaScript, TypeScript and Python;
@@ -22,8 +29,8 @@ The Rust crates are not on crates.io yet; build them from the repository
   Python (not TypeScript) and starts and compiles much faster. It also
   builds to WebAssembly.
 
-`@viscosity/cli` is the TypeScript engine; `@viscosity/wasm` is the
-Rust engine.
+`@viscosity/cli` is the TypeScript engine; `viscosity-cli` and
+`@viscosity/wasm` are the Rust engine.
 
 ## From source (TypeScript)
 
@@ -77,8 +84,10 @@ with two exceptions:
 `viscosity profile` runs your program with `node`, as the TypeScript CLI
 does, so it needs Node.js on the `PATH`.
 
-The crates are set up so that `cargo package` works, but they are not on
-crates.io yet; build from the repository.
+To install the published Rust CLI instead of building it, run
+`cargo install viscosity-cli`. The library crates are on crates.io too,
+at 0.0.1: `viscosity-vir`, `viscosity-core`, `viscosity-frontend-js`,
+`viscosity-frontend-python` and `viscosity-wasm`.
 
 ## WebAssembly (`@viscosity/wasm`)
 

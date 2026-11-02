@@ -139,11 +139,11 @@ machine, and the files record the noise beside them.
 An honest capstone lists what isn't done. Some items are chores; some
 are research.
 
-- **The crates aren't on crates.io yet** (chapter 198). When this
-  chapter was written nothing was published. On 2026-11-02 the npm
-  packages went out with `scripts/release.sh --npm-only`; every crate
-  packages, and they follow when a crates.io token is added. There is
-  no changelog yet.
+- **The release is 0.0.1, with no changelog** (chapter 198). When
+  this chapter was written nothing was published. On 2026-11-02 the
+  npm packages went out, then the six crates, so
+  `cargo install viscosity-cli` works now. The commit history is still
+  the only record of what changed.
 - **The Rust port has gaps.** It rejects TypeScript input (the reference
   strips types with sucrase, and copying sucrase's exact output is out
   of scope), and its syntax errors are worded by oxc, not acorn. Neither
@@ -220,8 +220,8 @@ order of its questions and the exact words of its answers.
   runs.
 - One program passes through **parse, lower, analyze, plan, emit and
   explain**, and each line of its output can be traced to a chapter.
-- What is **open** is known and written down: the crates.io release,
-  the port's gaps, an engine-blind cost model, refused programs, no
+- What is **open** is known and written down: no changelog, the
+  port's gaps, an engine-blind cost model, refused programs, no
   WebAssembly output.
 - **Mastery** is being able to build it again, and to say how you would
   know it works.

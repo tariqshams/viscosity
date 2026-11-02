@@ -58,7 +58,7 @@ export const prompts = {
   },
   'm-open': {
     q: 'Name three things about Viscosity that are unfinished or open.',
-    a: 'Any three of: crates not on crates.io yet; the port rejects TypeScript input; syntax errors worded by oxc, not acorn; the cost model is engine-blind (heat on JSC); many programs refused; no WebAssembly output; Drip’s 256-constant limit.',
+    a: 'Any three of: no changelog yet; the port rejects TypeScript input; syntax errors worded by oxc, not acorn; the cost model is engine-blind (heat on JSC); many programs refused; no WebAssembly output; Drip’s 256-constant limit.',
   },
   'm-chore': {
     q: 'Which is research, and which a chore: running the wasm smoke test in CI, or knowing how much a layout will gain on an engine?',
@@ -434,10 +434,10 @@ export const quiz = [
     ],
   },
   {
-    q: 'Until the npm release of 2026-11-02, nothing was published. Why does the book treat that as a decision rather than a bug?',
+    q: 'Until 2026-11-02, nothing was published. Why does the book treat that as a decision rather than a bug?',
     options: [
       { t: 'Because publishing is permanent and claims names, so it is the author’s call', correct: true, why: 'A published version can never be reused or deleted, on crates.io or npm.' },
-      { t: 'Because the packages don’t build', why: 'Everything builds: both npm packages pack (and are on npm now), and every crate packages.' },
+      { t: 'Because the packages don’t build', why: 'Everything built: both npm packages packed and every crate packaged. All of them are published now.' },
       { t: 'Because npm doesn’t accept WebAssembly', why: 'npm accepts any files; `@viscosity/wasm` is on npm now.' },
     ],
   },
