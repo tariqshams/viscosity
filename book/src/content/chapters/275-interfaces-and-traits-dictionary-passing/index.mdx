@@ -1,0 +1,302 @@
+---
+n: 275
+day: 69
+part: X
+title: 'Interfaces and traits: dictionary passing'
+tagline: 'A vtable works while every class has one parent. Once a type can promise many unrelated things, the table of operations has to travel separately: as a hidden argument, beside the pointer, or in a list the object carries.'
+objectives:
+  - Explain why one row of vtable slots cannot serve a class that implements several interfaces.
+  - Translate a call to an overloaded function into dictionary passing, including a dictionary built from another.
+  - Describe a fat pointer, and read the Rust and Go code that calls through one.
+  - Say how Java’s itables and Go’s itabs find an interface’s methods for a class.
+introduces: [dictionary-passing, itable, fat-pointer]
+uses: [vtable, dynamic-dispatch, object-layout, interface, structural-vs-nominal, generic, generic-constraint, type-checking, type-variable, hindley-milner, function, parameter, first-class-function, object, array, pointer, hash-table, register, calling-convention, assembly-language, risc-v]
+sources: [wadler1989, rust-reference-trait-object, go-runtime-iface, hotspot-klassvtable]
+---
+import DictSteps from '../../../components/diagrams/ch275/DictSteps';
+import FatPointerFigure from '../../../components/diagrams/ch275/FatPointerFigure';
+
+## When one row of slots runs out
+
+Last chapter's vtable relied on each class having one parent whose
+slots it extends. An **interface** (chapter 28) breaks that. If
+`Printable` has `print` and `Comparable` has `lt`, each numbered on its
+own puts its method in slot 0, and a class `Doc` implementing both
+cannot hold two methods in one slot (while numbering every method in
+the program uniquely would leave most tables nearly empty).
+
+A second problem has the same answer: `max(a, b)` should work for any
+type with a less-than, but the compiled `max` cannot contain a `<` for
+every type. Where does the right one come from?
+
+## Pass the operations in: dictionary passing
+
+The answer to both is to stop expecting the operations to be found
+inside the value, and hand them over separately. A **dictionary** here
+is a plain record of functions for one type, such as
+`{ lt: (a, b) => a < b }` for numbers, and the compiler passes it to
+`max` as a hidden extra argument:
+
+```js
+const ordNum = { lt: (a, b) => a < b };
+const ordLen = {
+  lt: (a, b) => a.length < b.length,
+};
+function max(d, a, b) {
+  return d.lt(a, b) ? b : a;
+}
+max(ordNum, 3, 7);       // 7
+max(ordLen, 'abc', 'z'); // 'abc'
+```
+
+`max` itself never mentions a type: it asks its dictionary `d` whether
+`a` is less than `b` and returns the bigger. The two calls hand it
+different dictionaries, so the first compares numbers and the second
+compares strings by length, and one compiled `max` serves both.
+
+<Analogy title="the babysitter’s note">
+A babysitter knows how to look after children in general; the note on
+the fridge says how this family does it: bedtime at eight, no peanuts.
+The same babysitter works for any family, as long as a note is left.
+<span slot="breaks">A babysitter might ignore the note or improvise; a
+compiled function can do nothing for a type except what its dictionary
+offers, and the compiler, not the parents, chooses which note to
+leave.</span>
+</Analogy>
+
+<Analogy title="a hire car’s glovebox card">
+You already know how to drive. In a hire car the card in the glovebox
+tells you this car's details: which side the fuel cap is on, how to
+switch the lights on. Your driving is general; the card is per car.
+<span slot="breaks">You read the card once and remember it; a function
+reads its dictionary on every call, and a different call can hand it a
+different card.</span>
+</Analogy>
+
+In languages with **type classes** (Haskell, where the idea comes from)
+or **traits** (Rust), you never write the dictionary yourself: the type
+checker works out each call's type, finds the matching dictionary, and
+inserts it. Wadler and Blott described exactly this translation in
+1989, as a way to add overloading to Hindley–Milner type
+inference<Cite id="wadler1989" />. Step through it, including the neat
+part: a dictionary for lists of numbers is *built* from the one for
+numbers.
+
+<DictSteps client:visible />
+
+<Callout kind="definition">
+**Dictionary passing** implements a constrained generic function (one
+that needs some operations of its type, such as `<`) by giving it a
+hidden parameter: a **dictionary**, a record of the operations for the
+type at this call. The type checker chooses the dictionary from the
+call's types; a rule such as "lists of `a` have `<` if `a` does" becomes
+a function from dictionaries to dictionaries.
+</Callout>
+
+<Formal title="The translation">
+
+```text
+max : ∀a. Ord a ⇒ a → a → a
+  ⟿  max : ∀a. OrdDict a → a → a → a
+max 3 7      ⟿  max ordNum 3 7
+max xs ys    ⟿  max (ordList ordNum) xs ys
+```
+
+<span slot="read">The first line is max's type: for every type a that
+has Ord (a less-than), it takes two a's and returns one. The squiggly
+arrow means "is compiled to": the constraint Ord a becomes an ordinary
+first parameter of type OrdDict a. Then each call gains the dictionary
+that fits its types: ordNum for numbers, and for lists of numbers the
+dictionary that ordList builds out of ordNum.</span>
+</Formal>
+
+<Examples of="dictionary-passing">
+
+```js
+const showNum = { show: (n) => `#${n}` };
+function showAll(d, xs) {
+  return xs.map(d.show).join(' ');
+}
+showAll(showNum, [1, 2]); // '#1 #2'
+```
+
+```js
+const eqNum = { eq: (a, b) => a === b };
+function has(d, xs, x) {
+  return xs.some((y) => d.eq(x, y));
+}
+has(eqNum, [3, 4], 4); // true
+```
+
+```rust
+// Rust: written with a bound...
+fn biggest<T: PartialOrd>(a: T, b: T)
+    -> T { if a < b { b } else { a } }
+```
+
+</Examples>
+
+`showAll` maps `d.show` over the list without knowing the elements are
+numbers; `has` needs only equality, so its dictionary has one entry;
+and in Rust the bound `T: PartialOrd` is the constraint (though rustc
+usually compiles it as one copy per type instead, the choice chapter
+276 is about).
+
+<Prompts ids={['dict-what', 'dict-who', 'dict-build']} />
+
+## When the dictionary travels with the value: fat pointers
+
+Sometimes the type is known only at run time: a list of squares and
+circles, each asked for its `area`. Then the dictionary must travel
+*with each value*. Rather than put a vtable pointer inside the object,
+as C++ does, Rust and Go put it beside the pointer, which becomes two
+words: one to the data, one to the table for its type. In JavaScript:
+
+<Run id="fat-pointers" />
+
+The objects `{ w: 2 }` and `{ r: 1 }` carry no table at all; each
+list element is a pair `[data, table]`, and the loop calls
+`vt.area(data)`, printing `7` (4 for the square and 3 for the circle).
+
+<Analogy title="a parcel and its label">
+A courier never opens a parcel; the label stuck on the outside says how
+to handle it (fragile, this way up). The same plain box could travel
+with a different label on another trip.
+<span slot="breaks">A label is part of the parcel once stuck on; a fat
+pointer's table belongs to the pointer, so two pointers to the same
+object can carry tables for two different interfaces.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **fat pointer** is a pointer made of two words: the address of the
+data, and the address of a table of operations for the data's type (a
+vtable for one interface or trait). The data itself holds no vtable
+pointer, so any value can be viewed through any interface it
+implements.
+</Callout>
+
+Here is what the real compilers emit. The Rust reference says a pointer
+to a trait object holds a pointer to the value and a pointer to a
+vtable of that type's methods<Cite id="rust-reference-trait-object" />,
+and Go's runtime defines an interface value as `tab` and `data`, where
+`tab` points to an **itab** whose methods start in its `Fun`
+array<Cite id="go-runtime-iface" />.
+
+<Examples of="fat-pointer">
+
+```text
+# Rust 1.97, -O, x86-64: dynr(x: &dyn Area)
+dynr:
+  pushq %rax
+  callq *24(%rsi)   # rsi = vtable
+  addsd .LCPI4_0(%rip), %xmm0
+```
+
+```text
+# Rust: mk(s: &Sq) -> &dyn Area
+mk:
+  movq %rdi, %rax   # word 1: data
+  leaq .Lanon...(%rip), %rdx  # word 2
+  retq
+```
+
+```text
+# Go 1.24, GOARCH=riscv64: use(s Shape)
+MOV  24(X10), X5   # X10 = itab
+MOV  X11, X10      # X11 = data
+JALR X1, X5        # call Area
+```
+
+</Examples>
+
+All three are real output, trimmed. The first is a call through
+`&dyn Area`, on x86-64 (this machine's Rust has no RISC-V library):
+the fat pointer arrives as `rdi` (data) and `rsi` (vtable), and
+`callq *24(%rsi)` calls the address 24 bytes into the vtable, after
+the three words rustc puts first (drop function, size, alignment). The
+second makes one: `mk` returns the plain `&Sq` with the vtable's
+address beside it, in a second register. The third is Go on RISC-V:
+`X10` holds the itab and `X11` the data; one load fetches `Fun[0]`,
+also 24 bytes in (after the interface type, the concrete type and a
+hash), the data pointer becomes the receiver, and `JALR` calls.
+
+<Figure takeaway="Same idea, two compilers: a pointer to the data, a pointer to the table." caption="Rust's &dyn Area and Go's interface value. Rust puts the data first and Go the table first; both find area 24 bytes into the table.">
+  <FatPointerFigure />
+</Figure>
+
+<Prompts ids={['fat-what', 'fat-why', 'go-24']} />
+
+## When the object is one pointer: itables
+
+Java keeps objects as single pointers with the class pointer inside, so
+for `invokeinterface` it must find, from the class, where that
+interface's methods are. HotSpot gives each class an **itable**: a short
+list of (interface, offset) pairs, then one small table of methods per
+interface; a call searches the list for its interface, then reads the
+method at a fixed index<Cite id="hotspot-klassvtable" />. `javac` shows
+the two kinds of call (real `javap -c` output, trimmed):
+
+<Examples of="itable">
+
+```text
+static double a(Shape);  // a class
+  1: invokevirtual  // Shape.size:()D
+static double b(Area);   // an interface
+  1: invokeinterface // Area.area:()D
+```
+
+```text
+HotSpot itable for class Doc:
+  Printable  -> methods at +40
+  Comparable -> methods at +56
+  +40: print   +56: lt
+```
+
+```js
+function itableCall(cls, iface, i, o) {
+  const e = cls.itable.find(
+    (p) => p.iface === iface);
+  return e.methods[i](o);
+}
+```
+
+</Examples>
+
+The first shows the split in the bytecode: a call on a class's method
+is `invokevirtual`, a vtable call, while a call through an interface is
+`invokeinterface`. The second sketches the itable of a `Doc` with two
+interfaces (offsets invented for the picture). The third is the search
+in JavaScript. Go avoids the search: an itab exists per (interface, concrete type) pair, the
+compiler writes out the ones it can foresee (the binary for the
+example above contains `go:itab.main.Sq,main.Shape`), and the runtime
+builds any others on demand and caches them in a hash
+table<Cite id="go-runtime-iface" />.
+
+<Callout kind="definition">
+An **itable** (interface method table) maps each interface a class
+implements to that interface's methods for the class. In HotSpot it is
+searched by interface at an `invokeinterface` call; Go's itab is one
+such table for one (interface, type) pair, carried in the interface
+value itself.
+</Callout>
+
+<Prompts ids={['itable-what', 'invokeinterface']} />
+
+## Your turn
+
+<Exercise id="show-dicts" />
+
+## What you learned
+
+- **Dictionary passing** hands a constrained generic function a record
+  of its type's operations as a hidden argument; the type checker picks
+  it, and builds dictionaries from dictionaries for types like lists.
+- A **fat pointer** carries the table beside the data pointer, as Rust's
+  `&dyn` and Go's interface values do, so objects need no vptr.
+- An **itable** finds an interface's methods from an object's class, as
+  in Java's `invokeinterface`; Go caches one itab per pair of types.
+
+Next: the other way to compile generics, a fresh copy of the code for
+every type, and what each choice costs.
+
+<Quiz />
