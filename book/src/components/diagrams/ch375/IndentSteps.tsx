@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 375: engine/rust/crates/frontend-python/src/tokens.rs on a
+// The chapter The Python plugin in Rust: engine/rust/crates/frontend-python/src/tokens.rs on a
 // five-line program. The tokens are what the TS tokenizer printed for the
 // same source (the two are held equal by the parity fixtures).
 const LINES = ['for p in ps:', '    f(p.x,', '  p.y)', '    p.x += 1', 'print(1)'];
@@ -11,10 +11,10 @@ type S = { line: number; stack: number[]; depth: number; toks: string; note: str
 const STATES: S[] = [
   { line: 0, stack: [0], depth: 0, toks: 'for p in ps : NEWLINE', note: 'Line 1 starts at width 0, the top of the stack: no INDENT or DEDENT. The line end, outside brackets, is a NEWLINE token.' },
   { line: 1, stack: [0, 4], depth: 1, toks: 'INDENT f ( p . x ,', note: 'Line 2 is 4 wide, more than the top (0): push 4 and emit INDENT. Then “(” raises the bracket depth to 1.' },
-  { line: 2, stack: [0, 4], depth: 0, toks: 'p . y ) NEWLINE', note: 'The line break came inside brackets (depth 1), so it was just whitespace: no NEWLINE, and line 3’s width is never measured. Its 2 would have been inconsistent. “)” brings depth back to 0.' },
+  { line: 2, stack: [0, 4], depth: 0, toks: 'p . y ) NEWLINE', note: 'The line break came inside brackets (depth 1), so it was only whitespace: no NEWLINE, and line 3’s width is never measured. Its 2 would have been inconsistent. “)” brings depth back to 0.' },
   { line: 3, stack: [0, 4], depth: 0, toks: 'p . x += 1 NEWLINE', note: 'Line 4 is 4 wide, equal to the top: still inside the loop body, no token.' },
   { line: 4, stack: [0], depth: 0, toks: 'DEDENT print ( 1 ) NEWLINE', note: 'Line 5 is 0 wide, less than 4: pop and emit DEDENT, once per level, until the top equals 0. A width between two levels would be an error.' },
-  { line: 5, stack: [0], depth: 0, toks: 'EOF', note: 'At the end, a DEDENT for every level still open, then EOF. In the tokens that follow, a block is simply INDENT … DEDENT, like braces.' },
+  { line: 5, stack: [0], depth: 0, toks: 'EOF', note: 'At the end, a DEDENT for every level still open, then EOF. In the tokens that follow, a block is INDENT … DEDENT, like braces.' },
 ];
 
 export default function IndentSteps() {

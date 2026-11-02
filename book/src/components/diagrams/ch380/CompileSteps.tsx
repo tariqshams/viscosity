@@ -2,7 +2,7 @@ import { StepFrame, useSteps } from '../../viz/stepper';
 import { Svg, T, tok } from '../../viz/svg';
 import matrix from '../../../../../engine/ts/packages/bench/results/matrix-2026-10-31.json';
 
-// Chapter 380: section (b) of the benchmark matrix, compile speed, every
+// The chapter How fast is the compiler?: section (b) of the benchmark matrix, compile speed, every
 // number read from engine/ts/packages/bench/results/matrix-2026-10-31.json.
 // cli.rows: one fresh process per compile, 5 runs, median ms.
 // inProcess.rows: compile() in one warm Node process, 200 runs, median µs
@@ -46,9 +46,9 @@ export default function CompileSteps() {
   const legend = (a: string, b: string) => (
     <g>
       <rect x={L} y={6} width={10} height={10} rx={2} fill={tok(COL.ts)} />
-      <T x={L + 14} y={11} size={10}>{a}</T>
+      <T x={L + 14} y={11} size={11}>{a}</T>
       <rect x={L + 150} y={6} width={10} height={10} rx={2} fill={tok(COL.rust)} />
-      <T x={L + 164} y={11} size={10}>{b}</T>
+      <T x={L + 164} y={11} size={11}>{b}</T>
     </g>
   );
   const axis = (max: number, ticks: number[], unit: string) => (
@@ -56,7 +56,7 @@ export default function CompileSteps() {
       {ticks.map((v) => (
         <g key={v}>
           <line x1={L + (v / max) * W} x2={L + (v / max) * W} y1={top - 4} y2={top + rows.length * rh} stroke={tok('line')} strokeDasharray="3 3" />
-          <T x={L + (v / max) * W} y={top + rows.length * rh + 10} size={9} anchor="middle" fill={tok('muted')}>{`${v} ${unit}`}</T>
+          <T x={L + (v / max) * W} y={top + rows.length * rh + 10} size={11} anchor="middle" fill={tok('muted')}>{`${v} ${unit}`}</T>
         </g>
       ))}
     </g>
@@ -91,9 +91,9 @@ export default function CompileSteps() {
         )}
         {st.kind === 'share' && (
           <g>
-            <T x={L} y={11} size={10}>each row: one CLI run = 100%</T>
+            <T x={L} y={11} size={11}>each row: one CLI run = 100%</T>
             <rect x={L + 170} y={6} width={10} height={10} rx={2} fill={tok('brand')} />
-            <T x={L + 184} y={11} size={10}>warm compile()</T>
+            <T x={L + 184} y={11} size={11}>warm compile()</T>
             {rows.map((r, i) => {
               const y = top + i * rh;
               const half = W / 2 - 6;
@@ -107,17 +107,17 @@ export default function CompileSteps() {
                 </g>
               );
             })}
-            <T x={L} y={top + rows.length * rh + 10} size={10} mono>TS CLI</T>
-            <T x={L + W / 2 + 6} y={top + rows.length * rh + 10} size={10} mono>Rust CLI</T>
+            <T x={L} y={top + rows.length * rh + 10} size={11} mono>TS CLI</T>
+            <T x={L + W / 2 + 6} y={top + rows.length * rh + 10} size={11} mono>Rust CLI</T>
           </g>
         )}
         {st.kind === 'totals' && (() => {
           const BW = 270;
           const bar = (y: number, label: string, v: number, max: number, unit: string, col: string) => (
             <g>
-              <T x={L} y={y} size={10}>{label}</T>
+              <T x={L} y={y} size={11}>{label}</T>
               <rect x={L} y={y + 8} width={Math.max(2, (v / max) * BW)} height={14} rx={2} fill={tok(col)} />
-              <T x={L + Math.max(2, (v / max) * BW) + 4} y={y + 15} size={10} mono>{`${v.toLocaleString('en-US')} ${unit}`}</T>
+              <T x={L + Math.max(2, (v / max) * BW) + 4} y={y + 15} size={11} mono>{`${v.toLocaleString('en-US')} ${unit}`}</T>
             </g>
           );
           const c = cs.cli.totalMedianMs;
@@ -130,7 +130,7 @@ export default function CompileSteps() {
               <T x={L} y={124} size={11} weight={700}>{`compile() only: ${cs.inProcess.totalSpeedup}× faster`}</T>
               {bar(142, 'TS engine', p.ts, p.ts, 'µs', COL.ts)}
               {bar(174, 'Rust engine as wasm', p.wasm as number, p.ts, 'µs', COL.rust)}
-              <T x={L} y={228} size={10} fill={tok('muted')}>{`compiled code identical: CLI ${cs.cli.allIdentical ? 'yes' : 'no'}, in-process ${cs.inProcess.allIdentical ? 'yes' : 'no'}`}</T>
+              <T x={L} y={228} size={11} fill={tok('muted')}>{`compiled code identical: CLI ${cs.cli.allIdentical ? 'yes' : 'no'}, in-process ${cs.inProcess.allIdentical ? 'yes' : 'no'}`}</T>
             </g>
           );
         })()}

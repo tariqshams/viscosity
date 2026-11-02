@@ -33,10 +33,6 @@ export const prompts = {
     q: 'When both engines fail on a program, why does the fuzzer not compare their messages?',
     a: 'oxc and acorn word errors differently, so it compares errors by presence only: “one failed and the other didn’t” is the failure.',
   },
-  'ep-python-fuzz': {
-    q: 'Which language has no committed fuzzer?',
-    a: 'Python. `fuzz.mjs` generates JavaScript; the Python port had one ad hoc run of 800 random programs.',
-  },
 };
 
 export const exercises = {
@@ -178,12 +174,24 @@ fn behaviour_is_checked_even_if_rust_fails() {
       'For parity, `if let (Ok(t), Ok(r)) = (ts, rs)` handles the case where both succeeded. What is left is “at least one failed”.',
       '“Exactly one failed” is `ts.is_ok() != rs.is_ok()`. That ignores the messages, which is the point.',
     ],
-    walkthrough: `This is the shape of \`failuresOf\` in \`engine/rust/scripts/fuzz.mjs\`, in Rust, with the node VM replaced by a closure.
+    walkthrough: `**How to think about it.** This is the shape of \`failuresOf\` in \`engine/rust/scripts/fuzz.mjs\`, in Rust, with the node VM replaced by a closure called \`run\`. Before writing any code, separate the two questions the fuzzer asks, because they have different oracles. First: did the TypeScript engine compile the program correctly? The oracle is the original program, so run both and compare what they print. Second: does the Rust engine agree with the TypeScript one? The oracle is the TypeScript output, so compare text. The two checks are independent: neither one's result should stop the other from running. Write them one after the other, each pushing into the same list, and the order of the list falls out of the order of the code.
 
-- **Two oracles.** The behaviour check trusts the *original program*: it catches a miscompile even when both engines make it (the second test). The parity checks trust the *TypeScript engine*: they catch a Rust-only difference even when it changes nothing observable (the third test, the wording from chapter 370).
-- **Only the TS output is run.** The Rust output is compared with it byte for byte, so whenever parity passes, it was run too. In the last test the behaviour check still runs although Rust failed: one oracle failing doesn’t silence the other, which is what the second wrong attempt gets wrong.
-- **A TS crash is a failure** on its own, because every generated program is valid JavaScript. That is how “overlapping rewrites”, a crash in both engines, was found: parity saw two errors and was satisfied.
-- **Errors by presence.** oxc and acorn word their messages differently, so comparing them (the first wrong attempt) fails on every syntax error, real or not. The cost of this rule: if both engines rejected a program for different reasons, nobody would know.`,
+**The solution, line by line.**
+
+- \`let mut f = Vec::new();\` is the list of failures, empty to begin with. An empty list at the end means the program passed.
+- \`match ts {\` starts the first check, against the original program.
+- \`Err(_) => f.push("ts-crash"),\`: every generated program is valid JavaScript, so if the TypeScript engine fails on it at all, that is a bug on its own. This is how "internal error: overlapping rewrites" was found, a crash in both engines that parity could never report.
+- \`Ok(t) => { let want = run(src); if run(&t.code) != want { f.push("behaviour"); } }\`: if it compiled, run the original and the compiled program and compare what they printed. Only the TypeScript output is run; the Rust output is held to it byte for byte below, so when parity passes, the Rust output has effectively been run too.
+- \`if let (Ok(t), Ok(r)) = (ts, rs) {\` starts the second check. Pairing the two results in a tuple and matching both at once handles "both succeeded" in one pattern.
+- \`if t.code != r.code { f.push("parity-code"); }\` and \`if t.explain != r.explain { f.push("parity-explain"); }\` compare the two texts. They are two separate \`if\`s, not an \`else if\`, so a program that differs in both reports both.
+- \`} else if ts.is_ok() != rs.is_ok() { f.push("parity-error"); }\`: we get here when at least one engine failed. \`is_ok()\` turns each result into \`true\` or \`false\`, and the two differ only when exactly one failed. Two failures, whatever their messages, push nothing.
+- \`f\` returns the list.
+
+**Common wrong attempts.**
+
+- *Comparing the error messages.* \`if ts != rs\` on two \`Err\`s, or comparing the strings, fails on every syntax error, because oxc and acorn word their messages differently ("Identifier directly after number" against "Invalid characters after number"). That is why the fuzzer compares errors by presence. The price of the rule: if both engines rejected a program for different reasons, nobody would know.
+- *Returning early when Rust fails.* Writing the parity check first and returning on a Rust error silences the behaviour check, so a miscompile by the TypeScript engine goes unreported whenever the Rust engine happens to crash. One oracle failing must not hide the other; the last test checks exactly that.
+- *Running the Rust output too.* It is not wrong, but it adds nothing whenever parity passes, and it costs a run per program; the real fuzzer reaches the Rust engine through its CLI, one call per batch of 250 files, and never runs its output.`,
     wrong: [
       {
         code: `// What an engine made of a program:
@@ -332,14 +340,6 @@ export const quiz = [
       { t: 'The Rust output is compared with it byte for byte, so when parity passes it has effectively been run too', correct: true, why: 'Two checks compose: Rust = TS (parity), TS ≡ original (behaviour).' },
       { t: 'Rust output can’t be run in node', why: 'It is JavaScript like any other.' },
       { t: 'To save time, at the cost of missing Rust miscompiles', why: 'A Rust miscompile would also be a parity difference.' },
-    ],
-  },
-  {
-    q: 'The fuzzer’s five finds were all in both engines. What does that say?',
-    options: [
-      { t: 'The Rust port was well tested already', why: 'It says something about which oracle can find what.' },
-      { t: 'Parity is useless', why: 'It found the ten porting bugs and guards every change; it is blind only to shared bugs.' },
-      { t: 'A port that mirrors its reference shares its bugs, and only oracles outside both engines can find those', correct: true, why: 'Behaviour (the original program) and “TS must not crash on valid input” found them.' },
     ],
   },
   {

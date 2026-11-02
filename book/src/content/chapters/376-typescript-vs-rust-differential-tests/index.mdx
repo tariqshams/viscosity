@@ -3,93 +3,135 @@ n: 376
 day: 94
 part: XIII
 title: 'TypeScript vs Rust: differential tests'
-tagline: 'Five layers of tests stand between the two engines. Each one compares against a different oracle, so each one is blind somewhere else. This chapter maps the blind spots, including two that the chapters of this Part walked straight into.'
+tagline: 'Five layers of tests stand between the two engines, and each compares against a different oracle, so each is blind somewhere else. This chapter maps the blind spots, including two that the chapters of this Part walked straight into.'
 objectives:
   - Name the oracle each test layer compares against, and the inputs it feeds.
-  - Predict which layers can catch a given bug, and which can’t.
-  - Explain why the fuzzer’s finds were all bugs in both engines.
-  - Implement the fuzzer’s verdict for one program, errors compared by presence only.
+  - Predict which layers can catch a given bug, and which cannot.
+  - Explain why the fuzzer's finds were all bugs in both engines.
+  - Implement the fuzzer's verdict for one program, with errors compared by presence only.
 introduces: [engine-parity]
 uses: [viscosity-rs, cross-implementation-tests, rust-explain, rust-pgo, rust-python-plugin, oxc, differential-testing, fuzzing, round-trip-testing, test-corpus, shared-corpus, webassembly, wasm-bindgen, npm-package, pgo, optimization-report, bailout, cargo-test, result, option, match, struct, vec, rust-closure, string-vs-str]
 sources: ['csmith', 'test262']
 ---
 import OracleSteps from '../../../components/diagrams/ch376/OracleSteps';
+import OracleMap from '../../../components/diagrams/ch376/OracleMap';
 
 ## Two bugs nobody's tests saw
 
 While this Part was being written, two differences between the engines
-turned up by hand. Chapter 370 noticed that with a profile, the Rust
-planner wrote "about 20 (measured) elements" where the TypeScript one
-wrote "about 20 elements (measured)". And chapter 374 fed both CLIs a
-hand-edited profile:
+turned up by hand. The chapter *The cost model in Rust* noticed that,
+given a profile, the Rust planner wrote "about 20 (measured) elements"
+where the TypeScript one wrote "about 20 elements (measured)". And the
+chapter *PGO in Rust* fed both CLIs a hand-edited profile:
 
 ```json
 { "ps": { "maxLength": "20" } }
 ```
 
-The Rust CLI skipped the entry, since `"20"` isn't a number, and
-transformed `ps` (size unknown). The TypeScript CLI compared `"20" < 64`
-the JavaScript way, got `true`, and kept `ps` as objects. Same program,
-different decisions.
+The Rust CLI skipped the entry, since `"20"` is a string, and
+transformed `ps`; the TypeScript CLI compared `"20" < 64` the
+JavaScript way (which turns the string into a number), got `true`, and
+kept `ps` as objects. Same program, different decisions, and yet at the
+time `cargo test` passed everything. That is not a contradiction:
+every test compares against *something*, on *some* inputs, and neither
+bug was in any test's inputs. (Both are fixed now.)
 
-At the time, `cargo test` passed: 186 of 186 parity fixtures, 66 of 66
-JavaScript and 27 of 27 Python programs behaving identically, and a
-fuzz run. That isn't a contradiction. Every test compares against
-something, on some inputs. Neither bug was in any test's inputs.
-(Both are fixed now; the last section says how.)
-
-<Callout kind="intuition">
-A smoke alarm doesn't smell gas, and a gas detector doesn't see smoke.
-You don't buy a better alarm; you put a few different ones in the
-house, and you know which one covers which room.
-</Callout>
+<Analogy title="smoke alarms and gas detectors">
+A smoke alarm does not smell gas, and a gas detector does not see
+smoke. You do not fix that by buying a better smoke alarm; you put a
+few different detectors in the house, and you know which one covers
+which danger in which room.
+<span slot="breaks">A detector either works or it does not; a test
+layer also has *inputs*, so even the right kind of detector misses a
+danger that never happens in the rooms it is placed in.</span>
+</Analogy>
 
 ## Five oracles
 
-An **oracle** is whatever a test trusts to say what the right answer
-is. Here are the five layers, by oracle and inputs:
+An **oracle** is whatever a test trusts to give the right answer.
+Here there are two: the original program (run it and see what it
+prints) and the TypeScript engine (the reference, whose output is
+saved as fixtures). Every layer compares an engine with one of them:
 
-```
-layer          oracle         inputs
-parity         TS fixtures    95 programs
-node diff      the original   68 JS programs
-python3 diff   the original   27 Python
-wasm           TS fixtures    95 programs
-fuzzer         TS + original  random JS
+<Figure takeaway="Each test compares two of three things; a bug both engines share is invisible to the edge between them." caption="Parity, the wasm check and part of the fuzzer compare the two engines. The differentials and the rest of the fuzzer compare a compiled program with the original.">
+  <OracleMap />
+</Figure>
+
+```text
+layer         oracle         inputs
+parity        TS fixtures    95 programs
+node diff     the original   68 JS
+python3 diff  the original   27 Python
+wasm          TS fixtures    95 programs
+fuzzer        TS + original  random JS
 ```
 
-**Parity** (`parity.rs`, chapter 363) compares code and explain text
-with the TypeScript engine's output, byte for byte: every program in
-both bounds modes (190 pairs), plus 14 `--frames` fixtures and, since
-the fixes below, four `--profile` fixtures. Its oracle is the
-reference, so it catches *divergence*, and nothing else. If both
-engines are wrong the same way, parity passes.
+Read the table one row at a time, asking two questions of each layer:
+what does it trust, and what does it feed in?
+
+**Parity** (`parity.rs`, from the chapter *Round-trip tests across
+engines*) compares code and explain text with the TypeScript output,
+byte for byte, for every program in both bounds modes, plus 14
+`--frames` fixtures and 4 `--profile` fixtures. Its oracle is the
+reference, so it catches **divergence** (the two engines disagreeing),
+and nothing else: if both engines are wrong in the same way, parity
+passes, because it has nothing outside the two engines to compare with.
 
 **The node differential** (`differential.rs`) runs each original and
-compiled JavaScript program in an isolated VM context and compares
+compiled JavaScript program in an isolated context and compares
 everything printed and thrown. Its oracle is the source program
-itself, so it catches *miscompiles*, even ones both engines share. It
-only compiles with bounds checks on, and the benchmarks are compared
-by their checksums.
+itself, so it catches **miscompiles** (a compiled program that behaves
+differently), even ones both engines share; however, it sees only its
+68 programs, it compiles them only with bounds checks on, and a
+difference in explain text never changes what a program prints, so
+explain is invisible to it. **The python3 differential** does the same
+for the 27 Python programs, comparing standard output and the last
+line of standard error (the exception), so a difference earlier in
+standard error, such as a warning, would pass.
 
-**The python3 differential** does the same for Python: stdout, and the
-last line of stderr (the exception). A difference earlier in stderr,
-such as a warning, would pass.
+**The wasm check** runs the same fixtures through the WebAssembly
+build. I loaded the module this book serves in Node and ran all six
+suites through `compileLanguage`: 190 of 190. It is the parity oracle on
+a different target, so it catches whatever changes with the target;
+its API takes no profile and returns no frames, so it cannot check
+either.
 
-**The wasm layer** compiles the same fixtures through the WebAssembly
-build. I loaded the build committed to the book
-(`public/wasm/viscosity_wasm_bg.wasm`) in Node and ran all six suites
-through `compileLanguage`: 190 of 190 (rebuilt at `288e497`). It is
-the parity oracle on a
-different target, so it catches what changes with the target. Its API
-takes no profile and returns no frames, so it can't check either.
+**The fuzzer** (`scripts/fuzz.mjs`) generates random programs in the
+part of JavaScript Viscosity cares about and checks each against both
+oracles: the TypeScript output against the original under node, and
+the Rust output against the TypeScript output (code, explain, frames,
+and explain with a random profile). My run of its default, 300 programs
+with seed 1, took 5.9 seconds: 134 of them were transformed, and 20 had
+an early error inserted, which both engines must reject.
 
-**The fuzzer** (`scripts/fuzz.mjs`) generates programs and checks each
-against both oracles: TS against the original under node (both bounds
-modes, `assume` only if the program stays in bounds), and Rust against
-TS (code, explain, frames, and explain with a random profile). On my
-run, 300 programs took 4.0 s; 134 were transformed, and 20 had an
-early error inserted, which both engines must reject.
+<Examples of="engine-parity">
+
+```text
+parity: 190/190 (54 Python)
+```
+
+```text
+TS:   about 20 elements (measured)
+Rust: about 20 (measured) elements
+```
+
+```js
+if (!a.error !== !b.error)
+  fails.push({
+    kind: `parity-error-${mode}`, ...
+```
+
+</Examples>
+
+The first is what `cargo test` prints today: all 190 fixture pairs
+agree, 54 of them Python. The second is the smallest kind of
+divergence, a change of wording with the same decision, which only a
+layer that compares text, and runs with a profile, can see. The third
+is from the fuzzer's `failuresOf` (trimmed and rewrapped): when either
+engine fails on a program, it reports a failure only if exactly one of
+them failed. `!a.error` turns "has an error message" into `true` or
+`false`, so two errors with different wording count as agreement,
+because oxc and acorn word their messages differently.
 
 <Prompts ids={['ep-oracle', 'ep-parity-blind', 'ep-diff-blind', 'ep-wasm']} />
 
@@ -101,75 +143,100 @@ miscompiles), and both at once on generated inputs. A test catches
 only what differs from its oracle, on its inputs, under its options.
 </Callout>
 
+<Formal title="What one test checks">
+
+```text
+pass(x)  ⇔  obs(E(x))  ≈  obs(O(x))
+blind:   E(x) = O(x) ≠ right(x)
+```
+
+<span slot="read">A test with engine E, oracle O, an observation obs
+(the text, or what the program prints) and an equality ≈ (bytes, or
+"both have an error") passes on input x when what it observes of E's
+answer equals what it observes of the oracle's. It is blind whenever E
+and O give the same wrong answer, and to every x it never tries.</span>
+</Formal>
+
+Put the two hand-found bugs through that rule. For parity, E is the
+Rust engine, O the TypeScript fixtures, obs the explain text and ≈
+"the same bytes"; the wording bug made the two texts differ, so parity
+*could* have failed, but only on an input x compiled with a profile, and
+no x in its set had one. For the node differential, obs is what the
+program prints, and a change of wording prints nothing different, so
+it could never fail, whatever its inputs. Two different reasons for
+silence: the wrong inputs, and the wrong observation.
+
 ## Who could have seen it?
 
-Step through seven cases (two of them hypothetical). For each, the lit
-layers are the ones whose oracle and inputs could notice it:
+Step through seven cases (two of them hypothetical, and marked so).
+For each, the lit layers are those whose oracle and inputs could
+notice it:
 
 <OracleSteps client:visible />
 
-Look at the first two. The line deleted from the Rust builder in
-chapter 363 is the easy case: a Rust-only change on a corpus program.
-Parity reported 4 of its 186 files then, and the node differential
-showed the compiled program throwing a number.
+The first two are opposites. The line deleted from the Rust builder
+was a Rust-only change on a corpus program, so parity and the node
+differential both failed at once. The fuzzer's five finds (the chapter
+*SoA code generation in Rust* covered the write-order ones) were all
+in *both* engines, because the port mirrors the reference; parity
+cannot see a bug both share, so every one was found by a different
+oracle: the behaviour check, or the rule that the TypeScript engine
+must not crash on a valid program ("internal error: overlapping
+rewrites"). A port that copies its reference makes cross-engine checks
+blind to shared bugs; only an oracle outside both engines finds those.
 
-The fuzzer's five finds (chapter 371 covered the write-order ones) are
-the opposite case. All five were in *both* engines, because the port
-mirrors the reference. Parity can't see a bug both engines share, so
-every one of them was found by a different oracle: the behaviour
-check, or the rule that the TypeScript engine must not crash on a
-valid program ("internal error: overlapping rewrites"). A port that
-copies its reference makes cross-engine checks blind to shared bugs.
-Only an oracle outside both engines can find those.
+<Analogy title="checking a translation">
+Two people translate the same letter; comparing their translations
+catches a slip either one made alone, but if both misread the same
+smudged word, they agree perfectly and are both wrong. To catch that,
+you have to ask the person who wrote the letter.
+<span slot="breaks">The letter writer can always be asked; a program's
+behaviour is only observed on the inputs and options a test actually
+runs, which is exactly where the two hand-found bugs hid.</span>
+</Analogy>
 
 <Prompts ids={['ep-shared']} />
 
 ## Inputs, options, and what counts as equal
 
-Both hand-found bugs need `--profile`. No fixture was compiled with
-one, the fuzzer never passed one, and the wasm API still can't take
-one. An option no layer sets is untested in every layer.
+Both hand-found bugs needed `--profile`, and at the time no fixture was
+compiled with one, the fuzzer never passed one, and the wasm API still
+cannot take one: an option no layer sets is untested in every layer,
+however good the layers are. The second bug needed more, a profile no
+profiling run would ever write, because `viscosity profile` always
+writes numbers. The profile file is an input too, and every profile a
+test could have used came from the profiler, so the string `"20"` was
+outside every layer's reach: a layer finds only what its inputs can
+produce, which is why the fix added hand-written odd profiles rather
+than more profiled runs.
 
-The second bug needs more: a profile no profiling run would write. The
-profile file is an input too, and every input a test could give it came
-from `viscosity profile`, which always writes numbers. A layer finds
-only what its inputs can produce.
-
-Then there is what counts as equal. When an engine fails on a program,
-the fuzzer compares errors by *presence*, because oxc and acorn word
-their messages differently: "TS failed, Rust didn't" is a failure, two
-different messages are not. Every oracle has to settle this. Parity
-says bytes. The differential says printed output and the error message.
-The python3 test says stdout and the last line of stderr. The fuzzer
-says bytes for output, presence for errors. Each looser rule hides
-something, and each stricter one would fail on differences nobody cares
-about.
+Then there is what counts as equal.
+Parity says bytes; the differential says printed output and the error
+message; the python3 test says standard output and the last line of
+standard error; the fuzzer says bytes for output and presence for
+errors. Each looser rule hides something, and each stricter one would
+fail on differences nobody cares about.
 
 <Prompts ids={['ep-option', 'ep-input', 'ep-equal']} />
 
-## Shrinking the blind spots
-
-The cheap fixes followed from the map, and the engines now have them.
-Four profile fixtures and a random profile per fuzzer batch catch the
-wording, which is fixed. `profile_cli.rs` feeds odd profiles (strings,
-negative numbers, a top-level array) to both CLIs, which now share one
-rule and one set of errors. `early_errors.rs` checks, by presence,
-that both engines reject 108 invalid programs, and the fuzzer inserts
-early errors. One gap is left: the fuzzer is JavaScript only. The
-Python plugin had one ad hoc run of 800 random programs when it was
-ported (its commit message says so), but there is no committed Python
-fuzzer.
-
-<Prompts ids={['ep-python-fuzz']} />
+The fixes followed from the map, and the engines have them now: four
+profile fixtures and a random profile in every fuzzer batch;
+`profile_cli.rs`, which feeds odd profiles to both CLIs; and
+`early_errors.rs`, which checks that both engines reject 108 invalid
+programs and accept 77 valid ones close to them. One gap is left: the
+fuzzer generates JavaScript only. The Python plugin had one ad hoc run
+of 800 random programs when it was ported (its commit message says
+so), but there is no committed Python fuzzer.
 
 <Callout kind="engine" label="Under the hood">
-The fuzzer is cheap because two of its three engines run in-process: the
-TypeScript compiler and Node's `vm` are both JavaScript. The Rust engine
-is reached through its CLI, one `viscosity build a.js b.js ... -o dir/`
-call per batch of 250 files, so the cost is a few process starts per
-batch, not per program. The README puts the whole campaign at about
-50,000 programs: the five bugs turned up in about the first 8,000, and
-42,000 more after the fixes found nothing. Chapter 381 goes further.
+The fuzzer is cheap because two of its three engines run in the same
+process: the TypeScript compiler and Node's `vm` module are both
+JavaScript. The Rust engine is reached through its CLI, one
+`viscosity build a.js b.js ... -o dir/` call per batch of 250 files, so
+the cost is a few process starts per batch rather than per program.
+The README puts the campaign at about 50,000 programs: the five bugs
+turned up in roughly the first 8,000, and 42,000 more after the fixes
+found nothing. The chapter *Fuzzing the Rust engine* goes further.
 </Callout>
 
 ## Your turn
@@ -180,15 +247,9 @@ batch, not per program. The README puts the whole campaign at about
 
 - Each layer has an **oracle**: the TS fixtures (parity, wasm), the
   original program (node and python3 differentials), or both (fuzzer).
-- **Parity** catches divergence and is blind to shared bugs.
-  **Differentials** catch miscompiles but only on their inputs and
-  options.
-- The fuzzer's five finds were in **both engines**. They were found by
-  the behaviour and no-crash oracles, not by parity.
-- A bug hides where **no layer** feeds its input or option (`--profile`,
-  invalid programs, random Python) or where the **equality rule** is
-  loose (errors by presence).
-- **Engine parity** is a property you keep with several oracles, each
-  covering what the others can't.
+- **Parity** catches divergence and is blind to shared bugs; the
+  **differentials** catch miscompiles, but only on their inputs.
+- A bug hides where **no layer** feeds its input or option, or where
+  the **equality rule** is loose (errors by presence).
 
 <Quiz />

@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 376: the five test layers of engine/rust (parity.rs, the node and
+// The chapter TypeScript vs Rust: differential tests: the five test layers of engine/rust (parity.rs, the node and
 // python3 halves of differential.rs, the wasm build against the fixtures,
 // scripts/fuzz.mjs) and, for each kind of bug, which of them could notice
 // it given its oracle, inputs and options. Rows 1-4 and 6 are real cases
@@ -22,13 +22,13 @@ const LAYERS: { k: L; label: string; oracle: string }[] = [
 const none: Record<L, V> = { parity: 'no', node: 'no', py: 'no', wasm: 'no', fuzz: 'no' };
 
 const STATES: S[] = [
-  { title: 'Rust-only change, corpus program', v: { ...none, parity: 'yes', node: 'yes', wasm: 'yes', fuzz: 'maybe' }, note: 'Chapter 363 deleted one line of the Rust builder. Parity failed on throw_from_loop (the TS fixture disagrees), and so did the node differential (the program throws a number). The wasm build of that code would fail the same fixtures. The fuzzer only if it generates such a program.' },
+  { title: 'Rust-only change, corpus program', v: { ...none, parity: 'yes', node: 'yes', wasm: 'yes', fuzz: 'maybe' }, note: 'In the chapter Round-trip tests across engines, one line of the Rust builder was deleted on purpose. Parity failed on throw_from_loop (the TS fixture disagrees), and so did the node differential (the program throws a number). The wasm build of that code would fail the same fixtures. The fuzzer only if it generates such a program.' },
   { title: 'A miscompile in both engines', v: { ...none, fuzz: 'yes' }, note: 'Fuzz find 11: a checked write ran its bounds check before its right-hand side, in both engines. Every fixture agreed (both were wrong), and no corpus program had the pattern yet. The fuzzer’s behaviour oracle, the original program under node, found it.' },
   { title: 'Rust wording, only with --profile', v: { ...none }, note: '“about 20 (measured) elements”. Every layer that compares text could see it, but none of them passed a profile: no fixture variant, no fuzzer option, and the wasm API has no parameter for one. Since the fix, four profile fixtures and the fuzzer’s random profiles would catch it.' },
-  { title: 'A profile saying "maxLength": "20"', v: { ...none }, note: 'Chapter 374: Rust skips the string and transforms; TypeScript compares "20" < 64 and keeps the array. Different decisions, but no layer passed a profile, and viscosity profile only ever writes numbers. Now both CLIs refuse the entry with the same error, and profile_cli.rs checks odd files in both.' },
+  { title: 'A profile saying "maxLength": "20"', v: { ...none }, note: 'From the chapter PGO in Rust: Rust skipped the string and transformed; TypeScript compared "20" < 64 and kept the array. Different decisions, but no layer passed a profile, and viscosity profile only ever writes numbers. Now both CLIs refuse the entry with the same error, and profile_cli.rs checks odd files in both.' },
   { title: 'Python divergence outside the corpus', v: { ...none }, note: 'Hypothetical. The python3 differential and the Python fixtures cover 27 programs. The fuzzer generates JavaScript only, so a Python difference on any other program has no layer at all.' },
-  { title: 'Carets early after an emoji', v: { ...none }, note: 'Chapter 373: both engines count code points, so the frames agree byte for byte, and nothing runs differently. Parity is blind to shared mistakes, and behaviour tests are blind to text.' },
-  { title: 'Differs only in the wasm build', v: { ...none, wasm: 'yes' }, note: 'Hypothetical: something that depends on the target (wasm32 has 32-bit pointers, for one). Only the layer that runs the wasm build against the fixtures can see it. My run of the committed build: 190 of 190.' },
+  { title: 'Carets early after an emoji', v: { ...none }, note: 'From the chapter explain in Rust: both engines count code points, so the frames agree byte for byte, and nothing runs differently. Parity is blind to shared mistakes, and behaviour tests are blind to text.' },
+  { title: 'Differs only in the wasm build', v: { ...none, wasm: 'yes' }, note: 'Hypothetical: something that depends on the target (wasm32 has 32-bit pointers, for one). Only the layer that runs the wasm build against the fixtures can see it. Run against the committed build for this chapter: 190 of 190.' },
 ];
 
 export default function OracleSteps() {
@@ -52,7 +52,7 @@ export default function OracleSteps() {
                   {v === 'yes' ? '✓' : v === 'maybe' ? '?' : '–'}
                 </T>
               </Box>
-              <T x={x + 36} y={130} size={10} anchor="middle" fill={tok('muted')}>{l.oracle}</T>
+              <T x={x + 36} y={130} size={11} anchor="middle" fill={tok('muted')}>{l.oracle}</T>
             </g>
           );
         })}

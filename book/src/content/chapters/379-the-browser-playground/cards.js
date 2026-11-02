@@ -33,17 +33,9 @@ export const prompts = {
     q: 'When does the playground download the Rust engine’s `.wasm`?',
     a: 'Only the first time a reader picks Rust (or a page sets `engine="rust"`). TS-only pages never fetch it.',
   },
-  'public-not-bundled': {
-    q: 'Why does `build.mjs --book` rewrite the default module URL in the glue?',
-    a: 'The default points next to the glue file, which the bundler would try to bundle. The rewrite points it at `/wasm/viscosity_wasm_bg.wasm`, served as a plain file from `public/`.',
-  },
   'memo-promise': {
     q: 'How does `play.worker.ts` make sure the module is loaded only once?',
     a: '`rust ??= import(...).then(init)`: every request awaits the same promise. On failure it resets `rust` to `null`, so a later request can try again.',
-  },
-  'why-worker': {
-    q: 'Why does the Rust engine compile in a worker?',
-    a: 'Loading and compiling then happen on a background thread, and a broken instance can be thrown away whole with `terminate()`.',
   },
   'ticket': {
     q: 'How does the playground ignore a stale compile result?',
@@ -59,15 +51,11 @@ export const prompts = {
   },
   'refcell-stuck': {
     q: 'After a trap, why can’t you just keep using the instance?',
-    a: 'Nothing unwound, so no destructors ran. In the author’s test a `RefCell` stayed borrowed forever, and every later call trapped.',
+    a: 'Nothing unwound, so no destructors ran. In this chapter’s test a `RefCell` stayed borrowed forever, and every later call trapped.',
   },
   'fatal-new-worker': {
     q: 'What does the playground do with a reply marked `fatal`?',
     a: 'Terminates the worker and forgets it. The next compile starts a fresh worker, which loads a fresh instance.',
-  },
-  'smoke-playground': {
-    q: 'Name three things `scripts/smoke.mjs` checks about the Rust engine in the playground.',
-    a: 'No `.wasm` is fetched on TS; one fetch of `/wasm/viscosity_wasm_bg.wasm` after the toggle; identical code and decisions on both engines (also: Run both agrees, switching back works).',
   },
 };
 
@@ -211,12 +199,25 @@ fn a_stale_fatal_still_kills_it() {
       'In `reply`, deal with `Fatal` *before* the ticket check: a broken instance is broken whichever edit broke it.',
       'A `match` with an or-pattern, `Reply::Error(e) | Reply::Fatal(e) => …`, formats both kinds of error in one arm.',
     ],
-    walkthrough: `This is \`compileNow\` and \`rustCompiler\` from \`book/src/components/playground/Playground.tsx\`, reduced to their state.
+    walkthrough: `**How to think about it.** This is \`compileNow\` and \`rustCompiler\` from \`book/src/components/playground/Playground.tsx\`, reduced to their state: no messages, no download, only the four fields that decide what happens. Two rules matter, and the trick is to see that they are about different things. The ticket rule is about the *screen*: only the newest compile's answer may be shown. The fatal rule is about the *worker*: a trap means the instance is broken, whichever compile caused it. So they are two separate steps in \`reply\`, and the worker step must come first, before the ticket check can return early.
 
-- **The ticket.** \`compileNow\` begins with \`const ticket = ++latest.current\`, and its \`show\` helper returns early when \`ticket !== latest.current\`. Your \`reply\` does the same. The TypeScript engine shares the counter, which is why switching engines also makes old Rust replies stale.
-- **Fatal first.** In \`rustCompiler\`, the callback for each request runs \`if (r.fatal) { w?.terminate(); w = null; }\` before anything is shown. A stale reply can still report a trap, and the instance it came from is just as broken. \`a_stale_fatal_still_kills_it\` checks that order.
-- **Lazy restart.** Nothing starts a new worker at the moment of the crash. \`(w ?? start()).postMessage(...)\` starts one when the next compile needs it, so a reader who stops typing costs nothing.
-- **What the model leaves out.** Messages, the 1.4 MB fetch, and the status line (“Loading the Rust engine…” comes back after a fatal reply, because \`rustReady\` is reset).`,
+**The solution, line by line.**
+
+- \`fn send(&mut self) -> u32 {\` takes \`&mut self\` because it changes the state, and returns the new ticket.
+- \`if !self.worker { self.worker = true; self.started += 1; }\` starts a worker only when there is none. This is the lazy restart: after a crash nothing happens until the next compile, as in the real code's \`(w ?? start()).postMessage(...)\`.
+- \`self.latest += 1; self.latest\` makes the ticket: one more than the newest so far, stored so later replies can be compared with it, and returned (the last expression of a block is its value).
+- \`fn reply(&mut self, ticket: u32, r: Reply) {\` handles one answer.
+- \`if let Reply::Fatal(_) = r { self.worker = false; }\` kills the worker on a trap, stale or not. \`if let\` is a \`match\` with one interesting arm; \`_\` ignores the message here.
+- \`if ticket != self.latest { return; }\` is the ticket rule: a newer compile has started since this one, so its answer is dropped.
+- \`self.shown = match r { Reply::Code(c) => c, Reply::Error(e) | Reply::Fatal(e) => { format!("error: {e}") } };\` sets the screen. The or-pattern \`Reply::Error(e) | Reply::Fatal(e)\` binds \`e\` in both cases, so one arm formats both kinds of error. \`match r\` moves \`r\`, which is fine because we are done with it.
+
+**Common wrong attempts.**
+
+- *No ticket check.* Then whichever reply arrives last wins, and an old edit's result, arriving late, overwrites the newest one. The TypeScript engine shares the counter in the real code, which is why switching engines also makes old Rust replies stale.
+- *Checking the ticket first.* Returning early for a stale reply also skips the fatal rule, so a stale trap leaves the broken worker in use and every later compile goes to it; \`a_stale_fatal_still_kills_it\` checks that order.
+- *Starting a fresh worker at once on a fatal reply.* It works, but it costs a 1.4 MB download for a reader who may have stopped typing; the real code waits for the next compile.
+
+What the model leaves out: the messages, the fetch, and the status line ("Loading the Rust engine…" comes back after a fatal reply, because \`rustReady\` is reset).`,
     wrong: [
       {
         code: `${TYPES}
@@ -309,7 +310,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the author’s test, after a trap, an unrelated exported function still worked. Why does the playground replace the worker anyway?',
+    q: 'In the experiment in this chapter, after a trap, an unrelated exported function still worked. Why does the playground replace the worker anyway?',
     options: [
       { t: 'Because terminated workers are faster', why: 'Starting a worker and instantiating the module again costs time, not saves it.' },
       { t: 'Because the trap deletes the module from memory', why: 'The instance and its memory are still there, which is the problem: in whatever state the trap left them.' },
@@ -322,14 +323,6 @@ export const quiz = [
       { t: 'A failed download would stick: every later compile would get the same rejected promise', correct: true, why: '`??=` only assigns when the variable is null, so the rejected promise would be reused forever.' },
       { t: 'The module would be downloaded twice', why: 'The reset happens only on failure.' },
       { t: 'Nothing: promises retry by themselves', why: 'A settled promise never changes. Retrying means making a new one.' },
-    ],
-  },
-  {
-    q: 'What does `scripts/smoke.mjs` compare after pressing the Rust toggle on chapter 247’s Playground?',
-    options: [
-      { t: 'That the Rust engine is faster than the TS one', why: 'It doesn’t time anything; speed is chapter 380’s question.' },
-      { t: 'That the code and the decisions text are identical to the TS engine’s', correct: true, why: 'The parity guarantee, checked in a real browser. It also runs both versions and switches back.' },
-      { t: 'That the syntax errors are worded the same', why: 'They aren’t: oxc and acorn word them differently, and the AUTHORING guide says so.' },
     ],
   },
 ];

@@ -9,10 +9,6 @@ export const prompts = {
     q: 'The Python source uses a list comprehension. What does the Rust plugin do?',
     a: 'Fails closed: the parser’s `PySyntaxError` makes it lower an empty module, so nothing is reported and the file is emitted unchanged.',
   },
-  'py-bytes': {
-    q: 'Why may the Python tokenizer use byte offsets and still cut where the reference’s UTF-16 offsets do?',
-    a: 'Everything it inspects is ASCII; non-ASCII text can only be inside strings and comments, which it skips whole.',
-  },
   'py-depth': {
     q: 'What does a line break inside `( )` produce, and why?',
     a: 'No token: with bracket depth above 0 it is whitespace, and the next line’s indentation isn’t measured. The call stays one logical line.',
@@ -32,10 +28,6 @@ export const prompts = {
   'py-literal': {
     q: 'Why are only literal dataclass defaults modelled?',
     a: 'Python evaluates a default once, at class definition, but the emitter copies its text to every call. Only a literal gives the same value both ways.',
-  },
-  'py-rebound': {
-    q: 'When is a dataclass modelled, given `P = Twice` may come later?',
-    a: 'Only when its `class` statement is the only module-level statement binding the name (counted in `module_defs`).',
   },
   'py-tests': {
     q: 'What holds the Rust Python plugin to the reference?',
@@ -222,15 +214,32 @@ fn call_is_func_args_then_keyword_values() {
     assert_eq!(names(&a, c), vec!["f", "x", "w"]);
 }`,
     hints: [
+      'You need one `match` arm per kind, each pushing child ids into a `Vec<Id>` that you return. Leaves have no children.',
       'Start with `use Kind::*;` and `match &a.nodes[id] { ... }`. Matching on a reference binds the fields by reference, so `target` is a `&Id`: push `*target`.',
       '`out.extend(body)` adds every id of a `&Vec<Id>` (an iterator of `&Id` works with `extend` for `Copy` types).',
       'For keywords, only the value is a child: `for (_, v) in kws { out.push(*v); }`.',
     ],
-    walkthrough: `This is \`Ast::children\` from \`engine/rust/crates/frontend-python/src/parser.rs\`, cut down to five kinds.
+    walkthrough: `**How to think about it.** This is \`Ast::children\` from \`engine/rust/crates/frontend-python/src/parser.rs\`, cut down to five kinds. The function has one job: given a node, return the ids of its children, in a fixed order. The order is not yours to choose. The TypeScript reference builds each node as an object, \`{ target, iter, body }\`, and its generic walk visits the keys in the order they were created; the Rust arena has fields, not keys, so you write that order down by hand. Start from the shape every Rust "do something per kind" function has: a \`match\` on the node, one arm per kind, each arm pushing ids into a vector. Then go through the kinds one at a time and copy the order from the prompt.
 
-- **Why spell the order out?** The reference walks a node’s keys in the order its parser created them (\`{ target, iter, body }\`). An arena node has fields, not keys, so the port lists them by hand, kind by kind. Any other order still visits every node, but the names an unmodelled statement reads would be emitted in another order, and so would \`explain\`’s reasons.
-- **Keywords.** The reference stores keyword arguments as \`{ name, value }\` objects; its walk descends into \`value\` only. Here a keyword is \`(String, Id)\`, and only the \`Id\` is a child.
-- **The wrong attempts** each swap one pair: keyword values before positional arguments, or the iterable before the loop variable. Every node is still visited, which is exactly why such a slip survives a test that only counts nodes, and fails one that checks the order.`,
+**The solution, line by line.**
+
+- \`use Kind::*;\` brings the variants into scope, so the arms can say \`Name(_)\` rather than \`Kind::Name(_)\`.
+- \`let mut out = Vec::new();\` is the list we will return. Its type, \`Vec<Id>\`, is worked out from the return type.
+- \`match &a.nodes[id] {\` looks up the node in the arena by its index and matches on a *reference* to it. Matching on a reference binds each field by reference too, so inside an arm \`target\` is a \`&Id\`, not an \`Id\`; that is why the pushes below say \`*target\`.
+- \`Name(_) | Num(_) => {}\` handles the leaves: a name or a number has no children, so the arm does nothing and \`out\` stays empty.
+- \`Assign { target, value } => { out.push(*target); out.push(*value); }\`: first the thing assigned to, then the value, as the reference created the keys.
+- \`For { target, iter, body } => {\` takes the loop apart. \`out.push(*target);\` adds the loop variable, \`out.push(*iter);\` the list being looped over, and \`out.extend(body);\` every statement of the body, in order. \`extend\` accepts \`&Vec<Id>\` here because iterating a borrowed vector gives \`&Id\` items, and \`Vec<Id>\` can be extended with references to a \`Copy\` type.
+- \`Call { func, args, kws } => {\`: \`out.push(*func);\` adds the function being called, \`out.extend(args);\` the positional arguments, and \`for (_, v) in kws { out.push(*v); }\` the value of each keyword argument. The \`_\` throws away the keyword's name, a \`String\`, which is not a node; only the value is a child.
+- \`out\` (after the \`match\`) returns the list.
+
+With that, \`names\` (which visits a node, then its children in the order you return them) gives \`p, ps, q, p\` for \`for p in ps: q = p\`, and \`f, x, w\` for \`f(x, 2, k=w)\`, which is what the tests expect.
+
+**Common wrong attempts.**
+
+- *Keyword values before the positional arguments.* Every node is still visited, so a test that only counted nodes would pass; but \`f(x, 2, k=w)\` now walks \`f, w, x\`, and in the real engine the reads an unmodelled statement emits, and so the lines of \`explain\`, would come out in another order.
+- *The iterable before the loop variable.* The same mistake in the \`For\` arm: \`ps\` is visited before \`p\`, but the reference created \`target\` first.
+- *Forgetting the keywords.* Then a name that appears only in \`k=w\` is never seen by the walk at all, which in the engine means a read that is never emitted.
+- *Matching on \`a.nodes[id]\` without the \`&\`.* That tries to move the node out of the vector, and the compiler stops with "cannot move out of index of \`Vec<Kind>\`"; matching on a reference is the fix.`,
     wrong: [
       {
         code: `type Id = usize;
@@ -470,7 +479,7 @@ export const quiz = [
       { t: 'When line 2 ended inside an open bracket', correct: true, why: 'With depth above 0 the line break is whitespace, and line 3’s width is never measured.' },
       { t: 'When line 3 is a comment', why: 'A comment-only line is skipped too, but that isn’t what the question describes.' },
       { t: 'Never: 2 is always inconsistent', why: 'Only widths measured at the start of a logical line are compared.' },
-      { t: 'When tabs are used', why: 'A tab just moves the width to the next multiple of 8.' },
+      { t: 'When tabs are used', why: 'A tab only moves the width to the next multiple of 8.' },
     ],
   },
   {
@@ -495,14 +504,6 @@ export const quiz = [
       { t: 'Every numeric field', why: 'An int stored in `array(\'d\')` comes back as a float, and prints as `1.0`.' },
       { t: 'Only fields proven to always hold floats; ints and anything else get lists', correct: true, why: 'So `count: int` gets a list and `weight: float` a typed column.' },
       { t: 'Only fields named in an annotation', why: 'The annotation chooses the layout of the list, not the column types.' },
-    ],
-  },
-  {
-    q: 'The old reference tokenizer hung on a file ending `k = 0x1`. Why didn’t the Rust port?',
-    options: [
-      { t: 'Rust has no regular expressions', why: 'There are regex crates; the port just doesn’t need one here.' },
-      { t: 'Past the end, `s.get(k)` is `None`, read as byte 0, which is not a hex digit', correct: true, why: 'The reference read `undefined`, which `/[0-9a-fA-F_]/` tests as the string "undefined", matching forever.' },
-      { t: 'Rust stops loops after a time limit', why: 'No such thing: the loop ends because the character test fails.' },
     ],
   },
 ];

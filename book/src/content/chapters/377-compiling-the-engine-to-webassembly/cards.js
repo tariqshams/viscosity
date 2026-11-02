@@ -35,20 +35,12 @@ export const prompts = {
     a: '`nodejs`: CommonJS glue that reads the file synchronously, so functions work right after `require`. `web`: an ES module whose `init()` fetches and instantiates it first.',
   },
   'name-section': {
-    q: 'Where did most of wasm-opt’s 304 KB saving come from?',
-    a: 'Dropping the name section (about 200 KB of function names). The code itself shrank by about 8%.',
-  },
-  'gzip-saving': {
-    q: 'Gzipped, how much smaller did wasm-opt make the engine?',
-    a: 'About 20 KB, from 438 KB to 418 KB: under 5%, because names compress well.',
-  },
-  'opt-optional': {
-    q: 'What does `build.mjs` do if it can’t find wasm-opt?',
-    a: 'It carries on and says the `.wasm` is not post-optimized. The result works, about 300 KB larger.',
+    q: 'Where did most of wasm-opt’s 386 KB saving come from?',
+    a: 'Dropping the name section (257 KB of function names). The code itself shrank by about 9%.',
   },
   'reproducible': {
     q: 'Rebuilt from the same commit in an empty directory, was the `.wasm` the same?',
-    a: 'Yes: byte for byte the same as the copy committed in `book/public/wasm`.',
+    a: 'Yes: byte for byte the same as the copy committed in `book/public/wasm`, so the book serves the engine in its own tree.',
   },
 };
 
@@ -241,12 +233,25 @@ fn no_lock_entry_is_an_error() {
       'Keep the iterator from `lock.lines()` in a variable, so that after the match `lines.next()` gives the very next line. `strip_prefix` and `strip_suffix` return `Option`s, so `?` chains them.',
       'In `check`, `ok_or("…")?` turns the `None` into an `Err(String)` (a `&str` converts with `From`). The CLI’s version is `out.split_whitespace().last()`, which also drops the newline.',
     ],
-    walkthrough: `This is step 2 of \`engine/rust/packages/wasm/build.mjs\`, in Rust. The JavaScript does it with one regular expression on \`Cargo.lock\` (\`name = "wasm-bindgen"\\nversion = "([^"]+)"\`) and \`split(' ').pop()\` on the CLI’s output.
+    walkthrough: `**How to think about it.** This is step 2 of \`engine/rust/packages/wasm/build.mjs\`, in Rust. The JavaScript does it with one regular expression on \`Cargo.lock\` (\`name = "wasm-bindgen"\\nversion = "([^"]+)"\`) and \`split(' ').pop()\` on the CLI's output. Before writing code, look at what a lockfile entry is: a \`[[package]]\` header, then \`name = "..."\` on one line and \`version = "..."\` on the very next. So the job splits in two: find the right \`name\` line, exactly, and read the line after it. The second function then only has to pull the last word out of \`--version\` and compare.
 
-- **Why exact lines.** The lockfile lists \`wasm-bindgen\`, \`wasm-bindgen-macro\`, \`wasm-bindgen-shared\` and more. A test with \`starts_with\` stops at whichever comes first. In the test lockfile that is the macro crate, at a different version, so the check would demand the wrong CLI. The JS regex is safe for the same reason: its \`"\` closes the name.
-- **Why the next line.** Cargo writes \`version\` straight after \`name\` in every \`[[package]]\`, so the line after the match is the version.
-- **Why lifetimes.** \`locked\` returns a slice *of the lockfile*, not a copy. \`'a\` says the answer lives as long as \`lock\`, not as long as \`name\`.
-- **Why refuse instead of warn.** wasm-bindgen’s CLI and crate share a format that changes between versions, and the CLI refuses a file from a different version anyway (chapter 357). The check turns that refusal into a message that says *which* version to install.`,
+**The solution, line by line.**
+
+- \`fn locked<'a>(lock: &'a str, name: &str) -> Option<&'a str> {\` returns a slice *of the lockfile*, not a copy, so the lifetime \`'a\` ties the answer to \`lock\`. \`name\` has no lifetime on the result, because the answer never points into it.
+- \`let want = format!("name = \\"{name}\\"");\` (split over two lines in the solution) builds the whole line we are looking for, quotes included.
+- \`let mut lines = lock.lines();\` keeps the iterator in a variable, so we can take the next line from the same place after finding the match.
+- \`while let Some(l) = lines.next() { if l == want { ... } }\` walks the lines and compares each with the whole wanted line using \`==\`, not a prefix test.
+- Inside the match, \`let v = lines.next()?;\` takes the very next line (and returns \`None\` if the file ends there). \`let v = v.strip_prefix(V)?;\` removes \`version = "\` from the front (\`V\` is that text, defined above), and \`return v.strip_suffix('"');\` removes the closing quote and returns what is left. Each \`strip_\` returns an \`Option\`, so a line of the wrong shape gives \`None\` rather than a wrong version.
+- \`None\` after the loop: the crate is not in the lockfile.
+- In \`check\`, \`let name = "wasm-bindgen";\` names the crate, and \`let want = locked(lock, name).ok_or("wasm-bindgen is not in Cargo.lock")?;\` turns a missing entry into the error; the \`&str\` becomes a \`String\` through \`From\`, which \`?\` applies for us. (The backslash at the end of the string's first line continues it on the next line without a line break.)
+- \`let have = out.split_whitespace().last().unwrap_or("none");\` takes the last word of \`wasm-bindgen 0.2.106\\n\`, which also drops the newline; empty output gives \`"none"\`.
+- \`if have == want { return Ok(()); }\` is the happy path, and the final \`Err(format!("wasm-bindgen-cli {want} is required (found {have})"))\` names exactly what to install.
+
+**Common wrong attempts.**
+
+- *A prefix match.* \`l.starts_with("name = \\"wasm-bindgen")\` also matches \`wasm-bindgen-macro\` and \`wasm-bindgen-shared\`, and in the test lockfile the macro crate comes first, at a different version, so the check demands the wrong CLI. The JavaScript regular expression is safe for the same reason the exact line is: its closing \`"\` ends the name.
+- *Comparing the whole \`--version\` output.* The output is \`wasm-bindgen 0.2.106\`, program name included, so trimming the newline is not enough; compare only the last word.
+- *Warning instead of refusing.* wasm-bindgen's CLI and crate share a format that changes between versions, and the CLI refuses a file from another version anyway (the chapter *The Rust workspace* pinned it for this reason). The check only turns that refusal into a message that says which version to install.`,
     wrong: [
       {
         code: `${LOCK_DOC}fn locked<'a>(
@@ -334,7 +339,7 @@ export const quiz = [
     q: 'Which of these does `build.mjs` do that a single `wasm-pack build` does not?',
     options: [
       { t: 'Compile the crate for `wasm32-unknown-unknown`', why: 'Both do: wasm-pack runs cargo too.' },
-      { t: 'Produce the `nodejs` and the `web` glue in one package', correct: true, why: 'wasm-pack takes one `--target` per build. `build.mjs` runs wasm-bindgen twice and the package picks one per environment (chapter 378).' },
+      { t: 'Produce the `nodejs` and the `web` glue in one package', correct: true, why: 'wasm-pack takes one `--target` per build. `build.mjs` runs wasm-bindgen twice and the package picks one per environment (the chapter *The npm package*).' },
       { t: 'Run wasm-opt on a release build', why: 'wasm-pack does that by default for release builds.' },
       { t: 'Write a `package.json`', why: 'wasm-pack writes one into `pkg`. `build.mjs` actually deletes the one wasm-bindgen writes and keeps a hand-written one.' },
     ],
@@ -348,27 +353,18 @@ export const quiz = [
     ],
   },
   {
-    q: 'wasm-opt cut the file from 1,449,352 to 1,145,498 bytes. Gzipped, the saving was about 20 KB. Why so much less?',
+    q: 'wasm-opt cut the file from 1,759,823 to 1,373,422 bytes. Gzipped, the saving was about 33 KB. Why so much less?',
     options: [
-      { t: 'gzip undoes wasm-opt’s optimizations', why: 'Compression is lossless; it can’t undo anything. It just shrinks repetitive bytes well.' },
-      { t: 'Most of the saving was the name section, and names compress very well', correct: true, why: 'About 200 KB of the 304 KB were function names, which are highly repetitive text.' },
-      { t: 'wasm-opt makes the code larger but faster', why: 'The code section shrank too, by about 8%.' },
-    ],
-  },
-  {
-    q: 'What does the `nodejs` target’s glue do when you `require` it?',
-    options: [
-      { t: 'Returns a promise you must await before calling `compile`', why: 'That is the `web` target’s `init()`. The Node glue loads synchronously.' },
-      { t: 'Fetches the `.wasm` over HTTP', why: 'It reads the file from disk next to the glue.' },
-      { t: 'Reads the `.wasm` with `readFileSync`, compiles and instantiates it on the spot', correct: true, why: 'So `compile` works as soon as `require` returns.' },
-      { t: 'Starts a worker thread', why: 'Nothing in the glue starts a thread.' },
+      { t: 'gzip undoes wasm-opt’s optimizations', why: 'Compression is lossless; it can’t undo anything. It only shrinks repetitive bytes well.' },
+      { t: 'Most of the saving was the name section, and names compress very well', correct: true, why: '257 KB of the 386 KB were function names, which are highly repetitive text.' },
+      { t: 'wasm-opt makes the code larger but faster', why: 'The code section shrank too, by about 9%.' },
     ],
   },
   {
     q: 'You install wasm-bindgen-cli 0.2.130, but `Cargo.lock` pins the crate at 0.2.106. What happens with `build.mjs`?',
     options: [
       { t: 'It stops after cargo, before wasm-bindgen runs, and names the version to install', correct: true, why: 'Step 2 compares `--version` with the lockfile and throws an error that includes the `cargo install` command to run.' },
-      { t: 'It works: newer CLIs read older files', why: 'They don’t. The CLI insists on an identical schema version (chapter 357).' },
+      { t: 'It works: newer CLIs read older files', why: 'They don’t. The CLI insists on an identical schema version (the chapter *The Rust workspace*).' },
       { t: 'It downloads the right CLI automatically', why: '`build.mjs` installs nothing. It checks, and tells you what to install.' },
     ],
   },

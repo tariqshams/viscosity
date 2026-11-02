@@ -2,7 +2,7 @@ import { StepFrame, useSteps } from '../../viz/stepper';
 import { Svg, T, tok } from '../../viz/svg';
 import pkg from '../../../../../engine/rust/packages/wasm/package.json';
 
-// Chapter 378: how "@viscosity/wasm" resolves for different importers.
+// The chapter The npm package: how "@viscosity/wasm" resolves for different importers.
 // The exports map is read from engine/rust/packages/wasm/package.json, and
 // resolve() follows Node's rules for conditional exports: keys in object
 // order, the first one whose condition is active wins, "default" always
@@ -56,7 +56,7 @@ export default function ExportsSteps() {
     <StepFrame title="Which file does @viscosity/wasm give you?" steps={s} note={st.note}>
       <Svg w={400} h={top + rows.length * lh + 34} title="The conditional exports of @viscosity/wasm, and the file each kind of importer resolves to">
         <T x={8} y={12} size={11} weight={700}>{st.who}</T>
-        <T x={8} y={30} size={10} mono fill={tok('muted')}>{`conditions: ${[...st.conds, 'default'].join(', ')}`}</T>
+        <T x={8} y={30} size={11} mono fill={tok('muted')}>{`conditions: ${[...st.conds, 'default'].join(', ')}`}</T>
         {rows.map((row, i) => {
           const y = top + i * lh;
           const on = !flip && hit(row);
@@ -65,8 +65,8 @@ export default function ExportsSteps() {
           return (
             <g key={row.path.join('/')} opacity={dim ? 0.35 : 1}>
               {on && <rect x={x - 4} y={y - 8} width={388 - x} height={16} rx={3} fill={tok('brand', 0.15)} />}
-              <T x={x} y={y} size={10} mono weight={on ? 700 : undefined} fill={on ? tok('brand') : undefined}>{`"${row.key}"${row.file ? ':' : ': {'}`}</T>
-              {row.file && <T x={x + 70} y={y} size={10} mono fill={on ? tok('brand') : tok('ink', 0.8)}>{row.file.replace('./dist/', 'dist/').replace('viscosity_wasm', 'v…')}</T>}
+              <T x={x} y={y} size={11} mono weight={on ? 700 : undefined} fill={on ? tok('brand') : undefined}>{`"${row.key}"${row.file ? ':' : ': {'}`}</T>
+              {row.file && <T x={x + 70} y={y} size={11} mono fill={on ? tok('brand') : tok('ink', 0.8)}>{row.file.replace('./dist/', 'dist/').replace('viscosity_wasm', 'v…')}</T>}
             </g>
           );
         })}

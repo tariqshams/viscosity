@@ -21,10 +21,6 @@ export const prompts = {
     q: 'How does esbuild get the right native binary onto your machine through npm?',
     a: 'It lists 26 platform packages as `optionalDependencies`. Each declares `os` and `cpu`, and npm installs only the one that matches.',
   },
-  'native-cli': {
-    q: 'What does the Rust CLI from `cargo build --release` run on?',
-    a: 'Only x86-64 Linux with glibc: a 2.8 MB ELF executable. Every other platform needs its own build.',
-  },
   'exports-order': {
     q: 'In a conditional `"exports"` map, which entry does Node pick?',
     a: 'The first key, in object order, whose condition is active. `"default"` always matches, so it goes last.',
@@ -32,10 +28,6 @@ export const prompts = {
   'exports-fallthrough': {
     q: 'A nested condition object matches nothing. What does Node do?',
     a: 'It goes back and tries the parent’s remaining keys, like a nested `if` that falls through.',
-  },
-  'commonjs-marker': {
-    q: 'Why does `dist/node` contain a one-line `package.json`, `{ "type": "commonjs" }`?',
-    a: 'The package says `"type": "module"`, but the nodejs glue is CommonJS. The nearer `package.json` tells Node how to read the files in that folder.',
   },
   'two-copies': {
     q: 'Why does the tarball contain the 1.4 MB `.wasm` twice?',
@@ -52,10 +44,6 @@ export const prompts = {
   'smoke-what': {
     q: 'What does `smoke.mjs` check?',
     a: 'It packs and installs the package in an empty folder, then compiles 60 corpus programs three ways (require, import, web with bytes): all must match the TS CLI. It type-checks a consumer too.',
-  },
-  'no-bin': {
-    q: 'Why does `@viscosity/wasm` have no `bin`, unlike `@viscosity/cli`?',
-    a: 'It is a library to import, for tools, editors and browsers. The command is still the TS CLI, or the native binary built from source.',
   },
 };
 
@@ -213,11 +201,25 @@ export const exercises = {
       'Loop over the map’s entries, not over `conds`. The importer’s list says what is active; the map says what to try first.',
       'When an entry applies, don’t just `return resolve(v, conds)`: a nested map can match nothing, and then the next entry of the parent must get its turn.',
     ],
-    walkthrough: `This is the rule in Node’s documentation on conditional exports: “key order is significant … earlier entries have higher priority”, “"default" … always matches”, and “if a nested condition does not have any mapping it will continue checking the remaining conditions of the parent condition”.
+    walkthrough: `**How to think about it.** This is the rule in Node's documentation on conditional exports: "key order is significant … earlier entries have higher priority", "\"default\" … always matches", and "if a nested condition does not have any mapping it will continue checking the remaining conditions of the parent condition". Read those three sentences as three requirements on your loop. First, the loop walks *the map's* entries, in the map's order, not the importer's list of conditions. Second, \`"default"\` counts as active for everyone. Third, an entry that applies is not the end: if its value is itself a map that matches nothing, you carry on with the next entry. And because a value is either a file or another map, to any depth, the function calls itself on each nested value, the same shape as the type.
 
-- **Why map order.** \`map_order_wins_not_caller_order\` is TypeScript under \`nodenext\`. Its conditions include \`"types"\`, and the top level of the map has a \`"types"\` key too, for browsers. But \`"node"\` comes first in the map, so the answer is the \`.d.ts\` *inside* \`"node"\`: the types that match the glue Node will really load.
-- **Why fall through.** In \`a_nested_miss_falls_through\`, \`"node"\` applies but only offers an \`"import"\` file, and the importer used \`require\`. Node backs out and tries \`"default"\`. Returning the nested result directly would give \`None\`.
-- **Why recursion.** A value is a file or another map, to any depth, so the function has the same shape as the type: a \`match\` and a call on each nested value.
+**The solution, line by line.**
+
+- \`let cs = match t { File(f) => return Some(*f), Conds(cs) => cs, };\`: a file is its own answer, so return it at once (the \`*\` copies the \`&'static str\` out of the reference \`f\`). Otherwise keep the list of conditions in \`cs\`.
+- \`for (k, v) in cs {\` walks the entries in the order they were written, which is the order that decides priority.
+- \`let on = *k == "default" || conds.contains(k);\`: an entry applies if its key is \`"default"\` or one of the importer's active conditions.
+- \`if !on { continue; }\` skips an entry that does not apply.
+- \`let r = resolve(v, conds);\` resolves the value, which may be a file or a nested map.
+- \`if r.is_some() { return r; }\`: a nested answer wins. If the nested map matched nothing, \`r\` is \`None\`, and the loop carries on with the parent's next entry, which is the fall-through rule.
+- \`None\` after the loop: nothing applied.
+
+On the tests: \`map_order_wins_not_caller_order\` is TypeScript under \`nodenext\`. Its conditions include \`"types"\`, and the top level of the map has a \`"types"\` key too, for browsers; but \`"node"\` comes first in the map, so the answer is the \`.d.ts\` *inside* \`"node"\`, the types that match the glue Node will really load. In \`a_nested_miss_falls_through\`, \`"node"\` applies but only offers an \`"import"\` file, and the importer used \`require\`, so the loop backs out of \`"node"\` and tries \`"default"\`.
+
+**Common wrong attempts.**
+
+- *Looping over \`conds\` instead of the map.* Then the importer's order decides, and TypeScript, which lists \`"types"\` first, would get the browser's types under Node.
+- *Returning the nested result directly* (\`return resolve(v, conds);\`). A nested map that matches nothing then gives \`None\` for the whole lookup, and \`"default"\` is never tried.
+- *Forgetting that \`"default"\` always matches.* An importer that sets neither \`"node"\` nor \`"browser"\` then gets nothing at all, where Node would give it the web glue.
 
 The diagram in this chapter runs the same algorithm, in TypeScript, on the real \`package.json\`.`,
     wrong: [
@@ -283,14 +285,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `@viscosity/wasm` need no `os`, `cpu` or platform packages?',
-    options: [
-      { t: 'Because Rust binaries run on every OS', why: 'Native Rust binaries are per platform: the release CLI is an x86-64 Linux ELF file.' },
-      { t: 'Because npm compiles the Rust code during install', why: 'npm runs no compiler; the package ships compiled files.' },
-      { t: 'Because WebAssembly is the same file everywhere, and the JS engine runs it', correct: true, why: 'Node or the browser compiles the module for whatever machine it is on.' },
-    ],
-  },
-  {
     q: 'The exports map lists `"node"`, then `"browser"`, then `"types"`, then `"default"`. A bundler building for the web asks with `["browser", "import"]`. What does it get?',
     options: [
       { t: 'The nodejs glue, because `"node"` is listed first', why: 'Listed first, but not active: `"node"` isn’t among the bundler’s conditions, so it is skipped.' },
@@ -311,7 +305,7 @@ export const quiz = [
     options: [
       { t: 'To make the test faster', why: 'It is slower: it packs and installs first.' },
       { t: 'Because Node can’t import from `dist/`', why: 'It can. The point is to test what a user would get.' },
-      { t: 'To test exactly what a user would get: the `files` list, the exports map and the types', correct: true, why: 'A file missing from `files` or a wrong export path works in the repository and fails only after installing (chapter 272 found three such bugs).' },
+      { t: 'To test exactly what a user would get: the `files` list, the exports map and the types', correct: true, why: 'A file missing from `files` or a wrong export path works in the repository and fails only after installing (the chapter *Shipping Viscosity* found three such bugs).' },
     ],
   },
   {
@@ -319,7 +313,7 @@ export const quiz = [
     options: [
       { t: 'A separate build for each operating system', why: 'That is the native route’s cost.' },
       { t: 'No threads or file access from Rust: `std::thread::spawn` panics on this target', correct: true, why: 'wasm32-unknown-unknown imports nothing from the host, so the CLI’s parallel builds can’t run in the package. Files are passed in as strings.' },
-      { t: 'Output that can differ from the TS CLI', why: 'The smoke test compares 60 programs three ways, and all match.' },
+      { t: 'Output that can differ from the TS CLI', why: 'The smoke test compares 60 programs three ways, and all 60 match once its TypeScript CLI is up to date.' },
     ],
   },
 ];

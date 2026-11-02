@@ -13,10 +13,6 @@ export const prompts = {
     q: 'What is **compile-time performance**?',
     a: 'How fast the compiler itself runs: the time from source in to code out, as opposed to how fast the compiled program runs.',
   },
-  'two-clocks': {
-    q: 'What are the two ways this chapter times a compiler?',
-    a: 'A whole process per compile (what a CLI user waits for, start-up included), and `compile()` called in a warm, long-lived process (the engine alone).',
-  },
   'cli-total': {
     q: 'In the matrix, how much faster is the Rust CLI than the TS CLI over the corpus?',
     a: '10.9×, as the sum of per-program medians (40 programs, one fresh process per compile).',
@@ -35,27 +31,15 @@ export const prompts = {
   },
   'fragile': {
     q: 'Why should you distrust a CLI ratio’s second digit here?',
-    a: 'Its denominator is a few milliseconds, and on a shared VM the Rust CLI’s median moved between about 3 and 15 ms from run to run.',
+    a: 'Its denominator is a few milliseconds, and on a shared VM the Rust CLI’s median moved between about 4 and 15 ms from run to run.',
   },
   'first-call': {
     q: 'How did the TS engine’s first `compile()` in a fresh process compare with a warm one?',
     a: 'About 25× slower (22 ms for `boids`): the code hasn’t been optimized by the JIT yet.',
   },
-  'bundle-vs-source': {
-    q: 'An earlier run had TS CLI medians near 200 ms; the matrix has them near 100. What changed?',
-    a: 'The earlier one ran `cli.ts` from source, which Node type-strips and loads module by module. The matrix ran the esbuild bundle.',
-  },
   'batch': {
-    q: 'How does compiling 40 files in one process change the comparison?',
-    a: 'Start-up is paid once, so per-file cost takes over. In the author’s runs TS added about 1 to 1.5 ms per extra file and Rust under 0.1 ms: still more than ten times apart.',
-  },
-  'rust-profile': {
-    q: 'Where does the native Rust engine spend its time on one file?',
-    a: 'Spread out: parsing about 10–17 µs, resolving and lowering about 80, analysis about 35, plan and emit about 25. Small allocations and hashing are the biggest costs.',
-  },
-  'parallel-hint': {
-    q: 'What did 4 threads give on 396 files, writing to tmpfs and to disk?',
-    a: '2.95× on tmpfs, but only 1.24× on the VM’s disk, where creating files is serialized.',
+    q: 'How does compiling 400 files in one process change the comparison?',
+    a: 'Start-up is paid once, so per-file cost takes over. In this chapter’s runs TS added about 1.8 ms per extra file and Rust about 0.12 ms: still more than ten times apart.',
   },
 };
 
@@ -81,12 +65,12 @@ impl Cli {
 
 fn main() {
     let ts = Cli {
-        start_ms: 90.0,
-        per_file_ms: 1.2,
+        start_ms: 120.0,
+        per_file_ms: 1.8,
     };
     let rs = Cli {
-        start_ms: 3.5,
-        per_file_ms: 0.08,
+        start_ms: 4.5,
+        per_file_ms: 0.12,
     };
     for n in [1.0, 10.0, 100.0, 1e4] {
         let a = ts.run(n);
@@ -184,11 +168,24 @@ fn uses_each_programs_median() {
       'For an even `n`, the middle two are at `n / 2 - 1` and `n / 2`.',
       'In `total_speedup`, sum first and divide once. A small closure that maps each program to its median and sums keeps the two sides identical.',
     ],
-    walkthrough: `This is how \`engine/ts/packages/bench/src/matrix.ts\` reduces section (b): \`median\` sorts a copy and averages the middle pair for even counts, each program’s row stores its median, and the headline is \`sum(TS medians) / sum(Rust medians)\`.
+    walkthrough: `**How to think about it.** This is how \`engine/ts/packages/bench/src/matrix.ts\` reduces section (b): each program's runs are reduced to one number, their median, and the headline is the sum of one engine's medians divided by the sum of the other's. So there are two small functions, and the second uses the first. For the median, work one out by hand first: for \`[5, 1, 3]\`, sort to \`[1, 3, 5]\` and take the middle, \`3\`; for \`[4, 1, 3, 2]\` there is no single middle, so take the mean of the two middle values, \`(2 + 3) / 2 = 2.5\`.
 
-- **Why medians.** A shared VM produces outliers: another tenant’s job lands in the middle of one run. The median of five runs ignores up to two of them; a mean would carry every spike.
-- **Why a ratio of sums.** It answers “how long does the whole corpus take?”, so a 100 ms program matters more than a 1 ms one. The mean of per-program ratios answers a different question, the typical program’s speed-up, and gives every program the same vote. In the test, 101/11 ≈ 9.2× against (10 + 1)/2 = 5.5×.
-- **Why \`total_cmp\`.** \`f64\` implements only \`PartialOrd\`, because NaN is unordered, so \`sort\` refuses it. \`total_cmp\` defines an order for every value, NaN included.`,
+**The solution, line by line.**
+
+- \`let mut s = xs.to_vec();\` copies the slice into a new vector we are allowed to change; sorting the caller's data in place would be a surprise.
+- \`s.sort_by(|a, b| a.total_cmp(b));\` sorts it. \`f64\` implements only \`PartialOrd\` (NaN is not less than, equal to or greater than anything), so plain \`sort\` refuses to compile; \`total_cmp\` defines an order for every value, NaN included.
+- \`let n = s.len();\` and \`if n % 2 == 1 { s[n / 2] }\`: for an odd count the middle index is \`n / 2\` (integer division, so 5 / 2 is 2).
+- \`else { (s[n / 2 - 1] + s[n / 2]) / 2.0 }\`: for an even count, the mean of the two middle values. The whole \`if\` is the function's value, with no \`return\`.
+- \`let sum = |ps: &[Vec<f64>]| -> f64 { ps.iter().map(|p| median(p)).sum() };\` is a small closure: for a list of programs (each a vector of timings), take each program's median and add them up. The \`-> f64\` tells \`sum()\` what to produce.
+- \`sum(ts) / sum(rs)\` is the headline: total TypeScript time over total Rust time.
+
+**Why medians and a ratio of sums.** A shared machine produces outliers, when another tenant's job lands in the middle of one run; the median of five runs ignores up to two of them, while a mean would carry every spike. A ratio of sums answers "how long does the whole corpus take?", so a 100 ms program counts for more than a 1 ms one; the mean of per-program ratios answers a different question, the typical program's speed-up, and gives every program the same vote. In the test, that is 101 / 11 ≈ 9.2 times against (10 + 1) / 2 = 5.5.
+
+**Common wrong attempts.**
+
+- *The mean of the ratios.* It compiles and gives a plausible number, but the wrong one for this question, as the test shows.
+- *Forgetting to sort.* The middle of an unsorted list is whichever run happened to be in the middle, outliers included, so it is not a median at all. (Taking \`s[n / 2]\` for every count is a smaller slip: for an even list it gives the upper of the two middle values.)
+- *\`s.sort()\`.* It does not compile for \`f64\`, because \`sort\` needs a total order (\`Ord\`), and NaN breaks it.`,
     wrong: [
       {
         code: `${MED_DOC}fn median(xs: &[f64]) -> f64 {
@@ -231,7 +228,7 @@ ${TOT_DOC}fn total_speedup(
     };
     sum(ts) / sum(rs)
 }`,
-        why: 'The middle of an unsorted list is just whichever run happened to be in the middle, outliers included.',
+        why: 'The middle of an unsorted list is whichever run happened to be in the middle, outliers included.',
       },
     ],
   },
@@ -255,19 +252,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'The Rust CLI’s median was 7–15 ms per program in the matrix, and 3–4 ms in the author’s later runs of the same binary. What does that tell you?',
+    q: 'The Rust CLI’s median was 7–15 ms per program in the matrix, and about 4 ms in this chapter’s runs of the CLI. What does that tell you?',
     options: [
-      { t: 'The binary got faster', why: 'It was the same commit and the same release build.' },
+      { t: 'The binary got faster', why: 'The engine has changed only slightly since (about 10 µs more per compile, for the early-error checks), nothing like a factor of two or three.' },
       { t: 'Ratios with a few-millisecond denominator move a lot with the machine’s load', correct: true, why: 'On a shared 4-vCPU VM, a busy neighbour can triple a 3 ms process. Read the CLI ratio as “about ten times or more”, not 10.9 exactly.' },
       { t: 'The matrix measured it wrongly', why: 'Both are honest measurements under different loads. That is why the file states the load average.' },
-    ],
-  },
-  {
-    q: 'Why is the in-process figure for the TS engine taken after 50 warm-up calls?',
-    options: [
-      { t: 'To measure the engine once the JIT has optimized it, as in a long-running process', correct: true, why: 'A fresh process’s first call was about 25× slower. Warm-up measures the steady state an editor or playground would see.' },
-      { t: 'To fill the file cache', why: 'In-process compiles read no files: the source is already a string.' },
-      { t: 'Because the first 50 results are wrong', why: 'Every call gives the same output; only the time differs.' },
     ],
   },
   {
