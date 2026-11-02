@@ -6,42 +6,41 @@ team "Tariq Shams' projects", root `book/`, built with Astro
 `website/` project, served at https://viscosity.dev/ with the book
 combined under `/book/` (previously https://viscosity-website-chi.vercel.app).
 
-The curriculum is 286 chapters in 14 parts, 72 days at four chapters a
-day. The original 200 chapters are written and pass
-`scripts/check_chapters.mjs`; the 86 added in the 2026-11 expansion
-(`scripts/expansion/plan.mjs`) are in the outline as planned chapters, and
-the site lists them greyed out until they are written.
+The curriculum is 458 chapters in 14 parts, 115 days at four chapters a
+day, and every chapter is written and passes `scripts/check_chapters.mjs`.
+The 2026-11 rewrite split chapters that ran past 18 minutes in two, so the
+200 original chapters and the 86 added in the expansion became 458.
 
 | Part | Chapters | Days | Subject |
 |---|---|---|---|
-| I | 1–23 | 1–6 | JavaScript and TypeScript for engine builders |
-| II | 24–31 | 6–8 | How machines run code |
-| III | 32–71 | 8–18 | A tree-walking interpreter, regular languages, parsing theory, meaning and types |
-| IV | 72–87 | 18–22 | A bytecode virtual machine |
-| V | 88–99 | 22–25 | Inside real JavaScript engines |
-| VI | 100–124 | 25–31 | The compiler middle-end |
-| VII | 125–140 | 32–35 | A native back end (RISC-V) |
-| VIII | 141–164 | 36–41 | Building Viscosity |
-| IX | 165–172 | 42–43 | Beyond JavaScript |
-| X | 173–196 | 44–49 | Implementing language features |
-| XI | 197–230 | 50–58 | Rust for TypeScript developers |
-| XII | 231–254 | 58–64 | Drip in Rust |
-| XIII | 255–282 | 64–71 | Viscosity in Rust |
-| XIV | 283–286 | 71–72 | Shipping, and the capstone |
+| I | 1–47 | 1–12 | JavaScript for engine builders |
+| II | 48–62 | 12–16 | How machines run code |
+| III | 63–135 | 16–34 | Front ends: building Drip, and the theory behind it |
+| IV | 136–163 | 34–41 | Drip, compiled: a virtual machine of our own |
+| V | 164–184 | 41–46 | Inside real JavaScript engines |
+| VI | 185–229 | 47–58 | The compiler middle-end |
+| VII | 230–258 | 58–65 | A native back end |
+| VIII | 259–284 | 65–71 | Building Viscosity |
+| IX | 285–294 | 72–74 | Beyond JavaScript |
+| X | 295–328 | 74–82 | Implementing language features |
+| XI | 329–390 | 83–98 | Rust for TypeScript developers |
+| XII | 391–415 | 98–104 | Drip in Rust |
+| XIII | 416–453 | 104–114 | Viscosity in Rust |
+| XIV | 454–458 | 114–115 | Shipping |
+
 
 ## The 2026-11 rewrite
 
-Every chapter is being rewritten, part by part, to
+Every chapter was rewritten, part by part, to
 [PEDAGOGY.md](PEDAGOGY.md) (two or more analogies that say where they
 break, two or more diagrams, three or more examples of every concept,
 other-language comparisons in Part I, formal notation read aloud) and in
-Tariq's voice ([STYLE.md](STYLE.md)). A part's rules become errors when
-its id is added to `STRICT_PARTS` in `src/data/pedagogy.js`; until then
-the checker lists what is left as warnings.
+Tariq's voice ([STYLE.md](STYLE.md)). A part's rules are errors when its
+id is in `STRICT_PARTS` in `src/data/pedagogy.js` (now every part).
 [COVERAGE.md](COVERAGE.md) maps every chapter of eight standard compiler
 texts to the chapters that teach it.
 
-Strict so far: Part I (chapters 1–47) and Part II (46–60).
+Every part is strict: the teaching rules are errors in all 14 parts.
 
 ## How the book is checked
 

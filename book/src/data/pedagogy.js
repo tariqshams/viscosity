@@ -3,7 +3,7 @@
 // Parts listed in STRICT_PARTS have been rewritten to the full contract, so
 // the rules below are errors there; everywhere else they are warnings, to
 // show what is left to do. Add a part's id here when its rewrite lands.
-export const STRICT_PARTS = new Set(['I', 'II']);
+export const STRICT_PARTS = new Set(['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV']);
 
 /** Every chapter: at least this many analogies, each saying where it breaks. */
 export const MIN_ANALOGIES = 2;
