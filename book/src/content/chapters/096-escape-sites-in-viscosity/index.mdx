@@ -19,9 +19,8 @@ import Playground from '../../../components/playground/Playground';
 
 ## Not just whether, but where
 
-The last chapter's escape analysis answers with a state per object:
-NoEscape, ArgEscape or GlobalEscape. Viscosity needs something a little
-different. It is not deciding where one object lives; it is deciding
+*Escape analysis across functions* asked whether one object can get
+out; Viscosity needs something a little different. It is not deciding where one object lives; it is deciding
 whether a whole array of objects can become columns, and if it says
 no, it owes the programmer a reason they can act on, such as "line 6
 passes an element to `console.log`". So it does not colour a graph; it
@@ -107,8 +106,15 @@ has two operands:
 
 ## Naming the escape site
 
-`describeUse` turns each escaping use into words. Simplified, with the
-line numbers left out:
+`describeUse` (in the same file) turns each escaping use into words,
+one message per kind of instruction: a `call` is "passed to a function
+call", a `storeBinding` "stored in another variable", a `record.new`
+"put inside another object", a `binop` "compared or combined", and so
+on.
+
+<More title="More: the messages, case by case">
+
+Simplified, with the line numbers left out:
 
 ```ts
 switch (i.op) {
@@ -133,6 +139,8 @@ switch (i.op) {
     return 'merged with other values';
 }
 ```
+
+</More>
 
 A return is not an instruction in VIR but a block terminator, so it
 has its own message, "returned or branched on". Here is what the
@@ -182,7 +190,8 @@ out of a merge, so it counts the merge itself as an escape.
 
 A call is usually an escape, but not always. If `step(qs)` is declared
 once and only ever called directly, Viscosity knows every call site
-(chapter 93's known functions). When every one of them passes `ps`,
+(the known functions of *Induction variables, the call graph and
+inlining*). When every one of them passes `ps`,
 the parameter `qs` points at exactly one collection, so it joins the
 worklist and its uses are checked inside `step`:
 
@@ -214,7 +223,7 @@ console.log(ps[3].x);`} />
 V8 and Viscosity ask the same question at different times. V8 compiles
 optimised code while the program runs, specialised for what it has
 seen, and can deoptimise if a guess turns out wrong<Cite id="v8-maglev" />.
-In chapter 95's `get-objects` benchmark, it inlined `consume(p)`,
+In the `get-objects` benchmark of *Escape analysis across functions*, it inlined `consume(p)`,
 after which `p` was used only by field reads, and the temporary object
 was removed. Viscosity runs before the program does, has no
 deoptimisation to fall back on, and does not inline, so it must prove
@@ -224,25 +233,13 @@ safety on the code as written, which makes it stricter than V8:
 
 ## Your turn
 
-The first exercise is the core one; the second is extra practice.
-
 <Exercise id="firstEscape" />
+
+Extra practice:
 
 <Exercise id="escapesVia" />
 
-## What you learned
-
-- **Escape sites** are the places a reference can leave: calls, stores
-  into variables, properties, arrays or other objects, and returns.
-  Viscosity also counts `===`, unmodelled (`opaque`) operations and
-  phis.
-- Viscosity checks with a worklist over def-use lists: an element
-  produced by `ps[i]` adds its own uses to the list.
-- Position matters: an element being *written to* is safe; an element
-  being *stored* escapes.
-- A known function whose every call passes the same collection is
-  followed into, not counted as an escape.
-- V8 can escape less because it inlines and can deoptimise; Viscosity
-  proves safety ahead of time, so it is more conservative.
-
 <Quiz />
+
+Next: *Testing compilers: differential, round-trip, fuzzing and
+shrinking*, how to find out when a proof like this one is wrong.

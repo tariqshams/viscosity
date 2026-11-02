@@ -1,4 +1,4 @@
-// Chapter 67 cards: recall prompts, examples, exercises and quiz.
+// Chapter 100 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 100, 100.
 
@@ -6,10 +6,6 @@ export const prompts = {
   'es-what': {
     q: 'What is ESTree?',
     a: 'The standard format for JavaScript syntax trees, shared by parsers such as acorn and the tools that read their output.',
-  },
-  'es-type': {
-    q: 'How does code tell which kind of ESTree node it has?',
-    a: 'By its string `type` field (`Identifier`, `MemberExpression`, …): ESTree is a discriminated union.',
   },
   'es-computed': {
     q: 'In ESTree, how are `p.x` and `p[x]` told apart?',
@@ -23,14 +19,6 @@ export const prompts = {
     q: 'Why does Viscosity need each ESTree node’s `start` and `end` offsets?',
     a: 'VIR’s source references point at them, and emit replaces exactly those ranges of the text.',
   },
-  'es-loc': {
-    q: 'What does acorn add to each node when you pass `locations: true`?',
-    a: 'A `loc` with the line and column where the node starts and ends (Viscosity uses the line for explain).',
-  },
-  'es-nest': {
-    q: 'A node covers offsets 7 to 11. What can you say about the range of any of its children?',
-    a: 'It lies inside 7 to 11: children start no earlier and end no later than their parent.',
-  },
   'es-why': {
     q: 'Why does Viscosity’s JavaScript plugin depend on ESTree rather than on acorn itself?',
     a: 'Then any parser that produces ESTree (with offsets and lines) can replace acorn, and nothing after the parser changes.',
@@ -43,29 +31,9 @@ export const prompts = {
     q: 'Why does the acorn adapter pass an `onComment` callback?',
     a: 'acorn reports comments through it, not in the tree, and `@viscosity` annotations live in comments.',
   },
-  'pa-ts': {
-    q: 'How does Viscosity parse TypeScript?',
-    a: 'It strips the types with sucrase first, then parses the resulting JavaScript.',
-  },
-  'mp-two': {
-    q: 'Which two techniques does the mini parser combine?',
-    a: 'Recursive descent for statements, and Pratt parsing (binding powers) for expressions.',
-  },
-  'mp-right': {
-    q: 'How does the mini parser make `**` right-associative?',
-    a: 'It parses the right side with `binary(bp - 1)`, so another `**` (same power) is still taken on the right.',
-  },
-  'mp-asi': {
-    q: 'When does the mini parser accept a missing semicolon?',
-    a: 'Before `}`, at the end of input, or when the next token starts a new line (automatic semicolon insertion).',
-  },
   'mp-test': {
     q: 'What exactly does `mini-parser.test.ts` require of the two parsers?',
     a: 'For every corpus and benchmark program, the compiled code and the explanation must be byte-identical.',
-  },
-  'mp-why': {
-    q: 'Why keep the hand-written parser if acorn handles all of JavaScript?',
-    a: 'It is readable teaching code, and keeping it working forces the plugin to depend only on ESTree, so parsers stay swappable.',
   },
 };
 
@@ -128,6 +96,7 @@ console.log(parse('2 ** 3 ** 2'));`,
 
 export const exercises = {
   parseLet: {
+    optional: true,
     title: 'Parse a declaration into ESTree',
     prompt: 'Write `parseLet(src)` by recursive descent for the statement `let NAME = EXPR;` (or `const`; the `;` is optional). `EXPR` is terms joined by `+` or `-`, left to right; a term is a whole number or a name. Return ESTree: a `VariableDeclaration` with `kind` and one `VariableDeclarator` (`id`, `init`). Numbers are `{ type: \'Literal\', value }`, names `{ type: \'Identifier\', name }`, and `a + b` is `{ type: \'BinaryExpression\', operator, left, right }`. Throw a `SyntaxError` if the input doesn’t fit: no `let`/`const`, a target that isn’t a name, a missing `=`, or tokens left over. The tokeniser and `peek`/`next` are written for you.',
     starter: `function parseLet(src) {
@@ -507,28 +476,6 @@ function parseExpr(src) {
 
 export const quiz = [
   {
-    q: 'What makes ESTree useful to Viscosity?',
-    options: [
-      {
-        t: 'It is faster to build than other trees',
-        why: 'Speed isn’t the point; agreement is.',
-      },
-      {
-        t: 'Any parser that produces it can feed the same lowering code',
-        correct: true,
-        why: 'The plugin depends on the format, not the parser, so acorn and the mini parser are interchangeable.',
-      },
-      {
-        t: 'It includes VIR instructions',
-        why: 'ESTree is a syntax tree. VIR is produced from it by lowering.',
-      },
-      {
-        t: 'It contains the program’s comments',
-        why: 'acorn reports comments separately, through `onComment`.',
-      },
-    ],
-  },
-  {
     q: 'In ESTree, `ps[i].x` is a `MemberExpression` whose `object` is…',
     options: [
       {
@@ -573,28 +520,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `computed: true` on a `MemberExpression` mean?',
-    options: [
-      {
-        t: 'The property was written in square brackets, so its value picks the field',
-        correct: true,
-        why: '`p[x]` looks up whatever `x` holds; `p.x` always means the field named x.',
-      },
-      {
-        t: 'The value has already been calculated',
-        why: 'ESTree describes syntax; nothing has run yet.',
-      },
-      {
-        t: 'The object is an array',
-        why: 'ESTree does not know types: `p[x]` could be on any object.',
-      },
-      {
-        t: 'The expression is a constant',
-        why: '`computed` says nothing about constants.',
-      },
-    ],
-  },
-  {
     q: 'Which of these would let Viscosity replace acorn with another parser without changing anything else?',
     options: [
       {
@@ -613,28 +538,6 @@ export const quiz = [
         t: 'The other parser produces the same ESTree slice, with offsets and lines',
         correct: true,
         why: 'Everything after the parser reads only that slice, as `estree.ts` describes it.',
-      },
-    ],
-  },
-  {
-    q: 'Viscosity compiles a `.ts` file. Why does the explanation still give the right line numbers, after the types are stripped?',
-    options: [
-      {
-        t: 'acorn understands TypeScript directly',
-        why: 'It does not: sucrase strips the types first.',
-      },
-      {
-        t: 'The plugin adds the missing lines back afterwards',
-        why: 'Nothing needs adding: no lines are removed in the first place.',
-      },
-      {
-        t: 'sucrase removes types but keeps every line, leaving blank lines where declarations like `interface` were',
-        correct: true,
-        why: 'So line n of the JavaScript is line n of your TypeScript.',
-      },
-      {
-        t: 'Explain counts lines in the original file separately',
-        why: 'It uses the lines acorn reports for the stripped JavaScript.',
       },
     ],
   },
@@ -679,50 +582,6 @@ export const quiz = [
         t: '`*` has binding power 11, more than `-`’s 10, so `binary(10)` takes it into the right side of `-`',
         correct: true,
         why: 'That is Pratt parsing: the loop continues while the next operator binds tighter than the minimum.',
-      },
-    ],
-  },
-  {
-    q: 'The mini parser meets `a?.b`. What happens?',
-    options: [
-      {
-        t: 'It parses it as `a.b`',
-        why: 'That would silently change the meaning: `a?.b` doesn’t throw when `a` is null.',
-      },
-      {
-        t: 'It throws a syntax error naming optional chaining',
-        correct: true,
-        why: '“optional chaining is not supported by the mini parser”: outside the subset, it stops rather than guess.',
-      },
-      {
-        t: 'It falls back to acorn',
-        why: 'There is no automatic fallback; you choose the parser with `--parser`.',
-      },
-      {
-        t: 'It turns it into an opaque instruction',
-        why: 'Opaque is VIR, after parsing. A parser can’t lower what it couldn’t parse.',
-      },
-    ],
-  },
-  {
-    q: 'How does the repository check that the mini parser is a drop-in replacement for acorn?',
-    options: [
-      {
-        t: 'It compares the two trees as JSON',
-        why: 'The trees differ in harmless details (key order, `loc`). The test compares what matters.',
-      },
-      {
-        t: 'It doesn’t: the mini parser is untested',
-        why: '`mini-parser.test.ts` exists, and also checks precedence and error messages.',
-      },
-      {
-        t: 'It compiles every corpus and benchmark program with both and requires identical code and explanation',
-        correct: true,
-        why: 'A differential test: if the plugin can’t tell the parsers apart, they are interchangeable for Viscosity.',
-      },
-      {
-        t: 'It runs test262 against both',
-        why: 'The repository doesn’t run test262; the mini parser only claims a subset.',
       },
     ],
   },

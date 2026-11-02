@@ -1,4 +1,4 @@
-// Chapter 183 cards: recall prompts, examples, exercises and quiz.
+// Chapter 98 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 98, 98.
 
@@ -11,10 +11,6 @@ export const prompts = {
     q: 'Which of the four steps belong to a language plugin?',
     a: '`lower` and `emit`. `analyze` and `plan` belong to the core.',
   },
-  'arch-why-split': {
-    q: 'Why do `analyze` and `plan` never see JavaScript syntax?',
-    a: 'They work on VIR only, so the same analyses serve every language plugin, and a new language needs no change to them.',
-  },
   'arch-emit-text': {
     q: 'Does Viscosity’s emit print the program back out of VIR?',
     a: 'No. It edits the original source text, replacing only the ranges the plan requires, and copies the rest through unchanged.',
@@ -23,49 +19,21 @@ export const prompts = {
     q: 'What is a source-to-source compiler?',
     a: 'A compiler whose output is source code in a high-level language, often the same language it reads.',
   },
-  'aot-vs-rt': {
-    q: 'Where did the columnar-array research of Makor and colleagues do its transformation?',
-    a: 'At run time, inside a JavaScript engine built on Truffle and Graal.',
-  },
   'aot-cost': {
     q: 'Name one advantage a run-time transformation has over Viscosity, and one Viscosity has over it.',
     a: 'Run time sees real values and can deoptimise if wrong. Viscosity’s output runs on any engine and can be read by a person.',
-  },
-  'arch-conservative': {
-    q: 'What does Viscosity do with a collection when it cannot prove a new layout is safe?',
-    a: 'Leaves it exactly as it is (an array of objects), and says why in `explain`.',
   },
   'lp-what': {
     q: 'What does a Viscosity `LanguagePlugin` provide?',
     a: 'An `id`, the file `extensions` it handles, and two functions: `lower` (source → VIR) and `emit` (source + plan → new source).',
   },
-  'lp-no-parse': {
-    q: 'Why is there no `parse` function in the plugin interface?',
-    a: 'Parsing happens inside `lower`. Which parser a language uses is the plugin’s business; the core only receives VIR.',
-  },
   'lp-private': {
     q: 'How does the JavaScript plugin get its ESTree tree back in `emit`?',
     a: 'It returns a bigger object from `lower` (tree, scopes, JS text). The core passes it unread to `emit`.',
   },
-  'lp-why-split': {
-    q: 'Why is analysis written once, on VIR, instead of once per language?',
-    a: 'Its questions are about data (fields, loops, escapes), not spelling. One implementation serves every language, and one fix fixes all.',
-  },
-  'lp-python-default': {
-    q: 'By default, what does Viscosity do with a Python list of dataclass objects?',
-    a: 'Keeps it as objects, and explains that you can opt in with `# @viscosity soa` (or `--python-auto`).',
-  },
-  'lp-python-why': {
-    q: 'Why were `array(\'d\')` columns slower per element than objects in CPython?',
-    a: 'CPython is an interpreter: reading an `array(\'d\')` element creates a new float object every time.',
-  },
   'ls-what': {
     q: 'What is a layout strategy?',
     a: 'One way of storing a collection: `aos`, `soa` or `aosoa`. The planner picks one per collection; emit writes it.',
-  },
-  'ls-today': {
-    q: 'What would adding a fourth layout strategy take today?',
-    a: 'A planner rule plus emitter code in each plugin. `STRATEGIES` is a registry of names, not a loader.',
   },
 };
 
@@ -111,6 +79,7 @@ console.log(at(9, 1)); // vx of 9`,
 
 export const exercises = {
   rewriteAccess: {
+    optional: true,
     title: 'A toy emitter',
     prompt: 'Emit is where a source-to-source compiler writes its output. Write `rewrite(src, name, fields)`, which turns every `name[INDEX].field` in `src` into `name.field[INDEX]`, but only when `field` is one of `fields`. `INDEX` is any text without a `]`. Leave everything else alone: other arrays (`qs[i].x`, `aps[i].x`), other fields, and longer field names (`ps[i].xs` when only `x` is listed).',
     starter: `function rewrite(src, name, fields) {
@@ -632,73 +601,7 @@ export const quiz = [
       },
       {
         t: 'It doesn’t: comments are removed',
-        why: 'They survive, which the identity test in the next chapters checks.',
-      },
-    ],
-  },
-  {
-    q: 'What makes Viscosity a source-to-source compiler?',
-    options: [
-      {
-        t: 'It is written in TypeScript',
-        why: 'The language a compiler is written in doesn’t matter.',
-      },
-      {
-        t: 'It uses an IR',
-        why: 'Most compilers use an IR, whatever they output.',
-      },
-      {
-        t: 'It runs inside the browser',
-        why: 'It also runs from the command line; where it runs isn’t the point.',
-      },
-      {
-        t: 'Its output is JavaScript (or Python) source, not machine code or bytecode',
-        correct: true,
-        why: 'Source in, source out. An ordinary engine runs the result.',
-      },
-    ],
-  },
-  {
-    q: 'Compared with a run-time columnar transformation inside the engine, what does Viscosity give up?',
-    options: [
-      {
-        t: 'The ability to run in more than one engine',
-        why: 'It is the other way round: Viscosity’s output runs on any engine.',
-      },
-      {
-        t: 'Seeing real values, and backing out with deoptimisation if a guess is wrong',
-        correct: true,
-        why: 'Ahead of time, it has only the code. So it must prove every decision instead of guessing.',
-      },
-      {
-        t: 'Readable output',
-        why: 'Readable output is one of Viscosity’s advantages.',
-      },
-      {
-        t: 'Typed arrays',
-        why: 'Its output uses `Float64Array` columns.',
-      },
-    ],
-  },
-  {
-    q: 'Viscosity can’t prove that a collection’s elements never escape. What happens?',
-    options: [
-      {
-        t: 'It converts it anyway, and inserts a run-time check',
-        why: 'There is no fallback for an escape at run time. Unsafe means unchanged.',
-      },
-      {
-        t: 'Compilation fails with an error',
-        why: 'The program is fine; Viscosity only leaves it unoptimised.',
-      },
-      {
-        t: 'The collection stays an array of objects, and explain says why',
-        correct: true,
-        why: 'Doing nothing is always correct. The reason is printed so you can change the code if you want the speed.',
-      },
-      {
-        t: 'It asks the engine to decide',
-        why: 'The engine never hears about Viscosity: it just runs the output.',
+        why: 'They survive, which an identity round-trip test checks.',
       },
     ],
   },
@@ -721,72 +624,6 @@ export const quiz = [
       {
         t: '`run(code)`',
         why: 'Viscosity never runs the program; it writes a new source file.',
-      },
-    ],
-  },
-  {
-    q: 'The JavaScript plugin needs its ESTree tree in `emit`. How does it get it?',
-    options: [
-      {
-        t: 'It parses the source again',
-        why: 'It doesn’t need to. The tree from `lower` is kept.',
-      },
-      {
-        t: 'The tree is stored inside VIR',
-        why: 'VIR instructions point at nodes, but the whole tree isn’t part of the module.',
-      },
-      {
-        t: 'A global variable',
-        why: 'Nothing global: two compiles at once would clash.',
-      },
-      {
-        t: '`lower` returns a bigger object holding it, and the core passes that object to `emit` unread',
-        correct: true,
-        why: 'The core sees only the `LoweredModule` part; the plugin gets its private data back.',
-      },
-    ],
-  },
-  {
-    q: 'A Python list of dataclass objects is updated in a loop. What does Viscosity do by default, and why?',
-    options: [
-      {
-        t: 'Struct of arrays, because loops always win with columns',
-        why: 'In CPython they didn’t: the update loop measured slower with `array(\'d\')` columns.',
-      },
-      {
-        t: 'Keeps the objects: in CPython, columns were measured slower per element (the gain was memory)',
-        correct: true,
-        why: 'Reading from `array(\'d\')` creates a float object each time. You can opt in with `# @viscosity soa`.',
-      },
-      {
-        t: 'Refuses to compile Python without annotations',
-        why: 'It compiles it, and explains why it kept the objects.',
-      },
-      {
-        t: 'AoSoA, because Python has no typed arrays',
-        why: 'Python has `array(\'d\')`, and the Python emitter doesn’t support AoSoA.',
-      },
-    ],
-  },
-  {
-    q: 'The Python parser meets syntax it doesn’t support. What does the plugin do?',
-    options: [
-      {
-        t: 'Crashes the compiler',
-        why: 'It catches its own syntax error.',
-      },
-      {
-        t: 'Guesses at a layout anyway',
-        why: 'Guessing would be unsafe.',
-      },
-      {
-        t: 'Returns an empty module, and emit returns the source unchanged',
-        correct: true,
-        why: 'Unsupported means untouched: the file comes out exactly as it went in.',
-      },
-      {
-        t: 'Hands the file to the JavaScript plugin',
-        why: 'Plugins don’t pass work to each other.',
       },
     ],
   },

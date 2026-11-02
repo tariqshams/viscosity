@@ -1,4 +1,4 @@
-// Chapter 182 cards: recall prompts, examples, exercises and quiz.
+// Chapter 97 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 97, 97.
 
@@ -6,10 +6,6 @@ export const prompts = {
   'oracle-what': {
     q: 'What is a test oracle, and why is it the hard part of testing a compiler?',
     a: 'Whatever tells you the right answer; for a compiler the answer is a whole program’s behaviour, too much to write out by hand for many programs.',
-  },
-  'golden-what': {
-    q: 'What is a golden test? Give one in this repository.',
-    a: 'A stored output, checked once, that every later run must match: the Drip corpus’s `# expect:` lines, or the Rust port’s fixtures generated from the TypeScript engine.',
   },
   'dt-oracle': {
     q: 'In Viscosity’s differential test, what plays the role of the expected answer?',
@@ -23,17 +19,9 @@ export const prompts = {
     q: 'Why does each corpus file also state the layout Viscosity should choose?',
     a: 'A compiler that never transforms anything passes every behaviour check; the header catches a lost optimisation.',
   },
-  'meta-what': {
-    q: 'What does a metamorphic test change, and what does it check?',
-    a: 'It changes the input in a way that must not change the answer (shuffle before sorting, delete code that did not run), and checks the answer stays the same.',
-  },
   'rt-what': {
     q: 'What is round-trip testing?',
     a: 'Checking that opposite operations undo each other, e.g. parse → print → parse gives the same tree.',
-  },
-  'rt-identity': {
-    q: 'What is Viscosity’s round-trip identity test?',
-    a: 'A program with nothing to transform must come out of `compile` byte for byte unchanged, comments included.',
   },
   'fuzz-what': {
     q: 'What is fuzzing?',
@@ -47,25 +35,9 @@ export const prompts = {
     q: 'Why is a disagreement on a program with undefined behaviour worthless?',
     a: 'Two correct compilers may legitimately do different things with it, so the difference proves nothing.',
   },
-  'fuzz-two-oracles': {
-    q: 'What two things does the repository’s Viscosity fuzzer check for every program?',
-    a: 'Behaviour (original and compiled print and throw the same) and parity (the TypeScript and Rust engines give the same code and explain text).',
-  },
   'reduce-what': {
     q: 'What does test-case reduction do?',
     a: 'Shrinks a failing input by removing parts of it, keeping each removal only if the same failure remains.',
-  },
-  'reduce-valid': {
-    q: 'Why does the repository’s reducer check that each candidate still parses?',
-    a: 'Removing lines can break the program; a candidate that no longer parses fails for a different reason, not the bug.',
-  },
-  'one-minimal': {
-    q: 'What does it mean for a reduced input to be 1-minimal?',
-    a: 'It still fails, and removing any single piece of it makes it stop failing.',
-  },
-  'tv-what': {
-    q: 'How does translation validation differ from testing the compiler?',
-    a: 'It checks, for each compilation, that the output is equivalent to the input program, instead of sampling programs.',
   },
 };
 
@@ -291,6 +263,7 @@ function diffTest(f, g, gen, n) {
     ],
   },
   reduce: {
+    optional: true,
     title: 'Reduce a failing program',
     prompt: 'A fuzzer found a program, given as an array of lines, for which `fails(lines)` is `true`. Write `reduce(lines, fails)` the way the repository’s reducer works: start with a chunk size of half the length (at least 1); try removing each chunk of that many consecutive lines, keeping a removal whenever the shorter (non-empty) array still fails, and repeat at this size until a whole pass removes nothing; then halve the chunk size (at least 1), and stop after a pass at size 1 removes nothing. Return the reduced array, and don’t change `lines` itself.',
     starter: `function reduce(lines, fails) {
@@ -442,50 +415,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'With `--bounds assume`, the compiled `out_of_bounds.js` prints `0` where the original throws. Which check catches it?',
-    options: [
-      {
-        t: 'The header check',
-        why: 'The layout is still soa, so the header matches.',
-      },
-      {
-        t: 'The mini-parser test',
-        why: 'That compares two parsers, not original against compiled behaviour.',
-      },
-      {
-        t: 'Nothing: the printed lines before it match',
-        why: 'The outcome includes the extra line and the missing error.',
-      },
-      {
-        t: 'Comparing the full outcomes, printed lines and error, of both runs',
-        correct: true,
-        why: 'One run ends with a TypeError, the other prints 0 and ends normally: different outcomes.',
-      },
-    ],
-  },
-  {
-    q: 'A change makes Viscosity keep every collection as an array of objects. Which tests fail?',
-    options: [
-      {
-        t: 'The header checks, because the decisions no longer match',
-        correct: true,
-        why: 'Behaviour is unchanged, so only the expected decisions reveal the lost optimisation.',
-      },
-      {
-        t: 'The behaviour comparisons',
-        why: 'Leaving code alone never changes behaviour.',
-      },
-      {
-        t: 'The round-trip identity test',
-        why: 'A program with nothing to transform still comes back unchanged.',
-      },
-      {
-        t: 'None',
-        why: 'That is why the corpus pins down decisions as well as behaviour.',
-      },
-    ],
-  },
-  {
     q: 'Which is a metamorphic test?',
     options: [
       {
@@ -530,28 +459,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the repository’s fuzzer give every program its own seed, derived from the campaign seed and the program’s number?',
-    options: [
-      {
-        t: 'So any single failing program can be generated again on its own',
-        correct: true,
-        why: '`--only k` regenerates program k exactly, without rerunning the campaign.',
-      },
-      {
-        t: 'To make the programs run faster',
-        why: 'Seeds decide what is generated, not how fast it runs.',
-      },
-      {
-        t: 'Because JavaScript has no random numbers',
-        why: 'It has `Math.random`, but that cannot be replayed.',
-      },
-      {
-        t: 'So that every program is the same',
-        why: 'Different seeds give different programs; the same seed gives the same one.',
-      },
-    ],
-  },
-  {
     q: 'Why do Csmith and YARPGen go to great lengths to avoid undefined behaviour?',
     options: [
       {
@@ -592,50 +499,6 @@ export const quiz = [
       {
         t: 'Report a new compiler bug',
         why: 'A syntax error in a mangled program is expected, not a bug.',
-      },
-    ],
-  },
-  {
-    q: 'What does the Drip companion’s fuzzer compare?',
-    options: [
-      {
-        t: 'The run-time output of random Drip programs',
-        why: 'Mangled programs are not run: one could loop forever.',
-      },
-      {
-        t: 'The compile errors reported by the tree-walker’s front end and by the VM’s compiler, on corpus programs with one token dropped, replaced or inserted',
-        correct: true,
-        why: 'Both front ends must reject a broken program in exactly the same words.',
-      },
-      {
-        t: 'TypeScript against Rust',
-        why: 'That is the Viscosity fuzzer’s parity check.',
-      },
-      {
-        t: 'Nothing: it only checks that nothing crashes',
-        why: 'It compares the two lists of errors with each other.',
-      },
-    ],
-  },
-  {
-    q: 'How is translation validation different from fuzzing?',
-    options: [
-      {
-        t: 'It runs more random programs',
-        why: 'It does not sample programs at all.',
-      },
-      {
-        t: 'It proves the compiler correct for every program',
-        why: 'That is compiler verification; translation validation checks one compilation at a time.',
-      },
-      {
-        t: 'It only works for interpreters',
-        why: 'Necula built one for the GNU C compiler.',
-      },
-      {
-        t: 'It checks, every time the compiler runs, that this output is equivalent to this input',
-        correct: true,
-        why: 'It turns “is the compiler right?” into “was this compilation right?”.',
       },
     ],
   },

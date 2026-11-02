@@ -1,4 +1,4 @@
-// Chapter 178 cards: recall prompts, examples, exercises and quiz.
+// Chapter 93 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 93, 93, 93.
 
@@ -11,25 +11,9 @@ export const prompts = {
     q: 'In a loop over `i` (step 1), `j = 3 * i + 2`. By how much does `j` change each trip?',
     a: 'By 3: a derived induction variable `c·i + d` steps by `c` times `i`’s step.',
   },
-  'trip-count': {
-    q: 'When can Viscosity tell how many times a loop runs?',
-    a: 'When the header tests a counting phi that starts at 0 against a constant bound, with `<` or `<=`.',
-  },
-  'bounds-dominate': {
-    q: 'Why must the header test’s “true” successor dominate the access `ps[i]`?',
-    a: 'Then every path to the access goes through the test passing, so `i < ps.length` holds when the access runs.',
-  },
-  'and-guard': {
-    q: 'Can Viscosity prove `ps[i]` in bounds when the header tests `i < ps.length && go`?',
-    a: 'Yes. It splits the condition into its `&&` parts, and one part is `i < ps.length`.',
-  },
   'invariant-what': {
     q: 'When is an instruction loop-invariant?',
     a: 'When it is pure and every operand is defined outside the loop or is itself loop-invariant.',
-  },
-  'phi-not-invariant': {
-    q: 'Why is a phi in the loop header never loop-invariant?',
-    a: 'One of its inputs comes round from the latch, so it takes a new value on each trip by design.',
   },
   'length-not-invariant': {
     q: 'In a loop that calls `g.push(...)`, is `g.length` loop-invariant?',
@@ -39,65 +23,17 @@ export const prompts = {
     q: 'What is a **call graph**?',
     a: 'One node per function, and an edge f → g when f contains a call that may reach g.',
   },
-  'inline-recursion': {
-    q: 'Why can a recursive function not be inlined completely?',
-    a: 'Each inlined copy contains another call to the function, so the expansion never ends; at most a few levels are inlined.',
-  },
   'js-callee-unknown': {
     q: 'Name two reasons a JavaScript call’s target may be unknown before the program runs.',
     a: 'Functions are values (`f(x)` calls whatever `f` holds, and callbacks are called from inside other functions), and methods are found on the prototype chain at run time.',
-  },
-  'known-fn': {
-    q: 'When does Viscosity treat a function as **known**?',
-    a: 'When it is declared once and its name is used only for direct calls: never passed as a value, reassigned or called as a method.',
-  },
-  'param-alias': {
-    q: 'When does Viscosity follow a collection into a known function’s parameter?',
-    a: 'When every call site passes that same collection in that position.',
-  },
-  'bottom-up-why': {
-    q: 'Why do inliners visit the call graph from the leaves up?',
-    a: 'So each callee is already as optimised (and as big) as it will get when its callers decide whether to inline it.',
-  },
-  'called-once': {
-    q: 'Why is a function called from exactly one place (and not visible outside the program) almost always inlined?',
-    a: 'After inlining, the original can be deleted, so the program gets no bigger, and usually faster.',
-  },
-  'inline-cost': {
-    q: 'What does inlining cost, and how do inliners limit it?',
-    a: 'Code size, and so compile time and memory; inliners set a growth budget and prefer small, once-called or hot callees.',
-  },
-  'inline-what': {
-    q: 'What does inlining do to a call?',
-    a: 'Replaces it with a copy of the callee’s body, with the arguments in place of the parameters.',
-  },
-  'element-call': {
-    q: 'Why does `move(ps[i])` keep `ps` as objects, while the same code pasted into the loop becomes struct of arrays?',
-    a: 'Viscosity does not follow a single element into a call, so the call is a use it cannot see; inlined, every use is in view.',
-  },
-  'inline-rename': {
-    q: 'Why does inlining give the callee’s locals fresh names?',
-    a: 'So they cannot clash with, and silently take over, the caller’s variables of the same name.',
   },
   'inline-simultaneous': {
     q: 'Inline `sub(b, a)` where `sub(a, b)` is `a - b`, replacing one parameter at a time. What goes wrong?',
     a: '`a → b` gives `b - b`, then `b → a` gives `a - a`. Parameters must be replaced all at once, in the original body.',
   },
-  'arg-once': {
-    q: 'An argument has a side effect (say `next()`), and the parameter is used twice in the body. What must inlining do?',
-    a: 'Evaluate the argument once into a fresh temporary before the body, and substitute the temporary, so the effect happens once, as in the call.',
-  },
-  'return-join': {
-    q: 'When a callee with two `return`s is inlined into a CFG, what becomes of the call’s result?',
-    a: 'Each return jumps to the block after the call, and a phi there picks whichever value was returned.',
-  },
   'inline-enables': {
     q: 'What is inlining’s main benefit, beyond saving the cost of a call?',
     a: 'Caller and callee become one piece of code, so other passes (folding, DCE, value numbering, layout analysis) see across the old boundary.',
-  },
-  'inline-then-fold': {
-    q: 'After inlining `sq(3)`, where `sq(v)` returns `v * v`, what can constant folding do?',
-    a: 'Fold `3 * 3` to `9`: the call and the multiplication both disappear.',
   },
 };
 
@@ -130,6 +66,7 @@ console.log(order.join(' '));`,
 
 export const exercises = {
   basicIvs: {
+    optional: true,
     title: 'Find the basic induction variables',
     prompt: '`loop` lists a loop’s instructions `{ id, op, args }`. Each argument is either an instruction id (a string) or a number. A header phi has `args: [start, next]`, where `next` is the value coming round from the latch. Write `basicIvs(loop)` returning an object mapping each phi that is a **basic induction variable** to its step: `next` must be an instruction `phi + n`, `n + phi` or `phi - n`, where `n` is a number. A `-` gives a negative step.',
     starter: `function basicIvs(loop) {
@@ -357,6 +294,7 @@ function invariants(loop, outside) {
     ],
   },
   recursiveFns: {
+    optional: true,
     title: 'Which functions are recursive?',
     prompt: 'Functions are given as expression trees, as in the inlining exercise: `{ n: 3 }` is a number, `{ v: \'x\' }` a variable, `{ op, l, r }` a binary operation and `{ call, args }` a call. `fns` maps a function name to `{ params, body }`. Build the call graph of `fns` and return the names (sorted) of the functions that can reach **themselves** through one or more calls: the ones an inliner cannot expand completely. Calls to names not in `fns` lead nowhere.',
     starter: `function recursive(fns) {
@@ -645,7 +583,7 @@ test('trees without calls are unchanged', () => {
 - \`const f = fns[e.call]; if (!f) return { call: e.call, args };\` a call to an unknown function stays, with its arguments inlined.
 - \`const env = new Map(); f.params.forEach((p, i) => { env.set(p, args[i]); });\` pairs every parameter with its argument, by position, before any replacing happens.
 - \`const body = subst(f.body, env);\` makes the substituted copy of the body, in one pass.
-- \`return inline(body, fns);\` inlines any calls the body itself contains (\`quad\` becomes \`sq(sq(z))\`, which becomes \`(z * z) * (z * z)\`). This cannot loop forever because the task promises no recursion; the next chapter is about what to do when there is.
+- \`return inline(body, fns);\` inlines any calls the body itself contains (\`quad\` becomes \`sq(sq(z))\`, which becomes \`(z * z) * (z * z)\`). This cannot loop forever because the task promises no recursion; with recursion, an inliner would need the call graph to stop after a few levels.
 
 **Common wrong attempts.**
 
@@ -753,68 +691,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Inside the `x` loop of a grid walk, `i = y * W + x`, where `y` and `W` do not change in that loop. What is `i`?',
-    options: [
-      {
-        t: 'A derived induction variable of `x`, with step 1',
-        correct: true,
-        why: 'It is `1·x + (y·W)`, a constant multiple of `x` plus an invariant, so it steps with `x`.',
-      },
-      {
-        t: 'Loop-invariant',
-        why: '`x` changes every trip, so `i` does too.',
-      },
-      {
-        t: 'Not an induction variable, because it uses a multiply',
-        why: 'The multiply is of two invariants; `x` itself is only added.',
-      },
-      {
-        t: 'A basic induction variable',
-        why: 'Basic ones are header phis; `i` is computed from the phi `x`.',
-      },
-    ],
-  },
-  {
-    q: 'Which header test lets Viscosity prove `ps[i]` in bounds inside a `for (let i = 0; ...; i++)` loop?',
-    options: [
-      {
-        t: '`i <= ps.length`',
-        why: '`i` can equal `ps.length`, one past the end.',
-      },
-      {
-        t: '`i < n`, where `const n = 1000`',
-        why: 'The bound must be the length of the same collection; `n` might not match it.',
-      },
-      {
-        t: '`ps.length > i - 1`',
-        why: 'The proof looks for the pattern `i < ps.length` with the counting phi on the left.',
-      },
-      {
-        t: '`i < ps.length && i < 64`',
-        correct: true,
-        why: 'The condition is split at `&&`, and one part is `i < ps.length`.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `for (let i = 0; i < ps.length; i += 2)` leave its accesses checked?',
-    options: [
-      {
-        t: 'Because stepping by 2 can skip past the end',
-        why: 'Not really: the test `i < ps.length` still runs before each access. Viscosity only recognises counting phis that step by exactly 1.',
-      },
-      {
-        t: 'Because `+=` is not allowed in loops Viscosity transforms',
-        why: 'The collection is still transformed (struct of arrays); only the bounds proof fails.',
-      },
-      {
-        t: 'Because `isCountingPhi` requires a step of exactly `+1`, so `i` is not recognised',
-        correct: true,
-        why: 'The proof is deliberately narrow. Anything it does not recognise gets a check, which is always safe.',
-      },
-    ],
-  },
-  {
     q: 'A loop body contains `t = n * 2` (with `n` defined before the loop) and `g.push(t)`. Which is loop-invariant?',
     options: [
       {
@@ -837,24 +713,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is finding invariant instructions done with repeated sweeps rather than one pass?',
-    options: [
-      {
-        t: 'Because instructions can change between sweeps',
-        why: 'The instructions stay the same; only what we know about them grows.',
-      },
-      {
-        t: 'Because the rule refers to itself, and an instruction can be listed before an operand that is only later found invariant',
-        correct: true,
-        why: 'Sweeping until nothing changes reaches the fixpoint whatever the order.',
-      },
-      {
-        t: 'Because phis have to be visited twice',
-        why: 'Phis in the header are never invariant, however often you visit them.',
-      },
-    ],
-  },
-  {
     q: 'In a call graph, what is recursion?',
     options: [
       {
@@ -869,28 +727,6 @@ export const quiz = [
       {
         t: 'A call to an unknown function',
         why: 'That is an edge to “unknown”, which may or may not lead back.',
-      },
-    ],
-  },
-  {
-    q: 'Which call has a target a compiler can know for certain before the program runs?',
-    options: [
-      {
-        t: '`o.area()`',
-        why: 'The method is found on o’s prototype chain at run time.',
-      },
-      {
-        t: '`xs.map(g)` calling `g`',
-        why: 'The call to `g` happens inside `map`, with whatever function was passed.',
-      },
-      {
-        t: '`sq(3)`, where `sq` is a function declared once and never reassigned or passed around',
-        correct: true,
-        why: 'That is exactly what Viscosity calls a known function.',
-      },
-      {
-        t: '`f(3)`, where `f = cond ? sq : cube`',
-        why: 'It depends on `cond`, so either could be called.',
       },
     ],
   },
@@ -913,42 +749,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why do inliners work bottom-up, leaves first?',
-    options: [
-      {
-        t: 'So each callee is already optimised, and its final size known, when its callers decide',
-        correct: true,
-        why: 'Top-down, a caller would inline an unoptimised callee and copy all of its calls along with it.',
-      },
-      {
-        t: 'Because leaves are the hottest functions',
-        why: 'Leaves are not necessarily hot; the order is about having callees finished first.',
-      },
-      {
-        t: 'Because the call graph has no edges going up',
-        why: 'Edges go from callers to callees; the order follows them in reverse.',
-      },
-    ],
-  },
-  {
-    q: '`total(xs)` is called with two different arrays. What does Viscosity do?',
-    options: [
-      {
-        t: 'Inlines `total` at both calls',
-        why: 'Viscosity does not inline.',
-      },
-      {
-        t: 'Keeps both arrays as arrays of objects, because `total` is called with other values',
-        correct: true,
-        why: 'It follows a collection into a known function only when every call site passes that same collection.',
-      },
-      {
-        t: 'Converts both to struct of arrays and makes two copies of `total`',
-        why: 'It does not clone functions; that is what inlining would effectively do.',
-      },
-    ],
-  },
-  {
     q: 'Inline `sub(b, a)`, where `function sub(a, b) { return a - b; }`. What is the result?',
     options: [
       {
@@ -967,96 +767,6 @@ export const quiz = [
       {
         t: '`b - b`',
         why: 'That is the halfway point of the one-at-a-time mistake.',
-      },
-    ],
-  },
-  {
-    q: 'Why does inlining rename the callee’s local variables?',
-    options: [
-      {
-        t: 'Shorter names make the code faster',
-        why: 'Names have no effect on speed; the issue is clashes.',
-      },
-      {
-        t: 'JavaScript forbids two variables with the same name in one program',
-        why: 'It allows them in different scopes; inlining merges two scopes into one.',
-      },
-      {
-        t: 'So a callee local cannot clash with a caller variable of the same name',
-        correct: true,
-        why: 'Without fresh names, the copy could overwrite or read the caller’s variable by accident.',
-      },
-    ],
-  },
-  {
-    q: 'A function with two `return` statements is inlined into a CFG. How is the call’s value produced?',
-    options: [
-      {
-        t: 'By a phi in the block after the call, with one operand per return',
-        correct: true,
-        why: 'Each return becomes a jump to that block, carrying its value as a phi operand.',
-      },
-      {
-        t: 'By keeping only the first return',
-        why: 'Either return may be the one that runs.',
-      },
-      {
-        t: 'By a new call to the original function',
-        why: 'That would undo the inlining.',
-      },
-    ],
-  },
-  {
-    q: 'What is the main reason compilers inline small functions?',
-    options: [
-      {
-        t: 'Calls are very slow on modern hardware',
-        why: 'A call costs a few instructions; that is rarely the main gain.',
-      },
-      {
-        t: 'Other optimisations can then work across the old call boundary',
-        correct: true,
-        why: 'Constants meet operations, dead results become visible, and analyses see every use.',
-      },
-      {
-        t: 'It makes the program smaller',
-        why: 'It usually makes it bigger, which is its main cost.',
-      },
-    ],
-  },
-  {
-    q: 'Viscosity keeps `ps` as an array of objects when the loop calls `move(ps[i])`. What happens if you inline `move` by hand?',
-    options: [
-      {
-        t: 'Nothing changes: Viscosity follows calls anyway',
-        why: 'It does not follow a single element into a call, which is why it refused.',
-      },
-      {
-        t: 'It switches to struct of arrays, because every use of the element is now in view',
-        correct: true,
-        why: 'The real explanation changes to “struct of arrays” with typed columns for x and vx.',
-      },
-      {
-        t: 'The program prints a different answer',
-        why: 'Inlining by hand does not change what the program does.',
-      },
-    ],
-  },
-  {
-    q: 'What does inlining cost?',
-    options: [
-      {
-        t: 'Correctness: inlined code can behave differently',
-        why: 'Done right (simultaneous substitution, fresh names, arguments evaluated once) it behaves exactly the same.',
-      },
-      {
-        t: 'Nothing; it is always a win',
-        why: 'Every copy adds code, which costs compile time and memory, and can crowd the instruction cache.',
-      },
-      {
-        t: 'Code size, and so compile time and memory',
-        correct: true,
-        why: 'The body is copied at every inlined call site.',
       },
     ],
   },

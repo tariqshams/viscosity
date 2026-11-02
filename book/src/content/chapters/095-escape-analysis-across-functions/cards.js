@@ -1,107 +1,27 @@
-// Chapter 180 cards: recall prompts, examples, exercises and quiz.
+// Chapter 95 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 95, 95, 95, 95.
 
 export const prompts = {
-  'ipa-what': {
-    q: 'What does an interprocedural analysis do that an intraprocedural one cannot?',
-    a: 'It follows facts across calls (into parameters, back out of returns) instead of assuming the worst at every call.',
-  },
   'call-as-copy': {
     q: 'For points-to purposes, what two copies is the call `r = f(x)`?',
     a: 'The argument x is copied into f’s parameter, and f’s return value is copied into r.',
-  },
-  'cg-needs-pts': {
-    q: 'Why must a JavaScript analysis build the call graph and the points-to sets together?',
-    a: 'A callee is a value: the targets of `g(x)` are the function objects in pts(g), which the points-to analysis is still computing.',
   },
   unrealizable: {
     q: 'What impossible path does a context-insensitive analysis follow through `id`?',
     a: 'In at one call site and out to a different caller’s result; a real call always returns to where it came from.',
   },
-  'call-string': {
-    q: 'In a call-string context, what labels a function’s facts?',
-    a: 'The chain of call sites that led to this call, usually the last k of them.',
-  },
-  'k-limit': {
-    q: 'Why does `wrap(q) { return id(q); }` defeat a 1-call-site analysis of `id`?',
-    a: 'Every call to id now comes from the one site inside wrap, so with k = 1 all callers of wrap share one context again.',
-  },
-  'object-sens': {
-    q: 'What is the context in an object-sensitive analysis?',
-    a: 'The allocation site of the receiver object (the object the method is called on), not the call site.',
-  },
-  cloning: {
-    q: 'How can context sensitivity be pictured as cloning?',
-    a: 'Copy each function once per context, then run a context-insensitive analysis on the larger program.',
-  },
-  'summary-what': {
-    q: 'What does a function summary record?',
-    a: 'What the function does with what flows in (parameters returned, stored, passed on; fields read and written), computed once.',
-  },
   'summary-precise': {
     q: 'Why does applying `id`’s summary give `a = id(o1)` the answer {o1}, not {o1, o2}?',
     a: 'The summary is a rule (“result gets the parameter’s set”) applied to each call’s own argument, so callers never share facts.',
-  },
-  'go-tags': {
-    q: 'What does Go’s compiler call its per-function escape summaries, and where are they used?',
-    a: '“Parameter tags”; they are used at static call sites to decide whether the arguments escape.',
-  },
-  'summary-recursion': {
-    q: 'How is a recursive function summarised, when its summary depends on itself?',
-    a: 'Start every summary at “does nothing”, recompute them all, and repeat until none changes (a fixpoint).',
-  },
-  'datalog-parts': {
-    q: 'In Datalog, what is a fact and what is a rule?',
-    a: 'A fact is a row of a relation, like `Assign(a, c)`; a rule `head :- body` derives new rows when its body holds.',
-  },
-  'datalog-join': {
-    q: 'In `Pts(t, h) :- Assign(f, t), Pts(f, h).`, what does the shared variable `f` do?',
-    a: 'It joins the two tables: an Assign row and a Pts row combine only when they agree on f.',
-  },
-  'datalog-stops': {
-    q: 'Why is Datalog evaluation guaranteed to stop?',
-    a: 'Rules never invent new values, so only finitely many facts are possible, and each round must add one or stop.',
-  },
-  'datalog-why': {
-    q: 'What does writing an analysis in Datalog save the analysis writer?',
-    a: 'Writing and debugging the fixpoint loops and joins by hand: the engine evaluates the rules, so the rules are the whole analysis.',
   },
   'ea-what': {
     q: 'What question does escape analysis answer?',
     a: 'Can a reference to an object made here be used outside this region of code (after it ends, or by code outside it)?',
   },
-  'ea-region': {
-    q: '“Escapes” is always relative to what?',
-    a: 'A region of code: a function, a loop, or a thread. Leaving that region is escaping.',
-  },
   'ea-conservative': {
     q: 'When escape analysis cannot tell whether an object escapes, what must it assume, and why?',
     a: 'That it escapes. Wrongly saying “stays inside” could free or take apart an object someone still uses; wrongly saying “escapes” only costs speed.',
-  },
-  'cg-nodes': {
-    q: 'What are the three kinds of node in a connection graph?',
-    a: 'Objects (one per allocation site), local variables, and fields of objects.',
-  },
-  'deferred-edge': {
-    q: 'What does a deferred edge x ⇢ y mean, and what happens to it after the graph is built?',
-    a: '“x holds whatever y holds”; it is bypassed, so x points directly at y’s objects.',
-  },
-  'three-states': {
-    q: 'Name the three escape states, from most local to least.',
-    a: 'NoEscape, ArgEscape, GlobalEscape.',
-  },
-  'reach-escape': {
-    q: '`p.next = q`, and q’s object escapes. Does p’s object escape?',
-    a: 'No. Pointing at an escaping object is harmless; an object escapes only if something escaping can reach it.',
-  },
-  'ea-uses': {
-    q: 'What can a compiler do with a NoEscape object, and with one that does not escape its thread?',
-    a: 'NoEscape: allocate it on the stack or replace it with its fields (scalars). Thread-local: remove its locks.',
-  },
-  'ea67-puzzle': {
-    q: 'In this book’s benchmark run, why didn’t struct of arrays lose on `get-objects`, even though it builds an object per element?',
-    a: 'V8 inlined the small consumer function and then removed the temporary object, so no allocation was left.',
   },
   'ea67-inline-first': {
     q: 'Why does V8 usually need to inline `consume(p)` before it can remove `p`?',
@@ -115,21 +35,13 @@ export const prompts = {
     q: 'What is *allocation sinking*?',
     a: 'Moving an allocation to the only places that need a real object, such as a deopt exit, and removing it from the fast path.',
   },
-  'ea67-escaped': {
-    q: 'According to V8’s source, an object counts as escaped when what happens to it?',
-    a: 'It reaches memory the analysis doesn’t track, or it is used by an operation that needs it to really exist.',
+  'datalog-parts': {
+    q: 'In Datalog, what is a fact and what is a rule?',
+    a: 'A fact is a row of a relation, like `Assign(a, c)`; a rule `head :- body` derives new rows when its body holds.',
   },
-  'ea67-deopt': {
-    q: 'A guard fails in a loop whose temporary object was removed. How does the interpreter get its object?',
-    a: 'The deopt frame state describes the object by its field values, and the deoptimiser builds (materialises) it then.',
-  },
-  'ea67-materialize': {
-    q: 'Why can’t V8 remove the allocations in the `materialize` suite?',
-    a: 'Each object is stored into an array that outlives the loop: it escapes, and its identity can be observed.',
-  },
-  'ea67-viscosity': {
-    q: 'Why must Viscosity be stricter than V8 about escapes?',
-    a: 'It runs ahead of time, without deoptimisation to fall back on, so it must prove safety on the code as written.',
+  'datalog-stops': {
+    q: 'Why is Datalog evaluation guaranteed to stop?',
+    a: 'Rules never invent new values, so only finitely many facts are possible, and each round must add one or stop.',
   },
 };
 
@@ -192,6 +104,7 @@ console.log(saved.x);`,
 
 export const exercises = {
   contexts: {
+    optional: true,
     title: 'k call sites of context',
     prompt: 'Functions take one parameter. `fns` maps a name to its body: `[\'param\']` (returns its parameter), `[\'new\', site]` (returns a fresh object made at `site`) or `[\'call\', g, site]` (returns `g(param)`, called at `site`). `calls` lists top-level calls `[v, f, o, s]`: `v = f(new object at site o)`, at call site `s`. No function calls itself. Write `analyze(fns, calls, k)` returning, for each `v`, its sorted points-to set, using contexts of the last `k` call sites (`k = 0` is context-insensitive).',
     starter: `function analyze(fns, calls, k) {
@@ -404,6 +317,7 @@ test('a fresh object does not depend on context', () => {
     ],
   },
   tinyDatalog: {
+    optional: true,
     title: 'A Datalog engine in forty lines',
     prompt: 'A fact is an array like `[\'New\', \'a\', \'o1\']`. A rule is `{ head, body }`: `head` is one atom and `body` a list of atoms, where strings starting with `?` are variables, like `{ head: [\'Pts\', \'?v\', \'?h\'], body: [[\'New\', \'?v\', \'?h\']] }`. Write `solve(facts, rules)` that derives every fact the rules allow (repeat until nothing new) and returns all facts, input and derived, as sorted strings like `\'Pts(a,o1)\'`.',
     starter: `function solve(facts, rules) {
@@ -699,6 +613,7 @@ test('recursion reaches a fixpoint', () => {
     ],
   },
   escapeStates: {
+    optional: true,
     title: 'Colour a connection graph',
     prompt: 'A connection graph with its deferred edges already bypassed is a list of `edges`, each `[from, to]`. `start` gives the starting state of some nodes: `\'global\'` or `\'arg\'`. Every other node starts as `\'no\'` (NoEscape). States are ordered `no < arg < global`, and each node’s state spreads along edges to everything it can reach. Write `escapeStates(edges, start)` returning an object with the final state of every node that appears.',
     starter: `function escapeStates(edges, start) {
@@ -1121,24 +1036,6 @@ The third test checks that two calls give two *different* objects. That is right
 
 export const quiz = [
   {
-    q: 'An intraprocedural analysis meets `const r = f(x);`. What must it assume?',
-    options: [
-      {
-        t: 'That `r` is a copy of `x`',
-        why: 'It cannot know that without looking inside `f`.',
-      },
-      {
-        t: 'That `f` may store `x` anywhere and `r` may point at anything',
-        correct: true,
-        why: 'Without crossing the call, the worst case is the only safe one.',
-      },
-      {
-        t: 'That `f` has no effect',
-        why: 'That would be unsound: `f` might store `x` in a global.',
-      },
-    ],
-  },
-  {
     q: 'With `id(p) { return p; }` called as `a = id(o1)` and `b = id(o2)`, what does a context-insensitive points-to analysis give for `a`?',
     options: [
       {
@@ -1161,64 +1058,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why do analyses keep only the last k call sites of context, rather than the whole chain?',
-    options: [
-      {
-        t: 'Recursion makes chains of call sites unboundedly long, so the set of contexts must be cut to stay finite',
-        correct: true,
-        why: 'With k sites there are finitely many contexts, so the fixpoint is still reached.',
-      },
-      {
-        t: 'Because older call sites never matter',
-        why: 'They can matter: the wrapper example needs two sites.',
-      },
-      {
-        t: 'Because JavaScript has at most k nested calls',
-        why: 'JavaScript allows deep call chains (up to the stack limit).',
-      },
-    ],
-  },
-  {
-    q: '`put(b, v)` calls `b.set(v)` at one site; `put` is called with two different boxes. Which context separates the two calls to `set`?',
-    options: [
-      {
-        t: '1 call site',
-        why: 'Every call to `set` comes from the same site inside `put`.',
-      },
-      {
-        t: 'Context-insensitive',
-        why: 'That merges everything.',
-      },
-      {
-        t: 'The function’s name',
-        why: 'Every call is to the same function, `set`.',
-      },
-      {
-        t: 'Object sensitivity: the receiver’s allocation site',
-        correct: true,
-        why: 'The receivers are two different boxes, so `set` gets two contexts.',
-      },
-    ],
-  },
-  {
-    q: 'Why can’t a JavaScript points-to analysis first build the call graph and then compute points-to sets?',
-    options: [
-      {
-        t: 'Because calls are rare in JavaScript',
-        why: 'They are everywhere.',
-      },
-      {
-        t: 'It can; the order does not matter',
-        why: 'The call graph depends on the sets, so building it first would have to guess.',
-      },
-      {
-        t: 'Because callees are values: the targets of `g(x)` are whatever function objects pts(g) holds',
-        correct: true,
-        why: 'Each new set can add call edges, and each edge adds copies, so both grow together to one fixpoint.',
-      },
-    ],
-  },
-  {
     q: 'What is the main advantage of a function summary over analysing a function once per calling context?',
     options: [
       {
@@ -1237,184 +1076,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Go reports `p does not escape` for `func read(p *P) float64`. What can it do with that at the call `read(&P{7, 8})`?',
-    options: [
-      {
-        t: 'Nothing: escape analysis is only about one function',
-        why: 'The point of the tag is to be used at call sites.',
-      },
-      {
-        t: 'Inline `read`',
-        why: 'The output was produced with inlining turned off (-l); the decision comes from the summary.',
-      },
-      {
-        t: 'Remove the call',
-        why: 'The call still computes p.x.',
-      },
-      {
-        t: 'Allocate the new `P` on the stack, since the callee never keeps it',
-        correct: true,
-        why: 'Go printed `&P{...} does not escape` for that call.',
-      },
-    ],
-  },
-  {
-    q: 'Facts: `New(a, o1)`, `Assign(a, b)`, `Assign(b, c)`. Rules: `Pts(v, h) :- New(v, h).` and `Pts(t, h) :- Assign(f, t), Pts(f, h).` How many rounds derive something new?',
-    options: [
-      {
-        t: 'One',
-        why: 'Round 1 only finds Pts(a, o1); R2 needs Pts facts to join with.',
-      },
-      {
-        t: 'Three: Pts(a, o1), then Pts(b, o1), then Pts(c, o1)',
-        correct: true,
-        why: 'Each round extends the chain by one copy; the fourth round adds nothing.',
-      },
-      {
-        t: 'It never stops, because rules can apply forever',
-        why: 'Rules invent no values, so only finitely many facts exist.',
-      },
-    ],
-  },
-  {
-    q: 'What makes `Assign(f, t), Pts(f, h)` a join?',
-    options: [
-      {
-        t: 'The comma',
-        why: 'The comma means “and”; the join comes from what the two parts share.',
-      },
-      {
-        t: 'The variable `f` appears in both, so only rows that agree on `f` combine',
-        correct: true,
-        why: 'Without the shared variable it would pair every row with every row.',
-      },
-      {
-        t: 'Both relations have two columns',
-        why: 'Width only matters for matching an atom to a fact.',
-      },
-      {
-        t: 'The head mentions `t` and `h`',
-        why: 'The head says what to produce; the body’s shared variables do the joining.',
-      },
-    ],
-  },
-  {
-    q: 'How does Doop make its rules consider only code the program can actually reach?',
-    options: [
-      {
-        t: 'It deletes unreachable methods before running',
-        why: 'Reachability is itself computed by the rules, together with the points-to sets.',
-      },
-      {
-        t: 'It runs the program first',
-        why: 'Doop is a static analysis; it never runs the program.',
-      },
-      {
-        t: 'Its rules include a `Reachable(?method)` condition, and other rules derive `Reachable` and call-graph edges from the points-to sets',
-        correct: true,
-        why: 'So the call graph and the sets grow together to one fixpoint.',
-      },
-    ],
-  },
-  {
-    q: 'In `function dist(x, y) { const p = { x, y }; return Math.sqrt(p.x * p.x + p.y * p.y); }`, does `p` escape?',
-    options: [
-      {
-        t: 'Yes: every object is on the heap',
-        why: 'That is where the language says it lives; escape analysis asks whether it has to.',
-      },
-      {
-        t: 'Yes: it is used in a call to Math.sqrt',
-        why: 'Only numbers read from it are passed, not the object.',
-      },
-      {
-        t: 'No: only its fields are read, and no reference to it leaves `dist`',
-        correct: true,
-        why: 'So it could live on the stack, or be replaced by two numbers.',
-      },
-    ],
-  },
-  {
-    q: '`p.next = q`, where `q`’s object is stored in a global. What is the state of `p`’s object, if nothing else touches it?',
-    options: [
-      {
-        t: 'NoEscape',
-        correct: true,
-        why: 'States spread along edges to what is pointed at; p’s object points at q’s, not the other way round.',
-      },
-      {
-        t: 'GlobalEscape, because it is connected to a global object',
-        why: 'Connected in the wrong direction: nobody outside can follow `next` backwards.',
-      },
-      {
-        t: 'ArgEscape',
-        why: 'No argument reaches p’s object.',
-      },
-    ],
-  },
-  {
-    q: 'What does a deferred edge in a connection graph stand for?',
-    options: [
-      {
-        t: 'A call that has not been analysed yet',
-        why: 'Calls are handled separately; a deferred edge comes from an assignment.',
-      },
-      {
-        t: 'An object that will be allocated later',
-        why: 'Objects are nodes; edges connect them.',
-      },
-      {
-        t: '“Holds whatever that holds”, from a copy like `p = q` or a field store; it is bypassed after the graph is built',
-        correct: true,
-        why: 'Bypassing gives p direct points-to edges to q’s objects.',
-      },
-      {
-        t: 'An edge that may be ignored',
-        why: 'Ignoring it would lose the flow of references, and with it, escapes.',
-      },
-    ],
-  },
-  {
-    q: 'Go reports `moved to heap: p` for `func make1() *P { p := P{3, 4}; return &p }`. Why?',
-    options: [
-      {
-        t: 'Because P has two fields',
-        why: 'Size is not the reason; a P that is only read can stay on the stack.',
-      },
-      {
-        t: 'Because inlining was turned off',
-        why: 'Even without inlining, a value that is only read stays on the stack.',
-      },
-      {
-        t: 'Because Go puts every struct on the heap',
-        why: 'It puts values on the stack whenever escape analysis allows.',
-      },
-      {
-        t: 'A pointer to p is returned, so p must outlive the frame of make1',
-        correct: true,
-        why: 'Go’s rule: pointers to a stack object cannot outlive that object.',
-      },
-    ],
-  },
-  {
-    q: 'Which optimisation needs only that an object does not escape its thread, rather than its method?',
-    options: [
-      {
-        t: 'Stack allocation',
-        why: 'The stack frame dies when the method returns, so the object must not outlive the method.',
-      },
-      {
-        t: 'Removing the locks taken on it',
-        correct: true,
-        why: 'No other thread can ever see it, so locking it protects nothing.',
-      },
-      {
-        t: 'Scalar replacement',
-        why: 'Taking the object apart needs every use in view, inside the method.',
-      },
-    ],
-  },
-  {
     q: 'Which order of steps lets TurboFan remove the object in `t += len2({ x: xs[i], y: ys[i] })`?',
     options: [
       {
@@ -1424,7 +1085,7 @@ export const quiz = [
       {
         t: 'Inline `len2`, see that `p` is only used by field reads, then replace those reads with the stored values',
         correct: true,
-        why: 'On this book’s machine, `--trace-turbo-inlining` shows len2 being inlined, and turning off either inlining or escape analysis brings the allocations back.',
+        why: 'In V8 12.4, `--trace-turbo-inlining` shows len2 being inlined, and turning off either inlining or escape analysis brings the allocations back.',
       },
       {
         t: 'Convert the loop to struct of arrays',
@@ -1433,28 +1094,6 @@ export const quiz = [
       {
         t: 'Let the garbage collector free each object right after the call',
         why: 'That still allocates every object; the collector only cleans up afterwards.',
-      },
-    ],
-  },
-  {
-    q: 'After scalar replacement, where do `p.x` and `p.y` live?',
-    options: [
-      {
-        t: 'In a hidden object on the heap',
-        why: 'There is no object left; that is what was removed.',
-      },
-      {
-        t: 'In the feedback vector',
-        why: 'Feedback describes what operations saw, not the program’s values.',
-      },
-      {
-        t: 'In a `Float64Array` that V8 creates',
-        why: 'V8 doesn’t create columns; scalar replacement works on single values.',
-      },
-      {
-        t: 'As separate local values, like `p_x` and `p_y`, which can sit in registers',
-        correct: true,
-        why: 'Each field becomes its own value, and reads of the field become uses of that value.',
       },
     ],
   },
@@ -1477,50 +1116,6 @@ export const quiz = [
       {
         t: 'The interpreter continues without `p`',
         why: 'The interpreter’s code still says `p.x`, so it needs a real `p`.',
-      },
-    ],
-  },
-  {
-    q: 'In this book’s run, `materialize` was about 20 to 35 times slower for SoA (at 100,000 and a million elements), while `get-objects` wasn’t slower at all. Why?',
-    options: [
-      {
-        t: 'V8 doesn’t optimise loops that write arrays',
-        why: 'It optimises them fine; the allocations are the problem.',
-      },
-      {
-        t: '`materialize` stores every object into an array that outlives the loop, so they escape and must exist',
-        correct: true,
-        why: 'Something outside can now read `out[i]` and compare identities. No analysis can remove those allocations.',
-      },
-      {
-        t: '`materialize` uses six fields and `get-objects` uses two',
-        why: 'Both build objects with all six fields.',
-      },
-      {
-        t: 'The `materialize` objects are too big for the young generation',
-        why: 'They are small objects; the cost is that each one must really be allocated.',
-      },
-    ],
-  },
-  {
-    q: 'Viscosity, unlike V8, refuses to change the layout when an element is passed to `move(ps[i])`. Why is that the right choice for it?',
-    options: [
-      {
-        t: 'Viscosity’s analysis is less accurate by mistake',
-        why: 'It is cautious on purpose: it has different tools.',
-      },
-      {
-        t: 'Function calls are always slow in JavaScript',
-        why: 'Calls are cheap once inlined; the issue is what the callee might do with the object.',
-      },
-      {
-        t: 'V8 forbids libraries from changing data layout',
-        why: 'Nothing forbids it; Viscosity rewrites source code before V8 sees it.',
-      },
-      {
-        t: 'It works ahead of time, with no inlining and no deoptimisation, so it must prove the object never escapes in the code as written',
-        correct: true,
-        why: 'V8 can inline, speculate and bail out. Viscosity’s only safe answer to “might escape” is to keep the objects.',
       },
     ],
   },

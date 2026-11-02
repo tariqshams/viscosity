@@ -1,4 +1,4 @@
-// Chapter 181 cards: recall prompts, examples, exercises and quiz.
+// Chapter 96 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {

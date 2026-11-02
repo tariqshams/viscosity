@@ -8,13 +8,11 @@ objectives:
   - Describe ESTree, the shared tree format for JavaScript, and read a small ESTree tree.
   - Tell apart p.x and p[x] in a tree, and say what each node's start and end offsets cover.
   - Explain why Viscosity depends on ESTree rather than on any particular parser.
-  - Write a small recursive-descent parser that produces ESTree.
   - Explain what the acorn adapter in Viscosity's JavaScript plugin does, including comments, annotations and TypeScript.
-  - Read the hand-written mini parser's recursive-descent statements and Pratt expressions.
   - Say how the repository checks that two parsers are interchangeable.
   - Write an adapter that turns a foreign tree format into ESTree.
 introduces: [estree, parser-adapter]
-uses: [language-plugin, viscosity-pipeline, vir, parser, recursive-descent, ast, ast-node, scanner, token, syntax-error, grammar, discriminated-union, interface, object, recursion, lowering, source-location, pratt-parser, binding-power, precedence, associativity, prefix-infix, lookahead, keyword, typescript, type-erasure, differential-testing, callback]
+uses: [language-plugin, viscosity-pipeline, vir, parser, recursive-descent, ast, ast-node, syntax-error, discriminated-union, object, lowering, source-location, pratt-parser, binding-power, precedence, associativity, typescript, type-erasure, differential-testing, callback]
 sources: [estree, estree-readme, acorn, ecma262, sucrase]
 ---
 import OffsetsSteps from '../../../components/diagrams/ch100/OffsetsSteps';
@@ -22,54 +20,48 @@ import MemberTree from '../../../components/diagrams/ch100/MemberTree';
 import MiniParseSteps from '../../../components/diagrams/ch100/MiniParseSteps';
 import AdapterShape from '../../../components/diagrams/ch100/AdapterShape';
 
-{/* ── merge: from old chapter 100, Parsing real JavaScript ── */}
-
 ## A bigger language
 
-Drip's grammar fits on a page. JavaScript's specification is hundreds of
-pages long<Cite id="ecma262" />, and it grows every year: classes,
-getters, optional chaining, template literals, regular expressions,
-modules. Writing a complete JavaScript parser is a project in itself,
-and it is not the project Viscosity is about; what Viscosity needs is a
-syntax tree, as in the chapter *Syntax trees*, that its plugin can lower
-to VIR. The real question, then, is not "how do we parse?" but "what
-shape should the tree be?", because if we pick a shape that other
-parsers already produce, we can use theirs.
+Drip's grammar fits on a page; JavaScript's specification is hundreds of
+pages long<Cite id="ecma262" />, and it grows every year. Writing a
+complete JavaScript parser is a project in itself, and not the one
+Viscosity is about: what it needs is a syntax tree (*Syntax trees and a
+tree printer*) that its plugin can lower to VIR. So the real question is
+not "how do we parse?" but "what shape should the tree be?", because if
+we pick a shape other parsers already produce, we can use theirs.
 
 <Analogy title="a shipping container">
-A shipping container has a standard size. Ships, cranes, trains and
-lorries were all built around it, so any of them can carry any
-container, and none of them needs to know who packed it. ESTree is the
-standard container for JavaScript syntax trees: many parsers fill it, and
-many tools unload it.
+A shipping container has a standard size, and ships, cranes, trains and
+lorries were all built around it, so any of them can carry any container
+and none needs to know who packed it. ESTree is the standard container
+for JavaScript syntax trees: many parsers fill it, and many tools unload
+it.
 <span slot="breaks">A container's contents are hidden and anything fits
 inside; an ESTree node's contents are the whole point, and each kind of
 node has exactly the fields its type promises.</span>
 </Analogy>
 
-<Analogy extra title="sheet music">
-A composer in Vienna and a pianist in Lagos have never met, yet she can
-play his piece, because both use the same notation: a note's shape
-says how long it lasts, its place on the staff says how high. ESTree is a
-notation for programs: the parser writes it, the compiler reads it, and
-neither cares who wrote the other.
-<span slot="breaks">A pianist interprets, adding her own timing and
-feeling; a tool reading ESTree takes every field exactly as written,
-with no room for interpretation.</span>
-</Analogy>
-
 ## ESTree
 
-ESTree began as the documented output of the parser built into Firefox's
+ESTree began as the documented output of the parser in Firefox's
 SpiderMonkey engine, and caught on as the common format for tools that
 work on JavaScript source<Cite id="estree-readme" />. Every node is a
 plain object whose `type` field says which kind of node it is (a tagged
-union, as in the chapter *Tagged unions: the shape of every syntax
-tree*), plus the fields that type promises<Cite id="estree" />. Here is
-the real tree that acorn, a widely used JavaScript parser, builds for
-`p.x += p.vx;`, without its positions:
+union, as in *Tagged unions: the shape of every syntax tree*), plus the
+fields that type promises<Cite id="estree" />.
 
-```
+<Callout kind="definition">
+**ESTree** is the standard format for JavaScript syntax trees, shared by
+parsers such as acorn and by the tools that read their output. Each node
+is an object with a string `type` (`Identifier`, `MemberExpression`, …)
+plus fields specific to that type, and usually `start`/`end` source
+offsets and a `loc` with lines and columns.
+</Callout>
+
+<Examples of="estree">
+
+```text
+p.x += p.vx;     (acorn, no positions)
 ExpressionStatement
   expression: AssignmentExpression
     operator: "+="
@@ -83,74 +75,38 @@ ExpressionStatement
       computed: false
 ```
 
-Read it from the top. The whole line is an *expression statement* (an
-expression used as a statement), whose expression is an assignment with
-the operator `+=`. Its left side, `p.x`, is a `MemberExpression` (a
-property read) whose object is the name `p` and whose property is the
-name `x`; the right side is the same shape for `p.vx`. `computed: false`
-is how ESTree tells `p.x` from `p[x]`: in the first, `x` is a field's
-name, and in the second, `x` is a variable whose *value* picks the
-field.
-
-<Callout kind="definition">
-**ESTree** is the standard format for JavaScript syntax trees, shared by
-parsers such as acorn and by tools that read their output. Each node is
-an object with a string `type` (`Identifier`, `MemberExpression`, …)
-plus fields specific to that type, and usually `start`/`end` source
-offsets and a `loc` with lines and columns.
-</Callout>
-
-<Examples of="estree">
-
-```js
-x
-// Identifier { name: "x" }
-```
-
-```js
-p.x   // MemberExpression,
-      //   computed: false
-p[x]  // MemberExpression,
-      //   computed: true
-```
-
-```js
-ps[i].x
-// MemberExpression (computed: false)
-//   object: MemberExpression
-//           (computed: true)
-//     object: Identifier "ps"
-//     property: Identifier "i"
-//   property: Identifier "x"
-```
-
 </Examples>
 
-The first is the smallest node there is: a name. The second is the one
-flag that matters most to Viscosity, since `p.x` names a field it might
-turn into a column, while `p[x]` could be any field at all. The third is
-the shape of every element access in a particle loop: an outer,
-non-computed `MemberExpression` (`.x`) whose object is an inner,
-computed one (`ps[i]`). Here it is as a picture, with the character
-offsets of each node:
+The whole line is an *expression statement* (an expression used as a
+statement), whose expression is an assignment with operator `+=`. Its
+left side, `p.x`, is a `MemberExpression` (a property read) whose object
+is the name `p` and whose property is the name `x`, and the right side
+has the same shape for `p.vx`. `computed: false` is how ESTree tells
+`p.x` from `p[x]`, the flag that matters most to Viscosity: in the
+first, `x` is a field's name it might turn into a column, and in the
+second, `x` is a variable whose *value* picks the field. An element
+access `ps[i].x` is therefore two nested `MemberExpression`s, an outer
+non-computed one (`.x`) around an inner computed one (`ps[i]`):
 
 <Figure caption="The ESTree tree of ps[i].x, with each node's start–end offsets." takeaway="An element access is two nested MemberExpressions, told apart by computed.">
   <MemberTree />
 </Figure>
 
-<Prompts ids={['es-what', 'es-type', 'es-computed', 'es-member']} />
+<Prompts ids={['es-what', 'es-computed', 'es-member']} />
 
 ## Every node knows its characters
 
-Each node also has `start` and `end`: offsets into the source text,
-counting characters from the start of the file, with `end` one past the
-last character. Ask acorn for `locations: true`, and each node gets a
-`loc` with line and column numbers too. Those offsets are what VIR's
-source references point at, and what emit replaces, so they matter as
-much to Viscosity as the tree itself. Step through the nodes of
-`p.x += p.vx;`:
+Each node also has `start` and `end`, offsets into the source text
+counted in characters from the start of the file, with `end` one past
+the last character; children nest inside their parent's range. Those
+offsets are what VIR's source references point at and what emit
+replaces, so they matter to Viscosity as much as the tree itself. In
+`p.x += p.vx;`, the right side covers 7 to 11, and `source.slice(7, 11)`
+is exactly `p.vx`:
 
 <OffsetsSteps client:visible />
+
+<More title="More: the nesting rule, and slicing by hand">
 
 <Formal title="Nodes cover ranges, and children nest">
 
@@ -162,99 +118,38 @@ c a child of n  ⟹
 
 <span slot="read">The text of a node n is the slice of the source from
 n.start up to, but not including, n.end. If c is a child of n, then c's
-range lies inside n's: it starts no earlier and ends no later. (The
-square bracket means "including", the round one "not including".)</span>
+range lies inside n's.</span>
 </Formal>
 
-You can check the rule on any node: in `p.x += p.vx;`, the right side
-covers 7 to 11, and `source.slice(7, 11)` is exactly `p.vx`. The
-runnable example walks a hand-made tree and prints each node's text;
-add a node with a wrong range and see the slice come out wrong.
+The runnable example walks a hand-made tree and prints each node's text;
+add a node with a wrong range and see the slice come out wrong. Ask
+acorn for `locations: true`, and each node also gets a `loc` with line
+and column numbers.
 
 <Run id="slices" />
 
-<Prompts ids={['es-offsets', 'es-loc', 'es-nest']} />
-
-## Why depend on a format
+</More>
 
 Every file in Viscosity's JavaScript plugin after the parser reads only
 ESTree: `estree.ts` describes "the small slice of ESTree types the
 front-end touches", a `Node` with a `type`, `start`, `end` and an
-optional `loc`, plus three helpers (`children`, `isFunction` and
-`patternNames`). Nothing there mentions acorn. That one decision is what
-makes the parser replaceable, and the next chapter swaps it for a
-hand-written one. It also means the plugin speaks the same language as
-the rest of the JavaScript world, so the shapes you learn here (an
+optional `loc`, and nothing there mentions acorn. That one decision makes
+the parser replaceable, and it means the plugin's shapes (an
 `ArrowFunctionExpression`, a `ForOfStatement`) are the ones every linter
 and bundler uses too.
 
-<Prompts ids={['es-why']} />
-
-<Callout kind="engine" label="Under the hood">
-acorn is a small, fast parser written in JavaScript that returns ESTree,
-with `start` and `end` offsets on every node<Cite id="acorn" />. It
-follows the specification closely and handles all of modern JavaScript,
-so it is the default for Viscosity's command line and for the Playground
-in this book. (An engine parses for itself, as the chapter *Parsing
-JavaScript for real* showed; Viscosity only needs the tree.)
-</Callout>
-
-## Your turn
-
-Write a tiny recursive-descent parser, as in the chapter *Recursive
-descent parsing*, but have it build ESTree nodes.
-
-<Exercise id="parseLet" />
-
-## What you learned
-
-- **ESTree** is the shared tree format for JavaScript: objects tagged
-  by `type`, with the fields that type promises.
-- `computed` tells `p.x` (a field's name) from `p[x]` (a value that
-  picks the field).
-- Every node has `start`/`end` offsets, and children nest inside their
-  parent's range; VIR's source references and emit's edits use them.
-- Viscosity's plugin depends on ESTree alone, not on any one parser.
-
-Next: the adapter that wraps acorn, and a parser you can read end to end.
-
-
-{/* ── merge: from old chapter 100, Swapping the parser: acorn and a hand-written one ── */}
-
-## Three jobs around one call
-
-The previous chapter settled the *shape* of the tree, ESTree. Now
-somebody has to make one. Viscosity's JavaScript plugin calls acorn, a
-mature parser, but a bare call to a library is not quite enough: the
-plugin also needs the comments (where `// @viscosity soa` lives), line
-numbers (for explain), and a way to read TypeScript, which acorn does
-not parse. The code that does those jobs around the library call has a
-name.
-
-<Analogy title="a travel plug adapter">
-Your laptop's plug fits the sockets at home; abroad, you slip it into an
-adapter, and the adapter fits the foreign wall. The laptop never changes,
-and if you travel somewhere else you buy a different adapter, not a
-different laptop.
-<span slot="breaks">A plug adapter only changes the shape of the prongs;
-a parser adapter also does work of its own, such as collecting comments
-and stripping types before the parser runs.</span>
-</Analogy>
-
-<Analogy extra title="an agency that sends a stand-in">
-A school books a supply teacher through an agency. The school deals only
-with the agency's terms: a qualified teacher, at 9 o'clock, for this
-class. Which teacher comes is the agency's business, and the timetable
-does not change when a different one is sent.
-<span slot="breaks">Two supply teachers teach the same class
-differently; two parsers behind Viscosity's adapter must produce trees
-the rest of the plugin cannot tell apart, which is checked by a test.</span>
-</Analogy>
+<Prompts ids={['es-offsets', 'es-why']} />
 
 ## The acorn adapter
 
-Here is the parsing step inside the plugin's `lower`, from
+The plugin calls acorn, a small, fast parser written in JavaScript that
+returns ESTree<Cite id="acorn" />; however, a bare call is not quite
+enough. The plugin also needs the comments (where `// @viscosity soa`
+lives), line numbers (for explain), and a way to read TypeScript, which
+acorn does not parse. Here is the parsing step inside `lower`, from
 `frontend-js/src/index.ts`, trimmed:
+
+<Examples of="parser-adapter">
 
 ```ts
 const js = opts.typescript
@@ -270,23 +165,25 @@ const program = acorn.parse(js, {
 });
 ```
 
+</Examples>
+
 Line 1 strips TypeScript first, with a library called sucrase that
-removes types and leaves everything else alone<Cite id="sucrase" />.
-`ecmaVersion: 'latest'` accepts all of modern JavaScript, and
-`sourceType: 'module'` allows `import` and `export`. `locations: true`
-asks acorn to add a `loc` with line numbers to every node, for explain.
-And `onComment` is a callback (a function acorn calls each time it meets
-a comment), because acorn reports comments that way rather than in the
-tree<Cite id="acorn" />; each one is saved with its text and line, and
-after parsing the plugin matches every `@viscosity` comment to a
-declaration.
+removes types and leaves everything else alone<Cite id="sucrase" />; an
+`interface` disappears but leaves an empty line, so every later line
+keeps its number. `ecmaVersion: 'latest'` accepts all of modern
+JavaScript, `sourceType: 'module'` allows `import` and `export`, and
+`locations: true` adds line numbers to every node. `onComment` is a
+callback acorn calls for each comment, because acorn reports comments
+that way rather than in the tree; after parsing, the plugin matches each
+`@viscosity` comment to a declaration (one on a line of its own
+annotates the next line, one after code annotates its own line).
 
 <Callout kind="definition">
 A **parser adapter** wraps a third-party parser behind your own
 interface. It calls the library with the options you need, collects
 what the library reports separately (here, comments), prepares the input
 the library cannot handle (here, TypeScript), and hands the rest of the
-system the one format it expects (here, ESTree). Nothing outside the
+system the one format it expects (here, ESTree); nothing outside the
 adapter depends on the library itself.
 </Callout>
 
@@ -294,49 +191,31 @@ adapter depends on the library itself.
   <AdapterShape />
 </Figure>
 
-<Examples of="parser-adapter">
+<Prompts ids={['pa-what', 'pa-comments']} />
 
-```ts
-// TypeScript in (stripTypes):
-interface P { x: number }
-const ps: P[] = [];
-// JavaScript out:
-//   (blank line)
-//   const ps = [];
-```
+## A second parser, checked against the first
 
-```js
-// @viscosity aos
-const ps = [];
-// explain: annotated @viscosity aos
-//   at line 1
-```
+The payoff is one option, `jsPlugin({ parser: 'mini' })` (or
+`viscosity explain --parser mini`), which swaps acorn for the book's own
+`mini-parser.ts`, 451 lines that parse the subset of JavaScript numeric,
+data-heavy code uses: recursive descent for statements (*Recursive
+descent, precedence and associativity*) and Pratt binding powers for
+expressions (*Pratt parsing*):
 
-```js
-jsPlugin({ parser: 'mini' })
-// viscosity explain --parser mini
-```
+<MiniParseSteps client:visible />
 
-</Examples>
+Outside its subset it stops rather than guessing: `let y = a?.b;` gives
+`optional chaining is not supported by the mini parser at line 1 near
+'?.'`. To know it is right on what it does accept, the repository
+compares: `mini-parser.test.ts` compiles every program in the
+differential corpus (40 files) and the five end-to-end benchmark
+programs with both parsers, and requires byte-identical code and
+explanations. The trees themselves differ in details the plugin never
+reads (the mini parser gives every `loc` column 0 and no end).
 
-The first is the type-stripping job, run for real: the `interface`
-disappears but leaves an empty line, so every later line keeps its
-number, and `: P[]` is removed from inside the line. The second is the
-comment job: a comment on a line of its own annotates the declaration on
-the *next* line, while one at the end of a line of code
-(`const ps = []; // @viscosity aos`) annotates that line, and both give
-the same explanation. The third is the payoff of the adapter: one option
-swaps acorn for a different parser, and nothing else in the plugin
-changes.
+<More title="More: inside the mini parser">
 
-<Prompts ids={['pa-what', 'pa-comments', 'pa-ts']} />
-
-## A parser you can read
-
-That second parser is the book's own: `mini-parser.ts`, 451 lines, which
-parses the subset of JavaScript that numeric, data-heavy code uses. Its
-statements are recursive descent, as in the chapter *Recursive descent
-parsing*, with one case per keyword:
+An `if` statement, one case per keyword:
 
 ```ts
 case 'if': {
@@ -351,18 +230,10 @@ case 'if': {
 }
 ```
 
-`p++` steps past the `if`, `expect('(')` insists on a bracket (or throws
-a syntax error), and the condition and the two branches are parsed by
-calling the same functions recursively; `eat('else')` takes an `else`
-only if one is there. Expressions use Pratt parsing, as in the chapter
-*Pratt parsing*, with a table of binding powers; here is part of the
-table and the loop at the heart of `binary`, trimmed:
+The heart of `binary`, with a table where `'+': 10`, `'*': 11` and
+`'**': 12`:
 
 ```ts
-const BIN = { '??': 1, '||': 2,
-  '&&': 3, '+': 10, '-': 10,
-  '*': 11, '/': 11, '**': 12, … };
-
 let left = unary();
 for (;;) {
   const op = peek().value;
@@ -377,96 +248,31 @@ for (;;) {
 }
 ```
 
-A higher number binds tighter, so `*` (11) is taken inside the right
-side of `-` (10). `**` parses its right side at one power lower, which
-lets another `**` be taken there too, so `2 ** 3 ** 2` groups to the
-right, as JavaScript requires. (The real loop also builds
-`LogicalExpression`s for `&&`, `||` and `??`, and handles `in`.) Step
-through it:
-
-<MiniParseSteps client:visible />
+`**` parses its right side one power lower, so `2 ** 3 ** 2` groups to
+the right. Messages are only as good as the cases thought of: `class A
+{}` gives `expected ';' at line 1 near 'A'`, safe but confusing. acorn
+stays the default in the command line and the Playground; the Rust port
+uses a different parser, oxc, behind the same kind of boundary, and an
+engine's own parser is the subject of the deep dive *Parsing JavaScript
+for real*.
 
 <Run id="pratt-bp" />
 
-<Prompts ids={['mp-two', 'mp-right', 'mp-asi']} />
+</More>
 
-## Small, and honest about it
-
-Outside its subset, the mini parser stops instead of guessing:
-
-```
-let y = a?.b;
-→ optional chaining is not supported
-  by the mini parser at line 1 near '?.'
-```
-
-<Callout kind="pitfall">
-"Stops" is not always "explains". `class A {}` is not in the subset
-either, but the mini parser reads `class` as a plain name and then
-reports `expected ';' at line 1 near 'A'`. The error is safe but
-confusing: a parser's messages are only as good as the cases its author
-thought of.
-</Callout>
-
-How do you know it is right on what it does accept? The answer from the
-chapter *Testing compilers*: compare. `mini-parser.test.ts` compiles
-every program in the differential corpus (40 files) and the five
-end-to-end benchmark programs with both parsers, and requires the
-compiled code and the explanation to be byte-identical.
-
-<Formal title="Interchangeable parsers">
-
-```text
-∀ p ∈ corpus:
-  compile(p, acorn).code
-    = compile(p, mini).code
-  ∧ compile(p, acorn).explain
-    = compile(p, mini).explain
-```
-
-<span slot="read">For every program p in the test corpus, compiling it
-with acorn and with the mini parser gives exactly the same output code,
-and (∧ means "and") exactly the same explanation. The trees themselves
-may differ in details the plugin never reads.</span>
-</Formal>
-
-The trees do differ: the mini parser writes a `BinaryExpression`'s
-`operator` before `left`, and gives every node a `loc` with column 0 and
-no end. The plugin reads neither, so it cannot tell the two apart.
-
-<Prompts ids={['mp-test', 'mp-why']} />
-
-<Callout kind="engine" label="Under the hood">
-Why keep two parsers? acorn handles all of modern JavaScript, so it is
-the default, in the command line and in the Playground. The mini parser
-is for learning: it is this book's parsing chapters applied to the real
-language, and you can read all of it. Keeping it working forces the
-plugin to depend on the shared ESTree format alone<Cite id="estree" />,
-never on one parser's quirks, and that is what lets a different parser
-be dropped in later (the Rust port of Viscosity uses a different parser,
-oxc, behind the same kind of boundary).
-</Callout>
+<Prompts ids={['mp-test']} />
 
 ## Your turn
 
-The core exercise is an adapter in miniature; the second, extra
-practice, is the Pratt loop with logical operators.
-
 <Exercise id="toEstree" />
+
+Extra practice:
+
+<Exercise id="parseLet" />
 
 <Exercise id="prattBinary" />
 
-## What you learned
-
-- A **parser adapter** calls a library with the options you need,
-  collects what it reports on the side (comments), prepares what it
-  cannot read (TypeScript), and hands over one format (ESTree).
-- `@viscosity` comments are matched to declarations by line after
-  parsing.
-- The hand-written **mini parser** uses recursive descent for statements
-  and Pratt binding powers for expressions, and stops on anything
-  outside its subset.
-- A differential test requires both parsers to give byte-identical
-  compiler output, so they stay interchangeable.
-
 <Quiz />
+
+Next: *Lowering JavaScript to VIR*, which walks this tree and builds the
+IR.

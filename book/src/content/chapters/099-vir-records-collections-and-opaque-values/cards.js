@@ -1,12 +1,8 @@
-// Chapter 66 cards: recall prompts, examples, exercises and quiz.
+// Chapter 99 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 99, 99.
 
 export const prompts = {
-  'vir-func': {
-    q: 'What is a VIR `Func`, structurally?',
-    a: 'A control-flow graph: a list of basic blocks with an entry block. Each block holds instructions and ends in one terminator.',
-  },
   'vir-term': {
     q: 'Name VIR’s five terminator kinds.',
     a: '`br`, `condbr`, `return`, `throw`, `unreachable`.',
@@ -23,45 +19,17 @@ export const prompts = {
     q: 'Why does a variable that a closure assigns stay a binding instead of becoming SSA values?',
     a: 'A call to the closure may change it at any time, which a phi can’t describe. Explicit `load`/`store` keep every read and write visible.',
   },
-  'binding-arrays': {
-    q: 'Which variables does the JavaScript plugin always make bindings, besides captured ones?',
-    a: 'Module-level variables used by inner functions, variables assigned in `try` blocks, and every variable initialised with an array.',
-  },
   'phi-pick': {
     q: 'Block `b3` has preds `b1 b2` and starts with `%4 = phi %2, %3`. Control enters `b3` from `b2`. What is `%4`?',
     a: '`%3`: a phi’s arguments are in predecessor order, and it takes the one for the edge control came in by.',
-  },
-  'ssa-cheap': {
-    q: 'In the VIR for `let t = 0; … t = t + v`, why is there no store for `t`?',
-    a: '`t` is an uncaptured local, so it is SSA: each assignment is just a new value, and phis join them where paths meet.',
   },
   'rc-why': {
     q: 'Why are records, collections and field accesses first-class instructions in VIR?',
     a: 'They are exactly what the layout analyses ask about, so the facts can be read directly instead of recognised from lower-level patterns.',
   },
-  'vir-neutral': {
-    q: 'Python’s `P(1.0, 2.0)` (a dataclass) and JavaScript’s `{ x: 1, vx: 2 }` both lower to which VIR op?',
-    a: '`record.new`, with the field names in order.',
-  },
-  'rc-length': {
-    q: 'How do both plugins lower `ps.length` (or Python’s `len(ps)`)?',
-    a: 'As `field.get .length`, which the analyses recognise on a collection.',
-  },
-  'rc-intrinsic': {
-    q: 'What does VIR’s `intrinsic` op promise about a function like `Math.sqrt`?',
-    a: 'It returns a number and keeps no reference to its arguments, so passing a field value to it is harmless.',
-  },
   'rc-touched': {
     q: 'In VIR, what makes a `field.get` count as a read of the collection’s field?',
     a: 'Its object (first argument) is an element: the result of an `index.get` on the collection.',
-  },
-  'op-what': {
-    q: 'What does a VIR `opaque` instruction mean?',
-    a: '“Might do anything with these arguments”: code the plugin does not model. Its arguments escape and its result is unknown.',
-  },
-  'op-args': {
-    q: 'Which values does the JavaScript plugin give an `opaque` instruction as arguments?',
-    a: 'Every local variable the unmodelled code mentions (not property names, not globals).',
   },
   'op-sound': {
     q: 'Why does treating `opaque` as the worst case keep Viscosity correct?',
@@ -118,6 +86,7 @@ console.log([...reads], [...writes]);`,
 
 export const exercises = {
   printFunc: {
+    optional: true,
     title: 'Print a function',
     prompt: 'Write `printFunc(f)` for a tiny VIR. `f` has `name`, `params` (ids) and `blocks`; each block has `id`, `insts` and `term`. An instruction has `id`, `op`, `args` (ids) and, for some ops, `value`, `operator` or `field`. `term(t)` is written for you. Print like Viscosity’s listing: a header `func NAME(%0, %1):`, then for each block a line `  bN:`, then each instruction and the terminator indented by 4 spaces. Instructions print as: `%2 = const 0` (value via `JSON.stringify`), `%4 = binop > %1, %3`, `%2 = field.get %0 .x`, `field.set %0, %5 .x` (no id: it makes no value), and any other op as `%8 = phi %7, %2`.',
     starter: `function term(t) {
@@ -473,28 +442,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'In VIR, block `b3` has predecessors `b1 b2` and starts with `%4 = phi %2, %3`. What does that phi mean?',
-    options: [
-      {
-        t: 'Add `%2` and `%3`',
-        why: 'A phi does no arithmetic; it chooses.',
-      },
-      {
-        t: '`%4` is `%2` when control came from `b1`, and `%3` when it came from `b2`',
-        correct: true,
-        why: 'Arguments are in predecessor order; the edge taken picks one.',
-      },
-      {
-        t: '`%4` is whichever of the two was defined last',
-        why: 'Both are defined once; which applies depends on the path, not on time.',
-      },
-      {
-        t: 'Run both branches and keep the larger result',
-        why: 'Only one branch runs; the phi names the value from the one that did.',
-      },
-    ],
-  },
-  {
     q: 'Which variable does the JavaScript plugin turn into a binding rather than SSA values?',
     options: [
       {
@@ -513,50 +460,6 @@ export const quiz = [
       {
         t: 'A temporary like `ps[i].x * 2`',
         why: 'Temporaries are always plain SSA values.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the JavaScript plugin make every variable initialised with an array a binding?',
-    options: [
-      {
-        t: 'Arrays are too big for SSA',
-        why: 'SSA values are references; size doesn’t matter.',
-      },
-      {
-        t: 'So the analyses can see every read and write of a candidate collection as a `load` or `store`',
-        correct: true,
-        why: 'Collection discovery and safety analysis follow the binding’s loads and check its stores.',
-      },
-      {
-        t: 'Because arrays are always captured',
-        why: 'Many aren’t. The rule is about making uses visible.',
-      },
-      {
-        t: 'Because JavaScript copies arrays on assignment',
-        why: 'It doesn’t: arrays are references.',
-      },
-    ],
-  },
-  {
-    q: 'What do VIR instructions keep in their `src` field, and why?',
-    options: [
-      {
-        t: 'A copy of the whole program, for safety',
-        why: 'The module stores the source once; instructions only point into it.',
-      },
-      {
-        t: 'Nothing: VIR is independent of the source',
-        why: 'Language-neutral doesn’t mean disconnected. Emit needs to know where to edit.',
-      },
-      {
-        t: 'The plugin’s syntax node, offsets and line, so emit can replace that range and explain can name the line',
-        correct: true,
-        why: 'That is how a decision made on VIR turns into an edit of your text.',
-      },
-      {
-        t: 'The generated machine code',
-        why: 'Viscosity never generates machine code.',
       },
     ],
   },
@@ -623,50 +526,6 @@ export const quiz = [
       {
         t: 'Writes `y`',
         why: 'The written field is the one named on the `field.set`: `.x`.',
-      },
-    ],
-  },
-  {
-    q: 'Which JavaScript expression does the plugin lower to an `intrinsic`?',
-    options: [
-      {
-        t: '`console.log(x)`',
-        why: 'That is a method call: `field.get .log` then `call`.',
-      },
-      {
-        t: '`Math.sqrt(x)`, when `Math` is the global',
-        correct: true,
-        why: 'A known numeric function that keeps no reference to its argument.',
-      },
-      {
-        t: '`ps.push(p)`',
-        why: 'That is VIR’s own `push` instruction.',
-      },
-      {
-        t: '`Math.sqrt(x)`, even if a local variable is named `Math`',
-        why: 'A local `Math` could be anything, so it is an ordinary call.',
-      },
-    ],
-  },
-  {
-    q: 'Opaque instructions treat all their arguments as escaping. What is the cost of that rule?',
-    options: [
-      {
-        t: 'Sometimes wrong output',
-        why: 'Never: assuming the worst can only stop a rewrite.',
-      },
-      {
-        t: 'Slower compilation',
-        why: 'The rule is cheap; it is one check per argument.',
-      },
-      {
-        t: 'Some collections that would have been safe to change are kept as they were',
-        correct: true,
-        why: 'That is the price of soundness: a missed speed-up, explained by name, instead of a broken program.',
-      },
-      {
-        t: 'Nothing at all',
-        why: 'It does cost something: missed optimisations.',
       },
     ],
   },

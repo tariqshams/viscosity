@@ -1,12 +1,8 @@
-// Chapter 179 cards: recall prompts, examples, exercises and quiz.
+// Chapter 94 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 94, 94.
 
 export const prompts = {
-  'alias-what': {
-    q: 'What question does alias analysis answer?',
-    a: 'Whether two references must, may, or can never refer to the same object.',
-  },
   'must-may-no': {
     q: 'Which alias answers can an optimiser act on?',
     a: '“Must” and “no”. “May” means both possibilities have to be kept.',
@@ -15,21 +11,9 @@ export const prompts = {
     q: 'What happens if an alias analysis wrongly says “no alias”, and what if it wrongly says “may alias”?',
     a: 'A wrong “no” lets the compiler change what the program computes; a wrong “may” only costs an optimisation (speed).',
   },
-  'tbaa-what': {
-    q: 'What does type-based alias analysis use to answer “no alias”?',
-    a: 'The declared types: if no object can have both references’ types (a Point and a String), they cannot alias.',
-  },
-  'js-no-tbaa': {
-    q: 'Why can’t a JavaScript compiler use TypeScript annotations for type-based alias analysis?',
-    a: 'They are erased before the program runs and are unsound by design, so the program may not obey them.',
-  },
   'element-not-object': {
     q: 'After `ps` becomes a struct of arrays, what is “element 3”?',
     a: 'A position, index 3, in each column. There is no object any more.',
-  },
-  'ssa-alias-ok': {
-    q: 'Why can Viscosity rewrite `const p = ps[3]` as `const p = 3`?',
-    a: '`p` is an SSA value that must alias element 3 of `ps` and nothing else, and every use of it is visible.',
   },
   'captured-var': {
     q: 'Why does `const peek = () => keep.x`, with `keep = ps[0]`, keep `ps` as objects?',
@@ -43,29 +27,13 @@ export const prompts = {
     q: 'Why does a points-to analysis name objects by their allocation site?',
     a: 'A loop can create unboundedly many objects; naming them by the code that creates them keeps the sets finite.',
   },
-  'may-alias-test': {
-    q: 'Given points-to sets, when may two references alias, and when can they not?',
-    a: 'They may alias when their sets intersect; they cannot when the sets are disjoint.',
-  },
   'site-not-must': {
     q: 'pts(p) = pts(q) = {o1}. Why does that not prove p and q must alias?',
     a: 'Site o1 may create many objects (say, in a loop), so p and q can be two different objects from the same site.',
   },
-  'subset-rule': {
-    q: 'For `a = b`, which way does Andersen’s inclusion go?',
-    a: 'pts(b) ⊆ pts(a): a gets everything b may point at, never the reverse.',
-  },
   'why-repeat': {
     q: 'Why does Andersen’s analysis go round the statements more than once?',
     a: 'It ignores order, so a set can grow after a copy that reads it was processed; it repeats until a round adds nothing (a fixpoint).',
-  },
-  'unify-what': {
-    q: 'What does Steensgaard’s analysis do with `a = b`?',
-    a: 'It merges the boxes a and b point at into one (a union-find union), instead of copying a set.',
-  },
-  'steens-imprecise': {
-    q: 'After `c = a; c = b;`, why does Steensgaard say a and b may alias?',
-    a: 'Both copies merge into c’s box, so a, b and c end up pointing at one merged box holding both objects.',
   },
 };
 
@@ -96,6 +64,7 @@ console.log(c === b);`,
 
 export const exercises = {
   aliasKind: {
+    optional: true,
     title: 'Must, may or no, from the runs',
     prompt: 'Imagine we could watch a program run several times and note, at one point in the code, which object each name refers to. `runs` is a list of such notes: each run is an object mapping a name to an object id, like `{ p: \'o1\', q: \'o2\' }`. Write `aliasKind(runs, p, q)` returning `\'must\'` if `p` and `q` refer to the same object in **every** run, `\'no\'` if they do in **no** run, and `\'may\'` otherwise. There is always at least one run.',
     starter: `function aliasKind(runs, p, q) {
@@ -726,28 +695,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does type-based alias analysis help a Java compiler much more than a JavaScript one?',
-    options: [
-      {
-        t: 'Java has no objects on the heap',
-        why: 'Java objects live on the heap, as JavaScript’s do.',
-      },
-      {
-        t: 'Java’s declared types are checked and always true at run time; JavaScript has no declared types, and TypeScript’s are erased and unsound',
-        correct: true,
-        why: 'TBAA needs types the program is guaranteed to obey.',
-      },
-      {
-        t: 'JavaScript objects cannot alias',
-        why: 'They certainly can: aliasing is one of the first things chapter 7 shows.',
-      },
-      {
-        t: 'Java has no closures',
-        why: 'Closures make JavaScript harder in other ways, but they are not why type-based analysis helps Java.',
-      },
-    ],
-  },
-  {
     q: 'Which line, added after the `push` loop, still lets Viscosity turn `ps` into a struct of arrays?',
     options: [
       {
@@ -766,24 +713,6 @@ export const quiz = [
         t: '`const q = ps; q[0].x = 3;`',
         correct: true,
         why: '`q` is the same SSA value as the load of `ps`, a must-alias it can follow, and `.x = 3` is a field write it can rewrite.',
-      },
-    ],
-  },
-  {
-    q: 'Suppose Viscosity wrongly decided `keep[0]` and `ps[3]` never alias in this chapter’s first big program, and transformed `ps`. What would happen?',
-    options: [
-      {
-        t: 'Nothing: alias answers only affect speed',
-        why: 'They affect correctness. A wrong “no” licenses a change that breaks the program.',
-      },
-      {
-        t: 'The program would print a different answer: the 7 written through `keep[0]` would go to a copy, not to `ps`’s column',
-        correct: true,
-        why: 'That is the last step of the diagram. Alias analysis must be sound.',
-      },
-      {
-        t: 'V8 would detect the alias and deoptimise',
-        why: 'V8 runs the code Viscosity emitted. The rewritten program is simply a different program.',
       },
     ],
   },
@@ -824,68 +753,6 @@ export const quiz = [
       {
         t: '`{o1}`',
         why: 'The second assignment adds `o2` as well.',
-      },
-    ],
-  },
-  {
-    q: 'Why can’t a points-to analysis track every object separately?',
-    options: [
-      {
-        t: 'Objects have no addresses in JavaScript',
-        why: 'Every object has an identity; the problem is how many there can be.',
-      },
-      {
-        t: 'A loop or recursion can create unboundedly many objects, so it names them by allocation site instead',
-        correct: true,
-        why: 'Finitely many sites keep every set finite, so the fixpoint is reached.',
-      },
-      {
-        t: 'It would make the analysis flow-sensitive',
-        why: 'Flow sensitivity is about statement order, not about how objects are named.',
-      },
-    ],
-  },
-  {
-    q: 'For `c = a; c = b;` (with `a = {}` at o1, `b = {}` at o2), what do Andersen and Steensgaard say about `a` and `b`?',
-    options: [
-      {
-        t: 'Both say they never alias',
-        why: 'Steensgaard merges a’s and b’s boxes through c, so it cannot say that.',
-      },
-      {
-        t: 'Andersen: never alias. Steensgaard: may alias',
-        correct: true,
-        why: 'Andersen keeps pts(a) = {o1} and pts(b) = {o2}; Steensgaard merges everything into one box.',
-      },
-      {
-        t: 'Andersen: may alias. Steensgaard: never alias',
-        why: 'It is the other way round: Steensgaard is the less precise one.',
-      },
-      {
-        t: 'Both say they must alias',
-        why: 'They are two different allocations; neither analysis claims “must”.',
-      },
-    ],
-  },
-  {
-    q: 'What does Steensgaard gain by merging instead of copying?',
-    options: [
-      {
-        t: 'Precision: merged boxes give smaller sets',
-        why: 'Merged boxes are bigger, not smaller; precision is what it gives up.',
-      },
-      {
-        t: 'Flow sensitivity',
-        why: 'Both analyses here ignore order.',
-      },
-      {
-        t: 'It no longer needs allocation sites',
-        why: 'It still names objects by site; boxes group sites together.',
-      },
-      {
-        t: 'Speed: one pass of union-find, almost linear time, with no repeated rounds',
-        correct: true,
-        why: 'A merge is permanent and symmetric, so nothing has to be revisited.',
       },
     ],
   },
