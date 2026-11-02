@@ -11,7 +11,6 @@ export const BOOKS = {
   dragon: 'Aho, Lam, Sethi and Ullman, Compilers: Principles, Techniques, and Tools (2nd ed., 2006)',
   eac: 'Cooper and Torczon, Engineering a Compiler (2nd ed., 2011)',
   appel: 'Appel, Modern Compiler Implementation in ML (1998)',
-  ci: 'Nystrom, Crafting Interpreters (2021)',
   tapl: 'Pierce, Types and Programming Languages (2002)',
   gch: 'Jones, Hosking and Moss, The Garbage Collection Handbook (2012)',
   ssa: 'Rastello and Bouchez Tichadou (eds.), SSA-based Compiler Design (2022)',
@@ -68,10 +67,6 @@ export const COVERAGE = [
   ['appel', 19, 'Static Single-Assignment Form', ['ssa', 'dominator', 'ssa-construction', 'ssa-destruction']],
   ['appel', 20, 'Pipelining and Scheduling', ['instruction-scheduling', 'software-pipelining', 'modulo-scheduling']],
   ['appel', 21, 'The Memory Hierarchy', ['cpu-cache', 'cache-line', 'loop-tiling', 'prefetcher']],
-  // ── Crafting Interpreters (the book's backbone for Parts III and IV) ──
-  ['ci', 'I', 'Welcome', ['compiler-pipeline', 'drip']],
-  ['ci', 'II', 'A Tree-Walk Interpreter', ['scanner', 'grammar', 'recursive-descent', 'evaluate', 'environment', 'closure', 'resolver', 'drip-class', 'inheritance']],
-  ['ci', 'III', 'A Bytecode Virtual Machine', ['bytecode', 'stack-machine', 'pratt-parser', 'hash-table', 'interning', 'upvalue', 'mark-sweep', 'method-invocation', 'nan-boxing']],
   // ── TAPL ──
   ['tapl', '1–4', 'Introduction, mathematical preliminaries, untyped arithmetic', ['type-system', 'operational-semantics', 'inference-rule']],
   ['tapl', '5–7', 'The untyped lambda calculus', ['lambda-calculus', 'beta-reduction', 'substitution', 'free-and-bound-variables']],

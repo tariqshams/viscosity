@@ -84,7 +84,7 @@ import { transform as sucrase } from 'sucrase';
 const stripTs = (code) => sucrase(code, { transforms: ['typescript'], disableESTransforms: true }).code;
 import { estimateMinutesExact, proseWords, hardWordShare } from '../src/lib/minutes.js';
 import { COVERAGE } from '../src/data/coverage.js';
-import { STRICT_PARTS, MIN_ANALOGIES, MIN_DIAGRAMS, MIN_EXAMPLES, OTHER_LANGUAGE_PARTS, BANNED } from '../src/data/pedagogy.js';
+import { NOT_IN_CHAPTERS, STRICT_PARTS, MIN_ANALOGIES, MIN_DIAGRAMS, MIN_EXAMPLES, OTHER_LANGUAGE_PARTS, BANNED } from '../src/data/pedagogy.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dir = join(root, 'src/content/chapters');
@@ -342,6 +342,12 @@ for (const folder of folders) {
     const uncovered = (fm.introduces ?? []).filter((c) => !covered.has(c));
     if (uncovered.length) teach(`no <Examples> for: ${uncovered.join(', ')}`);
     if (OTHER_LANGUAGE_PARTS.has(fm.part) && !/<OtherLanguages\b/.test(body)) teach('no <OtherLanguages> comparison');
+    {
+      const cardsText = readFileSync(cardsPath, 'utf8');
+      for (const re of NOT_IN_CHAPTERS) {
+        if (re.test(mdx) || re.test(cardsText)) teach(`names or cites another book's language or author (${re}); this book is its own`);
+      }
+    }
     for (const m of body.matchAll(/<Formal\b[^>]*>([\s\S]*?)<\/Formal>/g)) {
       if (!/<span slot="read">\s*\S/.test(m[1])) err(folder, '<Formal> without a plain-words <span slot="read">');
     }

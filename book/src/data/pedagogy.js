@@ -19,3 +19,10 @@ export const OTHER_LANGUAGE_PARTS = new Set(['I']);
  * slang that would date the book or put a reader off.
  */
 export const BANNED = [/\bcracked\b/i, /\b10x engineer/i, /\bninja\b/i, /\brockstar\b/i, /\bjust\s+simply\b/i];
+
+/**
+ * This book is its own: Crafting Interpreters is honoured once, in the
+ * preface (and credited in the bibliography and acknowledgements), and
+ * never otherwise named, cited or compared against in a chapter.
+ */
+export const NOT_IN_CHAPTERS = [/Crafting Interpreters/, /\bNystrom\b/, /\b[cj]?lox\b/i, /nystrom2021/];
