@@ -1,22 +1,25 @@
 // An on-demand scanner for the bytecode compiler (book chapter 48): instead
 // of producing a list of tokens up front, it hands the compiler one token at
 // a time. Errors come back as 'error' tokens whose lexeme is the message.
+// It produces exactly the tokens of the tree-walker's scanner (a test
+// checks this on the whole corpus).
 import { KEYWORDS, type TokenType } from '../token.ts';
+import { ESCAPES, isAlpha, isDigit } from '../scanner.ts';
 
-export type VmTokenType = TokenType | 'error';
 export interface VmToken {
-  type: VmTokenType;
+  type: TokenType;
   lexeme: string;
   line: number;
+  /** a string literal's characters, escapes decoded */
+  value?: string;
 }
-
-const isDigit = (c: string) => c >= '0' && c <= '9';
-const isAlpha = (c: string) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_';
 
 export class Scanner {
   private start = 0;
   private current = 0;
   private line = 1;
+  /** the line of the last non-blank character: where end of file is reported */
+  private lastLine = 1;
   private readonly source: string;
   constructor(source: string) {
     this.source = source;
@@ -31,19 +34,22 @@ export class Scanner {
     this.current++;
     return true;
   }
-  private make(type: VmTokenType): VmToken {
-    return { type, lexeme: this.source.slice(this.start, this.current), line: this.line };
+  private make(type: TokenType, line = this.line): VmToken {
+    return { type, lexeme: this.source.slice(this.start, this.current), line };
   }
-  private error(message: string): VmToken {
-    return { type: 'error', lexeme: message, line: this.line };
+  private error(message: string, line = this.line): VmToken {
+    return { type: 'error', lexeme: message, line };
   }
 
   private skipWhitespace() {
     for (;;) {
       const c = this.peek();
       if (c === ' ' || c === '\r' || c === '\t') this.advance();
-      else if (c === '\n') { this.line++; this.advance(); }
-      else if (c === '/' && this.peekNext() === '/') {
+      else if (c === '\n') {
+        this.line++;
+        this.advance();
+      } else if (c === '#') {
+        this.lastLine = this.line;
         while (this.peek() !== '\n' && !this.atEnd()) this.advance();
       } else return;
     }
@@ -52,7 +58,8 @@ export class Scanner {
   scanToken(): VmToken {
     this.skipWhitespace();
     this.start = this.current;
-    if (this.atEnd()) return this.make('eof');
+    if (this.atEnd()) return this.make('eof', this.lastLine);
+    this.lastLine = this.line;
     const c = this.advance();
     if (isAlpha(c)) {
       while (isAlpha(this.peek()) || isDigit(this.peek())) this.advance();
@@ -67,23 +74,48 @@ export class Scanner {
       return this.make('number');
     }
     switch (c) {
-      case '(': case ')': case '{': case '}': case ';': case ',': case '.':
-      case '-': case '+': case '/': case '*':
+      case '(': case ')': case '{': case '}': case '[': case ']':
+      case ',': case ';': case '*': case '/': case '%':
         return this.make(c);
+      case '.': return this.make(this.match('.') ? '..' : '.');
+      case '+': return this.make(this.match('=') ? '+=' : '+');
+      case '-': return this.make(this.match('=') ? '-=' : '-');
       case '!': return this.make(this.match('=') ? '!=' : '!');
       case '=': return this.make(this.match('=') ? '==' : '=');
       case '<': return this.make(this.match('=') ? '<=' : '<');
       case '>': return this.make(this.match('=') ? '>=' : '>');
-      case '"': {
-        while (this.peek() !== '"' && !this.atEnd()) {
-          if (this.peek() === '\n') this.line++;
-          this.advance();
-        }
-        if (this.atEnd()) return this.error('Unterminated string.');
-        this.advance();
-        return this.make('string');
+      case '&': return this.match('&') ? this.make('&&') : this.error('unexpected character \'&\'');
+      case '|': return this.match('|') ? this.make('||') : this.error('unexpected character \'|\'');
+      case '"': return this.string();
+    }
+    // Name the whole character, even one outside the BMP.
+    const ch = String.fromCodePoint(this.source.codePointAt(this.start)!);
+    this.current = this.start + ch.length;
+    return this.error(`unexpected character '${ch}'`);
+  }
+
+  private string(): VmToken {
+    const startLine = this.line;
+    let value = '';
+    let badEscape: { text: string; line: number } | null = null;
+    while (this.peek() !== '"' && !this.atEnd()) {
+      const ch = this.advance();
+      if (ch === '\n') this.line++;
+      if (ch === '\\' && !this.atEnd()) {
+        const e = this.advance();
+        if (e === '\n') this.line++;
+        if (e in ESCAPES) value += ESCAPES[e];
+        else badEscape ??= { text: e, line: this.line };
+      } else {
+        value += ch;
       }
     }
-    return this.error('Unexpected character.');
+    this.lastLine = this.line;
+    if (this.atEnd()) return this.error('unterminated string', startLine);
+    this.advance(); // the closing "
+    if (badEscape) return this.error(`unknown escape '\\${badEscape.text}' in a string`, badEscape.line);
+    const token = this.make('string', startLine);
+    token.value = value;
+    return token;
   }
 }

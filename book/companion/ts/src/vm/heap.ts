@@ -10,13 +10,13 @@ import { Chunk } from './chunk.ts';
 import { Table } from './table.ts';
 import {
   hashString, isObj,
-  type Obj, type ObjBoundMethod, type ObjClass, type ObjClosure, type ObjFunction,
-  type ObjInstance, type ObjNative, type ObjString, type ObjUpvalue, type Value,
+  type NativeFn, type Obj, type ObjBoundMethod, type ObjClass, type ObjClosure, type ObjFunction,
+  type ObjInstance, type ObjList, type ObjNative, type ObjString, type ObjUpvalue, type Value,
 } from './object.ts';
 
 // Rough object sizes in bytes, used to decide when to collect.
 const SIZE: Record<Obj['type'], number> = {
-  string: 32, function: 64, native: 32, upvalue: 32, closure: 32, class: 48, instance: 48, bound: 32,
+  string: 32, list: 32, function: 64, native: 32, upvalue: 32, closure: 32, class: 48, instance: 48, bound: 32,
 };
 const GC_HEAP_GROW_FACTOR = 2;
 
@@ -65,11 +65,17 @@ export class Heap {
     this.pop();
     return s;
   }
-  newFunction(): ObjFunction {
-    return this.allocate<ObjFunction>({ type: 'function', arity: 0, upvalueCount: 0, chunk: new Chunk(), name: null, isMarked: false, next: null });
+  /** A list of `items`, which must already be reachable (e.g. on the stack). */
+  newList(items: Value[]): ObjList {
+    return this.allocate<ObjList>({ type: 'list', items, isMarked: false, next: null });
   }
-  newNative(arity: number, fn: (args: Value[]) => Value): ObjNative {
-    return this.allocate<ObjNative>({ type: 'native', arity, fn, isMarked: false, next: null });
+  newFunction(isScript: boolean): ObjFunction {
+    return this.allocate<ObjFunction>({
+      type: 'function', arity: 0, upvalueCount: 0, chunk: new Chunk(), name: null, isScript, isMarked: false, next: null,
+    });
+  }
+  newNative(name: string, arity: number, fn: NativeFn): ObjNative {
+    return this.allocate<ObjNative>({ type: 'native', name, arity, fn, isMarked: false, next: null });
   }
   newClosure(fn: ObjFunction): ObjClosure {
     return this.allocate<ObjClosure>({ type: 'closure', fn, upvalues: new Array(fn.upvalueCount).fill(null), isMarked: false, next: null });
@@ -81,7 +87,7 @@ export class Heap {
     return this.allocate<ObjClass>({ type: 'class', name, methods: new Table(), isMarked: false, next: null });
   }
   newInstance(klass: ObjClass): ObjInstance {
-    return this.allocate<ObjInstance>({ type: 'instance', klass, fields: new Table(), isMarked: false, next: null });
+    return this.allocate<ObjInstance>({ type: 'instance', klass, fields: new Table(), fieldOrder: [], isMarked: false, next: null });
   }
   newBoundMethod(receiver: Value, method: ObjClosure): ObjBoundMethod {
     return this.allocate<ObjBoundMethod>({ type: 'bound', receiver, method, isMarked: false, next: null });
@@ -108,6 +114,9 @@ export class Heap {
     switch (o.type) {
       case 'string': case 'native': return;
       case 'upvalue': this.markValue(o.closed); return;
+      case 'list':
+        for (const v of o.items) this.markValue(v);
+        return;
       case 'function':
         this.markObject(o.name);
         for (const c of o.chunk.constants) this.markValue(c);
@@ -122,7 +131,7 @@ export class Heap {
         return;
       case 'instance':
         this.markObject(o.klass);
-        this.markTable(o.fields);
+        this.markTable(o.fields); // its keys are also the names in fieldOrder
         return;
       case 'bound':
         this.markValue(o.receiver);

@@ -1,0 +1,32 @@
+# Field reads and writes on a handful of records.
+class Body {
+  init(x, y, vx, vy) {
+    self.x = x;
+    self.y = y;
+    self.vx = vx;
+    self.vy = vy;
+  }
+}
+
+let a = new Body(0, 0, 1, 2);
+let b = new Body(10, 10, -1, -2);
+for i in 0..500000 {
+  a.x += a.vx;
+  a.y += a.vy;
+  b.x += b.vx;
+  b.y += b.vy;
+  if a.x > 100 {
+    a.vx = -a.vx;
+  }
+  if a.x < -100 {
+    a.vx = -a.vx;
+  }
+  if b.y > 100 {
+    b.vy = -b.vy;
+  }
+  if b.y < -100 {
+    b.vy = -b.vy;
+  }
+}
+print a; # expect: Body { x: -50, y: 1000000, vx: -1, vy: 2 }
+print b; # expect: Body { x: -499990, y: 18, vx: -1, vy: -2 }

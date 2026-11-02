@@ -10,7 +10,9 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "bench": "node scripts/bench.mjs"
+    "bench": "node scripts/bench.mjs",
+    "bench:check": "node scripts/check_benchmarks.mjs",
+    "fuzz": "node test/fuzz.mjs 5000"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

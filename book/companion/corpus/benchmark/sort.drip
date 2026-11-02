@@ -1,0 +1,51 @@
+# Sorting a list of records with quicksort, keyed by a field.
+class Record {
+  init(id, key) {
+    self.id = id;
+    self.key = key;
+  }
+}
+
+# A linear congruential generator, so every run sorts the same data.
+let seed = 42;
+fn random() {
+  seed = (seed * 1103 + 12345) % 65536;
+  return seed;
+}
+
+fn quicksort(xs, lo, hi) {
+  if lo >= hi {
+    return;
+  }
+  let pivot = xs[hi].key;
+  let i = lo;
+  for j in lo..hi {
+    if xs[j].key < pivot {
+      let t = xs[i];
+      xs[i] = xs[j];
+      xs[j] = t;
+      i += 1;
+    }
+  }
+  let t = xs[i];
+  xs[i] = xs[hi];
+  xs[hi] = t;
+  quicksort(xs, lo, i - 1);
+  quicksort(xs, i + 1, hi);
+}
+
+let checksum = 0;
+for round in 0..20 {
+  let records = [];
+  for i in 0..5000 {
+    push(records, new Record(i, random()));
+  }
+  quicksort(records, 0, len(records) - 1);
+  for i in 1..len(records) {
+    if records[i - 1].key > records[i].key {
+      print "not sorted";
+    }
+  }
+  checksum += records[0].key + records[len(records) - 1].key;
+}
+print checksum; # expect: 1310939
