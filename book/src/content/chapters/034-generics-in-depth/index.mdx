@@ -96,7 +96,7 @@ longer('ab', 'c').toUpperCase();
 longest('ab', 'c').toUpperCase(); // fine
 ```
 
-(`type` names a type, as in the unions chapter.) `longer` accepts the same
+(`type` names a type, as in the tagged-unions chapter.) `longer` accepts the same
 arguments, however its result is only "a thing with a length", so string
 methods are gone; `longest` hands back `T`, which here is `string`.
 
@@ -323,9 +323,11 @@ Try it below; the last line is one `tsc` would reject.
 <Run id="longest" />
 
 <Callout kind="engine" label="Under the hood">
-Viscosity's compiler is full of constrained generics, such as a table
-from ids to any kind of node, written once as `byId` is. Because types are
-erased, they cost nothing when the program runs.
+Viscosity's compiler fills in generic types everywhere (such as
+`Map<ValueId, Collection>`), and the companion VM's heap has a
+constrained one, `allocate<T extends Obj>(o: T): T`, which hands back
+the exact kind of object it was given. Erased, they cost nothing at run
+time.
 </Callout>
 
 ## Your turn

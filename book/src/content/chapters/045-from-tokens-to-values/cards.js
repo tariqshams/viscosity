@@ -1,4 +1,4 @@
-// Chapter 44b cards (staged split of chapter 44: the JSON parser).
+// Chapter 45 cards (the JSON parser, second half).
 // Generated layout: edit freely; keys are stable ids, never rename them.
 
 export const prompts = {
@@ -933,7 +933,7 @@ test('empty text: JsonError at 0', () => {
 - \`  const out: { [k: string]: Json } = {};\` is the object being built, typed with an index signature, and \`  i++;\` steps past the \`{\`.
 - \`  if (toks[i].kind === '}') {\` and \`    return { value: out, next: i + 1 };\` handle \`{}\`.
 - \`  while (true) {\` repeats once per member.
-- \`    const key = toks[i];\` and \`    if (key.kind !== 'str') {\` with \`      throw new JsonError(\` and \`        'expected a key', key.at);\` demand a string key: \`{1: 2}\` and \`{a: 1}\` fail here (the second already fails in the scanner, at the \`a\`). After the check, \`key\` is narrowed to the string variant.
+- \`    const key = toks[i];\` and \`    if (key.kind !== 'str') {\` with \`      throw new JsonError(\` and \`        'expected a key', key.at);\` demand a string key: \`{1: 2}\` fails here (\`{a: 1}\` never gets this far, because the scanner already refuses the \`a\`). After the check, \`key\` is narrowed to the string variant.
 - \`    const colon = toks[i + 1];\` and \`    if (colon.kind !== ':') {\` with \`'expected :'\` demand the colon, which refuses \`{"a" 1}\` at the \`1\`. Reading \`toks[i + 1]\` is safe: a string token is never the last token, because the end token always follows.
 - \`    const r = parseValue(toks, i + 2);\` reads the member's value, of any kind (recursion again), and \`    out[key.value] = r.value;\` stores it. If a key appears twice, this line simply overwrites it, so the last one wins, which is what \`JSON.parse\` does too.
 - \`    i = r.next;\` and \`    const t = toks[i];\` look at what follows the member, and the rest of the loop is \`parseArray\`'s, with \`}\` in place of \`]\`.

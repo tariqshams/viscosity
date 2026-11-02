@@ -491,7 +491,7 @@ A small table makes the two-character escapes easy: an object whose keys are the
 - \`    const c = src[i];\` reads the character, and \`    if (c.charCodeAt(0) < 32) {\` with \`fail(...)\` (with the message \`control character at \${i}\`, a template literal) refuses a raw control character.
 - \`    if (c !== '\\\\') {\` handles an ordinary character: \`      out += c;\` copies it, \`      i++;\` moves on, and \`      continue;\` goes straight back to the loop test.
 - \`    const e = src[i + 1];\` reads the character after the backslash.
-- \`    if (e === 'u') {\` handles a \`\\u\` escape: \`      const code = hex4(src, i + 2);\` reads the four digits after \`\\u\`, \`      out += String.fromCharCode(code);\` adds the character with that code (from the strings chapter), and \`      i += 6;\` skips all six characters. A character outside the basic range, such as 𝄞, arrives as two escapes in a row (\`𝄞\`); adding both halves in turn is exactly right, because a JavaScript string stores such a character as two halves too.
+- \`    if (e === 'u') {\` handles a \`\\u\` escape: \`      const code = hex4(src, i + 2);\` reads the four digits after \`\\u\`, \`      out += String.fromCharCode(code);\` adds the character with that code (from the strings chapter), and \`      i += 6;\` skips all six characters. A character outside the basic range, such as 𝄞, arrives as two escapes in a row (\`\\uD834\\uDD1E\`); adding both halves in turn is exactly right, because a JavaScript string stores such a character as two halves too.
 - \`    } else if (ESC[e] !== undefined) {\` looks the letter up in the table; \`      out += ESC[e];\` adds the character it stands for, and \`      i += 2;\` skips the backslash and the letter.
 - \`    } else {\` and \`fail(...)\` (with the message \`bad escape at \${i}\`, a template literal) refuse anything else, such as \`\\q\` (or a backslash at the very end, where \`e\` is \`undefined\`).
 - \`  return { value: out, end: i + 1 };\` returns the built string, and the index just after the closing quote.
@@ -499,7 +499,7 @@ A small table makes the two-character escapes easy: an object whose keys are the
 **Common wrong attempts.**
 
 - Finding the next \`"\` with \`indexOf\` and slicing: an escaped quote \`\\"\` ends the string too early, and escapes such as \`\\n\` stay as two characters.
-- Copying the character after a backslash as it is: \`\\n\` becomes the letter \`n\` rather than a line break, and \`é\` becomes \`u00e9\`.
+- Copying the character after a backslash as it is: \`\\n\` becomes the letter \`n\` rather than a line break, and \`\\u00e9\` becomes \`u00e9\`.
 - Forgetting the end-of-text check: an unclosed string makes the loop run for ever, because \`undefined\` is never a quote.`,
     wrong: [
       {

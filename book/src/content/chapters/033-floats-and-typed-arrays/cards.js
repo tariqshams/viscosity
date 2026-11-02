@@ -1,4 +1,4 @@
-// Cards for the second half of chapter 32 (floats and typed arrays).
+// Chapter 33 cards (floats and typed arrays).
 // Keys are stable ids: never rename them.
 
 export const prompts = {
@@ -279,7 +279,7 @@ export const quiz = [
     options: [
       { t: '`0.1 + 0.2 === 0.3`', why: '`0.1 + 0.2` is `0.30000000000000004`.' },
       { t: '`0.5 + 0.25 === 0.75`', correct: true, why: '0.5 and 0.25 are 2⁻¹ and 2⁻², exact in binary, and so is their sum.' },
-      { t: '`2 ** 53 + 1 === 9007199254740993`', why: '2⁵³ + 1 cannot be stored; it becomes 2⁵³, which is 9007199254740992.' },
+      { t: '`2 ** 53 + 1 > 2 ** 53`', why: '2⁵³ + 1 cannot be stored; it becomes 2⁵³ itself, so the two sides are equal and `>` is false.' },
     ],
   },
   {

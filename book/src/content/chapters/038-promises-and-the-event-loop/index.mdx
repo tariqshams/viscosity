@@ -174,8 +174,8 @@ ex.shutdown(); // now, then later
 
 int main(void) {
     sleep(1); /* everything stops here */
-    printf("later\n");
-    printf("now\n");
+    printf("later\n"); /* so "later" */
+    printf("now\n");   /* comes first */
     return 0;
 }
 ```

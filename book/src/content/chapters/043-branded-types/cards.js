@@ -1,4 +1,4 @@
-// Chapter 42b cards (staged split of chapter 42). Keys are stable ids: never rename them.
+// Chapter 43 cards (branded types). Keys are stable ids: never rename them.
 
 export const prompts = {
   'alias-only': {

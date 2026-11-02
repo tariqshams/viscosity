@@ -186,7 +186,7 @@ test('zero is not a power of two', () => {
 **Common wrong attempts.**
 
 - Leaving out \`n > 0\`: \`isPowerOfTwo(0)\` returns \`true\`, because \`0 & -1\` is \`0\`. The edge-case test catches it.
-- Leaving out the brackets: \`n & (n - 1) === 0\` means \`n & ((n - 1) === 0)\`, which is \`n & false\`, always \`0\`, so every number fails.`,
+- Leaving out the brackets: \`n & (n - 1) === 0\` means \`n & ((n - 1) === 0)\`, which is \`n & false\` (always \`0\`) for every \`n\` except 1, where it is \`1 & true\`, which is \`1\` rather than \`true\`; either way, no test passes.`,
     wrong: [
       {
         code: `function isPowerOfTwo(n) {
@@ -198,7 +198,7 @@ test('zero is not a power of two', () => {
         code: `function isPowerOfTwo(n) {
   return n > 0 && n & (n - 1) === 0;
 }`,
-        why: 'Without brackets, `===` runs before `&`, so this computes `n & false`, which is `0`, and every number gives `0` (falsy) instead of `true`.',
+        why: 'Without brackets, `===` runs before `&`, so this computes `n & ((n - 1) === 0)`: `0` for every number except 1, which gives `1`, and never `true`.',
       },
     ],
   },

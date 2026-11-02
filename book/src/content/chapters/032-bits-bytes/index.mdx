@@ -260,7 +260,7 @@ classic slip, because `!==` is worked out before `&`:
 
 ```js
 flags = ALIVE; // 001: not visible
-flags & VISIBLE !== 0;   // 1, truthy!
+flags & VISIBLE !== 0;   // 1: truthy
 (flags & VISIBLE) !== 0; // false
 ```
 

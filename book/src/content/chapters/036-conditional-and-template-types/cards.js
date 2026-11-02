@@ -1,4 +1,4 @@
-// Cards for the second half of chapter 35 (staged split). Keys are stable
+// Chapter 36 cards (conditional and template types). Keys are stable
 // ids: never rename them.
 //
 // The runner erases types without checking them, so exercises
@@ -222,7 +222,7 @@ test('an empty object gives no getters', () => {
       'The new name is `\'get\'` plus the key with its first letter upper-cased: `k[0].toUpperCase() + k.slice(1)`.',
       'Store `() => o[k]`, not `o[k]` itself, so the value is read when the getter is called. The arrow function is a closure over `o` and `k`.',
     ],
-    walkthrough: `**How to think about it.** The type \`Getters<T>\` already spells out the plan: for each string key, a new name made with \`Capitalize\`, holding a function that returns \`T[K]\`. At run time you do the same thing with ordinary string methods, since types are erased: \`Capitalize<K>\` has a run-time twin in \`k[0].toUpperCase() + k.slice(1)\`. Each getter must read the property when *called*, so it has to be a function that closes over \`o\` and \`k\` (chapter 11), not a copy of the value.
+    walkthrough: `**How to think about it.** The type \`Getters<T>\` already spells out the plan: for each string key, a new name made with \`Capitalize\`, holding a function that returns \`T[K]\`. At run time you do the same thing with ordinary string methods, since types are erased: \`Capitalize<K>\` has a run-time twin in \`k[0].toUpperCase() + k.slice(1)\`. Each getter must read the property when *called*, so it has to be a function that closes over \`o\` and \`k\` (a closure, chapter 12), not a copy of the value.
 
 **The solution, line by line.**
 

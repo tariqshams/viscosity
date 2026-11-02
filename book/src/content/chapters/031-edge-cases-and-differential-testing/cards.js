@@ -1,5 +1,5 @@
-// Cards for the second half of chapter 30 (edge cases and differential
-// testing). Keys are stable ids: never rename them.
+// Chapter 31 cards (edge cases and differential testing). Keys are
+// stable ids: never rename them.
 
 export const prompts = {
   'edge-what': {

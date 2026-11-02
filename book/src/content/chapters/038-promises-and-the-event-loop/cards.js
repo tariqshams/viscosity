@@ -124,7 +124,7 @@ test('returns a promise straight away', () => {
 - \`readLater(name, (err, text) => {\` starts the old function, passing our own callback; \`readLater\` returns immediately, and the callback runs about 10 ms later, from the event loop.
 - \`if (err) fail(err);\` turns an error into a rejection: whoever holds the promise gets it in their \`catch\` (or as the second callback of \`then\`).
 - \`else ok(text);\` turns success into fulfilment with the text.
-- The closing brackets end the callback, the executor and the function.
+- The closing brackets end the callback, the function given to \`new Promise\`, and \`read\`.
 
 The tests return promises, and the runner waits for them: the first test's \`then\` runs once the file has been "read", 10 ms later.
 

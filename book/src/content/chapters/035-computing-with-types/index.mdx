@@ -57,7 +57,7 @@ type PKey = keyof Particle;
 ```
 
 `keyof` takes an object type and gives back a union of its keys, each as
-an exact string type (the literal types of the unions chapter). Its best use is
+an exact string type (the literal types of the tagged-unions chapter). Its best use is
 as a constraint, so that only real property names are accepted:
 
 ```ts
@@ -72,7 +72,7 @@ get(p, 'vX');
 // 'keyof Particle'.
 ```
 
-That is chapter 25's typo, now caught even when the name arrives as a
+That is chapter 26's typo, now caught even when the name arrives as a
 string. Notice `K extends keyof T`, a constraint (chapter 34) that uses
 another blank: `K` must be one of `T`'s keys, whatever `T` turns out to be.
 
@@ -304,11 +304,10 @@ position in bytes (chapter 32).
 <Prompts ids={['mapped-what', 'mapped-columns', 'mapped-optional']} />
 
 <Callout kind="engine" label="Under the hood">
-`Columns<T>` is not only an example: it is the type of the layout
-Viscosity generates when it splits an array of records into columns.
-Because it is computed from the record type, the two can never drift
-apart, which is exactly the guarantee a compiler that rewrites your data
-needs from its own types.
+`Columns<T>` is the shape of the layout Viscosity generates when it
+splits records into columns (its real columns are `Float64Array`s, but
+the rule is the same: one array per key). Computed from the record type,
+the two can never drift apart.
 </Callout>
 
 ## Your turn
