@@ -186,8 +186,8 @@ collector decide when one is dead. The price is paid on every call:
 `callFunction` makes a new `Environment`, with its own `Map` inside,
 even for a function whose environment no closure will ever capture
 (which is most of them), and every one of those objects is work for the
-garbage collector later. A benchmark chapter at the end of this part
-measures what calls cost.
+garbage collector later. The chapter *Measuring the tree-walker*, a
+few chapters on, measures what calls cost.
 
 <Callout kind="engine" label="Under the hood">
 The bytecode VM in Part IV makes the opposite choice. It keeps locals in

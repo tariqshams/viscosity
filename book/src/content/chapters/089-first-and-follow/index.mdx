@@ -18,9 +18,10 @@ import FollowFlow from '../../../components/diagrams/ch089/FollowFlow';
 
 ## How did the parser know?
 
-In "Recursive descent parsing" each function chose what to do by
-peeking at the next token: a loop like `while (at('+', '-'))` kept
-taking operators, and a statement function asked "is the next token
+In "Recursive descent parsing" and the chapters after it, each
+function chose what to do by peeking at the next token: a loop like
+`while (at('+', '-'))` kept taking operators, and a statement function
+asked "is the next token
 `print`? `if`? `{`?" to pick its rule. Those tests were written by
 hand, by someone who looked at the grammar and *knew* which tokens
 start which rule. That works for a small grammar; however, for a big

@@ -22,7 +22,7 @@ Every parser so far has worked from the top down. It starts with the
 start symbol and, at each nonterminal, picks a rule by peeking at one
 token, before it has seen any of the tokens that rule will cover. That
 early choice is the source of all the trouble in the last two chapters:
-`expr → expr "-" item` had to be rewritten, because a parser that
+`expr → expr "+" item` had to be rewritten, because a parser that
 picks it first must then parse an `expr` with the same token still
 next, forever; and the rewritten grammar leaned the wrong way, so the
 parser had to rebuild the tree as it went.

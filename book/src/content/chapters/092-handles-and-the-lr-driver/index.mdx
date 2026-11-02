@@ -22,7 +22,9 @@ The last chapter's shift-reduce parser followed orders it was given. A
 real parser must make its own, and the obvious rule, "reduce whenever
 a body is on top of the stack, else shift", goes wrong. Here it is on
 `n + n * n` (`n` for a number) with the layered grammar from the
-chapter on ambiguity, reducing the longest body it can find:
+chapter on ambiguity, its levels renamed `E`, `T` and `F`
+(`E → E "+" T | T`, `T → T "*" F | F`, `F → n`), reducing the longest
+body it can find:
 
 <Run id="greedy" />
 

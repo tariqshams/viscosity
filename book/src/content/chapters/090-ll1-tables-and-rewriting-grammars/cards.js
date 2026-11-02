@@ -1,4 +1,4 @@
-// Chapter 89b cards (split from chapter 89). Keys are stable ids.
+// Chapter 90 cards (split from chapter 89). Keys are stable ids.
 //
 // Grammars are data: { head: [body, ...] }, [] is ε. A table maps
 // table[A][token] to the index of the body to use.

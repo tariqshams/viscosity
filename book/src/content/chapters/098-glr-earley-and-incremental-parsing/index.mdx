@@ -96,7 +96,8 @@ the parser explores both until the input decides<Cite id="tree-sitter-docs" />.
 
 Jay Earley's 1970 algorithm takes a different road to the same place: no
 table at all<Cite id="earley1970" />. For each position in the input it
-keeps a set of dotted rules, the items of chapter 93, each also
+keeps a set of dotted rules, the items of "LR(0) items and the LR
+automaton", each also
 remembering where its rule began. Three steps fill the sets in: *predict*
 (a dot before a nonterminal adds that nonterminal's rules, starting
 here), *scan* (a dot before the next token moves over it into the next
@@ -196,7 +197,7 @@ incremental LR parsing among the research it builds on<Cite id="wagnergraham1998
 After four chapters of tables and generators, here is an honest
 surprise: the parsers in the compilers you use every day are written by
 hand, as recursive descent, with precedence climbing (the binding
-powers of chapter 85) for operators. V8's parser has functions like
+powers of "Pratt parsing") for operators. V8's parser has functions like
 `ParseStatementListItem` and `ParseBinaryExpression(int prec)`<Cite id="v8-src-parser-base" />;
 TypeScript's has `parseStatement` and
 `parseBinaryExpressionOrHigher(precedence)`<Cite id="typescript-src-parser" />;
@@ -211,7 +212,7 @@ rules and other strange hacks required by C/C++", and it makes it
 straightforward to give "excellent diagnostics and error
 recovery"<Cite id="clang-features" />. Each point is something the
 earlier chapters showed: an error message is easiest to write where the
-code knows exactly which construct it is in (chapter 87), real languages
+code knows exactly which construct it is in ("Syntax errors and recovery"), real languages
 have corners that do not fit a clean grammar, and a hand-written parser
 needs no extra tool in the build. Generators keep their place where
 those matter less: in editors (tree-sitter), for grammars that change

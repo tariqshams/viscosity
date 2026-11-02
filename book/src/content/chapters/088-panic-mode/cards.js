@@ -5,7 +5,7 @@
 export const prompts = {
   'panic-what': {
     q: 'What does a parser do in **panic mode**?',
-    a: 'It reports the first error, keeps quiet about the rest of the statement, then skips tokens until a synchronization point and resumes normal parsing.',
+    a: 'It reports the first error, keeps quiet about the rest of the statement, then skips tokens until a synchronisation point and resumes normal parsing.',
   },
   'quiet-flag': {
     q: 'In Drip’s `errorAt`, what happens to a second error in the same statement, and why?',
@@ -247,7 +247,7 @@ export const quiz = [
     options: [
       { t: 'The next token is a number', why: 'A number is not a statement keyword, so it keeps skipping, even though an expression statement could start with one. Only keywords are trusted as starts.' },
       { t: 'The next token is `)`', why: 'A `)` is in the middle of something. Not a safe point.' },
-      { t: 'The next token is `while`', correct: true, why: '`while` starts a statement, so it is a synchronization point.' },
+      { t: 'The next token is `while`', correct: true, why: '`while` starts a statement, so it is a synchronisation point.' },
       { t: 'The previous token is `+`', why: 'After a `+` the parser is mid-expression. Not a safe point.' },
     ],
   },

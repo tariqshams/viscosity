@@ -185,7 +185,7 @@ In the test \`S('aay', 0)\`, the first alternative calls \`A\` at 0, which runs 
 
 - Returning the *longest* match instead of the first is what a regular expression engine or a scanner might do, but it is not ordered choice: \`choice(lit('a'), lit('ab'))\` must return 1 on \`ab\`.
 - Keying the table by the position alone gives stale answers as soon as the parser sees a second input.
-- Checking \`if (table.get(key))\` instead of \`has\` forgets cached failures (\`-1\` is truthy, but a cached \`0\`, a match ending at position 0, is not), so some results are recomputed or, worse, misread.`,
+- Checking \`if (table.get(key))\` instead of \`has\` treats a cached \`0\` (a match that ends at position 0, such as an empty match at the start) as missing, because \`0\` is falsy, so that result is recomputed every time and the rule no longer runs once per position. (A cached \`-1\` happens to survive, since \`-1\` is truthy.)`,
     wrong: [
       {
         code: `${GIVEN}

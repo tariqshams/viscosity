@@ -122,7 +122,7 @@ the table as data; try `( n )`, `n + + n`, or `( ( n ) )`:
 ## When a cell has two answers
 
 Now make the grammar do a little more: add multiplication, which binds
-tighter than `+` (chapter 83's precedence), with a new level `F` for a
+tighter than `+` (the precedence of "Precedence and associativity"), with a new level `F` for a
 factor:
 
 ```text
@@ -189,7 +189,7 @@ reduces without looking at the next token, and the next chapter makes it
 disappear by looking. The second is the plainest reduce/reduce conflict:
 after an `x` the parser has two complete items, and since `A` and `B`
 are made of the same token, nothing it sees can separate them. The third
-is the grammar of chapter 79's ambiguity: with `n + n` on the stack and
+is the ambiguous grammar of "Ambiguity and the Chomsky hierarchy": with `n + n` on the stack and
 another `+` coming, reducing groups the sum as `(n + n) + n` and
 shifting groups it as `n + (n + n)`; both are right by the grammar,
 which is why no amount of lookahead fixes it. Some conflicts are

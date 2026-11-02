@@ -49,9 +49,9 @@ export default function Lr1ClosureSteps() {
             <T key={k} x={270} y={42 + k * 18} size={11}>{l}</T>
           ))}
         </Box>
-        <T x={270} y={118} size={11} fill={tok('muted')}>orange row: the item</T>
+        <T x={270} y={118} size={11} fill={tok('muted')}>blue row: the item</T>
         <T x={270} y={133} size={11} fill={tok('muted')}>being closed</T>
-        <T x={270} y={152} size={11} fill={tok('brand')}>blue: items it adds</T>
+        <T x={270} y={152} size={11} fill={tok('brand')}>orange: items it adds</T>
       </Svg>
     </StepFrame>
   );

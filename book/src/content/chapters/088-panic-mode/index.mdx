@@ -141,12 +141,12 @@ Step through both parts on a four-line program with two mistakes:
 <Callout kind="definition">
 **Panic mode** is error recovery by skipping. On an error the parser
 reports it, keeps quiet about any more errors in the same statement,
-and then discards tokens until it reaches a **synchronization point**
+and then discards tokens until it reaches a **synchronisation point**
 (a token after which the grammar is likely to make sense again), where
 it resumes normal parsing.
 </Callout>
 
-<Formal title="Drip’s synchronization points">
+<Formal title="Drip’s synchronisation points">
 
 ```text
 stop before tₖ  ⇔  depth = 0 and
@@ -209,7 +209,7 @@ while n > 0 {
   print n
   n -= 1;
 }
-# line 3: expected ';' after the
+# line 2: expected ';' after the
 #   value, found 'n'
 ```
 
@@ -272,7 +272,7 @@ lexemes. The extra one writes the quiet flag.
 
 - In **panic mode**, the parser reports the first error of a statement
   and drops the rest, which are probably echoes.
-- Then `synchronize()` skips tokens to a **synchronization point**:
+- Then `synchronize()` skips tokens to a **synchronisation point**:
   just after a `;`, before a statement keyword, or at the `}` closing
   the block, with any braces opened on the way skipped whole.
 - The price is that skipped tokens are never checked; some errors,

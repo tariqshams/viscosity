@@ -20,14 +20,15 @@ import Lr0Automaton from '../../../components/diagrams/ch093/Lr0Automaton';
 
 The last chapter's parser works by **shifting** tokens onto a stack and
 **reducing** whenever the top of the stack is a **handle**, the body of
-a rule that should be replaced by its head right now. That leaves one
-question unanswered, and it is the whole question: how does the parser
-*know* that the top of the stack is a handle? It could try every rule
-against the stack after every token; however, that is slow, and it
-repeats the same work, because the stack changes one symbol at a time.
+a rule that should be replaced by its head right now, and it knew which
+by looking in a table of states it was handed. That leaves one question
+unanswered, and it is the whole question: where do those states come
+from? Trying every rule against the stack after every token would be
+slow, and would repeat work, since the stack changes one symbol at a
+time.
 
-A scanner had the same problem with characters, and chapter 73 solved
-it with a DFA, whose current state summarises everything read so far.
+A scanner had the same problem with characters, and "Finite automata"
+solved it with a DFA, whose current state summarises everything read so far.
 This chapter builds that kind of machine for a parser: its states
 summarise the stack, so each shift or reduce costs one step instead of
 a fresh look. We will build it for this grammar:
@@ -194,7 +195,7 @@ is closure working twice: the dot before `E` brings in the `E` rules,
 and the dot in `E → · T` brings in the `T` rules. The left-recursive
 rule `E → E + T` is added once and no more, since adding an item that
 is already there changes nothing (so left recursion, the trouble of
-chapter 89, is no trouble here).
+"LL(1) tables and rewriting grammars", is no trouble here).
 
 <Prompts ids={['closure-why', 'closure-stops', 'goto-what']} />
 
@@ -250,8 +251,8 @@ data and walks a stack through them: `E + T` ends in state 7 (reduce),
 `E +` in state 5 (keep going), and `+` finds no arrow at all, because no
 valid program has a stack like that.
 
-If this feels familiar, it is the subset construction of chapter 75
-again: an item is like one NFA state, closure follows the ε-moves, and
+If this feels familiar, it is the subset construction of "From regular
+expressions to fast scanners" again: an item is like one NFA state, closure follows the ε-moves, and
 goto is one step on a symbol. (A real LR parser never reruns the machine
 from the bottom: it keeps the state number beside each stack symbol, so
 it only takes the last step again.)

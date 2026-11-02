@@ -28,7 +28,7 @@ expression so far, so reduce. The LR(0) parser was blind only because
 it never looked.
 
 There are three classic ways to choose which tokens allow a reduction,
-and they are this chapter's title: **SLR**, the simplest, which this
+and they name this chapter and the next: **SLR**, the simplest, which this
 chapter builds; then **LR(1)**, the most precise, and **LALR**, the
 compromise almost every parser generator uses, which come next. All
 three keep the shift-reduce loop exactly as it was; they differ only in
@@ -88,8 +88,8 @@ found in the right place.
 
 ## SLR: FOLLOW sets as lookahead
 
-Where does a good lookahead set come from? Chapter 89 already computed
-the obvious candidate: **FOLLOW(A)**, the set of terminals that can come
+Where does a good lookahead set come from? "FIRST and FOLLOW" already
+computed the obvious candidate: **FOLLOW(A)**, the set of terminals that can come
 right after an `A` anywhere in any program. If the next token cannot
 follow an `A` at all, reducing to `A` now cannot be right. For the
 grammar with `*`:

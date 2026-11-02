@@ -57,7 +57,7 @@ uses the automaton built from these items.
 Closure now has to work out lookaheads. For an item
 `[A → α · B β, a]`, the new items for `B` get every token that can come
 right after that `B`: the first token of `β`, or, if `β` is empty (or
-can vanish entirely), `a` itself. Chapter 89's FIRST sets do exactly
+can vanish entirely), `a` itself. The FIRST sets of "FIRST and FOLLOW" do exactly
 this job. Step through state 0:
 
 <Lr1ClosureSteps client:visible />
@@ -199,13 +199,17 @@ exp - exp | exp * exp | exp / exp | NUM`, and it warns:
 
 ```text
 calc.y: warning:
-  7 shift/reduce conflicts
-State 8 conflicts: 1 shift/reduce
+  16 shift/reduce conflicts
+State 8 conflicts: 4 shift/reduce
+State 9 conflicts: 4 shift/reduce
+State 10 conflicts: 4 shift/reduce
 State 11 conflicts: 4 shift/reduce
 ```
 
 The second part comes from its report file, which lists every state and
-the conflicts in it. A conflict is not fatal: Bison settles a
+the conflicts in it: one state for each operator, holding a finished
+`exp op exp`, and in each a conflict under all four operators that might
+come next. A conflict is not fatal: Bison settles a
 shift/reduce conflict by shifting, and a reduce/reduce conflict by the
 rule that comes first in the grammar, though its manual warns that this
 is "very risky to rely on". The intended fix for operators is a

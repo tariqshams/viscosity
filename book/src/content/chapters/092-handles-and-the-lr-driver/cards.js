@@ -341,7 +341,7 @@ export const quiz = [
   {
     q: 'Why does the greedy rule “always reduce the longest body on top” fail on `n + n * n`?',
     options: [
-      { t: 'It reduces `E + T` to `E` before seeing the `*`, so `2 * 3` can no longer be grouped', correct: true, why: 'Whether `E + T` is a handle depends on the next token, which greedy reduction never looks at.' },
+      { t: 'It reduces `E + T` to `E` before seeing the `*`, so `n * n` can no longer be grouped', correct: true, why: 'Whether `E + T` is a handle depends on the next token, which greedy reduction never looks at.' },
       { t: 'It never shifts', why: 'It shifts whenever nothing can be reduced.' },
       { t: 'The grammar is ambiguous', why: 'This layered grammar has one tree per sentence; the parsing rule is at fault.' },
     ],

@@ -23,8 +23,9 @@ states, a table with nine columns, and a careful reckoning of
 lookaheads; doing that by hand once is how you learn it, and doing it
 for a real language, with hundreds of rules and states, would be a job
 for a very patient person with a great deal of paper. It is also
-exactly the kind of mechanical work a program does better. Chapter 75
-met programs that write scanners from regular expressions; their
+exactly the kind of mechanical work a program does better. "Minimal DFAs and
+scanner generators" met programs that write scanners from regular
+expressions; their
 partners write parsers from grammars.
 
 <Analogy title="a knitting machine and its pattern card">
@@ -87,7 +88,7 @@ how its documentation fixes the conflicts its generator
 reports<Cite id="tree-sitter-docs" />.
 
 Not every generator builds LR tables. ANTLR builds top-down parsers,
-in the family of chapter 89's LL parsers. Its method, ALL(*), decides between a rule's alternatives by
+in the family of the LL parsers of "LL(1) tables and rewriting grammars". Its method, ALL(*), decides between a rule's alternatives by
 looking ahead as far as it needs to, and does that analysis while
 parsing rather than in advance; its authors report that it handles any
 grammar without left recursion, and runs in linear time on the grammars
@@ -97,7 +98,7 @@ they measured<Cite id="parr2014allstar" />.
 
 ## Parsing expression grammars
 
-A grammar like those of chapter 77 is a *description*: `A → x | y` says
+A grammar like those of "Grammars" is a *description*: `A → x | y` says
 an `A` may be an `x` or a `y`, and leaves it to the parser to find out
 which, which is where ambiguity and conflicts come from. A **parsing
 expression grammar** (PEG) is written as a *procedure* instead: `A ← x / y`
@@ -165,8 +166,8 @@ alternative comes first and succeeds, so the longer one is dead, and a
 rule `B ← A "c"` would fail on `abc`. Put the longer alternative first
 and both work. The second shows a predicate doing a scanner's job: the
 keyword `if` is only a keyword when no letter follows it, and `!` checks
-that without consuming the letter (this is maximal munch, chapter 68,
-written into the grammar). The runnable one builds these pieces as small
+that without consuming the letter (this is maximal munch, from "Lookahead and
+maximal munch", written into the grammar). The runnable one builds these pieces as small
 JavaScript functions, each taking the input and a position and returning
 where it stopped, or `-1`; try `'ifx'`, `'if('` and `'i'`.
 

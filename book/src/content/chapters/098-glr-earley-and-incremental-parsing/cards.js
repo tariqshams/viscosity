@@ -177,7 +177,7 @@ test('same-length replacement: later nodes stay put', () => {
 - \`    return null;\` is everything else: the node overlaps or touches the edit.
 - \`  });\` closes the \`map\`.
 
-For the figure's edit (\`at: 20, removed: 0, added: 2\`), \`delta\` is 2 and \`editEnd\` is 20: the first node ends at 10 (kept), the second covers 11 to 21 (touching, so \`null\`), and the third starts at 22, after 20, so it moves to 24–34.
+For the figure's edit (\`at: 20, removed: 0, added: 2\`), \`delta\` is 2 and \`editEnd\` is 20: the first node ends at 10 (kept), the second covers 11 to 21, and the edit at 20 is inside it, so it is \`null\`, and the third starts at 22, after 20, so it moves to 24–34.
 
 **Common wrong attempts.**
 

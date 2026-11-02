@@ -74,7 +74,7 @@ export default function TableParseSteps() {
             <T x={64 + k * 34} y={233} size={13} mono anchor="middle">{t}</T>
           </Box>
         ))}
-        <T x={396} y={250} size={11} anchor="end" fill={tok('muted')}>lit: the ACTION cell; orange: GOTO</T>
+        <T x={396} y={250} size={11} anchor="end" fill={tok('muted')}>orange: the ACTION cell; blue: GOTO</T>
       </Svg>
     </StepFrame>
   );

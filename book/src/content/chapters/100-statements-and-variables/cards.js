@@ -86,7 +86,7 @@ test('x += e adds to the old value', () => {
     P(Set_('x', N(1), '+=')),
   ])).toEqual([8]);
 });
-test('let with no initializer is none', () => {
+test('let with no initialiser is none', () => {
   expect(run([Let('y'), P(V('y'))]))
     .toEqual([null]);
 });
@@ -178,7 +178,7 @@ export const exercises = {
   'mini-run': {
     title: 'A tiny interpreter with state',
     prompt:
-      'Finish `run(prog)`. `prog` is a list of statements: `{ kind: \'let\', name, init }` (`init` may be `null`), `{ kind: \'print\', expr }` and `{ kind: \'expr\', expr }`. Expressions are `num` and `add` (already done), `{ kind: \'var\', name }`, and `{ kind: \'assign\', name, op, value }` where `op` is `\'=\'` or `\'+=\'`. Keep globals in the `Map`, push each printed value onto `out`, and return `out`. Using or assigning a name that is not defined throws `Error("undefined variable \'NAME\'")`. Follow Drip: `let` without an initializer gives `null` (Drip’s `none`), `let` may redefine a global, `x += e` adds to the old value, and an assignment returns the value it stored.',
+      'Finish `run(prog)`. `prog` is a list of statements: `{ kind: \'let\', name, init }` (`init` may be `null`), `{ kind: \'print\', expr }` and `{ kind: \'expr\', expr }`. Expressions are `num` and `add` (already done), `{ kind: \'var\', name }`, and `{ kind: \'assign\', name, op, value }` where `op` is `\'=\'` or `\'+=\'`. Keep globals in the `Map`, push each printed value onto `out`, and return `out`. Using or assigning a name that is not defined throws `Error("undefined variable \'NAME\'")`. Follow Drip: `let` without an initialiser gives `null` (Drip’s `none`), `let` may redefine a global, `x += e` adds to the old value, and an assignment returns the value it stored.',
     starter: `function run(prog) {
   const globals = new Map();
   const out = [];
@@ -212,7 +212,7 @@ export const exercises = {
 - \`function check(name) { if (!globals.has(name)) { throw new Error("undefined variable '" + name + "'"); } }\` turns a missing name into Drip's runtime error, with Drip's exact wording. It is written once and used in two places.
 - \`case 'var': check(e.name); return globals.get(e.name);\` reads a variable: check first, then look up.
 - \`case 'assign': { let v; ... }\` handles both kinds of assignment. For \`+=\`, \`check(e.name)\` comes first, then \`v = globals.get(e.name);\` reads the old value, then \`v = v + evaluate(e.value);\` adds the right side: the old value is read once, before the right side, as in the companion. For \`=\`, \`v = evaluate(e.value);\` comes first and the check after, also as in the companion. Either way \`globals.set(e.name, v); return v;\` overwrites the entry and hands the value back, which is what lets \`print a = 3\` print \`3\`.
-- \`case 'let': globals.set(s.name, s.init ? evaluate(s.init) : null); return;\` always defines, with no check, so a second top-level \`let a\` replaces the first; no initializer means \`null\`, Drip's \`none\`.
+- \`case 'let': globals.set(s.name, s.init ? evaluate(s.init) : null); return;\` always defines, with no check, so a second top-level \`let a\` replaces the first; no initialiser means \`null\`, Drip's \`none\`.
 - \`case 'print': out.push(evaluate(s.expr)); return;\` is the only statement that adds output.
 - \`case 'expr': evaluate(s.expr); return;\` evaluates for any side effect the expression has (an assignment, say) and drops the value.
 - \`for (const s of prog) execute(s); return out;\` is the whole interpreter loop: the program is a list, run in order. If a statement throws, the loop stops there.
@@ -404,9 +404,9 @@ export const quiz = [
     q: 'What does `let a = 1; let b = a = 7; print a; print b;` print?',
     options: [
       { t: '`1` then `7`', why: '`a = 7` really assigns `a` before its value is used for `b`.' },
-      { t: 'A compile error', why: 'Assignment is an expression, so it can be an initializer.' },
+      { t: 'A compile error', why: 'Assignment is an expression, so it can be an initialiser.' },
       { t: '`7` then `none`', why: 'The assignment expression has a value: the value assigned.' },
-      { t: '`7` then `7`', correct: true, why: 'The assignment sets `a` to 7 and its value, 7, initializes `b`.' },
+      { t: '`7` then `7`', correct: true, why: 'The assignment sets `a` to 7 and its value, 7, initialises `b`.' },
     ],
   },
   {
@@ -414,7 +414,7 @@ export const quiz = [
     options: [
       { t: 'Only the error', why: 'That would be a compile error. Using an unknown name parses fine, so lines 1 and 2 run.' },
       { t: 'The two lines, then `runtime error: undefined variable \'zz\'` and `at line 3 in script`', correct: true, why: 'The statement list runs in order and stops at the runtime error. Line 4 never runs.' },
-      { t: 'The two lines, `none`, and the third line', why: 'An unknown name is an error, not `none`; `none` is for a declared variable with no initializer.' },
+      { t: 'The two lines, `none`, and the third line', why: 'An unknown name is an error, not `none`; `none` is for a declared variable with no initialiser.' },
       { t: 'All three lines, plus a warning', why: 'Drip does not warn and carry on. The runtime error stops the program.' },
     ],
   },

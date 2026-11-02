@@ -91,7 +91,7 @@ b!`,
 
 **The solution, line by line.**
 
-- \`fn each(xs, f) {\` declares a global function with two parameters, so its arity is 2. In the first call, \`xs\` holds the list \`[1, 2, 3]\` and \`f\` holds the anonymous function that prints \`x * 10\`.
+- \`fn each(xs, f) {\` declares a global function with two parameters. In the first call, \`xs\` holds the list \`[1, 2, 3]\` and \`f\` holds the anonymous function that prints \`x * 10\`.
 - \`  for x in xs {\` runs its body once per item, with \`x\` holding the item.
 - \`    f(x);\` is a call expression whose callee is the variable \`f\`. The interpreter looks \`f\` up (a function value), evaluates \`x\`, checks that it is a Drip function, makes a fresh environment for the anonymous function with its parameter (also called \`x\` in the first call, \`s\` in the second) holding the item, and runs its body, which prints.
 - \`  }\` and \`}\` close the loop and the function.
@@ -166,17 +166,17 @@ for i in 1..6 {
 
 **The solution, line by line.**
 
-- \`fn square(n) {\` declares a global function \`square\` with one parameter, so its arity is 1. Running this line makes the function value and stores it under the name \`square\`; nothing is printed yet.
+- \`fn square(n) {\` declares a global function \`square\` with one parameter. Running this line makes the function value and stores it under the name \`square\`; nothing is printed yet.
 - \`  print n * n;\` is the body: it prints the parameter times itself.
 - \`}\` ends the body.
 - \`for i in 1..6 {\` runs its body with \`i\` set to 1, 2, 3, 4 and 5 in turn.
-- \`  square(i);\` looks up \`square\` (found in the globals), evaluates \`i\`, checks that 1 argument matches arity 1, then makes a fresh environment with \`n\` holding the current \`i\` and runs the body there, printing \`1\`, then \`4\`, and so on up to \`25\`.
+- \`  square(i);\` looks up \`square\` (found in the globals), evaluates \`i\`, checks that one argument was given for its one parameter, then makes a fresh environment with \`n\` holding the current \`i\` and runs the body there, printing \`1\`, then \`4\`, and so on up to \`25\`.
 - \`}\` ends the loop.
 
 **Common wrong attempts.**
 
 - Declaring \`square\` *after* the loop: the loop runs first, and the very first call stops with \`undefined variable 'square'\`.
-- Declaring \`fn square()\` with no parameter and printing \`i * i\` inside: the call \`square(i)\` fails the arity check with \`square() takes 0 arguments but got 1\` (and \`i\` belongs to the loop, which \`square\` cannot see anyway).`,
+- Declaring \`fn square()\` with no parameter and printing \`i * i\` inside: the call \`square(i)\` fails the check on the number of arguments with \`square() takes 0 arguments but got 1\` (and \`i\` belongs to the loop, which \`square\` cannot see anyway).`,
     wrong: [
       {
         code: `for i in 1..6 {
@@ -196,7 +196,7 @@ fn square(n) {
 for i in 1..6 {
   square(i);
 }`,
-        why: '`square` takes no parameters, so `square(i)` fails the arity check: `square() takes 0 arguments but got 1`.',
+        why: '`square` takes no parameters, so `square(i)` fails the check on the number of arguments: `square() takes 0 arguments but got 1`.',
       },
     ],
   },
