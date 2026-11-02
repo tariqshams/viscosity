@@ -1,0 +1,13 @@
+fn area() {
+  return "global area";
+}
+class Square {
+  init(s) {
+    self.s = s;
+  }
+  area() {
+    return self.s * self.s;
+  }
+}
+print new Square(3).area(); # expect: 9
+print area(); # expect: global area

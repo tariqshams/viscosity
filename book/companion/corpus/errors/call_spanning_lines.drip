@@ -1,0 +1,7 @@
+fn f(a, b) { return a + b; } # expect runtime error: cannot add a number and a string
+f(
+  1,
+  "x"
+);
+# expect trace: at line 1 in fn f
+# expect trace: at line 2 in script

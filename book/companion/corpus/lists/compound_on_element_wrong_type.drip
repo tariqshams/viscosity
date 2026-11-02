@@ -1,0 +1,2 @@
+let xs = ["a"];
+xs[0] -= 1; # expect runtime error: cannot use '-' on a string and a number

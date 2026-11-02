@@ -1,0 +1,26 @@
+fn primesBelow(n) {
+  let isPrime = [];
+  for i in 0..n {
+    push(isPrime, true);
+  }
+  isPrime[0] = false;
+  isPrime[1] = false;
+  for i in 2..n {
+    if isPrime[i] {
+      let j = i * i;
+      while j < n {
+        isPrime[j] = false;
+        j += i;
+      }
+    }
+  }
+  let out = [];
+  for i in 0..n {
+    if isPrime[i] {
+      push(out, i);
+    }
+  }
+  return out;
+}
+print primesBelow(50); # expect: [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47]
+print len(primesBelow(1000)); # expect: 168

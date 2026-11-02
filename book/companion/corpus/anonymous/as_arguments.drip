@@ -1,0 +1,18 @@
+fn map(xs, f) {
+  let out = [];
+  for x in xs {
+    push(out, f(x));
+  }
+  return out;
+}
+fn filter(xs, keep) {
+  let out = [];
+  for x in xs {
+    if keep(x) {
+      push(out, x);
+    }
+  }
+  return out;
+}
+print map([1, 2, 3], fn (x) { return x * 10; }); # expect: [10, 20, 30]
+print filter([1, 2, 3, 4], fn (x) { return x % 2 == 0; }); # expect: [2, 4]

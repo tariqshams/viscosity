@@ -1,0 +1,10 @@
+class C {
+  m() {
+    return "method";
+  }
+}
+let c = new C();
+print c.m(); # expect: method
+c.m = fn () { return "field"; };
+print c.m(); # expect: field
+print new C().m(); # expect: method

@@ -1,0 +1,1 @@
+print true + 1; # expect runtime error: cannot add a boolean and a number

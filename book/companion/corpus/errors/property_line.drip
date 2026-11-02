@@ -1,0 +1,4 @@
+class Thing {}
+let t = new Thing();
+print t
+  .missing; # expect runtime error: Thing has no property 'missing'

@@ -1,0 +1,16 @@
+let stack = [];
+push(stack, 1);
+push(stack, 2);
+push(stack, 3);
+print stack; # expect: [1, 2, 3]
+print pop(stack); # expect: 3
+print stack; # expect: [1, 2]
+print push(stack, "x"); # expect: none
+print len(stack); # expect: 3
+while len(stack) > 0 {
+  print pop(stack);
+}
+# expect: x
+# expect: 2
+# expect: 1
+print stack; # expect: []

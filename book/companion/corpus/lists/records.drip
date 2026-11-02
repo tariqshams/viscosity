@@ -1,0 +1,16 @@
+class Cell {
+  init(v) {
+    self.v = v;
+  }
+}
+let cells = [];
+for i in 0..4 {
+  push(cells, new Cell(i * i));
+}
+cells[2].v += 100;
+let total = 0;
+for c in cells {
+  total += c.v;
+}
+print total; # expect: 114
+print cells[3]; # expect: Cell { v: 9 }

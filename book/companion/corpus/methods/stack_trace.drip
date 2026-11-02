@@ -1,0 +1,9 @@
+class Shape {
+  init(w) { self.w = w; }
+  area() { return self.w * self.h; } # expect runtime error: Shape has no property 'h'
+  report() { return "area " + str(self.area()); }
+}
+print new Shape(2).report();
+# expect trace: at line 3 in fn area
+# expect trace: at line 4 in fn report
+# expect trace: at line 6 in script

@@ -1,0 +1,4 @@
+fn () {
+  print "called right away";
+}();
+# expect: called right away

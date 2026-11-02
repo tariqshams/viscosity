@@ -1,0 +1,8 @@
+fn swap(xs, i, j) {
+  let t = xs[i];
+  xs[i] = xs[j];
+  xs[j] = t;
+}
+let xs = ["x", "y", "z"];
+swap(xs, 0, 2);
+print xs; # expect: ["z", "y", "x"]

@@ -1,0 +1,9 @@
+let a = [1, 2];
+let b = a;
+push(b, 3);
+print a; # expect: [1, 2, 3]
+fn fill(xs) {
+  xs[0] = "changed";
+}
+fill(a);
+print b[0]; # expect: changed

@@ -1,0 +1,4 @@
+let limit;
+for i in 0..limit { # expect runtime error: a range must end with a number, not none
+  print i;
+}

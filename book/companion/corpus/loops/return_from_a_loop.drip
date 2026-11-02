@@ -1,0 +1,22 @@
+fn find(xs, target) {
+  for i in 0..len(xs) {
+    if xs[i] == target {
+      return i;
+    }
+  }
+  return -1;
+}
+print find([5, 6, 7], 6); # expect: 1
+print find([5, 6, 7], 9); # expect: -1
+fn firstNegative(xs) {
+  for x in xs {
+    while true {
+      if x < 0 {
+        return x;
+      }
+      break;
+    }
+  }
+  return none;
+}
+print firstNegative([3, -1, -2]); # expect: -1

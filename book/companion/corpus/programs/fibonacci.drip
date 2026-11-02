@@ -1,0 +1,37 @@
+fn fibRecursive(n) {
+  if n < 2 {
+    return n;
+  }
+  return fibRecursive(n - 1) + fibRecursive(n - 2);
+}
+
+fn fibLoop(n) {
+  let a = 0;
+  let b = 1;
+  for i in 0..n {
+    let t = a + b;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+
+let memo = [0, 1];
+fn fibMemo(n) {
+  while len(memo) <= n {
+    push(memo, memo[len(memo) - 1] + memo[len(memo) - 2]);
+  }
+  return memo[n];
+}
+
+for n in [0, 1, 2, 10, 20] {
+  print str(n) + ": " + str(fibRecursive(n)) + " " + str(fibLoop(n)) + " " + str(fibMemo(n));
+}
+# expect: 0: 0 0 0
+# expect: 1: 1 1 1
+# expect: 2: 1 1 1
+# expect: 10: 55 55 55
+# expect: 20: 6765 6765 6765
+print fibLoop(78); # expect: 8944394323791464
+print fibMemo(78) == fibLoop(78); # expect: true
+print len(memo); # expect: 79

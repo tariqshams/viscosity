@@ -1,0 +1,4 @@
+let f = len;
+print f([1, 2, 3]); # expect: 3
+let natives = [clock, len, push, pop, str];
+print natives; # expect: [native fn clock, native fn len, native fn push, native fn pop, native fn str]

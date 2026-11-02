@@ -1,0 +1,6 @@
+let level = 1;
+fn show() {
+  return level;
+}
+level = 2;
+print show(); # expect: 2

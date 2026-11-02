@@ -1,0 +1,3 @@
+class A {
+  123() {} # expect compile error: line 2: expected a method name, found '123'
+}

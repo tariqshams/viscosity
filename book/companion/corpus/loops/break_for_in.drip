@@ -1,0 +1,8 @@
+for w in ["a", "b", "stop", "c"] {
+  if w == "stop" {
+    break;
+  }
+  print w;
+}
+# expect: a
+# expect: b

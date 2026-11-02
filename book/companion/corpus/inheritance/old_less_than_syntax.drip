@@ -1,0 +1,2 @@
+class A {}
+class B < A {} # expect compile error: line 2: expected '{' before the class body, found '<'

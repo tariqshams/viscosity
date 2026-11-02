@@ -1,0 +1,13 @@
+fn makeCounter() {
+  let n = 0;
+  return fn () {
+    n += 1;
+    return n;
+  };
+}
+let a = makeCounter();
+let b = makeCounter();
+print a(); # expect: 1
+print a(); # expect: 2
+print b(); # expect: 1
+print a(); # expect: 3

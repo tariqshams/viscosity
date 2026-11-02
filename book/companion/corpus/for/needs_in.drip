@@ -1,0 +1,2 @@
+for i 0..3 { # expect compile error: line 1: expected 'in' after the loop variable, found '0'
+}

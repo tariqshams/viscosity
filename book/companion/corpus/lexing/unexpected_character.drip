@@ -1,0 +1,2 @@
+print 1;
+let a = 1 @ 2; # expect compile error: line 2: unexpected character '@'

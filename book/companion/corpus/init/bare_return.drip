@@ -1,0 +1,11 @@
+class C {
+  init(n) {
+    self.n = n;
+    if n > 0 {
+      return;
+    }
+    self.n = "not positive";
+  }
+}
+print new C(1).n; # expect: 1
+print new C(0).n; # expect: not positive

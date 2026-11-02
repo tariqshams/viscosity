@@ -1,0 +1,7 @@
+print str(1) + str(2); # expect: 12
+print str(true); # expect: true
+print str(none); # expect: none
+print str([1, "a"]); # expect: [1, "a"]
+print str("plain"); # expect: plain
+print str(str); # expect: native fn str
+print len(str([1, 2])); # expect: 6

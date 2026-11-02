@@ -1,0 +1,2 @@
+let missing;
+print 10 - missing; # expect runtime error: cannot use '-' on a number and none

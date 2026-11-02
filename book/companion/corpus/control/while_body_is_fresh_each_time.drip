@@ -1,0 +1,13 @@
+let fs = [];
+let i = 0;
+while i < 3 {
+  let j = i;
+  push(fs, fn () { return j; });
+  i += 1;
+}
+for f in fs {
+  print f();
+}
+# expect: 0
+# expect: 1
+# expect: 2

@@ -1,0 +1,5 @@
+class C {
+  init() {}
+}
+let c = new C();
+c.init(); # expect compile error: line 5: expected a property name after '.', found 'init'

@@ -1,0 +1,6 @@
+let f = fn () {
+  return 1 + none; # expect runtime error: cannot add a number and none
+};
+f();
+# expect trace: at line 2 in anonymous fn
+# expect trace: at line 4 in script

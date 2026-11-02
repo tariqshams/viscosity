@@ -1,0 +1,2 @@
+let o;
+o.go(); # expect runtime error: cannot read 'go' of none

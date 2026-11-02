@@ -1,0 +1,8 @@
+let add = fn (a) {
+  return fn (b) {
+    return a + b;
+  };
+};
+let add3 = add(3);
+print add3(4); # expect: 7
+print add(1)(2); # expect: 3

@@ -1,0 +1,8 @@
+if "" {
+  print "the empty string is true"; # expect: the empty string is true
+}
+if !"" {
+  print "never";
+} else {
+  print "not empty is false"; # expect: not empty is false
+}

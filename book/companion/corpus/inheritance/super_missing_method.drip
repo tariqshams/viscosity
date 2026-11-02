@@ -1,0 +1,7 @@
+class A {}
+class B extends A {
+  m() {
+    return super.nope(); # expect runtime error: A has no method 'nope'
+  }
+}
+new B().m();

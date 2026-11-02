@@ -1,0 +1,8 @@
+class C {
+  me() {
+    return self;
+  }
+}
+let c = new C();
+print c.me() == c; # expect: true
+print new C().me() == c; # expect: false

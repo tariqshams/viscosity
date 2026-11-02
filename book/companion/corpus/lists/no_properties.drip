@@ -1,0 +1,2 @@
+let xs = [1, 2];
+print xs.length; # expect runtime error: cannot read 'length' of a list

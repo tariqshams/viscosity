@@ -1,0 +1,8 @@
+let s = "one
+two
+three";
+print s;
+# expect: one
+# expect: two
+# expect: three
+print s + 1; # expect runtime error: cannot add a string and a number

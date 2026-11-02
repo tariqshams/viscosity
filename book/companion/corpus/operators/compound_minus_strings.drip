@@ -1,0 +1,2 @@
+let s = "ab";
+s -= "b"; # expect runtime error: cannot use '-' on a string and a string

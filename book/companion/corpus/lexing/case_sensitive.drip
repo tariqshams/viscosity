@@ -1,0 +1,8 @@
+let drip = "lower";
+let Drip = "upper";
+let DRIP = "shout";
+print drip; # expect: lower
+print Drip; # expect: upper
+print DRIP; # expect: shout
+let True = "not a boolean";
+print True; # expect: not a boolean

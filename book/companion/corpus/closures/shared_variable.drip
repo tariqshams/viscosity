@@ -1,0 +1,9 @@
+fn pair() {
+  let v = 0;
+  let get = fn () { return v; };
+  let set = fn (x) { v = x; };
+  return [get, set];
+}
+let p = pair();
+p[1](42);
+print p[0](); # expect: 42

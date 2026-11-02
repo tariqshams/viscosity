@@ -1,0 +1,1 @@
+let p = new 3(); # expect compile error: line 1: expected a class name after 'new', found '3'

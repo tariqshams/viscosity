@@ -1,0 +1,4 @@
+class A {
+  m() { print 1 +; } # expect compile error: line 2: expected an expression, found ';'
+  n() { print 2 *; } # expect compile error: line 3: expected an expression, found ';'
+}

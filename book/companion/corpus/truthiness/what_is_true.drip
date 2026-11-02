@@ -1,0 +1,15 @@
+fn truth(v) {
+  if v {
+    return "true";
+  }
+  return "false";
+}
+print truth(false); # expect: false
+print truth(none); # expect: false
+print truth(true); # expect: true
+print truth(0); # expect: true
+print truth(-0); # expect: true
+print truth(0 / 0); # expect: true
+print truth(""); # expect: true
+print truth([]); # expect: true
+print truth(truth); # expect: true

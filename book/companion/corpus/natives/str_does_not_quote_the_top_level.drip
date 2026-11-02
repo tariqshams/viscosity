@@ -1,0 +1,1 @@
+print str("a") + str(["a"]); # expect: a["a"]

@@ -1,9 +1,14 @@
 // The resolver: a static pass that works out, for every variable use, how many
-// environments up its declaration lives (book chapter 42). It also reports
-// misuse of return, this and super.
+// environments up its declaration lives (book chapter 42). It also enforces
+// Drip's static rules: no redeclaring a local, no reading a local in its own
+// initialiser, `return` only in functions, `break` and `continue` only in
+// loops, `self` and `super` only in methods.
+//
+// It runs only on a program that parsed without errors, and it reports its
+// errors in source order, as the bytecode compiler does in its single pass.
 import type { Expr, FunctionDecl, Stmt } from './ast.ts';
 import type { Token } from './token.ts';
-import { tokenError, type Reporter } from './errors.ts';
+import type { Reporter } from './errors.ts';
 
 type FunctionType = 'none' | 'function' | 'method' | 'initializer';
 type ClassType = 'none' | 'class' | 'subclass';
@@ -13,35 +18,42 @@ export type Locals = Map<Expr, number>;
 
 export function resolve(statements: Stmt[], reporter: Reporter): Locals {
   const locals: Locals = new Map();
+  // Each scope maps a name to whether its declaration is complete.
   const scopes: Map<string, boolean>[] = [];
   let currentFunction: FunctionType = 'none';
   let currentClass: ClassType = 'none';
+  let loopDepth = 0;
 
+  const report = (token: Token, message: string) => reporter.error(token.line, message);
   const begin = () => scopes.push(new Map());
   const end = () => scopes.pop();
   const declare = (name: Token) => {
     const scope = scopes[scopes.length - 1];
-    if (!scope) return;
-    if (scope.has(name.lexeme)) tokenError(reporter, name, 'Already a variable with this name in this scope.');
+    if (!scope) return; // a global
+    if (scope.has(name.lexeme)) report(name, `'${name.lexeme}' is already declared in this scope`);
     scope.set(name.lexeme, false);
   };
   const define = (name: Token) => {
     const scope = scopes[scopes.length - 1];
     if (scope) scope.set(name.lexeme, true);
   };
+  /** Find the nearest declaration of `name`; not found means a global. */
   const resolveLocal = (expr: Expr, name: Token) => {
     for (let i = scopes.length - 1; i >= 0; i--) {
-      if (scopes[i].has(name.lexeme)) {
+      const done = scopes[i].get(name.lexeme);
+      if (done !== undefined) {
+        if (!done) report(name, `cannot read '${name.lexeme}' in its own initialiser`);
         locals.set(expr, scopes.length - 1 - i);
         return;
       }
     }
-    // Not found: assume it is a global.
   };
 
   function fn(f: FunctionDecl, type: FunctionType) {
     const enclosing = currentFunction;
+    const enclosingLoops = loopDepth;
     currentFunction = type;
+    loopDepth = 0;
     begin();
     for (const p of f.params) {
       declare(p);
@@ -50,6 +62,7 @@ export function resolve(statements: Stmt[], reporter: Reporter): Locals {
     stmts(f.body);
     end();
     currentFunction = enclosing;
+    loopDepth = enclosingLoops;
   }
 
   function stmts(list: Stmt[]) {
@@ -68,10 +81,10 @@ export function resolve(statements: Stmt[], reporter: Reporter): Locals {
         if (s.initializer) expr(s.initializer);
         define(s.name);
         return;
-      case 'function':
-        declare(s.name);
-        define(s.name);
-        fn(s, 'function');
+      case 'fn':
+        declare(s.fn.name);
+        define(s.fn.name);
+        fn(s.fn, 'function');
         return;
       case 'expression':
       case 'print':
@@ -84,12 +97,25 @@ export function resolve(statements: Stmt[], reporter: Reporter): Locals {
         return;
       case 'while':
         expr(s.condition);
-        stmt(s.body);
+        loop(s.body);
+        return;
+      case 'for':
+        expr(s.start);
+        if (s.end) expr(s.end);
+        begin(); // the loop variable's own scope, fresh each time round
+        declare(s.name);
+        define(s.name);
+        loop(s.body);
+        end();
+        return;
+      case 'break':
+      case 'continue':
+        if (loopDepth === 0) report(s.keyword, `'${s.kind}' outside a loop`);
         return;
       case 'return':
-        if (currentFunction === 'none') tokenError(reporter, s.keyword, 'Can\'t return from top-level code.');
+        if (currentFunction === 'none') report(s.keyword, '\'return\' outside a function');
         if (s.value) {
-          if (currentFunction === 'initializer') tokenError(reporter, s.keyword, 'Can\'t return a value from an initializer.');
+          if (currentFunction === 'initializer') report(s.keyword, '\'init\' cannot return a value');
           expr(s.value);
         }
         return;
@@ -99,17 +125,15 @@ export function resolve(statements: Stmt[], reporter: Reporter): Locals {
         declare(s.name);
         define(s.name);
         if (s.superclass) {
-          if (s.superclass.name.lexeme === s.name.lexeme) {
-            tokenError(reporter, s.superclass.name, 'A class can\'t inherit from itself.');
-          }
-          currentClass = 'subclass';
           expr(s.superclass);
+          if (s.superclass.name.lexeme === s.name.lexeme) report(s.superclass.name, 'a class cannot extend itself');
+          currentClass = 'subclass';
           begin();
           scopes[scopes.length - 1].set('super', true);
         }
         begin();
-        scopes[scopes.length - 1].set('this', true);
-        for (const m of s.methods) fn(m, m.name.lexeme === 'init' ? 'initializer' : 'method');
+        scopes[scopes.length - 1].set('self', true);
+        for (const m of s.methods) fn(m, m.name.type === 'init' ? 'initializer' : 'method');
         end();
         if (s.superclass) end();
         currentClass = enclosingClass;
@@ -118,19 +142,23 @@ export function resolve(statements: Stmt[], reporter: Reporter): Locals {
     }
   }
 
+  /** A loop body: a block, inside a loop. */
+  function loop(body: Stmt[]) {
+    loopDepth++;
+    begin();
+    stmts(body);
+    end();
+    loopDepth--;
+  }
+
   function expr(e: Expr): void {
     switch (e.kind) {
-      case 'variable': {
-        const scope = scopes[scopes.length - 1];
-        if (scope && scope.get(e.name.lexeme) === false) {
-          tokenError(reporter, e.name, 'Can\'t read local variable in its own initializer.');
-        }
+      case 'variable':
         resolveLocal(e, e.name);
         return;
-      }
       case 'assign':
-        expr(e.value);
         resolveLocal(e, e.name);
+        expr(e.value);
         return;
       case 'binary':
       case 'logical':
@@ -145,6 +173,9 @@ export function resolve(statements: Stmt[], reporter: Reporter): Locals {
         return;
       case 'literal':
         return;
+      case 'list':
+        for (const x of e.elements) expr(x);
+        return;
       case 'call':
         expr(e.callee);
         for (const a of e.args) expr(a);
@@ -153,20 +184,36 @@ export function resolve(statements: Stmt[], reporter: Reporter): Locals {
         expr(e.object);
         return;
       case 'set':
-        expr(e.value);
         expr(e.object);
+        expr(e.value);
         return;
-      case 'this':
+      case 'index':
+        expr(e.object);
+        expr(e.index);
+        return;
+      case 'indexSet':
+        expr(e.object);
+        expr(e.index);
+        expr(e.value);
+        return;
+      case 'new':
+        resolveLocal(e, e.className);
+        for (const a of e.args) expr(a);
+        return;
+      case 'function':
+        fn(e.fn, 'function');
+        return;
+      case 'self':
         if (currentClass === 'none') {
-          tokenError(reporter, e.keyword, 'Can\'t use \'this\' outside of a class.');
+          report(e.keyword, 'cannot use \'self\' outside a method');
           return;
         }
         resolveLocal(e, e.keyword);
         return;
       case 'super':
-        if (currentClass === 'none') tokenError(reporter, e.keyword, 'Can\'t use \'super\' outside of a class.');
-        else if (currentClass !== 'subclass') tokenError(reporter, e.keyword, 'Can\'t use \'super\' in a class with no superclass.');
-        resolveLocal(e, e.keyword);
+        if (currentClass === 'none') report(e.keyword, 'cannot use \'super\' outside a method');
+        else if (currentClass !== 'subclass') report(e.keyword, 'cannot use \'super\' in a class that does not extend another');
+        else resolveLocal(e, e.keyword);
         return;
     }
   }

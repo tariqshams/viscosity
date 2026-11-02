@@ -1,0 +1,11 @@
+fn account(balance) {
+  let deposit = fn (n) { balance += n; };
+  let read = fn () { return balance; };
+  return [deposit, read];
+}
+let acc = account(10);
+acc[0](5);
+acc[0](7);
+print acc[1](); # expect: 22
+let other = account(0);
+print other[1](); # expect: 0

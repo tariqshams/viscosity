@@ -1,0 +1,2 @@
+print "a\qb"; # expect compile error: line 1: unknown escape '\q' in a string
+print 1 +; # expect compile error: line 2: expected an expression, found ';'

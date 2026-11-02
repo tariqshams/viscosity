@@ -1,0 +1,44 @@
+# A tiny particle system: gravity pulls, the floor at y = 0 bounces.
+class Particle {
+  init(x, y, vx, vy) {
+    self.x = x;
+    self.y = y;
+    self.vx = vx;
+    self.vy = vy;
+  }
+  step(dt, gravity) {
+    self.vy -= gravity * dt;
+    self.x += self.vx * dt;
+    self.y += self.vy * dt;
+    if self.y < 0 {
+      self.y = -self.y;
+      self.vy = -self.vy * 0.5;
+    }
+  }
+}
+
+let ps = [];
+for i in 0..3 {
+  push(ps, new Particle(i, 1, i + 1, 0));
+}
+for frame in 0..4 {
+  for p in ps {
+    p.step(0.5, 2);
+  }
+  print "frame " + str(frame) + ": y = " + str(ps[0].y);
+}
+# expect: frame 0: y = 0.5
+# expect: frame 1: y = 0.5
+# expect: frame 2: y = 0.5
+# expect: frame 3: y = 0
+for p in ps {
+  print p;
+}
+# expect: Particle { x: 2, y: 0, vx: 1, vy: -1 }
+# expect: Particle { x: 5, y: 0, vx: 2, vy: -1 }
+# expect: Particle { x: 8, y: 0, vx: 3, vy: -1 }
+let sum = 0;
+for p in ps {
+  sum += p.x;
+}
+print "centre: " + str(sum / len(ps)); # expect: centre: 5

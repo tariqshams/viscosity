@@ -1,0 +1,2 @@
+let word = "drip";
+print -word; # expect runtime error: cannot negate a string

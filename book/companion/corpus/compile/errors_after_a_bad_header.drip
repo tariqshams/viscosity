@@ -1,0 +1,4 @@
+fn f(1) { # expect compile error: line 1: expected a parameter name, found '1'
+  print "skipped with the header";
+}
+print 1 +; # expect compile error: line 4: expected an expression, found ';'

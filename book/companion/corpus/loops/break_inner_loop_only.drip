@@ -1,0 +1,11 @@
+for i in 0..3 {
+  for j in 0..3 {
+    if j == 1 {
+      break;
+    }
+    print str(i) + str(j);
+  }
+}
+# expect: 00
+# expect: 10
+# expect: 20

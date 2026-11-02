@@ -1,0 +1,2 @@
+let xs = [1];
+print xs[0 / 0]; # expect runtime error: index nan is not a whole number

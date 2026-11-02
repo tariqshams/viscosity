@@ -1,0 +1,4 @@
+let t = clock();
+print t >= 0; # expect: true
+print clock() >= t; # expect: true
+print clock() < 100000; # expect: true

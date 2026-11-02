@@ -1,0 +1,7 @@
+let fs = [];
+{
+  let x = "before";
+  push(fs, fn () { return x; });
+  x = "after";
+}
+print fs[0](); # expect: after

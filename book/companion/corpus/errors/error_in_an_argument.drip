@@ -1,0 +1,9 @@
+fn show(x) {
+  print x;
+}
+fn bad() {
+  return -"x"; # expect runtime error: cannot negate a string
+}
+show(bad());
+# expect trace: at line 5 in fn bad
+# expect trace: at line 7 in script

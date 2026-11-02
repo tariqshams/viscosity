@@ -1,0 +1,8 @@
+class Base {
+  init(name) {
+    self.name = name;
+  }
+}
+class Derived extends Base {}
+print new Derived("d").name; # expect: d
+new Derived(); # expect runtime error: init() takes 1 argument but got 0

@@ -1,0 +1,2 @@
+class E {}
+new E(1, 2); # expect runtime error: E has no init, so it takes no arguments, but got 2

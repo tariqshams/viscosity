@@ -1,0 +1,14 @@
+let fs = [];
+for i in 0..5 {
+  let sq = i * i;
+  push(fs, fn () { return sq; });
+  if i == 2 {
+    break;
+  }
+}
+for f in fs {
+  print f();
+}
+# expect: 0
+# expect: 1
+# expect: 4

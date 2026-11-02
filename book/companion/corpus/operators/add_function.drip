@@ -1,0 +1,2 @@
+fn f() {}
+print f + 1; # expect runtime error: cannot add a function and a number

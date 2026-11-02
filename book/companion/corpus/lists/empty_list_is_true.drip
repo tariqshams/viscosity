@@ -1,0 +1,3 @@
+if [] {
+  print "an empty list is true"; # expect: an empty list is true
+}

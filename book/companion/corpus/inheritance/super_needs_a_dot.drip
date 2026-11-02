@@ -1,0 +1,6 @@
+class A {}
+class B extends A {
+  m() {
+    return super; # expect compile error: line 4: expected '.' after 'super', found ';'
+  }
+}

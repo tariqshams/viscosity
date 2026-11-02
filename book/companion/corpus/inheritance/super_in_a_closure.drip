@@ -1,0 +1,11 @@
+class A {
+  say() {
+    return "A";
+  }
+}
+class B extends A {
+  later() {
+    return fn () { return super.say() + "!"; };
+  }
+}
+print new B().later()(); # expect: A!

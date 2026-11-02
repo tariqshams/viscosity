@@ -1,0 +1,13 @@
+class Account {
+  init(owner) {
+    self.owner = owner;
+    self.balance = 0;
+    self.deposit(10);
+  }
+  deposit(n) {
+    self.balance += n;
+  }
+}
+let a = new Account("ann");
+print a.balance; # expect: 10
+print a; # expect: Account { owner: "ann", balance: 10 }

@@ -1,0 +1,5 @@
+let new = 1; # expect compile error: line 1: expected a variable name after 'let', found 'new'
+let self = 2; # expect compile error: line 2: expected a variable name after 'let', found 'self'
+let in = 3; # expect compile error: line 3: expected a variable name after 'let', found 'in'
+let init = 4; # expect compile error: line 4: expected a variable name after 'let', found 'init'
+fn none() {} # expect compile error: line 5: expected a function name after 'fn', found 'none'

@@ -1,0 +1,5 @@
+class C {
+  init() {
+    return 1; # expect compile error: line 3: 'init' cannot return a value
+  }
+}

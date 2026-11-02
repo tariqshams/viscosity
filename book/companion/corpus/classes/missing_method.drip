@@ -1,0 +1,2 @@
+class A {}
+new A().missing(); # expect runtime error: A has no property 'missing'

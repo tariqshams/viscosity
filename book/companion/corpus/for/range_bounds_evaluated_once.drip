@@ -1,0 +1,11 @@
+fn bound(v) {
+  print "bound " + str(v);
+  return v;
+}
+for i in bound(0)..bound(2) {
+  print i;
+}
+# expect: bound 0
+# expect: bound 2
+# expect: 0
+# expect: 1

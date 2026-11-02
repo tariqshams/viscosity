@@ -1,0 +1,2 @@
+let nothing;
+nothing[0] = 1; # expect runtime error: cannot index none

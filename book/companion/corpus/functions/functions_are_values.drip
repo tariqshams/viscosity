@@ -1,0 +1,16 @@
+fn twice(f, x) {
+  return f(f(x));
+}
+fn inc(n) {
+  return n + 1;
+}
+print twice(inc, 5); # expect: 7
+let g = inc;
+print g(1); # expect: 2
+fn pick(which) {
+  if which {
+    return inc;
+  }
+  return twice;
+}
+print pick(true)(10); # expect: 11

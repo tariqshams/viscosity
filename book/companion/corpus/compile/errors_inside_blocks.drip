@@ -1,0 +1,5 @@
+{
+  let x = 1 +; # expect compile error: line 2: expected an expression, found ';'
+  print x;
+  let y = * 2; # expect compile error: line 4: expected an expression, found '*'
+}

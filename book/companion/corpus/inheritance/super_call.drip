@@ -1,0 +1,11 @@
+class A {
+  greet() {
+    return "hello from A";
+  }
+}
+class B extends A {
+  greet() {
+    return super.greet() + " and B";
+  }
+}
+print new B().greet(); # expect: hello from A and B

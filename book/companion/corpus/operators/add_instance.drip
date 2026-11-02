@@ -1,0 +1,2 @@
+class Apple {}
+print new Apple() + 1; # expect runtime error: cannot add an Apple instance and a number

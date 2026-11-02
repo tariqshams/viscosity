@@ -1,0 +1,40 @@
+# Records in a list, grouped and totalled.
+class Item {
+  init(name, kind, price, qty) {
+    self.name = name;
+    self.kind = kind;
+    self.price = price;
+    self.qty = qty;
+  }
+  value() {
+    return self.price * self.qty;
+  }
+}
+
+let items = [
+  new Item("pen", "office", 2, 10),
+  new Item("apple", "food", 0.5, 12),
+  new Item("stapler", "office", 8, 1),
+  new Item("bread", "food", 3, 2)
+];
+
+fn totalBy(items, kind) {
+  let total = 0;
+  for it in items {
+    if it.kind == kind {
+      total += it.value();
+    }
+  }
+  return total;
+}
+print totalBy(items, "office"); # expect: 28
+print totalBy(items, "food"); # expect: 12
+print totalBy(items, "toys"); # expect: 0
+
+let expensive = [];
+for it in items {
+  if it.price > 2 {
+    push(expensive, it.name);
+  }
+}
+print expensive; # expect: ["stapler", "bread"]

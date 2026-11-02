@@ -1,0 +1,2 @@
+fn make() {}
+let m = new make(); # expect runtime error: 'new' needs a class, not a function

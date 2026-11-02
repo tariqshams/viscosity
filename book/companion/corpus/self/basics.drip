@@ -1,0 +1,9 @@
+class Person {
+  init(name) {
+    self.name = name;
+  }
+  hello() {
+    return "hello, I am " + self.name;
+  }
+}
+print new Person("ada").hello(); # expect: hello, I am ada

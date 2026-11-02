@@ -1,0 +1,6 @@
+while true {
+  fn f() {
+    continue; # expect compile error: line 3: 'continue' outside a loop
+  }
+  break;
+}

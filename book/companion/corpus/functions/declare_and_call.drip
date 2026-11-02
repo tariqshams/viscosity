@@ -1,0 +1,22 @@
+fn greet(name) {
+  print "hello, " + name;
+}
+greet("drip"); # expect: hello, drip
+fn add(a, b) {
+  return a + b;
+}
+print add(2, 3); # expect: 5
+fn nothing() {}
+print nothing(); # expect: none
+fn early(x) {
+  if x {
+    return "early";
+  }
+  return "late";
+}
+print early(true); # expect: early
+print early(false); # expect: late
+fn bare() {
+  return;
+}
+print bare(); # expect: none

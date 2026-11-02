@@ -1,0 +1,7 @@
+for i in 0..3 {
+  print i;
+  i = 100;
+}
+# expect: 0
+# expect: 1
+# expect: 2

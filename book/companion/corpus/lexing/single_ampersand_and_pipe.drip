@@ -1,0 +1,3 @@
+print true & false; # expect compile error: line 1: unexpected character '&'
+print true | false; # expect compile error: line 2: unexpected character '|'
+print true && false;

@@ -1,0 +1,2 @@
+let NotAClass = 1;
+class B extends NotAClass {} # expect runtime error: a class can only extend a class, not a number

@@ -1,0 +1,7 @@
+print "drip" + "drop"; # expect: dripdrop
+print "" + ""; # expect:
+print "a" + "b" + "c"; # expect: abc
+let s = "x";
+s += "y";
+s += "z";
+print s; # expect: xyz

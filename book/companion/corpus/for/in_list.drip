@@ -1,0 +1,16 @@
+for w in ["rain", "snow"] {
+  print w;
+}
+# expect: rain
+# expect: snow
+for x in [] {
+  print "never";
+}
+for row in [[1, 2], [3]] {
+  for x in row {
+    print x;
+  }
+}
+# expect: 1
+# expect: 2
+# expect: 3

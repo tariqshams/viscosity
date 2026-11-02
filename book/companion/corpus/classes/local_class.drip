@@ -1,0 +1,8 @@
+{
+  class Local {
+    hi() {
+      return "local hi";
+    }
+  }
+  print new Local().hi(); # expect: local hi
+}

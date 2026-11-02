@@ -1,0 +1,3 @@
+let s = "first line
+second line \x
+third line"; # expect compile error: line 2: unknown escape '\x' in a string

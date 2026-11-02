@@ -1,0 +1,11 @@
+class Box {}
+let a = new Box();
+let b = new Box();
+print a == b; # expect: false
+print a == a; # expect: true
+fn f() {}
+let g = f;
+print f == g; # expect: true
+print Box == Box; # expect: true
+print len == len; # expect: true
+print len == push; # expect: false

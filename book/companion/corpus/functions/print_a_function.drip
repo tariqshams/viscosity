@@ -1,0 +1,4 @@
+fn area() {}
+print area; # expect: fn area
+print clock; # expect: native fn clock
+print [area]; # expect: [fn area]

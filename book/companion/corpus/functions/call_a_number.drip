@@ -1,0 +1,2 @@
+let x = 3;
+x(); # expect runtime error: cannot call a number

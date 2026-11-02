@@ -1,0 +1,6 @@
+for x in 0.5..3 {
+  print x;
+}
+# expect: 0.5
+# expect: 1.5
+# expect: 2.5

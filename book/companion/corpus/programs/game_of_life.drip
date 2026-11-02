@@ -1,0 +1,74 @@
+fn render(g) {
+  for row in g {
+    let s = "";
+    for cell in row {
+      if cell {
+        s += "#";
+      } else {
+        s += ".";
+      }
+    }
+    print s;
+  }
+}
+
+fn neighbours(g, r, c) {
+  let n = 0;
+  for dr in -1..2 {
+    for dc in -1..2 {
+      if dr == 0 && dc == 0 {
+        continue;
+      }
+      let rr = r + dr;
+      let cc = c + dc;
+      if rr >= 0 && rr < len(g) && cc >= 0 && cc < len(g[0]) && g[rr][cc] {
+        n += 1;
+      }
+    }
+  }
+  return n;
+}
+
+fn step(g) {
+  let next = [];
+  for r in 0..len(g) {
+    let row = [];
+    for c in 0..len(g[0]) {
+      let n = neighbours(g, r, c);
+      push(row, n == 3 || (g[r][c] && n == 2));
+    }
+    push(next, row);
+  }
+  return next;
+}
+
+let g = [];
+for r in 0..5 {
+  let row = [];
+  for c in 0..5 {
+    push(row, false);
+  }
+  push(g, row);
+}
+g[1][2] = true;
+g[2][2] = true;
+g[3][2] = true;
+render(g);
+# expect: .....
+# expect: ..#..
+# expect: ..#..
+# expect: ..#..
+# expect: .....
+g = step(g);
+render(g);
+# expect: .....
+# expect: .....
+# expect: .###.
+# expect: .....
+# expect: .....
+render(step(step(g)));
+# expect: .....
+# expect: .....
+# expect: .###.
+# expect: .....
+# expect: .....

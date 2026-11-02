@@ -1,0 +1,10 @@
+let xs = [1, 2, 3];
+let seen = 0;
+for x in xs {
+  seen += 1;
+  if x < 3 {
+    push(xs, x + 10);
+  }
+}
+print seen; # expect: 5
+print xs; # expect: [1, 2, 3, 11, 12]

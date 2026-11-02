@@ -1,0 +1,1 @@
+push("abc", 1); # expect runtime error: push() needs a list, not a string

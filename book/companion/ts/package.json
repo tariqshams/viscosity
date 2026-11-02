@@ -10,7 +10,6 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "corpus:import": "node scripts/import_lox_tests.mjs ../../../../refs/craftinginterpreters/test",
     "bench": "node scripts/bench.mjs"
   },
   "devDependencies": {

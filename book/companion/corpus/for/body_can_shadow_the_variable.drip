@@ -1,0 +1,6 @@
+for i in 0..2 {
+  let i = "inner";
+  print i;
+}
+# expect: inner
+# expect: inner

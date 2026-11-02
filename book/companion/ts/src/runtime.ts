@@ -3,19 +3,7 @@ import type { FunctionDecl } from './ast.ts';
 import type { Token } from './token.ts';
 import { RuntimeError } from './errors.ts';
 
-export type Value = null | boolean | number | string | DripCallable | DripInstance;
-
-export interface DripCallable {
-  readonly callable: true;
-  arity(): number;
-  call(interp: CallContext, args: Value[]): Value;
-  toString(): string;
-}
-
-/** What a callable needs from the interpreter. */
-export interface CallContext {
-  executeFunctionBody(decl: FunctionDecl, env: Environment): Value;
-}
+export type Value = null | boolean | number | string | DripList | DripFunction | NativeFunction | DripClass | DripInstance;
 
 /** A table of names to values, with a link to the enclosing table (chapter 37). */
 export class Environment {
@@ -27,22 +15,6 @@ export class Environment {
   define(name: string, value: Value): void {
     this.values.set(name, value);
   }
-  get(name: Token): Value {
-    if (this.values.has(name.lexeme)) return this.values.get(name.lexeme)!;
-    if (this.enclosing) return this.enclosing.get(name);
-    throw new RuntimeError(name, `Undefined variable '${name.lexeme}'.`);
-  }
-  assign(name: Token, value: Value): void {
-    if (this.values.has(name.lexeme)) {
-      this.values.set(name.lexeme, value);
-      return;
-    }
-    if (this.enclosing) {
-      this.enclosing.assign(name, value);
-      return;
-    }
-    throw new RuntimeError(name, `Undefined variable '${name.lexeme}'.`);
-  }
   ancestor(distance: number): Environment {
     let env: Environment = this;
     for (let i = 0; i < distance; i++) env = env.enclosing!;
@@ -51,13 +23,19 @@ export class Environment {
   getAt(distance: number, name: string): Value {
     return this.ancestor(distance).values.get(name) as Value;
   }
-  assignAt(distance: number, name: Token, value: Value): void {
-    this.ancestor(distance).values.set(name.lexeme, value);
+  assignAt(distance: number, name: string, value: Value): void {
+    this.ancestor(distance).values.set(name, value);
   }
 }
 
-export class DripFunction implements DripCallable {
-  readonly callable = true;
+export class DripList {
+  readonly items: Value[];
+  constructor(items: Value[]) {
+    this.items = items;
+  }
+}
+
+export class DripFunction {
   readonly decl: FunctionDecl;
   readonly closure: Environment;
   readonly isInitializer: boolean;
@@ -66,47 +44,34 @@ export class DripFunction implements DripCallable {
     this.closure = closure;
     this.isInitializer = isInitializer;
   }
+  /** The same method, with `self` bound to `instance` (chapter 43). */
   bind(instance: DripInstance): DripFunction {
     const env = new Environment(this.closure);
-    env.define('this', instance);
+    env.define('self', instance);
     return new DripFunction(this.decl, env, this.isInitializer);
   }
-  arity(): number {
+  get arity(): number {
     return this.decl.params.length;
   }
-  call(interp: CallContext, args: Value[]): Value {
-    const env = new Environment(this.closure);
-    this.decl.params.forEach((p, i) => env.define(p.lexeme, args[i]));
-    const result = interp.executeFunctionBody(this.decl, env);
-    if (this.isInitializer) return this.closure.getAt(0, 'this');
-    return result;
-  }
-  toString(): string {
-    return `<fn ${this.decl.name.lexeme}>`;
+  /** How errors and stack traces name it: `area()`, or `anonymous fn`. */
+  get label(): string {
+    return this.decl.name ? `${this.decl.name.lexeme}()` : 'anonymous fn';
   }
 }
 
-export class NativeFunction implements DripCallable {
-  readonly callable = true;
-  private readonly n: number;
-  private readonly fn: (args: Value[]) => Value;
-  constructor(n: number, fn: (args: Value[]) => Value) {
-    this.n = n;
+export class NativeFunction {
+  readonly name: string;
+  readonly arity: number;
+  /** `at` is the call's `(`, for errors */
+  readonly fn: (args: Value[], at: Token) => Value;
+  constructor(name: string, arity: number, fn: (args: Value[], at: Token) => Value) {
+    this.name = name;
+    this.arity = arity;
     this.fn = fn;
   }
-  arity(): number {
-    return this.n;
-  }
-  call(_: CallContext, args: Value[]): Value {
-    return this.fn(args);
-  }
-  toString(): string {
-    return '<native fn>';
-  }
 }
 
-export class DripClass implements DripCallable {
-  readonly callable = true;
+export class DripClass {
   readonly name: string;
   readonly superclass: DripClass | null;
   readonly methods: Map<string, DripFunction>;
@@ -118,51 +83,87 @@ export class DripClass implements DripCallable {
   findMethod(name: string): DripFunction | undefined {
     return this.methods.get(name) ?? this.superclass?.findMethod(name);
   }
-  arity(): number {
-    return this.findMethod('init')?.arity() ?? 0;
-  }
-  call(interp: CallContext, args: Value[]): Value {
-    const instance = new DripInstance(this);
-    this.findMethod('init')?.bind(instance).call(interp, args);
-    return instance;
-  }
-  toString(): string {
-    return this.name;
-  }
 }
 
 export class DripInstance {
   readonly klass: DripClass;
+  /** A Map keeps the order fields were first set in, which is how they print. */
   readonly fields = new Map<string, Value>();
   constructor(klass: DripClass) {
     this.klass = klass;
   }
   get(name: Token): Value {
-    if (this.fields.has(name.lexeme)) return this.fields.get(name.lexeme)!;
+    const v = this.fields.get(name.lexeme);
+    if (v !== undefined) return v;
     const method = this.klass.findMethod(name.lexeme);
     if (method) return method.bind(this);
-    throw new RuntimeError(name, `Undefined property '${name.lexeme}'.`);
-  }
-  set(name: Token, value: Value): void {
-    this.fields.set(name.lexeme, value);
-  }
-  toString(): string {
-    return `${this.klass.name} instance`;
+    throw new RuntimeError(name, `${this.klass.name} has no property '${name.lexeme}'`);
   }
 }
 
-export const isCallable = (v: Value): v is DripCallable =>
-  typeof v === 'object' && v !== null && 'callable' in v;
-
-/** nil and false are falsey; everything else is truthy (chapter 35). */
+/** none and false are false; everything else is true (chapter 35). */
 export const isTruthy = (v: Value): boolean => v !== null && v !== false;
 
-/** How print shows a value. Integers print without a decimal point. */
-export function stringify(v: Value): string {
-  if (v === null) return 'nil';
-  if (typeof v === 'number') {
-    if (Object.is(v, -0)) return '-0';
-    return String(v);
+/** Drip's `==`: different types are never equal; objects by identity. */
+export const isEqual = (a: Value, b: Value): boolean => a === b;
+
+/** A value's type, with its article, as error messages name it. */
+export function describe(v: Value): string {
+  if (v === null) return 'none';
+  switch (typeof v) {
+    case 'boolean': return 'a boolean';
+    case 'number': return 'a number';
+    case 'string': return 'a string';
   }
-  return String(v);
+  if (v instanceof DripList) return 'a list';
+  if (v instanceof DripClass) return 'a class';
+  if (v instanceof DripInstance) return `${/^[AEIOUaeiou]/.test(v.klass.name) ? 'an' : 'a'} ${v.klass.name} instance`;
+  return 'a function';
+}
+
+export function formatNumber(n: number): string {
+  if (Number.isNaN(n)) return 'nan';
+  if (n === Infinity) return 'inf';
+  if (n === -Infinity) return '-inf';
+  if (Object.is(n, -0)) return '-0';
+  return String(n);
+}
+
+/** A string as it appears inside a list: quoted, with escapes. */
+export function quote(s: string): string {
+  return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\t/g, '\\t')}"`;
+}
+
+/** How print and str() show a value. */
+export function stringify(v: Value): string {
+  return format(v, false, []);
+}
+
+function format(v: Value, nested: boolean, open: object[]): string {
+  if (v === null) return 'none';
+  switch (typeof v) {
+    case 'boolean': return String(v);
+    case 'number': return formatNumber(v);
+    case 'string': return nested ? quote(v) : v;
+  }
+  if (v instanceof DripList) {
+    if (open.includes(v)) return '[...]';
+    open.push(v);
+    const s = `[${v.items.map((x) => format(x, true, open)).join(', ')}]`;
+    open.pop();
+    return s;
+  }
+  if (v instanceof DripInstance) {
+    const name = v.klass.name;
+    if (open.includes(v)) return `${name} {...}`;
+    if (v.fields.size === 0) return `${name} {}`;
+    open.push(v);
+    const parts: string[] = [];
+    for (const [k, x] of v.fields) parts.push(`${k}: ${format(x, true, open)}`);
+    open.pop();
+    return `${name} { ${parts.join(', ')} }`;
+  }
+  if (v instanceof DripFunction) return v.decl.name ? `fn ${v.decl.name.lexeme}` : 'fn';
+  if (v instanceof NativeFunction) return `native fn ${v.name}`;
+  return `class ${v.name}`;
 }

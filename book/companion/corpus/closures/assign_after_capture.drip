@@ -1,0 +1,7 @@
+fn make() {
+  let v = 1;
+  let f = fn () { return v; };
+  v = 2;
+  return f;
+}
+print make()(); # expect: 2

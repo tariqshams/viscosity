@@ -1,0 +1,19 @@
+fn count(words) {
+  let counts = [];
+  for w in words {
+    let found = false;
+    for entry in counts {
+      if entry[0] == w {
+        entry[1] += 1;
+        found = true;
+        break;
+      }
+    }
+    if !found {
+      push(counts, [w, 1]);
+    }
+  }
+  return counts;
+}
+print count(["the", "rain", "the", "roof", "rain", "the"]); # expect: [["the", 3], ["rain", 2], ["roof", 1]]
+print count([]); # expect: []

@@ -1,0 +1,37 @@
+# Insertion sort on a list of records, by any key. It is stable: records
+# with equal keys keep their order.
+class Person {
+  init(name, age) {
+    self.name = name;
+    self.age = age;
+  }
+}
+
+fn sortBy(xs, key) {
+  for i in 1..len(xs) {
+    let item = xs[i];
+    let j = i - 1;
+    while j >= 0 && key(xs[j]) > key(item) {
+      xs[j + 1] = xs[j];
+      j -= 1;
+    }
+    xs[j + 1] = item;
+  }
+  return xs;
+}
+
+let people = [new Person("ada", 36), new Person("bo", 25), new Person("cy", 36), new Person("di", 19)];
+sortBy(people, fn (p) { return p.age; });
+for p in people {
+  print p.name + " " + str(p.age);
+}
+# expect: di 19
+# expect: bo 25
+# expect: ada 36
+# expect: cy 36
+sortBy(people, fn (p) { return -p.age; });
+print people[0]; # expect: Person { name: "ada", age: 36 }
+print people[1].name; # expect: cy
+print people[3].name; # expect: di
+print sortBy([], fn (x) { return x; }); # expect: []
+print sortBy([3, 1, 2], fn (x) { return x; }); # expect: [1, 2, 3]

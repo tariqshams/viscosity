@@ -1,0 +1,4 @@
+class Vec {
+  init(x, y) {}
+}
+new Vec(1); # expect runtime error: init() takes 2 arguments but got 1

@@ -1,0 +1,1 @@
+print len([1], [2]); # expect runtime error: len() takes 1 argument but got 2

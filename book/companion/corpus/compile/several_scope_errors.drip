@@ -1,0 +1,5 @@
+return 1; # expect compile error: line 1: 'return' outside a function
+{ let a = 1; let a = 2; } # expect compile error: line 2: 'a' is already declared in this scope
+print self; # expect compile error: line 3: cannot use 'self' outside a method
+break; # expect compile error: line 4: 'break' outside a loop
+class A extends A {} # expect compile error: line 5: a class cannot extend itself

@@ -1,0 +1,14 @@
+class Base {
+  init(n) {
+    self.half = n / "2"; # expect runtime error: cannot use '/' on a number and a string
+  }
+}
+class Derived extends Base {
+  init() {
+    super.init(4);
+  }
+}
+new Derived();
+# expect trace: at line 3 in fn init
+# expect trace: at line 8 in fn init
+# expect trace: at line 11 in script

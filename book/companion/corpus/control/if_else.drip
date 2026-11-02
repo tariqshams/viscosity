@@ -1,0 +1,26 @@
+if true {
+  print "yes"; # expect: yes
+}
+if false {
+  print "no";
+}
+if 1 > 2 {
+  print "a";
+} else {
+  print "b"; # expect: b
+}
+fn size(n) {
+  if n < 0 {
+    return "negative";
+  } else if n == 0 {
+    return "zero";
+  } else if n < 10 {
+    return "small";
+  } else {
+    return "large";
+  }
+}
+print size(-3); # expect: negative
+print size(0); # expect: zero
+print size(5); # expect: small
+print size(50); # expect: large

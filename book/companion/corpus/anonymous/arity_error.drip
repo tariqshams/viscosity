@@ -1,0 +1,2 @@
+let f = fn (x) {};
+f(); # expect runtime error: anonymous fn takes 1 argument but got 0

@@ -1,0 +1,3 @@
+for c in "abc" { # expect runtime error: cannot loop over a string
+  print c;
+}

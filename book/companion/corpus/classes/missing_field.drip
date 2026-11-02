@@ -1,0 +1,3 @@
+class A {}
+let a = new A();
+print a.x; # expect runtime error: A has no property 'x'
