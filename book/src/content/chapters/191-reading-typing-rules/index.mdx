@@ -46,7 +46,8 @@ the symbol ⊢ (called a turnstile) is read "it can be shown that" or
 Γ is the **type environment**: the types of the names in scope, written
 as a list such as `x : Num, f : Num → Bool` (read "x has type Num, f
 has type function from Num to Bool"). An empty Γ is written `∅` or left
-out, as in `⊢ 3 : Num`. It plays the part that chapter 67's environments
+out, as in `⊢ 3 : Num`. It plays the part that the environments of *Statements, environments
+and control flow*
 played for the interpreter, except that it holds types where they held
 values.
 
@@ -136,7 +137,7 @@ cases<Cite id="pierce2002" />.
 
 ## The rules of the simply typed lambda calculus
 
-Here is a complete type system for chapter 186's lambda calculus, with
+Here is a complete type system for the lambda calculus of *The lambda calculus*, with
 numbers and booleans added; it is called the **simply typed lambda
 calculus**. Types are `Num`, `Bool`, and function types `T₁ → T₂` (in
 TypeScript, `(x: T1) => T2`; the arrow groups to the right, so
@@ -249,7 +250,7 @@ to be well typed; adding the checks is the exercise).
 - A **derivation** stacks rules into a tree; finding one shows a
   judgment holds, and finding none is a type error.
 
-Next: the same rules, grown up for a real language: a type checker for
-Drip with type annotations.
+Next: the same rules, grown up for a real language: *A type checker
+for typed Drip*, for Drip with type annotations.
 
 <Quiz />

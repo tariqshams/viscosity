@@ -1,10 +1,10 @@
-// Chapter 92 cards: recall prompts, examples, exercises and quiz.
+// Chapter 201 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'sound-what': {
-    q: 'What does it mean for a type system to be sound?',
-    a: 'Every term that has a type either runs forever or reaches a value: it never gets stuck.',
+    q: 'For a language defined by a small-step semantics, what does it mean for its type system to be sound?',
+    a: 'Every term that has a type either runs forever or reaches a value of that type: it never gets stuck.',
   },
   'progress-what': {
     q: 'State the progress lemma.',
@@ -16,10 +16,10 @@ export const prompts = {
   },
   canonical: {
     q: 'What does the canonical forms lemma say, and which proof needs it?',
-    a: 'A value of type number is a numeral, and a value of type bool is true or false. Progress needs it, to know that Add or IfT/IfF applies.',
+    a: 'A value of type number is a numeral, and a value of type bool is true or false. Progress needs it, to know that the rule for `+` or for `if` can fire.',
   },
   conservative: {
-    q: 'Why does a sound type system reject `if true then 1 else false`, which runs fine?',
+    q: 'Why does the simply typed lambda calculus (a sound system) reject `if true then 1 else false`, which runs fine?',
     a: 'T-If needs both branches to have the same type; the checker cannot know which branch will run, so it rejects every program that could go wrong, and some that would not.',
   },
   'ts-non-goal': {
@@ -365,7 +365,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does preservation say about `if true then 3 + 4 else 0 → 3 + 4`?',
+    q: 'What does the preservation lemma say about the step `if true then 3 + 4 else 0 → 3 + 4`?',
     options: [
       {
         t: 'That `3 + 4` is a value',
@@ -383,7 +383,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is `if true then 1 else false` rejected, though it never gets stuck?',
+    q: 'In the simply typed lambda calculus with numbers and booleans, why is `if true then 1 else false` rejected, though it never gets stuck?',
     options: [
       {
         t: 'Because the checker evaluates the condition and finds it true',
@@ -419,7 +419,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In this chapter’s terms, what goes wrong in TypeScript’s unsound spots?',
+    q: 'In terms of progress and preservation, which property breaks at TypeScript’s unsound spots (`any`, `as unknown as`, unchecked indexing)?',
     options: [
       {
         t: 'Progress: the program has no next step',

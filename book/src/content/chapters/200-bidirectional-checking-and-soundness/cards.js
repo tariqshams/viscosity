@@ -1,4 +1,4 @@
-// Chapter 208 cards: recall prompts, examples, exercises and quiz.
+// Chapter 200 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,15 +15,15 @@ export const prompts = {
     a: '“In environment Γ, e checks against type T”: T was given, and e was confirmed to have it.',
   },
   'lam-check': {
-    q: 'Why does an unannotated λ have a checking rule but no synthesis rule?',
+    q: 'In a basic bidirectional type system, why does an unannotated λ have a checking rule but no synthesis rule?',
     a: 'Only an expected arrow type tells it what its parameter’s type is; on its own it has nothing to go on.',
   },
   'app-modes': {
-    q: 'In App⇒ for `f a`, which part is synthesised and which is checked?',
+    q: 'In the usual bidirectional rule for an application `f a` (App⇒), which part is synthesised and which is checked?',
     a: 'f is synthesised (it must give an arrow A → B); a is checked against A; the application synthesises B.',
   },
   'sub-bridge': {
-    q: 'What does the rule Sub⇐ do?',
+    q: 'In bidirectional typing, what does the mode-switching subsumption rule (Sub⇐) do?',
     a: 'Checks a term with no checking rule of its own: synthesise its type, then compare it with the expected one (equal, or a subtype).',
   },
   'anno-switch': {
@@ -384,7 +384,7 @@ function check(env, e, type) {
 
 export const quiz = [
   {
-    q: 'Which kind of term has a checking rule but no synthesis rule here?',
+    q: 'In a basic bidirectional type system, which kind of term has a checking rule but no synthesis rule?',
     options: [
       {
         t: 'A variable',
@@ -420,7 +420,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does Sub⇐ let the checker do?',
+    q: 'What does the bidirectional subsumption rule (Sub⇐) let a checker do?',
     options: [
       {
         t: 'Synthesise the type of a λ',

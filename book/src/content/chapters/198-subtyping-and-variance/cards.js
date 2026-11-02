@@ -1,4 +1,4 @@
-// Chapter 206 cards: recall prompts, examples, exercises and quiz.
+// Chapter 198 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,15 +11,15 @@ export const prompts = {
     a: 'If e has type S and S <: T, then e also has type T.',
   },
   width: {
-    q: 'What does width subtyping allow for records?',
+    q: 'In structural subtyping, what does width subtyping allow for records?',
     a: 'Extra fields: a record with more fields is a subtype of one with fewer (the same ones).',
   },
   depth: {
-    q: 'What does depth subtyping allow for records?',
+    q: 'What does depth subtyping allow for records whose fields are read-only?',
     a: 'A field whose type is a subtype: if S <: T then { f: S } <: { f: T }.',
   },
   direction: {
-    q: 'Why is `{ x, y }` not a subtype of `{ x, y, colour }`?',
+    q: 'In structural record subtyping, why is `{ x, y }` not a subtype of `{ x, y, colour }`?',
     a: 'Code expecting the second may read colour, which the first does not have.',
   },
   'structural-what': {
@@ -241,7 +241,7 @@ function isSubtype(s, t) {
 
 export const quiz = [
   {
-    q: 'Which of these is true?',
+    q: 'In structural record subtyping, which of these is true?',
     options: [
       {
         t: '`{ x: number }` <: `{ x: number, y: number }`',
@@ -259,7 +259,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Is `{ a: { x: number, y: number } }` a subtype of `{ a: { x: number } }`?',
+    q: 'With structural subtyping and read-only fields, is `{ a: { x: number, y: number } }` a subtype of `{ a: { x: number } }`?',
     options: [
       {
         t: 'No: the field a has a different type',
@@ -304,7 +304,7 @@ export const quiz = [
       },
       {
         t: 'Guess the type of an expression with no annotation',
-        why: 'That is inference (the last two chapters), a different job.',
+        why: 'That is type inference, a different job.',
       },
       {
         t: 'Convert a value from one type to another at run time',

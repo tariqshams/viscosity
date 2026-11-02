@@ -104,7 +104,7 @@ The first is the identity again, now with its type argument written in:
 `Λα` takes the type, `λx:α` takes a value of it. The second is the same
 thing in TypeScript, where `<T>` is a type abstraction and `id<number>`
 a type application, though usually you leave the brackets out and the
-checker infers them (chapter 36)<Cite id="ts-generics" />. The third is
+checker infers them (*TypeScript III: generics in depth*)<Cite id="ts-generics" />. The third is
 the program Hindley–Milner refused, accepted: `f` is annotated as a
 polymorphic function, so the body can apply it to `bool` and to
 `number`. A type with a ∀ to the left of an arrow like this is called
@@ -187,7 +187,7 @@ piece of this that TypeScript has: a tuple type fixes its length, so a
 three-element array is not a `Vec2`; however, the length must be a
 literal written in the type, not a value computed by the program.
 
-<Prompts ids={['dep-what', 'vect-read', 'dep-check', 'ts-tuples']} />
+<Prompts ids={['dep-what', 'vect-read', 'dep-check', 'ts-tuples-vs-vect']} />
 
 ## Your turn
 
@@ -203,7 +203,7 @@ literal written in the type, not a value computed by the program.
 - TypeScript has a little of each: explicit type arguments and generic
   parameters, and fixed-length tuples.
 
-Next: types that count how many times a value is used, and types that
+Next: *Linear types and effect systems*, types that count how many times a value is used, and types that
 record what a piece of code may do.
 
 <Quiz />

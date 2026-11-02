@@ -18,7 +18,7 @@ import TwoOpinions from '../../../components/diagrams/ch193/TwoOpinions';
 
 ## What the label says, and what is in the jar
 
-The last chapter's checker only *computed* types. Typed Drip also lets
+The checker of *A type checker for typed Drip* only *computed* types. Typed Drip also lets
 you *declare* them, and then there are two opinions about one thing:
 
 ```
@@ -81,10 +81,10 @@ the error.</span>
 </Formal>
 
 There is one case where the annotation does more than check: the empty
-list. On its own, `[]` has no type (chapter 192's List rule needs an
+list. On its own, `[]` has no type (the List rule needs an
 element to look at); however, `let xs: [string] = [];` says which list
 it is, and the checker can *check* `[]` against `[string]`
-instead of computing a type for it. Chapter 200 makes this trick, of
+instead of computing a type for it. *Bidirectional checking and soundness* makes this trick, of
 checking against an expected type rather than computing one, into a
 whole method.
 
@@ -202,6 +202,6 @@ as one that ends in a `while true` loop.)
   must match the result type, on every path.
 
 Next: what if the parameters had no annotations at all? The checker
-would have to solve for their types, and that is unification.
+would have to solve for their types, and that is *Unification*.
 
 <Quiz />

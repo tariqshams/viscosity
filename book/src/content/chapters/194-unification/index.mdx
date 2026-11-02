@@ -29,7 +29,7 @@ That is a little silly, because anyone reading the body can see what
 `x` must be: it is multiplied by 2, and `*` only takes numbers, so `x`
 is a `number`, and so is the result. TypeScript does this kind of
 reasoning every time you call a generic function without saying what
-its type parameter is (chapter 36): for `identity(3)` it works out that
+its type parameter is (*TypeScript III: generics in depth*): for `identity(3)` it works out that
 `T` is `number`<Cite id="ts-generics" />. This chapter builds the tool
 that does it, in two parts: an *unknown* for each type we do not know,
 and a *solver* that works out what the unknowns must be.
@@ -81,8 +81,8 @@ fn callOne(f) { return f(1); }
 
 In the first, nothing in the body says what `x` is, so the type keeps
 its variable: `same` works for *any* type, exactly like TypeScript's
-`<T>(x: T) => T` (chapter 196 turns that leftover variable into a real
-generic). In the second, `*` forces `'a = number`. The third is the
+`<T>(x: T) => T` (*Hindley–Milner type inference* turns that leftover variable into a
+real generic). In the second, `*` forces `'a = number`. The third is the
 interesting one: `f` is called with a number, so its type `'a` must be a
 function taking a number and returning *something*; the something gets a
 fresh variable `'b`, and the whole call has type `'b`.
@@ -234,7 +234,7 @@ so when the results are unified, `'a` resolves to `bool` and `'c` gets
 - **Unification** solves one equation, walking both types together,
   binding variables and failing on mismatched shapes.
 
-Next: using `unify` to infer the types of whole functions, and the one
+Next: *Inferring types, and the occurs check*: using `unify` to infer the types of whole functions, and the one
 equation it must refuse to solve: `'a = ['a]`.
 
 <Quiz />

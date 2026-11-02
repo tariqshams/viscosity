@@ -18,12 +18,13 @@ import TwoLemmas from '../../../components/diagrams/ch201/TwoLemmas';
 
 ## What exactly is promised?
 
-Chapter 190 gave the promise of a type system in one line, "well-typed
-programs do not go wrong", and chapter 188 gave us the words to make it
+*What a type system promises* gave the promise of a type system in one
+line, "well-typed programs do not go wrong", and *Operational semantics*
+gave us the words to make it
 exact: a program "goes wrong" when it gets **stuck**, a term that is not
 a value but that no rule can step, such as `true + 1`. So the precise
 promise is that a term with a type never reaches a stuck term, however
-many steps it runs. Here is the language of chapter 188 again, now with
+many steps it runs. Here is the language of *Operational semantics* again, now with
 a type for each term:
 
 <Formal title="Typing rules for numbers, booleans, + and if">
@@ -161,7 +162,7 @@ if true then 1 else false
 
 The first is the two lemmas in action: every step has a rule, and every
 term along the way has the same type. The second shows what the type
-system is for: the stuck terms of chapter 188 have no type, so a checker
+system is for: the stuck terms of *Operational semantics* have no type, so a checker
 rejects them before they run. The third is the price of soundness: this
 term never gets stuck (it steps to `1`), yet T-If refuses it, because
 its branches have different types. A sound type system is
@@ -248,7 +249,7 @@ are.
   access, covariant arrays and bivariant methods all let a value's
   static type disagree with the value.
 
-Next: a tour of the type systems beyond this part, where types take
+Next: *Beyond: System F, dependent and linear types*, a tour of the type systems beyond this part, where types take
 type parameters explicitly, mention values, or count uses.
 
 <Quiz />

@@ -18,7 +18,7 @@ import RuleToCode from '../../../components/diagrams/ch189/RuleToCode';
 
 ## Straight to the answer
 
-The small-step rules of the last chapter are exact, but long-winded:
+The small-step rules of *Operational semantics* are exact, but long-winded:
 `(1 + 2) + (3 + 4)` took three steps, each with its own derivation, and
 a real program takes millions. Your interpreter never worked that way:
 `evaluate` was handed a tree and gave back its value, in one call. There
@@ -190,7 +190,7 @@ is stated with them.
 - A tree-walking interpreter is big-step semantics run as code: one
   case per rule, one recursive call per premise.
 
-Next: types, and the promise a type system makes about which programs
+Next: *What a type system promises*: types, and the promise a type system makes about which programs
 can get stuck.
 
 <Quiz />

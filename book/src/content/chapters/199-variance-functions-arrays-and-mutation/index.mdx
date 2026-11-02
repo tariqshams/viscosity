@@ -112,7 +112,7 @@ does not look, and calls the apple's method on whatever comes out, so
 the mistake only shows when that method is missing.</span>
 </Analogy>
 
-The same is true of a mutable *field*: depth subtyping (last chapter)
+The same is true of a mutable *field*: depth subtyping (*Subtyping and variance*)
 is only safe for fields that are never written, since writing to a
 field through the wider type is another way to put a cat in a dog's
 place<Cite id="pierce2002" />.
@@ -204,7 +204,7 @@ with tsc 5.9 in strict mode and OpenJDK 21.)
   on purpose; Java allows covariant arrays and checks each store at run
   time.
 
-Next: a way of checking types that sends what is expected down into
+Next: *Bidirectional checking and soundness*, a way of checking types that sends what is expected down into
 the program, and a precise statement of what a sound type system
 guarantees.
 

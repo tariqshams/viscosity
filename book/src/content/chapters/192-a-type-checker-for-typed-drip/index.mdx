@@ -3,7 +3,7 @@ n: 192
 day: 7
 part: XI
 title: 'A type checker for typed Drip'
-tagline: 'Give Drip a few optional type annotations, and a pass over the tree can catch "total: " + price before a single line runs. It is the evaluator from chapter 66 again, computing types where it used to compute values.'
+tagline: 'Give Drip a few optional type annotations, and a pass over the tree can catch "total: " + price before a single line runs. It is the evaluator of *Running expressions* again, computing types where it used to compute values.'
 objectives:
   - Describe typed Drip, its types and where annotations may go.
   - Represent types as data, and print them the way a programmer writes them.
@@ -18,7 +18,7 @@ import ScopeMaps from '../../../components/diagrams/ch192/ScopeMaps';
 
 ## Catching it before it runs
 
-Here is the mistake from chapter 190 again, in two lines of Drip:
+Here is the mistake from *What a type system promises* again, in two lines of Drip:
 
 ```
 let price = 4;
@@ -35,7 +35,7 @@ line 2: cannot add a string and a number
 
 That program is a **type checker**, and the language it checks is
 **typed Drip**: Drip with optional type annotations. Over this chapter
-and the next we build it from the rules of chapter 191, one kind of
+and the next we build it from the rules of *Reading typing rules*, one kind of
 node at a time.
 
 ## Typed Drip
@@ -75,7 +75,7 @@ are the labels: write one where it helps, and leave it off where the
 value makes the type plain, as in `let s = "hi";`.
 <span slot="breaks">Nobody checks a kitchen label against the jar;
 typed Drip's checker checks every label it finds against the value, as
-the next chapter builds.</span>
+*Checking annotations, functions and calls* builds.</span>
 </Analogy>
 
 <Callout kind="definition">
@@ -144,12 +144,12 @@ messages need: `a number`, `a [string]`, or plain `none`.
 
 ## The checker is an evaluator of types
 
-Chapter 66's `evaluate` took an expression and returned its value; the
+The `evaluate` of *Running expressions: a tree that computes* took an expression and returned its value; the
 checker's `typeOf(e, env)` takes an expression and the type environment
 Γ (a `Map` from names to types) and returns its type, following exactly
 one rule per kind of node. A number literal is a `number`; a variable
 has the type Γ gives it (T-Var); an operator gets the result type from
-the rule for its operand types (chapter 190's exercise, extended to
+the rule for its operand types (the exercise of *What a type system promises*, extended to
 every operator). Lists and indexing add two rules:
 
 <Formal title="Rules for lists and indexing">
@@ -182,7 +182,7 @@ anyone pours anything. The checker reads the program's tree the same
 way, part by part, checking that each joint matches its rule.
 <span slot="breaks">An inspector can approve a plan that is badly built
 afterwards; the checker's approval holds for every run, because what it
-read is exactly what runs (that is the soundness of chapter 190).</span>
+read is exactly what runs (that is the soundness of *What a type system promises*).</span>
 </Analogy>
 
 <Callout kind="definition">
@@ -190,7 +190,7 @@ A **type checker** is a pass over a program's tree that applies the
 typing rules to each node, computing the type of every expression from
 the types of its parts, and reporting the first place where no rule
 applies<Cite id="pierce2002" />. It runs after parsing and before the
-program runs, like the resolver of chapter 70.
+program runs, like the resolver of *The resolver*.
 </Callout>
 
 <Examples of="type-checker">
@@ -264,7 +264,7 @@ It prints `ok` with the final Γ for the first program, then one error
 for each of the others, each with its line: the label bug, an `if` on a
 number, and a variable used outside the block that declared it. (It
 stops at the first error in a program; a real checker, like Drip's
-parser in chapter 65, would note it and keep going.)
+parser in *Syntax errors and panic mode*, would note it and keep going.)
 
 <Prompts ids={['let-extends', 'block-copy']} />
 
@@ -282,7 +282,7 @@ parser in chapter 65, would note it and keep going.)
 - A `let` adds its name and type to Γ for what follows; each block is
   checked in a copy of Γ, so its names vanish at its end.
 
-Next: comparing what the annotations *say* with what the checker
+Next: *Checking annotations, functions and calls*, comparing what the annotations *say* with what the checker
 *computes*, and checking functions and calls.
 
 <Quiz />

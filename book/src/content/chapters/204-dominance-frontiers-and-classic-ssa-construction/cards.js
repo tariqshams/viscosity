@@ -1,113 +1,54 @@
-// Chapter 210 cards: recall prompts, examples, exercises and quiz.
+// Chapter 204 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 91, 204.
 
 export const prompts = {
-  'idom-what': {
-    q: 'What is a block’s immediate dominator?',
-    a: 'Its closest strict dominator: the one every other strict dominator of it also dominates.',
-  },
-  'tree-ancestor': {
-    q: 'In the dominator tree, how do you read off all the dominators of B?',
-    a: 'They are B and all its ancestors, up to the entry.',
-  },
-  'sets-nest': {
-    q: 'Why is it enough to store one block (the idom) per block, rather than whole dominator sets?',
-    a: 'The strict dominators of a block form a single chain, so each set is its idom’s set plus the block itself.',
-  },
-  'intersect-fingers': {
-    q: 'In Viscosity’s `intersect(a, b)`, which finger moves up?',
-    a: 'Whichever block is later in reverse postorder moves to its idom, until the two meet.',
-  },
-  'unreachable-none': {
-    q: 'Why does an unreachable block never get an entry in Viscosity’s `idom` map?',
-    a: 'It is never in the reverse postorder, and only predecessors that already have an idom are used.',
-  },
-  'back-edge': {
-    q: 'How does `naturalLoops` recognise a back edge t → h?',
-    a: 'h dominates t. Then h is a loop header.',
-  },
   'df-what': {
-    q: 'When is block Y in the dominance frontier of X?',
+    q: 'When is block Y in the dominance frontier of block X?',
     a: 'When X dominates some predecessor of Y but does not strictly dominate Y.',
   },
   'df-self': {
-    q: 'In the Collatz CFG, why is the loop header b1 in its own dominance frontier?',
-    a: 'b1 dominates b3, a predecessor of b1 (the back edge), and no block strictly dominates itself.',
+    q: 'Why is a loop header that dominates the source of its back edge in its own dominance frontier?',
+    a: 'It dominates a predecessor of itself (the back edge’s source), and no block strictly dominates itself.',
+  },
+  'df-climb': {
+    q: 'Given the dominator tree, how do you compute dominance frontiers by climbing from each join Y?',
+    a: 'For each predecessor P of Y, walk up the tree from P to idom(Y), not including it, adding Y to the frontier of every block passed.',
   },
   frontier: {
-    q: 'In the classic algorithm, where are the phis for a variable assigned in block B placed?',
-    a: 'In B’s dominance frontier: the first blocks that B does not strictly dominate (and, repeatedly, in the frontiers of those phis).',
+    q: 'In Cytron et al.’s SSA construction, which blocks get a phi for a variable v?',
+    a: 'The iterated dominance frontier of the blocks that assign v (the entry counting as an assignment).',
   },
   'phi-is-def': {
-    q: 'Why does a block that receives a phi for `v` go on the worklist?',
-    a: 'A phi is itself an assignment of `v`, so its own frontier may need phis too.',
+    q: 'In the worklist algorithm for placing phis, why does a block that receives a phi for v go on the worklist?',
+    a: 'A phi is itself an assignment of v, so its own frontier may need phis too.',
   },
   'iterate-why': {
-    q: 'What does the “iterated” in iterated dominance frontier add over the plain frontier?',
-    a: 'The frontiers of the phis just placed, repeated until no new block appears.',
+    q: 'What does the iterated dominance frontier DF⁺(S) add over the plain frontier DF(S)?',
+    a: 'The frontiers of the blocks already added, repeated until no new block appears.',
   },
   'one-branch-phi': {
-    q: '`x` is assigned before an `if` and again only in its left branch. Does the join need a phi for `x`?',
-    a: 'Yes: the right-hand path brings the old value, so two versions meet there (`x3 = φ(x2, x1)`).',
+    q: '`x` is assigned before an `if`, again only in its then branch, and read after the join. Does SSA need a phi for `x` at the join?',
+    a: 'Yes: the else path brings the old value, so two versions meet there (`x3 = φ(x2, x1)`).',
   },
   'stack-why': {
-    q: 'During renaming, what does the top of a variable’s stack mean?',
+    q: 'In SSA renaming by a walk of the dominator tree, what does the top of a variable’s version stack hold?',
     a: 'The version of that variable that reaches the point the walk has got to.',
   },
   'tree-walk': {
-    q: 'Why does renaming walk the dominator tree rather than the CFG?',
-    a: 'The versions that reach a block are the ones made in it and in its dominator-tree ancestors, which is exactly what a stack holds on a walk down the tree.',
+    q: 'Why does classic SSA renaming walk the dominator tree rather than the CFG?',
+    a: 'The versions that reach a block are the ones made in it and in its dominator-tree ancestors, which is exactly what the stacks hold on a walk down the tree.',
   },
   'pop-why': {
-    q: 'Why does renaming pop a block’s versions when it leaves the block?',
-    a: 'So that siblings in the tree (like the two branches of an `if`) never see each other’s versions.',
+    q: 'In classic SSA renaming, why are a block’s versions popped when the walk leaves the block?',
+    a: 'So that blocks it does not dominate, such as its siblings in the tree (the two branches of an `if`), never see its versions.',
   },
   pruned: {
-    q: 'What is the difference between minimal SSA (Cytron’s placement) and pruned SSA (LLVM’s `mem2reg`)?',
-    a: 'Minimal puts a phi wherever two versions meet; pruned also leaves out phis for variables nobody reads after the join.',
+    q: 'What is the difference between minimal SSA and pruned SSA?',
+    a: 'Minimal SSA puts a phi wherever two versions of a variable meet; pruned SSA also leaves out phis where the variable is not live.',
   },
 };
 
 export const examples = {
-  rpo: {
-    title: 'Immediate dominators, Viscosity’s way',
-    code: `// the Collatz CFG
-const preds = [[], [0, 3], [1], [7],
-  [1], [2], [2], [5, 6]];
-const rpo = [0, 1, 4, 2, 6, 5, 7, 3];
-const at = new Map(
-  rpo.map((b, i) => [b, i]));
-const idom = new Map([[0, 0]]);
-const meet = (a, b) => {
-  while (a !== b) {
-    while (at.get(a) > at.get(b))
-      a = idom.get(a);
-    while (at.get(b) > at.get(a))
-      b = idom.get(b);
-  }
-  return a;
-};
-let changed = true, passes = 0;
-while (changed) {
-  changed = false;
-  passes++;
-  for (const b of rpo.slice(1)) {
-    const ps = preds[b]
-      .filter((p) => idom.has(p));
-    let d = ps[0];
-    for (const p of ps.slice(1))
-      d = meet(p, d);
-    if (idom.get(b) !== d) {
-      idom.set(b, d);
-      changed = true;
-    }
-  }
-}
-for (const [b, d] of idom)
-  console.log(\`idom(b\${b}) = b\${d}\`);
-console.log('passes:', passes);`,
-  },
   'rename-diamond': {
     title: 'Renaming with a stack',
     code: `// b0: x = ...; then b1 or b2; b3 joins.
@@ -152,6 +93,7 @@ console.log('phi operands:', args);`,
 
 export const exercises = {
   frontiers: {
+    optional: true,
     title: 'Dominance frontiers',
     prompt: `A CFG is given by \`preds\` (\`preds[b]\` lists block \`b\`’s predecessors) and \`idom\` (\`idom[b]\` is \`b\`’s immediate dominator; the entry, block 0, is its own). Every block is reachable. Write \`frontiers(preds, idom)\` that returns an array whose entry \`b\` is the sorted list DF(b).
 
@@ -256,81 +198,6 @@ Trace it on the Collatz CFG. b7 has predecessors b5 and b6 and idom b2: from b5 
     [...s].sort((a, b) => a - b));
 }`,
         why: 'Climbing to the entry adds `y` to blocks that strictly dominate it, such as idom(y) and its ancestors. Stop at `idom[y]`.',
-      },
-    ],
-  },
-  idoms: {
-    optional: true,
-    title: 'From sets to the tree',
-    prompt: 'Given `dom`, the dominator sets from the core exercise (sorted lists, `dom[0]` is `[0]`), write `idoms(dom)` that returns each block’s immediate dominator. Use `0` for the entry itself. Hint about nesting: the closest strict dominator of `b` is the one with the *largest* dominator set of its own.',
-    starter: `function idoms(dom) {
-  return dom.map(() => 0);
-}`,
-    solution: `function idoms(dom) {
-  return dom.map((ds, b) => {
-    let best = 0;
-    for (const d of ds) {
-      if (d === b) continue;
-      if (dom[d].length >
-          dom[best].length) best = d;
-    }
-    return best;
-  });
-}`,
-    tests: `test('the Collatz CFG', () => {
-  const dom = [
-    [0], [0, 1], [0, 1, 2],
-    [0, 1, 2, 3, 7], [0, 1, 4],
-    [0, 1, 2, 5], [0, 1, 2, 6],
-    [0, 1, 2, 7]];
-  expect(idoms(dom))
-    .toEqual([0, 0, 1, 7, 1, 2, 2, 2]);
-});
-test('a chain', () => {
-  expect(idoms([[0], [0, 1], [0, 1, 2]]))
-    .toEqual([0, 0, 1]);
-});
-test('numbers say nothing about depth', () => {
-  // 0 -> 2 -> 1 -> 3
-  expect(idoms([[0], [0, 1, 2], [0, 2],
-    [0, 1, 2, 3]])).toEqual([0, 2, 0, 1]);
-});
-test('a diamond', () => {
-  expect(idoms([[0], [0, 1], [0, 2],
-    [0, 3]])).toEqual([0, 0, 0, 0]);
-});`,
-    hints: [
-      'For each block, look only at its *strict* dominators: skip `b` itself.',
-      'Strict dominators form a chain from the entry down to `b`. The one deepest in that chain has the most dominators of its own.',
-    ],
-    walkthrough: `**How to think about it.** The strict dominators of a block are not a jumble: they lie on one chain from the entry down to the block, each dominated by all the ones above it. So the closer a dominator is to \`b\`, the more dominators it has of its own, and the nearest one (the idom) is the strict dominator with the biggest dominator set.
-
-**The solution, line by line.**
-
-- \`return dom.map((ds, b) => {\` works out one answer per block; \`ds\` is block \`b\`'s dominator set.
-- \`let best = 0;\` starts with the entry, which dominates everything (and is the answer for the entry itself).
-- \`for (const d of ds) {\` looks at every dominator of \`b\`.
-- \`if (d === b) continue;\` skips \`b\` itself: the idom is a *strict* dominator.
-- \`if (dom[d].length > dom[best].length) best = d;\` keeps the dominator with the largest set of its own, which is the deepest one in the chain.
-- \`return best;\` gives that block.
-
-For b3 in the Collatz CFG, the strict dominators are 0, 1, 2 and 7, with sets of size 1, 2, 3 and 4, so idom(b3) = b7, its parent in the tree. This is why Viscosity never stores the sets: the \`idom\` map is all of them, folded into a tree.
-
-**Common wrong attempts.**
-
-- Taking the largest block *number*: it happens to work for the Collatz CFG, but block numbers say nothing about depth, and in the chain 0 → 2 → 1 → 3 it picks 2 for b3, whose idom is 1.
-- Forgetting to skip \`b\` itself: every block's own set is the largest, so every block would be its own idom.`,
-    wrong: [
-      {
-        code: `function idoms(dom) {
-  return dom.map((ds, b) => {
-    const strict = ds.filter(
-      (d) => d !== b);
-    return strict.length
-      ? Math.max(...strict) : 0;
-  });
-}`,
-        why: 'The largest block *number* is not the closest dominator. It happens to work for the Collatz CFG, but in a chain 0 → 2 → 1 → 3 it picks 2 for b3, whose idom is 1. Compare set sizes instead.',
       },
     ],
   },
@@ -511,7 +378,7 @@ test('the one-branch diamond', () => {
       'Remember the stack size when you enter a block, and set `stack.length` back to it when you leave: that pops exactly what this block pushed.',
       'The operand of successor `s`’s phi that belongs to `b` is at position `g.preds[s].indexOf(b)`, and its value is the top of the stack after `b`’s own code has run.',
     ],
-    walkthrough: `**How to think about it.** Follow the steps from the chapter for one block at a time, and let recursion do the walk. When the walk is inside block \`b\`, the stack must hold exactly the versions made in \`b\`'s dominator-tree ancestors and in \`b\` so far; so push as you define, and when you leave \`b\`, cut the stack back to the size it had when you came in.
+    walkthrough: `**How to think about it.** Follow the renaming steps for one block at a time, and let recursion do the walk. When the walk is inside block \`b\`, the stack must hold exactly the versions made in \`b\`'s dominator-tree ancestors and in \`b\` so far; so push as you define, and when you leave \`b\`, cut the stack back to the size it had when you came in.
 
 **The solution, line by line.**
 
@@ -615,179 +482,91 @@ function rename(g) {
 
 export const quiz = [
   {
-    q: 'What is the immediate dominator of a block?',
+    q: 'In an `if`/`else` diamond (b0 branches to b1 and b2, which both lead to b3), what is the dominance frontier of b1?',
     options: [
       {
-        t: 'Its first predecessor',
-        why: 'A predecessor can be skipped, like b5 for b7.',
-      },
-      {
-        t: 'The entry block',
-        why: 'The entry dominates everything, but it is usually not the closest.',
-      },
-      {
-        t: 'Its closest strict dominator, its parent in the dominator tree',
+        t: '{b3}: b1 dominates b3’s predecessor b1, but not b3',
         correct: true,
-        why: 'Every other strict dominator is an ancestor of it.',
-      },
-      {
-        t: 'The block that most often runs just before it',
-        why: 'Dominance is about paths in the graph, not how often they are taken.',
-      },
-    ],
-  },
-  {
-    q: 'In an `if`/`else` diamond b0 → b1, b2 → b3, what is the parent of b3 in the dominator tree?',
-    options: [
-      {
-        t: 'b1',
-        why: 'The path through b2 avoids b1.',
-      },
-      {
-        t: 'b0',
-        correct: true,
-        why: 'Neither branch dominates the join, so its nearest strict dominator is the entry: the tree is flat.',
-      },
-      {
-        t: 'b2',
-        why: 'The path through b1 avoids b2.',
-      },
-      {
-        t: 'b3 has two parents, b1 and b2',
-        why: 'A tree gives every block one parent; that is the point of the immediate dominator.',
-      },
-    ],
-  },
-  {
-    q: 'Viscosity’s `dominators` returns `idom`, a Map. How does `dominates(idom, a, b)` answer?',
-    options: [
-      {
-        t: 'It looks `a` up in a stored set for `b`',
-        why: 'No sets are stored; only immediate dominators.',
-      },
-      {
-        t: 'It searches every path from the entry to `b`',
-        why: 'There can be very many paths; the tree avoids that.',
-      },
-      {
-        t: 'It walks from `b` up the tree through `idom` until it finds `a` or reaches the entry',
-        correct: true,
-        why: 'A dominates B exactly when A is B or one of its ancestors.',
-      },
-      {
-        t: 'It compares their positions in reverse postorder',
-        why: 'Being earlier in that order is necessary but not sufficient.',
-      },
-    ],
-  },
-  {
-    q: 'How does `naturalLoops` use dominators?',
-    options: [
-      {
-        t: 'Every block with two predecessors is a loop',
-        why: 'b7, the join of an `if`, has two predecessors and is not a loop header.',
-      },
-      {
-        t: 'It finds edges t → h where h dominates t: back edges, with h the loop header',
-        correct: true,
-        why: 'You can only jump back to a block you must already have passed through, which is what a loop header is.',
-      },
-      {
-        t: 'A block that dominates itself is in a loop',
-        why: 'Every block dominates itself.',
-      },
-      {
-        t: 'It does not; loops are found from the source’s `while` and `for`',
-        why: 'Working on the CFG means any loop is found, however it was written.',
-      },
-    ],
-  },
-  {
-    q: 'In the Collatz CFG, what is DF(b5), the frontier of the odd branch?',
-    options: [
-      {
-        t: '{b7}: b5 dominates b7’s predecessor b5, but not b7',
-        correct: true,
-        why: 'The join can also be reached through b6, so b5’s territory ends there.',
-      },
-      {
-        t: '{b1}',
-        why: 'b5 does not dominate b3, the source of the back edge, because the even branch also reaches b3.',
+        why: 'b3 can also be reached through b2, so b1’s territory ends there.',
       },
       {
         t: '{} (empty)',
-        why: 'b5 has a successor, b7, that it does not strictly dominate.',
+        why: 'b1 has a successor, b3, that it does not strictly dominate.',
       },
       {
-        t: '{b5, b7}',
-        why: 'b5 does not lead back to itself without passing through b1, which it does not dominate.',
+        t: '{b0}',
+        why: 'b0 is not a successor of anything b1 dominates.',
+      },
+      {
+        t: '{b2, b3}',
+        why: 'b2 is reached only from b0, which b1 does not dominate.',
       },
     ],
   },
   {
-    q: 'In the Collatz loop, suppose `n` were assigned only in b5. Where would phis for `n` go? (DF(b5) = {b7}, DF(b7) = {b1}, DF(b1) = {b1}.)',
+    q: 'A variable is assigned only in block B5, and DF(B5) = {B7}, DF(B7) = {B1}, DF(B1) = {B1}. Where does minimal SSA place its phis?',
     options: [
       {
-        t: 'Only b7',
-        why: 'b7’s new phi is an assignment, and its frontier is {b1}, so b1 needs one too.',
+        t: 'Only B7',
+        why: 'B7’s new phi is an assignment, and its frontier is {B1}, so B1 needs one too.',
       },
       {
-        t: 'b7 and b1',
+        t: 'B7 and B1',
         correct: true,
-        why: 'The iterated frontier: b7 from b5, then b1 from b7’s phi.',
+        why: 'The iterated frontier: B7 from B5, then B1 from B7’s phi.',
       },
       {
-        t: 'Every block with two predecessors, and nowhere else',
-        why: 'That happens to be the same here, but in general many joins need no phi for a given variable.',
+        t: 'Only B1',
+        why: 'B5 dominates a predecessor of B7 but not B7, so B7 is in its frontier and needs a phi.',
       },
       {
-        t: 'b5 itself',
-        why: 'b5 assigns n; it does not merge anything.',
+        t: 'B5 itself',
+        why: 'B5 assigns the variable; it does not merge anything.',
       },
     ],
   },
   {
-    q: 'A variable is assigned once, in the entry block, and used everywhere. How many phis does it need?',
+    q: 'A variable is assigned once, in the entry block, and used everywhere. How many phis does minimal SSA give it?',
     options: [
       {
         t: 'One per join',
         why: 'Only one version exists, so no join ever sees two.',
       },
       {
-        t: 'One, at the loop header',
+        t: 'One at each loop header',
         why: 'The back edge brings the same version, so there is nothing to choose.',
       },
       {
         t: 'None',
         correct: true,
-        why: 'The entry dominates every block, so its frontier is empty.',
+        why: 'The entry dominates every block, so its dominance frontier is empty.',
       },
     ],
   },
   {
-    q: 'While renaming the Collatz loop, why does b6 read `n1` and not `n2`, which b5 defined?',
+    q: 'In classic SSA renaming, why does a use in the else branch of an `if` never read a version defined in the then branch?',
     options: [
       {
-        t: 'b6 is visited before b5',
+        t: 'The else branch is always visited first',
         why: 'The order of siblings does not matter; either way, they never see each other’s versions.',
       },
       {
-        t: 'b5’s versions were popped when the walk left b5, before it moved to its sibling b6',
+        t: 'The then branch’s versions are popped when the walk leaves it, before it moves to its sibling',
         correct: true,
         why: 'Popping on the way out keeps each branch’s versions to itself.',
       },
       {
-        t: 'b6 reads the oldest version on the stack',
+        t: 'A use reads the oldest version on the stack',
         why: 'A use always reads the top of the stack.',
       },
       {
-        t: 'n2 is a phi',
-        why: 'n2 is b5’s ordinary assignment, 3 * n1 + 1.',
+        t: 'Each branch has its own copy of the stacks',
+        why: 'There is one stack per variable, shared by the whole walk; popping is what keeps branches apart.',
       },
     ],
   },
   {
-    q: 'Which statement about phi placement at dominance frontiers is true?',
+    q: 'Which statement about placing phis at iterated dominance frontiers (Cytron et al.) is true?',
     options: [
       {
         t: 'It never places a phi that is not needed',
@@ -796,7 +575,7 @@ export const quiz = [
       {
         t: 'It needs the dominator tree and frontiers of a finished CFG',
         correct: true,
-        why: 'Which is why VIR’s builder, which has no finished CFG while lowering, uses a different method.',
+        why: 'Which is why a front end that builds SSA while still lowering uses an on-the-fly method (Braun et al.) instead.',
       },
       {
         t: 'It places phis in the blocks that assign the variable',
@@ -809,16 +588,16 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the renaming walk, block b3 has a CFG successor b1 with a phi. When is b1’s operand for b3 filled in, and with what?',
+    q: 'During classic SSA renaming, block L ends a loop with a back edge to the header H, which has a phi. When is that phi’s operand for L filled in, and with what?',
     options: [
       {
-        t: 'When the walk is in b3, with the top of the stack after b3’s code',
+        t: 'When the walk is in L, with the top of the stack after L’s code',
         correct: true,
-        why: 'That is the version that flows along the edge b3 → b1.',
+        why: 'That is the version that flows along the edge L → H.',
       },
       {
-        t: 'When the walk enters b1, with b1’s own phi version',
-        why: 'b1 is visited long before b3; its operand for b3 is filled from b3’s side.',
+        t: 'When the walk enters H, with H’s own phi version',
+        why: 'H is visited before L (it dominates it); its operand for L is filled from L’s side.',
       },
       {
         t: 'At the very end, with the newest version made anywhere',

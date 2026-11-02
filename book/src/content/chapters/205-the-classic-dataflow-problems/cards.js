@@ -1,4 +1,4 @@
-// Chapter 211 cards: recall prompts, examples, exercises and quiz.
+// Chapter 205 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,7 +11,7 @@ export const prompts = {
     a: 'Every other definition of a variable the block assigns.',
   },
   'transfer-gk': {
-    q: 'Write the gen/kill transfer function.',
+    q: 'Write the gen/kill transfer function of a forward dataflow problem.',
     a: 'OUT[B] = gen[B] ∪ (IN[B] − kill[B]): remove what it kills, then add what it generates.',
   },
   'last-def-gen': {
@@ -27,11 +27,11 @@ export const prompts = {
     a: 'A may problem (some path is enough), so its meet is union.',
   },
   'reach-start-empty': {
-    q: 'Why does every OUT start as the empty set in reaching definitions?',
+    q: 'In iterative reaching definitions, why does every OUT start as the empty set?',
     a: 'The meet is union, and union leaves the empty set alone, so the guess adds nothing false.',
   },
   'phi-where': {
-    q: 'Two definitions of `i` reach the loop test. What does SSA put there?',
+    q: 'Two different definitions of `i` reach a loop test, where `i` is then used. What does SSA put there?',
     a: 'A phi for i, choosing between the two by which edge was taken.',
   },
 };
@@ -346,7 +346,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does reaching definitions need more than one round on a loop?',
+    q: 'Why does iterative reaching definitions need more than one round on a loop?',
     options: [
       {
         t: 'The loop body’s definitions reach the loop test only along the back edge, after the body has been computed once.',

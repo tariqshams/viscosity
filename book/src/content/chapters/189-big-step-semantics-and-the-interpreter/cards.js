@@ -1,4 +1,4 @@
-// Chapter 91 cards: recall prompts, examples, exercises and quiz.
+// Chapter 189 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,12 +7,12 @@ export const prompts = {
     a: 'A relation `e ⇓ v`, “e evaluates to v”, relating an expression directly to its final value, with the parts’ evaluations as premises.',
   },
   'bigstep-read': {
-    q: 'How is `e₁ + e₂ ⇓ 7` justified by the rule Add?',
+    q: 'In a big-step semantics, how is `e₁ + e₂ ⇓ 7` justified by the rule for `+`?',
     a: 'By derivations of `e₁ ⇓ n₁` and `e₂ ⇓ n₂` for two numbers whose sum is 7, placed above the line.',
   },
   'bigstep-agree': {
-    q: 'For the chapter’s little language, how do `e ⇓ v` and the small steps relate?',
-    a: 'They agree: `e ⇓ v` holds exactly when `e →* v`.',
+    q: 'For a simple, side-effect-free expression language given both a big-step and a small-step semantics, how do `e ⇓ v` and `e →* v` relate?',
+    a: 'They agree: for a value v, `e ⇓ v` holds exactly when `e →* v`.',
   },
   'env-rho': {
     q: 'What does `ρ ⊢ e ⇓ v` mean?',
@@ -27,11 +27,11 @@ export const prompts = {
     a: 'A new environment: the old one with x mapped to e’s value, `ρ[x ↦ v]`.',
   },
   'premise-call': {
-    q: 'In the tree-walking interpreter, what does each premise of a big-step rule become?',
+    q: 'When big-step rules are turned into a tree-walking interpreter, what does each premise of a rule become?',
     a: 'A recursive call to `evaluate` on a part of the expression.',
   },
   'loop-vs-stuck': {
-    q: 'Why can big-step rules not tell a program that loops for ever from one that gets stuck?',
+    q: 'Why can plain big-step rules (with no error or divergence rules) not tell a program that loops for ever from one that gets stuck?',
     a: 'Neither has a derivation of `e ⇓ v`; the rules only talk about finished evaluations, not the steps in between.',
   },
   'order-matters': {
@@ -288,7 +288,7 @@ function evalB(e, env) {
 
 export const quiz = [
   {
-    q: 'Which judgment has a derivation, in the big-step rules for the tiny language?',
+    q: 'With big-step rules for numbers, booleans, `+` and `if` (whose condition must be a boolean), which judgment has a derivation?',
     options: [
       {
         t: '`if false then 1 else 2 + 3 ⇓ 5`',
@@ -324,7 +324,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the tree-walking interpreter, what corresponds to a premise of a big-step rule?',
+    q: 'When big-step rules are turned into a tree-walking interpreter, what corresponds to a premise of a rule?',
     options: [
       {
         t: 'A `case` of the switch',
@@ -342,7 +342,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What do the big-step rules say about `while true { }`?',
+    q: 'What do plain big-step rules for Drip (with no divergence rules) say about `while true { }`?',
     options: [
       {
         t: 'Nothing: it has no derivation, exactly like a stuck program',
@@ -367,7 +367,7 @@ export const quiz = [
         why: 'Number representation has nothing to do with order.',
       },
       {
-        t: 'Because in the tiny language evaluation has no side effects, so the order cannot be seen; in Drip, a side can print or fail',
+        t: 'Because in a language whose expressions have no side effects the order cannot be seen; in Drip, a side can print or fail',
         correct: true,
         why: 'Once evaluating can do something visible, a full semantics has to fix the order.',
       },

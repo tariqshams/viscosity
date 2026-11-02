@@ -18,13 +18,13 @@ import ModeTree from '../../../components/diagrams/ch200/ModeTree';
 
 ## Between guessing and being told
 
-Chapter 196's inference needs no annotations at all; however, it leans
+The inference of *Hindley–Milner type inference* needs no annotations at all; however, it leans
 entirely on unification, and unification answers one question only,
 "are these two types *equal*?". The moment a language has subtyping
-(the last chapter), the question at a call becomes "is the argument's
+(*Subtyping and variance*), the question at a call becomes "is the argument's
 type a subtype of the parameter's?", and the neat equations of
 algorithm W no longer settle everything. At the other extreme, the
-checker of chapter 192 needs a type written on everything. TypeScript
+checker of *A type checker for typed Drip* needs a type written on everything. TypeScript
 does neither: it makes you annotate some places and works out the
 rest. Here is the line it draws, in strict mode:
 
@@ -182,7 +182,7 @@ inference is known to be impossible<Cite id="dunfield-krishnaswami2021" />.
 - Annotations are needed exactly where a λ has no expected type to be
   checked against; TypeScript's contextual typing is this idea.
 
-Next: what all this checking buys. A precise statement of "well-typed
+Next: *Soundness: progress and preservation*, what all this checking buys: a precise statement of "well-typed
 programs do not go wrong", a sketch of its proof, and the places where
 TypeScript chose not to promise it.
 

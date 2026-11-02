@@ -1,10 +1,10 @@
-// Chapter 205 cards: recall prompts, examples, exercises and quiz.
+// Chapter 197 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'w-what': {
     q: 'What does algorithm W take, and what does it return?',
-    a: 'An environment and a term with no annotations; it returns the term’s type (its most general one), or fails if the term has none.',
+    a: 'An environment and a term with no annotations; it returns a substitution together with the term’s most general type, or fails if the term has no type.',
   },
   'w-var': {
     q: 'What does W do when it reaches a variable?',
@@ -1092,7 +1092,7 @@ function infer(env, e) {
 
 export const quiz = [
   {
-    q: 'In W, which kinds of term add equations through unify?',
+    q: 'In algorithm W for a language with variables, literals, λ, application, `let` and `if`, which kinds of term add equations through unification?',
     options: [
       {
         t: 'Applications and ifs',

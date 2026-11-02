@@ -1,4 +1,4 @@
-// Chapter 90 cards: recall prompts, examples, exercises and quiz.
+// Chapter 191 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -23,11 +23,11 @@ export const prompts = {
     a: 'A rule with no premises, so its conclusion always holds (for example, any number literal is a `Num`).',
   },
   'abs-extends': {
-    q: 'In T-Abs, in which environment is the body of `λx:T₁. e` checked?',
+    q: 'In the simply typed lambda calculus’s rule for abstraction (T-Abs), in which environment is the body of `λx:T₁. e` checked?',
     a: 'In `Γ, x : T₁`: the outer environment extended with the parameter and its declared type.',
   },
   'if-same': {
-    q: 'Why does T-If require both branches to have the same type?',
+    q: 'In the simply typed lambda calculus (no subtyping), why does the typing rule for `if` require both branches to have the same type?',
     a: 'The checker cannot know which branch will run, so the `if` can only promise a type that both branches have.',
   },
   'derivation-what': {
@@ -544,7 +544,7 @@ function typeOf(e, env) {
 
 export const quiz = [
   {
-    q: 'Which judgment is true?',
+    q: 'Under the usual typing rules for variables, number literals and `+` (both operands Num), which judgment is derivable?',
     options: [
       {
         t: '`x : Bool ⊢ x + 1 : Num`',
@@ -562,7 +562,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does the rule T-Abs need above its line to conclude `Γ ⊢ λx:Num. x : Num → Num`?',
+    q: 'Which premise does the abstraction rule T-Abs need to conclude `Γ ⊢ λx:Num. x : Num → Num`?',
     options: [
       {
         t: '`Γ, x : Num ⊢ x : Num`',
@@ -580,7 +580,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What type does `λf:Num → Num. f 3` have?',
+    q: 'In the simply typed lambda calculus, what type does `λf:Num → Num. f 3` have?',
     options: [
       {
         t: '`Num`',
@@ -602,7 +602,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is there no derivation of `⊢ if true then 1 else false : Num`?',
+    q: 'In the simply typed lambda calculus with numbers and booleans, why is there no derivation of `⊢ if true then 1 else false : Num`?',
     options: [
       {
         t: 'The condition is not a `Bool`',
@@ -620,7 +620,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A checker meets `⊢ 1 2 : ?` (calling the number 1 with 2). What happens?',
+    q: 'A checker for the simply typed lambda calculus meets `⊢ 1 2 : ?` (calling the number 1 with 2). What happens?',
     options: [
       {
         t: 'T-App gives `Num`',

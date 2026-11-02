@@ -1,4 +1,4 @@
-// Chapter 91 cards: recall prompts, examples, exercises and quiz.
+// Chapter 190 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,7 +11,7 @@ export const prompts = {
     a: 'It gives every piece of a program a type by reading the text, and rejects programs whose pieces do not fit together.',
   },
   'static-when': {
-    q: 'When does a static type checker find the mistake in `label(n)`, whose bad line runs only for big `n`?',
+    q: 'A function has a type error on a line that runs only for very large inputs. When does a static type checker report it?',
     a: 'Before the program runs at all, because it reads every path, taken or not.',
   },
   conservative: {
@@ -204,7 +204,7 @@ Then sort the operators by what they need. \`+\` accepts two numbers or two stri
 
 export const quiz = [
   {
-    q: 'Which of these is a type error in Drip?',
+    q: 'In Drip (dynamically typed: `/` on numbers gives `inf` for division by zero, `+` adds numbers or joins strings, unary `-` needs a number, and list indexes are checked at run time), which of these is a type error?',
     options: [
       {
         t: '`print 10 / 0;`',

@@ -1,4 +1,4 @@
-// Chapter 92 cards: recall prompts, examples, exercises and quiz.
+// Chapter 202 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -34,9 +34,9 @@ export const prompts = {
     q: 'Why can checking dependent types require working out values?',
     a: 'Types contain expressions such as n + m, so deciding whether two types are equal may mean computing or proving that two values are equal.',
   },
-  'ts-tuples': {
-    q: 'What part of dependent types does TypeScript have?',
-    a: 'Tuple types with a fixed length, such as [number, number]; the length must be written in the type, not computed by the program.',
+  'ts-tuples-vs-vect': {
+    q: 'A TypeScript tuple type such as `[number, number]` puts a length into a type. How is it weaker than a dependent type such as `Vect n a`?',
+    a: 'Its length is fixed by types alone (written, or computed from other types); it cannot depend on a value the program computes, such as a function’s argument n.',
   },
 };
 
@@ -659,7 +659,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In Idris, why is the definition of `++` that appends `xs` to itself rejected?',
+    q: 'In Idris, `(++) : Vect n a -> Vect m a -> Vect (n + m) a` is defined with the broken clause `(x :: xs) ++ ys = x :: xs ++ xs`. Why is it rejected?',
     options: [
       {
         t: 'Because it loops forever',

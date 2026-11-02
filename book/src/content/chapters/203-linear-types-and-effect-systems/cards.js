@@ -1,4 +1,4 @@
-// Chapter 209 cards: recall prompts, examples, exercises and quiz.
+// Chapter 203 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,8 +11,8 @@ export const prompts = {
     a: 'An affine value is used at most once: it may be dropped unused, but still never used twice.',
   },
   'rust-affine': {
-    q: 'Why does rustc reject using `s` after `let t = s;` for a String?',
-    a: 'The assignment moves the string to t, its new single owner, so s may no longer be used: error E0382, borrow of moved value.',
+    q: 'Why does rustc reject using a `String` variable `s` after `let t = s;`?',
+    a: 'The assignment moves the string to t, its new single owner, so s may no longer be used: error E0382 (use, or borrow, of a moved value).',
   },
   'linear-why': {
     q: 'Name one thing linear types make safe.',
@@ -23,7 +23,7 @@ export const prompts = {
     a: 'An effect: the set of things an expression may do when it runs, written Γ ⊢ e : T ! ε.',
   },
   'effect-union': {
-    q: 'What are the effects of `e₁; e₂`?',
+    q: 'In a simple effect system, what are the effects of the sequence `e₁; e₂`?',
     a: 'The union of the effects of e₁ and of e₂.',
   },
   'pure-what': {
@@ -35,7 +35,7 @@ export const prompts = {
     a: 'A method’s signature must declare the checked exceptions its body may throw (throws IOException), and callers must handle or declare them.',
   },
   'async-effect': {
-    q: 'How does TypeScript show that an async function runs later?',
+    q: 'How does the type of a TypeScript async function record that its result arrives later?',
     a: 'Its return type is a Promise (Promise<number>), which cannot be used as a plain number.',
   },
 };
@@ -277,7 +277,7 @@ const isAffine = (e) =>
 
 export const quiz = [
   {
-    q: 'Which of these terms is linear?',
+    q: 'Which of these λ-terms is linear (every bound variable used exactly once)?',
     options: [
       {
         t: '`λx. λy. x`',

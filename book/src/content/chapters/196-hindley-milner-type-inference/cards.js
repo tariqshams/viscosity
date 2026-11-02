@@ -1,4 +1,4 @@
-// Chapter 92 cards: recall prompts, examples, exercises and quiz.
+// Chapter 196 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -35,7 +35,7 @@ export const prompts = {
     a: 'So that unification at one use settles only that use’s copy, and two uses can never clash.',
   },
   'value-restriction': {
-    q: 'What is the value restriction, and why is it needed?',
+    q: 'What is ML’s value restriction on let-polymorphism, and why is it needed?',
     a: 'Generalise a let only when its definition is a syntactic value (not a call); otherwise a mutable box could be written at one type and read at another.',
   },
 };

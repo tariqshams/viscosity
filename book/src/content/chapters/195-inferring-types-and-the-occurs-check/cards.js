@@ -1,4 +1,4 @@
-// Chapter 92 cards: recall prompts, examples, exercises and quiz.
+// Chapter 195 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,7 +7,7 @@ export const prompts = {
     a: 'So that unrelated parameters are not forced to have the same type by accident.',
   },
   'call-unify': {
-    q: 'Inferring `f(a)`, what is unified with the type of `f`?',
+    q: 'In unification-based type inference, when inferring a call `f(a)`, what is unified with the type of `f`?',
     a: '`fn(type of a) -> \'r`, where `\'r` is a fresh variable that becomes the type of the call.',
   },
   'twice-type': {
@@ -15,7 +15,7 @@ export const prompts = {
     a: '`fn(fn(\'a) -> \'a, \'a) -> \'a`: `f` must return what it takes, and `x` is that type.',
   },
   'no-check-crash': {
-    q: 'Without the occurs check, what happens when inferring `fn (x) { return x(x); }`?',
+    q: 'In a unifier that applies its substitution recursively, what happens without the occurs check when inferring `fn (x) { return x(x); }`?',
     a: '`\'a` is bound to `fn(\'a) -> \'b`, and applying the substitution recurses forever (a stack overflow).',
   },
   'occurs-what': {
@@ -923,7 +923,7 @@ function bindVar(v, t, s) {
 
 export const quiz = [
   {
-    q: 'What type is inferred for `fn (x) { return x * 2; }`?',
+    q: 'If `*` takes only numbers, what type does unification-based inference give `fn (x) { return x * 2; }`?',
     options: [
       {
         t: '`fn(\'a) -> \'a`',
@@ -981,7 +981,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Without the occurs check, what does inferring `fn (x) { return x(x); }` do?',
+    q: 'In a unifier that applies its substitution recursively, what does inferring `fn (x) { return x(x); }` do without the occurs check?',
     options: [
       {
         t: 'It infers `fn(\'a) -> \'b`',

@@ -1,37 +1,37 @@
-// Chapter 90 cards: recall prompts, examples, exercises and quiz.
+// Chapter 192 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'typed-drip-what': {
-    q: 'What is typed Drip?',
-    a: 'Drip plus optional type annotations (`let x: number`, annotated parameters, result types), checked before the program runs.',
+    q: 'Typed Drip adds type annotations to dynamically typed Drip. Which annotations may a program leave out, and when are the rest checked?',
+    a: 'All of them are optional (on `let`s, parameters and results); those written are checked by a pass that runs before the program does.',
   },
   'erase-runs-same': {
-    q: 'What happens if you delete every annotation from a typed Drip program?',
+    q: 'In a language whose type annotations only feed a checker and are erased before running (typed Drip, TypeScript), what happens if you delete every annotation from a program?',
     a: 'You get an ordinary Drip program that runs exactly the same: the annotations only feed the checker.',
   },
   'strict-cond': {
-    q: 'Why is `if count { ... }` an error in typed Drip when `count` is a number?',
-    a: 'Typed Drip requires a condition to be a `bool` (no truthiness); write `if count > 0`.',
+    q: 'A type checker requires every `if` condition to have type `bool` (no truthiness). What does it say about `if count { ... }` with `count : number`, and what is the fix?',
+    a: 'It is a type error, since the condition is a number, not a `bool`; write `if count > 0`.',
   },
   'checker-what': {
-    q: 'What does a type checker do with each node of the tree?',
+    q: 'What does a syntax-directed type checker do with each node of the syntax tree?',
     a: 'It applies the one typing rule for that kind of node, computing the node’s type from its children’s types, or reports an error.',
   },
   'like-evaluate': {
-    q: 'How is `typeOf(e, env)` like the interpreter’s `evaluate(e)`?',
+    q: 'How is a type checker’s `typeOf(e, env)` like a tree-walking interpreter’s `evaluate(e)`?',
     a: 'Same walk, children first, one case per kind of node; it returns a type instead of a value, and looks names up in Γ instead of the environment of values.',
   },
   'empty-list': {
-    q: 'Why can the checker not give `[]` a type on its own?',
+    q: 'In a checker that computes types bottom-up only (no inference, no polymorphic types), why can `[]` not be given a type on its own?',
     a: 'The List rule takes the element type from the elements, and there are none; an annotation must say which list it is.',
   },
   'let-extends': {
-    q: 'After checking `let x = e;`, what changes in Γ?',
+    q: 'In a type checker, after checking `let x = e;`, what changes in the type environment Γ?',
     a: 'Γ gains `x` with the type of `e`, for the statements that follow.',
   },
   'block-copy': {
-    q: 'Why does the checker check a block in a copy of the Map?',
+    q: 'Why does a type checker that keeps Γ in a Map check a block in a copy of that Map?',
     a: 'So names declared inside the block vanish at its closing brace, as they do when the program runs.',
   },
 };
@@ -758,7 +758,7 @@ function typeOf(e, env) {
 
 export const quiz = [
   {
-    q: 'Which typed Drip line does the checker accept?',
+    q: 'A checker requires `bool` conditions, lists whose elements share one type, and an annotation on an empty list; `str` returns a string. Which line does it accept?',
     options: [
       {
         t: '`let n = 3; if n { print n; }`',
@@ -798,7 +798,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `if true { let t = 1; } print t;` fail to check?',
+    q: 'In a checker with block scope, why does `if true { let t = 1; } print t;` fail to check?',
     options: [
       {
         t: '`t` was declared in the block, whose copy of Γ is thrown away at the closing brace',
@@ -816,7 +816,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In what order does `typeOf` visit `price * 2 + "1"`?',
+    q: 'In what order does a bottom-up, left-to-right type checker visit the nodes of `price * 2 + "1"`?',
     options: [
       {
         t: 'The `+` first, deciding its type before looking at the operands',
@@ -834,7 +834,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the checker compare types with `same(a, b)` instead of `a === b`?',
+    q: 'A type checker in JavaScript represents list and function types as objects. Why does it compare types with a structural `same(a, b)` instead of `a === b`?',
     options: [
       {
         t: 'List and function types are objects, and two equal-looking objects are not `===`',

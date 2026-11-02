@@ -221,9 +221,9 @@ Every classic problem is a choice of direction and a choice of meet:
 | very busy expressions | backward | ∩ | computed on every path ahead |
 | live variables | backward | ∪ | may be read later |
 
-The fourth, **live variables**, is the one the Liveness chapter
-introduces properly, to find assignments nobody reads. And the
-later chapter on partial redundancy elimination combines a backward
+The fourth, **live variables**, is the one *Liveness* introduces
+properly, to find assignments nobody reads. And *Partial redundancy elimination*
+combines a backward
 "will be computed" question with a forward "has been computed" one to
 move computations to the best place<Cite id="coopertorczon2022" />.
 
@@ -254,7 +254,7 @@ here<Cite id="aho2006" />.
   gen depends on direction: computed *after* the last change of an
   operand (available) or *before* the first (very busy).
 
-Next: why every one of these analyses was certain to stop, in the
+Next: *Lattices and monotone frameworks*, why every one of these analyses was certain to stop, in the
 language of lattices, and a way of thinking that covers them all.
 
 <Quiz />

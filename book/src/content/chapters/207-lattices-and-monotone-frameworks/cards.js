@@ -1,4 +1,4 @@
-// Chapter 213 cards: recall prompts, examples, exercises and quiz.
+// Chapter 207 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,16 +7,16 @@ export const prompts = {
     a: 'Some pairs need not be comparable: neither is below the other, like {a, b} and {b, c}.',
   },
   'meet-join': {
-    q: 'In the lattice of subsets of {a, b, c}, what are the meet and the join of {a, b} and {b, c}?',
+    q: 'In the lattice of subsets of {a, b, c} ordered by ⊆, what are the meet and the join of {a, b} and {b, c}?',
     a: 'Meet {b} (the highest set below both); join {a, b, c} (the lowest set above both).',
   },
   'height-what': {
     q: 'What is the **height** of a lattice?',
-    a: 'The largest number of steps down from its top to its bottom.',
+    a: 'The length of its longest chain: the largest number of steps down from its top to its bottom.',
   },
   'wide-short': {
-    q: 'The constant lattice has infinitely many facts. Why does an analysis on it still stop?',
-    a: 'Its height is only 2, so each fact can move down at most twice.',
+    q: 'The constant-propagation lattice (⊤, one element per number, ⊥) has infinitely many elements. Why does an iterative analysis on it still stop?',
+    a: 'Its height is only 2, so with monotone transfer functions each fact can move down at most twice.',
   },
   'monotone-what': {
     q: 'What does it mean for a transfer function to be **monotone**?',
@@ -27,11 +27,11 @@ export const prompts = {
     a: 'A bigger IN, minus the same kill and plus the same gen, still gives a set at least as big.',
   },
   'framework-what': {
-    q: 'What are the three ingredients of a **monotone framework**?',
-    a: 'A lattice of finite height, a meet, and monotone transfer functions.',
+    q: 'What three properties make a dataflow analysis a **monotone framework** that iteration is sure to solve?',
+    a: 'Facts in a lattice of finite height, a meet to merge them at joins, and monotone transfer functions.',
   },
   'greatest-fixpoint': {
-    q: 'Iterating from the top reaches which fixpoint, and why is it the best one?',
+    q: 'In a monotone framework of finite height, which fixpoint does iterating from the top reach, and why is it the best one?',
     a: 'The greatest: every fixpoint is below the top, and monotone steps keep it below every step of the chain.',
   },
   'mop-what': {
@@ -39,7 +39,7 @@ export const prompts = {
     a: 'Apply the transfer functions along each path separately, then meet the results of all the paths.',
   },
   'distributive-equal': {
-    q: 'When does the iterative answer equal the meet over all paths?',
+    q: 'In a monotone framework, when does the iterative answer equal the meet-over-all-paths answer?',
     a: 'When every transfer function is distributive: f(x ⊓ y) = f(x) ⊓ f(y).',
   },
 };
@@ -210,7 +210,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The constant lattice has a fact for every number. What is its height?',
+    q: 'The constant-propagation lattice has ⊤, one element for each number, and ⊥ (every number lies between ⊤ and ⊥, and no two numbers are comparable). What is its height?',
     options: [
       {
         t: 'Infinite, like its width',
@@ -218,12 +218,12 @@ export const quiz = [
       },
       {
         t: '1',
-        why: 'There are two steps: from “no info” to a constant, and from a constant to “varies”.',
+        why: 'There are two steps: from ⊤ to a constant, and from a constant to ⊥.',
       },
       {
         t: '2',
         correct: true,
-        why: '“no info” above every constant, every constant above “varies”.',
+        why: '⊤ (no information yet) above every constant, every constant above ⊥ (varies): the longest chain has two steps.',
       },
     ],
   },

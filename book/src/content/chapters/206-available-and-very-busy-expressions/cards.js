@@ -1,4 +1,4 @@
-// Chapter 212 cards: recall prompts, examples, exercises and quiz.
+// Chapter 206 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -267,7 +267,7 @@ function available(blocks, all, entry) {
 
 export const quiz = [
   {
-    q: 'A block is `t = a + b; a = 1`. In available expressions, which is right?',
+    q: 'A block is `t = a + b; a = 1`. In available expressions, which gen and kill sets are right?',
     options: [
       {
         t: 'gen = {a+b}, kill = { }',
@@ -321,7 +321,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The `then` branch of an `if` is `x = a + b`, and the `else` branch is `a = 0; y = a + b`. Can `a + b` be hoisted above the `if`?',
+    q: 'The `then` branch of an `if` is `x = a + b`, and the `else` branch is `a = 0; y = a + b`. Can `a + b` be hoisted to just before the `if`?',
     options: [
       {
         t: 'Yes: both branches compute a + b.',
@@ -339,7 +339,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which pair is right?',
+    q: 'Which pair of dataflow directions and meets is right?',
     options: [
       {
         t: 'Reaching definitions: backward, union. Live variables: forward, intersection.',

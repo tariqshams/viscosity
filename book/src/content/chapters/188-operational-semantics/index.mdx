@@ -68,7 +68,7 @@ if true then e₂ else e₃  →  e₂
 
 </Examples>
 
-The first is the last chapter's beta rule: a complete operational
+The first is the beta rule of *Beta-reduction and Church encodings*: a complete operational
 semantics for the lambda calculus, in one line. The second is how the
 ECMAScript standard defines assignment: numbered steps, run in order,
 which settle that the left side is evaluated before the right
@@ -92,7 +92,7 @@ The `v`s are **values**: finished answers, which do not step. A rule
 is written with a line: above it the **premises**, facts that must
 already hold; below it the **conclusion**, which the rule then lets us
 claim. A rule with nothing above the line is an **axiom**: always true.
-(Chapter 191 reads typing rules written in exactly this form.)
+(*Reading typing rules* reads typing rules written in exactly this form.)
 
 <Formal title="Small steps for +">
 
@@ -219,8 +219,8 @@ JavaScript, printing every step:
   program is stepping until a value, and a term that cannot step is
   stuck: a runtime error, made precise.
 
-Next: rules that go from an expression straight to its value in one
-leap, and why the tree-walking interpreter has been one of those all
+Next: *Big-step semantics and the interpreter*, rules that go from an
+expression straight to its value in one leap, and why the tree-walking interpreter has been one of those all
 along.
 
 <Quiz />

@@ -1,4 +1,4 @@
-// Chapter 204 cards: recall prompts, examples, exercises and quiz.
+// Chapter 193 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,31 +7,31 @@ export const prompts = {
     a: 'The type the programmer declared with the type the checker computes for the code, reporting both when they differ.',
   },
   'annot-compare': {
-    q: 'For `let total: number = "3";`, which two types meet, and where does each come from?',
+    q: 'When a type checker checks `let total: number = "3";`, which two types meet, and where does each come from?',
     a: '`number` from the annotation and `string` from `typeOf` on the value `"3"`; they differ, so it is an error.',
   },
   'annot-empty': {
-    q: 'How does `let xs: [string] = [];` get past the rule that an empty list has no type?',
+    q: 'In a checker that cannot compute a type for `[]` on its own, how does `let xs: [string] = [];` still check?',
     a: 'The checker checks `[]` against the declared `[string]` instead of computing a type for it.',
   },
   'signature-what': {
-    q: 'What is a function’s signature in typed Drip?',
+    q: 'To a type checker, what is a function’s signature?',
     a: 'Its parameter types and result type, as a function type such as `fn(number, number) -> number`.',
   },
   'call-three-checks': {
-    q: 'What three things does the checker test at a call `f(a, b)`?',
+    q: 'In a language without overloading, optional parameters or subtyping, what three things does a type checker test at a call `f(a, b)`?',
     a: 'That `f` has a function type, that the argument count matches, and that each argument has its parameter’s type.',
   },
   'sig-first': {
-    q: 'Why does the checker add a function’s signature to Γ before checking its body?',
+    q: 'Why does a type checker add a function’s declared signature to Γ before checking its body?',
     a: 'So that the body can call the function itself (recursion).',
   },
   'every-path': {
-    q: 'Why must a function declared to return a `number` return on every path?',
+    q: 'In a language where a function that falls off its end returns `none`, why must a function declared to return a `number` return on every path?',
     a: 'Otherwise it could fall off the end and return `none` where a number was promised, breaking soundness.',
   },
   'body-env': {
-    q: 'In which environment is a function body checked?',
+    q: 'In which type environment is a function’s body checked?',
     a: 'A copy of Γ (already holding the function’s signature) with each parameter added at its declared type.',
   },
 };
@@ -1004,7 +1004,7 @@ function checkCall(e, env) {
 
 export const quiz = [
   {
-    q: 'Which line does the checker reject?',
+    q: 'A type checker has `number`, `string`, `bool` and list types, and `<` needs two numbers. Which line does it reject?',
     options: [
       {
         t: '`let n: number = 6 * 7;`',
@@ -1026,7 +1026,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`area : fn(number, number) -> number`. What is wrong with `let a: string = area(3, 4);`?',
+    q: 'With `area : fn(number, number) -> number` in Γ, what does a type checker say about `let a: string = area(3, 4);`?',
     options: [
       {
         t: 'Nothing',
@@ -1044,7 +1044,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'When the checker checks a call to `area`, does it look at `area`’s body?',
+    q: 'When a type checker checks a call to a function with a declared signature, does it look at the function’s body?',
     options: [
       {
         t: 'Yes, to see what it returns',
@@ -1062,7 +1062,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`fn sign(n: number): string { if n < 0 { return "-"; } }`. Why is it rejected?',
+    q: 'In a language where falling off the end of a function returns `none`, why does a type checker reject `fn sign(n: number): string { if n < 0 { return "-"; } }`?',
     options: [
       {
         t: '`n < 0` is not a `bool`',
@@ -1080,7 +1080,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why must the checker add `fact`’s signature to Γ before checking the body of `fn fact(n: number): number { ... fact(n - 1) ... }`?',
+    q: 'Why must a type checker add `fact`’s signature to Γ before checking the body of `fn fact(n: number): number { ... fact(n - 1) ... }`?',
     options: [
       {
         t: 'Because the body calls `fact`, and that call must be checked against the signature',

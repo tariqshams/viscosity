@@ -134,11 +134,11 @@ show(42); // number <: number | string
 The first is the Pixel and Point check from the stepper. The second
 is depth: the outer records have the same single field `pos`, and the
 types of `pos` are related by width, so the outer records are related
-too. The third is a subtype you already know from chapter 29: a value
+too. The third is a subtype you already know from *TypeScript II: unions and narrowing*: a value
 of type `number` can go wherever `number | string` is expected, since
 it is one of the two allowed kinds. (Depth is safe as written only when
-fields are read and never written; the next chapter shows why
-writing breaks it.)
+fields are read and never written; *Variance: functions, arrays and
+mutation* shows why writing breaks it.)
 
 <Prompts ids={['subtype-what', 'subsumption', 'width', 'depth', 'direction']} />
 
@@ -227,7 +227,7 @@ OpenJDK 21's javac.)
 - **Structural** subtyping (TypeScript) goes by shape; **nominal**
   subtyping (Java) goes by declared names.
 
-Next: what subtyping does to function types and arrays, where one of
+Next: *Variance: functions, arrays and mutation*, what subtyping does to function types and arrays, where one of
 the arrows turns round.
 
 <Quiz />

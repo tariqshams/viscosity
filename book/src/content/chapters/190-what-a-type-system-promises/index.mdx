@@ -34,7 +34,7 @@ print label(120);  # runtime error
 
 The first two calls print `5` and `7`, because small numbers never
 reach line 3; the third reaches it and stops with `cannot add a string
-and a number`. This is exactly what chapter 58 promised (types are
+and a number`. This is exactly what *Meet Drip* promised (types are
 checked on values, as each operation runs); however, if every test you
 wrote used small numbers, the mistake would wait, quietly, for the
 first real customer with a big order. The question of the next few
@@ -112,7 +112,7 @@ rules, not by common sense.
 Drip checks types **dynamically**: each operation looks at the
 values it is given, as it runs. TypeScript checks types **statically**:
 a checker reads the whole source and works out the type of every
-expression before anything runs (and then, as chapter 28 showed, the
+expression before anything runs (and then, as *Interfaces, erasure and typeof* showed, the
 types are erased<Cite id="ts-basics" />). Step through both:
 
 <CheckTimeline client:visible />
@@ -258,7 +258,7 @@ below pass `tsc --strict` (TypeScript 5.9) and then crash:
 <Examples of="type-soundness-intro">
 
 ```
-# typed Drip (chapter 192): accepted,
+# typed Drip (built later): accepted,
 # and it can never add a string to n
 fn twice(n: number): number {
   return n + n;
@@ -281,7 +281,7 @@ In the first, a sound checker's promise holds: `n` is a number in
 every run, so `+` always has a rule. The second fools TypeScript, which
 types `xs[0]` as `number` although the array is empty (the option
 `noUncheckedIndexedAccess` closes this hole). In the runnable one, `ns`
-and `all` are two names for one array (chapter 7's aliasing); a string
+and `all` are two names for one array (the aliasing of *References: two names, one object*); a string
 goes in through `all` and comes out through `ns`, where a number was
 promised. The chapter *Variance: functions, arrays and mutation*
 explains why TypeScript allows this.
@@ -290,7 +290,8 @@ explains why TypeScript allows this.
 
 ## Your turn
 
-Checking one operator is chapter 66's evaluator again, run on types
+Checking one operator is the evaluator of *Running expressions: a
+tree that computes* again, run on types
 instead of values: where `evaluate` took `3` and `"a"`, this takes
 `'number'` and `'string'`.
 
@@ -308,7 +309,7 @@ instead of values: where `evaluate` took `3` and `"a"`, this takes
 - A **sound** type system promises that accepted programs never get
   stuck on a type error; TypeScript chose not to be sound.
 
-Next: the notation every type system is written in, read aloud one
+Next: *Reading typing rules*, the notation every type system is written in, read aloud one
 symbol at a time.
 
 <Quiz />

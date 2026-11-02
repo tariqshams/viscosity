@@ -20,7 +20,7 @@ import InferTree from '../../../components/diagrams/ch197/InferTree';
 
 We now have every piece: unification with the occurs check (the
 chapters *Unification* and *Inferring types, and the occurs check*), and schemes with generalisation at `let` and instantiation at
-each use (the last chapter). What is missing is the order to use them
+each use (*Hindley–Milner type inference*). What is missing is the order to use them
 in. Given any term of our small language, with not one annotation in
 it, we want a single function that either returns its type or says
 precisely why there is none. Milner's 1978 paper gave exactly such a
@@ -199,6 +199,6 @@ the substitution), `generalize` and `instantiate`; you write W itself.
   types.
 
 Next: a different way for types to relate, where one type can stand in
-for another: subtyping.
+for another: *Subtyping and variance*.
 
 <Quiz />

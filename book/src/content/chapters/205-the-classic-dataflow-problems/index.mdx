@@ -18,8 +18,7 @@ import ReachSteps from '../../../components/diagrams/ch205/ReachSteps';
 
 ## Which assignment was it?
 
-Here is the loop from the last chapter again, with every assignment
-given a label, `d1` to `d5` (the `d` is for **definition**, the
+Here is a small loop, with every assignment given a label, `d1` to `d5` (the `d` is for **definition**, the
 compiler's word for an instruction that gives a variable a value):
 
 ```text
@@ -38,8 +37,8 @@ Stand at `print x` and ask: which of these assignments could have given
 `x` the value it has right now? If the loop ran zero times, it was `d2`
 (`x = 0`); if it ran at least once, it was `d4`. A compiler wants this
 answer all the time: if only one definition can reach a use, and that
-definition is a constant, the use can be replaced by the constant (the
-Sparse conditional constant propagation chapter does exactly that); and if two
+definition is a constant, the use can be replaced by the constant (*Dataflow,
+fixpoints and constant propagation* does exactly that); and if two
 can, they meet somewhere, which is where SSA puts a phi. This question
 is called **reaching definitions**, and to answer it we first need a
 compact way to describe what each block does to the answer.
@@ -203,8 +202,8 @@ reaches the use. The second is a join: both definitions arrive and
 both are kept, because the analysis cannot know which branch ran. The
 third is the realistic one, from the table: at the loop test, two
 definitions of `i` reach, `i = 0` from before the loop and `i = i + 1`
-from its body, and that is precisely the place, and the reason, the
-SSA chapters put a phi for `i`. SSA makes reaching definitions
+from its body, and that is precisely the place, and the reason, SSA construction puts a
+phi for `i`. SSA makes reaching definitions
 unnecessary for local variables, since each use names its one
 definition and phis mark the joins; however, for variables SSA does
 not track, such as fields stored in memory, the question comes back.
@@ -217,7 +216,7 @@ is assigned: at `print y`, the set `{d3}` says only which definitions
 may reach, not that there is also a path (the loop running zero times)
 on which none does. To ask that, add a pretend definition "y is
 undefined" at the entry, or use the "definitely assigned" analysis of
-the Dataflow analysis chapter.
+*Dataflow, fixpoints and constant propagation*.
 </Callout>
 
 <Callout kind="engine" label="Under the hood">
@@ -246,7 +245,7 @@ clearest way to learn the framework<Cite id="coopertorczon2022" />.
   every OUT starting empty, iterated to a fixpoint.
 - Where several definitions of a variable reach a join, SSA needs a phi.
 
-Next: two "must" problems, one forward and one backward, built from the
+Next: *Available and very busy expressions*, two "must" problems, one forward and one backward, built from the
 same gen and kill sets.
 
 <Quiz />

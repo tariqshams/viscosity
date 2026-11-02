@@ -18,7 +18,7 @@ import OccursLoop from '../../../components/diagrams/ch195/OccursLoop';
 
 ## Putting the pieces together
 
-The last chapter built the two parts of inference separately: type
+*Unification* built the two parts of inference separately: type
 variables for what we do not know, and `unify` for solving one equation.
 Joined up, they infer types like this, for a function with no
 annotations at all:
@@ -33,7 +33,7 @@ annotations at all:
 3. At the end, apply the substitution to the function's type.
 
 That is the whole method; the rest of this section runs it. (It is the
-heart of what chapter 196 calls Hindley–Milner inference, and of
+heart of what *Hindley–Milner type inference* calls Hindley–Milner inference, and of
 Pierce's "type reconstruction"<Cite id="pierce2002" />.)
 
 ```
@@ -169,7 +169,7 @@ already says `'b` is `['a]`, so binding `'a ↦ 'b` would mean
   as `['a]`; without it, unification builds an infinite type and never
   finishes.
 
-Next: what to do with a leftover variable like the `'a` in
+Next: *Hindley–Milner type inference*, what to do with a leftover variable like the `'a` in
 `fn('a) -> 'a`, so that one function can be used at many types.
 
 <Quiz />

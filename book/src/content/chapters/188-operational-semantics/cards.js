@@ -1,4 +1,4 @@
-// Chapter 89 cards: recall prompts, examples, exercises and quiz.
+// Chapter 188 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,8 +15,8 @@ export const prompts = {
     a: 'Its rules follow the structure of the syntax: one or a few rules for each kind of expression, defined in terms of its parts.',
   },
   'premise-conclusion': {
-    q: 'In a rule written with a line, what goes above the line and what below?',
-    a: 'Above: the premises, which must already hold. Below: the conclusion, which the rule then lets you claim. No premises: an axiom.',
+    q: 'In an inference rule written with a horizontal line, which side of the line holds the premises and which the conclusion?',
+    a: 'The premises, which must already hold, go over the line; the conclusion, which the rule then lets you claim, goes under it. A rule with no premises is an axiom.',
   },
   'values-dont-step': {
     q: 'Why does no small-step rule apply to `7` or `true`?',
@@ -27,7 +27,7 @@ export const prompts = {
     a: 'e steps to e′ in exactly one step of computation, justified by the rules.',
   },
   'derivation-what': {
-    q: 'What is a derivation, for a step deep inside a term?',
+    q: 'In a structural small-step semantics, what is the derivation of a step that happens deep inside a term?',
     a: 'A tree of rules: an axiom at the top (the actual change), with one rule per level of nesting below it, down to the whole term’s step.',
   },
   'stuck-what': {
@@ -35,12 +35,12 @@ export const prompts = {
     a: 'A term that is not a value but has no rule to step by, like `true + 1`: a runtime error, stated precisely.',
   },
   deterministic: {
-    q: 'What does it mean that these small-step rules are deterministic?',
-    a: 'At most one rule applies to any term, so each program has exactly one way to run.',
+    q: 'What does it mean for a small-step semantics to be deterministic?',
+    a: 'Every term steps to at most one next term, so each program has exactly one way to run.',
   },
   'left-first': {
-    q: 'Which rule makes the left side of `+` go before the right side?',
-    a: 'AddR: it only applies when the left side is already a value, so while the left side can step, only AddL applies.',
+    q: 'A small-step semantics has AddL (step the left operand of `+`) and AddR (step the right operand). What makes `+` evaluate left to right?',
+    a: 'AddR’s premise requires the left operand to be a value already, so while the left side can still step, only AddL applies.',
   },
 };
 
@@ -365,7 +365,7 @@ function run(e) {
 
 export const quiz = [
   {
-    q: 'What does `(2 + 3) + (4 + 5)` step to, in one small step?',
+    q: 'Under small-step rules that evaluate `+` left to right, what does `(2 + 3) + (4 + 5)` step to in one step?',
     options: [
       {
         t: '`5 + 9`',
@@ -383,7 +383,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these is stuck?',
+    q: 'In a small-step semantics where `if` needs a boolean condition (there is no truthiness), which of these terms is stuck?',
     options: [
       {
         t: '`if true then 1 else false`',
@@ -401,7 +401,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'How many rules are used in the derivation of `(1 + 2) + 3 → 3 + 3`?',
+    q: 'Small-step rules: an axiom Add sums two numbers, and AddL steps the left operand of `+`. How many rule uses are in the derivation of `(1 + 2) + 3 → 3 + 3`?',
     options: [
       {
         t: 'Two: Add at the top, AddL below it',
@@ -419,7 +419,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does a rule with nothing above its line say?',
+    q: 'What does an inference rule with no premises say?',
     options: [
       {
         t: 'That the rule is not finished yet',
@@ -437,7 +437,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `if 1 < 2 then 5 else true` run to `5` without any problem with the `true` branch?',
+    q: 'In a small-step semantics for an untyped language, why does `if 1 < 2 then 5 else true` run to `5` without any problem with the `true` branch?',
     options: [
       {
         t: 'Because `true` is converted to a number first',

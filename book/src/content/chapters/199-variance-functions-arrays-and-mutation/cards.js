@@ -1,4 +1,4 @@
-// Chapter 92 cards: recall prompts, examples, exercises and quiz.
+// Chapter 199 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,23 +7,23 @@ export const prompts = {
     a: 'How subtyping between parts (S <: T) carries over to types built from them: same direction, turned round, or not at all.',
   },
   'results-co': {
-    q: 'Why is `() => Dog` a subtype of `() => Animal`?',
+    q: 'If `Dog <: Animal`, why is `() => Dog` a subtype of `() => Animal`?',
     a: 'Whoever expects an Animal back is happy to get a Dog: results are covariant.',
   },
   'params-contra': {
-    q: 'Which is the subtype: `(a: Animal) => void` or `(d: Dog) => void`?',
+    q: 'If `Dog <: Animal`, which is the subtype in a sound type system: `(a: Animal) => void` or `(d: Dog) => void`?',
     a: '`(a: Animal) => void`: a function that takes any animal can stand in for one that will only be given dogs. Parameters are contravariant.',
   },
   'arrow-why': {
-    q: 'Why can `(d: Dog) => void` not be used as `(a: Animal) => void`?',
+    q: 'If `Dog <: Animal`, why can a sound type system not let `(d: Dog) => void` be used as `(a: Animal) => void`?',
     a: 'Its caller may pass any animal, such as a cat, and the function would then use dog-only members on it.',
   },
   'readonly-co': {
-    q: 'Why may `readonly Dog[]` be a subtype of `readonly Animal[]`?',
+    q: 'If `Dog <: Animal`, why may `readonly Dog[]` soundly be a subtype of `readonly Animal[]`?',
     a: 'A read-only array is only read, and reading a Dog where an Animal is expected is safe.',
   },
   'mutable-inv': {
-    q: 'Why must mutable arrays be invariant?',
+    q: 'In a sound type system, why must mutable arrays be invariant in their element type?',
     a: 'Reading needs covariance and writing (a parameter, like push’s) needs contravariance; only equal element types satisfy both.',
   },
   'ts-arrays': {
@@ -383,7 +383,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is a mutable array’s element type invariant, rather than covariant or contravariant?',
+    q: 'In a sound type system, why is a mutable array’s element type invariant, rather than covariant or contravariant?',
     options: [
       {
         t: 'Because arrays have a length',
@@ -392,7 +392,7 @@ export const quiz = [
       {
         t: 'Because reading needs the same direction and writing needs the opposite, and only equal types satisfy both',
         correct: true,
-        why: 'An element type that is both a subtype and a supertype of the other is (for our purposes) the same type.',
+        why: 'An element type that is both a subtype and a supertype of the other is the same type (up to equivalence).',
       },
       {
         t: 'Because of TypeScript’s design goals',

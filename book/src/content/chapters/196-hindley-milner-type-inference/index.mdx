@@ -3,7 +3,7 @@ n: 196
 day: 8
 part: XI
 title: 'Hindley–Milner type inference'
-tagline: 'An identity function works on numbers and on booleans, yet the inference of the last chapter rejects a program that uses it on both. One small idea, a type with a blank in it, copied afresh at every use, fixes that without a single annotation.'
+tagline: 'An identity function works on numbers and on booleans, yet simple unification-based inference rejects a program that uses it on both. One small idea, a type with a blank in it, copied afresh at every use, fixes that without a single annotation.'
 objectives:
   - Explain why inference with one type per name rejects a program that uses `id` at two types.
   - Read a type scheme such as ∀α. α → α aloud, and say what it promises.
@@ -88,7 +88,7 @@ Hindley, who found the same idea in logic in 1969<Cite id="hindley1969" />,
 and Milner, who brought it to programming.
 </Callout>
 
-From now on we use a small language, the lambda calculus of chapter 186
+From now on we use a small language, the lambda calculus of *The lambda calculus*
 with numbers, booleans, `if` and `let`:
 
 ```text
@@ -249,7 +249,7 @@ scope, so only `β` gets a ∀, and `α` stays shared with `x`. The third
 is `k`: both blanks are copied, the arguments settle them, and the
 result is the copy of `α`, which is now `number`. TypeScript does
 something similar when it infers `T` for a call of a generic function
-(chapter 36), but there you write `<T>` yourself; Hindley–Milner finds
+(*TypeScript III: generics in depth*), but there you write `<T>` yourself; Hindley–Milner finds
 the ∀ with no annotation at all<Cite id="ts-generics" />, and Damas and
 Milner proved that the type it finds is the most general one the
 program has<Cite id="damas1982" />.
@@ -294,7 +294,8 @@ language with mutation needs this rule<Cite id="pierce2002" />.
 - With mutation, generalise only syntactic values (the value
   restriction).
 
-Next: putting it all together as algorithm W, which infers a type for
-every program in the small language, and the implementation of it.
+Next: *Algorithm W, step by step*, which puts it all together into one
+algorithm that infers a type for every typable program in the small
+language, and an implementation of it.
 
 <Quiz />

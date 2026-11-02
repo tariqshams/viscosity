@@ -1,17 +1,17 @@
-// Chapter 90 cards: recall prompts, examples, exercises and quiz.
+// Chapter 194 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'tv-what': {
     q: 'What is a type variable?',
-    a: 'A placeholder for a type the checker does not know yet, such as α (written `\'a` in our code).',
+    a: 'A placeholder for a type the checker does not know yet, such as α (often written `\'a`, as in ML).',
   },
   'tv-equation': {
-    q: 'Checking `x * 2` where `x` has type `\'a`, what does the checker write down instead of failing?',
+    q: 'An inferring type checker meets `x * 2` where `x` has the unknown type `\'a` and `*` needs numbers. What does it record instead of failing?',
     a: 'The equation `\'a = number`, because `*` needs a number.',
   },
   'tv-leftover': {
-    q: 'Why does `fn same(x) { return x; }` keep a variable in its type, `fn(\'a) -> \'a`?',
+    q: 'Why does type inference leave a type variable in the type of `fn same(x) { return x; }`, giving `fn(\'a) -> \'a`?',
     a: 'Nothing in the body constrains `x`, so it works for any type, like TypeScript’s `<T>(x: T) => T`.',
   },
   'subst-what': {
@@ -499,7 +499,7 @@ function unify(a, b, s) {
 
 export const quiz = [
   {
-    q: 'What does `fn double(x) { return x * 2; }` tell the checker about `x`, whose type is `\'a`?',
+    q: 'If `*` takes only numbers, what does `fn double(x) { return x * 2; }` tell an inferring checker about `x`, whose type is `\'a`?',
     options: [
       {
         t: 'Nothing, since `x` has no annotation',
@@ -575,7 +575,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is applying a type substitution simpler than chapter 186’s substitution in λ-terms?',
+    q: 'Why is applying a substitution to simple types (with no ∀) simpler than substitution in λ-terms?',
     options: [
       {
         t: 'Types have no λ that binds variables, so nothing can be captured and nothing needs renaming',
