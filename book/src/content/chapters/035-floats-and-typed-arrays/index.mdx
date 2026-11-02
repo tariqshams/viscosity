@@ -228,7 +228,7 @@ array. The second shows the conversions: an `Int32Array` drops the
 fraction, and a `Uint8Array` (one byte, no sign, 0 to 255) keeps only
 the low 8 bits, so `256` becomes `0` and `300` becomes `44` (300 − 256).
 The third is the payoff, the struct-of-arrays layout from the chapter on
-objects: one column per field, here the positions `x` and speeds `vx` of
+arrays of objects: one column per field, here the positions `x` and speeds `vx` of
 three particles, moved half a step.
 
 <Figure takeaway="Columns are solid blocks of numbers; objects are reached through arrows." caption="The same three particles twice. Above, an array of arrows to separate objects. Below, one Float64Array per field: 3 × 8 = 24 bytes of numbers in a row, with nothing to follow.">

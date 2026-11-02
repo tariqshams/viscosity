@@ -228,7 +228,7 @@ test('keys come from the first record', () => {
 - \`  for (const k of Object.keys(xs[0])) { cols[k] = []; }\` one empty column per key of the first record.
 - \`  for (const x of xs) {\` then each record in order...
 - \`    for (const k of Object.keys(cols)) {\` ...and each column...
-- \`      cols[k].push((x as any)[k]);\` ...gets that record's value. \`x as any\` tells the checker to stop checking this one read (an *assertion*: you take responsibility).
+- \`      cols[k].push((x as any)[k]);\` ...gets that record's value. \`x as any\` tells the checker to stop checking this one read (a *type assertion*, nothing to do with a test's assertions: you take responsibility).
 - \`  return cols;\` the finished columns.
 
 **Common wrong attempts.**

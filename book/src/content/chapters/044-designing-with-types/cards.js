@@ -330,7 +330,7 @@ export const quiz = [
   {
     q: 'Viscosity’s printer writes `m.bindings[i.binding!]`. What does the `!` do?',
     options: [
-      { t: 'It tells the checker that `i.binding` is not `undefined`, without checking anything', correct: true, why: 'It is an assertion, erased like every type; if the value were missing, nothing would stop it at run time.' },
+      { t: 'It tells the checker that `i.binding` is not `undefined`, without checking anything', correct: true, why: 'It is a non-null assertion (a promise to the checker, not a test), erased like every type; if the value were missing, nothing would stop it at run time.' },
       { t: 'It throws if `i.binding` is `undefined`', why: 'No check happens at run time: `!` is removed with the types.' },
       { t: 'It negates the value, like `!x`', why: 'A `!` *after* an expression is a different thing from the `!` before one.' },
       { t: 'It makes the field required in the `Inst` type', why: 'It changes nothing about the type `Inst`; it only silences the checker at this one place.' },

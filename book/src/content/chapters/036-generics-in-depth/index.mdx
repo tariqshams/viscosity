@@ -92,7 +92,7 @@ function longer(a: HasLen, b: HasLen) {
 }
 longer('ab', 'c').toUpperCase();
 // error: Property 'toUpperCase' does not
-// exist on type '{ length: number; }'.
+// exist on type 'HasLen'.
 longest('ab', 'c').toUpperCase(); // fine
 ```
 

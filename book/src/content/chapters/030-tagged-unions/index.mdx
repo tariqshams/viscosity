@@ -219,9 +219,10 @@ is a bigger version of it.
 ## Proving every case is handled
 
 Suppose you add a third shape, `{ kind: 'tri'; b: number; h: number }`,
-and forget to update `area`. It would quietly treat a triangle as a
-rectangle and compute `s.w * s.h`, which is `NaN` (not a number), since
-a triangle has no `w`. We want the checker to point at the gap.
+and forget to update `area`. Plain JavaScript would treat it as a
+rectangle and return `NaN`; `tsc` notices only because a triangle has
+no `w`, so a new kind with both a `w` and an `h` would slip through. We
+want the checker to point at the gap every time.
 
 <Analogy title="packing from a list">
 Before a trip you cross items off a packing list as they go into the
@@ -311,8 +312,8 @@ type Instr =
 
 The first uses `Light` from earlier: both kinds are handled, so
 `l` is `never` on the last line and the code is accepted. The second
-shows why the `throw` stays: `JSON.parse` (which turns text into an
-object) makes data the checker knows nothing about, so a shape of kind
+shows why the `throw` stays: `JSON.parse` makes data the checker knows
+nothing about, so a shape of kind
 `'hex'` reaches `area`, and `unreachable` stops with a clear message
 instead of returning `NaN`. The third is how
 compilers use it: the instructions of a virtual machine are a tagged

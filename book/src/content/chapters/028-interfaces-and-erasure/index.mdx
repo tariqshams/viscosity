@@ -221,7 +221,7 @@ the program runs, as a string.
 <Callout kind="definition">
 **`typeof value`** is a string naming the run-time kind of `value`:
 `'number'`, `'string'`, `'boolean'`, `'undefined'`, `'function'` or
-`'object'`. It exists in plain JavaScript and survives erasure, so it is
+`'object'` (or, for two rarer kinds, `'bigint'` and `'symbol'`). It exists in plain JavaScript and survives erasure, so it is
 how a running program checks data it was never able to type-check.
 Beware one old quirk: `typeof null` is `'object'`.
 </Callout>

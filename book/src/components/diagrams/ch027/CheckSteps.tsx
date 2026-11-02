@@ -25,7 +25,7 @@ const STATES: S[] = [
   { line: 5, rows: [MUL, TOTAL, LABEL], ok: 'number + number is a number', note: 'total + 1 is a number, and total holds numbers, so this assignment is fine.' },
   { line: 6, rows: [MUL, TOTAL, LABEL], err: "Type 'number' is not assignable to type 'string'.", note: 'total is a number, but label may only hold strings. The checker reports this line, with the reason, and carries on reading.' },
   { line: 7, rows: [MUL, TOTAL, LABEL], err: "Argument of type 'string' is not assignable|to parameter of type 'number'.", note: '\'3\' is a string, but mul’s parameter a is labelled number. A second report.' },
-  { line: null, rows: [MUL, TOTAL, LABEL], err: '2 errors found. Not one line has run.', note: 'Both mistakes were found without running the program. Fix them, run the checker again, and it says nothing at all: that silence is the success message.' },
+  { line: null, rows: [MUL, TOTAL, LABEL], err: 'Found 2 errors. Not one line has run.', note: 'Both mistakes were found without running the program. Fix them, run the checker again, and it says nothing at all: that silence is the success message.' },
 ];
 
 export default function CheckSteps() {
