@@ -3,40 +3,102 @@
 
 export const prompts = {
   'cs-why-struct': {
-    q: 'Why doesn’t drip-rs write its compiler as one function with closures over shared variables, like the TypeScript one?',
-    a: 'Closures that write a shared variable each hold a mutable borrow of it, so they can’t coexist (E0502), and a closure can’t call itself recursively.',
+    q: 'Why doesn’t drip-rs write its compiler as one function whose helpers are closures over shared variables, as the TypeScript one is?',
+    a: 'A closure that writes a variable holds a mutable borrow of it while it may still be called, so a second closure cannot even read it (E0502).',
   },
   'cs-closure-borrow': {
-    q: 'A closure does `pos += 1`. How long does it borrow `pos`, and how?',
+    q: 'A closure does `pos += 1`. How does it borrow `pos`, and for how long?',
     a: 'Mutably, for as long as the closure may still be called. Nothing else may read or write `pos` in that time.',
   },
   'cs-lifetimes': {
     q: 'What do the two lifetimes in `Compiler<\'src, \'a>` stand for?',
-    a: '`\'src` is the source text that tokens and local names borrow. `\'a` is the caller’s heap, roots and error list.',
+    a: '`\'src` is the source text that tokens and local names borrow; `\'a` is what the caller lends: its `Heap` and its GC roots.',
   },
   'cs-tokens': {
     q: 'Why are drip-rs tokens cheap to copy?',
     a: 'A `Token<\'src>` is a kind, a line and a `&str` slice of the source: it is `Copy` and never copies text.',
   },
   'cs-vec': {
-    q: 'The TypeScript compiler links nested functions through `enclosing`. What does drip-rs use?',
-    a: 'A `Vec<FunctionState>` used as a stack, innermost last. `state()` returns `functions.last_mut()`.',
+    q: 'The TypeScript compiler links nested functions through `enclosing`. What does drip-rs use instead?',
+    a: 'A `Vec<FunctionState>` used as a stack, innermost last; `state()` returns `functions.last_mut()`.',
   },
   'cs-level': {
-    q: 'How does `resolve_upvalue` name the enclosing function without holding a reference to it?',
+    q: 'How does `resolve_upvalue` reach the enclosing function without holding a reference to it?',
     a: 'By index: it takes a `level` and looks in `self.functions[level - 1]`. A number borrows nothing.',
   },
   'cs-read-first': {
-    q: 'Why does `self.chunk().lines.push(self.line)` fail, and what is the fix?',
-    a: '`self.chunk()` borrows all of `self` mutably until the push ends, so reading `self.line` inside it is E0503. Read it into a local first.',
+    q: 'Why does `self.chunk().write(byte, self.previous.line)` fail to compile, and what is the fix?',
+    a: '`self.chunk()` borrows all of `self` mutably until `write` ends, so reading `self.previous.line` inside it is E0503. Read the line into a local first.',
   },
   'cs-errors': {
-    q: 'How does drip-rs’s `compile` say “there were errors”?',
-    a: 'It returns `None`: `(!compiler.had_error).then_some(function)`. The messages are already in the borrowed error list.',
+    q: 'A program has both a syntax error and a broken static rule. Which does drip-rs report?',
+    a: 'Only the syntax error: `compile` appends `static_errors` only when `syntax_errors` is empty.',
   },
 };
 
-export const examples = {};
+export const examples = {
+  'shared-state': {
+    lang: 'rust',
+    title: 'State in a struct, helpers as methods',
+    code: `// The state lives in one struct; every
+// helper borrows it as &mut self.
+struct Lexer {
+    src: Vec<char>,
+    pos: usize,
+    out: Vec<String>,
+}
+
+impl Lexer {
+    fn peek(&self) -> char {
+        let i = self.pos;
+        *self.src.get(i).unwrap_or(&'$')
+    }
+    fn letter(&self) -> bool {
+        self.peek().is_alphabetic()
+    }
+    fn advance(&mut self) -> char {
+        let c = self.peek();
+        self.pos += 1;
+        c
+    }
+    fn word(&mut self) {
+        let mut w = String::new();
+        while self.letter() {
+            w.push(self.advance());
+        }
+        self.out.push(w);
+    }
+    fn run(&mut self) {
+        while self.peek() != '$' {
+            if self.letter() {
+                self.word();
+            } else {
+                self.advance();
+            }
+        }
+    }
+}
+
+fn main() {
+    let s = "let x = y;";
+    let mut lx = Lexer {
+        src: s.chars().collect(),
+        pos: 0,
+        out: Vec::new(),
+    };
+    lx.run();
+    println!("{:?}", lx.out);
+
+    // The closure version. Uncomment
+    // these lines to see E0502:
+    // let mut pos = 0;
+    // let mut advance = || pos += 1;
+    // let peek = || pos;
+    // advance();
+    // println!("{}", peek());
+}`,
+  },
+};
 
 export const exercises = {
   binaryCompiler: {
@@ -229,19 +291,29 @@ fn two_products_summed() {
             Num(3.0), Num(4.0), Mul, Add]);
 }`,
     hints: [
-      'Start with `self.number();` for the left operand. Then `loop`: peek at the next character and its precedence, and `break` if it is 0 or below `min`.',
-      'Read the operator into a local (`let op = self.peek();`) before you `advance` and recurse: by the time the right operand is compiled, `peek()` shows something else.',
-      'Compile the right operand with `self.expr(p + 1)`, one level tighter, so an equal-precedence operator is left for this loop. Then push the `Op` for `op`.',
+      'Start with one operand, `self.number();`. Then `loop`: look at the next character and its precedence, and `break` if the character is not an operator (precedence 0) or binds more loosely than `min`.',
+      'Save the operator in a local (`let op = self.peek();`) before you `advance` and recurse: once the right operand is compiled, `peek()` shows a different character.',
+      'Compile the right operand with `self.expr(p + 1)`, one level tighter, so an operator of the same precedence is left for this loop; then push the `Op` that matches `op`.',
     ],
-    walkthrough: `**The shape.** This is drip-rs's \`parse_precedence\` with the table folded into \`prec\`: one prefix (a number), then a loop of infix operators that bind at least as tightly as \`min\`.
+    walkthrough: `**How to think about it.** This is drip-rs's \`continue_expression\` with the table folded into \`prec\`: one prefix (a number), then a loop that absorbs infix operators while they bind at least as tightly as \`min\`. Before writing it, compile \`1+2*3\` by hand: \`1\`, then \`+\` (precedence 1, allowed at \`min\` 1), whose right operand is \`2*3\` (the \`*\` is allowed in because 2 is at least 1 + 1), and only then \`Add\`. The other thing to keep in mind is the state: every helper is a method, so \`expr\` can call \`number\`, \`peek\`, \`advance\` and itself, each lending the whole \`Compiler\` and getting it back.
 
-**State through \`&mut self\`.** \`expr\` calls \`number\`, \`peek\`, \`advance\` and itself, and each call lends the whole \`Compiler\` and gets it back. Nothing is captured, nothing conflicts.
+**The solution, line by line.**
 
-**Read first.** \`let op = self.peek();\` saves the operator before \`self.expr(p + 1)\` moves \`pos\` past the right operand, just as drip-rs's \`binary\` saves \`self.previous.kind\` before recursing.
+- \`fn expr(&mut self, min: u8) {\` borrows the compiler mutably for the whole call; \`min\` is the loosest operator allowed to join.
+- \`self.number();\` compiles the left operand, which pushes \`Num(...)\` onto \`self.code\`.
+- \`loop {\` repeats once per operator absorbed.
+- \`let op = self.peek();\` reads the next character into a local: the read-first habit, because the recursion below moves \`pos\` on.
+- \`let p = prec(op);\` looks its precedence up (0 for anything that is not an operator, including the end of the input).
+- \`if p == 0 || p < min { break; }\` stops at the end of the input, or at an operator that binds too loosely for this call; that operator is left for an outer call.
+- \`self.advance();\` consumes the operator.
+- \`self.expr(p + 1);\` compiles the right operand one level tighter, so the second \`-\` in \`8-3-2\` cannot join it and comes back to this loop: \`(8-3)-2\`.
+- \`self.code.push(match op { '+' => Op::Add, ... });\` emits the operator after both operands, because a stack machine needs them both on the stack first.
 
-**Why \`p + 1\`.** The right operand of \`-\` in \`8-3-2\` is compiled with minimum 2, so the second \`-\` (precedence 1) can't join it. Control returns to this loop, which emits the first \`Sub\` and then picks up the second \`-\`: \`(8-3)-2\`. That's \`Precedence::next()\` in drip-rs.
+**Common wrong attempts.**
 
-**Why the push comes after.** Stack bytecode is postfix: both operands must be on the stack before the operator runs.`,
+- \`self.expr(p)\` instead of \`p + 1\`: an operator of the same precedence joins the right operand, so \`8-3-2\` compiles as \`8-(3-2)\`, which is 7, not 3.
+- Pushing the \`Op\` before compiling the right operand: \`1+2\` becomes \`[Num(1), Add, Num(2)]\`, and \`Add\` runs with only one operand on the stack.
+- Calling \`self.peek()\` again after the recursion to decide which \`Op\` to push: by then \`pos\` has moved past the right operand, and you read the wrong character.`,
     wrong: [
       {
         code: `#[derive(Clone, Copy, Debug, PartialEq)]
@@ -606,15 +678,27 @@ fn double_negation() {
         vec![Num(3.0), Neg, Neg]);
 }`,
     hints: [
-      'Check `self.peek() == \'-\'`. If so, `self.advance()` past it.',
-      'The operand is an expression in which only operators tighter than unary may appear. With precedences 1 and 2 for the binary operators, that is `self.expr(3)`: just the operand itself.',
-      'Then push `Op::Neg`. In the `else` branch, call `self.number()`.',
+      'Check `self.peek() == \'-\'`. If it is, `self.advance()` past it.',
+      'The operand may only contain operators tighter than unary minus. With precedences 1 and 2 for the binary operators, that is `self.expr(3)`, which stops before any binary operator.',
+      'After the operand, push `Op::Neg`. In the `else` branch, call `self.number()`.',
     ],
-    walkthrough: `**Prefix position.** A \`-\` at the start of an operand can't be subtraction, because there is nothing on its left. That is the Pratt idea from chapter 85: the same token has a prefix rule and an infix rule, and the position decides which. In drip-rs's table, \`Minus\` has \`unary\` as its prefix and \`binary\` as its infix.
+    walkthrough: `**How to think about it.** A \`-\` at the start of an operand cannot be subtraction, because nothing is on its left; that is the idea of *Prefix and infix operators*: one token, two rules, and its position decides which. So \`prefix\` only has to ask "is the next character a minus?", and if so compile a negated operand. The question is how much the operand may contain, and the answer is: only things tighter than unary minus, so \`-2*3\` is \`(-2)*3\`.
 
-**Its operand.** drip-rs's \`unary\` calls \`parse_precedence(Precedence::Unary)\`. Here that is \`self.expr(3)\`: no binary operator has precedence 3, so the loop stops at once, and the operand is just a number, or another unary minus (\`--3\`).
+**The solution, line by line.**
 
-**Recursion through \`&mut self\`.** \`prefix\` calls \`expr\`, which calls \`prefix\`. Both are methods on the same struct, so this mutual recursion is simply two methods lending each other the compiler. With closures, it couldn't be written at all.`,
+- \`fn prefix(&mut self) {\` is one more method on the same struct, so \`expr\` and \`prefix\` can call each other.
+- \`if self.peek() == '-' {\` looks without consuming.
+- \`self.advance();\` consumes the minus.
+- \`self.expr(3);\` compiles the operand at the unary level: no binary operator has precedence 3 or more, so the loop in \`expr\` stops straight after one operand (which may itself start with \`-\`, as in \`--3\`).
+- \`self.code.push(Op::Neg);\` negates it, after it is on the stack.
+- \`} else { self.number(); }\` is the ordinary case.
+
+This is drip-rs's \`Prefix::Unary\` arm, which calls \`self.parse_precedence(PREC_UNARY)\` and then emits \`neg\` or \`not\`. Notice the mutual recursion, \`prefix\` calling \`expr\` calling \`prefix\`: with closures sharing \`pos\` it could not be written at all, while as methods it is two functions lending each other the compiler.
+
+**Common wrong attempts.**
+
+- \`self.expr(1)\` for the operand: it swallows \`*3\` as well, so \`-2*3\` compiles as \`-(2*3)\`, with \`Neg\` after \`Mul\`.
+- Calling \`self.number()\` straight after the minus: \`--3\` then fails, because the second \`-\` is not a digit.`,
     wrong: [
       {
         code: `#[derive(Clone, Copy, Debug, PartialEq)]
@@ -712,62 +796,50 @@ export const quiz = [
   {
     q: `Why does this fail to compile?
 \`\`\`rust
+let mut pos = 0;
 let mut advance = || pos += 1;
-let mut number = || {
-    code.push(bytes[pos]);
-    advance();
-};
+let peek = || pos;
+advance();
 \`\`\``,
     options: [
-      { t: '`advance` borrows `pos` mutably while it may still be called, so `number` can’t also read `pos`', correct: true, why: 'E0502. Two closures can’t share a variable that one of them writes.' },
-      { t: 'Closures can’t push to a `Vec`', why: 'A closure can change a captured `Vec`; it just borrows it mutably.' },
-      { t: 'A closure can’t call another closure', why: 'It can. The trouble is the overlapping borrows of `pos`.' },
+      { t: '`advance` borrows `pos` mutably while it may still be called, so `peek` cannot also borrow it', correct: true, why: 'E0502. Two closures cannot share a variable that one of them writes.' },
+      { t: 'Closures cannot capture numbers', why: 'They can capture anything in scope; the trouble is the overlapping borrows.' },
+      { t: 'A closure cannot be called before another is defined', why: 'Order of definition is not the issue; `advance` is still in use when `peek` borrows `pos`.' },
       { t: '`pos` must be declared `static`', why: 'No. drip-rs’s fix is a struct and methods, not globals.' },
     ],
   },
   {
-    q: 'In drip-rs, where does `previous`, the TypeScript compiler’s local variable, live?',
+    q: 'Where does drip-rs keep `previous`, which the TypeScript compiler keeps in a local variable of `compile`?',
     options: [
-      { t: 'In a global variable, as in clox', why: 'drip-rs has no mutable globals. It’s a struct field.' },
-      { t: 'In each parse function’s own locals', why: 'Then it couldn’t be shared between the functions that need it.' },
-      { t: 'In the heap', why: 'Tokens never go in the Drip heap. They borrow the source text.' },
+      { t: 'In each parse function’s own locals', why: 'Then it could not be shared between the functions that need it.' },
       { t: 'In a field of the `Compiler` struct, reached through `&mut self`', correct: true, why: 'Every helper is a method, so every helper can read and write `self.previous`.' },
+      { t: 'In the heap', why: 'Tokens never go in the Drip heap. They borrow the source text.' },
+      { t: 'In a mutable global variable', why: 'drip-rs has none; it is a struct field.' },
     ],
   },
   {
     q: 'What does the lifetime `\'src` in `Token<\'src>` let drip-rs avoid?',
     options: [
-      { t: 'Running the garbage collector during compilation', why: 'Lifetimes don’t control the collector. The compiler does collect, with its functions as roots.' },
-      { t: 'Copying each lexeme’s text: a token holds a `&str` slice of the source', correct: true, why: 'The lifetime promises the source outlives the tokens, so the slices stay valid.' },
+      { t: 'Running the garbage collector during compilation', why: 'Lifetimes do not control the collector; the compiler does collect, with its functions as roots.' },
       { t: 'Checking for syntax errors', why: 'Errors are still checked and reported.' },
-      { t: 'Having a scanner at all', why: 'The scanner produces the tokens. The lifetime says what they borrow.' },
+      { t: 'Copying each lexeme’s text: a token holds a `&str` slice of the source', correct: true, why: 'The lifetime promises the source outlives the tokens, so the slices stay valid.' },
     ],
   },
   {
-    q: 'Why is nesting a `Vec<FunctionState>` in drip-rs, rather than a linked list through `enclosing`?',
+    q: 'Why does drip-rs keep nested functions in a `Vec<FunctionState>` rather than a list linked through `enclosing`?',
     options: [
-      { t: 'A `Vec` is faster to iterate', why: 'Speed isn’t the point. There are rarely more than a few nested functions.' },
-      { t: 'Rust has no way to write linked lists', why: 'It does (with `Box`, for instance). Mutating several nodes at once is what gets awkward.' },
-      { t: 'Resolving an upvalue changes several functions’ states; with a `Vec` they are named by index, which borrows nothing', correct: true, why: '`resolve_upvalue(level, name)` reaches `self.functions[level - 1]` through the one `&mut self`.' },
-      { t: 'The garbage collector needs a `Vec`', why: 'The functions are roots either way. A `Vec` is just convenient to pass.' },
+      { t: 'A `Vec` is faster to walk', why: 'Speed is not the point; there are rarely more than a few nested functions.' },
+      { t: 'Rust cannot express linked lists', why: 'It can (with `Box`, for instance). Changing several nodes at once is what gets awkward.' },
+      { t: 'Resolving a captured variable changes several functions’ states; in a `Vec` they are named by index, which borrows nothing', correct: true, why: '`resolve_upvalue(level, name)` reaches `self.functions[level - 1]` through the one `&mut self`.' },
     ],
   },
   {
     q: 'Which version of `emit` compiles?',
     options: [
       { t: '`self.chunk().write(byte, self.previous.line);`', why: 'E0503: `self.chunk()` holds a mutable borrow of `self` while the argument reads `self.previous`.' },
-      { t: '`let line = self.previous.line; self.chunk().write(byte, line);`', correct: true, why: 'The read is over before `chunk()` borrows `self`. That is drip-rs’s `emit`.' },
-      { t: 'Neither: `emit` can’t touch the chunk at all', why: 'It can, through `chunk()`, as long as nothing else of `self` is used during that borrow.' },
-      { t: 'Both: the borrow checker can’t see inside methods', why: 'It sees the method’s signature, `&mut self -> &mut Chunk`, and that is enough to reject the first.' },
-    ],
-  },
-  {
-    q: 'In `binary`, why is `let operator = self.previous.kind;` the first line?',
-    options: [
-      { t: 'Because `TokenKind` isn’t `Copy`', why: 'It is `Copy`. That’s why reading it into a local is cheap.' },
-      { t: 'For speed only', why: 'It’s needed for correctness.' },
-      { t: 'The match on the operator must come first in every function', why: 'The match comes last, after the right operand is compiled.' },
-      { t: 'Compiling the right operand moves `previous` on, so the operator must be saved first', correct: true, why: 'After `parse_precedence`, `previous` is the last token of the right operand.' },
+      { t: 'Neither: `emit` cannot touch the chunk at all', why: 'It can, through `chunk()`, as long as nothing else of `self` is used during that borrow.' },
+      { t: 'Both: the borrow checker cannot see inside methods', why: 'It sees the signature, `&mut self -> &mut Chunk`, and that is enough to reject the first.' },
+      { t: '`let line = self.previous.line; self.emit_at(line, byte);`', correct: true, why: 'The read is over before anything borrows `self` mutably. That is drip-rs’s `emit`.' },
     ],
   },
 ];

@@ -3,131 +3,161 @@ n: 339
 day: 85
 part: XII
 title: 'A Pratt compiler in Rust, part 2'
-tagline: 'The TypeScript compiler is one big function whose helpers are closures sharing a handful of variables. Rust won’t let closures share mutable state like that, so drip-rs turns the variables into a struct and the closures into methods on &mut self.'
+tagline: 'The TypeScript compiler is one big function whose helpers are closures sharing a handful of variables. Rust will not let closures share changeable state like that, so drip-rs gathers the variables into one struct and turns every helper into a method that borrows it.'
 objectives:
-  - Explain why the TypeScript compiler’s shared closures don’t carry over to Rust.
-  - Read drip-rs’s Compiler struct, including its two lifetimes.
-  - Explain why nested functions are a Vec of states instead of a linked list.
-  - Fix the borrow errors that come from calling a &mut self helper inside an expression.
+  - Explain why the TypeScript compiler’s shared closures do not carry over to Rust.
+  - Read drip-rs’s Compiler struct, field by field, including its two lifetimes.
+  - Explain why nested functions are a Vec of states rather than a linked list.
+  - Fix the borrow error that comes from reading self while a &mut self helper’s result is still in use.
 introduces: [compiler-state]
-uses: [drip-rs, token-enum, parse-rule-table, match-dispatch, value-enum, opcode-enum, pratt-parser, precedence, associativity, single-pass-compiler, emit, compile-time-scope, stack-slot, upvalue, panic-mode, error-recovery, struct, impl, self-receiver, borrow, shared-vs-mutable, borrow-checker, lifetime, lifetime-annotation, rust-closure, vec, option, drop, roots, garbage-collection, chunk, compiler, drip]
-sources: [nystrom2021, klabnik2026]
+uses: [drip-rs, parse-rule-table, token-enum, opcode-enum, pratt-parser, single-pass-compiler, emit, compile-time-scope, upvalue, panic-mode, error-recovery, struct, impl, self-receiver, borrow, shared-vs-mutable, borrow-checker, lifetime, lifetime-annotation, rust-closure, vec, option, rc, trait-object, roots, garbage-collection, chunk, compiler, drip]
+sources: [klabnik2026]
 ---
 import CompilerSteps from '../../../components/diagrams/ch339/CompilerSteps';
+import CompilerShape from '../../../components/diagrams/ch339/CompilerShape';
 
 ## Closures that share
 
-The TypeScript compiler from chapter 142 is one function, `compile`. It
-declares its state as local variables, and every helper is a closure
-over them (trimmed):
+The TypeScript compiler from *One pass from source to bytecode* is one
+function, `compile`, which keeps its state in local variables; every
+helper is a closure written inside it, reading and writing those
+variables freely. From `vm/compiler.ts` (trimmed):
 
 ```ts
-let current = { type: 'eof', ... };
-let previous = current;
-let hadError = false;
+let current: VmToken = { type: 'eof', ... };
+let previous: VmToken = current;
+let panicMode = false;
 function advance() {
   previous = current;
-  current = scanner.scanToken();
+  // ...scan the next token
 }
-const number = () =>
-  emitConstant(Number(previous.lexeme));
 ```
 
-Dozens of helpers read and write the same few variables, and call each
-other freely, even recursively: `expression` calls `parsePrecedence`,
-which calls `binary`, which calls `parsePrecedence` again. clox does the
-same with global variables<Cite id="nystrom2021" />.
-
-Try it in Rust with two closures:
+Dozens of helpers share those few variables and call each other, even
+in a circle: `expression` calls `parsePrecedence`, which calls `infix`,
+which calls `parsePrecedence` again. Try the smallest piece of that in
+Rust, two closures over one counter:
 
 ```rust
 let mut pos = 0;
-let mut code = Vec::new();
 let mut advance = || pos += 1;
-let mut number = || {
-    code.push(bytes[pos]);
-    advance();
-};
+let peek = || pos;
+advance();
 ```
 
-rustc 1.97 (trimmed):
+rustc 1.97 refuses (trimmed):
 
-```
+```text
 error[E0502]: cannot borrow `pos` as
   immutable because it is also
   borrowed as mutable
-5 | let mut advance = || pos += 1;
-  |                   -- --- first
-  |   borrow occurs due to use of `pos`
-6 | let mut number = || {
-  |                  ^^ immutable
-  |                     borrow occurs here
+3 | let mut advance = || pos += 1;
+  |                   -- mutable borrow
+4 | let peek = || pos;
+  |            ^^ immutable borrow
 ```
 
-A closure that changes `pos` holds a mutable borrow of it for as long as
-the closure may still be called (chapter 311). No other closure may even read `pos`
-in that time. And a closure can't call itself, so the recursion is out
-too.
+A closure that changes a variable holds a mutable borrow of it for as
+long as the closure may still be called (the chapter *Iterators and
+closures in Rust* showed why<Cite id="klabnik2026" />), and while
+that borrow lasts nobody else may even read the variable. The pattern
+the whole TypeScript compiler is built on is ruled out.
 
-<Callout kind="intuition">
-Picture one workbench with all the tools and the half-built bytecode on
-it. Instead of everyone reaching across at once, the bench is handed
-from worker to worker. Whoever holds it can use everything. Calling a
-helper means handing the bench over and waiting until it comes back.
-</Callout>
+<Analogy title="one workbench, handed along">
+Picture a workshop with one bench, holding all the tools and the
+half-built piece. Rather than everyone reaching across at once, the
+bench is handed from worker to worker: whoever has it may use anything
+on it, and asking a colleague for help means handing the whole bench
+over and waiting until it comes back.
+<span slot="breaks">Workers can cheat and grab; in Rust the hand-over
+is proved at compile time, so nobody can touch the bench while it is
+lent out, and it always comes back when the helper returns.</span>
+</Analogy>
 
 ## The state becomes a struct
 
-So drip-rs collects the variables into one struct. Adapted from
-`src/compiler.rs`:
+So drip-rs gathers the variables into one struct, from
+`src/compiler.rs` (comments trimmed, rewrapped):
 
 ```rust
 struct Compiler<'src, 'a> {
     scanner: Scanner<'src>,
     current: Token<'src>,
     previous: Token<'src>,
-    had_error: bool,
     panic_mode: bool,
+    block_depth: usize,
+    syntax_errors: Vec<String>,
+    static_errors: Vec<String>,
     functions: Vec<FunctionState<'src>>,
     classes: Vec<ClassState>,
     heap: &'a mut Heap,
     roots: &'a dyn Trace,
-    errors: &'a mut Vec<String>,
 }
 ```
 
-Every helper becomes a method taking `&mut self`. A method that calls
+Every helper is a method taking `&mut self`. A method that calls
 another lends it the same `&mut`, and gets it back when the call
-returns. There is only ever one user, so there is nothing to conflict
-with.
+returns; there is only ever one user at a time, so there is nothing to
+conflict with. The two lifetimes (the chapter *Lifetimes*) say what the
+compiler borrows. `'src` is the source text: a `Token<'src>` holds its
+lexeme as a slice of the source, so tokens are small `Copy` values that
+never copy text, and local variable names are slices too. `'a` is what
+the caller lends: its `Heap`, where functions and strings are allocated,
+and `roots`, the caller's own garbage-collection roots, as a trait
+object (`&dyn Trace`). `compile` builds the `Compiler` on its own
+stack, and when it returns the struct is dropped, which ends both
+borrows.
 
-The two lifetimes (chapter 310) say what the compiler borrows.
-`'src` is the source text. A `Token<'src>` holds its lexeme as a `&str`
-slice of the source, so tokens are small, `Copy`, and never copy text.
-Local variable names are slices of the source too. `'a` is the caller's
-heap, its GC roots and its error list. `compile` builds the `Compiler`
-on its own stack and drops it at the end, which ends those borrows.
+<Figure takeaway="One struct holds everything; it borrows the source and the caller's heap." caption="The Compiler's fields. Tokens and local names point into the source ('src); heap and roots are lent by the caller ('a); functions is a stack, the innermost function last.">
+  <CompilerShape />
+</Figure>
 
-<CompilerSteps client:visible />
+<Analogy title="the one remote control">
+In a family with one TV remote, whoever holds it decides what is on; if
+your sister wants to change the channel, you pass her the remote, and
+until she hands it back you can change nothing.
+<span slot="breaks">A sister may keep the remote all evening; a Rust
+method must give `&mut self` back the moment it returns, and the
+compiler checks before the program ever runs that nobody uses it while
+it is away.</span>
+</Analogy>
 
 <Callout kind="definition">
 **Threading compiler state through `&mut self`** means putting all of
-the compiler's mutable state in one struct and writing every parse and
+a compiler's changeable state in one struct and writing every parse and
 emit helper as a method on `&mut self`. Each call lends the whole state
-to the callee for the length of the call. This replaces closures over
-shared variables, which the borrow checker can't allow.
+to the callee for the length of the call. It replaces closures over
+shared variables, which the borrow checker does not allow.
 </Callout>
+
+<Formal title="Lending the compiler">
+
+```text
+caller: &mut c ──call g(c)──▶ g: &mut c
+caller: (frozen)              g works
+caller: &mut c ◀──returns──── g ends
+```
+
+<span slot="read">The caller holds the only mutable borrow of the
+compiler c. Calling g lends that borrow to g, and while g runs the
+caller is frozen: it cannot touch c. When g returns, the borrow comes
+back to the caller.</span>
+</Formal>
+
+Step through `fn f() { print 1; }`, and watch one compiler go down a
+chain of a dozen calls:
+
+<CompilerSteps client:visible />
 
 <Prompts ids={['cs-why-struct', 'cs-closure-borrow', 'cs-lifetimes', 'cs-tokens']} />
 
 ## A stack instead of a linked list
 
 When `fn` bodies nest, the TypeScript compiler links one `FnCompiler`
-per function through an `enclosing` field. Resolving an upvalue walks
-that list and changes entries in it along the way, so it would need
-mutable access to several of them at once. In Rust that is a fight with
-the borrow checker. drip-rs keeps the functions in a `Vec`, innermost
-last, and names a function by its index:
+per function through an `enclosing` field, and resolving a captured
+variable walks that list, changing entries on the way, which in Rust
+would mean holding mutable borrows of several of them at once. drip-rs
+keeps the functions in a `Vec`, innermost last (from `compiler.rs`):
 
 ```rust
 fn state(&mut self)
@@ -141,81 +171,94 @@ fn chunk(&mut self) -> &mut Chunk {
 }
 ```
 
-`resolve_upvalue(level, name)` looks in `self.functions[level - 1]`, and
-recurses with `level - 1` until it runs out of functions. The level is a
-plain number, and it borrows nothing. Classes nest the same way, in
-`classes: Vec<ClassState>`.
+A function is named by its index, its **level**: `resolve_upvalue(level,
+name)` looks in `self.functions[level - 1]` and recurses with the level
+below, and a level is a plain number that borrows nothing. Classes nest
+the same way, in `classes: Vec<ClassState>`. Notice also that each
+`FunctionState` has its own `chunk`, where TypeScript writes straight
+into the heap object's chunk; `end_function` moves the finished chunk
+into the heap as an `Rc<Chunk>`, frozen from then on.
 
 <Prompts ids={['cs-vec', 'cs-level']} />
 
 ## Read first, then borrow
 
-One habit shows up all over `compiler.rs`. Here is a first try at
-emitting a byte with its line number:
+One habit shows up all over `compiler.rs`. Here are two ways to emit a
+byte tagged with the current line:
+
+<Examples of="compiler-state">
 
 ```rust
-fn emit(&mut self, b: u8) {
-    self.chunk().code.push(b);
-    self.chunk().lines.push(self.line);
+fn emit(&mut self, byte: u8) {
+    self.chunk().write(byte,
+        self.previous.line);
 }
+// error[E0503]: cannot use
+//   `self.previous.line` because it
+//   was mutably borrowed
 ```
-
-rustc 1.97 rejects the second line (trimmed):
-
-```
-error[E0503]: cannot use `self.line`
-  because it was mutably borrowed
-15 | self.chunk().lines.push(self.line);
-   | ----               ---- ^^^^^^^^^
-   | |                   use of borrowed
-   | `*self` is borrowed here
-```
-
-`self.chunk()` borrows *all* of `self` mutably, because the method's
-signature says so, and that borrow lasts until `push` is done. Reading
-`self.line` for the argument falls inside it. The fix is to read first:
 
 ```rust
 fn emit(&mut self, byte: u8) {
     let line = self.previous.line;
-    self.chunk().write(byte, line);
+    self.emit_at(line, byte);
 }
 ```
 
-`Token` and `TokenKind` are `Copy`, so reading them into locals is cheap.
-`binary` begins the same way, with
-`let operator = self.previous.kind;`. There it is needed for meaning
-too: parsing the right operand moves `previous` on.
+```text
+return 1;      # line 1: a static rule
+print ;        # line 2: a syntax error
+line 2: expected an expression,
+  found ';'
+```
 
-<Prompts ids={['cs-read-first']} />
+</Examples>
 
-## Errors, and the end
-
-`had_error` and `panic_mode` are fields, used exactly as in chapter
-87's panic-mode recovery.
-Messages go into the borrowed `errors` list. When the script is done,
-`compile` ends with:
+The first is a natural attempt, and it fails: `self.chunk()` returns a
+`&mut Chunk` that borrows *all* of `self` (the method's signature says
+so), and that borrow lasts until `write` is done, so reading
+`self.previous.line` for the argument falls inside it. The second is
+drip-rs's real `emit`: it reads the line into a local first, a cheap
+copy of a `usize`, and only then borrows. The third shows two more
+fields at work. `return` at the top level breaks a static rule, which
+goes into `static_errors`; `print ;` is a syntax error, which goes into
+`syntax_errors` and sets `panic_mode` until the next statement (as in
+*Syntax errors and recovery*). At the end, `compile` keeps only one
+list:
 
 ```rust
 let (function, _) = compiler.end_function();
-(!compiler.had_error).then_some(function)
+if compiler.syntax_errors.is_empty() {
+    errors.append(
+        &mut compiler.static_errors);
+} else {
+    errors.append(
+        &mut compiler.syntax_errors);
+}
+errors.is_empty().then_some(function)
 ```
 
-`then_some` turns `true` into `Some(function)` and `false` into
+With a syntax error, the static rules are never reported, so the
+program above prints only line 2's error (both VMs agree); delete the
+`print ;` line and you get `line 1: 'return' outside a function`
+instead. `then_some` turns `true` into `Some(function)` and `false` into
 `None`, where TypeScript returned `null`.
 
-<Prompts ids={['cs-errors']} />
+Try the struct pattern, and the closure version it replaces, here:
+
+<Run id="shared-state" />
+
+<Prompts ids={['cs-read-first', 'cs-errors']} />
 
 <Callout kind="engine" label="Under the hood">
-A struct passed by `&mut` costs no more than globals. At run time a
-reference is an address, so every method receives one pointer to the
-compiler's state. The closures and globals of the other two versions
-reach the same kind of state in their own ways. The struct also does a
-job for the garbage collector: functions still being compiled are
-roots. Before allocating, the compiler calls
-`self.heap.collect(&[self.roots, &self.functions])`, and the
-`FunctionState`s in that `Vec` are traced like any other root
-(chapter 347).
+At run time a `&mut` is an address, so every method receives one
+pointer to the compiler's state, which is no dearer than the closures
+of the TypeScript version. The struct also does a job for the garbage
+collector, because functions still being compiled must stay alive.
+Before allocating, the compiler runs
+`self.heap.collect(&[self.roots, &self.functions])`, and
+`FunctionState` implements `Trace`, marking its function and the
+constants in its chunk.
 </Callout>
 
 ## Your turn
@@ -226,17 +269,17 @@ roots. Before allocating, the compiler calls
 
 ## What you learned
 
-- Closures that share mutable variables, the TypeScript compiler's
-  style, don't pass the borrow checker. A closure that writes a variable
-  borrows it mutably for as long as the closure may still be called.
+- Closures that share changeable variables, the TypeScript compiler's
+  style, do not pass the borrow checker: a closure that writes a
+  variable borrows it mutably for as long as it may be called.
 - **Compiler state** lives in one `Compiler` struct, and every helper is
-  a method on `&mut self`. A call lends the whole state, and it comes
+  a method on `&mut self`; a call lends the whole state, and it comes
   back on return.
 - `'src` lets tokens and names borrow the source; `'a` covers the
-  borrowed heap, roots and errors.
-- Nested functions are a `Vec<FunctionState>`, innermost last, named
-  by index, instead of an `enclosing` list.
-- Read what you need into locals *before* calling a `&mut self` helper
+  caller's heap and roots.
+- Nested functions are a `Vec<FunctionState>`, innermost last, named by
+  level, rather than an `enclosing` list.
+- Read what you need into a local *before* calling a `&mut self` helper
   such as `chunk()` (E0503).
 
 <Quiz />

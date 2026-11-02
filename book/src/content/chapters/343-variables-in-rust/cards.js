@@ -4,14 +4,14 @@
 export const prompts = {
   'rl-ident-const': {
     q: 'What does drip-rs’s `identifier_constant(name)` do?',
-    a: 'Interns the name and adds it to the chunk’s constant pool as a `Value::String`, returning the constant’s index. It doesn’t reuse an earlier copy.',
+    a: 'Interns the name and adds it to the chunk’s constant pool as a `Value::String`, returning the constant’s index. It does not reuse an earlier copy.',
   },
   'rl-set-new': {
-    q: 'How does `SetGlobal` detect assignment to a global that was never defined?',
-    a: '`globals.set` returns `true` when the key was new. The VM then deletes the entry again and reports “Undefined variable”.',
+    q: 'How does `store.global` notice an assignment to a global that was never defined?',
+    a: '`globals.set` returns `true` when the key was new. The VM then deletes the entry again and reports `undefined variable \'m\'`.',
   },
   'rl-globals-root': {
-    q: 'Why must the VM’s `globals` table be a GC root?',
+    q: 'Why must the VM’s `globals` table be a garbage-collection root?',
     a: 'Its keys and values are handles to heap objects that may be reachable from nowhere else.',
   },
   'rl-local': {
@@ -20,27 +20,42 @@ export const prompts = {
   },
   'rl-option-depth': {
     q: 'What does `depth: None` mean for a drip-rs local, and what did TypeScript use instead?',
-    a: 'Declared, but its initializer is still being compiled, so it can’t be read yet. TypeScript used `depth: -1`.',
+    a: 'Declared, but its initialiser is still being compiled, so it cannot be read yet. TypeScript used `depth: -1`.',
   },
   'rl-rev': {
     q: 'Why does `resolve_local` search the locals from the end?',
     a: 'Later locals are more deeply nested, so the innermost variable with that name, the one that shadows the others, is found first.',
   },
   'rl-no-emit': {
-    q: 'What instruction defines a local variable?',
-    a: 'None. The initializer leaves its value on the stack, which is already the local’s slot; the compiler only marks it initialized.',
+    q: 'Which instruction defines a local variable?',
+    a: 'None. The initialiser leaves its value on the stack, which is already the local’s slot; the compiler only marks it initialised.',
   },
   'rl-end-scope': {
-    q: 'Why can’t drip-rs’s `end_scope` keep `let st = self.state();` and call `self.emit_op` in the loop?',
-    a: '`st` is a mutable borrow into `self.functions`, still used after the call, and `emit_op` needs all of `self`: E0499. Read `is_captured`, pop, then emit.',
+    q: 'Why can’t drip-rs’s `end_scope` keep `let state = self.state();` and call `self.emit_op` in the loop?',
+    a: '`state` is a mutable borrow into `self.functions`, still used after the call, and `emit_op` needs all of `self`: E0499. Read `is_captured`, pop, then emit.',
   },
   'rl-declare': {
     q: 'How does `declare_variable` report a duplicate without a borrow conflict?',
-    a: 'It first computes a plain `bool` with `iter().rev().take_while(..).any(..)`, ending the borrow of the locals, then calls `self.error`.',
+    a: 'It first computes a plain `bool` with `iter().rev().take_while(..).any(..)`, ending the borrow of the locals, then reports the error.',
   },
 };
 
-export const examples = {};
+export const examples = {
+  'locals-run': {
+    lang: 'drip-vm',
+    title: 'Globals and locals together',
+    code: `let total = 0;
+fn sum(xs) {
+  let s = 0;
+  for x in xs {
+    s += x;
+  }
+  return s;
+}
+total = sum([1, 2, 3]);
+print total;`,
+  },
+};
 
 export const exercises = {
   endScope: {
@@ -276,17 +291,31 @@ fn two_scopes_in_turn() {
     assert!(names(&mut c).is_empty());
 }`,
     hints: [
-      'Start with `self.state().scope_depth -= 1;`. That borrow ends at the semicolon.',
-      'Loop. In each turn, take `let st = self.state();`, look at `st.locals.last()`, and `break` if there is none or its depth isn’t `Some(x)` with `x > st.scope_depth`.',
-      'Copy `l.is_captured` into a local, call `st.locals.pop()`, and only then `self.emit_op(...)`. `st` must not be used after the emit.',
+      'First `self.state().scope_depth -= 1;`, on its own line, so that borrow ends at once. Then `loop`.',
+      'At the top of each turn, `let st = self.state();`, read the depth, and look at `st.locals.last()`; `break` if there is none, or if its depth is not deeper than the new `scope_depth`.',
+      'Copy `is_captured` into a local, `st.locals.pop()`, and only after that call `self.emit_op(...)`, with `Op::CloseUpvalue` for a captured local and `Op::Pop` otherwise.',
     ],
-    walkthrough: `**The order is the point.** In TypeScript, \`endScope\` holds the function in \`c\` and emits while it loops. Here \`st\` is a \`&mut Func\` borrowed out of \`self\`, and \`self.emit_op\` needs \`&mut self\` too. If \`st\` is used after the emit, rustc reports E0499.
+    walkthrough: `**How to think about it.** Ending a scope means forgetting its locals, newest first, and emitting one instruction per local so the stack matches. The TypeScript version holds the function in a variable for the whole loop and emits as it goes; in Rust that variable is a \`&mut\` borrowed out of \`self\`, and \`self.emit_op\` needs \`&mut self\` too, so the two cannot overlap. The fix is to arrange each turn of the loop in two halves: first use \`st\` (read, pop), then stop using it and emit.
 
-**So each turn re-borrows.** \`let st = self.state();\` at the top of the loop, read \`depth\` and \`is_captured\` (both \`Copy\`), pop, and stop using \`st\`. The emit is then the only borrow alive. That is exactly drip-rs's \`end_scope\`.
+**The solution, line by line.**
 
-**Deeper, not equal.** After the decrement, \`scope_depth\` is the enclosing scope's depth. Its own locals have exactly that depth and must stay, so the test is \`x > d\`.
+- \`self.state().scope_depth -= 1;\` leaves the scope. After this, \`scope_depth\` is the enclosing scope's depth.
+- \`loop {\` removes one local per turn.
+- \`let st = self.state();\` re-borrows the innermost function at the start of every turn.
+- \`let d = st.scope_depth;\` copies the depth (a \`usize\`, so \`Copy\`).
+- \`let last = st.locals.last(); let Some(l) = last else { break; };\` stops when there are no locals left.
+- \`let deeper = l.depth.is_some_and(|x| x > d); if !deeper { break; }\` stops at the first local that belongs to the enclosing scope. Deeper, not equal: the enclosing scope's own locals have exactly depth \`d\` and must stay.
+- \`let cap = l.is_captured;\` copies the one fact the emit needs.
+- \`st.locals.pop();\` forgets the local. This is the last use of \`st\` in the turn.
+- \`self.emit_op(if cap { Op::CloseUpvalue } else { Op::Pop });\` is now the only borrow alive, so it compiles. A captured local must move to the heap as its scope ends, because a closure still refers to it; any other local is simply popped.
 
-**Why \`CloseUpvalue\`.** A captured local must move to the heap as its scope ends, because a closure still refers to it (chapter 346). An uncaptured one is simply popped.`,
+This is drip-rs's real \`end_scope\`, line for line.
+
+**Common wrong attempts.**
+
+- Taking \`let st = self.state();\` once, before the loop, and calling \`st.locals.pop()\` after \`self.emit_op\`: E0499, two mutable borrows of \`self\` alive at once.
+- Forgetting \`scope_depth -= 1\`: no local is ever deeper than the current depth, so nothing is popped and the scope never ends.
+- Always emitting \`Op::Pop\`: a captured local is thrown away instead of closed over, and a closure would lose it.`,
     wrong: [
       {
         code: `#[derive(Clone, Copy, Debug, PartialEq)]
@@ -558,10 +587,8 @@ impl Compiler {
     prompt: `Write \`resolve_local\`: return the slot (index) of the local called \`name\`, or \`None\` if there is no such local.
 
 - If several locals share the name, the innermost (the last in the \`Vec\`) wins.
-- If the one found has depth \`None\`, it is being read in its own initializer, as in \`let a = a;\`. Record the error \`MSG\` with \`self.error\`, and still return its slot, as drip-rs does.`,
-    starter: `const MSG: &str = "Can't read local \\
-    variable in its own initializer.";
-
+- If the one found has depth \`None\`, it is being read in its own initialiser, as in \`let a = a;\`. Record the error \`cannot read 'a' in its own initialiser\` (with the real name) using \`self.error\`, and still return its slot, as drip-rs does.`,
+    starter: `
 struct Local {
     name: &'static str,
     depth: Option<usize>,
@@ -579,7 +606,7 @@ impl Compiler {
 
     // The slot of local \`name\`, if any.
     // Reading a local in its own
-    // initializer is an error (MSG).
+    // initialiser is an error.
     fn resolve_local(
         &mut self,
         name: &str,
@@ -587,9 +614,7 @@ impl Compiler {
         todo!()
     }
 }`,
-    solution: `const MSG: &str = "Can't read local \\
-    variable in its own initializer.";
-
+    solution: `
 struct Local {
     name: &'static str,
     depth: Option<usize>,
@@ -607,7 +632,7 @@ impl Compiler {
 
     // The slot of local \`name\`, if any.
     // Reading a local in its own
-    // initializer is an error (MSG).
+    // initialiser is an error.
     fn resolve_local(
         &mut self,
         name: &str,
@@ -617,7 +642,10 @@ impl Compiler {
             |l| l.name == name,
         )?;
         if ls[i].depth.is_none() {
-            self.error(MSG);
+            let m = format!("cannot \\
+                read '{name}' in its \\
+                own initialiser");
+            self.error(&m);
         }
         Some(i)
     }
@@ -662,25 +690,32 @@ fn reading_in_its_own_initializer() {
     let mut c = compiler(&[("a", true),
         ("a", false)]);
     assert_eq!(c.resolve_local("a"), Some(1));
-    assert_eq!(c.errors, [MSG]);
+    assert_eq!(c.errors, ["cannot read 'a' \\
+        in its own initialiser"]);
 }`,
     hints: [
-      '`iter().rposition(|l| l.name == name)` is `position`, searching from the end: it gives the index of the last match.',
-      'Put `?` after it, so a missing name returns `None` straight away.',
-      'Then check `self.locals[i].depth.is_none()`, call `self.error(MSG)` if so, and return `Some(i)`.',
+      'Search from the end: `self.locals.iter().rposition(|l| l.name == name)` gives the index of the last match, or `None`.',
+      'Put `?` after it, so an unknown name returns `None` from `resolve_local` straight away.',
+      'If `self.locals[i].depth.is_none()`, build the message with `format!` and call `self.error(&m)`; then return `Some(i)` either way.',
     ],
-    walkthrough: `**From the end.** \`{ let a = 1; { let a = 2; print a; } }\` must print 2, so the search starts at the newest local. drip-rs writes it \`locals.iter().enumerate().rev().find(..)\`; \`rposition\` is the same search, giving just the index.
+    walkthrough: `**How to think about it.** Two questions: which local does this name mean, and is it ready to be read? The first is "the newest local with this name", because a later \`let\` in an inner block shadows an outer one, so search from the end. The second is the \`depth\` field: \`None\` means the variable is declared but its initialiser is still being compiled.
 
-**\`?\` on an \`Option\`.** When nothing matches, \`rposition\` returns \`None\` and \`?\` returns it from \`resolve_local\`. The caller, \`named_variable\`, then tries upvalues, and finally treats the name as a global.
+**The solution, line by line.**
 
-**Still return the slot.** The error is reported, \`had_error\` makes the whole compile fail, and compiling carries on to find more errors. Returning \`None\` instead would quietly treat \`a\` as a global and hide the mistake.
+- \`let ls = &self.locals;\` borrows the list to search it.
+- \`let i = ls.iter().rposition(|l| l.name == name)?;\`: \`rposition\` searches from the end and returns the index of the first match it meets, which is the innermost; when nothing matches it returns \`None\`, and \`?\` returns that from \`resolve_local\`. (drip-rs writes \`locals.iter().enumerate().rev().find(..)?\`, the same search.)
+- \`if ls[i].depth.is_none() {\` asks whether the local is still being initialised. This is the last use of \`ls\`, so its borrow ends here.
+- \`let m = format!("cannot read '{name}' in its own initialiser");\` builds Drip's message (the \`\\\\\` continues the string on the next line).
+- \`self.error(&m);\` needs \`&mut self\`, which is allowed now that \`ls\` is finished.
+- \`Some(i)\` returns the slot even after an error: the error makes the whole compile fail anyway, and compiling carries on to find more errors. Returning \`None\` would quietly treat \`a\` as a global and hide the mistake.
 
-**Borrows.** \`ls\` borrows \`self.locals\`, but its last use is \`ls[i].depth.is_none()\`, so \`self.error\` may borrow \`self\` mutably. Even a TypeScript-style \`for\` loop that calls \`self.error\` and then returns compiles here, because the iterator is never used after the call.`,
+**Common wrong attempts.**
+
+- \`position\` instead of \`rposition\`: it searches from the front and finds the outermost \`a\`, not the one that shadows it.
+- \`ls[i].depth?;\` to skip unready locals: it returns \`None\` without reporting anything, so \`let a = a;\` would silently read a global \`a\`.`,
     wrong: [
       {
-        code: `const MSG: &str = "Can't read local \\
-    variable in its own initializer.";
-
+        code: `
 struct Local {
     name: &'static str,
     depth: Option<usize>,
@@ -698,7 +733,7 @@ impl Compiler {
 
     // The slot of local \`name\`, if any.
     // Reading a local in its own
-    // initializer is an error (MSG).
+    // initialiser is an error.
     fn resolve_local(
         &mut self,
         name: &str,
@@ -708,7 +743,10 @@ impl Compiler {
             |l| l.name == name,
         )?;
         if ls[i].depth.is_none() {
-            self.error(MSG);
+            let m = format!("cannot \\
+                read '{name}' in its \\
+                own initialiser");
+            self.error(&m);
         }
         Some(i)
     }
@@ -716,9 +754,7 @@ impl Compiler {
         why: '`position` searches from the front, so it finds the outermost variable with that name, not the one that shadows it.',
       },
       {
-        code: `const MSG: &str = "Can't read local \\
-    variable in its own initializer.";
-
+        code: `
 struct Local {
     name: &'static str,
     depth: Option<usize>,
@@ -736,7 +772,7 @@ impl Compiler {
 
     // The slot of local \`name\`, if any.
     // Reading a local in its own
-    // initializer is an error (MSG).
+    // initialiser is an error.
     fn resolve_local(
         &mut self,
         name: &str,
@@ -758,63 +794,45 @@ impl Compiler {
 
 export const quiz = [
   {
-    q: 'In drip-rs, where does a global variable’s value live at run time?',
+    q: 'In the listing for `let n = 1; n = n + 1; print n;`, why are constants 1, 2, 3 and 5 all `\'n\'`?',
     options: [
-      { t: 'In a stack slot chosen by the compiler', why: 'That is a local.' },
-      { t: 'In the `globals` table of the `Vm`, keyed by the interned name', correct: true, why: '`DefineGlobal` does `self.globals.set(name, self.peek(0))`.' },
-      { t: 'In the constant pool', why: 'The pool holds the *name*. The value is in the table.' },
-      { t: 'In a Rust `static`', why: 'drip-rs has no mutable statics.' },
+      { t: '`identifier_constant` adds a constant every time a name is used, without looking for an earlier copy', correct: true, why: 'Each is the same interned `StrRef`, stored again in the pool.' },
+      { t: 'The names are different strings that happen to print the same', why: 'They are interned, so they are the same string object.' },
+      { t: 'The VM copies the name each time it runs', why: 'The constants are made by the compiler, before anything runs.' },
     ],
   },
   {
-    q: '`let n = 1; n = n + 1; print n;` compiles to four constants that are all the string `n`. Why?',
+    q: 'What does drip-rs print for the one-line program `m = 1;`?',
     options: [
-      { t: 'Interning failed', why: 'Interning worked: all four are the same `StrRef`. Only the pool entries repeat.' },
-      { t: 'Each one is a different variable', why: 'There is one global `n`.' },
-      { t: '`identifier_constant` adds a new pool entry each time and doesn’t look for an old one', correct: true, why: 'As in clox and the TypeScript compiler. It is why long scripts can hit the 256-constant limit.' },
-      { t: 'The disassembler prints each constant four times', why: 'The constant indices differ: 0, 2, 3 and 5.' },
+      { t: 'Nothing: it creates a global `m`', why: 'Only `let` creates a global; assignment never does.' },
+      { t: '`line 1: \'m\' is not declared`', why: 'Globals are checked at run time, not by the compiler.' },
+      { t: '`runtime error: undefined variable \'m\'`, then `  at line 1 in script`', correct: true, why: '`store.global` sees `set` return `true` (a new key), deletes it again and reports the error.' },
     ],
   },
   {
-    q: 'What does `depth: None` on a drip-rs `Local` stand for?',
+    q: 'What does `depth: None` on a drip-rs `Local` mean?',
     options: [
-      { t: 'A global variable', why: 'Globals aren’t in the locals `Vec` at all.' },
-      { t: 'A local declared but not yet initialized: reading it is an error', correct: true, why: 'It becomes `Some(depth)` in `mark_initialized`. TypeScript used `-1`.' },
-      { t: 'A local captured by a closure', why: 'That is `is_captured`.' },
-      { t: 'The reserved slot 0', why: 'Slot 0 has depth `Some(0)`.' },
+      { t: 'The local is a global', why: 'Globals are never in the locals `Vec`.' },
+      { t: 'The local is declared, but its initialiser is still being compiled', correct: true, why: 'Reading it now is the error `cannot read \'a\' in its own initialiser`.' },
+      { t: 'The local has been captured by a closure', why: 'That is `is_captured`.' },
+      { t: 'The local is at scope depth 0', why: 'Depth 0 would be `Some(0)`.' },
     ],
   },
   {
-    q: 'Which instruction does `let b = a + 2;` emit to store `b`, inside a block?',
+    q: 'Why does this fail, inside a block: `let a = 1; { let a = a + 1; }`?',
     options: [
-      { t: '`SET_LOCAL`', why: '`SET_LOCAL` is for assignment, `b = ...`, to an existing local.' },
-      { t: '`DEFINE_GLOBAL`', why: 'Only top-level `let`s are globals.' },
-      { t: '`POP`', why: 'A `POP` for `b` comes when its scope ends.' },
-      { t: 'None: the value of `a + 2` is left on the stack, in `b`’s slot', correct: true, why: 'The compiler only marks `b` initialized.' },
+      { t: 'Locals cannot shadow other locals', why: 'They can, in a nested block; the trouble is reading the inner one.' },
+      { t: 'The inner `a` is declared before its initialiser is compiled, so `a + 1` finds the unfinished inner `a`', correct: true, why: '`resolve_local` searches from the end and finds the inner `a` with depth `None`.' },
+      { t: '`a + 1` is not allowed in a `let`', why: 'Any expression is; `let b = a + 1;` works.' },
     ],
   },
   {
-    q: `Why is this \`end_scope\` loop rejected?
-\`\`\`rust
-let st = self.state();
-// ... in a loop:
-self.emit_op(OpCode::Pop);
-st.locals.pop();
-\`\`\``,
+    q: 'What does `load.local 2` do at run time?',
     options: [
-      { t: '`st` is a mutable borrow of `self` still used after `emit_op`, which needs `&mut self` too', correct: true, why: 'E0499. drip-rs pops and stops using `state` before it emits.' },
-      { t: '`emit_op` can’t be called in a loop', why: 'It can, as long as no other borrow of `self` is alive.' },
-      { t: '`Vec::pop` needs ownership of the vector', why: 'It takes `&mut self`, which `st` provides.' },
-      { t: 'Popping a local is unsafe', why: 'Nothing here is unsafe.' },
-    ],
-  },
-  {
-    q: 'In `{ let a = 1; { let a = 2; print a; } }`, which `a` does `resolve_local` find, and why?',
-    options: [
-      { t: 'The outer one, at slot 1, because it was declared first', why: 'The search runs from the end.' },
-      { t: 'Neither: it is a compile error to shadow', why: 'Shadowing in an inner scope is allowed. Only the same scope is an error.' },
-      { t: 'The inner one, at slot 2, because the search runs from the end of the `Vec`', correct: true, why: '`.rev().find(..)`: the innermost matching name wins.' },
-      { t: 'Whichever has the larger value', why: 'The compiler doesn’t know the values.' },
+      { t: 'Looks up the name of local 2 in a table', why: 'Locals have no names at run time.' },
+      { t: 'Reads constant 2 and searches the stack for it', why: 'The operand is a slot number, not a constant index.' },
+      { t: 'Calls `resolve_local`', why: 'That runs in the compiler, never in the VM.' },
+      { t: 'Pushes `self.stack[self.slots + 2]`: one addition and one indexed read', correct: true, why: '`self.slots` is the running frame’s base.' },
     ],
   },
 ];

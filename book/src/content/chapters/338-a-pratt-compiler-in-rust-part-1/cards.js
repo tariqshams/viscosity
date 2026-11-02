@@ -2,238 +2,358 @@
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
+  'prt-three': {
+    q: 'drip-rs splits each row of the parse-rule table into three matches on `TokenKind`. What are they?',
+    a: '`prefix_rule` (what the token does at the start of an expression), `infix_precedence` (how tightly it binds after one) and the `prefix` / `infix` methods (the code that runs).',
+  },
+  'prt-prec-numbers': {
+    q: 'What type are drip-rs’s precedences, and why does that suit the parser?',
+    a: 'Plain `u8` constants, `PREC_NONE` = 0 up to `PREC_CALL` = 9, the same numbers as TypeScript’s `Prec`; the parser can add 1 to them.',
+  },
+  'prt-none-zero': {
+    q: 'Why does `infix_precedence(Semicolon)` returning 0 end an expression?',
+    a: 'Every expression is parsed at precedence 1 or more, and the loop only continues while `precedence <= infix_precedence(next)`; 0 never passes.',
+  },
+  'prt-enum-why': {
+    q: 'What does a prefix cell of drip-rs’s table hold, and how big is it?',
+    a: 'An `Option<Prefix>`: an enum naming the parse function (with data, as in `Literal(OpCode)`). It is 1 byte.',
+  },
   'prt-fnptr': {
-    q: 'What is the type of a cell in drip-rs’s parse-rule table?',
-    a: '`Option<fn(&mut Compiler, bool)>`: a function pointer to a parse function, or `None`.',
+    q: 'What is a function pointer type such as `fn(&mut Compiler, bool)`?',
+    a: 'The address of some function with that signature, chosen at run time. It captures nothing, and is never null, so `Option` of one costs no extra space.',
   },
-  'prt-option-size': {
-    q: 'Why is `Option<fn(&mut u8, bool)>` the same size as the bare function pointer (8 bytes here)?',
-    a: 'Function pointers are never null, so `None` can be stored as the null pattern. No separate tag is needed.',
+  'prt-plus-one': {
+    q: 'Why does `infix` parse a binary operator’s right side at `infix_precedence(kind) + 1`?',
+    a: 'So an operator of the same precedence cannot join the right side; it is left for the outer loop, and `8 - 3 - 2` groups as `(8 - 3) - 2`.',
   },
-  'prt-no-capture': {
-    q: 'A TypeScript parse function reads `previous` from the enclosing `compile`. Where does a drip-rs parse function get it?',
-    a: 'From its `&mut Compiler` argument. A plain function pointer captures nothing.',
+  'prt-can-assign': {
+    q: 'When is `can_assign` true in `continue_expression`?',
+    a: 'Only when parsing at the loosest level, `precedence <= PREC_ASSIGNMENT`. Inside `a + b`, it is false, so `a + b = 1` reports “cannot assign to this expression”.',
   },
-  'prt-match': {
-    q: 'How does drip-rs look up the rule for a token?',
-    a: '`Compiler::rule(kind)` is a `match` on `TokenKind` that builds the `ParseRule`, with a `_` arm for tokens that have no rule.',
-  },
-  'prt-fn-item': {
-    q: 'Why do the arms of the rule `match` need the annotation `(Option<ParseFn>, Option<ParseFn>, _)`?',
-    a: 'Each function has its own unique type, so `Some(Self::unary)` and `Some(Self::number)` differ (E0308). The annotation turns them into one function-pointer type.',
-  },
-  'prt-ord': {
-    q: 'What does `#[derive(PartialOrd, Ord)]` on the `Precedence` enum compare?',
-    a: 'Variant position: the first declared is the smallest. So `None < Assignment < … < Primary`.',
-  },
-  'prt-next': {
-    q: 'TypeScript writes `prec + 1`. What does drip-rs write, and why?',
-    a: '`precedence.next()`, a `match` from each variant to the one above. An enum has no `+ 1`.',
-  },
-  'prt-assoc-fn': {
-    q: 'Why is `rule` written as `Self::rule(kind)`, with no `self`?',
-    a: 'It needs no compiler state. As an associated function it borrows nothing, so it can be called anywhere, even in the loop condition.',
-  },
-  'prt-expect': {
-    q: 'Why may `parse_precedence` `expect` an infix rule inside its loop?',
-    a: 'The loop only runs when the token’s precedence is above `None`, and every such token has an infix rule.',
+  'prt-loop': {
+    q: 'In `continue_expression(precedence, prefix)`, when does the `while` loop stop?',
+    a: 'When the next token’s infix precedence is lower than `precedence`: it binds too loosely to join, so it is left for an outer call.',
   },
 };
 
-export const examples = {};
+export const examples = {
+  'mini-pratt': {
+    lang: 'rust',
+    title: 'A three-match table in miniature',
+    code: `// Single digits and + - * only.
+#[derive(Clone, Copy)]
+enum Prefix {
+    Number,
+    Unary,
+}
+
+fn prefix_rule(c: char)
+    -> Option<Prefix> {
+    match c {
+        '0'..='9' => {
+            Some(Prefix::Number)
+        }
+        '-' => Some(Prefix::Unary),
+        _ => None,
+    }
+}
+
+fn infix_prec(c: char) -> u8 {
+    match c {
+        '+' | '-' => 6,
+        '*' => 7,
+        _ => 0,
+    }
+}
+
+struct P {
+    src: Vec<char>,
+    pos: usize,
+    out: Vec<String>,
+}
+
+impl P {
+    fn peek(&self) -> char {
+        let i = self.pos;
+        *self.src.get(i).unwrap_or(&';')
+    }
+
+    fn parse(&mut self, prec: u8) {
+        let c = self.peek();
+        self.pos += 1;
+        let Some(p) = prefix_rule(c)
+        else {
+            let e = format!("err {c}");
+            self.out.push(e);
+            return;
+        };
+        match p {
+            Prefix::Number => {
+                self.out.push(c.into());
+            }
+            Prefix::Unary => {
+                self.parse(8);
+                let neg = "neg".into();
+                self.out.push(neg);
+            }
+        }
+        let mut op = self.peek();
+        while prec <= infix_prec(op) {
+            self.pos += 1;
+            let r = infix_prec(op) + 1;
+            self.parse(r);
+            self.out.push(op.into());
+            op = self.peek();
+        }
+    }
+}
+
+fn main() {
+    let inputs =
+        ["-1+2*3", "8-3-2", "1+"];
+    for s in inputs {
+        let mut p = P {
+            src: s.chars().collect(),
+            pos: 0,
+            out: Vec::new(),
+        };
+        p.parse(1);
+        let out = p.out.join(" ");
+        println!("{s:8} => {out}");
+    }
+}`,
+  },
+};
 
 export const exercises = {
   precTable: {
     lang: 'rust',
-    title: 'A precedence table',
-    prompt: `Here is a cut-down \`Prec\` enum, lowest first.
+    title: 'Three matches',
+    prompt: `Build a small parse-rule table in drip-rs’s style for single-character tokens. The precedences are \`u8\` constants, as in drip-rs.
 
-1. Give it the derives it needs, so that precedences can be copied, compared with \`==\` and ordered with \`<\` and \`<=\` by their position, and printed with \`{:?}\`.
-2. \`infix_prec(c)\`: \`+\` and \`-\` are \`Term\`, \`*\` and \`/\` are \`Factor\`, anything else is \`None\`.
-3. \`next()\`: one level tighter. \`Unary\` is the top, and stays \`Unary\`.
-4. \`binds(min, c)\`: may the operator \`c\` continue an expression being parsed at \`min\`? That is drip-rs's loop condition: \`min <= infix_prec(c)\`.`,
-    starter: `enum Prec {
-    None,
-    Term,
-    Factor,
+1. \`prefix_rule(c)\`: a digit \`'0'\` to \`'9'\` is \`Prefix::Number\`, \`'-'\` is \`Prefix::Unary\`, \`'('\` is \`Prefix::Grouping\`; anything else has no prefix rule (\`None\`).
+2. \`infix_prec(c)\`: \`+\` and \`-\` are \`TERM\`, \`*\`, \`/\` and \`%\` are \`FACTOR\`, anything else is \`NONE\`.
+3. \`binds(min, c)\`: may the operator \`c\` continue an expression being parsed at precedence \`min\`? That is drip-rs’s loop condition.`,
+    starter: `const NONE: u8 = 0;
+const ASSIGNMENT: u8 = 1;
+const TERM: u8 = 6;
+const FACTOR: u8 = 7;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Prefix {
+    Number,
     Unary,
+    Grouping,
 }
 
-fn infix_prec(c: char) -> Prec {
+fn prefix_rule(c: char)
+    -> Option<Prefix> {
     todo!()
 }
 
-impl Prec {
-    fn next(self) -> Prec {
-        todo!()
-    }
+fn infix_prec(c: char) -> u8 {
+    todo!()
 }
 
-fn binds(min: Prec, c: char) -> bool {
+fn binds(min: u8, c: char) -> bool {
     todo!()
 }`,
-    solution: `#[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Eq, PartialOrd, Ord)]
-enum Prec {
-    None,
-    Term,
-    Factor,
+    solution: `const NONE: u8 = 0;
+const ASSIGNMENT: u8 = 1;
+const TERM: u8 = 6;
+const FACTOR: u8 = 7;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Prefix {
+    Number,
     Unary,
+    Grouping,
 }
 
-fn infix_prec(c: char) -> Prec {
+fn prefix_rule(c: char)
+    -> Option<Prefix> {
     match c {
-        '+' | '-' => Prec::Term,
-        '*' | '/' => Prec::Factor,
-        _ => Prec::None,
-    }
-}
-
-impl Prec {
-    fn next(self) -> Prec {
-        match self {
-            Prec::None => Prec::Term,
-            Prec::Term => Prec::Factor,
-            Prec::Factor => Prec::Unary,
-            Prec::Unary => Prec::Unary,
+        '0'..='9' => {
+            Some(Prefix::Number)
         }
+        '-' => Some(Prefix::Unary),
+        '(' => Some(Prefix::Grouping),
+        _ => None,
     }
 }
 
-fn binds(min: Prec, c: char) -> bool {
+fn infix_prec(c: char) -> u8 {
+    match c {
+        '+' | '-' => TERM,
+        '*' | '/' | '%' => FACTOR,
+        _ => NONE,
+    }
+}
+
+fn binds(min: u8, c: char) -> bool {
     min <= infix_prec(c)
 }`,
     tests: `#[test]
-fn precedences_are_ordered() {
-    assert!(Prec::None < Prec::Term);
-    assert!(Prec::Term < Prec::Factor);
-    assert!(Prec::Factor < Prec::Unary);
+fn digits_start_numbers() {
+    assert_eq!(prefix_rule('0'),
+        Some(Prefix::Number));
+    assert_eq!(prefix_rule('7'),
+        Some(Prefix::Number));
+}
+
+#[test]
+fn minus_and_paren_start_too() {
+    assert_eq!(prefix_rule('-'),
+        Some(Prefix::Unary));
+    assert_eq!(prefix_rule('('),
+        Some(Prefix::Grouping));
+}
+
+#[test]
+fn others_have_no_prefix_rule() {
+    assert_eq!(prefix_rule('+'), None);
+    assert_eq!(prefix_rule(';'), None);
 }
 
 #[test]
 fn operators_have_precedences() {
-    assert_eq!(infix_prec('+'), Prec::Term);
-    assert_eq!(infix_prec('-'), Prec::Term);
-    assert_eq!(infix_prec('*'), Prec::Factor);
-    assert_eq!(infix_prec('/'), Prec::Factor);
-    assert_eq!(infix_prec(';'), Prec::None);
-}
-
-#[test]
-fn next_is_one_level_tighter() {
-    assert_eq!(Prec::Term.next(), Prec::Factor);
-    assert_eq!(Prec::Factor.next(), Prec::Unary);
-    assert_eq!(Prec::Unary.next(), Prec::Unary);
+    assert_eq!(infix_prec('+'), TERM);
+    assert_eq!(infix_prec('-'), TERM);
+    assert_eq!(infix_prec('*'), FACTOR);
+    assert_eq!(infix_prec('%'), FACTOR);
+    assert_eq!(infix_prec(')'), NONE);
 }
 
 #[test]
 fn star_joins_a_term() {
-    assert!(binds(Prec::Term, '*'));
+    assert!(binds(TERM, '*'));
 }
 
 #[test]
 fn plus_cannot_join_a_factor() {
-    assert!(!binds(Prec::Factor, '+'));
+    assert!(!binds(FACTOR, '+'));
 }
 
 #[test]
 fn equal_precedence_binds() {
-    assert!(binds(Prec::Factor, '*'));
-    assert!(binds(Prec::Term, '-'));
+    assert!(binds(FACTOR, '*'));
+    assert!(binds(TERM, '-'));
 }
 
 #[test]
 fn a_semicolon_ends_it() {
-    assert!(!binds(Prec::Term, ';'));
+    assert!(!binds(ASSIGNMENT, ';'));
 }`,
     hints: [
-      'You need `Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord`. (`#[derive]` lines can be split in two.)',
-      '`infix_prec` is a `match` with `|` patterns, and `_ => Prec::None`. `next` is a `match` with one arm per variant.',
-      '`binds` is one comparison. Think about `binds(Prec::Factor, \'*\')` in `2 * 3 * 4`: the second `*` must be allowed to continue.',
+      'Each function is one `match` on the character. Which arms does each need, and what does the `_` arm return?',
+      'A range pattern `\'0\'..=\'9\'` matches every digit, and `|` puts several characters in one arm: `\'+\' | \'-\' => TERM`.',
+      '`binds` is one comparison between `min` and `infix_prec(c)`. In `2 * 3 * 4`, the second `*` must be allowed to continue a product being parsed at `FACTOR`: is the comparison `<` or `<=`?',
     ],
-    walkthrough: `**Derives.** \`PartialOrd\` and \`Ord\` order the variants by their position in the enum, so the declaration order *is* the precedence table. \`PartialOrd\` needs \`PartialEq\`, and \`Ord\` needs \`Eq\`. \`Copy\` lets \`next(self)\` take the value without moving anything you care about, and \`Debug\` is what \`assert_eq!\` prints on failure.
+    walkthrough: `**How to think about it.** Each of the three functions answers one question about a single token, and each answer depends on the token alone, so each is a \`match\` on \`c\` with no other state. Write the arms by reading the list in the prompt, then decide what the \`_\` arm says about every token you did not list: "no prefix rule" (\`None\`) for the first, "never continues" (\`NONE\`, which is 0) for the second. The third function is the parser's loop condition, so think about the cases where it must say yes.
 
-**infix_prec.** One arm per group of operators, the same shape as drip-rs's \`rule\` match. Anything else gets \`None\`, the lowest precedence, which no expression's minimum ever reaches: that's what makes \`;\` end an expression.
+**The solution, line by line.**
 
-**next.** An enum has no \`+ 1\`, so you write the successor out. It's the same \`next\` drip-rs uses to parse a binary operator's right operand one level tighter.
+- \`fn prefix_rule(c: char) -> Option<Prefix> {\` returns an \`Option\`, because most characters cannot start an expression.
+- \`match c {\` looks at the character.
+- \`'0'..='9' => Some(Prefix::Number),\` is a range pattern: any character from \`'0'\` to \`'9'\`, inclusive, starts a number.
+- \`'-' => Some(Prefix::Unary),\` makes minus a prefix operator as well (it is also an infix one; the two tables are separate, which is exactly why a token can be both).
+- \`'(' => Some(Prefix::Grouping),\` starts a bracketed expression.
+- \`_ => None,\` covers everything else: \`+\`, \`;\` and so on cannot start an expression.
+- \`fn infix_prec(c: char) -> u8 {\` returns the precedence as a plain number.
+- \`'+' | '-' => TERM,\` and \`'*' | '/' | '%' => FACTOR,\` use \`|\` to give several operators one arm.
+- \`_ => NONE,\` gives 0 to everything else, which no expression ever accepts.
+- \`fn binds(min: u8, c: char) -> bool { min <= infix_prec(c) }\` is the loop condition of \`continue_expression\`.
 
-**binds.** \`<=\`, not \`<\`. At equal precedence the operator still continues the expression being parsed at that level, which is what lets the *outer* loop pick up the second \`-\` in \`8 - 3 - 2\`. Associativity is decided by what minimum you pass to the right operand, not by this comparison. Chapter 339's exercise puts them together.`,
+Why \`<=\`? In \`2 * 3 * 4\`, after \`2 * 3\` has been parsed by a loop running at \`FACTOR\` (that is, the outer loop of a product), the second \`*\` has precedence \`FACTOR\` too, and it must be allowed in: equal is enough. Which way equal operators *group* is decided elsewhere, by the \`+ 1\` when the right operand is parsed.
+
+**Common wrong attempts.**
+
+- \`min < infix_prec(c)\`: an operator at the same level as the minimum can no longer continue, so after \`2 * 3\` the second \`*\` is refused and the parse stops early.
+- Leaving \`'-'\` out of \`prefix_rule\`: \`-5\` then fails with "expected an expression". Minus needs a row in both tables.
+- Using \`'0' | '9'\` instead of \`'0'..='9'\`: that matches only the two digits written, not the ones between.`,
     wrong: [
       {
-        code: `#[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Eq, PartialOrd, Ord)]
-enum Prec {
-    None,
-    Factor,
-    Term,
+        code: `const NONE: u8 = 0;
+const ASSIGNMENT: u8 = 1;
+const TERM: u8 = 6;
+const FACTOR: u8 = 7;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Prefix {
+    Number,
     Unary,
+    Grouping,
 }
 
-fn infix_prec(c: char) -> Prec {
+fn prefix_rule(c: char)
+    -> Option<Prefix> {
     match c {
-        '+' | '-' => Prec::Term,
-        '*' | '/' => Prec::Factor,
-        _ => Prec::None,
-    }
-}
-
-impl Prec {
-    fn next(self) -> Prec {
-        match self {
-            Prec::None => Prec::Term,
-            Prec::Term => Prec::Factor,
-            Prec::Factor => Prec::Unary,
-            Prec::Unary => Prec::Unary,
+        '0'..='9' => {
+            Some(Prefix::Number)
         }
+        '-' => Some(Prefix::Unary),
+        '(' => Some(Prefix::Grouping),
+        _ => None,
     }
 }
 
-fn binds(min: Prec, c: char) -> bool {
-    min <= infix_prec(c)
-}`,
-        why: 'With `Ord` derived, the order of the variants is the precedence. Declaring `Factor` before `Term` makes `+` bind tighter than `*`.',
-      },
-      {
-        code: `#[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Eq, PartialOrd, Ord)]
-enum Prec {
-    None,
-    Term,
-    Factor,
-    Unary,
-}
-
-fn infix_prec(c: char) -> Prec {
+fn infix_prec(c: char) -> u8 {
     match c {
-        '+' | '-' => Prec::Term,
-        '*' | '/' => Prec::Factor,
-        _ => Prec::None,
+        '+' | '-' => TERM,
+        '*' | '/' | '%' => FACTOR,
+        _ => NONE,
     }
 }
 
-impl Prec {
-    fn next(self) -> Prec {
-        match self {
-            Prec::None => Prec::Term,
-            Prec::Term => Prec::Factor,
-            Prec::Factor => Prec::Unary,
-            Prec::Unary => Prec::Unary,
-        }
-    }
-}
-
-fn binds(min: Prec, c: char) -> bool {
+fn binds(min: u8, c: char) -> bool {
     min < infix_prec(c)
 }`,
-        why: 'With `<`, an operator at the same level as the minimum can’t continue, so in `2 * 3 * 4` the parse would stop after `2 * 3` and never see the second `*`.',
+        why: 'With `<`, an operator at the same level as the minimum can’t continue, so in `2 * 3 * 4` the second `*` is refused.',
+      },
+      {
+        code: `const NONE: u8 = 0;
+const ASSIGNMENT: u8 = 1;
+const TERM: u8 = 6;
+const FACTOR: u8 = 7;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Prefix {
+    Number,
+    Unary,
+    Grouping,
+}
+
+fn prefix_rule(c: char)
+    -> Option<Prefix> {
+    match c {
+        '0'..='9' => {
+            Some(Prefix::Number)
+        }
+        '(' => Some(Prefix::Grouping),
+        _ => None,
+    }
+}
+
+fn infix_prec(c: char) -> u8 {
+    match c {
+        '+' | '-' => TERM,
+        '*' | '/' | '%' => FACTOR,
+        _ => NONE,
+    }
+}
+
+fn binds(min: u8, c: char) -> bool {
+    min <= infix_prec(c)
+}`,
+        why: '`-` is both a prefix and an infix operator. Without its prefix row, `-5` cannot start an expression.',
       },
     ],
   },
   fnTable: {
     optional: true,
     lang: 'rust',
-    title: 'A table of function pointers',
-    prompt: `Write four functions \`add\`, \`sub\`, \`mul\` and \`div\` of type \`BinFn\`, a table \`op_fn(c)\` that returns the right one for \`+ - * /\` (and \`None\` for anything else), and \`apply(c, a, b)\`, which looks the function up and calls it. One test checks that your table's cells cost no more than a bare pointer.`,
+    title: 'The other design: a table of function pointers',
+    prompt: `drip-rs names its parse functions with an enum. The other common design stores the functions themselves. Try it: write four functions \`add\`, \`sub\`, \`mul\` and \`div\` of type \`BinFn\`, a table \`op_fn(c)\` that returns the right one for \`+ - * /\` (and \`None\` for anything else), and \`apply(c, a, b)\`, which looks the function up and calls it. One test checks that a cell costs no more than a bare pointer.`,
     starter: `type BinFn = fn(f64, f64) -> f64;
 
 fn op_fn(c: char) -> Option<BinFn> {
@@ -302,17 +422,28 @@ fn option_costs_nothing() {
         size_of::<BinFn>());
 }`,
     hints: [
-      'Each operator is an ordinary `fn add(a: f64, b: f64) -> f64`.',
-      '`op_fn` is a `match` returning `Some(add)` and so on. Because the function’s return type says `Option<BinFn>`, every arm is turned into a function pointer.',
-      'In `apply`, `let f = op_fn(c)?;` returns `None` early for an unknown operator, then `Some(f(a, b))`.',
+      'Each operator is an ordinary function, such as `fn add(a: f64, b: f64) -> f64 { a + b }`.',
+      '`op_fn` is a `match` returning `Some(add)` and so on. The declared return type, `Option<BinFn>`, tells Rust to turn each function into the shared pointer type.',
+      'In `apply`, `let f = op_fn(c)?;` returns `None` early for an unknown operator; then `Some(f(a, b))` calls whichever function the pointer holds.',
     ],
-    walkthrough: `**Functions become pointers.** \`add\` on its own has a type unique to \`add\`. Where a \`BinFn\` is expected, Rust coerces it to the function-pointer type. In \`op_fn\`, the declared return type \`Option<BinFn>\` is the expected type of every arm, so all four coerce.
+    walkthrough: `**How to think about it.** A cell of this table is "which function to run", stored as the function itself. Rust can do that with a function pointer type, \`fn(f64, f64) -> f64\` (here given the name \`BinFn\` with \`type\`). So you need the four functions, a \`match\` that picks one, and a caller.
 
-**Without that expected type,** for instance \`let f = match c { '+' => Some(add), '-' => Some(sub), ... };\`, the arms disagree: "expected fn item, found a different fn item". That's why drip-rs annotates the tuple in \`rule\`.
+**The solution, line by line.**
 
-**apply.** \`?\` works on \`Option\` too: \`None\` returns early. Calling \`f(a, b)\` calls whichever function the pointer holds.
+- \`type BinFn = fn(f64, f64) -> f64;\` names the pointer type: any function taking two \`f64\`s and returning one.
+- \`fn add(a: f64, b: f64) -> f64 { a + b }\`, and the same for \`sub\`, \`mul\` and \`div\`, are four ordinary functions. \`a\` is the left operand, so \`sub\` is \`a - b\`.
+- \`fn op_fn(c: char) -> Option<BinFn> {\` promises an optional pointer.
+- \`'+' => Some(add),\` and the next three arms each wrap a function. On its own, \`add\` has a type unique to \`add\`; because the function's return type says \`Option<BinFn>\`, Rust converts each arm to the shared pointer type.
+- \`_ => None,\` is the "no rule" cell.
+- \`let f = op_fn(c)?;\` uses \`?\` on an \`Option\`: for \`None\` it returns \`None\` from \`apply\` at once; otherwise \`f\` is the pointer.
+- \`Some(f(a, b))\` calls through the pointer.
 
-**No cost for Option.** A function pointer is never null, so \`None\` is stored as null, and \`Option<BinFn>\` is pointer-sized. drip-rs's \`ParseRule\` relies on this: two optional pointers and a one-byte precedence, 24 bytes in all.`,
+The last test checks a promise of the standard library: a function pointer is never null, so \`None\` can be stored as null, and \`Option<BinFn>\` is the same size as \`BinFn\` (8 bytes on a 64-bit machine). drip-rs's \`Option<Prefix>\` is smaller still, 1 byte, which is one reason it names functions instead of storing them.
+
+**Common wrong attempts.**
+
+- Writing \`let f = match c { '+' => Some(add), '-' => Some(sub), ... }; f\` with no type on \`f\`: the arms keep their own, different function types, and rustc stops with E0308, "expected fn item, found a different fn item". Annotate \`let f: Option<BinFn>\`, or return the \`match\` directly.
+- Swapping the operands in \`sub\` or \`div\` (\`b - a\`): \`apply('-', 5.0, 2.0)\` must be 5 − 2.`,
     wrong: [
       {
         code: `type BinFn = fn(f64, f64) -> f64;
@@ -346,7 +477,7 @@ fn apply(c: char, a: f64, b: f64)
     let f = op_fn(c)?;
     Some(f(a, b))
 }`,
-        why: 'Doesn’t compile: E0308, “expected fn item, found a different fn item”. With no expected type on `let f`, each arm keeps its own function’s type. Annotate `let f: Option<BinFn>`, or return the `match` directly.',
+        why: 'Doesn’t compile: E0308, “expected fn item, found a different fn item”. With no expected type on `let f`, each arm keeps its own function’s type.',
       },
       {
         code: `type BinFn = fn(f64, f64) -> f64;
@@ -387,57 +518,46 @@ fn apply(c: char, a: f64, b: f64)
 
 export const quiz = [
   {
-    q: 'What is `ParseFn` in drip-rs?',
+    q: 'In drip-rs, what does `prefix_rule(TokenKind::True)` return?',
     options: [
-      { t: 'A trait that every parse function implements', why: 'No trait is involved: it’s a plain function-pointer type.' },
-      { t: 'A closure that captures the compiler', why: 'Plain `fn` pointers capture nothing. The compiler is passed in as the first argument.' },
-      { t: 'A type alias for `fn(&mut Compiler, bool)`, a function pointer', correct: true, why: 'Any function or method with that signature, like `Compiler::binary`, fits.' },
-      { t: 'An enum of every parse function', why: 'That would be another design. drip-rs stores pointers.' },
+      { t: 'A closure that emits `true`', why: 'That is the TypeScript design. drip-rs returns a value naming the work, not a function.' },
+      { t: '`Some(Prefix::Literal(OpCode::True))`', correct: true, why: 'The variant carries the opcode to emit, so `true`, `false` and `none` share one arm of `prefix`.' },
+      { t: '`PREC_NONE`', why: 'That is what `infix_precedence` says about `true`: it never continues an expression.' },
+      { t: '`None`', why: '`true` can start an expression, so it has a prefix rule.' },
     ],
   },
   {
-    q: 'Without the tuple annotation, `match kind { T::Minus => (Some(Self::unary), ...), T::Number => (Some(Self::number), ...), ... }` fails. Why?',
+    q: 'Parsing at precedence `PREC_FACTOR` (7), the next token is `+` (`PREC_TERM`, 6). What happens?',
     options: [
-      { t: 'Each function has its own unique type, and the arms disagree', correct: true, why: 'rustc reports E0308, “expected fn item, found a different fn item”. The annotation coerces them all to `ParseFn`.' },
-      { t: 'Methods can’t be used as values', why: 'They can: `Self::unary` is a value, and it coerces to a function pointer.' },
-      { t: '`Some` can’t hold a function', why: '`Option<fn(..)>` is perfectly ordinary.' },
-      { t: 'The `_` arm must come first', why: '`_` must come last, or it would catch everything.' },
+      { t: '`+` joins the operand being parsed', why: 'Only operators whose precedence is at least 7 may join it.' },
+      { t: '“expected an expression” is reported', why: 'That is for a token with no prefix rule, at the start of an expression.' },
+      { t: 'The loop stops, leaving `+` for an outer call', correct: true, why: '`7 <= 6` is false: `+` binds more loosely than the operand being parsed.' },
     ],
   },
   {
-    q: 'With `#[derive(PartialOrd, Ord)] enum Precedence { None, Assignment, Or, ..., Primary }`, which is true?',
+    q: 'Why does `infix` parse a binary operator’s right operand at `infix_precedence(kind) + 1`?',
     options: [
-      { t: '`Precedence::Primary < Precedence::None`', why: 'The first declared variant is the smallest, so `None` is the lowest.' },
-      { t: 'Comparing them needs a hand-written `impl`', why: 'The derive writes the comparison for you.' },
-      { t: '`Precedence::Term + 1` is `Precedence::Factor`', why: 'Enums have no `+`. drip-rs uses `next()`.' },
-      { t: '`Precedence::Term < Precedence::Factor`', correct: true, why: '`Term` is declared before `Factor`, and derived `Ord` orders variants by position.' },
+      { t: 'So that `*` binds tighter than `+`', why: 'That comes from the precedences themselves (7 against 6), not from the `+ 1`.' },
+      { t: 'To skip the operator token', why: '`advance()` already consumed it before `infix` was called.' },
+      { t: 'So operators of equal precedence group from the left, as in `(8 - 3) - 2`', correct: true, why: 'The second `-` is not tighter than the minimum, so it is left for the outer loop.' },
+      { t: 'Because precedences are `u8` and must not be 0', why: 'No such rule exists; `PREC_NONE` is 0.' },
     ],
   },
   {
-    q: 'In `parse_precedence(Precedence::Factor)`, the next token is `+` (precedence `Term`). What happens?',
+    q: 'Which is a reason drip-rs’s table names parse functions with a `Prefix` enum?',
     options: [
-      { t: 'The loop stops: `Factor <= Term` is false', correct: true, why: '`+` binds more loosely than the operand being parsed, so it’s left for an outer call.' },
-      { t: '`+` joins this operand', why: 'Only operators whose precedence is at least `Factor` may join it.' },
-      { t: '“Expect expression.” is reported', why: 'That’s for a missing prefix rule, at the start of an expression.' },
-      { t: 'The compiler panics on the `expect`', why: 'The `expect` is only reached inside the loop, and `+` does have an infix rule.' },
+      { t: 'Rust has no way to store a function in a variable', why: 'It does: function pointers, such as `fn(&mut Compiler, bool)`.' },
+      { t: 'An enum can capture the compiler’s variables', why: 'An enum value captures nothing; the code runs later, in `prefix`, with `&mut self`.' },
+      { t: 'It is one byte, `Copy`, can carry data, and `match` checks every variant is handled', correct: true, why: 'All four were measured or are guaranteed by the compiler.' },
+      { t: 'Function pointers are always 16 bytes', why: 'A function pointer is 8 bytes on a 64-bit machine, and `Option` of one is 8 too.' },
     ],
   },
   {
-    q: 'How big is `Option<fn(&mut u8, bool)>` on the book’s 64-bit machine?',
+    q: 'What does drip-rs report for `a + b = 1;`?',
     options: [
-      { t: '16 bytes: 8 for the pointer, 8 for the tag and padding', why: 'No tag is needed: a function pointer is never null.' },
-      { t: '8 bytes, the same as the pointer', correct: true, why: '`None` uses the null pattern, which no function pointer has.' },
-      { t: '9 bytes', why: 'Sizes are multiples of the alignment (8), and anyway no tag is needed.' },
-      { t: '0 bytes', why: 'A pointer needs room for an address.' },
-    ],
-  },
-  {
-    q: 'Why does drip-rs’s `binary` parse its right operand at `precedence.next()`?',
-    options: [
-      { t: 'So that `*` binds tighter than `+`', why: 'That comes from the table’s precedences, not from `next()`.' },
-      { t: 'To skip the operator token', why: '`advance()` already did that before `binary` was called.' },
-      { t: 'To make operators of equal precedence group from the left, as in `(8 - 3) - 2`', correct: true, why: 'The second `-` is not tighter than the minimum, so it is left for the outer loop.' },
-      { t: 'Because `parse_precedence` rejects the same precedence twice', why: 'It has no such rule. The minimum just decides which operators may join.' },
+      { t: '`line 1: cannot assign to this expression`', correct: true, why: 'Inside `a + b`, `can_assign` is false; the `=` is left over when the outer `continue_expression` ends, and its last line reports it.' },
+      { t: 'Nothing: it assigns 1 to `b`', why: '`b` is parsed at `PREC_TERM + 1`, where `can_assign` is false, so its `named_variable` does not take the `=`.' },
+      { t: '`line 1: expected an expression, found \'=\'`', why: '`=` is never asked for its prefix rule here; it is found after a complete expression.' },
     ],
   },
 ];

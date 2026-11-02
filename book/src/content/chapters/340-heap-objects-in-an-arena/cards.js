@@ -4,14 +4,14 @@
 export const prompts = {
   'oh-arenas': {
     q: 'How many arenas does drip-rs’s `Heap` have, and what decides which one an object goes in?',
-    a: 'Eight, one per object type (strings, functions, natives, upvalues, closures, classes, instances, bound methods). The object’s Rust type decides.',
+    a: 'Nine, one per kind of object (strings, lists, functions, natives, upvalues, closures, classes, instances, bound methods). The object’s Rust type decides.',
   },
   'oh-no-header': {
     q: 'TypeScript heap objects carry `type`, `isMarked` and `next`. Why do drip-rs objects need none of them?',
-    a: 'The arena an object is in says its type, sweep walks the arenas instead of a list, and mark bits live in a separate bitmap.',
+    a: 'The arena an object is in says its type, the sweep walks the arenas instead of a list, and mark bits live in a separate bitmap.',
   },
   'oh-no-null': {
-    q: 'Why is a drip-rs closure’s upvalue list `Vec<Gc<ObjUpvalue>>` with no null entries?',
+    q: 'Why does a drip-rs closure’s upvalue list, `Vec<Gc<ObjUpvalue>>`, never hold an empty entry?',
     a: 'drip-rs captures the upvalues into a `Vec` first and allocates the closure afterwards, so the list is never half-filled.',
   },
   'oh-handle': {
@@ -20,11 +20,11 @@ export const prompts = {
   },
   'oh-trait': {
     q: 'What does the `HeapObject` trait tell generic heap code?',
-    a: 'Which arena (and which mark bits) belong to each object type, plus the object’s size, so one generic `alloc` and `Index` serve all eight types.',
+    a: 'Which arena (and which mark bits) belong to each object type, and the object’s size, so one generic `alloc` and one `Index` impl serve all nine.',
   },
   'oh-index-sugar': {
     q: 'What does `heap[c]` turn into?',
-    a: '`*heap.index(c)`, a call to the `Index` trait’s method. (`IndexMut::index_mut` when it’s written through.)',
+    a: '`*heap.index(c)`, a call to the `Index` trait’s method (`IndexMut::index_mut` when it is written through).',
   },
   'oh-chain': {
     q: 'How does drip-rs write TypeScript’s `inst.klass.name`?',
@@ -36,11 +36,11 @@ export const prompts = {
   },
   'oh-nested': {
     q: 'Does `heap[heap[class].name].chars.push(\'!\')` compile?',
-    a: 'No. The outer `index_mut` borrows the heap mutably while the inner `heap[class]` reads it. Copy `heap[class].name` into a local first.',
+    a: 'No (E0502). The outer `index_mut` borrows the heap mutably while the inner `heap[class]` reads it. Copy `heap[class].name` into a local first.',
   },
   'oh-cost': {
     q: 'At run time, what does `heap[closure]` check?',
-    a: 'Only the arena’s work: a bounds check and that the slot isn’t `None`. The arena itself was chosen at compile time from the handle’s type.',
+    a: 'Only the arena’s own work: a bounds check, and that the slot is not `None`. The arena itself was chosen at compile time from the handle’s type.',
   },
 };
 
@@ -393,19 +393,32 @@ fn writes_through_a_handle() {
     assert_eq!(heap[name].chars, "Point3D");
 }`,
     hints: [
-      '`Class`’s `arena` returns `&h.classes`, and `arena_mut` returns `&mut h.classes`.',
-      'In `alloc`, `T::arena_mut(self)` is the right `Vec` for whatever `T` is. Push, then the new slot is `len() - 1`.',
-      '`index` is `&T::arena(self)[h.index as usize]`, and `index_mut` the same with `arena_mut` and `&mut`.',
+      'Copy `Str`’s `impl HeapObject` and change the field: `Class`’s arena is `h.classes`.',
+      'In `alloc`, `T::arena_mut(self)` is the right `Vec` for whatever `T` is. Push the object; its slot is then `len() - 1`. Wrap that in a `Gc { index: i as u32, marker: PhantomData }`.',
+      '`index` is `&T::arena(self)[h.index as usize]`, and `index_mut` the same with `arena_mut` and `&mut`. Both impls start `impl<T: HeapObject> ... for Heap`.',
     ],
-    walkthrough: `**Which arena.** \`HeapObject\` is the only place that knows \`Class\` lives in \`classes\`. Everything else is generic over \`T: HeapObject\`, exactly like drip-rs's \`alloc<T: HeapObject>\`.
+    walkthrough: `**How to think about it.** Three jobs, all built on one idea: the trait is the only place that knows which \`Vec\` holds which type, and everything else is generic over \`T: HeapObject\`. So write the \`Class\` impl first, by copying the one for \`Str\`; then \`alloc\` and the two index impls never mention a concrete type at all, exactly like drip-rs's \`alloc<T: HeapObject>\` and \`impl<T: HeapObject> Index<Gc<T>> for Heap\`.
 
-**alloc.** \`T::arena_mut(self)\` borrows the heap mutably and returns the arena for \`T\`. After \`push\`, the object is at \`len() - 1\`. That number, wrapped in a \`Gc<T>\`, is the handle. Because the arenas are separate, a class and a string can both be slot 0, and the type keeps them apart.
+**The solution, line by line.**
 
-**Index.** \`impl<T: HeapObject> Index<Gc<T>> for Heap\` is one impl for every object type. rustc compiles a copy per type it is used with, so \`heap[c]\` for a \`Gc<Class>\` becomes \`&heap.classes[i]\`, chosen at compile time.
+- \`impl HeapObject for Class {\` says which arena is a class's.
+- \`fn arena(h: &Heap) -> &Vec<Self> { &h.classes }\` and \`fn arena_mut(h: &mut Heap) -> &mut Vec<Self> { &mut h.classes }\`: \`Self\` is \`Class\` here, so returning \`&h.strings\` would not even type-check.
+- \`fn alloc<T: HeapObject>(&mut self, object: T) -> Gc<T> {\` works for any object type.
+- \`let arena = T::arena_mut(self);\` borrows the heap mutably and returns the arena for \`T\`.
+- \`arena.push(object);\` moves the object into the arena: from now on the heap owns it.
+- \`let i = arena.len() - 1;\` is the slot it landed in, the last one.
+- \`Gc { index: i as u32, marker: PhantomData }\` wraps the slot number in a typed handle. Because each arena counts from 0, the first class and the first string are both slot 0, and the type keeps them apart.
+- \`impl<T: HeapObject> Index<Gc<T>> for Heap { type Output = T;\` is one impl for every handle type; \`Output\` says what \`heap[h]\` produces.
+- \`fn index(&self, h: Gc<T>) -> &T { let i = h.index as usize; &T::arena(self)[i] }\` reads the slot. rustc compiles a copy per type, so for a \`Gc<Class>\` this is \`&self.classes[i]\`.
+- \`impl<T: HeapObject> IndexMut<Gc<T>> for Heap\` with \`fn index_mut(&mut self, h: Gc<T>) -> &mut T { ... &mut T::arena_mut(self)[i] }\` is the same for writing; without it, \`heap[c].arity += 1\` is rejected, because \`Index\` only hands out shared references.
 
-**IndexMut.** Writing \`heap[c].arity += 1\` calls \`index_mut\`. Without it, Rust would reject the assignment: \`Index\` only hands out shared references.
+The test \`reads_through_two_handles\` is the chain from the chapter: \`let n = heap[c].name;\` copies a handle out (the borrow ends at the semicolon), and \`heap[n].chars\` is a second, separate lookup.
 
-**Reading through two handles.** \`let n = heap[c].name;\` copies a handle out, and the borrow ends at the semicolon. Then \`heap[n].chars\` is a second, separate lookup.`,
+**Common wrong attempts.**
+
+- Taking \`arena.len()\` after the push as the index: that is one past the new object, so the first handle is 1 and reading it goes out of bounds. Use \`len() - 1\`, or read \`len()\` before pushing.
+- Returning \`&h.strings\` from \`Class::arena\`: it does not compile, since it is a \`&Vec<Str>\` and the trait promises a \`&Vec<Class>\`. The types catch a mixed-up arena.
+- Writing only \`Index\`: the test that does \`heap[c].arity += 1\` fails to compile with E0594, "cannot assign to data in an index of \`Heap\`".`,
     wrong: [
       {
         code: `use std::marker::PhantomData;
@@ -715,15 +728,24 @@ fn leaves_the_superclass_alone() {
         ["area", "init"]);
 }`,
     hints: [
-      '`heap[sup]` and `heap[sub]` both borrow the whole `heap`, so a shared borrow of one can’t be alive while you write the other.',
+      '`heap[sup]` and `heap[sub]` both borrow the whole `heap`, so a shared borrow of one cannot still be alive while you write the other.',
       'Clone the superclass’s list into a local: `let methods = heap[sup].methods.clone();`. The borrow ends at the semicolon.',
-      'Then `heap[sub].methods.extend(methods);`.',
+      'Then add, rather than replace: `heap[sub].methods.extend(methods);`.',
     ],
-    walkthrough: `**Why the clone.** \`heap[sup]\` calls \`index(&heap, sup)\`, and the reference it returns keeps \`heap\` borrowed. \`heap[sub]\` for writing calls \`index_mut(&mut heap, sub)\`. The borrow checker sees two borrows of \`heap\`, one mutable, and doesn't know they reach different slots.
+    walkthrough: `**How to think about it.** You need to read one object and write another in the same heap. Every \`heap[...]\` borrows the whole heap, so the read must be completely finished, with nothing still pointing into the heap, before the write starts. The way to finish a read is to copy (or clone) what you read into a value of your own.
 
-**What drip-rs does.** The same thing: \`let methods = self.heap[superclass].methods.clone();\`, then \`self.heap[subclass].methods.add_all(&methods);\`. The clone costs one copy of a small table, once per class declaration.
+**The solution, line by line.**
 
-**Add, don't replace.** Assigning \`heap[sub].methods = ...\` would throw away the subclass's own entries. In drip-rs, \`Inherit\` runs before the subclass's methods are compiled, so they then overwrite inherited ones with the same name (chapter 350).`,
+- \`fn inherit(heap: &mut Heap, sub: Gc, sup: Gc) {\` takes the heap mutably and two handles, which are \`Copy\`.
+- \`let methods = heap[sup].methods.clone();\` reads the superclass (\`index\` borrows \`heap\` shared), clones its list into a new \`Vec<String>\` owned by \`methods\`, and the shared borrow ends at the semicolon.
+- \`heap[sub].methods.extend(methods);\` now borrows \`heap\` mutably through \`index_mut\`, and moves the cloned names onto the end of the subclass's list, keeping its own.
+
+drip-rs's \`Inherit\` instruction does the same: \`let methods = self.heap[superclass].methods.clone();\`, then \`self.heap[subclass].methods.add_all(&methods);\`. The clone is one copy of a small table, once per class declaration. (Because \`Inherit\` runs before the subclass's own methods are added, those then overwrite inherited ones with the same name; the chapter *extends and super in Rust* comes back to this.)
+
+**Common wrong attempts.**
+
+- \`let from = &heap[sup].methods; heap[sub].methods.extend(from.iter().cloned());\`: E0502, because \`from\` keeps \`heap\` borrowed while \`heap[sub]\` needs it mutably. The borrow checker sees two borrows of \`heap\`, not of two different slots.
+- \`heap[sub].methods = heap[sup].methods.clone();\`: it compiles (the right side is evaluated first), but it throws away the subclass's own methods instead of adding to them.`,
     wrong: [
       {
         code: `use std::ops::{Index, IndexMut};
@@ -813,28 +835,28 @@ export const quiz = [
   {
     q: 'In drip-rs, what does `heap[c]` do when `c: Gc<ObjClosure>`?',
     options: [
-      { t: 'Follows a pointer stored in `c`', why: 'A `Gc` holds a slot number, not an address.' },
-      { t: 'Checks the object’s `type` field to find the right kind', why: 'Rust objects have no `type` field. The handle’s type picks the arena at compile time.' },
+      { t: 'Follows an address stored in `c`', why: 'A `Gc` holds a slot number, not an address.' },
       { t: 'Calls `Index::index`, which reads slot `c.index()` of `heap.closures`', correct: true, why: 'The generic impl uses `ObjClosure::arena(heap)`, which is `&heap.closures`.' },
-      { t: 'Searches all eight arenas for the slot', why: 'Only the closure arena is ever looked at.' },
+      { t: 'Checks the object’s `type` field to find the right kind', why: 'drip-rs objects have no `type` field. The handle’s type picks the arena at compile time.' },
+      { t: 'Searches all nine arenas for the slot', why: 'Only the closures arena is ever looked at.' },
     ],
   },
   {
     q: 'Which of these does a drip-rs `ObjInstance` contain?',
     options: [
-      { t: 'A `next` pointer to the previously allocated object', why: 'That is the TypeScript object list. drip-rs sweeps by walking its arenas.' },
-      { t: 'An `isMarked` flag', why: 'Mark bits live in a separate `Marks` bitmap.' },
-      { t: 'A `Gc<ObjClass>` handle and a field table', correct: true, why: '`ObjInstance { class: Gc<ObjClass>, fields: Table }`, and nothing else.' },
+      { t: 'A `next` reference to the previously allocated object', why: 'That is the TypeScript object list. drip-rs sweeps by walking its arenas.' },
+      { t: 'An `isMarked` flag', why: 'Mark bits live in a separate bitmap.' },
       { t: 'An `Rc<ObjClass>`', why: 'No object owns another. The class is reached through a handle.' },
+      { t: 'A `Gc<ObjClass>` handle, a field table and the order the fields were first set', correct: true, why: '`ObjInstance { class, fields, field_order }`, and nothing else.' },
     ],
   },
   {
-    q: 'Why does drip-rs’s heap have one generic `alloc<T: HeapObject>` rather than eight functions like TypeScript’s `newClass`?',
+    q: 'Why does drip-rs’s heap have one generic `alloc<T: HeapObject>` rather than a constructor per kind, like TypeScript’s `newClass`?',
     options: [
-      { t: 'Rust doesn’t allow more than one method per struct', why: 'It allows as many as you like.' },
       { t: 'The `HeapObject` trait tells generic code which arena each type uses, so one body works for all', correct: true, why: '`T::arena_mut(self).insert(object)` is the whole job.' },
-      { t: 'Generic functions are faster than ordinary ones', why: 'Monomorphized code is as fast as hand-written code, not faster.' },
-      { t: 'So that `alloc` can collect garbage first', why: 'The heap’s `alloc` never collects. Callers check `should_collect` first.' },
+      { t: 'Rust allows only one method per struct', why: 'It allows as many as you like.' },
+      { t: 'Generic functions run faster than ordinary ones', why: 'A generic function compiled for one type is as fast as hand-written code, not faster.' },
+      { t: 'So that `alloc` can collect garbage first', why: 'The heap’s `alloc` never collects; callers ask `should_collect` first.' },
     ],
   },
   {
@@ -850,25 +872,15 @@ heap[sub].methods.add_all(&m);
     options: [
       { t: 'A only', why: 'A keeps `heap` borrowed through `from` while `heap[sub]` borrows it mutably: E0502.' },
       { t: 'Both, because `sup` and `sub` are different slots', why: 'The borrow checker sees two borrows of `heap`, not of slots.' },
-      { t: 'Neither', why: 'B works: the clone ends the shared borrow before the write.' },
-      { t: 'B only', correct: true, why: 'This is what drip-rs’s `Inherit` does.' },
-    ],
-  },
-  {
-    q: 'What is the run-time cost of choosing the arena in `heap[h]`?',
-    options: [
-      { t: 'None: rustc compiles a copy of the generic code for each object type, with the arena fixed', correct: true, why: 'What remains is the arena’s own bounds check and `None` check.' },
-      { t: 'A virtual call through a trait object', why: 'The trait is used as a generic bound, not as `dyn HeapObject`.' },
-      { t: 'A hash lookup by type name', why: 'Nothing is looked up by name. `type_name` is only used in the panic message.' },
-      { t: 'A match on a type tag stored in the handle', why: 'A `Gc<T>` is just a `u32`; its type exists only at compile time.' },
+      { t: 'B only', correct: true, why: 'The clone ends the shared borrow before the write. This is what drip-rs’s `Inherit` does.' },
     ],
   },
   {
     q: 'A collector bug frees a class that is still in use. What happens the next time drip-rs reads it in a debug or stress run?',
     options: [
       { t: 'It reads whatever object moved into that slot', why: 'In debug and stress modes freed slots are never reused, so nothing moves in.' },
-      { t: 'Undefined behaviour', why: 'drip-rs forbids `unsafe`, so a stale handle can’t cause undefined behaviour.' },
-      { t: 'The slot is `None`, so `use_after_free` panics with a message naming the type', correct: true, why: 'Something like “use after free: an object of type ObjClass was collected while still in use”.' },
+      { t: 'Undefined behaviour', why: 'drip-rs forbids `unsafe`, so a stale handle cannot cause undefined behaviour.' },
+      { t: 'The slot is `None`, so `use_after_free` panics with a message naming the type', correct: true, why: '“use after free: an object of type ObjClass was collected while still in use”.' },
       { t: 'The compiler rejects the program', why: 'Whether a handle is stale is only known at run time.' },
     ],
   },

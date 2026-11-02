@@ -4,11 +4,11 @@
 export const prompts = {
   'si-hash-twice': {
     q: 'Where does drip-rs store a string’s hash?',
-    a: 'Twice: in the `ObjString` and in every `StrRef` handle to it, next to the `Gc<ObjString>`.',
+    a: 'Twice: in the `ObjString`, and in every `StrRef` handle to it, beside the `Gc<ObjString>`.',
   },
   'si-no-heap': {
     q: 'Why does it matter that `Table::set` doesn’t need the heap?',
-    a: 'Tables live inside heap objects. `heap[instance].fields.set(...)` already borrows the heap mutably, so `set` couldn’t also borrow the strings arena (E0502).',
+    a: 'Tables live inside heap objects. `heap[instance].fields.set(...)` already borrows the heap mutably, so `set` could not also borrow the strings arena (E0502).',
   },
   'si-box-str': {
     q: 'Why is `ObjString::chars` a `Box<str>` rather than a `String`?',
@@ -23,7 +23,7 @@ export const prompts = {
     a: 'Inside the heap’s own method, rustc sees two different fields, `interned` and `strings`, and lets them be borrowed separately.',
   },
   'si-owned': {
-    q: 'Why does the VM call `intern_owned(String)` for the result of `+`?',
+    q: 'Why does `Vm::add` call `intern_owned(String)` for the result of `+`?',
     a: 'It hands over the string it just built, so the heap can keep that allocation. `intern(&str)` has to copy the text.',
   },
   'si-fnv': {
@@ -32,7 +32,7 @@ export const prompts = {
   },
   'si-tombstone': {
     q: 'How does drip-rs’s table tell an empty slot from a tombstone?',
-    a: 'Both have key `None`. Empty has value `Nil`; a tombstone has value `Bool(true)`.',
+    a: 'Both have key `None`. An empty slot has value `Value::None`; a tombstone has `Value::Bool(true)`.',
   },
   'si-first-tomb': {
     q: 'Why does `find` use `tombstone.get_or_insert(index)`?',
@@ -44,7 +44,19 @@ export const prompts = {
   },
 };
 
-export const examples = {};
+export const examples = {
+  'interning-drip': {
+    lang: 'drip-vm',
+    title: 'Equal text, one string',
+    code: `let a = "drip";
+let b = "dr" + "ip";
+print a == b;
+print str(4) + str(2) == "42";
+print len("héllo");
+let words = [a, b];
+print words;`,
+  },
+};
 
 export const exercises = {
   interner: {
@@ -229,19 +241,30 @@ fn survives_collisions() {
     assert_eq!(t.strings.len(), 100);
 }`,
     hints: [
-      '`let mut i = h as usize & (CAP - 1);` gives the first slot. `CAP` is a power of two, so the mask is a cheap remainder.',
-      'Loop with `let Some(k) = self.keys[i] else { break; };`. Compare `k.hash == h` first, and only then `self.str(k) == chars`.',
-      'After the loop, slot `i` is empty. The new id is `self.strings.len()`, taken before you push.',
+      'The first slot is `h as usize & (CAP - 1)`. `CAP` is a power of two, so the mask is a cheap remainder that also wraps around the end.',
+      'Loop with `let Some(k) = self.keys[i] else { break; };`. Compare `k.hash == h` first, and only then `self.str(k) == chars`; if either differs, step to `(i + 1) & mask`.',
+      'After the loop, slot `i` is empty. The new id is `self.strings.len()`, taken before you push the text; store `Some(s)` in `self.keys[i]` and return `s`.',
     ],
-    walkthrough: `**This is \`Heap::intern\` plus \`find_string\`.** drip-rs splits it into two functions; here they are one loop.
+    walkthrough: `**How to think about it.** This is \`Heap::intern\` and \`find_string\` folded into one loop. There are two outcomes: the string is already in the table (return its handle, store nothing), or it is not (store it once and hand out a new handle). An open-addressing table answers "is it here?" by walking from the hash's home slot until it either finds the string or reaches an empty slot; the empty slot is then exactly where the new string belongs. So write the probe loop first, and put the "new string" code after it.
 
-**Hash first, text second.** Comparing two \`u32\`s is cheap, and two different strings rarely share a whole 32-bit hash, so \`self.str(k) == chars\` almost only runs for the real match. It still has to run: equal hashes don't prove equal strings.
+**The solution, line by line.**
 
-**Probing.** \`k0\`…\`k99\` in 256 slots collide plenty. A version that looks only at the first slot either returns the wrong string or overwrites another string's entry, and then that string is interned twice. That is what the last test catches.
+- \`let h = fnv(chars);\` hashes the text once.
+- \`let mask = CAP - 1;\` and \`let mut i = h as usize & mask;\` give the home slot; with \`CAP\` = 256, \`& 255\` keeps the low 8 bits.
+- \`loop {\` probes one slot per turn.
+- \`let Some(k) = self.keys[i] else { break; };\` copies the slot out (\`Option<StrRef>\` is \`Copy\`, so this borrows nothing); an empty slot ends the probe.
+- \`if k.hash == h && self.str(k) == chars { return k; }\` compares the cheap \`u32\` first, and the text only when the hashes match. Equal hashes do not prove equal strings, so the text check must stay.
+- \`i = (i + 1) & mask;\` steps on, wrapping from slot 255 to 0.
+- \`let id = self.strings.len();\` is the new string's id: the index it is about to get.
+- \`self.strings.push(chars.into());\` stores the text once, as a \`Box<str>\`.
+- \`let s = StrRef { id: id as u32, hash: h };\` makes the handle, carrying the hash as drip-rs's does.
+- \`self.keys[i] = Some(s);\` records it in the empty slot the probe stopped at, and \`s\` is returned.
 
-**Borrows.** \`self.keys[i]\` is an \`Option<StrRef>\`, which is \`Copy\`, so the \`let ... else\` copies it out and borrows nothing. \`self.str(k)\` borrows \`self\` immutably, and that borrow is over before the pushes at the end.
+**Common wrong attempts.**
 
-**Why not \`HashMap<String, u32>\`?** It would work. drip-rs uses its own table because the same table type serves globals, fields and methods, and because the collector must be able to delete entries for unreachable strings (chapter 347).`,
+- Returning whatever is in the home slot when it is taken, without comparing: two different strings that share a slot then share a handle.
+- On a collision, overwriting the slot instead of probing on: the string that was there can no longer be found, so interning it again makes a second copy, which the last test catches.
+- Comparing only hashes: it passes small tests, but two different strings with equal hashes would become one.`,
     wrong: [
       {
         code: `#[derive(Clone, Copy, Debug, PartialEq)]
@@ -380,7 +403,7 @@ impl Interner {
     prompt: `Write drip-rs's \`find\` for this fixed-size, two-column table. It returns the slot holding \`key\`, or, if \`key\` isn't there, the slot where \`set\` should put it.
 
 - Start at \`key.hash & mask\`, and step \`(i + 1) & mask\`.
-- A slot with key \`None\` and value \`Nil\` is empty: the probe ends there.
+- A slot with key \`None\` and value \`Value::None\` is empty: the probe ends there.
 - A slot with key \`None\` and value \`Bool(true)\` is a tombstone: keep probing, but remember the *first* one.
 - If the probe ends without finding \`key\`, return the first tombstone, or the empty slot if there was none.
 
@@ -393,7 +416,7 @@ struct StrRef {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Value {
-    Nil,
+    None,
     Bool(bool),
     Num(f64),
 }
@@ -411,7 +434,7 @@ impl Table {
     fn new() -> Self {
         Table {
             keys: vec![None; 8],
-            vals: vec![Value::Nil; 8],
+            vals: vec![Value::None; 8],
         }
     }
 
@@ -464,7 +487,7 @@ struct StrRef {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Value {
-    Nil,
+    None,
     Bool(bool),
     Num(f64),
 }
@@ -482,7 +505,7 @@ impl Table {
     fn new() -> Self {
         Table {
             keys: vec![None; 8],
-            vals: vec![Value::Nil; 8],
+            vals: vec![Value::None; 8],
         }
     }
 
@@ -530,9 +553,9 @@ fn find(
     i &= mask;
     let mut tomb = None;
     loop {
-        let nil = vals[i] == Value::Nil;
+        let e = vals[i] == Value::None;
         match keys[i] {
-            None if nil => break,
+            None if e => break,
             None => {
                 tomb.get_or_insert(i);
             }
@@ -576,8 +599,8 @@ fn a_missing_key_is_none() {
 #[test]
 fn probes_past_a_tombstone() {
     let mut t = Table::new();
-    t.set(k(1, 4), Value::Nil);
-    t.set(k(2, 4), Value::Nil);
+    t.set(k(1, 4), Value::None);
+    t.set(k(2, 4), Value::None);
     t.set(k(3, 4), Value::Num(3.0));
     t.delete(k(2, 4));
     assert_eq!(t.get(k(3, 4)),
@@ -588,7 +611,7 @@ fn probes_past_a_tombstone() {
 fn reuses_the_first_tombstone() {
     let mut t = Table::new();
     for id in 1..=4 {
-        t.set(k(id, 4), Value::Nil);
+        t.set(k(id, 4), Value::None);
     }
     t.delete(k(2, 4)); // slot 5
     t.delete(k(3, 4)); // slot 6
@@ -599,24 +622,39 @@ fn reuses_the_first_tombstone() {
 #[test]
 fn wraps_around_the_end() {
     let mut t = Table::new();
-    t.set(k(1, 7), Value::Nil);
+    t.set(k(1, 7), Value::None);
     t.set(k(2, 7), Value::Num(2.0));
     assert_eq!(t.keys[0], Some(k(2, 7)));
     assert_eq!(t.get(k(2, 7)),
         Some(Value::Num(2.0)));
 }`,
     hints: [
-      'Keep `let mut tomb: Option<usize> = None;` outside the loop.',
-      'Inside, `match keys[i]` with guards: `None if vals[i] == Value::Nil` ends the probe, plain `None` is a tombstone, and `Some(k) if k == key` is the hit.',
+      'Keep `let mut tomb: Option<usize> = None;` outside the loop, and start at `key.hash as usize & mask`.',
+      'Inside, `match keys[i]` with guards: `None if vals[i] == Value::None` ends the probe, a plain `None` is a tombstone, and `Some(k) if k == key` is the hit.',
       '`tomb.get_or_insert(i)` sets it only the first time. After the loop, return `tomb.unwrap_or(i)`.',
     ],
-    walkthrough: `**Why tombstones keep probing.** Keys that collided were placed one after another. If a deleted slot in the middle looked empty, every key after it would become unreachable. That is the \`probes_past_a_tombstone\` test.
+    walkthrough: `**How to think about it.** A probe has to tell three kinds of slot apart: a live key (is it ours?), an empty slot (the key is not here, stop), and a tombstone (someone was deleted here; the key might still be further on). Both empty slots and tombstones have key \`None\`, so the value column decides. And when the key is absent, \`set\` wants the best place to put it, which is the first reusable slot on the way.
 
-**Why the first tombstone.** Putting a new key in the earliest free slot of its probe sequence keeps lookups for it short. Remembering the last one also "works", but it puts the key further from home, and here the test pins down drip-rs's behaviour.
+**The solution, line by line.**
 
-**Why the mask.** The capacity is a power of two, so \`& mask\` is the remainder, and it wraps from slot 7 to slot 0. Without it, the probe runs off the end of the \`Vec\`, and Rust panics with an out-of-bounds index instead of reading past the end.
+- \`let mask = keys.len() - 1;\` relies on the length being a power of two (8 here).
+- \`let mut i = key.hash as usize; i &= mask;\` is the home slot.
+- \`let mut tomb = None;\` will hold the first tombstone's index, if any.
+- \`let e = vals[i] == Value::None;\` reads the value column once per slot: \`e\` says whether the value is \`none\`, as an empty slot's is.
+- \`None if e => break,\` a truly empty slot: the key is absent.
+- \`None => { tomb.get_or_insert(i); }\` a tombstone: remember it if it is the first, and keep probing.
+- \`Some(k) if k == key => { return i; }\` found it; keys compare as whole \`StrRef\`s, as interned strings do.
+- \`Some(_) => {}\` another key: keep probing.
+- \`i = (i + 1) & mask;\` steps on, wrapping from 7 to 0.
+- \`tomb.unwrap_or(i)\` after the loop returns the first tombstone if there was one, or the empty slot that ended the probe.
 
-**Two slices, not \`&self\`.** In drip-rs, \`find\` takes the two columns as slices so that \`grow\` can call it on the new, empty columns while it reads entries from the old ones.`,
+drip-rs's real \`find\` has exactly this shape, and takes the two columns as slices so that \`grow\` can call it on the new, empty columns while it reads entries from the old ones.
+
+**Common wrong attempts.**
+
+- Treating every \`None\` key as empty: a lookup stops at the first tombstone and misses keys placed after it (the \`probes_past_a_tombstone\` test).
+- \`tomb = Some(i)\` at every tombstone: it remembers the last one passed, not the first, so \`set\` puts the key further from home.
+- \`i += 1\` with no mask: a probe that starts near the end runs off the \`Vec\`, and indexing it panics.`,
     wrong: [
       {
         code: `#[derive(Clone, Copy, Debug, PartialEq)]
@@ -627,7 +665,7 @@ struct StrRef {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Value {
-    Nil,
+    None,
     Bool(bool),
     Num(f64),
 }
@@ -645,7 +683,7 @@ impl Table {
     fn new() -> Self {
         Table {
             keys: vec![None; 8],
-            vals: vec![Value::Nil; 8],
+            vals: vec![Value::None; 8],
         }
     }
 
@@ -713,7 +751,7 @@ struct StrRef {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Value {
-    Nil,
+    None,
     Bool(bool),
     Num(f64),
 }
@@ -731,7 +769,7 @@ impl Table {
     fn new() -> Self {
         Table {
             keys: vec![None; 8],
-            vals: vec![Value::Nil; 8],
+            vals: vec![Value::None; 8],
         }
     }
 
@@ -779,9 +817,9 @@ fn find(
     i &= mask;
     let mut tomb = None;
     loop {
-        let nil = vals[i] == Value::Nil;
+        let e = vals[i] == Value::None;
         match keys[i] {
-            None if nil => break,
+            None if e => break,
             None => tomb = Some(i),
             Some(k) if k == key => {
                 return i;
@@ -804,7 +842,7 @@ struct StrRef {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Value {
-    Nil,
+    None,
     Bool(bool),
     Num(f64),
 }
@@ -822,7 +860,7 @@ impl Table {
     fn new() -> Self {
         Table {
             keys: vec![None; 8],
-            vals: vec![Value::Nil; 8],
+            vals: vec![Value::None; 8],
         }
     }
 
@@ -870,9 +908,9 @@ fn find(
     i &= mask;
     let mut tomb = None;
     loop {
-        let nil = vals[i] == Value::Nil;
+        let e = vals[i] == Value::None;
         match keys[i] {
-            None if nil => break,
+            None if e => break,
             None => {
                 tomb.get_or_insert(i);
             }
@@ -896,55 +934,44 @@ export const quiz = [
   {
     q: 'What does a drip-rs `StrRef` contain?',
     options: [
-      { t: 'A `&str` borrowed from the source', why: 'That is a token’s lexeme. A runtime string lives in the heap.' },
-      { t: 'A `Gc<ObjString>` handle and the string’s 32-bit hash', correct: true, why: 'Eight bytes in all, and a `Value` is 16 bytes either way.' },
-      { t: 'An owned `String`', why: 'Then `Value` couldn’t be `Copy`.' },
-      { t: 'The string’s length and a pointer', why: 'That is roughly what `Box<str>` is, inside the `ObjString`.' },
+      { t: 'The string’s characters', why: 'The characters live in the `ObjString`, in the strings arena.' },
+      { t: 'A `Gc<ObjString>` handle and the string’s 32-bit hash', correct: true, why: 'The hash rides along for free inside the 16-byte `Value`.' },
+      { t: 'A `&str` borrowed from the source', why: 'That is a token’s lexeme. A Drip string value must outlive the source text.' },
+      { t: 'An `Rc<str>`', why: 'drip-rs’s heap owns every object; values hold handles.' },
     ],
   },
   {
     q: 'Why doesn’t drip-rs’s `Table::get` take the heap as a parameter?',
     options: [
-      { t: 'It does, through a global variable', why: 'drip-rs has no mutable globals.' },
-      { t: 'Tables only hold numbers', why: 'They hold `Value`s, which may be handles to anything.' },
-      { t: 'It copies every key’s text into the table', why: 'Keys are `StrRef`s; the text stays in the heap.' },
-      { t: 'The key carries its hash, and interned keys compare by handle, so nothing in the heap is needed', correct: true, why: 'And since tables live inside heap objects, needing the heap would cause borrow conflicts.' },
+      { t: 'Tables are only used for globals', why: 'They are also every instance’s fields and every class’s methods, which is why it matters.' },
+      { t: 'The key’s hash is in the `StrRef`, and interned keys compare by handle, so nothing in the heap is needed', correct: true, why: 'And so a table inside a heap object can be used while the heap is borrowed.' },
+      { t: 'Rust forbids passing the heap to a method', why: 'It doesn’t, but it would conflict with `heap[instance]` borrowing the heap mutably.' },
     ],
   },
   {
     q: 'In `Heap::intern`, when does drip-rs compare characters?',
     options: [
-      { t: 'Only for a key in the probe whose hash equals the new string’s hash', correct: true, why: '`find_string` checks `key.hash == hash` first, then the text.' },
-      { t: 'For every key in the table', why: 'It only looks along one probe sequence.' },
-      { t: 'Never: equal hashes mean equal strings', why: 'Different strings can share a hash. The text must be checked.' },
-      { t: 'Every time two strings are compared with `==` at run time', why: 'Interning is what makes `==` a handle comparison.' },
+      { t: 'For every slot it probes', why: 'Only slots whose stored hash equals the new string’s hash.' },
+      { t: 'Never: equal hashes mean equal strings', why: 'Different strings can share a hash, so the text must be checked.' },
+      { t: 'Only when a probed key’s hash matches, to rule out a collision', correct: true, why: '`key.hash == hash && &*strings[key.handle].chars == chars`.' },
+      { t: 'Only when the table grows', why: 'Growing rehashes by the stored hashes, without reading text.' },
     ],
   },
   {
-    q: 'A drip-rs table slot has key `None` and value `Bool(true)`. What is it?',
+    q: 'A drip-rs table slot has key `None` and value `Value::Bool(true)`. What is it?',
     options: [
-      { t: 'An empty slot', why: 'Empty slots have value `Nil`.' },
-      { t: 'A key whose value is `true`', why: 'A live entry has `Some(key)`.' },
-      { t: 'A tombstone: a deleted entry that probes must pass over', correct: true, why: 'Same encoding as the TypeScript table’s `null` key with value `true`.' },
-      { t: 'A slot reserved for growing', why: 'Growing builds new columns; there is no reserved slot.' },
+      { t: 'An empty slot', why: 'An empty slot has value `Value::None`.' },
+      { t: 'A key whose value is `true`', why: 'A live entry always has `Some(key)`.' },
+      { t: 'A tombstone: a deleted entry that probes must step past', correct: true, why: 'Lookups keep going; `set` may reuse it.' },
     ],
   },
   {
-    q: 'Why does `find` keep the *first* tombstone it passes?',
+    q: 'After a collection whose roots never reach the string `"lost"`, what does `heap.intern("lost")` return?',
     options: [
-      { t: 'So `set` reuses the earliest free slot on the key’s probe path', correct: true, why: '`tombstone.get_or_insert(index)` ignores later ones.' },
-      { t: 'So `get` can return the deleted value', why: 'Deleted values are gone; a tombstone holds `true`.' },
-      { t: 'Because Rust can’t store more than one `Option`', why: 'It could keep a whole `Vec` of them. One is all that’s needed.' },
-      { t: 'To shrink the table', why: 'Tables only grow, and growing drops tombstones.' },
-    ],
-  },
-  {
-    q: 'Why does `Heap::intern` not need to protect the new string as a temporary root, as clox and the TypeScript heap do?',
-    options: [
-      { t: 'Strings are never collected', why: 'They are: the interned table is weak.' },
-      { t: 'Rust’s ownership frees the string automatically', why: 'Objects in the heap are freed by drip-rs’s collector, not by drop.' },
-      { t: 'The `StrRef` is a root by itself', why: 'Roots are what the caller passes to `collect`. A local `StrRef` isn’t one.' },
-      { t: 'Nothing in `intern` can collect: the heap never starts a collection itself', correct: true, why: 'Callers like `Vm::intern_owned` collect before calling, while they can still name their roots.' },
+      { t: 'The old `StrRef`, because the interned table keeps every string', why: 'The table holds its strings weakly: the collector deleted the entry.' },
+      { t: 'A new `StrRef`, since the old string was freed and the table forgot it', correct: true, why: 'That is `gc.rs`’s own test: `assert_ne!(heap.intern("lost"), lost)`.' },
+      { t: 'A panic: use after free', why: 'The table forgot the string before the sweep, so no stale handle is read.' },
+      { t: '`None`', why: '`intern` always returns a `StrRef`; it makes one if need be.' },
     ],
   },
 ];

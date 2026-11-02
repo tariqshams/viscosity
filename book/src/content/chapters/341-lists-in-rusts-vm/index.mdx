@@ -1,0 +1,287 @@
+---
+n: 341
+day: 86
+part: XII
+title: 'Lists in Rust’s VM'
+tagline: 'In the TypeScript VM a Drip list was a JavaScript array that grew by itself. In drip-rs it is a Vec<Value> in an arena slot, reached through a handle: four instructions build, read and write it, three natives grow and shrink it, and the collector walks its elements.'
+objectives:
+  - Describe drip-rs’s ObjList and explain why every copy of a list value sees the same elements.
+  - Trace the list instruction, and say why the elements stay on the stack while the list is allocated.
+  - Read check_index and give the exact error for each kind of bad index, in the order they are checked.
+  - Explain how the collector keeps a list’s elements alive, and what the heap’s size estimate leaves out.
+introduces: [rust-vm-list]
+uses: [drip-rs, object-handle, compiler-state, value-enum, match-dispatch, opcode-enum, arena, typed-index, vm-list, drip-list, index-expression, native-function, heap-object, garbage-collection, mark-sweep, roots, runtime-error, vec, option, result, question-mark, borrow, shared-vs-mutable, borrow-checker, trait, struct, enum, match, pattern, size-of, scalar-types, drip]
+sources: [rust-std-vec, rustref-numeric-cast, klabnik2026]
+---
+import ListBuildSteps from '../../../components/diagrams/ch341/ListBuildSteps';
+import ListLayout from '../../../components/diagrams/ch341/ListLayout';
+
+## One list, many names
+
+Here is a small Drip program, and what both VMs print for it:
+
+```drip
+let xs = [10, 20];
+push(xs, 30);
+xs[0] = 7;
+let ys = xs;
+push(ys, 40);
+print len(xs);    # 4
+print pop(xs);    # 40
+print xs;         # [7, 20, 30]
+```
+
+The fourth line does not copy the list; it gives the same list a second
+name, so pushing through `ys` lengthens `xs` too. In *Lists in the VM*,
+the TypeScript VM got sharing and growing for free from JavaScript's own
+arrays. drip-rs has to say both in Rust, so this chapter follows a list
+through its life: laid out, built, read and written, grown, kept alive.
+
+<Analogy title="a ring binder in a numbered locker">
+Picture a ring binder kept in locker 7. Everyone who needs it is told
+"locker 7", never handed the binder itself, so whoever adds a page adds
+it for all of them; and the binder can grow as thick as it likes while
+its locker number stays the same.
+<span slot="breaks">A binder gains one page at a time; a Rust `Vec`
+that runs out of room moves every element to a bigger block at once.
+Nobody holding "locker 7" ever notices, because the number names the
+locker, not the pages.</span>
+</Analogy>
+
+## The list object
+
+From `src/object.rs`:
+
+```rust
+/// A list: a growable array of values,
+/// shared by reference.
+pub struct ObjList {
+    pub items: Vec<Value>,
+}
+```
+
+An `ObjList` lives in the heap's `lists` arena, and a Drip value that
+is a list is `Value::List(Gc<ObjList>)`, a 4-byte slot number inside the
+16-byte `Value`. `let ys = xs;` copies that handle, and both copies name
+the same slot: that is the sharing. The `Vec` itself is three machine
+words (a pointer, a capacity and a length; 24 bytes, measured with
+`size_of` on rustc 1.97 here), and the elements live in a separate block
+of memory that the `Vec` owns, 16 bytes per `Value`.
+
+<Figure takeaway="Two handles, one slot, one block of elements." caption="xs and ys hold the same Gc<ObjList>. The arena slot holds the Vec’s pointer, capacity and length; the elements are 16-byte Values in a block of their own, and a string element is one more handle.">
+  <ListLayout />
+</Figure>
+
+<Prompts ids={['rvl-objlist', 'rvl-same-list']} />
+
+## Building one: the list instruction
+
+For `[10, 20]` the compiler emits each element in order, then `list 2`.
+The VM's half, from `src/vm.rs` (rewrapped):
+
+```rust
+OpCode::List => {
+    let n = self.read_byte() as usize;
+    let start = self.stack.len() - n;
+    let items =
+        self.stack[start..].to_vec();
+    // The elements stay on the stack while
+    // the list is allocated.
+    let list =
+        self.alloc(ObjList { items });
+    self.stack.truncate(start);
+    self.push(Value::List(list));
+}
+```
+
+`self.stack[start..]` is a slice of the top `n` values, and `to_vec`
+copies them, in order, into a new `Vec` (a `Value` is `Copy`, so this
+is a plain copy of 16 bytes each). Only after `alloc` has stored the
+list does `truncate` drop the elements from the stack. The order
+matters: `self.alloc` may run a collection first, and at that moment the
+new `Vec` is a local of this function, which the collector cannot see.
+The elements' objects are still safe, because the same values are still
+on the stack, and the stack is a root.
+
+<ListBuildSteps client:visible />
+
+<Prompts ids={['rvl-build-order', 'rvl-on-stack']} />
+
+## Reading and writing an element
+
+`index.get` and `index.set` both start with `check_index`, which turns
+two Drip values into a list handle and a Rust index, or fails
+(rewrapped, the messages' `format!` calls shortened):
+
+```rust
+fn check_index(&mut self, list: Value,
+    index: Value)
+    -> Run<(Gc<ObjList>, usize)> {
+    let Value::List(list) = list else {
+        // "cannot index a string"
+    };
+    let Value::Number(i) = index else {
+        // "a list index must be a
+        // number, not a string"
+    };
+    if i.fract() != 0.0 || !i.is_finite() {
+        // "index 1.5 is not a whole number"
+    }
+    let len = self.heap[list].items.len();
+    if i < 0.0 || i >= len as f64 {
+        // "index 3 is out of range for a
+        // list of length 3"
+    }
+    Ok((list, i as usize))
+}
+```
+
+Each comment stands for a `return Err(self.runtime_error(message))`.
+The checks run in this order, so `"abc"[1.5]` says `cannot index a
+string` and never mentions the 1.5. By the last line, `i` is a whole
+number from 0 to `len - 1`, so `i as usize` is exact. (A float-to-integer
+`as` in Rust never fails: it rounds towards zero and saturates, and NaN
+becomes 0<Cite id="rustref-numeric-cast" />, which is why the checks
+must come first.) Then the instruction itself:
+
+```rust
+OpCode::IndexGet => {
+    let index = self.pop();
+    let (list, i) = self
+        .check_index(self.peek(0), index)?;
+    let value = self.heap[list].items[i];
+    self.set_peek(0, value);
+}
+```
+
+The `?` passes a runtime error straight out of the dispatch loop. The
+element is read into `value` before `set_peek` borrows `self` mutably:
+the read-first habit from *A Pratt compiler in Rust, part 2*.
+`index.set` is the same, with `self.heap[list].items[i] = value;`.
+
+<Callout kind="definition">
+A **list in drip-rs's VM** is an `ObjList { items: Vec<Value> }` stored
+in the heap's `lists` arena and reached through a `Gc<ObjList>` handle,
+so every copy of the value shares one list. The VM builds it with
+`list n`, reads and writes elements with `index.get` and `index.set`
+(after `check_index`), grows and shrinks it with the natives `push` and
+`pop`, and the collector marks every element of every list it reaches.
+</Callout>
+
+<Formal title="When index.get succeeds">
+
+```text
+xs = List(h),  i ∈ ℤ,  0 ≤ i < len(h)
+───────────────────────────────────────
+  … xs i  ⟶  … heap[h].items[i]
+```
+
+<span slot="read">If xs is a list with handle h, and i is a whole
+number at least 0 and less than the list's length, then index.get
+replaces the list and the index on top of the stack with element i of
+the list's items. In any other case it is a runtime error.</span>
+</Formal>
+
+<Examples of="rust-vm-list">
+
+```text
+print [1, 2]["0"];
+# a list index must be a number,
+#   not a string
+```
+
+```text
+let xs = [1];
+xs[1] = 2;
+# index 1 is out of range for a
+#   list of length 1
+push(xs, 2);   # [1, 2]
+```
+
+<Run id="lists-rs" />
+
+</Examples>
+
+Each error comes with a trace line and exit code 70, the same bytes
+from both VMs. The first fails the second check: a string is not a
+number, even one that looks like one. The second is the common slip:
+`index.set` only replaces an element that exists; `push` adds one. The
+third runs the program from the top of the chapter.
+
+<Prompts ids={['rvl-check-order', 'rvl-cast']} />
+
+## Growing, shrinking, and staying alive
+
+`push`, `pop` and `len` are natives, and each is a line or two of `Vec`.
+`push` does `self.heap[list].items.push(value)`, and the `Vec` (from
+*Vec and HashMap*) grows its block when it is full; the standard library promises that a push is
+cheap on average, but no particular growth factor<Cite id="rust-std-vec" />.
+`pop` turns the `Option` from `Vec::pop` into Drip's error (rewrapped,
+two-space indents):
+
+```rust
+Value::List(list) =>
+  match self.heap[list].items.pop() {
+    Some(value) => Ok(value),
+    None => Err(self.runtime_error(
+      "cannot pop from an empty list")),
+  },
+```
+
+<Analogy title="a shopping list on the fridge">
+A household keeps one shopping list on the fridge, and everyone says
+"the list"; whoever adds milk adds it for the whole house, and once the
+last item is crossed off there is nothing left to cross off.
+<span slot="breaks">Two people can write on the fridge at the same
+moment; in drip-rs one instruction runs at a time, and Rust's borrow
+rules make the VM finish reading a list before it writes to it.</span>
+</Analogy>
+
+A list keeps its elements alive. `ObjList` gets its `HeapObject` impl
+from the macro, `heap_object!(ObjList, lists, List)`, so a marked list
+goes on the gray stack, and tracing it is one line of `gc.rs`:
+
+```rust
+Gray::List(l) =>
+    self.lists[l].items.trace(marks),
+```
+
+`Vec<T>` implements `Trace` by tracing each element, and a `Value`'s
+trace marks the object its handle names (numbers, booleans and `none`
+mark nothing). A list that contains itself cannot trap the collector,
+because an object already marked is not pushed again; printing has its
+own guard, so `let xs = []; push(xs, xs); print xs;` prints `[[...]]`.
+
+<Prompts ids={['rvl-trace', 'rvl-size']} />
+
+<Callout kind="engine" label="Under the hood">
+The collector decides when to run from `bytes_allocated`, and a list
+counts there as `size_of::<ObjList>()`, 24 bytes, however long it is;
+the elements' block is never counted (the TypeScript heap counts a fixed
+32). So a program with a few huge lists collects less often than its
+memory use suggests; `ObjString` shows the fix, overriding `size` to add
+its text's length, and a list could add its capacity the same way.
+</Callout>
+
+## Your turn
+
+<Exercise id="checkIndex" />
+
+<Exercise id="makeList" />
+
+## What you learned
+
+- A **drip-rs list** is `ObjList { items: Vec<Value> }` in the `lists`
+  arena; a list value is a `Gc<ObjList>` handle, so `let ys = xs;`
+  shares the list.
+- `list n` copies the top `n` values with `to_vec`, **allocates while
+  they are still on the stack**, then truncates.
+- `check_index` checks four things in order (a list, a number, a whole
+  number, in range), each with Drip's exact message, before
+  `i as usize`.
+- `push` and `pop` are `Vec::push` and `Vec::pop`; an empty `pop`
+  becomes `cannot pop from an empty list`.
+- Tracing a list traces each element; the heap counts a list as 24
+  bytes whatever its length.
+
+<Quiz />
