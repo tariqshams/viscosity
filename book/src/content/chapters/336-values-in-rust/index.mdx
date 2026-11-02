@@ -14,169 +14,234 @@ uses: [drip-rs, enum, match, pattern, size-of, alignment, padding, tagged-value,
 sources: [rustref-enum, rustref-type-layout, ecma262, rust-std-flt2dec]
 ---
 import ValueLayoutSteps from '../../../components/diagrams/ch336/ValueLayoutSteps';
+import HandlesShare from '../../../components/diagrams/ch336/HandlesShare';
 
 ## A type the engine kept for you
 
-In chapter 143 the TypeScript VM's value type took one line:
+In *Tagging values at run time*, the TypeScript VM's value type took one
+line of `companion/ts/src/vm/object.ts`:
 
 ```ts
-type Value = null | boolean | number | Obj;
+export type Value =
+  null | boolean | number | Obj;
 ```
 
-That works because JavaScript already tags every value. When the VM
-asks `typeof v === 'number'`, the engine answers from a tag it keeps
-behind the scenes. Rust keeps no hidden tags. If a Drip value can be one
-of several kinds, you have to say so in the type, and the type you need
-is an enum.
+That works because JavaScript already tags every value: when the VM asks
+`typeof v === 'number'`, the engine answers from a tag it keeps behind
+the scenes. Rust keeps no hidden tags. If a Drip value can be one of
+several kinds, you have to say so in the type, and the type you need is an
+enum.
 
-<Callout kind="intuition">
-Think of a row of identical lockers. Every locker is the same size, so
-they line up neatly on the stack. A label on the door says what's
-inside: nothing, a yes/no card, a number, or a ticket for a parcel kept
-in the back room. Big things never go in the locker. Only their tickets
-do.
-</Callout>
+<Analogy title="a row of identical lockers">
+Every locker in the row is the same size, so they line up neatly; a label
+on the door says what is inside: nothing, a yes-or-no card, a number, or a
+ticket for a parcel kept in the back room. Big things never go in a
+locker; only their tickets do.
+<span slot="breaks">A locker's label and its contents are separate, and
+you could put the wrong thing behind a label; in Rust the label (the tag)
+and the payload are written together, and the compiler never lets you
+read a number out of a locker labelled "ticket".</span>
+</Analogy>
+
+<Analogy title="a library card catalogue">
+Every card in the drawer is the same size. A short fact fits on the card
+itself; for the book, the card only says which shelf to look on.
+<span slot="breaks">A library has one card per book; a Drip program can
+have many values holding the same handle, all pointing at one object,
+and none of them owns it.</span>
+</Analogy>
 
 ## The enum
 
-Here is `Value`, adapted from `src/value.rs`, with three of the object
-variants left out:
+Here is `Value`, from `src/value.rs` (doc comment left out):
 
 ```rust
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
-    Nil,
+    None,
     Bool(bool),
     Number(f64),
     String(StrRef),
+    List(Gc<ObjList>),
     Function(Gc<ObjFunction>),
+    Native(Gc<ObjNative>),
     Closure(Gc<ObjClosure>),
+    Class(Gc<ObjClass>),
     Instance(Gc<ObjInstance>),
+    BoundMethod(Gc<ObjBoundMethod>),
 }
 ```
 
-Each variant is a tag, and some carry a payload. The objects themselves
-are not inside. A `Gc<T>` is a typed index (chapter 315): a `u32` saying
-which slot of the heap's arena holds the object. A `StrRef` is a string's
-handle plus its hash. Chapter 340 builds both.
+Each variant is a tag, and all but `None` carry a payload. The objects themselves
+are not inside: a `Gc<T>` is the typed `u32` index of the chapter
+*Planning drip-rs*, saying which slot of the heap's arena holds the
+object, and a `StrRef` is a string's handle plus its hash. That choice is
+what ownership forced. Suppose the variant were `String(String)`; then a
+`Value` would *own* its text, and a string held in a global and copied
+onto the stack would need two owners:
 
-That choice is what ownership forced. Suppose the variant were
-`String(String)`. Then a `Value` would *own* its text, and a string held
-in a global and copied onto the stack would need two owners. You'd be
-cloning text on every push, or reaching for `Rc` everywhere. A handle
-owns nothing, so copying one is safe. Every payload here is `Copy`, so
-`Value` can derive `Copy` too, and `push`, `pop` and `peek` just copy
-bytes.
+<Figure takeaway="Handles let many values share one object." caption="Left: two Values hold the same StrRef, so copying one copies 16 bytes and the text lives once in the heap. Right: if a Value owned its String, each copy would need its own clone of the text.">
+  <HandlesShare />
+</Figure>
+
+A handle owns nothing, so copying one is safe. Every payload here is
+`Copy`, so `Value` can derive `Copy` too, and `push`, `pop` and `peek`
+copy 16 bytes and nothing more.
 
 <Callout kind="definition">
-A **value enum** gives a dynamically typed language's values a Rust
-type. There is one variant per kind of value. Small values (nil,
-booleans, numbers) are stored right in the variant, and heap objects
-are stored as handles. If every payload is `Copy`, the enum can be
-`Copy`, so values move around the VM without being moved or cloned.
+A **value enum** gives a dynamically typed language's values a Rust type:
+one variant per kind of value. Small values (none, booleans, numbers) are
+stored right in the variant, and heap objects as handles. If every
+payload is `Copy`, the enum can be `Copy`, so values move around the VM
+without being moved or cloned.
 </Callout>
+
+<Examples of="value-enum">
+
+```rust
+let a = Value::Number(3.0);
+let b = a; // a copy: `a` is still usable
+assert!(a == b);
+```
+
+```rust
+// does not compile:
+#[derive(Clone, Copy)]
+enum Value { None, Str(String) }
+// error[E0204]: the trait `Copy` cannot
+//   be implemented for this type
+```
+
+```rust
+match (self.peek(1), self.peek(0)) {
+    (Value::Number(a), Value::Number(b))
+        => { /* push a + b */ }
+    (Value::String(a), Value::String(b))
+        => { /* join the strings */ }
+    (a, b) => { /* "cannot add ..." */ }
+}
+```
+
+</Examples>
+
+The first is the simplest value there is, and the line `let b = a;`
+copies it rather than moving it, because `Value` is `Copy` (the chapter
+*Ownership* explains the difference). The second is the spot-the-difference
+the paragraph above warned about: a `String` payload is not `Copy`, so the
+derive fails. The third is the shape of the VM's `add` (trimmed from
+`vm.rs`): one `match` on a pair of values says "two numbers", "two
+strings" or "anything else", and the last arm is where `cannot add a
+number and a string` comes from.
 
 <Prompts ids={['ve-what', 've-copy', 've-handles']} />
 
 ## Sixteen bytes
 
-Chapter 316 measured it: `size_of::<Value>()` is 16, with alignment 8,
-and `Option<Value>` is 16 too. With the enum in front of you, you can
-see why. The largest payloads are 8 bytes: an `f64`, or a `StrRef`. The
-tag needs at least one byte more, so 9. An `f64` must sit at an address
-that is a multiple of 8, and a type's size is always a multiple of its
-alignment<Cite id="rustref-type-layout" />. Nine rounds up to 16. Step
-through where rustc put each payload:
+The chapter *Memory layout in Rust* measured it: `size_of::<Value>()` is
+16, with alignment 8, and `Option<Value>` is 16 too (I re-measured all
+three on this enum with rustc 1.97). With the enum in front of you, you
+can see why. The largest payloads are 8 bytes, an `f64` or a `StrRef`;
+the tag needs at least one byte more, so 9; and an `f64` must sit at an
+address that is a multiple of 8, while a type's size is always a multiple
+of its alignment<Cite id="rustref-type-layout" />. Step through where
+rustc put each payload:
 
 <ValueLayoutSteps client:visible />
 
-The layout came from rustc's `-Zprint-type-sizes` flag. That flag is
-nightly-only, and I unlocked it on stable with `RUSTC_BOOTSTRAP=1`. It
-reports rustc's choice, not a promise: the Rust Reference lets the
-compiler store an enum's tag however it likes<Cite id="rustref-enum" />.
+<Formal title="The size of an enum">
 
-The layout also shows the two facts chapter 316 could only state. The
-hash inside `StrRef` lands in bytes 8 to 11, which `Number` needs
-anyway. And `Option<Value>` has no discriminant line of its own in the
-report: `None` is stored as a tag value that no `Value` variant uses.
+```text
+size = round_up(tag + largest payload,
+                largest alignment)
+     = round_up(1 + 8, 8) = 16
+```
 
-Chapter 162's NaN-boxing would halve this to 8 bytes. Safe Rust could do
-it with `f64::to_bits`, but then every read would need masks and shifts
-instead of a `match`. drip-rs keeps the plain enum. That is a design
-choice, not a limit of the language.
+<span slot="read">An enum needs room for its tag and for its biggest
+payload, rounded up to a multiple of the strictest alignment among its
+payloads. For Value that is one byte of tag plus eight bytes of number,
+nine, rounded up to the next multiple of eight, which is sixteen. This
+is the layout rustc chose, read from its -Zprint-type-sizes report; the
+Rust Reference leaves enum layout to the compiler<Cite id="rustref-enum" />.</span>
+</Formal>
+
+The layout shows two more things. The hash inside `StrRef` lands in bytes
+8 to 11, which `Number` needs anyway, so it rides along for free; and
+`Option<Value>` adds no tag of its own, because `None` is stored as a tag
+value that no `Value` variant uses. The NaN-boxing of *NaN-boxing and
+generational collection* would halve this to 8 bytes; safe Rust could
+do it with `f64::to_bits`, however every read would then need masks and
+shifts rather than a `match`, so drip-rs keeps the plain enum, as a
+choice rather than a limit of the language.
 
 <Prompts ids={['ve-size', 've-option', 've-hash-free']} />
 
 <Run id="sizes" />
 
-## Equality comes free, printing doesn't
+## Equality comes free, printing does not
 
 `derive(PartialEq)` gives exactly Drip's `==`. Numbers compare as IEEE
-doubles, so `NaN` isn't equal to itself and `0` equals `-0`, just as with
-the TypeScript VM's `a === b`. Handles compare by index, so two objects
-are equal only if they are the same object. That's right for strings too,
-because they're interned (chapter 148). Truthiness is one line:
+doubles, so `nan` is not equal to itself and `0` equals `-0`, just as
+with the TypeScript VM's `a === b`. Handles compare by index, so two
+objects are equal only if they are the same object, which is right for
+strings too, because strings are interned (*String interning*). Values
+of different kinds are never equal, so `none == false` is `false`.
+Truthiness is one line:
 
 ```rust
 pub fn is_falsey(self) -> bool {
-    matches!(self, Value::Nil
+    matches!(self, Value::None
         | Value::Bool(false))
 }
 ```
 
-(`matches!` is a standard macro: `true` if the value fits the pattern.)
-
 Printing is where handles cost something. TypeScript's `formatValue(v)`
-reads `v.chars` straight off the object. A Rust `Value::String` holds only
+reads `v.chars` straight off the object; a Rust `Value::String` holds only
 an index, and the text is in the heap, so printing needs the heap too:
-`value.display(&heap)` returns a small struct holding both, and that
-struct implements `Display`. Its lifetime ties it to the borrowed heap
-(chapter 310).
+`value.format(&heap)` returns a `String`, and `describe(&heap, value)`
+gives the words error messages use, such as `a number` or
+`an Apple instance`.
 
-<Prompts ids={['ve-nan-eq', 've-display-heap']} />
+<Prompts ids={['ve-nan-eq', 've-format-heap']} />
 
 ## Numbers that print like JavaScript
 
-Drip prints numbers as JavaScript's `String(n)` does, except that the
-TypeScript VM prints negative zero as `-0` where `String(-0)` gives `0`.
-Rust's `{}` disagrees in places. Here it is next to Node 22, both run on
-this machine (rustc 1.97):
+Drip prints numbers the way the TypeScript VM's `formatNumber` does,
+which is JavaScript's `String(n)` with Drip's own names for the odd ones
+(`nan`, `inf`, `-inf`, and `-0` where `String(-0)` gives `0`). Rust's `{}`
+disagrees in places; here are both, run on this machine:
 
-```
-value     Rust {}   String(n) in Node
-0.1+0.2   0.30000000000000004   (same)
-100       100       100
+```text
+value     Rust {}    Drip print
+0.1+0.2   0.30000000000000004 (same)
 1e21      1000000000000000000000
-                    1e+21
-1.5e-7    0.00000015
-                    1.5e-7
-∞         inf       Infinity
-NaN       NaN       NaN
--0        -0        0
+                     1e+21
+1.5e-7    0.00000015 1.5e-7
+1/0       inf        inf
+0/0       NaN        nan
+-0        -0         -0
 ```
 
-The *digits* always agree. Rust's float formatting uses the shortest
+The *digits* always agree: Rust's float formatting uses the shortest
 digits that read back as the same double<Cite id="rust-std-flt2dec" />,
-and so does JavaScript<Cite id="ecma262" />. Only the layout differs.
-ECMAScript writes plain decimals while the decimal point's position is
-between −5 and 21, and exponent notation with an explicit sign outside
-that range. So `format_number` handles NaN, the infinities and zero
-first (keeping the sign of `-0`), takes the digits and exponent from
-Rust's `{:e}`, and lays them out by JavaScript's rule. The middle of it,
-adapted:
+and so does JavaScript<Cite id="ecma262" />. Only the layout differs:
+ECMAScript writes plain decimals from 0.000001 up to (but not including)
+1e21, and exponent notation, with an explicit sign, outside that range,
+which is why `1.5e-7` and even `1e-7` come out in exponent form. So `format_number`
+handles nan, the infinities and zero first (keeping the sign of `-0`),
+takes the digits and exponent from Rust's `{:e}`, and lays them out by
+JavaScript's rule (from `value.rs`, rewrapped):
 
 ```rust
-// "1.5e-7" -> digits "15", point -6
 let sci = format!("{:e}", n.abs());
-let (m, e) = sci.split_once('e')
-    .expect("{:e} has an 'e'");
-let digits: String = m.chars()
+let (mantissa, exp) = sci.split_once('e')
+    .expect("{:e} always has an 'e'");
+let digits: String = mantissa.chars()
     .filter(|&c| c != '.').collect();
-let exp: i32 = e.parse().expect("int");
-let point = exp + 1;
-// then integer, d.ddd, 0.000ddd or
-// d.ddde±x, by where point falls
 ```
+
+For `1.5e-7`, `{:e}` gives `"1.5e-7"`, so `digits` is `"15"` and the
+exponent is -7; four cases (an integer, a decimal point inside the
+digits, `0.000ddd`, or `d.ddde±x`) then place the point.
 
 <Prompts ids={['ve-digits', 've-layout']} />
 
@@ -185,9 +250,9 @@ How do you test a function like this? `value.rs` keeps a table of 42
 doubles and what the TypeScript VM printed for each under Node 22. Each
 double is written as its raw bits, such as `0x3fd3333333333334` for
 `0.1 + 0.2`, and turned back into a number with `f64::from_bits`. A
-decimal literal would first pass through Rust's float parser, so the
-test would quietly depend on a second piece of float conversion code.
-Bits name the exact double that Node was given.
+decimal literal would first pass through Rust's own float parser, so the
+test would quietly depend on a second piece of conversion code; bits name
+the exact double Node was given.
 </Callout>
 
 ## Your turn
@@ -199,12 +264,12 @@ Bits name the exact double that Node was given.
 ## What you learned
 
 - A **value enum** gives Drip's values a Rust type: one variant per kind,
-  with small values inline and heap objects as `Gc` handles.
+  eleven in all, with small values inline and heap objects as handles.
 - Handles own nothing, so `Value` is **Copy**, and the stack can copy
   values freely.
-- `Value` is **16 bytes**: an 8-byte payload, a tag, and padding up to
-  the `f64`'s alignment. The hash in `StrRef` rides in space that was
-  there anyway.
+- `Value` is **16 bytes**: an 8-byte payload, a tag, and padding up to the
+  `f64`'s alignment. The hash in `StrRef` rides in space that was there
+  anyway.
 - Derived `PartialEq` is Drip's `==`. Printing needs the heap, because a
   handle is only an index.
 - Rust and JavaScript print the same shortest digits, laid out

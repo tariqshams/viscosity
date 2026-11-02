@@ -3,138 +3,194 @@ n: 337
 day: 85
 part: XII
 title: 'The VM loop in Rust'
-tagline: 'The heart of drip-rs is a loop and a match, much like the TypeScript switch. The interesting part is what the borrow checker won’t let the loop hold on to, and the “register” fields that fix it: in my measurement, fib ran twice as fast with them as with a walk through the heap for every byte.'
+tagline: 'The heart of drip-rs is a loop and a match, much like the TypeScript switch. The interesting part is what the borrow checker will not let the loop hold on to, and the “register” fields that solve it.'
 objectives:
   - Read drip-rs’s dispatch loop and map each part to the TypeScript VM’s switch.
   - Explain what an exhaustive match buys over a switch with a default case.
-  - Explain why the loop can’t keep a reference to the running chunk, and how the ip and Rc<Chunk> registers solve it.
+  - Explain why the loop cannot keep a reference to the running chunk, and how the ip and Rc<Chunk> registers solve it.
   - Write a small stack VM loop over an opcode enum, with tests.
 introduces: [match-dispatch]
 uses: [drip-rs, opcode-enum, value-enum, dispatch-loop, instruction-pointer, stack-machine, bytecode, chunk, constant-pool, call-frame, virtual-machine, enum, match, pattern, option, result, question-mark, borrow, shared-vs-mutable, borrow-checker, self-receiver, struct, impl, rc, arena, typed-index, release-build, runtime-error, cargo-test, assert-macros, drip]
-sources: [klabnik2026, nystrom2021]
+sources: [klabnik2026]
 ---
 import DispatchSteps from '../../../components/diagrams/ch337/DispatchSteps';
+import Registers from '../../../components/diagrams/ch337/Registers';
 
 ## The same loop, a different switch
 
-Chapter 140's dispatch loop in TypeScript, trimmed:
+The dispatch loop of *The dispatch loop*, as it stands in
+`companion/ts/src/vm/vm.ts` (trimmed and rewrapped):
 
 ```ts
 for (;;) {
-  const instruction = readByte();
+  const instruction = code[frame.ip++];
   switch (instruction) {
-    case OP.CONSTANT:
-      this.push(readConstant()); break;
-    case OP.NIL: this.push(null); break;
-    // ... 35 more cases
+    case Op.None: this.push(null); break;
+    // ... 52 more cases
     default:
-      throw new Error(`unknown opcode`);
+      throw new Error(
+        `unknown opcode ${instruction}`);
   }
 }
 ```
 
-Here is drip-rs's, adapted from `run` in `src/vm.rs`:
+And here is the top of drip-rs's, from `run` in `src/vm.rs` (rewrapped):
 
 ```rust
-// the body of fn run(&mut self) -> Run
 loop {
     let byte = self.read_byte();
-    let op = OpCode::from_byte(byte)
-        .expect("valid opcode");
+    let op = OpCode::from_byte(byte).expect(
+        "the compiler emits valid opcodes");
     match op {
-        OpCode::Constant => {
-            let v = self.read_constant();
-            self.push(v);
-        }
-        OpCode::Pop => {
-            self.pop();
-        }
-        OpCode::Subtract => {
-            let (a, b) =
-                self.pop_numbers()?;
-            self.push(Value::Number(a - b));
-        }
-        // ... one arm per opcode
+        // one arm per opcode: 53 in all
     }
 }
 ```
 
-The shape is the same: read a byte, decode it, jump to the code for that
-instruction, repeat. Two lines differ. `from_byte` (chapter 335) turns
-the byte into an `OpCode`, and returns `None` for a byte no opcode has.
-And there is no `default`.
+The shape is the same: read a byte, decode it, run the code for that
+instruction, repeat. Two lines differ. `from_byte` (from the chapter
+*Bytecode and instructions in Rust*) turns the byte into an `OpCode`, and
+gives `None` for a byte no opcode has; and the `match` has no `default`.
 
-<Callout kind="intuition">
+<Analogy title="a receptionist and an architect">
 A switch with a default case is a receptionist who says "not my
 department" to any visitor nobody expected. A match over an enum is a
-building whose doors were counted by the architect. If a door has no
-room behind it, the building doesn't open.
-</Callout>
+building whose doors the architect counted before it was built: if a
+door has no room behind it, the building does not open.
+<span slot="breaks">A building's plans can still be wrong in ways nobody
+counted; the compiler only checks that every opcode *has* an arm, not that
+the arm does the right thing, which is what the corpus tests are for.</span>
+</Analogy>
+
+<Analogy title="a seating plan">
+A wedding planner checks, the week before, that every guest has a seat;
+on the day, the only surprise left is someone who was never on the list,
+and they are stopped at the door. The exhaustive
+`match` is the seating plan, and `from_byte` is the door.
+<span slot="breaks">A planner can let a stranger in out of kindness;
+drip-rs treats a byte that is not an opcode as a bug in its own compiler,
+and `expect` stops the program loudly.</span>
+</Analogy>
+
+Step through the loop running `print 1 + 2 * 3;`, whose chunk is the real
+fourteen bytes drip-rs compiles it to:
 
 <DispatchSteps client:visible />
 
 ## No default case
 
-The match is over `OpCode`, an enum with 37 variants, and a Rust match
-must be exhaustive<Cite id="klabnik2026" />. Add a 38th opcode to the
-enum and forget its arm, and the VM no longer compiles. Here is rustc
-1.97 on a three-variant version of the same mistake (trimmed):
-
-```
-error[E0004]: non-exhaustive patterns:
-  `Op::False` not covered
- --> e2.rs:9:11
-  |
-9 |     match op {
-  |           ^^ pattern `Op::False`
-  |              not covered
-```
-
-In TypeScript, the same slip would surface only when a program ran the
-new instruction and hit `default`. In drip-rs, a bad byte is still
-possible, but only in one place: `from_byte` returning `None`. The
-compiler only ever writes valid opcodes, so the `expect` there is a
-statement of trust, and it would panic loudly if that trust were broken.
+The match is over `OpCode`, an enum with 53 variants, and a Rust match
+must be exhaustive<Cite id="klabnik2026" />: every possible value must be
+covered by some arm. Add a 54th opcode and forget its arm, and the VM no
+longer compiles. In TypeScript the same slip would surface only when a
+program ran the new instruction and fell into `default`.
 
 <Callout kind="definition">
 **Match-based dispatch**: the loop decodes each byte into an opcode enum
 and runs one `match` over it, with one arm per instruction. Because the
-match must be exhaustive, every opcode is guaranteed a handler at
-compile time, and the only unchecked step is decoding the byte.
+match must be exhaustive, every opcode is guaranteed a handler at compile
+time, and the only unchecked step left is decoding the byte.
 </Callout>
+
+<Examples of="match-dispatch">
+
+```rust
+OpCode::None => self.push(Value::None),
+```
+
+```rust
+OpCode::Sub => {
+    let (a, b) = self.pop_numbers("-")?;
+    self.push(Value::Number(a - b));
+}
+```
+
+```rust
+OpCode::JumpUnless => {
+    let offset = self.read_short();
+    if self.pop().is_falsey() {
+        self.ip += offset;
+    }
+}
+```
+
+```text
+// with one arm left out (rustc 1.97):
+error[E0004]: non-exhaustive patterns:
+  `OpCode::False` not covered
+```
+
+</Examples>
+
+The first arm (de-indented from `vm.rs`, like the others) is the simplest
+there is: push `none`. The second can
+fail: `pop_numbers` checks that the top two values are numbers, and the
+`?` sends any error straight out of `run` (more on that next); otherwise
+it pushes the difference. The third is what an `if` compiles to: it reads
+a two-byte jump distance, pops the condition, and if the condition is
+falsey it moves the instruction pointer forward, so the next turn of the
+loop reads a different byte. The fourth is the spot-the-difference: delete
+the `False` arm and this is the error, naming the arm you forgot.
+
+<Formal title="Two arms as rules">
+
+```text
+code[ip] = True
+──────────────────────────────
+⟨ip, S⟩ → ⟨ip + 1, S · true⟩
+
+code[ip] = Sub   S = S′ · a · b
+      a, b numbers
+──────────────────────────────
+⟨ip, S⟩ → ⟨ip + 1, S′ · (a − b)⟩
+```
+
+<span slot="read">Read each rule from the top down. The first says: if
+the byte at ip is True, a machine whose instruction pointer is ip and whose
+stack is S steps to one whose instruction pointer is one further on and
+whose stack has true pushed on top. The second says: if the byte is Sub,
+and the stack is some S′ with a and then b on top, and both are numbers,
+then the machine steps to the next instruction with a and b replaced by
+a − b. Each arm of the match is one such rule; when no rule applies (b is
+a string, say), the VM reports a runtime error.</span>
+</Formal>
 
 <Prompts ids={['md-what', 'md-exhaustive', 'md-decode']} />
 
 ## Errors are returned, not thrown
 
 The TypeScript VM's `runtimeError` throws, and `interpret` catches it.
-drip-rs returns errors as values instead. `run` returns
-`Run`, short for `Result<(), RuntimeError>`. An arm that can fail uses
-`?`, as `pop_numbers()?` does above, so the error leaves `run` at once.
-Here is the start of `pop_numbers`:
+drip-rs returns errors as values instead: `run` returns `Run`, defined as
+`type Run<T = ()> = Result<T, RuntimeError>;`, and an arm that can fail
+uses `?`, so the error leaves `run` at once. The heart of `pop_numbers`
+(trimmed and rewrapped):
 
 ```rust
-let (Value::Number(a), Value::Number(b))
-    = (self.peek(1), self.peek(0))
+let (Value::Number(a), Value::Number(b)) =
+    (self.peek(1), self.peek(0))
 else {
-    let m = "Operands must be numbers.";
-    return Err(self.runtime_error(m));
+    // ... build the message, then:
+    return Err(self.runtime_error(message));
 };
+self.stack.truncate(self.stack.len() - 2);
+Ok((a, b))
 ```
 
-That is a `let ... else`: if the pattern doesn't match, the `else` block
+That is a `let ... else`: if the pattern does not match, the `else` block
 runs, and it must leave the function. `RuntimeError` carries no data,
 because `runtime_error` has already written the message and the stack
-trace to stderr.
+trace by the time it returns one; running `print "hi" - 1;` prints
+`runtime error: cannot use '-' on a string and a number` and
+`  at line 1 in script`, and exits with 70, exactly as the TypeScript VM
+does.
 
 <Prompts ids={['md-result']} />
 
-## The loop can't hold the chunk
+## The loop cannot hold the chunk
 
 The TypeScript loop starts by caching the running frame's code in local
-variables, and calls `reload()` after every call and return. clox does
-the same with a local `frame` pointer<Cite id="nystrom2021" />. Try that
-in Rust, on a toy VM:
+variables, `frame`, `code` and `constants`, and calls `reload()` after
+every call and return. Try that in Rust, on a toy VM:
 
 ```rust
 fn run(&mut self) {
@@ -145,37 +201,27 @@ fn run(&mut self) {
 }
 ```
 
-rustc 1.97 refuses (trimmed):
-
-```
-error[E0502]: cannot borrow `*self` as
-  mutable because it is also borrowed
-  as immutable
-12 |  let code = &self.code;
-   |             ---------- immutable
-   |               borrow occurs here
-14 |      self.push(b as f64);
-   |      ^^^^^^^^^^^^^^^^^^^ mutable
-   |               borrow occurs here
-```
-
-`self.push` needs `&mut self`: all of the VM, `code` included. A shared
-borrow of a field and a mutable borrow of the whole can't overlap
-(chapter 302). The borrow checker is being right, too. In drip-rs, the
-chunk belongs to an `ObjFunction` in the heap's arena, and allocating can
-grow that arena's `Vec` and move every object in it. A reference into it
-could dangle.
+rustc 1.97 refuses with `error[E0502]: cannot borrow *self as mutable
+because it is also borrowed as immutable`. `self.push` needs `&mut self`,
+all of the VM, `code` included, and a shared borrow of a field cannot
+overlap a mutable borrow of the whole (*Borrowing*). The borrow checker is
+right, too: in drip-rs the chunk belongs to an `ObjFunction` in the heap's
+arena, and allocating can grow that arena's `Vec` and move every object in
+it, so a reference into it could dangle.
 
 So drip-rs keeps no long-lived reference at all. It copies the running
-frame's state into fields of the `Vm`, which the README calls
-**registers**:
+frame's state into fields of the `Vm`, which its comments compare to a
+CPU's **registers** (from `vm.rs`, comments left out):
 
 ```rust
 pub struct Vm {
-    // ...
-    ip: usize,          // next byte to run
-    chunk: Rc<Chunk>,   // running bytecode
-    slots: usize,       // frame's slot 0
+    pub heap: Heap,
+    stack: Vec<Value>,
+    frames: Vec<CallFrame>,
+    ip: usize,
+    chunk: Rc<Chunk>,
+    slots: usize,
+    // ... globals, upvalues, output
 }
 
 fn read_byte(&mut self) -> u8 {
@@ -185,53 +231,36 @@ fn read_byte(&mut self) -> u8 {
 }
 ```
 
-Each read borrows `self` for one expression, and the borrow is over
-before `push` runs. The chunk is behind an `Rc` (chapter 314) because
-two owners need it: the function in the heap, and the VM while that
-function runs. Cloning an `Rc` just bumps a count. The compiler freezes
-each chunk with `Rc::new` when the function is done, so it is never
-changed afterwards and needs no `RefCell`. `call` saves the caller's
-`ip` into its frame and loads the callee's `ip`, chunk and slots.
-`pop_frame` loads the caller's back.
+<Figure takeaway="One frozen chunk, three owners, no borrow of the heap." caption="While a function runs, its chunk is shared by three Rc pointers: the function's own, the call frame's, and the Vm's chunk register. ip and slots live in the Vm; the frame's ip is written back only when it makes a call.">
+  <Registers />
+</Figure>
 
-<Prompts ids={['md-borrow', 'md-rc', 'md-sync']} />
+Each read borrows `self` for one expression, and the borrow is over before
+`push` runs; try it on a toy VM built the same way:
 
-## What the registers bought
+<Run id="registers" />
 
-The README says the registers made `fib` "about 1.4× faster". The
-committed benchmark run has drip-rs at 1460 ms on `fib`, against
-5685 ms for the TypeScript VM.
+ The chunk is behind an `Rc` (*Box, Rc and RefCell*) because
+several owners need it at once, and cloning an `Rc` only bumps a count;
+the compiler freezes each chunk when its function is done, so it never
+changes and needs no `RefCell`. `call` saves the caller's `ip` into its
+frame and loads the callee's `ip`, chunk and slots into the registers;
+`pop_frame` loads the caller's back. The README reports that this made
+`fib` about 1.4 times faster than walking from the frame through the heap
+for every byte, which makes sense: every instruction reads at least one
+byte, so the cost of reaching it is paid on every turn of the loop.
 
-To see the effect myself, I built two variants of drip-rs in a scratch
-directory. Neither is committed. They differ only in `read_byte`,
-`read_constant` and the jumps. One keeps `ip` and the `Rc<Chunk>` in the
-frame and goes through `self.frames.last_mut()` for every byte. The
-other has no cached chunk at all: every byte walks from the frame to its
-closure, to the function, to the chunk, through the heap. All three
-passed the 246-program corpus. I timed `fib.drip` with release builds
-(chapter 319), best of 5, alternating, on a shared 4-core cloud VM, so
-expect noise:
-
-```
-registers (committed)    1396 ms
-ip + Rc<Chunk> in frame  1716 ms
-walk through the heap    2983 ms
-```
-
-Every Drip instruction reads at least one byte, so the cost of reaching
-that byte is paid on every step of the loop.
-
-<Prompts ids={['md-measure']} />
+<Prompts ids={['md-borrow', 'md-rc', 'md-sync', 'md-measure']} />
 
 <Callout kind="engine" label="Under the hood">
-Why are fields of `self` cheaper than `self.frames.last_mut()`? A `Vec`
-access must check that there is a last element and find it, and the
-frame is one more pointer away. The fields are at fixed offsets from
-`self`. This is the same trade the TypeScript VM and clox make with
-their local variables, just expressed in a way the borrow checker
-accepts. The price is that the copy and the frame must be kept in sync:
-`call`, `pop_frame` and `runtime_error` (which needs the running frame's
-`ip` for the line number) all read or write the registers explicitly.
+How fast is the loop overall? In the committed benchmark run
+(`results/drip-rs-bench-2026-11-02.md`, a shared cloud VM, so allow for
+noise), `fib.drip` took 406 ms in drip-rs against 1,906 ms in the
+TypeScript VM, about 4.7 times faster, and drip-rs was 3.7 to 4.9 times
+faster on every benchmark but `strings` (1.26 times), a program whose
+loop mostly builds, interns and compares new strings. The registers'
+price is bookkeeping: `call`, `pop_frame` and `runtime_error` must all
+read or write them explicitly.
 </Callout>
 
 ## Your turn
@@ -245,12 +274,11 @@ accepts. The price is that the copy and the frame must be kept in sync:
 - **Match-based dispatch**: decode the byte with `from_byte`, then one
   exhaustive `match` with an arm per opcode. A forgotten opcode is a
   compile error (E0004), not a `default` case.
-- Runtime errors are `Result` values. Arms use `?`, and `let ... else`
+- Runtime errors are `Result` values: arms use `?`, and `let ... else`
   handles operands of the wrong type.
-- The loop can't keep `&self.chunk` across `self.push`: a shared and a
+- The loop cannot keep `&self.chunk` across `self.push`: a shared and a
   mutable borrow would overlap, and the arena could move.
 - **Registers**: `ip`, `chunk: Rc<Chunk>` and `slots` are fields of the
-  `Vm`, synced with the frame on calls and returns. In my measurement,
-  `fib` took 1396 ms with them and 2983 ms walking through the heap.
+  `Vm`, synced with the frame on calls and returns.
 
 <Quiz />

@@ -2,11 +2,11 @@
 
 export const prompts = {
   'repr-u8': {
-    q: 'What does `#[repr(u8)]` on a fieldless enum guarantee?',
+    q: 'What does `#[repr(u8)]` on an enum without data guarantee?',
     a: 'The enum has the size and alignment of a `u8`, and its discriminants are `u8`s: each value is stored as its byte.',
   },
   'implicit-numbers': {
-    q: 'Nothing in `enum OpCode { Constant, Nil, ... }` says `Nil = 1`. Where does the 1 come from?',
+    q: 'Nothing in `enum OpCode { Const, None, ... }` says `None = 1`. Where does the 1 come from?',
     a: 'Implicit discriminants: the first variant is 0 and each next one is one more, in the order written.',
   },
   'encode-free': {
@@ -15,7 +15,7 @@ export const prompts = {
   },
   'no-cast': {
     q: 'Why doesn’t `byte as OpCode` compile?',
-    a: '`as` only converts between primitive types (E0605). And most bytes, 37 to 255, are not opcodes at all.',
+    a: '`as` only converts between primitive types (E0605). And most bytes, 53 to 255, are not opcodes at all.',
   },
   'all-table': {
     q: 'How does `OpCode::from_byte` decode a byte without `unsafe`?',
@@ -23,19 +23,19 @@ export const prompts = {
   },
   'option-one-byte': {
     q: 'Why is `Option<OpCode>` still 1 byte?',
-    a: 'Byte values 37 to 255 are never a valid `OpCode`, so rustc uses one of those spare values for `None`.',
+    a: 'Byte values 53 to 255 are never a valid `OpCode`, so rustc uses one of those spare values for `None`.',
   },
   'name-debug': {
-    q: 'Where do disassembler names like `OP_JUMP_IF_FALSE` come from in drip-rs?',
-    a: 'From the derived `Debug` name, `JumpIfFalse`: `name()` adds `OP`, an `_` before each capital, and uppercases.',
+    q: 'Where do disassembler names like `jump.unless.keep` come from in drip-rs?',
+    a: 'From the derived `Debug` name, `JumpUnlessKeep`: `name()` puts a dot before each capital after the first and lowercases every letter.',
   },
   'disasm-heap': {
     q: 'Why does drip-rs’s `disassemble_instruction` take a `&Heap` when the TypeScript one doesn’t?',
     a: 'String and function constants are handles into the heap, so printing them needs the heap to look them up.',
   },
   'jump-usize': {
-    q: 'The TypeScript disassembler computes a loop’s target as `offset + 3 + sign * j` with `sign = -1`. What does drip-rs do, and why?',
-    a: 'Its `Loop` arm computes `offset + 3 - jump`, because offsets are `usize` and can’t be negative.',
+    q: 'How does drip-rs’s disassembler work out where a `loop` instruction at `offset` lands, and why that way?',
+    a: '`offset + 3 - jump`: it subtracts, because offsets are `usize` and can’t hold a negative distance.',
   },
 };
 
@@ -44,25 +44,24 @@ export const examples = {
     lang: 'rust',
     title: 'Opcodes and a tiny disassembler',
     code: `// Opcodes and a tiny disassembler,
-// adapted from drip-rs's chunk.rs and
-// debug.rs.
+// in the style of drip-rs's chunk.rs
+// and debug.rs.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum OpCode {
-    Constant,
-    Nil,
+    Const,
+    None,
     Add,
     Print,
     Return,
 }
 
-use OpCode::*;
-
 impl OpCode {
-    const ALL: [OpCode; 5] = [
-        Constant, Nil, Add,
-        Print, Return,
-    ];
+    const ALL: [OpCode; 5] = {
+        use OpCode::*;
+        [Const, None, Add, Print,
+         Return]
+    };
 
     fn from_byte(b: u8)
         -> Option<OpCode> {
@@ -70,15 +69,16 @@ impl OpCode {
         Self::ALL.get(i).copied()
     }
 
-    // GetLocal -> OP_GET_LOCAL
+    // JumpUnless -> jump.unless
     fn name(self) -> String {
-        let mut s = String::from("OP");
-        let dbg = format!("{self:?}");
-        for c in dbg.chars() {
-            if c.is_ascii_uppercase() {
-                s.push('_');
+        let mut s = String::new();
+        let d = format!("{self:?}");
+        for (i, c) in d.char_indices() {
+            let cap = c.is_uppercase();
+            if cap && i > 0 {
+                s.push('.');
             }
-            s.extend(c.to_uppercase());
+            s.extend(c.to_lowercase());
         }
         s
     }
@@ -108,28 +108,34 @@ fn dis(c: &Chunk, at: usize)
         c.lines[at]);
     let Some(op) = OpCode::from_byte(b)
     else {
-        let u = "Unknown opcode";
+        let u = "unknown opcode";
         let t = format!("{u} {b}");
         return (p + &t, at + 1);
     };
     let name = op.name();
-    if op == Constant {
-        let k = c.code[at + 1];
-        let v = c.constants[k as usize];
+    if op == OpCode::Const {
+        // a two-byte, big-endian index
+        let code = &c.code;
+        let hi = code[at + 1] as usize;
+        let lo = code[at + 2] as usize;
+        let k = hi << 8 | lo;
+        let v = c.constants[k];
         let t = format!(
             "{name:<16} {k:>4} '{v}'");
-        return (p + &t, at + 2);
+        return (p + &t, at + 3);
     }
     (p + &name, at + 1)
 }
 
 fn main() {
+    use OpCode::*;
     let mut c = Chunk::default();
     c.constants.push(1.5);
-    c.write(Constant as u8, 1);
+    c.write(Const as u8, 1);
+    c.write(0, 1);
     c.write(0, 1);
     c.write(Print as u8, 1);
-    c.write(Nil as u8, 2);
+    c.write(None as u8, 2);
     c.write(Return as u8, 2);
     c.write(99, 2); // not an opcode
     println!("bytes: {:?}", c.code);
@@ -152,14 +158,14 @@ export const exercises = {
     lang: 'rust',
     title: 'Encode, decode, name',
     prompt:
-      'Here are five opcodes, numbered by `#[repr(u8)]` in the order written. Add a constant `ALL` holding every opcode in encoding order, then write `encode` (the opcode’s byte), `decode` (the opcode for a byte, or `None`), and `name`, which turns `GetLocal` into `OP_GET_LOCAL` like the TypeScript disassembler.',
+      'Here are five opcodes, numbered by `#[repr(u8)]` in the order written. Add a constant `ALL` holding every opcode in encoding order, then write `encode` (the opcode’s byte), `decode` (the opcode for a byte, or `None`), and `name`, which turns `LoadLocal` into `load.local` and `JumpUnlessKeep` into `jump.unless.keep`, like both disassemblers.',
     starter: `#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Op {
-    Constant,
-    Nil,
-    GetLocal,
-    JumpIfFalse,
+    Const,
+    None,
+    LoadLocal,
+    JumpUnlessKeep,
     Return,
 }
 
@@ -179,20 +185,20 @@ impl Op {
     solution: `#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Op {
-    Constant,
-    Nil,
-    GetLocal,
-    JumpIfFalse,
+    Const,
+    None,
+    LoadLocal,
+    JumpUnlessKeep,
     Return,
 }
 
 impl Op {
     /// Every opcode, in encoding order.
     const ALL: [Op; 5] = [
-        Op::Constant,
-        Op::Nil,
-        Op::GetLocal,
-        Op::JumpIfFalse,
+        Op::Const,
+        Op::None,
+        Op::LoadLocal,
+        Op::JumpUnlessKeep,
         Op::Return,
     ];
 
@@ -204,24 +210,25 @@ impl Op {
         Op::ALL.get(b as usize).copied()
     }
 
-    /// \`GetLocal\` -> \`OP_GET_LOCAL\`
+    /// \`LoadLocal\` -> \`load.local\`
     fn name(self) -> String {
-        let mut s = String::from("OP");
-        let dbg = format!("{self:?}");
-        for c in dbg.chars() {
-            if c.is_ascii_uppercase() {
-                s.push('_');
+        let mut s = String::new();
+        let d = format!("{self:?}");
+        for (i, c) in d.char_indices() {
+            let cap = c.is_uppercase();
+            if cap && i > 0 {
+                s.push('.');
             }
-            s.extend(c.to_uppercase());
+            s.extend(c.to_lowercase());
         }
         s
     }
 }`,
     tests: `#[test]
 fn encoding_follows_declaration_order() {
-    assert_eq!(Op::Constant.encode(), 0);
-    assert_eq!(Op::GetLocal.encode(), 2);
-    assert_eq!(Op::JumpIfFalse.encode(), 3);
+    assert_eq!(Op::Const.encode(), 0);
+    assert_eq!(Op::LoadLocal.encode(), 2);
+    assert_eq!(Op::JumpUnlessKeep.encode(), 3);
     assert_eq!(Op::Return.encode(), 4);
 }
 
@@ -231,7 +238,7 @@ fn every_opcode_round_trips() {
         let op = Op::decode(b).unwrap();
         assert_eq!(op.encode(), b);
     }
-    assert_eq!(Op::decode(1), Some(Op::Nil));
+    assert_eq!(Op::decode(1), Some(Op::None));
 }
 
 #[test]
@@ -241,42 +248,53 @@ fn other_bytes_are_not_opcodes() {
 }
 
 #[test]
-fn names_match_the_typescript_vm() {
-    assert_eq!(Op::Constant.name(), "OP_CONSTANT");
-    assert_eq!(Op::GetLocal.name(), "OP_GET_LOCAL");
-    assert_eq!(Op::JumpIfFalse.name(), "OP_JUMP_IF_FALSE");
+fn names_match_the_disassemblers() {
+    assert_eq!(Op::Const.name(), "const");
+    assert_eq!(Op::LoadLocal.name(), "load.local");
+    assert_eq!(Op::JumpUnlessKeep.name(), "jump.unless.keep");
 }`,
     hints: [
-      '`encode` is a cast: `self as u8`.',
-      'Write `const ALL: [Op; 5] = [Op::Constant, ...];` inside the `impl`, in the same order as the enum. Then `decode` is `Op::ALL.get(b as usize).copied()`.',
-      'For `name`, start with `String::from("OP")`, loop over the characters of `format!("{self:?}")`, push `_` before each uppercase letter, and push the uppercased letter.',
+      'Start with the easy direction: `encode` is a single cast.',
+      'The cast doesn’t go the other way, so write `const ALL: [Op; 5] = [Op::Const, ...];` inside the `impl`, in the same order as the enum. Then `decode` is `Op::ALL.get(b as usize).copied()`.',
+      'For `name`, loop over `format!("{self:?}").char_indices()`, which gives each character with its position. Push a `.` before each uppercase letter except the first (`i > 0`), then append the letter in lower case with `s.extend(c.to_lowercase())`.',
     ],
-    walkthrough: `This is \`chunk.rs\`’s \`OpCode\` in miniature.
+    walkthrough: `**How to think about it.** There are two directions and they are not alike. From opcode to byte is free, because \`#[repr(u8)]\` makes each value *be* its byte. From byte to opcode needs a check, because only five of the 256 byte values are opcodes, so the answer must be an \`Option\`, and the simplest safe way to build it is a table where position \`i\` holds the opcode whose byte is \`i\`. The name is a third, separate job: the derived \`Debug\` text already has the words, run together in CamelCase, and you only need to split them.
 
-- **\`encode\`.** A fieldless enum casts to an integer with \`as\`, and with \`#[repr(u8)]\` the result is the byte the value is stored as. \`JumpIfFalse\` is fourth in the list, so it is 3.
-- **\`ALL\` and \`decode\`.** The cast doesn’t go the other way, so keep a table where position \`i\` holds the opcode whose byte is \`i\`. \`get\` returns \`Option<&Op>\` and \`.copied()\` turns it into \`Option<Op>\`: \`Some\` for 0 to 4, \`None\` for anything else, never a panic. The round-trip test is the same one drip-rs runs over all 37 opcodes; it catches a table written out of order.
-- **\`name\`.** \`Debug\` gives \`"JumpIfFalse"\`. Each capital starts a word, so it gets an \`_\` in front, and every letter is uppercased: \`OP\` + \`_JUMP\` + \`_IF\` + \`_FALSE\`.
+**The solution, line by line.**
 
-drip-rs pushes \`c.to_ascii_uppercase()\`; \`s.extend(c.to_uppercase())\` does the same for these ASCII names.`,
+- \`const ALL: [Op; 5] = [Op::Const, Op::None, Op::LoadLocal, Op::JumpUnlessKeep, Op::Return];\` lists every opcode in exactly the order of the enum, so \`ALL[i]\` is the opcode whose byte is \`i\`. It is a \`const\` inside the \`impl\`, so it costs nothing at run time.
+- \`fn encode(self) -> u8 { self as u8 }\`: a cast of the discriminant. \`JumpUnlessKeep\` is fourth in the list, so it is 3.
+- \`fn decode(b: u8) -> Option<Op> { Op::ALL.get(b as usize).copied() }\`: \`b as usize\` widens the byte to an index; \`get\` gives \`Some(&op)\` inside the table and \`None\` past its end, never a panic; \`copied\` turns \`Option<&Op>\` into \`Option<Op>\`.
+- \`let mut s = String::new();\` starts the name empty.
+- \`let d = format!("{self:?}");\` is the derived \`Debug\` text, such as \`"JumpUnlessKeep"\`.
+- \`for (i, c) in d.char_indices()\` visits each character with its position (its byte offset, which for these ASCII names is simply its place in the word).
+- \`let cap = c.is_uppercase(); if cap && i > 0 { s.push('.'); }\`: every capital starts a word, and every word but the first gets a dot in front.
+- \`s.extend(c.to_lowercase());\` adds the letter in lower case (\`to_lowercase\` gives an iterator of characters, which \`extend\` appends; drip-rs uses \`to_ascii_lowercase\`, which is the same for these ASCII names), giving \`jump\` + \`.unless\` + \`.keep\`.
+
+**Common wrong attempts.**
+
+- \`Some(Op::ALL[b as usize])\`: square-bracket indexing panics for a byte past the end, like 5 or 255, where \`get\` gives \`None\`.
+- \`dbg.to_lowercase()\` on its own loses the word breaks: \`loadlocal\`.
+- \`ALL\` written in a different order from the enum: \`decode(1)\` then gives \`LoadLocal\`, whose byte is 2. This is the mistake drip-rs’s round-trip test exists to catch.`,
     wrong: [
       {
         code: `#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Op {
-    Constant,
-    Nil,
-    GetLocal,
-    JumpIfFalse,
+    Const,
+    None,
+    LoadLocal,
+    JumpUnlessKeep,
     Return,
 }
 
 impl Op {
     /// Every opcode, in encoding order.
     const ALL: [Op; 5] = [
-        Op::Constant,
-        Op::Nil,
-        Op::GetLocal,
-        Op::JumpIfFalse,
+        Op::Const,
+        Op::None,
+        Op::LoadLocal,
+        Op::JumpUnlessKeep,
         Op::Return,
     ];
 
@@ -288,15 +306,16 @@ impl Op {
         Some(Op::ALL[b as usize])
     }
 
-    /// \`GetLocal\` -> \`OP_GET_LOCAL\`
+    /// \`LoadLocal\` -> \`load.local\`
     fn name(self) -> String {
-        let mut s = String::from("OP");
-        let dbg = format!("{self:?}");
-        for c in dbg.chars() {
-            if c.is_ascii_uppercase() {
-                s.push('_');
+        let mut s = String::new();
+        let d = format!("{self:?}");
+        for (i, c) in d.char_indices() {
+            let cap = c.is_uppercase();
+            if cap && i > 0 {
+                s.push('.');
             }
-            s.extend(c.to_uppercase());
+            s.extend(c.to_lowercase());
         }
         s
     }
@@ -307,20 +326,20 @@ impl Op {
         code: `#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Op {
-    Constant,
-    Nil,
-    GetLocal,
-    JumpIfFalse,
+    Const,
+    None,
+    LoadLocal,
+    JumpUnlessKeep,
     Return,
 }
 
 impl Op {
     /// Every opcode, in encoding order.
     const ALL: [Op; 5] = [
-        Op::Constant,
-        Op::Nil,
-        Op::GetLocal,
-        Op::JumpIfFalse,
+        Op::Const,
+        Op::None,
+        Op::LoadLocal,
+        Op::JumpUnlessKeep,
         Op::Return,
     ];
 
@@ -332,33 +351,32 @@ impl Op {
         Op::ALL.get(b as usize).copied()
     }
 
-    /// \`GetLocal\` -> \`OP_GET_LOCAL\`
+    /// \`LoadLocal\` -> \`load.local\`
     fn name(self) -> String {
         let dbg = format!("{self:?}");
-        let up = dbg.to_uppercase();
-        format!("OP_{up}")
+        dbg.to_lowercase()
     }
 }`,
-        why: 'Uppercasing the whole name loses the word breaks: `OP_GETLOCAL`. Put an `_` before each capital first.',
+        why: 'Lowercasing the whole name loses the word breaks: `loadlocal`. Put a `.` before each capital after the first.',
       },
       {
         code: `#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Op {
-    Constant,
-    Nil,
-    GetLocal,
-    JumpIfFalse,
+    Const,
+    None,
+    LoadLocal,
+    JumpUnlessKeep,
     Return,
 }
 
 impl Op {
     /// Every opcode, in encoding order.
     const ALL: [Op; 5] = [
-        Op::Constant,
-        Op::GetLocal,
-        Op::Nil,
-        Op::JumpIfFalse,
+        Op::Const,
+        Op::LoadLocal,
+        Op::None,
+        Op::JumpUnlessKeep,
         Op::Return,
     ];
 
@@ -370,20 +388,21 @@ impl Op {
         Op::ALL.get(b as usize).copied()
     }
 
-    /// \`GetLocal\` -> \`OP_GET_LOCAL\`
+    /// \`LoadLocal\` -> \`load.local\`
     fn name(self) -> String {
-        let mut s = String::from("OP");
-        let dbg = format!("{self:?}");
-        for c in dbg.chars() {
-            if c.is_ascii_uppercase() {
-                s.push('_');
+        let mut s = String::new();
+        let d = format!("{self:?}");
+        for (i, c) in d.char_indices() {
+            let cap = c.is_uppercase();
+            if cap && i > 0 {
+                s.push('.');
             }
-            s.extend(c.to_uppercase());
+            s.extend(c.to_lowercase());
         }
         s
     }
 }`,
-        why: '`ALL` must be in encoding order. With `Nil` and `GetLocal` swapped, `decode(1)` gives `GetLocal`, whose byte is 2. This is the mistake drip-rs’s round-trip test exists to catch.',
+        why: '`ALL` must be in encoding order. With `None` and `LoadLocal` swapped, `decode(1)` gives `LoadLocal`, whose byte is 2. This is the mistake drip-rs’s round-trip test exists to catch.',
       },
     ],
   },
@@ -392,11 +411,11 @@ impl Op {
     optional: true,
     title: 'Where does the jump land?',
     prompt:
-      'A jump instruction at offset `at` is three bytes: the opcode, then a 16-bit distance, high byte first. The distance counts from the end of the instruction (`at + 3`): forward for `Jump` and `JumpIfFalse`, backward for `Loop`. Write `target`, which the disassembler prints after `->`.',
+      'A jump instruction at offset `at` is three bytes: the opcode, then a 16-bit distance, high byte first. The distance counts from the end of the instruction (`at + 3`): forward for `Jump` and `JumpUnless`, backward for `Loop`. Write `target`, which the disassembler prints after `->`.',
     starter: `#[derive(Clone, Copy, Debug, PartialEq)]
 enum Op {
     Jump,
-    JumpIfFalse,
+    JumpUnless,
     Loop,
 }
 
@@ -410,7 +429,7 @@ fn target(
     solution: `#[derive(Clone, Copy, Debug, PartialEq)]
 enum Op {
     Jump,
-    JumpIfFalse,
+    JumpUnless,
     Loop,
 }
 
@@ -432,17 +451,17 @@ fn target(
 }`,
     tests: `#[test]
 fn a_forward_jump() {
-    // 9: JUMP_IF_FALSE 0 12  ->  24
+    // 9: jump.unless 0 12  ->  24
     let mut code = vec![0u8; 30];
     code[10] = 0;
     code[11] = 12;
-    assert_eq!(target(Op::JumpIfFalse, &code, 9), 24);
+    assert_eq!(target(Op::JumpUnless, &code, 9), 24);
     assert_eq!(target(Op::Jump, &code, 9), 24);
 }
 
 #[test]
 fn a_loop_goes_back() {
-    // 21: LOOP 0 20  ->  4
+    // 21: loop 0 20  ->  4
     let mut code = vec![0u8; 30];
     code[22] = 0;
     code[23] = 20;
@@ -460,18 +479,29 @@ fn the_high_byte_counts_256() {
       'The distance is `hi << 8 | lo`.',
       'For `Loop`, subtract from `at + 3`; otherwise add.',
     ],
-    walkthrough: `This is the jump arm of drip-rs’s \`disassemble_instruction\`, as a function.
+    walkthrough: `**How to think about it.** Work one by hand first. A \`jump.unless\` at offset 9 with operand bytes 0 and 12: the distance is 12, the instruction ends at 9 + 3 = 12, and 12 + 12 = 24. Two details make it subtle in Rust: the two bytes must be combined into one number (high byte first), and a backward jump must subtract, because a \`usize\` cannot be negative.
 
-- **Widen first.** \`code[at + 1] as usize\` turns the byte into a \`usize\` *before* the shift. A \`u8\` shifted left by 8 has no bits left, and rustc rejects \`hi << 8\` on a \`u8\` outright: “this arithmetic operation will overflow”. In TypeScript, \`<<\` works on 32-bit integers, so the problem never showed.
-- **Big-endian.** The high byte is worth 256 each: \`1, 2\` is 258.
-- **Count from the end of the instruction.** By the time the VM jumps, its instruction pointer is already past the three bytes, so the distance starts at \`at + 3\`.
-- **No negatives.** A loop jumps back, and \`usize\` can’t hold \`-20\`, so the \`Loop\` arm subtracts. In the program from the chapter, the \`OP_LOOP\` at 21 with distance 20 lands on 4, where the condition is tested again.`,
+**The solution, line by line.**
+
+- \`let hi = code[at + 1] as usize;\` reads the high byte and widens it to a \`usize\` *before* any shifting. A \`u8\` shifted left by 8 has no bits left, and rustc rejects \`hi << 8\` on a \`u8\` outright ("this arithmetic operation will overflow"). In TypeScript, \`<<\` works on 32-bit integers, so the problem never showed.
+- \`let lo = code[at + 2] as usize;\` reads the low byte the same way.
+- \`let jump = hi << 8 | lo;\` puts them together: the high byte is worth 256 each, so bytes \`1, 2\` make 258.
+- \`if op == Op::Loop { at + 3 - jump }\` jumps backward from the end of the instruction. By the time the VM jumps, its instruction pointer is already past the three bytes, which is why the count starts at \`at + 3\`.
+- \`else { at + 3 + jump }\` jumps forward for \`Jump\` and \`JumpUnless\`.
+
+The disassembler prints exactly this number after \`->\`; for example, drip-rs compiles \`let xs = [10, 20]; for x in xs { print x; }\` (one statement per line) to a listing whose line \`0038    4 loop               38 -> 18\` is a \`loop\` at 38 with distance 23, landing on 18 (38 + 3 − 23), where the loop condition is tested again.
+
+**Common wrong attempts.**
+
+- Combining the bytes before widening them: shifting a \`u8\` by 8 does not compile.
+- Counting from \`at\` rather than \`at + 3\`: every target is three bytes short.
+`,
     wrong: [
       {
         code: `#[derive(Clone, Copy, Debug, PartialEq)]
 enum Op {
     Jump,
-    JumpIfFalse,
+    JumpUnless,
     Loop,
 }
 
@@ -497,7 +527,7 @@ fn target(
         code: `#[derive(Clone, Copy, Debug, PartialEq)]
 enum Op {
     Jump,
-    JumpIfFalse,
+    JumpUnless,
     Loop,
 }
 
@@ -525,9 +555,9 @@ fn target(
 
 export const quiz = [
   {
-    q: 'In `#[repr(u8)] enum OpCode { Constant, Nil, True, ... }`, what is `OpCode::True as u8`?',
+    q: 'In `#[repr(u8)] enum OpCode { Const, None, True, ... }`, what is `OpCode::True as u8`?',
     options: [
-      { t: '1', why: 'That is `Nil`. Counting starts at 0.' },
+      { t: '1', why: 'That is `None`. Counting starts at 0.' },
       { t: '2', correct: true, why: 'Implicit discriminants count from 0 in declaration order.' },
       { t: 'It depends on the compiler', why: 'The numbering of implicit discriminants is defined by the language.' },
       { t: 'It doesn’t compile', why: 'Casting a fieldless enum to an integer is allowed.' },
@@ -544,7 +574,7 @@ export const quiz = [
   {
     q: 'What is `size_of::<Option<OpCode>>()`?',
     options: [
-      { t: '1', correct: true, why: 'Measured with rustc 1.97: a spare byte value (37 to 255) stands for `None`.' },
+      { t: '1', correct: true, why: 'Measured with rustc 1.97: a spare byte value (53 to 255) stands for `None`.' },
       { t: '2: one byte for the tag, one for the opcode', why: 'That would be needed if every byte were a valid `OpCode`.' },
       { t: '8', why: 'Nothing here is a pointer.' },
     ],
@@ -553,7 +583,7 @@ export const quiz = [
     q: 'Someone adds a new opcode in the middle of the enum but forgets `ALL`. What catches it?',
     options: [
       { t: 'Nothing; the VM silently runs the wrong instruction', why: 'Something does catch it, before any program runs.' },
-      { t: 'The compiler: `ALL` now has the wrong length', why: '`ALL` is declared `[OpCode; 37]` and still holds 37 entries, so it compiles.' },
+      { t: 'The compiler: `ALL` now has the wrong length', why: '`ALL` is declared `[OpCode; 53]` and still holds 53 entries, so it compiles.' },
       { t: 'The borrow checker', why: 'No borrowing is involved.' },
       { t: '`cargo test`: the unit test checks `*op as usize == i` for every entry of `ALL`', correct: true, why: 'Every opcode after the new one now has a discriminant one higher than its place in the table.' },
     ],
@@ -564,15 +594,6 @@ export const quiz = [
       { t: 'To allocate the strings it returns', why: 'Its output is ordinary `String`s, not heap objects.' },
       { t: 'To run the garbage collector first', why: 'Disassembling never collects.' },
       { t: 'Because a string constant is a handle, and only the heap can turn it into text', correct: true, why: 'Constants are `Value`s; a `Value::String` holds a handle, not the characters.' },
-    ],
-  },
-  {
-    q: 'In drip-rs’s disassembler, `{name:<16}` does what the TypeScript code did with…',
-    options: [
-      { t: '`String(n).padStart(4)`', why: 'That is `{n:>4}`: right-aligned.' },
-      { t: '`name.padEnd(16)`', correct: true, why: '`<` left-aligns in a field of 16 characters.' },
-      { t: '`pad(offset, 4)` with zeros', why: 'That is `{offset:04}`.' },
-      { t: '`name.toUpperCase()`', why: 'Format specs set width and alignment, not case.' },
     ],
   },
 ];

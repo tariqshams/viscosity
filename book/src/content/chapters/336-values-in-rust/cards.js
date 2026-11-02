@@ -4,7 +4,7 @@
 export const prompts = {
   've-what': {
     q: 'In drip-rs, what Rust type stands for “any Drip value”?',
-    a: 'An enum, `Value`, with one variant per kind: `Nil`, `Bool(bool)`, `Number(f64)`, `String(StrRef)`, and one handle variant per object type.',
+    a: 'An enum, `Value`, with one variant per kind: `None`, `Bool(bool)`, `Number(f64)`, `String(StrRef)`, and one handle variant per object type (eleven variants in all).',
   },
   've-copy': {
     q: 'Why can `Value` derive `Copy`?',
@@ -20,7 +20,7 @@ export const prompts = {
   },
   've-option': {
     q: 'In rustc’s layout report, why does `Option<Value>` have no discriminant of its own?',
-    a: '`None` is stored as one of the tag values `Value`’s ten variants don’t use, so `Some(v)` is just `v`.',
+    a: '`None` is stored as one of the tag values `Value`’s eleven variants don’t use, so `Some(v)` is just `v`.',
   },
   've-hash-free': {
     q: 'Which bytes of a `Value::String` hold the string’s hash, and why is that free?',
@@ -30,7 +30,7 @@ export const prompts = {
     q: 'With `#[derive(PartialEq)]` on `Value`, is `Number(NaN) == Number(NaN)`?',
     a: 'No. f64 equality follows IEEE 754, so NaN is unequal to itself, as with JavaScript’s `===`.',
   },
-  've-display-heap': {
+  've-format-heap': {
     q: 'Why does printing a `Value` need a `&Heap`?',
     a: 'A string or object value holds only a handle (an index). The text and names it prints live in the heap.',
   },
@@ -61,7 +61,7 @@ struct StrRef {
 
 #[derive(Clone, Copy)]
 enum Value {
-    Nil,
+    None,
     Bool(bool),
     Number(f64),
     String(StrRef),
@@ -90,7 +90,7 @@ export const exercises = {
   value: {
     lang: 'rust',
     title: 'Your own Value',
-    prompt: `Write a cut-down drip-rs \`Value\`: an enum with the variants \`Nil\`, \`Bool(bool)\`, \`Number(f64)\` and \`Str(StrRef)\`, where \`StrRef\` (given) is a string's handle and hash. It must be **Copy**, comparable with \`==\`, and printable with \`{:?}\` (the tests use all three). Then write \`is_falsey\`: Drip's rule is that only \`nil\` and \`false\` are falsey. One test checks that your \`Value\` is 16 bytes.`,
+    prompt: `Write a cut-down drip-rs \`Value\`: an enum with the variants \`None\`, \`Bool(bool)\`, \`Number(f64)\` and \`Str(StrRef)\`, where \`StrRef\` (given) is a string's handle and hash. It must be **Copy**, comparable with \`==\`, and printable with \`{:?}\` (the tests use all three). Then write \`is_falsey\`: Drip's rule is that only \`none\` and \`false\` are falsey. One test checks that your \`Value\` is 16 bytes.`,
     starter: `#[derive(Clone, Copy, PartialEq, Debug)]
 struct StrRef {
     handle: u32,
@@ -98,7 +98,7 @@ struct StrRef {
 }
 
 enum Value {
-    Nil,
+    None,
 }
 
 impl Value {
@@ -114,7 +114,7 @@ struct StrRef {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Value {
-    Nil,
+    None,
     Bool(bool),
     Number(f64),
     Str(StrRef),
@@ -123,7 +123,7 @@ enum Value {
 impl Value {
     fn is_falsey(self) -> bool {
         match self {
-            Self::Nil => true,
+            Self::None => true,
             Self::Bool(b) => !b,
             _ => false,
         }
@@ -132,8 +132,8 @@ impl Value {
     tests: `use std::mem::size_of;
 
 #[test]
-fn nil_and_false_are_falsey() {
-    assert!(Value::Nil.is_falsey());
+fn none_and_false_are_falsey() {
+    assert!(Value::None.is_falsey());
     assert!(Value::Bool(false).is_falsey());
 }
 
@@ -167,17 +167,28 @@ fn a_value_is_16_bytes() {
     hints: [
       'Each variant with a payload is written like `Number(f64)`. `Str` carries a whole `StrRef`.',
       'Put the same `#[derive(...)]` line on `Value` that `StrRef` has. `Copy` is allowed because every payload is `Copy`.',
-      'For `is_falsey`, `match self` with an arm for `Self::Nil`, one for `Self::Bool(b)`, and `_ => false` for the rest. (`matches!(self, Value::Nil | Value::Bool(false))` says the same in one expression.)',
+      'For `is_falsey`, `match self` with an arm for `Self::None`, one for `Self::Bool(b)`, and `_ => false` for the rest. (`matches!(self, Value::None | Value::Bool(false))` says the same in one expression.)',
     ],
-    walkthrough: `**The variants.** \`Nil\` has no payload; \`Bool(bool)\`, \`Number(f64)\` and \`Str(StrRef)\` each carry one. That is the drip-rs shape, minus the object handles.
+    walkthrough: `**How to think about it.** Start from the question the VM asks of every value: "what kind are you, and what do you carry?" That is exactly an enum: one variant per kind, with a payload where there is something to carry. Then ask what the VM does with values all day (copies them onto and off the stack, compares them), and that tells you which traits to derive.
 
-**The derives.** \`Clone, Copy\` let \`let b = a;\` copy instead of move, so the third test can still use \`a\`. Deriving \`Copy\` only works because \`bool\`, \`f64\` and \`StrRef\` are all \`Copy\` themselves. \`PartialEq\` gives \`==\`, and \`Debug\` is what \`assert_eq!\` prints when a test fails.
+**The solution, line by line.**
 
-**Equality for free.** The derived \`==\` compares the tag, then the payload. For \`f64\` that is IEEE comparison, so \`NaN != NaN\` and \`-0.0 == 0.0\`, exactly what JavaScript's \`===\` does, which is what Drip promises.
+- \`#[derive(Clone, Copy, PartialEq, Debug)]\` on \`Value\`: \`Clone\` and \`Copy\` make \`let b = a;\` a copy rather than a move, so the third test can still use \`a\`; \`PartialEq\` gives \`==\`; \`Debug\` is what \`assert_eq!\` prints when a test fails. Deriving \`Copy\` compiles only because \`bool\`, \`f64\` and \`StrRef\` are all \`Copy\` themselves.
+- \`None,\` has no payload: there is nothing to carry.
+- \`Bool(bool),\` and \`Number(f64),\` carry their value inline.
+- \`Str(StrRef),\` carries the string's handle and hash, never the text, which lives in the heap.
+- \`fn is_falsey(self) -> bool {\` takes \`self\` by value, which is free for a \`Copy\` type.
+- \`Self::None => true,\` the first falsey value.
+- \`Self::Bool(b) => !b,\` falsey exactly when \`b\` is \`false\`.
+- \`_ => false,\` everything else is truthy, including \`0\` and the empty string (unlike JavaScript, where \`0\` is falsy). \`matches!(self, Value::None | Value::Bool(false))\`, as drip-rs writes it, says the same in one expression.
 
-**Falsey.** Only two values are falsey in Drip: \`Nil\`, and \`Bool(b)\` when \`b\` is false. The \`_\` arm says everything else, including \`0\` (unlike in JavaScript), is truthy.
+**What the tests also show.** The derived \`==\` compares the tag, then the payload, and for \`f64\` that is IEEE comparison: \`NaN != NaN\` and \`-0.0 == 0.0\`, exactly JavaScript's \`===\`, which is what Drip promises. And the size: the biggest payloads are 8 bytes (\`f64\` and \`StrRef\`), the tag takes a byte, and the \`f64\`'s 8-byte alignment rounds 9 up to 16.
 
-**16 bytes.** The biggest payloads are 8 bytes (\`f64\` and \`StrRef\`), the tag takes a byte, and the \`f64\`'s 8-byte alignment rounds 9 up to 16. Try changing \`Str\` to hold a \`String\`: the size goes to 24 and \`Copy\` stops compiling.`,
+**Common wrong attempts.**
+
+- Using JavaScript's rule and calling \`Number(0.0)\` falsey: in Drip only \`none\` and \`false\` are.
+- Leaving \`Copy\` out of the derive: \`let b = a;\` then moves \`a\`, and the test that uses \`a\` afterwards does not compile.
+- Giving \`Str\` a \`String\` payload: \`Copy\` stops compiling (E0204), and the size grows to 24.`,
     wrong: [
       {
         code: `#[derive(Clone, Copy, PartialEq, Debug)]
@@ -188,7 +199,7 @@ struct StrRef {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Value {
-    Nil,
+    None,
     Bool(bool),
     Number(f64),
     Str(String),
@@ -197,7 +208,7 @@ enum Value {
 impl Value {
     fn is_falsey(self) -> bool {
         match self {
-            Self::Nil => true,
+            Self::None => true,
             Self::Bool(b) => !b,
             _ => false,
         }
@@ -214,7 +225,7 @@ struct StrRef {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Value {
-    Nil,
+    None,
     Bool(bool),
     Number(f64),
     Str(StrRef),
@@ -223,14 +234,14 @@ enum Value {
 impl Value {
     fn is_falsey(self) -> bool {
         match self {
-            Self::Nil => true,
+            Self::None => true,
             Self::Bool(b) => !b,
             Self::Number(n) => n == 0.0,
             Self::Str(_) => false,
         }
     }
 }`,
-        why: 'That is JavaScript’s rule, not Drip’s. In Drip, `0` is truthy: only `nil` and `false` are falsey.',
+        why: 'That is JavaScript’s rule, not Drip’s. In Drip, `0` is truthy: only `none` and `false` are falsey.',
       },
       {
         code: `#[derive(Clone, Copy, PartialEq, Debug)]
@@ -241,7 +252,7 @@ struct StrRef {
 
 #[derive(PartialEq, Debug)]
 enum Value {
-    Nil,
+    None,
     Bool(bool),
     Number(f64),
     Str(StrRef),
@@ -250,7 +261,7 @@ enum Value {
 impl Value {
     fn is_falsey(&self) -> bool {
         match self {
-            Self::Nil => true,
+            Self::None => true,
             Self::Bool(b) => !b,
             _ => false,
         }
@@ -337,15 +348,24 @@ fn small_numbers_use_e_minus() {
       'For the plain range, compare `n.abs()` with `1e-6` and `1e21`, and remember zero (which is below 1e-6 but prints plainly).',
       'Outside it, `format!("{:e}", n)` gives `1e21` or `1.5e-7`. Only the first needs changing: replace the `e` with `e+` when there is no `e-`.',
     ],
-    walkthrough: `**Why this works.** Rust's \`{}\` and \`{:e}\` both print the shortest digits that read back as the same double, and JavaScript chooses the same digits. So you never compute digits yourself; you only choose a layout.
+    walkthrough: `**How to think about it.** Rust's \`{}\` and \`{:e}\` both print the shortest digits that read back as the same double, and JavaScript chooses the same digits. So you never compute digits yourself; you only choose a layout, and the layout depends on three things: is the number special (NaN, an infinity), is it in JavaScript's plain range, and if not, does its exponent need a \`+\`.
 
-**The specials.** Rust spells infinity \`inf\`, and JavaScript \`Infinity\`, so those are written by hand. NaN happens to agree, but checking it first keeps the later comparisons honest (every comparison with NaN is false).
+**The solution, line by line.**
 
-**The plain range.** JavaScript writes plain decimals for 1e-6 ≤ |n| < 1e21. Rust's \`{}\` never uses an exponent, and inside that range it prints the same text. Zero is a special case: \`0.0\` and \`-0.0\` are below 1e-6, but print as \`0\` and \`-0\`.
+- \`if n.is_nan() { return "NaN".to_string(); }\` handles NaN first. Rust happens to print \`NaN\` too, but checking it first keeps the later comparisons honest, because every comparison with NaN is false.
+- \`if n == f64::INFINITY { return "Infinity".to_string(); }\` and the same for \`-f64::INFINITY\`: Rust spells these \`inf\` and \`-inf\`, JavaScript \`Infinity\` and \`-Infinity\`. (Drip itself then renames them \`inf\`, \`-inf\` and \`nan\`.)
+- \`let a = n.abs();\` the size of the number, whatever its sign.
+- \`let plain = 1e-6 <= a && a < 1e21;\` JavaScript's plain-decimal range.
+- \`if a == 0.0 || plain { return format!("{}", n); }\`: inside the range Rust's \`{}\` prints the same text as JavaScript. Zero is below 1e-6 but prints plainly, and Rust's \`{}\` prints \`-0\` for negative zero, which is what the TypeScript VM wants.
+- \`let s = format!("{:e}", n);\` gives \`1e21\` or \`1.5e-7\`.
+- \`if s.contains("e-") { s } else { s.replace('e', "e+") }\`: JavaScript always writes the exponent's sign, so only a non-negative exponent needs a \`+\` added.
 
-**The exponent form.** Outside the range, \`{:e}\` gives \`1e21\` or \`1.5e-7\`. JavaScript always writes the exponent's sign, so a non-negative exponent gets a \`+\`.
+The real \`format_number\` in drip-rs does the layout itself from \`{:e}\`'s digits, following the ECMAScript steps, so it does not rely on \`{}\` matching JavaScript in the middle range; it is checked against 42 numbers Node printed.
 
-The real \`format_number\` in drip-rs does the layout itself from \`{:e}\`'s digits, following the ECMAScript algorithm step by step, so it doesn't rely on \`{}\` matching JavaScript in the middle range. It's checked against 42 numbers Node printed.`,
+**Common wrong attempts.**
+
+- A lower bound of 1e-7: \`1.5e-7\` then prints as \`0.00000015\`, but JavaScript prints \`1.5e-7\`.
+- Forgetting the infinities: they fall through to \`{:e}\`, which prints \`inf\`.`,
     wrong: [
       {
         code: `fn js_num(n: f64) -> String {
@@ -408,19 +428,10 @@ export const quiz = [
   {
     q: 'Which of these explains the 16 bytes of a drip-rs `Value` on x86-64?',
     options: [
-      { t: 'Ten variants need 16 bytes of tag', why: 'Ten variants fit in a one-byte tag.' },
+      { t: 'Eleven variants need 16 bytes of tag', why: 'Eleven variants fit in a one-byte tag.' },
       { t: 'Every Rust enum is 16 bytes', why: 'Sizes depend on the payloads. A copy of `Value` without `Number` measures 12 bytes.' },
       { t: 'The `StrRef` hash makes it 16', why: 'Without the hash, `Number` still needs 16. The hash fits in space that was already there.' },
       { t: 'An 8-byte `f64` plus a tag, rounded up to the `f64`’s 8-byte alignment', correct: true, why: '1 + 8 = 9 bytes, and a size must be a multiple of the alignment, so 16.' },
-    ],
-  },
-  {
-    q: 'What does `size_of::<Option<Value>>()` return in drip-rs (rustc 1.97, x86-64)?',
-    options: [
-      { t: '16', correct: true, why: '`None` uses a tag value that no variant of `Value` uses, so no extra tag is needed.' },
-      { t: '17', why: 'Sizes are multiples of the alignment (8), so 17 is impossible.' },
-      { t: '24', why: 'That would be a separate tag plus padding. rustc found a spare tag value instead.' },
-      { t: '8', why: 'It can’t be smaller than the `Value` it may hold.' },
     ],
   },
   {
@@ -433,19 +444,19 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `value.display(&heap)` take the heap?',
+    q: 'Why does `value.format(&heap)` take the heap?',
     options: [
       { t: 'Printing allocates a new string in the heap', why: 'Printing only reads. It never allocates Drip objects.' },
       { t: 'A string value holds only an index, and the text is in the heap', correct: true, why: 'The handle says which slot to read; the heap is where the slot is.' },
       { t: 'The heap holds the number formatting rules', why: 'Number formatting is a plain function, `format_number`.' },
-      { t: 'To run the garbage collector before printing', why: 'Displaying a value never collects.' },
+      { t: 'To run the garbage collector before printing', why: 'Formatting a value never collects.' },
     ],
   },
   {
     q: 'In drip-rs, `Value` derives `PartialEq`. Which of these is `true`?',
     options: [
       { t: '`Number(NaN) == Number(NaN)`', why: 'f64 equality follows IEEE 754: NaN is unequal to everything, itself included.' },
-      { t: '`Nil == Bool(false)`', why: 'Different variants are never equal, even though both are falsey.' },
+      { t: '`None == Bool(false)`', why: 'Different variants are never equal, even though both are falsey.' },
       { t: 'Two string values with the same text', correct: true, why: 'Handles compare by index, and interning gives equal text one handle, so equal strings are equal values.' },
       { t: '`Number(0.0) == Number(-0.0)` is false', why: 'IEEE 754 says 0 and -0 are equal, as JavaScript’s `===` does.' },
     ],

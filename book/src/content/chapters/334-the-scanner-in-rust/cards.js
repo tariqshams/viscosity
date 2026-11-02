@@ -5,10 +5,6 @@ export const prompts = {
     q: 'Why doesn’t `let c = source[0];` compile when `source` is a `&str`?',
     a: 'A `str` is UTF-8, where characters take 1 to 4 bytes, so Rust doesn’t offer integer indexing (E0277). You slice with byte ranges or read the bytes.',
   },
-  'as-bytes': {
-    q: 'What does `source.as_bytes()` cost?',
-    a: 'Nothing: it is the same memory viewed as a `&[u8]`. No copy is made.',
-  },
   'byte-literal': {
     q: 'What is `b\'(\'`?',
     a: 'A byte literal: the `u8` with the ASCII code of `(`, which is 40.',
@@ -26,12 +22,12 @@ export const prompts = {
     a: '`10xxxxxx`. The test is `c & 0b1100_0000 == 0b1000_0000`.',
   },
   'skip-why': {
-    q: 'What would drip-rs’s scanner do with `é` outside a string if it didn’t skip continuation bytes?',
-    a: 'Return two “Unexpected character.” tokens, one per byte, where the TypeScript scanner returns one.',
+    q: 'What happens in drip-rs if the scanner reports `é` outside a string without first skipping its continuation bytes?',
+    a: 'It panics: the lexeme slice would end after the first byte of `é`, which is not a character boundary.',
   },
-  emoji: {
-    q: 'The TypeScript scanner gives two error tokens for 😀 and drip-rs one. Why does the output still match?',
-    a: 'After the first error the compiler is in panic mode and reports nothing more until the next statement, so both print one error.',
+  'lone-amp': {
+    q: 'How does drip-rs’s scanner report a lone `&`?',
+    a: 'The `b\'&\'` arm has a guard, `if self.peek() == b\'&\'`, so a lone `&` falls through to the catch-all arm: `unexpected character \'&\'`.',
   },
   'std-boundary': {
     q: 'When does `str::is_char_boundary(i)` return true?',
@@ -111,9 +107,9 @@ impl<'src> Scan<'src> {
         while is_cont(self.peek()) {
             self.cur += 1;
         }
-        let a = self.st;
-        let z = self.cur;
-        Some(format!("Error {a}..{z}"))
+        // the whole character
+        let t = self.tok("Error");
+        Some(t)
     }
 }
 
@@ -263,14 +259,25 @@ fn stops_at_letters_and_end() {
       'The fraction needs two bytes of lookahead: `self.peek() == b\'.\'` and `digit(self.peek_next())`.',
       'If both hold, step over the dot and read digits again. Then return `&self.src[self.st..self.cur]`.',
     ],
-    walkthrough: `This is drip-rs’s \`number\`, returning the lexeme instead of a whole token.
+    walkthrough: `**How to think about it.** Say the rule in words before writing code: a number is one or more digits, and then, *if* a dot is followed by a digit, the dot and more digits. The word "if" is doing a lot: the scanner must look two bytes ahead (the dot, and what comes after it) before deciding to take the dot, because \`1.\` must stay the number \`1\` followed by a \`Dot\`. That is what \`peek_next\` is for. Everything else is "keep stepping while the next byte is a digit".
 
-- **Mark the start.** \`self.st = self.cur\` records where the lexeme begins.
-- **Whole part.** Each \`peek\` is one byte. \`digit\` is \`is_ascii_digit\`, the byte version of the TypeScript \`c >= '0' && c <= '9'\`.
-- **Fraction, with two-byte lookahead.** A dot only belongs to the number if a digit follows it, which is why \`peek_next\` exists. \`1.\` stays \`1\` and a \`Dot\`, so \`1.foo\` can one day be a method call. And \`1.5.6\` stops after \`1.5\`: there is only one fraction.
-- **Slice.** Every byte we stepped over was an ASCII digit or a dot, so both ends of \`st..cur\` are character boundaries and the slice can’t panic.
+**The solution, line by line.**
 
-Compare it with the TypeScript: the shape is identical. Only the type of a “character” changed, from a one-letter string to a \`u8\`.`,
+- \`self.st = self.cur;\` marks where the lexeme begins. Without it, the slice at the end would start wherever the previous token did.
+- \`while digit(self.peek()) { self.cur += 1; }\` steps over the whole part. \`peek\` returns one byte (NUL at the end, which is not a digit, so the loop always stops), and \`digit\` is \`is_ascii_digit\`, the byte version of the TypeScript \`isDigit\`.
+- \`if self.peek() == b'.' && digit(self.peek_next())\` is the two-byte lookahead: a dot, *and* a digit after it. \`&&\` only looks at the second byte if the first test passed.
+- \`self.cur += 1;\` steps over the dot.
+- \`while digit(self.peek()) { self.cur += 1; }\` steps over the fractional digits. There is no second \`if\`, so \`1.5.6\` stops after \`1.5\`: a number has at most one fraction.
+- \`&self.src[self.st..self.cur]\` returns the lexeme as a slice of the source. Every byte stepped over was an ASCII digit or a dot, so both ends are character boundaries and the slice cannot panic. The return type \`&'src str\` says the lexeme borrows from the source, not from the scanner.
+
+Put it beside the TypeScript and the shape is identical; only the type of a "character" changed, from a one-letter string to a \`u8\`.
+
+**Common wrong attempts.**
+
+- Taking the dot whenever it appears: \`1.\` then scans as \`"1."\`.
+- Treating dots like digits in one loop: \`1.5.6\` becomes one number.
+- Forgetting \`self.st = self.cur\`: the lexeme then starts at an old position (the last test starts at 4 and catches this).
+`,
     wrong: [
       {
         code: `fn digit(c: u8) -> bool {
@@ -488,11 +495,20 @@ fn stops_at_the_end() {
       'In `char_end`, start at `i + 1` and keep going while that byte is a continuation byte.',
       'Don’t read past the end: check `j < b.len()` before `b[j]`.',
     ],
-    walkthrough: `**\`is_cont\`.** The two top bits decide: \`0x\` is ASCII, \`11\` a lead byte, \`10\` a continuation. Masking with \`0b1100_0000\` keeps just those two bits, and \`== 0b1000_0000\` asks for \`10\`. That is drip-rs’s \`is_continuation\`, and in numbers it says 128 to 191.
+    walkthrough: `**How to think about it.** You do not need to decode a character to find its end. The byte at \`i\` starts a character, whatever its length; every byte after it that is a continuation byte belongs to the same character; and the first byte that is not one (or the end of the slice) is where the next character starts. So the whole job is one bit test and one loop.
 
-**\`char_end\`.** The byte at \`i\` begins a character, whatever its length. Everything after it that is a continuation byte belongs to the same character. The first byte that isn’t, or the end of the slice, is where the next character starts. So \`é\` (2 bytes), \`老\` (3) and \`😀\` (4) all come out right without ever decoding the lead byte.
+**The solution, line by line.**
 
-The \`j < b.len()\` test comes first, so \`&&\` never evaluates \`b[j]\` past the end. drip-rs gets the same effect from \`peek\`, which returns NUL at the end, and NUL is not a continuation byte.`,
+- \`fn is_cont(c: u8) -> bool { c & 0b1100_0000 == 0b1000_0000 }\`: the mask keeps only the top two bits, and the comparison asks whether they are \`10\`. In numbers that is 128 to 191. This is drip-rs’s \`is_continuation\`.
+- \`let mut j = i + 1;\` starts just after the first byte, which begins the character and so is never a continuation byte.
+- \`while j < b.len() && is_cont(b[j]) { j += 1; }\` steps over the continuation bytes. The length test comes first, so \`&&\` never reads \`b[j]\` past the end. (drip-rs gets the same safety from \`peek\`, which returns NUL at the end, and NUL is not a continuation byte.)
+- \`j\` is returned: the index just past the character. \`é\` (2 bytes), \`老\` (3) and \`😀\` (4) all come out right.
+
+**Common wrong attempts.**
+
+- \`c >= 128\` is true for lead bytes too, so in \`"éé"\` the second é’s lead byte 195 is swallowed into the first character.
+- Guessing a length from the first byte (\`i + 2\` for anything non-ASCII) breaks on three- and four-byte characters.
+`,
     wrong: [
       {
         code: `/// Is \`c\` a continuation byte, the 2nd,
@@ -559,20 +575,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'The scanner meets byte 195 outside a string. What does drip-rs do?',
+    q: 'The scanner meets byte 195 (the first byte of `é`) outside a string. What does drip-rs do?',
     options: [
-      { t: 'Panics, because 195 is not ASCII', why: 'It reports a compile error instead, like the TypeScript VM.' },
-      { t: 'Skips the following continuation bytes and returns one “Unexpected character.” error token', correct: true, why: 'So the next token starts on a character boundary, and é gives one error.' },
-      { t: 'Returns an error token for 195, then another for the next byte', why: 'That is what happens without the skip loop.' },
+      { t: 'Panics, because 195 is not ASCII', why: 'It reports a compile error instead, like the TypeScript VM. (Without the skip loop it *would* panic, slicing inside `é`.)' },
+      { t: 'Skips the following continuation bytes and returns one `Error(UnexpectedCharacter)` token whose lexeme is the whole `é`', correct: true, why: 'So the message names `é`, and the next token starts on a character boundary.' },
+      { t: 'Returns an error token for 195, then another for the next byte', why: 'The skip loop takes both bytes into one token.' },
       { t: 'Treats it as part of an identifier', why: 'Identifiers are ASCII letters, digits and `_` only.' },
-    ],
-  },
-  {
-    q: 'How does `peek()` behave at the end of the source?',
-    options: [
-      { t: 'It panics with an index out of bounds', why: 'That is what `self.bytes[self.current]` would do. `get` returns `None` instead.' },
-      { t: 'It returns `None`', why: 'Its return type is `u8`. The `Option` is unwrapped with a default.' },
-      { t: 'It returns `b\'\\0\'`, through `get(..).copied().unwrap_or(b\'\\0\')`', correct: true, why: 'The same convention as the TypeScript scanner’s `\'\\0\'`.' },
     ],
   },
   {

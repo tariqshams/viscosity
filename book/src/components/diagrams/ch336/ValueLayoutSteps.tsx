@@ -4,7 +4,8 @@
 // enum from book/companion/rust/src/value.rs: a 1-byte tag at offset 0;
 // Bool at byte 1; Gc handles (u32) at bytes 4-7; StrRef (handle, hash)
 // at bytes 4-11; f64 at bytes 8-15. Option<Value> has no discriminant
-// line of its own: it is 16 bytes and None uses a spare tag value.
+// line of its own: it is 16 bytes (size_of, rustc 1.97) and None uses a
+// spare tag value. Re-checked on the current eleven-variant Value.
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
@@ -13,8 +14,8 @@ type S = { title: string; tag: string; parts: Part[]; pad: string; note: string 
 
 const STATES: S[] = [
   {
-    title: 'Value::Nil', tag: 'Nil', parts: [], pad: 'unused: 15 bytes',
-    note: 'Every Value starts with a one-byte tag. Nil has no payload at all, so the other 15 bytes mean nothing. They are still there: every Value is the same size, so the stack is a plain array of 16-byte slots.',
+    title: 'Value::None', tag: 'None', parts: [], pad: 'unused: 15 bytes',
+    note: 'Every Value starts with a one-byte tag. None has no payload at all, so the other 15 bytes mean nothing. They are still there: every Value is the same size, so the stack is a plain array of 16-byte slots.',
   },
   {
     title: 'Value::Bool(true)', tag: 'Bool', parts: [{ from: 1, to: 1, label: '1', color: 'f3' }], pad: 'unused: 14 bytes',
@@ -34,7 +35,7 @@ const STATES: S[] = [
   },
   {
     title: 'Option<Value>: None', tag: 'spare', parts: [], pad: 'still 16 bytes',
-    note: 'The real Value has ten variants, which use ten of the tag’s 256 possible values. So Option<Value> adds no tag of its own: None is stored as a tag value no Value uses. rustc chose this; the Reference doesn’t promise it.',
+    note: 'Value has eleven variants, which use eleven of the tag’s 256 possible values. So Option<Value> adds no tag of its own: None is stored as a tag value no Value uses. rustc chose this; the Reference doesn’t promise it.',
   },
 ];
 
@@ -51,7 +52,7 @@ export default function ValueLayoutSteps() {
       <Svg w={400} h={150} title="Sixteen byte cells: a tag at byte 0, then the payload of the current variant">
         <T x={X0} y={14} size={13} mono weight={700}>{st.title}</T>
         {[0, 4, 8, 12].map((b) => (
-          <T key={b} x={X0 + b * CW + 2} y={36} size={10} mono fill={tok('muted')}>{b}</T>
+          <T key={b} x={X0 + b * CW + 2} y={36} size={11} mono fill={tok('muted')}>{b}</T>
         ))}
         {Array.from({ length: 16 }, (_, b) => (
           <Box key={b} x={X0 + b * CW} y={44} w={CW - 2} h={34} r={2}
@@ -66,10 +67,10 @@ export default function ValueLayoutSteps() {
             <T x={X0 + ((p.from + p.to + 1) / 2) * CW - 1} y={61} size={11} mono anchor="middle" fill={tok('ink')}>{p.label}</T>
           </g>
         ))}
-        <T x={X0 + 11} y={61} size={9} mono anchor="middle" fill={tok('brand')} weight={700}>tag</T>
-        <T x={X0} y={98} size={11} fill={tok('brand')} weight={700}>tag: {st.tag}</T>
-        <T x={X0 + 120} y={98} size={11} fill={tok('muted')}>{st.pad}</T>
-        <T x={X0} y={126} size={11} mono fill={tok('muted')}>{'size_of::<Value>() = 16, align 8'}</T>
+        <T x={X0 + 11} y={92} size={11} mono anchor="middle" fill={tok('brand')} weight={700}>tag</T>
+        <T x={X0} y={112} size={11} fill={tok('brand')} weight={700}>tag: {st.tag}</T>
+        <T x={X0 + 120} y={112} size={11} fill={tok('muted')}>{st.pad}</T>
+        <T x={X0} y={136} size={11} mono fill={tok('muted')}>{'size_of::<Value>() = 16, align 8'}</T>
       </Svg>
     </StepFrame>
   );
