@@ -1,6 +1,5 @@
-// Chapter 61 cards: recall prompts, examples, exercises and quiz.
+// Chapter 77 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 77, 77.
 
 export const prompts = {
   'why-heap': {
@@ -8,79 +7,36 @@ export const prompts = {
     a: 'Slots are all one fixed size, and a string or a list can be any length.',
   },
   'obj-header': {
-    q: 'Which two header fields does every companion-VM object share, and what is each for?',
+    q: 'Which two header fields does every heap object in the companion Drip VM share, and what is each for?',
     a: '`isMarked`, for the garbage collector’s marking, and `next`, which links the object list.',
   },
-  isobj: {
-    q: 'Why does `isObj` check `v !== null` as well as `typeof v === \'object\'`?',
-    a: '`typeof null` is `\'object\'`, and `null` is the VM’s `none`, which is not a heap object.',
-  },
   'literal-when': {
-    q: 'When is the string object for the literal `"tea"` made?',
+    q: 'In a single-pass bytecode compiler such as the companion Drip compiler, when is the string object for the literal `"tea"` made?',
     a: 'At compile time: the compiler calls `copyString` and puts the object in the constant pool.',
   },
-  'concat-new': {
-    q: 'What does `"tea" + "pot"` do at run time?',
-    a: '`add` sees two strings, joins their characters, and `copyString` makes the string object `"teapot"`.',
-  },
   'peek-not-pop': {
-    q: 'Why does `add` peek at its string operands, and shrink the stack only after the new string is made?',
+    q: 'In a VM with a garbage collector, why does a string-joining `add` peek at its operands and shrink the stack only after the new string is made?',
     a: 'Making an object may run the garbage collector, which treats everything on the stack as in use, so the operands cannot be freed mid-way.',
   },
   'object-list-why': {
-    q: 'Why does the VM link every object it allocates onto one list?',
+    q: 'Why does a VM that manages its own memory link every object it allocates onto one list?',
     a: 'So it can always find every object, including unreachable ones, to free them later.',
   },
-  'poison-cost': {
-    q: 'Why is poisoning freed objects off by default in the companion VM?',
-    a: 'Deleting every property pushes each dead object into V8’s slower dictionary properties; profiling found it was over half the runtime, so it is debug-only.',
-  },
   'list-operand': {
-    q: 'What does the instruction `list 3` do?',
+    q: 'In the companion Drip VM, what does the instruction `list 3` do?',
     a: 'It takes the top 3 values off the stack, in order, makes a new list object holding them, and pushes one reference to it.',
   },
-  'elements-on-stack': {
-    q: 'Why does `list n` drop the elements from the stack only after `newList` returns?',
-    a: 'Making the list may start a collection; while it runs, the elements must still be on the stack, where the collector counts them as in use.',
-  },
   'index-order': {
-    q: 'In what order does `checkIndex` test a list access?',
+    q: 'In what order does the companion Drip VM check a list access such as `xs[i]`?',
     a: 'Is it a list? Is the index a number? A whole number? In range (0 up to, not including, the length)?',
   },
-  'index-set-value': {
-    q: 'Why does `index.set` leave the assigned value on the stack?',
-    a: 'In Drip an assignment is an expression whose value is the value assigned; a statement like `xs[0] = 7;` then pops it.',
-  },
   'no-grow-by-index': {
-    q: 'What does `xs[len(xs)] = 4;` do when `xs` has 3 elements?',
+    q: 'In Drip, what does `xs[len(xs)] = 4;` do when `xs` has 3 elements?',
     a: 'Stops with `index 3 is out of range for a list of length 3`: writing can replace an element, never add one. Use `push`.',
-  },
-  capacity: {
-    q: 'What is the difference between a list’s length and its capacity?',
-    a: 'The length is how many elements it has; the capacity is how many slots it has room for before it must grow.',
-  },
-  'items-trace': {
-    q: 'What does the collector do when it reaches a list object?',
-    a: 'It visits every element in `items` and marks each object among them as in use, so a live list keeps its elements alive.',
-  },
-  'for-len': {
-    q: 'Why does the compiled for-in loop run `list.len` before every round, not once?',
-    a: 'Drip reads the length each time round, so pushing onto the list inside the body makes the loop visit the new elements too.',
   },
 };
 
 export const examples = {
-  concat: {
-    title: 'Strings on the VM',
-    lang: 'drip-vm',
-    expectError: true,
-    code: `let s = "tea" + "pot";
-print s;
-let t = s;
-print t == s;
-print t + "s";
-print "1" + 2;`,
-  },
   sieve: {
     title: 'A small sieve on the VM',
     lang: 'drip-vm',
@@ -205,7 +161,7 @@ Neither line of \`allocate\` walks the list, so making an object costs the same 
 - Only \`this.objects = o;\` moves the head but never links the new object to the old one, so every older object falls off the list and \`live()\` is never more than 1.
 - The two lines swapped (\`this.objects = o; o.next = this.objects;\`): by the time \`o.next\` is set, \`this.objects\` is already \`o\`, so the object points at itself, everything older is lost, and a plain \`while (o !== null)\` loop would never end.
 
-(One difference from the companion VM: its \`copyString\` first looks for an existing string with the same characters, as the chapter "String interning" explains; this mini heap makes a new object every time, which is why the last test expects two.)`,
+(One difference from the companion VM: its \`copyString\` first looks for an existing string with the same characters, as *String interning and globals by name* explains; this mini heap makes a new object every time, which is why the last test expects two.)`,
     wrong: [
       {
         code: `class Heap {
@@ -262,95 +218,8 @@ Neither line of \`allocate\` walks the list, so making an object costs the same 
       },
     ],
   },
-  unlinkObj: {
-    optional: true,
-    title: 'Taking an object off the list',
-    prompt: 'The collector’s sweep (in “Reclaiming memory: mark and sweep”) removes dead objects from the list. Write `unlink(heap, dead)`: remove the object `dead` from the list starting at `heap.objects`, whether it is the head, in the middle or at the end. Keep a `prev` pointer as you walk.',
-    starter: `function unlink(heap, dead) {
-  // remove dead from heap.objects
-}`,
-    solution: `function unlink(heap, dead) {
-  let prev = null;
-  let o = heap.objects;
-  while (o !== null) {
-    if (o === dead) {
-      if (prev) prev.next = o.next;
-      else heap.objects = o.next;
-      return;
-    }
-    prev = o;
-    o = o.next;
-  }
-}`,
-    tests: `const chain = (...cs) => {
-  let head = null;
-  for (const c of cs.reverse()) {
-    head = { chars: c, next: head };
-  }
-  return { objects: head };
-};
-const list = (h) => {
-  const out = [];
-  for (let o = h.objects; o; o = o.next) {
-    out.push(o.chars);
-  }
-  return out;
-};
-test('remove from the middle', () => {
-  const h = chain('c', 'b', 'a');
-  unlink(h, h.objects.next);
-  expect(list(h)).toEqual(['c', 'a']);
-});
-test('remove the head', () => {
-  const h = chain('c', 'b', 'a');
-  unlink(h, h.objects);
-  expect(list(h)).toEqual(['b', 'a']);
-});
-test('remove the tail', () => {
-  const h = chain('c', 'b', 'a');
-  unlink(h, h.objects.next.next);
-  expect(list(h)).toEqual(['c', 'b']);
-});`,
-    hints: [
-      'In a singly linked list you can only change the `next` of the object *before* `dead`, so remember it as you walk.',
-      'If `dead` is the head, there is no object before it: move `heap.objects` instead.',
-    ],
-    walkthrough: `**How to think about it.** Each object knows only the object after it, so you cannot step backwards; to remove \`dead\`, the object *before* it has to skip over it, which means remembering that object as you walk. Call it \`prev\`. There is one special case: when \`dead\` is the very first object there is no object before it, and it is the heap's own \`objects\` that must move.
-
-**The solution, line by line.**
-
-- \`let prev = null;\` means "no object before this one yet".
-- \`let o = heap.objects;\` starts at the head.
-- \`while (o !== null) {\` walks the whole chain.
-- \`  if (o === dead) {\` compares by identity: we want this exact object.
-- \`    if (prev) prev.next = o.next;\` makes the previous object skip \`dead\`, in the middle or at the tail (where \`o.next\` is \`null\`, so \`prev\` becomes the new tail).
-- \`    else heap.objects = o.next;\` handles the head: the list now starts at the second object.
-- \`    return;\` stops, since the job is done.
-- \`  prev = o;\` and \`  o = o.next;\` move both pointers one step along, \`prev\` always one behind \`o\`.
-
-The companion VM's sweep is this loop with one change: it does not stop at the first match, but unlinks every unmarked object it meets in a single walk, keeping \`prev\` as it goes.
-
-**Common wrong attempts.**
-
-- Looking one ahead (\`if (o.next === dead) o.next = dead.next;\`) works in the middle and at the tail, but never checks the head itself, so removing the first object does nothing.
-- Setting \`dead.next = null\` instead of changing the object before it cuts \`dead\` off from the rest of the list, but the object before it still points at \`dead\`, so it is still on the list and everything after it is lost.`,
-    wrong: [
-      {
-        code: `function unlink(heap, dead) {
-  let o = heap.objects;
-  while (o !== null) {
-    if (o.next === dead) {
-      o.next = dead.next;
-      return;
-    }
-    o = o.next;
-  }
-}`,
-        why: 'This looks one ahead, which works in the middle and at the tail, but it never checks the head itself, so removing the first object does nothing.',
-      },
-    ],
-  },
   growList: {
+    optional: true,
     title: 'A list that grows itself',
     prompt: 'A VM written in C or Rust cannot lean on a growable array, so here is a list that manages its own room: `slots` is a block of `cap` slots, and the first `len` are in use. Write `push(v)`: when the list is full, make a new block **twice** as big (`new Array(...)`), copy the elements across one by one (adding 1 to `copies` for each), then store `v`. Write `get(i)` with Drip’s checks: a fraction throws `notWhole(i)` and an index outside 0 to `len - 1` throws `outOfRange(i, len)` (both messages are made for you).',
     starter: `const outOfRange = (i, n) =>
@@ -575,6 +444,94 @@ class GrowList {
       },
     ],
   },
+  unlinkObj: {
+    optional: true,
+    title: 'Taking an object off the list',
+    prompt: 'The collector’s sweep (in “Reclaiming memory: mark and sweep”) removes dead objects from the list. Write `unlink(heap, dead)`: remove the object `dead` from the list starting at `heap.objects`, whether it is the head, in the middle or at the end. Keep a `prev` pointer as you walk.',
+    starter: `function unlink(heap, dead) {
+  // remove dead from heap.objects
+}`,
+    solution: `function unlink(heap, dead) {
+  let prev = null;
+  let o = heap.objects;
+  while (o !== null) {
+    if (o === dead) {
+      if (prev) prev.next = o.next;
+      else heap.objects = o.next;
+      return;
+    }
+    prev = o;
+    o = o.next;
+  }
+}`,
+    tests: `const chain = (...cs) => {
+  let head = null;
+  for (const c of cs.reverse()) {
+    head = { chars: c, next: head };
+  }
+  return { objects: head };
+};
+const list = (h) => {
+  const out = [];
+  for (let o = h.objects; o; o = o.next) {
+    out.push(o.chars);
+  }
+  return out;
+};
+test('remove from the middle', () => {
+  const h = chain('c', 'b', 'a');
+  unlink(h, h.objects.next);
+  expect(list(h)).toEqual(['c', 'a']);
+});
+test('remove the head', () => {
+  const h = chain('c', 'b', 'a');
+  unlink(h, h.objects);
+  expect(list(h)).toEqual(['b', 'a']);
+});
+test('remove the tail', () => {
+  const h = chain('c', 'b', 'a');
+  unlink(h, h.objects.next.next);
+  expect(list(h)).toEqual(['c', 'b']);
+});`,
+    hints: [
+      'In a singly linked list you can only change the `next` of the object *before* `dead`, so remember it as you walk.',
+      'If `dead` is the head, there is no object before it: move `heap.objects` instead.',
+    ],
+    walkthrough: `**How to think about it.** Each object knows only the object after it, so you cannot step backwards; to remove \`dead\`, the object *before* it has to skip over it, which means remembering that object as you walk. Call it \`prev\`. There is one special case: when \`dead\` is the very first object there is no object before it, and it is the heap's own \`objects\` that must move.
+
+**The solution, line by line.**
+
+- \`let prev = null;\` means "no object before this one yet".
+- \`let o = heap.objects;\` starts at the head.
+- \`while (o !== null) {\` walks the whole chain.
+- \`  if (o === dead) {\` compares by identity: we want this exact object.
+- \`    if (prev) prev.next = o.next;\` makes the previous object skip \`dead\`, in the middle or at the tail (where \`o.next\` is \`null\`, so \`prev\` becomes the new tail).
+- \`    else heap.objects = o.next;\` handles the head: the list now starts at the second object.
+- \`    return;\` stops, since the job is done.
+- \`  prev = o;\` and \`  o = o.next;\` move both pointers one step along, \`prev\` always one behind \`o\`.
+
+The companion VM's sweep is this loop with one change: it does not stop at the first match, but unlinks every unmarked object it meets in a single walk, keeping \`prev\` as it goes.
+
+**Common wrong attempts.**
+
+- Looking one ahead (\`if (o.next === dead) o.next = dead.next;\`) works in the middle and at the tail, but never checks the head itself, so removing the first object does nothing.
+- Setting \`dead.next = null\` instead of changing the object before it cuts \`dead\` off from the rest of the list, but the object before it still points at \`dead\`, so it is still on the list and everything after it is lost.`,
+    wrong: [
+      {
+        code: `function unlink(heap, dead) {
+  let o = heap.objects;
+  while (o !== null) {
+    if (o.next === dead) {
+      o.next = dead.next;
+      return;
+    }
+    o = o.next;
+  }
+}`,
+        why: 'This looks one ahead, which works in the middle and at the tail, but it never checks the head itself, so removing the first object does nothing.',
+      },
+    ],
+  },
   markList: {
     optional: true,
     title: 'Marking through lists',
@@ -626,7 +583,7 @@ test('unreachable lists stay unmarked', () => {
 - \`v.isMarked = true;\` marks the list. It is set *before* visiting the items, so that if one of the items is this very list, the line above stops the visit.
 - \`for (const x of v.items) {\` and \`markValue(x);\` follow every reference out of the list.
 
-The companion VM does the same work without recursion: \`markObject\` sets \`isMarked\` and puts the object on a "grey" worklist, and a loop takes objects off it and calls \`blacken\`, whose \`'list'\` case marks each item. The chapter "Tracing and sweeping: white, grey and black" explains why a worklist is the safer choice for very deep structures.
+The companion VM does the same work without recursion: \`markObject\` sets \`isMarked\` and puts the object on a "grey" worklist, and a loop takes objects off it and calls \`blacken\`, whose \`'list'\` case marks each item. *Reclaiming memory: mark and sweep* explains why a worklist is the safer choice for very deep structures.
 
 **Common wrong attempts.**
 
@@ -650,51 +607,7 @@ The companion VM does the same work without recursion: \`markObject\` sets \`isM
 
 export const quiz = [
   {
-    q: 'What does a stack slot hold for a Drip string?',
-    options: [
-      {
-        t: 'The characters, packed into the slot',
-        why: 'A slot has a fixed size, and a string can be any length.',
-      },
-      {
-        t: 'The object tag and a reference to a string object on the heap',
-        correct: true,
-        why: 'The slot stays small; the object holds the characters.',
-      },
-      {
-        t: 'The string’s length, with the characters in the constant pool',
-        why: 'Strings made at run time, such as joins, are in no constant pool.',
-      },
-      {
-        t: 'An index into a global array of strings',
-        why: 'The companion VM uses a direct reference, not an index.',
-      },
-    ],
-  },
-  {
-    q: 'When does the string object for the literal in `print "hi";` get made?',
-    options: [
-      {
-        t: 'Every time `print` runs',
-        why: 'Printing reads the object; it does not make one.',
-      },
-      {
-        t: 'When the `const` instruction runs',
-        why: 'By then it already exists: `const` only pushes it from the pool.',
-      },
-      {
-        t: 'When the garbage collector runs',
-        why: 'The collector frees objects; it never makes them.',
-      },
-      {
-        t: 'At compile time, when the compiler meets the string token',
-        correct: true,
-        why: 'The compiler calls `copyString` and stores the object in the constant pool.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `add` peek at two strings and shrink the stack only after `copyString` returns?',
+    q: 'In the companion Drip VM, why does `add` peek at two strings and shrink the stack only after `copyString` returns?',
     options: [
       {
         t: 'Peeking is faster than popping',
@@ -716,7 +629,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Where does `allocate` put a new object on the object list?',
+    q: 'In the companion Drip VM, where does `allocate` put a new object on the object list?',
     options: [
       {
         t: 'At the head, by setting its `next` to the old head',
@@ -738,29 +651,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'After `let s = "x"; s = s + "a"; s = s + "a";`, why is `"xa"` still on the object list?',
-    options: [
-      {
-        t: 'Because `s` still refers to it',
-        why: '`s` refers to `"xaa"` now.',
-      },
-      {
-        t: 'Because the constant pool holds it',
-        why: '`"xa"` was made at run time; only `"x"` and `"a"` are constants.',
-      },
-      {
-        t: 'Nothing has taken it off: the list holds every allocation until a collection sweeps the garbage',
-        correct: true,
-        why: 'That is how the collector will find it: by walking the list.',
-      },
-      {
-        t: 'Because strings are never garbage',
-        why: 'Unreachable strings are garbage like anything else.',
-      },
-    ],
-  },
-  {
-    q: 'The compiler sees `[a, b, c]`. What does it emit?',
+    q: 'The companion Drip compiler meets the list literal `[a, b, c]`. What does it emit?',
     options: [
       {
         t: 'The code for `a`, `b` and `c`, in that order, then `list 3`',
@@ -782,7 +673,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `print "abc"[1.5];` report on the VM?',
+    q: 'What does `print "abc"[1.5];` report on the companion Drip VM?',
     options: [
       {
         t: '`index 1.5 is not a whole number`',
@@ -800,72 +691,6 @@ export const quiz = [
       {
         t: '`b`',
         why: 'Drip strings cannot be indexed at all, and 1.5 is not a whole number.',
-      },
-    ],
-  },
-  {
-    q: 'A list has length 5 and capacity 8. What does one `push` cost?',
-    options: [
-      {
-        t: 'Copying all 5 elements into a bigger block',
-        why: 'There are 3 spare slots, so no growth is needed.',
-      },
-      {
-        t: 'One store into slot 5, and the length becomes 6',
-        correct: true,
-        why: 'With spare room, a push is one store and one increment.',
-      },
-      {
-        t: 'Doubling the capacity to 16',
-        why: 'Growth happens only when the length equals the capacity.',
-      },
-      {
-        t: 'Nothing: the capacity says the element is already there',
-        why: 'Capacity is room, not elements; only the first `len` slots hold values.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the collector look inside a list’s `items` when it reaches the list?',
-    options: [
-      {
-        t: 'To count how long the list is',
-        why: 'The collector is not measuring; it is finding what is still in use.',
-      },
-      {
-        t: 'To copy the items to a new block',
-        why: 'This collector does not move objects; it marks and sweeps.',
-      },
-      {
-        t: 'It does not: elements are always on the stack',
-        why: 'Elements live in `items` on the heap; most are nowhere on the stack.',
-      },
-      {
-        t: 'Because a list in use keeps its elements in use, so every object among them must be marked too',
-        correct: true,
-        why: 'Otherwise a string inside a live list could be freed while the program can still read it.',
-      },
-    ],
-  },
-  {
-    q: 'In the compiled `for x in xs { ... }`, where do the list and the position live while the body runs?',
-    options: [
-      {
-        t: 'In two global variables',
-        why: 'Two loops would then share them; they are local to the loop.',
-      },
-      {
-        t: 'In two hidden locals, stack slots the compiler reserves under names no program can write',
-        correct: true,
-        why: 'The list is evaluated once into one slot, and the index counts up in the next, with `inc.local`.',
-      },
-      {
-        t: 'In the list object itself, as a cursor field',
-        why: 'The list has no cursor, which is why two loops can walk one list at once.',
-      },
-      {
-        t: 'Nowhere: `x` is read from `xs` by name each time',
-        why: '`xs` is evaluated once; reassigning `xs` in the body does not change the loop.',
       },
     ],
   },

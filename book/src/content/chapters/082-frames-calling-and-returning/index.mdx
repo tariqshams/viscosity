@@ -6,13 +6,9 @@ title: 'Frames: calling and returning'
 tagline: 'The tree-walker made every Drip call out of TypeScript calls; the VM is one loop and cannot do that, so a call becomes a small record pushed onto an array, and a return pops it.'
 objectives:
   - Explain how each Drip function gets its own bytecode, with its parameters as its first locals.
-  - Trace call and return through the VM's array of call frames.
-  - Implement the checks call makes (arity and depth) and the clean-up return does.
-  - Read a VM stack trace and say where each line comes from.
-  - Explain why the arguments of a call are already in the callee's slots, with nothing copied.
-  - Work out a local's stack index from its slot number and its frame's frame pointer.
-  - Trace how return cuts the stack back to the frame pointer, and what sits in slot 0 for functions, methods and new.
-  - Say honestly what the VM's calls gained over the tree-walker's, and why not more.
+  - Trace call and return through the VM's array of call frames, including the arity and depth checks.
+  - Explain why the arguments of a call are already in the callee's slots, and work out a local's stack index from its frame pointer.
+  - Trace how return cuts the stack back to the frame pointer, and say what sits in slot 0 for functions and methods.
 introduces: [call-frame, frame-pointer]
 uses: [function, call, parameter, argument, return, arity, callable, native-function, recursion, call-stack, stack-overflow, host-stack, environment, stack-slot, compile-time-scope, jump, instruction-pointer, dispatch-loop, stack-machine, virtual-machine, bytecode, chunk, constant-pool, disassembler, single-pass-compiler, emit, heap-object, global-table, runtime-error, tree-walking-interpreter, drip, array, object, numbers, bound-method, method, constructor]
 sources: [mdn-call-stack]
@@ -23,79 +19,23 @@ import FrameSteps from '../../../components/diagrams/ch082/FrameSteps';
 import WindowFigure from '../../../components/diagrams/ch082/WindowFigure';
 import CallBench from '../../../components/diagrams/ch082/CallBench';
 
-{/* ── merge: from old chapter 82, Frames: calling and returning in the VM ── */}
-
 ## A loop cannot call itself
 
 In the tree-walker, a Drip call was a chain of TypeScript calls, so
-*where to go back to* and *what each caller was in the middle of*
-lived in TypeScript's own frames, on the host's call stack (the
-chapter "Borrowing the host's call stack" is about exactly this).
-
-The VM is one `for (;;)` loop reading bytes. When `f` calls `sq`, the
-loop must remember where it was in `f`, read `sq`'s bytecode instead,
-and later carry on in `f` from the byte after the call; and if `sq`
-calls something else, remember *that* too. Since the loop never calls
-itself, all of this has to be data that the VM keeps for itself.
-
-## Every function gets its own bytecode
+*where to go back to* and *what each caller was in the middle of* lived
+in TypeScript's own frames, on the host's call stack (*Return, the host
+stack and closures*). The VM is one `for (;;)` loop reading bytes. When
+`f` calls `sq`, the loop must remember where it was in `f`, read `sq`'s
+bytecode instead, and later carry on in `f` from the byte after the
+call; and if `sq` calls something else, remember *that* too. Since the
+loop never calls itself, all of this has to be data the VM keeps.
 
 First, the compiler. A function body is compiled by a fresh, nested
-function compiler, into the bytecode of a new function object. The
-heart of `fnRest` in `compiler.ts`, with the parsing left out:
-
-```ts
-initCompiler(type);
-beginScope();
-// for each parameter:
-fc().fn.arity++;
-declareVariable(previous);
-markInitialized();
-// ...then the body, and:
-const fn = endCompiler();
-emitConstantOp(previous.line,
-  Op.Closure, makeConstant(fn));
-```
-
-`initCompiler` gives the function its own `locals` array, slot 0
-reserved, and each parameter is declared as an ordinary local, so
-parameters take slots 1, 2, and so on. `endCompiler` adds `none` and
-`return` (for a body that runs off its end) and goes back to the
-enclosing compiler, where the finished function becomes a *constant*,
-pushed at run time by `closure` (the chapter on upvalues explains the
-name). A real one:
-
-```drip
-fn add(a, b) {
-  return a + b;
-}
-print add(1, 2);
-```
-
-```text
-== <script> ==
-0000    3 closure             0 fn add
-0003    1 define.global       1 'add'
-0006    4 load.global         2 'add'
-0009    | const               3 '1'
-0012    | const               4 '2'
-0015    | call                2
-== add ==
-0000    2 load.local          1
-0002    | load.local          2
-0004    | add
-0005    | return
-```
-
-The script pushes the function and stores it in the global `add`.
-To call it, it pushes the callee, then the two arguments, then runs
-`call 2`, whose operand is the number of arguments. Inside `add`, `a`
-and `b` are only slots 1 and 2. (The listing leaves out the script's
-`print`, and the `none`, `return` that end both functions.)
-
-<Prompts ids={['own-code', 'params-slots']} />
-
-## A frame is a bookmark
+function compiler into the bytecode of a new function object, whose
+`locals` array has slot 0 reserved; each parameter is declared as an
+ordinary local, so parameters take slots 1, 2, and so on. The finished
+function becomes a *constant* of the code around it, pushed at run time
+by `closure` (*Upvalues: capturing and closing* explains the name).
 
 <Analogy title="bookmarks in a pile of books">
 You are reading a novel when a footnote says "see the atlas, page 40".
@@ -109,18 +49,9 @@ bookmark in the same bytecode. And you could pick any book up; the VM
 only ever runs the newest frame.</span>
 </Analogy>
 
-<Analogy extra title="a phone call put on hold">
-You ring your bank; the person you speak to puts you on hold and rings
-another department, who put *them* on hold to ask a third. As each
-call finishes, the conversation underneath picks up from the very
-sentence where it stopped.
-<span slot="breaks">People on hold can still think, or give up and
-hang up; a waiting frame is completely frozen, and nothing at all
-happens in it until it is back on top.</span>
-</Analogy>
+## Call frames
 
-Each call the VM is in the middle of has a record in `vm.ts`
-(comments left out):
+Each call the VM is in the middle of has a record in `vm.ts`:
 
 ```ts
 interface CallFrame {
@@ -130,45 +61,18 @@ interface CallFrame {
 }
 ```
 
-`closure` is the function being run, `ip` is this call's own
-bookmark in that function's bytecode, and `slots` is the stack index
-where its slots begin (the next chapter is about that number). The
-VM keeps the frames in an array, newest last, and runs the newest.
+`closure` is the function being run, `ip` is this call's own bookmark
+in that function's bytecode, and `slots` is the stack index where its
+slots begin. The VM keeps the frames in an array, newest last, and runs
+the newest.
 
 <Figure takeaway="Every call in progress has its own ip." caption="The deepest moment of print f(3), where f calls sq. Three frames exist; each ip points into a different function's bytecode, at the next instruction that call will run.">
   <FramesFigure />
 </Figure>
 
-<Callout kind="definition">
-A **call frame** is the VM's record of one call that has started but
-not yet returned: which function is running, its own instruction
-pointer, and where its slots begin on the value stack. The frames
-live in an array, newest last; a call pushes one and a return pops
-one, and the VM always runs the newest.
-</Callout>
-
-<Formal title="Call and return on the frames array">
-
-```text
-call n:  push ⟨fn, 0, sp − n − 1⟩
-         onto frames
-return:  pop frames
-```
-
-<span slot="read">A call with n arguments pushes a frame holding the
-function, an ip of 0 and slots equal to sp minus n minus 1 (the
-callee's position); a return pops the newest frame, so the one before
-it is on top again.</span>
-</Formal>
-
-<Prompts ids={['frame-what']} />
-
-## call and return in the VM
-
 `call n` finds the callee `n` places below the top of the stack and
-hands it to `callValue`, which checks what kind of value it is. For a
-Drip function it ends up in `call` (with the arity message, built from
-the function's name, shortened here to `ARITY_MSG`):
+hands it to `callValue`, which checks what kind of value it is; a Drip
+function ends up here (the arity message shortened to `ARITY_MSG`):
 
 ```ts
 private call(closure: ObjClosure,
@@ -183,157 +87,98 @@ private call(closure: ObjClosure,
 }
 ```
 
-That is the whole call: two checks and one record pushed. The
-dispatch loop's `call` case then runs `reload()`, which refreshes the
-loop's cached `frame`, `code` and `constants` from the newest frame,
-so the next byte it reads is the callee's first. The `return`
-instruction undoes it: it pops the result and the frame, throws away
-everything the call put on the stack, pushes the result where the
-callee was, and reloads, so the caller carries on from its own saved
-`ip` (the next chapter quotes it). When the script itself returns,
-the frames array is empty and the program is over. Step through a
-call inside a call:
+That is the whole call: two checks and one record pushed. The dispatch
+loop then runs `reload()`, which refreshes its cached `frame`, `code`
+and `constants` from the newest frame, so the next byte it reads is the
+callee's first. `return` undoes it, popping the frame, so the caller
+carries on from its own saved `ip`; when the script itself returns, the
+frames array is empty and the program is over. A native function such
+as `len` gets no frame at all: `callValue` runs it at once and pushes
+its result.
 
 <CallSteps client:visible />
 
-A native function such as `len` gets no frame: `callValue` runs it
-at once and pushes its result. Calling anything else that is not a
-function stops the program, with `cannot call a number`, say.
-
-<Prompts ids={['two-checks', 'reload-why', 'native-no-frame']} />
-
-## Errors that can see every frame
-
-Because the frames are data, `runtimeError` can walk them, newest
-first, and print one `at` line for each: the line of byte `ip - 1`
-(each `ip` has already moved past the instruction it was running,
-which for a waiting caller is its `call`) and the function's name,
-`fn c`, `anonymous fn` or `script`.
+<Callout kind="definition">
+A **call frame** is the VM's record of one call that has started but
+not yet returned: which function is running, its own instruction
+pointer, and where its slots begin on the value stack. The frames
+live in an array, newest last; a call pushes one and a return pops
+one, and the VM always runs the newest.
+</Callout>
 
 <Examples of="call-frame">
 
 ```text
-fn hi() { print "hi"; }  hi();
+fn add(a, b) { return a + b; }
+print add(1, 2);
 
-0009    | call                0
-0011    | pop
-== hi ==
-0003    | print
-0004    3 none
+0006    4 load.global         2 'add'
+0009    | const               3 '1'
+0012    | const               4 '2'
+0015    | call                2
+0017    | print
+== add ==
+0000    2 load.local          1
+0002    | load.local          2
+0004    | add
 0005    | return
 ```
 
-```text
-fn down(n) { return down(n + 1); }
-down(0);
+</Examples>
 
-runtime error: stack overflow
-  at line 2 in fn down
-  ... (255 lines in all for down)
-  at line 4 in script
-```
+The companion disassembler lists the script, then `add`'s own bytecode
+(the real program puts `return` on its own line; the script's first two
+instructions, which push the function and store it in the global `add`,
+are left out). The script pushes the callee, then the two arguments,
+then runs `call 2`, which checks that `add` takes 2 and pushes a frame
+with `ip` 0 in `add`'s bytecode. Inside, `a` and `b` are only slots 1
+and 2; `add` adds them, and `return` pops the frame and leaves `3`
+where the callee was, so the script's own `ip`, saved at 17, runs
+`print`.
+
+<More title="Stack traces, and a trace three calls deep">
+
+Because frames are data, `runtimeError` can walk them, newest first,
+and print one `at` line for each: the line of byte `ip - 1` (each `ip`
+has already moved past its instruction, which for a waiting caller is
+its `call`) and the function's name. A recursion with no way out stops
+when a new call would make more than 256 frames, with `runtime error:
+stack overflow` and 256 `at` lines; that limit, `FRAMES_MAX`, is the
+VM's own choice, not the host's. The runnable one stops with `c() takes 0 arguments but got 2` and four `at`
+lines, `fn c`, `fn b`, `fn a` and `script`: the arity check fails
+*before* a frame for the new call is pushed, so the innermost line is
+the call inside `c`.
 
 <Run id="trace" />
 
-</Examples>
-
-The first is the smallest call: `call 0` pushes a frame for `hi`;
-`hi` prints, falls off its end into `none` and `return`, which leaves
-`none` where `hi` was; and the script's `pop` throws it away. The
-second is recursion with no way out: with 256 frames in use (the
-script plus 255 calls of `down`) the next call fails `call`'s depth
-check, so the trace is 256 lines long. That limit, `FRAMES_MAX`, is
-the VM's own choice (the same as the tree-walker's), not the host's.
-The third is a mistake, three calls deep: it stops with
-`c() takes 0 arguments but got 2` and four `at` lines, `fn c` (line
-4), `fn b`, `fn a` and `script`. The arity check fails *before* a
-frame for the new call is pushed, so the innermost line is the call
-inside `c`. Calling `c()`
-with no arguments, as it was declared, makes the error go away (and
-the program then recurses until `stack overflow`).
-
-<Prompts ids={['trace-ip', 'overflow-limit']} />
-
-<Callout kind="engine" label="Under the hood">
 This is the call stack<Cite id="mdn-call-stack" /> made explicit:
 one entry per call in progress, added when a function is called and
 removed when it returns, with a fixed limit beyond which the program
-stops with a stack overflow. The tree-walker borrowed its host's call
-stack for the calls themselves (keeping only a list of names and
-lines for its error messages); the VM keeps the whole thing as data,
-in one ordinary array.
-</Callout>
+stops. The tree-walker borrowed its host's call stack for the calls
+themselves; the VM keeps the whole thing as data, in one array.
 
-## Your turn
+</More>
 
-<Exercise id="frames" />
+<Prompts ids={['params-slots', 'frame-what', 'two-checks', 'native-no-frame']} />
 
-<Exercise id="deep-sum" />
+## The frame pointer: one stack, many windows
 
-## What you learned
-
-- Each function is compiled into its **own bytecode**, with slot 0
-  reserved and its parameters as its first locals; the finished
-  function is a constant of the code around it.
-- A **call frame** records the running function, its own `ip` and
-  where its slots begin. The frames live in an array, newest last,
-  and the VM always runs the newest.
-- `call` checks the arity and the depth (256 frames), then pushes a
-  frame; `return` pops it, clears the call's part of the stack and
-  pushes the result.
-- Natives run without a frame; calling anything that is not callable
-  is a runtime error.
-- Because frames are data, a runtime error can print a trace with one
-  line per frame.
-
-Next: the `slots` number, and how every call gets its own window onto
-one shared stack.
-
-
-{/* ── merge: from old chapter 82, The frame pointer: one stack, many windows ── */}
-
-## The arguments are already in place
-
-In the tree-walker, calling `add(1, 2)` made a new environment, a
-fresh `Map`, and copied each argument into it under its parameter's
-name. Now look at the VM's stack at the moment `call 2` runs:
+In the tree-walker, calling `add(1, 2)` made a fresh environment and
+copied each argument into it under its parameter's name. Now look at
+the VM's stack at the moment `call 2` runs:
 
 ```text
 index:  0       1        2   3
 value:  script  fn add   1   2
 ```
 
-The compiler pushed the callee and then the arguments, left to right.
-Inside `add`, slot 0 is the function, slot 1 is `a` and slot 2 is
-`b`; so if `add`'s slot 0 is *declared* to be index 1, the
-argument `1` is already sitting in slot 1 and `2` in slot 2. Nothing
-needs to be copied, renamed or allocated. All the call has to record
-is that one number, 1, and the last chapter showed where: in the
-frame's `slots` field, computed in `call` as
-`slots: this.sp - argCount - 1`.
-
-<Analogy title="a ruler under a sliding magnifier">
-Picture one long ruler (the stack) and a magnifying glass that slides
-along it, with its own little scale etched on the glass starting at
-0. Whatever you are working on, you read positions off the glass:
-"mark 2". Slide the glass to a new place and "mark 2" means a
-different spot on the same ruler. A call slides a new glass along;
-a return takes it away, and you are back to the caller's glass.
-<span slot="breaks">A glass only shows a few marks; a frame's window
-runs from its slot 0 all the way up to the top of the stack, which
-is why a callee's window overlaps its caller's top end (the
-arguments are in both).</span>
-</Analogy>
-
-<Analogy extra title="directions from a landmark">
-"Third house after the church" is a perfectly good address, as long
-as everyone knows which church you mean; the same words said in
-another village lead to a different house. The bytecode
-`load.local 2` is the directions, and the frame pointer is the church.
-<span slot="breaks">Directions in a real village can be ambiguous;
-the VM's arithmetic is exact. And the VM always uses the newest
-frame's landmark, never one chosen by whoever is reading.</span>
-</Analogy>
+Inside `add`, slot 0 is the function, slot 1 is `a` and slot 2 is `b`;
+so if `add`'s slot 0 is *declared* to be index 1, the argument `1` is
+already sitting in slot 1 and `2` in slot 2. Nothing is copied, renamed
+or allocated: the call records that one number, as
+`slots: this.sp - argCount - 1`, and `load.local` reads
+`stack[frame.slots + readByte()]`, so the same bytes of a function work
+for every call of it, each through its own window.
 
 <Callout kind="definition">
 A frame's **frame pointer** (`slots` in Drip's VM) is the stack index
@@ -343,34 +188,11 @@ callee's own position, the callee and its arguments become slots 0,
 1, 2, and so on, of the new frame without being moved.
 </Callout>
 
-<Formal title="Frame pointer arithmetic">
-
-```text
-slots   = sp − argc − 1     (at a call)
-addr(i) = slots + i         (slot i)
-sp      := slots            (at a return)
-```
-
-<span slot="read">At a call, the frame pointer is the stack top minus
-the number of arguments minus one, the callee's index. Slot i of the
-call is at index slots plus i. At a return, the stack top goes back
-down to the frame pointer.</span>
-</Formal>
-
-This is what `frame.slots` meant in `load.local`, back in the chapter
-on stack slots: `stack[frame.slots + readByte()]`. The same bytes of
-`fib`'s bytecode work for every call of `fib`, because each call
-reads them through its own frame pointer:
-
 <Figure takeaway="One instruction, a different cell in every call." caption="Inside fib(2), which has called fib(1). load.local 1 means 'my n'; the frame pointers, 1 and 3, turn it into stack index 2 in one call and 4 in the other.">
   <WindowFigure />
 </Figure>
 
-<Prompts ids={['no-copy', 'fp-what', 'fp-formula', 'same-bytes']} />
-
-## Returning cuts back to the window
-
-The `return` instruction, from `vm.ts` (wrapped):
+Returning cuts the stack back to the window (from `vm.ts`):
 
 ```ts
 case Op.Return: {
@@ -390,42 +212,17 @@ case Op.Return: {
 
 `frame` is still the frame that is finishing. Setting `sp` to its
 `slots` throws away the callee, its arguments, its locals and any
-temporaries in a single assignment (nothing is erased; those cells
-will be overwritten by the next push), and the result is pushed
-exactly where the callee was. (`closeUpvalues` rescues any captured
-locals first; that is the chapter on upvalues.) Step through `fib(2)`
-and watch the windows open, overlap and close:
+temporaries in one assignment, and the result is pushed exactly where
+the callee was (`closeUpvalues` rescues captured locals first, as
+*Upvalues: capturing and closing* explains). For a method, slot 0 holds
+the receiver rather than the function: the compiler names that local
+`self`, and the VM writes the receiver over the callee's position
+before it pushes the frame (for `new P(4)`, the new instance replaces
+the class the same way, before `init` runs).
 
 <FrameSteps client:visible />
 
-Try a deeper recursion, and a constructor, yourself:
-
-<Run id="windows" />
-
-## What sits in slot 0
-
-For a plain function, slot 0 holds the function itself. For a method
-it holds the receiver, which the compiler names `self` (it puts a
-local called `self` in entry 0 of the method's locals array), so
-`self` is `load.local 0`. The VM arranges this in one line before it
-pushes the frame. For a bound method:
-
-```ts
-this.stack[this.sp - argCount - 1] =
-  callee.receiver;
-```
-
-and for `new P(4)`, the class in that position is replaced by the new
-instance in the same way, before `init` is called.
-
 <Examples of="frame-pointer">
-
-```text
-call 2 with: script, fn add, 1, 2
-slots = 4 − 2 − 1 = 1
-a = stack[1 + 1] = 1
-b = stack[1 + 2] = 2
-```
 
 ```text
 print f(3), where f(y) calls sq(y):
@@ -433,91 +230,57 @@ f:  slots = 3 − 1 − 1 = 1, y at 2
 sq: slots = 5 − 1 − 1 = 3, x at 4
 ```
 
-```text
-== init ==   (class P, new P(4))
-0000    3 load.local          0
-0002    | load.local          1
-0004    | set.prop            0 'x'
-0007    | pop
-0008    4 load.local          0
-0010    | return
-```
-
 </Examples>
 
-The first is the smallest case: four values on the stack and two
-arguments, so the window starts at index 1, and `a` and `b` are
-exactly where the script pushed them. The second is a call inside a
-call: `f`'s window starts at 1; inside `f` the stack has grown to five
-values (`script`, `fn f`, `3`, `fn sq`, `3`) when `sq` is called, so
-`sq`'s window starts at 3, and its `x` is the copy of `y` that `f`
-pushed. The third is a real initialiser: `self` is slot 0 (the new
-instance that replaced the class), `x` is slot 1, and an `init`
-always ends by returning `load.local 0`, the instance, which is why
-`new P(4)` produces it.
+When `print f(3)` calls `f`, the stack holds `script`, `fn f` and `3`,
+so `f`'s window starts at 3 − 1 − 1 = 1, with `y` at index 2. When `sq`
+is called the stack holds five values (`script`, `fn f`, `3`, `fn sq`,
+`3`), so `sq`'s window starts at 3, and its `x` at index 4 is the copy
+of `y` that `f` pushed. When `sq` returns, `sp` drops to 3 and its
+result sits where `fn sq` was.
 
-<Prompts ids={['return-sp', 'slot-zero-method', 'stack-size']} />
+<More title="Did it make calls faster?">
 
-The stack itself is one array, made once when the VM starts:
-`STACK_MAX` is `FRAMES_MAX * 256`, room for 256 frames with 256 slots
-each, which is the most the one-byte operands and the depth check
-allow. A call never allocates anything on it; it only moves numbers.
-
-## Did it make calls faster?
-
-The tree-walker paid for every Drip call with several TypeScript
-calls, a new environment and a `Map`; the VM pays one small record
-and some arithmetic. You might expect a large speed-up. In this
-book's benchmark run, however, it was modest, and some programs got
-*slower*:
+The tree-walker paid for every Drip call with several TypeScript calls,
+a new environment and a `Map`; the VM pays one small record and some
+arithmetic. In the companion's benchmark run, however, the speed-up was
+modest, and some programs got *slower*:
 
 <Figure takeaway="The VM is not much faster here, and slower on programs that allocate a lot." caption="Speed-up of the bytecode VM over the tree-walker for each benchmark program, from companion/ts/results/drip-bench-2026-11-02.json (best of three runs, compile time included). Right of the dashed line, the VM was faster.">
   <CallBench />
 </Figure>
 
-The call-heavy programs gained the most: recursive `fib` ran 1.24
-times as fast on the VM, and `method_calls` 1.3 times. Programs that
-create many objects, `instantiation` and `trees`, ran slower. Two
-things in this companion explain much of that. First, both
-interpreters are TypeScript running on V8, whose JIT compiler turns
-the tree-walker's small, simple methods into fast machine code too,
-so the tree-walker was never as slow as its design suggests; the VM
-pays its own way for every instruction (a `switch`, `readByte` calls,
-type checks and a counter). Second, the VM manages its own heap, with
-its own garbage collector and its own hash tables for fields, on top
-of JavaScript's, so every object it creates costs more than the
-tree-walker's. The chapter "Measuring and speeding up the VM" comes
-back to these costs and what can be done about them.
+Recursive `fib` ran 1.24 times as fast on the VM, and `method_calls`
+1.3 times, while `instantiation` and `trees`, which create many objects,
+ran slower. Both interpreters are TypeScript running on V8, whose JIT
+compiler makes the tree-walker's small methods fast too, while the VM
+pays for every instruction and manages its own heap on top of
+JavaScript's. *Measuring and speeding up the VM* comes back to these
+costs.
 
-<Prompts ids={['bench-honest']} />
+<Run id="windows" />
 
-<Callout kind="engine" label="Under the hood">
-This is the call stack<Cite id="mdn-call-stack" /> laid out in
-memory: one region per call in progress, added when a function is
-called and removed when it returns, with each call's own values
-reached from where its region starts. The later chapters on native
-code meet the same idea again, with a machine register playing the
-part of the `slots` number.
-</Callout>
+</More>
+
+<Prompts ids={['no-copy', 'fp-formula', 'return-sp', 'slot-zero-method']} />
 
 ## Your turn
 
+<Exercise id="frames" />
+
 <Exercise id="window" />
+
+<Exercise id="deep-sum" />
 
 ## What you learned
 
-- The callee and its arguments are pushed in order, so they already
-  are the new call's slots 0, 1, 2, ...: nothing is copied.
-- The **frame pointer** (`slots`) is the stack index of a call's slot
-  0, set to `sp − argc − 1`; slot `i` is at `slots + i`.
-- `return` sets `sp` back to the frame pointer and pushes the result
-  where the callee was.
-- Slot 0 holds the function, or `self` for a method; `new` and bound
-  methods put the receiver there before the call.
-- The VM's calls are cheaper in design, but in this book's benchmark
-  run the VM was only up to 1.3 times faster, and slower on
-  allocation-heavy programs.
+- A **call frame** records the running function, its own `ip` and
+  where its slots begin; `call` checks arity and depth and pushes one,
+  `return` pops it.
+- The **frame pointer** is the index of a call's slot 0, `sp − argc −
+  1`, so arguments are already in place; `return` sets `sp` back to it.
 
-Next: closures, and variables that must outlive their call's window.
+Next: *Upvalues: capturing and closing*, for variables that must
+outlive their call's window.
 
 <Quiz />

@@ -5,17 +5,13 @@ part: IV
 title: 'Heap objects and lists in the VM'
 tagline: 'A number fits in a stack slot; a string or a list can be any length at all, so it moves out to the heap, and the VM starts keeping a list of everything it has ever made.'
 objectives:
-  - Explain why strings and lists live on the heap while numbers live in the slot.
-  - Read the companion VM’s object types and the header they all share.
-  - Trace how a string literal and a join with + each become a heap object, and when.
+  - Explain why strings and lists live on the heap while numbers live in the slot, and read the header every object shares.
+  - Trace how a string literal and a join with + each become a heap object, and why add peeks before it pops.
   - Build an object list that links every allocation, newest first.
-  - Describe the VM’s list object, and trace how list n builds one from values on the stack.
-  - Trace index.get and index.set, and give the exact error for each kind of bad index, in the order they are checked.
-  - Explain how a list grows (length versus capacity) and why doubling makes each push cheap on average.
-  - Explain how the collector keeps a list’s elements alive, and read the bytecode a for-in loop compiles to.
+  - Trace how list n, index.get and index.set build, read and write a list, and give the error for each kind of bad index.
 introduces: [heap-object, object-list, vm-list]
 uses: [tagged-value, value-representation, stack-machine, dispatch-loop, opcode, constant-pool, chunk, emit, disassembler, single-pass-compiler, virtual-machine, literal, lexeme, runtime-error, interface, union-type, discriminated-union, narrowing, generic, typeof, typescript, stack-and-heap, memory, pointer, reference, identity, object-header, string-building, aliasing, drip-list, object, property, class, method, this, new, function, return, if, while-loop, drip, numbers, strings, booleans, console-log, index-expression, for-in-loop, native-function, instruction-pointer, bytecode, array, index, length, push, contiguous, for-loop, comparison]
-sources: [v8-fast-properties, mdn-array, rust-std-vec, v8-src-js-objects-h, cpython-listobject]
+sources: [v8-fast-properties, rust-std-vec, v8-src-js-objects-h, cpython-listobject]
 ---
 import ObjLayout from '../../../components/diagrams/ch077/ObjLayout';
 import HeapListSteps from '../../../components/diagrams/ch077/HeapListSteps';
@@ -24,25 +20,14 @@ import BuildSteps from '../../../components/diagrams/ch077/BuildSteps';
 import GrowSteps from '../../../components/diagrams/ch077/GrowSteps';
 import ForInSteps from '../../../components/diagrams/ch077/ForInSteps';
 
-{/* ── merge: from old chapter 77, Objects that live on the heap ── */}
-
 ## A value that will not fit
 
 Every slot on the VM's stack is the same size, which is how the VM finds
 slot 7 without measuring slots 0 to 6; a number fits, because it is
-always 64 bits. Now look at these:
-
-```text
-let a = "";
-let b = "the quick brown fox";
-let c = b + b + b + b;
-let xs = [a, b, c];
-```
-
-`a` has no characters, `c` has 76, and a loop could build a million;
-`xs` holds three values now and could hold thousands after some `push`
-calls. No slot size fits all of them, so strings and lists live
-somewhere else, and the slot holds the way to find them.
+always 64 bits. A string, however, may be `""` or a million characters
+built by a loop, and a list may hold three values now and thousands
+after some calls to `push`. No slot size fits all of them, so strings
+and lists live somewhere else, and the slot holds the way to find them.
 
 <Analogy title="a cloakroom ticket">
 The hooks in a cloakroom only take small things, so a big suitcase goes
@@ -60,11 +45,10 @@ a list and a stack slot), and none of them is the "real" one.</span>
   <ObjLayout />
 </Figure>
 
-The object tag from the chapter "Tagging values at run time" is that
-ticket: its payload is a reference to an **object** that the VM
-allocates on the heap. Here are the shared header, the string object and
-the list object from the companion's `vm/object.ts` (comments and
-`export` left out, long lines wrapped):
+The object tag from *Tagging values at run time* is that ticket: its
+payload is a reference to an **object** the VM allocates on the heap.
+Here is the shared header, with the string and list objects, from the
+companion's `vm/object.ts` (lines wrapped):
 
 ```ts
 interface ObjHeader {
@@ -80,22 +64,10 @@ interface ObjList extends ObjHeader {
 
 `isMarked` is a flag for the garbage collector, and `next` links the
 object into the object list. Then `type` names the kind of object, and
-the rest is its own: a string's characters and `hash` (a number made
-from them, for hash tables), a list's elements in `items`. Functions,
-classes and instances extend the same header too, and `Obj` is the
-tagged union of all nine kinds on `type`, so two small checks tell an
-object from other values, and a string from other objects:
-
-```ts
-const isObj = (v: Value): v is Obj =>
-  typeof v === 'object' && v !== null;
-const isString =
-  (v: Value): v is ObjString =>
-    isObj(v) && v.type === 'string';
-```
-
-`v !== null` matters: `typeof null` is `'object'`, and `null` is this
-VM's `none`.
+the rest is its own: a string's characters and a `hash` made from them
+(for *Hash tables*), a list's elements in `items`. Functions, classes
+and instances extend the same header, and `Obj` is a tagged union of
+all nine kinds on `type`.
 
 <Callout kind="definition">
 A **heap object** is a value too big, or too changeable in size, to sit
@@ -110,71 +82,35 @@ fields.
 
 ```text
 let s = "tea";
-let t = s;   # one string, two names
+let t = s + "pot";
+let u = t;
 ```
-
-```text
-let xs = ["tea", "pot"];
-# three objects: one list, two strings
-```
-
-<Run id="concat" />
 
 </Examples>
 
-The first copies a reference, not the characters: `s` and `t` refer to
-one string object (aliasing, from "References: two names, one object"),
-which is safe because nothing in Drip can change a string's
-characters. The second makes a list whose `items` hold a reference to each string:
-three objects from one line. The runnable one joins and shares strings
-on the VM, and ends with the error for `"1" + 2`.
-
-<Prompts ids={['why-heap', 'obj-header', 'isobj']} />
-
-## Where strings come from
-
-The strings a program works with are made in two places (the compiler
-also makes strings for names, such as a global's name).
-
-**Literals, at compile time.** When the single-pass compiler meets a
-string token, it makes the object straight away and stores it in the
-constant pool (from `vm/compiler.ts`):
-
-```ts
-case 'string': return () =>
-  emitConstantOp(previous.line, Op.Const,
-    makeConstant(heap.copyString(
-      previous.value!)));
-```
-
-`previous.value` is the literal's characters, without the quotes and
-with escapes such as `\n` already decoded by the scanner; `copyString`
-makes the object (or finds one already made with the same characters,
-as the chapter "String interning" explains) and `makeConstant` puts it
-in the pool, so when the program runs, `"tea"` is waiting for a `const`
-to push it.
-
-**Joining, at run time.** `add` now has two jobs: two numbers are added,
-and two strings are joined into a new object (from `vm/vm.ts`):
+The first line pushes an object that already exists: the compiler made
+`"tea"` with `heap.copyString` when it met the literal, and put it in
+the constant pool. The second makes a new object at run time, because
+`add`, given two strings, joins them into a fresh `"teapot"`. The third
+copies a reference, not the characters, so `t` and `u` name one object
+(*References: two names, one object*), which is safe because nothing in
+Drip can change a string. Here is the join, from `vm/vm.ts`:
 
 ```ts
 } else if (isString(a) && isString(b)) {
   const s = this.heap.copyString(
     a.chars + b.chars);
-  // a and b stay on the stack:
-  // safe from GC
   this.sp--;
   stack[this.sp - 1] = s;
 }
 ```
 
-Look at the order: `a` and `b` were only *peeked* at, so they are still
-on the stack while the new string is made, and only then does the
-result take their place. Making an object may start the garbage
-collector, which treats whatever is on the stack as in use; popping
+`a` and `b` were only *peeked* at, so they are still on the stack while
+the new string is made; making an object may start the garbage
+collector, which treats whatever is on the stack as in use, and popping
 first would leave `a` and `b` reachable from nowhere just as it looks.
 
-<Prompts ids={['literal-when', 'concat-new', 'peek-not-pop']} />
+<Prompts ids={['why-heap', 'obj-header', 'literal-when', 'peek-not-pop']} />
 
 ## The object list
 
@@ -183,9 +119,7 @@ Every object is made by one method, `allocate`, in `vm/heap.ts`:
 ```ts
 private allocate<T extends Obj>(o: T): T {
   this.bytesAllocated += SIZE[o.type];
-  if (this.stress
-      || this.bytesAllocated > this.nextGC)
-    this.collect();
+  // ...collect if past the threshold
   o.next = this.objects;
   this.objects = o;
   return o;
@@ -193,28 +127,17 @@ private allocate<T extends Obj>(o: T): T {
 ```
 
 `SIZE` is a rough byte count per kind of object, so the VM can tell when
-a collection is worth it (`stress`, a test mode, collects every time).
-The last three lines are the point: `heap.objects`
+a collection is worth it. The last lines are the point: `heap.objects`
 refers to the newest object, its `next` to the one before, and so on
 back to the first, and adding at the front costs the same however long
 the list is.
 
-<Analogy extra title="a receipt spike">
-A shopkeeper pushes every receipt onto one spike on the counter, newest
-on top; adding one takes a second however tall the pile is, and at
-closing time the whole pile is there to go through, including receipts
-for things that were later returned.
-<span slot="breaks">You can only lift receipts off the top of a spike;
-the VM can take an object out of the middle of its list by changing one
-`next`, as the sweep in "Reclaiming memory: mark and sweep" does.</span>
-</Analogy>
-
 <HeapListSteps client:visible />
 
-`"xa"` and `"xaa"` are garbage: no variable, stack slot or constant can
-reach them, and in a VM written in C memory nobody can reach is memory
-nobody can free (a **leak**). The list is the VM's promise that it can
-always find every object it made.
+`"xa"` and `"xaa"` are garbage, which nothing can reach; in a VM written
+in C, memory nobody can reach is memory nobody can free (a **leak**),
+and the list is the VM's promise that it can always find every object
+it made.
 
 <Callout kind="definition">
 The **object list** is a linked list through the `next` field of every
@@ -224,29 +147,7 @@ allocation, reachable or not, which is what a garbage collector needs in
 order to find the unreachable ones.
 </Callout>
 
-<Formal title="Adding to the object list">
-
-```text
-before:  objects → o₁ → o₂ → … → oₙ → null
-allocate(o):  o.next := objects
-              objects := o
-after:   objects → o → o₁ → … → oₙ → null
-```
-
-<span slot="read">Before, the list starts at objects and runs through
-o-one up to o-n, then ends. Allocating o first makes o's next point at
-the old head (the := reads "becomes"), then moves the head to o, so o is
-first and the rest follow unchanged.</span>
-</Formal>
-
 <Examples of="object-list">
-
-```ts
-// heap.ts: counting what is on the list
-let n = 0;
-for (let o = this.objects; o; o = o.next)
-  n++;
-```
 
 ```ts
 const vm = new VM();
@@ -255,91 +156,27 @@ vm.interpret('print "a" + "b";');
 vm.heap.liveObjects(); // 16
 ```
 
-```text
-for i in 0..1000 {
-  let s = "n" + str(i);
-}
-# about 2,000 strings, mostly garbage
-```
-
 </Examples>
 
-The first is the walk inside `liveObjects()`: start at the head and
-follow `next`, counting. The second uses it on a fresh VM: 11 objects
-before any code (`"init"`, and five natives with their names), then
-five for one line (the script's function, `"a"` and `"b"`, the closure
-that runs the script, and the joined `"ab"`). In the third, each time
-round `str(i)` makes a string and the join another, and once the loop
-moves on nothing refers to either, so the list fills with garbage until
-a collection sweeps it.
+`liveObjects()` follows `next` from the head, counting. A fresh VM
+holds 11 objects (`"init"`, and five natives with their names); one
+line adds five: the script's function, `"a"`, `"b"`, the closure that
+runs the script, and the joined `"ab"`.
 
-<Prompts ids={['object-list-why']} />
+<More title="Under the hood: freeing in a VM written in JavaScript">
 
-<Callout kind="engine" label="Under the hood">
 JavaScript has its own garbage collector, so the companion VM cannot
-really free anything: its sweep unlinks a dead object, and in debug mode
-**poisons** it (deletes every property and installs a getter that
+really free anything: its sweep unlinks a dead object and, in debug
+mode, **poisons** it (deletes every property and installs a getter that
 throws), so a bug that uses a freed object fails loudly. That is off by
 default, because deleting properties can move an object into V8's
-slower dictionary properties<Cite id="v8-fast-properties" />: when this
-chapter was written, the `instantiation` benchmark took about 0.9 s with
-poisoning off and 1.9 s with it on (three runs each, on the machine
-behind the book's results).
-</Callout>
+slower dictionary properties<Cite id="v8-fast-properties" />; the
+comment in `heap.ts` records that profiling found poisoning was over
+half the runtime.
 
-<Prompts ids={['poison-cost']} />
+</More>
 
-## Your turn
-
-<Exercise id="miniHeap" />
-
-<Exercise id="unlinkObj" />
-
-## What you learned
-
-- A string or a list can be any length, so it is a **heap object**: the
-  stack slot holds a reference, and the object lives on the heap.
-- Every object shares a **header** (`isMarked`, `next`), then a `type`
-  tag, then its own fields; `Obj` is a tagged union on `type`.
-- String objects come from **literals**, made by the compiler and kept
-  in the constant pool, and from **joining** with `add`, at run time,
-  with the operands left on the stack until the new object exists.
-- The **object list** links every allocation through `next`, newest
-  first, so the VM can always find every object, garbage included.
-
-Next: the list object up close, with the instructions that build, read
-and write it.
-
-
-{/* ── merge: from old chapter 77, Lists in the VM ── */}
-
-## A list the VM can hold
-
-In "Lists in Drip", the tree-walker wrapped a JavaScript array in a
-small class and evaluated `xs[i]` as a tree node. The VM has only
-instructions and a stack, so this program needs new parts:
-
-```text
-let xs = [10, 20];
-print xs[1];   # 20
-xs[0] = 7;
-print xs;      # [7, 20]
-```
-
-It needs a heap object for the list, instructions to build it and to
-read and write an element (refusing a bad index with Drip's exact
-error), a way to grow, a rule for the garbage collector, and, for
-`for x in xs`, a loop made only of bytecode. Each comes from the
-companion VM's real code.
-
-<Analogy title="a reading room with closed shelves">
-In some libraries you hand the librarian a slip saying "shelf 3", and
-before fetching anything she checks that the slip holds a whole shelf
-number and that the room has a shelf 3.
-<span slot="breaks">A helpful librarian might guess what you meant by
-"shelf 3.5"; the VM never guesses, and names exactly which check failed.
-And the room's shelves are fixed, where a list grows.</span>
-</Analogy>
+<Prompts ids={['object-list-why']} />
 
 ## The list object
 
@@ -347,10 +184,40 @@ And the room's shelves are fixed, where a list grows.</span>
   <ListLayout />
 </Figure>
 
-Its type is short: the shared header, `type: 'list'` and
-`items: Value[]`. It is made by `newList(items)` in `vm/heap.ts`, which
-hands the object to `allocate` like any other, and whose comment warns
-that the `items` "must already be reachable (e.g. on the stack)".
+A list is one more heap object, with instructions to build, read and
+write it. For a literal the compiler leaves each element's value on the
+stack in source order, then emits `list` with the count as a one-byte
+operand. The VM's half:
+
+```ts
+case Op.List: {
+  const n = readByte();
+  const list = this.heap.newList(
+    stack.slice(this.sp - n, this.sp));
+  this.sp -= n;
+  this.push(list);
+  break;
+}
+```
+
+`stack.slice` copies the top `n` values into a new array and `newList`
+wraps the object around it; only then are the elements dropped, for the
+same reason `add` peeks.
+
+<BuildSteps client:visible />
+
+`index.get` pops the index, checks it against the list still on the
+stack, and replaces the list with the element; `index.set` does the
+same with a value on top, stores it, and leaves the value on the stack
+(an assignment in Drip is an expression). Both call `checkIndex`, which
+tests four things in order, each with its own error: is it a list
+(`"abc"[0]` says `cannot index a string`), is the index a number
+(`a list index must be a number, not a string`), is it whole (`index
+1.5 is not a whole number`), and is it in range (`index 3 is out of
+range for a list of length 3`)? The order decides the message, so
+`"abc"[1.5]` says `cannot index a string`. Writing can only replace an
+element: `xs[len(xs)] = 4` is out of range, and `push` is how a list
+grows.
 
 <Callout kind="definition">
 A **VM list** is a growable list object on the VM's heap: the shared
@@ -361,224 +228,80 @@ one with `list n`, reads an element with `index.get`, writes one with
 what is wrong.
 </Callout>
 
-## Building a list: list n
-
-For a list literal the compiler compiles each element in turn, leaving
-their values on the stack in source order, then emits `list` with the
-count as a one-byte operand (so a literal holds at most 255 elements).
-The VM's half is in `vm/vm.ts`:
-
-```ts
-case Op.List: {
-  const n = readByte();
-  // The elements stay on the stack
-  // while the list is allocated.
-  const list = this.heap.newList(
-    stack.slice(this.sp - n, this.sp));
-  this.sp -= n;
-  this.push(list);
-  break;
-}
-```
-
-`readByte` reads the count, `stack.slice` copies the top `n` values into
-a new JavaScript array, in order, and `newList` makes the object around
-it; only then does `this.sp -= n` drop the elements and `push` leave one
-reference. It is the same care as with `add` in the previous chapter:
-making the object may start a collection, and the new array is not yet
-reachable from anything the collector looks at, so the elements must
-still be on the stack, where it counts them as in use.
-
-<BuildSteps client:visible />
-
-<Prompts ids={['list-operand', 'elements-on-stack']} />
-
-## Reading and writing an element
-
-`index.get` expects the list and the index on the stack, index on top:
-
-```ts
-case Op.IndexGet: {
-  const i = this.pop();
-  const xs = this.checkIndex(
-    this.peek(0), i);
-  stack[this.sp - 1] =
-    xs.items[i as number];
-  break;
-}
-```
-
-It pops the index, passes the list (still on the stack) and the index to
-`checkIndex`, and replaces the list with the element. `checkIndex` tests
-four things in order, each with its own message; each line below, run
-alone, stops with the error under it:
-
-```text
-print "abc"[0];
-# cannot index a string
-print [1, 2]["0"];
-# a list index must be a number,
-#   not a string
-print [1, 2][1.5];
-# index 1.5 is not a whole number
-print [1, 2, 3][3];
-# index 3 is out of range for a
-#   list of length 3
-```
-
-The order matters for the message: `"abc"[1.5]` fails the first test and
-says `cannot index a string`, never anything about the `1.5`.
-
-<Formal title="What index.get does to the stack">
-
-```text
-… xs i   ⟶   … xs.items[i]
-  when xs is a list, i is a whole
-  number and 0 ≤ i < len(xs)
-```
-
-<span slot="read">With xs and i on top of the stack (the dots are
-whatever was below), index.get leaves element i of xs in their place,
-when xs is a list, i is a whole number, and i is at least 0 and less
-than the length; otherwise it is a runtime error.</span>
-</Formal>
-
-`index.set` expects three values (list, index, new value), pops the
-value and the index, runs the same `checkIndex`, stores the value into
-`items`, and leaves the value on the stack, because in Drip an
-assignment is an expression whose value is the value assigned. It can
-only replace an element, never add one:
-
-```text
-xs[len(xs)] = 4;
-# index 3 is out of range for a
-#   list of length 3
-push(xs, 4);   # [1, 2, 3, 4]
-```
-
-<Prompts ids={['index-order', 'index-set-value', 'no-grow-by-index']} />
-
-## Growing
-
-`push` is a native function, and its body in the companion VM, after
-checking it was given a list, is `xs.items.push(v)`: JavaScript's own
-array does the growing, which hides the part a VM in C or Rust must do
-itself.
-
-<Analogy extra title="booking a bigger table than you need">
-Five friends are coming to dinner and more may join, so you book a table
-for eight, and late arrivals sit straight down. When a ninth turns up,
-the party moves to a table for sixteen, which takes a while, but then
-nobody moves again for a long time.
-<span slot="breaks">Friends carry themselves to the new table; the VM
-moves every element itself, one by one, so a move costs time in
-proportion to the length.</span>
-</Analogy>
-
-<GrowSteps client:visible />
-
-Such a list keeps two numbers: its **length**, how many elements it
-has, and its **capacity**, how many slots it has room for. A push into
-spare room is one store; a push into a full list first copies everything
-into a bigger block, and doubling makes that rare enough to cost a
-small, fixed amount per push on average:
-
-<Formal title="The cost of doubling">
-
-```text
-copies over n pushes, from capacity 1:
-  1 + 2 + 4 + … + 2ᵏ  <  2n
-```
-
-<span slot="read">Starting from capacity 1 and doubling whenever the
-list is full, n pushes copy 1, then 2, then 4, up to 2 to the k at the
-last growth (which is less than n); the sum is less than 2n, so on
-average a push copies fewer than two elements.</span>
-</Formal>
-
-Real systems pick their own factor. V8, which runs the companion's
-arrays, grows to the old capacity plus half, plus 16<Cite id="v8-src-js-objects-h" />; Python grows its lists by about an
-eighth, padded to a multiple of four<Cite id="cpython-listobject" />;
-and Rust's `Vec`, which the companion's Rust VM uses, promises no
-particular factor, only that `push` is cheap on average and that the
-block is reallocated only when it is full<Cite id="rust-std-vec" />.
-
-<Prompts ids={['capacity']} />
-
-## Keeping elements alive
-
-A list refers to its elements, so as long as the list is in use, so are
-they. When the collector (built in "Reclaiming memory: mark and sweep")
-reaches a list, it visits each element in turn, from `vm/heap.ts`:
-
-```ts
-case 'list':
-  for (const v of o.items)
-    this.markValue(v);
-  return;
-```
-
-`markValue` ignores numbers, booleans and `none` and marks an object as
-in use; a list that contains itself cannot trap it, because an object
-already marked is skipped. (Printing has its own guard:
-`let xs = []; push(xs, xs); print xs;` prints `[[...]]`.)
-
-<Prompts ids={['items-trace']} />
-
-## for x in xs, compiled
-
-The tree-walker ran a for-in loop with a TypeScript loop of its own. The
-VM compiles it into ordinary instructions, keeping the list and a
-counter in two **hidden locals**, stack slots the compiler reserves under
-names no Drip program can write:
-
-<ForInSteps client:visible />
-
-Three details carry Drip's rules: `iter.list` checks once that the
-value is a list (`for x in 5` stops with `cannot loop over a number`);
-`list.len` runs at every test, so pushing inside the body lengthens the
-loop; and each round loads the element into a new slot and pops it at
-the end, so every round has a fresh `x`. ("Locals as stack slots" and
-"Branches and loops in bytecode" cover `load.local`, `jump.unless` and
-`loop` in full.)
-
-<Prompts ids={['for-len']} />
-
 <Examples of="vm-list">
 
 ```text
-print [];
-# 0000    1 list                0
+0000    1 const          0 '10'
+0003    | const          1 '20'
+0006    | list           2
+0008    | define.global  2 'xs'
+0011    2 load.global    3 'xs'
+0014    | const          4 '1'
+0017    | index.get
+0018    | print
 ```
-
-```text
-xs[0] += 5;
-# load.global xs, const 0, dup2,
-# index.get, const 5, add,
-# index.set, pop
-```
-
-<Run id="sieve" />
 
 </Examples>
 
-`list 0` takes nothing and pushes a new, empty list. The second needs the list and the index twice (to read the
-old element and to write the new one), so `dup2` copies the top two
-values, `index.get` uses the copies, `add` adds 5, and `index.set` uses
-the originals. The runnable one is a small sieve of Eratosthenes: a list
-of flags, filled with `push` and crossed out with `index.set`, and a
-list of the primes it finds.
+This is the companion disassembler's listing (spacing trimmed) for
+`let xs = [10, 20]; print xs[1];`. Offsets 0 to 6 push two elements
+and gather them with `list 2` into one reference, which `define.global`
+stores as `xs`. Line 2 pushes the list and the index 1, and `index.get`
+replaces both with `20` for `print`. (`xs[0] = 7;` would push the list,
+the index and the value, then run `index.set` and `pop`.)
 
-<Callout kind="engine" label="Under the hood">
-The benchmark program `sieve` runs the same algorithm up to a million,
-and in `companion/ts/results/drip-bench-2026-11-02.md` the VM ran it
-only 1.08 times as fast as the tree-walker. Both make the same four
-checks on every index and end in the same JavaScript array operation,
-which is most likely why removing the tree walk saves so little here;
-"Measuring and speeding up the VM" looks at where the time goes.
-</Callout>
+<More title="Growing, tracing and looping over a list">
+
+`push` is a native function whose body, after checking it was given a
+list, is `xs.items.push(v)`: JavaScript's own array does the growing,
+which hides the part a VM in C or Rust must do itself. Such a list
+keeps a **length** (how many elements it has) and a **capacity** (how
+many slots it has room for); a push into spare room is one store, and a
+push into a full list first copies everything into a bigger block.
+
+<GrowSteps client:visible />
+
+Doubling makes the copying cost a small, fixed amount per push on
+average: from capacity 1, n pushes copy 1 + 2 + 4 + … + 2ᵏ elements, and
+that sum is less than 2n. Real systems pick their own factor: V8 grows
+an array to the old capacity plus half, plus 16<Cite id="v8-src-js-objects-h" />;
+Python grows lists by about an eighth<Cite id="cpython-listobject" />;
+and Rust's `Vec` promises only that `push` is cheap on average<Cite id="rust-std-vec" />.
+
+A list refers to its elements, so when the collector (*Reclaiming
+memory: mark and sweep*) reaches one it marks every value in `items`;
+a list that contains itself cannot trap it, because an object already
+marked is skipped (printing has its own guard: `let xs = []; push(xs,
+xs); print xs;` prints `[[...]]`).
+
+A for-in loop compiles to ordinary instructions, keeping the list and a
+counter in two hidden locals (stack slots the compiler reserves under
+names no Drip program can write); *Locals as stack slots* and *Jumps:
+branches, loops and backpatching* explain the instructions it uses.
+
+<ForInSteps client:visible />
+
+`iter.list` checks once that the value is a list (`for x in 5` stops
+with `cannot loop over a number`), and `list.len` runs at every test,
+so pushing inside the body lengthens the loop. A small sieve puts it
+all together:
+
+<Run id="sieve" />
+
+The benchmark `sieve` runs the same algorithm up to a million, and in
+`companion/ts/results/drip-bench-2026-11-02.md` the VM ran it only 1.08
+times as fast as the tree-walker: both make the same checks on every
+index and end in the same JavaScript array operation.
+
+</More>
+
+<Prompts ids={['list-operand', 'index-order', 'no-grow-by-index']} />
 
 ## Your turn
+
+<Exercise id="miniHeap" />
+
+<Exercise id="unlinkObj" />
 
 <Exercise id="growList" />
 
@@ -586,16 +309,12 @@ which is most likely why removing the tree walk saves so little here;
 
 ## What you learned
 
-- A **VM list** is a heap object with `items`; `list n` builds one from
-  the top `n` stack values, which stay there until the object exists.
-- `index.get` and `index.set` check for a list, a number, a whole number
-  and a position in range, in that order, each with its own error.
-- A list grows by moving to a bigger block; doubling keeps each push
-  cheap on average.
-- The collector visits a list's `items`, and a for-in loop compiles to
-  two hidden locals, a `list.len` test each round, and a fresh `x`.
+- A **heap object** lives behind a reference and starts with a shared
+  header; the **object list** links every one, newest first.
+- A **VM list** is built by `list n` and read and written by
+  `index.get` and `index.set`, which check the index in a fixed order.
 
-Next: finding things fast. Before the VM can look up a global by name,
-it needs a hash table.
+Next: *Hash tables*, which the VM needs before it can look up a global
+by name.
 
 <Quiz />

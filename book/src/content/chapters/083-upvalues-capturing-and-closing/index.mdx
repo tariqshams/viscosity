@@ -5,14 +5,10 @@ part: IV
 title: 'Upvalues: capturing and closing'
 tagline: 'In the VM a local lives in a stack slot, and the slot is handed to someone else the moment its call returns; a closure that still needs the variable holds a small object instead, which points into the stack for as long as the variable is there.'
 objectives:
-  - Explain why a closure in a stack VM cannot simply remember a slot number.
-  - Read the local and upvalue pairs after a closure instruction, and say where each upvalue comes from.
+  - Explain why a closure in a stack VM cannot simply remember a slot number, and read the local and upvalue pairs after a closure instruction.
   - Explain how the compiler finds upvalues, including a variable passed down through a function that never uses it.
-  - Trace captureUpvalue on the sorted open list, and explain why two closures over one variable share one upvalue.
-  - Explain what closing an upvalue does, and read closeUpvalues line by line.
-  - Name the moments the VM closes upvalues, at a return and at the end of a block.
+  - Explain why two closures over one variable share one open upvalue, and what closing an upvalue does.
   - Explain why each pass of a Drip for loop gets a fresh loop variable, and why a while loop over one local does not.
-  - Predict what closures made in a loop print, including after break and continue.
 introduces: [upvalue, open-upvalue, closed-upvalue]
 uses: [closure, nested-function, lexical-scope, captured-environment, environment-lifetime, call-frame, frame-pointer, stack-slot, compile-time-scope, stack-machine, bytecode, opcode, chunk, constant-pool, disassembler, single-pass-compiler, emit, heap-object, object-list, virtual-machine, instruction-pointer, resolver, drip, block-scope, local-variable, stack-and-heap, pointer, reference, function, call, return, array, object, jump, for-loop]
 sources: [lua-lfunc, ecma262]
@@ -22,11 +18,9 @@ import CaptureSteps from '../../../components/diagrams/ch083/CaptureSteps';
 import ClosePassSteps from '../../../components/diagrams/ch083/ClosePassSteps';
 import LoopVarsFigure from '../../../components/diagrams/ch083/LoopVarsFigure';
 
-{/* ── merge: from old chapter 83, Capturing variables: upvalues ── */}
-
 ## The counter, on the VM
 
-Here is the counter from the chapter "Closures in Drip":
+Here is the counter closure from *Return, the host stack and closures*:
 
 ```text
 fn counter() {
@@ -38,82 +32,35 @@ let a = counter();
 print a();   # 1
 ```
 
-The tree-walker kept `n` in a heap environment that `count` referred
-to. The VM has no environments: `n` is a
-**stack slot** (the chapter "Locals as stack slots"), and `return` cuts
-the stack back to the frame's start, so the very next call writes over
-it (the chapter "Frames: calling and returning in the VM"). So `count`
-cannot remember `n`'s slot: by the time `a()` runs, that slot is
-someone else's.
+The tree-walker kept `n` in a heap environment. In the VM `n` is a
+stack slot, and `return` cuts the stack back to the frame's start, so
+the next call writes over it; by the time `a()` runs, `n`'s slot is
+someone else's. `count` needs a small object of its own that knows
+where `n` is now, and can take the value with it when the slot goes.
 
-<Prompts ids={['slot-dies']} />
-
-## A ticket instead of a slot
-
-What `count` needs is a small object of its own that knows where `n`
-is right now.
-
-<Analogy title="a cloakroom ticket">
+<Analogy title="a cloakroom ticket that outlives the cloakroom">
 At a party you hand in your coat and get a numbered ticket; you carry
-the small ticket, not the coat, and the ticket leads to the coat
-wherever it happens to be.
+the small ticket, not the coat, and the ticket leads to the coat on its
+rail. At midnight the cloakroom shuts, and any coat still there is
+moved to a locker, with the locker number written on the same ticket;
+you still hold one ticket, and it still finds your coat.
 <span slot="breaks">A cloakroom gives each guest their own ticket; two
-closures that need one variable get the *same* ticket, so a change made
-through one is seen through the other.</span>
+closures that need one variable hold the *same* ticket, so a change made
+through one is seen through the other. And a coat is moved, where a
+value is copied, leaving the old slot behind to be written over.</span>
 </Analogy>
 
-<Analogy extra title="a link to a shared document">
-Two colleagues who each print a report hold two copies, and a correction
-on one never reaches the other; two who each hold a link to one online
-document see every edit at once, because there is only one document.
-<span slot="breaks">A link points at one server for ever; what an
-upvalue points at can move (to the heap, next chapter), and the upvalue
-follows it.</span>
-</Analogy>
+## Upvalues
 
-That object is an **upvalue** (a value from "up there", in an
-enclosing function); each closure carries one per outside variable it
-uses: `count` says "my upvalue 0", and the upvalue
-knows where the value is. Step through the counter (its return is the next chapter's
-subject):
-
-<UpvalueSteps client:visible />
-
-## Finding upvalues while compiling
-
-The compiler knows the locals of every function it is compiling, so it
-can find captured variables before the program runs. When a name is not a local of the current function,
-`namedVariable` tries `resolveUpvalue` before treating it as a global:
-
-```ts
-function resolveUpvalue(c, name) {
-  if (!c.enclosing) return -1;
-  const local =
-    resolveLocal(c.enclosing, name);
-  if (local !== -1) {
-    c.enclosing.locals[local]
-      .isCaptured = true;
-    return addUpvalue(c, local, true, name);
-  }
-  const up =
-    resolveUpvalue(c.enclosing, name);
-  if (up !== -1)
-    return addUpvalue(c, up, false, name);
-  return -1;
-}
-```
-
-(Types left out.) If the name is a local of the function *directly* around this one, the
-upvalue captures its slot (`isLocal` is `true`) and marks it
-`isCaptured`, for the next chapter. Otherwise it asks one level further
-out, by calling itself; if an outer function has the variable, the
-enclosing function gets an upvalue of its own, and this one copies
-*that* (`isLocal` is `false`). `addUpvalue` adds `{ index, isLocal }`
-to the list unless it is already there, and returns its position.
-
-When the function is finished, `fnRest` writes the list into the
-bytecode as pairs of bytes after `closure`, and the disassembler prints
-each pair on a line of its own:
+That object is an **upvalue** (a value from "up there", in an enclosing
+function); each closure carries one per outside variable it uses. The
+compiler finds them while compiling: when a name is not a local of the
+current function, `resolveUpvalue` looks in the function directly
+around it; if the name is a local there, the upvalue captures that slot
+(`isLocal` true) and marks the local `isCaptured`. Otherwise it asks one
+level further out, by calling itself, and copies the enclosing
+function's own upvalue (`isLocal` false). The list is written as byte
+pairs after `closure`:
 
 ```text
 == counter ==
@@ -131,44 +78,7 @@ each pair on a line of its own:
 inside `count`, `n += 1` takes the four steps a local would, with
 "upvalue 0" in place of a slot number.
 
-<Examples of="upvalue">
-
-```text
-fn adder(k) {
-  return fn (x) { return x + k; };
-}
-print adder(2)(5);   # 7
-```
-
-```text
-fn outer() {
-  let x = 1;
-  fn middle() {
-    fn inner() { return x; }
-    return inner;
-  }
-  return middle;
-}
-```
-
-```text
-== outer ==
-0003    6 closure             1 fn middle
-0006    |   local 1
-== middle ==
-0000    4 closure             0 fn inner
-0003    |   upvalue 0
-```
-
-</Examples>
-
-In the first, the anonymous function uses `adder`'s parameter `k`
-(slot 1), so it gets the pair `local 1`, and `x + k` compiles to
-`load.local 1` (its own) and `load.upvalue 0` (borrowed). In the second only `inner` uses `x`, but `inner` is made after
-`outer` may have returned, so `middle` must carry `x` for it; the third
-shows how: `outer` gives `middle` the pair `local 1`, and `middle` gives
-`inner` the pair `upvalue 0` ("copy my own upvalue 0"), although its own
-body never mentions `x`.
+<UpvalueSteps client:visible />
 
 <Callout kind="definition">
 An **upvalue** is a closure's handle on a variable declared in an
@@ -179,60 +89,57 @@ false, reuse upvalue `index` of the running closure. The body reaches
 them with `load.upvalue` and `store.upvalue`.
 </Callout>
 
-<Formal title="Where a name resolves">
+<Examples of="upvalue">
 
 ```text
-resolve(f, x) =
-  local i     if x is local i of f
-  upvalue j   if resolve(parent(f), x) is
-              local i or upvalue i, and
-              j = add(f, that pair)
-  global x    otherwise
-```
-
-<span slot="read">If x is f's local number i, it is that local.
-Otherwise ask the function around f; if it answers with a local or an
-upvalue numbered i, that pair becomes f's upvalue j (added, or found
-already there). If no function has x, it is a global.</span>
-</Formal>
-
-<Prompts ids={['upvalue-def', 'is-local-pair', 'three-levels']} />
-
-## Open: pointing into the stack
-
-At run time the `closure` instruction makes the closure, pushes it, and
-then reads the pairs:
-
-```ts
-for (let i = 0;
-     i < closure.upvalues.length; i++) {
-  const isLocal = readByte();
-  const index = readByte();
-  closure.upvalues[i] = isLocal
-    ? this.captureUpvalue(
-        frame.slots + index)
-    : frame.closure.upvalues[index];
+fn outer() {
+  let x = 1;
+  fn middle() {
+    fn inner() { return x; }
+    return inner;
+  }
+  return middle;
 }
+
+== outer ==
+0003    6 closure             1 fn middle
+0006    |   local 1
+== middle ==
+0000    4 closure             0 fn inner
+0003    |   upvalue 0
 ```
 
-`frame.slots + index` turns "slot 1 of this frame" into a position in
-the stack array; a non-local pair copies the running closure's
-upvalue. An upvalue (`ObjUpvalue`) has three fields:
-`slot`, `closed` and `nextOpen`. While `counter` is still running, `n`
-really is in its slot, so the upvalue records that slot and
-`load.upvalue` reads `stack[u.slot]`; an upvalue in this state is
-**open**.
+</Examples>
 
-Two closures made in one call must share `n`, so the VM keeps every
-open upvalue on one linked list, `openUpvalues`, sorted by slot with the
-highest first, and `captureUpvalue` looks there before it makes a new
-one. The stepper shows its body, exactly as in `vm.ts`: the loop walks
-past every upvalue for a higher slot, remembering the one before
-(`prev`); if it stops on one for exactly this slot, that one is shared;
-otherwise a new upvalue is linked in at that spot, which keeps the list
-sorted without ever sorting it.
+Only `inner` uses `x`, but `inner` is made when `middle` runs, perhaps
+long after `outer` has returned, so `middle` must carry `x` for it. `x`
+is `outer`'s local 1, hence the pair `local 1` after `closure fn
+middle`; then `inner` gets `upvalue 0`, "copy my maker's upvalue 0",
+although `middle` never mentions `x`. `print outer()()();` prints `1`.
+
+<Prompts ids={['slot-dies', 'upvalue-def', 'is-local-pair', 'three-levels']} />
+
+## Open, then closed
+
+At run time `closure` reads the pairs: a `local` pair calls
+`captureUpvalue(frame.slots + index)`, and an `upvalue` pair copies the
+running closure's upvalue. An `ObjUpvalue` has three fields, `slot`,
+`closed` and `nextOpen`. While `counter` runs, `n` is in its slot, so
+the upvalue records the slot's index and `load.upvalue` reads
+`stack[u.slot]`: the upvalue is **open**. Two closures made in one call
+must share `n`, so the VM keeps open upvalues on one list,
+`openUpvalues`, sorted by slot, highest first, and `captureUpvalue`
+returns the one already there or links a new one in at its place.
 
 <CaptureSteps client:visible />
+
+<Callout kind="definition">
+An **open upvalue** is an upvalue whose variable is still on the stack:
+its `slot` is the variable's stack index, and reads and writes go
+straight to `stack[slot]`. The VM keeps open upvalues on one list,
+sorted by slot, highest first, and a second capture of the same slot
+reuses the open upvalue, so closures share one variable.
+</Callout>
 
 <Examples of="open-upvalue">
 
@@ -245,109 +152,16 @@ fn outer() {
 }
 ```
 
-<Run id="share" />
-
-```text
-0012    |   local 3
-0014    |   local 1
-0016    |   local 2
-```
-
 </Examples>
 
-In the first, `show` runs while `outer` is still running, so its
-upvalue is open: `x = 2` is a plain `store.local 1`, and `show` reads
-that slot and prints `2`. In the
-runnable one, `get` and `set` both have the pair `local 1`, so they
-share one upvalue, and `set` changes what `get` sees. The third is the
-pairs of `fn g() { return c + a + b; }`, over locals in slots 1, 2 and
-3: they follow the order of use, and each new
-upvalue goes to its sorted place, as in the stepper.
+`show` is made while `outer` runs, so its upvalue for `x` is open.
+`x = 2` is a plain `store.local 1`, and `show`'s `load.upvalue 0` reads
+the same slot and prints `2`, not the `1` there when `show` was made:
+the upvalue holds a place, not a copy.
 
-<Callout kind="definition">
-An **open upvalue** is an upvalue whose variable is still on the stack:
-its `slot` is the variable's stack index, and reads and writes go
-straight to `stack[slot]`. The VM keeps open upvalues on one list,
-sorted by slot, highest first, and a second capture of the same slot
-reuses the open upvalue, so closures share one variable.
-</Callout>
-
-<Prompts ids={['open-def', 'shared-upvalue', 'sorted-list', 'copy-not']} />
-
-<Callout kind="engine" label="Under the hood">
-Lua uses the same plan: its `luaF_findupval` walks a list of open
-upvalues kept in stack order, returns a match if there is one, and only
-otherwise makes and links a new upvalue<Cite id="lua-lfunc" />. In C an
-upvalue holds a real pointer into the stack; TypeScript cannot point
-into an array, so the companion stores the slot's index.
-</Callout>
-
-## Your turn
-
-<Exercise id="captureSorted" />
-
-<Exercise id="sharedCount" />
-
-## What you learned
-
-- A slot is reused once its call returns, so a closure reaches an
-  outside variable through an **upvalue**.
-- The compiler writes one pair per upvalue after `closure`: `local i`
-  captures slot `i` of the running frame; `upvalue i` reuses the
-  running closure's upvalue `i`, passing a variable down.
-- An **open upvalue** points at a live stack slot; open upvalues sit on
-  one sorted list, and a second capture of a slot shares the first.
-
-Next: what happens to an open upvalue when its slot disappears, and
-why each pass of a `for` loop gets its own variable.
-
-
-{/* ── merge: from old chapter 83, Closing upvalues: a fresh variable every pass ── */}
-
-## The slot is about to go
-
-In the chapter "Capturing variables: upvalues", `count` held an open
-upvalue for `n`, which pointed at `n`'s stack slot. That works while
-`counter` runs; however, `counter` then returns, `return` cuts the stack
-back to the frame's start, and the next call will write over the slot.
-Something has to happen in between, and it has to happen to *every*
-upvalue that points into the frame that is about to go.
-
-<Analogy title="the cloakroom closes">
-At midnight the cloakroom shuts and its rail is folded away; any coat
-still there is moved to a numbered locker, and the attendant writes the
-locker number on the same ticket, so you still hold one ticket, and it
-still finds your coat.
-<span slot="breaks">A coat is moved; a value is copied, and the
-original slot is simply left behind for the next call to write over.
-And the VM never waits until midnight: it moves values the moment
-before their slot is given away.</span>
-</Analogy>
-
-<Analogy extra title="packing up a market stall">
-At the end of the day the stall's pitch goes back to the market and will
-be someone else's tomorrow; before that happens, anything already
-promised to a customer is boxed up with their name on it and taken
-away, while everything nobody asked for is left to be cleared.
-<span slot="breaks">A stall-holder packs things one at a time; the VM
-packs every upvalue that points into the leaving frame in one quick
-sweep, highest slot first, and stops at the first one that belongs to a
-frame further down.</span>
-</Analogy>
-
-The step is called **closing** the upvalue, and the `return`
-instruction does it before it drops the frame:
-
-```ts
-case Op.Return: {
-  const result = this.pop();
-  this.closeUpvalues(frame.slots);
-  this.frames.pop();
-```
-
-`frame.slots` is the stack position of the frame's slot 0, so every
-open upvalue at that position or above points into the frame that is
-leaving. Here is the function that closes them, from `vm.ts`:
+Then `counter` returns, and the slot is about to go. Before it drops
+the frame, `return` runs `closeUpvalues(frame.slots)`, which **closes**
+every open upvalue pointing into the leaving frame:
 
 ```ts
 private closeUpvalues(last: number) {
@@ -361,70 +175,12 @@ private closeUpvalues(last: number) {
 }
 ```
 
-(Return type left out, one line wrapped.) The loop looks only at the
-head of the open list; since the list is sorted highest first, the
-upvalues for the leaving frame are exactly the first ones on it, and the
-first upvalue below `last` ends the loop, because everything after it is
-lower still. For each one it copies the value from the stack into the
-upvalue's own `closed` field, sets `slot` to `-1` to mean "not on the
-stack any more", and unlinks it from the list. From then on the
-instructions that use upvalues check that mark:
-
-```ts
-// load.upvalue
-this.push(u.slot === -1
-  ? u.closed : stack[u.slot]);
-// store.upvalue
-if (u.slot === -1) u.closed = this.peek(0);
-else stack[u.slot] = this.peek(0);
-```
-
-(The `load.upvalue` line is wrapped.) The closure never notices the
-move: it holds the same upvalue object, and the object now holds the
-value.
-
-<Examples of="closed-upvalue">
-
-```text
-fn counter() {
-  let n = 0;
-  fn count() { n += 1; return n; }
-  return count;
-}
-let a = counter();
-print a();   # 1, from a closed upvalue
-```
-
-```text
-fn pair() {
-  let v = 0;
-  fn get() { return v; }
-  fn set(x) { v = x; }
-  return [get, set];
-}
-```
-
-```text
-== f ==
-0001    4 const               0 '1'
-0004    5 closure             1 fn
-0007    |   local 2
-0009    | store.local         1
-0011    | pop
-0012    6 close.upvalue
-```
-
-</Examples>
-
-The first is the counter after `counter` has returned: `return` closed
-the one upvalue, copying `0` into it, and every `a()` reads and writes
-that `closed` field from then on. In the second, `get` and `set` share
-one open upvalue, so `return` closes one object, and both keep sharing
-it on the heap (a closed upvalue is still a single object, not one copy
-each). The third is new: it comes from a function `f` whose block
-`{ let x = 1; g = fn () { return x; }; }` captures `x`, and the block's
-closing brace compiled to `close.upvalue`, the subject of the next
-section.
+The list is sorted highest first, so the leaving frame's upvalues are
+the first ones on it, and the loop stops at the first lower one. Each
+gets the value copied into its `closed` field, `slot` set to `-1` ("not
+on the stack any more"), and is unlinked. `load.upvalue` and
+`store.upvalue` use `u.closed` when `slot` is `-1`, so the closure never
+notices: it holds the same object, which now holds the value.
 
 <Callout kind="definition">
 A **closed upvalue** holds its variable's value in its own `closed`
@@ -435,59 +191,48 @@ at `return`, every open upvalue at or above the frame's start, and at
 shared an open upvalue share the closed one too.
 </Callout>
 
-<Formal title="An upvalue’s two states">
+<Examples of="closed-upvalue">
 
 ```text
-open(s)   --close-->   closed(stack[s])
-read(open(s))   = stack[s]
-read(closed(v)) = v
+let a = counter();
+print a();   # 1
+print a();   # 2
 ```
 
-<span slot="read">An upvalue is either open at slot s or closed holding
-a value v. Closing an open upvalue at slot s turns it into a closed one
-holding whatever stack slot s held at that moment. Reading an open
-upvalue reads the stack at s; reading a closed one gives v.</span>
-</Formal>
+</Examples>
 
-<Prompts ids={['close-when', 'closed-def', 'copy-first', 'sorted-stop']} />
+`counter()` made `count` with an open upvalue for `n`, and its `return`
+closed it, copying `0` into `closed`. The first `a()` sees `slot` is
+`-1`, reads `0` from `closed`, and stores `1` back there; the second
+finds `1` and leaves `2`. The count lives on long after its slot was
+reused.
 
-## Closing at the end of a block
-
-A function's return is not the only time a local dies; a local declared
-in a block dies at the block's `}`, and the slot is reused straight
-away. The compiler's `endScope` handles it, using the `isCaptured` flag
-that `resolveUpvalue` set:
-
-```ts
-c.scopeDepth--;
-while (c.locals.length > 0 &&
-       c.locals[c.locals.length - 1]
-         .depth > c.scopeDepth) {
-  emit(c.locals[c.locals.length - 1]
-    .isCaptured ? Op.CloseUpvalue : Op.Pop);
-  c.locals.pop();
-}
-```
-
-(Most of `endScope`, wrapped.) For each local leaving scope, it
-emits `pop` for an ordinary one and `close.upvalue` for a captured one;
-the VM runs `close.upvalue` as `this.closeUpvalues(this.sp - 1)`, which
-closes the upvalue for the top slot, and then drops the slot.
+<Prompts ids={['shared-upvalue', 'close-when']} />
 
 ## A fresh variable every pass
 
-Now the case that matters most in practice: closures made inside a
-loop. Drip's specification says that a `for` loop's variable is a fresh
-variable on every pass, so each closure keeps that pass's value.
-The compiler gets this from the two pieces you already have: it compiles
-the loop variable as a local in a scope of its own *inside* the loop,
-so the instructions `endScope` emits for it sit at the bottom of the
-body, and run on every pass:
+A local declared in a block dies at the block's `}`, so `endScope`
+emits `close.upvalue` instead of `pop` for a local marked `isCaptured`
+(the VM runs it as `closeUpvalues(this.sp - 1)`, then drops the slot).
+That matters most for closures made in a loop. Drip's specification says a `for` loop's
+variable is a fresh variable on every pass, and the compiler gets this
+from pieces you already have: the loop variable is a local in a scope of
+its own *inside* the loop, so its `close.upvalue` sits at the bottom of
+the body and runs every pass.
 
 <ClosePassSteps client:visible />
 
-Here is the stepper's loop with three passes, `for i in 0..3`,
-disassembled (the body pushes a closure that returns `i`):
+A `while` loop has no such variable. If `i` is a local declared before
+the loop, every closure made inside captures the same slot, gets the
+same upvalue, and sees the last value:
+
+<Figure caption="Three closures made by a while loop over one local, and by a for loop." takeaway="A for loop closes an upvalue every pass; a while loop over one local closes one, at the end.">
+  <LoopVarsFigure />
+</Figure>
+
+<More title="The loop's bytecode, break, and how Lua and JavaScript do it">
+
+The body of `for i in 0..3`, pushing a closure that returns `i`:
 
 ```text
 0020    | load.local          1
@@ -504,61 +249,49 @@ disassembled (the body pushes a closure that returns `i`):
 
 `load.local 1` copies the hidden counter into slot 3, which is `i`; the
 closure captures slot 3; `close.upvalue` closes that pass's upvalue and
-frees the slot; and `inc.local 1` adds one to the *counter*, not to
-`i`. Because `i` is only ever a copy, assigning to it inside the body
-(`i = 10;`) changes that pass's `i` and nothing else, and the next pass
-still gets the next number.
-
-A `while` loop has no such variable. If `i` is a local declared before
-the loop, every closure made inside captures the same slot, gets the
-same upvalue, and sees the last value:
-
-<Figure caption="Three closures made by a while loop over one local, and by a for loop." takeaway="A for loop closes an upvalue every pass; a while loop over one local closes one, at the end.">
-  <LoopVarsFigure />
-</Figure>
+frees the slot; and `inc.local 1` adds one to the *counter*, not to `i`,
+so assigning to `i` inside the body changes only that pass's `i`.
+`break` and `continue` leave the body early, so they emit the same `pop`
+or `close.upvalue` for each local they leave, before the jump.
 
 <Run id="passes" />
 
-`break` and `continue` leave the body early, so they must close it too:
-the compiler's `popLocalsDeeperThan` emits the same `pop` or
-`close.upvalue` for each local they leave, before the jump. In a loop
-that captures `i` and has `if i == 3 { break; }` after the capture, the
-disassembly shows `close.upvalue` and then `jump` for the `break`, so
-the closure made on that last pass still keeps its `3`.
+<Run id="share" />
 
-<Prompts ids={['is-captured', 'fresh-pass', 'while-shares', 'assign-i']} />
-
-<Callout kind="engine" label="Under the hood">
-Lua closes upvalues the same way: its `luaF_closeupval` walks the open
-list while the upvalues are at or above a given stack level, copies
-each value into the upvalue itself, repoints the upvalue at that copy,
-and unlinks it<Cite id="lua-lfunc" />. JavaScript made the same choice
-as Drip for loop variables: the specification copies a `for` loop's
-`let` variables into a new environment for each pass, so closures made
-in `for (let i = 0; i < 3; i++)` see 0, 1 and 2, where `var` gives one
+Lua uses the same plan: `luaF_findupval` walks a list of open upvalues
+kept in stack order and makes a new one only if there is no match, and
+`luaF_closeupval` copies each value into the upvalue itself and unlinks
+it<Cite id="lua-lfunc" />. In C an upvalue holds a real pointer into the
+stack; TypeScript cannot point into an array, so the companion stores
+the slot's index. JavaScript made the same choice as Drip for loop
+variables: the specification copies a `for` loop's `let` variables into
+a new environment for each pass, so closures made in
+`for (let i = 0; i < 3; i++)` see 0, 1 and 2, where `var` gives one
 shared variable<Cite id="ecma262" />.
-</Callout>
+
+</More>
+
+<Prompts ids={['fresh-pass', 'while-shares']} />
 
 ## Your turn
 
 <Exercise id="closeFrom" />
 
+<Exercise id="captureSorted" />
+
+<Exercise id="sharedCount" />
+
 <Exercise id="perPass" />
 
 ## What you learned
 
-- **Closing** an upvalue copies its value from the stack into the
-  upvalue's own `closed` field and sets `slot` to `-1`; the closure keeps
-  the same object.
-- `return` closes every open upvalue at or above the frame's start; the
-  sorted list lets `closeUpvalues` stop at the first lower one.
-- `close.upvalue` closes a captured local leaving a block, and `break`
-  and `continue` close what they leave.
-- A `for` loop's variable is a fresh local closed at the end of every
-  pass, so each closure keeps its own value; a `while` loop over one
-  local gives every closure the same upvalue.
+- An **upvalue** is a closure's handle on an outer variable; the
+  compiler writes a `local` or `upvalue` pair for each after `closure`.
+- An **open upvalue** points at a live slot, on one sorted, shared
+  list; closing it makes a **closed upvalue** holding the value itself,
+  at `return` and at `close.upvalue`, every pass of a `for` loop.
 
-Next: the VM has been making closures, upvalues, lists and strings, and
-freeing none of them. Time to reclaim memory.
+Next: *Reclaiming memory: mark and sweep*. The VM has been making
+closures, upvalues, lists and strings, and freeing none of them.
 
 <Quiz />

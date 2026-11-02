@@ -28,7 +28,7 @@ type S = { line: number; stack: C[]; hot?: number; out?: string; note: string };
 const SC: C = ['script'];
 
 const STATES: S[] = [
-  { line: -1, stack: [SC], note: 'The program is { let a = 1; { let b = a + 2; print b; } a = 5; print a; }. Before it runs, the stack holds one value: the script itself, in slot 0 (the chapter on frames explains why).' },
+  { line: -1, stack: [SC], note: 'The program is { let a = 1; { let b = a + 2; print b; } a = 5; print a; }. Before it runs, the stack holds one value: the script itself, in slot 0 (Frames: calling and returning explains why).' },
   { line: 0, stack: [SC, ['1', 'a']], hot: 1, note: 'const pushes 1, and it lands in slot 1. That slot IS the variable a from now on. No instruction "defines" a: the value is already where a lives.' },
   { line: 1, stack: [SC, ['1', 'a'], ['1']], hot: 2, note: 'Now b’s initialiser, a + 2. load.local 1 pushes a copy of slot 1. The copy is a temporary on top of the stack; a itself is untouched.' },
   { line: 2, stack: [SC, ['1', 'a'], ['1'], ['2']], hot: 3, note: 'const pushes 2.' },

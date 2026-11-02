@@ -1,71 +1,38 @@
-// Chapter 61 cards: recall prompts, examples, exercises and quiz.
+// Chapter 80 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 80, 80.
 
 export const prompts = {
   'why-stack': {
-    q: 'Why can local variables live on the VM’s value stack?',
+    q: 'Why can a language with block-scoped locals keep them on the VM’s value stack?',
     a: 'Blocks nest, so locals are created and destroyed in last-in, first-out order: the order of a stack.',
   },
   'no-define': {
-    q: 'Why does `let a = 1;` inside a block emit no instruction of its own?',
+    q: 'In a stack-based VM that keeps locals in stack slots, why does `let a = 1;` inside a block need no instruction of its own?',
     a: 'The initialiser leaves 1 on top of the stack, and that slot becomes `a`: the value is already where the variable lives.',
   },
-  'slot-what': {
-    q: 'What is a **stack slot**?',
-    a: 'A fixed position in the VM’s stack, counted from where the current function’s slots begin, holding one local variable.',
-  },
-  'load-local-cost': {
-    q: 'What does `load.local 2` cost the VM at run time?',
-    a: 'One addition (`frame.slots + 2`) and an array read, then a push: no name and no hashing.',
-  },
   'store-keeps': {
-    q: 'Why does `store.local` leave the value on the stack instead of popping it?',
+    q: 'In the companion Drip VM, why does `store.local` leave the value on the stack instead of popping it?',
     a: 'In Drip an assignment is an expression whose value is the assigned value; when it is a statement on its own, the compiler adds a `pop`.',
-  },
-  'slot-zero': {
-    q: 'Why does the first local in the script get slot 1, not slot 0?',
-    a: 'Slot 0 already holds the running function (the script itself, at the top level).',
-  },
-  'block-end-pops': {
-    q: 'A block declared three locals. What does the compiler emit at its closing brace?',
-    a: 'Three `pop`s, one per local, which free their slots at run time.',
   },
   'after-block': {
     q: 'What does `{ let a = 1; } print a;` do in Drip?',
     a: 'Outside the block `a` is not a local, so it compiles to `load.global`, and the program stops with `undefined variable \'a\'`.',
   },
   'index-is-slot': {
-    q: 'In the compiler’s `locals` array, what does a local’s index tell you?',
+    q: 'In a single-pass compiler that keeps locals in a `locals` array in declaration order, what does a local’s index tell you?',
     a: 'Its stack slot: entry `i` is what will sit in slot `i` at run time.',
   },
-  'begin-scope-cost': {
-    q: 'What does `beginScope` emit?',
-    a: 'Nothing. It only adds 1 to the compiler’s `scopeDepth`.',
-  },
   'end-scope-pops': {
-    q: 'A block declared three locals. What does `endScope` do at its closing brace?',
+    q: 'In the companion Drip compiler, a block declared three locals, none captured. What does `endScope` do at its closing brace?',
     a: 'It lowers `scopeDepth`, then emits three `pop`s (one per local deeper than the new depth) and removes those entries from `locals`.',
   },
-  'compile-scope-what': {
-    q: 'What is **compile-time scope**?',
-    a: 'The compiler’s record of which locals exist at each point (the `locals` array with each entry’s depth, plus `scopeDepth`), mirroring the run-time stack.',
-  },
-  'depth-zero': {
-    q: 'At `scopeDepth` 0, what does `let x = 1;` make?',
-    a: 'A global, with `define.global`. Only declarations inside a block or a function become locals.',
-  },
   'search-backwards': {
-    q: 'Why does `resolveLocal` search the `locals` array from the end?',
+    q: 'Why does a compiler resolving locals search its `locals` array from the end?',
     a: 'The innermost declaration of a name was added last, so searching backwards finds it first: that is shadowing.',
   },
   'depth-minus-one': {
-    q: 'What does a depth of `-1` mean for an entry in `locals`?',
+    q: 'In the companion Drip compiler, what does a depth of `-1` mean for an entry in `locals`?',
     a: 'Declared but not ready: its initialiser is still being compiled. Finding it in a search is the error `cannot read \'x\' in its own initialiser`.',
-  },
-  'redeclare-vs-shadow': {
-    q: 'When is a second `let x` an error, and when is it shadowing?',
-    a: 'In the same block it is `\'x\' is already declared in this scope`; in an inner block it shadows the outer `x`. (At the top level it replaces the global.)',
   },
 };
 
@@ -104,7 +71,120 @@ print x;`,
 };
 
 export const exercises = {
+  resolve: {
+    title: 'resolveLocal',
+    prompt: 'Write `resolve(locals, name)`, the compiler\'s `resolveLocal`. `locals` is the compile-time array: each entry has a `name` (a string) and a `depth`. Return the **index** of the matching local, which is its stack slot, or `-1` if the name isn\'t a local. When a name appears more than once, the innermost declaration wins. If the local found has depth `-1`, `throw new Error(own(name))`.',
+    starter: `const own = (n) => "cannot read '" +
+  n + "' in its own initialiser";
+
+// locals: [{ name, depth }, ...]
+// Return the slot of name, or -1.
+function resolve(locals, name) {
+  // your code here
+}`,
+    solution: `const own = (n) => "cannot read '" +
+  n + "' in its own initialiser";
+
+// locals: [{ name, depth }, ...]
+// Return the slot of name, or -1.
+function resolve(locals, name) {
+  for (let i = locals.length - 1;
+       i >= 0; i--) {
+    if (locals[i].name === name) {
+      if (locals[i].depth === -1) {
+        throw new Error(own(name));
+      }
+      return i;
+    }
+  }
+  return -1;
+}`,
+    tests: `const L = (name, depth) =>
+  ({ name, depth });
+const base = [L('', 0), L('a', 1),
+  L('b', 2)];
+test('finds a slot', () => {
+  expect(resolve(base, 'b')).toBe(2);
+  expect(resolve(base, 'a')).toBe(1);
+});
+test('not a local', () => {
+  expect(resolve(base, 'zz')).toBe(-1);
+});
+test('innermost wins', () => {
+  const ls = [L('', 0), L('a', 1),
+    L('x', 2), L('a', 2)];
+  expect(resolve(ls, 'a')).toBe(3);
+});
+test('own initialiser', () => {
+  const ls = [L('', 0), L('a', 1),
+    L('a', -1)];
+  expect(() => resolve(ls, 'a'))
+    .toThrow();
+});
+test('a ready outer, unready other', () => {
+  const ls = [L('', 0), L('a', 1),
+    L('b', -1)];
+  expect(resolve(ls, 'a')).toBe(1);
+});`,
+    hints: [
+      'Which declaration should win when a name appears twice: the earlier one or the later one? That tells you which end of the array to start from.',
+      'Loop with `i` from `locals.length - 1` down to `0`. At the first entry whose `name` matches, stop.',
+      'At that first match, check `depth === -1` (throw if so), otherwise `return i`. If the loop ends with no match, `return -1`.',
+    ],
+    walkthrough: `**How to think about it.** The array is in declaration order, and an inner \`a\` is always declared after an outer one, so the declaration you want is the *last* one with that name. That means searching from the end and stopping at the first match. Only then do you look at the match's depth.
+
+**The solution, line by line.**
+
+- \`for (let i = locals.length - 1;\` starts at the last entry, the most recent declaration...
+- \`     i >= 0; i--) {\` ...and walks back to entry 0.
+- \`if (locals[i].name === name) {\` is true at the first (innermost) declaration of the name.
+- \`if (locals[i].depth === -1) {\` asks whether this local is still unready, which means we are inside its own initialiser, as in \`let a = a;\`.
+- \`throw new Error(own(name));\` reports that. The real compiler records the same message, \`cannot read 'a' in its own initialiser\`, as a compile error.
+- \`return i;\` otherwise: the index is the slot, and the compiler emits \`load.local i\`.
+- \`return -1;\` after the loop means no local has this name; the caller then tries upvalues and, finally, a global.
+
+In the last test \`b\` is unready, but nobody asked for \`b\`, so \`a\` resolves normally: the depth is only checked on the entry that matched.
+
+**Common wrong attempts.**
+
+- \`findIndex\` searches from the front, so it finds the outermost \`a\` and breaks shadowing.
+- Skipping unready locals (\`&& depth !== -1\`) makes \`let a = a;\` quietly read the *outer* \`a\`. That looks helpful, but it hides a likely mistake, and Drip's rule is that it is an error.`,
+    wrong: [
+      {
+        code: `const own = (n) => "cannot read '" +
+  n + "' in its own initialiser";
+
+// locals: [{ name, depth }, ...]
+// Return the slot of name, or -1.
+function resolve(locals, name) {
+  return locals.findIndex(
+    (l) => l.name === name);
+}`,
+        why: '`findIndex` searches from the *front*, so it finds the outermost `a` and breaks shadowing. It also never checks for depth `-1`.',
+      },
+      {
+        code: `const own = (n) => "cannot read '" +
+  n + "' in its own initialiser";
+
+// locals: [{ name, depth }, ...]
+// Return the slot of name, or -1.
+function resolve(locals, name) {
+  for (let i = locals.length - 1;
+       i >= 0; i--) {
+    const l = locals[i];
+    if (l.name === name &&
+        l.depth !== -1) {
+      return i;
+    }
+  }
+  return -1;
+}`,
+        why: 'Skipping the unready local makes `let a = a;` read the *outer* `a`. The innermost match must be reported as an error.',
+      },
+    ],
+  },
   'slot-step': {
+    optional: true,
     title: 'Three instructions on a stack',
     prompt: `Write \`step(stack, base, ins)\`, which runs one instruction on the array \`stack\` (its last element is the top). \`base\` is where the current function's slots begin. \`ins\` is one of:
 
@@ -221,172 +301,6 @@ function step(stack, base, ins) {
       },
     ],
   },
-  swap: {
-    optional: true,
-    lang: 'drip-vm',
-    title: 'Swap two locals',
-    prompt: 'Inside the block, swap the values of `a` and `b`, so the program prints `2` and then `1`. Use a third local to hold one value while you move the other.',
-    starter: `{
-  let a = 1;
-  let b = 2;
-  # swap a and b here
-  print a;
-  print b;
-}`,
-    solution: `{
-  let a = 1;
-  let b = 2;
-  let t = a;
-  a = b;
-  b = t;
-  print a;
-  print b;
-}`,
-    tests: `2
-1`,
-    hints: [
-      'If you write `a = b;` first, the old value of `a` is lost. Save it somewhere before you overwrite it.',
-      'Declare `let t = a;` (it gets slot 3), then `a = b;`, then `b = t;`.',
-    ],
-    walkthrough: `**How to think about it.** Each local is one slot, and a slot holds one value; writing a new value into a slot destroys the old one. So to swap, one value has to be parked in a third slot first.
-
-**The solution, line by line.**
-
-- \`let a = 1;\` and \`let b = 2;\` put 1 in slot 1 and 2 in slot 2.
-- \`let t = a;\` compiles to \`load.local 1\`: the copy of \`a\` lands in slot 3, which becomes \`t\`, with no other instruction.
-- \`a = b;\` is \`load.local 2\`, \`store.local 1\`, \`pop\`: slot 1 now holds 2.
-- \`b = t;\` is \`load.local 3\`, \`store.local 2\`, \`pop\`: slot 2 now holds 1.
-- The two \`print\`s read slots 1 and 2 and print \`2\` and \`1\`; at the closing brace the compiler emits three \`pop\`s, one for each of \`a\`, \`b\` and \`t\`.
-
-**Common wrong attempts.**
-
-- \`a = b; b = a;\` prints \`2\` and \`2\`: by the time \`b = a\` runs, slot 1 already holds 2, and the 1 is gone for good.`,
-    wrong: [
-      {
-        code: `{
-  let a = 1;
-  let b = 2;
-  a = b;
-  b = a;
-  print a;
-  print b;
-}`,
-        why: 'After `a = b;` the old value of `a` has been overwritten, so `b = a;` copies 2 back into `b`, and the program prints 2 twice.',
-      },
-    ],
-  },
-  resolve: {
-    title: 'resolveLocal',
-    prompt: 'Write `resolve(locals, name)`, the compiler\'s `resolveLocal`. `locals` is the compile-time array: each entry has a `name` (a string) and a `depth`. Return the **index** of the matching local, which is its stack slot, or `-1` if the name isn\'t a local. When a name appears more than once, the innermost declaration wins. If the local found has depth `-1`, `throw new Error(own(name))`.',
-    starter: `const own = (n) => "cannot read '" +
-  n + "' in its own initialiser";
-
-// locals: [{ name, depth }, ...]
-// Return the slot of name, or -1.
-function resolve(locals, name) {
-  // your code here
-}`,
-    solution: `const own = (n) => "cannot read '" +
-  n + "' in its own initialiser";
-
-// locals: [{ name, depth }, ...]
-// Return the slot of name, or -1.
-function resolve(locals, name) {
-  for (let i = locals.length - 1;
-       i >= 0; i--) {
-    if (locals[i].name === name) {
-      if (locals[i].depth === -1) {
-        throw new Error(own(name));
-      }
-      return i;
-    }
-  }
-  return -1;
-}`,
-    tests: `const L = (name, depth) =>
-  ({ name, depth });
-const base = [L('', 0), L('a', 1),
-  L('b', 2)];
-test('finds a slot', () => {
-  expect(resolve(base, 'b')).toBe(2);
-  expect(resolve(base, 'a')).toBe(1);
-});
-test('not a local', () => {
-  expect(resolve(base, 'zz')).toBe(-1);
-});
-test('innermost wins', () => {
-  const ls = [L('', 0), L('a', 1),
-    L('x', 2), L('a', 2)];
-  expect(resolve(ls, 'a')).toBe(3);
-});
-test('own initialiser', () => {
-  const ls = [L('', 0), L('a', 1),
-    L('a', -1)];
-  expect(() => resolve(ls, 'a'))
-    .toThrow();
-});
-test('a ready outer, unready other', () => {
-  const ls = [L('', 0), L('a', 1),
-    L('b', -1)];
-  expect(resolve(ls, 'a')).toBe(1);
-});`,
-    hints: [
-      'Which declaration should win when a name appears twice: the earlier one or the later one? That tells you which end of the array to start from.',
-      'Loop with `i` from `locals.length - 1` down to `0`. At the first entry whose `name` matches, stop.',
-      'At that first match, check `depth === -1` (throw if so), otherwise `return i`. If the loop ends with no match, `return -1`.',
-    ],
-    walkthrough: `**How to think about it.** The array is in declaration order, and an inner \`a\` is always declared after an outer one, so the declaration you want is the *last* one with that name. That means searching from the end and stopping at the first match. Only then do you look at the match's depth.
-
-**The solution, line by line.**
-
-- \`for (let i = locals.length - 1;\` starts at the last entry, the most recent declaration...
-- \`     i >= 0; i--) {\` ...and walks back to entry 0.
-- \`if (locals[i].name === name) {\` is true at the first (innermost) declaration of the name.
-- \`if (locals[i].depth === -1) {\` asks whether this local is still unready, which means we are inside its own initialiser, as in \`let a = a;\`.
-- \`throw new Error(own(name));\` reports that. The real compiler records the same message, \`cannot read 'a' in its own initialiser\`, as a compile error.
-- \`return i;\` otherwise: the index is the slot, and the compiler emits \`load.local i\`.
-- \`return -1;\` after the loop means no local has this name; the caller then tries upvalues and, finally, a global.
-
-In the last test \`b\` is unready, but nobody asked for \`b\`, so \`a\` resolves normally: the depth is only checked on the entry that matched.
-
-**Common wrong attempts.**
-
-- \`findIndex\` searches from the front, so it finds the outermost \`a\` and breaks shadowing.
-- Skipping unready locals (\`&& depth !== -1\`) makes \`let a = a;\` quietly read the *outer* \`a\`. That looks helpful, but it hides a likely mistake, and Drip's rule is that it is an error.`,
-    wrong: [
-      {
-        code: `const own = (n) => "cannot read '" +
-  n + "' in its own initialiser";
-
-// locals: [{ name, depth }, ...]
-// Return the slot of name, or -1.
-function resolve(locals, name) {
-  return locals.findIndex(
-    (l) => l.name === name);
-}`,
-        why: '`findIndex` searches from the *front*, so it finds the outermost `a` and breaks shadowing. It also never checks for depth `-1`.',
-      },
-      {
-        code: `const own = (n) => "cannot read '" +
-  n + "' in its own initialiser";
-
-// locals: [{ name, depth }, ...]
-// Return the slot of name, or -1.
-function resolve(locals, name) {
-  for (let i = locals.length - 1;
-       i >= 0; i--) {
-    const l = locals[i];
-    if (l.name === name &&
-        l.depth !== -1) {
-      return i;
-    }
-  }
-  return -1;
-}`,
-        why: 'Skipping the unready local makes `let a = a;` read the *outer* `a`. The innermost match must be reported as an error.',
-      },
-    ],
-  },
   'end-scope': {
     optional: true,
     title: 'endScope',
@@ -477,11 +391,65 @@ function endScope(c) {
       },
     ],
   },
+  swap: {
+    optional: true,
+    lang: 'drip-vm',
+    title: 'Swap two locals',
+    prompt: 'Inside the block, swap the values of `a` and `b`, so the program prints `2` and then `1`. Use a third local to hold one value while you move the other.',
+    starter: `{
+  let a = 1;
+  let b = 2;
+  # swap a and b here
+  print a;
+  print b;
+}`,
+    solution: `{
+  let a = 1;
+  let b = 2;
+  let t = a;
+  a = b;
+  b = t;
+  print a;
+  print b;
+}`,
+    tests: `2
+1`,
+    hints: [
+      'If you write `a = b;` first, the old value of `a` is lost. Save it somewhere before you overwrite it.',
+      'Declare `let t = a;` (it gets slot 3), then `a = b;`, then `b = t;`.',
+    ],
+    walkthrough: `**How to think about it.** Each local is one slot, and a slot holds one value; writing a new value into a slot destroys the old one. So to swap, one value has to be parked in a third slot first.
+
+**The solution, line by line.**
+
+- \`let a = 1;\` and \`let b = 2;\` put 1 in slot 1 and 2 in slot 2.
+- \`let t = a;\` compiles to \`load.local 1\`: the copy of \`a\` lands in slot 3, which becomes \`t\`, with no other instruction.
+- \`a = b;\` is \`load.local 2\`, \`store.local 1\`, \`pop\`: slot 1 now holds 2.
+- \`b = t;\` is \`load.local 3\`, \`store.local 2\`, \`pop\`: slot 2 now holds 1.
+- The two \`print\`s read slots 1 and 2 and print \`2\` and \`1\`; at the closing brace the compiler emits three \`pop\`s, one for each of \`a\`, \`b\` and \`t\`.
+
+**Common wrong attempts.**
+
+- \`a = b; b = a;\` prints \`2\` and \`2\`: by the time \`b = a\` runs, slot 1 already holds 2, and the 1 is gone for good.`,
+    wrong: [
+      {
+        code: `{
+  let a = 1;
+  let b = 2;
+  a = b;
+  b = a;
+  print a;
+  print b;
+}`,
+        why: 'After `a = b;` the old value of `a` has been overwritten, so `b = a;` copies 2 back into `b`, and the program prints 2 twice.',
+      },
+    ],
+  },
 };
 
 export const quiz = [
   {
-    q: `Which slot does \`b\` get?
+    q: `The companion Drip compiler keeps the running function in slot 0. Which slot does \`b\` get?
 \`\`\`
 {
   let a = 1;
@@ -509,7 +477,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does the compiler emit at the closing brace of a block that declared two locals?',
+    q: 'In the companion Drip compiler, what is emitted at the closing brace of a block that declared two locals, neither captured?',
     options: [
       {
         t: 'Nothing: the VM forgets the locals by itself',
@@ -531,57 +499,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is `store.local` followed by a `pop` when you write `a = 5;` on its own?',
-    options: [
-      {
-        t: '`store.local` leaves the value on the stack, and the statement does not need it',
-        correct: true,
-        why: 'An assignment is an expression with a value; a statement throws that value away.',
-      },
-      {
-        t: 'The `pop` frees `a`’s slot',
-        why: 'That only happens at the end of `a`’s block.',
-      },
-      {
-        t: 'The VM needs it to finish the instruction',
-        why: '`store.local` is complete on its own; the `pop` is a separate instruction.',
-      },
-      {
-        t: 'It is a mistake in the compiler',
-        why: 'It is on purpose: `print a = 5;` style uses need the value.',
-      },
-    ],
-  },
-  {
-    q: `What happens here?
-\`\`\`
-{
-  let a = 1;
-}
-print a;
-\`\`\``,
-    options: [
-      {
-        t: 'It prints 1',
-        why: '`a` died at the closing brace.',
-      },
-      {
-        t: 'A compile error',
-        why: 'The compiler does not complain: it treats `a` as a global.',
-      },
-      {
-        t: 'A runtime error: `undefined variable \'a\'`',
-        correct: true,
-        why: 'The name compiles to `load.global`, and there is no global called `a`.',
-      },
-      {
-        t: 'It prints `none`',
-        why: 'Nothing gives `a` the value none; the global lookup fails.',
-      },
-    ],
-  },
-  {
-    q: `Which slot does \`c\` get?
+    q: `The companion Drip compiler keeps the running function in slot 0. Which slot does \`c\` get?
 \`\`\`
 {
   let a = 1;
@@ -610,51 +528,7 @@ print a;
     ],
   },
   {
-    q: 'The `locals` array is `["", "a", "b"]` (with depths 0, 1, 2). Which slot does `b` live in at run time?',
-    options: [
-      {
-        t: 'Slot 1',
-        why: 'Slot 1 is `a`; the index in the array is the slot.',
-      },
-      {
-        t: 'It depends on the run',
-        why: 'The slot is fixed by the compiler, before anything runs.',
-      },
-      {
-        t: 'Slot 2',
-        correct: true,
-        why: 'A local’s index in the array is its stack slot.',
-      },
-      {
-        t: 'Slot 0',
-        why: 'Slot 0 holds the running function.',
-      },
-    ],
-  },
-  {
-    q: 'What does `beginScope` do?',
-    options: [
-      {
-        t: 'Adds 1 to `scopeDepth`, and nothing else',
-        correct: true,
-        why: 'Entering a block is free at run time.',
-      },
-      {
-        t: 'Emits an instruction that reserves slots',
-        why: 'Slots are filled by the initialisers’ values; nothing is reserved.',
-      },
-      {
-        t: 'Creates a new environment',
-        why: 'That was the tree-walker. The VM has no environments for locals.',
-      },
-      {
-        t: 'Clears the `locals` array',
-        why: 'The outer locals are still in scope inside the block.',
-      },
-    ],
-  },
-  {
-    q: 'In `{ let x = 1; { let x = 2; print x; } }`, what does `print x` compile to?',
+    q: 'The companion Drip compiler keeps the running function in slot 0. In `{ let x = 1; { let x = 2; print x; } }`, what does `print x` compile to?',
     options: [
       {
         t: '`load.local 1`',
@@ -676,7 +550,7 @@ print a;
     ],
   },
   {
-    q: 'Why is `let a = a + 1;` inside a block (with an outer `a`) a compile error?',
+    q: 'In Drip, why is `let a = a + 1;` inside a block (with an outer `a`) a compile error?',
     options: [
       {
         t: 'Locals cannot have the same name as an outer variable',
@@ -694,28 +568,6 @@ print a;
       {
         t: 'It is not an error: `a` means the outer variable',
         why: 'That might seem friendlier, but Drip reports `cannot read \'a\' in its own initialiser`.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these is a compile error?',
-    options: [
-      {
-        t: '`let a = 1; let a = 2;` at the top level',
-        why: 'At the top level a second `let` replaces the global.',
-      },
-      {
-        t: '`{ let a = 1; { let a = 2; } }`',
-        why: 'The second `a` is in an inner block: shadowing.',
-      },
-      {
-        t: '`{ let a = 1; let b = a; }`',
-        why: 'This is fine: `b`’s initialiser reads the ready `a`.',
-      },
-      {
-        t: '`{ let a = 1; let a = 2; }`',
-        correct: true,
-        why: 'Two in the same block: `\'a\' is already declared in this scope`.',
       },
     ],
   },

@@ -1,75 +1,38 @@
-// Chapter 61 cards: recall prompts, examples, exercises and quiz.
+// Chapter 78 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 78, 78.
 
 export const prompts = {
   'hash-what': {
     q: 'What does a hash function do, and what must always hold?',
     a: 'It turns a key into a number. Equal keys must always give equal hashes.',
   },
-  'fnv-steps': {
-    q: 'What two things does FNV-1a do for each character, and in which order?',
-    a: 'First it XORs the character code into the hash, then it multiplies by the FNV prime, keeping 32 bits.',
-  },
   'imul-why': {
-    q: 'Why does `hashString` use `Math.imul(h, 16777619)` rather than `h * 16777619`?',
+    q: 'In a JavaScript implementation of FNV-1a, why multiply with `Math.imul(h, 16777619)` rather than `h * 16777619`?',
     a: '`*` multiplies doubles, and a product past 2^53 loses its low bits. `Math.imul` wraps exactly at 32 bits.',
   },
-  'ushr-why': {
-    q: 'Why does `hashString` end with `h >>> 0`?',
-    a: 'XOR and `Math.imul` give signed 32-bit results, which can be negative. `>>> 0` reads the same bits as a number that never is.',
-  },
   'mask-index': {
-    q: 'How does an 8-slot table turn a hash into a slot?',
+    q: 'How does a hash table with 8 slots (a power of two) turn a hash into a slot?',
     a: '`hash & 7`: it keeps the low 3 bits, a number from 0 to 7.',
-  },
-  'power-of-two': {
-    q: 'Why does the companion table keep its capacity a power of two?',
-    a: 'So `hash & (capacity - 1)` picks a slot: keeping the low bits is the same as the remainder, and cheaper.',
   },
   'collision-what': {
     q: 'What is a collision, and can a good hash function prevent them?',
     a: 'Two different keys that want the same slot. No: with more possible keys than slots they must happen; a good hash only makes them rare.',
-  },
-  'hash-table-what': {
-    q: 'Why does a hash-table lookup not get slower as the table holds more keys?',
-    a: 'It does not search: the key’s hash says which slot to look in.',
-  },
-  'soa-table': {
-    q: 'The VM’s table is two parallel arrays, `keys` and `values`. What did that layout replace, and what did it save?',
-    a: 'An array of `{ key, value }` entry objects; it saves allocating, and following a pointer to, one object per slot.',
-  },
-  'linear-probe': {
-    q: 'With linear probing, where does a key go if its starting slot is taken?',
-    a: 'The next slot, then the next, wrapping round at the end, until a free one.',
   },
   'stop-empty': {
     q: 'When does a lookup in an open-addressing table decide the key is absent?',
     a: 'When it reaches a truly empty slot: no key, and not a tombstone.',
   },
   'tombstone-why': {
-    q: 'What would go wrong if `delete` simply emptied the slot?',
+    q: 'In an open-addressing hash table, what would go wrong if `delete` simply emptied the slot?',
     a: 'Keys that had probed past that slot would become unfindable: lookups would stop there too early.',
   },
-  'first-tomb': {
-    q: 'An insert passes a tombstone. Why can it not put the new key there straight away?',
-    a: 'The key might already be further along the path; only reaching a truly empty slot proves it is new. Then the first tombstone is reused.',
-  },
-  'count-tombstones': {
-    q: 'Why does the companion table’s `count` include tombstones?',
-    a: 'They still fill slots for probing. Without counting them, the table could run out of empty slots and `find` would loop for ever.',
-  },
   'load-limit': {
-    q: 'An 8-slot companion table has `count` 6. What happens on the next `set`?',
-    a: '6 + 1 > 8 × 0.75, so it first grows to 16 slots and re-inserts every live key.',
+    q: 'A hash table that grows before its load factor would pass 0.75 has 8 slots and a count of 6. What happens on the next insert?',
+    a: '6 + 1 > 8 × 0.75, so it first grows (doubling to 16 slots) and re-inserts every live key.',
   },
   'grow-reinsert': {
-    q: 'Why does growing re-insert every key instead of copying the arrays?',
+    q: 'When a power-of-two hash table grows, why must it re-insert every key instead of copying its arrays across?',
     a: 'The mask changes (7 to 15), so a key’s starting slot may change. Re-inserting also drops tombstones.',
-  },
-  'grow-before-find': {
-    q: 'Can a `set` that only overwrites an existing key make the companion table grow?',
-    a: 'Yes. The load check runs before `find`, so it does not yet know whether the key is new.',
   },
 };
 
@@ -94,300 +57,9 @@ for (const k of ks) {
 console.log(fnv('health'));
 console.log(fnv('healti'));`,
   },
-  'probe-run': {
-    title: 'Watch keys probe',
-    code: `function hash(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-const keys = new Array(8).fill(null);
-function put(k) {
-  let i = hash(k) & 7;
-  const path = [i];
-  while (keys[i] !== null) {
-    i = (i + 1) & 7;
-    path.push(i);
-  }
-  keys[i] = k;
-  console.log(k, 'probed', path);
-}
-for (const k of ['x', 'y', 'vy',
-  'mass', 'health']) put(k);
-console.log(keys);`,
-  },
 };
 
 export const exercises = {
-  fnv1a: {
-    title: 'FNV-1a from scratch',
-    prompt: 'Write `fnv1a(s)`: start at `2166136261`; for each character, XOR in `s.charCodeAt(i)` and then multiply by `16777619` with 32-bit wrap-around; return the result as a 32-bit number that is never negative. The tests use the official FNV-1a test vectors.',
-    starter: `function fnv1a(s) {
-  let h = 2166136261;
-  return h;
-}`,
-    solution: `function fnv1a(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}`,
-    tests: `test('the empty string is the offset basis', () => {
-  expect(fnv1a('')).toBe(0x811c9dc5);
-});
-test('"a"', () => {
-  expect(fnv1a('a')).toBe(0xe40c292c);
-});
-test('"foobar"', () => {
-  expect(fnv1a('foobar')).toBe(0xbf9cf968);
-});
-test('never negative', () => {
-  for (const s of ['x', 'vx', 'health']) {
-    expect(fnv1a(s) >= 0).toBe(true);
-  }
-});`,
-    hints: [
-      'The starter already returns the right answer for the empty string. What has to happen once for every character?',
-      'Loop over the characters. Inside the loop there are two steps, in this order: `h ^= s.charCodeAt(i)`, then the multiply.',
-      'Write the multiply as `h = Math.imul(h, 16777619);` (a plain `*` loses low bits), and finish with `return h >>> 0;` so the result is never negative.',
-    ],
-    walkthrough: `**How to think about it.** The test for the empty string already passes, because a string with no characters never changes the offset basis. Every other test needs the loop: one round per character, each round doing the same two things. Then there are two traps, both about JavaScript numbers: the multiply must wrap at 32 bits, and the result must be read as unsigned. If you write the loop with a plain \`*\` and no \`>>> 0\`, the tests tell you which trap you fell in: a negative number means the missing \`>>> 0\`; a wrong positive number for \`"foobar"\` means the \`*\`.
-
-**The solution, line by line.**
-
-\`\`\`js
-function fnv1a(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-\`\`\`
-
-- \`let h = 2166136261;\` is the offset basis, \`0x811c9dc5\`. It is \`let\`, not \`const\`, because every round changes it.
-- \`for (let i = 0; i < s.length; i++) {\` visits each character position once, from the first to the last.
-- \`h ^= s.charCodeAt(i);\` takes the character's code (\`"a"\` is 97) and XORs it into \`h\`. JavaScript's \`^\` works on 32-bit integers, so from here on \`h\` may be negative; that is fine, because the bits are what matter.
-- \`h = Math.imul(h, 16777619);\` multiplies as 32-bit integers and keeps the low 32 bits of the product, which is exactly the "mod 2^32" of the C original.
-- \`}\` ends the round; the next character mixes into the new \`h\`.
-- \`return h >>> 0;\` shifts by zero places with the *unsigned* shift, which changes no bits but reads them as a number from 0 to 2^32 − 1. \`0xe40c292c\` (the hash of \`"a"\`) is above 2^31, so without this it would come out as \`-468965076\`.
-
-**Common wrong attempts.**
-
-- Leaving out \`>>> 0\`: the bits are right but the number is signed, so \`"a"\` gives \`-468965076\` instead of \`3826002220\`.
-- \`h = (h * 16777619) >>> 0;\`: the product of two numbers this size can be about 2^56, and a double holds every whole number only up to 2^53, so the lowest bits are rounded before \`>>> 0\` ever sees them. Short strings can come out right by luck, but \`"foobar"\` gives \`249808880\`, not \`0xbf9cf968\`.
-- Multiplying before the XOR: that is the older FNV-1, a different hash, and \`"a"\` gives \`0x050c5d7e\`. The "a" in FNV-1a means "XOR first".`,
-    wrong: [
-      {
-        code: `function fnv1a(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h;
-}`,
-        why: 'Without `>>> 0` the result is a signed 32-bit number: `"a"` gives -468965076 instead of 3826002220.',
-      },
-      {
-        code: `function fnv1a(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = (h * 16777619) >>> 0;
-  }
-  return h;
-}`,
-        why: 'A double multiply rounds away the low bits of a big product. `"foobar"` gives 249808880, not 0xbf9cf968. Use `Math.imul`.',
-      },
-      {
-        code: `function fnv1a(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h = Math.imul(h, 16777619);
-    h ^= s.charCodeAt(i);
-  }
-  return h >>> 0;
-}`,
-        why: 'Multiplying before the XOR is FNV-1, not FNV-1a: `"a"` gives 0x050c5d7e.',
-      },
-    ],
-  },
-  tinyTable: {
-    optional: true,
-    title: 'A table with no collisions yet',
-    prompt: 'This 8-slot table keeps keys and values in two parallel arrays, `keys` and `vals`. Write `set(key, v)` and `get(key)`: the slot is `hash(key) & 7`. `get` returns `undefined` when the key is not there, **including** when a different key sits in its slot. The tests never store two keys that share a slot, so you do not need a collision rule yet.',
-    starter: `function hash(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-class Table {
-  constructor() {
-    this.keys = new Array(8).fill(null);
-    this.vals = new Array(8).fill(null);
-  }
-  set(key, v) {
-  }
-  get(key) {
-    return this.vals[hash(key) & 7];
-  }
-}`,
-    solution: `function hash(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-class Table {
-  constructor() {
-    this.keys = new Array(8).fill(null);
-    this.vals = new Array(8).fill(null);
-  }
-  set(key, v) {
-    const i = hash(key) & 7;
-    this.keys[i] = key;
-    this.vals[i] = v;
-  }
-  get(key) {
-    const i = hash(key) & 7;
-    if (this.keys[i] !== key) {
-      return undefined;
-    }
-    return this.vals[i];
-  }
-}`,
-    tests: `const fields = () => {
-  const t = new Table();
-  t.set('x', 10);
-  t.set('y', 20);
-  t.set('vx', 1);
-  return t;
-};
-test('get what was set', () => {
-  const t = fields();
-  expect(t.get('x')).toBe(10);
-  expect(t.get('vx')).toBe(1);
-});
-test('the key lands in its slot', () => {
-  const t = fields();
-  expect(t.keys[7]).toBe('x');
-  expect(t.vals[4]).toBe(20);
-});
-test('a missing key gives undefined', () => {
-  expect(fields().get('z')).toBe(undefined);
-});
-test('another key in the slot: undefined', () => {
-  // health also hashes to slot 7
-  const t = fields();
-  expect(t.get('health')).toBe(undefined);
-});`,
-    hints: [
-      'Both methods start the same way: work out the slot with `hash(key) & 7`.',
-      '`set` writes the key into `this.keys` and the value into `this.vals`, both at that slot.',
-      'In `get`, a slot can hold a *different* key (`health` and `x` share slot 7). Check `this.keys[i] !== key` and return `undefined` in that case, before reading `this.vals[i]`.',
-    ],
-    walkthrough: `**How to think about it.** A hash table without collisions is the simplest table there is: the slot is a sum you can always redo, so storing and finding both start by redoing it. The only subtle part is \`get\`: an occupied slot is not proof that *your* key is there, because another key may have the same slot. So the table must store the key itself, not only the value, and compare it.
-
-**The solution, line by line.**
-
-\`\`\`js
-set(key, v) {
-  const i = hash(key) & 7;
-  this.keys[i] = key;
-  this.vals[i] = v;
-}
-get(key) {
-  const i = hash(key) & 7;
-  if (this.keys[i] !== key) {
-    return undefined;
-  }
-  return this.vals[i];
-}
-\`\`\`
-
-- \`const i = hash(key) & 7;\` hashes the key and keeps its low three bits, a slot from 0 to 7. For \`"x"\` that is 7.
-- \`this.keys[i] = key;\` stores the key itself; \`get\` needs it later to check whose slot this is.
-- \`this.vals[i] = v;\` stores the value in the same position of the other array: slot \`i\` of one belongs with slot \`i\` of the other.
-- In \`get\`, the first line redoes the same sum, so it lands in the same slot.
-- \`if (this.keys[i] !== key)\` covers two cases at once: an empty slot (\`null\` is not your key) and a slot that holds another key.
-- \`return undefined;\` reports "not here".
-- \`return this.vals[i];\` is only reached when the key matched.
-
-**Common wrong attempts.**
-
-- Reading \`this.vals[hash(key) & 7]\` without checking the key, as the starter does: \`get('health')\` then returns \`10\`, the value of \`x\`, which shares slot 7. A wrong answer is worse than no answer.
-- Storing only the value in \`set\`: \`get\` then has no way to check the key, and every lookup in an empty slot compares against \`null\`.`,
-    wrong: [
-      {
-        code: `function hash(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-class Table {
-  constructor() {
-    this.keys = new Array(8).fill(null);
-    this.vals = new Array(8).fill(null);
-  }
-  set(key, v) {
-    const i = hash(key) & 7;
-    this.keys[i] = key;
-    this.vals[i] = v;
-  }
-  get(key) {
-    return this.vals[hash(key) & 7];
-  }
-}`,
-        why: '`get` never checks the key, so `get("health")` returns 10, the value of `x` in the same slot, and `get("z")` returns `null` instead of `undefined`.',
-      },
-      {
-        code: `function hash(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-class Table {
-  constructor() {
-    this.keys = new Array(8).fill(null);
-    this.vals = new Array(8).fill(null);
-  }
-  set(key, v) {
-    this.vals[hash(key) & 7] = v;
-  }
-  get(key) {
-    const i = hash(key) & 7;
-    if (this.keys[i] !== key) {
-      return undefined;
-    }
-    return this.vals[i];
-  }
-}`,
-        why: 'The key is never stored, so `keys[i] !== key` is always true and every `get` returns `undefined`.',
-      },
-    ],
-  },
   probeTable: {
     title: 'Linear probing with tombstones',
     prompt: 'This 8-slot table stores keys and values in two parallel arrays. `get` and `set` are done, but `find` ignores collisions and `delete` breaks probe paths. Write `find(key)`: start at `hash(key) & mask`, step to the next slot (wrapping) until you reach the key or a truly empty slot, and if you passed a tombstone on the way to an empty slot, return the first tombstone instead. Then make `delete` leave a tombstone: key `null`, value `TOMB`. The tests never fill the table, so no growing is needed.',
@@ -723,6 +395,273 @@ class Table {
   }
 }`,
         why: '`find` is right, but `delete` leaves a truly empty slot, which cuts the probe path: `health` can no longer be found.',
+      },
+    ],
+  },
+  fnv1a: {
+    optional: true,
+    title: 'FNV-1a from scratch',
+    prompt: 'Write `fnv1a(s)`: start at `2166136261`; for each character, XOR in `s.charCodeAt(i)` and then multiply by `16777619` with 32-bit wrap-around; return the result as a 32-bit number that is never negative. The tests use the official FNV-1a test vectors.',
+    starter: `function fnv1a(s) {
+  let h = 2166136261;
+  return h;
+}`,
+    solution: `function fnv1a(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}`,
+    tests: `test('the empty string is the offset basis', () => {
+  expect(fnv1a('')).toBe(0x811c9dc5);
+});
+test('"a"', () => {
+  expect(fnv1a('a')).toBe(0xe40c292c);
+});
+test('"foobar"', () => {
+  expect(fnv1a('foobar')).toBe(0xbf9cf968);
+});
+test('never negative', () => {
+  for (const s of ['x', 'vx', 'health']) {
+    expect(fnv1a(s) >= 0).toBe(true);
+  }
+});`,
+    hints: [
+      'The starter already returns the right answer for the empty string. What has to happen once for every character?',
+      'Loop over the characters. Inside the loop there are two steps, in this order: `h ^= s.charCodeAt(i)`, then the multiply.',
+      'Write the multiply as `h = Math.imul(h, 16777619);` (a plain `*` loses low bits), and finish with `return h >>> 0;` so the result is never negative.',
+    ],
+    walkthrough: `**How to think about it.** The test for the empty string already passes, because a string with no characters never changes the offset basis. Every other test needs the loop: one round per character, each round doing the same two things. Then there are two traps, both about JavaScript numbers: the multiply must wrap at 32 bits, and the result must be read as unsigned. If you write the loop with a plain \`*\` and no \`>>> 0\`, the tests tell you which trap you fell in: a negative number means the missing \`>>> 0\`; a wrong positive number for \`"foobar"\` means the \`*\`.
+
+**The solution, line by line.**
+
+\`\`\`js
+function fnv1a(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+\`\`\`
+
+- \`let h = 2166136261;\` is the offset basis, \`0x811c9dc5\`. It is \`let\`, not \`const\`, because every round changes it.
+- \`for (let i = 0; i < s.length; i++) {\` visits each character position once, from the first to the last.
+- \`h ^= s.charCodeAt(i);\` takes the character's code (\`"a"\` is 97) and XORs it into \`h\`. JavaScript's \`^\` works on 32-bit integers, so from here on \`h\` may be negative; that is fine, because the bits are what matter.
+- \`h = Math.imul(h, 16777619);\` multiplies as 32-bit integers and keeps the low 32 bits of the product, which is exactly the "mod 2^32" of the C original.
+- \`}\` ends the round; the next character mixes into the new \`h\`.
+- \`return h >>> 0;\` shifts by zero places with the *unsigned* shift, which changes no bits but reads them as a number from 0 to 2^32 − 1. \`0xe40c292c\` (the hash of \`"a"\`) is above 2^31, so without this it would come out as \`-468965076\`.
+
+**Common wrong attempts.**
+
+- Leaving out \`>>> 0\`: the bits are right but the number is signed, so \`"a"\` gives \`-468965076\` instead of \`3826002220\`.
+- \`h = (h * 16777619) >>> 0;\`: the product of two numbers this size can be about 2^56, and a double holds every whole number only up to 2^53, so the lowest bits are rounded before \`>>> 0\` ever sees them. Short strings can come out right by luck, but \`"foobar"\` gives \`249808880\`, not \`0xbf9cf968\`.
+- Multiplying before the XOR: that is the older FNV-1, a different hash, and \`"a"\` gives \`0x050c5d7e\`. The "a" in FNV-1a means "XOR first".`,
+    wrong: [
+      {
+        code: `function fnv1a(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h;
+}`,
+        why: 'Without `>>> 0` the result is a signed 32-bit number: `"a"` gives -468965076 instead of 3826002220.',
+      },
+      {
+        code: `function fnv1a(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h * 16777619) >>> 0;
+  }
+  return h;
+}`,
+        why: 'A double multiply rounds away the low bits of a big product. `"foobar"` gives 249808880, not 0xbf9cf968. Use `Math.imul`.',
+      },
+      {
+        code: `function fnv1a(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h = Math.imul(h, 16777619);
+    h ^= s.charCodeAt(i);
+  }
+  return h >>> 0;
+}`,
+        why: 'Multiplying before the XOR is FNV-1, not FNV-1a: `"a"` gives 0x050c5d7e.',
+      },
+    ],
+  },
+  tinyTable: {
+    optional: true,
+    title: 'A table with no collisions yet',
+    prompt: 'This 8-slot table keeps keys and values in two parallel arrays, `keys` and `vals`. Write `set(key, v)` and `get(key)`: the slot is `hash(key) & 7`. `get` returns `undefined` when the key is not there, **including** when a different key sits in its slot. The tests never store two keys that share a slot, so you do not need a collision rule yet.',
+    starter: `function hash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+class Table {
+  constructor() {
+    this.keys = new Array(8).fill(null);
+    this.vals = new Array(8).fill(null);
+  }
+  set(key, v) {
+  }
+  get(key) {
+    return this.vals[hash(key) & 7];
+  }
+}`,
+    solution: `function hash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+class Table {
+  constructor() {
+    this.keys = new Array(8).fill(null);
+    this.vals = new Array(8).fill(null);
+  }
+  set(key, v) {
+    const i = hash(key) & 7;
+    this.keys[i] = key;
+    this.vals[i] = v;
+  }
+  get(key) {
+    const i = hash(key) & 7;
+    if (this.keys[i] !== key) {
+      return undefined;
+    }
+    return this.vals[i];
+  }
+}`,
+    tests: `const fields = () => {
+  const t = new Table();
+  t.set('x', 10);
+  t.set('y', 20);
+  t.set('vx', 1);
+  return t;
+};
+test('get what was set', () => {
+  const t = fields();
+  expect(t.get('x')).toBe(10);
+  expect(t.get('vx')).toBe(1);
+});
+test('the key lands in its slot', () => {
+  const t = fields();
+  expect(t.keys[7]).toBe('x');
+  expect(t.vals[4]).toBe(20);
+});
+test('a missing key gives undefined', () => {
+  expect(fields().get('z')).toBe(undefined);
+});
+test('another key in the slot: undefined', () => {
+  // health also hashes to slot 7
+  const t = fields();
+  expect(t.get('health')).toBe(undefined);
+});`,
+    hints: [
+      'Both methods start the same way: work out the slot with `hash(key) & 7`.',
+      '`set` writes the key into `this.keys` and the value into `this.vals`, both at that slot.',
+      'In `get`, a slot can hold a *different* key (`health` and `x` share slot 7). Check `this.keys[i] !== key` and return `undefined` in that case, before reading `this.vals[i]`.',
+    ],
+    walkthrough: `**How to think about it.** A hash table without collisions is the simplest table there is: the slot is a sum you can always redo, so storing and finding both start by redoing it. The only subtle part is \`get\`: an occupied slot is not proof that *your* key is there, because another key may have the same slot. So the table must store the key itself, not only the value, and compare it.
+
+**The solution, line by line.**
+
+\`\`\`js
+set(key, v) {
+  const i = hash(key) & 7;
+  this.keys[i] = key;
+  this.vals[i] = v;
+}
+get(key) {
+  const i = hash(key) & 7;
+  if (this.keys[i] !== key) {
+    return undefined;
+  }
+  return this.vals[i];
+}
+\`\`\`
+
+- \`const i = hash(key) & 7;\` hashes the key and keeps its low three bits, a slot from 0 to 7. For \`"x"\` that is 7.
+- \`this.keys[i] = key;\` stores the key itself; \`get\` needs it later to check whose slot this is.
+- \`this.vals[i] = v;\` stores the value in the same position of the other array: slot \`i\` of one belongs with slot \`i\` of the other.
+- In \`get\`, the first line redoes the same sum, so it lands in the same slot.
+- \`if (this.keys[i] !== key)\` covers two cases at once: an empty slot (\`null\` is not your key) and a slot that holds another key.
+- \`return undefined;\` reports "not here".
+- \`return this.vals[i];\` is only reached when the key matched.
+
+**Common wrong attempts.**
+
+- Reading \`this.vals[hash(key) & 7]\` without checking the key, as the starter does: \`get('health')\` then returns \`10\`, the value of \`x\`, which shares slot 7. A wrong answer is worse than no answer.
+- Storing only the value in \`set\`: \`get\` then has no way to check the key, and every lookup in an empty slot compares against \`null\`.`,
+    wrong: [
+      {
+        code: `function hash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+class Table {
+  constructor() {
+    this.keys = new Array(8).fill(null);
+    this.vals = new Array(8).fill(null);
+  }
+  set(key, v) {
+    const i = hash(key) & 7;
+    this.keys[i] = key;
+    this.vals[i] = v;
+  }
+  get(key) {
+    return this.vals[hash(key) & 7];
+  }
+}`,
+        why: '`get` never checks the key, so `get("health")` returns 10, the value of `x` in the same slot, and `get("z")` returns `null` instead of `undefined`.',
+      },
+      {
+        code: `function hash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+class Table {
+  constructor() {
+    this.keys = new Array(8).fill(null);
+    this.vals = new Array(8).fill(null);
+  }
+  set(key, v) {
+    this.vals[hash(key) & 7] = v;
+  }
+  get(key) {
+    const i = hash(key) & 7;
+    if (this.keys[i] !== key) {
+      return undefined;
+    }
+    return this.vals[i];
+  }
+}`,
+        why: 'The key is never stored, so `keys[i] !== key` is always true and every `get` returns `undefined`.',
       },
     ],
   },
@@ -1117,29 +1056,7 @@ class Table {
 
 export const quiz = [
   {
-    q: 'In JavaScript, why does FNV-1a need `Math.imul` for its multiply?',
-    options: [
-      {
-        t: '`*` is slower',
-        why: 'Speed is not the issue: `*` gives the wrong answer for big products.',
-      },
-      {
-        t: '`*` multiplies doubles, so a product beyond 2^53 loses low bits; `Math.imul` does exact 32-bit wrap-around',
-        correct: true,
-        why: 'The hash depends on exactly those low bits; for `"x"` a plain `*` is already off by one.',
-      },
-      {
-        t: '`*` cannot multiply by a prime',
-        why: 'It can multiply anything; the trouble is precision.',
-      },
-      {
-        t: '`Math.imul` makes the result unsigned',
-        why: 'It returns a signed 32-bit result. `>>> 0` makes it unsigned.',
-      },
-    ],
-  },
-  {
-    q: 'A table has 16 slots. Which slot does a key with hash 37 go to?',
+    q: 'A hash table has 16 slots and picks a slot with `hash & 15`. Which slot does a key with hash 37 go to?',
     options: [
       {
         t: '37',
@@ -1161,73 +1078,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which property must every hash function have?',
-    options: [
-      {
-        t: 'Different keys always get different hashes',
-        why: 'Impossible: there are more strings than 32-bit numbers, so some must share.',
-      },
-      {
-        t: 'Equal keys always get equal hashes',
-        correct: true,
-        why: 'Otherwise a lookup could compute a different slot from the one the key was stored in.',
-      },
-      {
-        t: 'The hash can be turned back into the key',
-        why: 'Hash functions do not need to be reversible, and FNV-1a is not.',
-      },
-      {
-        t: 'Similar keys get similar hashes',
-        why: 'The opposite: a good hash spreads similar keys apart, like `health` and `healti`.',
-      },
-    ],
-  },
-  {
-    q: 'An 8-slot table holds `x` in slot 7. A lookup for `health`, which also hashes to slot 7, finds `x` there. What must a correct `get` conclude, if it has no collision rule?',
-    options: [
-      {
-        t: 'That `health` has the value of `x`',
-        why: 'A different key in the slot says nothing about `health`; returning its value would be a wrong answer.',
-      },
-      {
-        t: 'That the hash function is broken',
-        why: 'Collisions are normal; no hash function avoids them.',
-      },
-      {
-        t: 'That `health` is not in that slot, which is why the table stores keys as well as values',
-        correct: true,
-        why: 'Comparing the stored key is how a table tells its own key from a collision.',
-      },
-      {
-        t: 'That the table is full',
-        why: 'Seven slots are empty. A collision is about one slot, not the whole table.',
-      },
-    ],
-  },
-  {
-    q: 'What did changing `table.ts` from entry objects to parallel `keys` and `values` arrays remove?',
-    options: [
-      {
-        t: 'The need for a hash function',
-        why: 'Both layouts hash keys the same way.',
-      },
-      {
-        t: 'Collisions',
-        why: 'Layout does not change which slots keys want.',
-      },
-      {
-        t: 'A separate heap object per slot, so a lookup no longer follows a pointer to each entry',
-        correct: true,
-        why: 'The struct of arrays, applied to the VM’s own table.',
-      },
-      {
-        t: 'The `count` field',
-        why: '`count` is still there, counting entries.',
-      },
-    ],
-  },
-  {
-    q: 'In an 8-slot table, `x` is in slot 7, `vy` in 0, `mass` in 1. Where does `health` go if its hash & 7 is 7?',
+    q: 'An 8-slot table with linear probing holds `x` in slot 7, `vy` in 0 and `mass` in 1. Where does a new key `health` go if its hash & 7 is 7?',
     options: [
       {
         t: 'Slot 2',
@@ -1249,7 +1100,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `delete` leave a tombstone instead of an empty slot?',
+    q: 'In an open-addressing table, why does `delete` leave a tombstone instead of an empty slot?',
     options: [
       {
         t: 'So the deleted value can be restored later',
@@ -1271,29 +1122,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'An insert of a new key passes a tombstone in slot 1, then other keys, then an empty slot 3. Where does the key go?',
-    options: [
-      {
-        t: 'Slot 3, the empty one',
-        why: 'That works, but wastes the tombstone; the companion reuses it.',
-      },
-      {
-        t: 'Slot 1, the first tombstone it passed',
-        correct: true,
-        why: 'Reaching slot 3 proved the key is new, and reusing slot 1 keeps the path short.',
-      },
-      {
-        t: 'It stops at slot 1 as soon as it sees the tombstone',
-        why: 'It cannot know yet that the key is not further along.',
-      },
-      {
-        t: 'The table grows first',
-        why: 'Only if the load check says so; reusing a tombstone does not add to `count`.',
-      },
-    ],
-  },
-  {
-    q: 'The companion table has 8 slots and `count` is 6. What happens on the next `set` of a new key?',
+    q: 'A table that grows before its load factor would pass 0.75 has 8 slots and a count of 6. What happens on the next `set` of a new key?',
     options: [
       {
         t: 'It goes into the next free slot as usual',
@@ -1311,28 +1140,6 @@ export const quiz = [
         t: 'The table grows to 16 slots and re-inserts every live key first',
         correct: true,
         why: '`count + 1 > capacity * 0.75`, so it doubles, and the new mask can change every starting slot.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the companion table count tombstones in `count`?',
-    options: [
-      {
-        t: 'So `count` tells you how many keys you can look up',
-        why: 'That would be live entries only; tombstones hold no key.',
-      },
-      {
-        t: 'Because tombstones fill slots as far as probing goes; without counting them, the table could lose every empty slot and `find` would never stop',
-        correct: true,
-        why: 'The load limit must see every slot that is not truly empty.',
-      },
-      {
-        t: 'Because tombstones are copied when the table grows',
-        why: 'They are dropped when it grows.',
-      },
-      {
-        t: 'It does not count them',
-        why: 'It does: the field’s comment says “live entries + tombstones”.',
       },
     ],
   },

@@ -23,7 +23,7 @@ const STATES: S[] = [
   { op: 'set vx, vy and mass', n: 5, hash: 'slots 3, 0 and 1', note: 'vx goes to slot 3, vy to 0 and mass to 1. Five keys, five different slots: so far, every key has had its slot to itself.' },
   { op: 'get("vx")', n: 5, look: 3, hash: 'hash 1296684707 & 7 = 3', note: 'A lookup does the same sum: hash "vx", keep 3 bits, look in slot 3. The key there is vx, so the answer is values[3], which is 1. One look, however many keys the table holds.' },
   { op: 'get("z")', n: 5, look: 5, hash: 'hash 4278997933 & 7 = 5', note: 'z would live in slot 5, and slot 5 is empty. So z is not in the table, and the lookup can say so after one look, without checking the other keys.' },
-  { op: 'set("health", 100)', n: 5, look: 7, bad: true, hash: 'hash 1805184399 & 7 = 7', note: 'health also wants slot 7, and x is already there. Two keys, one slot: a collision. The table needs a rule for this, and the next chapter gives it one.' },
+  { op: 'set("health", 100)', n: 5, look: 7, bad: true, hash: 'hash 1805184399 & 7 = 7', note: 'health also wants slot 7, and x is already there. Two keys, one slot: a collision. The table needs a rule for this: open addressing.' },
 ];
 
 export default function PlaceSteps() {

@@ -1,71 +1,38 @@
-// Chapter 62 cards: recall prompts, examples, exercises and quiz.
+// Chapter 82 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 82, 82.
 
 export const prompts = {
-  'own-code': {
-    q: 'Where does the compiler put the bytecode of a function body?',
-    a: 'In the function’s own bytecode, compiled by a fresh nested function compiler; the finished function becomes a constant of the code around it.',
-  },
   'params-slots': {
-    q: 'In `fn add(a, b)`, which slots do `a` and `b` get?',
+    q: 'In the companion Drip compiler, which reserves slot 0 of every function, which slots do the parameters `a` and `b` of `fn add(a, b)` get?',
     a: 'Slots 1 and 2: parameters are declared as the function’s first locals, after the reserved slot 0.',
   },
   'frame-what': {
-    q: 'What three things does a call frame record?',
+    q: 'What three things does a call frame in the companion Drip VM record?',
     a: 'The function being run (`closure`), its own instruction pointer (`ip`), and where its slots begin on the stack (`slots`).',
   },
   'two-checks': {
-    q: 'What two checks does `call` make before pushing a frame?',
+    q: 'In the companion Drip VM, what two checks does `call` make before pushing a frame?',
     a: 'That the number of arguments equals the function’s arity, and that there are fewer than `FRAMES_MAX` (256) frames already.',
   },
-  'reload-why': {
-    q: 'Why does the dispatch loop call `reload()` after a call or a return?',
-    a: 'It keeps the current frame, its code and its constants in local variables; they must be refreshed from the new top frame.',
-  },
   'native-no-frame': {
-    q: 'Does calling a native function like `len` push a frame?',
+    q: 'In the companion Drip VM, does calling a native function such as `len` push a call frame?',
     a: 'No. `callValue` runs it directly and pushes its result in place of the callee and arguments.',
   },
-  'trace-ip': {
-    q: 'In a stack trace, why does the VM look up the line of `ip - 1`?',
-    a: 'Each frame’s `ip` has already moved past the instruction it was running (for a caller, its `call`), so `ip - 1` is inside that instruction.',
-  },
-  'overflow-limit': {
-    q: 'Who decides when the VM reports `stack overflow`?',
-    a: 'The VM itself: `call` refuses a new frame once there are `FRAMES_MAX` (256) frames, the script included.',
-  },
   'no-copy': {
-    q: 'Why does a VM call not need to copy its arguments anywhere?',
+    q: 'In a stack VM whose frames are windows onto one value stack, why does a call not need to copy its arguments anywhere?',
     a: 'The caller pushed the callee and then the arguments, which is exactly the layout of the callee’s slots 0, 1, 2...; the new frame’s window simply starts at the callee.',
   },
-  'fp-what': {
-    q: 'What is a frame’s **frame pointer**?',
-    a: 'The stack index of its slot 0 (`slots` in Drip’s VM); slot `i` of that call is at `stack[slots + i]`.',
-  },
   'fp-formula': {
-    q: 'At `call n`, what is the new frame’s `slots`?',
+    q: 'In the companion Drip VM, what is the new frame’s `slots` at `call n`?',
     a: '`sp - n - 1`: the stack top, minus the arguments, minus one more for the callee.',
   },
-  'same-bytes': {
-    q: 'How can one `load.local 1` in `fib` read a different `n` in every call?',
-    a: 'Each call reads it through its own frame pointer: stack index `slots + 1` is different for each frame.',
-  },
   'return-sp': {
-    q: 'How does `return` remove the callee, its arguments and its locals?',
+    q: 'In the companion Drip VM, how does `return` remove the callee, its arguments and its locals from the stack?',
     a: 'It sets `sp` back to the frame’s `slots` in one assignment, then pushes the result there, where the callee was.',
   },
   'slot-zero-method': {
-    q: 'What is in slot 0 when a method runs?',
+    q: 'In the companion Drip VM, what is in slot 0 when a method runs?',
     a: 'The receiver, which the compiler calls `self`; the VM puts it there in place of the callee before pushing the frame.',
-  },
-  'stack-size': {
-    q: 'How big is the VM’s value stack, and why that size?',
-    a: '`FRAMES_MAX * 256`: 256 frames of at most 256 slots each, the limits set by the depth check and the one-byte slot operands.',
-  },
-  'bench-honest': {
-    q: 'In this book’s benchmark run, did the VM make every program faster than the tree-walker?',
-    a: 'No: call-heavy programs gained up to about 1.3 times, while allocation-heavy ones (instantiation, trees) were slower.',
   },
 };
 
@@ -325,67 +292,8 @@ function ret(vm) {
       },
     ],
   },
-  'deep-sum': {
-    optional: true,
-    lang: 'drip-vm',
-    title: 'Too deep for 256 frames',
-    prompt: 'The starter adds up 1 to `n` recursively. It works for 10, but `sum(1000)` needs a thousand frames and the VM stops with `stack overflow`. Rewrite `sum` with a `while` loop so the program prints `55` and then `500500`.',
-    starter: `fn sum(n) {
-  if n == 0 { return 0; }
-  return n + sum(n - 1);
-}
-
-print sum(10);
-print sum(1000);`,
-    solution: `fn sum(n) {
-  let t = 0;
-  while n > 0 {
-    t = t + n;
-    n = n - 1;
-  }
-  return t;
-}
-
-print sum(10);
-print sum(1000);`,
-    tests: `55
-500500`,
-    hints: [
-      'The recursion needs one frame per number. A loop inside one call needs only one frame, however big `n` is. Keep a running total in a local: `let t = 0;`.',
-      'Loop while `n > 0`, adding `n` to `t` and then counting `n` down. Parameters are ordinary locals, so you may assign to `n`.',
-    ],
-    walkthrough: `**How to think about it.** Each recursive call pushes a frame, and the VM allows 256 in all, so \`sum(1000)\` can never finish. A loop does all its work inside one call, so it needs one frame whatever \`n\` is.
-
-**The solution, line by line.**
-
-- \`fn sum(n) {\` gives \`n\` slot 1.
-- \`let t = 0;\` puts the running total in slot 2.
-- \`while n > 0 {\` compiles to a test, a \`jump.unless\` out, the body and a \`loop\` back, all inside \`sum\`'s own bytecode.
-- \`t = t + n;\` adds the current number: \`load.local 2\`, \`load.local 1\`, \`add\`, \`store.local 2\`, \`pop\`.
-- \`n = n - 1;\` counts down. Assigning to a parameter is fine: it is just slot 1.
-- \`return t;\` returns the total, and the frame is popped.
-
-**Common wrong attempts.**
-
-- Counting \`n\` down *before* adding it makes every term one too small, so \`sum(10)\` is \`45\`. (Some languages turn certain recursive calls into jumps so they need no new frame; Drip does not.)`,
-    wrong: [
-      {
-        code: `fn sum(n) {
-  let t = 0;
-  while n > 0 {
-    n = n - 1;
-    t = t + n;
-  }
-  return t;
-}
-
-print sum(10);
-print sum(1000);`,
-        why: 'The order is swapped: `n` is counted down *before* it is added, so every term is one too small (`45` instead of `55`). Add first, then count down.',
-      },
-    ],
-  },
   window: {
+    optional: true,
     title: 'A window for every call',
     prompt: `Write two pieces of the VM's frame-pointer work. The callee and \`argc\` arguments are on top of \`vm.stack\` (its \`length\` is \`sp\`).
 
@@ -553,11 +461,71 @@ function local(vm, i) {
       },
     ],
   },
+  'deep-sum': {
+    optional: true,
+    lang: 'drip-vm',
+    title: 'Too deep for 256 frames',
+    prompt: 'The starter adds up 1 to `n` recursively. It works for 10, but `sum(1000)` needs a thousand frames and the VM stops with `stack overflow`. Rewrite `sum` with a `while` loop so the program prints `55` and then `500500`.',
+    starter: `fn sum(n) {
+  if n == 0 { return 0; }
+  return n + sum(n - 1);
+}
+
+print sum(10);
+print sum(1000);`,
+    solution: `fn sum(n) {
+  let t = 0;
+  while n > 0 {
+    t = t + n;
+    n = n - 1;
+  }
+  return t;
+}
+
+print sum(10);
+print sum(1000);`,
+    tests: `55
+500500`,
+    hints: [
+      'The recursion needs one frame per number. A loop inside one call needs only one frame, however big `n` is. Keep a running total in a local: `let t = 0;`.',
+      'Loop while `n > 0`, adding `n` to `t` and then counting `n` down. Parameters are ordinary locals, so you may assign to `n`.',
+    ],
+    walkthrough: `**How to think about it.** Each recursive call pushes a frame, and the VM allows 256 in all, so \`sum(1000)\` can never finish. A loop does all its work inside one call, so it needs one frame whatever \`n\` is.
+
+**The solution, line by line.**
+
+- \`fn sum(n) {\` gives \`n\` slot 1.
+- \`let t = 0;\` puts the running total in slot 2.
+- \`while n > 0 {\` compiles to a test, a \`jump.unless\` out, the body and a \`loop\` back, all inside \`sum\`'s own bytecode.
+- \`t = t + n;\` adds the current number: \`load.local 2\`, \`load.local 1\`, \`add\`, \`store.local 2\`, \`pop\`.
+- \`n = n - 1;\` counts down. Assigning to a parameter is fine: it is just slot 1.
+- \`return t;\` returns the total, and the frame is popped.
+
+**Common wrong attempts.**
+
+- Counting \`n\` down *before* adding it makes every term one too small, so \`sum(10)\` is \`45\`. (Some languages turn certain recursive calls into jumps so they need no new frame; Drip does not.)`,
+    wrong: [
+      {
+        code: `fn sum(n) {
+  let t = 0;
+  while n > 0 {
+    n = n - 1;
+    t = t + n;
+  }
+  return t;
+}
+
+print sum(10);
+print sum(1000);`,
+        why: 'The order is swapped: `n` is counted down *before* it is added, so every term is one too small (`45` instead of `55`). Add first, then count down.',
+      },
+    ],
+  },
 };
 
 export const quiz = [
   {
-    q: 'Just before `call 2` runs, what are the top three values on the stack?',
+    q: 'In the companion Drip VM, just before `call 2` runs, what are the top three values on the stack?',
     options: [
       {
         t: 'The two arguments and the result slot',
@@ -579,7 +547,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `call` do when the arity is right and there is room?',
+    q: 'In the companion Drip VM, what does `call` do for a Drip function when the arity is right and there is room?',
     options: [
       {
         t: 'Runs the function body with a TypeScript call',
@@ -601,73 +569,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `return` leave on the stack, in the caller’s part of it?',
-    options: [
-      {
-        t: 'The callee, its arguments and the result',
-        why: 'Return cuts the stack back to the frame’s slots, removing all of those.',
-      },
-      {
-        t: 'Nothing: the result goes into a special register',
-        why: 'The result is pushed on the stack.',
-      },
-      {
-        t: 'The arguments, so the caller can reuse them',
-        why: 'They belong to the finished call and are discarded.',
-      },
-      {
-        t: 'Just the result, where the callee used to be',
-        correct: true,
-        why: 'To the caller the whole call has turned into one value.',
-      },
-    ],
-  },
-  {
-    q: 'Which call pushes no frame?',
-    options: [
-      {
-        t: '`len(xs)`',
-        correct: true,
-        why: 'A native function runs at once inside `callValue`, and its result is pushed directly.',
-      },
-      {
-        t: '`f()` where `f` takes no parameters',
-        why: 'Every Drip function call pushes a frame, even with no arguments.',
-      },
-      {
-        t: 'A recursive call',
-        why: 'Each recursive call pushes its own frame; that is why deep recursion overflows.',
-      },
-      {
-        t: 'A call that returns `none`',
-        why: 'The frame is pushed before anyone knows what it will return.',
-      },
-    ],
-  },
-  {
-    q: 'A function calls itself with no base case. When does the VM stop it?',
-    options: [
-      {
-        t: 'When the host’s (TypeScript’s) stack runs out',
-        why: 'The VM does not use the host’s stack for Drip calls.',
-      },
-      {
-        t: 'Never: the VM keeps going until memory runs out',
-        why: '`call` checks the depth every time.',
-      },
-      {
-        t: 'When a new call would make more than 256 frames',
-        correct: true,
-        why: '`call` throws `stack overflow` once there are already `FRAMES_MAX` frames.',
-      },
-      {
-        t: 'After 64 calls',
-        why: 'Drip’s limit is 256 frames, the script included.',
-      },
-    ],
-  },
-  {
-    q: 'The stack is `script, fn f, 10, 20` when `call 2` runs. What is the new frame’s `slots`?',
+    q: 'In the companion Drip VM, the stack is `script, fn f, 10, 20` when `call 2` runs. What is the new frame’s `slots`?',
     options: [
       {
         t: '2',
@@ -689,7 +591,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A frame has `slots` 5. Which stack index does `load.local 2` read in it?',
+    q: 'In the companion Drip VM, a frame has `slots` 5. Which stack index does `load.local 2` read in it?',
     options: [
       {
         t: '2',
@@ -707,72 +609,6 @@ export const quiz = [
       {
         t: 'It depends on how many arguments there were',
         why: 'The arguments decided `slots` at the call; after that the address is always `slots + 2`.',
-      },
-    ],
-  },
-  {
-    q: 'A frame with `slots` 3 returns the value 9. What does the stack look like afterwards?',
-    options: [
-      {
-        t: 'Indexes 0 to 2 as before, and 9 at index 3',
-        correct: true,
-        why: '`sp` is set back to 3, then the result is pushed there, where the callee was.',
-      },
-      {
-        t: 'Unchanged, with 9 on top',
-        why: 'The callee, its arguments and its locals are removed.',
-      },
-      {
-        t: 'Only 9, at index 0',
-        why: 'Only the finished call’s part of the stack is removed; the caller’s values stay.',
-      },
-      {
-        t: 'Indexes 0 to 3 as before, and 9 at index 4',
-        why: 'Index 3 was the callee, which is removed; the result takes its place.',
-      },
-    ],
-  },
-  {
-    q: 'Inside a method, what does `load.local 0` push?',
-    options: [
-      {
-        t: 'The method itself',
-        why: 'For a plain function slot 0 holds the function, but for a method the VM puts the receiver there.',
-      },
-      {
-        t: 'The class',
-        why: 'The class is not on the method’s stack window.',
-      },
-      {
-        t: '`none`',
-        why: 'Slot 0 is always filled before the frame starts.',
-      },
-      {
-        t: 'The receiver, `self`',
-        correct: true,
-        why: 'The compiler names slot 0 `self` in methods, and the VM stores the receiver there.',
-      },
-    ],
-  },
-  {
-    q: 'In this book’s benchmark run, how did the VM do on `instantiation`, a program that creates many objects?',
-    options: [
-      {
-        t: 'Much faster, because calls are cheaper',
-        why: 'Cheaper calls did not make up for the extra cost of each object.',
-      },
-      {
-        t: 'Slower than the tree-walker',
-        correct: true,
-        why: 'Its speed-up was below 1×: the VM runs its own heap and garbage collector on top of JavaScript’s, so each object costs more.',
-      },
-      {
-        t: 'Exactly the same speed',
-        why: 'It was measurably slower.',
-      },
-      {
-        t: 'It was not measured',
-        why: 'It is one of the ten programs in the committed results.',
       },
     ],
   },

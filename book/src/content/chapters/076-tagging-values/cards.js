@@ -1,4 +1,4 @@
-// Chapter 172 cards: recall prompts, examples, exercises and quiz.
+// Chapter 76 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -19,11 +19,11 @@ export const prompts = {
     a: '`false`: the tags differ (none and bool), so the values are unequal. It is not an error.',
   },
   'negate-check': {
-    q: 'What exactly does the VM report for `print -"a";`?',
+    q: 'What does the companion Drip VM report for `print -"a";`?',
     a: '`runtime error: cannot negate a string`, because `neg` checks the tag before touching the payload.',
   },
   'ts-value': {
-    q: 'The companion VM’s `Value` is `null | boolean | number | Obj`. Where is the tag?',
+    q: 'A VM written in JavaScript stores its values as `null | boolean | number | Obj`. Where is the type tag?',
     a: 'In JavaScript itself: every JS value already knows its type, and the VM asks with `typeof` (and `=== null` for none).',
   },
   'boxing-cost': {
@@ -31,8 +31,8 @@ export const prompts = {
     a: 'Every result, even `1 + 2`, would allocate a new object, and every read would follow a reference to reach the payload.',
   },
   'minus-zero': {
-    q: 'Why does `formatNumber` check for `-0` before calling `String`?',
-    a: '`String(-0)` is `"0"`, but Drip prints negative zero as `-0`.',
+    q: 'Why can a Drip VM written in JavaScript not print a number with plain `String(x)`?',
+    a: '`String(-0)` is `"0"` and `String(NaN)` is `"NaN"`, but Drip prints `-0` and `nan`, so those two cases are checked first.',
   },
 };
 

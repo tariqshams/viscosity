@@ -23,7 +23,7 @@ type S = { line: number | null; objs: O[]; fresh: number; s?: string; dead?: str
 const STATES: S[] = [
   { line: null, objs: START, fresh: 1, note: 'Before any of your code, the VM makes eleven objects: the string "init", and for each of clock, len, push, pop and str, its name as a string and the native function itself. Each went in at the head of the list.' },
   { line: null, objs: COMPILED, fresh: 4, note: 'Compiling makes four more: the function that holds the script’s bytecode, then the strings "x", "s" and "a", in the order the compiler meets them. Literals and names become objects at compile time.' },
-  { line: 0, objs: RUN, fresh: 1, s: 'x', note: 'Running starts by wrapping the script in a closure (the chapter on upvalues explains why). let s = "x" makes nothing new: the global s refers to the "x" object the compiler already made.' },
+  { line: 0, objs: RUN, fresh: 1, s: 'x', note: 'Running starts by wrapping the script in a closure (Upvalues: capturing and closing explains why). let s = "x" makes nothing new: the global s refers to the "x" object the compiler already made.' },
   { line: 2, objs: [xa, ...RUN], fresh: 1, s: 'xa', note: 's + "a" is add on two strings. The characters are joined, and a brand-new object, "xa", is linked in at the head. s now refers to it.' },
   { line: 2, objs: [xaa, xa, ...RUN], fresh: 1, s: 'xaa', note: 'Second time round: another new object, "xaa". Nothing refers to "xa" any more, but it stays on the list.' },
   { line: 2, objs: [xaaa, xaa, xa, ...RUN], fresh: 1, s: 'xaaa', note: 'Third time: "xaaa". Every join is one allocation, linked in at the head in the same small, fixed amount of work.' },
