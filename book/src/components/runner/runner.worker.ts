@@ -1,7 +1,7 @@
 // Runs reader code off the main thread. The page kills this worker if it
 // takes too long (an accidental infinite loop can't freeze the book).
 import { formatArgs } from '../../lib/format.js';
-import { runWithTests } from '../../lib/minitest.js';
+import { runWithTestsAsync } from '../../lib/minitest.js';
 
 type Msg = { code: string; tests?: string; lang: 'js' | 'ts' | 'drip' | 'drip-vm' | 'rust' };
 
@@ -48,6 +48,9 @@ self.onmessage = async (e: MessageEvent<Msg>) => {
     }
   }
   const t0 = performance.now();
-  const { results, error } = runWithTests(code, tests, logger);
+  // Waits for the program's timers and promises (up to 2.5 s; the page stops
+  // the worker at 3 s), so async output is shown, not lost.
+  const { results, error, pending } = await runWithTestsAsync(code, tests, logger);
+  if (pending) logger.warn(`(${pending} timer${pending === 1 ? '' : 's'} still running were stopped)`);
   post({ type: 'done', results, error, ms: performance.now() - t0 });
 };

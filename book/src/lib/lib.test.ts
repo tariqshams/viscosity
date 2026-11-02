@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { md } from './md.js';
 import { formatValue, formatArgs } from './format.js';
-import { runWithTests } from './minitest.js';
+import { runWithTests, runWithTestsAsync } from './minitest.js';
 
 describe('md', () => {
   it('escapes HTML and renders inline code, bold and fences', () => {
@@ -43,5 +43,28 @@ describe('runWithTests', () => {
   it('reports syntax and runtime errors', () => {
     expect(runWithTests('let = ;', '', console).error).toMatch(/SyntaxError/);
     expect(runWithTests('nope()', '', console).error).toMatch(/ReferenceError/);
+  });
+});
+
+describe('runWithTestsAsync', () => {
+  it('waits for timers and promises, in event-loop order', async () => {
+    const lines: string[] = [];
+    const logger = { log: (...a: unknown[]) => lines.push(a.join(' ')) };
+    const r = await runWithTestsAsync(
+      "console.log('a'); setTimeout(() => console.log('d'), 10); Promise.resolve().then(() => console.log('c')); console.log('b');",
+      '', logger);
+    expect(r.error).toBeNull();
+    expect(lines).toEqual(['a', 'b', 'c', 'd']);
+  });
+  it('awaits async tests and reports them in order', async () => {
+    const r = await runWithTestsAsync(
+      'const later = (v) => new Promise((ok) => setTimeout(() => ok(v), 5));',
+      "test('one', async () => { expect(await later(1)).toBe(1); }); test('two', async () => { expect(await later(2)).toBe(3); }); test('sync', () => {});",
+      console);
+    expect(r.results.map((t) => [t.name, t.ok])).toEqual([['one', true], ['two', false], ['sync', true]]);
+  });
+  it('gives up on an interval nobody clears', async () => {
+    const r = await runWithTestsAsync('setInterval(() => {}, 5);', '', console, { settleMs: 50 });
+    expect(r.pending).toBe(1);
   });
 });

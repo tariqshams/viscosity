@@ -64,3 +64,54 @@ export function runWithTests(code, tests, logger) {
     return { results, error: e instanceof Error ? `${e.name}: ${e.message}` : String(e) };
   }
 }
+
+/**
+ * Like runWithTests, but for code that does things later: it waits for the
+ * program's timers (setTimeout, setInterval) and for async tests
+ * (`test('x', async () => { ... await ... })`) before reporting, so promise
+ * and timer output is not lost. It gives up waiting after `settleMs`; a
+ * timer still pending then (an interval nobody cleared) is reported in
+ * `pending`. Synchronous code behaves exactly as with runWithTests.
+ */
+export async function runWithTestsAsync(code, tests, logger, { settleMs = 2500 } = {}) {
+  const slots = [];
+  const running = [];
+  const test = (name, fn) => {
+    const i = slots.push(null) - 1;
+    const record = (ok, e) => { slots[i] = ok ? { name, ok: true } : { name, ok: false, message: e instanceof Error ? e.message : String(e) }; };
+    try {
+      const r = fn();
+      if (r && typeof r.then === 'function') running.push(Promise.resolve(r).then(() => record(true), (e) => record(false, e)));
+      else record(true);
+    } catch (e) {
+      record(false, e);
+    }
+  };
+  // Timers the program starts are counted, so we know when it has finished.
+  const live = new Set();
+  const timers = {
+    setTimeout: (f, ms, ...a) => { const id = setTimeout(() => { live.delete(id); f(...a); }, ms); live.add(id); return id; },
+    clearTimeout: (id) => { live.delete(id); clearTimeout(id); },
+    setInterval: (f, ms, ...a) => { const id = setInterval(f, ms, ...a); live.add(id); return id; },
+    clearInterval: (id) => { live.delete(id); clearInterval(id); },
+  };
+  let error = null;
+  const fail = (e) => { if (!error) error = e instanceof Error ? `${e.name}: ${e.message}` : String(e); };
+  try {
+    const fn = new Function('console', 'test', 'expect', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', `${code}\n;\n${tests ?? ''}`);
+    fn(logger, test, expect, timers.setTimeout, timers.clearTimeout, timers.setInterval, timers.clearInterval);
+  } catch (e) {
+    fail(e);
+  }
+  const deadline = Date.now() + settleMs;
+  const tick = () => new Promise((r) => setTimeout(r, 5));
+  // Let promise callbacks run, then wait while timers or async tests remain.
+  await tick();
+  while ((live.size || slots.includes(null)) && Date.now() < deadline) {
+    await Promise.race([Promise.all(running), tick()]);
+    await tick();
+  }
+  for (const id of live) { clearTimeout(id); clearInterval(id); }
+  const results = slots.map((s, i) => s ?? { name: `test ${i + 1}`, ok: false, message: `did not finish within ${settleMs / 1000} seconds` });
+  return { results, error, pending: live.size };
+}
