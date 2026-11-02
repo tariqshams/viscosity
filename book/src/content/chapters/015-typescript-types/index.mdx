@@ -1,0 +1,218 @@
+---
+n: 15
+day: 4
+part: I
+title: 'TypeScript I: types as labels'
+tagline: 'One misspelt property can quietly turn a whole simulation into NaN. TypeScript reads your code before it runs, points at the mistake, and then vanishes without a trace.'
+objectives:
+  - Add type annotations to variables, parameters and return values.
+  - Describe the shape of an object with an interface.
+  - Explain what the type checker catches, and when it does its work.
+  - Explain type erasure, and why data from outside still needs checking at runtime.
+introduces: [typescript, type-annotation, type-checking, interface, type-erasure, typeof]
+uses: [function, parameter, argument, return, call, undefined, object, property, dot-access, bracket-access, array, array-of-objects, for-of, instanceof, variables, numbers, strings, booleans, comparison, if, console-log]
+sources: [ts-basics, ts-everyday-types, bynensmeurer2018]
+---
+import ShapeMatch from '../../../components/diagrams/ch015/ShapeMatch';
+import EraseSteps from '../../../components/diagrams/ch015/EraseSteps';
+
+## A typo that doesn’t crash
+
+Here is one step of a particle simulation. Find the bug:
+
+```js
+function step(p, dt) {
+  p.x = p.x + p.vX * dt;
+}
+
+const p = { x: 0, y: 0, vx: 2, vy: 1 };
+step(p, 0.5);
+console.log(p.x); // NaN
+```
+
+It’s `vX` with a capital X. The object has no property by that name, so
+`p.vX` is `undefined`, `undefined * 0.5` is `NaN` (“not a number”), and
+`NaN` plus anything is `NaN`. There’s no error message. In a real program,
+a thousand particles quietly turn into `NaN`, and you find out an hour
+later, somewhere else.
+
+JavaScript can’t complain, because it has no idea what `p` is *supposed*
+to look like. You know. You just never wrote it down. TypeScript is a way
+to write it down, so that a program can check it for you.
+
+<Callout kind="intuition">
+Think of labels on kitchen jars: “sugar”, “salt”, “flour”. Before you start
+cooking, a careful friend reads the whole recipe and says “step 4 puts salt
+in the sugar jar”. The labels don’t change the food at all. They let
+someone catch the mistake *before* the cake is ruined.
+</Callout>
+
+## Labels on names
+
+```ts
+let count: number = 0;
+let name: string = 'Ada';
+
+function mul(a: number, b: number): number {
+  return a * b;
+}
+
+mul('3', 4);
+// error: Argument of type 'string' is not
+// assignable to parameter of type 'number'.
+```
+
+A colon and a type after a name is a **label**. `a: number` says “`a`
+will always hold a number”. The `: number` after the parameter list labels
+what the function returns. When a call breaks a label, the checker reports
+it, with the line and the reason.
+
+You don’t have to label everything. Write `let n = 3;` and TypeScript
+works out the label `number` by itself. Then `n = 'three'` is an error
+too: “Type 'string' is not assignable to type 'number'.”
+
+<Callout kind="definition">
+**TypeScript** is JavaScript plus syntax for types, and a program that
+checks them. A **type annotation**, like `: number`, labels what values a
+variable, parameter or return value may hold. **Type checking** means
+reading the whole program, *before it runs*, and reporting every place
+where a value could break a label. Where you leave a label out, the checker
+**infers** one from the value<Cite id="ts-everyday-types" />.
+</Callout>
+
+<Prompts ids={['ts-what', 'annotation-syntax', 'inference']} />
+
+## Interfaces: the shape of an object
+
+Numbers and strings are easy to label. For objects, you describe their
+shape: which properties they have, and what each one holds.
+
+<Callout kind="intuition">
+An interface is a blank form with labelled lines. An object fits the form
+if it fills in every line with the right kind of value. Ask for a line the
+form doesn’t have, and the checker says so.
+</Callout>
+
+<Figure takeaway="An interface describes a shape; any object with that shape fits." caption="Particle is a form with four lines, each a number. The object p fills every line, so it fits. p.vX asks for a line that isn’t on the form, so the checker rejects it.">
+  <ShapeMatch />
+</Figure>
+
+```ts
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
+function step(p: Particle, dt: number) {
+  p.x = p.x + p.vX * dt;
+  // error: Property 'vX' does not exist on
+  // type 'Particle'. Did you mean 'vx'?
+}
+```
+
+There’s the typo from the start of the chapter, caught before the program
+ever ran. A missing property is caught the same way: writing
+`const q: Particle = { x: 1, y: 2, vx: 0 };` gets “Property 'vy' is
+missing”. Lists are labelled with `[]`: `number[]` is an array of numbers,
+and `Particle[]` is an array of particles.
+
+<Callout kind="definition">
+An **interface** gives a name to an object shape: the properties it must
+have, and the type of each. Any object with those properties fits. You
+don’t need a class or any special way of making it: only the shape
+matters.
+</Callout>
+
+<Prompts ids={['interface-what', 'interface-typo']} />
+
+## Where do the types go?
+
+Here’s the surprising part. Step through what happens to a TypeScript
+file on its way to running:
+
+<EraseSteps client:visible />
+
+The TypeScript compiler, `tsc`, does two jobs. First it **checks** the
+whole file. Then it **erases** the types and writes out plain JavaScript.
+Engines only ever run that JavaScript. One more surprise: by default `tsc`
+writes the JavaScript *even when it found errors*, and you have to ask
+it not to with the `--noEmitOnError` flag<Cite id="ts-basics" />.
+
+<Callout kind="definition">
+**Type erasure** means the types are removed before the code runs. The
+output is ordinary JavaScript with the labels deleted, so type annotations
+never change what a program does<Cite id="ts-basics" />. All the checking
+happens before the program starts.
+</Callout>
+
+<Callout kind="pitfall">
+This book’s runnable boxes accept TypeScript, but they only **erase** the
+types (with a tool called sucrase) and run what’s left. They never check
+them, so a type error here gets no warning. To see the real checker,
+install the `typescript` package and run `tsc` on your file. In this
+chapter, the tests check what your code *does*, and the text tells you
+what `tsc` would say.
+</Callout>
+
+Try it: the box below runs exactly what erasure leaves.
+
+<Run id="erased" />
+
+<Prompts ids={['checker-when', 'emit-with-errors', 'erasure-what', 'runtime-unchanged', 'runner-checks']} />
+
+## Labels are promises, not guards
+
+The checker only sees *your code*. Data arriving from outside the
+program, like text from a server or a file, was never checked:
+
+```ts
+const p: Particle = JSON.parse(text);
+```
+
+`JSON.parse` turns text into an object, and its result has the special
+type `any`, which switches checking off. So the checker takes your word
+that this is a `Particle`. If the text was `{"x": "oops"}`, you only find
+out later, at runtime, as a wrong answer.
+
+At the border, you check by hand. JavaScript’s `typeof` operator gives the
+runtime kind of a value as a string: `typeof 3` is `'number'` and
+`typeof 'hi'` is `'string'`. One famous oddity: `typeof null` is
+`'object'`. That’s exactly what this chapter’s exercise needs.
+
+<Prompts ids={['outside-data', 'any-off']} />
+
+<Callout kind="engine" label="Under the hood">
+Because types are erased, an engine like V8 never sees your interfaces. It
+gets plain JavaScript and works out the shapes of objects by itself, while
+the program runs<Cite id="bynensmeurer2018" />. Viscosity is different: it
+reads your source, TypeScript included, so an interface like `Particle` is
+a free hint about which fields your objects have. But a type is a promise
+about your code, not a guarantee about data (remember `JSON.parse`). So
+the analyses you’ll build later can *use* types as hints, but they still
+have to prove anything they rely on.
+</Callout>
+
+## Your turn
+
+<Exercise id="isParticle" />
+
+<Exercise id="fixTotal" />
+
+## What you learned
+
+- **TypeScript** is JavaScript plus **type annotations** like `x: number`,
+  and a checker, `tsc`.
+- **Type checking** happens *before* the program runs. Where you leave a
+  label out, TypeScript **infers** one.
+- An **interface** names an object shape. Any object with that shape fits.
+- **Type erasure**: `tsc` deletes the types and emits plain JavaScript, so
+  annotations never change behaviour. Engines never see them.
+- Types describe your code, not outside data. At the border, check with
+  `typeof`. This book’s runner erases types but doesn’t check them.
+
+Next: types that say “this *or* that”, and how the checker follows your
+`if`s.
+
+<Quiz />

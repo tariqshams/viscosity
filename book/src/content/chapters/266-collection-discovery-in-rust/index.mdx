@@ -1,0 +1,236 @@
+---
+n: 266
+day: 67
+part: XIII
+title: 'Collection discovery in Rust'
+tagline: 'Chapter 150’s collection pass, as `analysis.rs` has it: the closures become a struct, the object-keyed maps become indices, a worklist pops in the reference’s order, and the borrow checker decides where the uses get copied.'
+objectives:
+  - Map the state of analysis.ts’s collection pass onto the Analyzer struct.
+  - Explain why collections are referred to by index, and why use lists are copied before the loop.
+  - Trace the worklist over real VIR, into a known function’s parameter.
+  - Implement the worklist, keeping the reference’s order.
+introduces: [rust-collections-pass]
+uses: [collection-discovery, record-shape, safety-analysis, bailout, worklist, generic-dataflow, viscosity-rs, ir-arena, rust-ssa, vir, ssa, typed-index, arena, struct, impl, self-receiver, lifetime, lifetime-annotation, borrow, shared-vs-mutable, borrow-checker, hashmap, vec, option, match, enum, pattern, cross-implementation-tests]
+sources: [rustc-hash-readme, indexmap-docs]
+---
+import FollowSteps from '../../../components/diagrams/ch266/FollowSteps';
+
+## Same pass, new home
+
+Chapter 150 read the first two steps of `analysis.ts`: find candidate
+bindings, then follow every load of each one through its uses. The
+TypeScript keeps everything in local variables of one big `analyze`
+function, and the steps are closures that share them.
+
+`analysis.rs` produces the same collections, the same bailouts and the
+same messages in the same order. What changes is where the state
+lives, and how one collection refers to another thing.
+
+<Callout kind="intuition">
+A desk where several people share one set of drawers can’t let anyone
+walk off with a drawer. So they pass around drawer numbers instead,
+and anyone with the number can look inside. `analysis.rs` does that
+with its collections: it passes their numbers around.
+</Callout>
+
+## The Analyzer struct
+
+The TS closures become methods of one struct, trimmed:
+
+```rust
+struct Analyzer<'m> {
+    m: &'m Module,
+    uses: Uses,
+    stores: HashMap<BindingId,
+        Vec<ValueId>>,
+    loads: HashMap<BindingId,
+        Vec<ValueId>>,
+    call_sites: HashMap<FuncId,
+        Vec<ValueId>>,
+    collections: Vec<Collection>,
+    collection_of_load:
+        HashMap<ValueId, usize>,
+    element_of: HashMap<ValueId, usize>,
+    // ...numeric state, a cfg cache
+}
+```
+
+`HashMap` here is `FxHashMap` from `rustc-hash`, renamed on import: a
+faster hasher for small keys<Cite id="rustc-hash-readme" />. Its
+iteration order is arbitrary, which is fine, because the analyzer only
+looks things up in these maps. Anything whose order reaches `explain`
+is a `Vec` or an `IndexMap`<Cite id="indexmap-docs" />.
+
+The analyzer borrows the module for `'m`, and `inst` hands out
+instructions for that lifetime, not for the borrow of `self`:
+
+```rust
+fn inst(&self, v: ValueId) -> &'m Inst {
+    self.m.inst(v)
+}
+```
+
+So you can hold an instruction and still change `self.collections`.
+Chapter 267 shows the error you get without it.
+
+<Prompts ids={['cdr-what', 'cdr-struct', 'cdr-lifetime']} />
+
+## Collections by number
+
+In TypeScript, `collectionOfLoad` maps a value to the `Collection`
+*object*, and `refsOf` is keyed by it. Rust’s `collection_of_load`
+maps a value to a `usize`, the collection’s index in `collections`.
+A `&mut Collection` in the map would keep the `Vec` borrowed for as
+long as the map exists, and the pass pushes to that `Vec` and changes
+its entries all the time. An index borrows nothing.
+
+Finding candidates is otherwise a line-for-line port. Where TS filters
+every store and tests the length, Rust stops at the first array store,
+with `let`-`else`:
+
+```rust
+let st = self.stores_of(binding.id);
+let Some(&first_array_store) =
+    st.iter().find(|&&x| matches!(
+        self.inst(self.inst(x).args[0]).op,
+        Op::ArrayEmpty | Op::ArrayNew))
+else {
+    continue;
+};
+```
+
+Some details exist only to match the reference’s text. When an array
+literal holds something other than a record, the TS message
+interpolates `init.src?.line`, which prints `undefined` if there’s no
+position. The port spells that out: `init.src.map_or("undefined"...`.
+And every bailout goes through one helper, which keeps the *first*
+source position seen for each message, for `--frames`:
+
+```rust
+fn bail(&mut self, msg: String,
+        at: Option<SourceRef>) {
+    self.bailout_sites
+        .entry(msg.clone())
+        .or_insert(at);
+    self.bailouts.push(msg);
+}
+```
+
+<Prompts ids={['cdr-index', 'cdr-why-index', 'cdr-letelse', 'cdr-first-site']} />
+
+## The worklist and the borrow checker
+
+Step 2, from `shapes_and_uses`, trimmed:
+
+```rust
+let mut work: Vec<ValueId> = self
+    .loads.get(&binding).cloned()
+    .unwrap_or_default();
+let mut seen_param = HashSet::default();
+while let Some(l) = work.pop() {
+    for u in self.uses_of(l) {
+        if let Some(next) = self
+            .use_of_collection(ci, l, u,
+                &mut seen_param)
+        {
+            work.push(next);
+        }
+    }
+}
+```
+
+Two differences from TS. First, the TS closure pushes a parameter
+onto `work` itself; `use_of_collection` *returns* it, because it takes
+`&mut self` and the stack is a local of the caller. Second,
+`uses_of(l)` returns a copy of the use list. Write `self.uses.of(l)`
+in the `for` instead, and the loop holds a shared borrow of `self`
+while its body calls a `&mut self` method. rustc 1.97 on a small copy
+of this loop (trimmed and rewrapped):
+
+```
+error[E0502]: cannot borrow `*self` as
+  mutable because it is also borrowed
+  as immutable
+  | for &u in self.uses.of(l) {
+  |           ---------------
+  |           immutable borrow occurs
+  |           here
+  |     self.check(u);
+  |     ^^^^^^^^^^^^^ mutable borrow
+  |                   occurs here
+```
+
+The copy costs a few words per use. It is the simplest thing that
+lets the method mutate freely. Try the error yourself:
+
+<Run id="uses-play" />
+
+<Prompts ids={['cdr-clone', 'cdr-follow']} />
+
+## Order is output
+
+`work.pop()` takes the *last* load first, as `work.pop()` does in
+TypeScript. That order is visible: it decides which push sets the
+shape and the order of the messages. Here it is on real VIR, printed
+from the port for a program that pushes into `ps` and passes it to a
+function `step`:
+
+<FollowSteps client:visible />
+
+`seen_param` stops the walk visiting a parameter twice when two call
+sites pass the collection. Note what it does *not* do: a function
+that passes the parameter on to itself, `walk(qs, k + 1)`, isn’t
+followed, because the recursive call site passes `qs`, which isn’t yet
+known to be `ps` when the sites are checked. Both engines report it
+the same way (real output, wrapped):
+
+```
+ps (line 1) {x} → kept as array of
+  objects
+  · unsafe: line 10: passed to walk(),
+    which is also called with other
+    values
+```
+
+That refusal is safe, just less precise than it could be.
+
+<Prompts ids={['cdr-seen', 'cdr-lifo']} />
+
+<Callout kind="definition">
+**The collection pass in Rust** is steps 1 and 2 of `analysis.rs`.
+`find_collections` files every load and store by binding, finds the
+known functions, and makes a `Collection` for each `const` or `let`
+whose first array store is `array.empty` or `array.new`.
+`shapes_and_uses` then runs a stack-ordered worklist over each
+collection’s loads, accepting `.length`, `push` of a fresh record,
+indexing, and known calls (followed into the parameter), and records a
+bailout with its source site for anything else.
+</Callout>
+
+<Callout kind="engine" label="Under the hood">
+The order rules come from the parity guarantee: 190 of 190 fixture
+pairs match byte for byte, and the fuzzer compares both engines’
+`explain` and `explain --frames` text on random programs. A queue
+instead of a stack would find the same collections and the same
+bailouts, but it could list them in a different order, and the
+fixtures compare that order too.
+</Callout>
+
+## Your turn
+
+<Exercise id="discover" />
+
+## What you learned
+
+- **The collection pass in Rust** keeps the TS closures’ state in
+  `Analyzer<'m>`, with `inst` returning `&'m Inst` so instructions
+  don’t borrow the analyzer.
+- Collections are referred to by **index** (`usize`), never by
+  reference, so the `Vec` of collections can keep changing.
+- `uses_of` copies the use list so that the loop body can call
+  `&mut self` methods (E0502 otherwise).
+- The worklist is a stack, as in the reference: the last load first.
+  Known functions are followed by returning the parameter; recursion
+  through the parameter isn’t.
+
+<Quiz />

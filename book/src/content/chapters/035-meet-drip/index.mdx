@@ -1,0 +1,185 @@
+---
+n: 35
+day: 9
+part: III
+title: 'Meet Drip'
+tagline: 'Before you build a language, take it for a drive. Drip is small enough to implement in a few weeks, and it still has the closures and classes that make real engines interesting.'
+objectives:
+  - Read and write small Drip programs with variables, loops, functions, closures and classes.
+  - Explain what dynamic typing means, and predict when a Drip type error appears.
+  - Say what a language specification is for, and how Drip's test programs act as one.
+introduces: [drip, dynamic-typing, language-spec]
+uses: [function, return, call, closure, nested-function, class, constructor, instance, this, method, while-loop, type-checking, typescript, float64, test, differential-testing-intro, interpreter, compiler, compiler-pipeline, variables, numbers, strings, booleans, if, for-loop, comparison]
+sources: [nystrom2021, ecma262, test262]
+---
+import TypeTagSteps from '../../../components/diagrams/ch035/TypeTagSteps';
+
+## A language you can hold in your head
+
+JavaScript is a big language, with many years of features
+piled on top of each other. Starting there is a poor way to learn how a
+language works.
+
+So for Part III you'll build a smaller one. It's called **Drip**. Drip is
+a dialect of **Lox**, the language Robert Nystrom designed for his book
+*Crafting Interpreters*<Cite id="nystrom2021" />. It is Lox with two
+words respelled: `fn` instead of `fun` and `let` instead of `var`, so it
+looks more like the JavaScript you already know. Every Drip test program
+in this book is adapted from Lox's MIT-licensed test suite.
+
+<Callout kind="intuition">
+Drip is like a model kit of a real car. It is much smaller, and some
+comforts are missing. But the engine, the wheels and the steering are all
+there, and they work the way the real ones do. When you have built the
+model, the real car stops being a mystery.
+</Callout>
+
+Every example in this chapter runs on the interpreter you are about to
+write. Edit them freely.
+
+## Values and variables
+
+Drip has numbers, strings, `true` and `false`, and `nil`, which means "no
+value", like JavaScript's `null`. Variables are made with `let`, and
+`print` is a statement, not a function, so it needs no parentheses:
+
+```
+let cups = 3;
+print cups + 1;  // 4
+```
+
+<Run id="values" />
+
+A few things will feel familiar. Every number is a 64-bit float, just
+like in JavaScript, so `0.1 + 0.2` has the same rounding you met in
+Part I. Strings join with `+`. Comments start with `//`. Logic uses the
+words `and` and `or` instead of `&&` and `||`.
+
+<Prompts ids={['drip-lox', 'print-statement']} />
+
+## Deciding and repeating
+
+`if`, `while` and `for` look the way you'd expect. One rule is different
+from JavaScript: only `nil` and `false` count as false. Everything else,
+including `0` and the empty string `""`, counts as true.
+
+<Run id="control" />
+
+<Prompts ids={['zero-true']} />
+
+## Functions and closures
+
+Functions are declared with `fn`. They are values, so a function can
+return another function, and the inner one remembers the variables
+around it. That is a closure, exactly as in chapter 8:
+
+<Run id="functions" />
+
+Each call to `makeCounter` makes a new `n`, and the `count` it returns
+keeps that `n` alive. Making that work is the job of chapter 59.
+
+<Prompts ids={['closure-drip']} />
+
+## Classes
+
+Drip has classes with methods, `this` and a constructor. The constructor
+is the method called `init`. You make an instance by calling the class
+like a function: there is no `new`. A class inherits from another with
+`<`, and `super` calls the parent's version of a method:
+
+<Run id="classes" />
+
+<Prompts ids={['inherit-syntax']} />
+
+## Dynamic typing
+
+TypeScript, from chapter 15, checks types *before* your program runs.
+Drip doesn't. A Drip variable can hold any kind of value, and it can hold
+a number now and a string later. Step through what happens when a
+`+` meets the wrong kind of value:
+
+<TypeTagSteps client:visible />
+
+<Callout kind="definition">
+**Dynamic typing** means types belong to values, not variables, and they
+are checked while the program runs, at the moment an operation needs
+them. In Drip, `+` accepts two numbers or two strings. Anything else
+stops the program with a **runtime error** that names the line.
+</Callout>
+
+Dynamic doesn't mean "anything goes". JavaScript is dynamically typed
+too, but its `+` quietly converts: `"a" + 1` is `"a1"`. Drip refuses and
+says so. Both are legitimate designs. To try it, remove the `//` in front
+of the last line of the first example above.
+
+<Prompts ids={['dyn-when', 'dyn-vs-js']} />
+
+## Who decides what a program means?
+
+Here's a question with no obvious answer: what should `print 7 / 2;`
+show? `3`? `3.5`? An error? Each is a reasonable choice, and different
+languages make different ones. Drip prints `3.5`. Something has to
+write that decision down, so that every implementation of the language
+makes the same choice.
+
+<Callout kind="definition">
+A **language specification** (a **spec**) is a precise description of
+what every program in a language means: which programs are valid, and
+what each one does or which error it reports. An implementation is
+correct when it does what the spec says.
+</Callout>
+
+JavaScript's spec is a document called ECMA-262, maintained by a
+committee called TC39<Cite id="ecma262" />. Drip has no standards
+committee. Its spec is the description of Lox in Crafting Interpreters,
+with the two respellings, made checkable by **265 test programs** in
+`companion/corpus`. Each one writes down what it should do in comments.
+Here are four lines from one of them, `if/truth.drip`:
+
+```
+// Everything else is true.
+if (true) print true; // expect: true
+if (0) print 0; // expect: 0
+if ("") print "empty"; // expect: empty
+```
+
+Other tests expect an error instead, written as
+`// expect runtime error:` followed by the exact message. Run a test, and
+if the output differs from its comments in any way, the implementation
+has a bug.
+
+<Prompts ids={['spec-what', 'corpus-role']} />
+
+<Callout kind="engine" label="Under the hood">
+You'll build Drip twice: a tree-walking interpreter in Part III and a
+bytecode VM in Part IV. The companion code runs the same 265 programs
+against both, so the two must agree with the spec and with each other.
+That's differential testing from chapter 17, at the scale of a whole
+language. JavaScript engines do the same with Test262, the official
+conformance suite for ECMA-262<Cite id="test262" />.
+</Callout>
+
+## Your turn
+
+Your first Drip programs. The tests check the exact output, line by line.
+
+<Exercise id="sum-to" />
+
+<Exercise id="counter-class" />
+
+## What you learned
+
+- **Drip** is a small dialect of Lox, with `fn` and `let`. It has
+  numbers, strings, booleans, `nil`, functions, closures and classes.
+- Only `nil` and `false` are false in Drip. `print` is a statement.
+  Classes use `init`, `this`, `<` and `super`.
+- **Dynamic typing**: values carry their types, and Drip checks them as
+  each operation runs. A wrong type is a runtime error, not a silent
+  conversion.
+- A **language spec** says precisely what programs mean. Drip's is made
+  concrete by 265 test programs that both of its implementations must
+  pass.
+
+Next: the first stage of the pipeline. What exactly is a "word" of Drip?
+
+<Quiz />

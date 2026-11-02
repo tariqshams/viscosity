@@ -1,0 +1,232 @@
+---
+n: 11
+day: 3
+part: I
+title: 'Recursion and the call stack'
+tagline: 'Some problems contain smaller copies of themselves. A function that calls itself can solve them in a few lines, and every parser in this book works this way.'
+objectives:
+  - Write a recursive function with a base case and a recursive case.
+  - Trace the call stack as a recursive call grows it and returns shrink it.
+  - Explain what causes a stack overflow, and how to avoid one.
+  - Walk a tree of nested objects with a recursive function.
+introduces: [recursion, base-case, call-stack, tree, stack-overflow]
+uses: [function, parameter, argument, return, call, local-variable, undefined, array, length, object, property, dot-access, reference, for-of, variables, numbers, strings, comparison, if, for-loop, console-log]
+sources: [mdn-recursion, mdn-call-stack, mdn-too-much-recursion]
+---
+import StackSteps from '../../../components/diagrams/ch011/StackSteps';
+import TreePicture from '../../../components/diagrams/ch011/TreePicture';
+
+## A box of boxes
+
+Here is a folder on a computer, written as objects. A folder has a name
+and a list of things inside it. Some of those things are folders too:
+
+```js
+const docs = {
+  name: 'docs',
+  children: [
+    { name: 'a.txt', children: [] },
+    { name: 'pics', children: [
+      { name: 'cat.png', children: [] },
+      { name: 'old', children: [
+        { name: 'dog.png', children: [] },
+      ] },
+    ] },
+  ],
+};
+```
+
+How many items are there in total? One `for` loop can visit the
+children of `docs`. To reach inside `pics` you'd need a loop inside that
+loop, and a third loop for `old`. But you don't know how deep the folders
+go until the program runs. You can't write "as many nested loops as it
+takes".
+
+You can, though, write a function that **calls itself**.
+
+<Callout kind="intuition">
+You're in a long queue and want to know your place in it. You can't see
+the front. So you ask the person ahead: "what number are you?" They don't
+know either, so they ask the person ahead of them, and so on. The person
+at the very front knows the answer without asking: "I'm number 1". The
+answers then travel back down the queue, each person adding one.
+</Callout>
+
+## A function that calls itself
+
+Start smaller than folders. To add up the numbers from 1 to `n`, notice
+that the sum up to 3 is just 3 plus the sum up to 2:
+
+```js
+function sumTo(n) {
+  if (n === 0) {
+    return 0;
+  }
+  return n + sumTo(n - 1);
+}
+
+console.log(sumTo(3)); // 6
+```
+
+Two things make this work. When `n` is `0` the answer is known straight
+away, with no further calls. And every other call asks about a **smaller**
+`n`, so the questions are guaranteed to reach `0` eventually.
+
+<Callout kind="definition">
+A function that calls itself is **recursive**, and the technique is
+**recursion**. Every recursive function needs a **base case**: an input
+it answers directly, without calling itself. Every other input takes the
+**recursive case**, which calls the function again on a smaller version
+of the problem<Cite id="mdn-recursion" />.
+</Callout>
+
+<Prompts ids={['rec-what', 'base-case', 'smaller']} />
+
+## The call stack
+
+In chapter 1 you learned that each call gets a fresh, private page for
+its parameters and local variables. Recursion is where that pays off.
+`sumTo(3)` and `sumTo(2)` are both running at once, and each has its
+own `n`. JavaScript keeps the pages in a pile: the newest call on top,
+the calls waiting for it underneath. Step through it:
+
+<StackSteps client:visible />
+
+<Callout kind="definition">
+The **call stack** is the pile of calls that have started but not yet
+finished. Each call's page is a **stack frame**. Calling a function
+**pushes** a new frame on top; returning **pops** it off, and the value
+goes back to the frame underneath, which carries on from where it
+paused<Cite id="mdn-call-stack" />. Only the top frame is running.
+</Callout>
+
+It's called a stack because it works like a stack of plates: you only
+ever add to the top or take from the top. The last call to start is
+always the first to finish.
+
+This little program makes the order visible. Predict the output before
+you run it:
+
+<Run id="down-up" />
+
+Every `in` line prints on the way down, as frames are pushed. Every
+`out` line prints on the way back up, as they're popped, so they come
+out in the reverse order.
+
+<Prompts ids={['frame-what', 'stack-order', 'paused']} />
+
+## When it never stops
+
+What if the base case is missing, or never reached?
+
+```js
+function forever(n) {
+  return forever(n + 1);
+}
+
+forever(0);
+// RangeError: Maximum call stack
+// size exceeded
+```
+
+Every call pushes another frame, and nothing ever pops. The stack is
+given a fixed amount of memory, and when it runs out the engine stops
+the program with an error. That is a **stack overflow**. Chrome and
+Safari report it as a `RangeError` saying "Maximum call stack size
+exceeded"; Firefox calls it "too much recursion"<Cite id="mdn-too-much-recursion" />.
+The exact limit depends on the engine.
+
+<Callout kind="pitfall">
+Having a base case isn't enough: every path has to *reach* it.
+`sumTo(-1)` asks about `-2`, then `-3`, and walks away from `0` forever.
+A safer base case is `if (n <= 0)`.
+</Callout>
+
+<Prompts ids={['overflow-cause', 'never-reached']} />
+
+## Trees: recursion's natural home
+
+Back to the folders. A folder is an object whose `children` are more
+folders, and each of those has children of its own. Data shaped like
+this is a **tree**, and recursion fits it perfectly, because every
+child is a smaller tree:
+
+```js
+function count(node) {
+  let total = 1; // this node
+  for (const c of node.children) {
+    total = total + count(c);
+  }
+  return total;
+}
+
+console.log(count(docs)); // 6
+```
+
+There's no explicit `if` here. The base case hides in the loop: a node
+with no children runs the loop zero times and returns `1`.
+
+Programs are trees too. The expression `(2 + 3) * 4` is a multiplication
+whose left side is an addition:
+
+<Figure takeaway="Each node holds smaller trees." caption="(2 + 3) * 4 as a tree. The root is a mul node. Its left child is an add node, whose children are the leaves 2 and 3. Its right child is the leaf 4. The brackets have disappeared: the shape of the tree says what happens first.">
+  <TreePicture />
+</Figure>
+
+```js
+const tree = {
+  kind: 'mul',
+  left: {
+    kind: 'add',
+    left: { kind: 'num', value: 2 },
+    right: { kind: 'num', value: 3 },
+  },
+  right: { kind: 'num', value: 4 },
+};
+```
+
+<Callout kind="definition">
+A **tree** is data made of **nodes**, where each node can hold
+**child** nodes, which are trees themselves. The node at the top is the
+**root**; nodes with no children are **leaves**. A recursive function
+walks a tree by handling one node and calling itself on each child, and
+the leaves are its base case.
+</Callout>
+
+<Prompts ids={['tree-what', 'leaf-base']} />
+
+<Callout kind="engine" label="Where this goes">
+Recursion is the backbone of Part III. Your parser will turn source code
+into a tree like the one above, using one function per kind of thing it
+can read, and those functions call each other recursively. Your
+interpreter will then compute a program's value by recursing down that
+tree, much like the exercise below. Because it uses JavaScript's own
+calls, a deeply nested program can overflow JavaScript's own call stack.
+In Part IV you'll build a virtual machine that keeps its **own** stack of
+frames in an array, so you'll see exactly what a frame contains.
+</Callout>
+
+## Your turn
+
+The core exercise is a tiny interpreter: it computes the value of an
+expression tree.
+
+<Exercise id="evaluate" />
+
+<Exercise id="depth" />
+
+## What you learned
+
+- **Recursion** is a function calling itself on a smaller problem. It
+  needs a **base case** that answers directly, and every input must
+  eventually reach it.
+- The **call stack** holds one **frame** per unfinished call. Calls push
+  frames; returns pop them. The last call to start is the first to
+  finish.
+- Endless recursion fills the stack and causes a **stack overflow**.
+- A **tree** is nodes holding child nodes. Recursion walks it naturally:
+  handle this node, recurse on each child, and stop at the leaves.
+
+Next: strings, up close, one character at a time.
+
+<Quiz />

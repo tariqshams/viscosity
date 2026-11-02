@@ -1,0 +1,249 @@
+---
+n: 12
+day: 3
+part: I
+title: 'Strings up close'
+tagline: 'Until now a string has been a lump of text. Look closer and it is a row of numbered characters, and every character is secretly a number. That is all a scanner needs.'
+objectives:
+  - Read any character of a string by its index, and explain why strings can't be changed in place.
+  - Convert between characters and their char codes, and use codes to test for digits and letters.
+  - Cut strings apart and join them with slice, split and join, and search them with includes and startsWith.
+  - Build strings with template literals and piece by piece in a loop.
+introduces: [string-index, char-code, string-methods, template-literal, string-building]
+uses: [strings, array, index, length, push, array-loop, function, parameter, return, call, undefined, while-loop, variables, numbers, comparison, booleans, if, for-loop, console-log]
+sources: [mdn-string, mdn-charcodeat, mdn-primitive, mdn-template-literals]
+---
+import CharCodes from '../../../components/diagrams/ch012/CharCodes';
+import ScanSteps from '../../../components/diagrams/ch012/ScanSteps';
+
+## Text, as a computer sees it
+
+Here's a line of a program, as a string:
+
+```js
+const src = 'width = 42;';
+```
+
+To you it obviously says "set width to 42". To JavaScript it's just eleven
+characters in a row. In Part III you'll write a **scanner**, the first
+stage of an interpreter, whose whole job is to look at text like this and
+find the words in it: the name `width`, the `=`, the number `42`, the
+`;`. To do that, you need to get inside a string: read it one character
+at a time, ask what kind of character each one is, and cut out pieces.
+That's this chapter.
+
+<Callout kind="intuition">
+A string is a row of letter tiles, like in a word game. Each tile has a
+position you can point at. Turn a tile over and there's a number printed
+on the back: the computer stores the number, and the letter is just how
+it's drawn on screen.
+</Callout>
+
+## A row of characters
+
+<Figure takeaway="Characters have indexes, and codes." caption="The string 'cat 42'. Each character has an index, counting from 0 just like an array slot. Underneath each one is its char code, the number the computer actually stores. Even the space is a character, with code 32.">
+  <CharCodes />
+</Figure>
+
+Strings index exactly like arrays:
+
+```js
+const s = 'cat 42';
+
+console.log(s.length); // 6
+console.log(s[0]);     // c
+console.log(s[4]);     // 4  (a string!)
+console.log(s[99]);    // undefined
+```
+
+`s[4]` is the one-character *string* `'4'`, not the number 4. Asking for
+an index past the end gives `undefined`, as with arrays.
+
+There's one big difference from arrays: you can't change a string.
+
+```js
+let t = 'cat';
+t[0] = 'b';
+console.log(t); // cat
+```
+
+The assignment simply doesn't work<Cite id="mdn-string" />. Strings are
+**immutable**: once made, a string never changes<Cite id="mdn-primitive" />.
+You can still make `t` hold a *different* string (`t = 'bat'`), but the
+string `'cat'` itself stays exactly as it was.
+
+<Callout kind="definition">
+`str[i]` reads the character at **index** `i`, as a string of length 1.
+`str.length` is the number of characters. Strings are **immutable**:
+every operation that seems to change one actually makes a new string.
+</Callout>
+
+<Prompts ids={['str-index', 'str-immutable']} />
+
+## Characters are numbers
+
+`charCodeAt(i)` turns the tile over and shows the number on the back.
+`String.fromCharCode(n)` goes the other way:
+
+```js
+console.log('A'.charCodeAt(0)); // 65
+console.log('a'.charCodeAt(0)); // 97
+console.log('0'.charCodeAt(0)); // 48
+console.log(String.fromCharCode(104, 105));
+// hi
+```
+
+The useful part is the *order*. The digits `'0'` to `'9'` have the
+codes 48 to 57, one after another. `'A'` to `'Z'` are 65 to 90, and
+`'a'` to `'z'` are 97 to 122. That turns "is this a digit?" into a
+comparison:
+
+```js
+function isDigit(c) {
+  return c >= 48 && c <= 57;
+}
+
+const c = '7'.charCodeAt(0); // 55
+console.log(isDigit(c)); // true
+console.log(c - 48);     // 7
+```
+
+`&&` means "and": the result is `true` only if both sides are true. The
+last line shows a second trick: subtract 48 (the code of `'0'`) and a
+digit character's code becomes the digit's value.
+
+<Callout kind="definition">
+Every character is stored as a number, its **char code**.
+`str.charCodeAt(i)` returns the code at index `i`, a whole number from
+0 to 65535<Cite id="mdn-charcodeat" />. `String.fromCharCode(n)` makes
+the character with code `n`. Digits and letters have consecutive codes,
+so a range test like `c >= 48 && c <= 57` identifies them.
+</Callout>
+
+<Prompts ids={['char-code-what', 'digit-range', 'digit-value']} />
+
+## Cutting a string into pieces
+
+Now put the two ideas together. Here's the heart of a scanner: a finger
+`i` moves along the string, and whenever it finds a run of digits, it
+cuts the whole run out as one piece.
+
+<ScanSteps client:visible />
+
+The cutting is done by `slice(start, end)`. It copies the characters
+from `start` up to, **but not including**, `end`, and returns them as a
+new string. Leaving `end` out means "to the end", and a negative number
+counts back from the end.
+
+Strings come with many more ready-made methods. These are the ones
+you'll use most:
+
+```js
+const s = 'let x = 42;';
+
+s.slice(0, 3);       // 'let'
+s.slice(-3);         // '42;'
+s.includes('x');     // true
+s.startsWith('let'); // true
+s.split(' ');
+// [ 'let', 'x', '=', '42;' ]
+['a', 'b'].join('-'); // 'a-b'
+```
+
+`split` cuts at every copy of a separator and gives back an array.
+`join` is its opposite: it's an array method that glues the slots
+together with a separator between them.
+
+<Callout kind="definition">
+The **string methods** you'll use most: `slice(start, end)` copies a
+piece (`end` not included); `includes(x)` and `startsWith(x)` answer
+true or false; `split(sep)` cuts a string into an array of strings; and
+the array method `join(sep)` glues an array back into one string. None
+of them change the original string: they return new values.
+</Callout>
+
+<Run id="string-tools" />
+
+<Prompts ids={['slice-end', 'split-join', 'methods-new']} />
+
+## Building strings
+
+Gluing strings with `+` gets messy fast. **Template literals** are
+strings written between backticks, where `${...}` drops in the value of
+any expression<Cite id="mdn-template-literals" />:
+
+```js
+const name = 'x';
+const v = 42;
+
+const a = 'Set ' + name + ' to ' + v;
+const b = `Set ${name} to ${v}`;
+console.log(a === b); // true
+```
+
+And when you don't know in advance how long the string will be, build it
+piece by piece: start with an empty string `''` and add to it in a loop.
+
+```js
+function bar(n) {
+  let out = '';
+  for (let i = 0; i < n; i++) {
+    out += '#';
+  }
+  return out;
+}
+
+console.log(`[${bar(3)}]`); // [###]
+```
+
+`out += '#'` is short for `out = out + '#'`. Because strings are
+immutable, each step makes a new, longer string and points `out` at it.
+A common alternative is to `push` the pieces into an array and `join`
+them once at the end.
+
+<Callout kind="definition">
+A **template literal** is a string in backticks, where `${expr}` is
+replaced by the value of `expr`. **Building a string** means starting
+from `''` and adding pieces, with `+=` or by collecting them in an array
+and calling `join`.
+</Callout>
+
+<Prompts ids={['template-what', 'plus-equals']} />
+
+<Callout kind="engine" label="Under the hood">
+A JavaScript string is a sequence of 16-bit **UTF-16 code units**, and
+`charCodeAt` returns one of them<Cite id="mdn-string" />. Most characters
+you'll meet fit in one unit, but some, like many emoji, take two, so
+`'😀'.length` is `2`. Our scanner in Part III only cares about plain
+letters, digits and symbols, so one unit per character is all it needs.
+In Part IV, the virtual machine stores strings as objects of its own,
+and keeps exactly one copy of each distinct string. Then checking
+whether two names are equal becomes a single identity check, the `===`
+on references from chapter 6.
+</Callout>
+
+## Your turn
+
+The core exercise is a piece of every scanner: turning the digit
+characters of a number into an actual number.
+
+<Exercise id="toNumber" />
+
+<Exercise id="shift" />
+
+## What you learned
+
+- A string is a row of characters: `str[i]` reads one by its **index**,
+  and `str.length` counts them. Strings are **immutable**.
+- Every character has a **char code**. `charCodeAt` and `fromCharCode`
+  convert between them, and code ranges identify digits and letters.
+- **String methods** `slice`, `includes`, `startsWith` and `split`, with
+  the array method `join`, cut, search and glue strings. They return new
+  values and never change the original.
+- **Template literals** drop values into a string with `${...}`, and
+  **string building** grows a result piece by piece.
+
+Next: what to do when something goes wrong, such as a character your
+scanner doesn't recognize.
+
+<Quiz />

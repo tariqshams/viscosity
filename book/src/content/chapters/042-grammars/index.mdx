@@ -1,0 +1,181 @@
+---
+n: 42
+day: 11
+part: III
+title: 'Grammars'
+tagline: 'The scanner checks that every word is spelled right. Nothing yet checks that the words come in a sensible order. A grammar is a short list of rules that says exactly which orders are allowed.'
+objectives:
+  - Read a grammar written as production rules, and tell terminals from nonterminals.
+  - Derive a sentence from a grammar, one rule at a time.
+  - Explain how a few recursive rules describe infinitely many programs.
+  - Write rules in BNF with the shorthands |, * and ?.
+introduces: [grammar, production-rule, terminal, nonterminal, bnf]
+uses: [token, token-type, scanner, literal, identifier, keyword, drip, language-spec, recursion, base-case, function, array, index, length, while-loop, if, comparison, booleans]
+sources: [ecma262-grammar, nystrom2021]
+---
+import DeriveSteps from '../../../components/diagrams/ch042/DeriveSteps';
+import DerivePlay from '../../../components/diagrams/ch042/DerivePlay';
+
+## Right words, wrong order
+
+Give Drip’s scanner this line:
+
+```
+print + ; 3 (
+```
+
+It doesn’t complain. `print` is a keyword, `+`, `;` and `(` are fine
+tokens, and `3` is a number literal. Every word is spelled correctly. But
+the line means nothing, in the same way that “sat the on cat mat the” is
+made of good English words in a bad order.
+
+The scanner can’t catch this. It looks at one token at a time, and the
+problem is in how the tokens are arranged. We need rules about order.
+
+## Rules for sentences
+
+<Callout kind="intuition">
+A grammar is like a set of fill-in-the-blank templates. “A greeting is
+*hello* followed by a *name*.” “A name is *Ada* or *Alan*.” Start with
+“a greeting” and keep filling in blanks until only real words are left.
+Anything you can build that way is allowed. Anything you can’t is not.
+</Callout>
+
+Here is a grammar for a very small piece of Drip: print statements that
+add numbers, with brackets allowed.
+
+```
+stmt → "print" expr ";"
+expr → expr "+" item
+expr → item
+item → NUMBER
+item → "(" expr ")"
+```
+
+Read each arrow as “can be made of”. The first rule says: a `stmt` can
+be made of the keyword `print`, then an `expr`, then a semicolon. Words
+in quotes are exact tokens. `NUMBER` in capitals stands for any token of
+type number, such as `3` or `4.25`. The bare words `stmt`, `expr` and
+`item` are the blanks: names of other rules.
+
+To check that a line fits the grammar, start from `stmt` and replace one
+name at a time with one of its rules, until only tokens are left. That is
+called a **derivation**:
+
+<DeriveSteps client:visible />
+
+<Callout kind="definition">
+A **grammar** is a set of rules that says which sequences of tokens are
+valid. Each rule is a **production rule**: a name, an arrow, and a
+pattern the name can be replaced by. The symbols come in two sorts. A
+**terminal** is an actual token, such as `"print"` or `NUMBER`: once it
+appears, it never changes. A **nonterminal** is the name of a rule, such
+as `expr`: it is a blank still to be filled in. A derivation ends when
+only terminals are left.
+</Callout>
+
+<Prompts ids={['grammar-what', 'scanner-cant', 'arrow-read', 'terminal-what', 'nonterminal-what', 'derivation-done']} />
+
+## Five rules, endless programs
+
+Notice that `expr → expr "+" item` mentions `expr` on both sides. Each
+time you use it, you get one more `+` and still have an `expr` to fill
+in, so you can use it again. And `item → "(" expr ")"` puts a whole new
+`expr` inside brackets. With five rules, the grammar describes
+`print 1;`, `print 1 + 2;`, `print ((1) + 2) + 3;`, and infinitely many
+more.
+
+This is recursion, as in chapter 11, and it needs a base case. If `expr`
+had only its recursive rule, every step would leave another `expr`
+behind and the derivation could never finish. `expr → item` and
+`item → NUMBER` are the ways out.
+
+Now try it yourself. Each button applies one rule to the underlined
+nonterminal:
+
+<DerivePlay client:visible />
+
+<Prompts ids={['recursive-rule', 'no-way-out']} />
+
+## Writing grammars down: BNF
+
+Grammars are written in a notation called **BNF**. There are a few
+dialects, but they share the same ideas, and most add a few
+shorthands. Here is the same grammar, shorter:
+
+```
+stmt → "print" expr ";"
+expr → item ( "+" item )*
+item → NUMBER | "(" expr ")"
+```
+
+`|` means “or”: it joins several rules for the same name into one line.
+`*` after a group means “zero or more times”, so an `expr` is an item
+followed by any number of `+ item` pairs. That replaces the recursive
+rule with a repetition, and it describes exactly the same sentences.
+Later grammars also use `?` for “optional: zero or one time”. You will
+also meet grammars that write a rule as `<expr> ::= ...`, with angle
+brackets around the names. It is the same idea in different spelling.
+
+<Callout kind="definition">
+**BNF** is the standard notation for writing grammars: each production
+rule is a nonterminal, an arrow (or `::=`), and a sequence of terminals
+and nonterminals. Common extensions add `|` for alternatives, `*` for
+“zero or more”, `?` for “optional” and brackets for grouping.
+</Callout>
+
+Here are a few of Drip’s real statement rules, written this way:
+
+```
+declaration → letDecl | statement
+letDecl   → "let" IDENTIFIER
+              ( "=" expression )? ";"
+statement → printStmt | ifStmt | block
+          | exprStmt
+printStmt → "print" expression ";"
+ifStmt    → "if" "(" expression ")"
+              statement
+              ( "else" statement )?
+block     → "{" declaration* "}"
+```
+
+A `block` holds declarations, a declaration can be a statement, and a
+statement can be a block: that loop of rules is how blocks nest inside
+blocks. Drip’s grammar is Lox’s grammar from *Crafting Interpreters*,
+with `let` and `fn` for `var` and `fun`<Cite id="nystrom2021" />.
+
+<Prompts ids={['bar-means', 'star-means', 'question-means']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript itself is defined this way. Its specification describes its
+syntax as a grammar of productions, each with a nonterminal on the left,
+and calls the tokens its terminal symbols. It writes rules like
+`WhileStatement : while ( Expression ) Statement`, uses recursive rules
+for lists such as function arguments, and marks optional parts with a
+small “opt”<Cite id="ecma262-grammar" />. A grammar only says which
+programs are well formed. What they *mean* is the rest of the
+specification, and the rest of this book.
+</Callout>
+
+## Your turn
+
+<Exercise id="isSum" />
+
+<Exercise id="isCall" />
+
+## What you learned
+
+- A **grammar** is a set of **production rules** saying which token
+  sequences are valid. The scanner checks words; the grammar checks order.
+- **Terminals** are tokens. **Nonterminals** are rule names, blanks to be
+  filled in.
+- A **derivation** replaces nonterminals with rules until only terminals
+  are left.
+- **Recursive rules** give infinitely many sentences, and need a
+  non-recursive way out.
+- **BNF** writes rules as `name → pattern`, with `|`, `*` and `?` as
+  shorthands.
+
+Next: what a parser builds when a program fits the grammar.
+
+<Quiz />

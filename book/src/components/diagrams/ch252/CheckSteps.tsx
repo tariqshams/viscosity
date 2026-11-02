@@ -1,88 +1,117 @@
+// Chapter 252: tests/common/mod.rs checking one corpus program,
+// super/extra_arguments.drip. The two expectation comments are the
+// file's real lines 9 and 10, and the outcome is what drip-rs really
+// prints for it (stdout "Derived.foo()", then the message and a two-line
+// trace on stderr, exit code 70). The steps follow parse_expectations and
+// check in that file: runtime error message, the first [line N] of the
+// trace, the exit code, then stdout line by line.
 import { StepFrame, useSteps } from '../../viz/stepper';
-import { Svg, T, tok } from '../../viz/svg';
+import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 252: what each change to drip-rs's hot reads is worth on fib.
-// All numbers measured for this chapter on the book's shared 4-vCPU cloud
-// VM, 2026-10-31, rustc 1.97, release builds (lto, codegen-units = 1) of
-// scratch copies of book/companion/rust (deleted afterwards; every
-// variant passed the 246-program corpus and the 95 stress-GC programs):
-//   committed  — drip-rs as it is
-//   heap walk  — no registers: every byte read goes frame → closure →
-//                function → chunk through the heap
-//   unsafe ×1  — forbid removed, read_byte uses get_unchecked
-//   unsafe ×4  — also read_constant, peek and GetLocal/SetLocal
-// Instructions: valgrind 3.22 callgrind, total Ir for fib.drip.
-// Times: fib.drip wall clock, 14 fresh processes per variant, the four
-// variants alternating, in two rounds of 7.
-type V = { key: string; label: string; ir: number; ms: number[]; col: string };
+type Row = { label: string; value: string; ok?: boolean; hot?: boolean };
+type S = { phase: string; expect: Row[]; outcome: boolean; checks: Row[]; result?: string; note: string };
 
-const VARIANTS: V[] = [
-  { key: 'walk', label: 'heap walk (safe)', ir: 39_267_264_607, col: 'danger',
-    ms: [2911, 3015, 3101, 3277, 2926, 3026, 2977, 3008, 3067, 3049, 3057, 3389, 3000, 3363] },
-  { key: 'base', label: 'committed (safe)', ir: 20_186_274_402, col: 'brand',
-    ms: [1341, 1428, 1331, 1677, 1593, 1440, 1468, 1389, 1359, 1376, 1385, 1379, 1567, 1399] },
-  { key: 'u1', label: 'unsafe ×1', ir: 18_932_124_861, col: 'warn',
-    ms: [1401, 1266, 1423, 1424, 1278, 1551, 1411, 1388, 1268, 1448, 1460, 1531, 1342, 1571] },
-  { key: 'u4', label: 'unsafe ×4', ir: 18_588_726_709, col: 'warn',
-    ms: [1488, 1246, 1786, 1542, 1419, 1260, 1773, 1317, 1328, 1548, 1773, 1400, 1496, 1575] },
-];
+const E_OUT: Row = { label: 'output', value: '["Derived.foo()"]' };
+const E_RT: Row = { label: 'runtime', value: '("Expected 2…", 10)' };
+const E_EXIT: Row = { label: 'exit', value: '70' };
 
-type S = { show: string[]; view: 'ir' | 'ms'; note: string };
 const STATES: S[] = [
-  { show: ['base'], view: 'ir', note: 'The committed drip-rs runs fib in 20.19 billion instructions, all its indexing checked, no unsafe anywhere.' },
-  { show: ['walk', 'base'], view: 'ir', note: 'Take away the registers and read every byte through the heap, also in safe code: 39.27 billion. Half the work was the walk to the byte, with its three arena checks.' },
-  { show: ['walk', 'base', 'u1'], view: 'ir', note: 'Now go the other way: delete the forbid and read the byte with get_unchecked. 18.93 billion, 6.2% fewer than committed.' },
-  { show: ['walk', 'base', 'u1', 'u4'], view: 'ir', note: 'Unchecked constants, peek and locals too: 18.59 billion, 7.9% fewer. Every other check in the loop is still there.' },
-  { show: ['walk', 'base', 'u1', 'u4'], view: 'ms', note: 'Now wall time, 14 runs each, as dots. The heap walk is clearly slower. The unsafe builds’ dots sit among the committed build’s dots: on this VM, their gain is inside the noise.' },
+  {
+    phase: 'line 9: // expect: Derived.foo()',
+    expect: [{ ...E_OUT, hot: true }],
+    outcome: false,
+    checks: [],
+    note: 'parse_expectations reads the source line by line. expect_output finds “// expect:”, drops one optional space, and the rest of the line is one expected line of stdout.',
+  },
+  {
+    phase: 'line 10: // expect runtime error: ...',
+    expect: [E_OUT, { ...E_RT, hot: true }, { ...E_EXIT, hot: true }],
+    outcome: false,
+    checks: [],
+    note: 'A runtime-error comment records the message and the line it sits on, 10, and sets the expected exit code to 70. Nothing else in the file is an expectation.',
+  },
+  {
+    phase: 'drip::run(source, options)',
+    expect: [E_OUT, E_RT, E_EXIT],
+    outcome: true,
+    checks: [],
+    note: 'The program runs in a fresh VM with debug_gc: freed slots are never reused. The Outcome holds stdout and stderr as lines, and the exit code. No process is started.',
+  },
+  {
+    phase: 'check: the message',
+    expect: [E_OUT, E_RT, E_EXIT],
+    outcome: true,
+    checks: [{ label: 'stderr[0] == message', value: 'ok', ok: true, hot: true }],
+    note: 'With a runtime error expected, stderr must have at least two lines, and the first must be the message, exactly.',
+  },
+  {
+    phase: 'check: the line',
+    expect: [E_OUT, E_RT, E_EXIT],
+    outcome: true,
+    checks: [
+      { label: 'stderr[0] == message', value: 'ok', ok: true },
+      { label: 'first [line N] == 10', value: 'ok', ok: true, hot: true },
+    ],
+    note: 'first_line_number finds the first “[line N]” in the trace: the innermost frame, line 10. The script’s line 14 is not checked. That is why the comment goes on the failing line.',
+  },
+  {
+    phase: 'check: exit code and stdout',
+    expect: [E_OUT, E_RT, E_EXIT],
+    outcome: true,
+    checks: [
+      { label: 'stderr[0] == message', value: 'ok', ok: true },
+      { label: 'first [line N] == 10', value: 'ok', ok: true },
+      { label: 'exit code 70 == 70', value: 'ok', ok: true, hot: true },
+      { label: 'stdout line 1', value: 'ok', ok: true, hot: true },
+    ],
+    result: 'test super/extra_arguments.drip ... ok',
+    note: 'Then the exit code, then stdout line by line up to the longer of the two lists. No failures, so the suite prints one ok line, and moves on to the next file.',
+  },
 ];
 
 export default function CheckSteps() {
   const s = useSteps(STATES);
   const st = s.state;
-  const rows = VARIANTS.filter((v) => st.show.includes(v.key));
-  const L = 116;
-  const W = 400 - L - 96;
-  const maxIr = VARIANTS[0].ir;
-  const msMax = 3400;
-  const base = VARIANTS[1];
   return (
-    <StepFrame title="What a check costs on fib" steps={s} note={st.note}>
-      <Svg w={400} h={190} title="Instructions or wall times for fib under four builds of drip-rs">
-        <T x={8} y={14} size={11} weight={700} fill={tok('brand')}>
-          {st.view === 'ir' ? 'instructions (callgrind), billions' : 'wall time per run (ms), 14 runs each'}
-        </T>
-        {VARIANTS.map((v, k) => {
-          const y = 32 + k * 36;
-          const on = rows.includes(v);
-          if (!on) return null;
-          if (st.view === 'ir') {
-            const w = (v.ir / maxIr) * W;
-            const d = v.key === 'base' ? '' : ` (${v.ir > base.ir ? '+' : ''}${(((v.ir - base.ir) / base.ir) * 100).toFixed(1)}%)`;
-            return (
-              <g key={v.key}>
-                <T x={L - 6} y={y + 11} size={10} mono anchor="end">{v.label}</T>
-                <rect x={L} y={y} width={w} height={22} rx={3} fill={tok(v.col, 0.3)} stroke={tok(v.col)} strokeWidth={1.2} />
-                <T x={L + w + 4} y={y + 11} size={10} mono>{`${(v.ir / 1e9).toFixed(2)}${d}`}</T>
-              </g>
-            );
-          }
-          const x = (ms: number) => L + (ms / msMax) * W;
-          const lo = Math.min(...v.ms);
-          const hi = Math.max(...v.ms);
-          return (
-            <g key={v.key}>
-              <T x={L - 6} y={y + 11} size={10} mono anchor="end">{v.label}</T>
-              <line x1={x(lo)} x2={x(hi)} y1={y + 11} y2={y + 11} stroke={tok(v.col, 0.6)} strokeWidth={2} />
-              {v.ms.map((m, j) => <circle key={j} cx={x(m)} cy={y + 11 + ((j % 3) - 1) * 4} r={2.6} fill={tok(v.col, 0.75)} />)}
-              <T x={x(hi) + 6} y={y + 11} size={10} mono>{`${lo}–${hi}`}</T>
+    <StepFrame title="Checking one corpus program" steps={s} note={st.note}>
+      <Svg w={400} h={252} title="Expectations parsed from a corpus program's comments, drip-rs's outcome, and the checks between them">
+        <T x={8} y={12} size={11} mono weight={700}>{st.phase}</T>
+        <T x={8} y={34} size={10} mono weight={700} fill={tok('muted')}>Expectations</T>
+        <Box x={8} y={42} w={188} h={80} r={4} fill={tok('panel')} stroke={tok('line')}>
+          {st.expect.map((r, i) => (
+            <g key={i}>
+              <T x={16} y={58 + i * 22} size={10} mono fill={tok('muted')}>{r.label}</T>
+              <T x={70} y={58 + i * 22} size={10} mono weight={r.hot ? 700 : undefined} fill={r.hot ? tok('safe') : tok('ink')}>{r.value}</T>
             </g>
-          );
-        })}
-        {st.view === 'ms' && (
-          <g>
-            <rect x={L + (Math.min(...base.ms) / msMax) * W} y={24} width={((Math.max(...base.ms) - Math.min(...base.ms)) / msMax) * W} height={150} fill={tok('brand', 0.08)} />
-            <T x={L} y={184} size={10} fill={tok('muted')}>shaded: the committed build’s range</T>
-          </g>
+          ))}
+        </Box>
+        <T x={206} y={34} size={10} mono weight={700} fill={tok('muted')}>Outcome</T>
+        <Box x={206} y={42} w={186} h={80} r={4} fill={st.outcome ? tok('panel') : tok('panel', 0.4)} stroke={tok('line')} dash={!st.outcome}>
+          {st.outcome ? (
+            <g>
+              <T x={214} y={56} size={9} mono fill={tok('muted')}>stdout: Derived.foo()</T>
+              <T x={214} y={72} size={9} mono fill={tok('muted')}>stderr: Expected 2 ... 4.</T>
+              <T x={214} y={86} size={9} mono fill={tok('muted')}>        [line 10] in foo()</T>
+              <T x={214} y={100} size={9} mono fill={tok('muted')}>        [line 14] in script</T>
+              <T x={214} y={114} size={9} mono fill={tok('muted')}>exit_code: 70</T>
+            </g>
+          ) : (
+            <T x={299} y={82} size={10} anchor="middle" fill={tok('muted')}>not run yet</T>
+          )}
+        </Box>
+        <T x={8} y={140} size={10} mono weight={700} fill={tok('muted')}>check()</T>
+        <Box x={8} y={148} w={384} h={70} r={4} fill={tok('panel')} stroke={tok('line')}>
+          {st.checks.length === 0 && <T x={200} y={183} size={10} anchor="middle" fill={tok('muted')}>no failures collected</T>}
+          {st.checks.map((c, i) => (
+            <T key={i} x={16 + (i % 2) * 190} y={166 + Math.floor(i / 2) * 26} size={10} mono weight={c.hot ? 700 : undefined} fill={c.ok ? tok('safe') : tok('danger')}>
+              {c.label}: {c.value}
+            </T>
+          ))}
+        </Box>
+        {st.result && (
+          <Box x={8} y={226} w={384} h={22} r={3} fill={tok('safe', 0.12)} stroke={tok('safe')}>
+            <T x={200} y={237} size={10} mono weight={700} anchor="middle" fill={tok('safe')}>{st.result}</T>
+          </Box>
         )}
       </Svg>
     </StepFrame>

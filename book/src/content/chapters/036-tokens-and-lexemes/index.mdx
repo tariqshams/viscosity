@@ -1,0 +1,182 @@
+---
+n: 36
+day: 9
+part: III
+title: 'Tokens and lexemes'
+tagline: 'A parser that worked on single characters would drown in detail. Before anything else, Drip cuts its source into words, and each word comes with a label and a note of where it was found.'
+objectives:
+  - Explain what a token is, and tell its type, lexeme and literal apart.
+  - Read Drip's TokenType union and say which type a piece of source gets.
+  - Explain why tokens carry a source location, and turn a character offset into a line and column.
+introduces: [token, lexeme, token-type, source-location]
+uses: [string-index, char-code, string-methods, object, property, array, union-type, discriminated-union, typescript, type-checking, interface, compiler-pipeline, front-end-back-end, drip, language-spec, variables, strings, numbers, for-loop, if]
+sources: [nystrom2021]
+---
+import TokenSteps from '../../../components/diagrams/ch036/TokenSteps';
+
+## Characters are too small
+
+Here is a line of Drip:
+
+```
+let speed = 10.5;
+```
+
+The parser's job, coming up in chapter 42, is to recognise the shape of
+this line: "a `let`, then a name, then `=`, then a value, then `;`". Now
+imagine it had to do that one character at a time. Is `l` the start of
+`let`, or of a name like `lemon`? Is `1` a whole number, or the start of
+`10.5`? Every rule of the grammar would have to worry about spelling.
+
+So the pipeline splits the work. The scanner deals with spelling once,
+and hands the parser a list of whole words. Those words are called
+**tokens**.
+
+<Callout kind="intuition">
+Think of a sentence as a teacher marks it up. Each word gets underlined
+and labelled: *noun*, *verb*, *number*. The word as written, say
+"cats", is the exact spelling. The label, *noun*, is the category. And
+the teacher might note "line 3" in the margin so they can talk about it
+later. A token is that: a category, the exact spelling, and a place.
+</Callout>
+
+## Cutting a line into tokens
+
+Step through two lines being cut up. Watch the card: every token has the
+same four parts.
+
+<TokenSteps client:visible />
+
+In the companion code a token is a plain object. This is the interface
+from `companion/ts/src/token.ts`, with its comments removed:
+
+```ts
+interface Token {
+  type: TokenType;
+  lexeme: string;
+  literal: string | number | null;
+  line: number;
+}
+```
+
+<Callout kind="definition">
+A **token** is one meaningful word of source code. Its **lexeme** is the
+exact characters it was made from, such as `"10.5"`. Its **token type**
+is its category: a number, an identifier, a keyword, the `+` operator.
+For numbers and strings, the scanner also stores the **literal**: the
+actual value the characters stand for, such as the number `10.5`.
+</Callout>
+
+Lexeme and literal are easy to mix up, and strings make the difference
+clearest. For the Drip source `"fast"`, the lexeme is six characters,
+quote marks included. The literal is the four-letter text `fast`, which
+is what `print` will show.
+
+<Prompts ids={['token-what', 'lexeme-literal', 'not-tokens', 'eof-why']} />
+
+## The list of token types
+
+Why bother with a type at all, if the lexeme already says everything?
+Because the parser thinks in categories. Its rule is "a `let` is
+followed by *any* name", not "followed by `speed`, or `x`, or `total`…".
+Thousands of different lexemes share the one type `identifier`.
+
+Here is every token type Drip has, from `token.ts`, rewrapped to fit:
+
+```ts
+type TokenType =
+  // single-character tokens
+  | '(' | ')' | '{' | '}' | ',' | '.'
+  | '-' | '+' | ';' | '/' | '*'
+  // one or two character tokens
+  | '!' | '!=' | '=' | '=='
+  | '>' | '>=' | '<' | '<='
+  // literals
+  | 'identifier' | 'string' | 'number'
+  // keywords
+  | 'and' | 'class' | 'else' | 'false'
+  | 'fn' | 'for' | 'if' | 'nil' | 'or'
+  | 'print' | 'return' | 'super'
+  | 'this' | 'true' | 'let' | 'while'
+  | 'eof';
+```
+
+It is a union of string literal types, from chapter 16. That buys two
+things. TypeScript rejects a typo such as `'eqaul'`, because it isn't in
+the union. And the names are easy to read: for punctuation and keywords,
+the type *is* the spelling, so the token for `<=` has type `'<='`. Only
+for names, numbers and strings do the type and the lexeme differ.
+
+The last type, `eof`, means "end of file". The scanner always finishes
+with one, so the parser can keep asking "what's the next token?" and
+get a clear answer when the program has run out.
+
+<Callout kind="definition">
+A **token type** is the category of a token. Drip has 39: one for each
+punctuation mark or pair, three for literals (`identifier`, `string`,
+`number`), one for each of its 16 keywords, and `eof`. Spaces, newlines
+and comments separate tokens but never become tokens.
+</Callout>
+
+<Prompts ids={['why-types', 'punct-type', 'typo-type']} />
+
+## Where did it come from?
+
+A token also remembers where it was found. When something goes wrong
+much later, say in the parser, that is the only way to tell you *where*.
+
+<Run id="error-lines" />
+
+The parser reports line 3, which it read from the `;` token. Notice also
+that `one` is never printed. The front end checks the whole program
+before any of it runs, so a mistake in line 3 stops line 1 too.
+
+<Callout kind="definition">
+A token's **source location** says where in the source it came from:
+its line, and often its column (its position within the line). Error
+messages use it to point at the problem.
+</Callout>
+
+Drip's tokens record only the line, because Drip's error messages, which
+follow the Lox test suite, name only the line<Cite id="nystrom2021" />.
+Many compilers go further and print the offending line with a caret `^`
+under the exact spot. For that a token needs its column too, which is
+what you'll compute in the exercise.
+
+<Prompts ids={['location-what', 'front-end-first', 'column-why']} />
+
+<Callout kind="engine" label="Under the hood">
+The line number survives the whole pipeline, even past the tree. When
+Drip's VM in Part IV compiles to bytecode, its `Chunk` keeps a `lines`
+array beside the `code` array, one entry per byte of bytecode (see
+`companion/ts/src/vm/chunk.ts`). A runtime error deep inside the VM can
+still say which source line it came from. Viscosity's front end will
+need the same care: when it rewrites your arrays, errors should still
+point at *your* code.
+</Callout>
+
+## Your turn
+
+The core exercise turns a position in the source, counted in characters,
+into a line and a column. The extra one uses that to draw a caret under
+an error.
+
+<Exercise id="locate" />
+
+<Exercise id="point-at" />
+
+## What you learned
+
+- A **token** is one meaningful word of source. Its **lexeme** is the
+  exact characters, its **token type** is its category, and numbers and
+  strings also carry a **literal** value.
+- Drip's `TokenType` is a union of 39 string literal types. For
+  punctuation and keywords the type is the spelling itself. The list
+  always ends with `eof`.
+- Whitespace and comments separate tokens but never become tokens.
+- A **source location** (line, and often column) lets later stages
+  report errors in the right place. Drip records the line.
+
+Next: the scanner itself, the loop that makes all these tokens.
+
+<Quiz />

@@ -1,0 +1,247 @@
+---
+n: 45
+day: 12
+part: III
+title: 'Recursive descent parsing'
+tagline: 'Turn a grammar into code by giving each rule its own function. The functions call each other, the call stack does the bookkeeping, and out comes a tree in which * binds tighter than + without anyone ever comparing the two.'
+objectives:
+  - Explain precedence and associativity, and show the tree each one produces.
+  - Write a grammar with one rule per precedence level.
+  - Turn that grammar into a recursive descent parser, one function per rule.
+  - Explain why a loop, not left recursion, gives left associativity.
+introduces: [parser, recursive-descent, precedence, associativity]
+uses: [grammar, production-rule, terminal, nonterminal, bnf, ast, ast-node, expression-vs-statement, tree-printer, token, literal, keyword, drip, scanner, recursion, base-case, call-stack, stack-overflow, tree, function, nested-function, closure, arrow-function, while-loop, array, index, object, return, throw, differential-testing-intro, template-literal]
+sources: [nystrom2021, ecma262-operators]
+---
+import TwoTrees from '../../../components/diagrams/ch045/TwoTrees';
+import DescentSteps from '../../../components/diagrams/ch045/DescentSteps';
+
+## Two trees for one line
+
+What is `1 + 2 * 3`? You learned the answer at school: 7, because
+multiplication happens first. But the tokens alone don’t say that. Both
+of these trees fit them:
+
+<Figure takeaway="Multiplication must end up deeper in the tree than addition." caption="Two ways to group the tokens 1 + 2 * 3. In a tree, deeper operations happen first. Drip, like JavaScript and school arithmetic, builds the left one.">
+  <TwoTrees which="prec" />
+</Figure>
+
+The program that reads tokens and builds the tree is the **parser**,
+and it has to pick the left tree every time. The rule it follows is
+called precedence.
+
+<Callout kind="definition">
+A **parser** turns a list of tokens into a syntax tree, following a
+grammar. **Precedence** says which operators bind tighter: in Drip,
+`*` and `/` bind tighter than `+` and `-`, so in `1 + 2 * 3` the
+product becomes an operand of the sum.
+</Callout>
+
+<Prompts ids={['parser-what', 'precedence-what']} />
+
+## A grammar with levels
+
+Chapter 42’s grammar had one rule for every expression. To build in
+precedence, give each precedence level its own rule, loosest first, and
+let each rule build its operands from the next, tighter rule:
+
+```
+expression → equality
+equality   → comparison
+               ( EQ_OP comparison )*
+comparison → term ( CMP_OP term )*
+term       → factor ( ADD_OP factor )*
+factor     → unary ( MUL_OP unary )*
+unary      → ( "!" | "-" ) unary
+           | primary
+primary    → NUMBER | STRING | "true"
+           | "false" | "nil"
+           | "(" expression ")"
+
+EQ_OP  → "==" | "!="
+CMP_OP → "<" | "<=" | ">" | ">="
+ADD_OP → "+" | "-"
+MUL_OP → "*" | "/"
+```
+
+<Callout kind="intuition">
+Think of a sum written on a whiteboard as a row of boxes joined by `+`.
+Each box holds a product, and the products are worked out inside their
+boxes before anyone looks at the `+` signs. A `term` is that row of
+boxes; each `factor` is one box. The lower a rule sits in the list, the
+tighter its operators bind.
+</Callout>
+
+So `term` can only join *finished* factors. When it sees the `+` in
+`1 + 2 * 3`, the `2 * 3` on its right is one factor, built as a unit.
+The last rule, `primary`, is the base case: a single literal, or a whole
+expression in brackets, which starts again from the loosest level.
+That is why brackets can override precedence.
+
+<Prompts ids={['lower-tighter', 'brackets-restart']} />
+
+## One function per rule
+
+Now the trick that gives this chapter its name. Write one function for
+each rule. Where a rule mentions another rule, call that function.
+Where it says `*`, write a loop. Here tokens are plain strings, like
+`'1 + 2 * 3'.split(' ')`, and `i` is the index of the next one:
+
+```js
+const at = (...ops) =>
+  ops.includes(ts[i]);
+const next = () => ts[i++];
+
+function term() {
+  let left = factor();
+  while (at('+', '-')) {
+    const op = next();
+    const right = factor();
+    left = bin(left, op, right);
+  }
+  return left;
+}
+```
+
+`bin` makes a binary node, and `factor` is the same shape with `*` and
+`/`, calling `unary`. The last two rules are just as direct:
+
+```js
+function unary() {
+  if (at('!', '-')) {
+    const op = next();
+    const right = unary();
+    return { kind: 'unary', op, right };
+  }
+  return primary();
+}
+
+function primary() {
+  const t = next();
+  if (t === '(') {
+    const e = expression();
+    if (next() !== ')') {
+      throw new Error("Expect ')'");
+    }
+    return { kind: 'group', e };
+  }
+  return lit(Number(t)); // and true...
+}
+```
+
+`unary` calls itself, so `- - 1` and `!!x` work. Watch the functions
+call each other on `1 + 2 * 3`:
+
+<DescentSteps client:visible />
+
+<Callout kind="definition">
+**Recursive descent** is a way to write a parser by hand: one function
+per grammar rule. A rule’s alternatives become `if`s, `*` becomes a
+`while` loop, and each nonterminal becomes a call. The parser starts at
+the top rule and *descends* through the calls, and since rules refer to
+each other (and to themselves), so do the functions.
+</Callout>
+
+Here is the whole parser, all six levels, with a tree printer:
+
+<Run id="fullParser" />
+
+<Prompts ids={['rd-what', 'rd-star', 'factor-sees-plus', 'unary-self']} />
+
+## Which way does a chain lean?
+
+Precedence doesn’t settle `1 - 2 - 3`. Both operators are on the same
+level, and the two groupings give different answers:
+
+<Figure takeaway="Same-level operators group to the left." caption="1 - 2 - 3 grouped two ways. Drip, like arithmetic, groups to the left, so the first subtraction is deeper and happens first.">
+  <TwoTrees which="assoc" />
+</Figure>
+
+The loop in `term` does this for free. After `1 - 2`, `left` holds the
+node `(- 1 2)`. The loop goes round again, sees the second `-`, and
+builds a new node with that whole subtraction on its left. Each pass
+wraps the tree so far, so the chain leans left.
+
+<Callout kind="definition">
+**Associativity** says how a chain of operators on the same level
+groups. Drip’s binary operators are **left-associative**: `a - b - c`
+means `(a - b) - c`. Assignment is the exception, and is
+right-associative: `a = b = 1` means `a = (b = 1)`.
+</Callout>
+
+Why not write the rule the way chapter 42 first did,
+`term → term "-" factor`? Turned into code, the first thing `term()`
+would do is call `term()`, with the same token still next. That call
+would do the same, forever, until the stack overflows. A rule whose
+first symbol is its own name can’t be coded directly in recursive
+descent, which is why the grammar uses `*` and the code uses a loop.
+
+<Prompts ids={['assoc-what', 'loop-left', 'left-recursion']} />
+
+## The companion’s parser
+
+Drip’s statements are parsed in exactly this style, in
+`companion/ts/src/parser.ts`. Here is the rule for `if`, and its
+function (error messages shortened):
+
+```
+ifStmt → "if" "(" expression ")" statement
+         ( "else" statement )?
+```
+
+```ts
+function ifStatement(): Stmt {
+  consume('(', "Expect '('...");
+  const condition = expression();
+  consume(')', "Expect ')'...");
+  const then = statement();
+  const otherwise = match('else')
+    ? statement() : null;
+  return { kind: 'if', condition,
+           then, else: otherwise };
+}
+```
+
+`consume` takes a token that must be there, or reports an error;
+`match` takes a token only if it is there, which is how `?` becomes
+code. `statement()` may be another `if`, so the functions recurse just
+as the rules do.
+
+For *expressions*, though, the companion does something different. It
+uses a Pratt parser (chapter 46), which replaces the six level functions
+with one loop and a table of binding powers. It builds the same trees:
+a differential test (chapter 17) that gives random expressions to both
+this chapter’s parser and the companion’s finds no differences.
+
+<Prompts ids={['companion-split']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript’s specification layers its operators the same way. It defines
+an `AdditiveExpression` as a `MultiplicativeExpression`, or an
+`AdditiveExpression` followed by `+` or `-` and a
+`MultiplicativeExpression`<Cite id="ecma262-operators" />. That
+self-reference on the left is the left recursion you just saw: in a
+grammar it means left-associative, and in a hand-written parser it
+becomes a loop. Drip’s expression grammar, with its rule names, follows
+Lox’s in *Crafting Interpreters*<Cite id="nystrom2021" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="termFactor" />
+
+<Exercise id="comparison" />
+
+## What you learned
+
+- A **parser** turns tokens into a syntax tree.
+- **Precedence**: one grammar rule per level, loosest first. Tighter
+  operators end up deeper in the tree, so they happen first.
+- **Recursive descent**: one function per rule; alternatives are `if`s,
+  `*` is a loop, nonterminals are calls. Brackets restart at the top.
+- **Associativity**: the loop wraps the tree so far, so `a - b - c` leans
+  left. Left recursion can’t be coded directly: it never stops.
+- Drip’s statements use recursive descent; its expressions use Pratt
+  parsing, which builds the same trees.
+
+<Quiz />

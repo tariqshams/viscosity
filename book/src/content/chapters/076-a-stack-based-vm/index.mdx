@@ -1,0 +1,183 @@
+---
+n: 76
+day: 19
+part: IV
+title: 'A stack-based VM'
+tagline: 'Three moving parts run every Drip program: a stack of values, a number saying where you are in the code, and a loop with a switch in it. Here they are, from the real VM.'
+objectives:
+  - Explain how a stack machine evaluates an expression without naming any temporary values.
+  - Trace the instruction pointer through a chunk, including its operand bytes.
+  - Read the VM’s dispatch loop and say what each part costs.
+  - Write a small stack machine in JavaScript, popping operands in the right order.
+introduces: [stack-machine, instruction-pointer, dispatch-loop]
+uses: [bytecode, opcode, virtual-machine, chunk, constant-pool, disassembler, array, push, index, arrow-function, closure, typeof, runtime-error, typescript, call-stack, register, branch-prediction, cpu, interpreter-overhead, tree-walking-interpreter, drip, for-loop, if]
+sources: [nystrom2021, v8-ignition, v8-sparkplug]
+---
+import VmSteps from '../../../components/diagrams/ch076/VmSteps';
+
+## Where do the half-finished answers go?
+
+The tree-walker never had to think about this. To evaluate `1 + 2 * 3`
+it called itself for `2 * 3`, and the `6` came back as a return value,
+held in a JavaScript local until the `+` needed it. The host language's
+call stack was quietly storing every half-finished answer.
+
+Bytecode has no recursion to lean on. `CONSTANT 1, CONSTANT 2,
+CONSTANT 3, MULTIPLY, ADD` is a flat list, and the `1` has to wait
+somewhere while `2 * 3` happens. The answer is a stack the VM keeps for
+itself.
+
+## A stack of values
+
+<Callout kind="intuition">
+A pile of plates in a canteen. You only ever touch the top: put a plate
+on, take a plate off. An instruction like MULTIPLY is a cook who takes
+the top two plates, combines what's on them, and puts one plate back.
+Nobody needs to know where any plate is, only that it's on top.
+</Callout>
+
+Drip's stack is a big array plus a stack pointer, `sp`, the index of
+the next free slot. From `companion/ts/src/vm/vm.ts`:
+
+```ts
+readonly stack: Value[] =
+  new Array(STACK_MAX).fill(null);
+sp = 0;
+
+push(v: Value) {
+  this.stack[this.sp++] = v;
+}
+pop(): Value {
+  return this.stack[--this.sp];
+}
+peek(distance: number): Value {
+  return this.stack[this.sp - 1 - distance];
+}
+```
+
+The array is made once, at full size. Pushing writes a slot and moves
+`sp` up; popping moves it down. Nothing is allocated or freed per value.
+`peek(0)` is the top, `peek(1)` the one below, without removing either.
+
+<Callout kind="definition">
+A **stack machine** is a VM whose instructions take their inputs from
+the top of a value stack and push their results back onto it. Because
+operands are always "the top few values", instructions don't need to
+say where their inputs are, so most need no operands at all.
+</Callout>
+
+<Prompts ids={['stack-machine-what', 'sp-means', 'why-no-operands', 'peek-vs-pop']} />
+
+## The instruction pointer
+
+The VM also needs to know where it is in the code. That's one number:
+
+```ts
+const readByte = () => code[frame.ip++];
+const readConstant = () =>
+  constants[readByte()];
+```
+
+`ip` always holds the index of the *next* byte to read. Every read
+moves it on, so reading an instruction's operand also steps over it.
+After `OP_CONSTANT`, `ip` has moved by two, and lands on the next
+opcode. (`ip` lives in `frame` because each function call will get its
+own, in chapter 85. For now there is one frame: the script.)
+
+<Callout kind="definition">
+The **instruction pointer** (ip) is the position in the bytecode of the
+next byte to execute. Reading an opcode or an operand advances it; an
+instruction finishes with `ip` pointing at the following instruction.
+Later, jump instructions will change it on purpose.
+</Callout>
+
+<Prompts ids={['ip-what', 'ip-after-constant']} />
+
+## The dispatch loop
+
+Now the heart of the VM. It reads an opcode and switches on it, forever,
+until an instruction tells it to stop. Step through it running the real
+chunk for `print 1 + 2 * 3;`:
+
+<VmSteps client:visible />
+
+Each `case` is short. Here is the real `SUBTRACT`:
+
+```ts
+case OP.SUBTRACT: {
+  numbers();
+  const b = this.pop() as number;
+  const a = this.pop() as number;
+  this.push(a - b);
+  break;
+}
+```
+
+Two details matter. `b` is popped *first*: the right operand was pushed
+last, so it's on top. And `numbers()` checks the types with `peek`
+before anything is popped:
+
+```ts
+const numbers = () => {
+  if (typeof this.peek(0) !== 'number' ||
+      typeof this.peek(1) !== 'number') {
+    this.runtimeError(
+      'Operands must be numbers.');
+  }
+};
+```
+
+Checking in place leaves the stack untouched if the program fails, and
+later, when the garbage collector arrives, values still on the stack
+are safe from it. Try some arithmetic on the VM:
+
+<Run id="arith-vm" />
+
+<Callout kind="definition">
+The **dispatch loop** is the VM's main loop: fetch the opcode at `ip`,
+**dispatch** on it (here with a `switch`) to the code for that
+instruction, run it, and repeat. Its cost per instruction, decoding and
+jumping to the right case, is paid on top of the instruction's real
+work.
+</Callout>
+
+<Prompts ids={['pop-order', 'check-before-pop', 'dispatch-what']} />
+
+<Callout kind="engine" label="Under the hood">
+V8's Ignition chose differently. It is a register machine: its
+instructions name the registers they read and write, with a special
+accumulator as the implicit input and output of many of them, which
+keeps long chains of operations short<Cite id="v8-ignition" />. Its
+stack frame keeps a pointer to the bytecode array and the offset of the
+current bytecode, its version of `ip`. The V8 team also describe what
+no interpreter escapes: decoding operands and dispatching to the next
+bytecode, which leans on the CPU's branch prediction to stay
+fast<Cite id="v8-sparkplug" />. Drip's VM, like clox from *Crafting
+Interpreters*, keeps the simpler stack design<Cite id="nystrom2021" />.
+</Callout>
+
+<Prompts ids={['ignition-register']} />
+
+## Your turn
+
+<Exercise id="stack-run" />
+
+<Exercise id="maxDepth" />
+
+## What you learned
+
+- A **stack machine** keeps intermediate values on a stack. Each
+  instruction pops its inputs and pushes its result, so most need no
+  operands.
+- The stack is one preallocated array and `sp`, the next free slot.
+  `peek` looks without popping.
+- The **instruction pointer** is the index of the next byte; reading
+  operands moves it past them.
+- The **dispatch loop** fetches an opcode, switches on it and runs the
+  case, forever. Right operands are popped first. Type checks peek
+  before popping.
+
+Next: the compiler that writes these bytes, straight from the source,
+with no tree in between.
+
+<Quiz />

@@ -1,0 +1,185 @@
+---
+n: 254
+day: 64
+part: XII
+title: 'Optimizing the Rust VM'
+tagline: 'The profile says an eighth of fib’s instructions are indexing. C would just skip the checks. drip-rs has forbidden itself the keyword that does that, so this chapter measures what the checks really cost, and the safe ways to make them disappear.'
+objectives:
+  - Say what get_unchecked requires, and why drip-rs can’t use it.
+  - Measure what unchecked reads would buy, in instructions and in time, and say whether it is noise.
+  - Explain why the registers were worth far more than removing checks.
+  - Remove bounds checks safely with hoisted checks, u8 indexes into fixed arrays, and iterators.
+introduces: [unchecked-indexing]
+uses: [drip-rs, profiling, unsafe, slice, vec, rust-iterator, rc, release-build, hash-table, open-addressing, dispatch-loop, instruction-pointer, match-dispatch, frame-stack, object-handle, constant-pool, global-table, upvalue, branch-prediction, vectorization, register, benchmark-isolation, criterion, shared-corpus, compiler]
+sources: [rust-std-slice-get-unchecked, rust-std-array-tryfrom-slice, rustref-ub, rust-std-iter]
+---
+import CheckSteps from '../../../components/diagrams/ch254/CheckSteps';
+
+## Twelve and a half percent
+
+Chapter 253's profile of fib put 12.5% of all instructions in
+`slice/index.rs`: indexing a slice or a `Vec`, bounds check included.
+clox reads bytecode through a raw pointer and checks nothing. It is
+tempting to do the same. Before touching anything, two rules from
+chapters 33 and 220: know where the work is, and know how you'll tell
+whether a change helped.
+
+<Callout kind="intuition">
+A bounds check is a guard at a door who looks at every badge. If the
+same person walks through a million times a second, you can fire the
+guard and trust everyone. You can also put the guard at the gate, check
+once, and let people move freely inside. Only the second keeps you
+safe.
+</Callout>
+
+<Prompts ids={['opt-measure-first']} />
+
+## What unchecked would take
+
+The standard library has the unchecked read:
+`xs.get_unchecked(i)`. It is an `unsafe fn`. Calling it with `i` out of
+bounds is undefined behaviour, "even if the resulting reference is not
+used"<Cite id="rust-std-slice-get-unchecked" />. In `read_byte`:
+
+```rust
+// SAFETY: ip < code.len(), because the
+// compiler ends every chunk with a return
+// and every jump lands inside the chunk.
+let byte = unsafe {
+    *self.chunk.code.get_unchecked(self.ip)
+};
+```
+
+Read that SAFETY comment again. It isn't about this line at all: it's a
+promise about `compiler.rs`, hundreds of lines away. One wrong jump
+offset, and instead of a panic with a message, the VM reads whatever is
+past the chunk, with no telling what happens next<Cite id="rustref-ub" />.
+
+And drip-rs refuses it. In a scratch copy, rustc 1.97 says (trimmed):
+
+```
+error: usage of an `unsafe` block
+   --> src/vm.rs:433:20
+note: the lint level is defined here
+  9 | #![forbid(unsafe_code)]
+```
+
+<Run id="forbid-unchecked" />
+
+<Prompts ids={['uc-what', 'uc-forbid', 'uc-promise']} />
+
+## What it would buy
+
+So measure, in a scratch copy with the `forbid` deleted. Chapter 219 did
+this with wall times. Here I added callgrind's counts. Four builds of
+drip-rs, each passing the 246 corpus programs and the 95 stress-GC
+programs: the committed one; one with `read_byte` unchecked; one with
+`read_constant`, `peek` and the local-slot reads unchecked too; and,
+for scale, one without chapter 238's registers, reading every byte
+through frame, closure, function and chunk. Release builds, rustc 1.97,
+the book's shared 4-vCPU VM; 14 fresh runs of `fib.drip` each, the four
+builds alternating:
+
+<CheckSteps client:visible />
+
+The unsafe builds ran 6.2% and 7.9% fewer instructions. In time, their
+runs (1266–1571 and 1246–1786 ms) landed among the committed build's
+(1331–1677 ms). On this VM that is noise. The safe design change, the
+registers, was worth 1.95× in instructions and about 2× in time, close to
+chapter 238's measurement. (drip-rs's README says "about 1.4×"; its
+starting point may not have been this one.)
+
+The lesson: the walk to the byte cost far more than the check on it.
+
+<Callout kind="definition">
+**Unchecked indexing** reads an element without comparing the index
+with the length. Rust offers it directly only as `unsafe`
+(`get_unchecked`). Safe code gets the same effect by giving the
+optimizer a proof that the index is in range, so it can delete the check:
+a check hoisted out of the loop, an index type that can't be too big, or
+an iterator with no index at all.
+</Callout>
+
+<Prompts ids={['uc-worth', 'reg-win']} />
+
+## Checks the compiler already moved
+
+drip-rs's hash table probes with `keys[index]`, where
+`index = hash & mask` and `mask = keys.len() - 1`. Here is the release
+build's machine code for `Table::get`, trimmed:
+
+```
+sub  $0x1,%rbx      # mask = len - 1
+jb   <panic_bounds_check>
+loop:
+inc  %r8
+and  %rbx,%r8       # i = (i + 1) & mask
+cmpb $0x0,(%r11,%r15,4)  # keys[i]
+```
+
+One test before the loop, that the length isn't zero. Inside the loop,
+none: `i & (len - 1)` can't reach `len`. The optimizer hoisted the check
+itself. I tried to help by reslicing `values` to `keys.len()` before the
+loop. zoo.drip then ran 7,540,512,526 instructions instead of
+7,528,846,449, 0.15% more. The line only added a check.
+
+Simple loops get the same treatment. For `xs[i] += ys[i]` over 1000
+elements, a plain indexed loop, one with `ys` resliced first, and a
+`zip` each ran about 2,770 instructions per call, all vectorized.
+
+<Prompts ids={['hoisted', 'llvm-did']} />
+
+## Checks that can't fail
+
+Some indexes can't be proven in range: a byte read from the bytecode,
+used to pick a constant. But a `u8` is at most 255. Index a
+`[T; 256]`, whose length is in its type, and there is nothing left to
+check. A slice becomes an array reference with one check up front,
+`try_into`<Cite id="rust-std-array-tryfrom-slice" />:
+
+<Run id="u8-table" />
+
+I timed that loop against the same one taking `&[f64]` (rustc 1.97
+`-C opt-level=3`, 4096 bytes, 20,000 times). callgrind counted 573,560,000
+instructions for the slice version and 194,800,000 for the array: 2.9×
+fewer. Wall time: 53 to 57 ms for both, three runs each. Each `s +=`
+waits for the one before, so the extra compares ran in the gaps.
+
+drip-rs could use this. Constant operands are `u8` and a chunk holds at
+most 256 constants, so a frozen chunk could keep `Box<[Value; 256]>`.
+That is design, not code, and the unsafe build bounds the prize: all
+four unchecked reads together saved 8% of instructions.
+
+Iterators are the third way. `Table::iter` zips the keys and values
+columns, and the collector's `Trace for [T]` is a plain `for t in self`.
+No index, no check<Cite id="rust-std-iter" />.
+
+<Prompts ids={['u8-array', 'fewer-not-faster', 'iter-free']} />
+
+<Callout kind="engine" label="Under the hood">
+What else does the profile offer? `Table::get` is 5.9% of fib, because
+every call looks `fib` up by name; caching a global's slot in the
+bytecode would remove most of it. `close_upvalues` runs on every return,
+6 instructions each, though fib captures nothing. Neither change is in
+drip-rs: the VM matches the TypeScript VM and clox one for one. Each
+would need the corpus run again, and a measurement that beats the noise.
+</Callout>
+
+## Your turn
+
+<Exercise id="verdict" />
+
+## What you learned
+
+- `get_unchecked` is **unchecked indexing** behind `unsafe`: its safety
+  rests on promises about distant code, and drip-rs forbids it.
+- Four unchecked reads saved about 8% of fib's instructions and no time
+  this VM could tell from noise. The safe registers saved half.
+- The optimizer already **hoists** many checks, such as the hash
+  table's `& mask` probe. Adding your own can cost.
+- A `u8` into a `[T; 256]` needs no check; `try_into` makes the array
+  reference with one check. Iterators carry no index at all.
+- Fewer instructions isn't less time. Claim a speed-up only when the
+  runs don't overlap.
+
+<Quiz />

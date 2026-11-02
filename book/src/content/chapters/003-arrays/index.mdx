@@ -1,0 +1,289 @@
+---
+n: 3
+day: 1
+part: I
+title: 'Arrays: a row of numbered boxes'
+tagline: 'One name, many values, in order. Arrays are the first data structure, and the one every engine is secretly obsessed with.'
+objectives:
+  - Create an array, and read and change any slot by its index.
+  - Explain why the first index is 0 and the last is length − 1.
+  - Grow an array with push, and predict its length afterwards.
+  - Say how JavaScript arrays differ from lists and arrays in Python, Java and C.
+introduces: [array, index, length, push]
+uses: [function, parameter, return, call, undefined, variables, numbers, strings, comparison, if, for-loop, console-log]
+sources: [mdn-array, mdn-typed-arrays]
+---
+import ArrayBoxes from '../../../components/diagrams/ch003/ArrayBoxes';
+import IndexAsSteps from '../../../components/diagrams/ch003/IndexAsSteps';
+import PushSteps from '../../../components/diagrams/ch003/PushSteps';
+
+## Too many variables
+
+Imagine keeping the scores of four players:
+
+```js
+const score0 = 90;
+const score1 = 72;
+const score2 = 85;
+const score3 = 64;
+```
+
+That is four names for four numbers, which is fine until you want a
+fifth player, or a thousand; with one variable per value the code grows
+with the data, and no function you write can take "however many scores
+there are". What we want is **one** name for the whole collection, and a
+way to pick out any single value inside it.
+
+<Analogy title="a row of lockers">
+A school corridor has a row of lockers, and the whole row has one name
+("the maths corridor"). Each locker has a number painted on it, so to find
+something you do not need a new name; you say "the maths corridor, locker
+2".
+<span slot="breaks">A row of lockers is built once and never gets longer;
+an array can grow a slot at a time, and the engine quietly finds room for
+it (Part II shows how). Also, real lockers are usually numbered from 1;
+arrays start at 0, for a reason we will see in a moment.</span>
+</Analogy>
+
+## One name, numbered slots
+
+<Figure takeaway="One name, numbered slots." caption="The array scores has four slots. Each slot's number is its index, starting at 0. Square brackets with an index read one slot: scores[2] is 85.">
+  <ArrayBoxes />
+</Figure>
+
+In code:
+
+```js
+const scores = [90, 72, 85, 64];
+console.log(scores[0]);     // 90
+console.log(scores[2]);     // 85
+console.log(scores.length); // 4
+```
+
+Line 1 uses square brackets to *make* an array holding four numbers, in
+that order, and gives it the name `scores`. Line 2 uses square brackets in
+a different way, after a name, to *read* one slot: `scores[0]` is the
+first slot, so it prints `90`. Line 3 reads the slot numbered 2, which is
+the *third* slot, `85`. Line 4 asks the array how many slots it has; it
+has four.
+
+<Callout kind="definition">
+An **array** is an ordered list of values stored under one name. Each
+value sits in a slot with an **index**, a whole number counting from `0`;
+`arr[i]` reads slot `i`, and `arr[i] = v` writes it. The **length**,
+`arr.length`, is how many slots there are, so the last index is always
+`arr.length - 1`<Cite id="mdn-array" />.
+</Callout>
+
+<Examples of="array index">
+
+```js
+const xs = [10, 20, 30];
+xs[1]; // 20
+```
+
+```js
+const mixed = ['a', 2, true];
+const i = 1;
+mixed[i + 1]; // true
+```
+
+```js
+const xs = [0.5, 2.25, 4];
+const vx = [1, -1, 0.5];
+xs[2] + vx[2]; // 4.5
+```
+
+</Examples>
+
+The first is the plainest read: index 1 is the second slot, `20`. The
+second shows two things: one JavaScript array can hold different kinds of
+value (a string, a number and `true`), and the index can be any
+calculation, so `mixed[i + 1]` works out `i + 1` (which is `2`) first and
+reads slot 2. The third is the shape this whole book is about: the
+x positions of three particles in one array and their speeds in
+another, so particle 2's next position is `xs[2] + vx[2]`, `4.5`
+(Viscosity rewrites your programs into exactly this shape, as chapter 5
+begins to show).
+
+<Prompts ids={['array-what', 'first-index', 'index-expr']} />
+
+## Why counting starts at 0
+
+It feels odd at first, however the index is not "which slot in the line";
+it is **how many steps from the start**.
+
+<Analogy title="floors in a building">
+In much of Europe the lift buttons read 0 for the ground floor, 1 for one
+flight up, 2 for two flights up. The number is how far you climb from
+the entrance, so the floor you walk in on is 0.
+<span slot="breaks">Buildings have basements with negative floors; arrays
+have no slot −1 (in JavaScript `xs[-1]` is `undefined`, though Python
+reads it as "the last item").</span>
+</Analogy>
+
+<Figure takeaway="The index counts steps from the start." caption="Slot 0 begins right where the array begins; slot 1 is one step along, slot 2 two steps, and so on.">
+  <IndexAsSteps />
+</Figure>
+
+This is close to how the computer really finds a slot when the values
+are stored packed side by side (as numbers often are): start where the
+array begins in memory, and step forward `index` slots. As such, reading
+slot 2 takes as long as reading slot 2,000,000, because nothing is
+searched (give or take a wrinkle about caches that chapter 27 explains).
+
+<Formal title="Which indexes exist, and where they are">
+
+```text
+n = a.length
+a[i] is a slot  ⟺  0 ≤ i ≤ n − 1
+place of a[i] = start + i × (slot size)
+```
+
+<span slot="read">For an array a with n slots, a[i] is a real slot if and
+only if i is between 0 and n − 1 (the symbol ⟺ reads "exactly when"). If
+the slots are packed side by side, slot i is found by starting at the
+beginning and moving forward i slots.</span>
+</Formal>
+
+Read outside that range and there is no slot to read, so you get
+`undefined`, the "nothing" value from chapter 1, rather than an error:
+
+```js
+const scores = [90, 72, 85, 64];
+scores[4];  // undefined
+scores[-1]; // undefined
+```
+
+`scores` has slots 0 to 3, so `scores[4]` asks for a fifth slot that is
+not there, and `scores[-1]` asks for one before the start; both give
+`undefined`, quietly, which is handy but also means a wrong index can go
+unnoticed until something later misbehaves.
+
+<Prompts ids={['last-index', 'past-end', 'why-fast']} />
+
+## Changing and growing
+
+Writing to a slot looks like reading it, with `=` after it, and `push`
+adds a new slot at the end. Step through it:
+
+<PushSteps client:visible />
+
+<Analogy title="a queue at a bus stop">
+Someone new always joins at the back of the queue, and everyone already
+in it keeps their place; that is `push`. The length of the queue is how
+many people are in it.
+<span slot="breaks">People leave a queue from the front by themselves;
+nothing ever leaves an array unless your code removes it.</span>
+</Analogy>
+
+<Callout kind="definition">
+**`arr.push(v)`** adds `v` in a new slot at the end of `arr`; the new
+slot's index is the old length, and the length grows by one.
+</Callout>
+
+<Examples of="length push">
+
+```js
+[7, 8, 9].length; // 3
+[].length;        // 0
+```
+
+```js
+const xs = [7, 8, 9];
+xs.push(10);
+xs[xs.length - 1]; // 10
+```
+
+<Run id="arrays-basics" />
+
+</Examples>
+
+The first shows `length` on its own: three values give `3`, and `[]`, the
+**empty array**, has no slots at all, so its length is `0`. In the second,
+`push` adds `10` at index 3 and the length becomes 4, so `xs.length - 1`
+is `3` and the last line reads the value just added. The runnable one
+does all of it at once; change the numbers and watch the output.
+
+Reading the last slot is where most off-by-one slips happen, so compare:
+
+```js
+const xs = [7, 8, 9];
+xs[xs.length];     // undefined (index 3)
+xs[xs.length - 1]; // 9 (index 2)
+```
+
+The length is 3, but the slots are numbered 0, 1 and 2, so index 3 is one
+past the end; `arr[arr.length - 1]` is the standard way to read the last
+slot.
+
+(You may wonder how `push` can change an array declared with `const`.
+`const` only means the *name* can never be pointed at a different array;
+the array itself can still change, and chapter 6 explains why.)
+
+<OtherLanguages>
+
+```js
+const xs = [4, 8, 15];
+xs.push(16);
+console.log(xs.length); // 4
+console.log(xs[9]); // undefined
+```
+
+```python
+xs = [4, 8, 15]
+xs.append(16)
+print(len(xs))  # 4
+print(xs[9])
+# IndexError: list index out of range
+```
+
+```java
+int[] xs = {4, 8, 15};
+// an int[] can never grow: no push
+System.out.println(xs.length); // 3
+System.out.println(xs[9]);
+// ArrayIndexOutOfBoundsException:
+// Index 9 out of bounds for length 3
+```
+
+```c
+int xs[3] = {4, 8, 15};
+/* fixed size, and no length field */
+size_t n = sizeof xs / sizeof xs[0];
+printf("%zu\n", n); /* 3 */
+printf("%d\n", xs[9]);
+/* no check: undefined behaviour */
+```
+
+</OtherLanguages>
+
+Python's list is the closest relative (it grows with `append`, and asks
+for its length with `len(xs)`), but reading past the end stops the
+program with an error, where JavaScript gives `undefined`. Java's arrays
+have a fixed length and one type of value (growing lists are a separate
+type, `ArrayList`); C's arrays are fixed too, do not even know their own
+length, and do not check the index at all, so reading past the end gives
+whatever happens to be in memory there, or a crash.
+
+<Prompts ids={['push', 'length-after-push']} />
+
+## Your turn
+
+<Exercise id="last" />
+
+<Exercise id="countdown" />
+
+## What you learned
+
+- An **array** stores many values in order under one name.
+- `arr[i]` reads or writes the slot at **index** `i`; indexes count steps
+  from the start, so they run from `0` to `arr.length - 1`, and outside
+  that range you get `undefined`.
+- **`length`** is how many slots there are; **`push`** adds one at the
+  end.
+
+Next: visiting every slot in turn with a loop, the code you will write
+more often than any other in this book.
+
+<Quiz />

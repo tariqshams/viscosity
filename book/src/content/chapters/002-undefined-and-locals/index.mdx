@@ -1,0 +1,313 @@
+---
+n: 2
+day: 1
+part: I
+title: 'What a call leaves behind: undefined and local variables'
+tagline: 'A call hands back one value and forgets everything else it did. That forgetting is not a flaw; it is what lets you build big programs out of small, trustworthy pieces.'
+objectives:
+  - Predict when a call produces undefined, and tell printing a value from returning it.
+  - Explain why the variables made inside a function vanish when the call ends.
+  - Follow calls inside calls, each with its own page of local variables.
+introduces: [undefined, local-variable]
+uses: [function, parameter, argument, return, call, variables, numbers, strings, if, console-log, comparison]
+sources: [mdn-functions, nystrom2021]
+---
+import CallSteps from '../../../components/diagrams/ch002/CallSteps';
+import NestedCalls from '../../../components/diagrams/ch002/NestedCalls';
+
+## A call with nothing to give back
+
+Here is a function that greets someone, and a line that keeps whatever
+the call produces:
+
+```js
+function hi(name) {
+  console.log('Hello, ' + name);
+}
+const r = hi('Ada'); // prints Hello, Ada
+```
+
+The call clearly *does* something, since a greeting appears on the
+screen; however, the body has no `return`, so what is stored in `r`? Not
+the greeting, and not an error either: `r` holds a special value,
+`undefined`, which is JavaScript's way of saying "nothing came back".
+
+<Analogy title="sending a friend to the shop">
+You ask a friend to fetch milk. If they come back and hand you the milk,
+you can pour it: that is `return`. If instead they phone you from the shop
+to say "found the milk!" and then come home empty-handed, you heard the
+news, but there is nothing in your hands: that is `console.log` without
+a `return`, and your empty hands are `undefined`.
+<span slot="breaks">A friend can bring back several things at once; a
+function returns exactly one value (to send back several, you put them in
+one list or object, as the next two chapters show).</span>
+</Analogy>
+
+<Analogy title="a blank on a form">
+When a form comes back with the "middle name" box left empty, that does
+not mean the middle name is "0" or a blank space; it means nothing was
+filled in at all. `undefined` is that empty box.
+<span slot="breaks">An empty box on paper is only missing ink; `undefined`
+is a real value that you can store in a variable, pass to a function and
+test for with `=== undefined`.</span>
+</Analogy>
+
+<Callout kind="definition">
+**`undefined`** is the value JavaScript uses for "nothing was given or
+returned". A call produces it when the function ends without reaching a
+`return`, or reaches a bare `return;` with no value; a parameter holds
+it when the call passed no argument for it<Cite id="mdn-functions" />.
+</Callout>
+
+<Examples of="undefined">
+
+```js
+function nothing() {}
+nothing(); // undefined
+```
+
+```js
+function check(x) {
+  if (x < 0) return;
+  return 'ok';
+}
+check(-1); // undefined
+```
+
+```js
+function greet(name) {
+  return 'Hello, ' + name;
+}
+greet(); // 'Hello, undefined'
+```
+
+</Examples>
+
+The first function has an empty body, so the call runs off the end
+without meeting a `return`, and produces `undefined`. In the second,
+`check(-1)` finds `x < 0` true and runs `return;`, which ends the call
+with no value; `check(5)` would skip that line and return `'ok'`. The
+third is a bug you will meet in real code: the call passes no argument,
+so the parameter `name` holds `undefined`, and joining it onto a string
+turns it into the word "undefined".
+
+Mixing up printing and returning is the most common beginner bug of all,
+and JavaScript gives no error to warn you. Compare:
+
+```js
+function dbl(n) { console.log(n * 2); }
+dbl(3) + 1; // NaN
+function dbl2(n) { return n * 2; }
+dbl2(3) + 1; // 7
+```
+
+`dbl(3)` prints `6` but produces `undefined`, and `undefined + 1` is
+`NaN`, short for "not a number", the value JavaScript gives for arithmetic
+that makes no sense; `dbl2(3)` returns `6`, so the sum is `7`.
+
+<OtherLanguages>
+
+```js
+function hi(name) {
+  console.log('hi ' + name);
+}
+const r = hi('Ada');
+console.log(r); // undefined
+```
+
+```python
+def hi(name):
+    print('hi ' + name)
+
+r = hi('Ada')
+print(r)  # None
+```
+
+```java
+static void hi(String name) {
+    System.out.println("hi " + name);
+}
+// String r = hi("Ada");  does not
+// compile: incompatible types:
+// void cannot be converted to String
+```
+
+```c
+void hi(const char *name) {
+    printf("hi %s\n", name);
+}
+/* int r = hi("Ada");  does not compile:
+   void value not ignored as it ought
+   to be */
+```
+
+</OtherLanguages>
+
+Here the languages genuinely differ. Python behaves like JavaScript, but
+calls its "nothing" value `None`. Java and C make you mark a function
+that returns nothing with `void`, and then refuse to compile any line that
+tries to keep its result. Missing arguments differ too: JavaScript quietly
+fills them with `undefined`, Python stops with `TypeError: hi() missing 1
+required positional argument: 'name'`, and Java and C will not compile the
+call at all.
+
+<Prompts ids={['no-return', 'bare-return', 'missing-arg', 'print-vs-return']} />
+
+## Each call gets a fresh page
+
+Now try to read a variable that a function made, from outside it:
+
+```js
+function area(w, h) {
+  const a = w * h;
+  return a;
+}
+area(3, 4);
+console.log(a);
+// ReferenceError: a is not defined
+```
+
+Every time you call a function, JavaScript gives that call its own fresh
+page to write on. The parameters are written on it first, holding the
+arguments, and any variable the body makes with `let` or `const` goes on
+the same page; when the call ends, the page is thrown away, and only the
+returned value survives. `a` lived on the page of that one call, so by the
+last line there is no `a` anywhere, and JavaScript stops with that exact
+error. Step through it:
+
+<CallSteps client:visible />
+
+<Analogy title="a whiteboard in a meeting room">
+Each meeting starts with a clean whiteboard; people scribble sums and
+names on it while they work, and when the meeting ends the board is wiped.
+The only thing that leaves the room is the decision written in the
+minutes, which is the return value.
+<span slot="breaks">One room holds one meeting at a time, but calls can
+pile up: while one call waits for another, both pages exist at once (see
+the second diagram below). And chapter 8 shows a way for a page to outlive
+its call.</span>
+</Analogy>
+
+<Analogy title="scrap paper in an exam">
+Every candidate gets fresh scrap paper for their working, and it is
+collected and binned at the end; only the answer sheet is marked. Two
+candidates can both write "x = 4" on their scrap paper without any
+confusion.
+<span slot="breaks">Exam scrap paper could be fished out of the bin;
+a finished call's page cannot be read by anyone, ever, not even by the
+code that made the call.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **local variable** is a variable made inside a function's body (with
+`let` or `const`); the parameters behave the same way. It exists only
+while that one call runs, and every call gets its own. The set of names
+and values belonging to one call is the call's **environment** (the
+"page"). A function can also read variables made *outside* it; chapter 8
+is about exactly that.
+</Callout>
+
+<Examples of="local-variable">
+
+```js
+const r = area(3, 4); // keep the answer
+console.log(r); // 12
+```
+
+```js
+function f() { const t = 1; return t; }
+function g() { const t = 2; return t; }
+f() + g(); // 3
+```
+
+```js
+function tick() {
+  let count = 0;
+  count = count + 1;
+  return count;
+}
+tick(); // 1
+tick(); // 1 again
+```
+
+</Examples>
+
+The first is the fix for the error above: the outside code cannot reach
+`a`, but it can keep the value `area` returns, here in `r`. In the second,
+`f` and `g` each have a local called `t`, and they never clash, because
+each call writes on its own page, so `f()` returns `1`, `g()` returns
+`2`, and the sum is `3`. The third surprises many people: `tick` does not
+count up, because every call starts a fresh page, makes a brand-new
+`count` set to `0`, adds one and returns `1`; nothing is remembered from
+the call before.
+
+<Formal title="An environment, written down">
+
+```text
+area(3, 4)   E = { w ↦ 3, h ↦ 4 }
+a = w * h    E = { w ↦ 3, h ↦ 4, a ↦ 12 }
+return a     gives 12; E is discarded
+```
+
+<span slot="read">E is the call's environment, a set of bindings; the
+arrow ↦ reads "is bound to", so w ↦ 3 says "the name w is bound to the
+value 3". The call starts E with its parameters, each line may add a
+binding, and return hands back one value and throws E away. Part III
+builds exactly this table in the interpreter.</span>
+</Formal>
+
+<Prompts ids={['fresh-page', 'local-gone', 'same-name-locals', 'tick-resets']} />
+
+## Calls inside calls
+
+Once a piece of work has a name, other functions can use it, and each of
+those calls gets its own page too:
+
+<NestedCalls client:visible />
+
+`hypot` (the length of the long side of a right-angled triangle) calls
+`square` twice; each of those calls gets its own page with its own `x`,
+which sits on top of `hypot`'s page while it runs and is thrown away when
+it returns. `Math.sqrt`, the square root, is a function built into
+JavaScript, and you call it in exactly the same way. Every program in this
+book, from a 50-line calculator to Viscosity itself, is this idea
+repeated; Crafting Interpreters, the book this one borrows its shape from,
+builds a whole programming language one small function at a
+time<Cite id="nystrom2021" />.
+
+<Run id="leftovers" />
+
+<Callout kind="engine" label="Why this matters for engines">
+The "fresh page per call" really exists inside every JavaScript engine,
+and you will build one. In Part III our interpreter keeps an
+*environment* for each call, a little table of names and values; in Part
+IV the virtual machine keeps them in a *stack frame*, and the pile of
+pages in the diagram above is the *call stack*. In Part VIII you will see
+why it matters to Viscosity whether a value can *escape* its page, because
+values that never escape can be stored however we like.
+</Callout>
+
+<Prompts ids={['fn-calls-fn']} />
+
+## Your turn
+
+The core exercise is about `undefined`; the extra one builds a function
+out of a smaller one.
+
+<Exercise id="greetOrStranger" />
+
+<Exercise id="distance" />
+
+## What you learned
+
+- A call with no `return` (or a bare `return;`) produces **`undefined`**,
+  and so does a parameter with no argument. Printing is not returning.
+- Each call gets a fresh page (its **environment**) for its parameters
+  and **local variables**; the page is thrown away when the call ends,
+  and only the returned value survives.
+- Calls inside calls pile up pages, each with its own variables.
+
+Next, you will meet the first way of holding *many* values under one
+name: arrays.
+
+<Quiz />

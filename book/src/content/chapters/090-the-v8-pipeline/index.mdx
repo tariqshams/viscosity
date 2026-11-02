@@ -1,0 +1,256 @@
+---
+n: 90
+day: 23
+part: V
+title: 'The V8 pipeline'
+tagline: 'Your Drip VM runs a function the same way on its first call and its millionth. V8 doesn’t: the same function can run in four different ways in one program, and you can watch it switch.'
+objectives:
+  - Explain why an engine starts in an interpreter and compiles only the code that turns out to be hot.
+  - Name V8’s four tiers, Ignition, Sparkplug, Maglev and TurboFan, and say what each one is for.
+  - Read a few lines of real Ignition bytecode and compare them with Drip’s.
+  - Watch a real function change tiers in Node, and explain why it can also move back down.
+introduces: [tiering, jit-compiler, ignition, optimizing-tiers]
+uses: [bytecode, opcode, virtual-machine, interpreter, compiler, compiler-pipeline, dispatch-loop, interpreter-overhead, stack-machine, disassembler, register, cpu, branch-prediction, smi, jit-warmup, single-pass-compiler, call-frame, drip, function, call, parameter, return, for-loop]
+sources: [v8-ignition, v8-launch-ignition-turbofan, v8-sparkplug, v8-maglev, v8-src-tiering-12-4, v8-src-interpreter-12-4, v8-leaving-sea-of-nodes]
+---
+import TierSteps from '../../../components/diagrams/ch090/TierSteps';
+
+## The same function, four ways
+
+Part IV ended with a VM that compiles a Drip program to bytecode once and
+then runs it in a loop. Every function gets the same treatment, whether it
+runs once or a million times.
+
+Here is a tiny JavaScript program that asks V8 a question after every call:
+*which kind of code is running `add` right now?* The `%` functions are V8
+internals that Node unlocks with a flag.
+
+```js
+// node --allow-natives-syntax tiers.js
+function add(a, b) { return a + b; }
+function tier(f) {
+  if (%ActiveTierIsTurbofan(f))
+    return 'TurboFan';
+  if (%ActiveTierIsMaglev(f))
+    return 'Maglev';
+  if (%ActiveTierIsSparkplug(f))
+    return 'Sparkplug';
+  return 'Ignition';
+}
+let last = '', s = 0;
+for (let i = 1; i <= 1e5; i++) {
+  s = add(s, i);
+  const t = tier(add);
+  if (t !== last) console.log(i, t);
+  last = t;
+}
+```
+
+It prints a line only when the answer changes. One real run:
+
+```
+Node v22.23.4, V8 12.4.254.21
+1 Ignition
+6256 Sparkplug
+15298 TurboFan
+65537 Sparkplug
+75770 TurboFan
+```
+
+The same `add` ran three different ways, and at call 65,537 it went
+*back*. A second run switched at different call counts (7,342 and
+10,895), because some of this work happens on background threads. By the
+end of the chapter you’ll be able to explain every line.
+
+## Start cheap, spend on what’s hot
+
+<Callout kind="intuition">
+A new restaurant doesn’t print a glossy menu on day one. It writes the
+dishes on a chalkboard, which is quick and easy to change. Once a dish
+keeps selling, it earns a proper place on the printed menu. Effort goes
+where the demand turned out to be.
+</Callout>
+
+Most of a web page’s JavaScript runs a few times, or never. Compiling all
+of it to fast machine code before running would waste time and memory on
+code that doesn’t matter. So V8 starts every function in the cheapest form
+that can run, and spends more effort only on functions that prove to be
+hot. Step through `add`’s life:
+
+<TierSteps client:visible />
+
+<Callout kind="definition">
+**Tiering** is running each function in one of several **tiers**
+(execution modes) and moving it to a faster but costlier tier as it gets
+hot. A **JIT compiler** (just-in-time compiler) compiles code *while the
+program runs*, right before it is needed, rather than ahead of time. The
+V8 team described its pipeline this way in 2016: code starts in a baseline
+form, and is re-compiled by an optimizing compiler when it proves
+hot<Cite id="v8-ignition" />.
+</Callout>
+
+How does V8 decide that a function is hot? In the V8 inside Node 22, each
+function gets a **budget** that its bytecode uses up as it runs. The budget
+for TurboFan is the function’s bytecode length times a count, 3000 by
+default, and Maglev’s works the same way with 400. The interpreter spends
+the budget on every return and every backward jump of a loop, by the size
+of the bytecode it ran through<Cite id="v8-src-tiering-12-4" />. So
+hotness measures work done, not calls: a function with a busy loop inside
+gets hot after far fewer calls. These numbers are tuning knobs, not laws:
+treat them as a snapshot of one version.
+
+<Prompts ids={['tiering-what', 'jit-what', 'why-not-all', 'budget']} />
+
+## Ignition: the interpreter you already know
+
+The bottom tier is **Ignition**, V8’s interpreter. V8 used to start with a
+quick compiler to machine code instead. Ignition, announced in 2016,
+replaced it to save memory: its bytecode is a quarter to a half the size of
+the old baseline machine code<Cite id="v8-ignition" />. Since V8 5.9 (Chrome 59, 2017),
+every JavaScript function starts in Ignition<Cite id="v8-launch-ignition-turbofan" />.
+
+You can print Ignition’s bytecode. Here is `add` next to the same function
+in Drip’s VM:
+
+```
+// node --print-bytecode
+//   --print-bytecode-filter=add
+// (addresses removed, spacing squeezed)
+Bytecode length: 6
+@ 0 : 0b 04      Ldar a1
+@ 2 : 3b 03 00   Add a0, [0]
+@ 5 : ae         Return
+```
+
+```
+== add ==            (Drip VM)
+0000    1 OP_GET_LOCAL        1
+0002    | OP_GET_LOCAL        2
+0004    | OP_ADD
+0005    | OP_RETURN
+0006    | OP_NIL
+0007    | OP_RETURN
+```
+
+Drip is a stack machine: it pushes `a`, pushes `b`, and `OP_ADD` pops both.
+Ignition is a **register machine** with a special register, the
+**accumulator**, that most instructions read and write without naming
+it<Cite id="v8-ignition" />. `Ldar a1` loads the second parameter (`b`)
+into the accumulator. `Add a0, [0]` adds register `a0` (`a`) to
+it<Cite id="v8-src-interpreter-12-4" />. `Return` returns whatever is in the
+accumulator. Three instructions instead of four (Drip’s last two are the
+implicit `return nil` its compiler always adds).
+
+Look at the `[0]` in `Add a0, [0]`. It isn’t a value. It’s the number of a
+**feedback slot**: as it adds, the handler records what kinds of values it
+saw<Cite id="v8-src-interpreter-12-4" />. Drip’s VM never did this. It’s
+the single most important difference, and it’s what lets the upper tiers
+exist.
+
+<Callout kind="definition">
+**Ignition** is V8’s bytecode interpreter, the tier every function starts
+in. It is a register machine with an implicit **accumulator**. Its
+instructions carry **feedback slot** numbers, where it records what each
+operation saw while running.
+</Callout>
+
+<Prompts ids={['ignition-why', 'accumulator', 'feedback-slot']} />
+
+## Three compilers above it
+
+An interpreter keeps a cost it can’t remove: decoding each instruction and
+dispatching to the next one. The V8 team’s 2021 post on Sparkplug puts it
+plainly: dispatching depends on the CPU’s branch prediction, and decoding
+reads operands from memory every time<Cite id="v8-sparkplug" />. You met
+that cost in your own VM’s dispatch loop. The tiers above Ignition each
+spend more compile time to remove more of it.
+
+- **Sparkplug** (V8 9.1, 2021) compiles bytecode straight to machine code
+  in a single pass, with no IR of its own. Its code mostly calls the same
+  helpers the interpreter uses, and keeps the same stack-frame layout, so
+  V8 can switch between them almost for free. The V8 team calls it
+  *non-optimizing*<Cite id="v8-sparkplug" />.
+- **Maglev** (desktop Chrome M117, described in 2023) is a quick
+  optimizing compiler with an SSA IR. In 2023 the team reported that it
+  compiled about 10 times slower than Sparkplug and about 10 times faster
+  than TurboFan<Cite id="v8-maglev" />.
+- **TurboFan** is the top tier, aimed at peak speed. Since 2017 it compiles
+  from Ignition’s bytecode, not by re-parsing the source as its predecessor
+  Crankshaft did<Cite id="v8-launch-ignition-turbofan" />.
+
+The two optimizing tiers read the feedback and make **speculative** code:
+code that assumes what it saw will keep happening, plus a check that bails
+out if it doesn’t<Cite id="v8-maglev" />.
+
+<Callout kind="definition">
+V8’s **optimizing tiers** are the compilers above Ignition: **Sparkplug**
+(fast, one pass, no optimizations, removes interpreter overhead),
+**Maglev** (fast optimizing compiler) and **TurboFan** (slow, best code).
+Maglev and TurboFan specialize code using the recorded feedback.
+</Callout>
+
+<Prompts ids={['sparkplug-removes', 'speculate']} />
+
+## Reading the run again
+
+Now the output makes sense. `add` started in Ignition. Around six thousand
+calls in, it was warm enough for Sparkplug, and soon after TurboFan. Why
+no Maglev? Ask the build itself: `node --v8-options` lists Maglev as
+`default: --no-maglev` in this Node 22 build, while Sparkplug and TurboFan
+are on<Cite id="v8-src-tiering-12-4" />.
+
+And call 65,537? Rerunning with `--trace-deopt` shows the reason, cut
+down here to fit:
+
+```
+Node v22.23.4, V8 12.4.254.21
+[bailout (kind: deopt-eager,
+  reason: not a Smi): ...
+  deoptimizing ... <JSFunction add ...>
+```
+
+The running sum passed 2<sup>31</sup> − 1, the largest Smi in this build
+(chapter 31). TurboFan’s code had assumed small integers, because that’s
+all the feedback had ever seen. The guess failed, the optimized code was
+dropped, and `add` carried on in a lower tier until it got hot again.
+Chapter 95 takes that apart.
+
+<Prompts ids={['why-fall']} />
+
+<Run id="warmup" />
+
+<Callout kind="engine" label="Under the hood">
+The tiers keep changing. Before 2017 V8 ran Full-codegen and Crankshaft,
+used since 2010<Cite id="v8-launch-ignition-turbofan" />; Sparkplug arrived
+in 2021<Cite id="v8-sparkplug" /> and Maglev in 2023<Cite id="v8-maglev" />.
+Even TurboFan’s insides moved: in 2025 the team wrote that its JavaScript
+backend had replaced its “Sea of Nodes” IR with a control-flow-graph IR
+called Turboshaft<Cite id="v8-leaving-sea-of-nodes" />. Viscosity doesn’t
+compete with any of this. It rewrites your source before V8 ever sees it,
+so its output still goes through the same tiers.
+</Callout>
+
+## Your turn
+
+<Exercise id="tierUp" />
+
+<Exercise id="budgetTier" />
+
+## What you learned
+
+- **Tiering** runs each function in the cheapest tier first and moves hot
+  functions to faster tiers. A **JIT compiler** compiles while the program
+  runs.
+- **Ignition** is V8’s interpreter: a register machine with an
+  **accumulator**, whose instructions carry **feedback slots**.
+- V8’s **optimizing tiers** are **Sparkplug** (removes interpreter
+  overhead), **Maglev** (quick optimizing) and **TurboFan** (best code).
+- The optimizing tiers speculate from feedback, and fall back to a lower
+  tier when the guess fails.
+- Thresholds, tiers and defaults change between versions. Name the version
+  when you quote one.
+
+Next: before any of this can start, V8 has to parse the source, and it
+tries hard not to.
+
+<Quiz />

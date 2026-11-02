@@ -52,5 +52,13 @@ export const RENUMBERINGS = [
   {
     "after": 16,
     "by": 7
+  },
+  {
+    "after": 2,
+    "by": 1
+  },
+  {
+    "after": 1,
+    "by": 1
   }
 ];

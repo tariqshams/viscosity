@@ -1,0 +1,236 @@
+---
+n: 152
+day: 38
+part: VIII
+title: 'Access patterns'
+tagline: 'Struct of arrays helps a loop that touches a few fields of many elements. So for every loop, Viscosity writes down which fields it reads and writes, how deeply it is nested, and, when it can tell, how many times it runs.'
+objectives:
+  - Describe a loop's access pattern as its read set, write set, nesting depth and trip count.
+  - Build a per-loop access table from a list of element accesses, the way Viscosity does.
+  - Predict when Viscosity can and can't compute a loop's trip count.
+  - Explain what a hot loop is, and what Viscosity uses in its place before the program has run.
+introduces: [access-pattern, hot-loop]
+uses: [array-of-objects, for-loop, set, map, aos-vs-soa, hot-cold-split, cache-line, spatial-locality, basic-block, cfg, dominator, natural-loop, induction-variable, phi-node, vir, record-collection-nodes, collection-discovery, record-shape, tiering, type-feedback]
+sources: [v8-maglev]
+---
+import AccessSteps from '../../../components/diagrams/ch152/AccessSteps';
+import BenchBars from '../../../components/bench/BenchBars';
+
+## One shape, two loops
+
+Chapter 32 showed that struct of arrays wins most when a loop reads only
+some of the fields. Here are two suites from this book's benchmark run.
+Both use the same six-field records; one loop reads every field, the
+other reads one:
+
+<BenchBars suite="read-all" n={100000} title="read-all: read all 6 fields" highlight={['soa']} layouts={['aos', 'soa']} caption="SoA still wins, but every column must be streamed through the cache." />
+
+<BenchBars suite="sum-one-field" n={100000} title="sum-one-field: read 1 of 6 fields" highlight={['soa']} layouts={['aos', 'soa']} caption="With one field, SoA reads only the bytes the loop needs." />
+
+The collection is the same. What differs is the loop. So before it can
+decide anything, Viscosity needs to know, for every loop, what that loop
+does to the collection's fields.
+
+<Callout kind="intuition">
+A warehouse picker carries a clipboard with one line per aisle. In each
+aisle they tick which shelves they took from and which they restocked.
+At the end of the day the clipboard says how the warehouse is used, and
+whether it is laid out well.
+</Callout>
+
+<Callout kind="definition">
+A loop's **access pattern** says what it does to a collection's elements:
+which fields it **reads**, which it **writes**, how deeply it is
+**nested** inside other loops, and how many **trips** (iterations) it
+makes per execution, if that can be known.
+</Callout>
+
+In Viscosity it is one record per loop, from
+`packages/core/src/analysis.ts`:
+
+```ts
+interface LoopAccess {
+  func: string;   // the enclosing function
+  line: number;   // the loop's header line
+  depth: number;  // 0 = not in a loop
+  reads: Set<string>;
+  writes: Set<string>;
+  /** estimated iterations per
+   *  execution, if known */
+  trips: number | null;
+}
+```
+
+<Prompts ids={['ap-what', 'ap-why']} />
+
+## Filing every access under a loop
+
+By this point the safety pass (chapter 153) has already collected every
+element access: each `field.get` and `field.set` whose object is an
+element `ps[i]`. Note that `ps[i].x += 1` is two accesses, a read and a
+write. Building the table is a matter of filing each one under the
+innermost natural loop around it. Step through it:
+
+<AccessSteps client:visible />
+
+The real loop is short. Simplified:
+
+```ts
+for (const a of c.accesses) {
+  const f = funcOf.get(a.inst);
+  const l = loopOf(loops(f), a.inst.block);
+  const key = l ? f.id + ':' + l.header
+                : f.id + ':none';
+  let la = byLoop.get(key);
+  if (!la) {
+    la = { func: f.name, line: lineOf(l),
+      depth: l ? l.depth : 0,
+      reads: new Set(), writes: new Set(),
+      trips: l ? tripCount(f, l) : 1 };
+    byLoop.set(key, la);
+  }
+  const set = a.kind === 'read'
+    ? la.reads : la.writes;
+  set.add(a.field);
+}
+```
+
+`loopOf` picks the smallest loop whose body contains the access's basic
+block, and the key is the loop's header block, so two accesses in the
+same loop always share a row. Printing the real rows for the program in
+the diagram gives (reformatted):
+
+```text
+<module> line 5 depth 2 trips null
+  reads vy, y, vx, x  writes y, x
+<module> line 11 depth 1 trips 10
+  reads x
+<module> line 12 depth 0 trips 1
+  reads y
+```
+
+The fields come out in the order the analysis happened to find them,
+which is fine: they are sets. Because the key includes the function,
+loops in different functions get different rows. In the corpus file
+`interproc_ok.js`, `bodies` is passed to two functions, and explain
+reports a loop in each:
+
+```text
+bodies (line 2) {x, y, m} → struct of
+  arrays
+  · loop at line 7 in centerOfMass()
+    touches 2 of 3 fields (x, m)
+  · loop at line 11 in drift() touches 1
+    of 3 fields (x)
+```
+
+<Prompts ids={['ap-two', 'ap-innermost', 'ap-func']} />
+
+## Depth and trips
+
+**Depth** comes from the natural loops of chapter 116: a loop's depth is
+one more than the number of larger loops that contain its header. The
+inner loop in the diagram is inside the `t` loop, so it has depth 2.
+
+**Trips** is harder, and Viscosity only tries the easiest case: the
+loop's condition is `i < c` or `i <= c` for a constant `c`, where `i` is
+an induction variable that starts at `0` and steps by `1`. Simplified:
+
+```ts
+const tripCount = (f, l) => {
+  const t = f.blocks[l.header].term;
+  if (t.kind !== 'condbr') return null;
+  const cond = inst(t.cond);
+  if (cond.operator !== '<' &&
+      cond.operator !== '<=') return null;
+  const [iv, bound] = cond.args.map(inst);
+  if (!isCountingPhi(iv, true) ||
+      bound.op !== 'const') return null;
+  return cond.operator === '<'
+    ? bound.value : bound.value + 1;
+};
+```
+
+So `i < ps.length` has no trip count: the length isn't a constant in the
+code. Neither does `i < 64 * 64`, because the bound is an expression, not
+a constant. That one is from `nested_loops.js`, where explain says “size
+unknown statically”. Today the trip counts feed exactly that line: a
+`push` inside loops with known trip counts adds their product to the
+size estimate, and the next chapters' cost model looks at the size.
+
+<Prompts ids={['ap-depth', 'ap-trips', 'ap-tripuse']} />
+
+## Hot loops
+
+<Callout kind="intuition">
+In a restaurant kitchen, the layout of the stove matters far more than
+the layout of the storeroom, because the stove is where the cooks spend
+their evening.
+</Callout>
+
+<Callout kind="definition">
+A **hot loop** is a loop where a program spends most of its time. Those
+are the only loops whose memory layout is worth optimizing.
+</Callout>
+
+Before the program runs, nobody knows for sure which loops are hot.
+Viscosity uses the weakest sign that can be checked statically: an
+access counts only if it is in a loop at all. The planner, in
+`plan.ts`, throws away the depth-0 rows:
+
+```ts
+const fieldLoops =
+  c.loops.filter((l) => l.depth > 0);
+if (fieldLoops.length === 0)
+  keep('no loop reads or writes its ' +
+    'fields, so a new layout cannot ' +
+    'pay off');
+```
+
+That is the whole story of the corpus file `no_loops.js`, which fills
+`ps` in a loop but only ever reads `ps.length`:
+
+```text
+ps (line 2) {x} → kept as array of
+  objects
+  · no loop reads or writes its fields,
+    so a new layout cannot pay off
+```
+
+Depth and trip counts are recorded, but the planner doesn't yet weigh
+one loop against another with them. A loop that runs ten times and a
+loop nested three deep both count. Chapter 163 replaces this guess with
+measurements from a real run.
+
+<Prompts ids={['hl-what', 'hl-proxy']} />
+
+<Callout kind="engine" label="Under the hood">
+V8 finds its hot code by watching: functions start in the interpreter,
+and the ones that run often move up to optimizing tiers, which use the
+type feedback collected along the way<Cite id="v8-maglev" />. Viscosity
+works before the program has run, so it can't watch. It has to read
+hotness off the code, and “inside a loop” is the part it can be sure
+of.
+</Callout>
+
+## Your turn
+
+<Exercise id="loopTable" />
+
+<Exercise id="describeLoop" />
+
+## What you learned
+
+- A loop's **access pattern** is its read set, write set, nesting depth
+  and trip count for one collection.
+- Viscosity files every element access under the **innermost** natural
+  loop around it, one row per loop per function. Accesses outside any
+  loop get a depth-0 row.
+- `x += 1` is a read and a write. Rows hold **sets** of fields.
+- Trip counts are known only for loops like `i < 10` counting from 0 by
+  1. Today they only feed the size estimate.
+- A **hot loop** is where the time goes. Before the program runs,
+  Viscosity's stand-in is “in a loop”: with no field access in any loop,
+  it keeps the array of objects.
+
+<Quiz />

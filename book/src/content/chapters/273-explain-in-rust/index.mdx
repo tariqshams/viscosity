@@ -1,0 +1,265 @@
+---
+n: 273
+day: 69
+part: XIII
+title: 'explain in Rust'
+tagline: 'The Rust engine writes the same report as the TypeScript one, word for word, and with --frames it points at the code each refusal is about. Rust counts in UTF-8 bytes and JavaScript in UTF-16 units, yet the carets land in the same place.'
+objectives:
+  - Read explain_text in plan.rs, and say how one Option parameter gives both outputs.
+  - Explain how a refusal finds its source position, and when a frame is printed.
+  - Build a code frame from byte offsets, counting columns in code points and keeping tabs.
+  - Say what the 14 frames fixtures check, and what a frame still gets wrong.
+introduces: [rust-explain]
+uses: [viscosity-rs, ir-arena, rust-cost-model, rust-escape-pass, optimization-report, bailout, cross-implementation-tests, test-corpus, fuzzing, source-location, ssa, option, match, struct, vec, hashmap, rust-iterator, rust-closure, string-vs-str, slice, char-code, cargo-test]
+sources: ['klabnik2026']
+---
+import FrameSteps from '../../../components/diagrams/ch273/FrameSteps';
+
+## A reason with no place
+
+Chapter 164 made the report: one line per collection, then its reasons.
+Here is a small program, indented with tabs:
+
+```js
+const ps = [];
+for (let i = 0; i < 99; i++)
+	ps.push({ x: i });
+const keep = [];
+for (let i = 0; i < 99; i++) {
+	if (ps[i].x > 3)
+		keep.push(ps[i]);
+}
+const t = "🎉"; f(t, ps[2]);
+function f() {}
+```
+
+The Rust engine's report on `ps` (long lines wrapped):
+
+```
+ps (line 1) {x} → kept as array of objects
+  · unsafe: line 7: an element is used by
+    push
+  · unsafe: line 9: an element is passed
+    to a function call
+```
+
+Line 7 has `ps[i]` twice. Which one is "used by push"? In a long file
+you'd go hunting. So both engines now have `viscosity explain --frames`,
+which prints the line under the reason, with carets under the code:
+
+```
+  · unsafe: line 7: an element is used by
+    push
+    7 | 		keep.push(ps[i]);
+      | 		          ^^^^^
+  · unsafe: line 9: an element is passed
+    to a function call
+    9 | const t = "🎉"; f(t, ps[2]);
+      |                     ^^^^^
+```
+
+That is real output from the release build (rustc 1.97), wrapped the
+same way, and the TypeScript CLI printed the same bytes.
+
+<Callout kind="intuition">
+A note in the margin says "see line 7". A finger on the page says
+"this, here". The report already had the margin notes. Frames add the
+finger.
+</Callout>
+
+## One function, two outputs
+
+`crates/core/src/plan.rs` has two public functions, `explain(p)` and
+`explain_with_frames(p, source)`. Both call one private function, and
+the only difference is an `Option`. Adapted:
+
+```rust
+fn explain_text(
+    p: &Plan,
+    frames: Option<&str>,
+) -> String {
+    let mut lines = Vec::new();
+    for cp in &p.collections {
+        let c = &cp.collection;
+        lines.push(header(cp));
+        // Kept with one reason per bailout?
+        let refused = !c.bailouts.is_empty()
+            && cp.reasons.len()
+                == c.bailouts.len();
+        let rs = cp.reasons.iter();
+        for (k, r) in rs.enumerate() {
+            lines.push(format!("  · {r}"));
+            let at = if refused {
+                c.bailout_sites
+                    .get(&c.bailouts[k])
+                    .copied()
+                    .flatten()
+            } else {
+                None
+            };
+            if let Some((src, at)) =
+                frames.zip(at)
+            {
+                lines.push(code_frame(
+                    src, at, "    "));
+            }
+        }
+    }
+    lines.join("\n")
+}
+```
+
+`header` stands for the first line's `format!`. `Option::zip` gives
+`Some((src, at))` only if both are `Some`: a source to quote (frames
+were asked for) and a position (this reason has one). Either missing,
+and the loop prints what `explain` always printed.
+
+<Prompts ids={['rx-one-fn', 'rx-zip']} />
+
+## Where a refusal happened
+
+The position comes from the analysis. Every bailout goes through one
+method, `Collection::bail(msg, at)` in `analysis.rs`. It pushes the
+message and records `at`, an `Option<SourceRef>`, with
+`bailout_sites.entry(msg).or_insert(at)`. The map is keyed by message,
+and `or_insert` only writes a new key, so the *first* place a message
+was found wins. The planner turns each (deduplicated) bailout into one
+`unsafe: ...` reason, so when the counts match, reason `k` is bailout
+`k`. The site is the span of the instruction the bailout is about: the
+element `ps[i]` for an escape, the record literal for a shape mismatch,
+`ps = []` for a reassignment.
+
+Sometimes that instruction isn't on the line the message names. In the
+corpus program `string_index.js`, the message is about the access
+`ps[k]` on line 6, but the frame shows line 4:
+
+```
+  · unsafe: line 6: indexes the array with
+    something that may not be a number
+    4 | const k = '5';
+      |           ^^^
+```
+
+The bailout's instruction is the index *value*. In SSA, `k` is the
+constant `'5'`, and its `SourceRef` is where that constant was written.
+Arguably the more useful place to point.
+
+<Prompts ids={['rx-first-site', 'rx-refused', 'rx-string-index']} />
+
+<Callout kind="definition">
+**explain in Rust** is `plan::explain`: it walks the plan and writes one
+header per collection and one `·` line per reason, in plan order. With
+**`--frames`**, a kept collection whose reasons are exactly its
+bailouts gets a **code frame** under each reason that has a
+**bailout site**, the `SourceRef` recorded by `Collection::bail` the
+first time that message was found.
+</Callout>
+
+## Drawing the frame
+
+`code_frame(source, at, indent)` turns a span into those two lines.
+Step through it on line 7 of the program above:
+
+<FrameSteps client:visible />
+
+The heart of it, adapted from `plan.rs` (`brk` is `is_line_break`, true
+for `\n`, `\r`, U+2028 and U+2029, the same breaks acorn counts lines
+by):
+
+```rust
+let st = at.start as usize;
+let s = source[..st]
+    .rfind(brk)
+    // + the break's length (U+2028: 3)
+    .map_or(0, |i| i + len_at(source, i));
+let e = source[st..]
+    .find(brk)
+    .map_or(source.len(), |i| st + i);
+let text = source[s..e]
+    .trim_end_matches([' ', '\t']);
+let before = &source[s..st];
+let col = before.chars().count();
+let end = (at.end as usize)
+    .max(st)
+    .min(e);
+let up_to =
+    source[s..end].chars().count();
+let width = up_to
+    .min(text.chars().count())
+    .saturating_sub(col)
+    .max(1);
+// pad: `before`, with every char that
+// isn't a tab turned into a space
+```
+
+Three choices are worth noticing. The span is cut at the end of its
+first line (`min(e)`), so a span across lines gets carets to the end of
+the first one. Trailing blanks are trimmed and the carets never run past
+the text. And the pad copies tabs: two tabs before the code give two
+tabs before the carets, so they line up whatever width your editor or
+terminal gives a tab.
+
+<Prompts ids={['rx-tabs', 'rx-clip']} />
+
+## Bytes, units and code points
+
+Here is the problem parity had to solve. A Rust `SourceRef` holds UTF-8
+byte offsets, because oxc's spans are bytes and Rust strings are sliced
+by bytes. The TypeScript one holds UTF-16 offsets, because JavaScript
+strings are indexed that way. The same `ps` has different offsets in the
+two engines:
+
+<Run id="offsets" />
+
+Neither number is a column. The TypeScript `codeFrame` turns the text
+before the span into an array of code points (`Array.from`) and counts
+them. The Rust one counts `chars()`. Both get 8. That is the whole trick:
+each engine slices in its own units and counts in a shared one.
+
+`tests/extra/frames_columns.js` was written to break this. It has tabs
+before the code, accented letters and an emoji before a span, a CRLF
+line end, a U+2028 inside a line, and an element written across two
+lines, which gets carets to the end of its first line.
+
+<Prompts ids={['rx-bytes']} />
+
+## Held to the same bytes
+
+`scripts/gen_expected.mjs` writes a `.frames.txt` fixture for each of 14
+programs (its `FRAMES` list: 12 JavaScript, 2 Python), using the
+TypeScript `explain(plan, { frames: source })`. `parity.rs` checks every
+`.frames.txt` it finds, and when I ran it they all matched. The fuzzer
+also compares `explain --frames` on every program it generates, in
+check mode.
+
+<Prompts ids={['rx-fixtures']} />
+
+<Callout kind="engine" label="Under the hood">
+A code point is not a screen column. An emoji is one code point, but
+many fonts draw it two columns wide. In the output at the top, the
+carets under `ps[2]` count `🎉` as one column, so where it is drawn
+double they start one column early. Both engines make the same mistake,
+so parity can't notice it. Getting this right would need a table of
+character widths, which neither engine has.
+</Callout>
+
+<Prompts ids={['rx-display']} />
+
+## Your turn
+
+<Exercise id="codeFrame" />
+
+## What you learned
+
+- **`explain_text(p, frames)`** serves both commands. `frames.zip(at)`
+  prints a frame only when there is a source *and* a position.
+- `Collection::bail` records a **bailout site** per message, first one
+  wins (`entry().or_insert`). Frames appear only when a kept collection's
+  reasons are exactly its bailouts.
+- A **code frame** is the span's first line plus carets: clipped to that
+  line, blanks trimmed, tabs copied into the pad.
+- Rust slices in UTF-8 bytes and TypeScript in UTF-16 units, but both
+  **count columns in code points**, so the 14 frames fixtures match byte
+  for byte. Code points still aren't screen columns.
+
+<Quiz />

@@ -1,0 +1,260 @@
+---
+n: 4
+day: 1
+part: I
+title: 'Visiting every slot: the array loop'
+tagline: 'One short loop, written the same way every time, lets a few lines of code work on an array of any length. It is the loop this whole book exists to make faster.'
+objectives:
+  - Write the standard loop that visits every slot of an array exactly once, and explain each of its three parts.
+  - Collect an answer (a sum, a count, a winner) in a variable outside the loop.
+  - Spot and fix an off-by-one loop, and predict what happens on an empty array.
+  - Put the loop inside a function so it works for any array.
+introduces: [array-loop]
+uses: [array, index, length, push, function, parameter, return, call, undefined, variables, numbers, comparison, if, for-loop, console-log]
+sources: [mdn-array, mdn-typed-arrays, nystrom2021]
+---
+import SumLoop from '../../../components/diagrams/ch004/SumLoop';
+import OffByOne from '../../../components/diagrams/ch004/OffByOne';
+
+## Adding up a list you cannot see
+
+Say you want the total of an array of scores. If you know there are three,
+you can write it out:
+
+```js
+const a = [4, 8, 15];
+const total = a[0] + a[1] + a[2]; // 27
+```
+
+That breaks the moment the array has a fourth score, and inside a
+function you do not even know how many there will be. What we need is a
+way to say "do this for every slot, however many there are", and the
+`for` loop you already know, pointed at the indexes, does exactly that.
+
+<Analogy title="a ticket inspector walking the train">
+An inspector starts at the first carriage, counts the passengers, adds
+them to the tally on a clipboard, moves to the next carriage, and so on,
+until there are no carriages left. The clipboard travels with the
+inspector; it does not belong to any one carriage, which is why the count
+survives from carriage to carriage.
+<span slot="breaks">An inspector can see that a carriage is the last one;
+a loop cannot "see" anything, so it checks its test (`i < a.length`)
+before every single pass to find out whether it has run out of slots.</span>
+</Analogy>
+
+<Analogy title="checking a till receipt with a calculator">
+You go down the receipt one line at a time, adding each price to the
+running total on your calculator; when you reach the bottom, the
+calculator shows the answer.
+<span slot="breaks">A receipt already prints its total at the bottom; an
+array keeps no running total of any kind, so your code has to keep one,
+in a variable of its own.</span>
+</Analogy>
+
+## The loop, part by part
+
+```js
+for (let i = 0; i < a.length; i++) {
+  // do something with a[i]
+}
+```
+
+The brackets after `for` hold three parts, separated by semicolons.
+`let i = 0` runs once, before anything else, and starts the counter at
+the first index. `i < a.length` is the test, checked before each pass;
+while it is true the body runs, and as soon as it is false the loop ends.
+`i++` (short for `i = i + 1`) runs after each pass and moves the counter
+on to the next index. Because indexes go from `0` to `a.length - 1`, the
+test `<` stops the loop at exactly the right moment, and inside the body
+`a[i]` is the slot being visited. Step through the total of `[4, 8, 15]`:
+
+<SumLoop client:visible />
+
+Notice the pattern: `total` is made *before* the loop, so it lives on
+from one pass to the next, and each pass adds one slot to it. A variable
+like that, which collects an answer as the loop goes along, is called an
+**accumulator**.
+
+<Callout kind="definition">
+An **array loop** is a `for` loop whose counter runs over every index of
+an array in order, from `0` up to `arr.length - 1`, visiting each slot
+exactly once: `for (let i = 0; i < arr.length; i++)`. An
+**accumulator** is a variable declared before the loop that each pass
+updates, such as a running total, a count or the best value so far.
+</Callout>
+
+<Formal title="What the summing loop computes">
+
+```text
+total = a[0] + a[1] + … + a[n − 1]
+      = Σ a[i]  for i = 0, 1, …, n − 1
+after k passes: total = a[0] + … + a[k − 1]
+```
+
+<span slot="read">The Greek letter Σ (sigma) means "add up": add a[i] for
+every i from 0 to n − 1, where n is the length. The last line is a
+promise the loop keeps: after k passes, total holds the sum of the first
+k slots. It is true at the start (no passes, sum of nothing, 0) and each
+pass keeps it true, so when k reaches n the total is the whole sum.</span>
+</Formal>
+
+<Examples of="array-loop">
+
+```js
+const xs = [3, 1, 4];
+for (let i = 0; i < xs.length; i++) {
+  console.log(i, xs[i]);
+}
+```
+
+```js
+const xs = [5, 12, 8, 20];
+let big = 0;
+for (let i = 0; i < xs.length; i++) {
+  if (xs[i] > 10) big = big + 1;
+}
+// big is 2
+```
+
+```js
+const xs = [0, 5, 10];
+const vx = [1, 2, -1];
+for (let i = 0; i < xs.length; i++) {
+  xs[i] = xs[i] + vx[i];
+}
+// xs is now [1, 7, 9]
+```
+
+</Examples>
+
+The first loop prints each index next to its value (`0 3`, then `1 1`,
+then `2 4`), which is a good way to watch a loop when you are unsure what
+it does. The second keeps a *count* rather than a sum: `big` starts at
+`0`, and a pass adds one only when the `if` finds a slot above 10, which
+happens for `12` and `20`. The third is the loop this whole book is about:
+`xs` holds the positions of three particles and `vx` their speeds, and
+each pass moves particle `i` by writing a new value into `xs[i]`, so the
+loop changes the array rather than collecting an answer. Games and
+simulations run loops like this millions of times a second, and making
+them faster is Viscosity's whole job.
+
+The most common slip is testing with `<=` instead of `<`:
+
+<Figure takeaway="Stop before length, not at it." caption="For an array of length 3, i < xs.length visits 0, 1 and 2. With <=, the loop takes one more step, to index 3, where there is no slot.">
+  <OffByOne />
+</Figure>
+
+```js
+const xs = [4, 8, 15];
+let t = 0;
+for (let i = 0; i <= xs.length; i++) {
+  t = t + xs[i];
+}
+// t is NaN
+```
+
+The last pass reads `xs[3]`, which is `undefined`, and `27 + undefined`
+is `NaN` ("not a number"); there is no error message, only a wrong
+answer, which is what makes this slip so easy to miss. With `<` the loop
+ends one step sooner and `t` is the right total.
+
+<Prompts ids={['loop-start', 'loop-bound', 'loop-runs', 'accumulator', 'nan-off-by-one']} />
+
+## Arrays meet functions
+
+Put the loop inside a function and it works for *any* array, of any
+length:
+
+<Run id="sum" />
+
+`sum` has one parameter, `arr`, and a local accumulator `total` that
+starts at `0`. The loop adds each slot to `total`, and after the loop (not
+inside it, or it would stop after the first slot) the function returns
+the total, so `sum([4, 8, 15])` is `27` and `sum([1, 2])` is `3`. The last
+call matters most: an empty array has length `0`, so the test `0 < 0`
+fails straight away, the body never runs, and `total` stays `0`, which is
+the right answer with no special case needed.
+
+<OtherLanguages>
+
+```js
+function sum(xs) {
+  let t = 0;
+  for (let i = 0; i < xs.length; i++) {
+    t = t + xs[i];
+  }
+  return t;
+}
+```
+
+```python
+def sum_list(xs):
+    t = 0
+    for x in xs:
+        t = t + x
+    return t
+```
+
+```java
+static int sum(int[] xs) {
+    int t = 0;
+    for (int i = 0; i < xs.length; i++) {
+        t = t + xs[i];
+    }
+    return t;
+}
+```
+
+```c
+int sum(const int *xs, size_t n) {
+    int t = 0;
+    for (size_t i = 0; i < n; i++) {
+        t = t + xs[i];
+    }
+    return t;
+}
+```
+
+</OtherLanguages>
+
+Java's loop is almost letter for letter the same as JavaScript's. Python
+usually skips the index and walks the values directly, with `for x in
+xs:` (JavaScript has a similar form, `for (const x of xs)`, that this book
+uses later), and the function is called `sum_list` because Python
+already has a built-in `sum`. C is the odd one out: an array passed to a function does not
+carry its length with it, so the caller must pass the length `n` as a
+second argument, and a wrong `n` reads past the end with no warning.
+
+<Callout kind="engine" label="Under the hood">
+When an array holds only numbers, engines can store those numbers packed
+side by side in memory, and walking them in order with a loop like `sum`
+is one of the fastest things a computer can do. JavaScript even has
+special arrays that guarantee this packing, called *typed arrays*, such as
+`Float64Array`<Cite id="mdn-typed-arrays" />. They are what Viscosity
+produces, and you will meet them properly in chapter 18.
+</Callout>
+
+<Prompts ids={['why-function', 'empty-array', 'write-in-loop']} />
+
+## Your turn
+
+<Exercise id="max" />
+
+<Exercise id="countAbove" />
+
+## What you learned
+
+- `for (let i = 0; i < arr.length; i++)` visits every slot exactly once,
+  in order; `i` starts at the first index, and `<` stops it after the
+  last.
+- An **accumulator** declared before the loop collects the answer: a sum,
+  a count, a best-so-far.
+- With `<=` the loop reads one slot past the end and gets `undefined`
+  (and a sum becomes `NaN`); an empty array runs the body zero times.
+- Inside a function, the same loop works for an array of any length.
+
+Arrays hold values in *numbered* slots. Next: objects, which hold values
+in *named* ones. Combine the two and you get the shape this whole book is
+about.
+
+<Quiz />

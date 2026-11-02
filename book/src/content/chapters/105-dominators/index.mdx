@@ -1,0 +1,220 @@
+---
+n: 105
+day: 27
+part: VI
+title: 'Dominators'
+tagline: 'Some blocks can be skipped and some can’t. A block that every path must pass through is a checkpoint, and knowing the checkpoints is how a compiler finds loops and knows what has already happened.'
+objectives:
+  - Decide whether one block dominates another by thinking about paths from the entry.
+  - Compute dominator sets iteratively, and explain why the visiting order matters.
+  - Find immediate dominators and draw the dominator tree.
+  - Read Viscosity’s dominators function, which stores only the tree.
+introduces: [dominator, dominator-tree]
+uses: [cfg, basic-block, ir, three-address-code, temporary, tree, recursion, set, map, array, while-loop, for-of, function, arrow-function, index, aos-vs-soa]
+sources: [coopertorczon2022]
+---
+import DomSteps from '../../../components/diagrams/ch105/DomSteps';
+import DomTree from '../../../components/diagrams/ch105/DomTree';
+
+## Has this already happened?
+
+Look again at the Collatz loop's graph from chapter 104. Suppose b2
+computes something, say `n % 2`, and b7 wants to reuse it. Is that
+safe? Only if b2 has *certainly* run by the time b7 runs. Or the other
+way round: b5 computes `3 * n`. Can b7 use that? No: on the path
+through b6, b5 never ran.
+
+The difference between b2 and b5 is not where they sit in the listing,
+or which runs first on some path. It's whether you can get to b7
+*without* them. That idea, the blocks you can't avoid, turns out to be
+one of the most useful facts a compiler can have.
+
+## Checkpoints
+
+<Callout kind="intuition">
+An island town with one bridge. However you plan the trip, by the
+coast road or through the hills, you cross that bridge. The bridge
+**dominates** the town. A café you sometimes stop at on the way doesn't:
+there is a route that skips it.
+</Callout>
+
+<Callout kind="definition">
+In a CFG with entry block E, block A **dominates** block B if every path
+from E to B passes through A. Every block dominates itself, and E
+dominates every reachable block. A **strictly** dominates B if it
+dominates B and A ≠ B. The set of blocks that dominate B is written
+Dom(B).
+</Callout>
+
+For the Collatz graph: b2 dominates b7, because both ways into b7 come
+from b2's branches. b5 doesn't dominate b7, since the path through b6
+avoids it. And b2 does *not* dominate b4, the exit, even though b2 can
+run before it: when `n` starts at 1, the loop test fails at once and
+b4 runs with no visit to b2 at all.
+
+<Prompts ids={['dom-what', 'self-entry', 'not-before']} />
+
+## Computing it: shrink until nothing changes
+
+There is a neat equation hidden in the definition. To reach B you must
+come from one of its predecessors. So a block dominates B exactly if it
+is B itself, or it dominates *every* predecessor of B:
+
+```text
+Dom(entry) = { entry }
+Dom(B) = { B } ∪ ⋂ Dom(P), P a pred of B
+```
+
+Loops make this circular: b1's set depends on b3's, which depends on
+b1's. The way out is to start every set as large as possible, "all
+blocks", and apply the equation again and again. Sets only shrink, and
+when a whole pass changes nothing, you have the answer. Step through it:
+
+<DomSteps client:visible />
+
+The order matters for speed, not for the answer. Viscosity visits
+blocks in **reverse postorder**: do a depth-first search from the
+entry, write each block down once all its successors are finished,
+then reverse the list. From `packages/core/src/cfg.ts`:
+
+```ts
+function reversePostorder(f: Func) {
+  const seen = new Set<BlockId>();
+  const order: BlockId[] = [];
+  const visit = (b: BlockId) => {
+    seen.add(b);
+    for (const s of successors(f, b))
+      if (!seen.has(s)) visit(s);
+    order.push(b);
+  };
+  visit(f.entry);
+  return order.reverse();
+}
+```
+
+In that order every block comes after its predecessors, except the
+ones that reach it by a back edge. So most of the information is
+already there when a block is visited. For the Collatz graph the order
+is `0 1 4 2 6 5 7 3`. One pass does the work, and a second confirms it.
+
+<Run id="rpo" />
+
+<Prompts ids={['start-all', 'only-shrink', 'why-rpo']} />
+
+## The dominator tree
+
+Look at the final sets: `Dom(b3) = {0,1,2,3,7}`. They nest. Every
+dominator of b3 also dominates b3's closest dominator, b7. So you never
+need to store whole sets. For each block, keep just its nearest strict
+dominator, and the rest follow by walking upwards.
+
+<Callout kind="definition">
+The **immediate dominator** of B, idom(B), is the strict dominator of B
+that is closest to B: the one every other strict dominator of B also
+dominates. Every reachable block except the entry has exactly one.
+Drawing an edge from idom(B) to B for every B gives the **dominator
+tree**, rooted at the entry. A dominates B exactly when A is an
+ancestor of B in this tree (or B itself).
+</Callout>
+
+<Figure takeaway="The dominator tree is a summary of every Dom set: a block’s dominators are its ancestors." caption="The dominator tree of the Collatz CFG. b7, the join, is a child of b2, not of b5 or b6: either branch can be skipped. b3, the jump back to the loop test, hangs below b7. Compare the CFG from chapter 104: b3 → b1 is an edge to one of b3’s own ancestors.">
+  <DomTree />
+</Figure>
+
+<Prompts ids={['idom-what', 'tree-ancestor']} />
+
+## Viscosity's version stores only the tree
+
+`dominators` in `cfg.ts` computes the immediate dominators directly,
+as a `Map` from each block to its idom, without ever building a set.
+Trimmed:
+
+```ts
+const intersect = (a, b) => {
+  while (a !== b) {
+    while (index.get(a) > index.get(b))
+      a = idom.get(a);
+    while (index.get(b) > index.get(a))
+      b = idom.get(b);
+  }
+  return a;
+};
+// then, until nothing changes, for each
+// block b in reverse postorder (not entry):
+let d = preds[0];
+for (const p of preds.slice(1))
+  d = intersect(p, d);
+if (idom.get(b) !== d) {
+  idom.set(b, d); changed = true;
+}
+```
+
+`intersect` is the set intersection, done on the tree. `index` is a
+block's position in reverse postorder, and a block's idom always comes
+earlier in that order than the block itself. Put a finger on each block and move
+whichever finger is further down up to its idom, until the fingers
+meet. Where they meet is the nearest block that dominates both. Only
+predecessors that already have an idom are used, which also means
+unreachable blocks never get one.
+
+Asking "does A dominate B?" is then a walk up the tree from B:
+
+```ts
+function dominates(idom, a, b) {
+  if (!idom.has(b)) return false;
+  for (let x = b; ; x = idom.get(x)) {
+    if (x === a) return true;
+    if (idom.get(x) === x) return false;
+  }
+}
+```
+
+The entry is its own idom, which is how the walk knows it reached the
+root.
+
+<Callout kind="pitfall">
+A dominator is not "a block that runs earlier". b5 can run before b7,
+and b2 can run before b4, and neither dominates. Dominance is about
+*every* path, so a single path that avoids the block is enough to rule
+it out.
+</Callout>
+
+<Prompts ids={['intersect-fingers', 'unreachable-none']} />
+
+<Callout kind="engine" label="Under the hood">
+Dominators are one of the classic analyses of a compiler's middle end;
+two of their best-known uses are finding loops and placing the merge
+points of SSA form<Cite id="coopertorczon2022" />. Viscosity uses them
+for the first. `naturalLoops` in `cfg.ts` looks for an edge t → h where
+h dominates t. That is a **back edge**, and h is a loop header. For the
+Collatz loop it finds b3 → b1, with the body `{1, 2, 3, 5, 6, 7}`.
+Chapter 116 builds on it, because the loops over arrays of particles are
+where Viscosity's change of layout pays off.
+</Callout>
+
+<Prompts ids={['back-edge']} />
+
+## Your turn
+
+<Exercise id="dom-sets" />
+
+<Exercise id="idoms" />
+
+## What you learned
+
+- A **dominates** B if every path from the entry to B goes through A.
+  Every block dominates itself; the entry dominates everything reachable.
+- Dominator sets satisfy Dom(B) = \{B\} ∪ the intersection of its
+  predecessors' sets. Start from "all", repeat until **nothing
+  changes**; sets only shrink. **Reverse postorder** makes it quick.
+- The **immediate dominator** is the closest strict dominator. Joining
+  each block to its idom gives the **dominator tree**; a block's
+  dominators are its ancestors.
+- Viscosity stores only `idom`, intersecting by walking two fingers up
+  the tree. `dominates` walks up from B; `naturalLoops` uses it to find
+  back edges.
+
+Next: SSA form, where every value has exactly one definition, and the
+dominator tree tells you where that definition can be seen.
+
+<Quiz />
