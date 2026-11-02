@@ -8,13 +8,17 @@ program uses that data and, where it is provably safe and measurably faster,
 rewrites the storage as a *struct of arrays* (SoA) or blocked *AoSoA* backed
 by typed arrays. Your code keeps the same behaviour.
 
-Status: **working, pre-release.** The TypeScript compiler (JavaScript,
-TypeScript and Python front-ends) and its Rust port (JavaScript and Python;
+Website: [viscosity.dev](https://viscosity.dev) (the compiler's docs) and
+[viscosity.dev/book](https://viscosity.dev/book) (the book).
+
+Status: **version 0.0.1, published; early, so expect rough edges.**
+The TypeScript compiler (JavaScript, TypeScript and Python front-ends) and its Rust port (JavaScript and Python;
 byte-for-byte identical output on 190 fixture pairs, kept honest by a
 differential fuzzer, also built to WebAssembly) are built and tested, as
 are three Drip implementations (tree-walker, TS VM, drip-rs). The book has
 458 chapters, all written to its teaching standard (each with analogies,
-diagrams, worked examples and proven exercises). Version 0.0.1 is published: the npm packages
+diagrams, worked examples and proven exercises). Version 0.0.1 is published:
+the npm packages
 (`npm install -g @viscosity/cli`, `npm install @viscosity/wasm`) and the
 six Rust crates on crates.io (`cargo install viscosity-cli`).
 
@@ -36,8 +40,8 @@ shared 4-vCPU VM
 | Folder | What it is |
 |---|---|
 | [`engine/`](engine/) | The compiler. `engine/ts` is the TypeScript reference implementation; `engine/rust` is the Rust port. |
-| [`book/`](book/) | *Viscosity: From a Little JavaScript to Engines and Compilers*: an interactive, mobile-first web book that teaches everything needed to build this, from `if` statements up. |
-| [`website/`](website/) | viscosity.dev: the landing page and the user docs for the compiler. |
+| [`book/`](book/) | *Viscosity: Viscosity’s internals, and compiler engineering from scratch*: an interactive, mobile-first web book, served at [viscosity.dev/book](https://viscosity.dev/book), that teaches everything needed to build this, from `if` statements up. |
+| [`website/`](website/) | [viscosity.dev](https://viscosity.dev): the landing page and the user docs for the compiler. |
 
 ## Quick start
 
