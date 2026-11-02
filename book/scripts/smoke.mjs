@@ -16,8 +16,19 @@ const chapterBySlug = (slug) => {
   return d;
 };
 const REFS = chapterBySlug('references');
+const { BOOK } = await import('../src/data/book.js');
+// What the refs-play example prints when the same harness runs it in Node:
+// the browser runner must show exactly this.
+const { runWithTestsAsync } = await import('../src/lib/minitest.js');
+const { formatArgs } = await import('../src/lib/format.js');
 const refsCards = await import(pathToFileURL(join(chaptersDir, REFS, 'cards.js')).href);
 const [EX_ID, EX] = Object.entries(refsCards.exercises).find(([, e]) => !e.optional);
+const REFS_PLAY_OUT = await (async () => {
+  const lines = [];
+  const log = (...a) => lines.push(formatArgs(a));
+  await runWithTestsAsync(refsCards.examples['refs-play'].code, '', { log, info: log, warn: log, error: log, table: log });
+  return lines.join('\n');
+})();
 const PROMPT_ID = `${Number(REFS.slice(0, 3))}.${Object.keys(refsCards.prompts)[0]}`;
 // A plain-text piece of that prompt's question, to find it on the review page.
 const PROMPT_Q = Object.values(refsCards.prompts)[0].q.split(/[`*_\[\]()]/).sort((a, b) => b.length - a.length)[0].trim().slice(0, 24);
@@ -83,7 +94,7 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
   check(new URL(page.url()).pathname === base, `/ redirects to ${base} (${new URL(page.url()).pathname})`);
   const start = await page.locator('[data-start]').getAttribute('href');
   check(start === base + 'front/preface/', `landing page starts with the preface (${start})`);
-  check(await page.title() === 'Viscosity’s internals, and how to learn compiler engineering from scratch', `landing page title (${await page.title()})`);
+  check(await page.title() === BOOK.subtitle, `landing page title (${await page.title()})`);
   const internal = await page.evaluate((b) => [...document.querySelectorAll('a[href^="/"], link[href^="/"], script[src^="/"]')]
     .map((e) => e.getAttribute('href') ?? e.getAttribute('src')).filter((h) => !h.startsWith(b)), base);
   check(internal.length === 0, `landing page: every internal URL is under ${base} ${JSON.stringify(internal.slice(0, 5))}`);
@@ -128,7 +139,7 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
   await ex.locator('[data-output]').waitFor();
   await page.waitForTimeout(500);
   const out = await ex.locator('[data-output]').innerText();
-  check(out.includes('99') && out.includes('true false') && out.includes('[ 1, 2, 3 ]'), `example output matches Node formatting: ${JSON.stringify(out)}`);
+  check(out.trim() === REFS_PLAY_OUT.trim(), `example output matches Node formatting: ${JSON.stringify(out)} vs ${JSON.stringify(REFS_PLAY_OUT)}`);
 
   // Key bar appears while editing, and inserts text.
   await ex.locator('.cm-content').click();
