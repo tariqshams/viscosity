@@ -258,7 +258,7 @@ costs time in proportion to the `Vec`'s length<Cite id="rust-std-vec-insert" />.
 It would hurt for a long list, but this one holds only captured
 variables of scopes still running: with a counter added to a scratch
 copy of drip-rs, all 344 corpus files (benchmarks included) never made
-it longer than 3, apart from a test written to hit the limit of 100.
+it longer than 3, apart from a test that captures 100 variables at once.
 </Callout>
 
 ## Your turn

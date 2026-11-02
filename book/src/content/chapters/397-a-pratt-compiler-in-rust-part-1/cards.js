@@ -442,7 +442,7 @@ The last test checks a promise of the standard library: a function pointer is ne
 
 **Common wrong attempts.**
 
-- Writing \`let f = match c { '+' => Some(add), '-' => Some(sub), ... }; f\` with no type on \`f\`: the arms keep their own, different function types, and rustc stops with E0308, "expected fn item, found a different fn item". Annotate \`let f: Option<BinFn>\`, or return the \`match\` directly.
+- Writing \`let f = match c { '+' => Some(add), '-' => Some(sub), ... }; f\` with no type on \`f\`: the arms keep their own, different function types, and rustc stops with E0308, "\`match\` arms have incompatible types" (its note: "different fn items have unique types"). Annotate \`let f: Option<BinFn>\`, or return the \`match\` directly.
 - Swapping the operands in \`sub\` or \`div\` (\`b - a\`): \`apply('-', 5.0, 2.0)\` must be 5 − 2.`,
     wrong: [
       {
@@ -477,7 +477,7 @@ fn apply(c: char, a: f64, b: f64)
     let f = op_fn(c)?;
     Some(f(a, b))
 }`,
-        why: 'Doesn’t compile: E0308, “expected fn item, found a different fn item”. With no expected type on `let f`, each arm keeps its own function’s type.',
+        why: 'Doesn’t compile: E0308, “`match` arms have incompatible types”, because different fn items have unique types. With no expected type on `let f`, each arm keeps its own function’s type.',
       },
       {
         code: `type BinFn = fn(f64, f64) -> f64;

@@ -203,8 +203,8 @@ reach, so the compiler can pass in its half-built functions the same way.
 
 ## The one Rc
 
-There is exactly one `Rc` in drip-rs, in the field
-`pub chunk: Rc<Chunk>` of `ObjFunction`. When the compiler finishes a
+drip-rs puts exactly one kind of thing in an `Rc`, the chunk, in the
+field `pub chunk: Rc<Chunk>` of `ObjFunction`. When the compiler finishes a
 function it freezes the chunk with `Rc::new`, and nothing changes it
 again. The VM keeps the running function's chunk in a field of its own
 (the README calls such fields **registers**) and reads bytes with
@@ -212,8 +212,8 @@ again. The VM keeps the running function's chunk in a field of its own
 and keep the heap borrowed while the VM pushes values and allocates; an
 `Rc` clone is the VM's own pointer to the same chunk, so the heap stays
 free, and because the chunk never changes it needs no `RefCell`. The
-README reports that these registers made `fib` about 1.4 times faster;
-the chapter *The VM loop in Rust* looks at why.
+chapter *The VM loop in Rust* looks at why this matters, and
+*Optimizing the Rust VM* measures what the registers are worth.
 
 <Prompts ids={['one-rc']} />
 

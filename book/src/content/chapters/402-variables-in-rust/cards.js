@@ -786,7 +786,7 @@ impl Compiler {
         Some(i)
     }
 }`,
-        why: '`depth?` returns `None` for an uninitialized local without reporting anything, so `let a = a;` would silently read a global `a`.',
+        why: '`depth?` returns `None` for an uninitialised local without reporting anything, so `let a = a;` would silently read a global `a`.',
       },
     ],
   },

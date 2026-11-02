@@ -171,7 +171,7 @@ an init), and produces o.</span>
 
 <Prompts ids={['bm-destructure', 'bm-slot0']} />
 
-## Initializers
+## Initialisers
 
 `new` is `Vm::new_instance`. The chapter *Objects in Rust* showed its
 first half: allocate the instance while the class is still in its slot,
@@ -198,7 +198,7 @@ become one `match` with a guard, which says in one place what happens
 in all three cases. The compiler's half: `method()` picks
 `FunctionKind::Initializer` when the name is the keyword `init` (an
 enum variant where TypeScript compared the string `'initializer'`), and
-then `emit_return` ends every initializer with `load.local 0` and
+then `emit_return` ends every initialiser with `load.local 0` and
 `return`, so `new` always produces the instance (rewrapped):
 
 ```rust

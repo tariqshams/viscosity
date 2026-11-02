@@ -33,19 +33,19 @@ const STATES: S[] = [
     op: '1. root.trace(&mut marks)',
     rows: rows(cap(STR, [false, false]), cap(CLS, [false]), cap(INS, [true, false])),
     gray: ['Instance(Gc(0))'], hot: [[2, 0]], table: '"Point", "tmp"',
-    note: 'Tracing the root calls marks.mark(a): its bit goes true, and because an instance can refer to other objects, Gray::Instance(a) goes on the gray stack.',
+    note: 'Tracing the root calls marks.mark(a): its bit goes true, and because an instance can refer to other objects, Gray::Instance(a) goes on the grey stack.',
   },
   {
     op: '2. blacken(Instance(Gc(0)))',
     rows: rows(cap(STR, [false, false]), cap(CLS, [true]), cap(INS, [true, false])),
     gray: ['Class(Gc(0))'], hot: [[1, 0]], table: '"Point", "tmp"',
-    note: 'Popped and blackened: blacken reads heap[a] (a shared borrow of the heap) and traces its class and fields into marks (a separate &mut). The class is marked and goes gray. a’s fields table is empty.',
+    note: 'Popped and blackened: blacken reads heap[a] (a shared borrow of the heap) and traces its class and fields into marks (a separate &mut). The class is marked and goes grey. a’s fields table is empty.',
   },
   {
     op: '2. blacken(Class(Gc(0)))',
     rows: rows(cap(STR, [true, false]), cap(CLS, [true]), cap(INS, [true, false])),
     gray: [], hot: [[0, 0]], table: '"Point", "tmp"',
-    note: 'The class’s name, "Point", is marked. Strings refer to nothing, so Gray has no variant for them: marking one makes it black at once. The gray stack is empty, so marking is done.',
+    note: 'The class’s name, "Point", is marked. Strings refer to nothing, so Gray has no variant for them: marking one makes it black at once. The grey stack is empty, so marking is done.',
   },
   {
     op: '3. interned.retain_keys(..)',
@@ -76,7 +76,7 @@ export default function GcSteps() {
   const st = s.state;
   const isHot = (r: number, k: number) => st.hot.some(([a, b]) => a === r && b === k);
   return (
-    <StepFrame title="One collection: bitmap, gray stack, free lists" steps={s} note={st.note}>
+    <StepFrame title="One collection: bitmap, grey stack, free lists" steps={s} note={st.note}>
       <Svg w={400} h={300} title="Three arenas with their mark bits and free lists, the gray stack and the string table">
         <Box x={8} y={6} w={384} h={28} r={4} fill={tok('panel')} stroke={tok('line')}>
           <T x={16} y={20} size={12} mono weight={700}>{st.op}</T>

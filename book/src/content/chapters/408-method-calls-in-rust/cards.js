@@ -405,7 +405,7 @@ fn closures_still_work() {
 - \`self.instances.push(c);\` makes the instance (here it is just a record of its class).
 - \`let n = self.instances.len();\` and \`let i = Value::Instance(n - 1);\` make its handle: the last index.
 - \`self.set_peek(argc, i);\` writes the instance over the class's slot, where \`init\` will find it as \`self\`.
-- \`let k = &self.classes[c];\` borrows the class, and \`match k.init {\` looks for an initializer. \`Option<usize>\` is \`Copy\`, so \`Some(f)\` copies the closure's index.
+- \`let k = &self.classes[c];\` borrows the class, and \`match k.init {\` looks for an initialiser. \`Option<usize>\` is \`Copy\`, so \`Some(f)\` copies the closure's index.
 - \`Some(f) => { self.call(f, argc) }\` runs \`init\` with all the arguments. \`k\` is not used in this arm, so its borrow has ended and \`self.call\` may borrow \`self\` mutably.
 - \`None if argc != 0 => { let n = k.name; Err(no_init(n, argc)) }\` is the guard: no \`init\` but arguments given is drip-rs's error, \`Mug has no init, so it takes no arguments, but got 1\`.
 - \`None => Ok(()),\` is the plain case: the instance in the slot is the result of \`new\`.

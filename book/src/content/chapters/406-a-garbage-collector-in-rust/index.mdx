@@ -114,7 +114,7 @@ error[E0502]: cannot borrow `*self` as
 
 Tracing reads objects; marking writes bits; with both in one struct,
 the two borrows overlap. So drip-rs keeps the bits in a separate
-`Marks` value, one `Vec<bool>` per arena plus the gray stack, and lifts
+`Marks` value, one `Vec<bool>` per arena plus the grey stack, and lifts
 it out of the heap while it works. From `Heap::collect` (comments
 trimmed):
 
@@ -141,7 +141,7 @@ borrows the heap shared and the bitmap mutably: two separate values.
 collection starts fresh and sweep never has to unmark survivors (the
 TypeScript sweep does). Step 3 is the weak string table: entries for
 unmarked strings are dropped before the strings themselves are freed.
-The gray stack holds a `Gray`, an enum with one variant per kind of
+The grey stack holds a `Gray`, an enum with one variant per kind of
 object that can refer to others; strings and natives refer to nothing,
 so marking one turns it black at once.
 
@@ -172,7 +172,7 @@ freed = slots − live
 <span slot="read">Start with the set of objects the roots name. Each
 round, add every object that something already in the set refers to.
 When a round adds nothing, the set is everything reachable, and that is
-what survives; every other live slot is freed. The gray stack is the
+what survives; every other live slot is freed. The grey stack is the
 round still to be done: the objects added but not yet looked inside.</span>
 </Formal>
 
@@ -243,7 +243,7 @@ eighth of that; and `reset` and `sweep` visit every slot, freed ones
 too, where the TypeScript sweep walks only its list of allocated
 objects. In exchange the bitmap is a plain value the borrow checker can
 see is separate from the heap, and a slot index is enough to find any
-object's bit. Both are choices a later optimization could revisit.
+object's bit. Both are choices a later optimisation could revisit.
 </Callout>
 
 ## Your turn

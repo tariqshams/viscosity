@@ -161,7 +161,7 @@ the name, and `named_variable`
 then tries a captured variable, and finally a global. Reporting the
 error needs `&mut self`, which is allowed because `local` is not used
 after `is_none()`: the borrow of `self.functions` has already ended.
-Step through the second listing being compiled:
+Step through two nested blocks being compiled:
 
 <LocalsSteps client:visible />
 

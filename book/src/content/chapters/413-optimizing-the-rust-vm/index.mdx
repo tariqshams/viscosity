@@ -165,10 +165,10 @@ how long each byte takes. That is the trap the traffic survey warned
 about in the last chapter, met in practice, and it is why drip-rs keeps
 its `forbid`.
 
-The committed design shows what a real win looks like. The README
-records that keeping the running frame's `ip` and chunk in fields of the
-`Vm` (the "registers") made fib about 1.4 times faster when it was
-added. I measured the reverse: a copy whose `read_byte` and
+The committed design shows what a real win looks like: drip-rs keeps
+the running frame's `ip` and chunk in fields of the `Vm` (the
+"registers"), and to see what they are worth I measured the reverse: a
+copy whose `read_byte` and
 `read_constant` reach the chunk through the frame, the closure and the
 function in the heap on every read ran fib in 11,011,220,718
 instructions, almost twice as many, with a best of 842 ms and a median

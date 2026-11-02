@@ -801,7 +801,7 @@ export const quiz = [
       },
       {
         t: '`Point instance`',
-        why: 'New Drip prints an instance with its fields.',
+        why: 'Drip prints an instance with its fields.',
       },
       {
         t: 'The fields in hash-table order',

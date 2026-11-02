@@ -239,7 +239,7 @@ rules make the VM finish reading a list before it writes to it.</span>
 
 A list keeps its elements alive. `ObjList` gets its `HeapObject` impl
 from the macro, `heap_object!(ObjList, lists, List)`, so a marked list
-goes on the gray stack, and tracing it is one line of `gc.rs`:
+goes on the grey stack, and tracing it is one line of `gc.rs`:
 
 ```rust
 Gray::List(l) =>

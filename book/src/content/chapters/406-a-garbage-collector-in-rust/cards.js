@@ -19,7 +19,7 @@ export const prompts = {
     a: 'To move the bitmap out of the heap, so `blacken(&self, .., &mut marks)` can borrow the heap shared and the marks mutably.',
   },
   'ag-gray': {
-    q: 'Which drip-rs objects never go on the gray stack, and why?',
+    q: 'Which drip-rs objects never go on the grey stack, and why?',
     a: 'Strings and natives. They refer to no other objects, so `Gray` has no variant for them and marking one makes it black at once.',
   },
   'ag-free': {
@@ -122,8 +122,8 @@ export const exercises = {
     title: 'Mark, trace, sweep',
     prompt: `Here is a one-arena heap in drip-rs's style. A handle is an index into \`objs\`; a freed slot is \`None\`; \`alloc\` reuses an index from \`free\` before growing. Write \`collect(roots)\`:
 
-1. Make a fresh mark bitmap, \`vec![false; n]\`, and a gray stack. Mark each root and push it gray.
-2. Pop gray objects until none are left, marking and pushing each object they refer to that isn't marked yet.
+1. Make a fresh mark bitmap, \`vec![false; n]\`, and a grey stack. Mark each root and push it grey.
+2. Pop grey objects until none are left, marking and pushing each object they refer to that isn't marked yet.
 3. Sweep: for every unmarked slot that holds an object, take it out (the slot becomes \`None\`), count it in \`freed\`, and push its index on \`free\`, unless \`poison\` is set.
 
 The bitmap is a local, separate from \`self\`, so you can read \`self.get(h).refs\` while you write \`marks\`.`,
@@ -343,8 +343,8 @@ fn a_stale_handle_panics() {
     h.get(3);
 }`,
     hints: [
-      'Do it in the three steps of `Heap::collect`: mark the roots, trace until nothing is gray, sweep. Start with a local bitmap, `let mut marks = vec![false; n];`, and a local `let mut gray = Vec::new();`.',
-      'Mark an object at the moment you push it gray, and push it only if its bit was still false: that one check is what stops a cycle from looping for ever. `self.get(h)` borrows `self` shared while `marks` and `gray` are locals, so changing them inside the loop is fine.',
+      'Do it in the three steps of `Heap::collect`: mark the roots, trace until nothing is grey, sweep. Start with a local bitmap, `let mut marks = vec![false; n];`, and a local `let mut gray = Vec::new();`.',
+      'Mark an object at the moment you push it grey, and push it only if its bit was still false: that one check is what stops a cycle from looping for ever. `self.get(h)` borrows `self` shared while `marks` and `gray` are locals, so changing them inside the loop is fine.',
       'For the sweep, loop over every index; skip marked ones; `self.objs[i].take()` returns the old `Option` and leaves `None`. Count and free only when it was `Some` (a slot freed earlier is already `None`), and push `i` on `self.free` unless `self.poison` is set.',
     ],
     walkthrough: `**How to think about it.** A collection answers one question, "which objects can the program still reach?", and frees the rest. Reaching is following references, starting from the roots, and the only danger is going round a cycle for ever; marking each object the first time it is seen, and never pushing a marked one again, removes that danger. Keep the three phases of drip-rs's \`Heap::collect\` in mind (mark, trace, sweep), and keep the bitmap in a local, apart from \`self\`, just as drip-rs lifts its \`Marks\` out of the heap.
@@ -353,9 +353,9 @@ fn a_stale_handle_panics() {
 
 - \`let n = self.objs.len();\` is the number of slots, live or free.
 - \`let mut marks = vec![false; n];\` is a fresh bitmap, one \`false\` per slot. That is drip-rs's \`marks.reset(self)\`, and it is why the test \`each_collection_starts_fresh\` passes: what survived the first collection gets no head start in the second.
-- \`let mut gray = Vec::new();\` is the gray stack: marked, but not yet looked inside.
-- \`for &r in roots { if !marks[r] { marks[r] = true; gray.push(r); } }\` marks each root and makes it gray.
-- \`while let Some(h) = gray.pop() {\` takes the next gray object until none are left.
+- \`let mut gray = Vec::new();\` is the grey stack: marked, but not yet looked inside.
+- \`for &r in roots { if !marks[r] { marks[r] = true; gray.push(r); } }\` marks each root and makes it grey.
+- \`while let Some(h) = gray.pop() {\` takes the next grey object until none are left.
 - \`let o = self.get(h);\` borrows the object shared. \`marks\` and \`gray\` are locals, not part of \`self\`, so writing them below does not clash with this borrow.
 - \`for &r in &o.refs { if !marks[r] { marks[r] = true; gray.push(r); } }\` marks and pushes everything it refers to that is not marked yet. In the cycle tests, object 0 refers to 1 and 1 to 0; the second time round, 0 is already marked, so nothing is pushed and the loop ends.
 - \`for i in 0..n { if marks[i] { continue; }\` visits every slot and skips the survivors.
