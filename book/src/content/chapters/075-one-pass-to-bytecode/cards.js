@@ -1,4 +1,4 @@
-// Chapter 171 cards: recall prompts, examples, exercises and quiz.
+// Chapter 75 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,7 +7,7 @@ export const prompts = {
     a: 'It reads the source once and emits bytecode while parsing, without building a syntax tree first.',
   },
   'two-tokens': {
-    q: 'Which tokens does the compiler hold at any moment?',
+    q: 'Which tokens does Drip’s single-pass bytecode compiler hold at any moment?',
     a: 'Two: `previous` (just consumed) and `current` (the lookahead). The scanner makes each one when it is asked.',
   },
   'what-lost': {
@@ -19,15 +19,15 @@ export const prompts = {
     a: 'To append its bytes to the end of the chunk being compiled, each tagged with a source line.',
   },
   'emit-at-op': {
-    q: 'Why is the `add` for `2 +` (line 2) followed by `-"a"` (line 3) tagged with line 2?',
+    q: 'In Drip’s bytecode compiler, why is the `add` for `2 +` (line 2) followed by `-"a"` (line 3) tagged with line 2?',
     a: 'The binary-operator rule uses `emitAt(op.line, ...)`, the line of the `+` token, so an error in the addition points at the `+`.',
   },
   'emit-after': {
-    q: 'Why does the rule for a binary operator emit its opcode *after* calling `parsePrecedence`?',
+    q: 'In a single-pass Pratt compiler for a stack machine, why does the rule for a binary operator emit its opcode *after* compiling its right operand?',
     a: 'The right operand’s code must come first, so both values are on the stack when the operator runs.',
   },
   'prec-plus-one': {
-    q: 'Why does the binary rule compile its right operand at `INFIX_PREC[op.type]! + 1`?',
+    q: 'In a Pratt compiler, why does the rule for a left-associative binary operator compile its right operand at the operator’s precedence plus one?',
     a: 'So an operator of the same precedence on the right is not taken by the inner call, which makes operators group to the left.',
   },
   'ge-own-op': {
@@ -232,7 +232,7 @@ function compile(tokens) {
 
 export const quiz = [
   {
-    q: 'What does the compiler emit for `print 2 * 3 + 1;`, in order (leaving out the final `none` and `return`)?',
+    q: 'What does Drip’s bytecode compiler emit for `print 2 * 3 + 1;`, in order (leaving out the final `none` and `return`)?',
     options: [
       {
         t: '`const 2`, `const 3`, `mul`, `const 1`, `add`, `print`',
@@ -276,7 +276,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the binary-operator rule, what goes wrong if you swap the two lines, emitting the opcode before calling `parsePrecedence`?',
+    q: 'In a single-pass Pratt compiler’s binary-operator rule, what goes wrong if you swap the two lines, emitting the opcode before calling `parsePrecedence`?',
     options: [
       {
         t: 'Nothing: the VM reorders instructions',
@@ -298,7 +298,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`print 1 +;` has a syntax error on line 1, and line 2 is `print 2;`. What happens?',
+    q: 'In Drip, `print 1 +;` has a syntax error on line 1, and line 2 is `print 2;`. What happens?',
     options: [
       {
         t: '`2` is printed, then the error',

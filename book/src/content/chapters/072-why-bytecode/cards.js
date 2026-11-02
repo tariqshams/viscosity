@@ -1,103 +1,38 @@
-// Chapter 168 cards: recall prompts, examples, exercises and quiz.
+// Chapter 72 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 72, 72, 72.
 
 export const prompts = {
-  'how-measured': {
-    q: 'How did the harness time each Drip program?',
-    a: 'A fresh Node process per program and engine, three runs, best kept, timing the whole run: scanning, parsing, resolving and running.',
-  },
   'vm-slower': {
-    q: 'On which kind of benchmark program was the TypeScript VM slower than the tree-walker?',
-    a: 'Object-heavy ones: making many instances or reading many fields (`instantiation`, `fields`, `trees`), and `strings`.',
+    q: 'In one benchmark run of a TypeScript tree-walker against a TypeScript bytecode VM for the same small language, on which kind of program was the VM slower?',
+    a: 'Object-heavy ones: making many instances or reading many fields (and string-heavy work), where the tree-walker leans on V8’s own objects and `Map`s.',
   },
   'same-engine': {
-    q: 'Why might a bytecode VM written in TypeScript not beat a tree-walker by much?',
-    a: 'Both run on V8; the tree-walker uses V8’s own tuned `Map`s and objects, while the VM rebuilds its stack, tables and objects in TypeScript.',
+    q: 'Why might a bytecode VM written in TypeScript not beat a tree-walker written in TypeScript by much?',
+    a: 'Both run on V8: the tree-walker uses V8’s own tuned `Map`s and objects, and its hot code is compiled to machine code, while the VM rebuilds its stack, tables and objects in TypeScript.',
   },
   'overhead-what': {
     q: 'What is *interpreter overhead*?',
     a: 'Work the interpreter does that the program did not ask for: dispatch, pointer chasing, name lookups, allocation and checks.',
-  },
-  'n-minus-2': {
-    q: 'For one `n - 2`, how much real work does the tree-walker do, and roughly how much else?',
-    a: 'One subtraction, plus seven method calls, four switches, two `Map` lookups and five checks.',
-  },
-  dispatch: {
-    q: 'Why is “dispatch on every node” wasted work?',
-    a: 'The interpreter asks what kind each node is every time it runs, though the answer never changes.',
-  },
-  chase: {
-    q: 'Why is following the tree’s and environments’ references slow for the CPU?',
-    a: 'Each load needs the previous one’s result, so the CPU waits for memory step by step (pointer chasing).',
-  },
-  allocations: {
-    q: 'Name two places the tree-walker allocates new objects while running.',
-    a: 'Any two of: an `Environment` and `Map` per call; two environments per `for` pass; a bound method and environment per method read; a `frames` entry per call.',
   },
   'bytecode-what': {
     q: 'What is **bytecode**?',
     a: 'A program written as a flat array of small numbered instructions, produced once by a compiler and then run.',
   },
   'children-first-order': {
-    q: 'Flattening `1 + 2 * 3`, why must `mul` come before `add` in the list?',
-    a: 'The addition needs the product as its right operand, so the product must be worked out first. Children are written before their parent.',
-  },
-  'why-flat': {
-    q: 'Why is following a flat instruction list cheaper than walking a tree?',
-    a: 'The next instruction is at the next index of one array, so there is no pointer to chase, no recursion and no node-kind switch to find out what to do.',
+    q: 'Flattening `1 + 2 * 3` into stack-machine instructions, why must the multiply come before the add?',
+    a: 'The addition needs the product as its right operand, so the product must be worked out first: children are written before their parent.',
   },
   'opcode-what': {
     q: 'What is an **opcode**?',
-    a: 'The number that says which instruction this is, such as 20 for `add` in Drip’s VM.',
-  },
-  'operand-what': {
-    q: 'In Drip’s bytecode, what do the three bytes `0, 0, 2` mean?',
-    a: '`const` (opcode 0) with the two-byte operand 2: push constant number 2.',
-  },
-  'one-byte-enough': {
-    q: 'Why does a Drip opcode fit in a single byte?',
-    a: 'The VM has 53 kinds of instruction, and a byte can hold 256 different values.',
+    a: 'The number that says which instruction this is; any operand bytes that the instruction needs follow it.',
   },
   'const-300': {
-    q: 'Constant number 300 is written as two operand bytes. Which two, and why?',
-    a: '`1, 44`: the high byte first, and 1 × 256 + 44 = 300.',
-  },
-  'k-s-j': {
-    q: 'In the comments of `chunk.ts`, what do the operand letters `k`, `s` and `j` stand for?',
-    a: '`k`: a two-byte constant number; `s`: a one-byte slot, index or count; `j`: a two-byte jump distance.',
-  },
-  'no-recursion': {
-    q: 'The tiny VM computes `1 + 2 * 3` without something the tree-walker needed for the same expression. What?',
-    a: 'Recursion: it is one loop over a flat array, with no call per node and no node kind to switch on.',
-  },
-  'why-virtual': {
-    q: 'Why is a bytecode interpreter called a *virtual* machine?',
-    a: 'It works like a processor running machine code (fetch, decode, execute), but the processor and its instruction set are made of software.',
+    q: 'A constant’s number, 300, is written as two operand bytes, high byte first. Which two bytes, and why?',
+    a: '`1, 44`: 1 × 256 + 44 = 300.',
   },
   'vm-what': {
-    q: 'What does a **virtual machine** do, in one sentence?',
-    a: 'It runs bytecode: a loop that fetches the next instruction, decodes its opcode, and executes it.',
-  },
-  'decode-what': {
-    q: 'What does *decoding* an instruction tell the VM?',
-    a: 'Which instruction it is, and so how many operand bytes follow it.',
-  },
-  'sub-pops': {
-    q: 'In the tiny VM’s `SUB`, why is the first value popped stored in `b`, the right operand?',
-    a: 'The right operand was pushed last, so it is on top. Popping it into `a` would compute `4 - 10` for `10 - 4`.',
-  },
-  'for-ever': {
-    q: 'Drip’s VM loops with `for (;;)`. What ends the loop?',
-    a: 'Nothing in the loop header: the `return` instruction at the end of the script returns from it (or a runtime error stops it).',
-  },
-  'vm-faster-by': {
-    q: 'In this book’s benchmark run, how much faster was the VM than the tree-walker at best, and on how many of the ten programs was it slower?',
-    a: 'At most about 1.3 times faster (`method_calls`), and slower on four programs.',
-  },
-  'slower-lesson': {
-    q: 'Both Drip engines run on V8. Why does that shrink the VM’s advantage?',
-    a: 'V8 already compiles the tree-walker’s hot code to machine code and gives it fast built-in objects and Maps, which the VM rebuilds in TypeScript.',
+    q: 'What does a bytecode **virtual machine** do, in one sentence?',
+    a: 'It runs bytecode: a loop that fetches the next instruction, decodes its opcode (and so its operands), and executes it.',
   },
 };
 
@@ -197,6 +132,7 @@ print "same Drip, new engine";`,
 
 export const exercises = {
   countVisits: {
+    optional: true,
     title: 'Counting the overhead',
     prompt: `A tiny tree-walker in plain JavaScript. Nodes are \`{ kind: 'num', value }\`, \`{ kind: 'var', name }\` (read from the \`Map\` \`env\`), \`{ kind: 'add', left, right }\` or \`{ kind: 'mul', left, right }\`. The starter evaluates them. Change it so that, as well as returning the value, it counts into the object \`st\`:
 
@@ -571,6 +507,7 @@ function flatten(node, out = []) {
     ],
   },
   countInstrs: {
+    optional: true,
     title: 'Counting instructions, not bytes',
     prompt: 'In this bytecode, as in Drip’s real VM, opcode `0` (CONST) is followed by **two** operand bytes, and every other opcode (`20` = ADD, `22` = MUL, `33` = PRINT) has none. Write `countInstrs(code)`, which returns how many *instructions* the array holds. `[0, 0, 1, 0, 0, 2, 20]` is three instructions in seven bytes.',
     starter: `function countInstrs(code) {
@@ -624,7 +561,7 @@ For \`[0, 0, 20, 0, 0, 22, 22]\`: at 0 we find CONST and jump to 3; at 3, CONST 
 - Counting the non-zero bytes, or the zeros, fails at once, because an operand can be any value.
 - Jumping by 2 after a CONST is the old one-byte layout: it lands on the second operand byte and reads it as an opcode.
 
-Drip’s real VM never needs to count like this, because it decodes as it runs; however, a disassembler (the chapter *Reading bytecode back*) has exactly this problem, and solves it the same way.`,
+Drip’s real VM never needs to count like this, because it decodes as it runs; however, a disassembler (*Bytecode as data, and a disassembler*) has exactly this problem, and solves it the same way.`,
     wrong: [
       {
         code: `function countInstrs(code) {
@@ -753,43 +690,7 @@ function run(code) {
 
 export const quiz = [
   {
-    q: 'In this book’s benchmark run, how did the TypeScript bytecode VM compare with the tree-walker?',
-    options: [
-      {
-        t: 'Several times faster on every program',
-        why: 'The biggest speed-up was 1.3 times, and four programs were slower on the VM.',
-      },
-      {
-        t: 'Faster on six programs by at most 1.3 times, slower on four',
-        correct: true,
-        why: 'That is what `drip-bench-2026-11-02` records, best of three runs on one shared machine.',
-      },
-      {
-        t: 'Exactly the same speed',
-        why: 'The times differ on every program, in both directions.',
-      },
-    ],
-  },
-  {
-    q: 'Which is a fair conclusion from three runs per program on one shared cloud machine?',
-    options: [
-      {
-        t: 'The VM design is slower than tree-walking in general',
-        why: 'One machine, one host language and a few runs cannot support a claim that general.',
-      },
-      {
-        t: 'The numbers prove exactly why the VM was slower',
-        why: 'Timings show *what* happened, not why; Part IV measures the causes.',
-      },
-      {
-        t: 'It is a careful first look that the VM chapters must examine further',
-        correct: true,
-        why: 'Fresh processes and best-of-three help, but a shared machine and few runs call for caution.',
-      },
-    ],
-  },
-  {
-    q: 'Evaluating `n - 2` in the tree-walker involves how many real operations?',
+    q: 'In a tree-walking interpreter, evaluating `n - 2` involves how many operations the program actually asked for?',
     options: [
       {
         t: 'One: the subtraction',
@@ -807,43 +708,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is following references through the tree and the environment chain slow?',
-    options: [
-      {
-        t: 'References take a lot of memory',
-        why: 'The problem is not size; it is that each step must wait for the previous load.',
-      },
-      {
-        t: 'Each load depends on the one before, so the CPU cannot fetch ahead',
-        correct: true,
-        why: 'That is pointer chasing: dependent loads wait for memory one after another.',
-      },
-      {
-        t: 'JavaScript checks every reference for null',
-        why: 'The cost that matters here is waiting for memory, not checking.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these does the tree-walker allocate on every call of a Drip function?',
-    options: [
-      {
-        t: 'A new copy of the function’s syntax tree',
-        why: 'The tree is shared by every call; nothing copies it.',
-      },
-      {
-        t: 'Nothing: calls are free',
-        why: 'Calls are one of the most expensive things it does.',
-      },
-      {
-        t: 'A new Environment with its own Map, and a frames entry',
-        correct: true,
-        why: '`callFunction` makes both before the body runs.',
-      },
-    ],
-  },
-  {
-    q: 'Flattening `(1 + 2) * 3` children first gives which instruction order?',
+    q: 'Flattening `(1 + 2) * 3` into stack-machine instructions, children first, gives which order?',
     options: [
       {
         t: '`mul`, `add`, `const 1`, `const 2`, `const 3`',
@@ -861,28 +726,6 @@ export const quiz = [
       {
         t: '`const 3`, `const 1`, `const 2`, `add`, `mul`',
         why: 'The same value here by luck, but the left operand should come first. For `-` or `/` this order would be wrong.',
-      },
-    ],
-  },
-  {
-    q: 'What is an opcode?',
-    options: [
-      {
-        t: 'A value the program uses, like `1.5`',
-        why: 'That is a constant. It is named by an operand, not stored as an opcode.',
-      },
-      {
-        t: 'The line number an instruction came from',
-        why: 'Line numbers are kept separately, for error messages.',
-      },
-      {
-        t: 'The number saying which instruction to perform',
-        correct: true,
-        why: 'For example 20 means `add` and 0 means `const` in Drip’s VM.',
-      },
-      {
-        t: 'A machine-code instruction of the real CPU',
-        why: 'Bytecode opcodes are for the virtual machine. The real CPU never runs them directly.',
       },
     ],
   },
@@ -909,95 +752,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which work does a tree-walker repeat on every run of a node, which a bytecode compiler does only once?',
-    options: [
-      {
-        t: 'Finding out what each node is and in what order to visit its children',
-        correct: true,
-        why: 'The compiler records that once, as a flat list in the right order. The VM only follows it.',
-      },
-      {
-        t: 'The arithmetic itself',
-        why: 'Both engines must still add the numbers every time the program asks.',
-      },
-      {
-        t: 'Printing output',
-        why: 'Printing happens when the program says so, in both designs.',
-      },
-      {
-        t: 'Scanning the source text',
-        why: 'Both scan the source once, before running.',
-      },
-    ],
-  },
-  {
-    q: 'Inside a function, the compiler prints `0002    | load.local          2`. How long is this instruction, and what comes next?',
-    options: [
-      {
-        t: 'Two bytes, the opcode and the slot number, so the next instruction starts at 0004',
-        correct: true,
-        why: '`load.local` has a one-byte operand (`s` in chunk.ts), so it covers offsets 2 and 3.',
-      },
-      {
-        t: 'One byte; the 2 is part of the next instruction',
-        why: 'The 2 is this instruction’s own operand, the slot to load.',
-      },
-      {
-        t: 'Three bytes, like `const`',
-        why: 'Only constant numbers and jumps take two operand bytes; a slot number fits in one.',
-      },
-      {
-        t: 'It depends on the value stored in slot 2',
-        why: 'Instruction lengths are fixed by the opcode, never by the values the program is using.',
-      },
-    ],
-  },
-  {
-    q: 'The tiny VM reads opcode `PUSH` at offset 2. Where is `ip` when the next turn of the loop begins?',
-    options: [
-      {
-        t: '3',
-        why: 'That is where `PUSH`’s operand is. The `PUSH` branch reads it with `code[ip++]`, which moves `ip` past it.',
-      },
-      {
-        t: '4',
-        correct: true,
-        why: 'One byte for the opcode, one for the operand: the next opcode is at 4.',
-      },
-      {
-        t: '2',
-        why: '`code[ip++]` moved `ip` on as soon as the opcode was read.',
-      },
-      {
-        t: 'It depends on the value pushed',
-        why: 'Only the opcode decides how long an instruction is, never the value in its operand.',
-      },
-    ],
-  },
-  {
-    q: 'Why is a bytecode interpreter called a *virtual* machine?',
-    options: [
-      {
-        t: 'It only runs inside a browser',
-        why: 'Drip’s VM runs in Node too. The name is not about where it runs.',
-      },
-      {
-        t: 'It runs on a cloud virtual machine',
-        why: 'A different meaning of the word. The benchmarks happened to run on one, but that is not the reason for the name.',
-      },
-      {
-        t: 'It fetches, decodes and executes instructions like a processor, but it is a program',
-        correct: true,
-        why: 'A pretend processor, with an instruction set designed for the language.',
-      },
-      {
-        t: 'It compiles to machine code first',
-        why: 'That would be a compiler to machine code, like V8’s Sparkplug. A VM interprets bytecode.',
-      },
-    ],
-  },
-  {
-    q: 'With `PUSH = 0, ADD = 1, SUB = 2`, what does the tiny VM leave on its stack for the code `[0, 9, 0, 2, 2]`?',
+    q: 'With `PUSH = 0, ADD = 1, SUB = 2`, what does a tiny stack VM (each `PUSH` followed by its value, and `SUB` popping the right operand first) leave on its stack for the code `[0, 9, 0, 2, 2]`?',
     options: [
       {
         t: '`7`',
@@ -1015,50 +770,6 @@ export const quiz = [
       {
         t: '`2`',
         why: 'The last byte is the opcode SUB, not a value: it is never pushed.',
-      },
-    ],
-  },
-  {
-    q: 'Drip’s real VM loops with `for (;;)`. How does a program stop?',
-    options: [
-      {
-        t: 'The loop checks `ip < code.length` each time',
-        why: 'That is the tiny VM. `for (;;)` has no test at all.',
-      },
-      {
-        t: 'It runs a fixed number of instructions',
-        why: '`instructionsExecuted` only counts them; it never stops the loop.',
-      },
-      {
-        t: 'The `return` instruction at the end of the script leaves the loop',
-        correct: true,
-        why: 'Every script ends with `none, return`, and returning from the last call returns from `run` (a runtime error also ends it, by throwing).',
-      },
-      {
-        t: 'The garbage collector stops it',
-        why: 'The collector frees memory; it has nothing to do with when the program ends.',
-      },
-    ],
-  },
-  {
-    q: 'In this book’s benchmark run the VM was slower than the tree-walker on four programs. What is the fair conclusion?',
-    options: [
-      {
-        t: 'Bytecode is slower than walking a tree',
-        why: 'The same VM was faster on the other six programs.',
-      },
-      {
-        t: 'A better design is not faster at everything; one run points at suspects, such as the VM’s own objects and tables in TypeScript',
-        correct: true,
-        why: 'The losers are the object-heavy programs, which fits the suspicion that the VM rebuilds what V8 gives the tree-walker for free; a later chapter tests it.',
-      },
-      {
-        t: 'The measurement must be broken',
-        why: 'Nothing suggests that. It is a real result that needs explaining.',
-      },
-      {
-        t: 'The tree-walker caches its results',
-        why: 'It does no such thing: it walks the tree every time.',
       },
     ],
   },

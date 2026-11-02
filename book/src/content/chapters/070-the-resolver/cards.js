@@ -1,70 +1,37 @@
-// Chapter 60 cards: recall prompts, examples, exercises and quiz.
+// Chapter 70 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 70, 70.
 
 export const prompts = {
   'shadow-bug': {
-    q: 'With lookups that search the chain at run time, why can `show()` print `global` once and `block` the next time?',
-    a: 'A later `let x` adds `x` to the very environment `show` captured, so the second search finds it first.',
-  },
-  'resolver-when': {
-    q: 'When does the resolver run?',
-    a: 'After parsing and before interpreting: once, over the whole program, without running it.',
+    q: 'In an interpreter whose lookups search the environment chain at run time, why can a closure `show` print the global `x` once and a block’s `x` the next time?',
+    a: 'A `let x` declared after `show` adds `x` to the very environment `show` captured, so the second search finds it first.',
   },
   'what-recorded': {
-    q: 'What does the resolver record for each use of a local variable?',
+    q: 'What does a resolver record for each use of a local variable?',
     a: 'How many scopes out its declaration is: its scope depth.',
   },
   'global-no-entry': {
-    q: 'What does the resolver record for a global variable?',
-    a: 'Nothing. A name with no entry is looked up in the globals.',
-  },
-  'node-keys': {
-    q: 'Why can `locals` tell apart two different uses of `x` that are spelled the same?',
-    a: 'Its keys are the syntax-tree nodes themselves, and a `Map` compares object keys by identity.',
-  },
-  'depth-what': {
-    q: 'What is a variable use’s *scope depth*?',
-    a: 'The number of environments between the one where it is used and the one where it is declared.',
-  },
-  hops: {
-    q: 'Inside `inner`, `b` has depth 1 and `a` depth 2. What does the interpreter do for `a`?',
-    a: 'Starts at the current environment, follows two parent links, and reads `a` there.',
+    q: 'In a resolver that records scope depths, what is recorded for a use of a global variable?',
+    a: 'Nothing. A name with no entry is looked up in the globals at run time.',
   },
   'must-match': {
-    q: 'Why must the resolver begin a scope exactly where the interpreter makes an environment?',
+    q: 'Why must a resolver begin a scope exactly where the interpreter makes an environment?',
     a: 'Otherwise the recorded distances would be off by one past the mismatch, and lookups would read the wrong variable.',
   },
   'static-what': {
     q: 'What does *static analysis* mean?',
     a: 'Learning facts about a program from its source or syntax tree, without running it.',
   },
-  'compile-vs-runtime': {
-    q: 'What is the difference between a compile error and a runtime error in Drip?',
-    a: 'A compile error is found before the program starts, so nothing runs (exit 65); a runtime error stops it part-way (exit 70).',
-  },
   'rare-branch': {
-    q: 'Why is it useful that the resolver checks code inside an `if` that hardly ever runs?',
+    q: 'Why is it useful that a static check examines code inside an `if` that hardly ever runs?',
     a: 'Its results hold for every run, so the mistake is found now rather than the first time that branch runs.',
   },
-  'loop-depth': {
-    q: 'How does the resolver know whether a `break` is inside a loop?',
-    a: 'It keeps a count, `loopDepth`, raised on entering a loop body and lowered on leaving it; 0 means no loop.',
-  },
   'all-errors': {
-    q: 'Does the resolver stop at the first error it finds?',
+    q: 'Does Drip’s resolver stop at the first error it finds?',
     a: 'No. It reports each one and keeps walking, so every error is listed, in source order.',
   },
-  'syntax-first': {
-    q: 'A program has a syntax error and a `return` at the top level. Which errors are reported?',
-    a: 'Only the syntax error: the static rules are checked only when the program parsed cleanly.',
-  },
-  'break-in-fn': {
-    q: 'Why is `while true { fn g() { break; } }` a compile error?',
-    a: 'Entering a function resets the loop count to 0: the `break` would run in a call of `g`, not inside the loop.',
-  },
   'cannot-know': {
-    q: 'Name a Drip mistake the resolver cannot catch, and say why.',
+    q: 'Name a mistake a name-resolving static pass cannot catch in a dynamically typed language, and say why.',
     a: 'For example `"a" + 1`, a wrong argument count or an undefined global: the source does not say what a name will hold.',
   },
 };
@@ -198,6 +165,7 @@ This is the same loop as \`resolveLocal\` in the companion's resolver, minus the
     ],
   },
   checkLoops: {
+    optional: true,
     title: 'break outside a loop',
     prompt: `Write the resolver's loop check for a tiny tree. A statement is one of:
 
@@ -429,29 +397,7 @@ outer`,
 
 export const quiz = [
   {
-    q: 'What does the resolver keep about each variable in a scope?',
-    options: [
-      {
-        t: 'Its current value',
-        why: 'The resolver never runs the program, so there are no values yet.',
-      },
-      {
-        t: 'Its name, and whether its declaration has finished (“ready”)',
-        correct: true,
-        why: 'Each scope maps a name to a ready flag; the flag catches a variable read in its own initialiser.',
-      },
-      {
-        t: 'Its type',
-        why: 'Drip is dynamically typed. The resolver only works out which declaration a name means.',
-      },
-      {
-        t: 'How many times it is used',
-        why: 'It records where each use points, not a count.',
-      },
-    ],
-  },
-  {
-    q: `With the resolver, what does this print?
+    q: `In Drip, which runs a resolver before the program, what does this print?
 \`\`\`
 let x = "global";
 {
@@ -482,7 +428,7 @@ let x = "global";
     ],
   },
   {
-    q: 'The resolver recorded distance 2 for a variable. What does the interpreter do?',
+    q: 'In a tree-walker with a resolver, the resolver recorded distance 2 for a variable. What does the interpreter do?',
     options: [
       {
         t: 'Searches up to 2 environments for the name',
@@ -500,24 +446,6 @@ let x = "global";
         t: 'Follows the parent link twice, then reads the name there',
         correct: true,
         why: '`getAt(2, name)` reads the name in `ancestor(2)`.',
-      },
-    ],
-  },
-  {
-    q: 'In `for i in 0..3 { print i; }`, what distance does the resolver record for the `i` in `print i`?',
-    options: [
-      {
-        t: '0',
-        why: 'The innermost scope is the body’s own, which does not declare `i`.',
-      },
-      {
-        t: '1',
-        correct: true,
-        why: 'The loop variable has its own scope just outside the body’s, and the interpreter makes the matching two environments on every pass.',
-      },
-      {
-        t: 'None: loop variables are globals',
-        why: 'A loop variable is local to the loop.',
       },
     ],
   },
@@ -544,47 +472,7 @@ let x = "global";
     ],
   },
   {
-    q: 'Which of these is a compile error in Drip?',
-    options: [
-      {
-        t: '`let a = 1; let a = 2;` at the top level',
-        why: 'Globals are not tracked by the resolver, so redeclaring one is allowed and replaces the old value.',
-      },
-      {
-        t: 'Calling a function with too many arguments',
-        why: 'That is a runtime error: the resolver does not know what a name will hold.',
-      },
-      {
-        t: 'Two `let b`s in the same block',
-        correct: true,
-        why: '`\'b\' is already declared in this scope`.',
-      },
-      {
-        t: 'Adding a string to a number',
-        why: 'A runtime error, found when the `+` runs.',
-      },
-    ],
-  },
-  {
-    q: 'Why is the resolver’s checking called *static* analysis?',
-    options: [
-      {
-        t: 'It works from the syntax tree without running the program',
-        correct: true,
-        why: '“Static” means “without running”. The resolver only reads the tree.',
-      },
-      {
-        t: 'It runs once per function call',
-        why: 'It runs once for the whole program, before any call.',
-      },
-      {
-        t: 'It only handles global variables',
-        why: 'It deliberately ignores globals and handles locals.',
-      },
-    ],
-  },
-  {
-    q: `What does this program print?
+    q: `In Drip, what does this program print?
 \`\`\`
 print "start";
 return 1;
@@ -602,42 +490,6 @@ return 1;
       {
         t: '`start`',
         why: 'A top-level `return` is not allowed; it is a compile error.',
-      },
-    ],
-  },
-  {
-    q: 'A program has three mistakes the resolver can catch. What does Drip report?',
-    options: [
-      {
-        t: 'Only the first one',
-        why: 'The resolver reports each and carries on walking.',
-      },
-      {
-        t: 'All three, in source order, each as `line N: message`',
-        correct: true,
-        why: 'Every compile error is listed, then the program stops with exit code 65.',
-      },
-      {
-        t: 'All three, then it runs the program anyway',
-        why: 'Any compile error means nothing runs.',
-      },
-    ],
-  },
-  {
-    q: 'Inside `while x { fn g() { break; } }`, why is the `break` an error?',
-    options: [
-      {
-        t: 'Functions cannot be declared inside loops',
-        why: 'They can; only the `break` is a problem.',
-      },
-      {
-        t: '`break` needs a semicolon after the brace',
-        why: 'It has one; the rule is about where it sits.',
-      },
-      {
-        t: 'A function body starts with no loops around it, because it runs in a call of its own',
-        correct: true,
-        why: 'The resolver resets `loopDepth` to 0 for a function: the `break` would run inside `g`, not inside the loop.',
       },
     ],
   },

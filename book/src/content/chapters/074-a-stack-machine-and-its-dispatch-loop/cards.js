@@ -1,71 +1,38 @@
-// Chapter 170 cards: recall prompts, examples, exercises and quiz.
+// Chapter 74 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 74, 74.
 
 export const prompts = {
   'stack-machine-what': {
     q: 'What is a **stack machine**?',
     a: 'A VM whose instructions pop their inputs from a value stack and push their results back onto it.',
   },
-  'sp-means': {
-    q: 'In Drip’s VM, what does `sp` hold?',
-    a: 'The index of the next free slot in the stack array, which is also how many values are on it.',
-  },
   'why-no-operands': {
-    q: 'Why does `add` need no operand bytes in a stack machine?',
+    q: 'Why does an `add` instruction need no operand bytes in a stack machine?',
     a: 'Its inputs are always the top two values on the stack, so there is nothing to name.',
   },
-  'peek-vs-pop': {
-    q: 'What is the difference between `peek(0)` and `pop()`?',
-    a: 'Both give the top value, but `peek` leaves it on the stack (and `sp` unchanged); `pop` removes it.',
-  },
   'brackets-depth': {
-    q: 'Why does `(1 + 2) * 3` need only two stack slots, when `1 + 2 * 3` needs three?',
-    a: 'The sum is finished (two values become one) before the 3 is pushed; in `1 + 2 * 3` all three numbers must wait before `mul` can run.',
+    q: 'On a stack machine, why does `(1 + 2) * 3` need only two stack slots, when `1 + 2 * 3` needs three?',
+    a: 'The sum is finished (two values become one) before the 3 is pushed; in `1 + 2 * 3` all three numbers must wait before the multiply can run.',
   },
   'ip-what': {
-    q: 'What does the **instruction pointer** hold?',
+    q: 'What does a VM’s **instruction pointer** hold?',
     a: 'The index in the code of the next byte to read.',
   },
   'ip-after-constant': {
-    q: 'A `const` starts at offset 4. Where is `ip` when it finishes?',
-    a: 'At 7: one byte for the opcode and two for the constant number.',
-  },
-  'jump-moves-ip': {
-    q: 'What does a jump instruction actually do?',
-    a: 'It changes `ip` on purpose (adds or subtracts a distance), so the next instruction run is somewhere other than straight after it.',
+    q: 'An instruction made of an opcode and a two-byte operand starts at offset 4. Where is `ip` when it finishes?',
+    a: 'At 7: one byte for the opcode and two for the operand.',
   },
   'dispatch-what': {
-    q: 'What is the **dispatch loop**?',
-    a: 'The VM’s main loop: read the opcode at `ip`, jump to the code for that instruction (here with a `switch`), run it, repeat.',
-  },
-  'locals-cached': {
-    q: 'Why does `run` copy `frame`, `code` and `constants` into local variables before its loop?',
-    a: 'Reading a local is cheaper than following `this.frames[...].closure.fn.chunk` on every instruction; they are reloaded only when a call or return changes the running function.',
-  },
-  'loop-ends': {
-    q: 'Drip’s dispatch loop is `for (;;)`. What makes it stop?',
-    a: 'A `return` from the outermost function (the script) leaves `run`; a runtime error stops it by throwing.',
+    q: 'What is a VM’s **dispatch loop**?',
+    a: 'Its main loop: read the opcode at `ip`, jump to the code for that instruction (for example with a `switch`), run it, repeat.',
   },
   'pop-order': {
-    q: 'In the `sub` case, why is the popped value `b`, the right operand?',
-    a: 'The right operand was pushed last, so it is on top. Using it as the left operand would compute `4 - 10` for `10 - 4`.',
-  },
-  'check-before-pop': {
-    q: 'Why does `numbers()` check the operands with `peek` rather than popping them first?',
-    a: 'If the check fails, the stack is left exactly as it was; and values still on the stack stay visible to the garbage collector.',
-  },
-  'overwrite-in-place': {
-    q: 'The `sub` case pops only `b`. Where does the result go?',
-    a: 'Over the left operand’s slot, `stack[this.sp - 1]`: the same effect as popping both and pushing, with one less change to `sp`.',
-  },
-  'branch-prediction-dispatch': {
-    q: 'According to the V8 team, what does fast dispatch to the next bytecode depend on?',
-    a: 'Successful branch prediction: the processor guessing correctly where the dispatch jump will land.',
+    q: 'In a stack machine’s subtract instruction, why is the first value popped the right operand?',
+    a: 'The right operand was pushed last, so it is on top; using it as the left operand would compute `4 - 10` for `10 - 4`.',
   },
   'ignition-register': {
-    q: 'How do V8’s Ignition bytecodes find their inputs, compared with Drip’s?',
-    a: 'Ignition is a register machine: bytecodes name registers, with an accumulator as an unwritten input and output. Drip’s take their inputs from the top of a stack.',
+    q: 'How do V8’s Ignition bytecodes find their inputs, compared with a stack machine’s?',
+    a: 'Ignition is a register machine: bytecodes name registers, with an accumulator as an unwritten input and output; a stack machine’s instructions take theirs from the top of a stack.',
   },
 };
 
@@ -92,6 +59,7 @@ print "never printed";`,
 
 export const exercises = {
   maxDepth: {
+    optional: true,
     title: 'How deep does the stack get?',
     prompt: 'Using Drip’s real opcodes (`CONST` 0, followed by two operand bytes; `NONE` 1; `POP` 4; `ADD`, `SUB`, `MUL` 20 to 22; `NEG` 32; `PRINT` 33; `RETURN` 49, none of these with operands), write `maxDepth(code)`: the largest number of values that will ever be on the stack while the code runs, starting from an empty stack. You do not need the constants, only each instruction’s effect on the depth.',
     starter: `// Drip's real opcode numbers
@@ -590,7 +558,7 @@ test('the stack is untouched after an error', () => {
 
 export const quiz = [
   {
-    q: 'The stack holds `[script, 10, 4]` (top on the right) and the next instruction is `sub`. What is on the stack afterwards?',
+    q: 'A stack VM’s stack holds `[script, 10, 4]` (top on the right) and the next instruction is `sub` (left operand minus right). What is on the stack afterwards?',
     options: [
       {
         t: '`[script, -6]`',
@@ -612,51 +580,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does the instruction pointer hold?',
-    options: [
-      {
-        t: 'The index of the top of the stack',
-        why: 'That is `sp - 1`; `sp` is the stack pointer.',
-      },
-      {
-        t: 'The index of the next byte the VM will read',
-        correct: true,
-        why: 'Every `readByte()` returns `code[ip]` and moves `ip` on.',
-      },
-      {
-        t: 'The current source line',
-        why: 'Lines are looked up in the chunk’s `lines` array, using `ip`.',
-      },
-      {
-        t: 'The number of instructions run so far',
-        why: 'Instructions vary in length and jumps move `ip` backwards, so it is not a count.',
-      },
-    ],
-  },
-  {
-    q: 'Why do most instructions in a stack machine have no operands?',
-    options: [
-      {
-        t: 'Their operands are kept in the constant pool instead',
-        why: 'Only constants live there. `add`’s inputs are not constants.',
-      },
-      {
-        t: 'The VM works them out from the source line',
-        why: 'The VM never looks at the source.',
-      },
-      {
-        t: 'Their inputs are always the values on top of the stack',
-        correct: true,
-        why: 'There is nothing to name: “the top two” is built into the design.',
-      },
-      {
-        t: 'Every instruction works on exactly one value',
-        why: '`add` works on two.',
-      },
-    ],
-  },
-  {
-    q: 'For the chunk `0, 0, 0, 0, 0, 1, 20` (`const 0`, `const 1`, `add`), which values does `ip` hold at the start of each instruction?',
+    q: 'For the Drip chunk `0, 0, 0, 0, 0, 1, 20` (`const 0`, `const 1`, `add`; const has a two-byte operand), which values does `ip` hold at the start of each instruction?',
     options: [
       {
         t: '0, 1, 2, 3, 4, 5, 6',
@@ -674,28 +598,6 @@ export const quiz = [
         t: '0, 3, 6',
         correct: true,
         why: 'Each `const` takes three bytes; the `add` is one.',
-      },
-    ],
-  },
-  {
-    q: 'Why does pushing a value onto Drip’s stack never allocate memory?',
-    options: [
-      {
-        t: 'The array was made at full size, filled with null, when the VM started; push only writes a slot and moves `sp`',
-        correct: true,
-        why: '`new Array(STACK_MAX).fill(null)` makes all 65,536 slots up front.',
-      },
-      {
-        t: 'Values are stored in the constant pool instead',
-        why: 'The pool holds the program’s literals; running values live on the stack.',
-      },
-      {
-        t: 'JavaScript arrays never allocate',
-        why: 'A growing array does allocate; this one never grows.',
-      },
-      {
-        t: 'Each value is copied into the previous slot',
-        why: 'Nothing is copied; `push` writes slot `sp`.',
       },
     ],
   },
@@ -718,72 +620,6 @@ export const quiz = [
       {
         t: 'Parse the next statement, then run it',
         why: 'Parsing happened once, at compile time. The VM only sees bytes.',
-      },
-    ],
-  },
-  {
-    q: 'The stack holds `[script, 10, 4]` and `sub` runs. What is in the array slot that held 10 afterwards?',
-    options: [
-      {
-        t: '`10`, untouched',
-        why: 'The result is written into that slot.',
-      },
-      {
-        t: '`-6`',
-        why: 'That is `4 - 10`: the right operand is the one popped, and it is subtracted.',
-      },
-      {
-        t: '`6`',
-        correct: true,
-        why: '`b = 4` is popped, and `stack[sp - 1]`, the slot that held 10, is overwritten with `10 - 4`.',
-      },
-      {
-        t: 'The slot is now free and `6` is pushed above it',
-        why: 'The left operand is not popped; its slot is reused.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `numbers()` use `peek` instead of `pop`?',
-    options: [
-      {
-        t: '`pop` cannot return numbers',
-        why: 'It returns any value.',
-      },
-      {
-        t: 'Peeking is how the VM moves `ip`',
-        why: '`peek` only reads the stack. `ip` moves through `readByte` and `readShort`.',
-      },
-      {
-        t: 'It makes the error message shorter',
-        why: 'The message is the same either way.',
-      },
-      {
-        t: 'If the check fails, the stack is unchanged, and the values stay visible to the garbage collector',
-        correct: true,
-        why: 'Nothing is lost half-way through an instruction.',
-      },
-    ],
-  },
-  {
-    q: 'Which cost does every bytecode interpreter pay, however well it is written?',
-    options: [
-      {
-        t: 'Decoding each instruction and dispatching to the code for it',
-        correct: true,
-        why: 'The V8 team call these inherent interpreter overheads; removing them means compiling to machine code, as Sparkplug does.',
-      },
-      {
-        t: 'Re-parsing the source for each instruction',
-        why: 'Parsing happens once, at compile time.',
-      },
-      {
-        t: 'A Map lookup for every operand',
-        why: 'Drip’s VM reads operands straight from the code array.',
-      },
-      {
-        t: 'Allocating a new array for every value',
-        why: 'The stack is one array made up front; pushing allocates nothing.',
       },
     ],
   },

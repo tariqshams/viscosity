@@ -3,101 +3,73 @@ n: 72
 day: 7
 part: IV
 title: 'Why bytecode'
-tagline: 'Drip is finished, so it is time to ask how fast it is. The honest answer, from this book’s own benchmark run, is more interesting than “slow”: and the reasons why walking a tree is slow point straight at Part IV.'
+tagline: 'Drip is finished, so it is time to ask how fast it is. The honest answer, from this book’s own benchmark run, is more interesting than “slow”, and the reasons why walking a tree is slow point straight at a flat list of numbered instructions and a loop that runs them.'
 objectives:
-  - Read the tree-walker against bytecode VM benchmark honestly, including how it was measured and what it cannot tell you.
-  - Count the work the tree-walker does for one small expression, and separate overhead from real work.
-  - Name three sources of a tree-walker's overhead and connect them to Part II.
-  - Turn a small expression tree into a flat list of instructions, children first, and say why that order is the order the work must happen in.
-  - Read a few lines of the real Drip compiler's bytecode.
-  - Explain what an opcode and an operand are, and work out the bytes of a real Drip instruction, including a two-byte operand.
-  - Describe what a virtual machine does, and follow a tiny one written in JavaScript turn by turn.
-  - Explain why the machine must decode instructions in order, from the start.
-  - Recognise the same loop at the top of Drip's real VM.
-  - Read the tree-walker against VM benchmark honestly, including the four programs where the VM lost, and say why the gap is small.
+  - Read the tree-walker against bytecode VM benchmark honestly, including what it cannot tell you.
+  - Count the work a tree-walker does for one small expression, and name three sources of its overhead.
+  - Flatten an expression tree into bytecode, children first, and work out the bytes of a Drip instruction.
+  - Describe what a virtual machine does, and follow a tiny one turn by turn.
 introduces: [interpreter-overhead, bytecode, opcode, virtual-machine]
-uses: [inheritance, super, drip-class, field, bound-method, resolver, scope-depth, captured-environment, environment, scope-chain, closure, callable, ast, ast-node, evaluate, tree-walking-interpreter, compiler, return-unwinding, host-stack, drip, class, method, map, hash-intuition, pointer, memory, latency, pointer-chasing, jit-warmup, benchmark-isolation, recursion, function, call, return, variables, tree, contiguous, array, byte, cpu, interpreter, compiler-pipeline, front-end-back-end, while-loop, push, index]
-sources: [slotin-amh-latency, mdn-map, v8-maglev, v8-ignition, v8-sparkplug]
+uses: [bound-method, resolver, environment, scope-chain, ast, ast-node, evaluate, tree-walking-interpreter, compiler, drip, map, pointer, pointer-chasing, jit-warmup, benchmark-isolation, recursion, function, tree, array, byte, cpu, interpreter, while-loop, push, index]
+sources: [slotin-amh-latency, mdn-map, v8-ignition, v8-sparkplug]
 ---
 import BenchChart from '../../../components/diagrams/ch072/BenchChart';
 import OverheadSteps from '../../../components/diagrams/ch072/OverheadSteps';
 import TreeToBytes from '../../../components/diagrams/ch072/TreeToBytes';
 import InstrBytes from '../../../components/diagrams/ch072/InstrBytes';
 import TinyVmSteps from '../../../components/diagrams/ch072/TinyVmSteps';
-import BenchPairs from '../../../components/diagrams/ch072/BenchPairs';
-
-{/* ── merge: from old chapter 72, Measuring the tree-walker ── */}
 
 ## How fast is Drip?
 
-Drip is a whole language now, about fifteen hundred lines of TypeScript, and
-the natural next question is how fast it runs. "Fast" only means
-something next to something else, so the companion code has a second
-Drip implementation to compare with: the bytecode VM you will build in
-Part IV, also written in TypeScript, which turns the tree into a flat
-list of small instructions before running it. Both run the same
-benchmark programs, kept in `corpus/benchmark/` beside the test corpus:
-`fib` computes `fib(32)` by plain recursion, `method_calls` flips
-objects through methods and `super`, `instantiation` makes 600,000
-instances, `fields` reads and writes fields in a loop, and so on.
-
-The harness (`scripts/bench.mjs`) follows the rules from the chapter
-*Noisy numbers: the median, p95 and a fresh process*: each program runs
-in a fresh Node process for each engine, three times, and the best of
-the three is kept; the time covers the whole `run(source)`, scanning,
-parsing, resolving and running. These numbers are from this book's
-benchmark run, committed as
-`companion/ts/results/drip-bench-2026-11-02.md`: Node 22.23.4 (V8 12.4)
-on a shared cloud machine. By that chapter's standards, three runs on a
-shared machine are a careful first look, not a verdict.
+"Fast" only means something next to something else, so the companion
+has a second Drip implementation: the bytecode VM this part builds,
+also in TypeScript, which turns the tree into a flat list of small
+instructions first. Both run the same ten benchmark programs, each in a
+fresh Node process, best of three, timing everything from scanning on
+(this book's run, committed in `companion/ts/results`: Node 22.23.4 on
+a shared cloud machine, so a careful first look rather than a verdict):
 
 <BenchChart />
 
-Read it carefully, because it is not the picture you might expect:
+The VM is faster on six programs and never by much (1.3 times at
+best), and *slower* on four, the ones that make many objects or read
+many fields. Both engines run on V8: the tree-walker's `Map`s and
+objects are V8's own, tuned for years, while the VM rebuilds its stack,
+tables and objects in TypeScript (*Measuring and speeding up the VM*
+tests that explanation). None of this makes the tree-walker fast; its
+costs are spread around, and to see them we look at one line.
 
-- **The VM is faster on six of the ten programs, and never by much**:
-  1.3 times on `method_calls`, 1.24 times on `fib` and `closures`, less
-  on the rest. Turning the tree into bytecode, on its own, did not make
-  Drip several times faster.
-- **On four programs the VM is slower**: `instantiation` (0.69),
-  `fields` (0.74), `trees` (0.8) and `strings` (0.95). These are the
-  programs that make many objects or read many fields.
-- **Both engines run on the same JavaScript engine.** The tree-walker's
-  `Map`s and objects are V8's own, built in and heavily tuned; the VM in
-  TypeScript keeps its own stack, its own hash tables and its own
-  object representation, all written in TypeScript. One likely part of
-  the answer is that the VM pays to rebuild, in TypeScript, things the
-  tree-walker gets from V8 for free; the chapter *Measuring and speeding
-  up the VM* tests that idea rather than assuming it.
-
-None of that makes the tree-walker fast. It means the costs are spread
-around, and to see them you have to look at what it does for a single
-line.
-
-<Prompts ids={['how-measured', 'vm-slower', 'same-engine']} />
+<Prompts ids={['vm-slower', 'same-engine']} />
 
 ## What one subtraction costs
 
-Take one tiny piece of `fib`: `n - 2`. A CPU can subtract in a single
-instruction. Here is everything the tree-walker does for it, counted:
+Take one piece of `fib`, `n - 2`, which a CPU does in one instruction.
+Here is everything the tree-walker does for it:
 
 <OverheadSteps client:visible />
 
 Seven method calls, four switches, two hash-map lookups and five checks,
-for one subtraction; and `fib(32)` evaluates `n - 2` millions of times,
-asking the same questions about the same nodes every time. That
-surrounding bookkeeping is the interpreter's overhead.
+for one subtraction; and `fib(32)` asks the same questions about the
+same node millions of times, though the answers never change.
 
 <Analogy title="a cook who rereads the recipe">
-Picture a cook making a hundred pancakes who, for every single pancake,
-fetches the recipe card, finds the line "add one egg", reads it, works
-out what an egg is, and only then cracks one. The cracking is the real
-work; the rereading is all overhead, and it happens a hundred times.
+A cook making a hundred pancakes who, for every pancake, fetches the
+recipe card, finds the line "add one egg", reads it, works out what an
+egg is, and only then cracks one. The cracking is the real work; the
+rereading is overhead, and it happens a hundred times.
 <span slot="breaks">A cook would learn the recipe by heart after a few
 pancakes; a tree-walker never learns, which is exactly what a bytecode
-compiler (and, later, a JIT) adds: work done once so it need not be
-redone.</span>
+compiler adds: work done once so it need not be redone.</span>
 </Analogy>
+
+The overhead has three big sources. **Dispatch**: every node costs a
+method call and a `switch` to find out what it is, every time.
+**Pointer chasing**: the tree and the environment chain are webs of
+separate objects, and each step must wait for the previous load, which
+is far slower than walking an array in order<Cite id="slotin-amh-latency" />.
+**Maps and allocation**: every local read is two hash
+lookups<Cite id="mdn-map" />, nothing like a read at a known position,
+and every call and loop pass allocates environments.
 
 <Callout kind="definition">
 **Interpreter overhead** is the work an interpreter does that the
@@ -107,186 +79,46 @@ environments and checking types. In a tree-walker it often costs far
 more than the operations themselves.
 </Callout>
 
-<Formal title="Where the time goes">
-
-```text
-time ≈ Σ over nodes evaluated
-         (dispatch + lookups + checks)
-       + real work
-```
-
-<span slot="read">The running time is roughly the sum, over every node
-the interpreter evaluates (the Σ reads "the sum of"), of what it costs
-to find out what the node is, to look its names up and to check its
-values, plus the work the program actually asked for. In a tree-walker
-the first part is the large one.</span>
-</Formal>
-
-<Prompts ids={['overhead-what', 'n-minus-2']} />
-
-## Three sources of overhead
-
-**Dispatch on every node.** Every node costs a method call and a
-`switch` to find out what it is, every time it runs, though the answer
-never changes.
-
-**Pointer chasing.** The tree is a web of separate objects joined by
-references, and so is the chain of environments. Each step loads the
-next pointer, and the step after cannot start until that load arrives:
-the pointer chasing of the chapter *Prefetching and pointer chasing*,
-where dependent loads are far slower than walking an array in
-order<Cite id="slotin-amh-latency" />.
-
-<Analogy extra title="a treasure hunt">
-Each clue tells you where the next clue is hidden, so you cannot even
-start walking to clue five until you have read clue four; a shopping
-list, by contrast, can be read all at once and the whole route planned.
-<span slot="breaks">A treasure hunt is slow because of walking between
-places; the processor is slow here because of *waiting* for each value
-to arrive from memory, which caches sometimes hide and sometimes do
-not.</span>
-</Analogy>
-
-**Environments made of Maps, and allocation everywhere.** Every local
-read is two hash lookups (the resolver's table, then the environment's
-`Map`); `Map` lookups are fast for a general table<Cite id="mdn-map" />,
-but nothing like reading a value at a known position. And the
-tree-walker allocates as it goes: a new `Environment` with a new `Map`
-for every call, two more for every pass of a `for` loop, a bound method
-and an environment for every method read, and a `frames` entry for every
-call.
-
 <Examples of="interpreter-overhead">
 
-```
-fn f(n) {
-  return n - 2;
-}
-print f(5); # 3
-# n - 2 alone: 7 calls, 4 switches,
-# 2 Map lookups, 5 checks
-```
-
-```
+```text
 let sum = 0;
 for i in 0..3 {
   sum += i;
 }
-print sum; # 3
 # per pass: 2 new environments,
 # a define, 7 more Map operations
 ```
 
-<Run id="timing" />
-
 </Examples>
 
-The first is the step-through above, inside a function as in `fib`
-(the call around it adds its own environment, `Map` and `frames`
-entry). The second is the smallest loop that does something: each pass
-makes the loop variable's environment and the body's, defines `i`, and
-reads `sum`, reads `i` and writes `sum` back through `Map`s, to do one
-addition. The
-runnable one times `fib(20)` and a loop of 100,000 additions with
-`clock`; your numbers will differ from run to run and from machine to
+One addition per pass costs two environments and a handful of `Map`
+operations.
+
+<More title="Timing the tree-walker yourself">
+
+The example times `fib(20)` and a loop of 100,000 additions with
+`clock`; your numbers will differ from run to run and machine to
 machine, so run it a few times before you believe any of them.
 
-<Prompts ids={['dispatch', 'chase', 'allocations']} />
+<Run id="timing" />
 
-<Callout kind="engine" label="Under the hood">
-Part IV attacks each source. The tree becomes **bytecode**, a flat array
-of small instructions read in order, so there are no nodes to chase;
-locals live in numbered stack slots instead of `Map`s, so the resolver's
-distances become slot numbers; and a `return` pops a frame. Engines took
-the same road: V8 runs your JavaScript first in Ignition, a bytecode
-interpreter, before its faster tiers take over the code that runs
-most<Cite id="v8-maglev" />. As the chart shows, though, bytecode alone
-is not the whole story, and Part IV measures each step rather than
-assuming it helps.
-</Callout>
+</More>
 
-## Your turn
-
-<Exercise id="countVisits" />
-
-## What you learned
-
-- In this book's benchmark run (best of three, fresh processes, one
-  shared machine), the bytecode VM was at most 1.3 times faster than the
-  tree-walker, and slower on four object-heavy programs: both run on V8,
-  and the VM rebuilds in TypeScript what the tree-walker borrows.
-- **Interpreter overhead** is the work the program did not ask for:
-  `n - 2` costs seven calls, four switches, two `Map` lookups and five
-  checks for one subtraction.
-- Its three big sources: dispatch on every node, pointer chasing
-  through the tree and the environments, and `Map`-based environments
-  that allocate on every call and every loop pass.
-
-That is Drip: a whole language, walked as a tree. Part IV rebuilds it as
-a compiler and a virtual machine, and measures every piece of overhead
-it removes.
-
-
-{/* ── merge: from old chapter 72, Why bytecode? ── */}
-
-## Finding the way costs more than the work
-
-In Part III, in the chapter *Measuring the tree-walker*, you counted what
-the tree-walker does for the two characters `n - 2`: seven method calls,
-four `switch`es on the kind of node, two `Map` lookups and five checks,
-all to do one subtraction that the processor could do in a single
-instruction. The subtraction was the cheap part; finding out *what to
-do* was the expensive part.
-
-Here is the thing to notice: none of that finding-out changes from one
-run to the next. The node for `n - 2` is a subtraction of the number `2`
-from the variable `n` every time `fib` is called; however, the
-tree-walker asks those questions again, from scratch, millions of times.
-So rather than work the answers out on every run, we could work them out
-**once**, before the program starts, write them down in a form that is
-quick to follow, and from then on only follow what we wrote.
-
-<Analogy title="written directions instead of a map">
-The first time you drive to a friend's new house, you stop at every
-junction and study the map: which road is this, where does it go, which
-way is closer? The second time, you have written the route on a scrap of
-paper: "left, second right, straight over the roundabout, third house".
-The map work was done once, and following the note needs no thinking at
-all.
-<span slot="breaks">Written directions only ever go forward; a program
-loops, so the list we write will need "go back to step 4", which the
-chapter *Branches and loops in bytecode* adds. And a driver can still
-improvise when a road is closed; the machine following our list never
-improvises.</span>
-</Analogy>
+<Prompts ids={['overhead-what']} />
 
 ## Flatten the tree into a list
 
-How do you turn a tree into a list of steps? Look at what any operator
-needs: before `*` in `2 * 3` can do anything, both `2` and `3` must be
-ready. So the rule is to visit a node's children *before* the node
-itself, and to write down one step for each node as you finish it.
-Step through it for `1 + 2 * 3`:
+None of that finding-out changes between runs, so we can work it out
+**once**, before the program starts, and write it down in a form that is
+quick to follow. Before `*` in `2 * 3` can do anything, both operands
+must be ready, so the rule is: visit a node's children *before* the
+node, and write one step for each node as you finish it.
 
 <TreeToBytes client:visible />
 
-The steps come out in exactly the order the work has to happen: every
-value is ready before the operator that needs it, so the list can be
-followed from top to bottom without ever looking back at the tree. And
-because the list is a plain array, the next step is at the next index,
-rather than behind a pointer to some other object (the pointer chasing
-that *Measuring the tree-walker* blamed for much of the cost).
-
-<Analogy extra title="flat-pack furniture instructions">
-The booklet that comes with a flat-pack bookcase does not show you a
-diagram of the finished bookcase and leave you to work out the order;
-it gives you numbered steps, each small, in an order where every part
-you need has already been built: the sides before the shelves, the
-shelves before the back panel.
-<span slot="breaks">The booklet is written by a person who thought
-about it; our list is written by a program, the compiler, following one
-fixed rule (children first), with no judgement at all.</span>
-</Analogy>
+The list can be followed top to bottom without the tree, and the next
+step is at the next index, not behind a pointer.
 
 <Callout kind="definition">
 **Bytecode** is a program written as a compact, flat list of simple
@@ -295,20 +127,7 @@ it once, before the program runs, and each instruction does one small
 thing, such as "push this value" or "add the two newest values".
 </Callout>
 
-Drip's real compiler (in `companion/ts/src/vm`) can print the bytecode
-it makes, one instruction per line; a later chapter explains every
-column, so for now read the words after the line number (or the `|`).
-
 <Examples of="bytecode">
-
-```text
-print 7;
-
-0000    1 const               0 '7'
-0003    | print
-0004    | none
-0005    | return
-```
 
 ```text
 print 1 + 2 * 3;
@@ -321,85 +140,60 @@ print 1 + 2 * 3;
 0011    | print
 ```
 
-```text
-let price = 4;
-let qty = 3;
-print price * qty + 1;
-
-0012    3 load.global         4 'price'
-0015    | load.global         5 'qty'
-0018    | mul
-0019    | const               6 '1'
-0022    | add
-0023    | print
-```
-
 </Examples>
 
-The first is the smallest program there is: `const` pushes the value
-`7` (the `0` is its number in a side table of values, which the next
-chapter explains), and `print` takes it off and prints it. The last two
-lines, `none` and `return`, are added to the end of every script, so the
-machine has a tidy place to stop. The second is the tree from the
-diagram, as the real compiler writes it: three values, then `mul`, then
-`add`, then `print`. The third shows only the last line of a small
-program (the first two lines compile to the twelve bytes before offset
-12): `load.global` fetches a variable by name, so `price * qty + 1`
-becomes "fetch price, fetch qty, multiply, push 1, add, print", which is
-exactly the children-first order again, with variables in place of
-numbers.
+Drip's real compiler prints this for the tree in the diagram (the next
+chapter explains the columns): three `const`s, then `mul`, `add` and
+`print`, children first.
 
-<Prompts ids={['bytecode-what', 'children-first-order', 'why-flat']} />
+<Prompts ids={['bytecode-what', 'children-first-order']} />
 
-## Opcodes: instructions as numbers
+## Opcodes and operands
 
-Words like `const` and `mul` are still text; to store a step in one
-slot of a number array, give each kind of step a number. Drip's
-VM keeps that numbering in `companion/ts/src/vm/chunk.ts`. Here is the
-start of it, with most entries left out:
+To store a step in an array of numbers, each kind of step gets a
+number. Drip's VM keeps the numbering in `vm/chunk.ts`:
 
 ```ts
 export const Op = {
-  // values
   Const: 0,        // k     push constant k
   None: 1,         //       push none
-  True: 2,
-  False: 3,
   // ...
-  // variables
-  LoadLocal: 8,    // s
+  Add: 20,
   // ...
   Print: 33,
-  Jump: 34,        // j     forward
-  // ...
-  Return: 49,
 ```
 
-So `Const` is `0`, `Print` is `33`, `Add` is `20` and `Mul` is `22`;
-the last entry, `Method`, is `52`, so there are 53 kinds of instruction
-in all. A byte holds any whole number from 0 to 255, which leaves
-plenty of room. (The disassembler prints the names in lower case, with
-dots between the words, so `LoadLocal` shows up as `load.local`.)
+There are 53 kinds, and a byte holds 0 to 255. Some need more than
+their number: "push a constant" must say *which*, so two more
+bytes follow the `0`, holding the constant's number, high byte first;
+`add` needs nothing, because it always works on the two newest values.
+The comments label the operand shapes: `k` is two bytes naming a
+constant, `s` one byte (a slot or a count), `j` two bytes of jump
+distance.
 
 <Figure takeaway="An instruction is an opcode, then its operands." caption="Three real Drip instructions, one for each size of operand: none for add, one byte for load.local's slot, and two bytes for const's constant number, the high byte first.">
   <InstrBytes />
 </Figure>
 
-Some instructions need more than their number. "Push a constant" must
-say *which* constant, so after the `0` come two more bytes holding the
-constant's number; that is what the `k` in the comment means. `Add`
-needs nothing more, because it always works on the two newest values.
-The extra bytes are called **operands**, and they come in a few fixed
-shapes, which the comments label: `k` is two bytes naming a constant,
-`s` is one byte (a slot or a count), and `j` is two bytes saying how
-far to jump.
-
 <Callout kind="definition">
 An **opcode** is the number that says which instruction this is. An
 instruction is its opcode followed by zero or more **operand** bytes,
-which give it the details it needs, such as which constant to push. As
+which give it the details it needs, such as which constant to push; as
 such, different instructions take different numbers of bytes.
 </Callout>
+
+<Examples of="opcode">
+
+```text
+add       →  20
+const 2   →  0, 0, 2
+const 300 →  0, 1, 44
+```
+
+</Examples>
+
+`add` is one byte; constant 300 needs a high byte of 1, because
+1 × 256 + 44 is 300.
 
 <Formal title="The bytes of an instruction">
 
@@ -416,151 +210,47 @@ bytes, the high part first, so k is the first byte times 256 plus the
 second.</span>
 </Formal>
 
-<Examples of="opcode">
+<More title="Checking the arithmetic, and V8’s bytecode">
 
-```text
-add       →  20
-```
-
-```text
-const 2   →  0, 0, 2
-const 300 →  0, 1, 44
-```
-
-```text
-fn add(a, b) {
-  return a + b;
-}
-
-== add ==
-0000    2 load.local          1
-0002    | load.local          2
-0004    | add
-0005    | return
-0006    3 none
-0007    | return
-```
-
-</Examples>
-
-The first is a whole instruction in one byte: opcode 20, no operands.
-The second shows the two-byte operand: constant number 2 is the bytes 0
-and 2, while 300 needs a high byte of 1, because 1 × 256 + 44 is 300.
-The third is real code from inside a function, with the third shape:
-`load.local` is an opcode and a one-byte slot number (slot 1 is `a`,
-slot 2 is `b`; *Locals as stack slots* explains slots), so the offsets
-go 0, 2, 4. (The final `none` and `return` are the automatic ending,
-never reached here.)
-
-You can check the arithmetic of the two-byte operand in a few lines
-of JavaScript: `>> 8` shifts a number right by eight binary places
-(which divides it by 256, dropping the remainder), and `& 255` keeps only
-the remainder, the low byte.
+`>> 8` divides by 256, dropping the remainder, and `& 255` keeps the
+low byte:
 
 <Run id="two-bytes" />
 
-<Prompts ids={['opcode-what', 'operand-what', 'one-byte-enough', 'const-300', 'k-s-j']} />
+V8 made this same move: its interpreter, Ignition, runs bytecode that
+the V8 team reported is a quarter to a half the size of the machine
+code their earlier baseline compiler produced<Cite id="v8-ignition" />.
 
-<Callout kind="engine" label="Under the hood">
-V8 made this same move for JavaScript. Its interpreter, Ignition, runs
-bytecode that V8 compiles from your functions, and the V8 team reported
-that this bytecode is between a quarter and a half of the size of the
-machine code their earlier baseline compiler produced for the same
-functions<Cite id="v8-ignition" />: a flat list of small instructions is
-compact as well as quick to follow.
-</Callout>
+</More>
 
-## Your turn
+<Prompts ids={['opcode-what', 'const-300']} />
 
-<Exercise id="flatten" />
+## A machine made of software
 
-<Exercise id="flattenNeg" />
+A list of numbers does nothing on its own; something has to read the
+numbers one after another and carry each out, and it needs to be no
+more than a loop. Here is a complete one for three made-up opcodes
+(it stores each value straight after its `PUSH`, rather than in a side
+table as Drip's VM does):
 
-## What you learned
-
-- **Bytecode** is a program as a flat array of small instructions,
-  produced once by a compiler, in the order the work must happen;
-  visiting children before parents gives that order.
-- An **opcode** is the number naming an instruction (Drip has 53);
-  **operands** are the extra bytes some instructions need, such as the
-  two-byte constant number after `const`.
-- Drip's compiler can print its bytecode: `const`, `load.global`,
-  `mul`, `add` and `print`, one instruction per line.
-
-Next: something has to read these numbers and do what they say. That
-something is a machine made of software.
-
-
-{/* ── merge: from old chapter 72, A machine made of software ── */}
-
-## A list that cannot run itself
-
-In *Why bytecode?* we flattened `1 + 2 * 3` into a list of numbered
-steps: push 1, push 2, push 3, multiply, add. However, a list of numbers
-in an array is only data; it does nothing on its own, in the same way
-that sheet music makes no sound until somebody plays it. Something has
-to read the numbers, one after another, and carry out each one, and it
-must do that without the tree, because the whole point was to stop
-walking the tree.
-
-The surprising thing is how little that something needs to be. It is a
-loop: read the next opcode, do that instruction, move on, and repeat
-until the code runs out.
-
-<Analogy title="a player piano">
-A player piano reads a paper roll with holes punched in it; each row of
-holes says which keys to press, and the mechanism reads the rows one
-after another and presses them. The roll is the bytecode, the mechanism
-is the virtual machine, and the same mechanism plays any roll you feed
-it, without knowing anything about the tune.
-<span slot="breaks">A piano roll only moves forward, at a steady speed;
-a VM can jump back (that is how loops work, as the chapter *Branches and
-loops in bytecode* shows) and can stop dead with an error, such as adding
-a number to a string.</span>
-</Analogy>
-
-## A whole machine in twenty lines
-
-Here is a complete one, for three made-up opcodes, small enough to read
-in one go (to keep it short, it stores each value straight after its
-`PUSH`, rather than in a side table of values as Drip's real VM does):
+<Examples of="virtual-machine">
 
 <Run id="tiny-vm" />
 
-Line by line: the first line gives the three opcodes their numbers, and
-`code` is `1 + 2 * 3` flattened, children first, with each value written
-straight after a `PUSH`. `st` is the machine's pile of waiting values
-(its *stack*, which the chapter *A machine with a stack* looks at
-properly), and `ip` says where in `code` it has got to. Inside the loop,
-`code[ip++]` reads the byte at `ip` and moves `ip` on by one, so `op` is
-the opcode. A `PUSH` reads one more byte, its operand, and pushes it.
-Anything else is `ADD` or `MUL`: it pops the newest value into `b`, the
-one under it into `a`, and pushes the result. When `ip` runs off the end
-of `code`, the answer, `7`, is the only value left. Step through it, one
-turn of the loop at a time:
+</Examples>
+
+`code` is `1 + 2 * 3` flattened, children first. `st` is the machine's
+pile of waiting values (its stack, the subject of *A stack machine and
+its dispatch loop*), and `ip` says where in `code` it has got to.
+`code[ip++]` reads the opcode and moves `ip` on; a `PUSH` reads one more
+byte, its operand, and pushes it; `ADD` and `MUL` pop the newest value
+into `b`, the one under it into `a`, and push the result. When `ip` runs
+off the end, `7` is the only value left:
 
 <TinyVmSteps client:visible />
 
-Notice what is missing: no recursion, no `kind` field to switch on, no
-`Map`, no environment. A real processor does the same thing with machine
-code (fetch an instruction, work out what it is, do it, move on), which
-is why a loop like this is called a *virtual* machine: a pretend
-processor, made of software, with an instruction set designed for one
-language rather than built into a chip.
-
-<Prompts ids={['no-recursion', 'why-virtual']} />
-
-<Analogy extra title="a co-pilot reading a checklist">
-Before take-off, one pilot reads a printed checklist aloud, line by
-line, keeping a finger on the current line: "flaps, set; fuel pumps,
-on". Each line is short, the order is fixed, and the finger is how they
-know what comes next. The checklist is the bytecode, the finger is
-`ip`, and reading and doing each line is one turn of the loop.
-<span slot="breaks">The pilots understand what every line means and
-would notice a nonsense one; the VM understands nothing, and only
-compares numbers, so a wrong byte is carried out as faithfully as a
-right one.</span>
-</Analogy>
+No recursion, no `kind` to switch on, no `Map`: a real processor does
+the same with machine code, which is why this is a *virtual* machine.
 
 <Callout kind="definition">
 A **virtual machine** (VM) is a program that runs bytecode. It
@@ -571,24 +261,15 @@ data structures. Its instruction set is designed for one language, not
 for any real chip.
 </Callout>
 
-<Formal title="The fetch, decode, execute loop">
+<Analogy extra title="a player piano">
+A player piano reads a paper roll row by row and presses the keys each
+row says; the same mechanism plays any roll, knowing nothing about the
+tune.
+<span slot="breaks">A roll only moves forward; a VM can jump back (that
+is how loops work) and can stop with an error.</span>
+</Analogy>
 
-```text
-while ip < |code|:
-  op ← code[ip];  ip ← ip + 1
-  run(op), reading operands at ip
-```
-
-<span slot="read">As long as ip is inside the code (the bars around
-code read "the length of"), take the opcode at position ip and move ip
-on by one (the arrow reads "becomes"); then carry out that opcode, which
-reads any operands it needs from position ip onwards and moves ip past
-them.</span>
-</Formal>
-
-<Examples of="virtual-machine">
-
-<Run id="tiny-vm-sub" />
+<More title="The top of Drip’s real loop, and two more runnable examples">
 
 ```ts
 for (;;) {
@@ -597,91 +278,50 @@ for (;;) {
   switch (instruction) {
     // ...
     case Op.True: this.push(true); break;
-    // ...
     case Op.Pop: this.sp--; break;
 ```
 
+The same shape: read the opcode at `ip`, move on, one `case` per
+opcode; `for (;;)` never stops by itself, and the `return` instruction
+ends it. The first example below adds `SUB` to the tiny machine, which
+shows why the right operand is popped first; the second runs `fib` on
+the real VM. Even a well-built interpreter keeps the costs of decoding
+operands and jumping to the next instruction's code, which V8's
+Sparkplug removes by compiling bytecode to machine code in one quick
+pass<Cite id="v8-sparkplug" />; this book's VM stays an interpreter.
+
+<Run id="tiny-vm-sub" />
+
 <Run id="fib-vm" />
 
-</Examples>
+</More>
 
-The first adds a fourth opcode, `SUB`, to the tiny machine, and shows
-why the order of the two pops matters: in `10 - 4` the `4` was pushed
-last, so it is on top and must be popped first, into `b`; popping into
-`a` first would compute `4 - 10`. The second is the top of Drip's real
-loop, from `companion/ts/src/vm/vm.ts`: it counts the instruction (a
-tally kept for measuring the VM), reads the opcode at `ip` and moves
-`ip` on, then picks the code for that opcode with a `switch`, one `case`
-per opcode (`true` pushes `true`; `pop` only moves the top of the stack
-down by one). It loops with `for (;;)`, which never stops by itself;
-the `return` instruction ends it instead. The third runs a whole Drip
-program on that real VM: the same `fib` as in Part III, compiled to
-bytecode first, printing the same output as the tree-walker.
-
-<Prompts ids={['vm-what', 'decode-what', 'sub-pops', 'for-ever']} />
-
-## Did it pay off?
-
-The companion code already contains the finished VM, so you can see
-where this road leads before you walk it. These are the same benchmark
-runs as in *Measuring the tree-walker* (best of three, each in a fresh
-process, on one shared cloud machine), this time in seconds rather than
-as a ratio:
-
-<BenchPairs />
-
-Read it honestly. The VM was faster on six of the ten programs, but
-never by much: 1.3 times on `method_calls`, 1.24 times on `fib` and
-`closures`, less on the rest. On four programs it was *slower*:
-`instantiation`, `fields`, `trees` and `strings`, the ones that make
-many objects or read many fields.
-
-Why so little, after all that talk of overhead? Both engines are
-TypeScript, and both run on V8, which compiles the hot parts of any
-JavaScript program into machine code<Cite id="v8-ignition" />; so the
-tree-walker's `switch`es and `Map` lookups are already being run as
-fast machine code, and the gap we expected is smaller. Meanwhile the VM
-pays costs of its own: a trip round its loop and through a 53-way
-`switch` for every tiny instruction, plus its own object layout, its
-own hash tables and its own heap, all written in TypeScript, where the
-tree-walker uses V8's built-in objects and `Map`, which are written in
-C++ and have been tuned for years. That would explain why the
-object-heavy programs are the ones that lost; however, one run on a
-shared machine cannot prove it, so the chapter *Measuring and speeding
-up the VM* tests the idea rather than assuming it. The lesson for now: a
-better design is not faster at everything, and only measuring tells you.
-
-<Prompts ids={['vm-faster-by', 'slower-lesson']} />
-
-<Callout kind="engine" label="Under the hood">
-Even a well-built interpreter keeps some costs it cannot remove: decoding
-each instruction's operands, and jumping to the code for the next one.
-The V8 team call these the interpreter's inherent overheads, and V8's
-Sparkplug compiler exists to remove exactly them, by turning Ignition's
-bytecode into machine code in one quick pass<Cite id="v8-sparkplug" />.
-That is a step this book's VM does not take; it stays an interpreter.
-</Callout>
+<Prompts ids={['vm-what']} />
 
 ## Your turn
 
+<Exercise id="flatten" />
+
+<Exercise id="countVisits" />
+
 <Exercise id="countInstrs" />
+
+<Exercise id="flattenNeg" />
 
 <Exercise id="tinyNeg" />
 
 ## What you learned
 
-- A **virtual machine** is a loop that fetches an instruction, decodes
-  it and executes it, over and over: a pretend processor for one
-  language.
-- It must decode in order from the start, because only an opcode says
-  how many operand bytes follow it.
-- Drip's real VM has the same shape: `for (;;)`, read the opcode at
-  `ip`, then a `switch` with one `case` per opcode.
-- In this book's benchmark run the VM was at most 1.3 times faster, and
-  slower on four object-heavy programs: both engines run on V8, and the
-  VM rebuilds in TypeScript what the tree-walker borrows.
+- In this book's run the VM was at most 1.3 times faster, and slower on
+  four object-heavy programs: a better design is not faster at
+  everything, and only measuring tells you.
+- **Interpreter overhead** is the work the program did not ask for:
+  dispatch, pointer chasing, `Map`s and allocation.
+- **Bytecode** is the tree flattened once, children first, into numbered
+  **opcodes** with operand bytes; a **virtual machine** is the loop that
+  fetches, decodes and executes them.
 
-Next: the container the bytecode lives in, with its side table of
-values.
+Next: *Bytecode as data, and a disassembler*, the container the
+bytecode lives in, with its side table of values.
 
 <Quiz />

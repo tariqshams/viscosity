@@ -18,15 +18,11 @@ import TwoRoutes from '../../../components/diagrams/ch075/TwoRoutes';
 
 ## A tree nobody needs
 
-In Part III, `print 1 + 2 * 3 - 4;` went through three stages: the
-scanner made a list of every token, the parser built a syntax tree, and
-the interpreter walked the tree. If we compiled that tree to bytecode,
-we would build the whole tree, walk it once to write the bytes, and
-throw it away: a lot of building for something used once.
-
-Drip's bytecode compiler skips the middle. It parses and writes bytes
-in the same breath, so the tree never exists: source in, a chunk out,
-in one reading of the source from start to finish.
+In the tree-walker, `print 1 + 2 * 3 - 4;` became a list of every token,
+then a syntax tree, then a walk. Compiling that tree to bytecode would
+mean building the whole tree, walking it once to write the bytes, and
+throwing it away. Drip's bytecode compiler skips the middle: it parses
+and writes bytes in the same breath, so the tree never exists.
 
 <Figure takeaway="One pass keeps two tokens and no tree." caption="Part III's route builds a whole token list and a whole tree before anything runs. The bytecode compiler holds two tokens at a time and writes bytes straight into the chunk.">
   <TwoRoutes />
@@ -38,20 +34,18 @@ end, write it down and translate the transcript; she listens a few words
 ahead and speaks the translation as she goes, never holding the whole
 speech in her head, only the sentence in progress.
 <span slot="breaks">She can rephrase a sentence she has already started;
-our compiler can only add to the end of what it has written (with one
-exception, filling in jump distances, which *Branches and loops in
-bytecode* explains).</span>
+Drip's compiler can only add to the end of what it has written (with one
+exception, filling in jump distances, which *Jumps: branches, loops and
+backpatching* explains).</span>
 </Analogy>
 
 ## One token at a time
 
-The compiler does not even ask for all the tokens at once. Its scanner,
-in `companion/ts/src/vm/scanner.ts`, hands out one token each time
-`scanToken()` is called (a test checks that it produces exactly the
-tokens of Part III's scanner), and the compiler keeps only two of them:
-`current`, the **lookahead** it has not used yet, and `previous`, the one
-it has just consumed. This is the real `advance`, from
-`companion/ts/src/vm/compiler.ts`:
+The compiler does not even ask for all the tokens at once: its scanner
+hands out one token per `scanToken()` call (a test checks they are
+exactly the tree-walker's tokens), and the compiler keeps two, `current`,
+the lookahead it has not used yet, and `previous`, the one just
+consumed. This is the real `advance`, from `vm/compiler.ts`:
 
 ```ts
 function advance() {
@@ -64,10 +58,8 @@ function advance() {
 }
 ```
 
-The current token becomes the previous one, and the scanner is asked for
-a new current one. A scanning problem (an unknown character, say) comes
-back as an `'error'` token whose lexeme is the message, so `advance`
-reports it and asks again, and compiling carries on.
+A scanning problem comes back as an `'error'` token whose lexeme is the
+message, so `advance` reports it and asks again.
 
 <Callout kind="definition">
 A **single-pass compiler** reads the source once, from start to end,
@@ -88,12 +80,25 @@ print 1 + 2;
 0007    | print
 ```
 
+</Examples>
+
+Four instructions, in the order the tokens were read. Notice what it
+does *not* do: work out `1 + 2` itself, which a compiler holding the
+whole tree could easily do (*constant folding*), so the VM adds the same
+two numbers every time it runs this line.
+
+<More title="Errors in one pass, and brackets">
+
 ```text
 print 1 +;
 print 2;
 
 line 1: expected an expression, found ';'
 ```
+
+The compiler had already written bytes for `print 1 +` when it met the
+`;`, so it reports the error (in the tree-walker's exact words) and
+throws the chunk away; nothing runs, not even `print 2`.
 
 ```text
 print -(1 + 2) * 3;
@@ -104,26 +109,16 @@ print -(1 + 2) * 3;
 0011    | mul
 ```
 
-</Examples>
-
-The first is the whole compiler in miniature: four instructions, in the
-order the tokens were read. Notice what it does *not* do: work out
-`1 + 2` itself, which a compiler holding the whole tree could easily do
-(*constant folding*), so the VM adds the same two numbers every time.
-The second shows errors found in the same single reading: the compiler
-had already written bytes for `print 1 +` when it met the `;`, so it
-reports the error (in the tree-walker's exact words) and throws its
-chunk away; nothing runs, not even `print 2`.
-The third (lines from the middle of the listing) shows brackets at work:
 `add` comes before `neg`, because the sum must finish before the minus
-applies to it; brackets change the order of the bytes and emit none.
+applies to it: brackets change the order of the bytes and emit none.
+
+</More>
 
 <Prompts ids={['single-pass-what', 'two-tokens', 'what-lost']} />
 
 ## Emit
 
-Writing bytes is a few small functions in `compiler.ts`. They are long
-lines in the file, so here they are rewrapped:
+Writing bytes is three small functions in `compiler.ts`, rewrapped:
 
 ```ts
 function emitAt(line: number,
@@ -139,13 +134,10 @@ const emitConstantOp = (line: number,
     k & 0xff);
 ```
 
-`emitAt` writes any number of bytes to the end of the current function's
-chunk, each tagged with `line`, through the chunk's `write`. `emit` is
-the everyday version: it tags the bytes with the line of `previous`, the
-token just consumed. `emitConstantOp` writes an instruction with a
-two-byte constant number, splitting `k` into its high byte (`k >> 8`,
-masked to eight bits with `& 0xff`) and its low byte. Every rule in the
-compiler writes code through these three.
+`emitAt` appends bytes to the current function's chunk, each tagged with
+`line`; `emit` tags them with the line of `previous`, the token just
+consumed; `emitConstantOp` writes an opcode and a two-byte constant
+number, high byte first. Every rule writes code through these three.
 
 <Analogy extra title="a till roll">
 At a shop till, each item you scan prints one more line at the bottom of
@@ -166,16 +158,6 @@ VM will run the instructions.
 
 <Examples of="emit">
 
-```ts
-emit(Op.Print);
-// code: [..., 33]
-```
-
-```ts
-emitConstantOp(line, Op.Const, 300);
-// code: [..., 0, 1, 44]
-```
-
 ```text
 print 1;
 print 2 +
@@ -190,25 +172,20 @@ print 2 +
 
 </Examples>
 
-The first appends one byte, 33, for a `print`, tagged with the line of
-the token just consumed. The second appends three bytes for `const 300`:
-the opcode 0 and the constant number split into 1 and 44. The third, from a
-real program, shows the line tag chosen with care: `add` is emitted
-*after* its right operand, while the compiler is already on line 3, but
-the rule for `+` uses `emitAt(op.line, ...)`, the line of the `+` token,
-so an error in the addition would point at line 2, where the `+` is.
-`print` gets line 3, the line of the `;` just consumed.
+The line tags are chosen with care: `add` is emitted *after* its right
+operand, while the compiler is already on line 3, but the rule for `+`
+uses `emitAt(op.line, ...)`, the line of the `+` token, so an error in
+the addition points at line 2, where the `+` is; `print` gets line 3,
+the line of the `;` just consumed.
 
 <Prompts ids={['emit-what', 'emit-at-op']} />
 
 ## Pratt rules that write bytes
 
-The compiler parses expressions with the Pratt loop of *Prefix and infix
-operators*: the same functions, in the same order, as Part III's parser
-(`parsePrecedence`, `prefixRule`, `continueExpression`, `infix`), except
-that every rule emits code instead of returning a node. Here is the part
-of `infix` for the plain binary operators (`+`, `*`, `<` and the rest),
-exactly as it is in the file:
+The compiler parses expressions with the loop of *Pratt parsing*: the
+same functions, in the same order, as the tree-walker's parser, except
+that every rule emits code instead of returning a node. Here is the
+part of `infix` for the plain binary operators, exactly as in the file:
 
 ```ts
 default:
@@ -216,17 +193,14 @@ default:
   emitAt(op.line, BINARY_OPS[op.type]!);
 ```
 
-`INFIX_PREC` gives each operator its precedence (`TERM` for `+`,
-`FACTOR` for `*`), and `BINARY_OPS` maps it to its opcode. Look where
-the emit is: the rule compiles its right operand *first* and emits its
-own opcode *after* (the left operand was emitted before the rule was
-called): the children-first order of *Why bytecode?*, falling out of the
-order of two lines. The `+ 1` asks for operators strictly tighter than
-this one, which makes operators of equal strength group to the left, as
-in Part III. The prefix rules work the same way: a number emits its
-`const` at once; a minus compiles its operand and then emits `neg`;
-brackets compile the inside and emit nothing. Watch the rules compile
-`print 1 + 2 * 3 - 4;`:
+`INFIX_PREC` gives each operator its precedence and `BINARY_OPS` its
+opcode. The rule compiles its right operand *first* and emits its own
+opcode *after* (the left operand was emitted before the rule was
+called): the children-first order of *Why bytecode*, falling out of the
+order of two lines. The `+ 1` asks for strictly tighter operators, so
+equal ones group to the left. Prefix rules work the same way: a number
+emits `const` at once, a minus compiles its operand and then emits
+`neg`. Watch the rules compile `print 1 + 2 * 3 - 4;`:
 
 <CompileSteps client:visible />
 
@@ -234,30 +208,30 @@ brackets compile the inside and emit nothing. Watch the rules compile
 
 ## An instruction for every comparison
 
-Drip's VM has a separate opcode for each of the six comparisons, `eq`,
-`ne`, `lt`, `le`, `gt` and `ge`, although `a >= b` could be written as
-"not `a < b`" with one fewer opcode. The reason is the strange number
-`NaN` (not a number, the result of `0 / 0`): under the IEEE 754 rules
-of *How JavaScript stores numbers and objects*, every `<`, `<=`, `>` and
-`>=` with `NaN` on either side is false:
+Drip's VM has an opcode for each of the six comparisons, although
+`a >= b` could be "not `a < b`". The reason is `NaN` (the result of
+`0 / 0`): under IEEE 754 every `<`, `<=`, `>` and `>=` with `NaN` is
+false (*How JavaScript stores numbers, objects and fields*):
 
 ```text
 print 0 / 0 >= 1;    # false
 print !(0 / 0 < 1);  # true
 ```
 
-"Not less than" is true for `NaN`, but "greater than or equal" is false,
-so compiling one as the other would make the VM disagree with the
-tree-walker. Running the same programs on both engines (the differential
-testing of *Edge cases and differential testing*) is exactly how such a disagreement
-would be caught; giving `>=` its own instruction means there is none to
+Compiling one as the other would make the VM disagree with the
+tree-walker, which running the same programs on both engines (the
+differential testing of *Edge cases and differential testing*) would
 catch.
+
+<More title="More expressions on the VM, and statements">
 
 <Run id="exprs-vm" />
 
-(Statements are short: `print` emits its expression, then `print`; an
-expression statement such as `1 + 2;` emits its expression, then `pop`,
-so the unused value does not stay on the stack.)
+`print` emits its expression, then `print`; an expression statement
+such as `1 + 2;` emits its expression, then `pop`, so the unused value
+does not stay on the stack.
+
+</More>
 
 <Prompts ids={['ge-own-op']} />
 
@@ -287,6 +261,7 @@ every variable lives<Cite id="v8-sparkplug" />.
 - Each comparison has its own opcode, because with `NaN`, "not less
   than" is not "greater than or equal".
 
-Next: what a Drip value actually looks like inside the VM.
+Next: *Tagging values at run time*, what a Drip value actually looks
+like inside the VM.
 
 <Quiz />

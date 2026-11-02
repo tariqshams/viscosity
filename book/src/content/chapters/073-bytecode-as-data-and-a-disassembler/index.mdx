@@ -3,17 +3,14 @@ n: 73
 day: 7
 part: IV
 title: 'Bytecode as data, and a disassembler'
-tagline: 'Bytecode needs somewhere to live, a place to keep values too big for a byte, and a note of which line each byte came from. In Drip that place is a chunk: three arrays, side by side.'
+tagline: 'Bytecode needs somewhere to live, a place to keep values too big for a byte, and a note of which line each byte came from. In Drip that place is a chunk, three arrays side by side, and a small disassembler turns it back into text people can read.'
 objectives:
   - Describe the three arrays of a chunk and what each one is for.
   - Explain why constants live in a separate pool, and where the limit of 65,536 constants per function comes from.
-  - Read the constant an instruction names, and explain why a variable's name can appear in the pool many times.
-  - Read every column of the real disassembler's output, including jumps and their targets.
-  - Explain why a disassembler must decode from the start, and use the operand shapes to step from one instruction to the next.
-  - Show how a runtime error turns the offset of the failing instruction into a source line.
-  - Write a small disassembler that steps over each instruction's operands correctly.
+  - Read every column of the disassembler's output, including jumps.
+  - Explain why a disassembler must decode from the start, and how a runtime error finds its source line.
 introduces: [chunk, constant-pool, disassembler]
-uses: [bytecode, opcode, virtual-machine, array, push, index, class, method, byte, float64, strings, source-location, runtime-error, typescript, drip, compiler, return, template-literal, string-methods, while-loop]
+uses: [bytecode, opcode, virtual-machine, array, push, index, byte, float64, strings, source-location, runtime-error, typescript, drip, compiler]
 sources: [v8-ignition, v8-sparkplug]
 ---
 import ChunkSteps from '../../../components/diagrams/ch073/ChunkSteps';
@@ -22,41 +19,36 @@ import DisasmSteps from '../../../components/diagrams/ch073/DisasmSteps';
 import InstrShapes from '../../../components/diagrams/ch073/InstrShapes';
 import ErrorLine from '../../../components/diagrams/ch073/ErrorLine';
 
-{/* ── merge: from old chapter 73, Bytecode as data ── */}
-
 ## Fourteen bytes and two questions
 
-Here is a complete two-line Drip program, `print 1.5 + 2;` and then
-`print "hi";`, as the bytes Drip's compiler makes for it:
+Here is the two-line program `print 1.5 + 2;` and `print "hi";` as the
+bytes Drip's compiler makes for it:
 
 ```text
 0, 0, 0, 0, 0, 1, 20, 33,
 0, 0, 2, 33, 1, 49
 ```
 
-With the opcode table from *Why bytecode?* you can start to decode it:
-`0` is `const`, and the next two bytes, `0, 0`, say "constant number 0".
-However, *which value* is that? The bytes do not contain `1.5` anywhere.
-And if this program stopped with an error, which source line should the
-message name? The bytes need company: a table of the values they refer
-to, and a note of where each byte came from.
-
-## A chunk: three arrays side by side
+With the opcode table from *Why bytecode* you can start decoding: `0` is
+`const`, and `0, 0` says "constant number 0". However, the bytes do not
+contain `1.5` anywhere; and if the program stopped with an error, which
+source line should the message name? The bytes need company: a table of
+the values they refer to, and a note of where each byte came from.
 
 <Analogy title="a parcel and its delivery note">
 A parcel arrives with the small items inside and an envelope taped to
-the top, holding a numbered list of the bulky items that are coming
-separately ("item 2: one garden bench") and a note of which order each
-item belongs to. The box is the code, the numbered list is the table of
-constants, and the note is the line numbers.
-<span slot="breaks">A delivery note is read once, when the parcel is
-opened; the VM reads the constants over and over, every time an
-instruction refers to one, and it only reads the line numbers when
-something goes wrong.</span>
+the top, holding a numbered list of the bulky items coming separately
+("item 2: one garden bench") and a note of which order each item belongs
+to. The box is the code, the numbered list is the table of constants,
+and the note is the line numbers.
+<span slot="breaks">A delivery note is read once; the VM reads the
+constants every time an instruction refers to one, and reads the line
+numbers only when something goes wrong.</span>
 </Analogy>
 
-Drip's VM keeps bytecode in a `Chunk` (the companion's name for it).
-This is the whole class, from `companion/ts/src/vm/chunk.ts`:
+## A chunk: three arrays side by side
+
+Drip's VM keeps bytecode in a `Chunk`, from `vm/chunk.ts`:
 
 ```ts
 export class Chunk {
@@ -77,21 +69,13 @@ export class Chunk {
 }
 ```
 
-The three fields are three arrays: `code` holds the bytes, `lines` one
-source line per byte, and `constants` the values the code refers to
-(`Value` is the type of any Drip value, which *Tagging values at run
-time* looks inside). `write` is the only way a byte gets into `code`, and
-it pushes the byte's line onto `lines` in the same breath, so `lines[i]`
-is always the line of `code[i]` (the next chapter puts that to work).
-`addConstant` pushes a value onto `constants` and returns its index, the
-number the code will use to name it. You can build a chunk by hand
-in plain JavaScript, writing the bytes for `print 1.5 + 2;` the way the
-compiler does (the index goes in as two bytes, high then low):
-
-<Run id="tiny-chunk" />
-
-Now step through the real compiler filling the chunk for our two-line
-program:
+`code` holds the bytes, `lines` one source line per byte, and
+`constants` the values the code refers to (`Value` is any Drip value).
+`write` is the only way a byte gets into `code`, and it pushes the
+byte's line in the same breath, so `lines[i]` is always the line of
+`code[i]`; `addConstant` appends a value and returns its index, the
+number the code will use to name it. Step through the compiler filling
+the chunk for the two-line program:
 
 <ChunkSteps client:visible />
 
@@ -99,9 +83,8 @@ program:
 A **chunk** is a unit of compiled bytecode: an array of instruction
 bytes (`code`), a parallel array giving the source line of each byte
 (`lines`), and the constants the instructions refer to. In Drip's VM
-every function has its own chunk (`fn.chunk`), and the script itself is
-compiled as a function too, so a program is a tree of chunks, one per
-function.
+every function has its own chunk, and the script itself is compiled as
+a function too, so a program is a tree of chunks, one per function.
 </Callout>
 
 <Examples of="chunk">
@@ -114,90 +97,33 @@ lines:     1, 1, 1, 1, 1, 1
 constants: [7]
 ```
 
-```text
-print 7;
-print 7;
-
-code:      0, 0, 0, 33, 0, 0, 1, 33, 1, 49
-lines:     1, 1, 1, 1, 2, 2, 2, 2, 2, 2
-constants: [7, 7]
-```
-
-```text
-fn add(a, b) {
-  return a + b;
-}
-
-== <script> ==
-0000    3 closure             0 fn add
-0003    1 define.global       1 'add'
-== add ==
-0000    2 load.local          1
-0002    | load.local          2
-0004    | add
-```
-
 </Examples>
 
-The first is the smallest chunk worth having: `const 0` (three bytes),
-`print` (33), and the `none` and `return` that end every script (1 and
-49), all from line 1, with one value in the pool. In the second, `lines`
-shows where the second statement begins: at byte 4 the number changes
-from 1 to 2. Its pool holds a surprise, two copies of 7, which the next
-section explains. The third, printed by the disassembler (one instruction per
-line: offset, line, name, operand), shows the one-chunk-per-function
-rule. The script's chunk does not contain `add`'s instructions; it holds
-the compiled function as constant number 0, which `closure` turns into a
-value the program can call (*Capturing variables: upvalues* explains
-closures) and `define.global` stores under the name `add`. The function's
-own instructions, under `== add ==`, are in its own chunk, starting
-again at offset 0.
+`const 0` is three bytes, `print` is 33, and the `none` and `return`
+that end every script are 1 and 49; all six bytes come from line 1, and
+the pool holds the one value. A function's instructions are not in the
+script's chunk at all: the script's pool holds the compiled function,
+with its own chunk inside, starting again at offset 0.
 
-<Prompts ids={['chunk-three', 'lines-parallel', 'chunk-per-fn', 'closure-constant']} />
+<More title="Building a chunk by hand">
+
+The bytes for `print 1.5 + 2;`, written the way the compiler writes
+them (the index goes in as two bytes, high then low):
+
+<Run id="tiny-chunk" />
+
+</More>
+
+<Prompts ids={['chunk-three', 'lines-parallel', 'chunk-per-fn']} />
 
 ## The constant pool
 
-A byte holds a whole number from 0 to 255; the number `1.5` is a 64-bit
-float, eight bytes, and a string can be any length at all. Rather than
-squeeze values into the stream of instructions, the compiler puts each
-one in the chunk's `constants` array and writes only its index into
-`code`, so `const 2` means "push `constants[2]`". The index is two
-bytes, the high byte first, as *Why bytecode?* showed, which means it
-can name any constant from 0 up to 65,535.
-
-<Analogy extra title="a cloakroom ticket">
-At a theatre you hand your big coat over the counter and get a small
-numbered ticket in return. The ticket fits in your pocket and the coat
-does not; whenever you want the coat, the ticket says exactly which hook
-it is on. The instruction carries the ticket (the index), and the VM
-uses it to fetch the coat (the value) from the cloakroom (the pool).
-<span slot="breaks">A cloakroom hands each coat back once and keeps the
-ticket; a constant stays in the pool, and the same instruction can
-fetch it again every time it runs, a million times in a loop.</span>
-</Analogy>
-
-The compiler adds constants through one function in
-`companion/ts/src/vm/compiler.ts`; here it is, with one long line (the
-error report) shortened to a comment:
-
-```ts
-function makeConstant(v: Value): number {
-  const c = chunk().addConstant(v);
-  if (c > 0xffff) {
-    // reports: too many constants in
-    // one function
-    return 0;
-  }
-  return c;
-}
-```
-
-`0xffff` is 65,535 written in hexadecimal (base 16, where `f` is
-fifteen), the largest number two bytes can hold. So `makeConstant` adds
-the value, and if its index no longer fits in two bytes it reports the
-compile error `too many constants in one function` (returning 0 so that
-compiling can carry on and find other errors). The limit is per
-function, because each function has its own pool.
+A byte holds 0 to 255; `1.5` is an eight-byte float, and a string can
+be any length. So the compiler puts each value in `constants` and
+writes only its index into `code`: `const 2` means "push
+`constants[2]`". The index is two bytes, so it can name constants 0 to
+65,535, and indexes past that are the compile error `too many constants
+in one function` (per function, since each has its own pool).
 
 <Figure takeaway="Instructions name constants by index." caption="The real instructions for let x = 1.5; print x + 2;. Each one's last two bytes are an index into the pool; the name x is there twice, once for each mention.">
   <PoolLookup />
@@ -211,30 +137,7 @@ In Drip the index is a two-byte operand, so one function can hold up to
 65,536 constants.
 </Callout>
 
-<Formal title="What const means">
-
-```text
-const k  :  push constants[k]
-             0 ≤ k ≤ 65535
-```
-
-<span slot="read">The instruction const with operand k pushes the
-value at index k of the chunk's constant pool, and k must be between 0
-and 65,535, the numbers two bytes can hold.</span>
-</Formal>
-
 <Examples of="constant-pool">
-
-```text
-print 1.5 + 2;
-0000    1 const               0 '1.5'
-0003    | const               1 '2'
-```
-
-```text
-print "hi";
-0000    1 const               0 'hi'
-```
 
 ```text
 let x = 7;
@@ -251,54 +154,48 @@ print x;
 </Examples>
 
 The disassembler prints each operand followed, in quotes, by the
-constant it names. The first shows numbers going into the pool in the
-order they appear, 1.5 at index 0 and 2 at index 1. The second shows
-that a string is a constant like any other: its characters live in the
-pool, and the code holds only the index. The third shows what `addConstant` does *not*
-do: it never looks for an existing copy (which is also why `print 7;
-print 7;` held two 7s). A global is looked up by its name, and the name
-`x` is added three times, at indexes 1, 2 and 3, once per mention. That
-is wasteful but simple, and with room for 65,536 constants per function
-it does no harm in practice.
+constant it names. A global is looked up by its name, and the name `x`
+is added three times, at indexes 1, 2 and 3: `addConstant` never looks
+for an existing copy. That is wasteful but simple, and with 65,536
+entries to spend it does no harm in practice.
 
-<Prompts ids={['pool-why', 'pool-limit', 'hex-ffff', 'no-dedupe']} />
+<Analogy extra title="a cloakroom ticket">
+You hand your big coat over the counter and get a small numbered ticket
+that fits in your pocket; the ticket says exactly which hook the coat
+is on.
+<span slot="breaks">A cloakroom hands each coat back once; a constant
+stays in the pool, fetched again every time the instruction runs.</span>
+</Analogy>
 
-<Callout kind="engine" label="Under the hood">
-Keeping instructions small matters to real engines too. V8's Ignition
-is a register machine with a special *accumulator* register that many
-of its bytecodes use as an unwritten input and output; the V8 team
-explain that this makes the bytecodes smaller, because they do not need
-an operand to name that register<Cite id="v8-ignition" />. Drip's
-chunk takes the same attitude to constants: whatever is big lives
-outside the code, and the code holds only small numbers.
-</Callout>
+<More title="makeConstant, and how V8 keeps instructions small">
 
-## Your turn
+```ts
+function makeConstant(v: Value): number {
+  const c = chunk().addConstant(v);
+  if (c > 0xffff) {
+    // reports: too many constants in
+    // one function
+    return 0;
+  }
+  return c;
+}
+```
 
-<Exercise id="dedupe" />
+`0xffff` is 65,535, the largest number two bytes hold; returning 0 lets
+compiling carry on and find other errors. V8's Ignition takes the same
+attitude to size: it is a register machine whose special *accumulator*
+register is an unwritten input and output of many bytecodes, which the
+V8 team explain keeps the bytecodes smaller<Cite id="v8-ignition" />.
 
-## What you learned
+</More>
 
-- A **chunk** holds three arrays: `code` (the bytes), `lines` (one
-  source line per byte, written together by `write`) and `constants`.
-  Every Drip function has its own.
-- The **constant pool** keeps the values that do not fit in a byte;
-  `const k` pushes `constants[k]`, and the two-byte index allows 65,536
-  constants per function. The compiler never reuses an entry.
+<Prompts ids={['pool-why', 'no-dedupe']} />
 
-Next: a tool that turns the bytes back into the readable listings you
-have been seeing, and the one thing that makes it tricky.
+## Reading bytecode back
 
-
-{/* ── merge: from old chapter 73, Reading bytecode back: a disassembler ── */}
-
-## Bytes are for the machine
-
-When the compiler gets something wrong, the bytes are where the mistake
-lives, and reading `0, 0, 0, 8, 1, 0, 0, 1, 20, 33, 4, 1, 49` by hand,
-with the opcode table open beside you, is slow and very easy to get
-wrong. In the last two chapters you have been reading listings like
-this one instead, for `print 1.5 + 2;` and `print "hi";`:
+Reading bytes by hand with the opcode table open is slow and easy to
+get wrong, so the companion has a **disassembler**, `vm/debug.ts`, which
+prints the listings you have been reading:
 
 ```text
 == <script> ==
@@ -307,57 +204,15 @@ this one instead, for `print 1.5 + 2;` and `print "hi";`:
 0006    | add
 0007    | print
 0008    2 const               2 'hi'
-0011    | print
-0012    | none
-0013    | return
 ```
 
-That text is made by a small program in the companion,
-`companion/ts/src/vm/debug.ts`, called a **disassembler**. This chapter
-looks at what each column means, how the program finds them, and the one
-thing that makes it tricky.
-
-<Analogy title="sheet music from a piano roll">
-A pianist cannot read the holes of a player-piano roll at a glance, so
-someone transcribes the roll back into sheet music: the same notes,
-written in the form people read. The roll still plays the piano; the
-sheet music is only for people.
-<span slot="breaks">Sheet music can say more than the roll (how loudly,
-how sweetly); a disassembly says exactly what the bytes say and nothing
-more, except that it also looks up each constant's value so you do not
-have to.</span>
-</Analogy>
-
-## Reading the columns
-
-Each line of the listing is one instruction, and has up to four parts:
-
-- The **offset**, such as `0003`: the index in `code` of the
-  instruction's opcode, padded to four digits.
-- The **source line**, or `|` when it is the same line as the byte
-  before; as such, a new number in this column marks where a new line of
-  your program begins.
-- The **name**, such as `const` or `add`: the opcode, printed in the
-  lower-case, dotted form.
-- The **operands**, if the instruction has any. For `const` that is the
-  constant's number and then, in quotes, the value it names, looked up
-  in the pool.
-
-The offsets go 0, 3, 6, 7: a `const` is three bytes long and an `add`
-one, so the gaps between offsets are the lengths of the instructions.
-`== <script> ==` names the chunk; a function's chunk follows its
-script's, under its own name.
-
-<Prompts ids={['offset-what', 'pipe-what', 'gap-is-length']} />
-
-## Where does the next instruction start?
-
-The disassembler cannot loop over the bytes one at a time, because some
-bytes are opcodes and some are operands, and nothing in a byte says
-which it is. It has to decode one instruction, which tells it how long
-that instruction is, and only then does it know where the next one
-starts. The loop at the top of `debug.ts` does exactly that (rewrapped
-here to fit):
+Each line is one instruction: its **offset** (the index of its opcode in
+`code`), its source line (or `|` when it is the same as the byte
+before), its name, and its operands. The offsets go 0, 3, 6, 7 because
+a `const` is three bytes and an `add` one. And that is the one tricky
+thing: nothing in a byte says whether it is an opcode or an operand, so
+the disassembler must decode one instruction to learn its length before
+it knows where the next starts:
 
 ```ts
 for (let offset = 0;
@@ -369,60 +224,15 @@ for (let offset = 0;
 }
 ```
 
-`disassembleInstruction` returns two things: the text for the
-instruction at `offset`, and the offset of the instruction after it.
-The loop has no `offset++`; it moves by whatever the instruction says.
-Step through it on the chunk for a small block:
+There is no `offset++`; the loop moves by whatever the instruction
+says. The length comes from the opcode's operand shape, a `switch` with
+one group of cases per shape:
 
 <DisasmSteps client:visible />
-
-<Analogy extra title="a sentence with no spaces">
-Try reading "itisnotable". Split it one way and it says "it is not
-able"; split it another and it says "it is notable", which means
-something quite different. You only read it correctly if you start at
-the beginning and know where each word ends. Bytecode is the same,
-except that the opcode at the start of each word tells you exactly how
-long the word is.
-<span slot="breaks">A person can often guess the right split from
-meaning; a disassembler has no meaning to go on, so it never guesses: it
-starts at offset 0 and steps by each instruction's length.</span>
-</Analogy>
-
-How does `disassembleInstruction` know the length? Every opcode has one
-of a few **operand shapes**, the ones the comments in `chunk.ts` label
-with `k`, `s` and `j`:
 
 <Figure takeaway="The opcode decides the shape, and the shape decides the length." caption="Drip's operand shapes. k and j are two bytes, high byte first; s is one byte. closure is the only instruction whose length varies: two more bytes for each variable it captures.">
   <InstrShapes />
 </Figure>
-
-The real function is a `switch` with one group of `case`s per shape.
-Its lines are long, so here is a shortened sketch of three of the
-groups, keeping the real names:
-
-```ts
-// a sketch of disassembleInstruction
-switch (op) {
-  case Op.Const: // and the other k ops
-    return [prefix + name + ' ' +
-      constant(short(offset + 1)),
-      offset + 3];
-  case Op.LoadLocal: // and the s ops
-    return [prefix + name + ' ' +
-      code[offset + 1], offset + 2];
-  default: // no operands
-    return [prefix + name, offset + 1];
-}
-```
-
-`prefix` is the offset and line columns, and `name` is the padded
-opcode name. For a `k` instruction, `short(offset + 1)` rebuilds the
-two-byte operand (in the real code, `(code[at] << 8) | code[at + 1]`:
-shift the high byte left by eight binary places, which multiplies it by
-256, and combine it with the low byte), `constant(...)` formats the
-index and the quoted value, and the next instruction is three bytes on.
-An `s` instruction prints its one operand byte and moves on by two;
-anything without operands moves on by one.
 
 <Callout kind="definition">
 A **disassembler** prints bytecode as readable text, one instruction
@@ -431,29 +241,7 @@ operands. It must decode instructions in order from the start, because
 only the opcode says how many operand bytes follow.
 </Callout>
 
-<Formal title="Where each instruction starts">
-
-```text
-offset₀ = 0
-offsetᵢ₊₁ = offsetᵢ + length(code[offsetᵢ])
-```
-
-<span slot="read">The first instruction starts at offset 0. Each later
-one starts where the one before it started, plus the length of that
-instruction, and the length depends only on its opcode (the byte at its
-offset). That is why the walk has to begin at 0.</span>
-</Formal>
-
 <Examples of="disassembler">
-
-```text
-{ let a = 2; print a + 1; }
-
-0000    1 const               0 '2'
-0003    | load.local          1
-0005    | const               1 '1'
-0008    | add
-```
 
 ```text
 let n = 3;
@@ -468,99 +256,61 @@ if n > 2 {
 0020    4 none
 ```
 
-```text
-let i = 0;
-while i < 3 {
-  i += 1;
-}
-
-0013    | jump.unless        13 -> 30
-0023    | store.global        4 'i'
-0026    | pop
-0027    4 loop               27 -> 6
-```
-
 </Examples>
 
-The first is the block from the diagram, written on one line, so every
-byte has line 1: three shapes in four instructions, three, two, three
-and one bytes long. The second shows how jumps print: `jump.unless` has
-a two-byte `j` operand (here the bytes `0, 4`, a distance of 4), and the
-disassembler prints the jump's own offset and then, after the arrow, the
-offset it lands on: 13 + 3 + 4 = 20, the instruction after the `print`,
-which is where the program goes when `n > 2` is false. The third shows a
-backward jump, from a real loop (lines picked from the listing): `loop`
-at 27 jumps back to offset 6, where the condition `i < 3` is worked out
-again. The chapter *Branches and loops in bytecode* builds both kinds of
-jump.
+`jump.unless` has a two-byte jump operand (here the bytes `0, 4`), and
+the disassembler prints the jump's own offset and, after the arrow, the
+offset it lands on: 13 + 3 + 4 = 20, just past the `print`, which is
+where the program goes when `n > 2` is false. *Jumps: branches, loops
+and backpatching* builds jumps.
 
-<Prompts ids={['decode-in-order', 'invoke-length', 'jump-target']} />
+<Analogy extra title="a sentence with no spaces">
+"itisnotable" says "it is not able" split one way and "it is notable"
+split another; you read it right only from the start, knowing where
+each word ends.
+<span slot="breaks">A person can guess the split from meaning; a
+disassembler never guesses, it starts at offset 0 and steps by each
+instruction's length.</span>
+</Analogy>
+
+<Prompts ids={['decode-in-order', 'jump-target']} />
 
 ## The lines array at work
 
-Why carry a line number for every byte? Because when an instruction
-fails, the VM only knows *where in the code* it is, an offset into
-`code`; the line has to be looked up. This program:
-
-```text
-print 1;
-print 2 +
-  -"a";
-```
-
-prints `1`, and then stops with:
-
-```text
-runtime error: cannot negate a string
-  at line 3 in script
-```
+When an instruction fails, the VM knows only its offset; `lines` turns
+that into a source line. `print 1;`, then `print 2 +` with `-"a";` on
+the next line, prints `1` and stops with `cannot negate a string at
+line 3`:
 
 <Figure takeaway="The failing byte's offset finds its line." caption="The neg instruction at offset 10 fails. The VM has already moved ip on to 11, so it reads lines[ip - 1], which is 3.">
   <ErrorLine />
 </Figure>
 
-The `neg` that failed was written while the compiler was reading the
-`-` on line 3, so `lines[10]` is 3. In `vm.ts` the error report reads
-`fn.chunk.lines[f.ip - 1]` for each call that is running; it subtracts
-1 because the instruction pointer `ip` (the number saying which byte
-runs next, the subject of *A machine with a stack*) has already moved
-past the failing instruction's opcode. Look also at offset 11: the `add`
-is tagged with line 2, the line of the `+`, so an error in the addition
-would point at the line where the `+` is written. One number per byte is
-simple and wasteful (most neighbours repeat), and the second exercise
-below builds a more compact version.
+The VM reads `lines[ip - 1]` because the instruction pointer has already
+moved past the failing opcode. V8's Sparkplug makes a similar bargain
+for its machine code, keeping a mapping back to bytecode offsets that
+it consults only when a stack trace or the debugger asks<Cite id="v8-sparkplug" />.
 
-<Prompts ids={['vm-knows-offset', 'add-line-2']} />
-
-<Callout kind="engine" label="Under the hood">
-Offsets are how real engines talk about positions in bytecode too.
-V8's Sparkplug compiles Ignition's bytecode to machine code, and then
-does not keep the current bytecode offset up to date while that machine
-code runs; instead it stores a two-way mapping between ranges of machine
-code and bytecode offsets, and looks the offset up only when something
-(a stack trace, the debugger) asks for it<Cite id="v8-sparkplug" />:
-the same bargain as Drip's `lines`, paying a little memory so that the
-fast path never has to think about it.
-</Callout>
+<Prompts ids={['vm-knows-offset']} />
 
 ## Your turn
 
 <Exercise id="disassemble" />
 
+<Exercise id="dedupe" />
+
 <Exercise id="runLines" />
 
 ## What you learned
 
-- A **disassembler** prints each instruction's offset, line (or `|`),
-  name and operands, and looks up the value of each constant.
-- It must decode from offset 0 and step by each instruction's length,
-  because bytes do not say whether they are opcodes or operands; the
-  opcode's shape (none, `s`, `k`, `j`, `k s`, or `closure`'s variable
-  tail) gives the length.
-- Jumps print as `offset -> target`, where the target is the offset
-  after the jump plus (or, for `loop`, minus) its distance.
-- A runtime error finds its line by reading `lines` at `ip - 1`.
+- A **chunk** is three arrays: `code`, `lines` (one per byte) and
+  `constants`; every function has its own.
+- The **constant pool** holds what does not fit in a byte; a two-byte
+  index allows 65,536 constants per function.
+- A **disassembler** decodes from offset 0, stepping by each
+  instruction's length, and prints offset, line, name and operands.
 
-Next: the loop that runs a chunk, and the stack it keeps its values on.
+Next: *A stack machine and its dispatch loop*, the loop that runs a
+chunk, and the stack it keeps its values on.
 
 <Quiz />

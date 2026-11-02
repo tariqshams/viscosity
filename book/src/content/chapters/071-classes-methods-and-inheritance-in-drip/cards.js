@@ -1,103 +1,34 @@
-// Chapter 60 cards: recall prompts, examples, exercises and quiz.
+// Chapter 71 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 71, 71, 71.
 
 export const prompts = {
-  'class-holds': {
-    q: 'What does a `DripClass` hold?',
-    a: 'A name, an optional superclass, and a map from method names to `DripFunction`s.',
-  },
-  'new-steps': {
-    q: 'In order, what does `new Point(1, 2)` do?',
-    a: 'Looks up `Point`, evaluates the arguments, checks it is a class, makes an empty instance, and calls `init` on it with the arguments.',
-  },
-  'new-returns': {
-    q: 'What is the value of a `new` expression?',
-    a: 'The new instance, whatever `init` does.',
-  },
-  'call-the-class': {
-    q: 'What happens if you write `Point(1, 2)` without `new`?',
-    a: 'A runtime error: `cannot call a class: use \'new Point(...)\'`.',
-  },
   'fields-where': {
-    q: 'Where do an instance’s fields live, and where do its methods live?',
-    a: 'Fields in the instance’s own `Map`; methods in its class’s map, shared by every instance.',
-  },
-  'field-created': {
-    q: 'How is a new field created in Drip?',
-    a: 'By assigning to it: `obj.name = value` creates the field if it does not exist yet.',
+    q: 'In a Drip-style class implementation, where do an instance’s fields live, and where do its methods live?',
+    a: 'Fields in the instance’s own map; methods in its class’s map, shared by every instance.',
   },
   'field-first': {
-    q: 'An instance has a field `size` and its class has a method `size`. What does `obj.size` give?',
-    a: 'The field. A property read checks the fields before the class’s methods.',
-  },
-  'not-instance': {
-    q: 'What happens in Drip if you write `n.x = 1` where `n` holds a number?',
-    a: 'A runtime error: `cannot set \'x\' on a number`. Only instances have properties.',
-  },
-  'self-where': {
-    q: 'Where does the resolver declare `self`?',
-    a: 'In one extra scope it wraps around all of a class’s methods, so inside a method `self` is one scope out.',
-  },
-  'self-outside': {
-    q: 'What happens if a plain function (not a method) uses `self`?',
-    a: 'A compile error: `cannot use \'self\' outside a method`.',
-  },
-  'bind-makes': {
-    q: 'What does `bind(instance)` make?',
-    a: 'A new environment holding only `self` (around the method’s captured environment), and a new function value that captures it.',
+    q: 'A Drip instance has a field `size` and its class has a method `size`. What does `obj.size` give?',
+    a: 'The field. A property read checks the instance’s fields before the class’s methods.',
   },
   'keeps-self': {
-    q: 'Why does `let f = c.taste; f();` still know about `c` in Drip?',
-    a: 'Reading `c.taste` bound the method: `f`’s captured environment holds `self = c`, so no dot is needed at the call.',
+    q: 'Why does `let f = c.taste; f();` still use `c` as `self` in Drip, unlike `this` in JavaScript?',
+    a: 'Reading `c.taste` binds the method: `f`’s captured environment holds `self = c`, so no dot is needed at the call.',
   },
   'new-each-read': {
     q: 'Why is `c.taste == c.taste` false in Drip?',
-    a: 'Each read binds again and makes a new function value; functions are equal only if they are the same value.',
-  },
-  'two-objects': {
-    q: 'What does every method read, even in an immediate call like `c.taste()`, allocate?',
-    a: 'Two objects: a bind environment and a new `DripFunction`.',
-  },
-  'init-returns': {
-    q: 'What does a call of a bound `init` give back, whatever its body does?',
-    a: 'The instance: `callFunction` returns the `self` from the initialiser’s bind environment.',
-  },
-  'init-keyword': {
-    q: 'Can a Drip program call `c.init()` to run the initialiser again?',
-    a: 'No: `init` is a keyword, so `c.init()` does not even parse. Only `new` and `super.init(...)` run it.',
+    a: 'Each read binds again and makes a new function value, and functions are equal only if they are the same value.',
   },
   'find-walk': {
-    q: 'How does `findMethod` find an inherited method?',
-    a: 'It looks in the class’s own methods, then asks the superclass, and so on up the chain.',
-  },
-  override: {
-    q: 'How does a Drip subclass override a method?',
-    a: 'By defining a method with the same name: lookup checks the subclass first, so its version is found first.',
-  },
-  'super-must-be-class': {
-    q: 'What happens with `let A = 1; class B extends A {}`?',
-    a: 'A runtime error: `a class can only extend a class, not a number`.',
-  },
-  'extends-self': {
-    q: 'Is `class A extends A {}` a runtime error or a compile error?',
-    a: 'A compile error, found by the resolver: `a class cannot extend itself`.',
-  },
-  'init-inherited': {
-    q: '`Dog` has no `init` and extends `Animal`, which has `init(name)`. What does `new Dog("Rex")` run?',
-    a: '`Animal`’s `init`, found by the same walk up the chain, bound to the new `Dog` instance.',
+    q: 'How does a class-based interpreter with single inheritance find an inherited method?',
+    a: 'It looks in the class’s own methods, then asks the superclass, and so on up the chain until one has it or the chain ends.',
   },
   'why-not-self-class': {
     q: 'Why can’t `super` mean “the superclass of `self`’s class”?',
-    a: 'With three levels, a method in `B` run on a `C` instance would find `B` again, and call itself until `stack overflow`.',
+    a: 'With three levels, a method in `B` run on a `C` instance would find `B` again and call itself until the stack overflows; `super` must start above the class the method was written in.',
   },
   'super-env': {
-    q: 'Where does a Drip method find `super`?',
-    a: 'In an environment holding the superclass, made when the subclass was declared, which its methods captured.',
-  },
-  'super-self-distance': {
-    q: 'If the resolver records distance `d` for a `super` expression, where is `self`?',
-    a: 'At distance `d - 1`: the self environment is always one closer than the super environment.',
+    q: 'In Drip’s tree-walking interpreter, where does a method find `super`?',
+    a: 'In an environment holding the superclass, made when the subclass was declared and captured by its methods; it is found by scope depth like any variable.',
   },
 };
 
@@ -167,6 +98,7 @@ new Puppy("Bit").speak();`,
 
 export const exercises = {
   rect: {
+    optional: true,
     lang: 'drip',
     title: 'A rectangle class',
     prompt: 'Finish the class `Rect`. `init(w, h)` stores the two numbers in fields `w` and `h`; `area()` returns `w * h`; and `grow(d)` adds `d` to both fields. The program below it must print `12`, `30` and `Rect { w: 5, h: 6 }`.',
@@ -356,6 +288,7 @@ for p in ps {
     ],
   },
   tally: {
+    optional: true,
     lang: 'drip',
     title: 'A counter class, passed around',
     prompt: 'Finish the class `Tally`: `init` sets a field `n` to `0`, `add()` adds 1 to it, and `value()` returns it. The program below must print `2`, `3` and `0`. Notice that `twice(t.add)` passes a method as a callback, without a dot at the call.',
@@ -820,7 +753,7 @@ function superMethod(writtenIn, name) {
 
 export const quiz = [
   {
-    q: `What does this print?
+    q: `In Drip, what does this print?
 \`\`\`
 class P {
   init(x) { self.x = x; }
@@ -847,79 +780,7 @@ print b.x;
     ],
   },
   {
-    q: 'What does `print new Box();` show, for `class Box {}`?',
-    options: [
-      {
-        t: '`Box {}`',
-        correct: true,
-        why: 'An instance with no fields prints as its class name and empty braces.',
-      },
-      {
-        t: '`class Box`',
-        why: 'That is how the class itself prints. `new Box()` is an instance.',
-      },
-      {
-        t: 'A runtime error: Box has no init',
-        why: 'A class with no `init` can be made with no arguments; it is only an error to pass some.',
-      },
-    ],
-  },
-  {
-    q: 'An instance `c` has no field `taste`, and its class has a method `taste`. What does `c.taste` give?',
-    options: [
-      {
-        t: 'A runtime error: no property',
-        why: 'After the fields, the read asks the class for a method of that name, and finds one.',
-      },
-      {
-        t: '`none`',
-        why: 'Missing properties are errors in Drip, never `none`; and here there is a method.',
-      },
-      {
-        t: 'The method, bound to `c`',
-        correct: true,
-        why: '`get` checks the fields first, then returns the class’s method bound to the instance.',
-      },
-    ],
-  },
-  {
-    q: 'Which line is a runtime error in Drip?',
-    options: [
-      {
-        t: '`b.colour = "red";` on an instance with no `colour` field yet',
-        why: 'Assigning creates the field.',
-      },
-      {
-        t: '`print b.colour;` on an instance with no `colour` field or method',
-        correct: true,
-        why: 'Reading a missing property stops with `Box has no property \'colour\'`.',
-      },
-      {
-        t: '`let b = new Box();` for `class Box {}`',
-        why: 'That makes an instance with no fields.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `new` give back the instance rather than what `init` returns?',
-    options: [
-      {
-        t: 'Because `init` cannot contain a `return` at all',
-        why: 'A bare `return;` is allowed in `init`; only `return value;` is not.',
-      },
-      {
-        t: 'Because the job of `new` is to make an instance; `init` only fills it in',
-        correct: true,
-        why: 'The `new` case calls `init` for its effects and then returns `inst`.',
-      },
-      {
-        t: 'Because `init` is a native function',
-        why: '`init` is an ordinary Drip method, run with `callFunction`.',
-      },
-    ],
-  },
-  {
-    q: `What does this print?
+    q: `In Drip, what does this print?
 \`\`\`
 class Dog {
   init(n) { self.name = n; }
@@ -946,79 +807,7 @@ f();
     ],
   },
   {
-    q: 'How does a method body find `self` at run time?',
-    options: [
-      {
-        t: 'The interpreter passes the instance as a hidden first argument',
-        why: 'Drip does not add an argument; `self` lives in an environment.',
-      },
-      {
-        t: 'It looks `self` up like any variable, at the distance the resolver recorded',
-        correct: true,
-        why: '`self` is declared in the class scope by the resolver and defined in the bind environment by `bind`.',
-      },
-      {
-        t: 'It searches every instance for one that owns the method',
-        why: 'Methods are shared on the class; the instance comes from binding.',
-      },
-    ],
-  },
-  {
-    q: 'When does binding happen?',
-    options: [
-      {
-        t: 'When the class is declared',
-        why: 'At that point there is no instance to bind to.',
-      },
-      {
-        t: 'When the bound method is called',
-        why: 'By then the dot is gone; Drip binds earlier.',
-      },
-      {
-        t: 'When the method is read off an instance, as in `c.taste`',
-        correct: true,
-        why: '`get` returns `method.bind(this)` on every read.',
-      },
-    ],
-  },
-  {
-    q: 'What does `new V(3)` give, if `init(x) { self.x = x; return; }`?',
-    options: [
-      {
-        t: '`none`, because of the bare return',
-        why: 'An initialiser’s call always gives back the instance.',
-      },
-      {
-        t: 'A compile error: `init` cannot return',
-        why: 'Only `return value;` is an error; a bare `return;` is allowed.',
-      },
-      {
-        t: 'The instance, printed `V { x: 3 }`',
-        correct: true,
-        why: '`callFunction` returns the `self` of the bound `init`, whatever the body did.',
-      },
-    ],
-  },
-  {
-    q: 'Why is `t.add == t.add` false?',
-    options: [
-      {
-        t: 'Each read binds again and makes a new function value',
-        correct: true,
-        why: 'Two different bound methods (both for `t`) are two different values, and functions compare by identity.',
-      },
-      {
-        t: 'Methods cannot be compared at all',
-        why: 'They can; `let f = t.add; f == f` is true.',
-      },
-      {
-        t: 'Because `add` changes `t`',
-        why: 'Comparing does not call anything.',
-      },
-    ],
-  },
-  {
-    q: `What does this print?
+    q: `In Drip, what does this print?
 \`\`\`
 class A { hi() { print "A"; } }
 class B extends A {
@@ -1058,60 +847,6 @@ new C().hi();
         t: 'At `A`, the superclass of the class the method was written in',
         correct: true,
         why: '`super` is fixed when `B` is declared: its super environment holds `A`.',
-      },
-    ],
-  },
-  {
-    q: 'What does `class A extends A {}` give?',
-    options: [
-      {
-        t: 'A runtime error when the class statement runs',
-        why: 'This one is caught before running.',
-      },
-      {
-        t: 'The compile error `a class cannot extend itself`',
-        correct: true,
-        why: 'The resolver sees the two names are the same, so nothing runs.',
-      },
-      {
-        t: 'An infinite loop when a method is looked up',
-        why: 'It never gets that far; the resolver rejects it.',
-      },
-    ],
-  },
-  {
-    q: 'Where does `super` live at run time, for the methods of `class B extends A`?',
-    options: [
-      {
-        t: 'In a field of every `B` instance',
-        why: 'Instances hold only their own fields; `super` belongs to where the methods were written.',
-      },
-      {
-        t: 'In the globals',
-        why: 'Then every class would share one `super`.',
-      },
-      {
-        t: 'In an environment holding `super = A`, which `B`’s methods captured',
-        correct: true,
-        why: 'The class statement makes it around the methods, and the resolver records `super`’s distance to it.',
-      },
-    ],
-  },
-  {
-    q: 'A subclass has its own `init(a, b)`. How does it run its superclass’s `init(a)` on the same instance?',
-    options: [
-      {
-        t: '`super.init(a);`',
-        correct: true,
-        why: 'It finds the superclass’s `init`, binds it to the current `self`, and calls it.',
-      },
-      {
-        t: '`self.init(a);`',
-        why: '`init` is a keyword, so this does not even parse; and it would find the subclass’s own `init`.',
-      },
-      {
-        t: '`new Super(a);`',
-        why: 'That makes a separate instance; the fields would not go on this one.',
       },
     ],
   },

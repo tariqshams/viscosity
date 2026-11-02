@@ -1,71 +1,38 @@
-// Chapter 169 cards: recall prompts, examples, exercises and quiz.
+// Chapter 73 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 73, 73.
 
 export const prompts = {
   'chunk-three': {
-    q: 'What three arrays make up a Drip `Chunk`?',
-    a: '`code` (the bytes), `lines` (the source line of each byte) and `constants` (the constant pool).',
+    q: 'What three arrays make up a chunk of bytecode in a design like Drip’s VM?',
+    a: '`code` (the instruction bytes), `lines` (the source line of each byte) and `constants` (the constant pool).',
   },
   'lines-parallel': {
-    q: 'Why do `code` and `lines` always have the same length?',
-    a: '`write` pushes onto both at once: one line number for every byte.',
+    q: 'In a chunk whose `lines` array holds one source line per byte, why do `code` and `lines` always have the same length?',
+    a: 'The one method that writes a byte pushes onto both at once: one line number for every byte.',
   },
   'chunk-per-fn': {
-    q: 'A Drip program defines two functions. How many chunks does it compile to?',
+    q: 'A Drip program defines two functions. How many chunks does the bytecode compiler make?',
     a: 'Three: one for each function and one for the script, which is compiled as a function too.',
   },
   'pool-why': {
-    q: 'Why does `1.5` go in the constant pool rather than straight into `code`?',
-    a: 'A byte holds only 0 to 255, but `1.5` is an 8-byte float. The code holds its small index instead.',
-  },
-  'pool-limit': {
-    q: 'Where does the limit of 65,536 constants per function come from?',
-    a: 'The constant’s index is a two-byte operand, and two bytes can hold the numbers 0 to 65,535.',
-  },
-  'hex-ffff': {
-    q: 'What number is `0xffff`, and why does `makeConstant` compare with it?',
-    a: '65,535, the largest number two bytes can hold: an index above it cannot be written as a `const` operand.',
+    q: 'Why does a number like `1.5` go in a constant pool rather than straight into the bytecode?',
+    a: 'A byte holds only 0 to 255, but `1.5` is an eight-byte float; the code holds its small index instead.',
   },
   'no-dedupe': {
-    q: 'How many constants does `print 7; print 7;` add to the pool, and why?',
-    a: 'Two. `addConstant` always appends; it never looks for an existing copy.',
-  },
-  'closure-constant': {
-    q: 'What does the script’s constant pool hold for a function `fn add(a, b) { ... }` defined in it?',
-    a: 'The compiled function itself (its own chunk inside), which the `closure` instruction turns into a value.',
-  },
-  'offset-what': {
-    q: 'In the disassembler’s output, what is the first column (`0000`, `0003`, ...)?',
-    a: 'The offset: the index in `code` of the instruction’s opcode.',
-  },
-  'pipe-what': {
-    q: 'What does a `|` in the disassembler’s line column mean?',
-    a: 'This instruction came from the same source line as the byte before it.',
-  },
-  'gap-is-length': {
-    q: 'One instruction is at offset `0003` and the next at `0005`. What does that tell you?',
-    a: 'The instruction at 3 is two bytes long: an opcode and a one-byte operand.',
+    q: 'In Drip’s bytecode compiler, how many constants does `print 7; print 7;` add to the pool, and why?',
+    a: 'Two. Adding a constant always appends; it never looks for an existing copy.',
   },
   'decode-in-order': {
-    q: 'Why can a disassembler not start reading at an arbitrary byte?',
-    a: 'A byte does not say whether it is an opcode or an operand. Only decoding from offset 0, stepping over each instruction’s operands, finds where instructions begin.',
-  },
-  'invoke-length': {
-    q: 'How many bytes long is an `invoke` instruction, and why?',
-    a: 'Four: the opcode, a two-byte constant (the method’s name) and a one-byte argument count.',
+    q: 'Why can a bytecode disassembler not start reading at an arbitrary byte?',
+    a: 'A byte does not say whether it is an opcode or an operand; only decoding from offset 0, stepping over each instruction’s operands, finds where instructions begin.',
   },
   'jump-target': {
-    q: '`jump.unless` sits at offset 13 and its two operand bytes are `0, 4`. Where does it land?',
+    q: 'A three-byte forward jump sits at offset 13 and its two-byte distance is 4. Where does it land?',
     a: 'At 20: the offset after the instruction (13 + 3 = 16) plus the distance 4.',
   },
   'vm-knows-offset': {
-    q: 'When a runtime error happens, why does the VM read `lines[ip - 1]` rather than `lines[ip]`?',
+    q: 'When a runtime error happens, why does a VM read `lines[ip - 1]` rather than `lines[ip]`?',
     a: '`ip` has already moved past the failing instruction’s opcode, so `ip - 1` is a byte of that instruction.',
-  },
-  'add-line-2': {
-    q: 'In `print 2 +` (line 2) followed by `-"a";` (line 3), which line is the `add` instruction tagged with, and why does that help?',
-    a: 'Line 2, the line of the `+`: an error in the addition then points at the line where the `+` is written.',
   },
 };
 
@@ -106,6 +73,7 @@ console.log(c.constants);`,
 
 export const exercises = {
   dedupe: {
+    optional: true,
     title: 'A pool without duplicates',
     prompt: 'Write `addConstant(chunk, v)`, which returns the index of `v` in `chunk.constants`. If an equal value (`===`) is already there, return its index instead of adding a copy. If adding a new value would need an index above 65,535 (`0xffff`), throw an `Error` with the message `too many constants in one function`.',
     starter: `function addConstant(chunk, v) {
@@ -154,7 +122,7 @@ test('index 65535 is fine, 65536 throws', () => {
       'Check for an existing copy first: a repeat never grows the pool, so it can never hit the limit. `array.indexOf(v)` finds the first index holding a value `===` to `v`, or gives -1.',
       'A new value’s index will be `chunk.constants.length`. If that is above `0xffff`, throw before pushing; otherwise push and return it.',
     ],
-    walkthrough: `**How to think about it.** Picture the pool as the cloakroom from the chapter. When someone arrives with a coat that is already hanging there (the same value), you could hand them the old ticket rather than use up a new hook. Only a genuinely new value needs a new hook, and only then can the cloakroom be full. So the order of the checks is: is it already here? If not, is there room? If so, add it.
+    walkthrough: `**How to think about it.** Picture the pool as a cloakroom. When someone arrives with a coat that is already hanging there (the same value), you could hand them the old ticket rather than use up a new hook. Only a genuinely new value needs a new hook, and only then can the cloakroom be full. So the order of the checks is: is it already here? If not, is there room? If so, add it.
 
 **The solution, line by line.**
 
@@ -164,7 +132,7 @@ test('index 65535 is fine, 65536 throws', () => {
 - \`if (n > 0xffff) throw new Error(...)\` refuses an index that two bytes cannot hold. Index 65,535 is the last one allowed, so the 65,537th distinct value (index 65,536) is the first to fail, which the last test checks.
 - \`chunk.constants.push(v);\` adds the value, and \`return n;\` hands back its index.
 
-**Why it is not the default.** \`indexOf\` scans the whole pool on every call, so compiling a function with many constants gets slower and slower; a \`Map\` from value to index would fix that. And \`===\` is right for numbers and plain JavaScript strings, but in Drip’s VM a string is an object on the VM’s heap, where \`===\` asks “the same object?”. The chapter *String interning* makes equal strings the same object, which is what would make this kind of reuse safe there.
+**Why it is not the default.** \`indexOf\` scans the whole pool on every call, so compiling a function with many constants gets slower and slower; a \`Map\` from value to index would fix that. And \`===\` is right for numbers and plain JavaScript strings, but in Drip’s VM a string is an object on the VM’s heap, where \`===\` asks “the same object?”. The chapter *String interning and globals by name* makes equal strings the same object, which is what would make this kind of reuse safe there.
 
 **Common wrong attempts.**
 
@@ -466,50 +434,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'In a Drip chunk, `lines[5]` is 2. What does that tell you?',
-    options: [
-      {
-        t: 'The fifth instruction is on line 2',
-        why: '`lines` has one entry per byte, not per instruction, and instructions can be up to several bytes long.',
-      },
-      {
-        t: 'Constant number 5 is the value 2',
-        why: 'Constants live in `constants`, not `lines`.',
-      },
-      {
-        t: 'The byte at `code[5]` was compiled from source line 2',
-        correct: true,
-        why: '`code` and `lines` are parallel arrays, written together by `write`.',
-      },
-      {
-        t: 'Line 2 has 5 bytes of code',
-        why: 'Each entry is a line number for one byte, not a count.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `const` carry an index into the pool, rather than the value itself?',
-    options: [
-      {
-        t: 'Values like `1.5` or `"hi"` do not fit in a byte or two; an index does',
-        correct: true,
-        why: 'A float is 8 bytes and a string can be any length, so the code stays small and every instruction stays simple.',
-      },
-      {
-        t: 'So that values can be changed while the program runs',
-        why: 'Constants do not change. The reason is size.',
-      },
-      {
-        t: 'Because the VM can only add small whole numbers',
-        why: 'The VM handles any Drip value. The constraint is the size of an operand.',
-      },
-      {
-        t: 'To make the disassembler’s job easier',
-        why: 'It is the other way round: the disassembler has to look the value up because of the pool.',
-      },
-    ],
-  },
-  {
     q: 'A Drip function reads the global `count` three hundred times. How many pool entries does the name `count` take in that function’s chunk?',
     options: [
       {
@@ -532,29 +456,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A script defines `fn area(w, h) { ... }`. Where are `area`’s instructions?',
-    options: [
-      {
-        t: 'In the script’s chunk, right after the `closure` instruction',
-        why: 'The script’s chunk only holds the compiled function as a constant; `closure` makes a value from it.',
-      },
-      {
-        t: 'In `area`’s own chunk, held as a constant in the script’s pool',
-        correct: true,
-        why: 'Every function has its own chunk, with its own code, lines and constants, starting at offset 0.',
-      },
-      {
-        t: 'Nowhere until the function is called',
-        why: 'Drip compiles every function once, before the program runs.',
-      },
-      {
-        t: 'In a separate chunk shared by all functions',
-        why: 'Each function gets a chunk of its own.',
-      },
-    ],
-  },
-  {
-    q: `In this disassembly, why is the second offset \`0003\` and not \`0001\`?
+    q: `In this Drip VM disassembly, why is the second offset \`0003\` and not \`0001\`?
 
 \`\`\`text
 0000    1 const               0 '1.5'
@@ -581,29 +483,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does the `|` in the second column of a disassembly line mean?',
-    options: [
-      {
-        t: 'The instruction has no operands',
-        why: 'Operands appear after the name. The `|` is in the line column.',
-      },
-      {
-        t: 'The compiler added the instruction itself',
-        why: '`none` and `return` at the end often show `|`, but so does ordinary code. It is only about lines.',
-      },
-      {
-        t: 'The end of a statement',
-        why: 'Several statements can share a line, and one statement can span several.',
-      },
-      {
-        t: 'Same source line as the byte before',
-        correct: true,
-        why: 'A line number is printed only when it changes, so the start of each new source line stands out.',
-      },
-    ],
-  },
-  {
-    q: 'The chunk is `0, 0, 0, 8, 1, ...` (`const 0`, then `load.local 1`). What goes wrong if you start disassembling at offset 4?',
+    q: 'A Drip chunk is `0, 0, 0, 8, 1, ...` (`const 0`, then `load.local 1`). What goes wrong if you start disassembling at offset 4?',
     options: [
       {
         t: 'Nothing: any byte can start an instruction',
@@ -621,50 +501,6 @@ export const quiz = [
       {
         t: 'It prints the constant twice',
         why: 'It never sees the `const` at offset 0 at all.',
-      },
-    ],
-  },
-  {
-    q: 'A disassembly shows `0013    | jump.unless        13 -> 20`. What are the instruction’s two operand bytes?',
-    options: [
-      {
-        t: '`0, 20`',
-        why: 'The operand is a distance, not the target: the target is worked out from it.',
-      },
-      {
-        t: '`0, 7`',
-        why: 'That would be 20 − 13, but the distance is counted from the end of the jump instruction, offset 16.',
-      },
-      {
-        t: '`20, 0`',
-        why: 'The high byte comes first, and the distance is not 20.',
-      },
-      {
-        t: '`0, 4`',
-        correct: true,
-        why: 'The jump is 3 bytes long, so it measures from 16, and 16 + 4 = 20.',
-      },
-    ],
-  },
-  {
-    q: 'Why does each byte of a chunk carry its own line number?',
-    options: [
-      {
-        t: 'When an instruction fails, the VM knows only its offset, and `lines` turns that into a source line',
-        correct: true,
-        why: 'The VM reads `lines[ip - 1]` to report `at line 3 in script`.',
-      },
-      {
-        t: 'The VM needs lines to know which instruction to run next',
-        why: 'The next instruction is found with `ip`; lines play no part in running.',
-      },
-      {
-        t: 'The disassembler cannot find instruction boundaries without them',
-        why: 'Boundaries come from the opcodes’ lengths; lines only fill the second column.',
-      },
-      {
-        t: 'Each line of source compiles to exactly one byte',
-        why: 'A line usually compiles to many bytes, which is why the numbers repeat.',
       },
     ],
   },

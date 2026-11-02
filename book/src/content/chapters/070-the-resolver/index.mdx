@@ -3,17 +3,14 @@ n: 70
 day: 6
 part: III
 title: 'The resolver'
-tagline: 'Looking names up by searching outwards at run time has a crack in it: the same line can mean two different variables. The fix is to read the whole program once before running it, and write down where every variable lives.'
+tagline: 'Looking names up by searching outwards at run time has a crack in it: the same line can mean two different variables. The fix is to read the whole program once before running it, write down where every variable lives, and catch a whole family of mistakes on the way.'
 objectives:
   - Explain the bug where a closure's variable changes meaning when a later declaration shadows it.
   - Trace the resolver's stack of scopes and the distance it records for each local variable.
-  - Explain how the interpreter turns a distance into exactly the right environment, and why both sides must agree on every scope.
-  - Explain what static analysis is, and how it differs from finding errors while running.
-  - Name Drip's static rules and read the compile errors the resolver reports.
-  - Explain how the resolver tracks whether it is inside a function or a loop.
-  - Say which mistakes static analysis cannot catch in a dynamically typed language.
+  - Explain why the resolver and the interpreter must agree on every scope.
+  - Say what static analysis is, name Drip's static rules, and say which mistakes it cannot catch.
 introduces: [resolver, scope-depth, static-analysis]
-uses: [captured-environment, environment-lifetime, environment, scope-chain, shadowing, global-variable, closure, lexical-scope, block-scope, ast, ast-node, tree-walking-interpreter, compiler-pipeline, syntax-error, runtime-error, callable, return-unwinding, drip, for-in-loop, map, identity, reference, function, call, return, variables, type-checking, typescript, while-loop]
+uses: [captured-environment, environment, scope-chain, shadowing, global-variable, closure, lexical-scope, block-scope, ast, ast-node, tree-walking-interpreter, compiler-pipeline, syntax-error, runtime-error, return-unwinding, drip, for-in-loop, map, identity, function, return, type-checking, typescript, while-loop]
 sources: [mdn-map]
 ---
 import ResolveSteps from '../../../components/diagrams/ch070/ResolveSteps';
@@ -21,13 +18,11 @@ import HopsFigure from '../../../components/diagrams/ch070/HopsFigure';
 import PipelineFigure from '../../../components/diagrams/ch070/PipelineFigure';
 import CheckSteps from '../../../components/diagrams/ch070/CheckSteps';
 
-{/* ── merge: from old chapter 70, Finding every name before running: the resolver ── */}
-
 ## The same line, two answers
 
 Here is a Drip program to think hard about:
 
-```
+```text
 let x = "global";
 {
   fn show() { print x; }
@@ -37,134 +32,101 @@ let x = "global";
 }
 ```
 
-When `show` is declared, the only `x` it can see is the global one, so
-both calls should print `global`: the line `print x` is written once,
-in one place, and lexical scope promises that *where* it is written
-decides what `x` means.
-
-Now imagine running it on the first interpreter from the chapter
-*Environments and scope*, where every lookup searches outwards through
-the chain of environments at the moment it runs. `show` captured the
-block's environment. The first call does not find `x` in its own
-environment or in the block's, follows the parent link to the globals,
-and prints `global`. But then `let x = "block"` adds an `x` *to that
-same block environment*, and the second call finds it one step earlier
-and prints `block`.
-
-Same line, same function, two different variables, depending on *when*
-it runs. Searching the chain answers "which `x` is visible right now?",
-when the question should be "which `x` did this line mean when it was
-written?"
-
-<Prompts ids={['shadow-bug']} />
-
-## Decide once, before running
-
-Nothing about which declaration a name refers to depends on running the
-program; you can tell by reading the source, the way you just did. So
-Drip gets one more stage in its pipeline, between parsing and running.
-Here is `drip.ts`, slightly trimmed:
-
-```ts
-const program = parse(scan(source),
-  reporter);
-if (reporter.errors.length) return ...;
-const locals = resolve(program, reporter);
-if (reporter.errors.length) return ...;
-interp.interpret(program, locals);
-```
-
-The **resolver** walks the whole tree once. It keeps a stack of scopes,
-one for each block, function body or loop it is inside; each scope is a
-`Map` from a name to a flag that says whether the variable is ready to
-be read yet. There are no values anywhere: the resolver never runs a
-line of the program.
+When `show` is declared the only `x` it can see is the global one, and
+lexical scope promises that *where* a line is written decides what its
+names mean, so both calls should print `global`. With lookups that
+search the chain of environments at the moment they run, however, the
+second call prints `block`: `show` captured the block's environment,
+and `let x = "block"` adds an `x` to that very environment, so the
+second search finds it one step earlier. Searching answers "which `x`
+is visible right now?", when the question should be "which `x` did this
+line mean when it was written?"; and nothing about that answer depends
+on running the program.
 
 <Analogy title="directions written on a note">
 Someone writes "the café two streets north" on a sticky note, looking at
 the map today. Tomorrow a new café opens one street north, but the note
-still means the one it was written about; if you follow the note rather
-than asking "which café is nearest now?", you end up where the writer
+still means the one it was written about; follow the note rather than
+asking "which café is nearest now?", and you end up where the writer
 meant.
 <span slot="breaks">A note can go out of date if the café closes; the
 resolver's notes cannot, because a Drip declaration never moves once
 the program is written.</span>
 </Analogy>
 
-<Analogy extra title="a seating plan">
-At a wedding, someone draws up the seating plan before any guest
-arrives, so on the day each guest walks straight to their table rather
-than wandering the room looking for a free chair.
-<span slot="breaks">A seating plan names a table; the resolver writes a
-*distance* ("two environments out from wherever you are"), because the
-same function's body runs in a different environment on every
-call.</span>
-</Analogy>
+<Prompts ids={['shadow-bug']} />
 
-<ResolveSteps client:visible />
+## Decide once, before running
 
-For each variable it meets, the resolver searches from the innermost
-scope outwards, and records how many scopes it had to step out:
+So Drip gets one more stage between parsing and running. The
+**resolver** walks the whole tree once, keeping a stack of scopes, one
+for each block, function body or loop it is inside; each scope is a
+`Map` from a name to a flag saying whether its declaration is done. There are no values anywhere, because the resolver never runs a
+line. For each variable it meets, it searches from the innermost scope
+outwards and records how many scopes it stepped out:
 
 ```ts
-const resolveLocal = (expr, name) => {
-  for (let i = scopes.length - 1;
-       i >= 0; i--) {
-    const done = scopes[i]
-      .get(name.lexeme);
-    if (done !== undefined) {
-      if (!done) report(name, ...);
-      locals.set(expr,
-        scopes.length - 1 - i);
-      return;
-    }
+for (let i = scopes.length - 1;
+     i >= 0; i--) {
+  const done = scopes[i]
+    .get(name.lexeme);
+  if (done !== undefined) {
+    if (!done) report(name, ...);
+    locals.set(expr,
+      scopes.length - 1 - i);
+    return;
   }
-};
+}
 ```
 
-`locals` is a `Map` whose keys are the syntax-tree nodes themselves. Map
-keys can be objects, compared by identity<Cite id="mdn-map" />, so two
-different `x` nodes in a program get separate entries, even though they
-spell the same name. A name found in no scope gets no entry at all; it
-must be a global. (The `report` line is the subject of the next chapter:
-`done` is false while a variable is still being declared.)
+`locals` is a `Map` whose keys are the syntax-tree nodes themselves;
+object keys are compared by identity<Cite id="mdn-map" />, so two `x`
+nodes get separate entries even though they spell the same name. A name
+found in no scope gets no entry: it must be a global. (The `report`
+fires when a variable is read while still being declared.)
+
+<ResolveSteps client:visible />
 
 <Callout kind="definition">
 The **resolver** is a pass over the syntax tree, run after parsing and
 before running, that works out which declaration each variable use
 refers to. It keeps a stack of scopes that mirrors the environments the
 interpreter will make, and for each use of a local variable it records
-how far out its declaration is. Names it cannot find in any scope are
+how far out its declaration is; names it cannot find in any scope are
 treated as globals and get no entry.
 </Callout>
 
-<Prompts ids={['resolver-when', 'what-recorded', 'global-no-entry', 'node-keys']} />
+<Analogy extra title="a seating plan">
+Someone draws up the wedding seating plan before any guest arrives, so
+on the day each guest walks straight to their table.
+<span slot="breaks">A seating plan names a table; the resolver writes a
+*distance* ("two environments out from wherever you are"), because the
+same function's body runs in a different environment on every
+call.</span>
+</Analogy>
+
+<Prompts ids={['what-recorded', 'global-no-entry']} />
 
 ## From distance to environment
 
-The interpreter's lookup changes from "search the chain" to "hop exactly
-`d` parents up, then look":
+The interpreter's lookup changes from "search the chain" to "hop
+exactly `d` parents up, then look": if `locals` has an entry `d` for
+the node, it calls `this.env.getAt(d, name)`, which follows `d` parent
+links; otherwise it reads the globals, and stops with `undefined
+variable` if the name is not there either. Assignment has a matching
+`assignAt`.
 
-```ts
-private lookUp(name: Token, e: Expr) {
-  const d = this.locals.get(e);
-  if (d !== undefined)
-    return this.env.getAt(d,
-      name.lexeme);
-  const v = this.globals.values
-    .get(name.lexeme);
-  if (v === undefined) throw ...;
-  return v;
-}
-```
+<Callout kind="definition">
+A variable's **scope depth** (or distance) is the number of environments
+between the one current where it is used and the one where it is
+declared: 0 for the innermost, 1 for its parent, and so on. The resolver
+computes it once, from the source; the interpreter uses it on every
+lookup to go straight to the right environment.
+</Callout>
 
-`getAt(d, name)` walks `d` parent links with `ancestor(d)` and reads the
-name there; assignment has a matching `assignAt`. A name with no entry
-is looked for in the globals, and if it is not there either, the program
-stops with `undefined variable 'x'`. Here is a case with real distances,
-seen from inside `inner`:
+<Examples of="resolver scope-depth">
 
-```
+```text
 fn outer() {
   let a = 1;
   {
@@ -176,17 +138,27 @@ fn outer() {
 outer(); # 3
 ```
 
+</Examples>
+
+Walking `inner`'s body, the resolver's scopes are, from the inside out,
+`inner`'s, the block's (holding `b`) and `outer`'s (holding `a`), so it
+records 1 for `b` and 2 for `a`; at run time the environments line up
+the same way:
+
 <Figure caption="When inner runs, the current environment is its call's. b is 1 hop up, in the block; a is 2 hops up, in outer's call. The resolver counted the same steps through its scopes." takeaway="One scope in the resolver for each environment at run time.">
   <HopsFigure />
 </Figure>
 
-<Callout kind="definition">
-A variable's **scope depth** (or distance) is the number of environments
-between the one current where it is used and the one where it is
-declared: 0 for the innermost, 1 for its parent, and so on. The resolver
-computes it once, from the source; the interpreter uses it on every
-lookup to go straight to the right environment.
-</Callout>
+This only works because the two sides agree on every level: every place
+the resolver begins a scope must be a place where the interpreter makes
+an environment, and the other way round. That means a block (one
+scope), a function call (one, holding the parameters *and* the body's
+own variables) and a `for` loop (two: the loop variable's and the
+body's). If one side ever added a level the other did not, every
+distance past it would be off by one, and lookups would quietly read
+the wrong variable. And the program from the start now prints `global`
+twice: no scope held an `x` when the resolver walked `show`, so that
+node has no entry, and both calls read the global.
 
 <Formal title="Scope depth">
 
@@ -203,86 +175,21 @@ innermost scope that declares x. If no scope declares it, x is treated
 as a global (the arrow reads "means").</span>
 </Formal>
 
-This only works because the two sides agree on every level. Every place
-the resolver begins a scope must be a place where the interpreter makes
-an environment, and the other way round: a block (one each), a function
-call (one, holding the parameters *and* the body's own variables), and a
-`for` loop (two: one for the loop variable and one for the body, on
-every pass). If one side ever added a level the other did not, every
-distance past it would be off by one, and lookups would quietly read the
-wrong variable.
-
-<Examples of="resolver scope-depth">
-
-```
-let x = "global";
-{
-  fn show() { print x; }
-  show();  # global
-  let x = "block";
-  show();  # global
-}
-```
-
-```
-for i in 0..2 {
-  print i;  # i is 1 step out
-}
-```
+<More title="A runnable example with a shadowing twist">
 
 <Run id="hops" />
 
-</Examples>
+</More>
 
-The first is the program from the start of the chapter, which now does
-what its text says: when the resolver walked `show`'s body, no scope
-held an `x`, so the `x` node got no entry, and at run time both calls
-look in the globals. The second shows the two levels of a `for` loop:
-the body's environment is innermost and `i` lives in the loop
-variable's environment just outside it, so the resolver records 1 for
-this `i`, and the interpreter hops once. The runnable one is the
-`outer`/`inner` example with a shadowing twist; predict what it prints
-before you run it.
+<Prompts ids={['must-match']} />
 
-<Prompts ids={['depth-what', 'hops', 'must-match']} />
+## Errors before running
 
-<Callout kind="engine" label="Under the hood">
-The resolver is the first step towards a compiler. In Part IV, Drip's
-bytecode compiler does this same scope walk while it generates code, and
-turns each local into a *slot number* instead of a distance, so the VM
-never looks a local up by name at all (the chapter *Locals as stack
-slots* builds it). Viscosity, later in the book, is mostly this kind of
-work: it must prove facts about your JavaScript before it dares change
-how an array is laid out.
-</Callout>
+The resolver already walks every line, including branches a given run
+never reaches, so it can check rules on the way. Here is a mistake in a
+branch that hardly ever runs:
 
-## Your turn
-
-<Exercise id="resolveDepth" />
-
-## What you learned
-
-- Searching the environment chain at run time let a closure's variable
-  change meaning when a later declaration shadowed it.
-- The **resolver** is a pass between parsing and running. It walks a
-  stack of scopes and records, for each local variable node, its
-  **scope depth**: how many environments out it lives. Globals get no
-  entry.
-- The interpreter hops exactly that many parents. That needs one
-  resolver scope for every runtime environment: blocks, calls, and two
-  per `for` loop.
-
-Next: the resolver already knows enough to catch whole kinds of mistakes
-before a single line runs.
-
-
-{/* ── merge: from old chapter 70, Static analysis: errors before running ── */}
-
-## A mistake that waits for its moment
-
-Here is a function with a mistake in a branch that hardly ever runs:
-
-```
+```text
 fn check(x) {
   if x > 1000000 {
     let n = n + 1;
@@ -290,83 +197,71 @@ fn check(x) {
   print "ok";
 }
 check(5);
+# line 3: cannot read 'n' in its
+#   own initialiser
 ```
 
-Line 3 declares a new `n` and, in the same breath, tries to read `n` to
-work out its starting value; that `n` can only mean the new one, which
-has no value yet, so the line makes no sense. If Drip only found
-mistakes by running into them, this program would print `ok` every day
-until the first time someone called `check` with a number over a
-million, and then it would fail, perhaps years later, in front of a
-user. Instead, Drip refuses to run it at all:
-
-```text
-line 3: cannot read 'n' in its own
-  initialiser
-```
-
-Nothing is printed, not even `ok`. The resolver from the last chapter
-found the mistake while walking the tree, before the interpreter
-started.
-
-## Learning about a program without running it
-
-<Analogy title="a spell-checker">
-A spell-checker underlines a misspelt word the moment you type it, in a
-paragraph nobody may read for weeks; it does not wait for a reader to
-trip over it. It knows nothing about what you *mean*, only about how
-words are spelt.
-<span slot="breaks">A spell-checker only suggests, and you can send the
-email anyway; a Drip compile error is final, and the program does not
-run until it is fixed.</span>
-</Analogy>
-
-<Analogy extra title="security before the gate">
-At an airport, bags are checked before anyone boards, not half-way
-through the flight; a problem found at the gate costs a few minutes,
-the same problem found in the air costs far more.
-<span slot="breaks">Security looks at every bag, but it cannot tell
-what a passenger will do during the flight; static checks likewise
-cannot see what a value will turn out to be when the program runs, so
-some errors can only be found in the air.</span>
-</Analogy>
+Found by running, it would print `ok` every day until the first big
+number, perhaps years later; found by the resolver, nothing runs.
 
 <Callout kind="definition">
 **Static analysis** means learning facts about a program from its source
-or its syntax tree, without running it ("static" means "while standing
-still"). Its results hold for every possible run, including branches
-that a particular run never reaches. The resolver is a small static
-analysis: it works out what each name refers to, and on the way it
-checks rules that any correct Drip program must follow. Mistakes it
-finds are **compile errors**: they are reported before the program
-starts, and nothing runs.
+or its syntax tree, without running it. Its results hold for every
+possible run, including branches that a particular run never reaches.
+The resolver is a small static analysis; the mistakes it finds are
+**compile errors**, reported before the program starts, so nothing
+runs.
 </Callout>
+
+<Analogy extra title="a spell-checker">
+A spell-checker underlines a misspelt word the moment you type it, in a
+paragraph nobody may read for weeks.
+<span slot="breaks">A spell-checker only suggests, and you can send the
+email anyway; a Drip compile error is final.</span>
+</Analogy>
+
+Drip's static rules are few: no second `let` of a name in one local
+scope; no reading a local in its own initialiser (the ready flag);
+`return` only inside a function; `break` and `continue` only inside a
+loop; and `self` and `super` only inside methods (classes add three
+more). For the middle ones the resolver remembers what it is inside
+with two plain variables, `currentFunction` and `loopDepth`; entering a
+function resets `loopDepth` to 0, because a `break` in a function
+declared inside a loop would run in a different call from the loop. It
+reports every mistake as `line N: message` and keeps walking, so you see
+them all, in source order; and it runs only if the parser found no
+syntax errors, since a half-built tree would give nonsense. Step
+through a program with three mistakes:
+
+<CheckSteps client:visible />
 
 <Figure caption="Where each kind of Drip error is found. The scanner, the parser and the resolver find compile errors before anything runs; only the interpreter finds runtime errors, part-way through." takeaway="Compile errors stop a program before it starts.">
   <PipelineFigure />
 </Figure>
 
-<Prompts ids={['static-what', 'compile-vs-runtime', 'rare-branch']} />
+<Examples of="static-analysis">
 
-## The rules the resolver checks
+```text
+fn h(a) {
+  let a = 2;
+}
+# line 2: 'a' is already declared
+#   in this scope
+```
 
-Drip's resolver checks a short list of rules, each with its own message:
+</Examples>
 
-| the rule | the error |
-|---|---|
-| no second `let` of a name in one local scope | `'a' is already declared in this scope` |
-| no reading a local in its own initialiser | `cannot read 'a' in its own initialiser` |
-| `return` only inside a function | `'return' outside a function` |
-| `break`, `continue` only inside a loop | `'break' outside a loop` |
-| `self`, `super` only inside methods | `cannot use 'self' outside a method` |
+A function's parameters and its body's `let`s share one environment, so
+they share one scope, and redeclaring a parameter is an error (globals
+are not tracked, so redeclaring one is allowed).
 
-(The classes chapters add three more: `'init' cannot return a value`,
-`cannot use 'super' in a class that does not extend another` and
-`a class cannot extend itself`.) The first two come from the scope
-stack: `declare` reports a name that is already in the innermost scope,
-and the ready flag you met in `resolveLocal` reports a variable read
-while it is still being declared. The others need the resolver to
-remember what it is inside, which it does with two plain variables:
+What static analysis cannot know, in a dynamically typed language, is
+what a name will *hold*: `"a" + 1`, a wrong argument count and an
+undefined global all stay runtime errors. TypeScript's type checker is
+a much bigger static analysis that catches the first, because its
+source does say what each name holds.
+
+<More title="The loop check in code, and a runnable list of mistakes">
 
 ```ts
 case 'break':
@@ -381,113 +276,21 @@ case 'return':
       "'return' outside a function");
 ```
 
-`loopDepth` goes up by one when the resolver enters a loop's body and
-down when it leaves; `currentFunction` is set when it enters a function
-and put back when it leaves. On entering a function, `loopDepth` is also
-set back to 0, so a `break` inside a function that happens to be
-declared inside a loop is still an error: the `break` would run in a
-different call from the loop it seems to belong to. Step through a
-program with three mistakes:
-
-<CheckSteps client:visible />
-
-Notice that the resolver does not stop at the first mistake. It reports
-each one with `line N:` and carries on walking, so you see every problem
-at once, in the order they appear in the source; `drip.ts` then prints
-them all and stops with exit code 65 (a runtime error exits with 70
-instead). There is one ordering rule: syntax errors come first. If the
-parser found any, the tree may be half-built, so the resolver does not
-run at all, and only the syntax errors are shown.
-
-<Formal title="A static rule as an inference rule">
-
-```text
-   Γ.function ≠ none
-───────────────────────────
-     Γ ⊢ return e;  ok
-```
-
-<span slot="read">Read the line as "if what is above it holds, then what
-is below it holds". Γ (the Greek letter gamma) is the context: what the
-resolver knows about where it is, such as whether it is inside a
-function. The rule says: if the context is inside some function, then
-the statement return e is allowed there.</span>
-</Formal>
-
-<Examples of="static-analysis">
-
-```
-{
-  let a = "outer";
-  {
-    let a = a;  # error
-  }
-}
-# line 4: cannot read 'a' in its
-#   own initialiser
-```
-
-```
-fn h(a) {
-  let a = 2;  # error
-}
-# line 2: 'a' is already declared
-#   in this scope
-let g = 1;
-let g = 2;  # fine: a global
-```
+Compile errors exit with code 65, runtime errors with 70. The bytecode
+compiler checks the same rules in a single pass while it generates
+code, and the test corpus pins every message and line, so both report
+the same errors byte for byte; it turns each local into a numbered slot
+rather than a distance, in *Locals as stack slots*.
 
 <Run id="static-errors" />
 
-</Examples>
+</More>
 
-The first is the most common slip, and a spot-the-difference with the
-fix in your head: renaming the inner one (`let b = a;`) makes `a` mean
-the outer variable, one scope out, and the program runs. The second
-shows two scope facts at once: a function's parameters and its body's
-own `let`s share one scope (the interpreter puts them in one
-environment, so the resolver must too), so redeclaring a parameter is an
-error; but globals are not tracked by the resolver at all, and
-redeclaring one at the top level is allowed and replaces the old value.
-The runnable one has several mistakes; fix them one at a time and watch
-the list shrink.
-
-<Prompts ids={['loop-depth', 'all-errors', 'syntax-first', 'break-in-fn']} />
-
-## What it cannot know
-
-Static analysis knows only what the source says, and in a dynamically
-typed language like Drip the source does not say what a name will hold.
-So the resolver cannot catch `"a" + 1`, a call with the wrong number of
-arguments, or a global that is never defined; all of those are runtime
-errors, found when the line runs:
-
-```
-let n = 1;
-print n + 1;   # 2
-print nope;
-# runtime error: undefined variable
-#   'nope'
-#   at line 3 in script
-```
-
-TypeScript's type checker, from the chapter *TypeScript I: types as
-labels*, is a much bigger static analysis that does catch mistakes
-like `"a" + 1` being used as a number, because TypeScript's source *does*
-say what each name holds. The resolver is a small cousin of it.
-
-<Prompts ids={['cannot-know']} />
-
-<Callout kind="engine" label="Under the hood">
-Part IV's bytecode compiler checks exactly the same rules, in a single
-pass, while it generates code; the corpus of test programs pins every
-message and its line, so both implementations report the same errors in
-the same order, byte for byte. Its scopes live in a list rather than a
-`Map`<Cite id="mdn-map" />, because it turns each local into a numbered
-slot as it goes.
-</Callout>
+<Prompts ids={['static-what', 'rare-branch', 'all-errors', 'cannot-know']} />
 
 ## Your turn
+
+<Exercise id="resolveDepth" />
 
 <Exercise id="checkLoops" />
 
@@ -495,18 +298,15 @@ slot as it goes.
 
 ## What you learned
 
-- **Static analysis** learns about a program without running it, so its
-  results hold for every run, even of branches that rarely run.
-- The resolver checks Drip's static rules: no duplicate locals, no
-  reading a local in its own initialiser, `return` only in functions,
-  `break` and `continue` only in loops, `self` and `super` only in
-  methods.
-- It tracks `currentFunction` and `loopDepth` as it walks, reports
-  every error in source order as `line N: message`, and runs only if
-  there were no syntax errors. Any compile error means nothing runs.
-- It cannot know what a name will hold, so type mistakes, arity and
-  undefined globals stay runtime errors.
+- The **resolver** walks the program once before it runs, and records
+  each local use's **scope depth**; globals get no entry.
+- The interpreter hops exactly that many parents, which needs one
+  resolver scope per runtime environment.
+- As **static analysis**, it also checks Drip's rules, reporting every
+  compile error before anything runs; what a name will hold is left to
+  run time.
 
-Next: classes, records that carry their own behaviour.
+Next: *Classes, methods and inheritance in Drip*, records that carry
+their own behaviour.
 
 <Quiz />

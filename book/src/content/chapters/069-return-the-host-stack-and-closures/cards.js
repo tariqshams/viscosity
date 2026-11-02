@@ -1,135 +1,34 @@
-// Chapter 60 cards: recall prompts, examples, exercises and quiz.
+// Chapter 69 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 69, 69, 69, 69.
 
 export const prompts = {
-  'return-deep': {
-    q: 'When a `return` inside an `if` inside a `while` runs, what does it have to leave?',
-    a: 'Every statement between it and the start of the call: the `if`, the loop body, the loop and the function body, all in one move.',
-  },
   'two-ways': {
-    q: 'Name the two common ways a tree-walker implements `return`.',
-    a: 'Completion codes passed back up by every method, or an exception thrown at the `return` and caught at the edge of the call.',
-  },
-  'four-codes': {
-    q: 'What are the four completion codes in the companion’s interpreter?',
-    a: '`NORMAL`, `BREAK`, `CONTINUE` and `RETURN`.',
-  },
-  'parked-where': {
-    q: 'Where does a `return` statement put its value while the `RETURN` code travels up?',
-    a: 'In a field of the interpreter, `returnValue`, until `callFunction` takes it out.',
-  },
-  'block-passes': {
-    q: 'What does `executeBlock` do when one of its statements gives back `RETURN`?',
-    a: 'It stops running its statements and returns `RETURN` itself (its `finally` restores the environment).',
+    q: 'Name the two common ways a tree-walking interpreter implements `return`.',
+    a: 'Completion codes passed back up by every method that runs statements, or an exception thrown at the `return` and caught at the edge of the call.',
   },
   'loop-return': {
-    q: 'A loop’s body gives back `BREAK`, and later another gives back `RETURN`. What does the loop do with each?',
-    a: 'On `BREAK` it stops looping and finishes normally; on `RETURN` it stops and passes `RETURN` up.',
-  },
-  'own-call': {
-    q: 'In `fib(3)`, does the `RETURN` code from inside `fib(2)` ever reach `fib(3)`’s methods?',
-    a: 'No. `fib(2)`’s own `callFunction` turns it into a value; `fib(3)` only sees the number.',
-  },
-  'return-none': {
-    q: 'What does a Drip call give back when its body has no `return`, or a bare `return;`?',
-    a: '`none`.',
+    q: 'In a tree-walker that uses completion codes, a loop’s body reports `BREAK` in one round and `RETURN` in another. What does the loop do with each?',
+    a: 'On `BREAK` it stops looping and finishes normally; on `RETURN` it stops and passes `RETURN` up, since the return leaves the whole function.',
   },
   'host-stack-what': {
     q: 'What is the *host stack* of an interpreter?',
-    a: 'The call stack of the language the interpreter is written in (for Drip’s tree-walker, TypeScript’s).',
-  },
-  'where-waiting': {
-    q: 'While `fib(3)` waits for `fib(2)`, where is the record of where `fib(3)` will carry on?',
-    a: 'On TypeScript’s stack: the `evaluate` for its addition has simply not returned yet.',
-  },
-  'six-per-level': {
-    q: 'Roughly how many TypeScript methods does each level of `fib` recursion add to the host stack?',
-    a: 'Six (callFunction, executeBlock, execute, two evaluates and call).',
-  },
-  'trace-order': {
-    q: 'In what order does a Drip stack trace list the active calls?',
-    a: 'Innermost first, ending with `script`.',
-  },
-  'frames-what': {
-    q: 'What does each entry of the interpreter’s `frames` list hold?',
-    a: 'A place (`fn name`, `anonymous fn` or `script`) and a line.',
-  },
-  'not-popped': {
-    q: 'Why does `frames` still hold the failing calls when `drip.ts` prints a trace?',
-    a: 'A runtime error is thrown past the `pop` in `callFunction`, so nothing removes their entries.',
-  },
-  'frames-max': {
-    q: 'How many calls may be active at once in Drip, and what happens with one more?',
-    a: '256 (the script counts as one); one more is the runtime error `stack overflow`.',
-  },
-  'borrow-cost': {
-    q: 'Name the three costs of borrowing the host stack.',
-    a: 'Depth (several host frames per Drip call), visibility (Drip cannot pause or inspect its calls) and speed.',
-  },
-  'call-parent-question': {
-    q: 'A call makes a fresh environment. What is the key design question about it, for closures?',
-    a: 'Which environment should be its parent: the globals, the caller’s, or the one where the function was made.',
-  },
-  'parent-globals': {
-    q: 'If every call’s environment had the globals as its parent, what would `count` inside `makeCounter` see?',
-    a: 'Not `n`: the lookup would go from the call straight to the globals, giving `undefined variable \'n\'`.',
-  },
-  'parent-caller': {
-    q: 'What is the rule called where a call’s parent is the *caller’s* environment, and does Drip use it?',
-    a: 'Dynamic scope. Drip does not use it; it uses lexical scope.',
+    a: 'The call stack of the language the interpreter is written in (for a TypeScript tree-walker, TypeScript’s); a tree-walker’s calls ride on it.',
   },
   'closure-field': {
-    q: 'What does the `closure` field of a `DripFunction` hold?',
-    a: 'The environment that was current when the function value was made.',
-  },
-  'which-env': {
-    q: 'When `count` is declared inside a call of `makeCounter`, which environment does it capture?',
-    a: 'That call’s environment (holding `n`), because it is the current one when the declaration runs.',
+    q: 'In a lexically scoped tree-walking interpreter, which environment does a function value store when it is made?',
+    a: 'The environment that was current when the function value was made (where its `fn` ran); every call’s environment hangs off it.',
   },
   'variable-not-value': {
-    q: '`let x = 1; let f = fn () { print x; }; x = 2; f();` What is printed, and why?',
-    a: '`2`. A closure captures the variable itself, so it reads its current value.',
+    q: 'In Drip (as in JavaScript), `let x = 1; let f = fn () { print x; }; x = 2; f();` What is printed, and why?',
+    a: '`2`. A closure captures the variable itself, so it reads the variable’s current value.',
   },
-  'loop-fresh': {
-    q: 'Why do functions made in a Drip `for` loop remember different values of the loop variable?',
-    a: 'Each pass makes a brand-new environment holding that pass’s value, and each function captures its own pass’s.',
-  },
-  'while-shared': {
-    q: 'Why do functions made in a `while` loop all see the same counter?',
-    a: 'The counter is one variable declared outside the loop, so every function’s chain leads to it.',
-  },
-  'heap-why': {
-    q: 'Why is a Drip call’s environment on the heap rather than in the call’s TypeScript frame?',
-    a: 'It is made with `new Environment(...)`, and JavaScript objects made with `new` live on the heap; the frame only holds a reference.',
-  },
-  'gc-what': {
-    q: 'When may JavaScript’s garbage collector reclaim an object?',
-    a: 'Once the program can no longer reach it by following references.',
-  },
-  outlives: {
-    q: 'Can a Drip environment outlive the call that created it? Give an example.',
-    a: 'Yes: when the call returns a function made inside it, that function’s closure keeps the call’s environment alive.',
-  },
-  'host-frame': {
-    q: 'When `makeCounter` returns, what disappears and what stays?',
-    a: 'Its TypeScript frames on the host stack disappear; its environment (a heap object) stays while the closure refers to it.',
+  'outlives': {
+    q: 'When environments are heap objects, can one outlive the call that created it? Give an example.',
+    a: 'Yes: when the call returns a function made inside it, that function’s captured environment keeps the call’s environment alive.',
   },
   'what-keeps': {
-    q: 'Name three things that can keep a Drip environment alive.',
-    a: 'A running call, a child environment (through its parent link), and a function’s captured environment.',
-  },
-  'live-shared': {
-    q: 'Two functions made in the same call both use `v`. One assigns `v = 5`. What does the other see?',
-    a: '`5`. They captured the same environment, so they share the variable.',
-  },
-  'reclaimed-when': {
-    q: 'After `let a = makeCounter(); a = none;`, can the counter’s environment be reclaimed?',
-    a: 'Yes: nothing refers to the function any more, so nothing reaches its captured environment.',
-  },
-  'call-allocates': {
-    q: 'What does every Drip function call allocate in the tree-walker, even when no closure needs it?',
-    a: 'A new `Environment` object, with a new `Map` inside it.',
+    q: 'Name three things that can keep an interpreter’s environment alive.',
+    a: 'A running call, a child environment (through its parent link), and a function that captured it.',
   },
 };
 
@@ -179,20 +78,6 @@ print a();
 print a();
 print b();
 print a;`,
-  },
-  'shared-box': {
-    title: 'Two closures, one environment',
-    lang: 'drip',
-    code: `fn makeBox(v) {
-  let get = fn () { return v; };
-  let set = fn (x) { v = x; };
-  return [get, set];
-}
-
-let box = makeBox("old");
-print box[0]();
-box[1]("new");
-print box[0]();`,
   },
 };
 
@@ -396,78 +281,8 @@ function callFn(body, log) {
       },
     ],
   },
-  power: {
-    optional: true,
-    lang: 'drip',
-    title: 'A recursive power function',
-    prompt: 'Write a recursive Drip function `pow(b, e)` that **returns** `b` to the power `e`, for whole numbers `e >= 0`. Use the facts that `pow(b, 0)` is 1 and `pow(b, e)` is `b * pow(b, e - 1)`. The program should print `1024`, `81` and `1`.',
-    starter: `fn pow(b, e) {
-  # your code here
-}
-
-print pow(2, 10);
-print pow(3, 4);
-print pow(5, 0);`,
-    solution: `fn pow(b, e) {
-  if e == 0 {
-    return 1;
-  }
-  return b * pow(b, e - 1);
-}
-
-print pow(2, 10);
-print pow(3, 4);
-print pow(5, 0);`,
-    tests: `1024
-81
-1`,
-    hints: [
-      'Start with the case that needs no recursion: what is anything to the power 0?',
-      'If `e == 0`, return 1. Otherwise the answer is `b` times a smaller power.',
-      'The last line of the body is `return b * pow(b, e - 1);`.',
-    ],
-    walkthrough: `**How to think about it.** A recursive function needs a case it can answer straight away (the *base case*) and a rule that turns a bigger problem into a smaller one. Here the base case is \`e == 0\`, whose answer is 1, and the rule is \`b * pow(b, e - 1)\`, which makes \`e\` one smaller each time, so it always reaches 0 for a whole number \`e >= 0\`.
-
-**The solution, line by line.**
-
-- \`fn pow(b, e) {\` declares the function with two parameters.
-- \`  if e == 0 {\` checks for the base case.
-- \`    return 1;\` parks 1 and gives back \`RETURN\`, which leaves the \`if\` and the body at once; the line after the \`if\` does not run.
-- \`  }\` closes the \`if\`.
-- \`  return b * pow(b, e - 1);\` is reached only when \`e\` is not 0. It evaluates the call first: \`pow(2, 10)\` waits for \`pow(2, 9)\`, which waits for \`pow(2, 8)\`, down to \`pow(2, 0)\`, eleven calls in all, each with its own environment. Then the values come back up: 1, then 2, 4, 8, ... 1024. Each call's \`return\` finds its own \`callFunction\`.
-- \`}\` ends the function.
-
-**Common wrong attempts.**
-
-- Printing instead of returning on the last line (\`print b * pow(b, e - 1);\`): the call then gives back \`none\`, so the call above it tries \`2 * none\` and stops with \`cannot use '*' on a number and none\`.
-- Leaving out the base case: \`e\` goes 0, -1, -2, ... for ever, until Drip stops with \`stack overflow\` (the next chapter is about that limit).`,
-    wrong: [
-      {
-        code: `fn pow(b, e) {
-  if e == 0 {
-    return 1;
-  }
-  print b * pow(b, e - 1);
-}
-
-print pow(2, 10);
-print pow(3, 4);
-print pow(5, 0);`,
-        why: 'The last line prints instead of returning, so each call gives `none`, and the call above it fails: `cannot use \'*\' on a number and none`.',
-      },
-      {
-        code: `fn pow(b, e) {
-  return b * pow(b, e - 1);
-}
-
-print pow(2, 10);
-print pow(3, 4);
-print pow(5, 0);`,
-        why: 'There is no base case, so the calls never stop going deeper, and Drip stops with `stack overflow`.',
-      },
-    ],
-  },
   formatTrace: {
+    optional: true,
     title: 'Print a stack trace',
     prompt: 'Write `formatTrace(msg, fs, errLine)`, the printing half of `drip.ts`. `fs` is the interpreter\'s `frames` list of active calls, **outermost first**: objects `{ place, line }`, where `line` is the line each call is waiting on. `errLine` is the line the error happened on. Return an array of strings: first `\'runtime error: \'` plus `msg`, then one `\'  at line N in PLACE\'` (two spaces first) per frame, **innermost first**. The innermost frame uses `errLine`; every other frame uses its own `line`.',
     starter: `function formatTrace(msg, fs, errLine) {
@@ -570,81 +385,8 @@ test('the frames list is not changed', () => {
       },
     ],
   },
-  countdown: {
-    optional: true,
-    lang: 'drip',
-    title: 'Stop the runaway',
-    prompt: 'This countdown never stops: it prints 3, 2, 1, 0, -1, ... until Drip reports `stack overflow`. Add a base case so that it prints `3`, `2`, `1` and then `liftoff`.',
-    starter: `fn countdown(n) {
-  print n;
-  countdown(n - 1);
-}
-
-countdown(3);`,
-    solution: `fn countdown(n) {
-  if n == 0 {
-    print "liftoff";
-    return;
-  }
-  print n;
-  countdown(n - 1);
-}
-
-countdown(3);`,
-    tests: `3
-2
-1
-liftoff`,
-    hints: [
-      'Every recursion needs a case where it stops calling itself. Which value of `n` should stop it?',
-      'When `n` is 0, print `liftoff` and leave the function without calling `countdown` again.',
-      'At the top of the body: `if n == 0 { print "liftoff"; return; }`.',
-    ],
-    walkthrough: `**How to think about it.** Each call of \`countdown\` makes one more call, so the calls nest deeper and deeper; nothing ever returns, and at 256 active calls Drip stops with \`stack overflow\` (that is \`FRAMES_MAX\` at work). A base case is a value for which the function answers without calling itself, and here it is the moment the count reaches 0.
-
-**The solution, line by line.**
-
-- \`fn countdown(n) {\` is unchanged.
-- \`  if n == 0 {\` checks for the base case first, before printing or recursing.
-- \`    print "liftoff";\` prints the last line.
-- \`    return;\` leaves the call at once (a bare \`return\` gives \`none\`), so the lines below never run for 0, and no deeper call is made.
-- \`  }\` closes the \`if\`.
-- \`  print n;\` and \`  countdown(n - 1);\` run for 3, 2 and 1, as before.
-- \`}\` and \`countdown(3);\` are unchanged. At the deepest point there are only five active calls: the script and \`countdown\` with 3, 2, 1 and 0.
-
-**Common wrong attempts.**
-
-- Putting the check after \`print n;\`: then 0 is printed before \`liftoff\`.
-- Printing \`liftoff\` but forgetting the \`return\`: the call carries on to \`countdown(-1)\`, and the runaway starts again.`,
-    wrong: [
-      {
-        code: `fn countdown(n) {
-  print n;
-  if n == 0 {
-    print "liftoff";
-    return;
-  }
-  countdown(n - 1);
-}
-
-countdown(3);`,
-        why: 'The check comes after `print n;`, so `0` is printed before `liftoff`.',
-      },
-      {
-        code: `fn countdown(n) {
-  if n == 0 {
-    print "liftoff";
-  }
-  print n;
-  countdown(n - 1);
-}
-
-countdown(3);`,
-        why: 'Without `return`, the call carries on past `liftoff` and recurses for ever, until `stack overflow`.',
-      },
-    ],
-  },
   fixLoop: {
+    optional: true,
     lang: 'drip',
     title: 'One value each',
     prompt: 'This program saves three functions from a `while` loop, but every one prints `4`. Change the loop so that the three calls at the end print `1`, `2` and `3`. Keep the three calls at the end as they are.',
@@ -720,98 +462,8 @@ fs[2]();`,
       },
     ],
   },
-  accumulator: {
-    optional: true,
-    lang: 'drip',
-    title: 'A running total',
-    prompt: 'Write `fn makeTotal()` that returns an anonymous function taking one number, adding it to a running total kept in the closure, and returning the new total. Two totals made by separate calls must not share. The program must print `5`, `8`, `10` and `13`.',
-    starter: `fn makeTotal() {
-  # your code here
-}
-
-let t = makeTotal();
-let u = makeTotal();
-print t(5);
-print t(3);
-print u(10);
-print t(5);`,
-    solution: `fn makeTotal() {
-  let sum = 0;
-  return fn (x) {
-    sum += x;
-    return sum;
-  };
-}
-
-let t = makeTotal();
-let u = makeTotal();
-print t(5);
-print t(3);
-print u(10);
-print t(5);`,
-    tests: `5
-8
-10
-13`,
-    hints: [
-      'The total has to survive between calls of the returned function, so it cannot be a local of that function. Where else can it live?',
-      'Declare `let sum = 0;` in `makeTotal`, then return an anonymous function that changes `sum`.',
-      'The returned function is `fn (x) { sum += x; return sum; }`.',
-    ],
-    walkthrough: `**How to think about it.** A variable declared inside the returned function would be made fresh on every call and start from 0 each time. The total must live one level out, in the environment of the call of \`makeTotal\`, which the returned function captures. Each call of \`makeTotal\` makes a separate environment, so \`t\` and \`u\` get separate totals.
-
-**The solution, line by line.**
-
-- \`fn makeTotal() {\` declares the maker.
-- \`  let sum = 0;\` makes the total in this call's environment.
-- \`  return fn (x) {\` makes an anonymous function, which captures this call's environment, and returns it.
-- \`    sum += x;\` finds \`sum\` one step out (in the captured environment) and adds the argument.
-- \`    return sum;\` returns the new total.
-- \`  };\` ends the anonymous function and the \`return\` statement, and \`}\` ends \`makeTotal\`.
-- \`t(5)\` gives 5 and \`t(3)\` gives 8, because both change \`t\`'s \`sum\`; \`u(10)\` gives 10 from its own \`sum\`; and \`t(5)\` gives 13.
-
-**Common wrong attempts.**
-
-- Declaring \`let sum = 0;\` inside the anonymous function: every call starts again from 0, so the program prints 5, 3, 10, 5.
-- Declaring \`sum\` as a global, outside \`makeTotal\`: then \`t\` and \`u\` share it, and \`u(10)\` prints 18.`,
-    wrong: [
-      {
-        code: `fn makeTotal() {
-  return fn (x) {
-    let sum = 0;
-    sum += x;
-    return sum;
-  };
-}
-
-let t = makeTotal();
-let u = makeTotal();
-print t(5);
-print t(3);
-print u(10);
-print t(5);`,
-        why: '`sum` is made fresh on every call, so nothing adds up: it prints `5`, `3`, `10`, `5`.',
-      },
-      {
-        code: `let sum = 0;
-fn makeTotal() {
-  return fn (x) {
-    sum += x;
-    return sum;
-  };
-}
-
-let t = makeTotal();
-let u = makeTotal();
-print t(5);
-print t(3);
-print u(10);
-print t(5);`,
-        why: 'One global `sum` is shared by `t` and `u`, so `u(10)` prints `18`.',
-      },
-    ],
-  },
   liveEnvs: {
+    optional: true,
     title: 'Which environments are alive?',
     prompt: `Model the garbage collector's question in plain JavaScript. An environment is \`{ name, parent, vars }\`: \`parent\` is another environment or \`null\`, and \`vars\` is an array of the values it holds. A value is a number, a string, or a function \`{ closure }\` whose \`closure\` is an environment.
 
@@ -1007,7 +659,7 @@ print acct[1]();`,
 
 export const quiz = [
   {
-    q: `What does this print?
+    q: `In Drip, what does this print?
 \`\`\`
 fn f() {
   for i in 0..10 {
@@ -1040,97 +692,7 @@ print f();
     ],
   },
   {
-    q: 'What does `print g();` print, if `fn g() { let x = 1; }`?',
-    options: [
-      {
-        t: '`1`',
-        why: 'A `let` does not return anything. With no `return`, the call gives none.',
-      },
-      {
-        t: 'A runtime error',
-        why: 'Running off the end of a body is the normal way to finish without a value.',
-      },
-      {
-        t: '`none`',
-        correct: true,
-        why: 'The body finished with NORMAL, not RETURN, so `callFunction` returns null, Drip’s `none`.',
-      },
-    ],
-  },
-  {
-    q: 'In the companion’s interpreter, what does `execute` do for `return x;`?',
-    options: [
-      {
-        t: 'It throws an exception holding the value of `x`',
-        why: 'That is the other design. The companion never throws for a `return`.',
-      },
-      {
-        t: 'It stores the value of `x` in `returnValue` and returns the code RETURN',
-        correct: true,
-        why: 'The value is parked in the interpreter, and the small code travels up through the methods.',
-      },
-      {
-        t: 'It pops the call off Drip’s own stack of frames',
-        why: 'That is what the bytecode VM does in Part IV. The tree-walker passes a code up instead.',
-      },
-    ],
-  },
-  {
-    q: 'A `while` loop’s body gives back the code RETURN. What does the loop do?',
-    options: [
-      {
-        t: 'Goes round again',
-        why: 'That is what happens for NORMAL and CONTINUE.',
-      },
-      {
-        t: 'Stops and finishes normally',
-        why: 'That is what it does for BREAK. A return must leave the whole function, not just the loop.',
-      },
-      {
-        t: 'Stops and gives RETURN back to its own caller',
-        correct: true,
-        why: '`if (c === RETURN) return c;` passes the code up towards `callFunction`.',
-      },
-    ],
-  },
-  {
-    q: 'What is one cost of completion codes compared with throwing an exception for `return`?',
-    options: [
-      {
-        t: 'Every method that runs statements must check the code and pass it on',
-        correct: true,
-        why: 'A method that forgot to check would break `return` for everything inside it; an exception needs no help on the way.',
-      },
-      {
-        t: 'A runtime error can no longer be reported',
-        why: 'Runtime errors are still thrown as exceptions; only `return`, `break` and `continue` use codes.',
-      },
-      {
-        t: 'Recursion stops working',
-        why: 'Each call has its own `callFunction`, which takes its own return value; recursion works as before.',
-      },
-    ],
-  },
-  {
-    q: 'In the tree-walker, where is the record that a paused Drip call will carry on at its addition?',
-    options: [
-      {
-        t: 'In the interpreter’s `frames` list',
-        why: '`frames` holds only a place and a line per call, for stack traces; it cannot resume anything.',
-      },
-      {
-        t: 'On TypeScript’s own call stack',
-        correct: true,
-        why: 'The TypeScript `evaluate` for that addition has not returned yet; when its call comes back, TypeScript knows where it was.',
-      },
-      {
-        t: 'In the call’s `Environment`',
-        why: 'Environments hold variables, not where a call will carry on.',
-      },
-    ],
-  },
-  {
-    q: `What is the last line of this program’s error?
+    q: `When Drip runs this program, what is the last line of its error?
 \`\`\`
 fn f() {
   print 1 + none;
@@ -1155,61 +717,7 @@ g();
     ],
   },
   {
-    q: 'Why does `isEven(300)` stop with `stack overflow`, while `isEven(10)` works?',
-    options: [
-      {
-        t: 'Mutual recursion is not allowed in Drip',
-        why: 'It works: `isEven(10)` runs fine.',
-      },
-      {
-        t: '300 is too large a number for Drip',
-        why: 'Numbers are fine; the problem is how deep the calls nest.',
-      },
-      {
-        t: 'It needs about 300 active calls, more than Drip’s limit of 256',
-        correct: true,
-        why: '`FRAMES_MAX` is 256 (the script counts as one), and `callFunction` refuses to go deeper.',
-      },
-    ],
-  },
-  {
-    q: 'What does `drip.ts` do when JavaScript itself runs out of stack and throws a `RangeError`?',
-    options: [
-      {
-        t: 'It lets the JavaScript error crash the program',
-        why: 'It catches the RangeError so the reader sees Drip’s own message.',
-      },
-      {
-        t: 'It reports Drip’s own `stack overflow` error, with a trace',
-        correct: true,
-        why: 'It makes a RuntimeError with the message `stack overflow` at the innermost call’s line, and prints the usual trace.',
-      },
-      {
-        t: 'It retries the program with a bigger stack',
-        why: 'Nothing is retried; the program stops with an error.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these is something the tree-walker CANNOT easily do, because it borrows the host stack?',
-    options: [
-      {
-        t: 'Run mutually recursive functions',
-        why: 'That works with no extra code, because calls are ordinary host calls.',
-      },
-      {
-        t: 'Print a stack trace',
-        why: 'The small `frames` list is enough for that.',
-      },
-      {
-        t: 'Pause a Drip program half-way and resume it later',
-        correct: true,
-        why: 'The real state of each paused call is in TypeScript’s frames, which Drip cannot save or restore.',
-      },
-    ],
-  },
-  {
-    q: `What does this print?
+    q: `In Drip, what does this print?
 \`\`\`
 fn outer() {
   let x = "outer";
@@ -1236,110 +744,7 @@ f();
     ],
   },
   {
-    q: 'Which environment becomes the parent of the environment a Drip call makes?',
-    options: [
-      {
-        t: 'The globals, always',
-        why: 'Then nested functions could never see their maker’s locals.',
-      },
-      {
-        t: 'The caller’s current environment',
-        why: 'That is dynamic scope, which Drip does not use.',
-      },
-      {
-        t: 'The function’s captured environment (its `closure` field)',
-        correct: true,
-        why: '`callFunction` does `new Environment(f.closure)`.',
-      },
-    ],
-  },
-  {
-    q: `What does this print?
-\`\`\`
-let n = 1;
-let show = fn () { print n; };
-n = 5;
-show();
-\`\`\``,
-    options: [
-      {
-        t: '`5`',
-        correct: true,
-        why: 'The closure captured the variable `n`, not the value 1, so it reads the current value.',
-      },
-      {
-        t: '`1`',
-        why: 'That would be true if closures copied values when they were made. They capture variables.',
-      },
-      {
-        t: '`none`',
-        why: '`n` holds a number the whole time.',
-      },
-    ],
-  },
-  {
-    q: `What does this print?
-\`\`\`
-let fs = [];
-for i in 0..3 {
-  push(fs, fn () { print i; });
-}
-fs[1]();
-\`\`\``,
-    options: [
-      {
-        t: '`3`',
-        why: 'That would happen if all passes shared one `i`. Each pass of a Drip `for` gets its own.',
-      },
-      {
-        t: '`2`',
-        why: '`fs[1]` is the second function, made when `i` was 1.',
-      },
-      {
-        t: '`1`',
-        correct: true,
-        why: 'Each pass makes a fresh environment for `i`, and `fs[1]` captured the pass where `i` was 1.',
-      },
-    ],
-  },
-  {
-    q: 'Where does the anonymous function in `fn () { print i; }` store the environment it captures?',
-    options: [
-      {
-        t: 'In the `closure` field of the `DripFunction` made when the expression is evaluated',
-        correct: true,
-        why: 'The `function` case of `evaluate` does `new DripFunction(e.fn, this.env, false)`.',
-      },
-      {
-        t: 'In the syntax tree node for the expression',
-        why: 'The node is shared by every evaluation; each evaluation makes its own function value with its own environment.',
-      },
-      {
-        t: 'Nowhere: anonymous functions cannot be closures',
-        why: 'They are closures exactly like named ones.',
-      },
-    ],
-  },
-  {
-    q: 'After `makeCounter()` returns a function, why does its environment still exist?',
-    options: [
-      {
-        t: 'The interpreter copies the environment into the function',
-        why: 'Nothing is copied: the function refers to the same environment object.',
-      },
-      {
-        t: 'Its TypeScript frame stays on the host stack',
-        why: 'The frame is gone as soon as the call returns.',
-      },
-      {
-        t: 'The returned function’s closure field refers to it, so it is still reachable',
-        correct: true,
-        why: 'Heap objects live as long as something can reach them.',
-      },
-    ],
-  },
-  {
-    q: `What does this print?
+    q: `In Drip, what does this print?
 \`\`\`
 fn pair() {
   let n = 0;
@@ -1365,60 +770,6 @@ print p[1]();
       {
         t: '`1`',
         why: 'Each call of `p[0]()` adds 1 to the same `n`, and there are two calls.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these keeps an environment alive?',
-    options: [
-      {
-        t: 'A function value whose closure field refers to it',
-        correct: true,
-        why: 'Reachable through the closure, so the garbage collector must keep it.',
-      },
-      {
-        t: 'Having been the environment of a call that has returned',
-        why: 'That alone keeps nothing alive; something must still refer to it.',
-      },
-      {
-        t: 'Holding a large number of variables',
-        why: 'Size has nothing to do with whether it can be reached.',
-      },
-    ],
-  },
-  {
-    q: 'In the tree-walker, which calls allocate a new `Environment` object?',
-    options: [
-      {
-        t: 'Only calls of functions that make closures',
-        why: 'The tree-walker cannot tell in advance, and does not try: it makes one for every call.',
-      },
-      {
-        t: 'Every call of a Drip function',
-        correct: true,
-        why: '`callFunction` always does `new Environment(f.closure)`, with a new `Map` inside.',
-      },
-      {
-        t: 'None: environments are made once per function',
-        why: 'Each call needs its own parameters, so each call gets its own environment.',
-      },
-    ],
-  },
-  {
-    q: 'How does Part IV’s bytecode VM keep a captured variable alive after its call returns?',
-    options: [
-      {
-        t: 'It keeps every call’s locals on the heap, as the tree-walker does',
-        why: 'It keeps locals in stack slots, which is why it needs a special step for captured ones.',
-      },
-      {
-        t: 'It moves just the captured variables off the stack into small heap objects',
-        correct: true,
-        why: 'Only what a closure captures pays for a heap object; everything else stays in fast stack slots.',
-      },
-      {
-        t: 'It forbids closures from outliving their call',
-        why: 'Drip allows it in both implementations; the results must be identical.',
       },
     ],
   },
