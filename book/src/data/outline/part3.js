@@ -132,68 +132,73 @@ export default {
     { n: 98, title: 'Doing things in order: statements and variables', introduces: { 'global-variable': 'a variable visible everywhere', 'side-effect': 'a change a statement makes to the world', 'program-as-list': 'a program is a list of statements' } },
     { n: 99, title: 'Environments and scope', introduces: { environment: 'a table from names to values, with a parent', 'scope-chain': 'looking a name up through parent environments', shadowing: 'an inner variable hiding an outer one' } },
     { n: 100, title: 'Choosing and repeating: if, while and for', introduces: { 'control-flow': 'deciding which statement runs next', desugaring: 'rewriting a construct in terms of simpler ones', 'short-circuit': 'and/or skipping the right side' } },
-    { n: 101, title: 'Functions in Drip', introduces: { callable: 'a runtime value you can call', arity: 'how many arguments a function takes', 'native-function': 'a function implemented by the host language' } },
-    { n: 102, title: 'Return and the call stack', introduces: { 'return-unwinding': 'jumping out of nested statements on return', 'host-stack': 'the interpreter reusing its host language’s call stack' } },
-    { n: 103, title: 'Closures in Drip', introduces: { 'captured-environment': 'a function remembering the environment it was made in', 'environment-lifetime': 'environments outliving the call that made them' } },
-    { n: 104, title: 'Finding every name before running: the resolver', introduces: { resolver: 'a pass that works out which declaration each name refers to', 'static-analysis': 'learning about a program without running it', 'scope-depth': 'how many environments up a variable lives' } },
-    { n: 105, title: 'Records with behaviour: classes in Drip', introduces: { 'drip-class': 'classes in the interpreter', field: 'per-instance data', 'bound-method': 'a method remembering its this' } },
-    { n: 106, title: 'Inheritance, and measuring the tree-walker', introduces: { inheritance: 'a class reusing another class’s methods', super: 'calling the parent class’s method', 'interpreter-overhead': 'why walking trees is slow' } },
-    { n: 107, title: 'Syntax-directed translation and attribute grammars', introduces: {
+    { n: 101, title: 'Lists in Drip', introduces: {
+      'drip-list': 'an ordered, growable collection of values written [a, b, c]',
+      'index-expression': 'xs[i]: reading or writing one element of a list',
+      'for-in-loop': 'for x in xs { ... }: running a block once per element',
+    } },
+    { n: 102, title: 'Functions in Drip', introduces: { callable: 'a runtime value you can call', arity: 'how many arguments a function takes', 'native-function': 'a function implemented by the host language' } },
+    { n: 103, title: 'Return and the call stack', introduces: { 'return-unwinding': 'jumping out of nested statements on return', 'host-stack': 'the interpreter reusing its host language’s call stack' } },
+    { n: 104, title: 'Closures in Drip', introduces: { 'captured-environment': 'a function remembering the environment it was made in', 'environment-lifetime': 'environments outliving the call that made them' } },
+    { n: 105, title: 'Finding every name before running: the resolver', introduces: { resolver: 'a pass that works out which declaration each name refers to', 'static-analysis': 'learning about a program without running it', 'scope-depth': 'how many environments up a variable lives' } },
+    { n: 106, title: 'Records with behaviour: classes in Drip', introduces: { 'drip-class': 'classes in the interpreter', field: 'per-instance data', 'bound-method': 'a method remembering its this' } },
+    { n: 107, title: 'Inheritance, and measuring the tree-walker', introduces: { inheritance: 'a class reusing another class’s methods', super: 'calling the parent class’s method', 'interpreter-overhead': 'why walking trees is slow' } },
+    { n: 108, title: 'Syntax-directed translation and attribute grammars', introduces: {
       'syntax-directed-translation': 'attaching actions to grammar rules',
       'attribute-grammar': 'a grammar whose nodes carry computed values',
       'synthesized-attribute': 'a value computed from a node’s children',
       'inherited-attribute': 'a value passed down from a node’s parent',
     } },
-    { n: 108, title: 'The lambda calculus', introduces: {
+    { n: 109, title: 'The lambda calculus', introduces: {
       'lambda-calculus': 'a whole language made of functions and nothing else',
       'beta-reduction': 'applying a function by substituting its argument',
       substitution: 'replacing a variable, carefully, without capturing names',
       'free-and-bound-variables': 'variables defined outside and inside a function',
     } },
-    { n: 109, title: 'Operational semantics', introduces: {
+    { n: 110, title: 'Operational semantics', introduces: {
       'operational-semantics': 'defining a language by rules for how programs run',
       'small-step-semantics': 'one tiny step of evaluation at a time',
       'big-step-semantics': 'an expression and its final value in one rule',
     } },
-    { n: 110, title: 'What a type system promises', introduces: {
+    { n: 111, title: 'What a type system promises', introduces: {
       'type-system': 'rules that classify program pieces by the values they produce',
       'static-vs-dynamic-typing': 'checking types before running, or while running',
       'type-error': 'an operation applied to the wrong kind of value',
       'type-soundness-intro': 'the promise that well-typed programs do not go wrong',
     } },
-    { n: 111, title: 'Reading typing rules', introduces: {
+    { n: 112, title: 'Reading typing rules', introduces: {
       'typing-judgment': 'Γ ⊢ e : T, read “in context Γ, e has type T”',
       'inference-rule': 'premises above a line, a conclusion below it',
       'type-environment': 'Γ: the types of the names in scope',
     } },
-    { n: 112, title: 'A type checker for typed Drip', introduces: {
+    { n: 113, title: 'A type checker for typed Drip', introduces: {
       'type-checker': 'a pass that applies the typing rules to a program',
       'typed-drip': 'Drip with optional type annotations',
       'type-annotation-checking': 'comparing declared types with computed ones',
     } },
-    { n: 113, title: 'Unification', introduces: {
+    { n: 114, title: 'Unification', introduces: {
       'type-variable': 'a placeholder for a type not yet known',
       unification: 'solving equations between types',
       'occurs-check': 'refusing to solve α = List<α>',
     } },
-    { n: 114, title: 'Hindley–Milner type inference', introduces: {
+    { n: 115, title: 'Hindley–Milner type inference', introduces: {
       'hindley-milner': 'complete type inference for a language with let-polymorphism',
       'let-polymorphism': 'a let-bound function used at several types',
       generalization: 'turning leftover type variables into ∀',
       instantiation: 'giving a ∀ type fresh variables at each use',
     } },
-    { n: 115, title: 'Subtyping and variance', introduces: {
+    { n: 116, title: 'Subtyping and variance', introduces: {
       subtyping: 'S <: T: an S can be used wherever a T is expected',
       'structural-vs-nominal': 'compatible by shape, or by declared name',
       variance: 'how subtyping of parts carries to wholes: co-, contra- and invariance',
     } },
-    { n: 116, title: 'Bidirectional checking and soundness', introduces: {
+    { n: 117, title: 'Bidirectional checking and soundness', introduces: {
       'bidirectional-typing': 'checking mode and synthesis mode',
       soundness: 'progress and preservation, stated and proved',
       'progress-preservation': 'well-typed terms step, and stay well-typed',
       'unsound-by-design': 'where TypeScript chose convenience over soundness',
     } },
-    { n: 117, title: 'Beyond: System F, dependent and linear types', introduces: {
+    { n: 118, title: 'Beyond: System F, dependent and linear types', introduces: {
       'system-f': 'the polymorphic lambda calculus',
       'dependent-types': 'types that mention values',
       'linear-types': 'values that must be used exactly once',

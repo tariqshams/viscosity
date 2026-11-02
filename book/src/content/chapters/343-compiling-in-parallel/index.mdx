@@ -1,0 +1,202 @@
+---
+n: 343
+day: 86
+part: XIII
+title: 'Compiling in parallel'
+tagline: 'Files are independent, so the Rust CLI compiles them on every core: scoped threads, one atomic counter, and output in the order you gave. To tmpfs that is 2.95× faster on four cores. To a virtual disk it is 1.24×, and the reason is not in the compiler.'
+objectives:
+  - Explain why compiling separate files is data-parallel, and what stays serial.
+  - Read for_each_parallel, and say what the scope, the atomic counter and the mutex each guarantee.
+  - Say what happens to the output, the exit status and the other files when one file fails or panics.
+  - Read the measured speed-ups and explain the disk and explain rows.
+introduces: [data-parallelism]
+uses: [viscosity-rs, compile-time-performance, cpu, borrow, shared-vs-mutable, ownership, lifetime, rust-closure, rust-generics, trait-bound, option, result, vec, rust-iterator, release-build, median-p95, benchmark-isolation, cargo-test]
+sources: [rust-std-thread-scope, rust-std-atomic-fetch-add, rust-std-mutex, rust-std-catch-unwind, rust-std-available-parallelism]
+---
+import WorkSteps from '../../../components/diagrams/ch343/WorkSteps';
+
+## Four cores, one file at a time
+
+Compiling one test program takes the Rust engine about 0.1 ms. That
+sounds like the end of the speed story, until you hand it a whole
+project. `viscosity build a.js b.js ... -o out/` takes many files, and
+they don't depend on each other: the analyses never look across files.
+So the CLI compiles them at the same time, one thread per CPU by
+default, or `--jobs N`.
+
+`engine/rust/results/parallel-build-2026-10-31.md` timed 396 files (the
+66 JavaScript and Python test programs, copied six times) on a shared 4-vCPU cloud VM, best
+of 11 runs. Writing the output to tmpfs, one thread took 40.0 ms and
+four took 13.5 ms: **2.95×**. Writing to the VM's disk, 105.3 ms and
+85.1 ms: **1.24×**. Same compiler, same threads. Hold that thought.
+
+<Callout kind="intuition">
+A post office with four counters and one ticket machine. Nobody is
+assigned a counter in advance: whoever is free calls the next number.
+A slow customer at one counter doesn't hold up the queue. And the
+letters still leave in ticket order, because each is put in its own
+numbered tray.
+</Callout>
+
+## Threads that may borrow
+
+A **thread** is a second line of execution in the same program,
+sharing its memory; the operating system runs threads on different
+cores at once. `std::thread::scope` creates threads that may borrow
+the caller's local variables, because the scope joins every thread
+before it returns<Cite id="rust-std-thread-scope" />. The borrow rules
+of chapter 262 still hold across threads: many threads may share `&a`,
+but nothing can be changed through a shared reference unless the type
+is built for it. Two such types do the work here.
+
+The CLI's helper, from `crates/cli/src/main.rs` (adapted):
+
+```rust
+fn for_each_parallel<T: Send>(
+    n: usize,
+    jobs: usize,
+    f: impl Fn(usize) -> T + Sync,
+) -> Vec<T> {
+    let jobs = jobs.clamp(1, n.max(1));
+    if jobs == 1 {
+        return (0..n).map(f).collect();
+    }
+    let next = AtomicUsize::new(0);
+    let slots: Mutex<Vec<Option<T>>> =
+        Mutex::new(empty(n));
+    thread::scope(|s| {
+        for _ in 0..jobs {
+            s.spawn(|| loop {
+                let k = next.fetch_add(
+                    1, Ordering::Relaxed);
+                if k >= n {
+                    break;
+                }
+                let r = f(k);
+                slots.lock().expect("...")
+                    [k] = Some(r);
+            });
+        }
+    });
+    let v = slots.into_inner()
+        .expect("...");
+    v.into_iter()
+        .map(|r| r.expect("..."))
+        .collect()
+}
+```
+
+`empty(n)` stands for `n` `None`s. `T: Send` says a result may be moved
+to another thread, and `f: Sync` that `f` may be called from several
+at once.
+
+<Prompts ids={['dp-scope', 'dp-send-sync', 'dp-one-job']} />
+
+## One counter, numbered slots
+
+<WorkSteps client:visible />
+
+`fetch_add(1)` adds one and returns the previous value, as one
+indivisible step<Cite id="rust-std-atomic-fetch-add" />, so two threads
+can never draw the same index. `Relaxed` is the weakest ordering, and
+enough here: the counter only hands out numbers. The results travel
+through the `Mutex`, which lets one thread at a time reach the vector
+<Cite id="rust-std-mutex" />, and the main thread reads them only after
+the scope has joined every thread.
+
+Each result goes into slot `k`, so `into_inner` gives them back in
+input order whatever order they finished in. That makes the output
+**deterministic**: `multi_file.rs` checks that `explain a.js b.js ...`
+prints the same bytes with `--jobs` 1, 3 and 16, and the measurement checked
+`--jobs 1` against `--jobs 4` with `diff -r`.
+
+<Callout kind="definition">
+**Data parallelism** splits work into independent pieces, here one file
+each, and runs the same operation on many pieces at once on different
+cores. The pieces share no state; only the hand-out (an **atomic
+counter**) and the collection of results (one **slot** per piece) are
+shared, which keeps the output identical for any number of threads.
+</Callout>
+
+<Prompts ids={['dp-fetch-add', 'dp-relaxed', 'dp-order', 'dp-dynamic']} />
+
+## When one file goes wrong
+
+A file that fails to compile is just an `Err` in its slot. For a
+`bad.js` holding `const ps = [;`, the main loop prints
+`viscosity: bad.js: Unexpected token (1:12)`,
+prints the others, and returns `Ok(false)`, which `main` turns into exit
+status 1.
+
+A panic is a bug in the compiler, and with 396 files it should cost one
+file, not the run. `compile_file` wraps the compiler in
+`std::panic::catch_unwind`, which turns an unwinding panic into an
+`Err`<Cite id="rust-std-catch-unwind" />. The file is reported as
+`internal error: the compiler panicked (see above)`; "above" is the
+panic message, which Rust's panic hook has already printed to stderr.
+Because the panic is caught inside `f`, no thread ever panics while it
+holds the lock, so the `expect` on `lock()` can't fire. Here is the
+whole pattern, with a stand-in compiler:
+
+<Run id="panic-costs-one" />
+
+<Prompts ids={['dp-fail', 'dp-panic']} />
+
+## Reading the numbers
+
+From the results file, 396 files, best of 11 (median in parentheses),
+in milliseconds (wrapped):
+
+```
+                1 thread     4 threads
+build, tmpfs    40.0 (45.2)  13.5 (14.9)
+build, disk    105.3 (109.6) 85.1 (98.8)
+explain         34.6 (36.5)  18.1 (20.9)
+```
+
+Three readings, all from the file:
+
+- **tmpfs: 2.95×.** Not 4×, because the machine was busy (load average 2
+  to 3.5 on 4 CPUs), and because some of the run is serial: starting
+  the process, reading the arguments, creating the directory, printing
+  in order.
+- **disk: 1.24×.** Creating 396 files costs about 65 ms whatever the
+  thread count: the virtual disk serializes file creation. Threads
+  shrink the rest, which is about the tmpfs time, but not those 65 ms.
+- **explain: 1.9×**, and 2.15× at 3 threads. All of its output is
+  printed by the main thread after the workers finish.
+
+With 1,584 files on tmpfs, `build` peaked at 2.5× with 3 threads. For a
+handful of files none of this matters: the results file finds the
+default as fast as `--jobs 1` there. The TypeScript CLI takes the
+same arguments and compiles one file at a time.
+
+<Prompts ids={['dp-disk', 'dp-explain']} />
+
+<Callout kind="engine" label="Under the hood">
+The default `--jobs` is `std::thread::available_parallelism()`, "an
+estimate of the default amount of parallelism a program should use".
+Its documentation says it does not account for "current system load"
+and "may overcount the amount of parallelism available when running in
+a VM with CPU usage limits"<Cite id="rust-std-available-parallelism" />:
+the situation these measurements were taken in. The shared counter
+keeps that from hurting much. A thread that gets little CPU simply
+takes fewer files.
+</Callout>
+
+## Your turn
+
+<Exercise id="parMap" />
+
+## What you learned
+
+- Separate files are **data-parallel**: same work, no shared state, one
+  thread per core.
+- `thread::scope` lets threads **borrow**; `fetch_add` hands out each
+  index **once**; a `Mutex` guards the **slots**.
+- Slots in input order make the output **deterministic** for any
+  `--jobs`. A failing file is an `Err`; a **panic** costs one file.
+- 2.95× to tmpfs, but 1.24× to disk: the **serial** part, there file
+  creation, caps the speed-up.
+
+<Quiz />

@@ -288,5 +288,17 @@ export const RENUMBERINGS = [
   {
     "after": 15,
     "by": 1
+  },
+  {
+    "after": 298,
+    "by": 1
+  },
+  {
+    "after": 123,
+    "by": 1
+  },
+  {
+    "after": 100,
+    "by": 1
   }
 ];

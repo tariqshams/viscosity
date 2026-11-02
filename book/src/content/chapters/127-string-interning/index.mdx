@@ -1,0 +1,191 @@
+---
+n: 127
+day: 32
+part: IV
+title: 'String interning'
+tagline: 'Two strings built in completely different ways turn out to be the same object. That one rule lets the VM compare strings, and look up names, with a single ===.'
+objectives:
+  - Explain interning, and why it lets equal strings be compared by identity.
+  - Trace copyString and findString through the VM’s string table.
+  - Weigh what interning costs against what it saves.
+  - Build an interner, and the lookup that compares hashes before characters.
+introduces: [interning]
+uses: [hash-function, hash-table, open-addressing, load-factor, heap-object, object-list, tagged-value, value-representation, constant-pool, chunk, single-pass-compiler, virtual-machine, stack-machine, dispatch-loop, opcode, identity, reference, aliasing, map, set, hash-intuition, string-building, global-variable, literal, identifier, interface, typescript, object, property, class, method, this, constructor, new, function, return, if, for-loop, comparison, numbers, strings, booleans, console-log, drip, interpreter-overhead]
+sources: [nystrom2021, python-sys-intern, openjdk-string-intern]
+---
+import InternSteps from '../../../components/diagrams/ch127/InternSteps';
+
+## Two strings, one object
+
+Chapter 126 left a loose thread. The table compares keys with `k === key`,
+and `OP_EQUAL` in chapter 123 was `a === b`. For objects, `===` asks
+“the same object?”, not “the same characters?” (chapter 7). Yet:
+
+```
+let a = "ab";
+let b = "a" + "b";
+print a == b; // true
+```
+
+`a` is a literal, made by the compiler. `b` is built at runtime by
+`OP_ADD`. Chapter 124 said every concatenation allocates a new object. So
+how can they be the same object?
+
+They can because chapter 124 told a small lie. `copyString` doesn’t always
+allocate.
+
+## Interning
+
+<Callout kind="intuition">
+A conference desk handing out name badges. Before printing a badge, the
+clerk checks the box of badges already printed. If there’s one that
+says “Ada Lovelace”, you get that one. Every person called Ada Lovelace
+wears the same badge, so checking whether two people have the same name
+is as quick as checking whether they’re wearing the same badge.
+</Callout>
+
+Here is the real `copyString`, in `vm/heap.ts`:
+
+```ts
+copyString(chars: string): ObjString {
+  const hash = hashString(chars);
+  const interned =
+    this.strings.findString(chars, hash);
+  if (interned) return interned;
+  const s = this.allocate<ObjString>({
+    type: 'string', chars, hash,
+    isMarked: false, next: null,
+  });
+  this.push(s);
+  this.strings.set(s, null);
+  this.pop();
+  return s;
+}
+```
+
+`heap.strings` is a `Table` from chapter 126, used as a set: the keys are
+every string the VM has made, and the values are all `null`. Before
+making a string, `copyString` asks the set for one with the same
+characters. Only if there is none does it allocate, and then the new
+string goes into the set, so the next request finds it. (The `push` and
+`pop` keep `s` on the stack, safe from the collector, while it is being
+added.)
+
+Every string in the VM is made by `copyString`: literals, names,
+concatenations. So there is never more than one object with the same
+characters.
+
+<InternSteps client:visible />
+
+<Callout kind="definition">
+**Interning** keeps exactly one copy of each distinct string. Every
+request for a string first looks in a table of existing strings, the
+**intern table** (here `heap.strings`), and returns the existing object
+if there is one. Because equal strings are then always the same object,
+string equality becomes **identity**: a single `===` on references.
+</Callout>
+
+<Prompts ids={['intern-what', 'copy-lookup-first', 'concat-no-alloc', 'equal-identity']} />
+
+## Finding a string by its characters
+
+There is a catch. `Table.find` compares keys by identity, but that’s
+exactly what you can’t do yet: you are holding characters, not an
+object. So the table has a second lookup, the only place in the whole
+VM that compares a string’s characters:
+
+```ts
+findString(chars: string, hash: number) {
+  if (this.count === 0) return null;
+  const mask = this.keys.length - 1;
+  let index = hash & mask;
+  for (;;) {
+    const k = this.keys[index];
+    if (k === null) {
+      if (this.values[index] === null) {
+        return null;
+      }
+    } else if (k.hash === hash &&
+        k.chars === chars) {
+      return k;
+    }
+    index = (index + 1) & mask;
+  }
+}
+```
+
+The probing is the same as chapter 126’s. The difference is the test.
+`k.hash === hash` is a cheap number comparison that rules out almost
+every wrong string. Only when the hashes match are the characters
+compared, and that will nearly always be the right string. A tombstone
+(key `null`, value not `null`) is stepped over, as before.
+
+<Run id="intern-vm" />
+
+<Prompts ids={['findstring-chars', 'hash-first', 'table-as-set']} />
+
+## What it costs, what it buys
+
+Interning moves work around. It doesn’t remove it.
+
+**Making a string costs more.** Every new string, including every
+concatenation, is hashed in full and looked up before it exists. A loop
+that builds a long string piece by piece pays that on every step.
+
+**Using a string costs less.** `==` on strings is one comparison, however
+long they are. Every global variable lookup (chapter 128), field access
+and method call looks a name up in a table, and those compare keys with
+`===` too. Programs make a string once and compare or look it up many
+times, so this is usually a good trade. It also saves memory: a thousand
+copies of `"name"` are one object.
+
+The intern table has one more duty. If it kept every string alive, no
+string could ever be freed. So it holds strings **weakly**: during a
+collection, `removeWhite` turns every entry whose string nothing else
+reached into a tombstone, just before the sweep frees it (chapter 133).
+
+<Prompts ids={['intern-cost', 'weak-table']} />
+
+<Callout kind="engine" label="Under the hood">
+Interning is everywhere. Python’s `sys.intern` enters a string in a
+table of interned strings; its documentation says names in Python
+programs are interned automatically, and that with interned keys a
+dictionary’s key comparisons, after hashing, can be a pointer compare
+instead of a string compare<Cite id="python-sys-intern" />. Java interns
+every string literal, and `s.intern() == t.intern()` holds exactly when
+`s` and `t` have equal contents<Cite id="openjdk-string-intern" />. The
+companion VM follows clox, which interns every string it
+makes<Cite id="nystrom2021" />.
+
+Interning shares objects, not constant-pool slots. The compiler still
+adds a new constant every time a name appears, all pointing at the
+same object. That is why chapter 107’s `string_equality` benchmark
+couldn’t run on the VM: it mentions its eight variables hundreds of
+times, and the chunk ran out of its 256 constants.
+</Callout>
+
+<Prompts ids={['constants-dup']} />
+
+## Your turn
+
+<Exercise id="interner" />
+
+<Exercise id="findStr" />
+
+## What you learned
+
+- **Interning** keeps one object per distinct string, so equal strings
+  are identical and `==` is a single `===`.
+- `copyString` hashes the characters and asks the intern table first.
+  It allocates only for a string it has never seen.
+- `findString` is the one place characters are compared, and only after
+  the hashes match.
+- The trade: every new string pays a hash and a lookup, so every later
+  comparison and name lookup is a pointer check.
+- The intern table holds strings weakly: unreachable strings leave it
+  before they are freed.
+
+That’s Day 13. Next, the VM puts its tables to work: global variables,
+found by name.
+
+<Quiz />

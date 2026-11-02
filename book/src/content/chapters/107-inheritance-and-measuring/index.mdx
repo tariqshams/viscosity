@@ -1,0 +1,258 @@
+---
+n: 107
+day: 27
+part: III
+title: 'Inheritance, and measuring the tree-walker'
+tagline: 'Drip gets its last feature, a class that builds on another class. Then you time the finished interpreter against a bytecode VM, and see why walking a tree is slow.'
+objectives:
+  - Explain how a Drip method call finds an inherited method through the superclass chain.
+  - Trace a super call, and explain why super is stored in an environment instead of found through this.
+  - Read the tree-walker vs VM benchmark honestly, including the rows that aren’t speed measurements.
+  - Name three sources of a tree-walker’s overhead and connect them to Part II.
+introduces: [inheritance, super, interpreter-overhead]
+uses: [drip-class, field, bound-method, resolver, scope-depth, static-analysis, captured-environment, environment, scope-chain, closure, callable, runtime-error, syntax-error, ast, ast-node, evaluate, tree-walking-interpreter, compiler, return-unwinding, host-stack, drip, class, instance, this, method, map, hash-intuition, pointer, memory, latency, pointer-chasing, jit-warmup, benchmark-isolation, recursion, throw, try-catch, function, call, return, variables]
+sources: [nystrom2021, slotin-amh-latency, mdn-map, v8-maglev]
+---
+import SuperSteps from '../../../components/diagrams/ch107/SuperSteps';
+import BenchChart from '../../../components/diagrams/ch107/BenchChart';
+
+## A dog is an animal
+
+```
+class Animal {
+  init(name) { this.name = name; }
+  speak() {
+    print this.name + " makes a sound";
+  }
+}
+
+class Dog < Animal {
+  speak() {
+    super.speak();
+    print this.name + " barks";
+  }
+}
+
+Dog("Rex").speak();
+// Rex makes a sound
+// Rex barks
+```
+
+`Dog` has no `init`, yet `Dog("Rex")` sets `name`. And `Dog`'s `speak`
+replaces `Animal`'s, but can still call it.
+
+## Inheritance: one more place to look
+
+<Callout kind="intuition">
+A family recipe book. If your own notebook doesn't have a recipe, you
+check your parent's book, then your grandparent's. A recipe in your own
+notebook wins over the older one with the same name.
+</Callout>
+
+`class Dog < Animal` stores `Animal` as `Dog`'s superclass. Finding a
+method then becomes a walk up that chain:
+
+```ts
+findMethod(name: string) {
+  return this.methods.get(name)
+    ?? this.superclass?.findMethod(name);
+}
+```
+
+That's all inheritance needs. `Dog("Rex")` finds `init` in `Animal`
+and binds it to the new `Dog` instance.
+
+The superclass is an ordinary expression, evaluated when the `class`
+statement runs, so it has to hold a class: `let A = "x"; class B < A {}`
+fails at runtime with `Superclass must be a class.` One mistake is caught
+earlier: `class A < A {}` is a resolver error, `A class can't inherit
+from itself.`
+
+<Callout kind="definition">
+**Inheritance** lets a class reuse another class's methods. The class
+it builds on is its **superclass**. Looking a method up checks the
+class's own methods first and then walks the superclass chain, so a
+subclass **overrides** a method by defining one with the same name.
+</Callout>
+
+<Prompts ids={['find-walk', 'override', 'super-must-be-class']} />
+
+## super: decided where it's written
+
+`super.speak()` means "the `speak` above the class this method was
+written in", called on the same `this`. A tempting shortcut is to take
+`this`'s class and ask for its superclass. It breaks with three levels:
+
+```
+class A { m() { print "A.m"; } }
+class B < A {
+  m() { print "B.m"; super.m(); }
+}
+class C < B {}
+C().m();
+```
+
+Running `C().m()` reaches `B.m` with `this` a `C` instance. "The
+superclass of `this`'s class" is `B`, so `super.m()` would call `B.m`
+again, which would call `B.m` again, until the stack overflows. The
+right answer, `A`, depends on where the method was *written*. That's
+lexical scope again, so the interpreter uses the same trick it used for
+`this`: an environment. When a class with a superclass is declared, it
+wraps the methods in one holding `super`:
+
+```ts
+if (sup) {
+  this.env = new Environment(this.env);
+  this.env.define('super', sup);
+}
+// ...methods capture this.env...
+if (sup) this.env = this.env.enclosing!;
+```
+
+The resolver adds a matching scope, so `super` gets a distance like any
+variable, and `this` is always exactly one environment closer:
+
+```ts
+case 'super': {
+  const d = this.locals.get(e)!;
+  const sup = this.env.getAt(d, 'super');
+  const me = this.env.getAt(d - 1, 'this');
+  const m = sup.findMethod(e.method.lexeme);
+  if (!m) throw new RuntimeError(/*...*/);
+  return m.bind(me);
+}
+```
+
+<SuperSteps client:visible />
+
+<Callout kind="definition">
+**`super.name`** finds the method `name` starting from the superclass of
+the class the current method was *written in*, and binds it to the
+current `this`. Drip stores that superclass in an environment created
+when the subclass is declared, so it is found by scope depth, like any
+variable. Using `super` outside a class, or in a class with no
+superclass, is a resolver error.
+</Callout>
+
+<Run id="animals" />
+
+<Prompts ids={['why-not-this-class', 'super-env', 'super-this-distance']} />
+
+## Measuring the tree-walker
+
+Drip is finished. How fast is it? The companion code has a second Drip
+implementation, the bytecode VM you'll build in Part IV, and a harness
+that runs both on the benchmark programs in `corpus/benchmark/`
+(adapted, like the whole test corpus, from *Crafting
+Interpreters*<Cite id="nystrom2021" />). `fib` computes `fib(35)`
+recursively; `zoo` and `method_call` call methods in loops.
+
+The harness starts a fresh Node process for each program and engine,
+and times the whole `run(src)`: scanning, parsing, resolving and
+running. These numbers are from this book's benchmark run, in
+`companion/ts/results/drip-bench-2026-10-31.md`: Node 22.23.4 on a
+shared cloud VM, and the file records **one** run per program. By
+chapter 61's standards, that's a first look, not a verdict.
+
+<BenchChart />
+
+Read it carefully:
+
+- **Most programs** run several times faster on the VM. The biggest wins
+  are on programs full of calls, fields and methods.
+- **`zoo_batch` isn't a speed measurement.** It loops until 10 seconds of
+  clock time have passed, then prints how many batches it finished. Both
+  engines take about 10 seconds by design. The useful number is the batch
+  count, and the results file doesn't record it.
+- **`string_equality` has no VM time.** The VM refused to compile it: its
+  bytecode allows at most 256 constants per chunk, and this program has
+  more. A limit, not a slowness.
+- **`instantiation` and `equality`** came out *slower* on the VM. A
+  faster design isn't faster at everything, and one run on a shared
+  machine can't tell you why. Part IV looks closer.
+
+<Prompts ids={['zoo-batch', 'one-run']} />
+
+## Why walking a tree is slow
+
+Take one tiny piece of `fib`: `n - 2`. The CPU can subtract in a single
+instruction. Here's what the tree-walker does:
+
+```text
+evaluate(binary)           switch on kind
+  evaluate(variable n)     switch on kind
+    lookUp: locals.get(node)    Map lookup
+    getAt(0): ancestor loop
+    values.get("n")             Map lookup
+  evaluate(literal 2)      switch on kind
+  nums(...)                type checks
+  subtract                 the real work
+```
+
+Three recursive calls, three dispatches on `kind`, two hash-map lookups
+and two type checks, for one subtraction. That surrounding bookkeeping is
+the interpreter's overhead, and there are three big sources of it.
+
+**Dispatch on every node.** Each node costs a call and a `switch` to
+find out what it is, every time it runs, though the answer never
+changes.
+
+**Pointer-chasing.** The tree is a web of separate objects joined by
+references, and so is the environment chain. Each step loads the next
+pointer, and the step after can't start until that load arrives. That's
+chapter 54's pointer-chasing: dependent loads are far slower than
+walking an array in order<Cite id="slotin-amh-latency" />.
+
+**Environments made of Maps.** Every variable read is at least one hash
+lookup, by name (globals take two, `has` then `get`). Map lookups are
+fast for a general table<Cite id="mdn-map" />, but nothing like reading
+a value at a known position. And every call allocates a new
+`Environment` with a new `Map`, every method read allocates a bound
+function plus another environment, and every `return` throws an object
+to unwind the host stack.
+
+<Callout kind="definition">
+**Interpreter overhead** is the work an interpreter does that the
+program didn't ask for: dispatching on node kinds, following pointers
+between nodes and environments, looking names up in tables, allocating
+environments and checking types. In a tree-walker it often costs far
+more than the operations themselves.
+</Callout>
+
+<Prompts ids={['overhead-what', 'n-minus-2', 'chase']} />
+
+<Callout kind="engine" label="Under the hood">
+Part IV attacks each source. The tree becomes **bytecode**: a flat array
+of small instructions, read in order. Locals live in numbered stack
+slots instead of Maps, so the resolver's distances become slot numbers.
+A `return` just pops a frame; nothing is thrown. Engines took the same
+road: V8 runs your JavaScript first in Ignition, a bytecode interpreter,
+before its faster tiers take over hot code<Cite id="v8-maglev" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="square" />
+
+<Exercise id="countVisits" />
+
+## What you learned
+
+- **Inheritance**: `class B < A` makes `A` the superclass, and
+  `findMethod` walks up the chain. A subclass overrides by reusing a
+  name.
+- **`super`** is decided by where a method is written. Drip keeps the
+  superclass in an environment made at class declaration, so `super` is
+  found by scope depth, and `this` is one environment closer.
+- The VM beat the tree-walker on most benchmark programs, in one run on
+  one machine. `zoo_batch` runs for a fixed time, so its time says
+  nothing about speed.
+- **Interpreter overhead**: node dispatch, pointer-chasing through the
+  tree and environments, and Map-based environments that allocate on
+  every call.
+
+That's Drip: a whole language, about a thousand lines of TypeScript.
+Next, Part IV rebuilds it as a compiler and a virtual machine, and
+removes that overhead one piece at a time.
+
+<Quiz />

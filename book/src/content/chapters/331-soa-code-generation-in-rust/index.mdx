@@ -1,0 +1,250 @@
+---
+n: 331
+day: 83
+part: XIII
+title: 'SoA code generation in Rust'
+tagline: 'The emitter writes a container class, picks column names that can never clash, and rewrites every field access, with a bounds check where nothing was proven. A fuzzer showed that a write is subtler than it looks: the check, the right-hand side and the store must happen in JavaScript’s order.'
+objectives:
+  - Explain how emit.rs names container classes and columns so that nothing clashes.
+  - Describe the bounds-check helper, and the order in which JavaScript evaluates a field write.
+  - Explain the two fuzzer-found bugs and how __vsc_bk, __vsc_set and __vsc_seta fix them.
+  - Implement column_names, with tests.
+introduces: [rust-soa-codegen]
+uses: [viscosity-rs, rust-codegen, rust-access-pass, rust-cost-model, cross-implementation-tests, soa-container, column-storage, access-rewriting, capacity, amortized-growth, typed-array, fuzzing, differential-testing, end-to-end-benchmark, hashmap, vec, string-vs-str, rust-closure, rust-iterator, borrow, shared-vs-mutable, borrow-checker, enum, match, throw, try-catch, error-object, test-corpus]
+sources: [ecma262-assignment-order, rustc-e0499]
+---
+import LateStoreSteps from '../../../components/diagrams/ch331/LateStoreSteps';
+
+## A write that ran too early
+
+`write_rhs_first.js` is in the corpus because a fuzzer wrote a program
+like it. Its middle part (wrapped):
+
+```js
+try {
+  for (let i = 0; i <= ps.length; i++)
+    ps[i].x = ps[i].y;
+} catch (e) {
+  console.log('caught', e.message);
+}
+let t = 0;
+try {
+  ps[100].x = (t = 5);
+} catch (e) {
+  console.log('caught', e.message, t);
+}
+```
+
+`ps` has 100 elements, so both writes go out of bounds. Here is what
+node prints for the original, and for the emitter's output before the
+fix (reproduced on a copy of engine/rust with the new branch turned
+off):
+
+```
+original:
+  caught Cannot read properties of
+    undefined (reading 'y')
+  caught Cannot set properties of
+    undefined (setting 'x') 5
+before the fix:
+  caught Cannot set properties of
+    undefined (setting 'x')
+  caught Cannot set properties of
+    undefined (setting 'x') 0
+```
+
+The compiled program failed at the wrong moment: before the right-hand
+side ran. Before we see why, here is the rest of what `emit.rs` writes.
+
+<Callout kind="intuition">
+A waiter takes your order, goes to the kitchen, and only then walks to
+your table with the plate. If the table was moved while the food was
+cooking, he must look for it again, not set the plate down where it
+used to be.
+</Callout>
+
+## Classes and columns that never clash
+
+For each collection planned as SoA, `container_class` builds the class
+of chapter 216 with `format!` and `join`. Its name is `__Vsc_` plus the
+collection's name. Two collections can share a name in different
+functions, so the emitter numbers them, as `__Vsc_ps` and `__Vsc_ps_2`
+in `same_name_collections.js`:
+
+```rust
+let mut cls = format!("__Vsc_{}", c.name);
+let mut k = 2;
+while class_names.contains(&cls) {
+    cls = format!("__Vsc_{}_{k}", c.name);
+    k += 1;
+}
+class_names.insert(cls.clone());
+```
+
+Columns are properties of that class, so a field called `length` or
+`push` would overwrite the container's own members. `column_name`
+keeps a field name only if it is a plain ASCII identifier and not in a
+`RESERVED` list (`length`, `push`, `grow`, `of`, `constructor`,
+`prototype`, `get`, `cap`, `data`). Otherwise field number `i` becomes
+`f{i}_`. Then `column_names` makes the names unique: a renamed column
+gets `_` appended until it differs from every kept field name and every
+earlier column. `renamed_column_clash.js` has fields `length` and `f0_`,
+and its constructor (reformatted) shows both rules:
+
+```js
+constructor(cap = 16) {
+  this.length = 0; this.cap = cap;
+  this.f0__ = new Float64Array(cap);
+  this.f0_ = new Float64Array(cap);
+}
+```
+
+`length` became `f0_`, which a real field already uses, so `f0__`.
+
+<Prompts ids={['cg-numbered', 'cg-reserved', 'cg-unique']} />
+
+## Two orders of evaluation
+
+An access that wasn't proven in bounds goes through `__vsc_bc`
+(chapter 217), which returns the index or throws the original's
+`TypeError`. For reads that is enough. For writes, JavaScript's order
+matters. For `a = b`, the specification evaluates the left-hand side to
+a *reference*, then the right-hand side, then stores with `PutValue`,
+and only `PutValue` fails on an `undefined` base<Cite id="ecma262-assignment-order" />.
+So in the original, `ps[100].x = (t = 5)` runs `t = 5` before it
+throws.
+
+The rewritten left-hand side `ps.x[__vsc_bc(ps, 100, 'x', true)]` is
+evaluated *first*. That fetches the column and runs the check, so the
+check threw before `t = 5`. The same order caused a second bug: if the
+right-hand side pushes and the container grows, `grow()` replaces the
+typed column, and the store goes into the old one. Step through it:
+
+<LateStoreSteps client:visible />
+
+Rust wouldn't let you write the old emitter's order. Holding a column
+while growing its owner is two mutable borrows<Cite id="rustc-e0499" />:
+
+<Run id="grow-borrow" />
+
+JavaScript runs it, and loses the write.
+
+<Prompts ids={['cg-spec-order', 'cg-col-fetch', 'cg-rust-borrow']} />
+
+## Storing late
+
+The fix starts in the analysis. For each field write, it records what
+the rest of the assignment can do, as an `RhsEffect`: `Inert`,
+`MayThrow` (an unproven element read, say) or `Effects` (a call, an
+assignment). The emitter then picks the late form only when the order
+can be observed (adapted):
+
+```rust
+// ok: proven, or --bounds assume
+let typed = cp.layout == Layout::Aosoa
+    || c.numeric_fields.contains(&a.field);
+let late = write
+    && ((op == "=" && !ok
+        && a.rhs != RhsEffect::Inert)
+        || (typed
+          && a.rhs == RhsEffect::Effects));
+```
+
+An unproven write whose right side may throw or act needs the check
+after it. A typed column (or AoSoA's `data`) can be replaced by `grow()`
+only if the right side runs code. A plain column is an ordinary array
+that is never replaced, and inert right sides keep the cheap
+`col[i] = rhs`. The helpers (wrapped):
+
+```js
+function __vsc_bk(c, i) {
+  return i >>> 0 === i && i < c.length
+    ? i : NaN;
+}
+function __vsc_set(c, col, i, v, f) {
+  if (i !== i) throw new TypeError(
+    `Cannot set properties of undefined`
+    + ` (setting '${f}')`);
+  c[col][i] = v;
+  return v;
+}
+```
+
+`__vsc_bk` decides the bounds question before the right side runs, but
+answers `NaN` instead of throwing. `__vsc_set` throws after it, and
+fetches `c[col]` only then. `__vsc_seta` does the same for AoSoA's
+`data`. The loop above now compiles to (wrapped):
+
+```js
+__vsc_set(ps, 'x', __vsc_bk(ps, i),
+  ps.y[__vsc_bc(ps, i, 'y', false)],
+  'x');
+```
+
+and prints exactly what the original prints. A compound `+=` reads
+first in the original, so it keeps `__vsc_bc` with `false` ("reading")
+and saves the index in a scratch variable, `__vsc_k`:
+
+```js
+__vsc_set(ps, 'x',
+  __vsc_k = __vsc_bc(ps, 4, 'x', false),
+  ps.x[__vsc_k] + ((more(), 1)), 'x');
+```
+
+That line is from `write_rhs_grows.js`, which also grows an AoSoA
+collection inside `=` and `||=` (through `__vsc_seta`). Its two output
+lines, from node:
+
+```
+original, and after the fix:
+  130 77 6
+  335 9 4 4
+before the fix:
+  130 4 6
+  335 5 4 0
+```
+
+<Callout kind="definition">
+**SoA emission in Rust** (`emit.rs`) writes one **container class** per
+transformed collection (`__Vsc_name`, numbered on a clash), with
+**columns** named by `column_names` (renamed `f{i}_` when unsafe, then
+made unique), and rewrites each access. Unproven accesses use
+**`__vsc_bc`**. A write whose order can be observed (an unproven index
+with a right side that may throw or act, or a typed column with a right
+side that runs code) is **stored late** through **`__vsc_bk`** and
+**`__vsc_set`/`__vsc_seta`**: the bounds check is decided before the
+right-hand side, the store happens after it, into the current column.
+</Callout>
+
+<Prompts ids={['cg-rhs-effect', 'cg-bk-nan']} />
+
+<Callout kind="engine" label="Under the hood">
+The late form costs a call, and it reached a benchmark: in `heat.js`,
+`c[i].next = c[i].h + …` has an unproven index and reads unproven
+elements on the right, so its hot store now goes through `__vsc_set`.
+The benchmark matrix in `engine/ts/packages/bench/results`
+(`matrix-2026-10-31.md`) was generated after the fix: its corpus table
+includes both new programs, and it reports that the Rust CLI's output
+is byte-identical to the TS engine's. There, heat was 4.11× faster than
+the original on Node (best of 9 fresh processes, a shared cloud VM).
+The earlier `e2e-node-2026-10-31.md` was measured before the fix, so it
+says nothing about the new code. The fuzzer's fixed-seed run now ends
+`fuzz: seed 1, 300 programs (144 transformed, 174 may go out of
+bounds), 0 failing, 3.6 s` on my run.
+</Callout>
+
+## Your turn
+
+<Exercise id="columnNames" />
+
+## What you learned
+
+- Container classes are **numbered** (`__Vsc_ps_2`) when names repeat.
+- Columns keep the field name unless it is **reserved** or not a plain
+  identifier, then become `f{i}_`, extended with `_` until **unique**.
+- JavaScript evaluates a write's **left reference first**, then the
+  right-hand side, then **stores**.
+- The analysis classifies each write's **`RhsEffect`**. Observable
+  orders are **stored late**: `__vsc_bk` before, `__vsc_set` after.
+
+<Quiz />

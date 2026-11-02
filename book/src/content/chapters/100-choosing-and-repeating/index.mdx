@@ -147,7 +147,7 @@ the language already has. The convenient form is **syntactic sugar**.
 Drip's parser desugars `for` into a block containing the initializer
 and a `while` loop whose body is a block of the original body and the
 increment. Every pass that walks the tree afterwards (the interpreter,
-and the resolver of chapter 104) gets `for` loops for free.
+and the resolver of chapter 105) gets `for` loops for free.
 </Callout>
 
 <Callout kind="pitfall">
@@ -207,7 +207,7 @@ happen.
 <Callout kind="engine" label="Under the hood">
 The tree-walker gets its control flow for free by borrowing
 TypeScript's `if` and `while`. The bytecode VM in Part IV can't: it
-runs a flat list of instructions with no nesting at all. In chapter 128
+runs a flat list of instructions with no nesting at all. In chapter 130
 its compiler turns `if`, `while`, `for`, `and` and `or` into
 **jumps**: instructions that say "if the value on top of the stack is
 falsey, continue at instruction 42". Short-circuiting is then just a

@@ -1,0 +1,286 @@
+---
+n: 136
+day: 34
+part: V
+title: 'The V8 pipeline'
+tagline: 'Your Drip VM runs a function the same way on its first call and its millionth; V8 does not, and with one flag you can watch the same function change how it runs, more than once, in a single program.'
+objectives:
+  - Explain why an engine starts every function in an interpreter and compiles only the code that turns out to be hot.
+  - Say what makes a compiler a JIT compiler, and what it knows that an ahead-of-time compiler cannot.
+  - Predict which functions in a small program V8 will optimize, and check the guess with --trace-opt.
+  - Explain warm-up, and why timing only the first calls of a function measures the wrong thing.
+introduces: [tiering, jit-compiler]
+uses: [bytecode, opcode, virtual-machine, interpreter, compiler, compiler-pipeline, dispatch-loop, interpreter-overhead, stack-machine, disassembler, register, cpu, branch-prediction, smi, jit-warmup, single-pass-compiler, call-frame, drip, function, call, parameter, return, for-loop]
+sources: [v8-ignition, v8-launch-ignition-turbofan, v8-sparkplug, v8-maglev, v8-src-tiering-12-4, v8-src-interpreter-12-4, v8-leaving-sea-of-nodes]
+---
+import TierSteps from '../../../components/diagrams/ch136/TierSteps';
+import AotVsJit from '../../../components/diagrams/ch136/AotVsJit';
+
+## The same function, three ways
+
+Part IV ended with a virtual machine that runs every function the same
+way, whether it runs once or a million times. The engine running this page
+works differently, and the quickest way to see it is to ask it: this
+program asks V8, after every call, *which kind of code is running `add`
+right now?* (The `%` functions are V8's internal helpers, which Node only
+lets you call with the flag `--allow-natives-syntax`.)
+
+```js
+// node --allow-natives-syntax tiers.js
+function add(a, b) { return a + b; }
+function tier(f) {
+  if (%ActiveTierIsTurbofan(f)) return 'TF';
+  if (%ActiveTierIsSparkplug(f))
+    return 'SP';
+  return 'Ignition';
+}
+let last = '', s = 0;
+for (let i = 1; i <= 1e5; i++) {
+  s = add(s, i);
+  const t = tier(add);
+  if (t !== last) console.log(i, t);
+  last = t;
+}
+```
+
+`tier` asks V8 two yes-or-no questions about `add` and turns the answers
+into a name (`TF` for TurboFan, `SP` for Sparkplug); the loop calls `add`
+a hundred thousand times and prints a line only when the answer
+*changes*. One real run:
+
+```
+Node v22.23.4, V8 12.4.254.21
+1 Ignition
+6256 SP
+10968 TF
+65536 SP
+76044 TF
+```
+
+The same one-line function ran in three different ways, and near call
+65,536 it went *back* before climbing again. (In my second run the
+TurboFan line moved, to 7,739, and the Sparkplug line stayed put.) By the
+end of the next chapter you will be able to explain every line.
+
+## Start cheap, spend on what is hot
+
+Here is the problem V8 faces. Most of the JavaScript on a web page runs a
+handful of times, or never (the settings dialog nobody opens today); a few
+functions, however, run millions of times, and they are where nearly all
+the time goes. Compiling *everything* to the fastest machine code before
+running would spend most of that effort, and memory, on code that hardly
+matters, and the page would start late.
+
+<Analogy title="a chalkboard menu">
+A new café does not print a glossy menu on its first day; it writes the
+dishes on a chalkboard, which is quick and easy to change, and once a dish
+keeps selling it earns a place on the printed menu. Effort goes where the
+demand turned out to be.
+<span slot="breaks">The café decides once; V8 keeps watching, and can take
+a function off its "printed menu" the moment the reason for promoting it
+stops being true.</span>
+</Analogy>
+
+<Analogy title="a path across a park">
+Planners sometimes leave a new park as grass and wait to see where people
+actually walk; the worn tracks show which routes deserve a paved path, and
+the corners nobody crosses stay grass.
+<span slot="breaks">Nobody can walk on a path while it is being paved; V8
+compiles a hot function on another thread while the program keeps
+running on the old code.</span>
+</Analogy>
+
+So V8 starts every function in the cheapest form that can run, and spends
+more on it only once it has proved **hot** (run often enough to matter).
+Step through the life of `add`:
+
+<TierSteps client:visible />
+
+<Callout kind="definition">
+**Tiering** is running each function in one of several **tiers**
+(ways of executing the same code, from cheap to start and slow, to costly
+to start and fast) and moving a function to a faster tier as it gets
+hot<Cite id="v8-ignition" />.
+</Callout>
+
+How does V8 decide that a function is hot? It does not count calls. In
+the V8 inside Node 22, each function gets a **budget**, and the
+interpreter charges it on every `return` and every backward jump of a
+loop, by the size of the bytecode it ran through. The budget for TurboFan
+is the function's bytecode length times 3000, and Maglev's works the same
+way with 400<Cite id="v8-src-tiering-12-4" /> (`node --v8-options` lists
+both, as `--invocation-count-for-turbofan` and `-for-maglev`). As such,
+hotness measures *work done*, not calls.
+
+<Formal title="When a function is hot enough for TurboFan (V8 12.4)">
+
+```text
+budget(f) = length(f) × 3000
+spent(f)  = Σ bytes of bytecode f ran
+spent(f) ≥ budget(f)  ⇒  optimize f
+```
+
+<span slot="read">The budget of f is its bytecode length times 3000.
+What f has spent is the sum (Σ, "add them all up") of the bytecode it has
+run. Once spent reaches budget, the arrow (⇒, "implies") says V8 marks f
+for optimization. The 3000 is a tuning knob of one version, not a
+law.</span>
+</Formal>
+
+<Examples of="tiering">
+
+```js
+// straight-line code: 6 bytes a call
+function add(a, b) { return a + b; }
+// 6256 Sparkplug, 10968 TurboFan
+```
+
+```js
+// a loop inside: thousands of bytes a call
+function total(n) {
+  let s = 0;
+  for (let i = 0; i < n; i++) s += i;
+  return s;
+}
+// called as total(1000):
+// 28 Sparkplug, 112 TurboFan
+```
+
+```js
+function make(n) {
+  const ps = [];
+  for (let i = 0; i < n; i++)
+    ps.push({ x: i, vx: 1 });
+  return ps;
+}
+function step(p) { p.x += p.vx; }
+const ps = make(1000);
+for (let t = 0; t < 100; t++)
+  for (const p of ps) step(p);
+// [marking … step …
+//   reason: hot and stable]
+// [compiling method …
+//   (target TURBOFAN) OSR]
+// (nothing at all for make)
+```
+
+</Examples>
+
+The first is `add` from the hook: each call runs six bytes of bytecode,
+so it takes thousands of calls to use up its budget. The second runs a
+thousand-step loop inside every call, and the same tier check shows it
+reaching Sparkplug after 28 calls and TurboFan after 112, exactly as the
+budget predicts. The third is a real program's shape: `make` builds a
+thousand particles once, and the loop calls `step` a hundred thousand
+times. `--trace-opt` prints a line whenever V8 marks or compiles a
+function, and only two things appear: `step`, and the top-level loop,
+compiled "OSR" (**on-stack replacement**, optimized code swapped in while
+the loop is still running<Cite id="v8-sparkplug" />). `make` ran once, so
+V8 never spent a moment on it.
+
+<Prompts ids={['tiering-what', 'why-not-all', 'budget', 'cold-never']} />
+
+## Compiling while the program runs
+
+Every compiler you have built finished before the program started:
+Drip's compiler turned the whole source into bytecode, and only then did
+the VM run it. That is **ahead-of-time** compiling. V8's upper tiers
+cannot work like that, because what they need (which functions are hot,
+and what values flow through them) only exists once the program runs.
+
+<Analogy title="a tailor">
+A suit off the rack is made ahead of time for an imagined, average
+customer; a tailor who has measured *you* can cut it closer. A JIT
+compiler is the tailor: it waits until it has seen the program run, then
+cuts the code to fit.
+<span slot="breaks">You stay the same shape for the fitting; a program can
+change its behaviour later, and then the "suit" no longer fits, which is
+why a JIT must check its assumptions and be ready to start again.</span>
+</Analogy>
+
+<Analogy title="a satnav that recalculates">
+A printed route is planned at home; a satnav plans while you drive,
+using what it sees right now (traffic, a closed road), while the car keeps
+moving.
+<span slot="breaks">A satnav that is slow to recalculate makes you miss
+the turn; when V8's compiler is slow, the program loses nothing but time,
+because the old code keeps running correctly until the new code is
+ready.</span>
+</Analogy>
+
+<Figure caption="Ahead of time, all the compiling happens before the first line runs. Just in time, the program starts at once in the interpreter, and hot functions are compiled on another thread while it keeps running." takeaway="A JIT compiles during the run, so it can use what the run has shown it.">
+  <AotVsJit />
+</Figure>
+
+<Callout kind="definition">
+A **JIT compiler** (just-in-time compiler) compiles code *while the
+program runs*, shortly before the compiled code is needed, rather than
+ahead of time. Because it runs during the program, it can use what the
+program has done so far, such as which functions are hot and which kinds
+of values they have seen, and it must compile fast, because its compile
+time is part of the program's running time.
+</Callout>
+
+<Examples of="jit-compiler">
+
+```
+// the same 10-million-call loop
+$ node jl.js
+10000000 12 ms
+$ node --jitless jl.js
+10000000 302 ms
+```
+
+```
+// node --trace-opt tiers.js, trimmed
+1 Ignition
+[marking … add … for optimization
+  to TURBOFAN, ConcurrencyMode::
+  kConcurrent, reason: hot and stable]
+[compiling method … add …]
+7342 SP
+```
+
+<Run id="warmup" />
+
+</Examples>
+
+The first times ten million calls of `add`, normally and with
+`--jitless`, a flag that turns every compiler to machine code off (one run
+on my machine; yours will differ, but the gap will not go away).
+The second mixes the program's output with V8's: between `1 Ignition` and
+`7342 SP`, V8 decided `add` was "hot and stable" and began
+compiling it, and `ConcurrencyMode::kConcurrent` says that ran on another
+thread while the loop carried on. The third times five rounds of the same
+work, and the first is often slowest, because its calls run before the
+JIT has done its work. That is **warm-up**, and it is why timing one cold
+round measures the interpreter, not the compiled code.
+
+<Prompts ids={['jit-what', 'jit-knows', 'jit-background', 'jitless']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity is an ahead-of-time compiler: it rewrites your source before V8
+sees it, so its output goes through these same tiers, and a fair
+benchmark of it must wait out the same warm-up.
+</Callout>
+
+## Your turn
+
+<Exercise id="tierUp" />
+
+<Exercise id="budgetTier" />
+
+## What you learned
+
+- **Tiering** starts every function in the cheapest tier and moves hot
+  ones to faster tiers; most code never leaves the bottom.
+- In V8 12.4, hotness is a **budget** of bytecode run, not a count of
+  calls; the numbers change between versions.
+- A **JIT compiler** compiles while the program runs, using what the run
+  has shown it; **warm-up** is the time before its code arrives.
+
+Next: the tiers themselves, from the interpreter at the bottom (whose
+bytecode you can print and compare with Drip's) to the compiler at the
+top, and why `add` fell back down near call 65,536.
+
+<Quiz />

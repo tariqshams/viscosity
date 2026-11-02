@@ -1,0 +1,207 @@
+---
+n: 219
+day: 55
+part: VIII
+title: 'Identity and materialization'
+tagline: 'Once elements become slots in columns, an element that escapes needs an object again. Here is what it would take to fake one honestly, and why Viscosity says no instead.'
+objectives:
+  - Explain why materializing a fresh object per access breaks aliasing and identity.
+  - Design a handle that keeps aliasing correct, and a handle cache that keeps === correct.
+  - List what a handle still gets wrong, and what each fix costs.
+  - Explain why Viscosity refuses collections whose elements escape, using its real explanations and this book’s measurements.
+introduces: [handle, identity-preservation]
+uses: [reference, aliasing, identity, mutation, object, class, constructor, this, try-catch, materialization, escape-analysis, escape-sites, scalar-replacement, inlining, safety-analysis, bailout, soa-container, column-storage, access-rewriting, capacity]
+sources: [mdn-equality, v8-maglev]
+---
+import HandleSteps from '../../../components/diagrams/ch219/HandleSteps';
+import BenchBars from '../../../components/bench/BenchBars';
+import Playground from '../../../components/playground/Playground';
+
+## Two names, one particle
+
+Here is `aliasing_identity.js` from Viscosity’s test corpus:
+
+```js
+const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i });
+const keep = [];
+for (let i = 0; i < ps.length; i++)
+  keep.push(ps[i]);
+keep[0].x = 42;
+console.log(ps[0].x, keep[0] === ps[0]);
+```
+
+It prints `42 true`. `keep[0]` and `ps[0]` are two references to one object
+(chapter 7), so a write through one is seen through the other, and `===`
+says they are the same<Cite id="mdn-equality" />. Now imagine `ps` as
+columns. There is no object for `keep` to hold. What could the compiler
+put there?
+
+<Callout kind="intuition">
+A hotel stores luggage in numbered cubbies, not in the guests’ rooms. A
+guest who wants their bag can get a copy of everything in it (but then
+changes don’t reach the cubby), or a claim ticket that says “cubby 0”.
+Tickets work, as long as everyone holding the same bag holds the *same*
+ticket.
+</Callout>
+
+## Copies break aliasing
+
+The easy answer is chapter 59’s materialization: build a fresh object from
+the columns every time the program asks for `ps[i]`. Run both versions:
+
+<Run id="copies" />
+
+The copy is a snapshot. The write `k2[0].x = 42` changes the snapshot, not
+the column, so the next read sees 0. And every call makes a new object, so
+`===` is false. The program can tell the layout changed, twice.
+
+<Prompts ids={['im-snapshot', 'im-two-bugs']} />
+
+## Handles
+
+The fix for aliasing is to hand out something that *refers* to the element
+instead of copying it. Step through it:
+
+<HandleSteps client:visible />
+
+```js
+class H {
+  constructor(c, i) {
+    this.c = c;
+    this.i = i;
+  }
+  get x() { return this.c.x[this.i]; }
+  set x(v) { this.c.x[this.i] = v; }
+}
+```
+
+`get x()` and `set x(v)` are accessors: reading `h.x` calls the first, and
+assigning `h.x = v` calls the second. So every read and write goes to the
+column, and the value lives in one place.
+
+<Callout kind="definition">
+A **handle** is a small object that stands for one element of a
+collection. It holds the collection and an index, and its fields are
+accessors that read and write the columns. Handles keep aliasing correct:
+writes through any handle are seen by every other path to the element.
+</Callout>
+
+Notice what the handle holds: the container `c`, not the column `c.x`.
+Chapter 218’s `grow()` replaces each column with a bigger one. A handle
+that had saved the old column would keep reading an array that nothing
+writes to any more.
+
+<Prompts ids={['im-handle', 'im-holds-container', 'im-accessor']} />
+
+## Keeping identity
+
+Two handles for element 0 are still two objects. To make `===` behave,
+the container must hand out the *same* handle every time, so it keeps a
+cache: one slot per index, filled the first time that index is asked for.
+
+<Run id="handles" />
+
+<Callout kind="definition">
+**Identity preservation** means keeping `===` and aliasing exactly as the
+original program had them after a layout change. For handles that takes
+a cache with at most one handle per element, so that asking for the same
+element twice gives the same object.
+</Callout>
+
+The run also shows what is still wrong. `Object.keys` sees `c` and `i`,
+not `x`. `JSON.stringify` doesn’t print `{"x":42}`: here it throws,
+because the handle points at the container, which points back at its
+cache. Spreading (`{ ...h }`), `console.log` and the object’s prototype
+all differ too. A
+real handle mode would have to emulate each one, with a different handle
+class for every record shape.
+
+<Prompts ids={['im-identity', 'im-cache-cost', 'im-printing']} />
+
+## What Viscosity actually does
+
+Viscosity has no handle mode. When an element escapes, it keeps the array
+of objects and says why. Here is `viscosity explain` on the program
+above:
+
+```
+ps (line 1) {x} → kept as array of objects
+  · unsafe: line 8: an element is compared
+    or combined with "==="
+  · unsafe: line 6: an element is used by
+    push
+```
+
+(The real lines are longer; they are wrapped here.) Viscosity does use
+one handle, a very small one: when you write `const p = ps[i]` and only
+touch `p.x`, the compiled code says `const p = i`. The index *is* the
+handle. That is only safe because `p` never escapes and is never
+compared, which is exactly what the safety analysis proved.
+
+Why refuse instead of emulating? Look at the cost of the snapshot route,
+the cheapest kind of object to rebuild:
+
+<BenchBars suite="materialize" n={100000} title="materialize: keep one object per element" highlight={['soa']} layouts={['aos', 'soa']} caption="Building and keeping a real object per element: about 20 times slower than AoS here." />
+
+In this book’s benchmark run, SoA was about 20 times slower than AoS at
+100,000 elements, and about 33 times at a million. A handle cache would
+bring back one object per element handed out, plus an accessor call per
+field. Nobody has measured a handle mode in this repository, so we can’t
+quote its numbers, but it starts from the same kind of allocation.
+
+The other suite is the exception that proves the rule:
+
+<BenchBars suite="get-objects" n={100000} title="get-objects: pass each element to consume(p)" highlight={['soa']} layouts={['aos', 'soa']} caption="consume(p) only reads fields. V8 inlined it and removed the temporary object." />
+
+Here the object didn’t escape `consume`, so V8 inlined it and replaced the
+object with its fields (scalar replacement, chapter 148). An object that
+doesn’t escape costs nothing. One that escapes costs a lot. So Viscosity
+lets only the first kind through, and turns the second kind into a
+message.
+
+<Prompts ids={['im-index-handle', 'im-refuse']} />
+
+Try it. This is the corpus program `escapes_log.js`: printing a whole
+element makes it escape. Change the last line to
+`console.log(ps[3].x, ps[3].y)` and watch the verdict change:
+
+<Playground client:visible title="An element escapes" initial={`const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i, y: i });
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += 1;
+console.log(ps[3]);`} />
+
+<Callout kind="engine" label="Under the hood">
+V8 can afford to be optimistic. It compiles while the program runs, from
+what it has seen so far, and can deoptimize back to slower code if a guess
+turns out wrong<Cite id="v8-maglev" />. That is how its escape analysis
+removed the object in `get-objects`. Viscosity compiles before the program
+runs and has no slow path to fall back to, so a handle mode would have to
+be right about every `===`, every key and every printout, forever. A
+refusal is always correct, and `viscosity explain` names the line to
+change. Viscosity chose the simple rule it can prove.
+</Callout>
+
+## Your turn
+
+<Exercise id="handleCache" />
+
+<Exercise id="countHandles" />
+
+## What you learned
+
+- **Materializing** a fresh copy per access breaks both aliasing (writes
+  hit the copy) and identity (`===` is false).
+- A **handle** holds the collection and an index, with accessors that use
+  the columns. It keeps aliasing correct.
+- **Identity preservation** needs a cache with one handle per element,
+  which brings back an object per element.
+- Handles still differ in keys, JSON, spreading and printing.
+- Viscosity has no handle mode: it refuses collections whose elements
+  escape, and explains why. Its only “handle” is a bare index, used when
+  nothing escapes.
+
+<Quiz />

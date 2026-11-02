@@ -1,0 +1,222 @@
+---
+n: 225
+day: 57
+part: VIII
+title: 'Differential testing at scale'
+tagline: 'Chapter 185 showed how one program can test a compiler. This chapter is about the folder of programs: what goes into each file, how 55 programs become 115 tests and the Rust port’s fixtures, and what the folder still can’t find.'
+objectives:
+  - Explain what a test corpus is, and the rules each corpus file follows.
+  - Describe how Viscosity’s programs multiply into checks across parsers, languages and implementations.
+  - Say how the TypeScript compiler serves as the oracle for the Rust port.
+  - Build a seeded random-program generator and use it to find a bug in a toy compiler.
+introduces: [test-corpus]
+uses: [test, assertion, edge-case, differential-testing, fuzzing, round-trip-testing, identity-transform, parser-adapter, estree, bailout, safety-analysis, column-storage, typed-array, ieee754, optimization-report, end-to-end-benchmark, try-catch, error-object, closure]
+sources: [test262, csmith]
+---
+import MatrixSteps from '../../../components/diagrams/ch225/MatrixSteps';
+
+## From one test to a folder
+
+Chapter 185 gave you the method: compile a program, run both versions,
+and the original is the oracle. One program checks one thing. Viscosity
+has to be right about escapes, aliases, `try`, `NaN`, strings in number
+fields, Python’s integers, two parsers and a second
+implementation in Rust. That takes many programs, and a way of using
+each one many times.
+
+Here is the whole TypeScript test suite, run for this chapter:
+
+```
+$ cd engine/ts && npx vitest run
+ ✓ frontend-js/test/mini-parser.test.ts
+     (43 tests)
+ ✓ frontend-js/test/differential.test.ts
+     (38 tests)
+ ✓ bench/test/layouts.test.ts (8 tests)
+ ✓ core/test/core.test.ts (11 tests)
+ ✓ frontend-python/test/differential...
+     (15 tests)
+ Test Files  5 passed (5)
+      Tests  115 passed (115)
+```
+
+(Paths shortened and wrapped.) 91 of those 115 tests were never written
+one by one: they are generated, one per program, from folders of
+programs.
+
+<Callout kind="intuition">
+A driving examiner doesn’t invent a new route for every learner. There
+is a route, chosen to include the hard junction, the hill start and the
+school crossing. Every learner drives it. When someone finds a new way
+to fail, a new turn is added to the route.
+</Callout>
+
+<Callout kind="definition">
+A **test corpus** is a large, curated collection of programs used as
+test inputs. Each program is chosen to exercise one case. The tests are
+generated from the collection, so adding a case means adding a file,
+not writing test code.
+</Callout>
+
+<Prompts ids={['corpus-what', 'corpus-generated']} />
+
+## What goes in a corpus file
+
+The JavaScript corpus has 36 files, each probing one decision. Here is
+`try_catch.js`:
+
+```js
+// viscosity: ps=soa
+const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i });
+let s = 0;
+try {
+  for (let i = 0; i < ps.length; i++)
+    s += ps[i].x;
+  ps[1000].x = 1;
+} catch (e) {
+  console.log('caught',
+    e.constructor.name, e.message);
+}
+console.log(s);
+```
+
+(Long lines wrapped.) It follows the rules every corpus file follows:
+
+- **One idea.** This file asks a single question: does an out-of-bounds
+  write inside `try` throw the same error after compiling? The name
+  says what it probes.
+- **A header** with the expected decision for every collection, so a
+  compiler that stops optimizing fails too (chapter 185).
+- **Observable.** It prints the error’s class and message, and the sum.
+  A difference that isn’t printed can’t be caught.
+- **Small and deterministic.** No timing and no randomness, so two
+  correct runs always print the same thing.
+
+Some files are traps for a specific kind of mistake. In
+`typed_column_semantics.js`, every field is `Infinity` or `-Infinity`,
+then multiplied by 0 and checked for `NaN`, a case where a typed column
+must behave exactly like a plain number. In the Python corpus,
+`ints_stay_ints.py` prints `type(cs[5].count).__name__`: a careless
+`array('d')` column would turn the integer 6 into `6.0`, and the
+output would say `float`. Viscosity gives `count` a list column and
+the output stays `int`.
+
+<Prompts ids={['corpus-one-idea', 'corpus-observable', 'corpus-deterministic', 'corpus-trap']} />
+
+## One file, many checks
+
+The trick that makes the corpus scale is that each program is used by
+several tests, for different questions. Step through the matrix:
+
+<MatrixSteps client:visible />
+
+All of these tests share one shape. The real loop, from
+`differential.test.ts`:
+
+```ts
+for (const f of readdirSync(dir)
+    .filter((f) => f.endsWith('.js'))
+    .sort()) {
+  it(f, () => { /* ...compile, check
+    the header, run both... */ });
+}
+```
+
+The tests are written once, per *kind* of check. The cases are data.
+
+<Prompts ids={['corpus-matrix']} />
+
+## Other languages, other processes
+
+The Python test can’t use Node’s VM contexts, so it writes both
+programs to a temporary folder and runs each with the real `python3`.
+It compares standard output, and for a crash the last line of standard
+error, where Python prints the exception:
+
+```ts
+const run = (file) => {
+  try {
+    return { out: execFileSync('python3',
+      [file], opts), err: null };
+  } catch (e) {
+    return { out: e.stdout, err: e.stderr
+      .trim().split('\n').pop() };
+  }
+};
+expect(run(b)).toEqual(run(a));
+```
+
+The oracle is still the original program. Only the way of running it
+changed.
+
+<Prompts ids={['corpus-python']} />
+
+## The TypeScript compiler as an oracle
+
+Part XIII rebuilds Viscosity in Rust. How do you know the Rust version
+decides and emits the same things? The same way: differential testing,
+with the TypeScript compiler as the oracle.
+
+`engine/rust/scripts/gen_expected.mjs` makes the fixtures. For every JS
+corpus file, every benchmark program and 20 extra programs written for
+the port, it runs the TypeScript compiler
+twice, once with the default `bounds: 'check'` and once with
+`bounds: 'assume'` (so the unchecked code paths are covered too), and
+writes both the compiled code and the explain report. That is 61
+programs, 2 modes and 2 files: 244 fixture files, in
+`engine/rust/tests/expected/`.
+
+The parity test, `engine/rust/crates/cli/tests/parity.rs`, recompiles
+each source in Rust and compares byte for byte. Run for this chapter,
+all 122 fixture pairs match. Part XIII builds the port that passes it.
+The parity work also paid the reference back. It found bugs in the
+TypeScript compiler, among them a soundness bug: an element thrown from
+inside a loop wasn’t seen as escaping. All are fixed now.
+
+<Prompts ids={['corpus-rust', 'corpus-assume']} />
+
+## What a corpus can’t find
+
+Every file in the corpus was written by someone who thought of the
+case. The corpus is very good at keeping found bugs found, and at
+checking that a new feature didn’t break an old one. It can’t find the
+case nobody imagined. For that you need programs nobody wrote: the
+random programs of chapter 185, at scale, which Part XIII returns to with
+coverage-guided fuzzing. Viscosity doesn’t fuzz yet.
+
+<Prompts ids={['corpus-limit']} />
+
+<Callout kind="engine" label="Under the hood">
+Language implementations live by their corpora. Test262, the
+conformance suite for JavaScript itself, is a corpus of tens of
+thousands of test files covering the language
+specification<Cite id="test262" />. Csmith is the opposite
+strategy: a generator of random C programs that finds compiler bugs by
+differential testing, rather than from hand-written
+cases<Cite id="csmith" />.
+Real compilers use both: a growing corpus of known cases, and a
+generator that keeps adding the unknown ones.
+</Callout>
+
+## Your turn
+
+<Exercise id="fuzzToy" />
+
+<Exercise id="parseHeader" />
+
+## What you learned
+
+- A **test corpus** is a curated collection of programs; the tests are
+  generated from it, so a new case is a new file.
+- A good corpus file probes one idea, states the expected decisions,
+  prints what could differ, and is deterministic.
+- Each program feeds several checks: decisions, behaviour, parser
+  equivalence and, for the Rust port, stored fixtures. 55 programs give
+  115 tests.
+- The TypeScript compiler is the Rust port’s oracle: 244 fixture files,
+  compared byte for byte by the Rust parity test.
+- A corpus keeps known bugs found. Random programs find unknown ones.
+
+<Quiz />

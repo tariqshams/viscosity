@@ -1,0 +1,280 @@
+---
+n: 273
+day: 69
+part: XI
+title: 'Testing in Rust'
+tagline: 'Every Rust exercise so far has been graded by #[test] functions and assert_eq!. Here is how they really work, from a one-line unit test to the runner that checks drip-rs against 246 Drip programs and the test that holds the Rust Viscosity to byte-for-byte parity with TypeScript.'
+objectives:
+  - Write unit tests with #[test], #[cfg(test)] and the assert macros, and read their failure output.
+  - Use #[should_panic] for code that is meant to panic.
+  - Explain what cargo test builds, and how integration tests in tests/ differ from unit tests.
+  - Read drip-rs's corpus runner (harness = false) and engine/rust's parity test.
+introduces: [cargo-test, assert-macros]
+uses: [rust, cargo, crate, rust-functions, struct, impl, option, result, vec, trait, rust-closure, rust-iterator, rust-module, visibility, workspace, test, assertion, edge-case, differential-testing-intro, differential-testing, test-corpus, drip, virtual-machine, garbage-collection, interning, scanner, token, aos-vs-soa, optimization-report, codegen]
+sources: [klabnik2026]
+---
+import TestSteps from '../../../components/diagrams/ch273/TestSteps';
+
+## You've been graded all along
+
+Chapter 32's tests looked like this:
+
+```js
+test('max picks the largest', () => {
+  expect(max([3, 7, 2])).toBe(7);
+});
+```
+
+Every Rust exercise since chapter 258 has been graded by tests you
+could read but didn't write, and `todo!()` made the starters fail on
+purpose. Here is a real one, from drip-rs's scanner (`scanner.rs`,
+trimmed):
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reports_errors_as_tokens() {
+        let src = "\"open\n";
+        let mut s = Scanner::new(src);
+        let t = s.scan_token();
+        assert_eq!(t.kind,
+            TokenKind::Error);
+        assert_eq!(t.line, 2);
+    }
+}
+```
+
+A test is a function with `#[test]` above it: no arguments, no return
+value. It **passes if it returns** and **fails if it panics**. That's
+the whole contract, which is why `todo!()`, a panic, fails a test.
+
+<Callout kind="intuition">
+A Rust test is a tripwire. You walk the code down a path, and at each
+step you stretch a wire across: "this had better equal 2". If anything
+trips a wire, or the code falls over by itself, the test fails and says
+where.
+</Callout>
+
+## Where unit tests live
+
+The `tests` module sits in the same file as the code it tests. Two
+details from the last two chapters make that work:
+
+- `#[cfg(test)]` means "compile this only when building tests", so
+  normal builds don't carry test code.
+- `tests` is a child module, so `use super::*` brings in the parent's
+  items, and the privacy rule lets a child see private items. Unit tests
+  can test `is_alpha`, which nothing outside `scanner.rs` can call.
+
+`cargo test` builds the tests and runs them, in parallel threads by
+default<Cite id="klabnik2026" />. Each test is named by its module path.
+On drip-rs's library (trimmed, long names wrapped):
+
+```
+running 12 tests
+test chunk::tests::
+  opcodes_round_trip_through_bytes ... ok
+test scanner::tests::
+  reports_errors_as_tokens ... ok
+test object::tests::
+  using_a_freed_handle_panics
+  - should panic ... ok
+...
+test result: ok. 12 passed; 0 failed; ...
+```
+
+Any argument after `cargo test` filters by name: `cargo test scanner`
+runs only the tests whose path contains `scanner`.
+
+<Callout kind="definition">
+A **unit test** is a function marked **`#[test]`**, usually in a
+`#[cfg(test)] mod tests` beside the code. **`cargo test`** compiles the
+crate in test mode, runs every test, and reports each as `ok` or
+`FAILED`; a test fails if it panics. Unit tests may use private items,
+because their module is a child of the code's module<Cite id="klabnik2026" />.
+</Callout>
+
+<Prompts ids={['test-pass', 'test-cfg', 'test-private']} />
+
+## The assert macros
+
+Three macros do the checking:
+
+- `assert!(cond)` panics if `cond` is false.
+- `assert_eq!(a, b)` panics if `a != b`, and prints both.
+- `assert_ne!(a, b)` panics if `a == b`.
+
+drip-rs's interning test uses two of them: the same text must give the
+same handle, and different text a different one:
+
+```rust
+let a = heap.intern("hello");
+let b = heap.intern_owned(
+    String::from("hel") + "lo");
+assert_eq!(a, b);
+assert_ne!(a, heap.intern("world"));
+```
+
+When `assert_eq!` fails, it shows both sides. Here is a test of
+chapter 59's AoS slot formula, with the formula written wrong (rustc
+1.97, thread id and backtrace removed):
+
+```
+---- tests::aos_slot stdout ----
+thread 'tests::aos_slot' panicked at
+  t.rs:11:9:
+assertion `left == right` failed
+  left: 5
+ right: 7
+```
+
+To print the values, `assert_eq!` needs both sides to implement `Debug`;
+to compare them, `PartialEq`. That is why types get
+`#[derive(Debug, PartialEq)]` before they are tested<Cite id="klabnik2026" />.
+Every assert macro also takes a message, formatted like `println!`:
+`assert!(n % 2 == 0, "n = {n} should be even")` fails with
+`n = 3 should be even`.
+
+Some code is *supposed* to panic. drip-rs's arenas panic if you use a
+handle to an object that was freed, and a test checks that:
+
+```rust
+#[test]
+#[should_panic(expected = "use after free")]
+fn using_a_freed_handle_panics() {
+    let mut arena = Arena::default();
+    let a = arena.insert("x");
+    arena.remove(a.index(), false);
+    let _ = arena[a];
+}
+```
+
+`#[should_panic]` flips the contract: the test passes only if the body
+panics, and `expected` requires the panic message to contain that text.
+
+<Run id="asserts-play" />
+
+<Callout kind="definition">
+The **assert macros** are `assert!(cond)`, `assert_eq!(left, right)`
+and `assert_ne!(left, right)`. Each panics when its check fails, so the
+enclosing test fails; the `eq` and `ne` forms print both values, which
+must implement `Debug` and `PartialEq`. An optional message follows, as
+in `println!`. **`#[should_panic(expected = "...")]`** marks a test
+that must panic with that text.
+</Callout>
+
+<Prompts ids={['assert-eq', 'assert-traits', 'should-panic']} />
+
+## Integration tests
+
+Files in a crate's `tests/` folder are **integration tests**. Each one
+is compiled as a *separate crate* that depends on yours, so it sees
+only your `pub` API, exactly as a user would<Cite id="klabnik2026" />.
+drip-rs's `tests/vm.rs` starts like a user's program:
+
+```rust
+use drip::compiler::compile;
+use drip::gc::Heap;
+use drip::{Options, Vm};
+```
+
+Helpers shared between test files go in `tests/common/mod.rs`. A
+`common.rs` would be compiled as one more test crate; a folder with a
+`mod.rs` is just a module, which each test file pulls in with
+`mod common;`<Cite id="klabnik2026" />. All of it adds up to several test
+programs per `cargo test`:
+
+<TestSteps client:visible />
+
+<Prompts ids={['integ-what', 'integ-common']} />
+
+## Bringing your own harness
+
+The VM's corpus is 246 Drip programs whose expected output is written
+in their comments (chapter 185). Wrapping all of them in one `#[test]`
+would report a single `ok` or `FAILED` for the lot. drip-rs instead
+switches the standard harness off for that file, in `Cargo.toml`:
+
+```toml
+[[test]]
+name = "corpus"
+harness = false
+```
+
+Then `tests/corpus.rs` is an ordinary program with its own `main`, and
+cargo simply runs it and looks at its exit code (adapted, paths
+shortened; `..Options::default()` fills in the other fields):
+
+```rust
+fn main() {
+    let options = Options {
+        debug_gc: true,
+        ..Options::default()
+    };
+    run_suite("corpus",
+        |t| !should_skip(t, SKIP_VM),
+        options);
+}
+```
+
+That closure is the `impl Fn(&str) -> bool` from chapter 271.
+`run_suite` lists the `.drip` files, runs each through the VM, checks
+stdout, errors and exit code, prints one line per program the way
+libtest would, and calls `std::process::exit(1)` if any failed. A
+filter still works:
+
+```
+$ cargo test --test corpus \
+    -- closure/close_over
+running 3 corpus tests
+test closure/
+  close_over_function_parameter.drip ... ok
+test closure/
+  close_over_later_variable.drip ... ok
+test closure/
+  close_over_method_parameter.drip ... ok
+
+corpus result: ok. 3 passed; 0 failed
+```
+
+<Prompts ids={['harness-false']} />
+
+<Callout kind="engine" label="Under the hood">
+engine/rust's `crates/cli/tests/parity.rs` is chapter 225's
+differential test across two languages. For every test program, with
+and without `--bounds assume`, the Rust engine's output code and
+explain text must equal fixtures generated from the TypeScript engine,
+byte for byte. Instead of stopping at the first mismatch, the test
+pushes each difference onto a `Vec`, with the first differing line,
+then asserts once: `assert!(failures.is_empty(), "{} of {total}
+differ:\n{}", ...)`. Another test in the file checks that every program has
+fixtures and no fixture is stale, so the suite can't silently shrink.
+Another runs the real `viscosity` binary, found through
+`env!("CARGO_BIN_EXE_viscosity")`, and compares its output too. With
+`--show-output`, the main test printed `parity: 122/122` when this
+chapter was written, and `parity: 190/190 (54 Python)` at `288e497`.
+</Callout>
+
+## Your turn
+
+<Exercise id="firstDiff" />
+
+## What you learned
+
+- **`#[test]`** functions pass by returning and fail by panicking.
+  `#[cfg(test)] mod tests` keeps them beside the code, with access to
+  private items.
+- **`cargo test`** builds a test program per crate and per file in
+  `tests/`, runs them, and filters by name.
+- **`assert!`**, **`assert_eq!`** and **`assert_ne!`** check, and the
+  last two print both sides. `#[should_panic(expected = ...)]` tests
+  that a panic happens.
+- **Integration tests** in `tests/` are separate crates that see only
+  the `pub` API; shared helpers go in `tests/common/mod.rs`.
+- `harness = false` lets a test file be its own program, like drip-rs's
+  corpus runner.
+
+<Quiz />

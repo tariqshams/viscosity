@@ -73,7 +73,7 @@ globals, which have no parent. `define` only ever touches *this* table:
 it is what `let` calls. If the name is already here, it is replaced,
 which is fine at the top level, where Drip lets you redefine a global.
 (Declaring the same name twice in one *block* is rejected before the
-program runs, by a pass you'll write in chapter 104.)
+program runs, by a pass you'll write in chapter 105.)
 
 <Callout kind="definition">
 An **environment** is a table from names to values, plus a reference to
@@ -209,7 +209,7 @@ garbage like any other unreachable object.
 Why `finally`? Because a block doesn't always end at its `}`. A runtime
 error halfway through throws straight out of `execute`. Without the
 `finally`, `this.env` would be left pointing at the dead inner
-environment. In chapter 102 you'll see a second, more everyday reason:
+environment. In chapter 103 you'll see a second, more everyday reason:
 `return`.
 
 <Prompts ids={['block-new-env', 'finally-why', 'shadow-ends']} />
@@ -218,12 +218,12 @@ environment. In chapter 102 you'll see a second, more everyday reason:
 Every variable read here is a `Map` lookup, repeated once per
 environment on the way up the chain. A variable used inside five
 nested blocks but declared at the top costs six lookups, every time
-the line runs. Chapter 104 fixes the worst of this: a resolver works
+the line runs. Chapter 105 fixes the worst of this: a resolver works
 out *before* running how many hops up each variable lives, and the
 interpreter jumps straight there with `getAt(distance, name)`. That
 is why the companion's `interpreter.ts` reads variables through a
 `lookUp` helper instead of calling `get` directly. The bytecode VM of
-chapter 127 goes further and keeps local variables in numbered stack
+chapter 129 goes further and keeps local variables in numbered stack
 slots, with no names left at run time at all. This design of an
 environment as a table with a parent link follows *Crafting
 Interpreters*, which Drip is based on<Cite id="nystrom2021" />.
