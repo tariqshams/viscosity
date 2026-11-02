@@ -165,7 +165,9 @@ The npm package `@viscosity/wasm` (`packages/wasm`) wraps this:
 corpus program with the TS CLI, and `--book` copies the web build into the
 book's Playground.
 
-The crates are packageable but not published. Internal dependencies carry
+The crates are published on crates.io at 0.0.1 (`cargo install viscosity-cli`
+for the CLI), as are the npm packages `@viscosity/cli` and
+`@viscosity/wasm`. Internal dependencies carry
 a `version` as well as a `path`, each crate directory holds a copy of the
 repository's `LICENSE` (MIT), and the manifests carry the crates.io
 metadata (description, licence, repository, homepage, documentation,
@@ -284,6 +286,11 @@ scripts/release.sh --npm-only  # npm packages only: needs NPM_TOKEN alone
 ```
 
 `NPM_TOKEN` can also come from an environment variable named `npm-publish`.
+
+Status: on 2026-11-02 `scripts/release.sh --npm-only` published
+`@viscosity/cli@0.0.1` and `@viscosity/wasm@0.0.1`, and
+`scripts/release.sh --crates-only` published the six crates at 0.0.1. Both
+were verified by installing from the public registries.
 
 The script checks the tokens (without printing them) and the git tree, runs
 the TypeScript and Rust test suites, then runs `cargo publish -p` for

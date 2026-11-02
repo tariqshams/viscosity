@@ -3,7 +3,7 @@ n: 198
 day: 50
 part: XII
 title: 'Release engineering'
-tagline: 'Every version number in the repository says 0.0.1, and nothing has been published. A release ships three things to two registries. Here is what each needs, what is already checked on every push, what isn’t, and the one step that only a person should take.'
+tagline: 'Every version number in the repository says 0.0.1. When this chapter was written nothing was published; the npm packages have been since, and the crates are next. A release ships three things to two registries. Here is what each needs, what is already checked on every push, what isn’t, and the one step that only a person should take.'
 objectives:
   - Find every version number a Viscosity release would have to change, and apply Cargo’s rules for 0.y.z and 0.0.z versions.
   - Say what Cargo.toml metadata a crate needs to be published, and what packaging the workspace’s crates first turned up.
@@ -19,9 +19,10 @@ import ReleaseSteps from '../../../components/diagrams/ch198/ReleaseSteps';
 
 Ask the Rust CLI and the TypeScript CLI their version and both say
 `viscosity 0.0.1`. So does every package in the repository that could
-ever be published. None of them is. The repository has no git tags and
-no changelog either: as far as any registry knows, Viscosity doesn't
-exist.
+ever be published. When this chapter was written, none of them was.
+The repository had no git tags and no changelog either: as far as any
+registry knew, Viscosity didn't exist. (On 2026-11-02 the two npm
+packages were published; the end of the chapter says how.)
 
 Chapter 119 packed the TypeScript CLI for npm and found three bugs on
 the way. Track B adds two more things to ship: the Rust crates, which
@@ -224,6 +225,14 @@ So the tokens are Tariq's to add, after he creates the npm organization
 `viscosity`, and running the script is his decision.
 </Callout>
 
+That is how it went. Nothing was published when this chapter was
+written. On 2026-11-02, with the organization and `NPM_TOKEN` in place,
+`scripts/release.sh --npm-only` published `@viscosity/cli` and
+`@viscosity/wasm` at 0.0.1, and `npm install -g @viscosity/cli` now
+gives you `viscosity 0.0.1`. The crates follow when a crates.io token
+is added: the script skips npm versions that are already there, so a
+plain `scripts/release.sh` finishes the job.
+
 <Prompts ids={['ci-gap', 'who-publishes']} />
 
 ## Your turn
@@ -250,6 +259,8 @@ Viscosity's own 0.0.1.
   set `publishConfig.access` to public.
 - CI packs and installs the CLI and packages the crates on every push;
   the wasm smoke test, long fuzzing and benchmarks are run by hand.
-  `scripts/release.sh` publishes; running it is Tariq's call.
+  `scripts/release.sh` publishes; running it is Tariq's call. The npm
+  packages went out on 2026-11-02 (`--npm-only`); the crates wait for a
+  crates.io token.
 
 <Quiz />

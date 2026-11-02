@@ -23,10 +23,11 @@ Somebody reads this book, likes Viscosity, and types
 A library, version 0.3.0, described as “a sass library for fluid
 containers that handle aspect ratios across device sizes”. The name
 `viscosity` on npm belongs to someone else. And `@viscosity/cli`, the
-name in the repo’s `package.json`? The registry answers 404. Viscosity
-isn’t published, and its own documentation says so: viscosity.dev’s
-install page tells you to clone the repository and run the CLI from
-source.
+name in the repo’s `package.json`? When this chapter was written, the
+registry answered 404. Viscosity wasn’t published, and viscosity.dev’s
+install page said to clone the repository and run the CLI from source.
+(On 2026-11-02 the release script of chapter 198 published it, so
+`npm install -g @viscosity/cli` works now.)
 
 This chapter is about the last step, from “works on my machine” to
 “works on yours”.
@@ -151,8 +152,8 @@ ps (line 1) {x, vx} → struct of arrays
   …
 ```
 
-Viscosity still isn’t on the registry, but everything up to
-`npm publish` has now been walked.
+Viscosity wasn’t on the registry yet, but everything up to
+`npm publish` had now been walked.
 
 <Prompts ids={['pkg-ts', 'pkg-deps', 'pkg-main', 'pkg-dryrun']} />
 
@@ -239,8 +240,8 @@ the edge of `node_modules`: the published CLI is plain JavaScript.
 
 - An **npm package** is a tarball described by `package.json`,
   identified by **name** and **version**, with `bin`, `files`,
-  `dependencies` and `engines`. Viscosity is not published; the name
-  `viscosity` is taken.
+  `dependencies` and `engines`. The name `viscosity` is taken, so the
+  CLI is `@viscosity/cli` (published on 2026-11-02).
 - Packing and installing the CLI found three bugs: undeclared
   dependencies, TypeScript under `node_modules`, and a main check that
   failed through npm’s link. A bundle and a bin entry fixed them, and

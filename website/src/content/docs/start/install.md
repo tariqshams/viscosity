@@ -3,15 +3,27 @@ title: Install
 description: Getting Viscosity running.
 ---
 
-Viscosity is in early development and **not published** to npm or
-crates.io yet. You build it from the repository. There are two engines,
-which give the same output:
+Viscosity is in early development. Version 0.0.1 of its two npm
+packages is published:
+
+```sh
+npm install -g @viscosity/cli    # the `viscosity` command
+viscosity --version              # viscosity 0.0.1
+npx @viscosity/cli explain app.js
+npm install @viscosity/wasm      # the Rust engine as WebAssembly
+```
+
+The Rust crates are not on crates.io yet; build them from the repository
+(see below). There are two engines, which give the same output:
 
 - the **TypeScript engine** (`engine/ts`), the reference, which reads
   JavaScript, TypeScript and Python;
 - the **Rust engine** (`engine/rust`), a port that reads JavaScript and
   Python (not TypeScript) and starts and compiles much faster. It also
   builds to WebAssembly.
+
+`@viscosity/cli` is the TypeScript engine; `@viscosity/wasm` is the
+Rust engine.
 
 ## From source (TypeScript)
 
@@ -28,8 +40,9 @@ newer**.
 ## As a packaged CLI
 
 The CLI package bundles everything into one file with no runtime
-dependencies, and runs on **Node.js 18 or newer**. Until it is published,
-you can build the tarball yourself and install it:
+dependencies, and runs on **Node.js 18 or newer**. `npm install -g
+@viscosity/cli` installs the published one. To install your own build of
+it instead, pack the tarball yourself:
 
 ```sh
 cd viscosity/engine/ts/packages/cli
@@ -65,13 +78,18 @@ with two exceptions:
 does, so it needs Node.js on the `PATH`.
 
 The crates are set up so that `cargo package` works, but they are not on
-crates.io; build from the repository.
+crates.io yet; build from the repository.
 
 ## WebAssembly (`@viscosity/wasm`)
 
 The Rust engine also compiles to WebAssembly, wrapped as the npm package
-`@viscosity/wasm` in `engine/rust/packages/wasm`. It is **not published**:
-you build and pack it yourself. It needs the `wasm32-unknown-unknown` Rust
+`@viscosity/wasm` in `engine/rust/packages/wasm`. It is published to npm:
+
+```sh
+npm install @viscosity/wasm
+```
+
+To build and pack it yourself, you need the `wasm32-unknown-unknown` Rust
 target and `wasm-bindgen-cli` 0.2.106 (binaryen's `wasm-opt` is optional).
 
 ```sh

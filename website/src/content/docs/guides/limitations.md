@@ -3,8 +3,9 @@ title: Limitations
 description: What Viscosity does not do (yet).
 ---
 
-- **Not published yet**, to npm or crates.io. Build it from the
-  repository (see [Install](/start/install/)).
+- **Not on crates.io yet.** The npm packages (`@viscosity/cli`,
+  `@viscosity/wasm`) are published, but the Rust crates must be built
+  from the repository (see [Install](/start/install/)).
 - **No TypeScript in the Rust engine.** TypeScript input needs the
   TypeScript engine.
 - **One record shape per collection.** Records must have the same fields

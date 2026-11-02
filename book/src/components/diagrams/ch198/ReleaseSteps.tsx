@@ -16,7 +16,9 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 //   checks:    .github/workflows/ci.yml packs and installs @viscosity/cli,
 //              and runs cargo test and cargo package --workspace;
 //              packages/wasm/smoke.mjs is run by hand
-//   publish:   nothing is published; scripts/release.sh would do it.
+//   publish:   nothing was published when the chapter was written; on
+//              2026-11-02 scripts/release.sh --npm-only published both
+//              npm packages at 0.0.1. The crates wait for a crates.io token.
 type Cell = { t: string; ok: 'yes' | 'no' | 'part' };
 type Row = { name: string; sub: string; cells: Cell[] };
 
@@ -28,7 +30,7 @@ const ROWS: Row[] = [
       { t: 'cargo package works', ok: 'yes' },
       { t: 'LICENSE in each', ok: 'yes' },
       { t: 'test + package, CI', ok: 'yes' },
-      { t: 'not published', ok: 'no' },
+      { t: 'not yet: no token', ok: 'no' },
     ],
   },
   {
@@ -38,7 +40,7 @@ const ROWS: Row[] = [
       { t: 'esbuild bundle', ok: 'yes' },
       { t: 'LICENSE + 3 notices', ok: 'yes' },
       { t: 'CI packs, installs', ok: 'yes' },
-      { t: 'not published', ok: 'no' },
+      { t: '0.0.1 on npm', ok: 'yes' },
     ],
   },
   {
@@ -48,7 +50,7 @@ const ROWS: Row[] = [
       { t: 'cargo + bindgen', ok: 'yes' },
       { t: 'LICENSE + 71 crates', ok: 'yes' },
       { t: 'smoke.mjs, by hand', ok: 'part' },
-      { t: 'not published', ok: 'no' },
+      { t: '0.0.1 on npm', ok: 'yes' },
     ],
   },
 ];
@@ -60,7 +62,7 @@ const STATES: { upto: number; note: string }[] = [
   { upto: 1, note: 'Building a package. Both npm packages have a build.mjs that npm runs as prepack. For the crates, cargo package --workspace packages all six. At first it stopped at once: the workspace’s own crates depended on each other by path only, and crates.io needs a version too.' },
   { upto: 2, note: 'Licences. Each npm package ships LICENSE and a THIRD_PARTY_LICENSES.txt with the full text of everything bundled into it. A packaged crate carries only the files in its own folder, so each crate folder now has a LICENSE (crates/vir had none at first).' },
   { upto: 3, note: 'Checks before a release. Every push packs @viscosity/cli, installs the tarball in an empty folder and runs it. CI also tests and packages the crates. @viscosity/wasm has the same kind of test in smoke.mjs, but CI doesn’t run it.' },
-  { upto: 4, note: 'And none of it is published. A crates.io version is permanent and an npm version can never be reused, so the first publish (scripts/release.sh, with his tokens) is a decision, and it is Tariq’s to make.' },
+  { upto: 4, note: 'Publishing. When this chapter was written, none of it was published: a crates.io version is permanent and an npm version can never be reused, so the first publish is a decision, and it is Tariq’s to make. On 2026-11-02 he published both npm packages at 0.0.1 with scripts/release.sh --npm-only. The crates follow when a crates.io token is added.' },
 ];
 
 const mark = (ok: Cell['ok']) => (ok === 'yes' ? '✓' : ok === 'no' ? '✗' : '~');

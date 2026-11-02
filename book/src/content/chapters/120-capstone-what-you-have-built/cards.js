@@ -31,7 +31,7 @@ export const prompts = {
   },
   'cap-rough': {
     q: 'Name three things about Viscosity that are unfinished at the end of Track A.',
-    a: 'Any three of: not on npm; no WebAssembly back end; many ordinary programs refused (sort, classes, varying shapes, exports); the cost model is a heuristic.',
+    a: 'Any three of: not on npm (it was published later, in chapter 198, as `@viscosity/cli`); no WebAssembly back end; many ordinary programs refused (sort, classes, varying shapes, exports); the cost model is a heuristic.',
   },
   'cap-trackb': {
     q: 'What two things does Track B rebuild in Rust?',

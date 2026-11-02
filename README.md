@@ -13,7 +13,9 @@ TypeScript and Python front-ends) and its Rust port (JavaScript and Python;
 byte-for-byte identical output on 190 fixture pairs, kept honest by a
 differential fuzzer, also built to WebAssembly) are built and tested, as
 are three Drip implementations (tree-walker, TS VM, drip-rs). The book's
-200 chapters are written. Nothing is published to npm or crates.io yet.
+200 chapters are written. The npm packages are published
+(`npm install -g @viscosity/cli`, `npm install @viscosity/wasm`); the
+Rust crates are not on crates.io yet.
 
 Measured end to end, original vs compiled, best of 9 fresh processes on a
 shared 4-vCPU VM
