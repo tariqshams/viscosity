@@ -3,18 +3,15 @@ n: 111
 day: 16
 part: VI
 title: 'Rewriting field accesses and growing collections'
-tagline: 'The storage is ready, but the program still says ps[i].x everywhere. Viscosity rewrites each of those spots, and only those, as small edits to your source, and keeps even the error messages the same.'
+tagline: 'The storage is ready, but the program still says ps[i].x everywhere. Viscosity rewrites each of those spots, and only those, as small edits to your source, keeps even the error messages the same, and lets the columns grow by doubling so that push stays cheap.'
 objectives:
   - Explain how Viscosity edits ranges of the source instead of reprinting the program, and why edits are applied back to front.
   - List the five rewrites (creation, push, direct access, element variables, for-of) and apply them by hand.
   - Say when an access needs a bounds check, and how the check reproduces the original TypeError.
-  - Write a small scanner that rewrites `a[i].f` into `a.f[i]`.
   - Tell a collection’s capacity apart from its length, and say why the spare slots need care.
-  - Explain how the generated container grows its typed columns, and why its plain columns need no copying.
   - Show that doubling the capacity makes push cost a fixed amount of copying on average.
-  - Read the construct benchmark and say what it does and does not measure.
 introduces: [access-rewriting, capacity, amortized-growth]
-uses: [soa-container, column-storage, codegen, pretty-printing, source-to-source, identity-transform, safety-analysis, access-pattern, alias-analysis, aliasing, for-of, scanner, token, identifier, string-index, throw, error-object, try-catch, typed-array, differential-testing, induction-variable, array, push, length, index, float64, while-loop, garbage-collection, cost-model, bailout]
+uses: [soa-container, column-storage, codegen, source-to-source, identity-transform, safety-analysis, alias-analysis, for-of, throw, error-object, typed-array, differential-testing, array, push, length, index, float64, garbage-collection, bailout]
 sources: [ecma262, mdn-unsigned-right-shift, ispcdocs, mdn-typedarray, mdn-typedarray-set]
 ---
 import RewriteSteps from '../../../components/diagrams/ch111/RewriteSteps';
@@ -24,26 +21,13 @@ import CapacitySteps from '../../../components/diagrams/ch111/CapacitySteps';
 import CopyCurve from '../../../components/diagrams/ch111/CopyCurve';
 import BenchBars from '../../../components/bench/BenchBars';
 
-{/* ── merge: from old chapter 111, Rewriting field accesses ── */}
-
 ## Every `ps[i].x` has to change
 
 *Generating SoA storage* built the container, but the program does not
-know about it yet:
-
-```js
-const ps = [];
-for (let i = 0; i < 1000; i++)
-  ps.push({ x: i, vx: 1 });
-for (let i = 0; i < ps.length; i++)
-  ps[i].x += ps[i].vx;
-console.log(ps[7].x);
-```
-
-Every line that touches `ps` must now speak to the container: create it,
-push into it, and read element 7's `x` from the `x` column. And nothing
-else may change, not a space and not a comment, because the output is
-code that a person will read, diff and debug.
+know about it yet: every line that touches `ps` must now create the
+container, push into it, and read element 7's `x` from the `x` column;
+and nothing else may change, because the output is code that a person
+will read, diff and debug.
 
 <Analogy title="correcting a printed contract">
 You do not retype a forty-page contract to change six words; you strike
@@ -52,33 +36,15 @@ exactly where it was. If your list of changes says "page 12, line 4",
 start from the last page and work towards the first, and the page and
 line numbers in the list stay right as you go.
 <span slot="breaks">A pen correction can be as messy as you like, and a
-person will still read it; a compiler's edits must never overlap, and
-two edits on the same words would be a bug, not a judgment call.</span>
+person will still read it; a compiler's edits must never overlap, and two
+edits on the same words would be a bug, not a judgment call.</span>
 </Analogy>
-
-<Analogy extra title="swapping the parts of an address">
-Imagine a town that stops numbering houses street by street and starts
-numbering them by trade: what used to be "number 7, the baker's
-counter" becomes "the bakers' row, number 7". Every letter's address
-must be rewritten, with the same two parts in the other order.
-<span slot="breaks">The post office could redirect each letter as it
-arrives; Viscosity rewrites every address before the program runs, and
-if even one letter cannot be re-addressed (an element that escapes),
-the whole street keeps its old numbers.</span>
-</Analogy>
-
-The second picture is the heart of it: `ps[i].x` names "element `i`,
-field `x`", and the rewrite turns it into `ps.x[i]`, "column `x`,
-slot `i`".
 
 ## Edits, not reprinting
 
-*Emitting JavaScript* described two ways out of a compiler: print the
-whole program again from its tree, or change only what must change.
-Viscosity does the second. While it walks the plan, the emitter in
-`frontend-js/src/emit.ts` collects **edits**, each a range of the
-original text and its replacement, and then applies them all at once
-(trimmed):
+While it walks the plan, the emitter in `frontend-js/src/emit.ts`
+collects **edits**, each a range of the original text and its
+replacement, and then applies them all at once (trimmed):
 
 ```js
 edits.sort((x, y) => y.start - x.start);
@@ -93,50 +59,137 @@ for (const e of edits) {
 }
 ```
 
-Line 1 sorts by `start`, largest first, and lines 4 to 9 apply each edit
-(everything before it, the new text, everything after it). Edited from
-the end backwards, an edit only ever shifts text already edited, so
-every `start` and `end` still points at the right characters. `lastStart` remembers where the previous edit
-began; an edit that reaches past it overlaps, which would mean the
-compiler tried to rewrite the same text twice, so it stops with an
-internal error rather than guess. Step through the program above:
+Line 1 sorts by `start`, largest first, and lines 7 and 8 splice each
+edit in. Working from the end backwards, an edit only ever shifts text
+that is already done, so every `start` and `end` still points at the
+right characters; and an edit that reaches past the previous one's start
+would mean the compiler tried to rewrite the same text twice, so it stops
+with an internal error rather than guess. Step through a small program:
 
 <RewriteSteps client:visible />
-
-The `+=` on line 5 is worth a second look. `ps[i].x` is read and written
-by the same expression, and the analysis records both; edits are kept by
-range, so the two become one rewrite, and `+=` itself is left alone:
-`ps.x[i] += ps.vx[i]` works because a typed-array element is as good a
-target for `+=` as a property. The same goes for `++`, `--` and `**=`
-(the corpus file `update_ops.js` tests them all).
 
 <Callout kind="definition">
 **Access rewriting** replaces every use of a transformed collection with
 the matching use of its container: `a[i].f` becomes `a.f[i]`, an element
 variable becomes an index, and creation and `push` change to match.
-Viscosity does it as text edits on the original source, so everything
-it does not rewrite comes out byte for byte the same.
+Viscosity does it as text edits on the original source, so everything it
+does not rewrite comes out byte for byte the same.
 </Callout>
 
-<Prompts ids={['rw-what', 'rw-back']} />
+There are five kinds of rewrite: creation (`[]` becomes
+`new __Vsc_ps()`), push (`push({ x: a, vx: b })` becomes `push(a, b)`),
+direct access (`ps[i].x` becomes `ps.x[i]`), element variables and for-of
+loops. One program shows them all; this is the real output of
+`viscosity build`:
 
-## The five rewrites
-
-The emitter makes five kinds of rewrite:
+<Examples of="access-rewriting">
 
 ```js
-const ps = [];     // 1. creation
 const ps = new __Vsc_ps();
-ps.push({ x: a, vx: b });  // 2. push
-ps.push(a, b);
-ps[i].x            // 3. direct access
-ps.x[i]
-const p = ps[i];   // 4. element variable
-const p = i;       //    p.x → ps.x[p]
-for (const p of ps) p.x;   // 5. for-of
+for (let i = 0; i < 1000; i++)
+  ps.push(i, 0.5);
+for (let i = 0; i < ps.length; i++) {
+  const p = i;
+  ps.x[p] += ps.vx[p];
+}
+let s = 0;
 for (let p = 0; p < ps.length; p++)
-  ps.x[p];
+  s += ps.x[p];
+console.log(s, ps.x[__vsc_bc(ps, 3,
+  'x', false)]);
 ```
+
+</Examples>
+
+Line 1 was `const ps = [];` and line 3 was `ps.push({ x: i, vx: 0.5 })`:
+the record literal is taken apart into one argument per field. Line 5 was
+`const p = ps[i];`, and is the clever one: `p` used to hold a reference to
+an object, and now holds a number, the index, so line 6 (`p.x += p.vx`)
+reads and writes the columns at that index; the `+=` itself is left alone,
+because a typed-array element is as good a target for `+=` as a property.
+Lines 9 and 10 were `for (const p of ps) s += p.x;`, now a counting loop
+(`let`, because `p` changes), stopping at the container's `length`. The
+last line was `console.log(s, ps[3].x)`, and the index `3` is wrapped in
+a bounds check, which the next section explains.
+
+This is correct only because of *Proving it safe*: a `p` that holds `5`
+would break `p === q` or `console.log(p)`, so the analysis proved every
+use of `p` is a field read or write (anything else is a bailout).
+
+<Prompts ids={['rw-what', 'rw-back', 'rw-alias']} />
+
+Open the compiled code of this program in the playground and find the
+five rewrites, then run both versions:
+
+<Playground client:visible title="Find the five rewrites" initial={`const ps = [];
+for (let i = 0; i < 1000; i++)
+  ps.push({ x: i, vx: 0.5 });
+for (let i = 0; i < ps.length; i++) {
+  const p = ps[i];
+  p.x += p.vx;
+}
+let s = 0;
+for (const p of ps) s += p.x;
+console.log(s, ps[3].x);`} />
+
+## Keeping the errors the same
+
+In the original, `ps[100]` on a 100-element array is `undefined`, and
+`ps[100].x` throws a `TypeError`. After the rewrite, `ps.x[100]` reads a
+`Float64Array`, which never throws; worse, the column has spare slots
+(the next section explains why), so it quietly returns `0`. So every
+access is checked unless the analysis proved it in bounds, and the proof
+is a simple pattern: the index is the loop's counter, and the condition
+is `i < ps.length`. Any other index goes through a helper the emitter
+adds to the file:
+
+<BoundsSteps client:visible />
+
+`i >>> 0 === i` holds only for whole numbers from 0 up (it reads `i` as
+an unsigned 32-bit integer<Cite id="mdn-unsigned-right-shift" />), and
+the index must then be below the *length*. Otherwise the helper throws
+the error the original would have thrown, in V8's wording (the
+specification leaves the message to the engine<Cite id="ecma262" />, and
+Viscosity's differential tests run in Node and compare errors exactly).
+
+<Prompts ids={['rw-bc']} />
+
+<More title="More: a slip in a loop condition, error messages, late stores, and ISPC">
+
+A small slip in a loop condition shows the rule at work:
+
+```js
+for (let i = 0; i < ps.length; i++)
+  s += ps[i].a;
+// → s += ps.a[i];   (proven)
+for (let i = 0; i <= ps.length; i++)
+  s += ps[i].a;
+// → s += ps.a[__vsc_bc(ps, i, 'a',
+//        false)];
+```
+
+With `<` the counter never reaches the length, so the access is left
+bare; with `<=` nothing is proven, every access pays for the check, and
+the last trip throws exactly as the original does. The run below shows
+the same messages before and after; `--bounds assume` drops the checks,
+for programs you trust never to go out of range.
+
+<Run id="messages" />
+
+A compound update such as `ps[k].x += 1` passes `false` (a read), because
+the original fails on the read first. A write whose right-hand side runs
+code, as in `ps[3].x = (more(), 77)` where `more()` pushes, needs more
+care: a plain `ps.x[3] = …` fetches the column before `more()` runs, so
+if the container grows the store lands in the old, discarded column. The
+emitter writes `__vsc_set(ps, 'x', __vsc_bk(ps, 3), (more(), 77), 'x')`
+instead: check the index without throwing yet, run the right-hand side,
+and only then throw, or store into the column as it is now (the corpus
+file `write_rhs_grows.js`).
+
+ISPC makes the same rewrite inside the compiler: for an `soa<8>` array
+you keep writing `pts[10].x`, and the generated code finds the block and
+the slot<Cite id="ispcdocs" />. Viscosity does it in the source, so you
+can read exactly what will run.
 
 <Formal title="The rewrite rules">
 
@@ -155,200 +208,16 @@ a record literal becomes a push of its rewritten values, in field
 order.</span>
 </Formal>
 
-Rewrites 4 and 5 are the clever ones. An element variable used to hold a
-reference to an object; afterwards it holds a number, the index, and
-every `p.x` becomes a column read at that index.
-
-<Examples of="access-rewriting">
-
-```js
-ps[i].x += ps[i].vx;
-// → ps.x[i] += ps.vx[i];
-```
-
-```js
-for (const p of ps) s += p.x;
-// → for (let p = 0; p < ps.length;
-//     p++) s += ps.x[p];
-```
-
-```js
-function step(arr, dt) {
-  for (let i = 0; i < arr.length; i++) {
-    const p = arr[i];
-    p.v *= 0.99;
-// →  const p = i;
-//    arr.v[p] *= 0.99;
-```
-
-</Examples>
-
-The first is a direct access, rewrite 3, read and written in one
-expression. In the second the `const` of the for-of became `let`,
-because the loop now counts with `p`, starting at 0 and stopping at the
-container's `length`. The third is the corpus file `alias_forof.js`: a
-function `step` that is only ever called as `step(ps, 0.016)`, so the
-analysis follows `ps` into the parameter `arr` (the interprocedural
-analysis from *Proving it safe*), and the element variable inside it
-becomes an index too.
-
-All of this is correct only because of the safety analysis. A variable
-that now holds `5` instead of an object would break `p === q`,
-`console.log(p)` or `f(p)`; the analysis proved that every use of `p` is
-a field read or write, and anything else would have been a bailout.
-
-<Prompts ids={['rw-push', 'rw-alias', 'rw-forof']} />
-
-Open the compiled code for this program and find all five rewrites, then
-run both versions:
-
-<Playground client:visible title="Find the five rewrites" initial={`const ps = [];
-for (let i = 0; i < 1000; i++)
-  ps.push({ x: i, vx: 0.5 });
-for (let i = 0; i < ps.length; i++) {
-  const p = ps[i];
-  p.x += p.vx;
-}
-let s = 0;
-for (const p of ps) s += p.x;
-console.log(s, ps[3].x);`} />
-
-## Keeping the errors the same
-
-What if an index is out of range? In the original, `ps[100]` on a
-100-element array is `undefined`, and `ps[100].x` throws a `TypeError`.
-After the rewrite, `ps.x[100]` reads a `Float64Array`, which never
-throws; worse, the column has spare slots up to `cap`, so it quietly
-returns `0`, and the program prints a wrong number instead of failing.
-
-So every access is checked unless the analysis proved it in bounds, and
-the proof is a simple pattern: the index is the loop's counter, and the
-loop's condition is `i < ps.length`. Any other index, such as `ps[7].x`,
-goes through a helper the emitter adds to the file. Step through it on
-five indexes:
-
-<BoundsSteps client:visible />
-
-`i >>> 0` reads `i` as an unsigned 32-bit integer<Cite id="mdn-unsigned-right-shift" />,
-so `i >>> 0 === i` holds only for whole numbers from 0 up, which rules out
-`-1`, `1.5` and `NaN` together; then the index must be below the
-*length*, not the capacity. If either test fails, the helper throws the
-error the original would have thrown. A compound update such as
-`ps[k].x += 1` passes `false` (a read), because the original fails on
-the read first.
-
-A small slip in a loop condition shows the rule at work:
-
-```js
-for (let i = 0; i < ps.length; i++)
-  s += ps[i].a;
-// → s += ps.a[i];   (proven)
-for (let i = 0; i <= ps.length; i++)
-  s += ps[i].a;
-// → s += ps.a[__vsc_bc(ps, i, 'a',
-//        false)];
-```
-
-With `<` the counter can never reach the length, so the access is
-proven and left bare; with `<=` the last trip reads one past the end,
-nothing is proven, and every access pays for the check (and, on that
-last trip, throws exactly as the original does).
-
-<Run id="messages" />
-
-The run shows the same messages before and after, in V8's wording: the
-specification only says a `TypeError` is thrown, and the message is up
-to the engine<Cite id="ecma262" />, so other browsers may word the first
-two lines differently. Viscosity copies V8 because its differential tests run in
-Node and compare errors exactly. `--bounds assume` drops the checks, for
-programs you trust never to go out of range.
-
-One more case needs care: a write whose right-hand side runs code, as
-in `ps[3].x = (more(), 77)` where `more()` pushes. A plain `ps.x[3] = …`
-fetches the column before `more()` runs, so if the container grows, the
-store lands in the old, discarded column. The emitter writes
-`__vsc_set(ps, 'x', __vsc_bk(ps, 3), (more(), 77), 'x')` instead: check
-the index (without throwing yet), run the right-hand side, and only
-then throw, or find the column and store (`write_rhs_grows.js`).
-
-<Prompts ids={['rw-spare', 'rw-proven', 'rw-bc']} />
-
-<Callout kind="engine" label="Under the hood">
-ISPC makes the same rewrite inside the compiler: for an `soa<8>` array
-you keep writing `pts[10].x`, and the generated code finds the block and
-the slot<Cite id="ispcdocs" />. Viscosity does it in the source, so you
-can read exactly what will run.
-</Callout>
-
-## Your turn
-
-<Exercise id="rewrite" />
-
-<Exercise id="boundsCheck" />
-
-## What you learned
-
-- **Access rewriting** turns `a[i].f` into `a.f[i]`, and rewrites
-  creation, `push`, element variables and for-of loops to match.
-- Edits on source ranges are applied **back to front**, so offsets stay
-  valid; everything else is copied unchanged, and overlapping edits are
-  an internal error.
-- Element variables become indexes and for-of becomes a counting loop;
-  the safety analysis is what makes that correct.
-- Accesses not proven in bounds go through `__vsc_bc`, which throws the
-  same `TypeError`, with V8's message, as the original; writes whose
-  right-hand side runs code store late, through `__vsc_set`.
-
-
-{/* ── merge: from old chapter 111, Growing collections ── */}
-
-## Push into a fixed box
-
-Here is a program from Viscosity's test corpus, `growth.js`, trimmed;
-nobody knows how many elements `ps` will hold until the `while` loop
-has run:
-
-```js
-const ps = [];
-let n = 0;
-while (n < 5000) {
-  ps.push({ a: n, b: n % 7 });
-  n++;
-}
-```
-
-Viscosity turns `ps` into a struct of arrays with two `Float64Array`
-columns. However, a `Float64Array` made with `new Float64Array(16)` has
-16 slots for ever: its length is fixed when it is made, it starts out
-full of zeros<Cite id="mdn-typedarray" />, and it has no `push`. So how
-does the compiled program keep pushing?
+</More>
 
 ## Capacity and length
 
-The answer starts with keeping two numbers instead of one.
-
-<Analogy title="a car park">
-A car park has 100 spaces and, at the moment, 63 cars. The spaces are
-real (painted, paid for, taking up land) whether or not a car is in
-them, and a warden counting the cars must count cars, not spaces.
-<span slot="breaks">Cars park wherever they like; a container fills its
-slots strictly in order, 0, 1, 2 and so on, so the slots in use are
-always exactly the first `length` of them.</span>
-</Analogy>
-
-<Analogy extra title="a notebook">
-A new notebook has 96 pages, and you have written on 30. The other 66
-are there, blank, and they cost nothing more to fill; when the last
-page is full, you buy a bigger notebook and copy your notes across.
-<span slot="breaks">You would never copy a notebook by hand; the
-container copies every value, every time it grows, which is exactly the
-cost the rest of this chapter is about.</span>
-</Analogy>
-
-The container from *Generating SoA storage* keeps `cap`, how many slots
-each column has, and `length`, how many of them hold real elements. Step
-through a column filling up (it starts at 4 to stay small; Viscosity's
-starts at 16):
+A `Float64Array` made with `new Float64Array(16)` has 16 slots for ever:
+its length is fixed when it is made, it starts out full of
+zeros<Cite id="mdn-typedarray" />, and it has no `push`. So the container
+keeps two numbers, `cap`, how many slots each column has, and `length`,
+how many of them hold real elements. Step through a column filling up (it
+starts at 4 to stay small; Viscosity's starts at 16):
 
 <CapacitySteps client:visible />
 
@@ -363,100 +232,41 @@ allocates bigger storage and copies the old elements into it.
 <Examples of="capacity">
 
 ```js
-const ps = new __Vsc_ps();
-// ps.length 0, ps.cap 16
-```
-
-```js
 // after 17 pushes of (i, 1):
 // ps.length 17, ps.cap 32
 // ps.x[20] is 0: a spare slot
 ```
 
-```js
-console.log(ps[100].a);
-// original: TypeError (no element 100)
-// compiled: ps.a[__vsc_bc(ps, 100, …)]
-//   also a TypeError, not 0
-```
-
 </Examples>
 
-The first is a fresh container: nothing in use, room for 16. The second
-is just after the 17th push made it grow: 17 elements, 32 slots, and
-slots 17 to 31 hold zeros that no element owns. The third, from the
-corpus file `out_of_bounds.js`, is why that matters: with 100 elements
-the column may have 128 slots, so a bare `ps.a[100]` would quietly
-print `0`. The bounds check from *Rewriting field accesses* compares the
-index with `length`, never with the capacity, and throws the same
-`TypeError` the original did.
+The container started with room for 16; the 17th push found every slot
+used and grew it to 32, so now 17 slots hold elements and slots 17 to 31
+hold zeros that no element owns. That is exactly why the bounds check
+compares an index with `length`, never with the capacity: a bare
+`ps.x[20]` would quietly read one of those zeros.
 
-<Prompts ids={['gc-cap-len', 'gc-no-push', 'gc-spare-zero']} />
+The generated `push` checks `n === this.cap` and, if so, calls `grow()`,
+which doubles `cap` and, for each typed column, makes a new
+`Float64Array` of that size, copies the old values into its start with
+`set`<Cite id="mdn-typedarray-set" />, and swaps it in (the garbage
+collector reclaims the old one). Plain-array columns are left alone: a
+plain array lengthens by itself.
 
-## The real `push` and `grow`
-
-Here are the two methods Viscosity generates for `growth.js`, reformatted
-to fit (the compiler writes each on one line):
-
-```js
-push(v0, v1) {
-  const n = this.length;
-  if (n === this.cap) this.grow();
-  this.a[n] = v0; this.b[n] = v1;
-  return (this.length = n + 1);
-}
-grow() {
-  const cap = (this.cap *= 2); let t;
-  t = new Float64Array(cap);
-  t.set(this.a); this.a = t;
-  t = new Float64Array(cap);
-  t.set(this.b); this.b = t;
-}
-```
-
-The loop's push becomes `ps.push(n, n % 7)`. Line 3 is the only check:
-if every slot is used, grow first. `grow()` doubles `cap` (`*=` updates
-it and gives back the new value), and for each column makes a new
-`Float64Array` of that size, copies every old value into its start with
-`set`<Cite id="mdn-typedarray-set" />, and swaps it in. Nothing refers
-to the old column any more, so the garbage collector reclaims it.
-
-Not every column is typed. When a field may hold strings or objects,
-the container gives it a plain array, and `grow()` leaves it alone:
-writing `this.name[n] = v` at index `length` appends to a plain
-array, and the engine grows it by itself.
-
-<Prompts ids={['gc-set', 'gc-plain']} />
+<Prompts ids={['gc-cap-len', 'gc-spare-zero']} />
 
 ## Why doubling
 
 Growing could add a fixed number of slots, say 16, each time, which
 sounds thriftier. Count the copies instead:
 
-<Run id="policies" />
-
-The output is three lines, one per size: `1000 1008 31248`, then
-`10000 16368 3120000`, then `100000 131056 312450000`. Building 100,000
-elements copies about 131,000 values when doubling, and more than 312
-million when adding 16. The reason: when doubling, each grow copies 16
-more values than all the earlier grows put together (16, then 32, then
-64), so the total is always less than the final capacity, which is less
-than twice the length. Adding 16 copies 16, 32, 48, 64 and so on, a sum
-that grows with the *square* of the length.
-
 <Figure caption="Copies made while pushing 400 elements, from capacity 16. Adding 16 slots curves up; doubling is a low staircase that never crosses the dashed line 2n." takeaway="Doubling: fewer than two copies per push, however long the list gets.">
   <CopyCurve />
 </Figure>
 
-<Analogy extra title="a yearly train pass">
-The pass costs a lot on the day you buy it, and nothing on the 250 days
-you travel; spread over the year, each journey costs a small, fixed
-amount, which is what you would tell a friend it "costs per trip".
-<span slot="breaks">You choose when to buy a pass; a push does not
-choose when to grow, and the one push that grows really is slow (it
-copies everything), so the average says nothing about the worst single
-push.</span>
-</Analogy>
+When doubling, each grow copies more values than all the earlier grows
+put together (16, then 32, then 64), so the total is always less than the
+final capacity, which is less than twice the length. Adding 16 copies 16,
+32, 48, 64 and so on, a sum that grows with the *square* of the length.
 
 <Callout kind="definition">
 **Amortised growth** spreads the cost of the rare, expensive grows over
@@ -465,6 +275,36 @@ in total, so one push costs a constant amount *on average*, even though
 an unlucky push copies everything. Growing by a constant amount instead
 makes n pushes cost time proportional to n².
 </Callout>
+
+<Examples of="amortized-growth">
+
+```js
+// pushes   doubling   adding 16
+//   1000       1008       31248
+//  10000      16368     3120000
+// 100000     131056   312450000
+```
+
+</Examples>
+
+These are real counts (the run in the dropdown below), from a starting
+capacity of 16: at 100,000 pushes, doubling has copied 1.3 values per
+push and adding 16 over 3,000, and the gap keeps widening, because one
+grows like n and the other like n².
+
+<Prompts ids={['gc-amortized', 'gc-add16']} />
+
+<More title="More: the counts by hand, the sum, and what the construct benchmark measures">
+
+<Run id="policies" />
+
+The corpus file `growth.js` pushes 5,000 elements from a `while` loop:
+it grows at 16, 32, and so on up to 4096, nine times, copying 8,176
+values per column, and ends with room for 8,192 (3,192 spare, which is
+the price paid in memory). Change the numbers here and watch the copies
+per push stay under two:
+
+<Run id="count5000" />
 
 <Formal title="Doubling, summed">
 
@@ -477,72 +317,55 @@ copies(n) = 16 + 32 + … + 2ᵏ·16
 32, and so on up to the last grow, 2 to the k times 16, which is less
 than n. Each power of two is bigger than all the ones before it put
 together, so the sum is less than the next power, 2 to the k + 1 times
-16, which is at most 2n. Divided by n: fewer than two copies per push.
-This is the doubling rule from *Lists in the VM*, now in Viscosity's
-container.</span>
+16, which is at most 2n. Divided by n: fewer than two copies per
+push.</span>
 </Formal>
 
-<Examples of="amortized-growth">
-
-```js
-// growth.js: 5,000 pushes from cap 16
-// 9 grows, 8176 copies per column,
-// final cap 8192: 1.64 per push
-```
-
-```js
-// 100,000 pushes: 131056 copies
-// adding 16: 312450000 copies
-```
-
-<Run id="count5000" />
-
-</Examples>
-
-The first is `growth.js` itself, counted: it grows at 16, 32, …, 4096,
-nine times, copying 8,176 values per column, and ends with room for
-8,192 (so 3,192 slots spare, which is the price paid in memory). The
-second is the policies run from above, at its largest size. The third
-is the counter itself, a loop that follows the container's rule; change
-`5000` or the starting capacity and watch the copies per push stay
-under two.
-
-<Prompts ids={['gc-amortized', 'gc-add16', 'gc-waste']} />
-
-## What it costs
-
-The book's `construct` suite times building a whole collection of
-six-field particles from raw values:
+The `construct` suite times building a whole collection of six-field
+particles from raw values:
 
 <BenchBars suite="construct" n={100000} title="Building 100,000 particles" highlight={['soa']} layouts={['aos', 'aos-packed', 'soa', 'aosoa8']} caption="Writing numbers into columns is far cheaper than allocating one object per element." />
 
-Read it carefully. In this run SoA built 100,000 particles 16.6× faster
-than objects (`results/baseline-node-2026-10-31.md`); however, the
-harness knows `n` in advance, so its columns are made at the right size
-and never grow. What the chart shows is that filling columns avoids an
-allocation per element. Doubling adds fewer than two copies per value on
-top, which is small next to an allocation, but this run does not time
-it separately.
+In this run SoA built 100,000 particles 16.6× faster than objects
+(`results/baseline-node-2026-10-31.md`); however, the harness knows `n`
+in advance, so its columns are made at the right size and never grow.
+What the chart shows is that filling columns avoids an allocation per
+element; it does not time doubling separately.
 
-<Prompts ids={['gc-bench']} />
+<Analogy extra title="a car park">
+A car park has 100 spaces and, at the moment, 63 cars. The spaces are
+real (painted, paid for, taking up land) whether or not a car is in
+them, and a warden counting the cars must count cars, not spaces.
+<span slot="breaks">Cars park wherever they like; a container fills its
+slots strictly in order, 0, 1, 2 and so on, so the slots in use are
+always exactly the first `length` of them.</span>
+</Analogy>
+
+</More>
 
 ## Your turn
 
+<Exercise id="rewrite" />
+
 <Exercise id="doublingCol" />
+
+<Exercise id="boundsCheck" />
 
 <Exercise id="copiesFor" />
 
 ## What you learned
 
-- A collection has a **capacity** (slots allocated) and a **length**
-  (slots used). Spare slots are real memory, full of zeros, so bounds
-  checks compare with length.
-- Viscosity's container grows by **doubling** `cap` and copying each
-  typed column with `set`; plain array columns grow by themselves.
-- **Amortised growth**: with doubling, n pushes copy fewer than 2n values
-  in total, so a push is cheap on average; growing by a constant is
-  quadratic.
-- The `construct` benchmark shows filling columns beats allocating
-  objects; it does not measure growth, because its sizes are known.
+- **Access rewriting** turns `a[i].f` into `a.f[i]` as edits applied back
+  to front; element variables become indexes, and for-of becomes a
+  counting loop, which the safety analysis makes correct.
+- Accesses not proven in bounds go through `__vsc_bc`, which throws the
+  same `TypeError` as the original.
+- A container has a **capacity** and a **length**; spare slots hold
+  zeros, so checks compare with length.
+- **Amortised growth**: doubling copies fewer than 2n values for n pushes;
+  growing by a constant is quadratic.
+
+Next: *Identity and materialization*, which asks what happens to `===`
+and to shared references once an element is no longer an object.
 
 <Quiz />

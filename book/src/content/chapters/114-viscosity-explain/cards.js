@@ -1,21 +1,21 @@
-// Chapter 71 cards: recall prompts, examples, exercises and quiz.
+// Chapter 114 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'rep-why': {
-    q: 'Why does an optimiser need a second output besides the code?',
+    q: 'Why does an optimiser that rewrites programs need a second output besides the code?',
     a: 'Without it you can’t tell whether it found nothing, gave up, or changed the wrong thing, short of reading the generated code.',
   },
   'rep-verdict': {
-    q: 'What does the first line of a collection’s report contain?',
+    q: 'In a `viscosity explain` report, what does the first line of a collection’s entry contain?',
     a: 'The variable, the line that created it, its fields in shape order, and the layout chosen.',
   },
   'rep-loops': {
-    q: 'In mixed_columns.js the inner loop (line 5) is listed but the outer loop (line 4) is not. Why?',
+    q: 'A loop on line 5 that reads fields of `es` sits inside a loop on line 4 that touches no field itself. Why does `viscosity explain` list only the line-5 loop?',
     a: 'Loops are listed by where the field accesses are. The outer loop touches no field itself.',
   },
   'rep-bounds': {
-    q: 'What does “4 of 9 element accesses proven in bounds” tell you about the compiled code?',
+    q: 'A `viscosity explain` report says “4 of 9 element accesses proven in bounds”. What does that tell you about the compiled code?',
     a: 'The other 5 accesses get a bounds check, so they throw the same TypeError the original would.',
   },
   'rep-what': {
@@ -23,28 +23,16 @@ export const prompts = {
     a: 'A compiler output that explains every decision it made, changed or kept, with the evidence for each.',
   },
   'rep-same-data': {
-    q: 'Why does `explain()` print reasons the planner recorded, instead of working them out itself?',
+    q: 'Why does Viscosity’s `explain()` print reasons the planner recorded, instead of working them out itself?',
     a: 'So the explanation can’t drift from the decision: it is the same data.',
   },
   'rep-order': {
-    q: 'A collection has no numeric field and also only 2 elements. Which reason does its report give?',
+    q: 'A safe, unannotated collection has no numeric field and also only 2 elements. Which reason does its `viscosity explain` report give?',
     a: '“no field is provably numeric”: the planner reports the first check that fails, and the numeric check comes before the size.',
   },
-  'rep-all-unsafe': {
-    q: 'Why does the report list every unsafe use, not only the first?',
-    a: 'So you can fix them all in one go, instead of discovering them one compile at a time.',
-  },
   'rep-act': {
-    q: 'The report says “line 5: an element is passed to a method call” for `console.log(ps[3])`. What change lets Viscosity transform `ps`?',
+    q: '`viscosity explain` says “line 5: an element is passed to a method call” for `console.log(ps[3])`. What change lets Viscosity transform `ps`?',
     a: 'Print fields instead of the element, e.g. `console.log(ps[3].x)`, so no real element object is needed.',
-  },
-  'rep-tested': {
-    q: 'Which test requires two parsers to produce byte-identical explain reports?',
-    a: 'The mini-parser test, for every corpus and benchmark program.',
-  },
-  'rep-engines': {
-    q: 'How does V8’s `--trace-elements-transitions` differ from `viscosity explain`?',
-    a: 'It is a debug-build log of events as the program runs, for engine developers. Viscosity’s report is written once, before running, about every collection.',
   },
 };
 
@@ -317,7 +305,7 @@ test('unknown size does not stop it', () => {
 
 export const quiz = [
   {
-    q: 'What does `explain()` in plan.ts compute?',
+    q: 'What does Viscosity’s `explain()` function (in `core/src/plan.ts`) compute?',
     options: [
       {
         t: 'It re-runs the safety analysis to justify each decision',
@@ -339,7 +327,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A report says `· 7 of 9 element accesses proven in bounds`. What follows?',
+    q: 'A `viscosity explain` report says `· 7 of 9 element accesses proven in bounds` (with the default `--bounds check`). What follows?',
     options: [
       {
         t: '2 accesses may be out of bounds, so Viscosity refused to transform',
@@ -361,7 +349,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A collection is passed to `console.log` and is also too small. What does its report say?',
+    q: 'A collection is passed to `console.log` and also has fewer elements than the size threshold. What does its `viscosity explain` report say?',
     options: [
       {
         t: 'Only that it is too small',
@@ -383,7 +371,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is it valuable that `keep(...)` always receives the reason?',
+    q: 'In Viscosity’s planner, why is it valuable that `keep(...)` always receives the reason?',
     options: [
       {
         t: 'A collection can never be kept without the report saying why',
@@ -401,50 +389,6 @@ export const quiz = [
       {
         t: 'It hides internal details from users',
         why: 'The opposite: it exposes the evidence.',
-      },
-    ],
-  },
-  {
-    q: 'Which statement about testing the report is true?',
-    options: [
-      {
-        t: 'Reports are not tested because they are just text',
-        why: 'They are compared byte for byte in two places.',
-      },
-      {
-        t: 'The differential test checks the report’s wording',
-        why: 'It checks layouts and behaviour; it shows the report when a layout is wrong.',
-      },
-      {
-        t: 'The Rust port’s parity test compares the compiled code but not the report',
-        why: 'It compares both, byte for byte, for every stored program in both bounds modes, and every pair matches.',
-      },
-      {
-        t: 'The mini-parser test requires identical reports from both parsers',
-        correct: true,
-        why: 'It compares both the compiled code and the explanation for every corpus and benchmark program.',
-      },
-    ],
-  },
-  {
-    q: 'How is V8’s `--trace-elements-transitions` different from Viscosity’s report?',
-    options: [
-      {
-        t: 'It isn’t: both are written before the program runs',
-        why: 'V8’s trace is printed as transitions happen, during the run.',
-      },
-      {
-        t: 'It is a debug-build event log for engine developers; Viscosity explains every collection once, before running',
-        correct: true,
-        why: 'One is a trace of runtime events, the other a report of compile-time decisions.',
-      },
-      {
-        t: 'V8’s trace explains why code was not optimised',
-        why: 'It reports elements kind transitions, a much narrower event.',
-      },
-      {
-        t: 'Viscosity’s report is only shown on errors',
-        why: 'It is a normal output: `viscosity explain`, or `build --explain`.',
       },
     ],
   },

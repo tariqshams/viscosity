@@ -1,98 +1,37 @@
-// Chapter 72 cards: recall prompts, examples, exercises and quiz.
+// Chapter 115 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 115, 115.
 
 export const prompts = {
   'e2e-what': {
     q: 'What is an end-to-end benchmark?',
     a: 'A measurement of a whole program, compiled as a user would compile it, rather than one loop written for the benchmark.',
   },
-  'e2e-why': {
-    q: 'Name two costs a whole program pays that a single-loop microbenchmark leaves out.',
-    a: 'Building the data through the generated container, bounds checks Viscosity couldn’t remove, and loops that don’t benefit (any two).',
-  },
-  'e2e-self-time': {
-    q: 'Who measures the time in Viscosity’s end-to-end benchmark?',
-    a: 'Each program times its own hot section with `performance.now()` and prints `{ check, ms }` as its last line.',
-  },
   'e2e-checksum': {
-    q: 'What two jobs does each program’s checksum do?',
+    q: 'In an end-to-end benchmark comparing an original and a compiled program, what two jobs does each program’s printed checksum do?',
     a: 'It keeps the work observable, so it can’t be removed as dead code, and it lets the harness check both versions computed the same thing.',
   },
   'e2e-fresh': {
-    q: 'Why does every run of every version get a fresh process?',
+    q: 'Why does an end-to-end benchmark of a compiler start a fresh process for every run of each version?',
     a: 'So no run inherits the other version’s type feedback, compiled code or garbage.',
   },
-  'e2e-median': {
-    q: 'In the committed particles runs on Node, one compiled run took 135 ms while the best took 90. Why doesn’t that one run spoil the result?',
-    a: 'The harness reports the best and the median, and a single slow outlier is neither the fastest run nor the one in the middle.',
-  },
-  'e2e-wins': {
-    q: 'Which committed programs gained most, and what do they have in common?',
-    a: 'Particles, ledger and heat: many elements, and hot loops that touch only some of the fields.',
-  },
   'e2e-story': {
-    q: 'Why were n-body and boids first slower with Viscosity?',
+    q: 'Why were the n-body and boids benchmarks first slower after compiling with Viscosity?',
     a: 'Their hot loops used indexes the bounds proof didn’t cover (an outer loop’s counter; `i + 1` starts and `&&` guards), so checks ran inside the hottest loop.',
-  },
-  'e2e-fix': {
-    q: 'Was the n-body slowdown fixed by removing bounds checks?',
-    a: 'No. The proof was generalised, so the checks became unnecessary: 12 of 12 accesses proven in bounds.',
-  },
-  'e2e-noise': {
-    q: 'One committed run gave ledger 5.11×; the later matrix gave 3.75× (best). What should you claim?',
-    a: 'Only the coarse picture: ledger is several times faster. Timings on that shared VM varied by up to about 2× between runs.',
-  },
-  'e2e-python': {
-    q: 'In CPython, what did column storage cost and what did it save?',
-    a: 'It was slower per element than dataclass objects, but used about 4.9× less memory.',
-  },
-  'e2e-warmup': {
-    q: 'Why does the end-to-end benchmark keep JIT warm-up in its timings, unlike Part II’s harness?',
-    a: 'Because a real program pays for warm-up too; the question is how long the user’s program takes.',
   },
   'corpus-what': {
     q: 'What is a test corpus?',
     a: 'A large, curated collection of programs used as test inputs, each chosen to exercise one case.',
   },
-  'corpus-generated': {
-    q: 'In Viscosity, what does it take to add a new differential test case?',
-    a: 'Adding one program file to the corpus folder. The tests are generated from the folder listing; no test code changes.',
-  },
-  'corpus-one-idea': {
-    q: 'Why should each corpus file probe only one idea?',
-    a: 'So when it fails you know what broke, and its name can say what it covers.',
-  },
   'corpus-observable': {
-    q: 'Why does `try_catch.js` print the caught error’s class and message?',
+    q: 'Why should a differential-test corpus program that catches an error print the error’s class and message?',
     a: 'A difference that isn’t printed can’t be caught: the differential test only compares output and errors.',
-  },
-  'corpus-deterministic': {
-    q: 'Why must a corpus program avoid timing and randomness?',
-    a: 'Two correct runs must print the same thing, or every difference would be a false alarm.',
-  },
-  'corpus-trap': {
-    q: 'What mistake does `ints_stay_ints.py` catch?',
-    a: 'Storing an integer field in an `array(\'d\')` column, which would turn 6 into 6.0 and print `float` instead of `int`.',
-  },
-  'corpus-matrix': {
-    q: 'Which checks does one JavaScript corpus file feed?',
-    a: 'Its decision header, the original-vs-compiled behaviour, acorn-vs-mini-parser equivalence, and 4 Rust fixture files.',
-  },
-  'corpus-python': {
-    q: 'How does the Python differential test detect a changed exception?',
-    a: 'It runs both programs with python3 and compares stdout and the last line of stderr, where the exception is printed.',
   },
   'corpus-rust': {
     q: 'What is the oracle for the Rust port of Viscosity?',
     a: 'The TypeScript compiler: its compiled code and explain reports, stored as fixtures, must be reproduced byte for byte.',
   },
-  'corpus-assume': {
-    q: 'Why are the Rust fixtures generated in both `check` and `assume` bounds modes?',
-    a: 'So the unchecked code paths of the emitter are covered too, not only the checked ones.',
-  },
   'corpus-limit': {
-    q: 'What can a hand-written corpus never find?',
+    q: 'What kind of bug can a hand-written test corpus never find?',
     a: 'A case nobody thought of. Random program generation (fuzzing) is the tool for that, and each bug it finds becomes a new corpus file.',
   },
 };
@@ -166,7 +105,7 @@ test('does not reorder the inputs', () => {
       'For the median, copy before sorting: `[...xs].sort((x, y) => x - y)`. Without the comparator, numbers sort as strings.',
       'Divide the two medians and round with `+(x).toFixed(2)`.',
     ],
-    walkthrough: `**How to think about it.** This is the core of the harness (\`packages/bench/src/e2e.ts\` and the matrix script), made a little stricter. Two rules come from *Benchmarking honestly* and *Noisy numbers: the median, p95 and a fresh process*: correctness before speed, so the checksums are checked first and a mismatch throws; and a robust summary, so one slow run (the committed particles data has a 135 ms run among others from 90 to 124) cannot drag the answer about. The median does that: it ignores how far an outlier is from the rest.
+    walkthrough: `**How to think about it.** This is the core of the harness (\`packages/bench/src/e2e.ts\` and the matrix script), made a little stricter. Two rules come from *Benchmarking honestly*: correctness before speed, so the checksums are checked first and a mismatch throws; and a robust summary, so one slow run (the committed particles data has a 135 ms run among others from 90 to 124) cannot drag the answer about. The median does that: it ignores how far an outlier is from the rest.
 
 **The solution, line by line.**
 
@@ -272,6 +211,7 @@ This is not a statistical test: with more runs, ranges overlap more easily, and 
     ],
   },
   fuzzToy: {
+    optional: true,
     title: 'Fuzz a toy layout compiler',
     prompt: 'A toy language has three statements over a list of records: `[\'push\', v]` adds `{ x: v }`, `[\'inc\', k]` adds `k` to every `x`, and `[\'get\', i]` prints element `i`’s `x`, or `none`. `runAoS` runs a program with objects; `runSoA`, the “compiled” version, uses one `Float64Array` column, and has bugs. Write `gen(rand)`: a random program of **1 to 8** statements, each a `push` of `rand(10)`, an `inc` of `1 + rand(3)`, or a `get` of `rand(6)`, all equally likely. Then write `fuzz(seed, n, f, g)`: make **one** generator with `makeRand(seed)`, generate up to `n` programs, and return the first program on which `f` and `g` give different output, or `null`.',
     starter: `// Given: a seeded random generator.
@@ -443,7 +383,7 @@ test('explores many different programs', () => {
       'In `fuzz`, create `rand` once, before the loop, so each program continues the same random sequence.',
       'Compare `f(p)` and `g(p)` with `!==`, and return `p` itself, so the failure can be replayed.',
     ],
-    walkthrough: `**How to think about it.** This is a fuzzer of the kind *Fuzzing and test-case reduction* built, aimed at a layout compiler, which is what \`engine/rust/scripts/fuzz.mjs\` does for Viscosity at full size. There are two pieces: a generator that only ever makes valid programs, and a loop that runs every program through both versions and stops at the first disagreement. Two traps decide the details: a program that prints nothing can never disagree, so \`get\` must be among the statements; and the random generator must be made once, or every program comes out the same.
+    walkthrough: `**How to think about it.** This is a fuzzer of the kind *Testing compilers: differential, round-trip, fuzzing and shrinking* describes, aimed at a layout compiler, which is what \`engine/rust/scripts/fuzz.mjs\` does for Viscosity at full size. There are two pieces: a generator that only ever makes valid programs, and a loop that runs every program through both versions and stops at the first disagreement. Two traps decide the details: a program that prints nothing can never disagree, so \`get\` must be among the statements; and the random generator must be made once, or every program comes out the same.
 
 **The solution, line by line.**
 
@@ -706,29 +646,7 @@ With the header parsed into data, the expectation for every corpus file lives in
 
 export const quiz = [
   {
-    q: 'What makes Viscosity’s end-to-end benchmark “end to end”?',
-    options: [
-      {
-        t: 'It times every loop separately',
-        why: 'It times each program’s whole hot section, as one number.',
-      },
-      {
-        t: 'It uses the largest possible input',
-        why: 'Size isn’t the point; a whole program is.',
-      },
-      {
-        t: 'It compiles whole, unannotated programs with default options and times them as a user would run them',
-        correct: true,
-        why: 'Construction, checks and loops that don’t benefit are all included.',
-      },
-      {
-        t: 'It runs on several machines',
-        why: 'The committed results come from one shared cloud VM.',
-      },
-    ],
-  },
-  {
-    q: 'The compiled ledger runs 5× faster but its checksum differs from the original’s. What does the harness do?',
+    q: 'In Viscosity’s end-to-end harness, the compiled ledger runs 5× faster but its checksum differs from the original’s. What does the harness do?',
     options: [
       {
         t: 'Throws, and reports no speed-up',
@@ -750,7 +668,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why were n-body and boids slower in the first version?',
+    q: 'Why were Viscosity’s n-body and boids benchmarks slower in its first version?',
     options: [
       {
         t: 'Float64Array is slower than objects for small arrays',
@@ -768,72 +686,6 @@ export const quiz = [
       {
         t: 'They were compiled in opt-in mode',
         why: 'The harness uses the default options.',
-      },
-    ],
-  },
-  {
-    q: 'The 3-run results file says ledger 5.11×; the later 9-run matrix says 3.75× (best). What is the best conclusion?',
-    options: [
-      {
-        t: 'The compiler regressed',
-        why: 'The compiled time barely moved (46 ms, then 44.6 ms best); the original’s moved far more (237 ms, then 167.5 ms best).',
-      },
-      {
-        t: 'One of the two runs is wrong and must be discarded',
-        why: 'Both are honest measurements of a noisy machine.',
-      },
-      {
-        t: 'Report the average, 4.4×',
-        why: 'Averaging two noisy figures doesn’t remove the noise; it hides it.',
-      },
-      {
-        t: 'Ledger is several times faster; the exact factor varies with machine noise',
-        correct: true,
-        why: 'Claim what both runs support, at the resolution they support.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the end-to-end harness use a new Node process for every run?',
-    options: [
-      {
-        t: 'To use more CPU cores',
-        why: 'Runs are sequential.',
-      },
-      {
-        t: 'Because Node can only run one file per process',
-        why: 'The point is isolation, not a Node restriction.',
-      },
-      {
-        t: 'So no run inherits type feedback, compiled code or garbage from another',
-        correct: true,
-        why: 'The isolation rule from *Noisy numbers: the median, p95 and a fresh process*.',
-      },
-      {
-        t: 'To skip JIT warm-up',
-        why: 'A fresh process starts cold; warm-up is included in every run.',
-      },
-    ],
-  },
-  {
-    q: 'In CPython, why does the Python plugin keep objects by default?',
-    options: [
-      {
-        t: 'The analyses can’t handle Python',
-        why: 'The same VIR and analyses serve both languages.',
-      },
-      {
-        t: 'Columns were measured slower per element, though they used about 4.9× less memory',
-        correct: true,
-        why: 'So the cost model’s verdict for Python is “opt in if memory matters”.',
-      },
-      {
-        t: 'Python has no typed arrays',
-        why: '`array(\'d\')` is a typed column; it was just slower to read in CPython.',
-      },
-      {
-        t: 'Columns used more memory',
-        why: 'They used less: 3.3 MB against 16.0 MB.',
       },
     ],
   },
@@ -860,7 +712,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A corpus program computes something but prints only “done”. What is wrong with it?',
+    q: 'A differential-test corpus program computes something but prints only “done”. What is wrong with it?',
     options: [
       {
         t: 'Nothing: it ran without crashing',
@@ -878,94 +730,6 @@ export const quiz = [
         t: 'The differential test can only catch differences that are printed or thrown',
         correct: true,
         why: 'Print the values that a wrong layout could change.',
-      },
-    ],
-  },
-  {
-    q: 'How many tests does adding one JavaScript corpus file add to the TypeScript suite?',
-    options: [
-      {
-        t: 'Two: a differential test and a parser-equivalence test',
-        correct: true,
-        why: 'Plus 4 Rust fixture files when the generator is rerun.',
-      },
-      {
-        t: 'One',
-        why: 'The mini-parser test reads the corpus folder too.',
-      },
-      {
-        t: 'None until someone writes a test for it',
-        why: 'The tests are generated from the folder listing.',
-      },
-      {
-        t: 'Four',
-        why: 'Four is the number of Rust fixture files, which the Rust parity test reads, not the TypeScript suite.',
-      },
-    ],
-  },
-  {
-    q: 'What is true of the Rust port’s parity testing today?',
-    options: [
-      {
-        t: 'There are no fixtures yet',
-        why: '402 fixture files are in engine/rust/tests/expected.',
-      },
-      {
-        t: 'The TypeScript compiler generates the fixtures, and the Rust port matches every one byte for byte',
-        correct: true,
-        why: '`parity.rs` compares the code and the report for every program in both bounds modes: 190 pairs, all equal when run for this chapter.',
-      },
-      {
-        t: 'The parity test compares only the explain reports',
-        why: 'It compares the compiled code too, byte for byte.',
-      },
-      {
-        t: 'Rust is the oracle for TypeScript',
-        why: 'The reference implementation is TypeScript.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the Python differential test run `python3` in a subprocess instead of a VM context?',
-    options: [
-      {
-        t: 'To make it faster',
-        why: 'Subprocesses are slower; it is the only way to run Python.',
-      },
-      {
-        t: 'Because the programs are Python: they must run on a real Python interpreter, and the outputs are compared the same way',
-        correct: true,
-        why: 'The oracle is still the original program, run for real.',
-      },
-      {
-        t: 'Because Python has no exceptions',
-        why: 'It compares the exception line in stderr.',
-      },
-      {
-        t: 'To avoid comparing errors',
-        why: 'It compares the last line of stderr, where the exception is printed.',
-      },
-    ],
-  },
-  {
-    q: 'A fuzzer creates a new random generator from the same seed for every program. What happens?',
-    options: [
-      {
-        t: 'It finds bugs faster',
-        why: 'It tests one program over and over.',
-      },
-      {
-        t: 'Its results can’t be reproduced',
-        why: 'They are perfectly reproducible, and perfectly repetitive.',
-      },
-      {
-        t: 'It finds the same bugs as the corpus',
-        why: 'It finds whatever the single program finds, or nothing.',
-      },
-      {
-        t: 'Every program is identical, so it tests one program n times',
-        correct: true,
-        why: 'Seed once, then keep drawing from the same generator.',
       },
     ],
   },

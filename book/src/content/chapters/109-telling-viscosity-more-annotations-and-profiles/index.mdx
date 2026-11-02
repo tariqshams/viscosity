@@ -3,18 +3,15 @@ n: 109
 day: 16
 part: VI
 title: 'Telling Viscosity more: annotations and profiles'
-tagline: 'Sometimes you know what the compiler can only guess. One comment above a declaration tells Viscosity to leave a collection alone, or to change it whatever the cost model says, and the program stays plain JavaScript either way.'
+tagline: 'Sometimes you know what the compiler can only guess. One comment above a declaration names the layout you want, and one profiling run tells the cost model how big a collection really gets; neither can make an unsafe change happen.'
 objectives:
   - Write the three `@viscosity` annotations and say exactly which declaration each one reaches.
   - Predict what an annotation can overrule (the cost model) and what it cannot (safety).
-  - Use opt-in mode to transform only the collections you mark.
-  - 'Avoid the silent mistakes: wrong case, a blank line, a comment on the wrong line.'
   - Explain what profile-guided optimisation is and which question it answers for Viscosity.
   - Describe how `viscosity profile` instruments a program without changing what it does.
-  - Read how a measured size replaces the static estimate in the planner, and where that happens.
-  - Say why a profile can cost Viscosity speed but never correctness, and how that differs from a JIT.
+  - Say why a profile can cost Viscosity speed but never correctness.
 introduces: [annotation, pgo, instrumentation]
-uses: [cost-model, safety-analysis, bailout, collection-discovery, viscosity-pipeline, language-plugin, parser-adapter, aosoa, aos-vs-soa, typed-array, source-location, string-methods, map, object, array, function, push, length, closure, array-of-objects, identity, hot-loop, type-feedback, speculation, deoptimization, benchmark-isolation, source-to-source]
+uses: [cost-model, safety-analysis, bailout, collection-discovery, viscosity-pipeline, language-plugin, aosoa, aos-vs-soa, typed-array, array-of-objects, hot-loop, type-feedback, speculation, deoptimization, source-to-source]
 sources: [llvm-vectorizers, ispcdocs, v8-maglev]
 ---
 import AnnotationSteps from '../../../components/diagrams/ch109/AnnotationSteps';
@@ -23,196 +20,113 @@ import Playground from '../../../components/playground/Playground';
 import PgoSteps from '../../../components/diagrams/ch109/PgoSteps';
 import ProfileGate from '../../../components/diagrams/ch109/ProfileGate';
 
-{/* ── merge: from old chapter 109, Opting in with @viscosity ── */}
-
 ## You know something it doesn't
 
-The cost model from the last chapter guesses from what the code looks
-like, and sometimes you know better: the test data has 10 particles but
-production has two million; or you are chasing a bug and want `ps` left
-exactly as you wrote it; or the array is filled inside a function, so
-the size is "unknown" (which passes), and you know it is tiny. In each
-case the fix is one comment on the line above the declaration:
-
-```js
-// @viscosity aos
-const ps = [];
-```
+The cost model guesses from what the code looks like, and sometimes you
+know better: the test data has 10 particles but production has two
+million; or you are chasing a bug and want `ps` left as you wrote it; or
+the array is filled inside a function, so it cannot be counted. Viscosity gives you two ways to tell it
+more: a comment that names the layout you want, and a measured run that
+tells the cost model how big each collection really gets.
 
 <Analogy title="a sticker on a removal box">
 The removal crew decides how to load the van, but a box marked "fragile"
-or "open first" gets handled the way the sticker says; and if you never
-hire a crew, the sticker does no harm at all.
+or "this way up" is handled the way the sticker says; however, no sticker
+makes the crew carry a box down a staircase that has given way, and if
+you never hire a crew, the sticker does no harm at all.
 <span slot="breaks">A crew reads a sticker wherever it is on the box;
-Viscosity reads an annotation only in one exact place (the line above,
-or the end of the same line), and a sticker in the wrong place is
-ignored without a word.</span>
+Viscosity reads an annotation only in one exact place (the line above, or
+the end of the same line), and a sticker in the wrong place is ignored
+without a word.</span>
 </Analogy>
 
-<Analogy extra title="a do-not-disturb sign">
-Housekeeping has its own plan for which rooms to clean, and the sign on
-your door overrules that plan for your room; however, it does not stop
-the fire alarm, which goes into every room whatever the sign says.
-<span slot="breaks">A hotel guest can hang a sign for any reason;
-Viscosity accepts only three words, and an `aosoa` sign it cannot honour
-(a bad block size, a field that is not a number) is turned down, with a
-reason, rather than followed.</span>
-</Analogy>
+## Three words in a comment
 
-The fire alarm in that picture is safety, and the plan is the cost
-model: an annotation overrules the guess, never the proof.
-
-## Three words
-
-There are three annotations, one per layout:
-
-```js
-// @viscosity aos       keep objects
-// @viscosity soa       struct of arrays
-// @viscosity aosoa(8)  AoSoA, blocks of 8
-```
-
-The JavaScript plugin finds them with one regular expression, `ANN`
-in `frontend-js/src/index.ts` (one line in the source, split here):
+There are three annotations, one per layout: `// @viscosity aos` keeps
+the objects, `// @viscosity soa` asks for a struct of arrays, and
+`// @viscosity aosoa(8)` asks for AoSoA in blocks of 8. The JavaScript
+plugin finds them with one regular expression in
+`frontend-js/src/index.ts`:
 
 ```js
 /@viscosity\s+(aosoa|soa|aos)\b
   (?:\(([^)]*)\))?/
 ```
 
-Read it left to right: the word `@viscosity`; one or more spaces (`\s+`);
-one of the three layout names, captured as `m[1]` (`aosoa` is listed
-first, so it is tried before its shorter prefix `aos`); a word boundary
-(`\b`), so that `@viscosity soap` is not read as `soa`; and, optionally,
-whatever sits in parentheses, captured as `m[2]`. The plugin accepts any
-text there and lets the planner judge it later. Try it on a few comments:
+(One line in the source, split here.) It matches `@viscosity`, spaces,
+one of the three names (`aosoa` first, so it is tried before its prefix
+`aos`), a word boundary `\b` (so `soap` is not `soa`), and optionally any
+text in brackets, which the planner judges later; it is case-sensitive.
 
-<Run id="pattern" />
-
-<Callout kind="definition">
-An **annotation** is a comment (or other marker) that gives the compiler
-extra instructions without changing what the program means. A
-Viscosity annotation names a layout for one collection; a program with
-annotations is still ordinary JavaScript, and runs the same with or
-without Viscosity.
-</Callout>
-
-<Formal title="The annotation, as a grammar">
-
-```text
-annotation ::= "@viscosity" space+ layout
-               [ "(" text ")" ]
-layout     ::= "aosoa" | "soa" | "aos"
-```
-
-<span slot="read">An annotation is the word @viscosity, then one or
-more spaces, then a layout, then optionally some text in brackets
-(square brackets in the rule mean "optional", and + means "one or
-more"); a layout is one of the three words, spelled exactly in lower
-case.</span>
-</Formal>
-
-<Prompts ids={['ann-what', 'ann-forms', 'ann-b']} />
-
-## Which declaration?
-
-A comment has no idea which variable it is about. While parsing, acorn
-reports every comment with the line it ends on, and the plugin decides
-from the line itself (trimmed slightly):
-
-```ts
-for (const cm of comments) {
-  const m = ANN.exec(cm.value);
-  if (!m) continue;
-  const own = /^\s*(\/\/|\/\*|\*)/
-    .test(srcLines[cm.line - 1] ?? '');
-  for (const [jb, id] of bindingOf) {
-    const line = jb.decl?.loc?.start.line;
-    if (own ? line === cm.line + 1
-            : line === cm.line)
-      annotations.set(id, {
-        layout: m[1], blockText: m[2],
-        line: cm.line, blockSize: … });
-  }
-}
-```
-
-Lines 2 and 3 skip any comment that does not match. Lines 4 and 5 ask
-whether the comment is **alone on its line**: does the line start, after
-spaces, with `//`, `/*` or `*`? Line 6 walks every declared name, and
-line 8 picks the target: a comment alone on its line annotates
-declarations on the *next* line, and a trailing comment (code before it)
-annotates only its *own* line. The record keeps the layout, the text in
-brackets, the comment's line for explain, and `blockSize`, which is the
-number when the text is all digits and `undefined` otherwise. Step
-through a file with four comments that look like annotations:
+Which declaration a comment reaches is decided from its line alone: a
+comment **alone on its line** annotates the declarations on the *next*
+line, and a **trailing** comment (code before it on the same line)
+annotates only its own line. Step through a file with four comments that
+look like annotations:
 
 <AnnotationSteps client:visible />
 
+<Callout kind="definition">
+An **annotation** is a comment (or other marker) that gives the compiler
+extra instructions without changing what the program means. A Viscosity
+annotation names a layout for one collection; a program with annotations
+is still ordinary JavaScript, and runs the same with or without
+Viscosity.
+</Callout>
+
 <Examples of="annotation">
-
-```js
-// @viscosity aos
-const ps = [];
-// → ps: annotated @viscosity aos
-//   at line 1 (kept as objects)
-```
-
-```js
-const ps = []; // @viscosity aos
-const qs = [];
-// → ps kept as told; qs is not
-//   annotated, and becomes soa
-```
 
 ```js
 // @viscosity soa
 const pts = [{ x: 1, y: 2 },
   { x: 3, y: 4 }, { x: 5, y: 6 }];
-// → struct of arrays, "about 3
-//   elements": the size rule is skipped
+for (let i = 0; i < pts.length; i++)
+  pts[i].x += pts[i].y;
 ```
 
 </Examples>
 
-The first is the plain case: alone on line 1, it reaches `ps` on line 2,
-which (filled with 1,000 particles and looped over) would otherwise have
-become SoA. In the second the comment trails `ps` on line 1, so it
-reaches only `ps`; `qs` on the next line goes down the ladder on its own
-and is transformed. The third is the case the cost model would refuse,
-three points, and the annotation wins (both programs also fill and loop
-over their arrays; the verdicts are the real explain output).
+Line 1 is alone on its line, so it reaches `pts` on line 2; lines 2
+and 3 make three records, which the cost model alone would refuse (far
+below its 64-element threshold); lines 4 and 5 loop over them, reading
+and writing two fields. `viscosity explain` says:
 
-The common mistake is a comment that looks right and does nothing:
-
-```js
-// @viscosity SoA
-const ps = [{ x: 1 }, { x: 2 }];
-// → kept: about 2 elements: below
-//   the 64-element threshold
+```text
+pts (line 2) {x, y} → struct of arrays
+  · annotated @viscosity soa at line 1
+  · about 3 elements
 ```
 
-With `soa` in lower case the same program is annotated and transformed;
-with `SoA` the pattern does not match, the comment is only a comment,
-and the size rule keeps the array. There is no warning, and a blank line
-between the comment and the declaration fails the same way. So check:
-`viscosity explain` names every annotation that landed ("annotated
-@viscosity … at line N").
+The size is reported but no longer decides anything. Change `soa` to
+`SoA` and explain says `kept as array of objects` with the threshold
+reason: the pattern did not match, so the comment is only a comment, and
+there is no warning (a blank line before the declaration fails in the
+same silent way). So check that explain names your annotation.
 
-<Prompts ids={['ann-where', 'ann-case']} />
+<Prompts ids={['ann-what', 'ann-where', 'ann-case']} />
 
-## What an annotation can and can't do
+## What an annotation cannot do
 
-On the planner's ladder from *The cost model*, an annotation sits on the
-second rung: below safety, above every cost rule.
+On the planner's ladder from *The cost model*, an annotation sits below
+safety and above every cost rule:
 
 <Figure caption="An annotation skips the cost rules beneath it, and can never reach past safety above it." takeaway="Annotations overrule guesses, not proofs.">
   <WhereItSits />
 </Figure>
 
-**`aos` stops a transform.** This program becomes SoA. Add
-`// @viscosity aos` on the line above `const ps`, then watch the
-explanation and the compiled code change, and run both:
+`soa` skips every cost rule (even the numeric one: a string field gets
+a plain-array column), and `aos` stops a transform outright. `aosoa(N)`
+has conditions, because a block is one `Float64Array` indexed with
+shifts: N a power of two up to 65536 (8 when left out), and every field
+provably numeric; otherwise the collection is kept with a reason. Above
+all of this sits safety: annotate `ps` with `soa` and also write
+`console.log(ps)`, and explain still says
+`unsafe: the array is passed to a method call at line 7`. An annotation
+tells the cost model what to think; it cannot make an observable change
+invisible.
+
+Try it: this program becomes SoA; add `// @viscosity aos` above
+`const ps` and watch the explanation and the compiled code change.
 
 <Playground client:visible title="Stop the transform" initial={`const ps = [];
 for (let i = 0; i < 1000; i++)
@@ -221,94 +135,37 @@ for (let i = 0; i < ps.length; i++)
   ps[i].x += ps[i].vx;
 console.log(ps[7].x);`} />
 
-**`soa` skips the cost rules**, all three: the size (as in the third
-example), the loop rule and even the numeric rule, so an annotated
-collection with only a string field gets a plain-array column for it.
+<Prompts ids={['ann-unsafe']} />
 
-**`aosoa(N)` has conditions**, checked in this order, because the whole
-block is one `Float64Array` indexed with shifts (as *AoSoA code
-generation* shows). N must be at most 65536; it must be a power of two
-(2, 4, 8, …), and a missing `(N)` means 8; and every field must be
-provably numeric. Each failure keeps the collection with a reason rather
-than stopping the compile:
+<More title="More: opt-in mode, the pattern by hand, and other compilers' hints">
 
-```text
-annotated aosoa(6), but the block size
-  must be a power of two (2, 4, 8, 16, ...)
-annotated aosoa, but fields id may
-  hold non-numbers
-```
+With `--mode opt-in`, only annotated collections are transformed; every
+other one is kept with `opt-in mode: not annotated`. That suits adopting
+Viscosity a little at a time, or a team that wants every layout change to
+show in code review. (Python is already close to opt-in: its planner
+keeps lists unless you annotate them, for the reason *The cost model*
+gave.)
 
-**Nothing overrides safety.** Annotate `ps` with `soa` and then write
-`console.log(ps)`, and explain still says "unsafe: the array is passed
-to a method call at line 7". An annotation tells the cost model what to
-think; it cannot make an observable change invisible.
+Run the annotation pattern on a few comments, including `SoA`, `soap`
+and `aosoa(x)`:
 
-<Prompts ids={['ann-soa-skips', 'ann-aosoa', 'ann-unsafe']} />
+<Run id="pattern" />
 
-## Opt-in mode
-
-By default Viscosity decides everything, and annotations adjust it. With
-`--mode opt-in` it flips: only annotated collections are transformed. The
-corpus file `opt_in_mode.js` has two identical arrays of 300 records, and
-marks only the first with `// @viscosity soa`:
-
-```text
-marked (line 3) {v} → struct of arrays
-  · annotated @viscosity soa at line 2
-  …
-unmarked (line 4) {v} → kept as array
-  of objects
-  · opt-in mode: not annotated
-```
-
-That suits adopting Viscosity a little at a time, or a team that wants
-every layout change to show in the source and in code review. Python is
-already close to opt-in: its planner keeps lists unless you annotate
-them, for the reason *The cost model* gave.
-
-<Prompts ids={['ann-optin']} />
-
-<Callout kind="engine" label="Under the hood">
 Compilers have long taken hints this way. Clang accepts
-`#pragma clang loop vectorize(enable)` before a loop, and can be told a
-vector width, overruling its vectorizer's cost model for that one
-loop<Cite id="llvm-vectorizers" />. Intel's ISPC puts the layout in the
-type: `soa<8> Point pts[...]` stores an array eight elements at a time,
-field by field, while code still writes `pts[10].x`<Cite id="ispcdocs" />.
-Viscosity sits between the two: its hint names a layout, like ISPC's,
-and sits on one declaration, like a pragma on one loop; but it lives in
-a comment, so every JavaScript engine and tool reads the program as
+`#pragma clang loop vectorize(enable)` before a loop, overruling its
+vectorizer's cost model for that one loop<Cite id="llvm-vectorizers" />;
+Intel's ISPC puts the layout in the type, so `soa<8> Point pts[...]`
+stores an array eight elements at a time, field by field, while code
+still writes `pts[10].x`<Cite id="ispcdocs" />. Viscosity's hint names a
+layout, like ISPC's, and sits on one declaration, like a pragma; but it
+lives in a comment, so every JavaScript engine reads the program as
 before.
-</Callout>
 
-## Your turn
-
-<Exercise id="findAnnotations" />
-
-<Exercise id="checkAnn" />
-
-## What you learned
-
-- An **annotation** is a comment with instructions for the compiler:
-  `@viscosity aos`, `soa` and `aosoa(N)`.
-- Alone on its line, it reaches the next line; trailing, only its own
-  line. Wrong case or a blank line, and it silently does nothing, so
-  check with `viscosity explain`.
-- It sits below safety and above the cost model: `aos` stops a
-  transform, `soa` skips the cost rules, and nothing forces an unsafe
-  change.
-- `aosoa(N)` needs N a power of two up to 65536, and every field numeric.
-- `--mode opt-in` transforms only annotated collections.
-
-
-{/* ── merge: from old chapter 109, Profile-guided optimization ── */}
+</More>
 
 ## A question the code cannot answer
 
-*The cost model* gave Viscosity one rule that has nothing to do with
-safety: below 64 elements, a new layout is not worth it. That rule needs
-a number, and for most programs the analysis can count, because the
+The threshold needs a number, and usually the analysis can count, since
 elements are pushed in a loop with a constant bound. Here it cannot:
 
 ```js
@@ -317,55 +174,24 @@ function spawn(x) {
   ps.push({ x, vx: 1 });
 }
 for (let i = 0; i < 20; i++) spawn(i);
-for (let f = 0; f < 100; f++) {
-  for (let i = 0; i < ps.length; i++) {
-    ps[i].x += ps[i].vx;
-  }
-}
-console.log(ps[0].x);
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += ps[i].vx;
 ```
 
-The estimate in `core/src/analysis.ts` counts literal elements and
-pushes in loops with constant trip counts, but only in the top-level
-code: a push inside a function depends on how often the function is
-called, so it gives up. `viscosity explain` says "size unknown
-statically", so the threshold cannot apply, and Viscosity turns 20
-elements into columns: safe, but pointless. You can read the 20 off
-this program; a real program's count comes from a file, the network or
-a user, and nobody can read it off the source.
-
-<Analogy title="a tailor with a tape measure">
-A tailor can guess your size from your height and age, or can measure
-you; measuring takes a minute and gives the right answer, for you, on
-the day you were measured.
-<span slot="breaks">You will not grow into a different person by next
-week; a program can be measured on a small input and then run on a huge
-one.</span>
-</Analogy>
-
-<Analogy extra title="a shop ordering from last year's sales">
-A shop orders this winter's stock from last winter's sales book rather
-than from a hunch; if this winter turns out different, the shop has too
-many umbrellas or too few, but it never sells anything it should not.
-<span slot="breaks">A shop that misjudges loses money on every item;
-Viscosity's worst case is a program exactly as fast as it was before
-compiling.</span>
-</Analogy>
-
-## Run it, count, compile
-
-Viscosity answers the question by running the program. The command is
-`viscosity profile`, and its output goes back in with `--profile`. Step
-through the loop, with every line of output taken from real runs of
-the program above:
+The size estimate counts literal elements and pushes in top-level loops
+with constant trip counts; a push inside a function depends on how often
+it is called, so the estimate gives up (`size unknown statically`), and
+Viscosity turns 20 elements into columns: safe, but pointless. A real
+program's count comes from a file or a user, so Viscosity runs the
+program and counts:
 
 <PgoSteps client:visible />
 
 <Callout kind="definition">
 **Profile-guided optimisation (PGO)** is compiling with measurements
 taken from real runs of the program, rather than only with what can be
-worked out from the source. The measurements are the **profile**. The
-usual loop is: instrument the program, run it on typical input, record,
+worked out from the source. The measurements are the **profile**; the
+usual loop is to instrument the program, run it on typical input, record,
 and recompile with the record.
 </Callout>
 
@@ -373,11 +199,6 @@ and recompile with the record.
 
 ```text
 $ viscosity profile spawn.js -o p.json
-$ cat p.json
-{ "ps": { "maxLength": 20 } }
-```
-
-```text
 $ viscosity explain spawn.js \
     --profile p.json
 ps (line 1) {x, vx} → kept as array of
@@ -387,87 +208,42 @@ ps (line 1) {x, vx} → kept as array of
     benefit is too small
 ```
 
-```text
-# the same program with 5000 calls:
-ps (line 1) {x, vx} → struct of arrays
-  · about 5000 elements (measured by
-    profiling)
-```
-
 </Examples>
 
-The first runs the program once and writes the profile (the real file
-spreads it over several lines). The second compiles with it:
-the measured 20 is below 64, so `ps` stays an array of objects, and the
-report says the number was measured. The third is the same program with
-the loop bound changed to 5000: profiled again, the measured size clears
-the threshold and the verdict flips (the report's other lines are left
-out here).
+The first command runs the program once and writes
+`{ "ps": { "maxLength": 20 } }` to `p.json`; the second compiles with
+it, and the measured 20 keeps `ps` as objects. With the loop bound
+changed to 5000 and a fresh profile, the verdict flips to
+`struct of arrays`.
 
-<Prompts ids={['pgo-why-here', 'pgo-what']} />
+<Prompts ids={['pgo-what']} />
 
-## Instrumentation
+## Counting without changing anything
 
-To count, `viscosity profile` builds a slightly different program. It
-finds the collections the same way the compiler does (*Finding
-collections*) and wraps the expression that creates each one. From
-`cli/src/profile.ts`, slightly simplified:
+To count, `viscosity profile` (in `cli/src/profile.ts`) builds a slightly
+different program: it finds the collections exactly as the compiler
+does, and wraps the expression that creates each one in a call to a
+tracker, which a short prelude defines:
 
-```ts
-const a = analyze(plugin.lower(src).module);
-const edits = a.collections
-  .map((c) => ({ start: c.init.src.start,
-    end: c.init.src.end, name: c.name }))
-  .sort((x, y) => y.start - x.start);
-let out = src;
-for (const e of edits) {
-  const q = JSON.stringify(e.name);
-  out = out.slice(0, e.start) +
-    `__vsc_track(${q}, ` +
-    out.slice(e.start, e.end) + ')' +
-    out.slice(e.end);
-}
-return prelude + out;
-```
-
-Line by line: the program is lowered and analysed exactly as for
-compiling; each collection contributes the start and end of its
-creating expression and its name; the edits are sorted from the end of
-the file backwards, so that inserting text never shifts the offsets of
-edits still to come; and each edit wraps the expression in a call. The
-prelude, put in front, defines the tracker and an exit hook:
+<Examples of="instrumentation">
 
 ```js
-const __vsc_seen = [];
 function __vsc_track(name, arr) {
   __vsc_seen.push([name, arr]);
   return arr;
 }
-process.on('exit', () => {
-  const p = {};
-  for (const [n, a] of __vsc_seen)
-    p[n] = { maxLength: Math.max(
-      p[n]?.maxLength ?? 0, a.length) };
-  // ...write p to $VSC_PROFILE_OUT
-});
+const ps = __vsc_track("ps", []);
 ```
 
-`__vsc_track` returns the *same* array it was given; nothing is copied
-or wrapped, so every `push`, every `===` and every `console.log` behaves
-as before, because a profile of a program that behaves differently would
-be a profile of the wrong program. The exit hook reads each tracked
-array's length once, at the very end, and keeps the largest per name.
-The instrumented copy runs once in a fresh Node process with its output
-thrown away; nothing is timed, it only counts.
+</Examples>
 
-<Analogy extra title="a traffic counter across a road">
-A council counts cars by laying a thin rubber tube across the road; each
-wheel that rolls over it is counted, and the traffic carries on exactly
-as before.
-<span slot="breaks">Some drivers do slow down for the tube; good
-instrumentation must change nothing a program can notice, and Viscosity's
-only visible cost is a little extra time.</span>
-</Analogy>
+The tracker returns the *same* array, not a copy, so every `push`,
+`===` and `console.log` behaves as before (a profile of a program that
+behaves differently would profile the wrong program); the last line is
+the real rewrite of `const ps = [];`. An exit hook in the prelude reads
+each tracked array's length once, at the end, and writes the largest per
+name. If the run throws there is no profile at all, because half a run's
+sizes could mislead the planner.
 
 <Callout kind="definition">
 **Instrumentation** is code added to a program to record what it does
@@ -476,42 +252,11 @@ instrumentation changes nothing the program can observe, and costs as
 little as possible.
 </Callout>
 
-<Examples of="instrumentation">
-
-```js
-const ps = [];
-// instrumented:
-const ps = __vsc_track("ps", []);
-```
-
-```js
-const grid = [{ h: 0 }, { h: 1 }];
-// instrumented:
-const grid = __vsc_track("grid",
-  [{ h: 0 }, { h: 1 }]);
-```
-
-```text
-viscosity: the profiled program failed
-  (exit code 1)
-```
-
-</Examples>
-
-The first is the real rewrite of our program's first line. The second
-shows that the whole creating expression is wrapped, literal elements
-and all, so the tracker sees the array the program will use. The third
-is what you get if the program throws while being profiled: no profile
-at all, because the sizes of half a run could mislead the planner. Try
-the same instrumentation by hand, and change `waves` to 5000:
-
-<Run id="track" />
-
-<Prompts ids={['inst-what', 'track-return', 'exit-hook']} />
+<Prompts ids={['track-return']} />
 
 ## Where the number goes
 
-The profile reaches exactly one place in the planner, from
+The profile reaches exactly one place in the planner, in
 `core/src/plan.ts`:
 
 ```ts
@@ -522,66 +267,66 @@ if (size !== null && size < opts.minSize)
   // keep: "about N elements (measured)"
 ```
 
-A measurement, when there is one, beats the estimate (`??` takes the
-right side only when the left is missing, so a measured 0 still
-counts). Look at *where* that line sits:
+A measurement beats the estimate (`??` keeps a measured 0), and what
+matters most is *where* that line sits:
 
 <Figure caption="The planner's checks for an unannotated collection, in order. Any yes keeps the objects, with that reason." takeaway="A profile can only move the last rung, after every safety check has passed.">
   <ProfileGate />
 </Figure>
 
-<Formal title="The size the threshold sees">
+So a wrong profile can only choose between two programs already proven to
+behave identically (*Proving it safe*); the worst a stale one can do is
+pick the slower of two right answers. That is the opposite of a JIT,
+which profiles during the same run and speculates on what it saw, so
+every assumption needs a guard and a way to deoptimise<Cite id="v8-maglev" />
+(*Tiers, speculation and deoptimisation*).
 
-```text
-size(c) = profile(c)   if c was measured
-        = estimate(c)  otherwise
-keep(c) ⟸ size(c) known ∧ size(c) < 64
-```
+<Prompts ids={['profile-correct']} />
 
-<span slot="read">The size of collection c is its measured length if the
-profile has one, and the static estimate otherwise; c is kept as objects
-if (⟸, "it follows from") its size is known and less than 64.</span>
-</Formal>
+<More title="More: rough edges, and instrumentation by hand">
 
-So a wrong profile can only pick between two programs already proven to
-behave identically (*Proving it safe*), and the worst a stale profile
-can do is choose the slower of two right answers. There are rough edges,
-visible in the code: profiles are keyed by the variable's name, so two
-collections both called `ps` share an entry; `viscosity profile` passes
-the program no command-line arguments, so it must produce its typical
-workload by itself; it cannot profile Python yet ("Python profiling is
-not supported yet"); and the profile type has room for per-field read
-counts that nothing records yet.
+Profiles are keyed by the variable's name, so two collections both called
+`ps` share an entry; `viscosity profile` passes the program no
+command-line arguments, so it must produce its typical workload by
+itself; it cannot profile Python yet; and the profile type has room for
+per-field read counts that nothing records yet.
 
-<Prompts ids={['profile-safety', 'profile-input', 'profile-correct']} />
+Here is the same tracker by hand; change `waves` to 5000 and watch the
+verdict flip:
 
-<Callout kind="engine" label="Under the hood">
-A JIT does profile-guided optimisation all the time, during the same
-run. V8 records feedback about the shapes and types each operation sees,
-and its optimising compilers use it to generate specialised code; if an
-assumption later breaks, the code is thrown away and execution
-deoptimises<Cite id="v8-maglev" /> (*Speculation and deoptimization*).
-That is the price of a profile that affects correctness: every
-assumption needs a guard. Viscosity's profile is collected ahead of time
-and only picks a size threshold, so its output needs no guard at all.
-</Callout>
+<Run id="track" />
 
-<Prompts ids={['jit-pgo']} />
+<Analogy extra title="a tailor with a tape measure">
+A tailor can guess your size from your height and age, or can measure
+you; measuring takes a minute and gives the right answer, for you, on the
+day you were measured.
+<span slot="breaks">You will not grow into a different person by next
+week; a program can be measured on a small input and then run on a huge
+one.</span>
+</Analogy>
+
+</More>
 
 ## Your turn
 
+<Exercise id="findAnnotations" />
+
 <Exercise id="maxTracker" />
+
+<Exercise id="checkAnn" />
 
 <Exercise id="sizeLine" />
 
 ## What you learned
 
+- An **annotation** (`@viscosity aos`, `soa`, `aosoa(N)`) reaches the
+  next line, or its own when trailing; it overrules guesses, never proofs.
 - **Profile-guided optimisation** compiles with measurements from a real
-  run; Viscosity measures the one thing it cannot always compute, how big
-  each collection gets.
-- **Instrumentation** wraps each collection's creation in `__vsc_track`,
-  which returns the same array, and an exit hook writes the lengths.
-- In the planner, `measured ?? estimate`, read only after every safety
-  check, so a bad profile costs speed, never correctness.
+  run, gathered by **instrumentation** that returns the same array.
+- A measured size is read only after every safety check, so a bad
+  profile costs speed, never correctness.
+
+Next: *Generating SoA storage*, where the planner's "struct of arrays"
+becomes a real generated class.
 
 <Quiz />

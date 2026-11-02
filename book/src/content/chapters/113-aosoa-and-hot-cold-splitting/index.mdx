@@ -3,18 +3,16 @@ n: 113
 day: 17
 part: VI
 title: 'AoSoA and hot/cold splitting'
-tagline: 'One comment turns a collection into blocks of 8, which is tiling applied to data rather than to a loop. Here is the index arithmetic Viscosity writes for it, why the block size must be a power of two, and why, measured in V8, plain SoA usually won anyway.'
+tagline: 'One comment turns a collection into blocks of 8. Here is the index arithmetic Viscosity writes for it, why the block size must be a power of two, why plain SoA usually won anyway in V8, and how to count which fields belong together.'
 objectives:
   - Say what the block size of an AoSoA layout is, and find any field of any element with a shift and a mask.
-  - Read the AoSoA container and the rewritten accesses Viscosity generates, including the helper for awkward indexes.
   - Predict when Viscosity refuses an aosoa annotation, and quote the reason it gives.
-  - Explain, from this book’s measurements, why the cost model never picks AoSoA by itself.
+  - Explain, from measurements, why the cost model never picks AoSoA by itself.
   - Explain a hot/cold split, and what it saves a hot loop.
   - Compute field hotness and field affinity from loops and how often they run.
-  - Read the per-loop field lists in a `viscosity explain` report as raw affinity data.
-  - Describe Viscosity’s real per-field policy, typed columns for proven numbers and plain columns for the rest, and say why it is a split by type, not by heat.
+  - Say why Viscosity's real per-field choice, typed or plain column, is a split by type, not by heat.
 introduces: [block-size, field-affinity]
-uses: [aosoa, aos-vs-soa, loop-tiling, typed-array, float64, bit-ops, contiguous, cache-line, spatial-locality, simd, lane, annotation, soa-container, column-storage, access-rewriting, capacity, amortized-growth, bailout, cost-model, hot-cold-split, object-header, field-representation, access-pattern, hot-loop, record-shape, type-inference]
+uses: [aosoa, aos-vs-soa, typed-array, float64, bit-ops, cache-line, simd, annotation, soa-container, column-storage, access-rewriting, capacity, bailout, cost-model, hot-cold-split, access-pattern, hot-loop, record-shape]
 sources: [ispcdocs, pharrmark2012, ispc-perfguide, mdn-bitwise-and, slotin-amh-cache-lines, v8-fast-properties, mdn-typed-arrays]
 ---
 import AosoaIndexSteps from '../../../components/diagrams/ch113/AosoaIndexSteps';
@@ -24,21 +22,15 @@ import Playground from '../../../components/playground/Playground';
 import AffinitySteps from '../../../components/diagrams/ch113/AffinitySteps';
 import LineLoads from '../../../components/diagrams/ch113/LineLoads';
 
-{/* ── merge: from old chapter 113, AoSoA code generation ── */}
-
 ## Tiles of data
 
-In *Locality and tiling* we cut a loop into
-cache-sized **tiles**, so the work on one tile finished while its data
-was still close at hand. AoSoA (from *When SoA loses: materialization
-and AoSoA*) turns that idea round: it cuts the *data* into tiles of a
-fixed number of elements, and inside each tile stores the fields as
-small columns. Finding "field `y` of element 10" then turns on one
-number, the size of the tile.
-
-Viscosity never picks AoSoA on its own; you ask for it with the
-annotation from *Opting in with @viscosity*. This is the corpus program
-`aosoa.js` (wrapped, without the two lines that print results):
+AoSoA (from *When SoA loses: materialization and AoSoA*) cuts an array
+into tiles of a fixed number of elements, and inside each tile stores the
+fields as small columns; finding "field `y` of element 10" then turns on
+one number, the size of the tile. Viscosity never picks AoSoA on its own:
+you ask for it with the annotation from *Telling Viscosity more:
+annotations and profiles*. This is the corpus program `aosoa.js`,
+wrapped, without the lines that print results:
 
 ```js
 // @viscosity aosoa(8)
@@ -54,9 +46,8 @@ for (let r = 0; r < 2; r++) {
 }
 ```
 
-`viscosity explain` opens its report with
-`ps (line 3) {x, y, z} → AoSoA, blocks of 8` (line 1 of the file is a
-test header).
+and `viscosity explain` opens its report with
+`ps (line 3) {x, y, z} → AoSoA, blocks of 8`.
 
 ## Blocks and lanes
 
@@ -70,16 +61,6 @@ the compiler insists on a power of two, and there is no paper: the pages
 are glued end to end into one long strip of memory.</span>
 </Analogy>
 
-<Analogy extra title="house numbers on streets of exactly 100">
-If every street had exactly 100 houses, house 347 would be street 3,
-house 47, read off the digits with no dividing. A computer counts in
-binary, so with 8 per block, element 10 (`1010` in binary) is block `1`
-(the bits above the last three) and lane `010`, which is 2.
-<span slot="breaks">Real streets never have exactly 100 houses; and with
-6 per block there are no digits to read off, so you must divide, which
-is why Viscosity refuses 6.</span>
-</Analogy>
-
 Every field of every element goes into one `Float64Array`, called
 `data`. Step through finding `y` of element 10, with three fields in
 blocks of 8:
@@ -88,11 +69,10 @@ blocks of 8:
 
 The **block** is the tile an element lives in (`i >> 3`, its number
 shifted right three bits), and the **lane** is its place inside that
-block (`i & 7`, its last three bits). `>>` and `&` are the bitwise
-operators from *Bits and bytes*, which JavaScript applies to 32-bit
-integers<Cite id="mdn-bitwise-and" /> (plenty for an index); for a power
-of two, dropping the low bits *is* dividing and rounding down, and
-keeping them *is* the remainder.
+block (`i & 7`, its last three bits). JavaScript applies `>>` and `&` to
+32-bit integers<Cite id="mdn-bitwise-and" /> (plenty for an index), and
+for a power of two, dropping the low bits *is* dividing and rounding
+down, and keeping them *is* the remainder.
 
 <Callout kind="definition">
 The **block size** B of an AoSoA layout is how many elements one block
@@ -103,76 +83,39 @@ requires B to be a power of two from 2 to 65,536, so that the block and
 the lane are a shift and a mask rather than a division and a remainder.
 </Callout>
 
-<Formal title="Where field k of element i lives">
-
-```text
-slot(i, k) = ⌊i / B⌋·F·B + k·B + (i mod B)
-
-B = 2^s  ⟹  ⌊i / B⌋ = i >> s
-            i mod B = i & (B − 1)
-```
-
-<span slot="read">The slot is the block number (i divided by B, rounded
-down) times the F times B slots a block takes, plus k times B to skip the
-block's earlier fields, plus the lane (the remainder of i divided by B).
-When B is two to the power s, the block number is i shifted right s bits,
-and the lane is i with all but its lowest s bits masked off.</span>
-</Formal>
-
-The block size is a dial: all the way down it gives packed AoS, and up
-to the length of the array it gives SoA.
-
-<Figure caption="The same eight elements with three block sizes. Thick lines are block boundaries." takeaway="AoSoA is a whole family of layouts between packed AoS (B = 1) and SoA (B = n).">
-  <BlockSpectrum />
-</Figure>
-
 <Examples of="block-size">
 
 ```js
-// F = 3, B = 8: y (k = 1) of element 10
-(10 >> 3) * 24 + 1 * 8 + (10 & 7) // 34
-```
-
-```js
-// F = 3, B = 4 (aosoa(4)): push's slot
-const b = (n >> 2) * 12 + (n & 3);
-// x at b + 0, y at b + 4, vx at b + 8
-```
-
-```js
-// aosoa(8), the compiled p.y -= 1
+// aosoa(8), F = 3: the compiled p.y -= 1
 ps.data[((p) >> 3) * 24 + 8
   + ((p) & 7)] -= 1;
 ```
 
 </Examples>
 
-The first works out a slot by hand: block 1 starts at 24, `y` starts
-8 further on, and lane 2 lands on 34. The second is the line of the real `push` that finds the slot, for
-three fields annotated `aosoa(4)`: the shift is 2, a block is 12 slots, the mask is 3,
-and each field is 4 slots after the last. The third is a line Viscosity
-emits for `aosoa.js`: `p` now holds an index (as in *Rewriting field
-accesses*), with `F*B = 24` and `k*B = 8` filled in as numbers.
+This is a line Viscosity emits for `aosoa.js`. `p` now holds an index (as
+in *Rewriting field accesses and growing collections*); `(p) >> 3` is its
+block, and a block is `F*B = 24` slots, so the product is where that
+block starts; `y` is field 1, so `k*B = 8` skips the block's eight `x`
+values; and `(p) & 7` is the lane. For element 10 that is
+`24 + 8 + 2 = 34`. Every number but `p` is worked out at compile time and
+written in as a constant.
 
-A common slip is a block size that is not a power of two; spot the
-difference between `aosoa(8)` and `aosoa(6)` on the program below:
+Because a block is one `Float64Array` indexed with shifts, Viscosity
+refuses what it cannot index that way: `aosoa(6)` keeps the objects with
+`annotated aosoa(6), but the block size must be a power of two (2, 4, 8,
+16, ...)`, and a field that may hold a string keeps them with
+`annotated aosoa, but fields name may hold non-numbers`. The block size
+is a dial: all the way down it gives packed AoS, and up to the length of
+the array it gives SoA.
 
-```text
-ps (line 2) {x, y, vx} → AoSoA, blocks of 8
-ps (line 2) {x, y, vx} → kept as array
-  of objects
-  · annotated aosoa(6), but the block
-    size must be a power of two (2, 4,
-    8, 16, ...)
-```
-
-With 6 the compiled code is the source unchanged. `aosoa(1)` and
-`aosoa(x)` get the same reason; `aosoa(131072)` gets "the block size
-must be at most 65536".
+<Figure caption="The same eight elements with three block sizes. Thick lines are block boundaries." takeaway="AoSoA is a whole family of layouts between packed AoS (B = 1) and SoA (B = n).">
+  <BlockSpectrum />
+</Figure>
 
 <Prompts ids={['ao-block-size', 'ao-slot', 'ao-pow2']} />
 
-## The generated container
+<More title="More: the generated container, the index helper, and a store by hand">
 
 Here is the class `frontend-js/src/emit.ts` writes for `aosoa.js`,
 reformatted, without its `static of` method:
@@ -198,45 +141,62 @@ class __Vsc_ps {
 }
 ```
 
-The constructor rounds the capacity up to whole blocks and makes one
-`Float64Array` of `cap * 3` zeros. `push` is the push from
-*Growing collections* with one change: it works out `b`, the slot of
-field 0, once, then adds `k * 8` for the others. `grow()` is simpler than
-SoA's: a block never moves when the array gets longer, so it makes one
-array twice the size, copies the old one into its start with a single
-`set`, and doubles `cap`, which stays a whole number of blocks.
+The constructor rounds the capacity up to whole blocks. `push` works out
+`b`, the slot of field 0, once, then adds `k * 8` for the others.
+`grow()` is simpler than SoA's: a block never moves when the array gets
+longer, so it makes one array twice the size and copies the old one into
+its start with a single `set`.
 
-<Prompts ids={['ao-cap-blocks', 'ao-one-copy']} />
-
-## Rewritten accesses, and the helper
-
-The formula uses the index twice, which is harmless for a name like
-`p`. However, the last line of `aosoa.js` reads `ps[1002].z`, which is
-not proven in bounds, so its index is wrapped in the bounds check from
-*Rewriting field accesses*, and running that twice would be wasteful;
-for any index that is not a plain name or literal, the emitter calls a
-helper that takes the index once:
+The formula uses the index twice, which is harmless for a name like `p`.
+However, the last line of `aosoa.js` reads `ps[1002].z`, not proven in
+bounds, so its index is wrapped in a bounds check, and running that twice
+would be wasteful; for any index that is not a plain name or literal, the
+emitter calls a helper that takes the index once:
 
 ```js
 ps.data[__vsc_aosoa(
   __vsc_bc(ps, 1002, 'z', false),
   3, 24, 16, 7)]
-
-function __vsc_aosoa(i, sh, stride,
-    off, mask) {
-  return (i >> sh) * stride + off
-    + (i & mask);
-}
 ```
 
 Its arguments are the index, shift, stride, the field's offset (16, for
 `z`) and mask. Both versions of `aosoa.js` print `1505503 501 14 -10`.
 
-Because everything sits in one `Float64Array`, every field must be a
-proven number; add a string field and the planner keeps the objects,
-saying "annotated aosoa, but fields name may hold non-numbers". Try the
-real compiler: change 8 to 4 or 6, delete the annotation (Viscosity then
-picks plain SoA), or add `id: 'a'` to the record.
+Below is a tiny AoSoA store by hand, with F = 2 and B = 4. It prints 13
+(block 1 starts at 8, `y` 4 further on, lane 1), then all 16 slots:
+
+<Run id="aosoa-push" />
+
+<Formal title="Where field k of element i lives">
+
+```text
+slot(i, k) = ⌊i / B⌋·F·B + k·B + (i mod B)
+
+B = 2^s  ⟹  ⌊i / B⌋ = i >> s
+            i mod B = i & (B − 1)
+```
+
+<span slot="read">The slot is the block number (i divided by B, rounded
+down) times the F times B slots a block takes, plus k times B to skip the
+block's earlier fields, plus the lane (the remainder of i divided by B).
+When B is two to the power s, the block number is i shifted right s bits,
+and the lane is i with all but its lowest s bits masked off.</span>
+</Formal>
+
+<Analogy extra title="house numbers on streets of exactly 100">
+If every street had exactly 100 houses, house 347 would be street 3,
+house 47, read off the digits with no dividing. A computer counts in
+binary, so with 8 per block, element 10 (`1010` in binary) is block `1`
+and lane `010`, which is 2.
+<span slot="breaks">Real streets never have exactly 100 houses; and with
+6 per block there are no digits to read off, so you must divide, which
+is why Viscosity refuses 6.</span>
+</Analogy>
+
+</More>
+
+Try the real compiler: change 8 to 4 or 6, delete the annotation
+(Viscosity then picks plain SoA), or add `id: 'a'` to the record.
 
 <Playground client:visible title="Blocks of 8" initial={`// @viscosity aosoa(8)
 const ps = [];
@@ -246,132 +206,62 @@ for (let i = 0; i < ps.length; i++)
   ps[i].x += ps[i].vx;
 console.log(ps[9].x);`} />
 
-Below it is a tiny AoSoA store by hand, with F = 2 and B = 4. It prints
-13 (block 1 starts at 8, `y` 4 further on, lane 1), then all 16 slots:
-block 0's four `x` values, its four `y` values, then block 1.
-
-<Run id="aosoa-push" />
-
-<Prompts ids={['ao-helper', 'ao-numeric']} />
-
 ## Is it worth it?
-
-<Callout kind="engine" label="Under the hood">
-ISPC builds this layout into its language: `soa<8> Point pts[...]`
-stores 8 `x` values, then 8 `y`, and `pts[10].x` reads the third `x` of
-the second block, which is our formula<Cite id="ispcdocs" /><Cite id="pharrmark2012" />.
-There a block of 8 matches the SIMD lanes (*SIMD: one instruction, many
-numbers*), and contiguous data allows vector loads and
-stores<Cite id="ispc-perfguide" />. JavaScript has no SIMD API, so in
-Viscosity's output the tiles must pay for a shift, a mask and a multiply
-per access through the cache alone.
-</Callout>
 
 <BenchBars suite="update-xy" n={100000} title="Moving 100,000 particles" highlight={['aosoa8']} layouts={['aos', 'soa', 'aosoa8']} caption="AoSoA beats objects here, but not plain SoA." />
 
-<BenchBars suite="random-x" n={1000} title="Reading x and vx of 1,000 particles in shuffled order" highlight={['aosoa8']} layouts={['aos', 'soa', 'aosoa8']} caption="At a small size with random access, AoSoA was the slowest of the three." />
-
-Notice what these bars measure: the benchmark's `aosoa8` kernels walk
-block by block (like the extra exercise below), with no shift or mask
-in a sequential loop, and still lost to SoA; Viscosity's emitted code
-does the arithmetic on every access, so it cannot beat those bars. In V8, AoSoA with blocks of 8 was
-rarely better than SoA, and at 1,000 elements often slower than plain
-objects, so *The cost model* never chooses it.
+In the committed run (`results/baseline-node-2026-10-31.md`), moving
+100,000 particles took 3.15 ns per element with blocks of 8 and 1.72 with
+plain SoA; reading 1,000 particles in shuffled order, AoSoA was the
+slowest of all, at 9.63 ns against 2.94 for objects. And those `aosoa8`
+kernels walk block by block, with no shift or mask in the inner loop;
+Viscosity's emitted code does the arithmetic on every access, so it
+cannot beat those bars. That is why *The cost model* never chooses
+AoSoA: in V8 it was rarely better than SoA.
 
 <Prompts ids={['ao-why-not-auto']} />
 
-## Your turn
+<More title="More: the shuffled-order run, and AoSoA in ISPC">
 
-<Exercise id="aosoaSlot" />
+<BenchBars suite="random-x" n={1000} title="Reading x and vx of 1,000 particles in shuffled order" highlight={['aosoa8']} layouts={['aos', 'soa', 'aosoa8']} caption="At a small size with random access, AoSoA was the slowest of the three." />
 
-<Exercise id="blockSum" />
+ISPC builds this layout into its language: `soa<8> Point pts[...]` stores
+8 `x` values, then 8 `y`, and `pts[10].x` reads the third `x` of the
+second block, which is the same formula<Cite id="ispcdocs" /><Cite id="pharrmark2012" />.
+There a block of 8 matches the SIMD lanes, and contiguous data allows
+vector loads and stores<Cite id="ispc-perfguide" />. JavaScript has no
+SIMD API, so in Viscosity's output the tiles must pay for a shift, a mask
+and a multiply per access through the cache alone.
 
-## What you learned
-
-- AoSoA tiles the data, and the **block size** B fixes the layout:
-  field k of element i is at `(i >> s) * F*B + k*B + (i & (B-1))`.
-- B must be a power of two from 2 to 65,536, and every field a proven
-  number; otherwise the planner keeps the objects and says why.
-- One `Float64Array` holds whole blocks, so growing is one copy; awkward
-  indexes go through `__vsc_aosoa`, evaluated once.
-- In V8 AoSoA rarely beat SoA, so it is opt-in only.
-
-
-{/* ── merge: from old chapter 113, Hot/cold splitting ── */}
+</More>
 
 ## The fields nobody reads
 
-A game keeps its entities in an array of objects:
-
-```js
-const es = [];
-es.push({
-  x: 0, y: 0, vx: 1, vy: 0,
-  health: 100, name: 'goblin',
-});
-```
-
-Every frame a loop moves every entity, using `x`, `y`, `vx` and `vy`;
-the name is printed only when an entity dies. Yet V8 keeps an object's
-fields together, right after its header<Cite id="v8-fast-properties" />,
-and the cache moves memory in whole 64-byte
-lines<Cite id="slotin-amh-cache-lines" /> (*Cache lines and locality*),
-so the movement loop drags `health` and a pointer to `name` through the
-cache for every entity, and never looks at them.
-
-<Analogy title="a toolbox with a tray">
-A toolbox has a lift-out tray on top and a deep drawer below. The hammer
-and screwdriver you use every day go in the tray; the pipe wrench you
-need twice a year goes in the drawer. You keep the wrench; you just stop
-lifting it every time you reach for the hammer.
-<span slot="breaks">You can see at a glance which tools you use; a
-compiler has to count, and a tool used rarely but always together with
-the hammer would belong in the tray anyway.</span>
-</Analogy>
-
-*AoS vs SoA, measured* named the fix: a **hot/cold split**, which puts
-the busy fields in one place and the rest in another, both indexed by
-the same `i`:
-
-```js
-const hot = {
-  x: [0], y: [0], vx: [1], vy: [0],
-};
-const cold = [
-  { health: 100, name: 'goblin' },
-];
-for (let i = 0; i < n; i++)
-  hot.x[i] += hot.vx[i];
-```
-
-`hot` keeps one array per busy field, and `cold` keeps the rarely used
-fields of entity `i` in `cold[i]`; the loop at the end touches only
-`hot`, so the cache lines it pulls in hold nothing else. The price is on
-the cold side: code that wants a whole entity (to print it when it
-dies, say) has to look in two places and stitch the halves together by
-`i`. Here is what one cache line carries for the movement loop under
-three layouts:
+A game keeps entities `{ x, y, vx, vy, health, name }` in an array of
+objects, and every frame a loop moves every entity, using `x`, `y`, `vx`
+and `vy`; the name is printed only when an entity dies. Yet V8 keeps an
+object's fields together, right after its
+header<Cite id="v8-fast-properties" />, and the cache moves memory in
+whole 64-byte lines<Cite id="slotin-amh-cache-lines" />, so the movement
+loop drags `health` and a pointer to `name` through the cache for every
+entity, and never looks at them. *AoS vs SoA, measured* named the fix, a
+**hot/cold split**: the busy fields in one place, the rest in another,
+both indexed by the same `i` (and code that wants a whole entity pays by
+looking in two places).
 
 <Figure caption="Eight 8-byte numbers fill one 64-byte line. Dashed slots are carried but never used by the movement loop." takeaway="Splitting is about what rides along: packed records carry cold fields; a hot group or a column carries none.">
   <LineLoads />
 </Figure>
 
-<Prompts ids={['hc-why', 'hc-price']} />
+<Prompts ids={['hc-why']} />
 
 ## Which fields go together?
 
 "Hot" is a matter of counting. For each field, count how often the
 program touches it; for each *pair* of fields, count how often one loop
-uses both; and weight each loop by how many times it runs.
-
-<Analogy extra title="a wedding seating plan">
-To seat a wedding, you notice who talks to whom, and how much: the two
-friends who chat all evening share a table, and the cousin who says one
-"hello" to the bride's colleague does not need to sit next to them.
-<span slot="breaks">Guests can be moved during the meal; a layout is
-fixed before the program runs, so the counts must be good guesses
-in advance.</span>
-</Analogy>
+uses both; and weight each loop by how many times it runs, since a loop
+that runs once a game should count for less than one that runs every
+frame.
 
 <AffinitySteps client:visible />
 
@@ -382,6 +272,36 @@ both. Fields with high affinity belong in the same group, and a field's
 **hotness** (the run count of the loops that use it at all) decides
 whether its group is hot or cold.
 </Callout>
+
+<Examples of="field-affinity">
+
+```js
+// move ×1000: x, y, vx, vy
+// damage ×100: x, health
+aff('x', 'vx')     // 1000
+aff('x', 'health') // 100
+aff('vx', 'name')  // 0: never together
+```
+
+</Examples>
+
+The first two lines list two loops with their run counts and the fields
+each uses. `x` and `vx` are used together only by `move`, so their
+affinity is its 1,000 runs; `x` and `health` only by `damage`, so 100;
+and no loop uses `vx` with `name`, so their affinity is 0. A grouping
+that follows these numbers puts `x, y, vx, vy` together, leaves `health`
+lukewarm and `name` cold. `viscosity explain` already prints the raw
+data: each `loop at line N ... touches 4 of 6 fields (vy, y, vx, x)` line
+is one loop's field list.
+
+<Prompts ids={['hc-affinity']} />
+
+<More title="More: the counting by hand, and the formula">
+
+<Run id="affinity" />
+
+It prints the hotness of `x` (1,100 runs, from `move` and `damage`), of
+`name` (1), and the affinity of `x` with `health` (100).
 
 <Formal title="Hotness and affinity">
 
@@ -395,109 +315,30 @@ every loop L whose fields include f. The affinity of f and g is the same
 sum, taken only over loops that use both f and g.</span>
 </Formal>
 
-<Examples of="field-affinity">
+<Analogy extra title="a toolbox with a tray">
+A toolbox has a lift-out tray on top and a deep drawer below. The hammer
+and screwdriver you use every day go in the tray; the pipe wrench you
+need twice a year goes in the drawer.
+<span slot="breaks">You can see at a glance which tools you use; a
+compiler has to count, and a tool used rarely but always together with
+the hammer would belong in the tray anyway.</span>
+</Analogy>
 
-```js
-// move ×1000 uses x, vx
-// draw ×1000 uses x, vx
-aff('x', 'vx') // 1000 + 1000 = 2000
-```
-
-```js
-// move ×1000: x, y, vx, vy
-// damage ×100: x, health
-aff('x', 'health') // 100
-aff('vx', 'name')  // 0: never together
-```
-
-```text
-es (line 1) {x, y, vx, vy, health,
-  name} → struct of arrays
-  · loop at line 6 in <module>()
-    touches 4 of 6 fields (vy, y, vx, x)
-  · loop at line 11 in <module>()
-    touches 2 of 6 fields (health, x)
-  · loop at line 14 in <module>()
-    touches 1 of 6 fields (health)
-```
-
-</Examples>
-
-In the first, both loops use the pair, so both runs count. In the
-second, only `damage` uses `x` with `health`, so their affinity is its
-100 runs, and `vx` with `name` is 0 because no loop uses both. The third
-is real: `viscosity explain` on a 500-entity version of our game, where
-the move loop sits inside a 1000-frame loop, the damage check inside a
-100-round loop, and a final count of the dead runs once. Each "touches"
-line is a loop's field list, exactly the raw data the formula needs;
-multiply in each loop's runs (1000, 100 and 1, times 500 entities) and
-you have every hotness and affinity. Run the counting yourself:
-
-<Run id="affinity" />
-
-It prints the hotness of `x` (1,100 runs, from `move` and `damage`), of
-`name` (1), and the affinity of `x` with `health` (100).
-
-<Prompts ids={['hc-affinity', 'hc-hotness', 'hc-weight', 'hc-zero']} />
-
-## What leaving fields out is worth
-
-The `sum-one-field` suite reads one of six particle fields:
-
-<BenchBars suite="sum-one-field" n={100000} title="Summing one field of six" highlight={['soa']} layouts={['aos', 'aos-packed', 'soa']} caption="Packed AoS still loads all six fields; SoA loads only the one it uses." />
-
-Packed AoS already drops the object headers and pointers, yet its cache
-lines still carry five unused fields; SoA's carry none. That is the
-hot/cold argument taken to its limit, where every field is a group of
-its own.
-
-<Prompts ids={['hc-packed']} />
+</More>
 
 ## What Viscosity does
 
 Viscosity does not build a hot struct and a cold struct; it gives every
 field its own column, the finest split there is, so a `move` loop over
-its columns never reads `name`, whatever its affinity. What Viscosity
-*does* decide per field is the representation. The corpus program
-`mixed_columns.js` puts strings, numbers, `null` and objects in four
-fields (`id`, `hp`, `x` and `tag`), and later writes `es[4].id = 42`.
-Its report says, among other lines,
-
-```text
-· typed Float64Array columns for hp, x;
-  plain array columns for id, tag (may
-  hold non-numbers)
-```
-
-and the generated constructor, reformatted, is below. It starts the
-length at 0 and the capacity at 16, makes a 16-slot `Float64Array` for
-each numeric field, and an empty plain array for each other field (a
-plain array grows by itself, so `grow()` only replaces the typed ones):
-
-```js
-constructor(cap = 16) {
-  this.length = 0;
-  this.cap = cap;
-  this.hp = new Float64Array(cap);
-  this.x = new Float64Array(cap);
-  this.id = [];
-  this.tag = [];
-}
-```
-
-The numeric analysis from *Record shapes* proved `hp` and `x` are always
-numbers, so they get columns of raw doubles<Cite id="mdn-typed-arrays" />;
-`id` holds strings and later a number, and `tag` holds `null` or an
-object, so they get plain arrays, which store any value.
-
-Notice that this split is by *type*, not by heat. `tag` is read in the
-hottest loop, yet it is a plain column, because a `Float64Array` cannot
-hold an object; and a numeric field that is hardly ever read still gets
-a typed column. The analysis even records each loop's trip count
-(`trips` in `core/src/analysis.ts`), and the planner's profile option
-has an unused slot for per-field read counts; however, nothing groups fields by
-affinity today. Try the policy: make `id` a number, and it gets a typed
-column too.
+its columns never reads `name`, whatever its affinity. What it *does*
+decide per field is the representation, and that split is by *type*, not
+by heat: a field proved always numeric gets a `Float64Array`, any other
+field a plain array, even one read in the hottest loop (in
+`mixed_columns.js`, `tag` holds `null` or an object, so it gets a plain
+column although the main loop reads it). Affinity would matter if fields
+shared storage, as in packed AoS or AoSoA blocks; nothing in Viscosity
+groups fields by affinity today. Try the policy: make `id` a number, and
+it gets a typed column too.
 
 <Playground client:visible title="Typed and plain columns" initial={`const es = [];
 for (let i = 0; i < 300; i++)
@@ -509,30 +350,30 @@ let s = 0;
 for (const e of es) s += e.hp + e.x;
 console.log(s, es[3].id);`} />
 
-<Prompts ids={['hc-viscosity', 'hc-policy', 'hc-tag-hot']} />
-
-<Callout kind="engine" label="Under the hood">
-Affinity matters when fields share storage. In packed AoS, and in the
-blocks of *AoSoA code generation*, all of a record's fields sit in one
-array, so the grouping of fields decides what each cache line carries.
-A layout that put hot fields into one AoSoA array and kept cold ones in
-plain columns would need exactly this chapter's counts; Viscosity
-sidesteps the question by giving each field a column.
-</Callout>
+<Prompts ids={['hc-viscosity', 'hc-tag-hot']} />
 
 ## Your turn
 
+<Exercise id="aosoaSlot" />
+
 <Exercise id="coAccess" />
+
+<Exercise id="blockSum" />
 
 <Exercise id="groupFields" />
 
 ## What you learned
 
-- A **hot/cold split** moves rarely used fields out of a hot loop's way;
-  code that wants a whole record pays by looking in two places.
-- **Field affinity** of a pair is the total runs of the loops that use
-  both; **hotness** is the same count for one field.
-- SoA is the finest split: each field its own column. Viscosity's real
-  per-field decision is **typed or plain**, by type, not by heat.
+- AoSoA tiles the data, and the **block size** B fixes the layout: field
+  k of element i is at `(i >> s) * F*B + k*B + (i & (B-1))`, with B a
+  power of two and every field a proven number.
+- In V8 AoSoA rarely beat SoA, so it is opt-in only.
+- A **hot/cold split** keeps rarely used fields out of a hot loop's cache
+  lines; **field affinity** counts the runs of the loops that use a pair.
+- Viscosity gives every field its own column, and chooses typed or plain
+  by type, not by heat.
+
+Next: *viscosity explain*, the report that says why every one of these
+decisions was made.
 
 <Quiz />

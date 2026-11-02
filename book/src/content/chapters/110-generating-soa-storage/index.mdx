@@ -10,7 +10,7 @@ objectives:
   - Explain why some field names are renamed in the container, and how clashes are avoided.
   - Write a small SoA container with `push` and `grow` yourself.
 introduces: [column-storage, soa-container]
-uses: [cost-model, annotation, codegen, source-to-source, record-shape, aos-vs-soa, typed-array, float64, arraybuffer, class, constructor, method, this, new, push, length, array, ieee754, field-representation, reserved-word-table, identifier]
+uses: [cost-model, annotation, codegen, source-to-source, record-shape, aos-vs-soa, typed-array, float64, class, constructor, method, this, new, push, length, array, ieee754, field-representation, identifier]
 sources: [mdn-typed-arrays, mdn-typedarray, ispcdocs]
 ---
 import Columns from '../../../components/diagrams/ch110/Columns';
@@ -30,13 +30,13 @@ for (let i = 0; i < 1000; i++)
 ```
 
 Nothing in JavaScript is a "struct of arrays"; there are objects, plain
-arrays and typed arrays, and the compiler has to build the new layout
-out of those. This is code generation in the sense of *Emitting
-JavaScript*: the plan is a decision, and now somebody has to write the
-code that carries it out. Viscosity's answer is to write a small class
-at the top of your file and to replace the empty array with one of its
-objects, `const ps = new __Vsc_ps();`. Everything about the new layout
-lives inside that class.
+arrays and typed arrays, and the compiler has to build the new layout out
+of those. This is code generation in the sense of *Emitting JavaScript,
+and round-trip testing*: the plan is a decision, and now somebody has to
+write the code that carries it out. Viscosity's answer is to write a
+small class at the top of your file and to replace the empty array with
+one of its objects, `const ps = new __Vsc_ps();`; everything about the
+new layout lives inside that class.
 
 ## One array per field
 
@@ -47,22 +47,12 @@ object per element.
 A paper visitors' book has one row per visitor, with their name, time and
 reason written across it. A spreadsheet of the same visits keeps one
 column per question, every name in column A and every arrival time in
-column B, and visitor 7 is row 7 of every column. To add a visitor you
+column B, and visitor 7 is row 7 of every column; to add a visitor you
 write one cell in each column, on the same row.
 <span slot="breaks">A spreadsheet will happily let you sort one column on
 its own; do that to Viscosity's columns and every record is scrambled,
 because the shared row number is the only thing holding a record
 together.</span>
-</Analogy>
-
-<Analogy extra title="a chest of drawers">
-You can pack each day's outfit in its own bag, or keep all the socks in
-one drawer and all the shirts in another; Monday's outfit is then "the
-first sock, the first shirt". If all you want this morning is socks, you
-open one drawer and never touch the shirts.
-<span slot="breaks">Socks in a drawer are in no particular order, and any
-pair will do; column `x` must keep element 7's `x` in slot 7, exactly,
-and slot 8 belongs to element 8.</span>
 </Analogy>
 
 <Figure caption="The same three records, as objects and as columns. Element i is index i of every column, and nothing else ties a record together." takeaway="A record stops being an object and becomes an index.">
@@ -76,6 +66,53 @@ Viscosity uses a `Float64Array` column for a field it has proved is
 always a number, and a plain JavaScript array for any other field.
 </Callout>
 
+Why two kinds of column? A `Float64Array` stores raw 64-bit doubles side
+by side, with no object per value<Cite id="mdn-typed-arrays" />, which is
+the whole point; however, it stores only numbers, and anything else you
+write into it is converted (the string `'7'` comes back as `7`, and
+`'abc'` as `NaN`). So a typed column is correct only for a field the
+numeric analysis of *Record shapes* has proved is always a number, and
+every other field gets a plain array, which takes anything.
+
+<Examples of="column-storage">
+
+```js
+es.push({ id: 'e' + i, hp: 100, x: i,
+  tag: i % 3 ? null : { boss: true } });
+// hp, x: Float64Array; id, tag: plain
+```
+
+</Examples>
+
+This is the push from the corpus file `mixed_columns.js`, run 300 times.
+`hp` is always `100` and `x` is the loop counter, so both are provably
+numbers; `id` is a string, and `tag` is either `null` or an object. So
+explain reports `typed Float64Array columns for hp, x; plain array
+columns for id, tag (may hold non-numbers)`, and the generated
+constructor makes two typed columns and two plain ones:
+
+```js
+this.hp = new Float64Array(cap);
+this.x = new Float64Array(cap);
+this.id = []; this.tag = [];
+```
+
+(The real constructor is one line; it is split here to fit.) Awkward
+doubles survive too: a `Float64Array` holds any IEEE 754 double exactly,
+so a stored `-0` or `NaN` comes back as itself.
+
+<Prompts ids={['col-what', 'col-typed-why']} />
+
+<More title="More: what a Float64Array does with values that are not numbers">
+
+Line by line, this writes a few values into a typed column and a plain
+one: `2.5` and `-0` are stored exactly (`Object.is` tells `-0` from
+`0`); the string `'7'` comes back as the number `7`, and `'abc'` as
+`NaN`; a write past the end is silently dropped; and a plain array takes
+anything and grows.
+
+<Run id="typedcol" />
+
 <Formal title="An element, as a row across columns">
 
 ```text
@@ -88,121 +125,59 @@ slot i of column vx, for every i from 0 up to, but not including, the
 length.</span>
 </Formal>
 
-Why two kinds of column? A `Float64Array` stores raw 64-bit doubles side
-by side, with no object per value<Cite id="mdn-typed-arrays" />, which is
-the whole point; however, it stores only numbers, and anything else you
-write into it is converted:
-
-<Run id="typedcol" />
-
-Line by line: a new `Float64Array(4)` is four zeros; `2.5` and `-0` are
-stored exactly (`Object.is` tells `-0` from `0`); the string `'7'`
-comes back as the number `7`, and `'abc'` as `NaN`; a write past the end
-is silently dropped; and a plain array takes anything and grows. So a
-typed column is correct only for a field the numeric analysis from
-*Record shapes* has proved is always a number.
-
-<Examples of="column-storage">
-
-```js
-ps.push({ x: i, vx: 1 });
-// x and vx are numbers: two
-// Float64Array columns, ps.x and ps.vx
-```
-
-```js
-es.push({ id: 'e' + i, hp: 100, x: i,
-  tag: i % 3 ? null : { boss: true } });
-// hp, x: Float64Array; id, tag: plain
-```
-
-```js
-const pts = [{ x: 1, y: 2 },
-  { x: 3, y: 4 }, { x: -0, y: NaN }];
-// → __Vsc_pts.of(1, 2, 3, 4, -0, NaN)
-```
-
-</Examples>
-
-The first is the particle shape: both fields are numbers in every push,
-so both get typed columns. The second is the corpus file
-`mixed_columns.js`: `id` is a string and `tag` is `null` or an object,
-so explain reports "typed Float64Array columns for hp, x; plain array
-columns for id, tag (may hold non-numbers)", and the constructor makes
-`this.id = []; this.tag = [];`. The third, `literal_init.js`, shows that
-the awkward doubles survive: after compiling, `Object.is(pts[2].x, -0)`
-and `Number.isNaN(pts[2].y)` still print `true`, because a
-`Float64Array` holds any IEEE 754 double exactly.
-
-<Prompts ids={['col-what', 'col-typed-why', 'col-negzero']} />
+</More>
 
 ## The container class
 
 The columns need somewhere to live, along with the count of elements and
-the one method most programs call, `push`.
-
-<Analogy extra title="a filing cabinet with a tally on top">
-The cabinet has one drawer per kind of paper, and a card on top saying
-how many files are in it and how many fit. Filing a new case means
-putting its papers in the same position in every drawer and then
-updating the card; when the drawers are full, you buy a bigger cabinet.
-<span slot="breaks">A clerk can file papers in any order; the container's
-`push` always writes slot `length` and nothing else, so the drawers can
-never get out of step.</span>
-</Analogy>
-
-Here is the class Viscosity emits for `ps`, with records `{ x, vx }`.
-The compiler writes each member on one long line; the stepper reflows it
-to fit, with nothing else changed. Step through it:
+the one method most programs call, `push`. Here is the class Viscosity
+emits for `ps`, with records `{ x, vx }` (the compiler writes each member
+on one long line; the stepper reflows it to fit, with nothing else
+changed):
 
 <ContainerSteps client:visible />
 
 <Callout kind="definition">
 An **SoA container** is the object that holds a collection's columns,
-with `length` (elements in use), `cap` (slots per column) and the
-methods the program still needs: `push`, which takes one value per field
-and returns the new length, `grow`, and `of` for array literals.
-Viscosity generates one container class per transformed collection,
-named `__Vsc_` plus the collection's name.
+with `length` (elements in use), `cap` (slots per column) and the methods
+the program still needs: `push`, which takes one value per field and
+returns the new length, `grow`, and `of` for array literals. Viscosity
+generates one container class per transformed collection, named `__Vsc_`
+plus the collection's name.
 </Callout>
 
 <Examples of="soa-container">
 
 ```js
 const ps = [];
-// → const ps = new __Vsc_ps();
-```
-
-```js
 n = ps.push({ x: i, vx: 2 });
-// → n = ps.push(i, 2);
-//   n is still the new length: 100
-```
-
-```js
-ps.push({ length: i, cap: 1, 'a-b': 2 });
-// columns: ps.f0_, ps.f1_, ps.f2_
-// ps[i].length → ps.f0_[i]
+// → const ps = new __Vsc_ps();
+//   n = ps.push(i, 2);
 ```
 
 </Examples>
 
-The first is creation, the one edit every transformed collection gets.
-In the second, the program keeps the value `push` returns; after 100
-pushes both versions print `100`, because the generated `push` returns
-`this.length` just as `Array.prototype.push` does. The third is the
-awkward case. The container already has members called `length`, `cap`
-and `push`, so a field with one of those names would overwrite them, and
-`'a-b'` is not a name you can write after a dot at all. The emitter
-therefore renames any field that is reserved (`length`, `push`, `grow`,
-`of`, `constructor`, `prototype`, `get`, `cap`, `data`) or is not a
-plain identifier to `f`, its position and `_`. The program's
-`ps[i].length` becomes `ps.f0_[i]`, while `ps.length` stays the element
-count. And if a real field is already called `f0_` (records
-`{ length: i, f0_: 2 }`, the corpus file `renamed_column_clash.js`), the
-renamed column takes one more `_`, `f0__`, until the name is free.
+The first line is creation, the one edit every transformed collection
+gets: the empty array becomes a new container. The second is a push whose
+result the program keeps; the object literal is taken apart into one
+argument per field, in field order, and the generated `push` writes slot
+`length` of every column and returns `this.length`, exactly as
+`Array.prototype.push` returns the new length, so after 100 pushes both
+versions leave `n` at `100`. An array literal such as
+`[{ x: 1, y: 2 }, { x: 3, y: 4 }]` becomes `__Vsc_pts.of(1, 2, 3, 4)`,
+the values flattened and pushed in groups.
 
-<Prompts ids={['ctr-what', 'ctr-push-ret', 'ctr-of', 'col-reserved']} />
+One awkward case: the container already has members called `length`,
+`cap` and `push`, so a field with one of those names would overwrite
+them, and a field like `'a-b'` cannot be written after a dot at all. The
+emitter therefore renames any field that is reserved (`length`, `push`,
+`grow`, `of`, `constructor`, `prototype`, `get`, `cap`, `data`) or is not
+a plain identifier to `f`, its position and `_`: records
+`{ length: i, cap: 1, 'a-b': 2 }` get columns `ps.f0_`, `ps.f1_` and
+`ps.f2_`, and `ps[i].length` becomes `ps.f0_[i]`, while `ps.length` stays
+the element count.
+
+<Prompts ids={['ctr-what', 'ctr-push-ret', 'col-reserved']} />
 
 ## Watching it grow
 
@@ -212,13 +187,13 @@ room itself. Step through the first seventeen pushes of
 
 <GrowSteps client:visible />
 
-The check `n === this.cap` runs on every push and is almost always false,
-so a push is two stores and an addition; the copying happens only on the
-17th push, the 33rd, the 65th and so on, and only for typed columns, since
-a plain array lengthens by itself. *Growing collections* shows why
-doubling makes that cheap on average.
+The check `n === this.cap` runs on every push and is almost always false;
+the copying happens only on the 17th push, the 33rd, the 65th and so on,
+and only for typed columns, since a plain array lengthens by itself.
+*Rewriting field accesses and growing collections* shows why doubling
+makes that cheap on average.
 
-<Prompts ids={['ctr-length', 'ctr-plain']} />
+<Prompts ids={['ctr-length']} />
 
 Try it: this collection has a string field, a numeric field and a field
 that is sometimes `null`. Open the compiled code and find the columns.
@@ -232,16 +207,32 @@ for (let i = 0; i < es.length; i++)
 console.log(es[3].id, es[3].hp,
   es[50].boss);`} />
 
-<Callout kind="engine" label="Under the hood">
+<More title="More: name clashes, and ISPC's generated containers">
+
+If a real field is already called `f0_` (records `{ length: i, f0_: 2 }`,
+the corpus file `renamed_column_clash.js`), the renamed column takes one
+more `_`, `f0__`, until the name is free.
+
 ISPC does the same job inside a compiler for C-like code. Declaring
 `soa<8> Point pts[...]`, for `struct Point { float x, y, z; }`, stores the
 array as if each block were `struct { uniform float x[8], y[8], z[8]; }`
 <Cite id="ispcdocs" />: a generated container, as here, but with the
-columns cut into blocks of eight (Viscosity's blocked version is *AoSoA
-code generation*). One difference matters for JavaScript: Viscosity can
-use a typed column only when it has proved the field is a number,
-because a JavaScript field has no declared type.
-</Callout>
+columns cut into blocks of eight (Viscosity's blocked version is in
+*AoSoA and hot/cold splitting*). One difference matters for JavaScript:
+Viscosity can use a typed column only when it has proved the field is a
+number, because a JavaScript field has no declared type.
+
+<Analogy extra title="a chest of drawers">
+You can pack each day's outfit in its own bag, or keep all the socks in
+one drawer and all the shirts in another; Monday's outfit is then "the
+first sock, the first shirt". If all you want this morning is socks, you
+open one drawer and never touch the shirts.
+<span slot="breaks">Socks in a drawer are in no particular order, and any
+pair will do; column `x` must keep element 7's `x` in slot 7, exactly,
+and slot 8 belongs to element 8.</span>
+</Analogy>
+
+</More>
 
 ## Your turn
 
@@ -258,7 +249,9 @@ because a JavaScript field has no declared type.
   column per field, `push` (one value per field, returns the new
   length), `grow` and `of`.
 - Fields whose names clash with the container's own members, or are not
-  plain identifiers, are renamed `f0_`, `f1_`, … (with an extra `_`
-  if needed), invisibly to the program.
+  plain identifiers, are renamed `f0_`, `f1_`, and so on.
+
+Next: *Rewriting field accesses and growing collections*, where every
+`ps[i].x` in the program is turned into a column access.
 
 <Quiz />

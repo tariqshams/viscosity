@@ -1,78 +1,37 @@
-// Chapter 71 cards: recall prompts, examples, exercises and quiz.
+// Chapter 113 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 113, 113.
 
 export const prompts = {
   'ao-block-size': {
-    q: 'What does the block size B of an AoSoA layout say?',
+    q: 'What does the block size B of an AoSoA (array of structs of arrays) layout say?',
     a: 'How many elements one block holds. Each block stores B values of each field.',
   },
   'ao-slot': {
-    q: 'With F = 3 and B = 8, which slot holds field 1 of element 10?',
+    q: 'In an AoSoA layout with F = 3 fields and blocks of B = 8, stored in one flat array, which slot holds field 1 of element 10?',
     a: '(10 >> 3) × 24 + 1 × 8 + (10 & 7) = 24 + 8 + 2 = 34.',
   },
   'ao-pow2': {
     q: 'Why must Viscosity’s AoSoA block size be a power of two?',
     a: 'So the block and lane are a shift and a mask (`i >> s`, `i & (B-1)`) instead of a division and a remainder; with 6 there are no bits to read off.',
   },
-  'ao-cap-blocks': {
-    q: 'Why does the AoSoA container round its capacity up with `Math.ceil(cap / 8) * 8`?',
-    a: 'So the array always holds whole blocks; doubling keeps it a multiple of 8.',
-  },
-  'ao-one-copy': {
-    q: 'Why can AoSoA’s `grow()` copy everything with a single `set`?',
-    a: 'Blocks don’t move when capacity grows: the new array is the old blocks followed by empty ones.',
-  },
-  'ao-helper': {
-    q: 'When does the emitter call `__vsc_aosoa(...)` instead of writing the formula inline?',
-    a: 'When the index isn’t a simple name or literal (for example wrapped in a bounds check), so it is evaluated only once.',
-  },
-  'ao-numeric': {
-    q: 'Why does Viscosity refuse `aosoa` when a field may hold a string?',
-    a: 'All fields share one `Float64Array`, which can only store numbers.',
-  },
   'ao-why-not-auto': {
     q: 'Why does Viscosity’s cost model never choose AoSoA by itself?',
-    a: 'In this book’s V8 measurements it rarely beat SoA, even with a hand-written block-by-block loop, and was slower at small sizes.',
+    a: 'In its V8 benchmark measurements AoSoA rarely beat SoA, even with a hand-written block-by-block loop, and was slower at small sizes.',
   },
   'hc-why': {
-    q: 'What does a hot loop gain from a hot/cold split?',
+    q: 'What does a hot loop gain from a hot/cold split of a record’s fields?',
     a: 'Its cache lines carry only the fields it uses, not the cold ones.',
   },
-  'hc-price': {
-    q: 'What is the cost of a hot/cold split?',
-    a: 'Code that needs a whole record must look in two places.',
-  },
   'hc-affinity': {
-    q: 'What does field affinity measure?',
+    q: 'What does field affinity measure, for the fields of a record?',
     a: 'Which fields are used together (for example, by the same loop).',
   },
-  'hc-hotness': {
-    q: 'How do hotness and affinity differ?',
-    a: 'Hotness counts uses of one field; affinity counts uses of a pair of fields together.',
-  },
-  'hc-weight': {
-    q: 'Why weight each loop by how often it runs?',
-    a: 'A loop that runs once a game shouldn’t count as much as one that runs every frame.',
-  },
-  'hc-zero': {
-    q: 'In the diagram, why is the affinity of `vx` and `name` 0?',
-    a: 'No loop uses both of them.',
-  },
-  'hc-packed': {
-    q: 'Packed AoS has no headers or pointers. Why is it still slower than SoA at summing one field of six?',
-    a: 'Its cache lines still carry the five unused fields; SoA’s carry only the one being summed.',
-  },
   'hc-viscosity': {
-    q: 'Does Viscosity build a separate hot struct and cold struct?',
+    q: 'When Viscosity transforms a collection to SoA, does it build a separate hot struct and cold struct?',
     a: 'No. Every field gets its own column, the finest possible split.',
   },
-  'hc-policy': {
-    q: 'What decides whether a Viscosity column is a `Float64Array` or a plain array?',
-    a: 'Whether the field is proven to always hold numbers.',
-  },
   'hc-tag-hot': {
-    q: 'In `mixed_columns.js`, `tag` is read in the hottest loop. Why is it still a plain array column?',
+    q: 'A field `tag` holds `null` or an object and is read in the hottest loop. Why does Viscosity still give it a plain array column rather than a typed one?',
     a: 'It holds `null` or an object, which a `Float64Array` can’t store. The choice is by type, not heat.',
   },
 };
@@ -263,7 +222,7 @@ test('empty', () => {
 
 **Common wrong attempts.**
 
-- Looping \`l < B\` in every block adds the spare slots of a partly used last block. This is the AoSoA version of the rule from *Growing collections*: compare with the length, never with the capacity.
+- Looping \`l < B\` in every block adds the spare slots of a partly used last block. This is the AoSoA version of the rule from *Rewriting field accesses and growing collections*: compare with the length, never with the capacity.
 - Looping \`b * B <= n\` visits one block too many when n is a multiple of B.
 
 Viscosity's emitter does not restructure loops this way: it rewrites each access in place, which is far simpler to prove correct, and which is why its AoSoA code can only be slower than this loop.`,
@@ -283,6 +242,7 @@ Viscosity's emitter does not restructure loops this way: it rewrites each access
     ],
   },
   coAccess: {
+    optional: true,
     title: 'Count co-access',
     prompt: 'Each loop is `{ runs, fields }`. Write `coAccess(loops)`: an object whose keys are pairs of field names, sorted alphabetically and joined with `+` (like `\'vx+x\'`), and whose values are the total `runs` of the loops that use both fields. Leave out pairs that are never used together.',
     starter: `function coAccess(loops) {
@@ -493,7 +453,7 @@ The threshold is the knob. Lower it and groups grow until everything is one reco
 
 export const quiz = [
   {
-    q: 'Three fields, blocks of 8. Where does block 2 start?',
+    q: 'An AoSoA layout has three fields and blocks of 8, in one flat array. At which slot does block 2 start?',
     options: [
       {
         t: 'Slot 16',
@@ -515,7 +475,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does Viscosity do with `// @viscosity aosoa(6)`?',
+    q: 'What does Viscosity do with a collection annotated `// @viscosity aosoa(6)`?',
     options: [
       {
         t: 'Uses blocks of 6 with division and remainder.',
@@ -541,51 +501,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The AoSoA container grows from 16 to 32 elements. What does `grow()` do?',
-    options: [
-      {
-        t: 'Moves each field’s values to new positions.',
-        why: 'Blocks are self-contained, so the existing ones keep their positions.',
-      },
-      {
-        t: 'Allocates one array twice the size and copies the old one into its start.',
-        correct: true,
-        why: 'The old blocks stay where they were; new empty blocks follow.',
-      },
-      {
-        t: 'Allocates one new array per field.',
-        why: 'That is SoA’s growth. AoSoA has a single `data` array.',
-      },
-      {
-        t: 'Appends 16 elements to the existing Float64Array.',
-        why: 'A Float64Array can’t grow in place.',
-      },
-    ],
-  },
-  {
-    q: 'You annotate a collection whose records have a `name` string with `aosoa(8)`. What happens?',
-    options: [
-      {
-        t: 'name gets a plain array column, the rest go in blocks.',
-        why: 'That mixing is what SoA does; AoSoA has no plain columns.',
-      },
-      {
-        t: 'The strings are stored as NaN.',
-        why: 'Viscosity never changes values; it refuses instead.',
-      },
-      {
-        t: 'It stays an array of objects: “annotated aosoa, but fields name may hold non-numbers”.',
-        correct: true,
-        why: 'One shared Float64Array can only hold numbers.',
-      },
-      {
-        t: 'The compiler crashes.',
-        why: 'This case gets a proper explanation in explain, as a bad block size does.',
-      },
-    ],
-  },
-  {
-    q: 'What did this book’s V8 measurements show about AoSoA with blocks of 8?',
+    q: 'In Viscosity’s committed benchmark run on Node 22 (V8 12.4), how did AoSoA with blocks of 8 compare?',
     options: [
       {
         t: 'It was the fastest layout at every size.',
@@ -603,28 +519,6 @@ export const quiz = [
       {
         t: 'It wasn’t measured.',
         why: 'The `aosoa8` layout is in every suite of the benchmark run.',
-      },
-    ],
-  },
-  {
-    q: 'A movement loop reads `x`, `y`, `vx`, `vy` of every entity; `health` and `name` are read once per game. What does a hot/cold split do?',
-    options: [
-      {
-        t: 'Deletes the cold fields.',
-        why: 'They are still needed, just rarely. They move, they don’t vanish.',
-      },
-      {
-        t: 'Stores the four movement fields together and the other two separately, indexed by the same i.',
-        correct: true,
-        why: 'The hot loop then loads only hot data.',
-      },
-      {
-        t: 'Makes every field a Float64Array.',
-        why: 'That is about representation; `name` is a string and can’t be one.',
-      },
-      {
-        t: 'Reorders the loops.',
-        why: 'The split changes the data layout, not the code order.',
       },
     ],
   },
@@ -651,7 +545,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'How does Viscosity split fields?',
+    q: 'When Viscosity stores a collection as a struct of arrays, how does it split the fields?',
     options: [
       {
         t: 'Into a hot struct of arrays and a cold array of objects, by profile.',
@@ -669,50 +563,6 @@ export const quiz = [
       {
         t: 'It never splits fields.',
         why: 'SoA is a split: each field is its own column.',
-      },
-    ],
-  },
-  {
-    q: 'Why is SoA called the finest possible hot/cold split?',
-    options: [
-      {
-        t: 'Because it only works for hot fields.',
-        why: 'SoA stores every field, hot or cold.',
-      },
-      {
-        t: 'Because it sorts fields by hotness.',
-        why: 'Column order doesn’t matter in SoA; each column is separate.',
-      },
-      {
-        t: 'Because it always runs fastest.',
-        why: 'It does not: *When SoA loses: materialization and AoSoA* showed it losing badly.',
-      },
-      {
-        t: 'Because each field is its own group, so a loop loads exactly the fields it touches.',
-        correct: true,
-        why: 'There is nothing left to split.',
-      },
-    ],
-  },
-  {
-    q: 'Where would field affinity matter most for a layout?',
-    options: [
-      {
-        t: 'When each field already has its own column.',
-        why: 'Then a loop only loads what it uses; grouping has no effect.',
-      },
-      {
-        t: 'When several fields share one array, as in packed AoS or AoSoA blocks.',
-        correct: true,
-        why: 'Then the grouping decides what each cache line carries.',
-      },
-      {
-        t: 'Only for string fields.',
-        why: 'Affinity is about access, not type.',
-      },
-      {
-        t: 'Only in loops that run once.',
-        why: 'Rare loops barely count; affinity is dominated by the frequent ones.',
       },
     ],
   },

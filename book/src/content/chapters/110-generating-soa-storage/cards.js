@@ -1,9 +1,9 @@
-// Chapter 70 cards: recall prompts, examples, exercises and quiz.
+// Chapter 110 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'col-what': {
-    q: 'What is column storage?',
+    q: 'What is column storage, for a collection of records?',
     a: 'One array per field; element i’s fields are at index i of every column.',
   },
   'ctr-what': {
@@ -11,31 +11,19 @@ export const prompts = {
     a: 'A generated class instance holding the columns, `length` and `cap`, with `push`, `grow` and `of`.',
   },
   'ctr-push-ret': {
-    q: 'What does the generated `push` return, and why?',
+    q: 'What does the `push` of a Viscosity SoA container return, and why?',
     a: 'The new length, because `Array.prototype.push` does, and the program may use the result.',
   },
-  'ctr-of': {
-    q: 'What replaces an array literal like `[{ x: 1, y: 2 }, { x: 3, y: 4 }]`?',
-    a: '`__Vsc_pts.of(1, 2, 3, 4)`: every field of every record, flattened, pushed in groups.',
-  },
   'ctr-length': {
-    q: 'In the container, what is the difference between `length` and `cap`?',
+    q: 'In a Viscosity SoA container, what is the difference between `length` and `cap`?',
     a: '`length` counts the elements in use; `cap` is how many slots each column has.',
   },
   'col-typed-why': {
-    q: 'Why can only provably numeric fields get a Float64Array column?',
+    q: 'Why can a struct-of-arrays layout in JavaScript give a Float64Array column only to a field proved always to hold a number?',
     a: 'A Float64Array converts whatever is stored to a number: a string like `\'a\'` would come back as NaN.',
   },
-  'ctr-plain': {
-    q: 'Why doesn’t `grow()` touch plain-array columns?',
-    a: 'A plain array lengthens by itself when you write past its end.',
-  },
-  'col-negzero': {
-    q: 'Does a Float64Array column keep `-0` and `NaN`?',
-    a: 'Yes: it holds any IEEE 754 double exactly.',
-  },
   'col-reserved': {
-    q: 'What column does Viscosity use for a field named `length`?',
+    q: 'In a Viscosity SoA container, what column holds a record field named `length`?',
     a: 'A renamed one, `f` + the field’s position + `_` (e.g. `f0_`, or `f0__` if a real field is already called `f0_`), so it can’t overwrite the container’s own `length`.',
   },
 };
@@ -372,7 +360,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The generated `push(v0, v1)` returns…',
+    q: 'The `push(v0, v1)` of a Viscosity SoA container returns…',
     options: [
       {
         t: 'nothing, since the columns are updated in place.',
@@ -394,25 +382,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which records get only plain-array columns, no Float64Array at all?',
-    options: [
-      {
-        t: '`{ x: i, y: 2 * i }`',
-        why: 'Both fields are provably numbers: two Float64Array columns.',
-      },
-      {
-        t: '`{ hp: 100, id: \'e\' + i }`',
-        why: '`hp` is numeric and gets a typed column; only `id` is a plain array.',
-      },
-      {
-        t: '`{ name: \'p\' + i, tag: null }`',
-        correct: true,
-        why: 'Yes: neither field is provably a number. (Without an annotation, the cost model would keep such a collection as objects.)',
-      },
-    ],
-  },
-  {
-    q: 'Why doesn’t `grow()` copy plain-array columns?',
+    q: 'Why does the `grow()` of a Viscosity SoA container not copy its plain-array columns?',
     options: [
       {
         t: 'They are copied lazily, on the next read.',
@@ -430,7 +400,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A record has fields `{ length, x }`. What are the columns called?',
+    q: 'Viscosity stores records `{ length, x }` as a struct of arrays. What are the two columns called?',
     options: [
       {
         t: '`length` and `x`',

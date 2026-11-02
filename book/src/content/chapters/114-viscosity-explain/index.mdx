@@ -10,7 +10,7 @@ objectives:
   - Use the reason for a kept collection, with or without a code frame, to change a program so Viscosity can transform it.
   - Say how the report is itself tested, byte for byte.
 introduces: [optimization-report]
-uses: [function, array, object, for-loop, for-of, string-building, template-literal, array-of-objects, record-shape, collection-discovery, access-pattern, hot-loop, safety-analysis, bailout, cost-model, annotation, column-storage, access-rewriting, pgo, differential-testing, elements-kind, engine-tracing, field-representation]
+uses: [function, array, object, template-literal, array-of-objects, record-shape, collection-discovery, access-pattern, hot-loop, safety-analysis, bailout, cost-model, annotation, column-storage, access-rewriting, differential-testing, elements-kind]
 sources: [v8-elements-kinds]
 ---
 import ExplainSteps from '../../../components/diagrams/ch114/ExplainSteps';
@@ -204,7 +204,7 @@ line with carets under the code it is about:
 
 The first is the whole reason for `string_index.js`: one unsafe use, an
 index Viscosity cannot prove is a number. The second is `small_auto.js`,
-safe but too small to be worth it. The third is one of ten frames for a
+safe but too small to be worth it. The third is one of the frames for a
 program written for the Rust port, `many_bailouts.js`, which collects
 nearly every refusal there is; the carets sit under `ps`, the array that
 is stored inside an object. Each points at what you could change: the
@@ -223,42 +223,39 @@ for (let i = 0; i < ps.length; i++) {
 }
 console.log(ps[3]);`} />
 
-Below it is a planner in miniature that records each reason at the
-moment it decides, exactly as `keep(...)` does; it prints one report
-line per collection.
+<Prompts ids={['rep-order', 'rep-act']} />
+
+<More title="More: a planner in miniature">
+
+This planner records each reason at the moment it decides, exactly as
+`keep(...)` does, and prints one report line per collection:
 
 <Run id="mini-planner" />
 
-<Prompts ids={['rep-order', 'rep-all-unsafe', 'rep-act']} />
+</More>
 
 ## A report is a contract
 
-Because the report is text, it can be tested like code, and three places
-in the repository do. The **differential test** from *Testing
-compilers* passes `r.explain` as the failure message when a decision is
-wrong, so a failing test says why Viscosity decided what it did. The
-**mini-parser test** compiles every corpus and benchmark program with
-both parsers and requires byte-identical reports, not only code. And for
-the **Rust port**, the reference's report and compiled code are stored
-for every test program in both bounds modes, plus fourteen `--frames`
-reports; run for this chapter, the parity test printed
-`parity: 190/190 (54 Python)`, and its frames test passed. Changing a
-word in a reason is therefore a visible diff in a review, which is
-deliberate: if people read the reports, the reports are part of the
-interface.
+Because the report is text, it is tested like code. The differential
+test of *Testing compilers: differential, round-trip, fuzzing and
+shrinking* passes `r.explain` as the failure message, so a failing test
+says why Viscosity decided what it did; the mini-parser test requires
+both parsers to produce byte-identical reports, not only code; and the
+Rust port's parity test compares its reports with the TypeScript
+reference's, for every test program. Changing a word in a reason is
+therefore a visible diff in a review, which is deliberate: if people
+read the reports, the reports are part of the interface.
 
-<Prompts ids={['rep-tested']} />
+<More title="More: how engines explain themselves">
 
-<Callout kind="engine" label="Under the hood">
 Engines explain themselves too, though to engine developers rather than
-users. In debug builds, V8's `--trace-elements-transitions` flag prints
-a line whenever an array's elements kind changes, with the script
+users. In debug builds, V8's `--trace-elements-transitions` flag prints a
+line whenever an array's elements kind changes, with the script
 location<Cite id="v8-elements-kinds" />. Those are logs of events,
 written as the program runs; Viscosity's report is written once, before
 the program runs, about every collection.
-</Callout>
 
-<Prompts ids={['rep-engines']} />
+</More>
 
 ## Your turn
 
@@ -275,5 +272,9 @@ the program runs, about every collection.
 - The planner records the reasons as it decides, and `explain()` only
   prints them, so the report cannot drift from the decision.
 - The report is tested byte for byte, as part of Viscosity's interface.
+
+Next: *End to end: benchmarks and differential testing at scale*, which
+measures whole programs and checks thousands of them against the
+original.
 
 <Quiz />

@@ -1,37 +1,29 @@
-// Chapter 71 cards: recall prompts, examples, exercises and quiz.
+// Chapter 112 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
-  'im-snapshot': {
-    q: 'After `const p = get(0)` returns a fresh copy built from the columns, what happens to `p.x = 42`?',
-    a: 'It changes only the copy. The column, and every later read of element 0, still sees the old value.',
-  },
   'im-two-bugs': {
-    q: 'Name the two things a fresh copy per access gets wrong.',
+    q: 'A struct-of-arrays layout hands out a fresh object, copied from the columns, for every element access. Which two behaviours of the original program does that get wrong?',
     a: 'Aliasing (writes through one path aren’t seen through another) and identity (`===` is false).',
   },
   'im-handle': {
-    q: 'What does a handle hold?',
+    q: 'What does a handle for one element of a struct-of-arrays collection hold?',
     a: 'The collection and an index. Its fields are accessors that read and write the columns.',
   },
   'im-holds-container': {
-    q: 'Why should a handle hold the container rather than the column `c.x`?',
+    q: 'Why should a handle into a growable SoA container hold the container rather than the column `c.x`?',
     a: '`grow()` replaces columns with bigger ones; a saved column would go stale.',
   },
   'im-identity': {
-    q: 'What does a handle design need so that `ps[0] === ps[0]` stays true?',
+    q: 'What does a handle design for a struct-of-arrays collection need so that `ps[0] === ps[0]` stays true?',
     a: 'A cache that hands out the same handle for the same index every time.',
   },
-  'im-cache-cost': {
-    q: 'Why does a handle cache eat into SoA’s gains?',
-    a: 'It brings back one object per element handed out, and every field access becomes an accessor call.',
-  },
   'im-index-handle': {
-    q: 'What does Viscosity compile `const p = ps[i]` into when `p` is only used for field access?',
+    q: 'What does Viscosity compile `const p = ps[i]` into, for an SoA collection `ps`, when `p` is only used for field access?',
     a: '`const p = i`: the index itself serves as the handle.',
   },
   'im-refuse': {
-    q: 'What does Viscosity do with a collection whose elements escape?',
+    q: 'What does Viscosity do with a collection one of whose elements escapes?',
     a: 'Keeps it as an array of objects and explains which line made an element escape.',
   },
 };
@@ -343,7 +335,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `keep[0].x = 42` reach the column when `keep[0]` is a handle?',
+    q: 'Why does `keep[0].x = 42` reach the column when `keep[0]` is a handle into a struct-of-arrays container?',
     options: [
       {
         t: 'The handle copies its value back when it is garbage collected.',
@@ -365,7 +357,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A handle class saves `this.col = c.x` in its constructor. What goes wrong?',
+    q: 'A handle class for a growable SoA container saves `this.col = c.x` in its constructor. What goes wrong?',
     options: [
       {
         t: 'After `grow()` replaces the column, the handle reads and writes the old one.',
@@ -387,7 +379,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`viscosity explain` says “line 8: an element is compared or combined with "==="”. What did Viscosity do?',
+    q: 'For a collection `ps`, `viscosity explain` says “unsafe: line 8: an element is compared or combined with "==="”. What did Viscosity do with `ps`?',
     options: [
       {
         t: 'Generated cached handles for `ps`.',
@@ -405,28 +397,6 @@ export const quiz = [
       {
         t: 'Converted `===` into an index comparison.',
         why: 'That would be a handle-like trick that it doesn’t do for compared elements.',
-      },
-    ],
-  },
-  {
-    q: 'In this book’s benchmark run, `get-objects` didn’t lose with SoA, but `materialize` lost badly. Why?',
-    options: [
-      {
-        t: '`get-objects` uses fewer elements.',
-        why: 'Both were measured at the same sizes.',
-      },
-      {
-        t: '`materialize` reads more fields.',
-        why: 'Both read every field; the difference is what happens to the object afterwards.',
-      },
-      {
-        t: 'V8 caches handles in `get-objects`.',
-        why: 'V8 doesn’t make handles; it removed the object entirely.',
-      },
-      {
-        t: 'In `get-objects` the object doesn’t escape `consume`, so V8 removed it; in `materialize` the objects are kept.',
-        correct: true,
-        why: 'Escape decides the cost, which is why Viscosity’s rule is about escape too.',
       },
     ],
   },

@@ -1,75 +1,38 @@
-// Chapter 70 cards: recall prompts, examples, exercises and quiz.
+// Chapter 111 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 111, 111.
 
 export const prompts = {
   'rw-what': {
-    q: 'What does access rewriting turn `ps[i].x` into?',
+    q: 'When an array of objects `ps` is turned into a struct of arrays, what does access rewriting turn `ps[i].x` into?',
     a: '`ps.x[i]`: element i of the `x` column.',
   },
   'rw-back': {
-    q: 'Why are the edits applied from the end of the file backwards?',
+    q: 'Why does a compiler that rewrites source as a list of range edits apply them from the end of the file backwards?',
     a: 'Each edit only shifts text after it, which is already done, so the offsets of the remaining edits stay valid.',
   },
-  'rw-push': {
-    q: 'What does `ps.push({ x: a, vx: b })` become?',
-    a: '`ps.push(a, b)`: one argument per field, in field order, copied as source text.',
-  },
   'rw-alias': {
-    q: 'What does `const p = ps[i]` become, and what does `p` then hold?',
+    q: 'In Viscosity’s SoA rewrite, what does the element variable `const p = ps[i]` become, and what does `p` then hold?',
     a: '`const p = i`: p holds the index, and each `p.x` becomes `ps.x[p]`.',
   },
-  'rw-forof': {
-    q: 'What does `for (const p of ps)` become?',
-    a: '`for (let p = 0; p < ps.length; p++)`, a counting loop over indexes.',
-  },
-  'rw-spare': {
-    q: 'Without a bounds check, why would `ps.x[100]` on a 100-element container print 0?',
-    a: 'The column has spare slots up to `cap`, and a new Float64Array is zero-filled.',
-  },
-  'rw-proven': {
-    q: 'When does Viscosity skip the bounds check on an access?',
-    a: 'When it proved the index in range: the index is the loop counter and the loop condition is `i < ps.length`.',
-  },
   'rw-bc': {
-    q: 'What does `__vsc_bc(c, i, f, w)` do?',
+    q: 'What does Viscosity’s bounds-check helper `__vsc_bc(c, i, f, w)` do?',
     a: 'Returns i if it is a valid index below `c.length`; otherwise throws the TypeError the original access would have thrown.',
   },
   'gc-cap-len': {
     q: 'What is the difference between a collection’s capacity and its length?',
     a: 'Capacity is how many slots are allocated; length is how many hold real elements.',
   },
-  'gc-no-push': {
-    q: 'Why can’t Viscosity’s container just call `push` on its `Float64Array` columns?',
-    a: 'A typed array made with `new Float64Array(n)` has a fixed length and no `push`.',
-  },
   'gc-spare-zero': {
-    q: 'What does a spare slot of a fresh `Float64Array` column contain?',
+    q: 'What does a spare slot of a freshly allocated `Float64Array` column contain?',
     a: '0. New typed arrays are zero-filled.',
   },
-  'gc-set': {
-    q: 'What does `t.set(this.a)` do inside `grow()`?',
-    a: 'Copies every value of the old column into the start of the new, bigger one.',
-  },
-  'gc-plain': {
-    q: 'Why does `grow()` not copy the plain array columns?',
-    a: 'Writing at index `length` appends to a plain array, and the engine grows it by itself.',
-  },
   'gc-amortized': {
-    q: 'With doubling, about how many values do n pushes copy in total?',
+    q: 'When a growable array doubles its capacity each time it is full, at most how many values do n pushes copy in total?',
     a: 'Fewer than 2n, so a constant amount per push on average.',
   },
   'gc-add16': {
-    q: 'What happens to the total copying if the capacity grows by 16 each time instead of doubling?',
+    q: 'What happens to the total copying for n pushes if a growable array adds 16 slots each time it is full, instead of doubling?',
     a: 'It grows with the square of the length (quadratic), because each grow copies everything so far.',
-  },
-  'gc-waste': {
-    q: 'Right after a doubling grow, at most what fraction of the slots is spare?',
-    a: 'Just under half: the old capacity is full, and an equal number of new slots is empty.',
-  },
-  'gc-bench': {
-    q: 'Why doesn’t the `construct` benchmark measure the cost of doubling?',
-    a: 'Its harness knows n in advance and creates the columns at the right size, so they never grow.',
   },
 };
 
@@ -438,6 +401,7 @@ test('-1, 1.5 and NaN are not indexes', () => {
     ],
   },
   doublingCol: {
+    optional: true,
     title: 'A column that grows',
     prompt: 'Finish `push(v)` for a one-column container. It starts with capacity 4. When the column is full, grow it the way Viscosity does: a new `Float64Array` of twice the capacity, the old values copied in with `set`, and `copies` increased by the number of values copied. Then store `v` at index `len` and return the new length.',
     starter: `function makeCol() {
@@ -680,7 +644,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `const p = ps[i]; p.x += p.vx;` become?',
+    q: 'Viscosity transforms `ps` to a struct of arrays. What does `const p = ps[i]; p.x += p.vx;` become?',
     options: [
       {
         t: '`const p = ps.x[i]; p += ps.vx[i];`',
@@ -702,7 +666,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which access needs `__vsc_bc` in the compiled code?',
+    q: 'Viscosity transforms `ps` to a struct of arrays with bounds checks on. Which access keeps a `__vsc_bc` check in the compiled code?',
     options: [
       {
         t: '`ps[7].x` printed after the loop',
@@ -720,91 +684,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Without the bounds check, what would `console.log(ps.x[100])` print for a 100-element container with `cap` 128?',
-    options: [
-      {
-        t: 'It throws a RangeError.',
-        why: 'Typed arrays don’t throw on out-of-range reads.',
-      },
-      {
-        t: '`undefined`',
-        why: 'Only past the end of the Float64Array (index 128 and up). Slot 100 exists; it is a spare.',
-      },
-      {
-        t: '`0`, a spare, zero-filled slot',
-        correct: true,
-        why: 'Right, and that is the danger: a plausible wrong number where the original threw a TypeError.',
-      },
-      {
-        t: 'The value of element 99.',
-        why: 'Nothing wraps around; slot 100 is an unused slot.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `__vsc_bc` throw “Cannot read properties of undefined (reading \'x\')” specifically?',
-    options: [
-      {
-        t: 'The ECMAScript specification requires that exact message.',
-        why: 'The specification only requires a TypeError; messages are implementation-defined.',
-      },
-      {
-        t: 'It is the message V8 gives for the original access, so outcomes match in Node.',
-        correct: true,
-        why: 'Yes. Other engines may word it differently, but Viscosity’s differential tests run on V8 and compare errors exactly.',
-      },
-      {
-        t: 'Any message would do; only the type matters.',
-        why: 'A program can print or inspect `e.message`, and the tests compare it.',
-      },
-    ],
-  },
-  {
-    q: 'A container has `cap` 32 and `length` 20. What happens on the next push?',
-    options: [
-      {
-        t: 'It grows to 64 first.',
-        why: 'It only grows when length equals capacity. 20 < 32, so there is room.',
-      },
-      {
-        t: 'It writes slot 20 and the length becomes 21.',
-        correct: true,
-        why: 'The common, cheap case: no allocation and no copying.',
-      },
-      {
-        t: 'It writes slot 32.',
-        why: 'Slots 20 to 31 are spare; the next element goes at index `length`, which is 20.',
-      },
-      {
-        t: 'It grows by one slot.',
-        why: 'Viscosity’s container never grows by one; it doubles, and only when full.',
-      },
-    ],
-  },
-  {
-    q: 'Starting at capacity 16 and doubling, how many values are copied per column while pushing 5,000 elements?',
-    options: [
-      {
-        t: '8,176',
-        correct: true,
-        why: '16 + 32 + … + 4,096 = 8,176, fewer than 2 per element.',
-      },
-      {
-        t: '5,000',
-        why: 'The copies are the old capacities at each grow, not the element count.',
-      },
-      {
-        t: 'About 780,000',
-        why: 'That is closer to what growing by 16 each time would copy.',
-      },
-      {
-        t: '0, because set() is free',
-        why: '`set` copies every value; it is just fast at it.',
-      },
-    ],
-  },
-  {
-    q: 'Which statement about amortised growth is true?',
+    q: 'Which statement about amortised growth of an array that doubles its capacity is true?',
     options: [
       {
         t: 'Every push is cheap.',
@@ -822,50 +702,6 @@ export const quiz = [
       {
         t: 'It only works for typed arrays.',
         why: 'The argument is about counting copies; it applies to any growable storage.',
-      },
-    ],
-  },
-  {
-    q: 'In the original program `ps.length` is 100 and `ps[100].a` throws. After the rewrite the column has 128 slots. What keeps the behaviour the same?',
-    options: [
-      {
-        t: 'Float64Array throws on reads past the length.',
-        why: 'Index 100 is inside the 128-slot array, and it holds 0. Even past the end, a typed array read gives undefined, not an error.',
-      },
-      {
-        t: 'Nothing: the compiled program prints 0.',
-        why: 'Viscosity must preserve behaviour, and it does.',
-      },
-      {
-        t: 'A bounds check that compares the index with the container’s length and throws the same TypeError.',
-        correct: true,
-        why: 'Unproven indexes are wrapped in `__vsc_bc`, which checks against `length`, not the column size.',
-      },
-      {
-        t: 'The container trims the columns to exactly 100 slots.',
-        why: 'It keeps spare capacity for future pushes.',
-      },
-    ],
-  },
-  {
-    q: 'The `construct` benchmark shows SoA building 100,000 particles much faster than an array of objects. What does that tell you?',
-    options: [
-      {
-        t: 'Doubling is free.',
-        why: 'The harness preallocates the right size, so no doubling happens in this run at all.',
-      },
-      {
-        t: 'Filling columns with numbers is cheaper than allocating one object per element.',
-        correct: true,
-        why: 'That is what the suite measures: the same values, stored two ways, with known sizes.',
-      },
-      {
-        t: 'SoA is faster for every loop.',
-        why: 'One suite says nothing about others; the chapter When SoA loses showed SoA losing badly at `materialize`.',
-      },
-      {
-        t: 'Viscosity should always use AoSoA.',
-        why: 'AoSoA was slower than SoA in this suite.',
       },
     ],
   },

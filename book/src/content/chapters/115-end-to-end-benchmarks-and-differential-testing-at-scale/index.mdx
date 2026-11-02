@@ -3,18 +3,16 @@ n: 115
 day: 17
 part: VI
 title: 'End to end: benchmarks and differential testing at scale'
-tagline: 'A loop in isolation can be 8× faster in columns, but your program is not one loop. Here is how Viscosity is measured on whole programs, on two JavaScript engines, what it found, and the two programs it first made slower.'
+tagline: 'A loop in isolation can be 8× faster in columns, but your program is not one loop. Here is how Viscosity is measured on whole programs, on two JavaScript engines, what it found, and how a folder of small programs keeps it correct.'
 objectives:
   - Explain what an end-to-end benchmark measures that a microbenchmark does not.
   - Describe the harness, with its fresh processes, discarded warm-up run, alternating runs and checksum guard.
   - Read the committed results for Node and Bun, and say which differences are real and which may be noise.
   - Tell how bounds checks in a hot loop turned two speed-ups into slowdowns, and how they were removed.
   - Explain what a test corpus is, and the rules each corpus file follows.
-  - Describe how Viscosity’s programs multiply into checks across parsers, languages and implementations.
-  - Say how the TypeScript compiler serves as the oracle for the Rust port.
-  - Explain how the corpus and the fuzzer work together, and build a seeded random-program generator to find a bug in a toy compiler.
+  - Say how the TypeScript compiler serves as the oracle for the Rust port, and how the corpus and a fuzzer work together.
 introduces: [end-to-end-benchmark, test-corpus]
-uses: [function, array, object, array-of-objects, typed-array, aos-vs-soa, cpu-cache, jit-warmup, dead-code-elimination, median-p95, benchmark-isolation, tiering, hot-loop, access-pattern, safety-analysis, cost-model, column-storage, access-rewriting, pgo, optimization-report, differential-testing, natural-loop, induction-variable, test, assertion, edge-case, fuzzing, round-trip-testing, identity-transform, parser-adapter, estree, bailout, ieee754, try-catch, error-object, closure]
+uses: [array-of-objects, typed-array, aos-vs-soa, jit-warmup, dead-code-elimination, median-p95, benchmark-isolation, hot-loop, safety-analysis, cost-model, column-storage, access-rewriting, optimization-report, differential-testing, fuzzing, bailout, try-catch, error-object]
 sources: [v8-maglev, test262, csmith]
 ---
 import E2ESteps from '../../../components/diagrams/ch115/E2ESteps';
@@ -22,35 +20,24 @@ import E2EChart from '../../../components/diagrams/ch115/E2EChart';
 import MatrixSteps from '../../../components/diagrams/ch115/MatrixSteps';
 import FindToFile from '../../../components/diagrams/ch115/FindToFile';
 
-{/* ── merge: from old chapter 115, Benchmarking Viscosity end to end ── */}
-
 ## One loop is not a program
 
-Part II measured layouts one loop at a time; in this book's benchmark
-run, summing one field of 100,000 particles was 8.5× faster in columns
-than in objects. That is a fact about one loop. A program does more: it
-builds its data one `push` at a time through the generated container,
-runs some loops that love columns and some that do not care, and keeps
-bounds checks wherever Viscosity could not prove an index safe. Whether
-all of that adds up to a faster program is a separate question, and it
-needs a separate measurement.
+In the committed benchmark run, summing one field of 100,000 particles
+was 8.5× faster in columns than in objects. That is a fact about one
+loop. A program does more: it builds its data one `push` at a time
+through the generated container, runs some loops that love columns and
+some that do not care, and keeps bounds checks wherever Viscosity could
+not prove an index safe. Whether all of that adds up to a faster program
+is a separate question, and it needs a separate measurement; and whether
+the faster program is still *right* needs many more programs than one.
 
 <Analogy title="an engine on a test bench, and the drive to work">
 A car's engine on a test bench gives one number; your drive to work
 gives another, with traffic lights, hills and a cold start. Both are
 real, but only the second tells you how long the drive takes.
 <span slot="breaks">A commute changes every day; a benchmark program
-does exactly the same work on every run, so what changes between runs
-is only the machine, which is what the harness has to control.</span>
-</Analogy>
-
-<Analogy extra title="a recipe's cooking time, and dinner on the table">
-A recipe says "bake for 20 minutes"; dinner still takes an hour,
-because of the chopping, the oven warming up and the washing-up you did
-while waiting.
-<span slot="breaks">In a kitchen the steps are separate; in a program
-the same layout change speeds up one loop and slows down another, so
-the parts cannot be timed apart and added up.</span>
+does exactly the same work on every run, so what changes between runs is
+only the machine, which is what the harness has to control.</span>
 </Analogy>
 
 <Callout kind="definition">
@@ -60,40 +47,22 @@ benchmark. It answers "does my program get faster?" and includes
 everything the compiler changed, good and bad.
 </Callout>
 
-<Prompts ids={['e2e-what', 'e2e-why']} />
+<Prompts ids={['e2e-what']} />
 
 ## Five programs, and a harness
 
-The programs live in `packages/bench/e2e/`, each ordinary JavaScript
-with no annotations: **particles** (200,000 particles with 8 fields;
-each frame updates `x` and `y` from `vx` and `vy`), **ledger** (500,000
-transactions; queries sum one field, or filter on one and sum another),
-**heat** (diffusion on a 512 × 512 grid, reading each cell's four
-neighbours), **boids** (20,000 boids, each averaging the velocity of the
-next 64) and **n-body** (gravity between every pair of 1,500 bodies).
-Every program times its own hot section and ends by printing one line of
-JSON. Here is the end of `particles.js`, reformatted:
-
-```js
-const t0 = performance.now();
-for (let f = 0; f < 200; f++)
-  step(ps, 0.016);
-const ms = performance.now() - t0;
-let s = 0;
-for (const p of ps) s += p.x + p.y;
-console.log(JSON.stringify(
-  { check: s.toFixed(3), ms }));
-```
-
-Lines 1 and 4 bracket the 200 frames with `performance.now()`, so the
-time covers the frames and nothing else; lines 5 and 6 add up every
-final position; and the last line prints both. The checksum does two
-jobs (*Benchmarking honestly*): it makes the work's result observable,
-so no engine can delete the work as dead code, and it lets the harness
-check that the compiled program computed the same thing.
-
-The committed results come from `packages/bench/src/matrix.ts`, which
-runs each program on Node and on Bun. Its core, simplified:
+The programs live in `packages/bench/e2e/`, each ordinary JavaScript with
+no annotations: **particles** (200,000 particles with 8 fields, moved for
+200 frames), **ledger** (500,000 transactions, summed and filtered),
+**heat** (diffusion on a 512 × 512 grid), **boids** (20,000 boids, each
+averaging the next 64) and **n-body** (gravity between every pair of
+1,500 bodies). Every program times its own hot section with
+`performance.now()` and ends by printing one line of JSON with the time
+and a checksum of its results; the checksum makes the work observable,
+so no engine can delete it as dead code (*Benchmarking honestly*), and
+lets the harness check that the compiled program computed the same
+thing. The harness, `packages/bench/src/matrix.ts`, runs each program on
+Node and on Bun; its core, simplified:
 
 ```ts
 runOnce(orig); runOnce(comp); // warm-up
@@ -106,24 +75,20 @@ const checks = new Set(
 if (checks.size !== 1) throw new Error(
   `${f} on ${rt.name}: checksums differ`);
 speedupBest = min(am) / min(bm);
-speedupMedian = median(am) / median(bm);
 ```
 
-`runOnce` starts a fresh process (as in *Noisy numbers: the median, p95
-and a fresh process*), so neither version inherits the other's type
-feedback or garbage, and reads the JSON line it prints. The first line
-throws one run of each away, to warm the file cache; the loop then
-alternates original and compiled, `RUNS` times (9 for the committed
-results), so a noisy minute on the machine hits both; and a fast wrong
-answer is not a result, because a single differing checksum throws.
+`runOnce` starts a fresh process, so neither version inherits the other's
+type feedback or garbage. The first line throws one run of each away; the
+loop then alternates original and compiled, `RUNS` times (9 for the
+committed results), so a noisy minute on the machine hits both; and a
+fast wrong answer is not a result, because a single differing checksum
+throws. Step through one program's measurement:
 
 <E2ESteps client:visible />
 
-<Prompts ids={['e2e-self-time', 'e2e-checksum', 'e2e-fresh', 'e2e-median']} />
+<Prompts ids={['e2e-checksum', 'e2e-fresh']} />
 
 ## The results
-
-These are the committed results, read straight from the results file:
 
 <Figure takeaway="On Node every program got faster, three of them several times; on Bun the gains were smaller, and heat and n-body gained nothing." caption="Best of 9 fresh-process runs per version, on a shared 4-vCPU cloud VM. Every checksum matched, on both engines.">
 <E2EChart />
@@ -132,200 +97,87 @@ These are the committed results, read straight from the results file:
 <Examples of="end-to-end-benchmark">
 
 ```text
-particles  Node  393 → 90 ms   4.37×
-```
-
-```text
-heat       Node  352.4 → 85.7  4.11×
-heat       Bun    96.4 → 94.5  1.02×
-```
-
-```text
-particles  whole process, median
-  Node  527.4 → 182.7 ms
+heat  Node  352.4 → 85.7 ms   4.11×
+heat  Bun    96.4 → 94.5 ms   1.02×
 ```
 
 </Examples>
 
-The first is one row of the matrix: the best of nine runs for each
-version of `particles` on Node. The second is the same program on two
-engines: on Node, columns made `heat` four times faster; on Bun they
-made no difference, because Bun ran the *original* more than three and
-a half times faster than Node did. The repository's findings suggest a cause, not yet
-confirmed with engine traces: V8 keeps a double held in an object field
-as a separate heap number, so columns fix both the storage and the
-locality there, while JavaScriptCore stores the double in the object and
-gains only the locality. The third is the whole-process wall time, start
-up and data building included, which a user waiting for the program
-would see: still almost three times faster.
-
-The three big wins are the programs that look like Part II's
-microbenchmarks: many elements, and hot loops that touch only some of
-the fields. `n-body` gained least; it has only 1,500 bodies, and each
-pair does a square root and a division, so memory layout is a smaller
-share of its time (our reading of the program, not a measurement).
-
-<Prompts ids={['e2e-wins']} />
-
-## The two programs that got slower
+These are two rows of `results/matrix-2026-10-31.md`: the best of nine
+runs of the original and of the compiled `heat`, on each engine. On Node,
+columns made `heat` four times faster; on Bun they made no difference,
+because Bun ran the *original* more than three and a half times faster
+than Node did (the repository's notes suggest, without engine traces to
+confirm it, that V8 boxes a double held in an object field while
+JavaScriptCore does not, so columns fix more on V8). Across all five
+programs the geometric mean was 2.54× on Node and 1.74× on Bun.
 
 The first time this benchmark ran, n-body and boids were *slower* with
-Viscosity than without. The commit that fixed it says why: the bounds
-proofs from *Proving it safe* did not cover outer-loop indexes,
-non-negative starts or `&&` guards, so checks sat inside the hot loops.
-In n-body the inner loop reads `b[i]`, where `i` belongs to the *outer*
-loop:
+Viscosity. The bounds proofs of *Proving it safe* did not yet cover an
+outer loop's counter used in an inner loop (n-body's `b[i].x` inside the
+`j` loop), a start of `i + 1`, or a `j < b.length` that is one side of an
+`&&` (boids' window loop), so every such access paid for a call to
+`__vsc_bc`, 1,500 × 1,500 times per step. The fix was a more general
+proof, not dropping the checks; today `viscosity explain` reports
+`12 of 12 element accesses proven in bounds` for n-body. Benchmarking
+only the programs where your compiler shines tells you nothing; the slow
+results are the useful ones. Even so, a speed-up of 1.2× (n-body today)
+is within what the matrix's own note calls noise on this VM (differences
+under about 10%, and up to 2× between runs), so the honest summary is the
+coarse one: particles, ledger and heat are several times faster on Node,
+and boids and n-body a little.
 
-```js
-for (let i = 0; i < b.length; i++) {
-  for (let j = 0; j < b.length; j++) {
-    const dx = b[j].x - b[i].x;
-```
+<Prompts ids={['e2e-story']} />
 
-The old proof trusted only the innermost loop's own counter, so every
-`b[i].x` became a call to `__vsc_bc` with two comparisons, 1,500 × 1,500
-times per step. Boids' window loop,
-`for (let j = i + 1; j < i + 64 && j < b.length; j++)`, failed for the
-other two reasons. The fix was to make the proof more general, not to
-drop the checks: an outer loop's counter is just as bounded inside the
-inner loop, provided the inner loop does not change it; a start of
-`i + 1` is non-negative when `i` is; and `j < b.length` still holds when
-it is one side of an `&&`. Today `viscosity explain` reports
-`12 of 12 element accesses proven in bounds` for n-body, and `11 of 11`
-for boids.
+<More title="More: whole-process time, the earlier run, Python, and warm-up">
 
-<Prompts ids={['e2e-story', 'e2e-fix']} />
-
-<Callout kind="pitfall">
-Benchmarking only the programs where your compiler shines is easy and
-tells you nothing. The slow results are the useful ones: n-body and
-boids are the reason the bounds proofs improved.
-</Callout>
-
-## How much to believe
+The whole-process wall time, start-up and data building included, is
+what a user waiting for the program sees: for particles on Node, the
+median went from 527.4 to 182.7 ms, still almost three times faster.
 
 An earlier run is committed too (`e2e-node-2026-10-31`, 3 runs per
-version, medians, measured before a later fix to how checked writes
-store their values). It said ledger 5.11× and boids 1.18×; the matrix
-says ledger 3.75× best (4.08× median) and boids 1.31× (1.21×). Same
-programs, same machine type, hours apart. The matrix's own note says
-timings on this VM vary by up to about 2× between runs, and to treat
-differences under about 10% as noise. So the honest summary is the
-coarse one: on Node, particles, ledger and heat are several times
-faster, while boids and n-body are a little faster, by an amount noise
-could hide; a 1.2× is not a claim worth defending to two decimal places.
-
-<Prompts ids={['e2e-noise']} />
-
-## A different language, a different verdict
+version, medians, measured before a later fix to how checked writes store
+their values). It said ledger 5.11× and boids 1.18×; the matrix says
+ledger 3.75× best (4.08× median) and boids 1.31× (1.21×): same programs,
+same machine type, hours apart.
 
 The same question was asked of Python. In CPython, an update loop over
-100,000 elements took 26.66 ns per element with dataclass objects, 43.31
-with list columns and 72.7 with `array('d')` columns (the committed
-`python-layouts` results, a loop benchmark rather than a whole program):
-columns were *slower*, because CPython is an interpreter that makes a
-new float object for every `array('d')` element it reads. However, the
-typed columns used about 4.9× less memory (3.3 MB against 16.0 MB). So
-the Python plugin keeps objects unless you opt in, and its report says
-why; the analyses are the same for both languages, and only the cost
-model's verdict differs, because measurement decided it.
+100,000 elements took 26.66 ns per element with objects, 43.31 with list
+columns and 72.7 with `array('d')` columns (the committed `python-layouts`
+results, a loop benchmark rather than a whole program): columns were
+*slower*, because CPython makes a new float object for every
+`array('d')` element it reads. However, the typed columns used about
+4.9× less memory. So the Python plugin keeps objects unless you opt in.
 
-<Prompts ids={['e2e-python']} />
-
-<Callout kind="engine" label="Under the hood">
 Each program times its hot section once per process, so the time
-includes the engine getting warm. V8 starts running code in its
-interpreter and moves hot functions up to optimising compilers as it
-gathers feedback<Cite id="v8-maglev" /> (*The V8 pipeline*). A
-microbenchmark harness waits for that to finish; an end-to-end benchmark
-keeps it in, because a user's program pays for it too.
-</Callout>
+includes the engine getting warm: V8 starts in its interpreter and moves
+hot functions up to optimising compilers as it gathers
+feedback<Cite id="v8-maglev" />. A microbenchmark harness waits for that
+to finish; an end-to-end benchmark keeps it in, because a user's program
+pays for it too.
 
-<Prompts ids={['e2e-warmup']} />
+</More>
 
-## Your turn
+## A folder of programs
 
-<Exercise id="speedup" />
-
-<Exercise id="clearlyFaster" />
-
-## What you learned
-
-- An **end-to-end benchmark** measures whole programs, compiled as a
-  user would, including construction, checks and loops that do not
-  benefit.
-- The harness runs each version in fresh processes, alternating, after a
-  discarded warm-up; it refuses to report a speed-up when checksums
-  differ.
-- On Node the committed gains were 4.37× (particles), 4.11× (heat),
-  3.75× (ledger), 1.31× (boids) and 1.2× (n-body); on Bun they were
-  smaller, and the small ones are within the noise.
-- Bounds checks in a hot loop once made two programs slower; the fix was
-  a more general proof. In CPython, columns cost time and save memory.
-
-
-{/* ── merge: from old chapter 115, Differential testing at scale ── */}
-
-## From one test to a folder
-
-*Testing compilers* gave you the method: compile a program, run both
-versions, and let the original be the oracle. One program checks one
-thing; however, Viscosity has to be right about escapes, aliases, `try`,
-`NaN`, strings in number fields, Python's integers, two parsers and a
-second implementation in Rust. That takes many programs, and a way of
-using each one many times. Here is the whole TypeScript test suite, run
-for this chapter (paths shortened, timings left out):
-
-```text
-$ cd engine/ts && npx vitest run
- ✓ frontend-js/.../differential.test.ts
-     (42 tests)
- ✓ frontend-js/.../mini-parser.test.ts
-     (47 tests)
- ✓ bench/test/layouts.test.ts (8 tests)
- ✓ core/test/core.test.ts (15 tests)
- ✓ frontend-python/.../differential...
-     (21 tests)
- ✓ cli/test/cli.test.ts (14 tests)
- Test Files  6 passed (6)
-      Tests  147 passed (147)
-```
-
-105 of those 147 tests were never written one by one: they are
-generated, one per program, from folders of programs.
-
-<Analogy title="a driving-test route">
-A driving examiner does not invent a new route for every learner. There
-is a route, chosen to include the hard junction, the hill start and the
-school crossing, and every learner drives it; when someone finds a new
-way to fail, a new turn is added to the route.
-<span slot="breaks">A learner drives the route once; every version of
-the compiler drives the whole route, every time, and has to pass every
-turn exactly.</span>
-</Analogy>
-
-<Analogy extra title="a pilot's checklist">
-Airline checklists grow from experience: after an incident, the step
-that would have prevented it is written onto the list, and every crew
-runs it before every flight from then on.
-<span slot="breaks">A checklist is read by people who can skip a line;
-the corpus is run by a program that never skips one, and a new line
-costs nothing to run.</span>
-</Analogy>
+*Testing compilers: differential, round-trip, fuzzing and shrinking* gave
+the method: compile a program, run both versions, and let the original be
+the oracle. One program checks one thing; however, Viscosity has to be
+right about escapes, aliases, `try`, `NaN`, strings in number fields,
+Python's integers, two parsers and a second implementation in Rust. That
+takes many programs, and a way of using each one many times.
 
 <Callout kind="definition">
-A **test corpus** is a large, curated collection of programs used as
-test inputs. Each program is chosen to exercise one case, and the tests
-are generated from the collection, so adding a case means adding a file,
-not writing test code.
+A **test corpus** is a large, curated collection of programs used as test
+inputs. Each program is chosen to exercise one case, and the tests are
+generated from the collection, so adding a case means adding a file, not
+writing test code.
 </Callout>
 
-<Prompts ids={['corpus-what', 'corpus-generated']} />
+The JavaScript corpus has 40 files, and the Python corpus 20, each
+probing one decision:
 
-## What goes in a corpus file
-
-The JavaScript corpus has 40 files, each probing one decision. Here is
-`try_catch.js` (long lines wrapped):
+<Examples of="test-corpus">
 
 ```js
 // viscosity: ps=soa
@@ -344,157 +196,113 @@ try {
 console.log(s);
 ```
 
-It follows the rules every corpus file follows. **One idea:** this file
-asks a single question, whether an out-of-bounds write inside `try`
-throws the same error after compiling, and its name says so. **A
-header** gives the expected decision for every collection
-(`ps=soa`), so a compiler that quietly stops optimising fails too.
-**Observable:** it prints the error's class and message, and the sum,
-because a difference that is not printed cannot be caught. **Small and
+</Examples>
+
+This is `try_catch.js` (long lines wrapped), and it follows the rules
+every corpus file follows. **One idea:** it asks a single question,
+whether an out-of-bounds write inside `try` throws the same error after
+compiling, and its name says so. **A header** on line 1 gives the
+expected decision for every collection (`ps=soa`), so a compiler that
+quietly stops optimising fails too. **Observable:** lines 11 and 12 print
+the error's class and message, and the last line the sum, because a
+difference that is not printed cannot be caught. **Small and
 deterministic:** no timing and no randomness, so two correct runs always
 print the same thing.
 
-<Examples of="test-corpus">
+<Prompts ids={['corpus-what', 'corpus-observable']} />
 
-```js
-// viscosity: ps=aos
-// @viscosity aosoa(6)
-const ps = [];
-```
-
-```text
-# viscosity: cs=soa
-...
-print(cs[5].count, cs[5].weight,
-  type(cs[5].count).__name__)
-```
-
-```js
-// viscosity: ps=soa
-// Out of bounds, `ps[i].x = rhs`
-// evaluates rhs before it fails
-```
-
-</Examples>
-
-The first is the start of `aosoa_bad_block.js`, seven lines in all: its
-header says the bad annotation must leave `ps` as objects, and the rest
-checks that the program still runs the same. The second is the Python
-trap `ints_stay_ints.py`: a careless `array('d')` column would turn the
-integer 6 into `6.0` and the output would say `float`; Viscosity gives
-`count` a list column, and it stays `int`. The third is the top of
-`write_rhs_first.js`, a file nobody imagined until a fuzzer found the
-bug it guards against, as we will see below.
-
-<Prompts ids={['corpus-one-idea', 'corpus-observable', 'corpus-deterministic', 'corpus-trap']} />
-
-## One file, many checks
-
-The trick that makes the corpus scale is that each program is used by
-several tests, for different questions. Step through the matrix:
+Each file is then used by several tests, for different questions: the
+differential test (and the header check), the test that both parsers
+give byte-identical code and reports, and the Rust port's parity test.
+Step through the matrix:
 
 <MatrixSteps client:visible />
 
-All of these tests share one shape; here is the real loop in
-`differential.test.ts`:
+The tests are written once per *kind* of check, as a loop over the
+folder, with the cases as data.
 
-```ts
-for (const f of readdirSync(dir)
-    .filter((f) => f.endsWith('.js'))
-    .sort()) {
-  it(f, () => { /* compile, check the
-    header, run both versions */ });
-}
-```
+## The reference as an oracle, and the fuzzer
 
-It lists the folder, keeps the `.js` files, sorts them so the order is
-the same on every machine, and makes one named test per file. The tests
-are written once, per *kind* of check; the cases are data. The Python
-test cannot use Node's VM contexts, so it writes both programs to a
-temporary folder, runs each with the real `python3`, and compares
-standard output and, for a crash, the last line of standard error,
-where Python prints the exception. The oracle is still the original
-program; only the way of running it changed.
+How do you know the Rust version decides and emits exactly what the
+TypeScript one does? By differential testing again, with the TypeScript
+compiler as the oracle: `engine/rust/scripts/gen_expected.mjs` runs it on
+every corpus file, every benchmark program and the extra programs written
+for the port, in both bounds modes, and stores the compiled code and the
+explain report each time (402 files in `engine/rust/tests/expected/`,
+with the `--frames` reports and a few profiled builds). The parity test
+recompiles every source in Rust and compares byte for byte; along the
+way it found bugs in the TypeScript reference too.
 
-<Prompts ids={['corpus-matrix', 'corpus-python']} />
-
-## The TypeScript compiler as an oracle
-
-Part XIII rebuilds Viscosity in Rust. How do you know the Rust version
-decides and emits exactly what the TypeScript one does? By differential
-testing again, with the TypeScript compiler as the oracle.
-`engine/rust/scripts/gen_expected.mjs` runs the TypeScript compiler on
-every JavaScript and Python corpus file, every benchmark program and 29
-extra programs written for the port (95 in all), twice: once with the
-default `bounds: 'check'` and once with `bounds: 'assume'`, so the
-unchecked code paths are covered too. It stores the compiled code and
-the explain report each time (190 pairs), plus 14 `--frames` reports and
-4 programs compiled with a profile: 402 files in
-`engine/rust/tests/expected/`. The parity test recompiles every source
-in Rust and compares byte for byte; run for this chapter, it printed
-`parity: 190/190 (54 Python)`. The parity work paid the reference back,
-too: it found bugs in the TypeScript compiler, among them a soundness
-bug where an element thrown from inside a loop was not seen as
-escaping (now guarded by the corpus file `throw_from_loop.js`).
-
-<Prompts ids={['corpus-rust', 'corpus-assume']} />
-
-## What a corpus cannot find
-
-Every file in the corpus was written by someone who thought of the
-case. The corpus is very good at keeping found bugs found, and at
-checking that a new feature did not break an old one; it cannot find
-the case nobody imagined. For that you need programs nobody wrote, the
-random programs of *Fuzzing and test-case reduction*. Viscosity's
-fuzzer, `engine/rust/scripts/fuzz.mjs`, run for this chapter on its
-default campaign, printed:
-
-```text
-fuzz: seed 1, 300 programs (134
-  transformed, 174 may go out of bounds,
-  20 with an early error), 0 failing
-```
-
-When it was first run, about 8,000 random programs turned up five bugs
-in both engines, the first of which `write_rhs_first.js` now guards:
-`ps[i].x = rhs` checked the index *before* evaluating `rhs`, while the
-original evaluates `rhs` first, so out of bounds the two threw different
-errors. Each bug was fixed, and each got a corpus program, so the
-corpus and the fuzzer feed each other:
+A corpus has one limit: every file was written by someone who thought of
+the case, so it keeps found bugs found but cannot find the case nobody
+imagined. For that you need programs nobody wrote. Viscosity's fuzzer,
+`engine/rust/scripts/fuzz.mjs`, generates seeded random programs and
+checks both behaviour and parity; its first 8,000 programs turned up five
+bugs in both engines (one: `ps[i].x = rhs` checked the index *before*
+evaluating `rhs`, while the original evaluates `rhs` first, so out of
+bounds the two threw different errors). Each bug was fixed and got a
+corpus file, so the fuzzer finds and the corpus remembers:
 
 <Figure caption="How a fuzzer's find becomes a permanent case (engine/rust/README.md lists all five)." takeaway="The fuzzer finds; the corpus remembers.">
   <FindToFile />
 </Figure>
 
-<Prompts ids={['corpus-limit']} />
+<Prompts ids={['corpus-rust', 'corpus-limit']} />
 
-<Callout kind="engine" label="Under the hood">
-Language implementations live by their corpora. Test262, the
-conformance suite for JavaScript itself, is a corpus of tens of
-thousands of test files covering the language
-specification<Cite id="test262" />. Csmith is the opposite strategy: a
-generator of random C programs that finds compiler bugs by differential
-testing, rather than from hand-written cases<Cite id="csmith" />. Real
-compilers use both: a growing corpus of known cases, and a generator
-that keeps adding the unknown ones.
-</Callout>
+<More title="More: what the corpus checks in Python, and corpora elsewhere">
+
+The Python test cannot use Node's VM contexts, so it writes both programs
+to a temporary folder, runs each with the real `python3`, and compares
+standard output and, for a crash, the last line of standard error, where
+Python prints the exception. The corpus file `ints_stay_ints.py` is a
+typical trap: a careless `array('d')` column would turn the integer 6
+into `6.0`; Viscosity gives `count` a list column, and it stays `int`.
+The Rust fixtures are generated in both bounds modes so that the
+unchecked code paths are covered too.
+
+Language implementations live by their corpora. Test262, the conformance
+suite for JavaScript itself, is a corpus of tens of thousands of test
+files covering the language specification<Cite id="test262" />. Csmith is
+the opposite strategy: a generator of random C programs that finds
+compiler bugs by differential testing<Cite id="csmith" />. Real compilers
+use both.
+
+<Analogy extra title="a driving-test route">
+A driving examiner does not invent a new route for every learner. There
+is a route, chosen to include the hard junction, the hill start and the
+school crossing, and every learner drives it; when someone finds a new
+way to fail, a new turn is added to the route.
+<span slot="breaks">A learner drives the route once; every version of the
+compiler drives the whole route, every time, and has to pass every turn
+exactly.</span>
+</Analogy>
+
+</More>
 
 ## Your turn
 
+<Exercise id="speedup" />
+
 <Exercise id="fuzzToy" />
+
+<Exercise id="clearlyFaster" />
 
 <Exercise id="parseHeader" />
 
 ## What you learned
 
-- A **test corpus** is a curated collection of programs; the tests are
-  generated from it, so a new case is a new file.
-- A good corpus file probes one idea, states the expected decisions,
-  prints what could differ, and is deterministic.
-- Each program feeds several checks: 65 programs give 105 generated
-  tests, and the TypeScript engine is the oracle for the Rust port's 402
-  fixture files.
-- A corpus keeps known bugs found; random programs find unknown ones,
-  and each find becomes a corpus file.
+- An **end-to-end benchmark** measures whole programs as a user would
+  compile them; the harness runs fresh, alternating processes and refuses
+  a speed-up when checksums differ.
+- On Node, particles, ledger and heat got several times faster; bounds
+  checks in hot loops once made two programs slower, fixed by a more
+  general proof.
+- A **test corpus** is a folder of small programs, each probing one idea,
+  stating its expected decisions and printing what could differ.
+- The TypeScript compiler is the oracle for the Rust port; a fuzzer finds
+  the unimagined cases, and each find becomes a corpus file.
+
+Next: *Why Rust, and cargo*, the start of *Core 6: Rust for TypeScript
+engineers*.
 
 <Quiz />

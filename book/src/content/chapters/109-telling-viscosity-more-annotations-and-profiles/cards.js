@@ -1,79 +1,34 @@
-// Chapter 69 cards: recall prompts, examples, exercises and quiz.
+// Chapter 109 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 109, 109.
 
 export const prompts = {
   'ann-what': {
     q: 'What is an annotation, in a compiler?',
     a: 'A comment or marker that gives the compiler extra instructions without changing what the program means.',
   },
-  'ann-forms': {
-    q: 'What are Viscosity’s three annotations?',
-    a: '`// @viscosity aos`, `// @viscosity soa` and `// @viscosity aosoa(N)`.',
-  },
-  'ann-b': {
-    q: 'Why does the annotation pattern have `\\b` after the layout name?',
-    a: 'So a longer word, like `@viscosity soap`, is not read as `soa`.',
-  },
   'ann-where': {
-    q: 'Which declarations does a matching `@viscosity` comment apply to?',
+    q: 'In Viscosity’s JavaScript plugin, which declarations does a matching `@viscosity` comment apply to?',
     a: 'Alone on its line: every declaration on the next line. After code on a line (trailing): only declarations on that same line.',
   },
   'ann-case': {
-    q: 'What does Viscosity do with `// @viscosity SoA`?',
+    q: 'What does Viscosity do with the comment `// @viscosity SoA` (capital S and A) on the line before a declaration?',
     a: 'Nothing: the pattern is case-sensitive, so it is an ordinary comment, with no warning.',
   },
-  'ann-soa-skips': {
-    q: 'Which planner rules does `@viscosity soa` skip?',
-    a: 'All the cost rules: numeric fields, a loop touching fields, and the size threshold.',
-  },
-  'ann-aosoa': {
-    q: 'What does `@viscosity aosoa(N)` require?',
-    a: 'N a power of two, at most 65536 (8 if omitted), and every field provably numeric.',
-  },
   'ann-unsafe': {
-    q: 'Can an annotation make Viscosity transform a collection with a bailout?',
+    q: 'Can a `// @viscosity soa` annotation make Viscosity transform a collection that failed a safety check?',
     a: 'No. Safety is checked before annotations; the collection is kept with an “unsafe” reason.',
-  },
-  'ann-optin': {
-    q: 'What does `--mode opt-in` change?',
-    a: 'Only annotated collections are transformed; the rest are kept with “opt-in mode: not annotated”.',
-  },
-  'pgo-why-here': {
-    q: 'Why can’t Viscosity estimate the size of `ps` when the push is inside a function `spawn` called from a loop?',
-    a: 'The estimate counts pushes in top-level loops with constant trip counts. A push inside a function depends on how often it is called, so the size is unknown.',
   },
   'pgo-what': {
     q: 'What is profile-guided optimisation (PGO)?',
     a: 'Compiling with measurements from real runs of the program (a profile), not only with what the source reveals.',
   },
-  'inst-what': {
-    q: 'What is instrumentation?',
-    a: 'Code added to a program to record what it does while it runs, without changing what it does.',
-  },
   'track-return': {
-    q: 'Why must `__vsc_track(name, arr)` return `arr` itself, not a copy?',
+    q: 'Why must a profiling tracker such as Viscosity’s `__vsc_track(name, arr)` return `arr` itself, not a copy?',
     a: 'So the instrumented program behaves exactly like the original. With a copy, pushes and `===` would change, and the profile would describe a different program.',
   },
-  'exit-hook': {
-    q: 'When does the instrumented program read the lengths of the tracked arrays?',
-    a: 'Once, in a `process.on(\'exit\')` hook, which writes them to the profile file.',
-  },
-  'profile-safety': {
-    q: 'Can a profile make Viscosity transform a collection that failed a safety check?',
-    a: 'No. The profile is read only at the size threshold, after every safety check has passed.',
-  },
-  'profile-input': {
-    q: 'You profile with a 20-element test input, but production uses a million elements. What happens?',
-    a: 'Viscosity keeps the collection as objects (measured 20 < 64), so production loses the speed-up. It is still correct.',
-  },
   'profile-correct': {
-    q: 'Why can a wrong profile cost Viscosity speed but never correctness?',
+    q: 'Why can a wrong size profile cost Viscosity speed but never correctness?',
     a: 'It only chooses between two layouts that are already proven to behave identically.',
-  },
-  'jit-pgo': {
-    q: 'How does V8’s use of profiles differ from Viscosity’s?',
-    a: 'V8 profiles during the same run and speculates on the feedback, so it needs guards and deoptimisation. Viscosity profiles ahead of time and only picks a size threshold.',
   },
 };
 
@@ -407,6 +362,7 @@ test('the default block is 8', () => {
     ],
   },
   maxTracker: {
+    optional: true,
     title: 'Instrument an array factory',
     prompt: 'Write `makeTracker()`. It returns an object with two methods. `track(name, arr)` remembers `arr` under `name` and returns **the same array**. `profile()` returns an object mapping each name to `{ maxLength }`: the largest `.length`, **read when `profile()` is called**, among all arrays tracked under that name.',
     starter: `function makeTracker() {
@@ -709,7 +665,7 @@ test('a measured 0 is still a measurement', () => {
 
 export const quiz = [
   {
-    q: 'Where must `// @viscosity soa` go to annotate `const ps = [];` on line 10?',
+    q: 'In Viscosity, where must `// @viscosity soa` go to annotate `const ps = [];` on line 10?',
     options: [
       {
         t: 'Anywhere above line 10 in the same function.',
@@ -731,7 +687,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A collection is passed to `console.log` and annotated `// @viscosity soa`. What does explain say?',
+    q: 'A collection is annotated `// @viscosity soa` and also passed to `console.log`. What does `viscosity explain` say?',
     options: [
       {
         t: '“annotated @viscosity soa at line N”, and it becomes SoA.',
@@ -749,29 +705,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'An annotated `@viscosity soa` collection has 3 elements. What does the size rule do?',
-    options: [
-      {
-        t: 'Keeps it: 3 is below the 64-element threshold.',
-        why: 'The size rule is a cost rule, and an annotation skips every cost rule.',
-      },
-      {
-        t: 'Asks for a profile to confirm the size.',
-        why: 'Nothing is asked. The size is only reported, as “about 3 elements”.',
-      },
-      {
-        t: 'Chooses AoSoA instead, as a compromise.',
-        why: 'The annotation names the layout; the planner uses it.',
-      },
-      {
-        t: 'Nothing: the annotation skips it, and the size is only reported.',
-        correct: true,
-        why: 'Right, as in literal_init.js: three points, struct of arrays.',
-      },
-    ],
-  },
-  {
-    q: 'Which annotation is refused for `{ x, id }`, where `id` is a string?',
+    q: 'Viscosity cannot prove that the field `id` of records `{ x, id }` holds only numbers. Which annotation does it refuse?',
     options: [
       {
         t: '`@viscosity soa`',
@@ -789,47 +723,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'With `--mode opt-in`, what happens to an unannotated collection that would win easily as SoA?',
-    options: [
-      {
-        t: 'It becomes SoA, because the cost model says so.',
-        why: 'In opt-in mode the cost model never sees unannotated collections.',
-      },
-      {
-        t: 'It is kept, with “opt-in mode: not annotated”.',
-        correct: true,
-        why: 'Right: opt-in mode only transforms what you mark.',
-      },
-      {
-        t: 'Viscosity prints a suggestion to annotate it.',
-        why: 'It records a reason in explain, but suggests nothing.',
-      },
-    ],
-  },
-  {
-    q: 'What does `viscosity profile` measure?',
-    options: [
-      {
-        t: 'How long each loop takes',
-        why: 'Nothing is timed. The profiling run only counts.',
-      },
-      {
-        t: 'The length of each candidate collection, read when the program exits',
-        correct: true,
-        why: 'The exit hook writes `{ name: { maxLength } }` for every tracked array.',
-      },
-      {
-        t: 'Which fields each loop reads',
-        why: 'The profile type has room for field read counts, but nothing records them yet.',
-      },
-      {
-        t: 'Which collections are safe to transform',
-        why: 'Safety is proved by analysis, never measured.',
-      },
-    ],
-  },
-  {
-    q: 'Which program does the profiling run execute?',
+    q: 'Which program does `viscosity profile` run to measure collection sizes?',
     options: [
       {
         t: 'The compiled, struct-of-arrays version',
@@ -851,7 +745,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In spawn.js, `spawn` is called 20 times. What changes when you compile with the profile?',
+    q: 'Viscosity cannot estimate the size of `ps`, which a function `spawn` fills and which is called 20 times. What changes when you compile with a profile of that run?',
     options: [
       {
         t: 'Nothing: `ps` is still a struct of arrays',
@@ -869,50 +763,6 @@ export const quiz = [
       {
         t: 'Viscosity reports a bailout',
         why: 'Being small isn’t unsafe; it just isn’t worth it.',
-      },
-    ],
-  },
-  {
-    q: 'A collection is passed to `console.log` (an escape). Its profile says it holds a million elements. What does Viscosity do?',
-    options: [
-      {
-        t: 'Keeps it as objects: safety checks come before the profile is read',
-        correct: true,
-        why: 'Unsafe collections never reach the size step.',
-      },
-      {
-        t: 'Transforms it, because a million elements is a big win',
-        why: 'Speed never overrides safety.',
-      },
-      {
-        t: 'Transforms it and inserts a guard',
-        why: 'Viscosity doesn’t speculate; it either proves or leaves alone.',
-      },
-      {
-        t: 'Asks for an annotation',
-        why: 'Annotations can’t override a safety failure either.',
-      },
-    ],
-  },
-  {
-    q: 'Why does V8 need deoptimisation while Viscosity’s PGO needs no guard?',
-    options: [
-      {
-        t: 'V8’s profiles are less accurate',
-        why: 'Accuracy isn’t the point: any profile can be wrong about the future.',
-      },
-      {
-        t: 'Viscosity runs the program many times',
-        why: 'It runs it once.',
-      },
-      {
-        t: 'V8 doesn’t use profiles',
-        why: 'It does: shape and type feedback drives its optimising compilers.',
-      },
-      {
-        t: 'V8 specialises code on feedback that affects correctness; Viscosity’s profile only picks between two proven-equivalent layouts',
-        correct: true,
-        why: 'A wrong guess in V8 would compute wrong results unless guarded. A wrong guess in Viscosity is just slower.',
       },
     ],
   },
