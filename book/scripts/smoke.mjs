@@ -1,11 +1,26 @@
 // End-to-end smoke test of the built site in Chromium, at iPhone 17 Pro Max
 // size (440 x 956). Run after `npm run build`.
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { serve } from './lib/serve.mjs';
 import { chromium, IPHONE } from './lib/playwright.mjs';
 
 const dist = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
+// Chapters are found by slug, not number: numbers move when chapters are
+// inserted (scripts/renumber.mjs), and exercises move when chapters split.
+const chaptersDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src/content/chapters');
+const { readdirSync: ls } = await import('node:fs');
+const chapterBySlug = (slug) => {
+  const d = ls(chaptersDir).find((f) => f.slice(4) === slug);
+  if (!d) throw new Error(`smoke: no chapter with slug ${slug}`);
+  return d;
+};
+const REFS = chapterBySlug('references');
+const refsCards = await import(pathToFileURL(join(chaptersDir, REFS, 'cards.js')).href);
+const [EX_ID, EX] = Object.entries(refsCards.exercises).find(([, e]) => !e.optional);
+const PROMPT_ID = `${Number(REFS.slice(0, 3))}.${Object.keys(refsCards.prompts)[0]}`;
+// A plain-text piece of that prompt's question, to find it on the review page.
+const PROMPT_Q = Object.values(refsCards.prompts)[0].q.split(/[`*_\[\]()]/).sort((a, b) => b.length - a.length)[0].trim().slice(0, 24);
 // url is the book's root, under its base path: http://127.0.0.1:PORT/book
 const { server, url: origin, base } = await serve(dist);
 const url = origin + base.slice(0, -1);
@@ -103,10 +118,10 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
 // 2. Chapter interactions.
 {
   const { page, errors } = await newPage();
-  await page.goto(url + '/chapters/004-references/', { waitUntil: 'networkidle' });
+  await page.goto(url + `/chapters/${REFS}/`, { waitUntil: 'networkidle' });
 
   // Runnable example
-  const ex = page.locator('[data-runner="004-references/refs-play"]');
+  const ex = page.locator(`[data-runner="${REFS}/refs-play"]`);
   await ex.scrollIntoViewIfNeeded();
   await ex.locator('.cm-content').waitFor();
   await ex.locator('[data-run]').click();
@@ -123,18 +138,21 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
   check((await ex.locator('.cm-content').innerText()).includes('{'), 'key bar inserts a symbol');
 
   // Exercise: starter fails, typing the reference solution passes.
-  const exr = page.locator('[data-runner="004-references/withX"]');
+  const exr = page.locator(`[data-runner="${REFS}/${EX_ID}"]`);
   await exr.scrollIntoViewIfNeeded();
   await exr.locator('.cm-content').waitFor();
   await exr.locator('[data-run]').click();
   await page.waitForTimeout(800);
-  check(/0\/4 tests passed|[0-3]\/4 tests passed/.test(await exr.innerText()), 'starter code fails the tests');
+  const passed = (t) => { const m = t.match(/(\d+)\/(\d+) tests passed/); return m && { got: +m[1], of: +m[2] }; };
+  const st0 = passed(await exr.innerText());
+  check(!!st0 && st0.got < st0.of, 'starter code fails the tests');
   await exr.locator('.cm-content').click();
   await page.keyboard.press('Control+A');
-  await page.keyboard.type('function withX(p, x) {\nreturn { ...p, x: x };\n}', { delay: 2 });
+  await page.keyboard.insertText(EX.solution);
   await exr.locator('[data-run]').click();
   await page.waitForTimeout(800);
-  check((await exr.innerText()).includes('4/4 tests passed'), 'typed solution passes all tests in the browser');
+  const st1 = passed(await exr.innerText());
+  check(!!st1 && st1.got === st1.of, 'typed solution passes all tests in the browser');
   check((await exr.innerText()).includes('solved'), 'exercise shows solved');
 
   // Infinite loop is stopped.
@@ -146,14 +164,14 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
   check((await exr.innerText()).includes('Stopped after 3 seconds'), 'infinite loop is stopped by the time limit');
 
   // Recall prompt collects a card.
-  const prompt = page.locator('[data-prompt="4.ref-what"]');
+  const prompt = page.locator(`[data-prompt="${PROMPT_ID}"]`);
   await hydrated(prompt);
   await prompt.locator('[data-reveal]').click();
   await prompt.locator('[data-remembered]').click();
   const deck = await page.evaluate(() => JSON.parse(localStorage.getItem('viscosity:srs:v1')));
   await eventually(() => page.evaluate(() => !!localStorage.getItem('viscosity:srs:v1')));
   const deck2 = await page.evaluate(() => JSON.parse(localStorage.getItem('viscosity:srs:v1')));
-  check((deck2 ?? deck)?.cards?.['4.ref-what']?.reps === 1, 'answering a prompt adds it to the review deck');
+  check((deck2 ?? deck)?.cards?.[PROMPT_ID]?.reps === 1, 'answering a prompt adds it to the review deck');
 
   // Quiz scoring.
   const quiz = page.locator('[data-quiz]');
@@ -166,31 +184,31 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
   const st = page.locator('[data-stepper]').first();
   await hydrated(st);
   await st.locator('[data-next]').click();
-  check(await eventually(async () => (await st.innerText()).includes('2/7')), 'stepper advances');
+  check(await eventually(async () => /\b2\/\d+\b/.test(await st.innerText())), 'stepper advances');
 
   check(errors.length === 0, `chapter interactions: no console errors ${JSON.stringify(errors)}`);
   check(await noOverflow(page), 'chapter still fits 440px after interacting');
 
   // Review page: make the card due and review it.
-  await page.evaluate(() => {
+  await page.evaluate((id) => {
     const d = JSON.parse(localStorage.getItem('viscosity:srs:v1'));
-    d.cards['4.ref-what'].due = new Date(Date.now() - 1000).toISOString();
+    d.cards[id].due = new Date(Date.now() - 1000).toISOString();
     localStorage.setItem('viscosity:srs:v1', JSON.stringify(d));
-  });
+  }, PROMPT_ID);
   await page.goto(url + '/review/', { waitUntil: 'networkidle' });
   await page.locator('[data-review-card]').waitFor();
-  check((await page.locator('[data-review-card]').innerText()).includes('what does it actually hold'), 'due card appears on the review page');
+  check((await page.locator('[data-review-card]').innerText()).includes(PROMPT_Q), 'due card appears on the review page');
   await page.locator('[data-review-card] [data-reveal]').click();
   await page.locator('[data-review-card] [data-remembered]').click();
   await page.locator('[data-review-empty]').waitFor();
   const after = await page.evaluate(() => JSON.parse(localStorage.getItem('viscosity:srs:v1')));
-  check(after.cards['4.ref-what'].reps === 2 && new Date(after.cards['4.ref-what'].due) > new Date(), 'reviewing reschedules the card into the future');
+  check(after.cards[PROMPT_ID].reps === 2 && new Date(after.cards[PROMPT_ID].due) > new Date(), 'reviewing reschedules the card into the future');
 }
 
 // 2b. A Drip program runs on the real interpreter in the page.
 {
   const { page, errors } = await newPage();
-  await page.goto(url + '/chapters/026-meet-drip/', { waitUntil: 'networkidle' });
+  await page.goto(url + `/chapters/${chapterBySlug('meet-drip')}/`, { waitUntil: 'networkidle' });
   const r = page.locator('[data-runner]').first();
   await r.scrollIntoViewIfNeeded();
   await r.locator('.cm-content').waitFor();
@@ -209,7 +227,7 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
   const { page, errors } = await newPage();
   const wasmRequests = [];
   page.on('request', (r) => { if (r.url().endsWith('.wasm')) wasmRequests.push(r.url()); });
-  await page.goto(url + '/chapters/094-emitting-javascript/', { waitUntil: 'networkidle' });
+  await page.goto(url + `/chapters/${chapterBySlug('emitting-javascript')}/`, { waitUntil: 'networkidle' });
   const pg = page.locator('[data-playground]').first();
   await hydrated(pg);
   const status = pg.locator('[data-engine-status]');
@@ -243,7 +261,7 @@ const paths = ['/', '/front/preface/', '/front/how-to-use-this-book/', '/front/a
 // 3. Dark mode and desktop layout.
 {
   const { page, errors } = await newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
-  await page.goto(url + '/chapters/003-objects/', { waitUntil: 'networkidle' });
+  await page.goto(url + `/chapters/${chapterBySlug('objects')}/`, { waitUntil: 'networkidle' });
   check(await page.evaluate(() => document.documentElement.classList.contains('dark')), 'dark mode follows the system setting');
   check(await page.locator('#book-nav').isVisible(), 'sidebar visible on desktop');
   check(errors.length === 0, 'desktop dark: no console errors');

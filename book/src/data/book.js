@@ -3,7 +3,7 @@ import { PARTS as OUTLINE_PARTS } from './outline/index.js';
 
 export const BOOK = {
   title: 'Viscosity',
-  subtitle: 'Viscosity’s internals, and how to learn compiler engineering from scratch',
+  subtitle: 'Viscosity’s internals, and compiler engineering from scratch',
   author: 'Tariq Shams',
   edition: 'First edition',
   description:

@@ -27,7 +27,9 @@ const pad = (n) => String(n).padStart(3, '0');
 const CHAPTERS_PER_DAY = 4;
 
 if (!existsSync(staging)) { console.log('nothing staged'); process.exit(0); }
-const staged = readdirSync(staging).filter((d) => /^\d{3}-b-/.test(d)).sort().reverse();
+// NNN-b-, NNN-c-, ...: processed from the last (highest number, latest letter)
+// first, so after all of them the order is NNN, NNN-b, NNN-c, ...
+const staged = readdirSync(staging).filter((d) => /^\d{3}-[b-z]-/.test(d)).sort().reverse();
 if (!staged.length) { console.log('nothing staged'); process.exit(0); }
 const logDir = join(root, '.renumber-logs');
 mkdirSync(logDir, { recursive: true });
@@ -37,6 +39,7 @@ const key = (k) => (/^[a-z][a-z0-9]*$/i.test(k) ? k : q(k));
 
 for (const folder of staged) {
   const n = Number(folder.slice(0, 3));
+  const letter = folder[4];
   const slug = folder.slice('NNN-b-'.length);
   execFileSync('node', [join(root, 'scripts/renumber.mjs'), '--after', String(n), '--by', '1'], { stdio: 'inherit' });
   renameSync(join(root, 'renumber-log.txt'), join(logDir, `split-${n}.txt`));
@@ -51,9 +54,9 @@ for (const folder of staged) {
   mdx = mdx
     .replace(/^split_of: .*\n/m, '')
     .replace(/^(---\n(?:[\s\S]*?\n)?n: )\d+(\nday: )\d+/, `$1${m}$2${Math.ceil(m / CHAPTERS_PER_DAY)}`)
-    .replaceAll(`diagrams/ch${pad(n)}b/`, `diagrams/ch${pad(m)}/`);
+    .replaceAll(`diagrams/ch${pad(n)}${letter}/`, `diagrams/ch${pad(m)}/`);
   writeFileSync(mdxPath, mdx);
-  const dOld = join(diagrams, `ch${pad(n)}b`);
+  const dOld = join(diagrams, `ch${pad(n)}${letter}`);
   if (existsSync(dOld)) {
     const dNew = join(diagrams, `ch${pad(m)}`);
     if (existsSync(dNew)) throw new Error(`${dNew} already exists`);
