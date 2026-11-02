@@ -94,7 +94,7 @@ Some design choices the chapters explain:
   `1.5e-7`, `0.30000000000000004`, `nan`, `inf`, `-inf`, and `-0` for
   negative zero. Rust's `{:e}` already gives the shortest round-trip
   digits; `value::format_number` lays them out with JavaScript's
-  thresholds (plain decimals for 1e-7 <= |n| < 1e21).
+  thresholds (plain decimals for 1e-6 <= |n| < 1e21).
 - String hashes are FNV-1a over UTF-8 bytes; the TypeScript VM hashes
   UTF-16 code units. They agree on ASCII strings, and nothing a program can
   see depends on the hash.

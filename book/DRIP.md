@@ -85,7 +85,7 @@ Printing, in detail:
 - A list or instance that contains itself prints the inner occurrence as
   `[...]` or `C {...}`.
 - Very large and very small numbers use JavaScript's layout:
-  `1e+21`, `1.5e-7` (plain decimals from 1e-7 up to 1e21).
+  `1e+21`, `1.5e-7` (plain decimals from 1e-6 up to 1e21).
 - A method read from an instance (a bound method) prints like its
   function: `fn speak`. Each read makes a new bound method, so
   `o.m == o.m` is false.

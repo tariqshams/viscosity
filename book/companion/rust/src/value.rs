@@ -175,7 +175,7 @@ pub fn describe(heap: &Heap, value: Value) -> String {
 ///
 /// Rust's `{:e}` already finds the shortest digits that read back as the
 /// same float, which is what JavaScript prints too. Only the layout
-/// differs: JavaScript writes plain decimals from 1e-7 up to 1e21 and
+/// differs: JavaScript writes plain decimals from 1e-6 up to 1e21 and
 /// exponents outside that range, as `1e+21` or `1.5e-7`.
 pub fn format_number(n: f64) -> String {
     if n.is_nan() {
