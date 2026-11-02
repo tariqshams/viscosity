@@ -95,7 +95,7 @@ export const prompts = {
   },
   'debug-soa': {
     q: 'In a debug build the SoA loop was several times slower than the AoS loop. Why not trust that?',
-    a: 'Debug builds skip optimization, so every `s.x[i]` pays an unoptimized bounds check (about 20 ns per particle here, against 1.3 with `-O`). Layout comparisons need a release build.',
+    a: 'Debug builds skip optimisation, so every `s.x[i]` pays an unoptimised bounds check (about 20 ns per particle here, against 1.3 with `-O`). Layout comparisons need a release build.',
   },
   'soa-small': {
     q: 'With 1,000 particles, SoA and AoS measured the same in Rust. Why?',
@@ -272,7 +272,7 @@ fn a_copy_is_not_the_storage() {
 - \`fn len(&self) -> usize { self.x.len() }\` asks one column. That is only correct because of the invariant, which is why the fields should stay private to the module that owns this type.
 - \`fn step(&mut self, dt: f64) {\` is the hot loop. \`for i in 0..self.x.len() {\` visits every index.
 - \`    let v = self.vx[i];\` copies the speed out (an \`f64\` is \`Copy\`), and \`    self.x[i] += v * dt;\` moves the particle. Written as one statement, \`self.x[i] += self.vx[i] * dt\`, it borrows two different fields at once, which is also allowed. The loop streams through two \`Vec<f64>\`s and nothing else.
-- \`fn get(&self, i: usize) -> Particle {\` builds \`Particle { x: self.x[i], vx: self.vx[i] }\`: materialization, as *Identity and materialization* called it. It returns a value, not a reference, because there is no \`Particle\` in memory to refer to. The last test shows the consequence: changing the copy changes nothing in the columns.
+- \`fn get(&self, i: usize) -> Particle {\` builds \`Particle { x: self.x[i], vx: self.vx[i] }\`: materialisation, as *Identity and materialization* called it. It returns a value, not a reference, because there is no \`Particle\` in memory to refer to. The last test shows the consequence: changing the copy changes nothing in the columns.
 
 **Common wrong attempts.**
 
@@ -305,7 +305,7 @@ ${GET}`,
     optional: true,
     title: 'AoS to SoA and back',
     prompt:
-      'Write `from_aos`, which turns a slice of `Particle`s into columns, and `to_aos`, which rebuilds a `Vec<Particle>` from the columns. Iterators (from *Iterators and closures in Rust*) make each one short.',
+      'Write `from_aos`, which turns a slice of `Particle`s into columns, and `to_aos`, which rebuilds a `Vec<Particle>` from the columns. Iterators (from *Iterators in Rust*) make each one short.',
     starter: `${BASE}
 fn from_aos(ps: &[Particle])
     -> Particles {
@@ -366,7 +366,7 @@ fn empty() {
       'For `to_aos`, `s.x.iter().zip(&s.vx)` walks both columns in step and gives you pairs of references.',
       'The closure `|(&x, &vx)| Particle { x, vx }` takes each pair apart and builds a particle.',
     ],
-    walkthrough: `**How to think about it.** Converting AoS to SoA means building each column from one field of every particle; converting back means walking all the columns in step and gluing index \`i\` of each into a particle. Both are jobs for iterator chains from *Iterators and closures in Rust*: \`map\` to pick a field, \`zip\` to walk two columns together, \`collect\` to build a \`Vec\`.
+    walkthrough: `**How to think about it.** Converting AoS to SoA means building each column from one field of every particle; converting back means walking all the columns in step and gluing index \`i\` of each into a particle. Both are jobs for iterator chains from *Iterators in Rust*: \`map\` to pick a field, \`zip\` to walk two columns together, \`collect\` to build a \`Vec\`.
 
 **The solution, line by line.**
 
@@ -375,7 +375,7 @@ fn empty() {
 - \`Particles { x: x.collect(), vx: vx.collect() }\` runs both iterators, gathering each into a new \`Vec<f64>\` (the type comes from the struct's fields). This is the “construct” step of *AoS vs SoA, measured*, done eagerly.
 - In \`to_aos\`, \`s.x.iter().zip(&s.vx)\` walks both columns at once, yielding pairs \`(&f64, &f64)\`; \`zip\` stops at the shorter one.
 - \`.map(|(&x, &vx)| Particle { x, vx })\` takes each pair apart; the \`&\` in the pattern copies the numbers out of the references, and \`Particle { x, vx }\` is shorthand for \`Particle { x: x, vx: vx }\`.
-- \`.collect()\` builds the \`Vec<Particle>\` the signature asks for. Building a whole \`Vec<Particle>\` like this is materialization in bulk, the case *When SoA loses: materialization and AoSoA* measured as SoA's weak spot.
+- \`.collect()\` builds the \`Vec<Particle>\` the signature asks for. Building a whole \`Vec<Particle>\` like this is materialisation in bulk, the case *When SoA loses: materialization and AoSoA* measured as SoA's weak spot.
 
 **Common wrong attempts.**
 
@@ -432,7 +432,7 @@ export const quiz = [
     options: [
       { t: 'SoA is slower in Rust', why: 'This chapter’s release build measured the opposite at a million particles.' },
       { t: 'The Playground’s CPU has no cache', why: 'It has; the build mode is the issue.' },
-      { t: 'Probably nothing: it is a debug build, with unoptimized indexing. Measure with `--release`', correct: true, why: 'On this book’s machine the debug build made SoA two to five times slower than AoS; the `-O` build made it almost twice as fast.' },
+      { t: 'Probably nothing: it is a debug build, with unoptimised indexing. Measure with `--release`', correct: true, why: 'On this book’s machine the debug build made SoA two to five times slower than AoS; the `-O` build made it almost twice as fast.' },
     ],
   },
   {

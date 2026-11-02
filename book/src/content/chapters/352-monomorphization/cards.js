@@ -51,7 +51,7 @@ export const prompts = {
   },
   'mono-ic': {
     q: 'Why is the call `l.slot(i, f)` inside `total::<Aos>` like a monomorphic inline cache, only better?',
-    a: 'It can only reach `Aos::slot`, and that is known before the program runs, so no guard or deoptimization is needed.',
+    a: 'It can only reach `Aos::slot`, and that is known before the program runs, so no guard or deoptimisation is needed.',
   },
   'gen-vs-dyn': {
     q: 'When should you use `dyn Trait` instead of a generic parameter?',
@@ -233,7 +233,7 @@ export const quiz = [
     options: [
       { t: 'They are identical in every way', why: 'V8 learns the shape at run time and keeps a check; Rust knows the target before running.' },
       { t: 'V8 discovers the single shape by watching and keeps a guard; the Rust call is known at compile time and needs none', correct: true, why: 'Monomorphic by construction.' },
-      { t: 'Rust also deoptimizes when a new type arrives', why: 'A new type gets a new copy at compile time; nothing deoptimizes.' },
+      { t: 'Rust also deoptimises when a new type arrives', why: 'A new type gets a new copy at compile time; nothing deoptimises.' },
     ],
   },
   {

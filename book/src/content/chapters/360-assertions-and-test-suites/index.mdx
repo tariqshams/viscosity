@@ -68,7 +68,7 @@ through what `assert_eq!` does:
 When the two sides differ, the output names the test, the file and
 line, your message, and both values:
 
-<Figure takeaway="A failing assert_eq! shows where, why (your message), and both values." caption="The parts of an assert_eq! failure in cargo test's output, from rustc 1.97 with the thread number trimmed.">
+<Figure takeaway="A failing assert_eq! shows where, why (your message), and both values." caption="The parts of an assert_eq! failure in cargo test's output, from rustc 1.97 with the thread number trimmed; rustc prints your message on the same line, straight after failed:, and it is given a line of its own here.">
   <FailureAnatomy />
 </Figure>
 
@@ -174,8 +174,8 @@ Both ways of getting it wrong are reported plainly by the harness:
 expected string`, followed by the message it did get.
 
 A test may also return `Result<(), E>` instead of nothing: `Ok(())` is
-a pass, `Err(e)` a failure, and inside it the `?` of *Option and
-Result* works, so a test of code that returns `Result` can read like the
+a pass, `Err(e)` a failure, and inside it the `?` of *Result and the
+? operator* works, so a test of code that returns `Result` can read like the
 code itself<Cite id="rust-book-testing" />.
 
 <Analogy title="a smoke alarm">

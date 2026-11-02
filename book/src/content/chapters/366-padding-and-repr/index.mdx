@@ -39,8 +39,8 @@ move fields around to need fewer blank pages.</span>
 </Analogy>
 
 <Analogy title="a wedding hall with tables of eight">
-A family of eight must sit at one table, together. If two guests have
-already sat down at table one, the family goes to table two, and six
+A family of eight must sit at one table, together. If one guest has
+already sat down at table one, the family goes to table two, and seven
 chairs at table one stay empty. The hall is also booked in whole
 tables, so a party of seventeen pays for twenty-four chairs.
 <span slot="breaks">Latecomers could fill empty chairs; padding bytes
@@ -53,7 +53,7 @@ compiler laying out a `u8`, an `f64` and another `u8`:
 
 <PadSteps client:visible />
 
-The first gap (the six empty chairs) puts the `f64` at a multiple of
+The first gap (the seven empty chairs) puts the `f64` at a multiple of
 8. The second, at the end, is the hall booked in whole tables: the
 struct's size must be a multiple of its alignment, so that in an array
 the *next* struct's `f64` is aligned too.

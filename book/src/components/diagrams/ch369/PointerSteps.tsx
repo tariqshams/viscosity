@@ -20,7 +20,7 @@ const STATES: S[] = [
   { line: 1, i: 2, check: '2 < 3', ok: true, who: 'rust', out: '4', note: 'Safe indexing compares the index with the length first. 2 < 3, so the read happens.' },
   { line: 2, i: 3, check: '3 < 3', ok: false, who: 'rust', out: 'panic', note: 'Here the check fails, so Rust panics before touching memory. Loud, but nothing was read or corrupted.' },
   { line: 3, i: 2, check: null, ok: true, who: 'you', out: '4', note: 'Through a raw pointer there is no check at all. The read is right only because you made sure 2 < 3 before writing it: that promise goes in a SAFETY comment.' },
-  { line: 4, i: 3, check: null, ok: false, who: 'nobody', out: '??', note: 'Break the promise and the read goes past the end. This is undefined behaviour: it may print junk, crash, or be “optimized” into something else. No panic warns you.' },
+  { line: 4, i: 3, check: null, ok: false, who: 'nobody', out: '??', note: 'Break the promise and the read goes past the end. This is undefined behaviour: it may print junk, crash, or be “optimised” into something else. No panic warns you.' },
   { line: null, i: null, check: null, ok: null, who: 'forbid', out: '', note: 'With #![forbid(unsafe_code)] the last two lines do not compile at all, which is why drip-rs has no raw pointers anywhere.' },
 ];
 

@@ -4,7 +4,7 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 // enum Expr { Num(f64), Add(Box<Expr>, Box<Expr>), Mul(Box<Expr>, Box<Expr>) }.
 // The root value lives in a local variable; every child sits in its own
 // heap allocation, owned by exactly one Box in its parent. Sizes measured
-// with std::mem::size_of on rustc 1.97 (64-bit): Box<Expr> 8, Expr 16.
+// with std::mem::size_of on rustc 1.97 (64-bit): Box<Expr> 8, Expr 24 (two pointers and a tag).
 function Node({ x, y, label, sub, col }: { x: number; y: number; label: string; sub: string; col: string }) {
   return (
     <Box x={x} y={y} w={108} h={40} fill={tok(col, 0.1)} stroke={tok(col)}>

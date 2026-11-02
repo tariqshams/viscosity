@@ -308,7 +308,7 @@ export const quiz = [
     q: 'Why is `Option<&f64>` the same size as `&f64`, while `Option<f64>` is twice the size of `f64`?',
     options: [
       { t: 'References are smaller than numbers', why: 'Both are 8 bytes here. The difference is in which bit patterns are unused.' },
-      { t: 'The compiler optimizes `Option` only for references', why: 'It does it for any type with a spare bit pattern, such as `bool` or drip-rs’s `Value`.' },
+      { t: 'The compiler optimises `Option` only for references', why: 'It does it for any type with a spare bit pattern, such as `bool` or drip-rs’s `Value`.' },
       { t: 'A reference is never 0, so 0 can mean `None`; every `f64` bit pattern is a number, so `None` needs its own tag', correct: true, why: 'This is the niche of *Sum types in memory*: a spare pattern holds the tag for free.' },
     ],
   },
@@ -316,7 +316,7 @@ export const quiz = [
     q: 'A loop reads only the `x` field of 1,000 particles in a `Vec<Particle>` (48 bytes each). About how many 64-byte cache lines does it pull in?',
     options: [
       { t: '125: only the x values, eight per line', why: 'That would be true for a column of `x`s alone; here each `x` sits inside its 48-byte particle.' },
-      { t: '750: all 48,000 bytes, because lines carry whole neighbourhoods', correct: true, why: 'The `x`s are 48 bytes apart, so every line holds one or two of them and the loop fetches every line. The next chapter but one changes that.' },
+      { t: '750: all 48,000 bytes, because lines carry whole neighbourhoods', correct: true, why: 'The `x`s are 48 bytes apart, so every line holds one or two of them and the loop fetches every line. *Struct of arrays in Rust by hand* changes that.' },
       { t: '1,000: one line per particle', why: 'Lines are 64 bytes and particles 48, so some lines hold parts of two particles; the total is 48,000 / 64.' },
     ],
   },

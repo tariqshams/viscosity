@@ -167,7 +167,7 @@ Nothing there needed `unsafe`, so rustc 1.97 warns about the block,
 then rejects the program with the ordinary borrow error.
 
 The promise is narrow, but real: break it, and the result is
-**undefined behaviour**. That is not a panic; the compiler optimizes
+**undefined behaviour**. That is not a panic; the compiler optimises
 on the assumption that it never happens, so anything at all may follow,
 including nothing visible<Cite id="rustref-ub" />. On this book's
 machine, reading past the end of a three-element array with
@@ -177,7 +177,7 @@ Behavior check is optional, and cannot be relied on for safety". A
 release build with the index hidden behind `black_box` printed
 `-186027976`, then `817451064`: whatever lay past the array. And a
 release build with a constant index died with `Illegal instruction`,
-because the optimizer, seeing a certain broken promise, replaced the
+because the optimiser, seeing a certain broken promise, replaced the
 read with a trap.
 
 The tool for finding these is **Miri**, an interpreter for Rust that
@@ -243,7 +243,7 @@ panic, an `Option`, or, when you ask in writing, no check at all.
 
 `#![forbid(unsafe_code)]` turns the `unsafe_code` lint up to its
 strictest level for the whole crate. Any `unsafe` block is then an
-error (`error: usage of an unsafe block`), and unlike `deny`, a
+error (``error: usage of an `unsafe` block``), and unlike `deny`, a
 `#[allow(unsafe_code)]` further down cannot undo it: rustc 1.97 answers
 `error[E0453]: allow(unsafe_code) incompatible with previous forbid`.
 

@@ -15,7 +15,7 @@ const STATES: S[] = [
   { sig: ["fn longer<'a, 'b>(a: &'a str,", "    b: &'b str) -> &str"], rules: ['apply', 'idle', 'idle'], note: 'A second signature, with two reference inputs. Rule 1 gives them two different lifetimes, \'a and \'b.' },
   { sig: ["fn longer<'a, 'b>(a: &'a str,", "    b: &'b str) -> &str"], rules: ['apply', 'skip', 'skip'], result: { ok: false, text: 'E0106: missing lifetime specifier' }, note: 'Rule 2 needs exactly one input lifetime; there are two. Rule 3 needs &self; there is none. The output is still unnamed, so this is E0106, and you must write the lifetimes yourself.' },
   { sig: ["fn get<'a, 'b>(&'a self,", "    k: &'b str) -> &str"], rules: ['apply', 'skip', 'idle'], note: 'A method this time. Rule 1 names &self\'s lifetime \'a and k\'s \'b. Rule 2 does not apply: there are two inputs.' },
-  { sig: ["fn get<'a, 'b>(&'a self,", "    k: &'b str) -> &'a str"], rules: ['apply', 'skip', 'apply'], result: { ok: true, text: 'done: the result borrows from self' }, note: 'Rule 3: in a method with &self or &mut self, every output gets self\'s lifetime. Usually right (a getter returns part of self), but not always: the next section shows when it is wrong.' },
+  { sig: ["fn get<'a, 'b>(&'a self,", "    k: &'b str) -> &'a str"], rules: ['apply', 'skip', 'apply'], result: { ok: true, text: 'done: the result borrows from self' }, note: 'Rule 3: in a method with &self or &mut self, every output gets self\'s lifetime. Usually right (a getter returns part of self), but not always: the text below the steps shows when it is wrong.' },
 ];
 
 const RULES = ['1. each input reference gets its own', '2. one input lifetime: outputs get it', '3. &self or &mut self: outputs get its'];

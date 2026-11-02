@@ -190,7 +190,7 @@ Each report starts with `error: Undefined Behavior:`, points at the
 offending line, and for the last one also shows where the memory was
 allocated and where it was freed. Without Miri the same four programs
 behaved very differently in an ordinary debug build: the out-of-bounds
-read quietly printed `0`; the null and misaligned reads were caught by
+read quietly printed whatever lay past the array; the null and misaligned reads were caught by
 the debug build's own checks (`null pointer dereference occurred`,
 `misaligned pointer dereference`); and the use-after-free printed a
 tiny number with about three hundred zeros after the decimal point,

@@ -68,7 +68,7 @@ finger down one column. If one pupil is added to the maths column and
 forgotten in the others, every name below them is now beside the wrong
 marks.
 <span slot="breaks">A teacher would spot the misaligned row at a
-glance; Rust will not, as the section after next shows, and a missed
+glance; Rust will not, as the next section shows, and a missed
 column only fails when some index runs off its end.</span>
 </Analogy>
 
@@ -129,7 +129,7 @@ for (x, vx) in xs {
 
 The first is the smallest struct of arrays there is: two columns, one
 particle, pushed into both, so both have length 1. The second shows
-why columns suit iterators (from *Iterators and closures in Rust*):
+why columns suit iterators (from *Iterators in Rust*):
 summing every mass is one pass over one `Vec`, and `zip` walks the
 `x` column mutably and the `vx` column for reading side by side, with
 no indices, so there is nothing to bounds-check. The runnable one
@@ -141,7 +141,7 @@ A **struct of arrays** in Rust is a struct with one `Vec` per field,
 such as `x: Vec<f64>`, where element `i` is made of index `i` of every
 column. Its methods must keep one **invariant** (a fact that must stay
 true between calls): every column has the same length. Each `Vec`
-grows by itself, with amortized constant-time `push`<Cite id="rust-std-vec" />.
+grows by itself, with amortised constant-time `push`<Cite id="rust-std-vec" />.
 </Callout>
 
 <Formal title="One particle, many columns">
@@ -213,14 +213,14 @@ for (i, x) in self.x.iter_mut()
 `self.vx_at(i)` borrows the *whole* of `self`, including the `x` column
 the loop is already changing, so rustc 1.97 refuses it with the error
 above (trimmed); naming the field directly borrows only `vx`. Second,
-if the fields are private to their module (*Modules, crates and
-visibility*), nobody outside can push to only one column.
+if the fields are private to their module (*Privacy, pub and
+workspaces*), nobody outside can push to only one column.
 
 One thing Rust does not check: nothing makes `push` write *every*
 column. Forget `self.vx.push(p.vx)` and it compiles; then the first
 `step` panics with an index out of bounds, because `vx` is empty. In Part
 VIII, Viscosity generated `push` itself; here, tests do that job.
-And getting a particle back is materialization (*Identity and
+And getting a particle back is materialisation (*Identity and
 materialization*): `get(i)` builds a `Particle` from the columns and
 returns it by value, since there is no `Particle` in memory to lend a
 `&Particle` to, so changing the copy changes nothing in the columns.
@@ -230,13 +230,13 @@ returns it by value, since there is no `Particle` in memory to lend a
 ## Measuring it
 
 Read the runnable example's output with suspicion. In the page it runs
-on the Rust Playground as a *debug* build, with no optimization. On
+on the Rust Playground as a *debug* build, with no optimisation. On
 this book's machine (a shared cloud VM, rustc 1.97) the debug build
 made SoA *slower*, about 20 ns per particle against 4 to 9 for AoS in
-three runs, because every `s.x[i]` paid for an unoptimized bounds
+three runs, because every `s.x[i]` paid for an unoptimised bounds
 check; built with `-O`, the same program printed about 1.3 ns for SoA
 against 2.4 for AoS, three times out of three. The program wraps the
-data in `std::hint::black_box`, which stops the optimizer from
+data in `std::hint::black_box`, which stops the optimiser from
 deleting work whose result it can see is unused<Cite id="rust-std-black-box" />;
 *Measuring Rust performance* explains both pitfalls properly.
 

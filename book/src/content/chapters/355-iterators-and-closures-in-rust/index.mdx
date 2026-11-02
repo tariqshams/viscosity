@@ -200,7 +200,7 @@ as it goes; engine/rust's resolver has
 `with_block_scope(..., f: impl FnOnce(...))`, which calls `f` exactly
 once, between entering a scope and leaving it. Because each closure has
 its own type, such a parameter is generic in disguise, so
-*monomorphization* (from *Generics and trait bounds*) makes one copy per
+monomorphization (from *One copy per type: monomorphization*) makes one copy per
 closure and the call can be inlined.
 
 <Callout kind="definition">

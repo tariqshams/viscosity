@@ -184,7 +184,7 @@ fn mul(a: Expr, b: Expr) -> Expr {
 }
 
 ${EVAL}`,
-        why: 'The variants hold `Box<Expr>`, not `Expr`: “mismatched types”. Wrap each child with `Box::new`.',
+        why: 'The variants hold `Box<Expr>`, not `Expr`: E0308, “arguments to this enum variant are incorrect”. Wrap each child with `Box::new`.',
       },
     ],
   },

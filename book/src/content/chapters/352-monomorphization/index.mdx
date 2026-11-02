@@ -157,7 +157,7 @@ shape arrives.
 
 Inside `total::<Aos>`, the call `l.slot(i, f)` can only ever reach
 `Aos::slot`. The site is monomorphic by construction, known before the
-program runs, so there is nothing to check and nothing to deoptimize.
+program runs, so there is nothing to check and nothing to deoptimise.
 `total_dyn` is the other case: its one call site sees whatever vtable it
 is handed, like a polymorphic site, and has no feedback to specialise
 on, so it loads a function pointer and calls it<Cite id="rust-reference-trait-object" />.

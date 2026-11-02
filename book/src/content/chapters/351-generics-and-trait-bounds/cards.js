@@ -128,7 +128,7 @@ The compiler checks this body once, against the bound, and then accepts \`argmax
 
 - \`>=\` instead of \`>\`: each later tie replaces the earlier one, so \`[2, 7, 7, 1]\` gives 2.
 - Leaving out the bound (\`fn argmax<T>\`) is E0369: \`>\` cannot be applied to \`T\`.
-- \`let mut best = xs[0];\` stores the *value*, which moves or copies an element and loses the index you were asked for; and on an empty slice it panics.`,
+- \`let mut best = xs[0];\` tries to take the *value* out of the slice, which for a generic \`T\` is E0508 (cannot move out of a non-copy slice); and even for numbers it loses the index you were asked for, and panics on an empty slice.`,
     wrong: [
       {
         code: `${ARGMAX_HEAD}

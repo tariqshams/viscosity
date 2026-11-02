@@ -221,7 +221,7 @@ The tests show laziness at work: \`take(2)\` stops asking after two words, so \`
 
 - Not skipping runs of spaces (checking only for the end, then reading up to one space): a leading space or two spaces in a row yield empty words \`""\`, which \`collect\` happily keeps.
 - Returning \`Some("")\` at the end instead of \`None\`: \`for\` would never stop, because only \`None\` ends a loop.
-- Writing \`type Item = &str;\` without \`'src\`: a struct-level associated type cannot leave its lifetime out, and rustc asks for a named one (E0106).`,
+- Writing \`type Item = &str;\` without \`'src\`: rustc refuses, because \`Item\` is "declared without lifetime parameters, so using a borrowed type for them requires that lifetime to come from the implemented type", which here means \`'src\` from \`Words<'src>\`.`,
     wrong: [
       {
         code: wordsIter(`        let b = self.src.as_bytes();

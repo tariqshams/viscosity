@@ -79,8 +79,9 @@ enum Expr {
 }
 ```
 
-Now an `Expr` holds two pointers, 8 bytes each on this machine, so its
-size is fixed (`size_of::<Expr>()` is 16 here), and the children live
+Now an `Expr` holds at most two pointers, 8 bytes each on this machine,
+plus a tag saying which variant it is, so its size is fixed
+(`size_of::<Expr>()` is 24 here), and the children live
 on the heap:
 
 <Figure takeaway="Each Box owns exactly one child, so dropping the root frees the whole tree." caption="The tree for (1 + 2) * 3. The root is in a local variable; every child is a separate heap allocation owned by one Box in its parent.">

@@ -57,7 +57,7 @@ export const prompts = {
   },
   'debug-quiet': {
     q: 'In an ordinary debug build, what did reading one element past a 3-element array through `p.add(3)` do?',
-    a: 'It quietly printed `0`: no panic, no message. Only Miri reported it.',
+    a: 'It quietly printed whatever lay past the array: no panic, no message. Only Miri reported it.',
   },
   'vec-raw': {
     q: 'Why does drip-rs have no raw pointers, and what does it use instead?',

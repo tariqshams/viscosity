@@ -54,7 +54,7 @@ The fix is to wrap each kind of number in a type of its own, a
 pub struct ValueId(pub u32);
 ```
 
-That is real: engine/rust's VIR (*VIR: Viscosity's IR*) keeps its
+That is real: engine/rust's VIR (*VIR: Viscosity’s IR*) keeps its
 instructions, blocks, functions and bindings in `Vec`s, and names them
 with `ValueId`, `BlockId`, `FuncId` and `BindingId`, each a `u32` in its
 own newtype. `ValueId(7)` builds one, and `.0` reads the number back
