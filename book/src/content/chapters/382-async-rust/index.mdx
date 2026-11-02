@@ -277,7 +277,8 @@ variables still needed after that point, and writes a `poll` that
 You can see the saved variables in the future's size. With rustc 1.97,
 `size_of_val(&double(1))` is 8 bytes (the argument plus a state
 number), `size_of_val(&sum())` is 16, and an async fn that keeps a
-1000-byte array across an `.await` makes a future of 1012 bytes. There
+1000-byte array across `double(1).await` makes a future of 1012
+bytes. There
 is no heap allocation and no garbage collector: the future is an
 ordinary value, as big as its biggest pause.
 

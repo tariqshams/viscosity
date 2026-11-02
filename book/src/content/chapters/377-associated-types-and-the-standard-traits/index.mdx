@@ -10,15 +10,15 @@ objectives:
   - Implement Display, Default, From and Iterator for your own types, and say what each one unlocks.
   - Recognise the rustc errors that mean a standard trait is missing.
 introduces: [associated-type, std-traits]
-uses: [rust, rust-functions, let-mut, struct, impl, self-receiver, enum, match, option, result, question-mark, vec, string-vs-str, trait, trait-object, rust-generics, trait-bound, rust-iterator, rust-closure, error-enum, from-trait, iterator-protocol, generic, typescript, interface, language-plugin, token, scanner]
-sources: [rust-book-advanced-traits, rust-std-iter, rust-std-from, rust-std-fmt, rust-std-default, klabnik2026]
+uses: [rust, rust-functions, let-mut, ownership, drop, struct, impl, self-receiver, enum, match, option, result, question-mark, vec, string-vs-str, trait, trait-object, rust-generics, trait-bound, rust-iterator, rust-closure, error-enum, from-trait, iterator-protocol, generic, typescript, interface, language-plugin, token, scanner]
+sources: [rust-reference-destructors, rust-book-advanced-traits, rust-std-iter, rust-std-from, rust-std-fmt, rust-std-default, klabnik2026]
 ---
 import ItemSteps from '../../../components/diagrams/ch377/ItemSteps';
 import StdTraitMap from '../../../components/diagrams/ch377/StdTraitMap';
 
 ## A blank each type fills in once
 
-The chapter on iterators wrote them; here is the trait they implement, as the
+*Iterators and closures in Rust* wrote them; here is the trait they implement, as the
 standard library declares it (minus its many provided methods):
 
 ```rust
@@ -160,7 +160,7 @@ calls `Index::index`, and `type Output = T` says what you get back,
 here an object of whichever type the handle `Gc<T>` names. The third is
 Viscosity's plugin trait, trimmed: each language front-end keeps its own
 private data from `lower` to `emit`, and `type Extra` lets each plugin
-choose that type. (It is also why, as chapter 351 showed, `dyn
+choose that type. (It is also why, as *One copy per type: monomorphization* showed, `dyn
 LanguagePlugin` needs the extra spelled out: `dyn LanguagePlugin<Extra
 = X>`.)
 
@@ -225,8 +225,7 @@ All three are Viscosity's Rust engine. `Display` is what makes
 method, `fmt`, which writes into a `Formatter`. `Default` gives
 `CompileOptions::default()`, so callers can write
 `CompileOptions { mode: Mode::OptIn, ..Default::default() }` and keep
-every other option as it was (this one is written by hand because the
-defaults come from another type's defaults). And `From<String>` lets `?`
+every other option as it was. And `From<String>` lets `?`
 turn a `String` error into a `CliError` as it returns, and gives you
 `.into()` for free, because `std` implements `Into` for every `From`.
 
@@ -239,6 +238,35 @@ error[E0277]: `Pt` doesn't implement
     to use `{:?}` (or {:#?} for
     pretty-print) instead
 ```
+
+*Ownership*'s `Noisy` example printed a line as each value was
+dropped; that line came from an impl of **`Drop`**, whose one method, `drop(&mut
+self)`, Rust calls for you at that moment, just before the memory is
+freed<Cite id="rust-reference-destructors" />. You never call it
+yourself: `b.drop()` is error E0040, "explicit use of destructor
+method", because Rust would then drop `b` a second time at the end of
+the scope. To drop a value early, pass it to `std::mem::drop` (in the
+prelude, so plain `drop(b)`), which takes ownership and lets the value
+go<Cite id="klabnik2026" />:
+
+```rust
+struct Guard(&'static str);
+impl Drop for Guard {
+    fn drop(&mut self) {
+        println!("drop {}", self.0);
+    }
+}
+let _a = Guard("a");
+let b = Guard("b");
+drop(b);
+println!("end of main");
+```
+
+Inside `main` it printed `drop b`, `end of main`, then `drop a` (rustc
+1.97): `b` went when it was passed to `drop`, and `_a` at the closing
+brace.
+
+<Prompts ids={['std-drop']} />
 
 <OtherLanguages title="A point that prints itself">
 
@@ -265,14 +293,10 @@ class Pt {
 
 </OtherLanguages>
 
-In TypeScript every object already has a `toString` (which prints
-`[object Object]` unless you replace it), and `console.log` shows any
+In TypeScript every object already has a `toString`, and `console.log` shows any
 object's fields. Rust gives a type nothing for free: no `Display`, no
 `{}`; no `Debug`, no `{:?}`; and the mistake is a compile error, not an
-unhelpful line in the output. The same goes for iteration: TypeScript's
-`Iterator<T>` interface takes the item type as a *parameter*, while
-Rust's `Iterator` makes it an associated type, because a type iterates
-in one way.
+unhelpful line in the output.
 
 <Run id="std-traits" />
 
@@ -291,7 +315,8 @@ in one way.
   allows one, which is why `Iterator` uses it.
 - The **standard traits** (`Display`, `Debug`, `Default`, `Clone`,
   `PartialEq`, `From`, `Iterator`, ...) are how a type joins in with
-  `println!`, `?`, `for` and `==`.
+  `println!`, `?`, `for` and `==`; **`Drop`** runs your code when a
+  value is dropped, and `drop(x)` drops it early.
 
 Next: the traits behind `+`, `[]` and `==`, and how `#[derive]` writes
 the boring impls for you.

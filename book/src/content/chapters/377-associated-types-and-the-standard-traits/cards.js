@@ -1,6 +1,10 @@
 // Chapter 377 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
+  'std-drop': {
+    q: 'When does `Drop::drop` run, and how do you drop a value early?',
+    a: 'Rust calls it when the value’s owner goes out of scope (you may not call it yourself: E0040). To drop early, pass the value to `std::mem::drop`, as `drop(x)`.',
+  },
   'assoc-what': {
     q: 'In `trait Iterator { type Item; ... }`, what is `Item`?',
     a: 'An associated type: a blank that each implementation fills in once, e.g. `type Item = u32;`.',

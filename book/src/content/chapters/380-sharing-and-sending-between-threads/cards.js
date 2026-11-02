@@ -1,4 +1,4 @@
-// Chapter 379-b cards. Keys are stable ids: never rename them.
+// Chapter 380 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'mutex-guard': {

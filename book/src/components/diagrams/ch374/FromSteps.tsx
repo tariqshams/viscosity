@@ -1,7 +1,7 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 373-b (From and the question mark): what `?` does with an error of the wrong type. It calls
+// Chapter 374 (From and the question mark): what `?` does with an error of the wrong type. It calls
 // From::from to convert the error into the function's own error type
 // (The Rust Programming Language, ch. 9.2; std's From docs), then
 // returns it. The example is the chapter's min_size function.

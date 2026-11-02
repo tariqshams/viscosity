@@ -457,7 +457,7 @@ fn a_missing_folder_is_an_error() {
       'Write `fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()>` and call it from `find_files` with an empty vector, then `out.sort()` and `Ok(out)`.',
     ],
     walkthrough: L(
-      '**How to think about it.** A folder tree is a tree, so walking it is recursion (as in *Recursion* in Part I): handle the files in this folder, and for each subfolder do the same thing again. Errors are the other half: reading a folder can fail, and so can reading each entry, so the functions return `io::Result` and pass failures up with `?`. Sorting at the end makes the answer independent of the order the operating system lists files in, which differs between systems.',
+      '**How to think about it.** A folder tree is a tree, so walking it is recursion (as in *Recursion and the call stack* in Part I): handle the files in this folder, and for each subfolder do the same thing again. Errors are the other half: reading a folder can fail, and so can reading each entry, so the functions return `io::Result` and pass failures up with `?`. Sorting at the end makes the answer independent of the order the operating system lists files in, which differs between systems.',
       '',
       '**The solution, line by line.**',
       '',

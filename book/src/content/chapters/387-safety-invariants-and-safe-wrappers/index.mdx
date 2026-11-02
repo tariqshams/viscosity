@@ -172,7 +172,8 @@ caller signs. The second is an invariant fenced by privacy: outside the
 rustc's error E0603. The runnable one wraps memory owned by C. `CText`
 holds a pointer from C's `strdup`, and its invariant is "non-null,
 NUL-terminated, from `strdup`, and freed by nobody else". Its methods
-rely on that (`CStr::from_ptr` needs it), and its `Drop` calls C's
+rely on that (`CStr::from_ptr` needs it), and its `Drop` impl (the
+trait from *Associated types and the standard traits*) calls C's
 `free` exactly once. It prints `"hi from C"`, `9 bytes`, and then
 `free("hi from C")` as the value goes out of scope.
 

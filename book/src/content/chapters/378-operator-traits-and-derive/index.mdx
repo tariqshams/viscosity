@@ -29,8 +29,8 @@ p.pos += p.vel * dt;
 TypeScript cannot do this: JavaScript gives you no way to say what `+`
 means for your own objects, so a TypeScript game writes
 `add(pos, scale(vel, dt))`. Rust can, because to rustc an operator is
-only a short way of writing a call to a trait method (chapter 311,
-*Operators, sugar and desugaring*, showed this in its MIR). Step
+only a short way of writing a call to a trait method
+(*Operators, sugar and desugaring* showed this in its MIR). Step
 through how rustc reads the line:
 
 <DesugarSteps client:visible />

@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 370-b (Benchmarking with criterion): what criterion does with one benchmark, following its
+// Chapter 371 (Benchmarking with criterion): what criterion does with one benchmark, following its
 // "Analysis Process" page (criterion.rs book) and the defaults in
 // criterion 0.5.1's source (3 s warm-up, 100 samples over 5 s, 100,000
 // bootstrap resamples, 1% noise threshold, 0.05 significance). The dots

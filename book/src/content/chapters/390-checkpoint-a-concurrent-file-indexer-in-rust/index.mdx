@@ -169,7 +169,7 @@ assert_eq!(words("Hello, World!"),
 
 The first is the smallest piece, and the place to start: the warm-up
 exercise. The second is the finished indexer, timed for this chapter
-on the book's own 382 chapter files (release build, rustc 1.97, a
+on the book's own 382 chapter files, as the book stood then (release build, rustc 1.97, a
 4-core cloud machine, median of five runs). Four workers were 2.4
 times faster than one, not four, and timing the merge loop showed why:
 with four workers the main thread spent about 250 ms merging, nearly

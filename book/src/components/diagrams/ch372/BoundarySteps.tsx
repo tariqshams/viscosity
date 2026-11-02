@@ -17,7 +17,7 @@ const STATES: S[] = [
   { line: 0, show: { str: true, bytes: true }, wire: 'malloc(n), TextEncoder', note: 'The glue calls the module’s own allocator to reserve bytes in linear memory, and TextEncoder writes the string there as UTF-8.' },
   { line: 0, show: { str: true, bytes: true, rust: true }, wire: 'compile(ptr, len)', note: 'Now the call is just two numbers: where the bytes start and how many. On the Rust side they are a &str, and the whole compiler runs.' },
   { line: 0, show: { str: true, bytes: true, rust: true, out: true }, wire: '← [ptr, 0, 0]', note: 'Rust returns Ok(Output). The Output struct stays in linear memory; JS gets three numbers back: its address, an error slot, and “was it an error?”.' },
-  { line: 0, show: { str: true, out: true, obj: true }, note: 'Output.__wrap(ptr) makes a JS object holding only that address, in __wbg_ptr. It is a handle into Rust’s memory, like the typed indices of Arenas and typed indices.' },
+  { line: 0, show: { str: true, out: true, obj: true }, note: 'Output.__wrap(ptr) makes a JS object holding only that address, in __wbg_ptr. It is a handle into Rust’s memory, like the handles of Typed indices.' },
   { line: 1, show: { str: true, out: true, obj: true, copy: true }, wire: '← code bytes, TextDecoder', note: 'Reading r.code calls a getter in Rust that clones the String; the glue decodes those bytes into a new JS string and frees the clone. Every read copies.' },
   { line: 2, show: { str: true, obj: true, freed: true }, note: 'r.free() drops the Rust Output. Forget it and a FinalizationRegistry may free it some time later; JS’s collector can’t see how much memory it holds. On an Err, the glue throws an Error instead of wrapping.' },
 ];

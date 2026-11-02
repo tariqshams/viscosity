@@ -1,6 +1,6 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 382b: the main parts of a Tokio-style runtime, after the
+// Chapter 383: the main parts of a Tokio-style runtime, after the
 // Tokio README (a multithreaded, work-stealing task scheduler and a
 // reactor backed by the OS event queue: epoll, kqueue, IOCP) and the
 // Async Book's division into reactor, scheduler and executor.

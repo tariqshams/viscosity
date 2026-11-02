@@ -8,7 +8,7 @@ objectives:
   - Start threads with thread::spawn and thread::scope, and get their results back with join.
   - Explain why spawn needs move and 'static, and why scoped threads may borrow.
   - Define Send and Sync, and predict which common types have each.
-  - Read the rustc errors that stop a data race, and connect them to chapter 321's definition.
+  - Read the rustc errors that stop a data race, and connect them to the definition in Threads, memory models and atomics.
 introduces: [rust-thread, send-sync]
 uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, shared-vs-mutable, borrow-checker, slice, vec, struct, option, result, trait, rust-generics, trait-bound, rust-closure, rust-iterator, lifetime, rc, refcell, raw-pointer, data-race, memory-model, atomics, event-loop, typescript, differential-testing, reference-counting]
 sources: [rust-book-threads, rust-std-thread-spawn, rust-std-thread-scope, rust-std-send-sync, rustref-auto-traits, rust-book-send-sync, node-worker-data]
@@ -24,11 +24,10 @@ leaves three idle. The
 fix is to run several **threads**: separate lines of execution inside
 one program, each with its own stack, all sharing the program's memory.
 
-JavaScript keeps your code on one thread (the event loop of chapter
-40), and a Node `Worker` gets a *copy* of the data you hand it, cloned
+JavaScript keeps your code on one thread (the event loop), and a Node `Worker` gets a *copy* of the data you hand it, cloned
 "according to the HTML structured clone algorithm"<Cite id="node-worker-data" />.
-Rust threads are like C's: they really share memory. Chapter 321
-(*Threads, memory models and atomics*) showed where that leads: a
+Rust threads are like C's: they really share memory. *Threads, memory models and
+atomics* showed where that leads: a
 **data race**, two threads touching the same place without
 synchronisation, at least one of them writing. In C that is undefined
 behaviour; in safe Rust it does not compile. This chapter is how.
@@ -40,7 +39,7 @@ let h = thread::spawn(|| 6 * 7);
 let v = h.join().unwrap(); // 42
 ```
 
-`thread::spawn` takes a closure (chapter 355) and runs it on a new
+`thread::spawn` takes a closure and runs it on a new
 thread; it returns a `JoinHandle` at once, while the closure runs. `join`
 waits for the thread to finish and hands back its result, inside a
 `Result` that is `Err` only if the thread panicked. Now borrow a local:
@@ -141,9 +140,9 @@ The second borrows: `split_at` makes two slices of the same vector, a
 new thread sums the first half (`sum` adds up a slice) while the current
 thread sums the second, and only then joins; the scope hands back both
 answers. The third is Viscosity's differential
-test (trimmed, with its body shortened to `run(p)`): every benchmark
-program runs on its own scoped thread,
-because each takes seconds, and the handles are joined in the order
+test (trimmed, with its body shortened to `run(p)`): every program
+runs on its own scoped thread, because the benchmarks take seconds
+each, and the handles are joined in the order
 they were spawned, so the results come back in program order whichever
 thread finished first. `move` there moves only the *reference* `p` into
 each closure; the programs themselves stay borrowed.
@@ -154,8 +153,7 @@ each closure; the programs themselves stay borrowed.
 
 ## Send and Sync
 
-Two errors show what scopes cannot excuse. Send an `Rc` (chapter 361)
-to a thread:
+Two errors show what scopes cannot excuse. Send an `Rc` to a thread:
 
 ```text
 error[E0277]: `Rc<i32>` cannot be sent

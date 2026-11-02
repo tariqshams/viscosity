@@ -1,7 +1,7 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 386b: how one pub field breaks a safety invariant. The
+// Chapter 387: how one pub field breaks a safety invariant. The
 // E0603 message is what rustc 1.97.0 printed for building Ascii from
 // outside its module; the UTF-8 point (a non-UTF-8 str is valid but
 // unsafe) follows the Unsafe Code Guidelines glossary.

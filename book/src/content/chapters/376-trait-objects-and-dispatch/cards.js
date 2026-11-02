@@ -6,7 +6,7 @@ export const prompts = {
     a: 'Loads the vtable pointer from the fat pointer, then loads the method’s address from a fixed slot in the vtable; then it makes an indirect call.',
   },
   'dyn-inline': {
-    q: 'Why could rustc vectorize `total::<Sq>` but not `total_dyn`?',
+    q: 'Why could rustc vectorise `total::<Sq>` but not `total_dyn`?',
     a: 'In the generic copy it knew the body of `area` and inlined it; through `dyn` the body is unknown until run time, so it can only call it, one element at a time.',
   },
   'dyn-enum': {
@@ -220,8 +220,8 @@ export const quiz = [
   {
     q: 'In the chapter’s listings, why does `total::<Sq>` handle eight shapes per loop trip while `total_dyn` handles one?',
     options: [
-      { t: 'Generic code is always unrolled eight times.', why: 'Unrolling and vectorizing are optimizations, possible here only because the body of `area` was visible.' },
-      { t: '`area` was inlined into the generic copy, so the compiler could vectorize the squares and adds; the dyn loop can only call an unknown function.', correct: true, why: 'Static dispatch lets the body be inlined; dynamic dispatch hides it until run time.' },
+      { t: 'Generic code is always unrolled eight times.', why: 'Unrolling and vectorising are optimisations, possible here only because the body of `area` was visible.' },
+      { t: '`area` was inlined into the generic copy, so the compiler could vectorise the squares and adds; the dyn loop can only call an unknown function.', correct: true, why: 'Static dispatch lets the body be inlined; dynamic dispatch hides it until run time.' },
       { t: 'The dyn version uses 64-bit numbers.', why: 'Both use `u32`; the difference is the call.' },
     ],
   },
@@ -254,8 +254,8 @@ export const quiz = [
     q: 'Viscosity decides a collection’s layout at run time. Where should a `dyn Layout` call go for speed?',
     options: [
       { t: 'Inside the loop, once per particle.', why: 'That pays the dispatch cost, and the lost inlining, for every element.' },
-      { t: 'Outside the loop: one dyn call per collection, which then runs a loop compiled for its own layout.', correct: true, why: 'The hot loop is then ordinary static code that can be inlined and vectorized.' },
-      { t: 'It makes no difference; dyn calls are free.', why: 'They are cheap one at a time, but the lost optimization adds up in hot loops.' },
+      { t: 'Outside the loop: one dyn call per collection, which then runs a loop compiled for its own layout.', correct: true, why: 'The hot loop is then ordinary static code that can be inlined and vectorised.' },
+      { t: 'It makes no difference; dyn calls are free.', why: 'They are cheap one at a time, but the lost optimisation adds up in hot loops.' },
     ],
   },
 ];

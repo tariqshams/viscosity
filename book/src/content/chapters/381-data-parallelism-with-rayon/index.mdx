@@ -18,7 +18,7 @@ import StealSteps from '../../../components/diagrams/ch381/StealSteps';
 
 ## Who decides the split?
 
-Last chapter split a slice into equal parts by hand, one per thread.
+*Threads, Send and Sync* split a slice into equal parts by hand, one per thread.
 That works when every part costs the same. It goes wrong when one
 input is much bigger than the others: hand two threads four files each,
 put the one huge file in the first four, and the second thread finishes
@@ -247,7 +247,7 @@ const outs = await Promise.all(
 </OtherLanguages>
 
 `Promise.all` waits for many things at once, but the JavaScript in them
-still runs on one thread, the event loop of chapter 40: it overlaps
+still runs on one thread, the event loop of *Asynchronous code: promises and the event loop*: it overlaps
 waiting (for disk or network), not computing. CPU work in parallel needs
 workers and messages. In Rust, `par_iter` is the whole change.
 

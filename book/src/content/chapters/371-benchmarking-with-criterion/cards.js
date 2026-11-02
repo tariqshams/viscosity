@@ -1,5 +1,4 @@
-// Chapter 370-b cards (Benchmarking with criterion, split from chapter
-// 319). Keys are stable ids: never rename them. Criterion output quoted
+// Chapter 371 cards (Benchmarking with criterion). Keys are stable ids: never rename them. Criterion output quoted
 // here is from cargo bench (cargo 1.97, criterion 0.5.1) on the book's
 // shared cloud VM, 2026-11-02.
 
@@ -200,7 +199,7 @@ export const prompts = {
   },
   'crit-nightly': {
     q: 'Which profile does `cargo bench` build with?',
-    a: '`bench`, which inherits from `release`: optimized, with overflow checks off.',
+    a: '`bench`, which inherits from `release`: optimised, with overflow checks off.',
   },
   'crit-slope': {
     q: 'Criterion runs samples of d, 2d, 3d … iterations. What does it take as the time per iteration, and why not time one call?',

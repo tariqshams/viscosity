@@ -1,6 +1,6 @@
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 388b: clippy's lint categories and default levels, from the
+// Chapter 389: clippy's lint categories and default levels, from the
 // rust-clippy README's table (correctness deny; suspicious, style,
 // complexity, perf warn; pedantic, restriction, nursery, cargo allow).
 const ROWS: [string, string, 'deny' | 'warn' | 'allow'][] = [

@@ -142,7 +142,8 @@ The second is the tree from the figure: one variable owns a `Vec`, the
 exactly once. The runnable one makes drops visible: its first few lines
 teach a type called `Noisy` to print a line when it is dropped (the
 `impl Drop for Noisy` that does it uses `impl` blocks and traits, from
-*Methods: impl and self* and *Traits*), and
+*Methods: impl and self* and *Traits*; `Drop` itself is explained in
+*Associated types and the standard traits*), and
 `main` then shows reverse order, a drop on reassignment and an early
 `drop(...)`. Its output is `inner block ends`, `drop c`, `drop d1`,
 `drop b`, `main ends`, `drop d2`, `drop a`.

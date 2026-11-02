@@ -21,7 +21,7 @@ export default function WasmPipeline() {
   const gap = 18;
   const yEnd = 8 + STEPS.length * (bh + gap);
   return (
-    <Svg w={400} h={yEnd + 64} title="Four build steps from the Rust crate to an optimized WebAssembly module, which then goes to the npm package and to the book's Playground">
+    <Svg w={400} h={yEnd + 64} title="Four build steps from the Rust crate to an optimised WebAssembly module, which then goes to the npm package and to the book's Playground">
       {STEPS.map((s, k) => {
         const y = 8 + k * (bh + gap);
         return (

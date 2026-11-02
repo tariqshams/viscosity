@@ -9,7 +9,7 @@ type Node = 'root' | 'empty' | 'one' | 'guard' | 'ring' | 'then';
 type S = { input: string; path: Node[]; out?: string; note: string };
 
 const STATES: S[] = [
-  { input: '', path: [], note: 'The four arms [], [x], [f, .., l] if f == l and [f, rest @ ..] become one tree. MIR reads the slice length once (PtrMetadata) and switches on it before looking at any element.' },
+  { input: '', path: [], note: 'The four arms [], [x], [f, .., l] if f == l and [f, rest @ ..] become one tree. Optimised MIR reads the slice length once (PtrMetadata) and switches on it before looking at any element.' },
   { input: '[]', path: ['root', 'empty'], out: '"empty"', note: 'Length 0: the first switch sends it straight to the [] arm. No element is read, which is just as well, since there are none.' },
   { input: '[7]', path: ['root', 'one'], out: '"one 7"', note: 'Length 1: the second switch picks the [x] arm. x is bound to a reference to element 0.' },
   { input: '[3, 1, 3]', path: ['root', 'guard', 'ring'], out: '"ring 3"', note: 'Length 3 is at least 2, so f and l are bound to elements 0 and len-1 and the guard runs: 3 == 3, so the ring arm wins.' },

@@ -207,7 +207,7 @@ method does not exist at all, so a user's `Celsius(20.0).to_k()` gets
 rustc 1.97's error E0599, "no method named `to_k` found for struct
 `Celsius`". With `cargo run --features kelvin` the same program
 printed `293.15`. The third, in the style of the Cargo book, makes a
-dependency optional: it is not even downloaded unless the `serde`
+dependency optional: it is not even compiled unless the `serde`
 feature is on, and `dep:serde` names the dependency rather than a
 feature<Cite id="cargo-features" />. `--no-default-features` turns
 `default` off, and `--features a,b` turns features on.

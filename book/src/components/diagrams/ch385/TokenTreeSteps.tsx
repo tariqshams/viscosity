@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 384b: the token trees a derive receives for
+// Chapter 385: the token trees a derive receives for
 //   struct Point { x: f64, y: f64 }
 // The top level (Ident struct, Ident Point, one brace Group) is what a
 // derive macro printed with rustc 1.97.0 in the chapter's scratch

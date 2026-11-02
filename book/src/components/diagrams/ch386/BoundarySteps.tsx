@@ -24,7 +24,7 @@ function Reg({ x, name, v }: { x: number; name: string; v: string }) {
   return (
     <Box x={x} y={104} w={118} h={46} r={4} fill={v ? tok('f2', 0.15) : tok('panel')} stroke={v ? tok('f2') : tok('line')}>
       <T x={x + 10} y={118} size={11} mono fill={tok('muted')}>{name}</T>
-      <T x={x + 10} y={137} size={12} mono>{v || '—'}</T>
+      <T x={x + 10} y={137} size={12} mono>{v || '–'}</T>
     </Box>
   );
 }

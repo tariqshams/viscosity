@@ -9,7 +9,7 @@ const NOTES = [
   'cannot read prog.drip',
   "line 3: expected ';'…",
   'runtime error: cannot…',
-  "line 9: unexpected '@'",
+  'line 9: unexpected…',
 ];
 const KINDS: { v: string; c: string; n: number }[] = [
   { v: 'Io', c: 'f3', n: 1 },

@@ -1,4 +1,4 @@
-// Chapter 386b cards. Keys are stable ids: never rename them.
+// Chapter 387 cards. Keys are stable ids: never rename them.
 // Every rustc message and program output quoted here was produced with
 // rustc 1.97.0 and glibc on x86-64 Linux while the chapter was written.
 

@@ -147,7 +147,7 @@ name binding a part of type T then gets T, &T or &mut T.</span>
 
 ## Guards
 
-The first chapter on patterns met the **match guard**,
+*Patterns* met the **match guard**,
 `pattern if condition`. Three
 details matter. First, a guard after an
 or-pattern covers *every* alternative: `4 | 5 | 6 if ok` means
@@ -284,7 +284,7 @@ pattern `..`, which matches zero or more elements and may be bound as
 
 rustc runs a slice match as a decision tree (chapter 300, *Compiling
 pattern matching*): it reads the length once, branches on it, and only
-then compares elements. Here is the tree from rustc 1.97's MIR for the
+then compares elements. Here is the tree from rustc 1.97's optimised MIR for the
 exercise below:
 
 <SliceTree client:visible />

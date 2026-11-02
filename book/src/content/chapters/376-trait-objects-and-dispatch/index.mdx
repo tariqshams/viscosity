@@ -19,7 +19,8 @@ import VtableBuild from '../../../components/diagrams/ch376/VtableBuild';
 ## Two loops, one answer
 
 Here is a trait, one type, and the same sum written twice: once with
-a generic (chapter 351) and once over trait objects (chapter 349).
+a generic (*Generics and trait bounds*) and once over trait objects
+(*Traits*).
 
 ```rust
 trait Shape { fn area(&self) -> u32; }
@@ -92,9 +93,9 @@ the card, because it does not know which card it will be.</span>
 <Callout kind="definition">
 The **cost of dynamic dispatch** has four parts. The call itself: load
 the vtable pointer, load the method's address from it, and make an
-indirect call (cheap when the processor predicts the target, chapter
-55). Lost **inlining**: the compiler cannot see the body, so it cannot
-fold it into the caller, vectorize the loop or drop work that turns out
+indirect call (cheap when the processor predicts the target, as in
+*Pipelines and branch prediction*). Lost **inlining**: the compiler cannot see the body, so it cannot
+fold it into the caller, vectorise the loop or drop work that turns out
 useless<Cite id="rust-book-trait-objects" />. Indirection in the data:
 `Vec<Box<dyn Shape>>` stores each value in its own heap allocation,
 which is pointer chasing. And size: every `&dyn` is two words, a fat
@@ -161,7 +162,7 @@ variants side by side with no boxes, and the `match` is a decision tree
 the compiler can inline like any other code. The third keeps `dyn` but
 moves it out of the hot loop: each layout makes *one* dyn call and then
 runs its own loop, which was compiled for its own type and can be
-vectorized. That is the shape Viscosity cares about: decide the layout
+vectorised. That is the shape Viscosity cares about: decide the layout
 once per collection, never once per particle.
 
 Run the sizes and both styles for yourself:
@@ -187,7 +188,7 @@ function total(xs: Shape[]): number {
 
 In TypeScript every method call is dynamic: `s.area()` looks up a
 property, and V8's inline cache makes the lookup cheap once it has seen
-the shapes (chapter 170). You never choose. In Rust you do: a generic
+the shapes (*Inline caches*). You never choose. In Rust you do: a generic
 is resolved before the program runs, `dyn` while it runs, and the type
 tells the reader which one they are looking at.
 
@@ -288,7 +289,7 @@ the vtable would need one `put` for every `T` in the program.
 
 - A **dyn call** loads a function pointer from a vtable and calls it;
   in a hot loop the bigger cost is often lost **inlining** (and with it
-  vectorization), plus boxes and fat pointers.
+  vectorisation), plus boxes and fat pointers.
 - Generics, an `enum`, or one `dyn` call per collection avoid paying
   that cost per element.
 - A trait is **dyn compatible** (object safe) when a vtable can be

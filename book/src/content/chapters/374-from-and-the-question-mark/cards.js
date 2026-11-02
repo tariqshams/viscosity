@@ -1,5 +1,5 @@
-// Chapter 373-b cards (From and the question mark, split from chapter
-// 321). Keys are stable ids: never rename them. rustc messages are
+// Chapter 374 cards (From and the question mark, split from
+// Error handling at scale). Keys are stable ids: never rename them. rustc messages are
 // rustc 1.97.0's.
 
 const CLI = `use std::fs;
@@ -251,7 +251,7 @@ fn from_converts_each_kind() {
 - \`impl From<Trap> for DripError { fn from(t: Trap) -> Self { DripError::Runtime(t.0) } }\` does the same for the VM's error.
 - \`fn exit_code(&self) -> u8 { match self { DripError::Compile(_) => 65, DripError::Runtime(_) => 70 } }\` chooses drip-rs's codes by kind, ignoring the details with \`_\`.
 - \`fn run(src: &str) -> Result<f64, DripError> {\` is the pipeline.
-- \`    let code = compile(src)?;\`: on \`Ok\`, \`code\` is the compiled numbers; on \`Err(CompileErrors(..))\`, \`?\` calls \`From::from\`, which picks the first impl, and returns \`Err(DripError::Compile(..))\` at once, so \`execute\` never runs.
+- \`    let code = compile(src)?;\`: on \`Ok\`, \`code\` is the compiled numbers; on \`Err(CompileErrors(..))\`, \`?\` calls \`From::from\`, which uses the \`From<CompileErrors>\` impl, and returns \`Err(DripError::Compile(..))\` at once, so \`execute\` never runs.
 - \`    let v = execute(&code)?;\`: the same, with the \`Trap\` impl.
 - \`    Ok(v)\` is the success value.
 

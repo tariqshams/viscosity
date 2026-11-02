@@ -1,7 +1,7 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 382b: one wait through block_on, as printed by the chapter's
+// Chapter 383: one wait through block_on, as printed by the chapter's
 // park-trace example (rustc 1.97.0): task: start, poll: pending, park,
 // timer: wake, waker: unpark, poll: ready, task: end. Park and unpark
 // as documented in std::thread (an early unpark is remembered).

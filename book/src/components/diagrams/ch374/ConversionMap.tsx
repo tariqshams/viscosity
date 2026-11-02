@@ -1,4 +1,4 @@
-// Chapter 373-b: the conversions `?` can make, each one an `impl From`.
+// Chapter 374: the conversions `?` can make, each one an `impl From`.
 // The first two are the chapter's CliError example (as in the standard
 // library's From documentation); `&str -> String` is std's own impl; the
 // last is engine/rust's CLI (crates/cli/src/main.rs: impl From<String>

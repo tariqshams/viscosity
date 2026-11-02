@@ -63,7 +63,7 @@ Step through two threads taking turns:
 A `Mutex<T>` is `Sync` whenever `T` is `Send`<Cite id="rust-std-mutex" />,
 so scoped threads may share it through a plain `&`. Spawned threads
 cannot borrow, so they must *own* the mutex together, which is what
-**`Arc`** is for: the thread-safe twin of `Rc` (chapter 361), whose
+**`Arc`** is for: the thread-safe twin of `Rc`, whose
 count is changed with atomic instructions<Cite id="rust-std-arc" />.
 Use `Rc` there and rustc refuses:
 

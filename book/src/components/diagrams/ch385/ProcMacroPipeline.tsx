@@ -1,6 +1,6 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 384b: how a procedural macro takes part in a build. The
+// Chapter 385: how a procedural macro takes part in a build. The
 // Rust Reference: proc macros live in a proc-macro crate, "run during
 // compilation", and operate on token streams. The order (macro crate
 // first, then the crate that uses it) is what cargo did in the

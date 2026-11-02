@@ -1,12 +1,13 @@
-// Chapter 370-b: Tukey's fences as criterion uses them (criterion.rs book,
+// Chapter 371: Tukey's fences as criterion uses them (criterion.rs book,
 // "Analysis Process"): samples outside Q1 - 1.5 IQR or Q3 + 1.5 IQR are
 // mild outliers, outside 3 IQR severe; they are reported, not dropped.
 // The sample values are illustrative timings in nanoseconds.
 import { Svg, T, tok } from '../../viz/svg';
 
 const SAMPLES = [658, 660, 661, 662, 663, 664, 664, 665, 666, 667, 668, 669, 670, 671, 673, 684, 700];
-const Q1 = 662;
-const Q3 = 670;
+// Quartiles by nearest rank (index n/4 and 3n/4 of the sorted 17).
+const Q1 = 663;
+const Q3 = 669;
 const IQR = Q3 - Q1;
 
 export default function Fences() {

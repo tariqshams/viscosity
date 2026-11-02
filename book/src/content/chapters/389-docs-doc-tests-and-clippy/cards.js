@@ -1,4 +1,4 @@
-// Chapter 388b cards. Keys are stable ids: never rename them.
+// Chapter 389 cards. Keys are stable ids: never rename them.
 // Every cargo, rustdoc and clippy message quoted here was produced with
 // cargo 1.97.0 and clippy 0.1.97 on x86-64 Linux, in scratch crates.
 

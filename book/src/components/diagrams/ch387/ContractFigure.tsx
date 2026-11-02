@@ -1,6 +1,6 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 386b: the promises around one unsafe block, after the
+// Chapter 387: the promises around one unsafe block, after the
 // Rustonomicon ("How Safe and Unsafe Interact": unsafe declares and
 // discharges contracts) and the Unsafe Code Guidelines glossary
 // (safety invariants must hold whenever unknown safe code can look).

@@ -1,4 +1,4 @@
-// Chapter 382b cards. Keys are stable ids: never rename them.
+// Chapter 383 cards. Keys are stable ids: never rename them.
 // Every message, output and timing quoted here was produced with rustc
 // 1.97.0 (and Tokio 1.54.1, in a scratch project) on x86-64 Linux.
 
@@ -375,7 +375,7 @@ export const quiz = [
     q: 'Why did the spinning driver poll a 100 ms timer about 58 million times?',
     options: [
       { t: 'Because the timer future woke itself 58 million times', why: 'It woke only once; the driver ignored wakes and polled again at once after every Pending.' },
-      { t: 'Because release builds poll faster than debug builds, and it polled until Ready', correct: true, why: 'With no park, the loop runs as fast as the CPU allows (5.8 million times in a debug build here, 58 million in release).' },
+      { t: 'Because it polled again straight after every Pending, as fast as an optimised loop can, until the timer was Ready', correct: true, why: 'With no park, the loop runs as fast as the CPU allows (5.8 million times in a debug build here, 58 million in release).' },
       { t: 'Because Rust futures must be polled once per microsecond', why: 'There is no such rule; a good executor polls only after a wake.' },
     ],
   },

@@ -1,6 +1,6 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 
-// Chapter 388b: what cargo test does with one doc example, following
+// Chapter 389: what cargo test does with one doc example, following
 // the rustdoc book's "Pre-processing examples" (insert common allows,
 // add `extern crate <mycrate>;`, wrap in `fn main` if there is none)
 // and "Hiding portions of the example" (`# ` lines compiled, not

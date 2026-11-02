@@ -18,10 +18,10 @@ const BOXED = `for _ in 0..100 {
 type S = { code: string; build: string; time: string; bar: number; verdict: string; tone: 'ok' | 'bad' | 'slow'; note: string };
 
 const STATES: S[] = [
-  { code: PLAIN, build: 'cargo run (dev profile)', time: '317–513 ms', bar: 1, verdict: 'every addition happens, slowly', tone: 'slow', note: 'The dev profile does no optimization: each step of sum runs as written, with values going to and from memory. The work is real, but the time tells you about the debug build, not about your code.' },
+  { code: PLAIN, build: 'cargo run (dev profile)', time: '317–513 ms', bar: 1, verdict: 'every addition happens, slowly', tone: 'slow', note: 'The dev profile does no optimisation: each step of sum runs as written, with values going to and from memory. The work is real, but the time tells you about the debug build, not about your code.' },
   { code: BOXED, build: 'cargo run (dev profile)', time: '336–374 ms', bar: 0.75, verdict: 'about the same', tone: 'slow', note: 'black_box changes little here, because a debug build was never going to delete anything. Debug times are the wrong numbers either way.' },
-  { code: PLAIN, build: 'cargo run --release', time: '129–204 ns', bar: 0.004, verdict: 'the loop was deleted', tone: 'bad', note: 'A hundred million additions in under a microsecond did not happen. sum has no side effects and its result is dropped, so the optimizer removed the calls: dead code elimination.' },
-  { code: BOXED, build: 'cargo run --release', time: '75–78 ms', bar: 0.18, verdict: 'the real cost of the work', tone: 'ok', note: 'With the input and the result passed through black_box, the compiler must assume both matter, so the sums run, now optimized: about four to six times faster than debug. This is the number to report.' },
+  { code: PLAIN, build: 'cargo run --release', time: '129–204 ns', bar: 0.004, verdict: 'the loop was deleted', tone: 'bad', note: 'A hundred million additions in under a microsecond did not happen. sum has no side effects and its result is dropped, so the optimiser removed the calls: dead code elimination.' },
+  { code: BOXED, build: 'cargo run --release', time: '75–78 ms', bar: 0.18, verdict: 'the real cost of the work', tone: 'ok', note: 'With the input and the result passed through black_box, the compiler must assume both matter, so the sums run, now optimised: about four to six times faster than debug. This is the number to report.' },
 ];
 
 export default function OptSteps() {

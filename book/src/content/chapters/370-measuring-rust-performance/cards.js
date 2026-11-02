@@ -39,7 +39,7 @@ fn measure<T>(
 export const prompts = {
   'debug-default': {
     q: 'Which profile does a plain `cargo build` or `cargo run` use, and at what `opt-level`?',
-    a: 'The `dev` profile, with `opt-level = 0`: no optimization.',
+    a: 'The `dev` profile, with `opt-level = 0`: no optimisation.',
   },
   'release-what': {
     q: 'What does `--release` change, by default?',
@@ -55,7 +55,7 @@ export const prompts = {
   },
   'bb-why': {
     q: 'Why did a release-mode loop summing a million numbers 100 times “take” under 200 ns?',
-    a: 'Its result was never used, so the optimizer deleted the work. Nothing was measured.',
+    a: 'Its result was never used, so the optimiser deleted the work. Nothing was measured.',
   },
   'bb-what': {
     q: 'What does `std::hint::black_box(x)` do?',
@@ -63,11 +63,11 @@ export const prompts = {
   },
   'bb-limit': {
     q: 'Name two limits of `black_box`.',
-    a: 'It is best-effort (never rely on it for correctness), and it does not stop the optimizer rewriting the code between the hidden values, e.g. a loop into a formula.',
+    a: 'It is best-effort (never rely on it for correctness), and it does not stop the optimiser rewriting the code between the hidden values, e.g. a loop into a formula.',
   },
   'whole-program': {
     q: 'Why does drip-rs’s `bench.sh` not need `black_box`?',
-    a: 'It times whole programs in fresh processes, and each program prints its results: printing is a side effect the optimizer must keep.',
+    a: 'It times whole programs in fresh processes, and each program prints its results: printing is a side effect the optimiser must keep.',
   },
 };
 
@@ -127,7 +127,7 @@ export const exercises = {
     lang: 'rust',
     title: 'Summarise the samples',
     prompt:
-      'A timing harness collects one time per run, in any order. Write `summary(xs)`, which returns `(min, median, p95)` the way engine/rust’s `compile_speed` reports them: sort a copy of the samples, then take the value at index `0`, at index `n / 2`, and at index `n * 95 / 100`. Do not change the caller’s slice. You may assume `xs` is not empty.',
+      'A timing harness collects one time per run, in any order. Write `summary(xs)`, which returns `(min, median, p95)`, taking the minimum and median the way engine/rust’s `compile_speed` does and adding a p95: sort a copy of the samples, then take the value at index `0`, at index `n / 2`, and at index `n * 95 / 100`. Do not change the caller’s slice. You may assume `xs` is not empty.',
     starter: `${SUM_HEAD}
     todo!()
 }`,
@@ -204,7 +204,7 @@ The last test is the point of reporting more than one number: one slow run in a 
     optional: true,
     title: 'A timing loop that keeps its work',
     prompt:
-      'Write `measure(runs, f)`, which calls the closure `f` exactly `runs` times, timing each call with `Instant`, and returns the times in microseconds. Pass each result of `f` through `black_box`, so an optimized build cannot delete the calls.',
+      'Write `measure(runs, f)`, which calls the closure `f` exactly `runs` times, timing each call with `Instant`, and returns the times in microseconds. Pass each result of `f` through `black_box`, so an optimised build cannot delete the calls.',
     starter: `use std::hint::black_box;
 use std::time::Instant;
 
@@ -287,7 +287,7 @@ export const quiz = [
     options: [
       { t: 'Nothing: Rust is compiled, so it is already fast', why: 'A plain `cargo run` builds the `dev` profile, `opt-level = 0`.' },
       { t: 'Rebuild with `--release`, and make sure the result is used', correct: true, why: 'In this chapter, the same loop took 317–513 ms in debug, 75–78 ms in release, and almost nothing in release when its result was unused.' },
-      { t: 'Run it twice more and take the average', why: 'More runs do not fix an unoptimized build.' },
+      { t: 'Run it twice more and take the average', why: 'More runs do not fix an unoptimised build.' },
     ],
   },
   {
@@ -302,9 +302,9 @@ export const quiz = [
   {
     q: 'What does `black_box(sum(black_box(&xs)))` achieve?',
     options: [
-      { t: 'It turns off all optimization inside `sum`', why: '`sum` is still optimized. Only what flows in and out is hidden.' },
-      { t: 'The inner call hides `xs` from the optimizer, and the outer one keeps the result “used”', correct: true, why: 'So the compiler can neither precompute the sum nor throw it away.' },
-      { t: 'It guarantees the benchmark measures exactly what production does', why: 'It is best-effort, and production code may be optimized differently anyway.' },
+      { t: 'It turns off all optimisation inside `sum`', why: '`sum` is still optimised. Only what flows in and out is hidden.' },
+      { t: 'The inner call hides `xs` from the optimiser, and the outer one keeps the result “used”', correct: true, why: 'So the compiler can neither precompute the sum nor throw it away.' },
+      { t: 'It guarantees the benchmark measures exactly what production does', why: 'It is best-effort, and production code may be optimised differently anyway.' },
     ],
   },
   {
@@ -320,7 +320,7 @@ export const quiz = [
     options: [
       { t: 'The median is always the true time', why: 'On a noisy machine the median moves with the other tenants’ load.' },
       { t: 'The minimum includes JIT warm-up', why: 'Rust has no JIT. The TypeScript engine was warmed up before timing.' },
-      { t: 'The minimum is the most stable on a shared VM; the median shows how much the runs spread', correct: true, why: 'Its rounds varied a lot: `ledger`’s Rust minimum was 74, 73, then 109 µs.' },
+      { t: 'The minimum is the most stable on a shared VM; the median shows how much the runs spread', correct: true, why: 'That is what its notes say; even so, one round can shift: `ledger`’s Rust minimum was 74, 73, then 109 µs.' },
     ],
   },
 ];

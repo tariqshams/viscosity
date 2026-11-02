@@ -1,4 +1,4 @@
-// Chapter 377-b cards. Keys are stable ids: never rename them.
+// Chapter 378 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'op-desugar': {
