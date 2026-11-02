@@ -1,4 +1,4 @@
-// Chapter 235 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Linear scan": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,8 +11,8 @@ export const prompts = {
     a: 'The gaps in a live range: two values whose ranges never meet can still have overlapping intervals, and then cannot share a register.',
   },
   'loop-stretch': {
-    q: 'In sumsq, n is read only at line 4. Why does its interval run to line 8?',
-    a: 'Line 8 jumps back to line 4, so n is still needed there: it is live to the end of the loop.',
+    q: 'A loop runs from instruction 4 to instruction 8, which jumps back to 4. The value n is read only at 4 and never redefined. Why does n’s live interval run to 8?',
+    a: 'From 8, control goes back to 4, which reads n, so n is still live at every point of the loop, up to 8.',
   },
   'scan-order': {
     q: 'In what order does linear scan visit the intervals, and how does it keep the active list?',
@@ -23,15 +23,15 @@ export const prompts = {
     a: 'It expires the active intervals that ended before the new one starts, giving their registers back.',
   },
   'scan-spill-rule': {
-    q: 'When no register is free, which interval does linear scan spill?',
+    q: 'In Poletto and Sarkar’s linear scan, when no register is free, which interval is spilled?',
     a: 'Whichever ends last: the new interval, or the active interval with the latest end.',
   },
   'scan-vs-colour': {
-    q: 'With three registers, colouring spilled n in sumsq but linear scan spilled s. Why the difference?',
-    a: 'Colouring weighs spill costs (n costs one load per trip); linear scan looks only at end points, and s ends last, though it costs a load and a store per trip.',
+    q: 'In a loop, n is only read once per trip; s is read and written once per trip and is used after the loop, so its interval ends last. One register short, Chaitin-style colouring spills n but Poletto–Sarkar linear scan spills s. Why the difference?',
+    a: 'Colouring weighs spill costs (n costs one load per trip); plain linear scan looks only at end points, and s ends last, though spilling it costs a load and a store per trip.',
   },
   'greedy-order': {
-    q: 'In what order does LLVM’s greedy allocator try things for a live range?',
+    q: 'In what order does LLVM’s greedy register allocator (LLVM 18) try things for a live range?',
     a: 'A free register; evicting a less worthy range; splitting the range (from its second visit); and finally spilling it.',
   },
 };
@@ -250,7 +250,7 @@ test('a long interval makes way for a short one', () => {
 - \`const last = active.at(-1);\` is the active interval that ends last; \`at(-1)\` reads the final element.
 - \`if (last.end > iv.end) {\` asks whether \`last\` would hold its register longer than \`iv\` would.
 - \`where[iv.v] = where[last.v];\` hands \`last\`'s register to \`iv\`.
-- \`where[last.v] = 'spill';\` and \`last\` goes to memory (with the spill code of the previous chapter).
+- \`where[last.v] = 'spill';\` and \`last\` goes to memory (with the spill code of *Spilling and linear scan*).
 - \`active.pop(); active.push(iv);\` swaps them in the active list; the sort at the end of the loop puts \`iv\` in its place.
 - \`} else { where[iv.v] = 'spill'; }\` otherwise \`iv\` itself ends last, so it is the one spilled.
 
@@ -355,7 +355,7 @@ function linearScan(ivs, regs) {
 
 export const quiz = [
   {
-    q: 'Do the intervals [2, 5] and [5, 9] overlap?',
+    q: 'Taking live intervals as closed (both end points included), do [2, 5] and [5, 9] overlap?',
     options: [
       {
         t: 'No, one ends where the other starts',
@@ -373,7 +373,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'One register; intervals a [0, 10] and b [1, 2]. What does linear scan do when b arrives?',
+    q: 'One register; intervals a [0, 10] and b [1, 2]. What does Poletto and Sarkar’s linear scan do when b arrives?',
     options: [
       {
         t: 'Spills b, because a was there first',
@@ -422,7 +422,7 @@ export const quiz = [
       {
         t: 'It chooses spills by end point, not cost, and treats a range with gaps as one solid interval',
         correct: true,
-        why: 'That is why it spilled s (a load and a store per trip) where colouring spilled n.',
+        why: 'So it can spill a value that is read and written every trip where colouring, weighing costs, would spill one that is only read.',
       },
     ],
   },

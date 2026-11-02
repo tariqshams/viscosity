@@ -51,7 +51,7 @@ loop:
   bne  a0, a1, loop   # again if p != end
 ```
 
-Every line is correct, yet the machine spends much of its time idle. The reason is **latency** (chapter 51): an instruction's result
+Every line is correct, yet the machine spends much of its time idle. The reason is **latency** (*Caches, lines and locality*): an instruction's result
 is not ready the moment it starts. A load has to reach the cache and come
 back, and a multiply passes through several stages of the pipeline. The
 `mul` on line 2 needs the value the `ld` fetches, so it has to wait; while
@@ -149,7 +149,7 @@ hardware, though only within a limited window.
 Moving `addi a0` up was safe; moving it above the `ld` would not be,
 because the `ld` reads `a0` and must see the old pointer, not the new one.
 Before a scheduler can move anything it needs to know, for every pair of
-instructions, whether their order matters. Chapter 218 met the three
+instructions, whether their order matters. *Dependence analysis, interchange and fusion* met the three
 kinds of dependence between statements in a loop; here are the same
 three, between instructions in a block:
 
@@ -161,7 +161,7 @@ three, between instructions in a block:
   write must land last, or the wrong value is left behind.
 
 Memory adds a fourth worry: a store and a load whose addresses might be
-the same must keep their order, unless alias analysis (chapter 94)
+the same must keep their order, unless alias analysis (*Alias analysis and points-to*)
 proves they never touch the same bytes. Finally, the branch at the end of
 a block stays at the end.
 
@@ -183,7 +183,7 @@ poured out: nothing flows from batter to icing, but the shared bowl
 forces an order. That is an anti dependence.
 <span slot="breaks">Fetch a second bowl and the anti dependence is gone.
 Registers are like bowls, and fetching another is exactly what register
-allocation decides not to do when registers run short; the next chapter
+allocation decides not to do when registers run short; *List scheduling*
 shows how scheduling and allocation pull against each other.</span>
 </Analogy>
 
@@ -269,7 +269,8 @@ an output edge from the last writer.
 - The **critical path** is the longest path through it, and no schedule
   is shorter.
 
-Next: the greedy algorithm that turns a DAG into a schedule, one cycle at
-a time, and why it has to keep an eye on the register allocator.
+Next, *List scheduling*: the greedy algorithm that turns a DAG into a
+schedule, one cycle at a time, and why it has to keep an eye on the
+register allocator.
 
 <Quiz />

@@ -18,11 +18,13 @@ import ChainVsTable from '../../../components/diagrams/ch231/ChainVsTable';
 
 ## A switch, the slow way
 
-Drip has no `switch`, but the VM you built in Part IV is one big switch
-(chapter 74's dispatch loop picks among fifty-three opcodes), and
+Drip has no `switch`, but the VM you built in the core is one big
+switch (the dispatch loop of *A stack machine and its dispatch loop*
+picks among fifty-three opcodes), and
 nearly every language a back end compiles has one: a value `k`, a list
 of cases, each with its own code, and a default for every other value.
-The obvious shape is the last chapter's `if`, repeated: test `k == 0`,
+The obvious shape is the `if` of *Code shape: lowering control flow
+and data*, repeated: test `k == 0`,
 then `k == 1`, and so on. That is what clang emits for a switch with
 two cases, 3 and 7:
 
@@ -161,8 +163,8 @@ the values 1, 100, 1000 and 10000 are far too scattered for a table
 testing `k > 999` first and then comparing within each half. The third
 is a refinement worth knowing: when every case only *returns a
 constant*, there is no code to jump to, so LLVM builds a table of the
-*values* (`10, 20, 33, 47, 51`) and the switch becomes the last
-chapter's array load, `base + k × 8`. You can play the table by hand:
+*values* (`10, 20, 33, 47, 51`) and the switch becomes an ordinary
+array load, `base + k × 8`. You can play the table by hand:
 
 <Run id="dispatch" />
 
@@ -181,7 +183,7 @@ chapter's array load, `base + k × 8`. You can play the table by hand:
 - Tables need dense case values; sparse ones get a binary search, and a
   switch that only picks constants can become a table of values.
 
-Next: choosing machine instructions for whole IR trees, by tiling them
-with patterns.
+Next, *Instruction selection by tree tiling*: choosing machine
+instructions for whole IR trees, by covering them with patterns.
 
 <Quiz />

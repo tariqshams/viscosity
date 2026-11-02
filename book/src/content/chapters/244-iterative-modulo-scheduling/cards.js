@@ -1,4 +1,4 @@
-// Chapter 239 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Iterative modulo scheduling": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,12 +7,12 @@ export const prompts = {
     a: 'Row t mod II: a new trip starts every II cycles with the same schedule, so times that differ by a multiple of II land in the same cycle of the running loop.',
   },
   resmii: {
-    q: 'A unit is used 3 times per trip and the machine has 2 of them. What does that say about II?',
+    q: 'In modulo scheduling, a kind of fully pipelined unit is used 3 times per trip, and the machine has 2 such units. What does that say about II?',
     a: 'II ≥ ⌈3 ÷ 2⌉ = 2: two units give 2 × II cells, and 3 uses must fit.',
   },
   recmii: {
-    q: 'A multiply with delay 3 feeds itself in the next trip. What is the smallest possible II?',
-    a: '3 (RecMII = ⌈3 ÷ 1⌉): each trip must wait for the previous trip\'s product.',
+    q: 'In a modulo-scheduled loop, a multiply with delay 3 feeds itself in the next trip. What lower bound does that set on II?',
+    a: 'II ≥ 3 (RecMII = ⌈3 ÷ 1⌉): each trip must wait for the previous trip\'s product, however many multipliers there are.',
   },
   'mii-max': {
     q: 'How is the minimum initiation interval MII worked out from ResMII and RecMII?',
@@ -27,11 +27,11 @@ export const prompts = {
     a: 'It places it anyway and evicts the instructions it collides with, to be placed again, within a budget; only when the budget runs out does it try II + 1.',
   },
   'stage-calc': {
-    q: 'At II = 3, an instruction is scheduled at t = 7. Which stage is it in, and which row?',
+    q: 'In a modulo schedule with II = 3, an instruction is scheduled at t = 7. Which stage is it in, and which row of the reservation table?',
     a: 'Stage ⌊7 ÷ 3⌋ = 2, row 7 mod 3 = 1.',
   },
   'raise-ii': {
-    q: 'Why is it always possible to succeed eventually by raising II?',
+    q: 'Why can a modulo scheduler always succeed eventually by raising II?',
     a: 'With a large enough II, trips barely overlap and every instruction gets its own slot, so the schedule degrades towards the plain loop.',
   },
 };
@@ -208,7 +208,7 @@ For the loop at II = 3: ld at 0 (MEM0); mul at 3 (MUL0); add at 6 (ALU0); addi's
 
 export const quiz = [
   {
-    q: 'At II = 4, instruction a is at t = 1 and instruction b, on the same single unit, at t = 9. Do they clash?',
+    q: 'In a modulo schedule with II = 4, instruction a is at t = 1 and instruction b, on the same single unit, at t = 9. Do they clash?',
     options: [
       {
         t: 'No, they are 8 cycles apart',

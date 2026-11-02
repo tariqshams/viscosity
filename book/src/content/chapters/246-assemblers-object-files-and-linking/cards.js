@@ -1,4 +1,4 @@
-// Chapter 241 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Assemblers, object files and linking": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,11 +7,11 @@ export const prompts = {
     a: 'It expands pseudoinstructions, follows directives, resolves labels, and records what it cannot resolve as relocations.',
   },
   'forward-ref': {
-    q: 'Why can\'t a one-pass assembler encode `blez a1, done` when `done:` comes later?',
+    q: 'Why can\'t an assembler finish encoding `blez a1, done` at the moment it reaches it, when `done:` comes later in the file?',
     a: 'A branch stores the distance to its target, and the target\'s address is not known until the assembler reaches the label.',
   },
   'pseudo-size': {
-    q: 'Why must pass 1 know the size of each line, not just count the lines?',
+    q: 'In a two-pass assembler, why must the first pass know the size in bytes of each line, not just count the lines?',
     a: 'Some pseudoinstructions expand to more than one instruction (`call` is auipc plus jalr, 8 bytes), and every later label\'s address depends on it.',
   },
   'fixup-what': {
@@ -23,7 +23,7 @@ export const prompts = {
     a: 'Code and data in named sections, a symbol table of what it defines and uses, and relocations for the holes it could not fill.',
   },
   'und-symbol': {
-    q: 'In `llvm-readelf -s main.o`, what does `UND` next to `sumsq` mean?',
+    q: 'In an ELF object file’s symbol table (as `llvm-readelf -s` prints it), what does `UND` next to a symbol such as `sumsq` mean?',
     a: 'sumsq is used in this file but not defined in it; some other object file must define it.',
   },
   'reloc-what': {
@@ -284,7 +284,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The linker puts `table` at 0x12898. What do HI20 and LO12 give, and why?',
+    q: 'A RISC-V linker puts `table` at 0x12898. What do the R_RISCV_HI20 and R_RISCV_LO12_I relocations for `table` give, and why?',
     options: [
       {
         t: 'hi = 0x12, lo = 0x898',

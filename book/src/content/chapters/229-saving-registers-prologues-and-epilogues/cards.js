@@ -1,4 +1,4 @@
-// Chapter 97 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Saving registers: prologues and epilogues": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -23,15 +23,15 @@ export const prompts = {
     a: 'The call overwrites ra with its own return address, destroying the address this function needs to return to.',
   },
   'prologue-what': {
-    q: 'What does a RISC-V prologue do, in order?',
-    a: 'Moves sp down to claim the frame, then stores ra (if needed) and the callee-saved registers the body uses.',
+    q: 'What does a typical RISC-V function prologue do, in order?',
+    a: 'Moves sp down to claim the frame, then stores into it ra (if the function makes calls) and the callee-saved registers the body uses.',
   },
   'frame-size': {
-    q: 'A function must save ra and s0 (16 bytes). And if it must save ra, s0 and s1?',
-    a: '16 bytes for two; 32 for three, since 24 rounds up to the next multiple of 16.',
+    q: 'On RV64, a function’s frame holds only the saved ra, s0 and s1. How big is the frame?',
+    a: '32 bytes: three 8-byte saves make 24, rounded up to a multiple of 16 to keep sp aligned.',
   },
   'fp-optional': {
-    q: 'Must a RISC-V function have a frame pointer? If it has one, where is it?',
+    q: 'Under the RISC-V psABI, must a function have a frame pointer? If it has one, where is it?',
     a: 'No, it is optional; if present it lives in s0 (x8), which stays callee-saved.',
   },
 };
@@ -228,16 +228,16 @@ test('sp and s11 changed', () => {
 
 export const quiz = [
   {
-    q: '`sumsq` keeps `i` in `s2` across `call sq`. Who makes sure `s2` survives?',
+    q: 'A RISC-V function keeps a value in `s2` across `call g`. Who makes sure `s2` survives?',
     options: [
       {
-        t: 'sumsq, by saving s2 before every call',
+        t: 'The caller, by saving s2 before every call',
         why: 'That is how a caller-saved register is handled; s2 is callee-saved.',
       },
       {
-        t: 'sq, if it uses s2: it must save and restore it',
+        t: 'g, if it uses s2: it must save and restore it',
         correct: true,
-        why: 's2 is callee-saved, so the callee guarantees it; sq is a leaf that never touches it.',
+        why: 's2 is callee-saved, so the callee guarantees it; a g that never touches s2 has nothing to do.',
       },
       {
         t: 'The processor, automatically',
@@ -246,7 +246,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `sq` (`mul a0, a0, a0; ret`) have no prologue?',
+    q: 'Why does the RISC-V function `sq: mul a0, a0, a0; ret` need no prologue?',
     options: [
       {
         t: 'It calls nothing and uses no callee-saved register',
@@ -264,7 +264,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A function calls another and uses `s0` and `s1`. How big is its frame, at least?',
+    q: 'On RV64, a function calls another and uses `s0` and `s1`. How big is its frame, at least?',
     options: [
       {
         t: '16 bytes',
@@ -282,7 +282,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which register could a compiler use for `i * i` in a loop that calls no function, without saving anything?',
+    q: 'On RISC-V, which register could a compiler use for `i * i` in a loop that calls no function, without saving anything?',
     options: [
       {
         t: 's3',
@@ -300,7 +300,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the epilogue, why is `ra` reloaded before `ret`?',
+    q: 'In the epilogue of a RISC-V function that makes calls, why is `ra` reloaded before `ret`?',
     options: [
       {
         t: 'ret needs ra to be zero',

@@ -23,7 +23,7 @@ const STATES: S[] = [
   { k: 3, tried: 0, note: 'addi only has to follow ld (delay 0): earliest t = 0. But row 0 of the ALU is taken by add, from a different trip, so t = 0 is out.' },
   { k: 4, note: 'Try t = 1: row 1 of the ALU is free. addi goes there.' },
   { k: 5, note: 'bne must follow addi by 1: earliest t = 2, row 2 of the ALU, free. It lands in the last row, where a loop branch belongs (a real scheduler makes sure of that). Every slot is used at most once: II = 3 works.' },
-  { k: 5, note: 'Stages are t ÷ 3, rounded down: ld, addi and bne are stage 0, mul stage 1, add stage 2. That is the hand-made kernel of the last chapter, now at 3 cycles a trip on this wider machine.' },
+  { k: 5, note: 'Stages are t ÷ 3, rounded down: ld, addi and bne are stage 0, mul stage 1, add stage 2. That is the hand-made kernel of Software pipelining, now at 3 cycles a trip on this wider machine.' },
 ];
 
 export default function MrtSteps() {

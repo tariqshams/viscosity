@@ -1,4 +1,4 @@
-// Chapter 225 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Code shape: lowering control flow and data": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,7 +7,7 @@ export const prompts = {
     a: 'The patterns a compiler uses to express each construct in machine instructions; shapes for one construct are equally correct but differ in cost.',
   },
   'invert-test': {
-    q: 'Why does `if (a < b) f(); else g();` become `bge a0, a1, else`?',
+    q: 'On RISC-V, why is `if (a < b) f(); else g();` usually compiled to start with `bge a0, a1, .Lelse`?',
     a: 'A RISC-V branch has one target and otherwise falls through, so the then part follows the test and the branch jumps away on the opposite condition.',
   },
   'andand-shape': {
@@ -19,23 +19,23 @@ export const prompts = {
     a: 'It saves one branch per trip (a single bne tests and jumps back); it costs one extra copy of the test, as a guard before the loop.',
   },
   'tail-call': {
-    q: 'What does `tail f` do, and when may a compiler use it?',
-    a: 'It jumps to f without changing ra, so f returns straight to our caller; allowed when calling f is the last thing the function does.',
+    q: 'What does the RISC-V pseudoinstruction `tail f` do, and when may a compiler use it?',
+    a: 'It jumps to f without changing ra, so f returns straight to the current function’s caller; allowed when calling f is the last thing the function does (and f needs nothing from the current frame).',
   },
   'addr-formula': {
-    q: 'What is the address of `a[i]`?',
+    q: 'In an array whose elements are all the same size and stored side by side, what is the address of `a[i]`?',
     a: 'base + i × size, where base is the address of a[0] and size is one element’s size in bytes.',
   },
   'shift-for-mul': {
-    q: 'Why does clang compute `i * 8` with `slli a1, a1, 3`?',
+    q: 'Why does clang compute `i * 8` on RISC-V with `slli a1, a1, 3`?',
     a: '8 is 2 to the 3rd, so shifting left by 3 multiplies by 8, more cheaply than mul.',
   },
   'field-offset': {
-    q: 'In `ld a0, 8(a0)` for `ps[i].vx`, where does the 8 come from?',
+    q: 'On RV64, with `struct P { long x, vx; }`, `ps[i].vx` is loaded by `ld a0, 8(a0)`. Where does the 8 come from?',
     a: 'It is vx’s offset inside the 16-byte record, carried for free in the load’s 12-bit offset.',
   },
   'aos-soa-stride': {
-    q: 'Reading `vx` of every particle: what is the stride in AoS (16-byte records) and in SoA?',
+    q: 'Reading the 8-byte field `vx` of every record in turn: what is the stride with 16-byte records stored as an array of structs, and with a struct of arrays?',
     a: '16 bytes in AoS (one whole record per step); 8 bytes in SoA, where the vx values are side by side.',
   },
 };
@@ -166,7 +166,7 @@ test('an offset too big for 12 bits', () => {
 
 export const quiz = [
   {
-    q: 'A loop is rotated. How many branch instructions run for a loop that makes 10 trips?',
+    q: 'A `while` loop is compiled in the rotated shape (a guard test before it, one conditional branch at the bottom). How many branch instructions run when it makes 10 trips?',
     options: [
       {
         t: '21: a test and a jump per trip, plus the final test',
@@ -202,7 +202,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`struct P { long x, vx; }`. At what address is `ps[3].x`?',
+    q: 'On RV64, `struct P { long x, vx; }`. At what address is `ps[3].x`?',
     options: [
       {
         t: 'ps + 3 × 8',
@@ -220,7 +220,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why can clang fold the `+ 8` of `ps[i].vx` into the load?',
+    q: 'On RISC-V, why can clang fold the `+ 8` (a field offset) of `ps[i].vx` into the load instruction?',
     options: [
       {
         t: 'RISC-V loads add a 12-bit constant offset to a base register',

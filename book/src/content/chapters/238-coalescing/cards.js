@@ -1,4 +1,4 @@
-// Chapter 233 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Coalescing": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -8,7 +8,7 @@ export const prompts = {
   },
   'why-possible': {
     q: 'Why can the two ends of a copy usually be merged at all?',
-    a: 'The copy rule adds no edge between a copy’s source and destination, so unless something else joins them, they do not interfere.',
+    a: 'A copy does not by itself make its source and destination interfere (just after it they hold the same value), so unless something else joins them, there is no edge between them.',
   },
   'merged-neighbours': {
     q: 'What are the neighbours of a merged node?',
@@ -19,8 +19,8 @@ export const prompts = {
     a: 'The merged node has the neighbours of both, so a colourable graph can become one that needs a spill; a spill costs far more than the copy saved.',
   },
   insignificant: {
-    q: 'Why can a neighbour of degree less than k never block a colouring?',
-    a: 'Simplify will remove it anyway, whatever else happens.',
+    q: 'In simplify-and-select colouring with k registers, why can a neighbour of degree less than k never block a colouring?',
+    a: 'Simplify will remove it anyway, whatever else happens, and select will always find it a free colour.',
   },
   'briggs-test': {
     q: 'State the **Briggs test** for merging a and b.',
@@ -324,7 +324,7 @@ export const quiz = [
       {
         t: 'Yes: only 2 neighbours have degree 4 or more, fewer than 4',
         correct: true,
-        why: 'This is the first merge of sumsq, s0 with s1.',
+        why: 'Only the neighbours of degree 6 and 4 are significant; with 2 of them, the merged node is still sure to be removable by simplify.',
       },
       {
         t: 'Only if George also allows it',

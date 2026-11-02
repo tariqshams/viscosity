@@ -1,4 +1,4 @@
-// Chapter 242 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Linkers and loaders": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,7 +7,7 @@ export const prompts = {
     a: 'Resolve every symbol, lay out the sections at final addresses, then apply every relocation.',
   },
   'undef-error': {
-    q: 'When does lld report "undefined symbol: sumsq"?',
+    q: 'Linking an executable, when does ld.lld report "undefined symbol: sumsq"?',
     a: 'When some file uses the global sumsq and no input file defines it.',
   },
   'dup-error': {
@@ -23,19 +23,19 @@ export const prompts = {
     a: 'Only the member object files that define a symbol still undefined at that point.',
   },
   'loader-what': {
-    q: 'What does a **loader** do with an executable?',
+    q: 'What does a **loader** do with a statically linked ELF executable?',
     a: 'Maps each LOAD segment into memory at its address with its permissions, zero-fills what the file does not hold, sets up the stack and jumps to the entry point.',
   },
   'entry-point': {
     q: 'What is an executable\'s **entry point**?',
-    a: 'The address of the first instruction to run, recorded in the ELF header (0x11158, `_start`, in the chapter).',
+    a: 'The address of the first instruction to run, recorded in the ELF header (often the address of `_start`).',
   },
   'memsz-filesz': {
-    q: 'A LOAD segment has FileSiz 0x20 and MemSiz 0x1020. What is in the extra 0x1000 bytes?',
+    q: 'An ELF LOAD segment has FileSiz 0x20 and MemSiz 0x1020. What is in the extra 0x1000 bytes once it is loaded?',
     a: 'Zeros: the ELF standard says the bytes beyond the file\'s part hold 0. It is the .bss, which takes no space in the file.',
   },
   'perm-why': {
-    q: 'Why does the code segment get `R E` and the data segment `RW`?',
+    q: 'In a typical ELF executable, why does the code segment get `R E` and the data segment `RW`?',
     a: 'Code needs to be read and run but not changed; data needs to be read and written but never run.',
   },
 };
@@ -302,7 +302,7 @@ test('a call backwards', () => {
 
 export const quiz = [
   {
-    q: 'You link `main.o` alone, and it calls `sumsq`, which is defined in `loop.o`. What happens?',
+    q: 'You link `main.o` alone into a static executable with ld.lld, and it calls `sumsq`, which is defined only in `loop.o`. What happens?',
     options: [
       {
         t: 'The call is left as a jump to address 0',
@@ -320,7 +320,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'main.o\'s .text is 24 bytes and is placed at 0x11158, followed by loop.o\'s. sumsq is at offset 0 in loop.o. Where does sumsq end up?',
+    q: 'main.o\'s .text is 24 bytes and is placed at 0x11158, followed with no padding by loop.o\'s. sumsq is at offset 0 in loop.o. Where does sumsq end up?',
     options: [
       {
         t: '0x11158',
@@ -333,7 +333,7 @@ export const quiz = [
       {
         t: '0x11170',
         correct: true,
-        why: '0x11158 + 0x18 = 0x11170, which is exactly where lld put it.',
+        why: '0x11158 + 0x18 = 0x11170.',
       },
     ],
   },
@@ -377,8 +377,8 @@ export const quiz = [
     q: 'In which of these does a dynamic linker take part?',
     options: [
       {
-        t: 'Every program, including the static prog from this chapter',
-        why: 'prog has no PT_INTERP header, so the system runs it directly.',
+        t: 'Every program, including a statically linked one',
+        why: 'A static executable has no PT_INTERP header, so the system runs it directly.',
       },
       {
         t: 'A program with a PT_INTERP header, which uses shared libraries',

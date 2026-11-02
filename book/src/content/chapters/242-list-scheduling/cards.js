@@ -1,4 +1,4 @@
-// Chapter 237 cards: recall prompts, examples, exercises and quiz.
+// Cards for "List scheduling": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,7 +15,7 @@ export const prompts = {
     a: 'Each height is built from the heights of the instructions after it, so those must be known first.',
   },
   'greedy-final': {
-    q: 'Does list scheduling ever undo a choice it made in an earlier cycle?',
+    q: 'Does plain list scheduling ever undo a choice it made in an earlier cycle?',
     a: 'No. It is greedy: once an instruction is started in a cycle, that is final. That makes it fast, but not always optimal.',
   },
   'stall-when': {
@@ -320,7 +320,7 @@ export const quiz = [
       },
       {
         t: 'Every order of a block runs in the same number of cycles',
-        why: 'The chapter\'s two-trip block takes 14 cycles in one order and 8 in another.',
+        why: 'Orders differ in how many stalls they leave: two unrolled trips of a load, multiply and add loop can take 14 cycles in one order and 8 in another.',
       },
       {
         t: 'List scheduling always finds the best order',
@@ -347,7 +347,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does LLVM\'s default machine scheduler do about the clash with register allocation?',
+    q: 'What does LLVM\'s default machine scheduler (LLVM 18) do about the clash with register allocation?',
     options: [
       {
         t: 'It schedules only after register allocation',

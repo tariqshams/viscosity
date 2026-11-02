@@ -42,7 +42,9 @@ a different compiler. When `sumsq` calls it, where should it put `i`
 so that `sq` can find it? Where will the answer be? How does `sq` know
 where to jump back to? Neither function can look inside the other, so
 the only way this works is if both were compiled to the same set of
-rules, agreed in advance.
+rules, agreed in advance. (You met calls and frames inside the VM in
+*Frames: calling and returning*, where one program, the VM, kept both
+sides; here the two sides are separate pieces of machine code.)
 
 <Analogy title="the changeover box in a relay race">
 In a relay, the baton must pass from one runner to the next inside a
@@ -129,8 +131,8 @@ nine:      # its 9th parameter:
 </Examples>
 
 All three are clang's `-O2` output for small C functions, trimmed
-(the third omits `use9`'s frame set-up, which the next chapter
-explains). In the first, `sq` reads its only argument from `a0`,
+(the third omits `use9`'s frame set-up, which *Saving registers:
+prologues and epilogues* explains). In the first, `sq` reads its only argument from `a0`,
 squares it, and leaves the answer in `a0`, which is also where the
 argument was: the convention allows a callee to overwrite its argument
 registers. In the second, `a` is in `a0`, `b` in `a1` and `c` in `a2`
@@ -222,7 +224,7 @@ from m.o
 </Examples>
 
 The first returns a two-field record (`struct P { long x, vx; }`, the
-particle of the last chapter) in `a0` and `a1`: `x` arrived in `a0` and
+particle from *RISC-V: registers, memory and the stack*) in `a0` and `a1`: `x` arrived in `a0` and
 can stay there, so the whole function is one `li` and a `ret`. The
 second passes a three-field, 24-byte record: too big for a pair, so
 `callq` writes the fields into its own stack frame and passes the
@@ -253,7 +255,8 @@ system must keep every one of them.
 - Records of up to two registers travel in a register pair; bigger ones
   are passed by reference.
 
-Next: the rules about which registers survive a call, and the code at
-the top and bottom of every function that keeps them.
+Next, *Saving registers: prologues and epilogues*: the rules about
+which registers survive a call, and the code at the top and bottom of
+every function that keeps them.
 
 <Quiz />

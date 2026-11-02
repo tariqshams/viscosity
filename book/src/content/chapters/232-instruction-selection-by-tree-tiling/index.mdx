@@ -29,8 +29,8 @@ line of VIR that adds one to `i`. In the IR it is two instructions:
 In the RISC-V listing we are aiming for, it is one, `addi t1, t1, 1`,
 because RISC-V's `addi` carries a small constant inside the
 instruction itself, so the `1` never needs a register of its own. The
-same thing happens on a larger scale with the array load of chapter
-230: for `a[i + 1]` the IR does a shift, two adds and a load, four
+same thing happens on a larger scale with the array load of *Code shape: lowering control flow and data*:
+for `a[i + 1]` the IR does a shift, two adds and a load, four
 operations, and clang writes three instructions, because the final
 `+ 8` disappears into the load's offset (`ld a0, 8(a0)`). Somebody has
 to decide, for every operation in the IR, which instruction computes
@@ -63,12 +63,13 @@ while an instruction is chosen by what it costs to run.</span>
 
 ## Programs as trees
 
-Three-address code (chapter 89) named every intermediate result,
+Three-address code (*IR, three-address code and control-flow graphs*)
+named every intermediate result,
 which made it easy to optimise; for choosing instructions, it helps to
 put the names back together. A temporary that is used exactly once can
 be replaced by the expression that computes it, and doing that again
 and again rebuilds an **expression tree** for each value, much like
-the syntax trees of Part III. The two lines above become the tree
+the syntax trees of *Syntax trees and a tree printer*. The two lines above become the tree
 `ADD(i, CONST 1)`, and the address arithmetic for `a[i + 1]` (once the
 middle end has rewritten `(i + 1) × 8` as `i × 8 + 8`, and the
 multiply by 8 as a shift left by 3) becomes this:
@@ -237,7 +238,7 @@ choose `sh1add`, `sh2add` or `sh3add`<Cite id="cranelift-isle" />, so
 the bigger pattern wins, just as in maximal munch. Viscosity has no
 instruction selector at all: it emits JavaScript, and V8 chooses the
 machine instructions. Maximal munch is not always the cheapest cover;
-the next chapter shows when it goes wrong and the dynamic programming
+*Optimal tiling by dynamic programming* shows when it goes wrong and the dynamic programming
 that never does<Cite id="aho1989" /><Cite id="coopertorczon2022" />.
 </Callout>
 
@@ -259,7 +260,7 @@ that never does<Cite id="aho1989" /><Cite id="coopertorczon2022" />.
 - The tile set is the machine: with Zba's `sh3add`, the same tree
   needs one instruction fewer.
 
-Next: when the biggest tile is not the cheapest, and how to find the
-cheapest cover for certain.
+Next, *Optimal tiling by dynamic programming*: when the biggest tile is
+not the cheapest, and how to find the cheapest cover for certain.
 
 <Quiz />

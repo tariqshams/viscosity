@@ -1,4 +1,4 @@
-// Chapter 228 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Optimal tiling by dynamic programming": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,7 +15,7 @@ export const prompts = {
     a: 'Solving each smaller problem once, writing the answer down, and building bigger answers from the stored ones instead of solving anything twice.',
   },
   'dp-why-once': {
-    q: 'Why can the best cost of a subtree be worked out once and reused?',
+    q: 'In optimal tree tiling where every tile leaves its result in a register, why can the best cost of a subtree be worked out once and reused?',
     a: 'The cheapest way to compute a subtree into a register does not depend on what is above it, so every tile at the parent can use the same number.',
   },
   'two-passes': {
@@ -23,11 +23,11 @@ export const prompts = {
     a: 'Bottom-up: label each node with best(n) and the tile that achieves it. Top-down: follow the chosen tiles from the root and write each instruction after its children’s.',
   },
   'best-leaf': {
-    q: 'What is `best(n)` for a node whose value is already in a register?',
-    a: 'Zero: no instruction is needed.',
+    q: 'In optimal tiling by dynamic programming, what is the best cost of a node whose value is already in a register?',
+    a: 'Zero: no instruction is needed to compute it.',
   },
   'dp-cost': {
-    q: 'At the ADD of `ADD(a0, CONST 5)`, why does addi (1) beat add (2)?',
+    q: 'With every RISC-V instruction costing 1, why does the addi tile (total 1) beat the add tile (total 2) at the root of `ADD(a0, CONST 5)`?',
     a: 'add needs the 5 in a register too (an li, cost 1) plus its own instruction; addi carries the 5 inside.',
   },
   'dp-tree-only': {
@@ -398,7 +398,7 @@ function best(t) {
 
 export const quiz = [
   {
-    q: 'In optimal tiling, what is `best(n)`?',
+    q: 'In optimal tiling of an expression tree, what is `best(n)` for a node n?',
     options: [
       {
         t: 'The cost of the biggest tile that matches at n',
@@ -416,7 +416,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Under the chapter’s made-up costs (sh3add 3, everything else 1), which cover of `ADD(SHL(i, CONST 3), CONST 8)` is cheapest?',
+    q: 'With RISC-V tiles where sh3add costs 3 and every other instruction 1, which cover of `ADD(SHL(i, CONST 3), CONST 8)` is cheapest?',
     options: [
       {
         t: 'li for the 8, then sh3add',

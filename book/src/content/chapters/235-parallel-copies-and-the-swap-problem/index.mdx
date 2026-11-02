@@ -18,8 +18,9 @@ import SequenceSteps from '../../../components/diagrams/ch235/SequenceSteps';
 
 ## All at once
 
-Chapter 90 made a promise that we now have to keep: all the phis at
-the top of a block take their values *at the same moment*, as control
+The phis of *SSA and phi nodes, built on the fly* come with a rule
+that we now have to keep: all the phis at the top of a block take
+their values *at the same moment*, as control
 crosses the edge, and none of them sees another's new value. Leaving
 SSA turns each phi into a copy at the end of the predecessor, so a
 block with two phis gets two copies on each incoming edge. In `sumsq`
@@ -200,8 +201,8 @@ names.
   nobody still reads; when only cycles remain, save one value in a
   spare register and carry on. Each cycle costs one extra copy.
 
-Next: the code is out of SSA and full of virtual registers; to give
-them real ones, we need to know which of them are alive at the same
-time.
+Next, *Live ranges and interference*: the code is out of SSA and full
+of virtual registers, and to give them real ones we need to know which
+of them are alive at the same time.
 
 <Quiz />

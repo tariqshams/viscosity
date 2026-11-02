@@ -1,4 +1,4 @@
-// Chapter 240 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Peephole optimisation": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,7 +11,7 @@ export const prompts = {
     a: 'Deleting or replacing an instruction brings new neighbours together, and they may match a rule that did not match before.',
   },
   'store-stays': {
-    q: 'In `sd a0, -24(s0)` followed by `ld a0, -24(s0)`, the peephole deletes the load. Why may it not delete the store too?',
+    q: 'In `sd a0, -24(s0)` followed by `ld a0, -24(s0)`, a peephole optimiser deletes the load. Why may it not delete the store too?',
     a: 'Code outside the window might read that slot later; only an analysis like liveness, which sees the whole function, can say it never does.',
   },
   'side-condition': {
@@ -19,8 +19,8 @@ export const prompts = {
     a: 'The load goes into a different register, a1, so it is not a no-op; at best it becomes a copy, `mv a1, a0`.',
   },
   'branch-over-jump': {
-    q: 'How can `beq a0, a1, skip` / `j far` / `skip:` be improved?',
-    a: 'To `bne a0, a1, far` / `skip:`, provided far is within a branch\'s reach.',
+    q: 'In RISC-V code, how can `beq a0, a1, skip` / `j far` / `skip:` be improved?',
+    a: 'To `bne a0, a1, far` / `skip:`, provided far is within a conditional branch\'s reach (about ±4 KiB).',
   },
   'superopt-what': {
     q: 'What does a **superoptimiser** search for?',

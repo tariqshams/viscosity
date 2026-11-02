@@ -18,7 +18,8 @@ import PrologueSteps from '../../../components/diagrams/ch229/PrologueSteps';
 
 ## What survives a call?
 
-In the last chapter `sumsq` called `sq` once per trip round its loop.
+In *Calling conventions and the ABI*, `sumsq` called `sq` once per
+trip round its loop.
 While `sq` runs, `sumsq` still needs three values: `n`, the running sum
 `s` and the counter `i`. There is only one set of registers, and `sq`,
 compiled separately, uses registers too. If `sumsq` kept `i` in `t0`
@@ -197,16 +198,17 @@ sumsq:
 
 All three are clang's `-O2` output (bodies elided). The leaf `sq`
 needs no prologue or epilogue: it calls nothing, so `ra` survives, and
-it uses no `s` register. `use9` from the last chapter makes a call, so
+it uses no `s` register. `use9` from *Calling conventions and the ABI* makes a call, so
 it must save `ra`; its 16 bytes hold `ra` at `8(sp)` and the ninth
 argument at `0(sp)` (had it needed only the 8 for `ra`, it would still
 claim 16, to keep `sp` aligned). `sumsq` saves `ra` and the three `s` registers, 32 bytes in
 all. (Unoptimised code also sets `s0` to the old `sp` as a frame
-pointer, as the `-O0` `sumsq` did two chapters ago; the psABI makes a
+pointer, as the `-O0` `sumsq` in *RISC-V: registers, memory and the stack*
+did; the psABI makes a
 frame pointer optional and, when there is one, puts it in
 `s0`<Cite id="riscv-psabi" />.) Every one of these instructions is
-pure overhead, which is why compilers inline small callees (chapter
-93) and why a register allocator that prefers `t` registers for
+pure overhead, which is why compilers inline small callees (*Induction variables, the call
+graph and inlining*) and why a register allocator that prefers `t` registers for
 values that never cross a call pays off.
 
 <Prompts ids={['why-save-ra', 'prologue-what', 'frame-size', 'fp-optional']} />
@@ -228,7 +230,8 @@ values that never cross a call pays off.
   the function calls anything) and the `s` registers it uses; the
   **epilogue** restores them, releases the frame and returns.
 
-Next: the patterns a compiler uses to turn ifs, loops, arrays and
-switches into these instructions.
+Next, *Code shape: lowering control flow and data*: the patterns a
+compiler uses to turn ifs, loops, arrays and switches into these
+instructions.
 
 <Quiz />

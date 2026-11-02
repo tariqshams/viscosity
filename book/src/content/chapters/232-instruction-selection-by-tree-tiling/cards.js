@@ -1,4 +1,4 @@
-// Chapter 227 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Instruction selection by tree tiling": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,12 +7,12 @@ export const prompts = {
     a: 'Which machine instructions compute each operation of the IR; its output still uses virtual registers.',
   },
   'why-not-one-to-one': {
-    q: 'Why does `%9 = const 1; %10 = binop + %3, %9` become a single RISC-V instruction?',
-    a: '`addi` carries a 12-bit constant inside the instruction, so one `addi` does both the constant and the add.',
+    q: 'Why can the IR pair `t9 = 1; t10 = t3 + t9` (with t9 used nowhere else) become a single RISC-V instruction?',
+    a: '`addi` carries a 12-bit constant inside the instruction, so one `addi t10, t3, 1` does both the constant and the add.',
   },
   'why-trees': {
     q: 'How do we turn three-address code back into expression trees?',
-    a: 'Replace each temporary that is used exactly once by the expression that computes it, repeatedly.',
+    a: 'Replace each temporary that is used exactly once by the expression that computes it, repeatedly (where moving that computation to its use does not change the result, for example across a store).',
   },
   'tile-what': {
     q: 'What is a **tile**?',
@@ -379,7 +379,7 @@ function select(t) {
 
 export const quiz = [
   {
-    q: 'Which instruction does maximal munch choose for the tree `ADD(a0, CONST 7)` with this chapter’s tiles?',
+    q: 'Maximal munch, with RISC-V tiles that include `ADD(x, y) ⇒ add`, `CONST c ⇒ li` and `ADD(x, CONST c) ⇒ addi`, meets the tree `ADD(a0, CONST 7)`. What does it emit?',
     options: [
       {
         t: '`li v1, 7` then `add v2, a0, v1`',
@@ -469,20 +469,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'Does Viscosity have an instruction selector?',
+    q: 'A source-to-source compiler emits JavaScript, which then runs in Node. Where are machine instructions selected for that program?',
     options: [
       {
-        t: 'Yes, it tiles VIR into RISC-V',
-        why: 'Viscosity never emits machine code.',
+        t: 'In the source-to-source compiler, which tiles its IR into machine code',
+        why: 'It never emits machine code; its output is JavaScript text.',
       },
       {
-        t: 'Yes, it uses LLVM’s',
-        why: 'Viscosity does not use LLVM; its output is JavaScript.',
+        t: 'Nowhere: JavaScript is never turned into machine code',
+        why: 'V8’s optimising tiers compile hot JavaScript to machine code while it runs.',
       },
       {
-        t: 'No: it emits JavaScript, and V8 chooses the machine instructions',
+        t: 'Inside the engine (V8), whose compiling tiers choose the instructions while the program runs',
         correct: true,
-        why: 'Viscosity is a source-to-source compiler, so instruction selection happens inside the engine that runs its output.',
+        why: 'A compiler that outputs source code leaves instruction selection to whatever compiles that source, here V8’s JIT.',
       },
     ],
   },

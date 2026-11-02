@@ -1,4 +1,4 @@
-// Chapter 226 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Jump tables": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,12 +11,12 @@ export const prompts = {
     a: 'A k outside the table would load whatever is in memory there and jump to it; out-of-range values must go to the default.',
   },
   'jt-unsigned': {
-    q: 'How does one `bltu` check both `k < 0` and `k > 4`?',
-    a: 'Read as unsigned, a negative k is a huge number, so "4 < k, unsigned" is true for both.',
+    q: 'RISC-V dispatch for a switch with cases 0 to 4 tests the signed value k with one `bltu a1, a0, .Ldefault` (a1 = 4). How does that one test catch both k < 0 and k > 4?',
+    a: 'Read as unsigned, a negative k is a huge number, so "4 < k, unsigned" is true for both and both go to the default.',
   },
   'jt-cost': {
-    q: 'How does the cost of a jump-table switch grow with the number of cases?',
-    a: 'It does not: one check, one load and one jump, whatever the number of cases.',
+    q: 'How does the time a jump-table dispatch takes grow with the number of cases?',
+    a: 'It does not: one range check, one load and one indirect jump, whatever the number of cases (only the table’s size grows).',
   },
   'jt-vm': {
     q: 'Why is a VM’s dispatch switch a good fit for a jump table?',
@@ -27,8 +27,8 @@ export const prompts = {
     a: 'When the case values are dense (close together); for scattered values the table would be mostly default entries.',
   },
   'jt-sparse': {
-    q: 'What does clang do for a switch on 1, 100, 1000 and 10000?',
-    a: 'A small binary search: it tests k > 999 first, then compares within each half.',
+    q: 'Why does clang not use a jump table for a switch on 1, 100, 1000 and 10000, and what does it emit instead?',
+    a: 'The values are too sparse (the table would need about 10000 entries for four cases), so it emits a small binary search of compares.',
   },
   'jt-values': {
     q: 'A switch whose cases only return constants: what can it become?',
@@ -183,7 +183,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In clang’s table code, why is `k` shifted left by 2 before the load?',
+    q: 'In clang’s RISC-V jump-table code, the table holds `.word` entries and `k` is shifted left by 2 before the load. Why the shift?',
     options: [
       {
         t: 'Each table entry is a 4-byte address',
@@ -246,7 +246,7 @@ export const quiz = [
       },
       {
         t: 'Nothing better than a chain of compares',
-        why: 'LLVM builds exactly such a value table for the consts example.',
+        why: 'LLVM builds exactly such a value table (its switch-to-lookup-table transform).',
       },
       {
         t: 'A jump table whose entries all point at ret',

@@ -1,22 +1,22 @@
-// Chapter 97 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Calling conventions and the ABI": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'args-where': {
-    q: 'Where does RISC-V pass the first eight integer arguments?',
+    q: 'In the standard RISC-V calling convention, where do the first eight integer arguments go?',
     a: 'In registers a0 to a7 (x10 to x17), in order.',
   },
   'result-where': {
-    q: 'Where does a RISC-V function leave an integer result?',
+    q: 'In the standard RISC-V calling convention, where does a function leave an integer result?',
     a: 'In a0 (and a1 as well, if the result needs two registers).',
   },
   'ra-what': {
-    q: 'What does `call sq` do with `ra`, and how does `ret` use it?',
-    a: '`call` stores the address of the next instruction in ra while jumping to sq; `ret` (jalr x0, 0(ra)) jumps back to that address.',
+    q: 'In RISC-V assembly, what does `call f` do with `ra`, and how does `ret` use it?',
+    a: '`call` stores the address of the instruction after it in ra while jumping to f; `ret` (jalr x0, 0(ra)) jumps back to that address.',
   },
   'ninth-arg': {
-    q: 'Where does the callee find its ninth integer argument?',
-    a: 'On the stack, at 0(sp) as sp is on entry; the tenth is at 8(sp), and so on.',
+    q: 'On RV64, a call passes nine `long` arguments. Where does the callee find the ninth?',
+    a: 'On the stack, at 0(sp) as sp is on entry (a0 to a7 hold the first eight); a tenth would be at 8(sp).',
   },
   'abi-what': {
     q: 'What is an **ABI**?',
@@ -31,11 +31,11 @@ export const prompts = {
     a: '4, 8 and 8 bytes.',
   },
   'big-struct': {
-    q: 'How is a 24-byte struct argument passed on RV64?',
-    a: 'By reference: the caller copies it to memory and passes its address in an argument register.',
+    q: 'Under the RISC-V psABI, how is a 24-byte struct argument passed on RV64?',
+    a: 'By reference: the caller copies it to memory and passes its address where a pointer argument would go (an a register, or the stack if they are used up).',
   },
   'abi-mismatch': {
-    q: 'Two object files were compiled with `-mabi=lp64` and `-mabi=lp64d`. What happens when you link them with ld.lld?',
+    q: 'Two RISC-V object files were compiled with `-mabi=lp64` and `-mabi=lp64d`. What happens when you link them with ld.lld (LLVM 18)?',
     a: 'The linker refuses: "cannot link object files with different floating-point ABI".',
   },
 };
@@ -188,7 +188,7 @@ test('small sizes still take a whole register', () => {
 
 export const quiz = [
   {
-    q: '`long f(long a, long b, long c)` is called. In which register is `c`?',
+    q: 'On RISC-V, `long f(long a, long b, long c)` is called. In which register is `c`?',
     options: [
       {
         t: 'a3',
@@ -206,20 +206,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why must the address to return to be passed in a register at all?',
+    q: 'Why does every call have to hand the callee a return address (in ra, on RISC-V)?',
     options: [
       {
         t: 'Because a function can be called from many places, and only the caller knows which one this is',
         correct: true,
-        why: 'call writes the address after itself into ra, so the same sq can return to any caller.',
+        why: 'The callee’s code is the same for every caller, so the way back must arrive with the call; on RISC-V, call writes the address after itself into ra.',
       },
       {
-        t: 'Because ret always returns to the first instruction of main',
-        why: 'ret jumps to whatever is in ra, which is different for every call site.',
+        t: 'Because a return always goes back to the first instruction of main',
+        why: 'A return goes back to the instruction after the call that was made, which is different for every call site.',
       },
       {
-        t: 'It does not: the processor remembers it automatically on a stack',
-        why: 'RISC-V has no hidden return stack in the ISA; the convention uses ra.',
+        t: 'It does not have to: the callee can read which call site called it from its own code',
+        why: 'The callee’s instructions are the same whoever calls it, so nothing in them says where this particular call came from.',
       },
     ],
   },

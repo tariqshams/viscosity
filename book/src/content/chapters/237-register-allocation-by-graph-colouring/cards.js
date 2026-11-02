@@ -1,4 +1,4 @@
-// Chapter 232 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Register allocation by graph colouring": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -27,7 +27,7 @@ export const prompts = {
     a: 'Removing it lowers each neighbour’s degree by one, which can bring them below k.',
   },
   'stuck-what': {
-    q: 'When is simplify **stuck**?',
+    q: 'In graph-colouring register allocation with k registers, when is simplify **stuck**?',
     a: 'When every node left has k or more neighbours, so none is guaranteed a free colour.',
   },
   optimistic: {
@@ -232,7 +232,7 @@ test('a small tree colours with 2', () => {
 - \`while (stack.length > 0) { const v = stack.pop();\` takes the nodes back last-removed first.
 - \`const used = new Set(g[v].map((w) => c[w]));\` collects the colours of its neighbours that are already coloured.
 - \`let r = 0; while (used.has(r)) r += 1;\` finds the lowest free colour.
-- \`if (r >= k) return null;\` means even optimism failed: this value would have to be spilled (the next chapter).
+- \`if (r >= k) return null;\` means even optimism failed: this value would have to be spilled (see *Spilling and linear scan*).
 - \`c[v] = r;\` colours it, and \`return c;\` returns the allocation.
 
 On the square \`a-b b-c c-d d-a\` with k = 2, every degree is 2 and simplify is stuck at once; optimism pushes \`a\`, after which \`b\` and \`d\` have degree 1 and the rest unravels. Select colours \`a\` last, and its two neighbours \`b\` and \`d\` have ended up with the same colour, so \`a\` finds the other. On \`sumsq\` with k = 3, optimism pushes nodes too, but select meets a value whose neighbours already use all three registers, so the result is \`null\`: four values really are live at once.
@@ -381,7 +381,7 @@ export const quiz = [
     options: [
       {
         t: 'Because simplify gets stuck',
-        why: 'Getting stuck alone does not prove failure; the square gets stuck and still fits.',
+        why: 'Getting stuck alone does not prove failure; a cycle of four with k = 2 gets stuck and still fits.',
       },
       {
         t: 'Because each value interferes with both others, so all three need different registers',
@@ -413,7 +413,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In sumsq, n arrives in a0. How does a colouring allocator respect that?',
+    q: 'A function’s parameter n arrives in a0, by the calling convention. How does a colouring allocator respect that?',
     options: [
       {
         t: 'By treating n’s node as precoloured, with its register fixed in advance',
@@ -422,7 +422,7 @@ export const quiz = [
       },
       {
         t: 'It cannot; a mv is always needed',
-        why: 'If n can stay in a0 without conflict, no mv is needed, as LLVM’s output shows.',
+        why: 'If n can stay in a0 without conflict, no mv is needed; LLVM often leaves such a value where it arrived.',
       },
       {
         t: 'By giving n the highest degree',

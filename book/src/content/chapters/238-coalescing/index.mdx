@@ -167,8 +167,8 @@ loop body for `sumsq` after its register coalescer has run (its slot
 numbers left out). The four copies that were in the loop are gone
 (the two at the entry have become copies of the zero register, an
 `li 0` in disguise); `%8` is `s` and `%9` is `i`, each one register, both read and
-written in place, which is the loop of mul, add and addi you saw at
-the start of the part. Here is the Briggs test coalescing `sumsq` in
+written in place, which is the loop of mul, add and addi you saw in
+*Machine code and assembly*. Here is the Briggs test coalescing `sumsq` in
 JavaScript:
 
 <Run id="coalesce" />
@@ -185,8 +185,8 @@ test passes; and when neither can make progress, it **freezes** a copy
 (gives up on merging it, so its nodes can be simplified like any
 other) before it ever considers a spill<Cite id="georgeappel1996" />.
 The same idea, correctness from copies and quality from coalescing,
-is the second half of the out-of-SSA recipe in the leaving-SSA
-chapter<Cite id="boissinot2009" />.
+is the second half of the out-of-SSA recipe in *Leaving
+SSA*<Cite id="boissinot2009" />.
 
 <Callout kind="engine" label="Under the hood">
 The LLVM listing above comes from `llc -O2 -print-after=register-coalescer`
@@ -214,6 +214,7 @@ registers.
 - **Iterated coalescing** interleaves simplify and coalescing, and
   freezes a copy before spilling.
 
-Next: what to do when there are simply not enough registers.
+Next, *Spilling and linear scan*: what to do when there are not enough
+registers.
 
 <Quiz />

@@ -27,7 +27,8 @@ b1:  ; preds b0 b2
   i1 = φ(i0, i2)
 ```
 
-(These are the phis `%6` and `%3` of chapter 225's VIR, renamed so
+(You met phis in *SSA and phi nodes, built on the fly*; these are the
+phis `%6` and `%3` of the IR in *Machine code and assembly*, renamed so
 that `s0`, `s1`, `s2` are the versions of `s`, and `i0`, `i1`, `i2`
 those of `i`.) A phi means "take `s0` if we arrived from b0, and `s2`
 if we arrived from b2"; however, RISC-V has no instruction that looks
@@ -94,7 +95,7 @@ zero, copied (via `%6`) from `$x0`; `%1` is
 `i` and `%0` is `s`. The copies into `%8` and `%9` at the ends of
 bb.0 and bb.2 are our copies, made into fresh names, which bb.1 then
 copies into `%1` and `%0`. That is a lot of copies for a three-line
-loop; coalescing (the chapter after graph colouring) removes every one
+loop; coalescing (*Coalescing*, after graph colouring) removes every one
 of them.
 
 <Callout kind="definition">
@@ -126,14 +127,14 @@ deletes the phi. It is only safe when Pk leads nowhere but B.</span>
 
 A copy at the end of a predecessor that can also branch somewhere
 else runs on the other path too. The edge from such a block to a
-join is a **critical edge** (chapter 213): its source has several
-successors and its target several predecessors, so there is no block
-that runs exactly when that edge is taken. The cure is the same as in
-chapter 213: **split** the edge, by putting a new, empty block on it,
+join is a **critical edge** (you met them in *Partial redundancy
+elimination*): its source has several successors and its target
+several predecessors, so there is no block that runs exactly when that
+edge is taken. The cure is the same as there: **split** the edge, by putting a new, empty block on it,
 and place the copy there.
 
 Loops make this common. Here is a loop tested at the bottom (the
-rotated shape of chapter 230), where `x` counts up and `y` keeps its
+rotated shape of *Code shape: lowering control flow and data*), where `x` counts up and `y` keeps its
 value from the trip before:
 
 ```text
@@ -148,7 +149,8 @@ return y
 In SSA, `x` has a phi at the top of the loop, and `y1 = x2` is a copy.
 The middle end's **copy propagation** (replacing every use of a name
 that is only a copy of another by the other, a close cousin of
-constant propagation in chapter 92) rewrites `return y1` as
+the constant propagation of *Dataflow, fixpoints and constant
+propagation*) rewrites `return y1` as
 `return x2` and lets dead-code elimination delete the copy:
 
 ```text
@@ -284,6 +286,7 @@ chapter<Cite id="coopertorczon2022" />.
   and a naive copy on the back edge overwrites it.
 - Compilers insert copies freely for correctness, then coalesce.
 
-Next: when the copies for several phis get in each other's way.
+Next, *Parallel copies and the swap problem*: when the copies for
+several phis get in each other's way.
 
 <Quiz />

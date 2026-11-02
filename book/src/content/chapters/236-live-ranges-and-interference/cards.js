@@ -1,4 +1,4 @@
-// Chapter 231 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Live ranges and interference": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,8 +11,8 @@ export const prompts = {
     a: 'The set of program points where it is live: from where some path still reaches a use of it without a new definition.',
   },
   'n-whole-loop': {
-    q: 'In sumsq, `n` is only read by the loop test. Why is it live in the whole loop body too?',
-    a: 'Every trip comes back to the test, so from anywhere in the body some path still reads n.',
+    q: 'A loop’s bound `n` is read only by the loop test at the top of the loop, and never reassigned. Why is `n` live throughout the loop body too?',
+    a: 'Every trip comes back to the test, so from anywhere in the body some path still reaches a read of n.',
   },
   'range-pieces': {
     q: 'Must a live range be one unbroken stretch of code?',
@@ -23,16 +23,16 @@ export const prompts = {
     a: 'When one is defined at a point where the other is live (and the definition is not a copy of the other), so they cannot share a register.',
   },
   'def-rule': {
-    q: 'At an instruction defining `d`, which values get an edge to `d`?',
+    q: 'Building an interference graph by Chaitin’s rule: at an instruction defining `d`, which values get an edge to `d`?',
     a: 'Every value live just after the instruction, other than d itself (and other than the source, if it is a copy).',
   },
   'copy-rule': {
-    q: 'Why does `mv d, s` not make d and s interfere?',
-    a: 'After the copy they hold the same value, so one register can hold both; if they get the same register, the mv disappears.',
+    q: 'Building an interference graph, why does the copy `mv d, s` itself add no edge between d and s?',
+    a: 'Just after the copy they hold the same value, so one register can hold both (if they get it, the mv disappears); an edge can still come from a later definition of either while the other is live.',
   },
-  'clique-four': {
-    q: 'What does it mean that n, s1, i1 and t in sumsq are all joined to each other?',
-    a: 'All four are live at once (just after the mul), so at least four registers are needed.',
+  'clique-needs': {
+    q: 'In an interference graph, four values are all joined to one another. What does that say about the registers needed?',
+    a: 'At least four: each of the four must be in a different register from the other three.',
   },
 };
 
@@ -153,7 +153,7 @@ test('a dead definition still interferes', () => {
       'Loop over `live`. Skip `x === def`. If the instruction is a copy, also skip `x === uses[0]`. Call `edge(def, x)` for the rest.',
       'Inside `if (def) {`: `for (const x of live) { if (x === def) continue; if (copy && x === uses[0]) continue; edge(def, x); }`.',
     ],
-    walkthrough: `**How to think about it.** The walk is the liveness walk of chapter 210, run backwards through one block: at the bottom, the live set is \`liveOut\`; above each instruction, remove what it defines and add what it reads. At the moment we are *at* an instruction, before updating, \`live\` holds exactly the values live just after it. Those are the values that must survive while this instruction writes its result, so the result's register must differ from all of theirs: one edge each. The copy rule removes one edge, and that is all.
+    walkthrough: `**How to think about it.** The walk is the liveness walk of *Liveness*, run backwards through one block: at the bottom, the live set is \`liveOut\`; above each instruction, remove what it defines and add what it reads. At the moment we are *at* an instruction, before updating, \`live\` holds exactly the values live just after it. Those are the values that must survive while this instruction writes its result, so the result's register must differ from all of theirs: one edge each. The copy rule removes one edge, and that is all.
 
 **The solution, line by line.**
 
@@ -255,7 +255,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is there no edge between s1 and s2 in sumsq’s interference graph, although both appear in `mv s1, s2`?',
+    q: 'A loop body is `add s2, s1, t; addi i2, i1, 1; mv s1, s2; mv i1, i2; j b1`. Why is there no interference edge between s1 and s2, although both appear in `mv s1, s2`?',
     options: [
       {
         t: 'Because a copy makes its source and destination equal, so the copy rule adds no edge',
@@ -273,14 +273,14 @@ export const quiz = [
     ],
   },
   {
-    q: 'How many registers does sumsq’s loop need at the very least?',
+    q: 'A loop is `b1: bge i1, n, b4`, `b2: mul t, i1, i1; add s2, s1, t; addi i2, i1, 1; mv s1, s2; mv i1, i2; j b1`, and s1 is read after the loop. How many registers does it need at the very least?',
     options: [
       {
         t: 'Three: s, i and n',
         why: 'Just after the mul, t is live as well.',
       },
       {
-        t: 'Eight, one per virtual register',
+        t: 'Six, one per virtual register in the loop',
         why: 'Values whose ranges never overlap can share; that is the whole point.',
       },
       {
@@ -291,7 +291,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'An instruction defines x, but x is never used. Does x interfere with the values live after it?',
+    q: 'Under Chaitin’s rule, an instruction defines x, but x is never used. Does x interfere with the values live after it?',
     options: [
       {
         t: 'No, because x is never live',
@@ -309,7 +309,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the backward walk, when are a definition’s edges added?',
+    q: 'Building an interference graph by walking a block backwards with a live set, when are a definition’s edges added?',
     options: [
       {
         t: 'Before updating the live set at that instruction, so it still holds the values live just after it',

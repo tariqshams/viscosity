@@ -21,7 +21,7 @@ import ScanSteps from '../../../components/diagrams/ch240/ScanSteps';
 Graph colouring needs the interference graph, and the graph can be
 large: every value that is alive while many others are alive gets an
 edge to each of them. For an ahead-of-time compiler that is a fair
-price. For a just-in-time compiler (chapter 88's optimising tiers),
+price. For a just-in-time compiler (the optimising tiers of *Tiers, speculation and deoptimisation*),
 which compiles while the user waits, it can be too much: the time
 spent allocating is time the program is not running. Poletto and
 Sarkar's answer was an allocator that is "not based on graph
@@ -108,8 +108,8 @@ intervals, sorted by start point. It keeps the active intervals
 sorted by end point; for each new interval it expires those that have
 ended, assigns a free register if there is one, and otherwise spills
 whichever ends last, the new interval or the last active one. The
-spilled interval is then handled with spill code, as in the previous
-chapter.
+spilled interval is then handled with spill code, as in *Spilling and linear
+scan*.
 </Callout>
 
 <Examples of="live-interval linear-scan">
@@ -211,7 +211,7 @@ runs one of these allocators on its output.
   allocator, and Cranelift's regalloc2 all mix these ideas: priorities,
   eviction, splitting and spilling.
 
-Next: the instructions are chosen and the registers assigned; the
-order the instructions run in is still ours to change.
+Next, *Instruction scheduling*: the instructions are chosen and the
+registers assigned, but the order they run in is still ours to change.
 
 <Quiz />

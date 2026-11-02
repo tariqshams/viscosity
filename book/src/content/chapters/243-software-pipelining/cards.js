@@ -1,17 +1,17 @@
-// Chapter 238 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Software pipelining": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'why-not-one-trip': {
-    q: 'Why can no order of one trip\'s five instructions remove the stalls in the sum-of-squares loop?',
-    a: 'Its critical path, ld then mul then add, is longer than the trip has instructions to fill it with; the gaps can only be filled from other trips.',
+    q: 'A loop body is `ld a3; mul a3, a3, a3; add a2, a3, a2; addi a0; bne`, on an in-order machine that starts one instruction per cycle, with loads and multiplies taking 3 cycles. Why can no order of these five instructions remove all the stalls?',
+    a: 'Its critical path, ld then mul then add, is longer than the trip has other instructions to fill it with; the gaps can only be filled from other trips.',
   },
   'kernel-what': {
     q: 'In a software-pipelined loop, what is the **kernel**?',
     a: 'The new loop body, run again and again, in which every stage is busy, each on a different trip of the old loop.',
   },
   'pro-epi': {
-    q: 'What do the **prologue** and the **epilogue** do?',
+    q: 'In a software-pipelined loop, what do the **prologue** and the **epilogue** do?',
     a: 'The prologue starts the first trips to fill the pipeline before the kernel; the epilogue finishes the last trips to drain it after.',
   },
   'kernel-order': {
@@ -20,7 +20,7 @@ export const prompts = {
   },
   'ii-what': {
     q: 'What is the **initiation interval** of a pipelined loop?',
-    a: 'The number of cycles between the starts of consecutive trips: the length of one pass of the kernel (5 in the chapter\'s loop).',
+    a: 'The number of cycles between the starts of consecutive trips of the original loop (with no kernel unrolling, the length of one pass of the kernel).',
   },
   'cost-registers': {
     q: 'Why does software pipelining raise register pressure?',
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'Add a guard that sends short loops to a plain, unpipelined copy, since they never reach the kernel.',
   },
   'pipeliner-when': {
-    q: 'When does LLVM\'s software pipeliner run?',
+    q: 'When does LLVM\'s software pipeliner (MachinePipeliner, LLVM 18) run?',
     a: 'Just before register allocation, while the machine code is still in SSA form.',
   },
 };
@@ -176,7 +176,7 @@ For three stages and four trips, row 2 is the first where all three stages are b
 
 export const quiz = [
   {
-    q: 'In the pipelined kernel, `add`, `mul` and `ld` work on elements i, i + 1 and i + 2. Why does the kernel\'s `mul` never stall?',
+    q: 'A pipelined kernel `add a2, a2, a5; mul a5, a4, a4; ld a4, 0(a0); addi a0, a0, 8; bne a0, a1, loop` runs on an in-order machine, one instruction per cycle, where a load takes 3 cycles. Its add, mul and ld work on elements i, i + 1 and i + 2. Why does the mul never stall?',
     options: [
       {
         t: 'Multiplies are faster in a kernel',
@@ -225,7 +225,7 @@ export const quiz = [
       },
       {
         t: 'It only reorders the instructions inside one trip',
-        why: 'That is ordinary scheduling, which the chapter showed cannot remove these stalls.',
+        why: 'That is ordinary scheduling, which cannot fill gaps that a single trip has nothing to fill with.',
       },
     ],
   },
@@ -234,21 +234,21 @@ export const quiz = [
     options: [
       {
         t: 'The loop computes a slightly different answer',
-        why: 'It computes exactly the same answer; the runnable example checks that.',
+        why: 'It computes exactly the same answer, because every dependence is still respected.',
       },
       {
         t: 'It needs more registers, because several trips\' values are alive at once',
         correct: true,
-        why: 'a4 and a5 hold values of two different trips; on a bigger loop this can force spills.',
+        why: 'Registers hold the half-finished values of several trips at once; on a bigger loop this can force spills.',
       },
       {
         t: 'It makes every loop slower for long lists',
-        why: 'For long lists it is faster: 5 cycles an element instead of 8 in the chapter.',
+        why: 'For long lists it is faster: once the kernel runs, each element costs fewer cycles because the stalls are filled.',
       },
     ],
   },
   {
-    q: 'In the kernel, why must `mul a5, a4, a4` come before `ld a4, 0(a0)`?',
+    q: 'In the software-pipelined kernel `add a2, a2, a5; mul a5, a4, a4; ld a4, 0(a0); addi a0, a0, 8; bne a0, a1, loop`, why must the mul come before the ld?',
     options: [
       {
         t: 'Because loads are slow and should go last',

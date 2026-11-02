@@ -18,11 +18,12 @@ import OptimismFigure from '../../../components/diagrams/ch237/OptimismFigure';
 
 ## Colouring a map
 
-The last chapter left `sumsq` as eight virtual registers and a graph
+*Live ranges and interference* left `sumsq` as eight virtual registers
+and a graph
 saying which of them may not share. **Register allocation** is the
 stage that decides which real register each virtual register gets
 (and, when there are not enough, which values must wait in memory
-instead, the subject of the chapter on spilling). With the interference
+instead, the subject of *Spilling and linear scan*). With the interference
 graph in hand, its question becomes a famous puzzle: give every node
 one of k colours, the k registers, so that no edge joins two nodes of
 the same colour.
@@ -202,8 +203,7 @@ edges, then running the same simplify and select
 <Cite id="coopertorczon2022" />. LLVM's default allocator, the greedy
 one, is not a colouring allocator at all, but it asks the same
 question (do these two live ranges overlap?) one live range at a time
-<Cite id="llvm-codegen" />; the chapter on linear scan comes back to
-it. Viscosity
+<Cite id="llvm-codegen" />; *Linear scan* comes back to it. Viscosity
 allocates no registers; V8 does that for the JavaScript it emits.
 </Callout>
 
@@ -225,6 +225,7 @@ allocates no registers; V8 does that for the JavaScript it emits.
 - With four registers, `sumsq` colours with no spill, and by luck all
   its copies become copies of a register to itself.
 
-Next: making copies disappear on purpose rather than by luck.
+Next, *Coalescing*: making copies disappear on purpose rather than by
+luck.
 
 <Quiz />

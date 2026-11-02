@@ -1,17 +1,17 @@
-// Chapter 234 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Spilling and linear scan": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'spill-what': {
-    q: 'What does **spilling** a value mean?',
-    a: 'Keeping it in a stack slot instead of a register: a store after each definition, a load into a fresh name before each use.',
+    q: 'In a Chaitin-style allocator, what does **spilling** a value mean?',
+    a: 'Keeping it in a stack slot instead of a register for its whole life: a store after each definition, a load into a fresh name before each use.',
   },
   'spill-when': {
     q: 'When is spilling unavoidable?',
     a: 'When more values are alive at the same moment than there are registers; no colouring can fit them.',
   },
   'spill-code': {
-    q: 'After spill code is inserted, what must the allocator do next?',
+    q: 'In a graph-colouring allocator, after spill code is inserted, what must the allocator do next?',
     a: 'Rebuild the interference graph (the spilled value is replaced by short-lived fresh names) and colour it again.',
   },
   'loop-weight': {
@@ -23,15 +23,15 @@ export const prompts = {
     a: 'A value with many neighbours is in the way of many others, so spilling it frees the most; dividing favours cheap values that block a lot.',
   },
   'tiny-range': {
-    q: 'Why is spilling `t` (live from the mul to the next instruction) pointless?',
+    q: 'Why is it pointless to spill a value that lives only from one instruction to the very next?',
     a: 'Its range is already as short as it gets; spilling would only replace it with equally short values around a store and a load.',
   },
   rebuild: {
-    q: 'After spilling n in sumsq, why do three registers suffice?',
-    a: 'n is replaced by n1 and n2, each alive for one instruction; n2 interferes only with s and i, so no four values are alive at once.',
+    q: 'In a loop, n, s, i and t are all live just after `mul t, i, i`; n is read only by the loop test, before the mul. Once n is spilled (reloaded just before the test), why do three registers suffice?',
+    a: 'The reloaded n lives only from its load to the test, where t is not live, so no point has more than three values alive at once.',
   },
   'o0-why': {
-    q: 'Why is LLVM’s -O0 code for sumsq full of loads and stores?',
+    q: 'Run through `llc -O0`, why is the code for a small loop full of loads and stores to stack slots?',
     a: 'The fast allocator works one basic block at a time, so every value alive across a block boundary is stored and reloaded.',
   },
 };
@@ -320,10 +320,10 @@ export const quiz = [
     ],
   },
   {
-    q: 'In sumsq, why is n chosen to spill rather than s?',
+    q: 'Spill costs weight each load or store by 10 per enclosing loop. In one loop, n is defined once before it and read once per trip; s is defined before it, read and written once per trip, and read once after it; both have degree 3. Why does Chaitin’s rule spill n rather than s?',
     options: [
       {
-        t: 'n spilled costs one load per trip (cost 11); s would cost a load and a store per trip (cost 22), with the same degree',
+        t: 'n spilled costs one store outside and one load per trip (cost 11); s would cost a load and a store per trip and two outside (cost 22), with the same degree',
         correct: true,
         why: 'Smallest cost divided by degree wins.',
       },
@@ -333,7 +333,7 @@ export const quiz = [
       },
       {
         t: 'n has the most neighbours',
-        why: 'All four have degree 3 here; cost decides.',
+        why: 'Both have degree 3 here; cost decides.',
       },
     ],
   },
@@ -356,7 +356,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is a value with a tiny live range given an infinite spill cost?',
+    q: 'Why do Chaitin-style allocators give a value with a tiny live range an infinite spill cost?',
     options: [
       {
         t: 'Because spilling it does not shorten anything: it would become equally short values around a load and a store',

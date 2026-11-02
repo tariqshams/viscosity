@@ -1,10 +1,10 @@
-// Chapter 236 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Instruction scheduling": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'latency-what': {
     q: 'What is the **latency** of an instruction?',
-    a: 'The number of cycles from when it starts to when an instruction that uses its result can start (3 for a load or multiply on our toy machine, 1 for most others).',
+    a: 'The number of cycles from when it starts to when an instruction that uses its result can start (on SiFive’s 7-series cores, for example, 3 for a load or an integer multiply).',
   },
   'stall-what': {
     q: 'What is a **stall**?',
@@ -16,10 +16,10 @@ export const prompts = {
   },
   'true-dep': {
     q: 'In `ld a3, 0(a0)` followed by `mul a3, a3, a3`, what kind of dependence is there, and what delay does it get?',
-    a: 'A true dependence (mul reads the a3 that ld writes), with the load\'s latency as the delay: 3 cycles on our toy machine.',
+    a: 'A true dependence (mul reads the a3 that ld writes), with the load\'s latency as the delay (3 cycles on a core whose loads take 3).',
   },
   'anti-dep': {
-    q: 'Why may `addi a0, a0, 8` not move above `ld a3, 0(a0)`?',
+    q: 'A block has `ld a3, 0(a0)` and, later, `addi a0, a0, 8`. Why may a scheduler not put the addi before the ld?',
     a: 'It is an anti dependence: the load must read the old a0, so the instruction that overwrites a0 has to come after it.',
   },
   'dag-acyclic': {
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'The longest path through it, adding up the delays. No schedule can finish sooner than that, however clever.',
   },
   'memory-edge': {
-    q: 'When must a store and a later load keep their order?',
+    q: 'When scheduling, when must a store and a later load keep their order?',
     a: 'Whenever their addresses might be the same; only if alias analysis proves they never overlap may they swap.',
   },
 };
@@ -190,11 +190,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which reordering of the loop body is **not** allowed?',
+    q: 'In the loop body `ld a3, 0(a0); mul a3, a3, a3; add a2, a3, a2; addi a0, a0, 8; bne a0, a1, loop`, which reordering is **not** allowed?',
     options: [
       {
         t: 'Moving `addi a0, a0, 8` to just after `mul`',
-        why: 'Allowed: addi only has to come after the ld that reads a0, and it still does. This is the order clang chose.',
+        why: 'Allowed: addi only has to come after the ld that reads a0, and it still does. This is the order clang 18 chooses at -O2.',
       },
       {
         t: 'Moving `addi a0, a0, 8` above `ld a3, 0(a0)`',
@@ -226,7 +226,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The critical path of a block\'s DAG has length 7. What can you say about any schedule of it?',
+    q: 'The critical path of a block\'s dependence DAG has length 7 (the sum of its delays). If the first instruction starts in cycle 0, what can you say about any schedule of it?',
     options: [
       {
         t: 'Its last instruction starts no earlier than cycle 7',

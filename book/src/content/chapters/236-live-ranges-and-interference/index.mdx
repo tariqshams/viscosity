@@ -71,7 +71,7 @@ its room straight to its own copy without either moving out.</span>
 
 ## Live ranges
 
-Chapter 210 gave us exactly the tool: a variable is **live** at a
+*Liveness* gave us exactly the tool: a variable is **live** at a
 point if some path from there reads it before it is overwritten, and
 the live sets come from a backward dataflow analysis, iterated to a
 fixpoint. For `sumsq` the analysis gives these sets on entry to each
@@ -85,7 +85,7 @@ in(b4) = {s1}
 ```
 
 Inside a block we walk backwards from its live-out set, one
-instruction at a time, with the rule of chapter 210: above an
+instruction at a time, with the rule from *Liveness*: above an
 instruction, remove what it defines, then add what it reads. The set
 of all the points where a value is live is its **live range**. `n`
 is live everywhere from the entry to the loop test, round and round
@@ -179,7 +179,7 @@ sets d from x, because then the two hold the same value and may share
 a register.</span>
 </Formal>
 
-<Prompts ids={['interfere-what', 'def-rule', 'copy-rule', 'clique-four']} />
+<Prompts ids={['interfere-what', 'def-rule', 'copy-rule', 'clique-needs']} />
 
 <Examples of="interference-graph">
 
@@ -245,7 +245,7 @@ registers.
 - In `sumsq`, `n`, `s1`, `i1` and `t` all touch, so the loop needs
   four registers, and the four copies are pairs that could share.
 
-Next: giving each node a register so that no edge joins two nodes
-with the same one, which is the colouring of a graph.
+Next, *Register allocation by graph colouring*: giving each node a
+register so that no edge joins two nodes with the same one.
 
 <Quiz />

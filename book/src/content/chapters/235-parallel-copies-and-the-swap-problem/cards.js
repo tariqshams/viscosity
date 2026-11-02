@@ -1,4 +1,4 @@
-// Chapter 230 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Parallel copies and the swap problem": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,19 +15,19 @@ export const prompts = {
     a: 'All the phis of a block take their values at the same instant, as control crosses the edge, so none may see another’s new value.',
   },
   'swap-not-critical': {
-    q: 'Is the swap problem caused by a critical edge?',
-    a: 'No: the copies are in the right place (b2 has one successor) but in an order that cannot work; a swap needs a spare register.',
+    q: 'Is the swap problem of naive phi removal caused by a critical edge?',
+    a: 'No: it happens even when the copies sit in a predecessor with a single successor; they are in the right place, but no order of two plain copies can swap, so a spare register is needed.',
   },
   'safe-first': {
     q: 'When is a copy `d = s` safe to do first, out of a parallel copy?',
     a: 'When no other waiting copy still reads d, since d’s old value is then needed by nobody.',
   },
   'stuck-means-cycle': {
-    q: 'What does it mean if no waiting copy is safe, and what do we do?',
-    a: 'The waiting copies form cycles. Save one value of a cycle in a spare register t, let its reader read t, and continue.',
+    q: 'While sequencing a parallel copy, no waiting copy is safe to do next. What does that mean, and what is done?',
+    a: 'The waiting copies form cycles. Save one value of a cycle in a spare register t, let the copy that reads it read t instead, and continue.',
   },
   'how-many': {
-    q: 'How many sequential copies does a parallel copy need?',
+    q: 'Sequenced with one spare register, how many ordinary copies does a parallel copy need?',
     a: 'One per copy (dropping any copy of a register to itself), plus one extra per cycle, to save a value in t.',
   },
   'chain-order': {
@@ -356,7 +356,7 @@ export const quiz = [
       {
         t: 'It turns a set of moves that must happen at once into ordinary moves, using a scratch register if one is needed',
         correct: true,
-        why: 'That is this chapter’s algorithm, applied to registers and stack slots.',
+        why: 'It is the standard sequencing algorithm (chains first, a scratch register to break each cycle), applied to registers and stack slots.',
       },
     ],
   },

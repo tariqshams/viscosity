@@ -18,8 +18,8 @@ import AddressFigure from '../../../components/diagrams/ch230/AddressFigure';
 
 ## Same meaning, different shapes
 
-Put our hand-written `sumsq` beside clang's, and look only at the
-loops:
+Put the hand-written `sumsq` from *Machine code and assembly* beside
+clang's, and look only at the loops:
 
 ```text
 loop:                   # ours
@@ -66,7 +66,7 @@ has no instruction with two targets: a branch either jumps or falls
 through to the next instruction. So the usual shape lays out the
 "then" block right after the test and branches *away* on the opposite
 condition: `if (a < b)` becomes "branch to the else part if
-`a >= b`". A short-circuit `&&` (chapter 67) needs no boolean value
+`a >= b`". A short-circuit `&&` (*Statements, environments and control flow*) needs no boolean value
 at all: each half becomes its own branch to the same exit, so the
 second test runs only if the first passed.
 
@@ -104,7 +104,8 @@ test is inverted (`bge` for `a < b`) so that the "then" part, the call
 to `f`, follows straight on. `tail f` is a pseudoinstruction for a
 **tail call**: since `ifelse` has nothing left to do after `f`, it
 jumps to `f` without saving anything, and `f`'s `ret` returns straight
-to `ifelse`'s caller<Cite id="riscv-asm-manual" />. The second shows
+to `ifelse`'s caller<Cite id="riscv-asm-manual" /> (*Tail calls*, in
+the language-features deep dive, goes further into them). The second shows
 `&&` with no `&&` left: two `blez` ("branch if ≤ 0") to the same
 label. The third is a conditional value: `a` is already in `a0`, the
 result register, so the shape is "copy `b` over it unless `b < a`",
@@ -143,7 +144,7 @@ Rotation is why clang's `sumsq` counts with `bne a0, a2` at the
 bottom. The cost is a second copy of the test, which is small, and the
 benefit is one fewer branch per trip, which adds up over millions of
 trips (and every branch is one more guess a pipeline has to make, as
-chapter 52 showed).
+*Prefetching, pointer chasing, branches and SIMD* showed).
 
 <Prompts ids={['shape-what', 'invert-test', 'andand-shape', 'rotate-why', 'tail-call']} />
 
@@ -152,7 +153,7 @@ chapter 52 showed).
 Control flow is half of lowering; the other half is data. RISC-V's one
 addressing mode is a register plus a small constant, so `xs[i]` has to
 be turned into an address with ordinary arithmetic first. The elements
-of an array sit side by side (chapter 50), each `size` bytes, so
+of an array sit side by side (*Bytes, floats and memory*), each `size` bytes, so
 element `i` starts `i × size` bytes after the first.
 
 <Analogy extra title="plots on a new street">
@@ -237,7 +238,8 @@ the last addition. The third is a 2D array, where the row count needs
 a real `mul`, since `cols` is not known in advance. Inside a loop,
 compilers rarely redo this arithmetic each time: clang's loop for
 summing `xs[0..n]` keeps a pointer and adds 8 to it each trip
-(`addi a0, a0, 8`), the strength reduction of chapter 216 at work.
+(`addi a0, a0, 8`), the strength reduction of *Strength reduction and induction variable
+elimination* at work.
 You can check the formula for both layouts here:
 
 <Run id="addresses" />
@@ -260,7 +262,7 @@ You can check the formula for both layouts here:
   a field's offset for records; powers of two become shifts, and the
   layout (AoS or SoA) decides the numbers.
 
-Next: the switch statement, and the table that turns a chain of tests
-into a single jump.
+Next, *Jump tables*: the switch statement, and the table that turns a
+chain of tests into a single jump.
 
 <Quiz />

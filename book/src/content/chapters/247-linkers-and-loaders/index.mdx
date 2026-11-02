@@ -17,7 +17,7 @@ import LoadFigure from '../../../components/diagrams/ch247/LoadFigure';
 
 ## Many files, one program
 
-The last chapter left us with two object files. `main.o` holds
+*Assemblers, object files and linking* left us with two object files. `main.o` holds
 `_start`, which loads the address of a little table and calls `sumsq`;
 `loop.o` holds `sumsq`. Each was assembled on its own, so each thinks its
 code starts at address 0, `main.o` has three holes in it, and neither
@@ -114,7 +114,7 @@ Once every name is resolved, the linker lays out the output: all the
 chosen for the executable (0x11158 for `_start` in our link, then
 `sumsq` 24 bytes later, at 0x11170). Now every symbol has a final
 address, so every relocation can be computed with the psABI formulas of
-the last chapter<Cite id="riscv-psabi" />: the steps above show all
+*Assemblers, object files and linking*<Cite id="riscv-psabi" />: the steps above show all
 three, and `llvm-objdump -d prog` confirms the bytes.
 
 <Callout kind="definition">
@@ -250,8 +250,8 @@ RISC-V computer; on a RISC-V Linux system, or under an emulator, the
 kernel would load it exactly as described and `_start` would call
 `sumsq` with the table. And Viscosity, again, has no loader of its own:
 its output is JavaScript, which the engine compiles in memory as the
-page runs. The next chapter does something similar on purpose: it
-writes code while the program is running.
+page runs. The next chapter, *A tiny JIT*, does something similar on
+purpose: it writes code while the program is running.
 
 <Prompts ids={['loader-what', 'entry-point', 'memsz-filesz', 'perm-why']} />
 

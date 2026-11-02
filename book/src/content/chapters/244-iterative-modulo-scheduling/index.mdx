@@ -17,7 +17,7 @@ import RecFigure from '../../../components/diagrams/ch244/RecFigure';
 
 ## From a trick to a method
 
-The last chapter found a kernel for our loop by hand, by staring at the
+*Software pipelining* found a kernel for our loop by hand, by staring at the
 chain of loads, multiplies and adds until a pattern appeared. A compiler
 cannot stare; it needs a method that works for any loop and any machine,
 including machines that can start several instructions per cycle, each
@@ -25,8 +25,8 @@ on its own kind of unit.
 
 The method is to give **every trip the same schedule**. We choose a time
 t(x) for each instruction x, measured from the start of its own trip, and
-start a new trip every II cycles (II is the initiation interval from the
-last chapter). Trip i then runs instruction x at cycle i × II + t(x).
+start a new trip every II cycles (II is the initiation interval of *Software
+pipelining*). Trip i then runs instruction x at cycle i × II + t(x).
 That one decision turns a problem about endless overlapping trips into a
 problem about a small table, as we are about to see.
 
@@ -67,10 +67,10 @@ From that table we can read off a lower bound before we schedule anything.
 If a unit is used u times per trip and there are c of them, it has c × II
 cells, so II must be at least u ÷ c, rounded up: the **resource bound**,
 ResMII. On our one-instruction-per-cycle toy machine, five instructions
-need five cycles: ResMII = 5, the kernel of the last chapter.
+need five cycles: ResMII = 5, the kernel of *Software pipelining*.
 
 The other bound comes from **recurrences**: values that one trip passes
-to the next, like the running sum. A loop-carried edge (chapter 218 called
+to the next, like the running sum. A loop-carried edge (*Dependence analysis, interchange and fusion* called
 them carried dependences) has a delay d and a **distance** δ, the number
 of trips it reaches across. If a chain of such edges comes back to where
 it started, the value goes round it once every δ trips and needs d cycles
@@ -187,7 +187,8 @@ recurrences; give the machine a second ALU and watch ResMII drop to 2.
   that fails, II goes up by one. Rau's **iterative** version evicts and
   retries within a budget first.
 
-Next: once instructions are scheduled, little patterns of waste are often
-left behind; a small window sliding over the code can clean them up.
+Next, *Peephole optimisation*: once instructions are scheduled, little
+patterns of waste are often left behind, and a small window sliding over
+the code can clean them up.
 
 <Quiz />

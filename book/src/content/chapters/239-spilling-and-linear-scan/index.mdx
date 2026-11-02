@@ -19,7 +19,8 @@ import O0Figure from '../../../components/diagrams/ch239/O0Figure';
 ## Four values, three registers
 
 After coalescing, `sumsq` is down to four values, and its loop reads
-like the code we have been aiming at since chapter 225:
+like the code we have been aiming at since *Machine code and
+assembly*:
 
 ```text
     mv   n, a0
@@ -137,7 +138,8 @@ done:
     ret
 ```
 
-The prologue and epilogue (chapter 229) make room for the slot: the
+The prologue and epilogue (*Saving registers: prologues and
+epilogues*) make room for the slot: the
 frame is 16 bytes, because the psABI keeps the stack pointer a
 multiple of 16<Cite id="riscv-psabi" />, even though only 8 are used.
 And `a0` is shared, in turn, by `n` on entry, the reloaded `n`, `t`
@@ -201,7 +203,7 @@ constant, or cheap to recompute, can be recomputed (an `li`) instead
 of reloaded, which needs no slot; Briggs, Cooper and Torczon extended
 Chaitin's handling of it<Cite id="briggs1994" />. And **splitting**: a
 value can be kept in a register in one part of the function and in
-memory in another, which the allocators of the next chapter do.
+memory in another, which the allocators of *Linear scan* do.
 
 <Prompts ids={['o0-why']} />
 
@@ -221,7 +223,7 @@ memory in another, which the allocators of the next chapter do.
 - Spill code is real memory traffic: LLVM's `-O0` allocator spills
   everything that crosses a block, and pays for it on every trip.
 
-Next: an allocator that skips the graph altogether, walks the
-function once, and is fast enough for a JIT.
+Next, *Linear scan*: an allocator that skips the graph altogether,
+walks the function once, and is fast enough for a JIT.
 
 <Quiz />

@@ -1,13 +1,13 @@
-// Chapter 229 cards: recall prompts, examples, exercises and quiz.
+// Cards for "Leaving SSA": recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'destroy-what': {
-    q: 'What does **SSA destruction** do with a phi `x = φ(a1, ..., an)`?',
+    q: 'In the basic method of **SSA destruction**, what is done with a phi `x = φ(a1, ..., an)`?',
     a: 'It puts a copy `x = ak` at the end of each predecessor Pk (before its branch) and deletes the phi.',
   },
   'where-copies': {
-    q: 'In sumsq, `s1 = φ(s0, s2)` sits in b1 with predecessors b0 and b2. Where do the copies go?',
+    q: 'A loop header b1 starts with `s1 = φ(s0, s2)`; its predecessors are b0 (the entry) and b2 (the loop body), and each has b1 as its only successor. Where do the copies go when leaving SSA?',
     a: '`s1 = s0` at the end of b0, and `s1 = s2` at the end of b2, before its jump back to b1.',
   },
   'not-ssa-after': {
@@ -16,15 +16,15 @@ export const prompts = {
   },
   'critical-copy': {
     q: 'Why can a phi’s copy not go at the end of a predecessor that also branches elsewhere?',
-    a: 'The copy would run on the other path too. The edge is critical, so it must be split with a new block that holds the copy.',
+    a: 'The copy would run on the other path too, where it may overwrite a value still needed. The edge is critical; the usual cure is to split it with a new block that holds the copy.',
   },
   'lost-copy-what': {
     q: 'What is the **lost-copy problem**?',
     a: 'A naive phi copy placed on a critical (usually back) edge overwrites the phi’s old value while it is still live, so a later use reads the new value.',
   },
   'copy-prop-cause': {
-    q: 'In the lost-copy loop, what did copy propagation change that made the naive translation wrong?',
-    a: 'It replaced `return y1` by `return x2`, so x2 became live after the loop, at the same time as x3.',
+    q: 'In the classic lost-copy example (a loop that does `y = x; x = x + 1`, then `return y` after it), what does copy propagation change that makes naive phi removal wrong?',
+    a: 'It replaces the use of y after the loop by the phi’s value x2, so x2 becomes live out of the loop at the same time as the new x3.',
   },
   'fresh-copies': {
     q: 'How can phi copies be made always correct without splitting edges?',
@@ -287,16 +287,16 @@ export const quiz = [
       },
       {
         t: 'Whenever its target has a phi',
-        why: 'sumsq’s b1 has phis, but its incoming edges are not critical, and the copies go at the ends of b0 and b2.',
+        why: 'A join whose predecessors each have one successor has phis but no critical edges in; the copies go at the ends of the predecessors.',
       },
       {
         t: 'When it is a back edge',
-        why: 'A back edge from a block with one successor (like sumsq’s b2 → b1) is not critical and needs no splitting.',
+        why: 'A back edge from a block with one successor (a loop body that always jumps back to the header) is not critical and needs no splitting.',
       },
     ],
   },
   {
-    q: 'In the lost-copy loop, the naive translation returns 3 instead of 2. Why?',
+    q: 'In SSA, `b0: x1 = 1`; `b1: x2 = φ(x1, x3); x3 = x2 + 1; if x3 < 3 goto b1 else b2`; `b2: return x2`. Naive phi removal puts `x2 = x3` at the end of b1, and the function returns 3 instead of 2. Why?',
     options: [
       {
         t: 'The loop runs one time too many',
@@ -314,7 +314,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What role did copy propagation play in the lost-copy problem?',
+    q: 'In the classic lost-copy example (a loop with `y = x` inside and `return y` after it), what role does copy propagation play?',
     options: [
       {
         t: 'It created the phi',
@@ -332,7 +332,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'LLVM’s phi elimination for sumsq writes `%8 = COPY %2` at the end of the loop body and `%0 = COPY %8` at the top of the header. Why two copies where one would do?',
+    q: 'For a simple loop, LLVM 18’s phi elimination writes `%8 = COPY %2` at the end of the loop body and `%0 = COPY %8` at the top of the header. Why two copies where one would do?',
     options: [
       {
         t: 'Because RISC-V cannot copy a register in one instruction',

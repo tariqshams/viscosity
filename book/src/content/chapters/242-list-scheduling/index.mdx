@@ -17,7 +17,7 @@ import PressureFigure from '../../../components/diagrams/ch242/PressureFigure';
 
 ## Too many orders to try
 
-The last chapter turned a block into a dependence DAG: which instructions
+*Instruction scheduling* turned a block into a dependence DAG: which instructions
 must wait for which, and for how many cycles. Any order that respects the
 arrows is correct, so the question now is which of those orders is
 fastest. For our five-instruction loop body we could list them all, but
@@ -135,7 +135,7 @@ cycles: ld 0, addi 1, (stall),
 The first is the smallest case where priority matters: `li` and `ld` are
 both ready in cycle 0, and starting the one with the long wait behind it
 (`ld`, height 3) first lets `li` fill a gap; the other way round costs a
-cycle more. The second is our loop body from the last chapter: list
+cycle more. The second is the loop body from *Instruction scheduling*: list
 scheduling reaches 8 cycles, the critical-path bound, so for this block
 it finds the best schedule (a different best order from clang's, as there
 is often more than one). The runnable one computes heights in one
@@ -156,7 +156,7 @@ would hold both. In the faster schedule they are alive at the same time:
 The number of values alive at one point is called the **register
 pressure**. Every overlap a scheduler creates raises it; on a big loop the
 pressure can pass the number of registers there are, and then the
-allocator must spill (chapter 239), adding loads and stores that cost
+allocator must spill (*Spilling and linear scan*), adding loads and stores that cost
 more than the stalls we saved.
 
 <Analogy extra title="a desk with limited space">
@@ -200,7 +200,7 @@ code<Cite id="llvm-machinescheduler" />.
   allocation pull against each other, and compilers schedule before
   allocation while watching pressure, then again after.
 
-Next: a loop is a block that runs again and again; what if we overlapped
-one trip with the next?
+Next, *Software pipelining*: a loop is a block that runs again and
+again, so what if we overlapped one trip with the next?
 
 <Quiz />

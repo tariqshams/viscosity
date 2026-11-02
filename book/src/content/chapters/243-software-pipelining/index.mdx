@@ -19,7 +19,7 @@ import KernelFigure from '../../../components/diagrams/ch243/KernelFigure';
 ## The stalls that will not go away
 
 After list scheduling, one trip round our sum-of-squares loop takes 8
-cycles on the toy machine (one instruction per cycle; loads and
+cycles on the toy machine of *Instruction scheduling* (one instruction per cycle; loads and
 multiplies take 3), and 3 of those cycles are still stalls. No order of
 these five instructions can do better, because the chain `ld`, `mul`,
 `add` is the critical path: the multiply cannot start until the load has
@@ -28,10 +28,10 @@ finished, and the add cannot start until the multiply has.
 However, look at the next trip. Its load reads the next element, which has
 nothing to do with this trip's multiply; the only thing it needs is the
 pointer, and that is ready after one cycle. Within one trip there is
-nothing to fill the gaps with, but across trips there is plenty. Chapter
-217 showed one way to use that: **unroll** the loop, so that a single
+nothing to fill the gaps with, but across trips there is plenty. *Loop
+unrolling and vectorisation* showed one way to use that: **unroll** the loop, so that a single
 block holds two or more trips and the list scheduler can interleave
-them, as it did in the last chapter. That works, but every copy makes the
+them, as it did in *List scheduling*. That works, but every copy makes the
 code longer, and the stalls at the start and end of each unrolled block
 remain.
 
@@ -189,8 +189,8 @@ kernel never runs at all.
 
 Nothing here is free. The prologue and epilogue make the code longer. Each trip in flight needs
 registers of its own (`a4` and `a5` hold two different trips' values at
-once), so pipelining raises register pressure in exactly the way the
-last chapter warned about. A loop with fewer trips than stages never
+once), so pipelining raises register pressure in exactly the way *List
+scheduling* warned about. A loop with fewer trips than stages never
 reaches the kernel, so the compiler needs a guard and a plain copy of
 the loop for short lists. And a value that has to live longer than one
 pass of the kernel would be overwritten by the next trip before it is
@@ -225,7 +225,7 @@ toy machine.
   from being overwritten too early.
 - It costs code size and registers, and needs a fallback for short loops.
 
-Next: how a compiler finds a kernel like ours automatically, for any loop
-and any machine.
+Next, *Iterative modulo scheduling*: how a compiler finds a kernel like
+ours automatically, for any loop and any machine.
 
 <Quiz />

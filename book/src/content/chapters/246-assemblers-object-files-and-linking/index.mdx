@@ -25,9 +25,9 @@ in another, and the data it reads in a third place, and nobody knows
 yet at which addresses they will end up in memory. Three programs turn
 the pieces into something that runs: the **assembler**, the **linker**
 and the **loader**. This chapter covers the first, and the file it
-writes; the next covers the other two.
+writes; *Linkers and loaders* covers the other two.
 
-(As chapter 225 said, Viscosity has no native back end; it hands
+(As *Machine code and assembly* said, Viscosity has no native back end; it hands
 JavaScript to an engine. Every native compiler, however, from clang to
 rustc, ends with exactly these steps, and we can watch them here with
 LLVM's own tools.)
@@ -35,7 +35,7 @@ LLVM's own tools.)
 ## The assembler
 
 For most lines an **assembler** looks up the instruction in the encoding
-tables of chapter 225 and writes its four bytes. Here is LLVM's
+tables of *Machine code and assembly* and writes its four bytes. Here is LLVM's
 assembler, `llvm-mc`, doing one line (`-show-encoding` prints the
 bytes, lowest first):
 
@@ -84,7 +84,7 @@ labels, two passes and a list of holes.</span>
 </Analogy>
 
 LLVM's assembler does not literally read the text twice. Like the
-**backpatching** of chapter 81, it encodes what it can at once, keeps a
+**backpatching** of *Jumps: branches, loops and backpatching*, it encodes what it can at once, keeps a
 list of **fixups** for the places it could not finish, and patches them
 when the labels are known; with `-show-encoding` you can see one
 waiting:
@@ -288,7 +288,8 @@ everything after it<Cite id="riscv-psabi" />.
 - A **relocation** names a place, a way to patch it and a symbol; the
   RISC-V psABI gives each type a formula in S, A and P.
 
-Next: the linker, which joins object files and fills every hole, and the
-loader, which puts the result in memory and starts it.
+Next, *Linkers and loaders*: the linker, which joins object files and
+fills every hole, and the loader, which puts the result in memory and
+starts it.
 
 <Quiz />
