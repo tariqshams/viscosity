@@ -1,4 +1,4 @@
-// Chapter 69 cards: recall prompts, examples, exercises and quiz.
+// Chapter 106 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -14,20 +14,12 @@ export const prompts = {
     q: 'Does Viscosity stop checking a collection at the first bailout reason?',
     a: 'No. It collects every reason (without duplicates), so explain can list everything to change.',
   },
-  'sa-array': {
-    q: 'Which four uses of the array itself are allowed?',
-    a: '`.length`, `push` of one fresh object literal, `ps[i]`, and passing it to a known function whose every call passes it.',
-  },
-  'sa-why-length': {
-    q: '`ps.reverse()` gives two reasons. What are they?',
-    a: 'It reads a property other than `.length`/`.push` (“uses .reverse on the array”), and passes `ps` as the receiver of a method call.',
-  },
   'sa-known': {
     q: 'What makes a function “known” to Viscosity?',
     a: 'It is declared once, and every reference to it is a direct call (not a method call, not stored or passed around), so all its call sites are visible.',
   },
   'sa-mixed': {
-    q: '`total(a)` and `total(b)` are both called. Why do both collections bail out?',
+    q: 'A function `total` is called as `total(a)` and as `total(b)`, with two different collections. Why does Viscosity bail out on both?',
     a: 'The parameter would point at two collections. Viscosity doesn’t make two copies of `total`, so “passed to total(), which is also called with other values”.',
   },
   'sa-export': {
@@ -303,7 +295,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which use of `ps` is on the allow-list?',
+    q: 'Which use of a collection `ps` is on Viscosity’s safety allow-list?',
     options: [
       {
         t: '`ps.forEach(f)`',
@@ -347,14 +339,14 @@ export const quiz = [
     ],
   },
   {
-    q: 'The same program, but `step` is `export function step(qs)`. What changes?',
+    q: 'A module declares `export function step(qs)` and calls `step(ps)` twice, for a collection `ps` that is otherwise safe. What does Viscosity decide, and why?',
     options: [
       {
-        t: 'Nothing; `export` is only about modules',
+        t: 'It transforms `ps`, since `export` is only about modules',
         why: 'Modules are exactly the point: another module can call it.',
       },
       {
-        t: '`step` is no longer known, so passing `ps` to it is an escape',
+        t: 'It keeps `ps`: an exported `step` is not known, so passing `ps` to it is an escape',
         correct: true,
         why: 'Not every call site is visible, so explain says “passed to a function call”.',
       },
@@ -363,7 +355,7 @@ export const quiz = [
         why: 'It compiles one file and can’t see who imports it.',
       },
       {
-        t: 'The collection becomes AoSoA',
+        t: 'It makes `ps` AoSoA instead',
         why: 'Unsafe collections are never transformed.',
       },
     ],

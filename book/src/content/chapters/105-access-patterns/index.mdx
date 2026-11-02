@@ -72,8 +72,8 @@ By this point the safety pass has already collected every element
 access: each `field.get` and `field.set` whose object is an element
 `ps[i]`. (Note that `ps[i].x += 1` is two accesses, a read and a
 write.) Building the table is a matter of filing each one under the
-innermost **natural loop** around it, using the loops that *Loops*
-found from back edges and dominators. Step through it:
+innermost **natural loop** around it, using the loops that *Dominators
+and natural loops* found from back edges. Step through it:
 
 <AccessSteps client:visible />
 
@@ -136,6 +136,16 @@ ps[i].x += ps[i].vx; ps[i].y += ps[i].vy;
   reads vy, y, vx, x  writes y, x
 ```
 
+</Examples>
+
+The first two are real rows from the program in the diagram, printed
+for this chapter. The first loop only reads `x`, and runs exactly ten
+times. The second is the inner loop of the `t` loop, so its depth is
+2; each `+=` is a read and a write, so `x` and `y` are in both sets,
+in whatever order the analysis happened to meet them.
+
+<More title="One collection, two functions">
+
 ```text
 interproc_ok.js:
 · loop at line 7 in centerOfMass()
@@ -144,25 +154,20 @@ interproc_ok.js:
   of 3 fields (x)
 ```
 
-</Examples>
-
-The first two are real rows from the program in the diagram, printed
-for this chapter. The first loop only reads `x`, and runs exactly ten
-times. The second is the inner loop of the `t` loop, so its depth is
-2; each `+=` is a read and a write, so `x` and `y` are in both sets,
-in whatever order the analysis happened to meet them. The third is
-`explain` on the corpus file `interproc_ok.js`, where `bodies` is
-passed to two functions: because the key includes the function, each
+This is `explain` on the corpus file `interproc_ok.js`, where `bodies`
+is passed to two functions: because the key includes the function, each
 gets its own row, and `explain` reports "touches k of F fields",
 counting reads and writes together.
 
-<Prompts ids={['ap-two', 'ap-innermost', 'ap-func']} />
+</More>
+
+<Prompts ids={['ap-innermost']} />
 
 ## Counting trips
 
 **Depth** comes straight from the loop nest. **Trips** is harder, and
-Viscosity only tries the easiest case, which *Induction variables and
-loop invariants* would call a basic induction variable: the loop's
+Viscosity only tries the easiest case, which *Induction variables, the
+call graph and inlining* would call a basic induction variable: the loop's
 condition is `i < c` or `i <= c` for a constant `c`, where `i` is a
 phi that starts at the constant `0` and steps by `1` each time round.
 Here are two real loop headers in VIR:
@@ -198,7 +203,7 @@ at 1 or steps by 2. Today the trip counts feed one line of `explain`:
 a `push` inside loops with known trip counts adds their product to the
 size estimate, which the cost model then reads.
 
-<Prompts ids={['ap-depth', 'ap-trips', 'ap-tripuse']} />
+<Prompts ids={['ap-trips', 'ap-tripuse']} />
 
 ## Hot loops
 
@@ -246,35 +251,28 @@ ps (line 1) {x, y} → struct of arrays
   · loop at line 4 … touches 1 of 2
 ```
 
-```text
-no_loops.js: fills ps in a loop, then
-  only reads ps.length
-· no loop reads or writes its fields,
-  so a new layout cannot pay off
-```
-
 </Examples>
 
 The first touches a field, but outside any loop, so it can never be
 hot. The second shows the weakness of the stand-in: a loop that runs
 **twice** counts just as much as one nested three deep, and the
 collection is transformed (its 100 elements clear the size threshold).
-The third is the corpus file `no_loops.js`: its only loop pushes, and
-pushing is not a field access, so no row has depth above 0. Depth and
-trip counts are recorded, but the planner does not yet weigh one loop
-against another with them; *Profile-guided optimization* replaces the
-guess with measurements from a real run.
+(The corpus file `no_loops.js` is the same story as the first: its only
+loop pushes, and a push is not a field access.) Depth and trip counts
+are recorded, but the planner does not weigh one loop against another
+with them; *Telling Viscosity more: annotations and profiles* adds
+measurements from a real run.
 
 <Prompts ids={['hl-what', 'hl-proxy']} />
 
-<Callout kind="engine" label="Under the hood">
+<More title="Under the hood: how V8 finds hot code">
 V8 finds its hot code by watching: functions start in the interpreter,
 and the ones that run often move up to the optimising tiers, which use
 the type feedback collected along the way<Cite id="v8-maglev" />.
 Viscosity works before the program has run, so it cannot watch; it has
 to read hotness off the code, and "inside a loop" is the part of that
 it can be sure of.
-</Callout>
+</More>
 
 ## Your turn
 
@@ -297,5 +295,8 @@ The first exercise is the core one; the second is extra practice.
 - A **hot loop** is where the time goes. Before the program runs,
   Viscosity's stand-in is "in a loop": with no field access in any
   loop, it keeps the array of objects.
+
+Next: *Proving it safe*, where Viscosity shows that no line of the
+program can tell how the elements are stored.
 
 <Quiz />

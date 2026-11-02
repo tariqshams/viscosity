@@ -18,8 +18,8 @@ import ShapeColumns from '../../../components/diagrams/ch104/ShapeColumns';
 
 ## Same data, different answer
 
-*Finding collections* found the variables that hold an array and only
-ever receive object literals. Here is one from the differential
+*Finding collections, and inferring shapes* found the variables that
+hold an array and only ever receive object literals. Here is one from the differential
 corpus, `shape_mismatch.js`, trimmed:
 
 ```js
@@ -41,9 +41,8 @@ ps (line 2) {y, x} → kept as array of
     ({x, y} vs {y, x})
 ```
 
-(Real `viscosity explain` output, wrapped to fit, as everywhere in
-this chapter.) To see why, we need to be precise about what a shape
-is, and what it takes for one to stay put.
+(Real `viscosity explain` output, wrapped to fit.) To see why, we need
+to say exactly what a shape is, and what keeps one in place.
 
 ## A shape is two lists
 
@@ -131,32 +130,27 @@ const setShape = (c, r, where) => {
 };
 ```
 
-If the collection has no fields yet, the record's field list becomes
-the shape. Otherwise both lists are turned into strings such as
+The first half is the equality check you met in *Finding collections,
+and inferring shapes*: both lists are turned into strings such as
 `["x","y"]` and compared, so a missing field, an extra one or a
-different order all fail; the last two lines are the aliasing rule
-from *Finding collections*. ("The first one it meets" is the last in
-the source, since the worklist takes the last load first, which is why
-`shape_mismatch.js` reports `{y, x}` and blames line 4.) The order
-really matters, because the rewritten
-`push` is positional: the emitter turns `ps.push({ x: a, y: b })` into
-`ps.push(a, b)`, and slot `k` goes into column `k`.
-
-In the terms of *Type and shape inference*, this is shape inference
-with the simplest possible join: equal shapes join to themselves, and
-different shapes join to "no shape at all", a bailout.
-
-<Prompts ids={['rs-order']} />
+different order all fail, because the rewritten `push` is positional
+(`ps.push({ x: a, y: b })` becomes `ps.push(a, b)`, and slot `k` goes
+into column `k`). "The first one it meets" is the last in the source,
+since the worklist takes the last load first, which is why
+`shape_mismatch.js` reports `{y, x}` and blames line 4. The last two
+lines are the aliasing rule, which the section on stability below comes
+back to. As a join, this is the simplest possible one: equal shapes join
+to themselves, and different shapes join to "no shape at all", a
+bailout.
 
 ## What the columns may hold
 
-The second list, the column types, comes from the numeric analysis of
-*Type and shape inference*. For each column, the facts form a lattice
-with two points, "always a number" above "maybe anything", and each
-column starts **optimistic**, at "always a number", falling as soon as
-one value that may flow into it is not provably a number. Two kinds of
-value flow into a column `ps.f`: slot `k` of every literal, and the
-right-hand side of every `ps[i].f = v`. Simplified:
+The second list, the column types, comes from the same optimistic
+numeric fixpoint, with one fact per column as well as per value: each
+column `ps.f` starts at "always a number" and falls as soon as one value
+that may flow into it is not provably a number. Two kinds of value flow
+in: slot `k` of every literal, and the right-hand side of every
+`ps[i].f = v`. Simplified:
 
 ```ts
 for (const f of c.fields) {
@@ -171,11 +165,10 @@ for (const f of c.fields) {
 ```
 
 For each field at position `k`, `ok` starts at the column's current
-fact; a literal whose slot `k`, or a stored value, is not known to be a
-number knocks it down; and `update` stores it and, if it changed,
-sends the outer loop round again,
-because other values (such as a later `s += ps[i].x`) depend on this
-one. The loop stops when a whole round changes nothing: a fixpoint.
+fact; a literal slot or a stored value that is not known to be a number
+knocks it down; and `update` stores it and, if it changed, sends the
+outer loop round again, because other values (such as a later
+`s += ps[i].x`) depend on this one.
 
 <Formal title="The column type of a field">
 
@@ -191,22 +184,20 @@ collection c is the meet (the lower of, written ⊓) of the types of all
 the values that flow into it: one value that may be anything drags the
 whole column down to any. The analysis starts every column at num and
 lets facts only fall, so it finds the greatest fixpoint, the most
-hopeful answer every flow agrees with (the optimistic style of *Sparse
-conditional constant propagation*).</span>
+hopeful answer every flow agrees with.</span>
 </Formal>
 
 A field that falls is not a reason to give up; it only means a
 `Float64Array` would be wrong for it, because a typed array converts
-whatever you store into a number<Cite id="mdn-typed-arrays" />:
+whatever you store into a number<Cite id="mdn-typed-arrays" />. And if
+the facts are still changing after 1000 rounds, Viscosity **fails
+closed**, setting every column to "maybe anything", since an unfinished
+optimistic analysis holds guesses nobody has disproved yet, and those
+are not proofs.
 
+<More title="Run it: what a typed array does to a string">
 <Run id="coerce" />
-
-One more rule makes this trustworthy. Facts only fall, so the loop
-must end; Viscosity does not bet on that, though. It stops after 1000
-rounds, and if the facts were still changing, it **fails closed**,
-setting every fact to "maybe anything". An unfinished
-optimistic analysis still holds guesses nobody has disproved yet, and
-those are not proofs.
+</More>
 
 <Prompts ids={['rs-poison', 'rs-failclosed']} />
 
@@ -261,7 +252,7 @@ delete ps[i].y;
 
 </Examples>
 
-Each way of changing a shape meets a different rule. In the first
+Each way of changing a shape meets its own rule. In the first
 (from `record_shared.js`), `r` is a second name for an element, so a
 write through it could change the element behind the collection's
 back. The second would add a property with no column (reading one is
@@ -304,5 +295,8 @@ The first exercise is the core one; the second is extra practice.
 - **Shape stability** means the shape cannot change after creation.
   Viscosity proves it by allowing only reads and writes of known
   fields, on records that have no other reference.
+
+Next: *Access patterns*, which records what each loop does to those
+fields.
 
 <Quiz />

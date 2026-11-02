@@ -1,4 +1,4 @@
-// Chapter 69 cards: recall prompts, examples, exercises and quiz.
+// Chapter 108 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,7 +7,7 @@ export const prompts = {
     a: 'Whether a (safe) transformation will pay off, so the compiler only makes the profitable ones.',
   },
   'cm-order': {
-    q: 'Which rule does `plan()` check first, and what can override it?',
+    q: 'Which rule does Viscosity’s planner check first, and can anything override it?',
     a: 'Safety: any bailout keeps the collection as objects. Nothing overrides it, not even an annotation.',
   },
   'cm-numeric': {
@@ -19,15 +19,15 @@ export const prompts = {
     a: 'Only repeated work can repay the cost of changing the layout.',
   },
   'cm-estimate': {
-    q: 'How does the analysis estimate a collection’s size statically?',
+    q: 'How does Viscosity estimate a collection’s size statically?',
     a: 'Literal elements, plus each push multiplied by the constant trip counts of the loops around it.',
   },
   'cm-unknown': {
-    q: 'What happens to a collection whose size is unknown statically?',
+    q: 'What does Viscosity’s planner do with a collection whose size is unknown statically?',
     a: 'It passes the size rule: the planner assumes it may be large.',
   },
   'cm-pgo': {
-    q: 'What does `--profile prof.json` change in the planner?',
+    q: 'What does passing `--profile prof.json` to Viscosity change in its planner?',
     a: 'A measured size (maxLength) replaces the static estimate in the size rule.',
   },
   'cm-ignores': {
@@ -338,7 +338,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A collection has a bailout and is annotated `// @viscosity soa`. What happens?',
+    q: 'A collection has a safety bailout and is annotated `// @viscosity soa`. What does Viscosity do?',
     options: [
       {
         t: 'It is kept, with an “unsafe: …” reason.',
@@ -356,7 +356,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The static size of a collection is unknown, because its pushes are inside a function. What does the size rule do?',
+    q: 'The static size of a collection is unknown to Viscosity, because its pushes are inside a function. What does its size rule do?',
     options: [
       {
         t: 'Treats it as 0 and keeps the collection.',
@@ -378,25 +378,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does the 64-element default rest on?',
-    options: [
-      {
-        t: 'A measured crossover point below which SoA is slower.',
-        why: 'The benchmark never measured below 1,000 elements, where SoA still won.',
-      },
-      {
-        t: 'A conservative judgment that tiny collections fit in cache and finish too fast to matter.',
-        correct: true,
-        why: 'Yes. The benchmarks show the gain shrinking with size, but 64 itself is a judgment, adjustable with --min-size.',
-      },
-      {
-        t: 'The size of one cache line.',
-        why: 'A cache line is 64 bytes, not 64 elements. The same number is a coincidence.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these does the current cost model weigh?',
+    q: 'Which of these does Viscosity’s cost model weigh?',
     options: [
       {
         t: 'How many times the loop that reads the fields runs.',

@@ -7,12 +7,9 @@ tagline: 'Viscosity has decided to store your particles as columns. Now it has t
 objectives:
   - Contrast printing code from a tree with splicing edits into the original source, and say what each keeps.
   - Apply a list of range edits back to front, and explain why overlaps are treated as bugs.
-  - Explain why field edits are merged by range for compound assignments, and where the prelude is inserted.
-  - Read the generated container class and bounds check in Viscosity's output.
   - Define an identity transform, and explain why a splicing emitter can promise the same bytes where a printer can only promise the same tree.
   - Say what the front-end’s round-trip, differential and parser-equivalence tests each catch that the others cannot.
   - Explain why each run in the differential test gets a fresh vm context, and why errors are part of a program’s outcome.
-  - Write a small differential tester that compares printed lines and uncaught errors.
 introduces: [codegen, pretty-printing, identity-transform]
 uses: [ast-to-ir, vir, record-collection-nodes, viscosity-pipeline, source-to-source, language-plugin, layout-strategy, estree, ast, ast-node, source-location, tree-printer, emit, lowering, aos-vs-soa, typed-array, float64, class, push, for-of, string-methods, template-literal, error-object, throw, round-trip-testing, differential-testing, test, assertion, edge-case, parser-adapter, parser, resolver, typescript, type-erasure, import-export, module, try-catch, function, callback, array]
 sources: [recast, acorn, mdn-strict-mode, node-vm, csmith]
@@ -22,8 +19,6 @@ import PrintVsSplice from '../../../components/diagrams/ch102/PrintVsSplice';
 import Playground from '../../../components/playground/Playground';
 import FrontEndSteps from '../../../components/diagrams/ch102/FrontEndSteps';
 import PrintVsSpliceO267 from '../../../components/diagrams/ch102/PrintVsSplice_o267';
-
-{/* ── merge: from old chapter 102, Emitting JavaScript ── */}
 
 ## Back to JavaScript
 
@@ -39,11 +34,10 @@ virtual machine, or source code for a source-to-source compiler like
 Viscosity.
 </Callout>
 
-The obvious way is to *print*: walk a tree (or the IR) and write out text
-for every node, as you did in the chapter *Printing trees*. For real
-programs, printing has a catch: the tree does not remember where the line
-breaks were, how much space was around `=`, or where the comments sat, so
-a printer must decide all of that again.
+The obvious way is to *print* text for every node of a tree, as in the
+chapter *Syntax trees and a tree printer*; however, the tree does not
+remember the line breaks, the spacing or where the comments sat, so a
+printer must decide all of that again.
 
 <Callout kind="definition">
 **Pretty-printing** is emitting code from a tree in a readable,
@@ -78,73 +72,39 @@ plainly different (`ps.x[p]` rather than `p.x`).</span>
   <PrintVsSplice />
 </Figure>
 
-Viscosity splices: your comments, blank lines and odd spacing survive
-because nothing ever re-prints them. Even the generated container class
-at the top is not pretty-printed; it is built from template strings, one
-method per line.
+Viscosity splices, so your comments, blank lines and odd spacing survive
+because nothing ever re-prints them (even the generated container class
+at the top is built from template strings, one method per line).
 
 <Examples of="codegen pretty-printing">
-
-```
-# a native back end, for x = a + b
-add a0, a0, a1
-```
 
 ```js
 let x=1+2   // as typed
 let x = 1 + 2; // pretty-printed
-```
-
-```js
-// spliced: ps.push({ x: i, vx: 1 })
-ps.push(i, 1)
+ps.push({ x: i, vx: 1 }) // as typed
+ps.push(i, 1) // spliced by Viscosity
 ```
 
 </Examples>
 
-The first is code generation for a machine, the RISC-V of Part VII:
-one instruction that adds two registers. The second is pretty-printing
-as a formatter does it: the tree for `x = 1 + 2` is the same either way,
-and the printer chooses its own spaces and adds a semicolon. The third is
-Viscosity's kind of code generation, real output: only the object
-literal inside the call was rewritten, and `ps.push(` and the closing
+The first two lines are pretty-printing as a formatter does it: the tree
+is the same either way, and the printer chooses its own spaces and adds
+a semicolon. The last two are Viscosity's code generation, from its real
+output: only the object literal was rewritten (its values became
+arguments of the generated `push`), while `ps.push(` and the closing
 bracket are your own characters, untouched.
 
-<Prompts ids={['codegen-what', 'pretty-what', 'splice-why']} />
+<Prompts ids={['codegen-what', 'splice-why']} />
 
-## The edit list
+## Edits, applied back to front
 
 An edit is a range of the original text and the text to put there
-instead:
-
-```ts
-interface Edit {
-  start: number; // source offsets
-  end: number;
-  text: string;
-}
-```
-
-The offsets come from lowering: every instruction made from a piece of
-source got a `src`, the ESTree node with its `start` and `end`. So the
-emitter can walk the plan's collections, find each instruction it needs
-to change, and go straight back to the exact characters. For a
-collection planned as SoA, `emit.ts` makes these edits:
-
-```
-const ps = []    →  new __Vsc_ps()
-ps.push({x:a,y:b})  →  ps.push(a, b)
-ps[i].x          →  ps.x[i]
-const p = ps[i]  →  const p = i
-p.x              →  ps.x[p]
-for (const p of ps)
-  → for (let p = 0; p < ps.length; p++)
-```
-
-Notice the trick with elements: once `p` holds an *index* instead of an
-object, `p.x` becomes `ps.x[p]`. Here is a real program and its real
-output, without the generated class (the last line is one line in the
-real output):
+instead, `{ start, end, text }`. The offsets come from lowering, where
+every instruction got a `src` (the ESTree node, with its `start` and
+`end`), so the emitter can go from each instruction it needs to change
+straight back to the exact characters. Here is a real program and its real output from
+`viscosity build`, without the generated class (the last line is one
+line in the real output):
 
 ```js
 const ps = [];
@@ -161,10 +121,8 @@ for (let p = 0; p < ps.length; p++)
   ps.x[p] += ps.vx[p];
 ```
 
-<Prompts ids={['src-ref', 'forof-rewrite']} />
-
-## Back to front
-
+Notice the trick with elements: the for-of header now counts, so `p`
+holds an *index* instead of an object, and `p.x` becomes `ps.x[p]`.
 Applying the edits is a short loop at the end of `emitJs` (trimmed):
 
 ```ts
@@ -191,9 +149,11 @@ above (the push is rewritten in three small edits around its values):
 <EditSteps client:visible />
 
 Two edits that overlap would mean two parts of the emitter want to
-rewrite the same characters. No order of applying them can be right, so
+rewrite the same characters; no order of applying them can be right, so
 the emitter refuses with an internal error rather than produce broken
 code.
+
+<Prompts ids={['back-to-front', 'overlap-bug']} />
 
 <Formal title="Splicing disjoint edits">
 
@@ -213,15 +173,19 @@ source after the last edit (|s| is the length of s). Applying them back
 to front builds exactly this.</span>
 </Formal>
 
-The runnable version applies the push's three real edits back to front;
-try sorting them front to back instead and see the text come out
-garbled.
+<More title="The full edit table, one member with two edits, and the prelude">
 
-<Run id="splice" />
+For a collection planned as SoA, `emit.ts` makes these edits:
 
-<Prompts ids={['back-to-front', 'overlap-bug']} />
-
-## One member, two edits
+```
+const ps = []    →  new __Vsc_ps()
+ps.push({x:a,y:b})  →  ps.push(a, b)
+ps[i].x          →  ps.x[i]
+const p = ps[i]  →  const p = i
+p.x              →  ps.x[p]
+for (const p of ps)
+  → for (let p = 0; p < ps.length; p++)
+```
 
 `p.x += p.vx` both reads and writes `p.x`: lowering made a `field.get`
 *and* a `field.set` for it, and both point at the same source range. So
@@ -249,28 +213,24 @@ stores only after the right side has run, into the column as it is by
 then, just as the original assigns after evaluating its right side; it
 covers the read too, so it wins over both.
 
-<Prompts ids={['dedupe-why']} />
-
-## The prelude
-
 The rewritten code needs the container class, so the class goes in
 front, followed by a bounds-check helper if any element access is not
 proven in bounds (it throws the same `TypeError` message the original
-would have). Where exactly does the prelude go? Not always at offset 0.
-A `"use strict"` directive only counts if it comes first in the
+would have). It does not always go at offset 0: a `"use strict"`
+directive only counts if it comes first in the
 script<Cite id="mdn-strict-mode" />, so putting a class above it would
-quietly turn strict mode off; the emitter matches an optional shebang
+quietly turn strict mode off. The emitter matches an optional shebang
 line and an optional directive with a regular expression, and inserts
-the prelude after them. And if no collection is transformed, there is no
-prelude, and `emitJs` returns the source itself, untouched; the next
-chapter turns that into a test.
+the prelude after them.
 
-<Prompts ids={['prelude-strict']} />
+The runnable version applies the push's three real edits back to front;
+try sorting them front to back instead and see the text come out
+garbled.
 
-## Try it
+<Run id="splice" />
 
-Add a comment, odd spacing or a `'use strict';` line at the top, and see
-where everything ends up in the compiled code.
+Or add a comment, odd spacing or a `'use strict';` line at the top here,
+and see where everything ends up in the compiled code:
 
 <Playground client:visible title="Edits, not reprinting" initial={`'use strict';
 const ps = [];
@@ -280,54 +240,26 @@ for (let i = 0; i < 1000; i++) {
 for (const p of ps) p.x   +=   p.vx;
 console.log(ps[5].x);`} />
 
-<Callout kind="engine" label="Under the hood">
 Splicing depends on the parser recording offsets: acorn stores the start
 and end character offsets of every node in `start` and
 `end`<Cite id="acorn" />, and those flow into VIR's `src`. The same idea,
 keeping the original text wherever nothing changed, is what Recast calls
 a nondestructive pretty-printer: it reprints only the parts of the tree
-you modify<Cite id="recast" />. Viscosity goes further: it never builds
-new tree nodes at all, only text edits.
-</Callout>
+you modify<Cite id="recast" />. Viscosity goes further, since it never
+builds new tree nodes at all, only text edits.
 
-## Your turn
-
-The core exercise is the edit loop itself; the second, extra practice,
-is the merge of field edits by range.
-
-<Exercise id="applyEdits" />
-
-<Exercise id="dedupe" />
-
-## What you learned
-
-- **Code generation** turns the IR back into output; for a
-  source-to-source compiler, that output is source code.
-- **Pretty-printing** writes code from a tree in a chosen style and
-  loses the original layout; Viscosity **splices** range edits into the
-  original text instead.
-- Edits are applied **back to front**, so earlier offsets stay valid,
-  and **overlapping** edits are an internal error.
-- Field edits are merged by range: a read beats a write, and a late
-  store beats both.
-- The **prelude** goes after any shebang and `"use strict"`; with
-  nothing to transform, the source comes back unchanged.
-
-
-{/* ── merge: from old chapter 102, Round-trip testing the front-end ── */}
+</More>
 
 ## Nothing to do
 
-Most of the code in a real project has no arrays of same-shaped
-objects in it at all: it reads settings, formats strings, talks to the
-network. Viscosity will still run over every one of those files on
+Most of the code in a real project has no arrays of same-shaped objects
+in it at all, yet Viscosity still runs over every one of those files on
 every build, and for them the only correct output is the file itself,
-unchanged; not reformatted, not with a comment moved, and not with a
-stray blank line added at the top. A compiler that gets the hard files
-right and quietly smudges the easy ones is a compiler nobody will
-leave switched on.
+unchanged (not reformatted, and not with a comment moved or a stray
+blank line added); a compiler that quietly smudges the easy files is a
+compiler nobody will leave switched on.
 
-<Analogy title="a proofreader and a clean page">
+<Analogy extra title="a proofreader and a clean page">
 Hand a good proofreader a page with no mistakes on it, and it comes
 back untouched. If it came back with one comma moved, you would stop
 trusting them, even on the pages that really did need fixing, because
@@ -336,17 +268,6 @@ you could no longer tell their corrections from their accidents.
 that has no mistake in it; Viscosity is not allowed to "improve"
 anything, not even the spacing, because its job is layout, not
 style.</span>
-</Analogy>
-
-<Analogy extra title="a removal crew sent to move nothing">
-Ask a removal crew to move only the piano, and then tell them the
-piano is staying after all. When they leave, the house should be
-exactly as it was, down to the book left open on the arm of the
-sofa.
-<span slot="breaks">In a house you only notice what you look at, so
-a cushion turned over might never be spotted; the test compares every
-single byte, so even an invisible change, such as a missing newline at
-the very end of the file, is caught.</span>
 </Analogy>
 
 <Callout kind="definition">
@@ -358,14 +279,12 @@ round-trip test there is, because the input is its own expected
 output.
 </Callout>
 
-The chapter *Testing compilers* showed the round trip for a printer:
-parse the text, print the tree back out, parse that, and compare the
-two trees. The trees may match while the text differs, because a
-printer builds its output from the tree and the tree does not keep
-everything (comments, blank lines, which quotes you used). Viscosity's
-emitter, as *Emitting JavaScript* showed, does not print; it splices a
-list of edits into your text, and with an empty list there is nothing
-to splice:
+The chapter *Testing compilers: differential, round-trip, fuzzing and
+shrinking* showed the round trip for a printer: parse, print, parse
+again, and compare the two trees. The trees may match while the text
+differs, because the tree does not keep everything (comments, blank
+lines, which quotes you used). A splicer with an empty edit list has
+nothing to splice, so it can promise more:
 
 <Figure takeaway="A printer can only promise the same tree; a splicer with no edits can promise the same bytes." caption="The same three lines through two round trips. The printer rebuilds the text from the tree, so the comment, the blank line and the single quotes are gone; Viscosity, with no edits, hands back its input.">
   <PrintVsSpliceO267 />
@@ -386,12 +305,7 @@ second promise is stronger, since equal text always parses to equal
 trees, but equal trees can come from different text.</span>
 </Formal>
 
-<Prompts ids={['identity-what', 'bytes-not-trees']} />
-
-## The test in the repository
-
-The identity test sits at the end of
-`packages/frontend-js/test/differential.test.ts`:
+<Examples of="identity-transform">
 
 ```ts
 it('leaves programs with nothing to ' +
@@ -405,77 +319,82 @@ it('leaves programs with nothing to ' +
 });
 ```
 
-(The real test name is one string; it is split here to fit.) `src` is
-a 57-byte program, and `toBe` compares the compiled code with it as
-two strings, so every byte has to match. It looks almost too small to
-matter; however, `compile` runs the whole pipeline on it. Acorn parses
-it, the resolver works out what every name means, the lowering builds
-VIR, the analyses look at `a` and reject it (its elements are numbers,
-not object literals), the planner decides nothing, and the emitter,
-with no edits and no prelude, returns its input. A crash anywhere along
-that line, or a single stray edit, fails the test.
-
-The program was chosen with care, too: it has an array, so the
-collection analysis really runs; a comment, which a printer would lose;
-and a final newline, the classic thing to drop.
-
-<Examples of="identity-transform">
-
-```js
-const a = [1, 2, 3];
-// a comment
-console.log(a.length);
-```
-
-```ts
-const n: number = 3; // keep me
-console.log(n * 2);
-// compiled: const n = 3; // keep me
-//           console.log(n * 2);
-```
-
-```js
-// no_loops.js, whole file, unchanged
-const ps = [];
-for (let i = 0; i < 100; i++)
-  ps.push({ x: i });
-console.log(ps.length);
-```
-
 </Examples>
 
-The first is the repository's snippet, which comes back as all 57 of
-its bytes. The second is the one exception: a TypeScript file goes
-through the plugin's type stripper before it is parsed, so with nothing
-to transform it comes back as the same code with its types removed (the
-`: number` is gone, the comment stays). The third is the realistic
-case, the shape of `no_loops.js` from the differential corpus: `ps`
-really is an array of records, so it gets analysed in full, but no loop
-ever touches its fields, so the planner keeps it as it is and the whole
-file round-trips. Running every corpus file for this chapter, 16 of the
-40 keep every collection as an array of objects, and all 16 come back
-byte-identical, although nothing in that suite checks it.
+This is the identity test in
+`packages/frontend-js/test/differential.test.ts` (its name is one string
+there, split here to fit). `src` is a 57-byte program, and `toBe`
+compares the compiled code with it as two strings, so every byte has to
+match. It looks almost too small to matter; however, `compile` runs the
+whole pipeline on it, from parsing to the analyses (which look at `a`
+and reject it, since its elements are numbers, not object literals) to
+an emitter with no edits and no prelude. The array makes the collection
+analysis really run, and the comment and the final newline are exactly
+what a printer would lose.
 
-<Prompts ids={['identity-pipeline', 'identity-snippet', 'identity-ts']} />
+<Prompts ids={['identity-what', 'bytes-not-trees']} />
+
+<More title="Two more identity cases, and 515 files of other people's code">
+
+A TypeScript file is the one exception: it goes through the plugin's
+type stripper before it is parsed, so with nothing to transform it comes
+back as the same code with its types removed (`const n: number = 3; //
+keep me` becomes `const n = 3; // keep me`). The realistic case is
+`no_loops.js` from the differential corpus: `ps` really is an array of
+records, so it gets analysed in full, but no loop ever touches its
+fields, so the planner keeps it as it is and the whole file round-trips.
+Of the 40 corpus files, 16 keep every collection as an array of objects,
+and all 16 come back byte-identical, although nothing in that suite
+checks it.
+
+The identity check needs no expected output, so it scales for nothing:
+any JavaScript file at all is a test case, and its own text is the
+answer. Run over every `.js` and `.mjs` file of the 59 third-party
+packages in the engine's `node_modules` folder, 515 files, all 515 come
+back byte-identical. That clean result is the second run: the first
+time, 17 of those files crashed the compiler, every one containing
+`export default class`:
+
+```js
+export class A {}         // fine
+export default class A {} // crashed:
+// TypeError: Cannot read properties of
+// undefined (reading 'owner')
+```
+
+The resolver declared the names in `export` declarations, but not in
+`export default` ones, so the lowering asked for the binding of `A` and
+got `undefined`. The corpus is about arrays and loops, and none of its
+files had a default export, so no existing test could see it; the fix
+was one condition in `resolve.ts` (look inside an `export default`
+statement for its declaration too), and a round-trip test for it joined
+the suite. Finding the bug took a test with no expected output and a
+pile of code nobody on the project had written, which is the corpus
+idea behind *End to end: benchmarks and differential testing at scale*,
+and the reason random program generators like Csmith exist: to produce
+inputs no test author would think of<Cite id="csmith" />.
+
+</More>
 
 ## Three checks, one front-end
 
-The front-end package has three kinds of test, and each one catches
-something the other two cannot. Step through them:
+The front-end package has three kinds of test: the round trip guards "do not touch what
+you do not change", the differential test guards "change it without
+changing what it does", and parser equivalence guards "the tree is the
+tree, whichever parser built it". Step through them:
 
 <FrontEndSteps client:visible />
 
 The differential test runs the original and the compiled program each
-in a brand-new `vm` context: inside it, the global object is a fresh
-one with its own built-ins, and the outside globals stay
-unchanged<Cite id="node-vm" />, so neither run can see what the other
-left behind. (Node's own documentation warns that `vm` is not a
-security mechanism; here it is only there to keep two runs apart.) The
-outcome it records is the list of printed lines **and** the uncaught
-error, if any, because a compiled program that prints the same lines
-but no longer throws has still changed what it does.
+in a brand-new `vm` context, whose global object is a fresh one with its
+own built-ins<Cite id="node-vm" />, so neither run can see what the other
+left behind (Node's documentation warns that `vm` is not a security
+mechanism; here it only keeps two runs apart). The outcome it records is
+the list of printed lines **and** the uncaught error, if any, because a
+compiled program that prints the same lines but no longer throws has
+still changed what it does.
 
-Here is the whole package, run for this chapter:
+<More title="The front-end's test run">
 
 ```text
 $ npx vitest run packages/frontend-js
@@ -485,96 +404,41 @@ $ npx vitest run packages/frontend-js
 ```
 
 The 42 are the 40 corpus files plus two round-trip tests (the snippet
-above, and the `export default` cases you are about to meet). The 47
-are those 40 files and the 5 benchmark programs through both parsers,
-plus 2 tests of the hand-written parser on its own.
+above, and the `export default` cases); the 47 are those 40 files and
+the 5 benchmark programs through both parsers, plus 2 tests of the
+hand-written parser on its own.
 
-<Prompts ids={['fresh-context', 'three-tests', 'header-aos']} />
+</More>
 
-## Five hundred files of other people's code
-
-A test with one hand-written snippet only covers what its author
-thought of. The identity check, however, needs no expected output, so
-it scales for nothing: any JavaScript file at all is a test case, and
-its own text is the answer. For this chapter it was run over every
-`.js` and `.mjs` file in the engine's `node_modules` folder, 515 files
-from 59 third-party packages, and all 515 came back byte-identical.
-
-That clean result is the second run. The first time this experiment
-was done, 17 of those files crashed the compiler, every one with the
-same error and every one containing `export default class`; with the
-fix taken out again, the engine here still reproduces it exactly (498
-the same, 0 changed, 17 crashed). Here is the smallest program that
-crashed, next to one that worked:
-
-```js
-export class A {}         // fine
-export default class A {} // crashed:
-// TypeError: Cannot read properties of
-// undefined (reading 'owner')
-```
-
-The resolver (the pass from *Lowering JavaScript to VIR* that finds
-out what each name refers to) declared the names in `export`
-declarations, but not in `export default` ones, so the lowering later
-asked for the binding of `A` and got `undefined`. The repository's
-corpus is about arrays and loops, and none of its files had a default
-export, so no existing test could see it. The fix was one condition in
-`resolve.ts`:
-
-```ts
-const d = (s.type ===
-    'ExportNamedDeclaration' ||
-  s.type === 'ExportDefaultDeclaration')
-  && s.declaration ? s.declaration : s;
-```
-
-That is, look inside an `export default` statement for its declaration
-too, and a round-trip test for it joined the suite. (An anonymous
-`export default function () {}`, which has no name to declare at all,
-crashed the resolver as well; the Rust port's parity work found that
-one later, and the same round-trip test covers it now.)
-
-The fix was small; finding the bug took a test with no expected output
-and a pile of code nobody on the project had written. That is the
-corpus idea that *Differential testing at scale* builds on, and the
-reason random program generators like Csmith exist: to produce inputs
-no test author would think of<Cite id="csmith" />.
-
-<Prompts ids={['scale-free', 'found-crash']} />
-
-<Callout kind="engine" label="Under the hood">
-Each test guards a different promise. The round trip guards "don't
-touch what you don't change". The differential test guards "change it
-without changing what it does". Parser equivalence guards "the tree is
-the tree, whichever parser built it". A front-end that passes only one
-of them can still be badly wrong, and Viscosity needs all three because
-it is a source-to-source compiler: its output is somebody's code, which
-they will read, debug and commit.
-</Callout>
+<Prompts ids={['fresh-context']} />
 
 ## Your turn
 
-The first exercise is the core one; the second is extra practice.
+The core exercise is the edit loop itself. The other two are extra
+practice: the merge of field edits by range, and a small differential
+tester.
+
+<Exercise id="applyEdits" />
+
+<Exercise id="dedupe" />
 
 <Exercise id="diffRun" />
 
-<Exercise id="preserved" />
-
 ## What you learned
 
-- An **identity transform** must change nothing. Viscosity checks it
-  **byte for byte**, which only a splicing emitter can promise; a
-  printer can only promise the same tree.
-- The repository's round trip runs the **whole pipeline** on a tiny
-  program with an array, a comment and a final newline. TypeScript is
-  the one exception: its types are stripped.
-- The front-end has **three checks**: the round trip, the differential
+- **Code generation** turns the IR back into output; for a
+  source-to-source compiler, that output is source code.
+- **Pretty-printing** writes code from a tree in a chosen style and
+  loses the original layout; Viscosity **splices** range edits into the
+  original text instead, **back to front**, and treats overlapping edits
+  as an internal error.
+- An **identity transform** must change nothing; Viscosity checks it
+  **byte for byte**, which only a splicing emitter can promise.
+- The front-end has three checks: the round trip, the differential
   corpus (fresh `vm` contexts, printed lines and errors), and acorn
-  against the hand-written parser. All 89 tests pass.
-- The identity check needs no expected output, so it **scales to any
-  code**. On 515 files of third-party code it once found a crash on
-  `export default class`; with the one-line fix, all 515 come back
-  byte-identical.
+  against the hand-written parser.
+
+Next: *Finding collections, and inferring shapes*, where the analyses
+start looking for arrays that are really tables.
 
 <Quiz />

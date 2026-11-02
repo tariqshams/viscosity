@@ -120,14 +120,15 @@ showed). In a struct of arrays, an element is a row number, not an
 object. To give `keep` an element, Viscosity would have to build one,
 and a built object is a copy: writes to it are lost, and `===`
 compares identity, so a fresh copy is never the same
-object<Cite id="mdn-equality" />. Run what columns would have to fake:
+object<Cite id="mdn-equality" />. *Identity and materialization* looks
+at what it would take to keep identity anyway; here, Viscosity's answer
+is to refuse.
 
+<More title="Run it: what columns would have to fake">
 <Run id="fake" />
+</More>
 
-*Identity and materialization* looks at what it would take to keep
-identity anyway; here, Viscosity's answer is to refuse.
-
-<Prompts ids={['bo-identity', 'bo-push']} />
+<Prompts ids={['bo-identity']} />
 
 ## Lesson 2: a name that outlives the line
 
@@ -229,11 +230,9 @@ Four more refusals come from facts the earlier chapters established:
 different array, one built after Viscosity's rewrite was planned, so
 every `ps[i]` would have to work on both. And `ps[k]` with a string
 happens to work for `'5'`, but the same line with `'length'` reads a
-property, so a string cannot be trusted as an index. (The corpus even
-has `comma_field_name.js`, where a field called `'a,b'` must not be
-mistaken for the two fields `a` and `b`.)
+property, so a string cannot be trusted as an index.
 
-<Prompts ids={['bo-reassign', 'bo-string']} />
+<Prompts ids={['bo-reassign']} />
 
 ## Lesson 5: callers it cannot see
 
@@ -255,11 +254,11 @@ be anything; `ps[i].x += dx` could then put a string in `x`, so `x`
 gets no typed column, and with no typed column there is nothing to
 gain. The same goes for `all_generic.js`, whose only field is a string,
 and for `no_loops.js` and `small_auto.js`: safe, but not worth
-changing. Those are the cost model's decisions, in the next chapter.
+changing. Those are decisions for *The cost model*, next.
 
 <Prompts ids={['bo-notunsafe']} />
 
-<Callout kind="engine" label="Under the hood">
+<More title="Under the hood: engines bail out too, but later">
 Engines bail out too, but later. V8's optimising tiers speculate from
 the feedback they have seen and, when a guess fails at run time,
 deoptimise: they throw the optimised code away and carry on in a
@@ -267,7 +266,7 @@ slower tier<Cite id="v8-maglev" />. A bailout there costs time at the
 moment it happens. Viscosity's bailouts happen before the program runs
 and cannot be undone, so they last for the whole run; in exchange, the
 decision is written down, with a reason you can read and act on.
-</Callout>
+</More>
 
 ## Your turn
 
@@ -293,5 +292,8 @@ The first exercise is the core one; the second is extra practice.
 - **Callers**: a known function must get the same collection at every
   call. Unknown callers can also make columns non-numeric, which is a
   cost decision, not a bailout.
+
+Next: *The cost model*, which decides whether a safe change is worth
+making.
 
 <Quiz />

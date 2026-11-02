@@ -1,51 +1,18 @@
-// Chapter 68 cards: recall prompts, examples, exercises and quiz.
+// Chapter 103 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 103, 103.
 
 export const prompts = {
   'cd-what': {
-    q: 'What does collection discovery look for?',
+    q: 'What does Viscosity’s collection discovery look for?',
     a: 'Variables holding an array of same-shaped records: created from a fresh array literal, filled only with fresh object literals of one shape, never replaced.',
   },
-  'cd-vir': {
-    q: 'Why can collection discovery find every use of `ps` just by scanning loads?',
-    a: 'The front-end lowers every array-initialised variable to a binding, so each read of it is an explicit loadBinding.',
-  },
-  'cd-var': {
-    q: 'What happens to `var ps = []` filled with records?',
-    a: 'Nothing: var bindings are skipped, so it is never a candidate, and explain reports no arrays of objects.',
-  },
-  'cd-reassigned': {
-    q: 'Why does a second store to `ps` cause a bailout?',
-    a: 'Then ps may not always hold this array, so code using ps can’t be rewritten for one layout.',
-  },
   'cd-dataflow': {
-    q: 'In what sense is collection discovery a dataflow problem?',
+    q: 'In what sense is Viscosity’s collection discovery a dataflow problem?',
     a: 'Each value either refers to the collection or not; the fact starts at the loads and flows forward along def-use edges (and into parameters of known functions), and a worklist computes the smallest set of values that refer to it.',
   },
   'cd-worklist': {
-    q: 'Which uses of a collection’s load are accepted?',
+    q: 'Which uses of a candidate collection does Viscosity’s discovery accept without a bailout?',
     a: '`.length`, `push` of one fresh record, `ps[i]`, and passing it to a function whose every call site passes the same collection.',
-  },
-  'cd-push-fresh': {
-    q: 'Why must `push` receive a fresh object literal?',
-    a: 'Only a fresh `record.new` has known fields and can be taken apart into column values; any other value might be an object used elsewhere.',
-  },
-  'cd-other-use': {
-    q: 'What happens if the program calls `ps.map(...)`?',
-    a: 'A bailout: “uses .map on the array (only .length and .push are supported)”. The collection is kept as an array of objects.',
-  },
-  'cd-order': {
-    q: 'Why are `{ x, y }` and `{ y, x }` different shapes for Viscosity?',
-    a: 'The rewritten push passes field values by position in column order, so the field order is part of the shape.',
-  },
-  'cd-alias': {
-    q: 'Why is a pushed record that is also used elsewhere a bailout?',
-    a: 'After the change there is no object, only column slots; another reference to the record (like `r.x = 500` later) would no longer reach the element.',
-  },
-  'ti-what': {
-    q: 'What is type inference?',
-    a: 'Deducing the types of values from how they are made and used, without annotations.',
   },
   'ti-annotations': {
     q: 'Why doesn’t Viscosity rely on TypeScript annotations to prove a field is numeric?',
@@ -55,32 +22,12 @@ export const prompts = {
     q: 'Why does giving facts to SSA values (rather than to variables) make them flow-sensitive?',
     a: 'Each assignment makes a new SSA value, so one variable can have a different fact at each point in the program.',
   },
-  'ti-union': {
-    q: '`x` is `1` on one path and `\'one\'` on the other. What is the fact for the phi where the paths meet, and what does Viscosity record?',
-    a: 'A union, number or string; Viscosity’s two-level lattice records it as “maybe not a number”.',
-  },
-  'ti-plus': {
-    q: 'Why is `a + b` a number only when both `a` and `b` are numbers?',
-    a: 'Because `+` joins strings: `1 + \'1\'` is `\'11\'`.',
-  },
-  'ti-param': {
-    q: 'When can Viscosity prove a function parameter is a number?',
-    a: 'When the function is known (every call site is visible) and every call site passes a number.',
-  },
   'ti-optimistic': {
-    q: 'Why does numeric inference start values on cycles at “number”, not “maybe not”?',
+    q: 'Why does an analysis that proves values numeric start the values on a loop’s cycle at “number” rather than “maybe not”?',
     a: 'On a loop each value waits for the other. Starting pessimistic, the cycle can never prove itself; starting optimistic, it can, and wrong guesses are knocked down.',
   },
-  'ti-terminates': {
-    q: 'Why must the optimistic fixpoint end, and what does Viscosity do if it somehow doesn’t within 1000 rounds?',
-    a: 'Facts only fall (number → maybe not) and there are finitely many; if it hasn’t settled it fails closed, treating nothing as proven.',
-  },
-  'si-what': {
-    q: 'What is shape inference?',
-    a: 'Deducing an object’s layout (its fields and their order) statically, from the code that creates the objects.',
-  },
   'si-order': {
-    q: 'Name one reason `{ x, y }` and `{ y, x }` count as different shapes.',
+    q: 'Name one reason the object literals `{ x, y }` and `{ y, x }` count as different shapes in Viscosity.',
     a: 'JavaScript can see the order (`Object.keys`, `JSON.stringify`); also Viscosity reads each column’s value from a fixed position in the literal.',
   },
 };
@@ -374,6 +321,7 @@ test('used twice but never pushed', () => {
     ],
   },
   unifyShapes: {
+    optional: true,
     title: 'Unify the literals',
     prompt: 'Each object literal pushed into a collection is given as an array of its field names, in order, e.g. `[\'x\', \'y\']`. Write `unifyShapes(lits)`, returning the collection’s shape (the field list) if **every** literal has exactly the same fields in the same order. Return `null` if any differs, or if there are no literals at all.',
     starter: `function unifyShapes(lits) {
@@ -594,7 +542,7 @@ In the numeric loop, round 1 confirms every guess and round 2 changes nothing. W
 
 export const quiz = [
   {
-    q: 'Which of these is a candidate collection?',
+    q: 'Which of these does Viscosity’s collection discovery treat as a candidate collection?',
     options: [
       {
         t: '`var ps = [];` filled with `{ x: i }`',
@@ -616,51 +564,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`ps.push({ x: 1, y: 2 })` on line 2, `ps.push({ y: 3, x: 4 })` on line 3. What does explain say?',
-    options: [
-      {
-        t: 'Nothing: they have the same fields',
-        why: 'Same names, different order: a different shape.',
-      },
-      {
-        t: 'line 3: records with different fields or field order',
-        why: 'The worklist pops the last load first, so line 3 sets the shape and line 2 is blamed.',
-      },
-      {
-        t: 'line 2: records with different fields or field order ({x, y} vs {y, x})',
-        correct: true,
-        why: 'Line 3’s {y, x} was seen first and set the shape.',
-      },
-      {
-        t: 'ps is reassigned',
-        why: 'There is only one store.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `const r = { x: i }; ps.push(r); r.x = 500;` cause a bailout?',
-    options: [
-      {
-        t: 'The record has two uses, the push and the field.set, so it could be aliased',
-        correct: true,
-        why: 'After the change, r.x = 500 would update an object that no longer holds the element.',
-      },
-      {
-        t: 'r is a const',
-        why: 'Being const doesn’t stop its object from being mutated; the extra use is the problem.',
-      },
-      {
-        t: 'push takes a variable instead of a literal',
-        why: 'r is an SSA value, so the push’s argument is still the record.new.',
-      },
-      {
-        t: '500 is not a valid x',
-        why: 'Any number is fine.',
-      },
-    ],
-  },
-  {
-    q: 'Which use of a collection is NOT accepted by discovery?',
+    q: 'Which use of a candidate collection does Viscosity’s discovery NOT accept?',
     options: [
       {
         t: '`ps.length`',
@@ -682,51 +586,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does a successful discovery NOT establish?',
-    options: [
-      {
-        t: 'The collection’s fields',
-        why: 'It records them via setShape.',
-      },
-      {
-        t: 'That changing its layout is safe and worth it',
-        correct: true,
-        why: 'Safety (Proving it safe) and the cost model (The cost model) come later.',
-      },
-      {
-        t: 'Where it is pushed to',
-        why: 'It collects the pushes.',
-      },
-      {
-        t: 'That it is stored only once',
-        why: 'A second store is a bailout here.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these does Viscosity prove to be a number?',
-    options: [
-      {
-        t: '`a + b`, where `a` is a number and `b` is unknown',
-        why: '`b` could be a string, and then `+` joins strings.',
-      },
-      {
-        t: '`v1 = phi(0, v1 + 1)` in a counting loop',
-        correct: true,
-        why: 'The optimistic fixpoint guesses “number” for the cycle, and every rule confirms it.',
-      },
-      {
-        t: 'A parameter of a function that is passed around as a callback',
-        why: 'Not every call site is visible, so the parameter could be anything.',
-      },
-      {
-        t: 'A field read from an object returned by an unknown call',
-        why: 'Unknown operations fall to the default rule: not provably a number.',
-      },
-    ],
-  },
-  {
-    q: 'Why would a pessimistic start fail on `v = v + 0.5` in a loop?',
+    q: 'An analysis proves values numeric with rules such as “a + b is a number if a and b are”. Why would a pessimistic start (everything “maybe not”) fail to prove `v` numeric in a loop doing `v = v + 0.5`?',
     options: [
       {
         t: '0.5 is not an integer',
@@ -743,34 +603,12 @@ export const quiz = [
       },
       {
         t: 'It wouldn’t fail',
-        why: 'Step through the diagram: the pessimistic start loses the loop.',
+        why: 'Starting from “maybe not”, the phi can never be proven: its back-edge input waits on it.',
       },
     ],
   },
   {
-    q: '`let x = 1; if (c) x = \'one\';` What does Viscosity know about `x` after the `if`?',
-    options: [
-      {
-        t: 'It is a number, because it started as one',
-        why: 'Facts belong to SSA values; after the `if`, `x` is the phi, not the first value.',
-      },
-      {
-        t: 'It is a string, because that was the last assignment',
-        why: 'The assignment only happens on one path.',
-      },
-      {
-        t: 'The phi is number or string, a union, which Viscosity records as “maybe not”',
-        correct: true,
-        why: 'A join of number and string is a union; the two-level lattice cannot say more.',
-      },
-      {
-        t: 'Nothing: inference stops at branches',
-        why: 'Phis are exactly how facts cross branches.',
-      },
-    ],
-  },
-  {
-    q: 'The literals are `{ x: i, y: 1 }` and `{ y: 1, x: i }`. What does shape inference conclude?',
+    q: 'A collection is filled with the literals `{ x: i, y: 1 }` and `{ y: 1, x: i }`. What does Viscosity’s shape inference conclude?',
     options: [
       {
         t: 'One shape, {x, y}',
@@ -788,28 +626,6 @@ export const quiz = [
       {
         t: 'It depends on the values',
         why: 'Shape is about names and order, not values.',
-      },
-    ],
-  },
-  {
-    q: 'How does V8 learn similar facts, and why can’t Viscosity do it the same way?',
-    options: [
-      {
-        t: 'From TypeScript annotations',
-        why: 'Types are erased before the engine ever sees the code.',
-      },
-      {
-        t: 'By asking the programmer',
-        why: 'Neither asks; both deduce.',
-      },
-      {
-        t: 'It doesn’t: V8 treats every field as untyped',
-        why: 'V8 tracks field representations and shapes, as Part V showed.',
-      },
-      {
-        t: 'By watching type feedback and speculating, with deoptimisation as a way back; Viscosity has no way back, so it must prove',
-        correct: true,
-        why: 'A guess is fine if you can undo it. Ahead-of-time output must be right on every run.',
       },
     ],
   },

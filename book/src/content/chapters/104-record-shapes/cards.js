@@ -1,4 +1,4 @@
-// Chapter 68 cards: recall prompts, examples, exercises and quiz.
+// Chapter 104 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,15 +7,11 @@ export const prompts = {
     a: 'The fields, in order, and a column type for each field: a `Float64Array` if it provably always holds numbers, a plain array otherwise.',
   },
   'rs-plain': {
-    q: 'One field of a collection sometimes holds a string. Does Viscosity bail out?',
+    q: 'One field of a Viscosity collection’s records sometimes holds a string. Does that alone make Viscosity bail out?',
     a: 'No. That field gets a plain array column; the numeric fields still get typed ones.',
   },
-  'rs-order': {
-    q: 'Why must `{ x, y }` and `{ y, x }` count as different shapes?',
-    a: 'The rewritten `push` is positional: slot k of the literal goes into column k. (And JavaScript itself can observe property order.)',
-  },
   'rs-poison': {
-    q: 'Which two kinds of value can make a column non-numeric?',
+    q: 'In Viscosity, which two kinds of value can make a collection’s column non-numeric?',
     a: 'The value in that field’s slot of any object literal, and the value stored by any `ps[i].f = v`.',
   },
   'rs-failclosed': {
@@ -27,11 +23,11 @@ export const prompts = {
     a: 'Whether an object’s shape (its fields) can change after it is created.',
   },
   'ss-oneuse': {
-    q: 'Why must the record in `ps.push({...})` have exactly one use?',
+    q: 'Why does Viscosity require the record in `ps.push({...})` to have exactly one use?',
     a: 'Any other reference to it could change or observe the object later, behind the collection’s back: it would be aliased.',
   },
   'ss-addprop': {
-    q: 'The records are `{x, y}`. What does Viscosity say about `ps[i].z = 1`?',
+    q: 'A Viscosity collection’s records are `{x, y}`. What does Viscosity say about `ps[i].z = 1`?',
     a: '“adds a new property .z to an element”: a bailout, because there is no column for z.',
   },
 };
@@ -290,7 +286,7 @@ export const quiz = [
       {
         t: 'Unifies it as `{x, label}`, with a typed column for x and a plain one for label',
         correct: true,
-        why: 'The shape is fields plus column types; `label` simply isn’t numeric.',
+        why: 'The shape is fields plus column types; `label` gets a plain column.',
       },
       {
         t: 'Drops the label field',
@@ -303,29 +299,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does Viscosity reject `{ x: 1, y: 2 }` and `{ y: 3, x: 4 }` in the same collection?',
-    options: [
-      {
-        t: 'The values are different',
-        why: 'Values never need to match; only the field lists do.',
-      },
-      {
-        t: 'Objects with two fields are too small',
-        why: 'Size doesn’t matter for shape unification.',
-      },
-      {
-        t: 'It compares field lists in order, and the rewritten `push` copies slot k into column k',
-        correct: true,
-        why: 'Accepting the second literal blindly would put 3 into the x column.',
-      },
-      {
-        t: 'V8 would deoptimise',
-        why: 'This is Viscosity’s own rule about its own rewrite, not a V8 behaviour.',
-      },
-    ],
-  },
-  {
-    q: 'The numeric fixpoint is cut off after 1000 rounds without converging. What does Viscosity conclude?',
+    q: 'Viscosity’s optimistic numeric fixpoint is cut off after 1000 rounds without converging. What does Viscosity conclude?',
     options: [
       {
         t: 'Whatever facts it had at round 1000',
@@ -347,7 +321,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these keeps every element’s shape stable?',
+    q: 'A Viscosity collection’s records are `{x, y}`. Which of these keeps every element’s shape stable?',
     options: [
       {
         t: '`ps[i].x = ps[i].x * 2`, where x is a field',

@@ -66,9 +66,10 @@ list, and an empty list means safe.
 </Callout>
 
 The proof is two analyses you have met before, aimed at one question.
-It is an **escape analysis** (as in *Escape analysis*): no reference
-to the array or to an element may reach code Viscosity does not
-rewrite. And it is an **alias analysis** (as in *Alias analysis*): no
+It is an **escape analysis** (as in *Escape analysis across
+functions*): no reference to the array or to an element may reach code
+Viscosity does not rewrite. And it is an **alias analysis** (as in
+*Alias analysis and points-to*): no
 value may be a second name for an element, and a function's parameter
 may point to only one collection.
 
@@ -83,37 +84,18 @@ check:
 
 <Prompts ids={['sa-what', 'sa-allow', 'sa-all']} />
 
-## What the array may do
+## What the array and its elements may do
 
-Starting from every load of the array, Viscosity walks the uses with
-the same worklist as *Finding collections*. Four kinds of use are
-allowed. Simplified, from `packages/core/src/analysis.ts`:
-
-```ts
-for (const u of usesOf(ref)) {
-  const i = u.inst;
-  if (isLength(i)) continue;
-  if (isPush(i)) {
-    setShape(c, record(i)); continue;
-  }
-  if (isIndexGet(i)) {
-    elements.push(i); // check later
-    continue;
-  }
-  if (isKnownCall(i)) {
-    work.push(param); // follow it
-    continue;
-  }
-  bail(c, 'the array is ' + describeUse(u));
-}
-```
-
-A `.length` read is fine; so is a push, once its record's shape is
-checked; `ps[i]` is fine, but the element it hands out is remembered
-so its own uses can be checked; a known call sends the parameter round
-the worklist; anything else ends at `describeUse`, which names what
-happened. Elements get an even shorter list: read a field of the
-shape, or write one (the uses that fill *Access patterns*' table).
+The array's own uses are the short list you met in *Finding
+collections, and inferring shapes*: the worklist from every load
+accepts `.length`, a `push` of one fresh literal (whose shape it
+checks), `ps[i]`, and a call of a known function, and sends anything
+else to `bail(c, 'the array is ' + describeUse(u))`, which names what
+happened. What discovery left for later is the element that `ps[i]`
+hands out; each one is remembered, and its uses get an even shorter
+list: read a field of the shape, or write one (the uses that fill
+*Access patterns*' table). Anything else, such as passing the element
+to a function or comparing it with `===`, is a reason.
 
 <Formal title="The safety condition">
 
@@ -128,7 +110,8 @@ safe(c) ⇔
 
 <span slot="read">A collection c is safe exactly when three things all
 hold. Every use of every value that refers to c (Refs, the set from
-*Finding collections*) is one of the four rewritable kinds. Every use
+*Finding collections, and inferring shapes*) is one of the four
+rewritable kinds. Every use
 of every element of c is a read or a write of a field in its shape.
 And every index used on c is provably a number. Fail any one of them
 anywhere, and c gets a bailout reason.</span>
@@ -166,15 +149,13 @@ property other than `length`, and passes `ps` to a method call. The
 third prints the element object itself, keys and all, and a struct of
 arrays has no such object.
 
-<Prompts ids={['sa-array', 'sa-why-length']} />
-
 ## Following a collection into a function
 
 Most real code does not loop over an array where it was made; it
 passes the array to a function. A call is normally an escape, because
 the callee could do anything. However, if Viscosity can see *every*
 call of the function, the parameter is only another name for the
-collection, and this is where *Interprocedural analysis* comes in.
+collection, which is interprocedural analysis on a small scale.
 Viscosity first finds its **known functions**: a function counts as
 known if its name is given a value exactly once and every reference to
 it is a direct call (not stored, not passed along, not called as a
@@ -193,9 +174,9 @@ bodies (line 2) {x, y, m} → struct of
   which is also called with other values
 ```
 
-This is points-to analysis on a small scale (*Points-to analysis:
-Andersen and Steensgaard* builds the general kind): the parameter
-must point to exactly one collection. Two collections would need two
+This is points-to analysis on a small scale (*Alias analysis and
+points-to* showed the general kind): the parameter must point to
+exactly one collection. Two collections would need two
 copies of `total`, one per layout, and Viscosity does not copy
 functions. An `export`ed function is never known either, since code in
 another module could call it with anything; passing `ps` to one gives
@@ -206,15 +187,14 @@ another module could call it with anything; passing `ps` to one gives
 ## Every index must be a number
 
 `ps[i]` is only an element if `i` is a number. Bracket access with a
-string asks for a property, and some strings happen to name elements:
-
-<Run id="keys" />
+string asks for a property, and some strings happen to name elements
+(the dropdown below runs it).
 
 After the rewrite, `ps[k]` becomes `ps.x[k]` and friends, which would
 answer `ps['length']` completely differently, so Viscosity requires
 every index to be provably a number. "Provably a number" is a fact from
-the numeric fixpoint of *Type and shape inference*, so this check waits
-until the fixpoint has finished:
+the numeric fixpoint of *Finding collections, and inferring shapes*, so
+this check waits until the fixpoint has finished:
 
 ```ts
 for (const { c, i } of indexChecks)
@@ -226,8 +206,12 @@ for (const { c, i } of indexChecks)
 The fixpoint follows parameters of known functions too: with
 `function get(k) { return ps[k].x; }`, the calls `get(3)` and `get(4)`
 are fine, while one call `get('4')` makes `k` "maybe not a number",
-and the whole collection bails out ("line 4: indexes the array with
+and the whole collection bails out ("indexes the array with
 something that may not be a number").
+
+<More title="Run it: strings that name elements">
+<Run id="keys" />
+</More>
 
 <Prompts ids={['sa-index']} />
 
@@ -254,7 +238,7 @@ step(ps);
 step(ps);
 console.log(ps[3].x);`} />
 
-<Callout kind="engine" label="Under the hood">
+<More title="Under the hood: doing it at run time instead">
 Makor and colleagues transform arrays of JavaScript objects into
 columnar storage *while the program runs*<Cite id="makor2022" />; a
 run-time system is there as each operation happens. A source-to-source
@@ -263,7 +247,7 @@ Viscosity is left to notice a surprise. That is why it works with an
 allow-list, and why even `ps[1] === ps[2]`, which only asks whether
 two references name the same object<Cite id="mdn-equality" />, is
 enough to stop it.
-</Callout>
+</More>
 
 ## Your turn
 
@@ -288,5 +272,8 @@ The first exercise is the core one; the second is extra practice.
 - Every index must be **provably a number**, checked after the numeric
   fixpoint. Any reason makes the planner keep the array of objects and
   print it after `unsafe:`.
+
+Next: *What Viscosity refuses to touch*, a tour of the refusals and
+what each one protects.
 
 <Quiz />

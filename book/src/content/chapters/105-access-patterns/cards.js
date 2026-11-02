@@ -1,4 +1,4 @@
-// Chapter 68 cards: recall prompts, examples, exercises and quiz.
+// Chapter 105 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -10,28 +10,16 @@ export const prompts = {
     q: 'Why does the same collection benefit more from SoA in one loop than another?',
     a: 'SoA saves the most when a loop touches few of the fields: it then reads only those columns, not whole records.',
   },
-  'ap-two': {
-    q: 'How many element accesses is `ps[i].x += 1`?',
-    a: 'Two: a read of x (field.get) and a write of x (field.set).',
-  },
   'ap-innermost': {
-    q: 'An access sits inside two nested loops. Which loop’s row is it filed under?',
+    q: 'In Viscosity’s access table, an element access sits inside two nested loops. Which loop’s row is it filed under?',
     a: 'The innermost one: the smallest natural loop whose body contains the access.',
   },
-  'ap-func': {
-    q: 'Why does the access table key include the function as well as the loop header?',
-    a: 'Blocks are numbered per function, and loops in different functions (like `drift()` and `centerOfMass()`) need separate rows.',
-  },
-  'ap-depth': {
-    q: 'How does Viscosity compute a loop’s depth?',
-    a: 'One plus the number of larger natural loops that contain its header. An access in no loop has depth 0.',
-  },
   'ap-trips': {
-    q: 'Why does `for (let i = 0; i < ps.length; i++)` get no trip count?',
+    q: 'Why does Viscosity give `for (let i = 0; i < ps.length; i++)` no static trip count?',
     a: 'Viscosity only counts loops whose bound is a constant. `ps.length` isn’t a constant in the code.',
   },
   'ap-tripuse': {
-    q: 'What does Viscosity use known trip counts for today?',
+    q: 'In Viscosity, what do statically known loop trip counts feed into?',
     a: 'The size estimate: a `push` inside loops with known trip counts adds their product to the collection’s estimated size.',
   },
   'hl-what': {
@@ -123,7 +111,7 @@ test('no accesses, no rows', () => {
 - \`if (!list.includes(a.field)) list.push(a.field);\` adds the field only if it is new, so the list behaves like a set that remembers its order.
 - \`return table;\` hands back every row, including \`none\`.
 
-**Why keep reads and writes apart, and keep \`none\`?** A loop that only reads a column cannot change anything another loop sees, and *Hot/cold splitting* cares which fields are used together, so the two lists carry different information. The \`none\` row is kept because deciding that depth-0 accesses do not matter is the planner's job, not the analysis's: the analysis records facts, the planner judges them.
+**Why keep reads and writes apart, and keep \`none\`?** A loop that only reads a column cannot change anything another loop sees, and *AoSoA and hot/cold splitting* cares which fields are used together, so the two lists carry different information. The \`none\` row is kept because deciding that depth-0 accesses do not matter is the planner's job, not the analysis's: the analysis records facts, the planner judges them.
 
 **Common wrong attempts.**
 
@@ -239,7 +227,7 @@ test('depth 0 is not reported', () => {
 
 export const quiz = [
   {
-    q: 'A loop runs `ps[i].x += ps[i].vx`. What is its row in the access table?',
+    q: 'A loop over a Viscosity collection runs `ps[i].x += ps[i].vx`. What is its row in Viscosity’s access table?',
     options: [
       {
         t: 'reads {x}, writes {vx}',
@@ -261,7 +249,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'An access is inside an inner loop, which is inside an outer loop. How is it recorded?',
+    q: 'An element access is inside an inner loop, which is inside an outer loop. How does Viscosity’s access table record it?',
     options: [
       {
         t: 'Under both loops',
@@ -331,7 +319,7 @@ export const quiz = [
     options: [
       {
         t: 'Measuring is impossible in JavaScript',
-        why: 'It isn’t; V8 does it constantly, and the chapter *Profile-guided optimization* does it for Viscosity.',
+        why: 'It isn’t; V8 does it constantly, and the chapter *Telling Viscosity more: annotations and profiles* does it for Viscosity.',
       },
       {
         t: 'Loops are always hot',

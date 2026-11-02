@@ -1,43 +1,22 @@
-// Chapter 67 cards: recall prompts, examples, exercises and quiz.
+// Chapter 102 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 102, 102.
 
 export const prompts = {
   'codegen-what': {
     q: 'What is code generation?',
     a: 'The compiler step that turns its internal form back into output text: machine code, bytecode, or (for Viscosity) source code.',
   },
-  'pretty-what': {
-    q: 'What does a pretty-printer do, and what does it lose?',
-    a: 'It prints code from a tree in a chosen, consistent style. It loses the original layout: spacing, line breaks, and comments unless they were attached to nodes.',
-  },
   'splice-why': {
     q: 'Why does Viscosity splice edits into the source instead of printing the tree?',
     a: 'Everything it doesn’t change, comments and formatting included, is copied byte for byte.',
   },
-  'src-ref': {
-    q: 'How does the emitter find the source text for a VIR instruction?',
-    a: 'Each instruction’s `src` holds its ESTree node with `start` and `end` offsets, recorded during lowering.',
-  },
-  'forof-rewrite': {
-    q: 'After `for (const p of ps)` is rewritten, what does `p` hold, and what does `p.x` become?',
-    a: 'An index: the header becomes `let p = 0; p < ps.length; p++`, and `p.x` becomes `ps.x[p]`.',
-  },
   'back-to-front': {
-    q: 'Why are edits applied from the highest start offset down?',
+    q: 'Why does a splicing emitter whose edits all use offsets into the original text apply them from the highest start offset down?',
     a: 'An edit changes the length of the text after it. Going backwards, every edit still to apply lies before the change, so its offsets stay valid.',
   },
   'overlap-bug': {
-    q: 'Why does the emitter throw on overlapping edits instead of picking one?',
+    q: 'Why does Viscosity’s emitter throw on two overlapping edits instead of picking one?',
     a: 'Two edits for the same characters means two parts of the emitter disagree: no order is right, so it refuses rather than emit broken code.',
-  },
-  'dedupe-why': {
-    q: 'Why does `p.x += p.vx` need the field-edit dedupe?',
-    a: 'Its `p.x` is both a field.get and a field.set with the same source range. Two edits for one range would overlap; the map keeps one, preferring the read.',
-  },
-  'prelude-strict': {
-    q: 'Why is the prelude inserted after a `"use strict"` line, not at offset 0?',
-    a: 'A directive only takes effect at the very start of a script. Code above it would turn strict mode off.',
   },
   'identity-what': {
     q: 'What is an identity transform?',
@@ -47,37 +26,9 @@ export const prompts = {
     q: 'Why can Viscosity’s round trip compare bytes, where a printer’s round trip compares trees?',
     a: 'A printer chooses its own layout, so only the tree can match. Viscosity splices edits into the original text, so with no edits the text itself must match.',
   },
-  'identity-pipeline': {
-    q: 'The round-trip snippet has nothing to transform. Which parts of Viscosity does it still exercise?',
-    a: 'All of them: parsing, scope resolution, lowering, the analyses, the planner and the emitter.',
-  },
-  'identity-snippet': {
-    q: 'Why does the round-trip snippet contain an array, a comment and a trailing newline?',
-    a: 'The array makes the collection analysis run; the comment and the final newline are exactly what a printer would lose.',
-  },
-  'identity-ts': {
-    q: 'What does Viscosity output for a TypeScript file with nothing to transform?',
-    a: 'The same code with its types stripped: the plugin removes types before parsing, and emits JavaScript.',
-  },
   'fresh-context': {
-    q: 'Why does the differential test give each run a fresh `vm` context?',
+    q: 'Why does Viscosity’s differential test run the original and the compiled program each in a fresh Node `vm` context?',
     a: 'Each gets its own global object, so neither version can see globals or state the other left behind.',
-  },
-  'three-tests': {
-    q: 'What does each of the front-end’s three test kinds guard?',
-    a: 'Round trip: untouched code stays byte-identical. Differential: compiled code behaves the same. Parser equivalence: acorn and mini give the same output.',
-  },
-  'header-aos': {
-    q: 'Of the 40 differential-corpus files, 16 keep every collection as an array of objects. What does that show about the identity property?',
-    a: 'All 16 come back byte-identical, so the identity property holds inside the differential suite too, even though nothing there checks it.',
-  },
-  'scale-free': {
-    q: 'Why does the identity check scale to any pile of real code?',
-    a: 'It needs no expected output: for a file with nothing to transform, the file itself is the answer.',
-  },
-  'found-crash': {
-    q: 'What did the first round trip over 515 third-party files find?',
-    a: 'No file was changed, but 17 crashed the compiler, all on `export default class`, which the resolver didn’t declare. Since fixed, all 515 round-trip byte-identical.',
   },
 };
 
@@ -303,6 +254,7 @@ The real \`fieldEdit\` in \`emit.ts\` ranks three kinds, write 0, read 1 and lat
     ],
   },
   diffRun: {
+    optional: true,
     title: 'A differential tester for programs',
     prompt: 'Programs are strings of JavaScript that print with `log(...)`. Write `outcome(code)`, which runs `code` with `new Function(\'log\', code)`, and returns `{ out, error }`: `out` is the list of printed lines (arguments joined with a space), and `error` is `null`, or `name + \': \' + message` of the uncaught error. Then write `diffRun(progs, transform)`: return the index of the first program whose outcome differs from the outcome of `transform(program)`, comparing every line and the error, or `-1` if all agree.',
     starter: `function outcome(code) {
@@ -451,82 +403,6 @@ function diffRun(ps, transform) {
       },
     ],
   },
-  preserved: {
-    optional: true,
-    title: 'Where did the round trip break?',
-    prompt: 'When an identity test fails, “not equal” is not much help. Write `firstDiff(a, b)`: return `null` if the strings are identical, otherwise `{ offset, line, col }` for the first position where they differ (lines and columns count from 1). If one string is a prefix of the other, they differ at the end of the shorter one.',
-    starter: `function firstDiff(a, b) {
-  if (a === b) return null;
-  return { offset: 0, line: 1, col: 1 };
-}`,
-    solution: `function firstDiff(a, b) {
-  if (a === b) return null;
-  let i = 0;
-  const n = a.length;
-  while (i < n && a[i] === b[i]) i++;
-  const before = a.slice(0, i);
-  const lines = before.split('\\n');
-  return {
-    offset: i,
-    line: lines.length,
-    col: lines.at(-1).length + 1,
-  };
-}`,
-    tests: `test('identical', () => {
-  expect(firstDiff('a\\nb\\n', 'a\\nb\\n')).toBe(null);
-});
-test('a change on line 2', () => {
-  expect(firstDiff('let a;\\nlet bc;', 'let a;\\nlet bd;'))
-    .toEqual({ offset: 12, line: 2, col: 6 });
-});
-test('a dropped trailing newline', () => {
-  expect(firstDiff('x;\\n', 'x;'))
-    .toEqual({ offset: 2, line: 1, col: 3 });
-});
-test('a prelude added at the top', () => {
-  expect(firstDiff('x;', '// gen\\nx;'))
-    .toEqual({ offset: 0, line: 1, col: 1 });
-});`,
-    hints: [
-      'Walk an index forward while both strings have the same character there.',
-      'Stop at the end of `a`: if `b` is longer, `b[i]` exists but `a[i]` doesn’t, so that is the difference.',
-      'The line is one more than the number of newlines before the offset; the column is the distance from the last newline, plus one.',
-    ],
-    walkthrough: `**How to think about it.** A byte-for-byte test should fail with a *place*, not only with "expected ... to be ...", especially when the difference cannot be seen, like a missing final newline. So there are two jobs: find the first offset where the strings differ, then turn that offset into a line and a column a person can look up.
-
-**The solution, line by line.**
-
-- \`if (a === b) return null;\` handles the passing case first.
-- \`let i = 0; const n = a.length;\` starts at the first character.
-- \`while (i < n && a[i] === b[i]) i++;\` walks forward while the characters match. It stops at the first difference, or at the end of \`a\`. If \`b\` is the shorter one, \`b[i]\` becomes \`undefined\` at its end, which is not equal to a character of \`a\`, so the loop stops there too.
-- \`const before = a.slice(0, i);\` is all the text before the difference.
-- \`const lines = before.split('\\n');\` cuts it at each newline: if there were two newlines before the difference, there are three pieces, and the difference is on line 3.
-- \`line: lines.length\` is therefore the line number, counting from 1.
-- \`col: lines.at(-1).length + 1\` is the length of the last piece (how far into the current line the difference is) plus one, because columns also count from 1.
-
-**What the tests model.** A dropped trailing newline (what a printer often does) and a prelude added where none was needed (an emitter that forgot to check that its prelude is empty) are exactly the bugs Viscosity's round trip guards against; here they are reported as line 1, column 3 and line 1, column 1.
-
-**Common wrong attempts.**
-
-- Counting the lines of the whole string, \`a.split('\\n').length\`, instead of the lines *before* the difference: a change on line 2 of a 10-line file would be reported on line 10.
-- Using the offset itself as the column: that is only right on line 1.`,
-    wrong: [
-      {
-        code: `function firstDiff(a, b) {
-  if (a === b) return null;
-  let i = 0;
-  while (a[i] === b[i]) i++;
-  const lines = a.split('\\n');
-  return {
-    offset: i,
-    line: lines.length,
-    col: i + 1,
-  };
-}`,
-        why: 'It counts the lines of the whole string, not the lines before the difference, and uses the offset as the column, which is only right on line 1.',
-      },
-    ],
-  },
 };
 
 export const quiz = [
@@ -553,7 +429,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Edits at offsets 11–13 (2 chars → 14 chars) and 55–60. In which order are they applied, and why?',
+    q: 'A splicing emitter has two edits, both given as offsets into the original text: 11–13 (2 characters replaced by 14) and 55–60. In which order must it apply them, and why?',
     options: [
       {
         t: '11–13 first, because it comes first in the file',
@@ -571,28 +447,6 @@ export const quiz = [
         t: '55–60 first: applying later edits first leaves earlier offsets valid',
         correct: true,
         why: 'Sorted by start, descending.',
-      },
-    ],
-  },
-  {
-    q: 'Without the field-edit dedupe, what would compiling `for (const p of ps) p.x += p.vx;` do?',
-    options: [
-      {
-        t: 'Throw “internal error: overlapping rewrites at 93-96”',
-        correct: true,
-        why: 'The read and the write of p.x produce two edits for the same range.',
-      },
-      {
-        t: 'Write `ps.x[p]` twice, as `ps.x[p]ps.x[p]`',
-        why: 'The overlap check stops before anything is applied twice.',
-      },
-      {
-        t: 'Nothing different',
-        why: 'Two edits for one range is exactly what the check catches.',
-      },
-      {
-        t: 'Leave `p.x` unchanged',
-        why: 'Both edits would try to change it.',
       },
     ],
   },
@@ -619,51 +473,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'After `const p = ps[i];` is rewritten to `const p = i;`, what must happen to `p.x`?',
-    options: [
-      {
-        t: 'Nothing: `p.x` still works',
-        why: 'p is a number now; `p.x` would be undefined.',
-      },
-      {
-        t: 'It becomes `ps.x[p]`, possibly with a bounds check around `p`',
-        correct: true,
-        why: 'p holds the index, so every field access through it is rewritten too.',
-      },
-      {
-        t: 'It becomes `ps[p].x`',
-        why: 'There are no element objects any more; the data is in columns.',
-      },
-      {
-        t: 'It becomes a call to `ps.get(p)`',
-        why: 'No element object is created for an access through an index.',
-      },
-    ],
-  },
-  {
-    q: 'Which output passes Viscosity’s round-trip test for `const a = [1, 2, 3];\\n// a comment\\nconsole.log(a.length);\\n`?',
-    options: [
-      {
-        t: 'The same code with the comment removed',
-        why: 'The test compares every byte; the comment must survive.',
-      },
-      {
-        t: 'The same code reformatted by a pretty-printer',
-        why: 'Different bytes fail toBe, even if the tree is the same.',
-      },
-      {
-        t: 'Exactly the input, byte for byte',
-        correct: true,
-        why: 'With nothing to transform, the input is the expected output.',
-      },
-      {
-        t: 'The input with an empty prelude line at the top',
-        why: 'One extra newline is a different string.',
-      },
-    ],
-  },
-  {
-    q: 'Why is the round trip a stronger check for Viscosity than parse → print → parse?',
+    q: 'For a source-to-source compiler that splices edits into the original text, why is “a file with nothing to transform comes back unchanged” a stronger check than parse → print → parse?',
     options: [
       {
         t: 'It compares bytes, not trees, which only a splicing emitter can promise',
@@ -685,73 +495,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The snippet has no array of objects. Does the collection analysis still run on it?',
-    options: [
-      {
-        t: 'No, the compiler stops after parsing',
-        why: 'compile always runs the whole pipeline.',
-      },
-      {
-        t: 'No, analysis only runs on loops',
-        why: 'It looks at every array-initialised binding.',
-      },
-      {
-        t: 'Only in opt-in mode',
-        why: 'The mode affects decisions, not whether analysis runs.',
-      },
-      {
-        t: 'Yes: `a` is a candidate, and it is rejected because its elements are not object literals',
-        correct: true,
-        why: 'Then nothing is planned and the emitter returns the source.',
-      },
-    ],
-  },
-  {
-    q: 'What does a fresh `vm` context per run give the differential test?',
-    options: [
-      {
-        t: 'A security sandbox for untrusted code',
-        why: 'Node says vm is not a security mechanism.',
-      },
-      {
-        t: 'Each run its own global object, so state can’t leak between the original and compiled runs',
-        correct: true,
-        why: 'Each outcome depends only on its own code.',
-      },
-      {
-        t: 'Faster execution',
-        why: 'Speed is not the point.',
-      },
-      {
-        t: 'Support for TypeScript',
-        why: 'Types are stripped before compiling, not by vm.',
-      },
-    ],
-  },
-  {
-    q: 'What did the first round trip over 515 third-party files show?',
-    options: [
-      {
-        t: 'Viscosity reformatted most of them',
-        why: 'None was changed.',
-      },
-      {
-        t: 'Every file passed',
-        why: '17 crashed the compiler.',
-      },
-      {
-        t: 'No file changed, but 17 crashed on `export default class`',
-        correct: true,
-        why: 'The resolver didn’t declare that class’s name, so lowering found no binding. Since fixed, all 515 pass.',
-      },
-      {
-        t: 'The mini parser rejected them',
-        why: 'The experiment used acorn, the default parser.',
-      },
-    ],
-  },
-  {
-    q: 'A transform turns `ps[100].x` (which throws) into code that prints `0`. Which test catches it?',
+    q: 'A front end has three tests: a byte-identity round trip for files with nothing to transform, a differential test comparing printed lines and uncaught errors, and a check that two parsers agree. A buggy transform turns `ps[100].x` (which throws) into code that prints `0`. Which test catches it?',
     options: [
       {
         t: 'The round trip',

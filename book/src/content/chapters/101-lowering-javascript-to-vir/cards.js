@@ -1,4 +1,4 @@
-// Chapter 67 cards: recall prompts, examples, exercises and quiz.
+// Chapter 101 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -6,12 +6,8 @@ export const prompts = {
     q: 'What does AST-to-IR translation (lowering) do with an expression, and with a statement?',
     a: 'An expression becomes instructions that compute it, returning the value holding the result. A statement adds instructions and, for control flow, blocks and branches.',
   },
-  'resolve-first': {
-    q: 'Why does Viscosity resolve scopes before it lowers anything?',
-    a: 'Lowering must know which binding each identifier means, and whether any closure uses it, before it can pick SSA or a binding.',
-  },
   usedin: {
-    q: 'What does a binding’s `usedIn` set tell the lowering?',
+    q: 'In Viscosity’s JavaScript front end, what does a binding’s `usedIn` set tell the lowering?',
     a: 'The functions that reference it. If any of them is not the declaring function, a closure captures it, so it must be a binding.',
   },
   'ssa-rule': {
@@ -19,23 +15,23 @@ export const prompts = {
     a: 'When it is a const, let, var, parameter or catch variable that no other function uses, is never assigned inside try, and is not initialised with an array.',
   },
   'array-binding': {
-    q: 'Why is `const ps = []` always a binding, never SSA?',
+    q: 'In Viscosity’s JavaScript lowering, why is a variable initialised with an array (`const ps = []`) always a binding, never SSA values?',
     a: 'So every read of ps is a visible load and the collection analysis can find all its uses by scanning loads and stores.',
   },
   readtarget: {
-    q: 'In `p.x += 1`, why does `readTarget` lower `p` once and share it between get and set?',
+    q: 'When Viscosity lowers `p.x += 1`, why is `p` lowered once and shared between the field read and the field write?',
     a: 'JavaScript evaluates the target object once; lowering it twice could repeat side effects and would hide that read and write touch the same object.',
   },
   'update-unop': {
-    q: 'Why does `x++` lower to `unop +` before the add?',
+    q: 'Why does Viscosity lower `x++` with a `unop +` on the old value before the add?',
     a: 'That is ToNumber: postfix ++ returns the old value converted to a number, even if x held a string.',
   },
   'forof-index': {
-    q: 'What does `for (const p of ps)` become in VIR when `ps` is an identifier?',
+    q: 'What does Viscosity lower `for (const p of ps)` to when `ps` is a plain identifier?',
     a: 'An index loop: a phi for a hidden index in the head, a `< length` test, and `index.get ps, i` for p in the body.',
   },
   'opaque-mentioned': {
-    q: 'What would go wrong if an opaque instruction dropped the variables its code mentions?',
+    q: 'In VIR, what would go wrong if an `opaque` instruction dropped the variables its unmodelled code mentions?',
     a: 'A collection used inside unmodelled code would look untouched, and Viscosity could change a layout that code depends on.',
   },
 };
@@ -404,7 +400,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `for (const p of ps) p.x += 1;` become in VIR?',
+    q: 'What does Viscosity lower `for (const p of ps) p.x += 1;` to, when `ps` is a plain identifier?',
     options: [
       {
         t: 'One `opaque` instruction for the whole loop',
@@ -426,7 +422,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the for-of lowering, why is the loop head sealed last?',
+    q: 'When Viscosity lowers a for-of loop with on-the-fly SSA construction, why is the loop head sealed only after the body has been lowered?',
     options: [
       {
         t: 'Its back edge from the continue block doesn’t exist until the body is lowered',
@@ -443,12 +439,12 @@ export const quiz = [
       },
       {
         t: 'Because the exit block must be sealed first',
-        why: 'The exit is sealed after the head, and it is independent.',
+        why: 'The exit does not feed the head; it is in fact sealed just after it.',
       },
     ],
   },
   {
-    q: '`const o = { a: 1, ...d };` lowers to `opaque(object literal) %2`, where `%2` is `d`. Why is `d` an argument?',
+    q: 'Viscosity lowers `const o = { a: 1, ...d };` to one `opaque(object literal)` instruction whose argument is the value of `d`. Why is `d` an argument?',
     options: [
       {
         t: 'To compute `a`',
@@ -470,7 +466,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `ps[0].x++` lower to after the `index.get`?',
+    q: 'In Viscosity’s lowering, what does `ps[0].x++` become after the `index.get` of element 0?',
     options: [
       {
         t: 'field.get .x, unop +, const 1, binop +, field.set .x on the same element',

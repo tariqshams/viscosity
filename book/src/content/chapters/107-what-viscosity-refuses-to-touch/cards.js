@@ -1,22 +1,18 @@
-// Chapter 69 cards: recall prompts, examples, exercises and quiz.
+// Chapter 107 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'bo-what': {
-    q: 'What is a bailout?',
+    q: 'In Viscosity, what is a bailout?',
     a: 'Leaving a collection unchanged because its safety can’t be proved.',
   },
   'bo-cost': {
-    q: 'Why is a wrong refusal much cheaper than a wrong acceptance?',
+    q: 'For a compiler that changes data layouts, such as Viscosity, why is a wrong refusal much cheaper than a wrong acceptance?',
     a: 'A wrong refusal only loses speed. A wrong acceptance changes what the program prints.',
   },
   'bo-identity': {
     q: 'Why can’t a struct of arrays support `keep[0] === ps[0]`?',
     a: 'It has no element objects. A built object is a new copy each time, and `===` compares identity, not contents.',
-  },
-  'bo-push': {
-    q: 'In `aliasing_identity.js`, why must the write through `keep[0]` show up in `ps[0]`?',
-    a: 'Both arrays hold references to the same object. A copy in `keep` would take the write and leave `ps` unchanged.',
   },
   'bo-closure': {
     q: 'How can you fix `const p = ps[3]; const f = () => p.x;` so Viscosity accepts it?',
@@ -27,15 +23,11 @@ export const prompts = {
     a: 'The element is passed to code Viscosity can’t see into, which needs (and here prints) a real object.',
   },
   'bo-reassign': {
-    q: 'Why is a reassigned `let ps` a bailout?',
+    q: 'Why is a reassigned `let ps` a bailout in Viscosity?',
     a: 'After `ps = ...`, the name may hold a different array that wasn’t rewritten, so every `ps[i]` would have to work on both.',
   },
-  'bo-string': {
-    q: '`ps[\'5\']` returns element 5. Why does Viscosity still refuse a string index?',
-    a: 'It only knows the index may not be a number, and a string like `\'length\'` reads a property instead of an element.',
-  },
   'bo-notunsafe': {
-    q: 'How can you tell a bailout from a cost decision in explain?',
+    q: 'In `viscosity explain` output, how can you tell a bailout from a cost decision?',
     a: 'Bailout reasons start with `unsafe:`. Cost decisions (no numeric field, no loop, too small) don’t.',
   },
 };
@@ -276,7 +268,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `keep.push(ps[i])` make `ps` unsafe?',
+    q: 'Why does `keep.push(ps[i])` make Viscosity refuse to transform `ps`?',
     options: [
       {
         t: '`keep` is too small',

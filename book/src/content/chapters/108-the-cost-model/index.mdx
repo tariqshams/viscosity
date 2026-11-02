@@ -78,11 +78,11 @@ code (sizes, loops, types) or has measured, and its estimates can be
 wrong.
 </Callout>
 
-You have met cost models before. *The call graph* showed inliners
-working to a growth budget, because copying a body is a cost, and
-*Loop unrolling and vectorisation* weighed what unrolling saves against
-what it costs in code size and registers. Viscosity's is the same idea
-applied to data layout.
+You have met one before: *Induction variables, the call graph and
+inlining* showed inliners working to a growth budget, because copying a
+body is a cost (and the deep dive *Loop unrolling and vectorisation*
+weighs unrolling the same way). Viscosity's is that idea applied to data
+layout.
 
 <Prompts ids={['cm-what']} />
 
@@ -118,8 +118,8 @@ else use('soa');
 
 Line 1 is safety: any bailout from *What Viscosity refuses to touch*
 keeps the collection, and nothing below can change that. Line 2 is an
-annotation (the next chapter, *Opting in with @viscosity*), which skips
-every rule after it. Lines 3 to 6 are choices of the user and the
+annotation (from *Telling Viscosity more: annotations and profiles*),
+which skips every rule after it. Lines 3 to 6 are choices of the user and the
 language; lines 7 to 13 are the three cost rules; the last line is what
 is left.
 
@@ -147,15 +147,12 @@ first true one wins (the opt-in and Python rows are left out).</span>
 ## Three rules, and where they came from
 
 **Is any field provably numeric?** If not, every column would be a
-plain JavaScript array. Part of SoA's measured advantage comes from
+plain JavaScript array, and part of SoA's measured advantage comes from
 typed storage: in this book's benchmark run, a packed `Float64Array`
-that keeps each record's fields together was already 2.1× faster than
-objects on the particle loop at 100,000 elements (`FINDINGS.md`,
-section 5). Plain-array columns get none of that, so the rule says no.
-
-**Does a loop read or write a field?** A layout pays off only through
-work that is repeated. A collection whose fields are touched once, or
-never, is kept.
+keeping each record's fields together was already 2.1× faster than
+objects on the particle loop at 100,000 elements
+(`results/baseline-node-2026-10-31.md`). **Does a loop read or write a
+field?** A layout pays off only through repeated work.
 
 **Is it big enough?** Here is the measured basis: the same `x += vx`
 loop from *AoS vs SoA, measured*, at two sizes.
@@ -168,15 +165,13 @@ loop from *AoS vs SoA, measured*, at two sizes.
   highlight={['soa']} layouts={['aos', 'soa']}
   caption="At 100,000 elements the array of objects slows down per element; SoA barely changes." />
 
-In this run SoA was 1.7× faster at 1,000 elements and 3.8× at 100,000
-(`results/baseline-node-2026-10-31.md`): the win grows with size, as
-the cache stops hiding the waste in each object. The benchmark never
-measured below 1,000 elements, however, so the default threshold of 64
-is not read off a chart; it is a cautious judgment (64 records of two
-doubles are sixteen 64-byte cache lines), and `--min-size` changes it.
-
-Each rule stops a different program; here are three, each with the
-reason the real `viscosity explain` prints.
+In this run SoA was 1.7× faster at 1,000 elements and 3.8× at 100,000:
+the win grows with size, as the cache stops hiding the waste in each
+object. The benchmark never measured below 1,000 elements, however, so
+the default threshold of 64 is a cautious judgment, not a reading off a
+chart (64 records of two doubles are sixteen 64-byte cache lines), and
+`--min-size` changes it. Each rule stops a different program; here are
+three, with the reasons the real `viscosity explain` prints.
 
 <Examples of="cost-model">
 
@@ -215,11 +210,10 @@ an `if`; the next section explains that 40.
 
 ## Guessing the size
 
-The planner needs a size before the program has run. The analysis
+The planner needs a size before the program has run, so the analysis
 counts the literal elements, then adds each `push`, multiplied by the
-**trip count** (how many times a loop's body runs) of every loop around
-it, when that loop is a plain counting loop with a constant bound like
-`i < 1000`. A push inside nested loops of 20 and 30 trips counts 600.
+**trip count** of every loop around it that counts from 0 to a constant
+(a push inside nested loops of 20 and 30 trips counts 600).
 
 <Formal title="The static size estimate">
 
@@ -234,29 +228,26 @@ counts of every loop ℓ that contains p (ℓ ∋ p reads "ℓ contains p"). A
 push in no loop multiplies nothing, so it counts once.</span>
 </Formal>
 
-Three things can bend that number. A `push` under an `if` might not run
-every time, so the count is only a maximum, and explain says "at most".
-A loop whose bound is not a constant makes the size unknown. And a
-`push` inside a function makes it unknown too, because the analysis
-does not count how often the function is called. Step through five
-programs:
+Three things bend that number: a `push` under an `if` makes it only a
+maximum ("at most"); a loop whose bound is not a constant makes it
+unknown; and so does a `push` inside a function, since calls are not
+counted. Step through five programs:
 
 <SizeSteps client:visible />
 
 An unknown size *passes* the size rule. The planner is optimistic: when
 it cannot tell, it assumes the collection may be large. In the last
 program of the stepper (`spawn(10)` pushing ten points) that guess is
-wrong, and measuring fixes it. `viscosity profile` runs the original
-program with a little counting added, and writes down how long each
-collection grew; *Profile-guided optimization* builds it. Fed back in,
-the measured length replaces the estimate. After `viscosity profile
-spawn.js -o prof.json`, the command `viscosity explain spawn.js --profile
-prof.json` keeps `ps`, with the reason "about 10 elements (measured):
-below the 64-element threshold".
+wrong, and measuring fixes it: `viscosity profile` runs the program with
+a little counting added and writes down how long each collection grew
+(*Telling Viscosity more: annotations and profiles* builds it), and fed
+back in with `--profile`, the measured length replaces the estimate, so
+explain keeps `ps` with "about 10 elements (measured): below the
+64-element threshold".
 
 <Prompts ids={['cm-estimate', 'cm-unknown', 'cm-pgo']} />
 
-## Try it
+<More title="Try it: which rung stops it?">
 
 This program transforms `ws`. Try two changes, one at a time: make `n`
 a string (`n: 'x' + i`), or delete the second loop and print `ws[9].n`.
@@ -270,33 +261,28 @@ for (let i = 0; i < ws.length; i++)
   total += ws[i].n;
 console.log(total, ws[9].w);`} />
 
+</More>
+
 ## What the model leaves out
 
 This is a simple model, and it does not look at
 
-- **how hot a loop is**: any loop counts, even one that runs once, or
-  lives in a function nobody calls (the analysis records trip counts,
-  but the planner does not use them);
-- **how many fields a loop touches**: explain prints "touches 1 of 2
-  fields", and SoA gains most when a loop uses few of many fields, but
-  the planner does not weigh it;
-- **the costs SoA adds**: bounds checks and the generated code do not
-  enter the model;
-- **AoSoA**: the planner never chooses it on its own, only an annotation
-  can;
+- **how hot a loop is**: any loop counts, even one that runs once;
+- **how many fields a loop touches**, although SoA gains most when a
+  loop uses few of many;
+- **the costs SoA adds**, such as bounds checks;
+- **AoSoA**, which only an annotation can choose;
 - **the engine**: the thresholds come from Node on one machine.
 
-The end-to-end results show why that matters. In the benchmark
-matrix (`results/matrix-2026-10-31.md`) all five programs were
-transformed and all got faster on Node, from 1.2× (`nbody`) to 4.37×
-(`particles`); on Bun, `heat` gained 1.02× and `nbody` came out at
-0.97×, within the noise the matrix warns about. Nothing in the model could have
-told a gain of a fifth from a fourfold one, or seen that the engine
-matters.
+The end-to-end benchmark matrix (`results/matrix-2026-10-31.md`) shows
+why that matters: all five programs were transformed and all got faster
+on Node, from 1.2× (`nbody`) to 4.37× (`particles`), while on Bun `heat`
+gained 1.02× and `nbody` came out at 0.97×, within the noise. Nothing in
+the model could have told a gain of a fifth from a fourfold one.
 
 <Prompts ids={['cm-ignores']} />
 
-<Callout kind="engine" label="Under the hood">
+<More title="Under the hood: other cost models">
 LLVM's loop vectorizer chooses a vector width and an unroll count with
 a cost model, and offers flags and pragmas to overrule
 it<Cite id="llvm-vectorizers" />: the same split as Viscosity's ladder,
@@ -305,7 +291,7 @@ on made the columnar change at run time, inside the engine, where the
 array's real size and use can be seen directly<Cite id="makor2022" />. A
 compiler that runs before the program has to guess, or be told by a
 profile.
-</Callout>
+</More>
 
 ## Your turn
 
@@ -327,5 +313,8 @@ the size estimate.
   counts; it can be a maximum or unknown, and a **profile** replaces it.
 - The model ignores how hot a loop is, how many fields it uses and what
   SoA adds: simple, and explainable, on purpose.
+
+Next: *Telling Viscosity more: annotations and profiles*, where you
+overrule the ladder, or feed it measurements.
 
 <Quiz />
