@@ -29,10 +29,7 @@ fn idoms(
 `;
 
 export const prompts = {
-  'rust-ssa-what': {
-    q: 'What does **SSA construction over arena IR** mean in the port?',
-    a: 'The builder creates phis and rewrites operands by `ValueId` in the module’s arenas (`Vec`s indexed by typed ids), not through pointers between instruction objects.',
-  },
+
   'idom-vec': {
     q: 'The TS `dominators` returns a `Map<BlockId, BlockId>`. What does the Rust one store?',
     a: 'A `Vec<Option<BlockId>>` indexed by block, with `None` for an unreachable block.',
@@ -41,10 +38,7 @@ export const prompts = {
     q: 'Why does `intersect` in `cfg.rs` take `idom` as a parameter instead of capturing it?',
     a: 'The loop mutates `idom` while the closure is alive. A closure that captured it would hold a shared borrow, and the mutation would be error E0502.',
   },
-  'rpo-stack': {
-    q: 'How does the port compute reverse postorder without recursion?',
-    a: 'With an explicit stack of (block, its successors, next successor to try), which visits successors in the same order as the recursive TS version.',
-  },
+
   'chk-skip': {
     q: 'In a pass of Cooper–Harvey–Kennedy, which predecessors of a block are used?',
     a: 'Only those that already have an idom. The rest are skipped this pass.',
@@ -57,10 +51,7 @@ export const prompts = {
     q: 'Why doesn’t `FunctionBuilder` own the `Module`?',
     a: 'Every method takes `&mut Module`, so a front-end can keep one module and switch between builders for nested functions.',
   },
-  'builder-generic': {
-    q: 'What is `K` in `FunctionBuilder<K>`?',
-    a: 'The front-end’s variable key. The JS plugin uses a resolved binding, or a hidden `for...of` index (`VarKey`).',
-  },
+
   'phi-front': {
     q: 'Why can a phi with a larger number appear above a smaller one in a listing?',
     a: '`new_phi` inserts at the front of the block (`insts.insert(0, id)`), so later phis go above earlier ones.',
@@ -73,10 +64,7 @@ export const prompts = {
     q: 'What went wrong when trivial-phi removal didn’t rewrite `throw` operands?',
     a: 'A thrown element still named the removed phi, so the escape analysis missed it. The compiled program threw an index instead of the object.',
   },
-  wildcard: {
-    q: 'Would `match` exhaustiveness have caught the `throw` bug in Rust?',
-    a: 'Not as written: the rewrite ends in `_ => {}`. A match listing every terminator kind would have forced a decision about `Throw`.',
-  },
+
 };
 
 export const examples = {
@@ -301,13 +289,32 @@ fn unreachable_blocks_have_none() {
       'In `pass`, start each block with `new = None`. The first processed predecessor `p` becomes the answer; after that, intersect. `new.unwrap_or(p)` does both in one line, since `intersect(p, p)` is `p`.',
       'A block whose predecessors are all unprocessed keeps `None` this pass. Only set `changed` when the stored idom really differs.',
     ],
-    walkthrough: `This is \`dominators\` from \`engine/rust/crates/core/src/cfg.rs\`, with \`usize\` blocks and a small struct so that \`intersect\` can be a method.
+    walkthrough: `**How to think about it.** Picture two fingers on the dominator tree, one on each block, and the entry at the top. Reverse postorder numbers every block so that a block's immediate dominator always has a smaller number than the block itself. So if one finger sits on a larger number than the other, that finger cannot be on the meeting point yet, and it is safe to move it up to its idom; repeat until both fingers are on the same block. That is \`intersect\`. \`pass\` then uses it: a block's idom is the meeting point of all its predecessors that already have an idom. Run passes until one changes nothing. This is \`dominators\` from \`engine/rust/crates/core/src/cfg.rs\`, with \`usize\` blocks and a small struct so that \`intersect\` can be a method.
 
-- **Why rpo numbers.** In reverse postorder, a block’s immediate dominator always comes before it. So in \`intersect\`, the one with the larger \`ix\` can’t be the meeting point yet: climb it. The two fingers meet at the nearest common dominator.
-- **Why skip unprocessed predecessors.** A loop header’s back-edge predecessor comes later in rpo, so in the first pass it has no idom. Climbing from it would \`unwrap\` a \`None\`. Skipping it is safe, because the next pass sees it.
-- **Why a second pass.** The first pass may decide with only some predecessors. Running until nothing changes makes every block see all of them. On the loop test, the second pass intersects the latch with the entry, finds the entry again, and stops.
+**The solution, line by line.**
 
-The real code collects the processed predecessors with \`filter\`, then folds them with \`intersect\`, starting from the first. It is the same computation.`,
+- \`let ix = &self.ix; let id = &self.idom;\` borrows the two tables once, so the loops below read short names. Both are shared borrows, which is all \`intersect\` needs (it only reads).
+- \`while a != b {\` keeps going until the fingers meet.
+- \`while ix[a] > ix[b] { a = id[a].unwrap(); }\` moves \`a\` up while it is later in rpo. The \`unwrap\` is safe because \`pass\` only calls \`intersect\` on blocks that already have an idom, and every block on the way up has one too.
+- \`while ix[b] > ix[a] { b = id[b].unwrap(); }\` does the same for \`b\`. One of the two inner loops may run zero times; the outer loop repeats until they agree.
+- \`a\` is returned: both fingers are on the same block, the nearest common dominator.
+- In \`pass\`, \`let mut changed = false;\` remembers whether anything moved this pass.
+- \`for &b in &rpo[1..] {\` visits every reachable block in reverse postorder, skipping the entry (\`rpo[0]\`), whose idom is itself.
+- \`let mut new = None;\` will hold the answer for \`b\`, built up one predecessor at a time.
+- \`for &p in &preds[b] { if d.idom[p].is_none() { continue; }\` skips predecessors that have no idom yet, such as a loop's latch in the first pass.
+- \`let q = new.unwrap_or(p); let m = d.intersect(p, q); new = Some(m);\` handles the first processed predecessor and the rest in one go: for the first, \`new\` is \`None\`, so \`q\` is \`p\` and \`intersect(p, p)\` is \`p\`; after that, each new predecessor is intersected with the answer so far.
+- \`let Some(m) = new else { continue; };\` leaves a block alone if none of its predecessors was ready (it will be seen next pass).
+- \`if d.idom[b] != Some(m) { d.idom[b] = Some(m); changed = true; }\` stores the answer and reports a change only when it really differs, so the driver loop stops once a whole pass is quiet.
+
+On the loop test, pass one gives every block an idom using only the entry side of the header; pass two finally includes the latch, intersects it with the entry, gets the entry again, and nothing changes, so \`idoms\` stops.
+
+**Common wrong attempts.**
+
+- Taking the first processed predecessor as the idom, without intersecting. That is right only when a block has one way in; in the diamond, block 3 is reached from 1 and from 2, and only the entry dominates it.
+- Intersecting every predecessor, ready or not. In the first pass a loop header's latch has no idom yet, and \`intersect\` panics on \`unwrap()\` of \`None\`.
+- Setting \`changed = true\` whenever a block is visited. The driver then never stops, because every pass "changes" something.
+
+The real code collects the ready predecessors with \`filter\`, splits off the first with \`split_first\`, and folds the rest with \`intersect\`: the same computation, written as in the TypeScript.`,
     wrong: [
       {
         code: `${SCAF}
@@ -446,14 +453,7 @@ export const quiz = [
       { t: 'The latch comes later in reverse postorder, so it has no idom yet', correct: true, why: 'The pass skips predecessors without an idom.' },
     ],
   },
-  {
-    q: 'Where does `new_phi` put a new phi in its block?',
-    options: [
-      { t: 'At the front (`insts.insert(0, id)`), so the newest phi comes first', correct: true, why: 'That mirrors the TS `unshift`, and keeps listings and analysis order identical.' },
-      { t: 'At the end, before the terminator', why: 'That is where ordinary instructions go.' },
-      { t: 'Nowhere: phis live in a separate list', why: 'They are ordinary instructions in `insts`.' },
-    ],
-  },
+
   {
     q: 'A sealed loop header’s phi for `e` gets the operands `%14` (from the entry side) and itself (from the latch). What happens?',
     options: [

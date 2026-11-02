@@ -73,10 +73,7 @@ pub fn set_shape(
 }`;
 
 export const prompts = {
-  'shr-what': {
-    q: 'What is **the shape pass in Rust**?',
-    a: '`set_shape` (one field list per collection, exactly equal, and records used once) plus the numeric facts that decide each field’s column type.',
-  },
+
   'shr-exact': {
     q: 'How does `set_shape` in `analysis.rs` compare two field lists?',
     a: 'With `!=` on `Vec<String>`: element by element, names and order.',
@@ -97,13 +94,11 @@ export const prompts = {
     q: 'What decides whether a field gets a typed column?',
     a: 'Its fixpoint fact: every record added and every write to the field must put a provable number (in Python, a float) there.',
   },
+
+
   'shr-py-float': {
-    q: 'In Python mode, what does “numeric” mean for a value?',
-    a: 'Provably a `float`. Ints are tracked as a separate fact.',
-  },
-  'shr-why-float': {
-    q: 'Why can’t an int go into an `array(\'d\')` column?',
-    a: 'It comes back as a float: storing `1` and reading it gives `1.0`, which prints differently and has a different type.',
+    q: 'In Python, why must a typed column’s field be provably a **float**, not just a number?',
+    a: 'An `array(\'d\')` column stores doubles: an int goes in and a float comes out, so a program that printed `1` would print `1.0`.',
   },
   'shr-div': {
     q: 'In Python, when is `a / b` provably a float?',
@@ -113,14 +108,8 @@ export const prompts = {
     q: 'When is `a ** b` provably a float in Python?',
     a: 'Only when `a` is a float and `b` an int. A float exponent can give a complex number, and an int base with a negative int exponent gives a float, so int `**` int is neither.',
   },
-  'shr-mixed': {
-    q: 'When is `a + b` (or `-`, `*`, `%`, `//`) a float in Python?',
-    a: 'When one side is a float and the other is a float or an int.',
-  },
-  'shr-lang': {
-    q: 'How does the core know to use Python’s rules?',
-    a: 'It checks `Module.language`; the analyzer keeps `py: m.language == "python"`.',
-  },
+
+
 };
 
 export const examples = {
@@ -253,13 +242,29 @@ fn comparisons_are_neither() {
       'For the float half, `match op` with arms for `"/"` and `"**"`, then a guarded arm `_ if arith.contains(&op) => ...`, then `_ => false`.',
       'For `+ - * % //`: `(a.float && num(b)) || (a.int && b.float)`. For `**`: `a.float && b.int`.',
     ],
-    walkthrough: `This is the \`Op::Binop\` arm of \`compute\` and of \`compute_int\` in \`analysis.rs\`, merged into one function. In the real code, \`self.n(v)\` is \`k.float\` and \`self.i(v)\` is \`k.int\`.
+    walkthrough: `**How to think about it.** Work out the two facts separately, because they answer different questions: "is the result provably an int?" and "is the result provably a float?". The int question is easy, since only \`+ - * % //\` of two ints give an int. The float question has three cases, one for \`/\`, one for \`**\`, and one for the other arithmetic operators, and everything else (comparisons, say) is neither. Before writing, check each rule against Python itself: \`6 / 2\` is \`3.0\`, \`2 * 1.5\` is \`3.0\`, \`2.0 ** 3\` is \`8.0\`, \`2 ** -1\` is \`0.5\`, and \`(-1.0) ** 0.5\` is a complex number. This is the \`Op::Binop\` arm of \`compute\` and of \`compute_int\` in \`analysis.rs\`, merged into one function; in the real code, \`self.n(v)\` is \`k.float\` and \`self.i(v)\` is \`k.int\`.
 
-- **Why ints are separate.** A typed \`array('d')\` column stores C doubles: an int goes in and a float comes out, so \`print\` would show \`1.0\` where the original showed \`1\`. So in Python, “numeric” must mean “a float”, and \`ints_stay_ints\` is the case that keeps a column a plain list.
-- **Why \`/\` is special.** True division always gives a float in Python, even for two ints, so it only needs both sides to be numbers.
-- **Why \`**\` is so strict.** \`2.0 ** 3\` is \`8.0\`, but a float exponent can produce a complex number (\`(-1.0) ** 0.5\`), and \`2 ** -1\` is \`0.5\` while \`2 ** 3\` is \`8\`, so int \`**\` int has no single kind. The Rust core lagged the reference on this rule for a while, and it is now ported.
+**The solution, line by line.**
 
-None of this exists for JavaScript, where every number is a double: there, \`compute\` just asks that both sides of an arithmetic operator be numbers.`,
+- \`let arith = ["+", "-", "*", "%", "//"];\` lists the operators that keep an int an int. \`/\` and \`**\` are deliberately not in it.
+- \`let ar = arith.contains(&op);\` asks once whether \`op\` is one of them; \`contains\` takes a reference to the item, hence \`&op\`.
+- \`let int = ar && a.int && b.int;\` is the whole int rule: one of those operators, and both sides provably ints.
+- \`let float = match op {\` starts the float rule, one arm per case.
+- \`"/" => num(a) && num(b),\` says true division gives a float whenever both sides are numbers of either kind (\`num\` is "float or int").
+- \`"**" => a.float && b.int,\` is the careful one: a float base with an int exponent is a float; an int base can give an int or a float, and a float exponent can give a complex number, so nothing else is proven.
+- \`_ if ar => (a.float && num(b)) || (a.int && b.float),\` covers \`+ - * % //\`: the result is a float if one side is a float and the other a number. The two halves of the \`||\` are the two ways round (float first, or int first and float second).
+- \`_ => false,\` makes everything else neither.
+- \`K { float, int }\` builds the answer with field shorthand (\`float: float\`).
+
+Check it on \`ints_stay_ints.py\`: \`i / 2\` is int / int, so float; \`count + 1\`, once \`count\` is no longer provably a float, is neither; \`weight * 2\` is float * int, so float.
+
+**Common wrong attempts.**
+
+- Putting \`/\` in the int list. Then \`6 / 2\` comes out an int, but in Python it is \`3.0\`, and a column built on that fact would print the wrong thing.
+- Treating \`**\` like \`*\`. Then a float to a float power counts as a float, though \`(-1.0) ** 0.5\` is complex, and \`2 ** -1\` counts as an int, though it is \`0.5\`.
+- Writing the float rule for \`+\` as \`num(a) && num(b)\`. That makes int + int a float, so \`count\` would get an \`array('d')\` column and \`print\` would show \`2.0\` where the original showed \`2\`.
+
+None of this exists for JavaScript, where every number is a double: there, \`compute\` only asks that both sides of an arithmetic operator be numbers.`,
     wrong: [
       {
         code: `${KIND}
@@ -366,11 +371,23 @@ fn a_shared_record_is_aliased() {
     assert_eq!(c.bails, want);
 }`,
     hints: [
-      '`Vec<String>` and `&[String]` can be compared with `!=` directly.',
+      'What does “the same shape” mean? The same names, in the same order, and no more or fewer of them.',
+      'Rust can already compare two lists that way, length first and then element by element. Do not build a string from either list.',
+      '`Vec<String>` and `&[String]` can be compared with `!=` directly: `c.fields != fs`.',
     ],
-    walkthrough: `\`c.fields != fs\` compares length, then each name in order: that is all a shape is. The wrong attempt is the reference’s old idea, comparing \`join(",")\`: \`["a", "b"]\` and \`["a,b"]\` both become \`"a,b"\`, and a field named \`a,b\` is legal in JavaScript (\`{ 'a,b': i }\`). The fixed TypeScript compares \`JSON.stringify\` of the two arrays, which quotes each name.
+    walkthrough: `**How to think about it.** A shape is a list of names in order, so "same shape" should mean "same list": the same length, and the same name at each position. Rust already compares a \`Vec<String>\` with a \`&[String]\` exactly that way, so the whole condition is one comparison; the work is in resisting anything cleverer.
 
-Notice the message the test expects: \`{a,b} vs {a, b}\`. The display still joins with \`", "\`, so the one field \`a,b\` prints without a space. That is the same text both engines print for the corpus program \`comma_field_name.js\`.`,
+**The solution, line by line.**
+
+- \`let differs = c.fields != fs;\` compares the collection's list with the record's: first the lengths, then each pair of names, stopping at the first difference. Comparing a \`Vec<String>\` with a slice \`&[String]\` works because the standard library implements \`PartialEq\` between them.
+- The rest of \`set_shape\` was given: the first record (\`c.fields.is_empty()\`) sets the fields; a later one that \`differs\` adds a bailout naming both lists; and a record with more than one use is reported as aliased.
+
+On \`a_comma_is_not_two_fields\`, the collection holds \`["a", "b"]\` and the new record \`["a,b"]\`: lengths 2 and 1, so they differ at once, and the message prints \`{a,b} vs {a, b}\` (the record's list first, as the real message does).
+
+**Common wrong attempts.**
+
+- Comparing \`c.fields.join(",") != fs.join(",")\`, the reference's old idea. \`["a", "b"]\` and \`["a,b"]\` both become \`"a,b"\`, and a field named \`a,b\` is legal in JavaScript (\`{ 'a,b': i }\`). The fixed TypeScript compares \`JSON.stringify\` of the two arrays, which quotes each name, so the comma can no longer hide.
+- Comparing sorted copies of the lists. Then \`{x, y}\` and \`{y, x}\` count as one shape, but the order of fields is part of an object's shape in JavaScript engines, and the reference refuses it, so parity would fail.`,
     wrong: [
       {
         code: shapeWith(`c.fields.join(",")
@@ -423,12 +440,5 @@ export const quiz = [
       { t: 'That the new record is also referenced elsewhere, so it could be aliased', correct: true, why: '`self.uses.of(r).len() != 1`.' },
     ],
   },
-  {
-    q: 'For JavaScript, when is a field numeric?',
-    options: [
-      { t: 'When every record added and every write to it puts a provable JS number there', correct: true, why: '`field_stays_numeric`, iterated with the rest of the fixpoint. Then it gets a `Float64Array` column.' },
-      { t: 'When its first value is a number', why: 'One string written later would break a typed column.' },
-      { t: 'When it is an int', why: 'JavaScript has one number type; ints matter only in Python.' },
-    ],
-  },
+
 ];

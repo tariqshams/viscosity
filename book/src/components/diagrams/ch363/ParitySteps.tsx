@@ -15,8 +15,8 @@ const STATES: S[] = [
   { hi: ['ts', 'fix'], note: 'Once, by hand, with Node: gen_expected.mjs runs the TypeScript reference and writes four files per program (code and explain text, for each variant) into tests/expected. They are committed.' },
   { hi: ['rust', 'cmp'], verdict: 'parity: 190/190 (54 Python)', note: 'On every cargo test: parity.rs compiles the same sources with the Rust engine and compares with the fixtures, byte for byte. Node isn’t needed for this part.' },
   { hi: ['fix'], verdict: 'no missing, no stale fixtures', note: 'A second test checks the fixture folder itself: every program has its files and no file is left over. Otherwise a deleted program would leave a fixture nobody checks.' },
-  { hi: ['node'], verdict: 'differential: 68/68 identical', note: 'Byte equality says the engines agree, not that they are right. The differential test runs each original and compiled program with node and compares what they print and throw.' },
-  { hi: ['rust', 'cmp'], bad: true, verdict: '4 of 186 differ', note: 'Delete one line from the Rust builder (the throw case of trivial-phi removal) and parity fails on exactly this program: both variants, code and explain (run when there were 186 pairs). The Rust engine now says “struct of arrays”.' },
+  { hi: ['node'], verdict: 'differential: 68/68 programs', note: 'Byte equality says the engines agree, not that they are right. The differential test runs each original and compiled program with node and compares what they print and throw.' },
+  { hi: ['rust', 'cmp'], bad: true, verdict: '4 of 190 differ', note: 'Delete one line from the Rust builder (the throw case of trivial-phi removal) and parity fails on exactly this program: both variants, code and explain. The Rust engine now says “struct of arrays” where the fixture says “kept as array of objects”.' },
   { hi: ['node'], bad: true, verdict: 'object 1  vs  number undefined', note: 'The differential test fails too, and says why it matters: the compiled program throws an index (a number) where the original threw the object.' },
 ];
 

@@ -3,205 +3,261 @@ n: 363
 day: 91
 part: XIII
 title: 'Round-trip tests across engines'
-tagline: 'The Rust engine promises the TypeScript engine’s output, byte for byte, for every test program. Here is how that promise is checked on every cargo test, what one deleted line looks like to the tests, and the ten bugs in the reference that the port turned up.'
+tagline: 'The Rust engine promises to print exactly what the TypeScript engine prints, byte for byte, for every test program. Here is how that promise is checked on every cargo test, what one deleted line looks like to the tests, and why the newcomer turned out to be right ten times.'
 objectives:
-  - Describe the parity loop, from gen_expected.mjs and its fixtures to parity.rs.
-  - Explain why byte equality needs a behaviour test beside it, and what differential.rs runs.
-  - Say what parity forces on the port (ordered maps, stable sorts, js_number) and why.
+  - Describe the parity loop, from gen_expected.mjs and its fixture files to parity.rs.
+  - Explain why equal bytes need a behaviour test beside them, and what differential.rs runs.
+  - Say what parity forces on the port (insertion-ordered maps, stable sorts, js_number) and why.
   - Write the helper that reports where two outputs first differ.
 introduces: [cross-implementation-tests]
 uses: [viscosity-rs, plugin-trait, oxc, visitor-pattern, rust-codegen, differential-testing, test-corpus, shared-corpus, round-trip-testing, identity-transform, fuzzing, optimization-report, cargo-test, assert-macros, cargo, python-subset, webassembly, wasm-bindgen, npm-package, hashmap, vec, option, rust-iterator, string-vs-str, ieee754, typescript]
 sources: [cargo-targets]
 ---
 import ParitySteps from '../../../components/diagrams/ch363/ParitySteps';
+import FixtureFan from '../../../components/diagrams/ch363/FixtureFan';
 
 ## Two engines, one answer
 
-Chapter 265 compared a program with its compiled version: same
-behaviour, or a bug. Now there is a second compiler. The Rust engine
-claims to make the TypeScript engine's decisions and print its exact
-output: the same JavaScript or Python, and the same `explain` text, for
-every input. "Mostly the same" would be worse than useless. A playground
-running the wasm build would disagree with the CLI, and nobody could
-tell which one to believe.
+The book's Playground can compile your program with the TypeScript engine
+or with the Rust engine (built to WebAssembly), and the command line has
+both as well; so imagine you paste a program in, switch engines, and the
+explain text changes from "struct of arrays" to "kept as array of
+objects". Which do you believe? Two compilers that *mostly* agree are
+worse than one, because nobody can tell which answer is real. As such the Rust port makes
+a very strong promise, which is that for every test program it produces
+**the same bytes** as the TypeScript engine (the same JavaScript or Python,
+and the same `explain` text, down to the last space), and this chapter is
+about how that promise is checked.
 
-<Callout kind="intuition">
-Two translators work on the same book. You can't read the language, but
-you can still check them: lay their pages side by side and look for any
-character that differs. If one of them is a trusted veteran, the
-newcomer's pages should simply be identical.
-</Callout>
+<Analogy title="tracing paper over a master drawing">
+An art student copies a drawing by laying tracing paper over it; to check
+the copy, you put it back over the original and hold both up to a window,
+and any line that does not sit exactly on its twin shows at once. The
+TypeScript engine's output is the original drawing, and the Rust output is
+the copy.
+<span slot="breaks">Lining up perfectly says nothing about whether the
+original was a good drawing; two compilers can agree on a wrong answer,
+which is why a second test (below) runs the programs. And here the
+original sometimes turns out to have the mistake.</span>
+</Analogy>
 
-## Fixtures from the reference
+<Analogy title="an answer key">
+A teacher writes the answer key once and marks every new student's paper
+against it, without solving each question again. The answers the
+TypeScript engine gives are written down once, as files, and the Rust
+engine's answers are marked against those files on every test run.
+<span slot="breaks">In school, the key is always right. Here, when a
+student's answer disagrees, someone checks by hand, and ten times the key
+itself was wrong and was corrected.</span>
+</Analogy>
 
-The veteran's pages are written once. `engine/rust/scripts/gen_expected.mjs`
-imports the TypeScript compiler and runs it over six suites: the JS
-corpus, the end-to-end benchmarks, and extra programs written for the
-port, plus the same three for Python. Its core loop, adapted:
+## Writing the answer key
+
+The script `engine/rust/scripts/gen_expected.mjs` imports the TypeScript
+compiler (with Node, which can run TypeScript files directly) and runs it
+over six groups of programs: the reference's JavaScript test programs, the
+end-to-end benchmarks, extra programs written for the port, and the same
+three for Python. Each program is compiled twice; here is the JavaScript
+loop, trimmed (two lines that write the extra files below are left out)
+and rewrapped to fit:
 
 ```js
-const variants = [
-  ['', {}],
-  ['.assume', { bounds: 'assume' }],
-];
-for (const [suffix, extra] of variants) {
-  const r = compile(src, jsPlugin(), extra);
-  write(`${base}${suffix}.js`, r.code);
-  write(`${base}${suffix}.explain.txt`,
+for (const [suffix, extra] of [['', {}],
+    ['.assume', { bounds: 'assume' }]]) {
+  const r = compile(src, jsPlugin(), {
+    ...(optIn ? { mode: 'opt-in' } : {}),
+    ...extra });
+  writeFileSync(join(out,
+    `${base}${suffix}.js`), r.code);
+  writeFileSync(join(out,
+    `${base}${suffix}.explain.txt`),
     r.explain);
 }
 ```
 
-The `.assume` variant takes the emitter's unchecked paths, which the
-default (bounds checks on) never reaches. The files land in
-`tests/expected` and are committed. When the reference changes, someone
-reruns the script and reviews the diff.
+The first two lines loop over two **variants**: no suffix and no extra
+options, then the suffix `.assume` with `bounds: 'assume'`, which tells
+the code generator to skip bounds checks (a path the default never
+reaches, so it needs its own test). The next three lines compile the
+source `src`, switching to opt-in mode when the program's first comment
+asks for it. The last two calls write the compiled code and the explain
+text into `tests/expected`, under the program's name plus the suffix.
+Those files are called **fixtures** (stored, expected outputs), and they
+are committed to the repository.
 
-## The Rust side
+<Figure caption="What gen_expected.mjs writes for one program, and the totals in tests/expected." takeaway="One program, two variants, two files each.">
+  <FixtureFan />
+</Figure>
 
-`crates/cli/tests/parity.rs` is a Cargo integration test. It compiles
-the same sources with the Rust engine and compares (adapted):
+Counting the folder today: 68 JavaScript programs and 27 Python ones, 95
+in all, so 190 **fixture pairs** (a code file plus an explain file), plus
+14 files for `explain --frames` and 8 for programs compiled with a
+profile, 402 files altogether. When the TypeScript engine changes on
+purpose, someone runs the script again and reads the diff before
+committing it, so every change to the expected output is seen by a person.
+
+<Prompts ids={['who-writes-fixtures', 'why-fixtures']} />
+
+## Marking the Rust engine
+
+`crates/cli/tests/parity.rs` is a Cargo **integration test** (a test file
+in `tests/` that uses the crates from outside, as a user would). Its main
+test is the same loop in Rust, trimmed and rewrapped:
 
 ```rust
 for p in programs() {
     for (suffix, bounds) in VARIANTS {
+        total += 1;
         let name =
             format!("{}{suffix}", p.name);
-        let (code, explain) =
+        let (want_code, want_explain) =
             expected(&p, &name);
         let r = p.compile(bounds);
-        if r.code != code { /* record */ }
-        if r.explain != explain { /*…*/ }
+        if r.code != want_code {
+            failures.push(/* where */);
+        }
+        if r.explain != want_explain {
+            failures.push(/* where */);
+        }
     }
 }
 ```
 
-It records every mismatch and fails once, listing them all. Each entry
-says where the texts first differ, which is your exercise. Other tests
-in the same file check that the fixture folder matches the programs
-exactly (none missing, none stale), that the 14 `explain --frames`
-fixtures and four `--profile` fixtures match too, that each corpus program's
-`// viscosity: ps=soa` header holds, and that the built `viscosity`
-binary prints the same output. Cargo tells the test where the binary is
-through `CARGO_BIN_EXE_viscosity`<Cite id="cargo-targets" />.
-
-<ParitySteps client:visible />
-
-When I ran it (rustc 1.97, on a copy of the repo with its own target
-directory, so as not to disturb other work):
+`programs()` lists the same six groups, and `VARIANTS` is the pair
+`("", Bounds::Check)` and `(".assume", Bounds::Assume)`. For each program
+and variant, `expected` reads the two fixture files, `p.compile` runs the
+Rust engine, and each `!=` compares two `String`s byte for byte. A
+mismatch is not a panic straight away: it is pushed onto `failures` with a
+note of where the texts first differ (your exercise), so that one run
+lists every difference. After the loops, one `assert!` fails if the list
+is not empty. On my run here (rustc 1.97, `cargo test --workspace
+--release`, all 77 tests passing), the test printed:
 
 ```
 parity: 190/190 (54 Python)
 ```
 
-That is 95 programs, each in two variants. The count grows as programs
-are added (it was 186 when this chapter was first written). What
-matters is that the two numbers are equal.
+The same file has nine more tests: `fixtures_match_the_programs_exactly`
+checks that the fixture folder
+matches the programs exactly (none missing, and none left over from a
+deleted program, which nobody would check), others cover the `--frames`
+and `--profile` fixtures, and one runs the built `viscosity` binary (Cargo tells a test where the binary is through the
+variable `CARGO_BIN_EXE_viscosity`<Cite id="cargo-targets" />).
+
+<ParitySteps client:visible />
 
 <Callout kind="definition">
 A **cross-implementation test** runs two implementations of the same
-specification on the same inputs and requires the same outputs. Here the
-TypeScript engine is the **reference**. Its outputs are stored as
-**fixtures** (expected files) by a generator script. The new engine's
-test compares against them **byte for byte**, for every program and
-option variant, and also checks that the fixture set has no missing or
-stale files.
+specification on the same inputs and requires the same outputs. One is
+the **reference**; its outputs are stored as **fixtures** by a generator
+script, and the new implementation is compared with them **byte for
+byte**, for every program and every option variant, with a check that no
+fixture is missing or stale.
 </Callout>
 
-<Prompts ids={['cross-what', 'who-writes-fixtures', 'two-variants', 'why-fixtures', 'stale']} />
+<Formal title="What parity promises">
 
-## Same bytes isn't the same as right
-
-Two engines can agree on a wrong answer. So `differential.rs` runs each
-original and compiled JavaScript program with `node` (in an isolated VM
-context, by a copy of the TS runner) and compares everything they print
-and throw. Python programs run with `python3`. On my run, 68 of 68
-JavaScript and 27 of 27 Python programs behaved identically.
-
-To see both tests at work, I deleted one line from a copy of
-`crates/core/src/builder.rs`: the case that rewrites a `throw` operand
-when a trivial phi is removed (chapter 364). Parity, trimmed (this was
-when it had 186 pairs):
-
-```
-4 of 186 differ:
-corpus_throw_from_loop.js: line 1:
-  want: // viscosity: ps=aos
-  got:  // Generated by Viscosity: "ps" ...
+```text
+∀ p ∈ Programs, ∀ v ∈ {check, assume}:
+  rust(p, v) = fixture(p, v) = ts(p, v)
 ```
 
-and the differential test:
+<span slot="read">For every program p and both bounds variants v, the Rust
+engine's output for p under v equals the stored fixture, which is the
+TypeScript engine's output; "equals" means the same bytes, both for the
+code and for the explain text.</span>
+</Formal>
+
+<Prompts ids={['cross-what', 'stale']} />
+
+## Equal bytes, wrong together
+
+Two engines can agree on a wrong answer, so `differential.rs` checks
+behaviour: it runs each original and compiled JavaScript program with
+`node` (in an isolated context, using a copy of the TypeScript test
+runner) and compares everything printed and thrown, and it runs the Python
+ones with `python3`. Chapter "Differential testing at scale" built this
+test for the TypeScript engine; here it ran 68 of 68 JavaScript and 27 of
+27 Python programs identically. To see both tests catch a real mistake, I
+deleted one line from a copy of `crates/core/src/builder.rs` (the line
+that rewrites a `throw` when a phi is removed, which the chapter
+"Dominators and SSA in Rust" explains):
+
+<Examples of="cross-implementation-tests">
 
 ```
+4 of 190 differ:
+corpus_throw_from_loop.explain.txt:
+  line 1:
+  want: ps (line 3) {x} → kept as
+        array of objects
+  got:  ps (line 3) {x} → struct of
+        arrays
+```
+
+```
+1 of 68 programs behave differently:
 corpus_throw_from_loop:
   original: {"out":["object 1"],…}
   compiled: {"out":["number undefined"],…}
 ```
 
-Parity says *something* changed in exactly one program. The differential
-test says why it matters: the compiled program throws a number where the
-original threw an object.
+<Run id="numbers-play" />
+
+</Examples>
+
+The first is parity, trimmed and wrapped (the other three entries are the
+same program's code file and its `.assume` pair): one program changed,
+and the line says how. The second is the differential test, which
+says why it matters, since the original program throws an object (and
+prints `object 1`) while the compiled one throws a number. The third is a
+small cross-implementation test you can run: five numbers, how
+JavaScript's `String(x)` writes them (captured once, like fixtures), and
+how Rust's `{}` writes them; only two match, which leads to the next
+section.
 
 <Prompts ids={['agree-not-right']} />
 
 ## What parity forces
 
-Matching decisions isn't enough. `explain` lists its reasons in the
-order the analyses find them, and the emitter's edits come in the order
-the plan is walked. So the port copies the reference's *order* too. A JS
-`Map` iterates in insertion order, so where the TS code uses one, the
-port uses `IndexMap`. Sorts are stable. Use lists keep duplicates, and
-the numeric fixpoint updates in the same sequence. Numbers are formatted
-by `vir::js_number`, because Rust and JavaScript print some doubles
-differently:
-
-<Run id="numbers-play" />
+Matching decisions is not enough, because `explain` lists reasons in the
+order the analyses find them, and the code generator applies its edits in
+the order the plan is walked. So the port copies the reference's *order*
+as well: a JavaScript `Map` iterates in insertion order, so where the
+TypeScript uses one, the port uses `IndexMap` (a Rust map that remembers
+insertion order; a plain `HashMap` gives an arbitrary one); sorts are
+stable (equal items keep their order); and numbers in text go through
+`vir::js_number`, which follows JavaScript's own algorithm, so `1e21` is
+written `1e+21` rather than Rust's twenty-two digits.
 
 <Prompts ids={['order-matters', 'js-number']} />
 
-## Ten bugs in the reference
+## When the key was wrong
 
-When the engines disagree, the obvious suspect is the newcomer. It
-isn't always guilty. The README lists ten bugs the port turned up in the TypeScript engine.
-Each was fixed in both, and each now has a test program:
-
-1. A `throw` of a removed phi wasn't seen as an escape (a miscompile).
-2. `push({ y: (a, b) })` lost its parentheses (chapter 362).
-3. Shapes were compared by joined names, so `'a,b'` matched `a, b`.
-4. `export default function () {}` crashed the resolver.
-5. Annotation comments split lines at `\n` only.
-6. A number at the very end of a Python file read past the string: `1`
-   became a float, and `0x1` hung the tokenizer.
-7. f-string dataclass defaults were copied to each call (a miscompile).
-8. `global g` with no module-level `g` crashed.
-9. `len()` of an element crashed when a field was named `length`.
-10. A rebound dataclass name was still compiled as the class (a
-    miscompile).
-
-Bug 6 is a nice example of what a second implementation catches. Past
-the end, JavaScript's `src[i]` is `undefined`, and a regex test turns
-that into the string `"undefined"`, which contains an `e`. The Rust
-tokenizer reads `s.get(k)`, which past the end gives no character at
-all, so the two engines disagreed.
+When two engines disagree, the obvious suspect is the newcomer; however,
+the port's README lists ten bugs it turned up in the TypeScript engine,
+each fixed in both engines and pinned by a test program. Three were
+**miscompiles** (the compiled program behaved differently), including the
+`throw` above; others were crashes, or quieter slips such as shapes
+compared by joined names (see "Shape inference in Rust"). One shows well
+what a second implementation catches: past the end of a string,
+JavaScript's `src[i]` is `undefined`, and a regular-expression test turns
+that into the text `"undefined"`, which contains an `e`, so a `1` at the
+very end of a Python file looked like a float; Rust's `s.get(k)` gives no
+character at all, and the two engines disagreed.
 
 <Prompts ids={['found-bugs']} />
 
 <Callout kind="engine" label="Under the hood">
-The wasm crate wraps the same `compile`, so the WebAssembly build is
-held to the same fixtures. I loaded the package's Node build
-(`packages/wasm/dist/node`) and compiled all six suites through
-`compileLanguage`: 190 of 190 fixture pairs were identical.
-`packages/wasm/smoke.mjs` goes further: it packs the npm package,
-installs it into an empty directory, and compares every corpus program
-with the TypeScript CLI three ways (CommonJS `require`, ES `import`, and
-the web build initialized from bytes). Fixtures only cover programs
-someone wrote, so `scripts/fuzz.mjs` generates random ones and checks
-them both ways: TS against Rust byte for byte, and original against
-compiled under node. A 200-program run is part of `cargo test`, and its
-finds so far are fixed in both engines (chapter 381).
+The WebAssembly crate wraps the same `compile`, so its output can be held
+to the same fixtures: I loaded the package's Node build
+(`packages/wasm/dist/node`) and compiled all six groups through
+`compileLanguage`, and 190 of 190 pairs matched.
+Fixtures only cover programs someone wrote, so `scripts/fuzz.mjs` writes
+random ones and checks both ways; its fixed-seed run, part of `cargo
+test`, printed `fuzz: seed 1, 200 programs (85 transformed, 114 may go
+out of bounds, 13 with an early error), 0 failing` here.
 </Callout>
-
-<Prompts ids={['wasm-too']} />
 
 ## Your turn
 
@@ -209,15 +265,15 @@ finds so far are fixed in both engines (chapter 381).
 
 ## What you learned
 
-- A **cross-implementation test** holds a new engine to a reference:
+- A **cross-implementation test** holds a new engine to a reference: the
   same inputs, byte-identical outputs.
 - `gen_expected.mjs` writes the reference's **fixtures** (two variants
-  per program). `parity.rs` compares the Rust engine with them on every
-  `cargo test`, and checks for missing or stale fixtures.
-- Equal bytes can still be wrong together, so a **differential test**
-  runs both programs in `node` and `python3`.
+  per program, 190 pairs today); `parity.rs` compares the Rust engine with
+  them on every `cargo test`, and checks for missing or stale files.
+- Equal bytes can be wrong together, so a **differential test** runs
+  both programs with `node` and `python3`.
 - Byte parity forces the reference's **order**: `IndexMap`, stable sorts,
-  and JavaScript number formatting.
+  and JavaScript's number formatting.
 - The disagreements found **ten bugs in the reference**, fixed in both
   engines.
 

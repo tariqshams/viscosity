@@ -281,34 +281,22 @@ export const prompts = {
     q: 'Why does the design solver store `transfer(..).meet(&old)` instead of the transfer’s result?',
     a: 'So each fact can only move down. With a lattice of finite height, the worklist must then empty, whatever the transfer does.',
   },
-  'gd-queued': {
-    q: 'What is `queued` for in the worklist solver?',
-    a: 'It keeps a node on the stack at most once. Without resetting it on pop, a node could never be queued again.',
-  },
+
   'gd-rounds': {
     q: 'How does Viscosity’s real fixpoint visit values?',
     a: 'In whole rounds, every value in id order, updating facts in place (Gauss–Seidel), then bindings, then collection fields.',
   },
-  'gd-converged': {
-    q: 'When does the real fixpoint count as converged?',
-    a: 'When a whole round changes no fact. A round that merely reaches the right answer is not enough: one more must confirm it.',
-  },
+
   'gd-fail-closed': {
     q: 'What happens if the numeric fixpoint has not converged after `MAX_ROUNDS` (1000) rounds?',
     a: 'It fails closed: every value, int and field fact is reset to false, so nothing is proven numeric.',
   },
-  'gd-rise': {
-    q: 'Why can a fact in the real fixpoint go *up* in round one?',
-    a: 'Non-cyclic values start from their rule, reading values not yet computed as `false`. When those are computed, the first value is recomputed and can rise.',
-  },
+
   'gd-python': {
     q: 'For Python, what lattice does the real fixpoint use per value?',
     a: 'A pair of booleans, “is a float” and “is an int”: two two-point lattices side by side (a product).',
   },
-  'gd-nodes': {
-    q: 'Besides SSA values, which nodes does the real fixpoint have facts for?',
-    a: 'Bindings (all stores numeric?) and each field of each collection (every record and field write numeric?).',
-  },
+
 };
 
 export const examples = {
@@ -453,13 +441,26 @@ export const exercises = {
       'Compute `let new = p.transfer(v, &f).meet(&f[v]);`. If `new == f[v]` nothing changed: `continue`.',
       'Otherwise store `f[v] = new` and, for each `u` in `us[v]` with `!queued[u]`, set `queued[u] = true` and `work.push(u)`.',
     ],
-    walkthrough: `The solver never looks inside a fact. It only calls \`top\`, \`meet\`, \`==\` and \`transfer\`, which is why one copy works for \`bool\` and for the constant lattice \`C\`. rustc makes a copy of \`solve\` for each problem type (monomorphization), so the generic version costs nothing at run time.
+    walkthrough: `**How to think about it.** A worklist solver keeps one promise: a node is on the stack whenever its fact might be out of date. At the start every fact is a guess (top), so every node is on the stack. Popping a node brings it up to date; if its fact changed, every node that reads it might now be out of date, so those go back on the stack. When the stack is empty, nothing is out of date: that is the fixpoint. The solver never looks inside a fact; it only calls \`top\`, \`meet\`, \`==\` and \`transfer\`, which is why one copy works for \`bool\` and for the constant lattice \`C\`.
 
-- **Why requeue the users.** In \`doubt_travels_round_the_loop\`, the phi \`%1\` is popped before \`%3\` becomes maybe-not. When \`%3\` changes, \`%1\` is one of its users, so it goes back on the stack and is redone with the new fact.
-- **Why reset \`queued\` on pop.** \`queued\` means “on the stack now”. If you never clear it, a node popped once can never come back, and the loop phi keeps its stale fact.
-- **Why \`meet(&f[v])\`.** It clamps: the stored fact is never above the old one. Each change moves a fact down the lattice, and \`C\` has height 3, so each node changes at most twice. That bounds the work no matter what order things happen in.
+**The solution, line by line.**
 
-On \`a_loop_counter_varies\` the phi first meets \`K(0)\` with \`Top\` and becomes \`K(0)\`. Then \`%3\` is \`K(1)\`, so the phi becomes \`K(0) ⊓ K(1)\`, which is \`Varies\`, and so does \`%3\`.`,
+- \`while let Some(v) = work.pop() {\` takes nodes off the end of the stack until it is empty; \`pop\` returns \`None\` then, which ends the loop. The stack was filled with \`(0..n).rev()\`, so node 0 comes off first.
+- \`queued[v] = false;\` records that \`v\` is no longer on the stack, so that a later change to one of its inputs can put it back.
+- \`let t = p.transfer(v, &f);\` asks the problem for \`v\`'s fact given the facts so far (the solver passes the whole slice; the rule reads only what it needs).
+- \`let new = t.meet(&f[v]);\` clamps: the stored fact can only go down the lattice, never up. That is what makes the termination argument work whatever the rules do.
+- \`if new == f[v] { continue; }\` skips the rest when nothing changed: nobody needs waking.
+- \`f[v] = new;\` stores the lower fact.
+- \`for &u in &us[v] { if !queued[u] { queued[u] = true; work.push(u); } }\` wakes every user of \`v\` that is not already waiting. The \`queued\` check keeps each node on the stack at most once, so the stack never holds more than \`n\` entries.
+- \`f\` is returned after the loop: the fixpoint.
+
+Trace \`a_loop_counter_varies\`: the phi first meets \`K(0)\` with \`Top\` and becomes \`K(0)\`; then the increment \`%3\` becomes \`K(1)\`, which wakes the phi, and \`K(0) ⊓ K(1)\` is \`Varies\`; that wakes \`%3\`, which becomes \`Varies\` too, and the stack empties. rustc makes a separate copy of \`solve\` for each problem type (monomorphization), so being generic costs nothing at run time.
+
+**Common wrong attempts.**
+
+- Never clearing \`queued[v]\`. Then a node popped once counts as queued forever, so when \`%3\` changes, the phi \`%1\` is not pushed again and keeps its stale "number".
+- Visiting each node once, in order, and storing the result. That is a single round, not a fixpoint: the loop phi is computed before the doubt reaches it round the back edge.
+- Storing \`t\` without the meet. On these tests it may still pass, but nothing then guarantees the loop stops on a problem whose rules can move a fact back up.`,
     wrong: [
       {
         code: solveWith(`    while let Some(v) = work.pop() {
@@ -577,9 +578,21 @@ fn pairs_nest() {
       'Inside the impl, `A::top()` and `B::top()` are the two tops.',
       '`self.0` and `self.1` are the two sides; meet each with the matching side of `o`.',
     ],
-    walkthrough: `A product lattice orders pairs side by side: one pair is below another when each side is. So the top is both tops, and \`meet\` works on each side on its own. Because the impl is generic over \`A\` and \`B\`, pairs nest for free: \`((bool, bool), bool)\` is a lattice too, as the last test checks.
+    walkthrough: `**How to think about it.** A product lattice orders pairs side by side: one pair is below another when *each* side is below (or equal to) the other's. So the most hopeful pair is the pair of most hopeful facts, the safest pair is the pair of safest facts, and the meet of two pairs is worked out on each side on its own, with no side ever looking at the other. Write that sentence as code, once, for any two lattices \`A\` and \`B\`.
 
-That is the shape of Python’s fixpoint in \`analysis.rs\`: \`num\` and \`int\` are two \`Vec<bool>\`s, one per side of the pair, and every round updates both. A value can be neither (a string), one or the other, but not both, though the lattice itself doesn’t know that.`,
+**The solution, line by line.**
+
+- \`impl<A: Lattice, B: Lattice> Lattice for (A, B) {\` is a generic impl: for any two types that are lattices, the tuple of them is a lattice. Rust allows it because \`Lattice\` is our own trait. \`Clone + PartialEq\` (the supertraits) already hold for a tuple whose parts have them.
+- \`fn top() -> Self { (A::top(), B::top()) }\` calls each side's own \`top\`; \`A::top()\` names the function through the type, since there is no value yet.
+- \`fn bottom() -> Self { (A::bottom(), B::bottom()) }\` is the same for the safe end.
+- \`fn meet(&self, o: &Self) -> Self { (self.0.meet(&o.0), self.1.meet(&o.1)) }\` meets the first halves with each other and the second halves with each other; \`.0\` and \`.1\` are a tuple's fields.
+
+Because the impl is generic, pairs nest for free: \`((bool, bool), bool)\` is a lattice too, as the last test checks. That is the shape of Python's fixpoint in \`analysis.rs\`: \`num\` and \`int\` are two \`Vec<bool>\`s, one per side of the pair, and every round updates both. A value can be neither (a string), a float or an int, but not both; the lattice itself does not know that, which is fine, because the rules never produce \`(true, true)\` after the optimistic start.
+
+**Common wrong attempts.**
+
+- Returning \`bottom\` whenever the two pairs differ. Pairs that differ are not always unrelated: top met with \`(false, true)\` is \`(false, true)\`, not bottom. Meet each side separately.
+- Writing the impl for \`(bool, bool)\` only. It passes the first tests and fails the nested one, and it misses the point: the product of *any* two lattices is a lattice.`,
     wrong: [
       {
         code: `${TRAITS}
@@ -639,14 +652,7 @@ export const quiz = [
       { t: 'Nodes are visited in id order', why: 'Order is decided by the worklist, not by the clamp.' },
     ],
   },
-  {
-    q: 'Which part of the real fixpoint already behaves like the clamp?',
-    options: [
-      { t: 'The value facts `num` and `int`', why: 'Those are recomputed from scratch each round and may rise in round one.' },
-      { t: 'The `MAX_ROUNDS` check', why: 'That bounds the rounds; it doesn’t clamp facts.' },
-      { t: 'The binding and field facts, which are `old && all stores numeric`', correct: true, why: 'Once false, `binding_numeric` and `col_numeric` can never become true again.' },
-    ],
-  },
+
   {
     q: 'With a budget of 2 rounds, the example’s rounds solver has the right facts after round 2, yet fails closed. Why?',
     options: [

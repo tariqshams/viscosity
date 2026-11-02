@@ -106,10 +106,7 @@ const ELEMENT = elementWith(`    let ps =
     }`);
 
 export const prompts = {
-  'esr-what': {
-    q: 'What are **the escape and alias passes in Rust**?',
-    a: 'The checks in `analysis.rs` that every use of a collection and of each element is one the rewrite can follow, with `describe_use` giving the reason for any other use.',
-  },
+
   'esr-operand': {
     q: 'Why does `describe_use` take the value `v` as well as the use?',
     a: 'One instruction kind means different things for different operands: `e.k = 1` modifies `e`, while `box.k = e` stores `e` somewhere else.',
@@ -142,14 +139,8 @@ export const prompts = {
     q: 'Why is an element flowing into a phi an escape?',
     a: 'A phi merges it with other values, so later code may see either. The analysis doesn’t track where a merged value came from, so it refuses.',
   },
-  'esr-phi-line': {
-    q: 'A phi has no source position. Which line does its message use?',
-    a: 'The latest line among the values it merges (`line_of`), so the message says “near line N”, or nothing if none is known.',
-  },
-  'esr-captured': {
-    q: 'What does `const e = ps[0]; const f = () => e;` report?',
-    a: '“an element is stored in another variable (e)”: capturing `e` makes it a binding, and the element is stored into it.',
-  },
+
+
   'esr-frames': {
     q: 'What does `viscosity explain --frames` add?',
     a: 'Under each refusal, the source line it is about, with carets under the code (the bailout’s recorded site).',
@@ -265,11 +256,31 @@ fn another_line_is_kept() {
       'A string literal can continue on the next line with a backslash at the end: `"stored into an object \\` then `property {at}"` on the next line. Leading spaces on the next line are skipped.',
       'For `element_msg`, try both suffixes, `" at line {get}"` and `" near line {get}"`, with `strip_suffix`, stopping at the first that matches, and keep `why` unchanged if neither does. A phi’s reason has no `at line` part: build it in its own function and `return` it early from the `match`.',
     ],
-    walkthrough: `This is \`describe_use\` and the bailout step of \`element_uses\`, from \`engine/rust/crates/core/src/analysis.rs\`, cut down to six instruction kinds.
+    walkthrough: `**How to think about it.** Two questions, in a fixed order. First: is \`v\` in a position that changes the meaning? (The object of a \`FieldSet\`, the array of an \`IndexSet\`, or the index of either kind of index instruction.) If so, answer with the operand-specific sentence. Only if not, describe the instruction in general. Doing the general description first is the classic mistake, because \`box.k = e\` and \`e.k = 1\` are both \`FieldSet\`, yet the first gives the element a second home (an alias) while the second changes the element itself. Then \`element_msg\` is plain string work: remove the element's own line from the end of the reason, if it is there, and put it at the front. This is \`describe_use\` and the bailout step of \`element_uses\`, from \`engine/rust/crates/core/src/analysis.rs\`, cut down to six instruction kinds.
 
-- **Why operands first.** The real function has two \`match\`es: the first only handles a store or index where \`v\` is a particular operand, and returns; the second describes the instruction in general. In one \`match\`, guarded arms placed first do the same. If you test the kind first, \`box.k = e\` and \`e.k = 1\` get the same reason, and the reason is wrong for one of them: the first stores the element elsewhere (an alias), the second changes the element itself (a field it may not have).
-- **Why the same line only.** An element read on line 4 that flows into a phi made on line 5 gives “line 4: an element is merged ... near line 5”. That second line carries information, so it stays. Only an exact repeat of the element’s own line goes. The reference does this with a regular expression, \`/ (?:at|near) line N$/\`; the port with two \`strip_suffix\` calls, which match the same strings.
-- **Why phis may have no line.** A phi has no position of its own. \`line_of\` uses the latest line among its operands, and 0 if there is none, in which case the message just ends.`,
+**The solution, line by line (describe).**
+
+- \`let k = i.args.iter().position(|&x| x == v);\` finds which operand \`v\` is: \`Some(0)\` for the first, \`Some(1)\` for the second, \`None\` if it is not there at all.
+- \`let w: String = match (&i.op, k) {\` matches the kind and the position together, as a pair, so one \`match\` can do what the real code does with two. Arms are tried in order, which is what makes the next three lines "first".
+- \`(Op::FieldSet(f), Some(0)) => format!("modified directly (its .{f} is assigned)")\`: \`v\` is the object whose field is set.
+- \`(Op::IndexSet, Some(0)) => "written with an index store".into()\`: \`v\` is the array being stored into.
+- \`(Op::IndexSet, Some(1)) | (Op::IndexGet, Some(1)) => "used as an index".into()\`: \`v\` is the index, in either kind; \`|\` joins two patterns in one arm.
+- \`(Op::Call, _)\`, \`(Op::Store(n), _)\`, \`(Op::FieldSet(_), _)\`, \`(Op::IndexSet, _)\` and \`(Op::IndexGet, _)\` are the general sentences. Because the specific arms came first, \`(Op::FieldSet(_), _)\` here only ever sees \`v\` as the *value* being stored: "stored into an object property".
+- \`(Op::Phi, _) => { return phi(i.line); }\` leaves early, because a phi's sentence has its own ending ("near line N", or nothing when the line is 0).
+- \`format!("{w} at line {}", i.line)\` adds the line to every other sentence.
+
+**The solution, line by line (element_msg).**
+
+- \`let ps = [" at line ", " near line "];\` lists the two endings a reason can have.
+- \`let mut w = why;\` starts from the whole reason; \`w\` is a \`&str\`, so shortening it copies nothing.
+- \`for p in ps { let s = format!("{p}{get}"); if let Some(x) = w.strip_suffix(&s) { w = x; break; } }\` builds each ending with *this element's* line and, if the reason ends with it, keeps the text before it and stops. \`strip_suffix\` returns \`None\` when the text does not end that way, so a different line number is left alone.
+- \`format!("line {get}: {a} {w}")\` (given) puts the element's line at the front: "line 8: an element is used as an index".
+
+**Common wrong attempts.**
+
+- Matching the kind before the operand. Then \`box.k = e\` and \`e.k = 1\` get the same reason, which is wrong for one of them.
+- Stripping any trailing "at line N", whatever N is. An element read on line 4 that flows into a phi made on line 5 gives "line 4: an element is merged ... near line 5"; that second line carries information and must stay. Only an exact repeat of the element's own line goes. (The reference does this with a regular expression, \`/ (?:at|near) line N$/\`; the port with two \`strip_suffix\` calls, which match the same strings.)
+- Always writing "near line {n}" for a phi. A phi with no operand lines has line 0, and then the message must simply end.`,
     wrong: [
       {
         code: `${SCAF}${DESCRIBE.replace(`        (Op::FieldSet(f), Some(0)) => {
@@ -323,15 +334,7 @@ export const quiz = [
       { t: 'Messages are truncated to fit the terminal', why: 'Nothing is truncated; the text is exactly the reference’s.' },
     ],
   },
-  {
-    q: 'What does `--frames` print under “an element is used as an index” for `t[ps[3]] = 1`?',
-    options: [
-      { t: 'The whole function', why: 'Only the one line.' },
-      { t: 'The line, with carets under `ps[3]`, the element’s `index.get`', correct: true, why: 'The bailout’s site is the element’s source span, recorded the first time the message was found.' },
-      { t: 'Carets under `t`', why: 'That frame belongs to `t`’s own refusal, “written with an index store”.' },
-      { t: 'Nothing: frames are only for syntax errors', why: 'They are for every refusal with a recorded site.' },
-    ],
-  },
+
   {
     q: '`const e = ps[0]; const f = () => e;` Which message?',
     options: [

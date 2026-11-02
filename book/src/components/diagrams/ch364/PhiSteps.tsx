@@ -3,26 +3,28 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
 // Chapter 364: how `throw e` inside a loop gets its operand, following
 // FunctionBuilder in engine/rust/crates/core/src/builder.rs (Braun et al.).
-// Value numbers %14 and %21 are from a real VIR listing of
-//   const e = ps[0]; for (...) { if (i === 1) throw e; }
-// printed with print_func; blocks are renamed and the empty ones between
-// body and latch are left out.
+// Value numbers %14 and %31 are from a real VIR listing (print_func) of
+// the corpus program throw_from_loop.js,
+//   const e = ps[0]; ... for (...) { ...; if (i === 50) throw e; }
+// once as built and once with the Throw line of try_remove_trivial_phi
+// deleted (on a copy of the repo); blocks are renamed and the empty ones
+// between body and latch are left out.
 type Blk = 'entry' | 'head' | 'body' | 'throw' | 'latch';
 type S = { hi: Blk[]; head: string; thr: string; sealed: boolean; bad?: boolean; good?: boolean; note: string };
 
 const STATES: S[] = [
   { hi: ['throw'], head: '', thr: 'throw e', sealed: false, note: 'Lowering reaches throw e. The throw block has no definition of e, and it has one predecessor, so the builder asks body, which asks head.' },
-  { hi: ['head'], head: '%21 = phi ?', thr: 'throw %21', sealed: false, note: 'head is a loop header and isn’t sealed: the back edge from latch doesn’t exist yet. So the builder makes an incomplete phi, %21, records e = %21 in head, and the throw uses %21.' },
-  { hi: ['head', 'entry', 'latch'], head: '%21 = phi %14, %21', thr: 'throw %21', sealed: true, note: 'The loop is finished and head is sealed. Its operands are e read in each predecessor: %14 (ps[0]) from entry, and from latch… %21 itself, found by walking back up to head.' },
-  { hi: ['head'], head: '(removed)', thr: 'throw %14', sealed: true, good: true, note: 'Apart from itself, the phi merges only %14: it is trivial. Every use of %21 is rewritten to %14: instruction operands, condbr, return, and throw. The phi becomes an opaque “removed-trivial-phi” with no operands.' },
-  { hi: ['throw'], head: '(removed)', thr: 'throw %21', sealed: true, bad: true, note: 'Without the throw line (the TS bug the port found), the throw still names %21, an empty opaque. The escape analysis never sees the element reach a throw, and ps becomes SoA: the compiled program throws an index.' },
+  { hi: ['head'], head: '%31 = phi ?', thr: 'throw %31', sealed: false, note: 'head is a loop header and isn’t sealed: the back edge from latch doesn’t exist yet. So the builder makes an incomplete phi, %31, records e = %31 in head, and the throw uses %31.' },
+  { hi: ['head', 'entry', 'latch'], head: '%31 = phi %14, %31', thr: 'throw %31', sealed: true, note: 'The loop is finished and head is sealed. Its operands are e read in each predecessor: %14 (ps[0]) from entry, and from latch… %31 itself, found by walking back up to head.' },
+  { hi: ['head'], head: '(removed)', thr: 'throw %14', sealed: true, good: true, note: 'Apart from itself, the phi merges only %14: it is trivial. Every use of %31 is rewritten to %14: instruction operands, condbr, return, and throw. The phi becomes an opaque “removed-trivial-phi” with no operands.' },
+  { hi: ['throw'], head: '(removed)', thr: 'throw %31', sealed: true, bad: true, note: 'Without the throw line (the TS bug the port found), the throw still names %31, an empty opaque. The escape analysis never sees the element reach a throw, and ps becomes SoA: the compiled program throws an index.' },
   { hi: ['throw'], head: '(removed)', thr: 'throw %14', sealed: true, good: true, note: 'With it, throw %14 is an element escaping, and ps is kept as an array of objects: “an element is returned or branched on”.' },
 ];
 
 const BL: { id: Blk; x: number; y: number; code: (s: S) => string }[] = [
   { id: 'entry', x: 10, y: 10, code: () => '%14 = index.get ps, 0' },
   { id: 'head', x: 10, y: 70, code: (s) => s.head || '…' },
-  { id: 'body', x: 10, y: 130, code: () => 'condbr i === 1' },
+  { id: 'body', x: 10, y: 130, code: () => 'condbr i === 50' },
   { id: 'throw', x: 200, y: 130, code: (s) => s.thr },
   { id: 'latch', x: 200, y: 70, code: () => 'i++; br head' },
 ];

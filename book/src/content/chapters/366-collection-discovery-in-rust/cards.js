@@ -92,10 +92,7 @@ const SOLUTION = withOne(`    let mut out = Found::default();
     out`);
 
 export const prompts = {
-  'cdr-what': {
-    q: 'What is **the collection pass in Rust**?',
-    a: 'Steps 1 and 2 of `analysis.rs`: find candidate bindings, then follow every reference to each one through its uses, recording pushes, elements and bailouts.',
-  },
+
   'cdr-struct': {
     q: 'The TS `analyze` keeps its state in local variables and closures. Where does the Rust port keep it?',
     a: 'In a struct, `Analyzer<\'m>`, whose methods are the TS closures.',
@@ -124,18 +121,12 @@ export const prompts = {
     q: 'How does a value get added to the worklist besides the binding’s loads?',
     a: '`use_of_collection` returns `Some(param)` when the collection is passed to a known function, and the caller pushes it.',
   },
-  'cdr-seen': {
-    q: 'What does `seen_param` prevent?',
-    a: 'Following the same parameter twice, when a known function is called with the collection from two call sites.',
-  },
+
   'cdr-lifo': {
     q: 'The worklist is a `Vec` used as a stack. Why not a queue?',
     a: 'The reference pops from the end of its array, and the visit order decides the order of the explain messages. Parity needs the same order.',
   },
-  'cdr-first-site': {
-    q: 'A bailout message is found twice. Which source position does `--frames` show?',
-    a: 'The first: `bail` records the site with `entry(msg).or_insert(at)`.',
-  },
+
 };
 
 export const examples = {
@@ -270,11 +261,31 @@ fn bailouts_keep_stack_order() {
       'For `Use::Call(f, k)`, return `Some(p.params[*f][*k])`. In `discover`, `HashSet::insert` returns `true` only the first time, so `if seen.insert(v) { work.push(v); }`.',
       '`Use::Other(why)` becomes `format!("the array is {why}")`.',
     ],
-    walkthrough: `This is \`shapes_and_uses\` and \`use_of_collection\` from \`analysis.rs\` with the checks taken out. The real code also checks that \`push\` has one argument, that the record is fresh, and that every call site of the function passes this same collection; the model folds that last check into \`Use::Call\`.
+    walkthrough: `**How to think about it.** Split the job in two, as the real code does. \`one\` looks at a single use and decides what it means: nothing to do, something to record, a bailout, or "follow this parameter next". \`discover\` owns the stack and the seen set, and calls \`one\` for every use of every value it pops. Keeping the stack out of \`one\` is exactly why the real \`use_of_collection\` returns \`Option<ValueId>\`: it takes \`&mut self\`, and the stack is a local variable of its caller. This is \`shapes_and_uses\` and \`use_of_collection\` from \`analysis.rs\` with the checks taken out (the real code also checks that \`push\` has one argument, that the record is fresh, and that every call site passes this same collection; the model folds that last check into \`Use::Call\`).
 
-- **Why a stack.** \`work.pop()\` takes the last load first, exactly as \`work.pop()\` does in \`analysis.ts\`. In the first test, load 2 is visited first, then 1, then 0, so the pushes come out as \`[11, 10]\`. The reference does the same, which is why parity holds and why chapter 249 saw the *last* push set the shape.
-- **Why \`seen\`.** Two call sites mean two \`Call\` uses of the same parameter. Without the set, value 9 is pushed twice, its uses are checked twice, and the bailout appears twice. (The real analyzer also removes duplicate messages at the end, but its \`length_reads\` and \`index_gets\` would still be doubled.)
-- **Why return values, in the real code.** \`use_of_collection\` takes \`&mut self\`, and the stack is a local of \`shapes_and_uses\`. Returning \`Option<ValueId>\` lets the caller push, and keeps the method from needing the stack at all.`,
+**The solution, line by line.**
+
+- \`match u {\` in \`one\` has one arm per kind of use.
+- \`Use::Len => None,\` accepts a \`.length\` read: nothing to record in the model, nothing to follow.
+- \`Use::Push(r) => { out.pushes.push(*r); None }\` records the pushed record; \`*r\` copies the \`usize\` out of the reference the pattern gave us.
+- \`Use::Index(e) => { out.elements.push(*e); None }\` records the element, which later passes will check.
+- \`Use::Call(f, k) => Some(p.params[*f][*k]),\` returns the value of function \`f\`'s \`k\`-th parameter: the collection flows in there, so its uses must be checked too.
+- \`Use::Other(w) => { ...; out.bails.push(format!("the array is {w}")); None }\` records the bailout with the same prefix the real messages have.
+- In \`discover\`, \`let mut out = Found::default();\` starts with empty lists (\`Default\` is derived).
+- \`let mut work = loads.to_vec();\` copies the loads into a stack we own; \`let mut seen = HashSet::new();\` will remember parameters already followed.
+- \`while let Some(l) = work.pop() {\` takes the *last* value first, as \`work.pop()\` does in both engines.
+- \`for u in &p.uses[l] {\` visits that value's uses in order.
+- \`let next = one(u, p, &mut out);\` (written with a short-lived \`o\` in the solution) handles the use, and \`let Some(v) = next else { continue; };\` moves on when there is nothing to follow.
+- \`if seen.insert(v) { work.push(v); }\`: \`insert\` returns \`true\` only the first time a value goes in, so a parameter is pushed once however many call sites pass the collection.
+- \`out\` is returned when the stack is empty.
+
+In the first test the loads are \`[0, 1, 2]\`; load 2 comes off first (its element is recorded), then 1, then 0, so the pushes come out as \`[11, 10]\`. The reference does the same, which is why parity holds, and why the *later* push in the source sets the collection's fields.
+
+**Common wrong attempts.**
+
+- A queue (\`work.remove(0)\`) visits the first load first, so pushes and bailouts come out in the opposite order to the reference's; the explain text would differ even though every decision is the same.
+- No seen set: a function called with the collection from two places has its parameter checked twice, and every finding inside it is recorded twice. (The real analyzer removes duplicate messages at the end, but its \`length_reads\` and \`index_gets\` would still be doubled.)
+- Checking \`work.contains(&v)\` instead of a seen set: it only looks at what is still waiting, so a parameter that was already visited is visited again.`,
     wrong: [
       {
         code: withOne(`    let mut out = Found::default();
@@ -335,7 +346,7 @@ export const quiz = [
   {
     q: 'In `explain` for a program with two pushes of different shapes, the message reads `({x, y} vs {y, x})`, the later push’s shape second. Why?',
     options: [
-      { t: 'The worklist pops the last load first, so the later push sets the shape', correct: true, why: 'Both engines pop from the end, and chapter 249 traced the same order in TypeScript.' },
+      { t: 'The worklist pops the last load first, so the later push sets the shape', correct: true, why: 'Both engines pop from the end, as the chapter “Finding collections” traced in TypeScript.' },
       { t: 'Shapes are sorted alphabetically', why: 'Field order is part of the shape and is never sorted.' },
       { t: 'The pushes are visited in source order', why: 'Then the earlier push would set the shape.' },
     ],
@@ -348,14 +359,7 @@ export const quiz = [
       { t: 'Only for method calls', why: 'Method calls (`note == "method"`) are never followed.' },
     ],
   },
-  {
-    q: 'What is `seen_param` for?',
-    options: [
-      { t: 'It detects recursion and bails out', why: 'It doesn’t bail: it just doesn’t follow a parameter a second time.' },
-      { t: 'It stops the same parameter being followed twice when the collection reaches it from two call sites', correct: true, why: '`if !seen_param.insert(value) { return None; }`.' },
-      { t: 'It records which parameters are numeric', why: 'That is the numeric fixpoint’s job.' },
-    ],
-  },
+
   {
     q: 'A binding is stored twice: first `[]`, later another value. What does the collection pass do?',
     options: [

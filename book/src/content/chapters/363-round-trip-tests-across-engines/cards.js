@@ -16,10 +16,6 @@ export const prompts = {
     q: 'Which engine writes the files in `engine/rust/tests/expected`, and with what?',
     a: 'The TypeScript engine, through `scripts/gen_expected.mjs`, run with Node.',
   },
-  'two-variants': {
-    q: 'Why is every program compiled twice for the fixtures?',
-    a: 'Once with default options and once with `bounds: \'assume\'`, which takes the unchecked emit paths.',
-  },
   'why-fixtures': {
     q: 'Why does the Rust test compare against committed files instead of running the TS engine itself?',
     a: '`cargo test` then needs no Node, and any change to the expected output shows up as a reviewable diff.',
@@ -43,10 +39,6 @@ export const prompts = {
   'found-bugs': {
     q: 'When the two engines disagree, which one is wrong?',
     a: 'Either, or both. The port turned up ten bugs in the TypeScript reference, including soundness bugs, and each was fixed in both engines.',
-  },
-  'wasm-too': {
-    q: 'How is the WebAssembly build held to the same contract?',
-    a: 'The same compile code runs in wasm; its output can be checked against the same fixtures (190 of 190 at the last check), and smoke.mjs compares the installed npm package with the TS CLI.',
   },
 };
 
@@ -164,13 +156,24 @@ fn trailing_spaces_are_a_difference() {
       '`want.lines().zip(got.lines()).enumerate()` gives `(i, (w, g))`, stopping at the shorter text. The line number is `i + 1`.',
       'If the loop finishes, all shared lines were equal, so the difference is in length: format the two `.len()` values.',
     ],
-    walkthrough: `This is \`first_difference\` from \`engine/rust/crates/cli/tests/parity.rs\`, returning an \`Option\` so it can also say “no difference”.
+    walkthrough: `**How to think about it.** There are exactly three situations, and it helps to name them before writing anything: the texts are equal (say nothing), some line they share differs (say which, with both versions), or every shared line is equal but one text is longer (say so, with the byte lengths). The order matters: check equality first, then look for a differing line, and only if none is found fall back to the lengths. This is \`first_difference\` from \`engine/rust/crates/cli/tests/parity.rs\`, changed to return an \`Option\` so that it can also say "no difference".
 
-- **\`zip\`** stops at the shorter iterator, so a missing last line never shows up inside the loop. That is why the length message exists.
-- **\`.lines()\`** drops the final newline, so \`"a\\n"\` and \`"a"\` have the same lines. Only the byte lengths tell them apart. A fixture that differs by one trailing newline is still a parity failure: the contract is byte for byte.
-- **\`{:?}\`** in \`line_msg\` quotes the strings, so a trailing space, which would be invisible in \`{}\`, shows up as \`"x = 1 "\`.
+**The solution, line by line.**
 
-The real test collects one such message per differing file and fails with all of them at once, like \`4 of 186 differ:\` followed by the list.`,
+- \`fn first_difference(want: &str, got: &str) -> Option<String> {\` takes two borrowed string slices (the function only reads them) and returns either \`None\` or \`Some\` message.
+- \`if want == got { return None; }\` handles the easy case first; comparing two \`&str\`s with \`==\` compares every byte. Everything after this line knows the texts differ somewhere.
+- \`let both = want.lines().zip(got.lines()).enumerate();\` builds an iterator: \`.lines()\` splits each text at line breaks, \`.zip\` pairs the first line of \`want\` with the first of \`got\`, and so on, and \`.enumerate()\` adds a counter from 0, so each item is \`(i, (w, g))\`.
+- \`for (i, (w, g)) in both {\` walks those pairs; the pattern unpacks the counter and both lines at once.
+- \`if w != g { return Some(line_msg(i + 1, w, g)); }\` stops at the first pair that differs. \`i + 1\` turns the 0-based counter into a 1-based line number, the way editors count, and \`line_msg\` (given) formats it with \`{:?}\`, which puts quotes round each line so a trailing space is visible.
+- After the loop, \`Some(format!("lengths: {} vs {} bytes", want.len(), got.len()))\` is reached only when every shared line was equal. Since the texts are not equal, one of them must have more: an extra line, or only a final newline (\`.lines()\` ignores a final newline, so \`"a\\n"\` and \`"a"\` have the same lines). \`.len()\` on a \`&str\` counts bytes.
+
+**Common wrong attempts.**
+
+- Returning \`None\` after the loop. \`zip\` stops at the shorter iterator, so a missing last line never shows up inside the loop, and the function then calls two different texts equal. The contract is byte for byte, so that would hide a real failure.
+- Passing \`i\` instead of \`i + 1\`: the message points one line too early, and someone opening the fixture in an editor looks at the wrong line.
+- Comparing with \`trim()\` "to be safe": trailing spaces and newlines are part of the output, and a fixture that differs only there is still a failure.
+
+The real test collects one such message per differing file and fails once with all of them, as in \`4 of 190 differ:\` followed by the list.`,
     wrong: [
       {
         code: `${MSG}
@@ -244,7 +247,7 @@ export const quiz = [
     options: [
       { t: 'Cargo can’t run other programs', why: 'Cargo tests do run programs: the differential test runs `node`.' },
       { t: 'The Rust tests then don’t need Node, and every change to the expected output is a diff someone can review', correct: true, why: 'After the reference changes, you rerun `node scripts/gen_expected.mjs` and look at the diff.' },
-      { t: 'The TS engine is too slow to run in tests', why: 'It compiles a program in under a millisecond once warm.' },
+      { t: 'The TS engine is too slow to run in tests', why: 'Once warm it takes about a millisecond per benchmark program (engine/rust/results/compile-speed-2026-10-31.md); speed is not the reason.' },
     ],
   },
   {
@@ -270,14 +273,6 @@ export const quiz = [
       { t: 'They are faster in Rust', why: 'Speed isn’t the reason; a `HashMap` would often be faster.' },
       { t: 'The Rust standard library has no other kinds', why: 'It has `HashMap`, `BTreeMap`, unstable sorts and more.' },
       { t: 'The order in which things are visited decides the order of explain messages and edits, so it must match exactly', correct: true, why: 'Same decisions in a different order would still fail byte-for-byte parity.' },
-    ],
-  },
-  {
-    q: 'The port disagreed with the TS engine on `def f(): global g; g = 1`. What happened next?',
-    options: [
-      { t: 'The port was changed to crash the same way', why: 'Parity isn’t bug-for-bug: crashes and miscompiles were fixed.' },
-      { t: 'The TS engine had a bug (it crashed); it was fixed in both, and a corpus program now covers it', correct: true, why: 'Bug 8 in the README: such names now get a module binding (`global_undeclared.py`).' },
-      { t: 'The program was removed from the corpus', why: 'The opposite: a program was added.' },
     ],
   },
 ];

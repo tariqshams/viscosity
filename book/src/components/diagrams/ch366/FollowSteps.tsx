@@ -37,7 +37,7 @@ function Row({ y, label, items }: { y: number; label: string; items: string[] })
   return (
     <g>
       <T x={8} y={y} size={11} weight={700} fill={tok('muted')}>{label}</T>
-      {items.length === 0 && <T x={112} y={y} size={12} fill={tok('muted')}>—</T>}
+      {items.length === 0 && <T x={112} y={y} size={12} fill={tok('muted')}>none</T>}
       {items.map((w, k) => (
         <Box key={k} x={108 + k * 50} y={y - 11} w={44} h={22} fill={tok('accent', 0.12)} stroke={tok('accent')}>
           <T x={130 + k * 50} y={y} size={12} mono anchor="middle">{w}</T>
@@ -59,7 +59,7 @@ export default function FollowSteps() {
         <Row y={76} label="LENGTH_READS" items={st.lens} />
         <Row y={106} label="PUSHES" items={st.pushes} />
         <T x={8} y={136} size={11} weight={700} fill={tok('muted')}>FIELDS</T>
-        <T x={112} y={136} size={12} mono fill={st.fields ? tok('f1') : tok('muted')}>{st.fields || '— (no shape yet)'}</T>
+        <T x={112} y={136} size={12} mono fill={st.fields ? tok('f1') : tok('muted')}>{st.fields || '(no shape yet)'}</T>
         <T x={8} y={162} size={11} weight={700} fill={tok('muted')}>REFER TO ps</T>
         <T x={112} y={162} size={12} mono>{st.refs}</T>
       </Svg>

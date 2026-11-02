@@ -3,7 +3,7 @@ n: 367
 day: 92
 part: XIII
 title: 'Shape inference in Rust'
-tagline: 'A shape is a list of field names, and Rust compares lists exactly, which is how the port caught the reference treating one field called `a,b` as two. Then the other half of a shape: what each field may hold, where Python’s ints and floats need rules JavaScript never did.'
+tagline: 'A shape is a list of field names, and Rust compares lists exactly, which is how the port caught the reference treating one field called `a,b` as two. Then the other half of a shape, what each field may hold, where Python’s ints and floats need rules JavaScript never did.'
 objectives:
   - Read set_shape in analysis.rs and explain the exact field-list comparison and the comma bug it replaced.
   - Explain why set_shape can hold the record’s fields while changing the collection.
@@ -14,10 +14,16 @@ uses: [rust-collections-pass, generic-dataflow, record-shape, shape-stability, s
 sources: [python-array, python-expressions]
 ---
 import KindSteps from '../../../components/diagrams/ch367/KindSteps';
+import JoinVsList from '../../../components/diagrams/ch367/JoinVsList';
 
 ## One field or two?
 
-This is `comma_field_name.js`, a program in the reference’s corpus:
+A **shape**, in the chapter "Record shapes", is the list of a record's
+field names, in order, plus what each field may hold; struct of arrays
+only works when every record in a collection has the same shape, because
+each field becomes one column. Here is `comma_field_name.js`, a program in
+the reference's corpus (rewrapped; the real file has the loop on one
+line):
 
 ```js
 const ps = [];
@@ -27,10 +33,10 @@ for (let i = 0; i < 100; i++) {
 }
 ```
 
-(Rewrapped: the real file has the loop on one line.) The first record
-has one field, named `a,b`. The second has two. They are different
-shapes, so `ps` must stay an array of objects. Both engines now say so
-(real output of the Rust CLI, wrapped):
+The first record has *one* field, whose name is `a,b` (quotes let a name
+hold a comma); the second has two, `a` and `b`. They are different shapes,
+so `ps` must stay an array of objects, and both engines now say so (the
+real Rust CLI output, wrapped):
 
 ```
 ps (line 3) {a, b} → kept as array of
@@ -40,15 +46,32 @@ ps (line 3) {a, b} → kept as array of
     ({a,b} vs {a, b})
 ```
 
-The reference used to get it wrong. It compared shapes by their field
-names joined into one string, and `["a,b"]` and `["a", "b"]` join to
-the same thing. It is bug 3 in the port’s README, found during porting,
-now fixed in both engines and pinned by that corpus program. Notice the
-message still prints the one field without quotes: `{a,b}`.
+The collection's fields are `{a, b}`, from the *second* push, because
+the worklist pops the last load first (see "Collection discovery in
+Rust"); and the message prints the one field `a,b` without quotes,
+exactly as the reference does. The reference used to
+get the decision wrong: it compared shapes by joining the names into one
+string, and `["a,b"]` and `["a", "b"]` both join to `a,b`. That is bug 3
+in the port's README, found while porting, fixed in both engines, and
+pinned by this program.
+
+<Analogy title="two shopping lists read aloud">
+Read "apple pie, cream" and "apple, pie cream" aloud without pausing, and
+they sound the same; on paper, as lists with one item per line, they are
+plainly different. Joining names into one string reads the list aloud
+without pauses; comparing the lists keeps the lines.
+<span slot="breaks">People hear pauses and can ask; a string has no
+pauses at all unless you add them, which is why the fixed TypeScript
+quotes every name (with `JSON.stringify`) before comparing.</span>
+</Analogy>
+
+<Figure caption="The same two records, compared the old way and the way set_shape does it." takeaway="Compare lists, not joined text.">
+  <JoinVsList />
+</Figure>
 
 ## set_shape
 
-The Rust version, trimmed:
+The Rust version, trimmed (the two messages are shortened to comments):
 
 ```rust
 fn set_shape(&mut self, ci: usize,
@@ -72,113 +95,131 @@ fn set_shape(&mut self, ci: usize,
 }
 ```
 
-`c.fields != *fields` compares two `Vec<String>`s: same length, then
-each name in order. Nothing gets joined, so no name can run into
-another. The fixed TypeScript compares `JSON.stringify` of both
-arrays, which quotes every name. Two engines, two spellings, one
-answer, and the parity fixtures check that it stays one answer.
+Line by line: the `let`-`else` takes the field list out of the record
+instruction `r` (anything else would be a caller's bug). `aliased` is true if the new record has more than one
+use, that is, anything besides the push. Then `c` borrows collection number `ci` mutably.
+The first record a collection receives fixes its fields; every later one
+is compared with `!=`, which for two `Vec<String>`s means the same length
+and then the same name at each position. Nothing is joined, so no name can
+run into another. Last, a record with a second use, such as `r.x = 500`
+after the push, would still expect an object `r` after the rewrite, so it
+is refused as possibly **aliased** (reachable under two names).
 
-The second check is chapter 249’s: the new record must have exactly one
-use, the push. A second use, such as `r.x = 500`, would still expect
-an object `r` after the rewrite.
-
-<Prompts ids={['shr-what', 'shr-exact', 'shr-comma', 'shr-alias']} />
-
-## Holding the fields, changing the collection
-
-`fields` is borrowed from an instruction, and two lines later the
-function takes `&mut self.collections[ci]`. That only compiles because
-of chapter 366’s `'m`: `inst` returns `&'m Inst`, a borrow of the
-module, which `self` merely points to. Give the accessor the elided
-lifetime, tied to `&self`, and rustc 1.97 says (a small copy, trimmed
-and rewrapped):
+Notice that `fields` is borrowed from an instruction while `c` borrows
+`self.collections` mutably, two lines later. That only compiles because
+`inst` returns `&'m Inst`, a borrow of the module, which `self` merely
+points at (see the previous chapter). Give the accessor the default
+lifetime, tied to `&self`, and rustc 1.97 says, on a small copy:
 
 ```
 error[E0502]: cannot borrow `self.cols`
   as mutable because it is also
   borrowed as immutable
-  | let fields = self.rec(r);
-  |              ---- immutable borrow
-  | let c = &mut self.cols[ci];
-  |         ^^^^^^^^^ mutable borrow
-  |     c.fields = fields.clone();
-  |                ------ immutable
-  |                borrow later used
 ```
 
-The runnable copy has the `'m` in place. Delete it and see; it also
-prints what joining does to `["a,b"]` and `["a", "b"]`:
+The runnable copy has the `'m` in place; delete it and see, and it also
+prints what joining does to the two lists:
 
 <Run id="shape-play" />
 
-<Prompts ids={['shr-tick-m']} />
+<Prompts ids={['shr-exact', 'shr-comma', 'shr-alias', 'shr-tick-m']} />
 
 ## What a field may hold
 
-<Callout kind="intuition">
-A shelf of egg boxes is only useful if nothing but eggs goes in. One
-cupcake and the boxes are just boxes again. A typed column is the egg
-box: one value that isn’t a number, anywhere, and the field gets a
-plain column instead.
-</Callout>
+<Analogy title="an egg box">
+An egg box is only useful if nothing but eggs goes in; put in one cupcake
+and the box is just a box again. A typed column is the egg box: one value
+that is not a number, anywhere, and the field gets a plain column instead.
+<span slot="breaks">You can see a cupcake. The analysis has to *prove*
+that only numbers ever go in, so a field it cannot prove numeric gets the
+plain column even if every value in practice is a number.</span>
+</Analogy>
 
-A shape is the field names plus what each field may hold (chapter 250).
-The second half comes from chapter 365’s fixpoint. Each field of each
-collection is a node, starting optimistic. `field_stays_numeric` keeps
-it only if every record added puts a provable number in that position
-and every `field.set` on an element writes one. Fields that survive go
-into `numeric_fields` and get `Float64Array` columns; the rest get
-plain arrays.
+The second half of a shape comes from the fixpoint of "A generic dataflow
+framework". Each field of each collection is a node, starting optimistic;
+`field_stays_numeric` keeps it only if every record added puts a provable
+number in that position *and* every `field.set` on an element writes one.
+Survivors go into `numeric_fields` and get `Float64Array` columns, the
+rest plain arrays. In JavaScript every number is a double, so arithmetic
+is a number if both sides are.
 
-In JavaScript every number is a double, so the arithmetic rule is
-short: an operator from `ARITH` is a number if both sides are. Python
-is different.
+<Examples of="rust-shape-pass">
+
+```
+ps (line 1) {x, tag} → struct of arrays
+  · typed Float64Array columns for x;
+    plain array columns for tag (may
+    hold non-numbers)
+```
+
+```
+ps (line 1) {y, x} → kept as array of
+  objects
+  · unsafe: line 3: records with
+    different fields or field order
+    ({x, y} vs {y, x})
+```
+
+```
+cs (line 9) {count, weight} → struct
+  of arrays
+  · typed array('d') columns for
+    weight; list columns for count
+    (may hold non-floats)
+```
+
+</Examples>
+
+All three are real Rust CLI output, trimmed and wrapped. The first pushes
+`{ x: i, tag: 'a' }`: one shape, so struct of arrays, with `x` typed and
+`tag` (a string) in a plain array. The second pushes `{ x: i, y: 0 }` and
+`{ y: 1, x: i }`: the same names in a different order are a different
+shape, as engines' hidden classes are (see "Shapes in depth").
+The third is the Python program `ints_stay_ints.py`, whose `count` holds
+ints: the next section.
 
 <Callout kind="definition">
 **The shape pass in Rust** is `set_shape` plus the numeric facts. The
-first record a collection receives fixes its field list. Every later
-record must have exactly the same `Vec<String>` and exactly one use.
-Each field is then typed by the fixpoint: in JavaScript, numeric if
-every value stored is a JS number; in Python, if every value stored is
-a `float`, with ints tracked as a separate fact.
+first record a collection receives fixes its field list; every later
+record must have exactly the same `Vec<String>` and exactly one use. Each
+field is then typed by the fixpoint: in JavaScript, numeric if every value
+stored there is a number; in Python, if every value stored is a `float`,
+with ints tracked as a separate fact.
 </Callout>
 
 <Prompts ids={['shr-numeric-fields']} />
 
 ## Python: ints are not floats
 
-A Python column becomes `array('d')`, an array of C doubles that only
-holds floats<Cite id="python-array" />. An int goes in, but a float
-comes out. With Python 3.13.18, here:
+A Python column becomes `array('d')`, an array of C doubles, which only
+holds floats<Cite id="python-array" />: an int goes in, but a float comes
+out. With Python 3.13.18, here (`array` imported from the `array`
+module):
 
 ```python
 a = array('d', [0.0])
 a[0] = 1
 print(a[0], type(a[0]).__name__)
-print(7 / 2, 6 / 2, 7 // 2)
-print(2 ** 3, 2 ** -1, 2.0 ** 3)
-print((-1.0) ** 0.5)
+print(7 / 2, 6 / 2, 2 ** -1)
 ```
 
 ```
 1.0 float
-3.5 3.0 3
-8 0.5 8.0
-(6.123233995736766e-17+1j)
+3.5 3.0 0.5
 ```
 
-So in Python “numeric” must mean “provably a float”, or a program that
+So in Python "numeric" must mean "provably a float", or a program that
 printed `1` would print `1.0`. Ints get their own fact (`compute_int`),
-because they still matter: an int times a float is a float. True
-division always gives a float<Cite id="python-expressions" />. And
-`**` is treacherous: an int to an int power can be an int or a float,
-and a float to a float power can be complex. The float rule for a
-binary operator, trimmed from `compute`:
+because they still matter: an int times a float is a float. True division
+`/` always gives a float<Cite id="python-expressions" />, and `**` needs
+care: an int to an int power can be an int (`2 ** 3`) or a float
+(`2 ** -1`), and a float to a float power can be complex
+(`(-1.0) ** 0.5`). The float rule for a binary operator, trimmed from
+`compute`:
 
 ```rust
 match operator.as_str() {
     "/" => n_or_i(a) && n_or_i(b),
-    // (-1.0) ** 0.5 is 1j
     "**" => n(a) && self.i(b),
     "+" | "-" | "*" | "%" | "//" =>
         (n(a) && n_or_i(b))
@@ -187,24 +228,40 @@ match operator.as_str() {
 }
 ```
 
-`n` is “a float”, `i` is “an int”. The analyzer decides which rules
-apply once, `py: m.language == "python"`, as the reference does. Watch
-them type a real corpus program, `ints_stay_ints.py`:
+`n` is "a float", `i` is "an int", and `n_or_i` is either; the analyzer
+picks these rules once, from `m.language == "python"`. Watch them type `ints_stay_ints.py`:
 
 <KindSteps client:visible />
 
-<Prompts ids={['shr-py-float', 'shr-why-float', 'shr-div', 'shr-pow', 'shr-mixed', 'shr-lang']} />
+<Formal title="Python's float rules">
+
+```text
+num(a)  num(b)       float(a)  int(b)
+──────────────       ───────────────
+ float(a / b)         float(a ** b)
+
+float(a)  num(b)      ⊕ ∈ {+ - * % //}
+───────────────────────────────────
+ float(a ⊕ b)   (and so for b ⊕ a)
+```
+
+<span slot="read">If a and b are both numbers of either kind, a divided by
+b is a float. If a is a float and b an int, a to the power b is a float.
+If one side of plus, minus, times, remainder or floor division is a float
+and the other is a number, the result is a float. Nothing else is proven a
+float.</span>
+</Formal>
+
+<Prompts ids={['shr-py-float', 'shr-div', 'shr-pow']} />
 
 <Callout kind="engine" label="Under the hood">
-The README lists the Python rules where the Rust core lagged the
-reference, now ported: `**` gives a float only with an int exponent,
-and the Python wording of the list-literal and append bailouts. The
-corpus program `power_complex.py` pins the first: its only field is
+The README says the Rust core once lagged the reference on two Python
+rules, now ported, one being that `**` gives a float only with an int
+exponent. The corpus program `power_complex.py` pins it: its only field is
 written with `p.x ** 0.5`, so no field is provably numeric and the
-collection is kept (“no field is provably numeric, so there are no
-typed columns to gain”). The fuzzer generates JavaScript only, so for
-Python the corpus and the differential runs with `python3` carry the
-weight.
+collection is kept ("no field is provably numeric, so there are no typed
+columns to gain"). The fuzzer writes only JavaScript, so for Python the
+corpus and the `python3` differential runs carry the weight.
 </Callout>
 
 ## Your turn
@@ -216,14 +273,13 @@ weight.
 ## What you learned
 
 - **The shape pass in Rust**: `set_shape` compares field lists as
-  `Vec<String>`s, exactly. Comparing joined names let `{'a,b'}` pass
-  for `{a, b}`; the port found it.
-- The record must have exactly one use, or it could be **aliased**.
-- `inst` returns `&'m Inst`, so `set_shape` can hold the fields while
-  it changes `self.collections` (E0502 otherwise).
-- A field is typed if every value stored in it is a number. In Python
-  that means a **float**: `/` always gives one, `**` only for a float
-  base and an int exponent, and an int anywhere else keeps a list
-  column.
+  `Vec<String>`s, exactly; comparing joined names let `{'a,b'}` pass for
+  `{a, b}`, and the port found it.
+- A record must have exactly one use, or it could be **aliased**.
+- `inst` returns `&'m Inst`, so `set_shape` can hold the fields while it
+  changes `self.collections` (E0502 otherwise).
+- A field is typed if every value stored in it is provably a number; in
+  Python that means a **float**: `/` always gives one, `**` only for a
+  float base and an int exponent.
 
 <Quiz />
