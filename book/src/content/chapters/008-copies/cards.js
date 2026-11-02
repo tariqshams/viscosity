@@ -26,11 +26,11 @@ export const prompts = {
     a: '`{ ...a, pos: { ...a.pos } }`: spread the outer object, and replace `pos` with a spread copy of it.',
   },
   'alias-problem': {
-    q: 'Why is aliasing a problem for an optimizer that turns an array of objects into a struct of arrays?',
+    q: 'Why is aliasing a problem for an optimiser that turns an array of objects into a struct of arrays?',
     a: 'Other arrows to the same objects (like `first = ps[0]`) must still see every change, so it must know everywhere those arrows can go.',
   },
   'copy-is-fresh': {
-    q: 'Why is a freshly made `{ ...p }` easier for an optimizer to reason about than `p`?',
+    q: 'Why is a freshly made `{ ...p }` easier for an optimiser to reason about than `p`?',
     a: 'It is a new object, so at first no other code holds an arrow to it: it has no aliases yet.',
   },
 };
@@ -247,11 +247,11 @@ console.log(xs.length);
     ],
   },
   {
-    q: 'Why is aliasing a problem for an optimizer that changes an array of objects into a struct of arrays?',
+    q: 'Why is aliasing a problem for an optimiser that changes an array of objects into a struct of arrays?',
     options: [
       { t: 'Aliases make arrays longer', why: 'Aliasing doesn’t change any lengths.' },
       { t: 'Struct of arrays can’t hold numbers', why: 'SoA is ideal for numbers; that isn’t the issue.' },
-      { t: 'Other references to the same objects must still see every change, so the optimizer must know where all the arrows can go', correct: true, why: 'If any alias could observe the old layout, the program could print wrong answers. Alias and escape analysis answer this.' },
+      { t: 'Other references to the same objects must still see every change, so the optimiser must know where all the arrows can go', correct: true, why: 'If any alias could observe the old layout, the program could print wrong answers. Alias and escape analysis answer this.' },
       { t: 'It isn’t a problem; layout never affects behaviour', why: 'Layout changes are only safe when no code can tell the difference, and aliases can.' },
     ],
   },

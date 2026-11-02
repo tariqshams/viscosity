@@ -177,7 +177,7 @@ The last test calls \`expectDigit\` from inside another function, \`two\`. When 
 **Common wrong attempts.**
 
 - Leaving out \`this.name = 'ParseError'\`: everything works except the name, which stays \`'Error'\`, so the printed message says the wrong kind.
-- Throwing \`new Error('expected a digit')\`: the message is right, but \`instanceof ParseError\` is false and there is no \`pos\`, so a \`catch\` cannot recognize or locate it.
+- Throwing \`new Error('expected a digit')\`: the message is right, but \`instanceof ParseError\` is false and there is no \`pos\`, so a \`catch\` cannot recognise or locate it.
 - Testing \`if (c < 48 || c > 57)\`: this works for every real character, but past the end \`c\` is \`NaN\`, both comparisons are false, nothing is thrown, and the function returns \`NaN - 48\`, which is \`NaN\`: a quiet wrong answer.
 - Using \`this\` before calling \`super\`: JavaScript stops with a \`ReferenceError\`, because the Error part of the object does not exist until \`super\` has run.`,
     wrong: [

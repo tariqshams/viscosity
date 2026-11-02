@@ -227,8 +227,8 @@ console.log(ps[0].x); // must be 100
 `first` and `ps[0]` are aliases, and the program *relies* on that. If
 Viscosity had quietly moved every `x` into a separate array, `first.x =
 100` would have to update that array, or the program would print the
-wrong answer; and an optimizer that changes answers is worse than no
-optimizer at all.
+wrong answer; and an optimiser that changes answers is worse than no
+optimiser at all.
 
 <Figure takeaway="An alias outside the array must keep working after the layout changes." caption="Before, first and ps[0] are two arrows to one object. After moving every x into its own array there is no object for first to point at, so every use of first must be rewritten too.">
   <AliasLayout />
