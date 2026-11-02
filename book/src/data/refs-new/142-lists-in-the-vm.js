@@ -1,0 +1,26 @@
+export default [
+  {
+    id: 'v8-src-js-objects-h',
+    authors: ['The V8 Project Authors'],
+    title: 'src/objects/js-objects.h (V8 source code)',
+    venue: 'V8 source repository, main branch',
+    year: null,
+    doi: null,
+    url: 'https://github.com/v8/v8/blob/main/src/objects/js-objects.h',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/v8/v8/main/src/objects/js-objects.h (the file itself, read raw; github.com’s HTML page was not reachable from the writing session), class JSObject: `static const uint32_t kMinAddedElementsCapacity = 16;` and “Computes the new capacity when expanding the elements of a JSObject.” `NewElementsCapacity(old_capacity)` returns `old_capacity + (old_capacity >> 1) + kMinAddedElementsCapacity`, with the comment “(old_capacity + 50%) + kMinAddedElementsCapacity”, capped at kMaxFixedArrayCapacity.',
+    shaped: 'Lists in the VM: the rule V8 uses to grow an array’s elements when they run out of room, which is what the companion VM’s lists rely on, since their items are JavaScript arrays.',
+  },
+  {
+    id: 'cpython-listobject',
+    authors: ['The Python Software Foundation and contributors'],
+    title: 'Objects/listobject.c: list object implementation (CPython source code)',
+    venue: 'CPython source repository, main branch',
+    year: null,
+    doi: null,
+    url: 'https://github.com/python/cpython/blob/main/Objects/listobject.c',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/python/cpython/main/Objects/listobject.c (the file itself, read raw; github.com’s HTML page was not reachable from the writing session), function py_list_resize: “This over-allocates proportional to the list size, making room for additional growth. The over-allocation is mild, but is enough to give linear-time amortized behavior over a long sequence of appends() in the presence of a poorly-performing system realloc().” and “The growth pattern is: 0, 4, 8, 16, 24, 32, 40, 52, 64, 76, ...”, computed as `new_allocated = ((size_t)newsize + (newsize >> 3) + 6) & ~(size_t)3;`.',
+    shaped: 'Lists in the VM: a second real growth rule (Python’s mild over-allocation, about an eighth extra), set beside V8’s and the doubling in the chapter’s own exercise.',
+  },
+];
