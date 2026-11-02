@@ -1,0 +1,686 @@
+---
+n: 90
+day: 11
+part: V
+title: 'SSA and phi nodes, built on the fly'
+tagline: 'A variable that is assigned five times is really five values wearing one name. Give each of them its own name, and half of the optimiser’s questions answer themselves.'
+objectives:
+  - Rename straight-line code so that every variable is assigned exactly once.
+  - State the single-assignment property, and say what “static” means in static single assignment.
+  - Read VIR as SSA, where a value is the instruction that defines it.
+  - Say what SSA makes cheap for an optimiser, and which variables VIR keeps out of SSA.
+  - Explain what a phi node does at a join, and why it has one operand per predecessor.
+  - Read the phis in real VIR, including a loop phi whose operand comes from the back edge.
+  - Explain why all the phis of a block take their values at once, and simulate entering a block.
+  - Say how phis disappear before machine code.
+  - Trace readVariable through a block’s own definitions and then its predecessors.
+  - Explain incomplete phis in unsealed blocks, and what sealing a block does.
+  - Recognise a trivial phi and say how VIR removes it, including in cascades.
+  - Contrast on-the-fly construction with placing phis at dominance frontiers.
+introduces: [ssa, phi-node, on-the-fly-ssa]
+uses: [ir, lowering, three-address-code, temporary, basic-block, cfg, dominator, dominator-tree, static-analysis, compiler, closure, captured-environment, upvalue, register, local-variable, variables, if, for-loop, ignition, optimizing-tiers, ssa-construction, single-pass-compiler, recursion, map, bytecode]
+sources: [braun2013, v8-maglev, cytron1991]
+---
+import StraightSteps from '../../../components/diagrams/ch090/StraightSteps';
+import UseDef from '../../../components/diagrams/ch090/UseDef';
+import RenameSteps from '../../../components/diagrams/ch090/RenameSteps';
+import LoopPhi from '../../../components/diagrams/ch090/LoopPhi';
+import BraunSteps from '../../../components/diagrams/ch090/BraunSteps';
+import AskPreds from '../../../components/diagrams/ch090/AskPreds';
+
+{/* ── merge: from old chapter 90, SSA form ── */}
+
+## Which x is this?
+
+Here are four lines of three-address code:
+
+```js
+x = a + 1;
+x = x * 2;
+y = x + 3;
+x = 0;
+```
+
+Suppose an optimiser wants to know something about the `x` in line 3:
+is it a number, is it a constant, is it still needed later? Before it
+can answer, it has to work out *which* assignment to `x` it is looking
+at. Here it is line 2, but finding that out meant scanning backwards
+and noticing that line 2 overwrote line 1; with branches and loops, the
+scan turns into a search over the whole CFG, and every analysis would
+have to repeat it. The trouble is that one name, `x`, stands for three
+different values over time, so we stop doing that.
+
+## One name per value
+
+<Analogy title="a lab notebook kept in pen">
+A scientist never crosses out a measurement and writes a new one over
+it; she writes a new line: sample 1, sample 2, sample 3. Anyone reading
+a result later can see exactly which sample it came from, because every
+label was used once.
+<span slot="breaks">A notebook only grows forwards in time; a program
+has branches, and two different samples can arrive at the same later
+line by different routes, which needs a new kind of entry (the next
+chapter's phi).</span>
+</Analogy>
+
+<Analogy extra title="saving each draft as a new file">
+Rather than saving over `report.doc` every evening, you save
+`report-v1`, `report-v2`, `report-v3`. When a colleague says "I read
+v2", there is no doubt which text they mean, and nothing they read can
+change under them later.
+<span slot="breaks">Old drafts take up disk space, so people delete
+them; SSA names cost a compiler almost nothing, and a version nobody
+reads any more is removed by later passes, not by hand.</span>
+</Analogy>
+
+Give every assignment a fresh version of the name, and make every use
+refer to the latest version. Step through it:
+
+<StraightSteps client:visible />
+
+The result reads:
+
+```js
+x1 = a0 + 1;
+x2 = x1 * 2;
+y1 = x2 + 3;
+x3 = 0;
+```
+
+Line 3 now says `x2`, and `x2` has exactly one definition, so there is
+nothing to scan. `a0` is version 0, a value that came in from outside,
+such as a parameter.
+
+<Figure takeaway="In SSA a use names its definition." caption="Before renaming, the x in y = x + 3 could have come from any assignment to x, and only a search can tell. After renaming, y1 = x2 + 3 names the one line that defines x2.">
+  <UseDef />
+</Figure>
+
+<Callout kind="definition">
+A program is in **static single assignment form** (**SSA**) when every
+variable is assigned in exactly one place in the program text, so each
+use refers to exactly one definition. "Static" means *in the text*: an
+assignment inside a loop still runs many times, but it is written only
+once, so it defines only one SSA name.
+</Callout>
+
+<Formal title="The single-assignment property">
+
+```text
+for every name v:   |defs(v)| = 1
+for every use u of v:
+    def(v) dom u
+```
+
+<span slot="read">For every name v in the program, the set of places
+that assign v has exactly one member (the bars |…| read "the size
+of"). And for every use u of v, the one definition of v dominates u: it
+sits on every path from the entry to the use, so the value is always
+there by the time it is read. (A program with this second property is
+called *strict* SSA; the next chapter shows the one kind of use, inside
+a phi, where "the use" is counted at the end of a predecessor.)</span>
+</Formal>
+
+<Prompts ids={['ssa-what', 'static-meaning', 'read-before-write']} />
+
+## SSA, three ways
+
+<Examples of="ssa">
+
+```text
+x = x + 1   →   x2 = x1 + 1
+```
+
+```text
+b2:  ; inside the loop body
+  %7 = binop + %6, %3
+```
+
+```text
+func f(%0):         // let t = a;
+  b0:               // let u = t * 2;
+    %0 = param      // return u + t;
+    %1 = const 2
+    %2 = binop * %0, %1
+    %3 = binop + %2, %0
+    return %3
+```
+
+</Examples>
+
+The first is the smallest case, and the one people get wrong: the right
+side is read *before* the assignment makes a new version, so `x` on the
+right is the old `x1` and the new value is `x2`. The second is from the
+real VIR for a loop that sums `s = s + i`: `%7` is defined once in the
+text, in the loop body, even though at run time that line runs once per
+pass; "static" counts places, not runs. The third is the realistic one,
+and it shows something about VIR: there are no variable names in it at
+all. In VIR an SSA value *is* the instruction that defines it, so `%2`
+means "the result of instruction 2", and because an instruction is
+written once, the value is assigned once. `let t = a` emitted nothing,
+because `t` became another name for `%0`.
+
+Here is the difference SSA makes, as a program. It files every
+definition under its name and then asks, for each use, "which line
+defined this?" (lines count from 0), once for the renamed code and once
+for the original:
+
+<Run id="which-def" />
+
+For the SSA version every answer is right: `x2` on line 2 was defined on
+line 1. For the original, the table has been overwritten, so it claims
+the `x` used on line 2 was defined on line 3, which comes *after* it.
+One name per value is what makes "file it under its name" safe.
+
+<Prompts ids={['vir-no-names', 'one-table']} />
+
+## What SSA buys
+
+With one definition per value, the questions from the start become
+look-ups:
+
+- **Where is this value defined?** In VIR, it is the instruction itself.
+- **Is it a constant?** If `%1 = const 0`, every use of `%1` is 0; no
+  later assignment can change it, because there are none.
+- **Is it used at all?** Its list of uses (the `buildUses` map from
+  Three-address code) is its whole story, so an empty list means it can
+  go.
+
+Not every variable fits. A local that a closure captures can be changed
+by another function, at a moment this function's CFG cannot see (as in
+Capturing variables: upvalues); VIR keeps those as **bindings**, read and
+written with `load` and `store`. Every other plain local becomes SSA
+values. VIR builds all of this while it lowers, with the algorithm of
+Braun and colleagues<Cite id="braun2013" />, which a later chapter,
+SSA on the fly, takes apart.
+
+<Callout kind="pitfall">
+SSA renames *variables*, not memory. `p.x = 1; p.x = 2;` stays two
+`field.set` instructions on the same object, because a field of an
+object can be reached through other names too (two variables can hold
+the same object); only plain local variables get versions.
+</Callout>
+
+<Prompts ids={['ssa-buys', 'captured-not-ssa', 'fields-not-ssa']} />
+
+## Your turn
+
+<Exercise id="to-ssa" />
+
+## What you learned
+
+- In **SSA** form every variable is assigned in exactly one place in
+  the text, so every use points at exactly one definition, and in strict
+  SSA that definition dominates the use.
+- Renaming straight-line code: each assignment makes a new version, and
+  each use takes the latest version, read *before* the assignment on the
+  same line.
+- In VIR, a value is its defining instruction (`%4`); constants,
+  definitions and uses become look-ups.
+- Captured variables stay out of SSA, as bindings with `load` and
+  `store`, and so do fields of objects.
+
+Next: what happens where two paths meet, and the strange instruction
+that settles it.
+
+
+{/* ── merge: from old chapter 90, Phi nodes ── */}
+
+## Where paths meet
+
+Straight-line code is easy to put in SSA, because there is always
+exactly one latest version of each name. Branches break that:
+
+```js
+x = a + 1;
+if (x > 5) {
+  x = x * 2;
+} else {
+  x = 0;
+}
+y = x + 3;
+```
+
+Rename both branches and you get `x2` on the left and `x3` on the
+right. The block after the `if` has two predecessors, and they
+disagree: no single name can go in `y = ? + 3`, because the right
+answer depends on which way the program went.
+
+<Analogy title="a railway junction">
+Two lines merge into one track. A wagon arriving on the merged track
+might have come from either line, and the signal box records which line
+it came in on, so you always know what it carries.
+<span slot="breaks">Wagons from both lines can be on the merged track
+at once; a phi deals with one arrival at a time, and on each arrival it
+picks exactly one of its operands.</span>
+</Analogy>
+
+<Analogy extra title="a TV with two inputs">
+What is on the screen depends on which input is selected: HDMI 1 shows
+the games console, HDMI 2 the laptop. The screen itself has one
+picture, chosen by where the signal comes in.
+<span slot="breaks">You can switch a TV's input whenever you like; a
+phi makes its choice once, at the moment control enters the block, and
+the choice is fixed by the edge that was taken, not by anyone's
+preference.</span>
+</Analogy>
+
+SSA's answer is a new kind of instruction at the start of the join
+block, `x4 = φ(x2, x3)` (φ is the Greek letter phi), which means "x2 if
+we came from the left, x3 if we came from the right". Step through the
+renaming:
+
+<RenameSteps client:visible />
+
+<Callout kind="definition">
+A **phi node** (φ) sits at the start of a block and has **one operand
+per predecessor**, in predecessor order. When control enters the block
+along the edge from its k-th predecessor, the phi takes the value of
+operand k. Phis appear only where different versions meet. They are
+not real machine instructions: before code generation, a compiler
+replaces them with copies at the ends of the predecessor blocks.
+</Callout>
+
+<Formal title="What a phi means">
+
+```text
+B has preds P1, …, Pn, and starts with
+   v = φ(a1, …, an)
+arrive from Pk  ⟹  v := ak
+```
+
+<span slot="read">Take a block B whose predecessors, in order, are P1 up
+to Pn, and which begins with a phi defining v from operands a1 up to
+an. If control arrives in B from its k-th predecessor Pk, then v is set
+to (:= reads "gets the value of") the k-th operand, ak: the k-th
+operand belongs to the k-th predecessor<Cite id="cytron1991" />. Each
+operand only has to be available at the end of its own predecessor, so
+a phi's use of ak counts as happening there, not in B.</span>
+</Formal>
+
+<Prompts ids={['why-phi', 'phi-what', 'phi-operands', 'phi-not-real']} />
+
+## Phis in real VIR
+
+<Examples of="phi-node">
+
+```text
+  b3:  ; preds b1 b2
+    %4 = phi %2, %3
+```
+
+```text
+  b1:  ; preds b0 b3
+    %6 = phi %1, %7
+    %3 = phi %2, %10
+```
+
+```text
+  b1:  ; preds b0 b3
+    %1 = phi %0, %12
+  b7:  ; preds b5 b6
+    %12 = phi %9, %11
+```
+
+</Examples>
+
+All three are real `printFunc` output. The first is the simplest, from
+`if (c) { x = 1; } else { x = 2; } return x * 10;`: the join b3 has
+predecessors b1 and b2, so `%4` is `%2` (the 1) if control came from b1
+and `%3` (the 2) if it came from b2, in the order the `; preds` comment
+lists them. The second is varied: it is the head of a loop,
+`for (let i = 0; i < n; i++) s = s + i;`, with one phi per variable that
+changes in the loop. A loop header is a join too, where the way in from
+before the loop meets the back edge from the end of each pass:
+
+<Figure takeaway="A loop phi takes its first value from the entry edge and every later value from the back edge." caption="The header b1 of sum. On the first arrival, from b0, the phis take %1 and %2, the two zeros. Every later arrival comes along the back edge from b3 and takes %7 (the new s) and %10 (the new i).">
+  <LoopPhi />
+</Figure>
+
+`%3` is `i`: `%2` (the `0`) on the first entry from b0, and `%10`
+(`i + 1`) each time round the back edge from b3. The operand `%10` is
+defined *later* in the listing; that is fine, because it is only read
+when control arrives from b3, and by then b3 has run. The third example
+is the realistic one, the whole Collatz loop: `n` changes in the loop,
+so the header b1 has a phi joining the parameter `%0` with `%12`, and
+`%12` is itself a phi at the join b7, choosing between `3 * n + 1` from
+the odd branch (`%9`) and `n / 2` from the even one (`%11`). Phis feed
+phis, one per join where versions differ.
+
+You can play the phi by hand in JavaScript, by remembering which branch
+ran and choosing on it:
+
+<Run id="phi-by-hand" />
+
+It prints `23 3`: for `f(9)`, `x1` is 10, the left branch runs, the
+"phi" picks `x2` = 20, and the result is 23; for `f(1)`, `x1` is 2, the
+right branch runs, the phi picks `x3` = 0, and the result is 3.
+
+<Prompts ids={['vir-phi-order', 'loop-phi']} />
+
+## All at once
+
+All the phis at the top of a block take their values *at the same
+moment*, as control crosses the edge, and none of them sees another
+one's new value. That matters when one phi's operand is another phi of
+the same block. Here is a loop that swaps two variables each time
+round:
+
+```text
+b1:  ; preds b0 b2
+  p2 = φ(p0, q2)
+  q2 = φ(q0, p2)
+```
+
+Arriving along the back edge, `p2` should get the *old* `q2` and `q2`
+the *old* `p2`. If the two phis ran one after the other, the second
+would read the `p2` that the first had just written, and both would end
+up holding the same value; the swap would be lost.
+
+<Callout kind="pitfall">
+This is also why removing phis is not as simple as it looks. Turning
+`p2 = φ(…, q2)` and `q2 = φ(…, p2)` into two copies at the end of the
+predecessor, `p2 = q2; q2 = p2;`, has exactly the bug above. A compiler
+leaving SSA must order the copies carefully, or use a spare temporary,
+to keep the "all at once" meaning.
+</Callout>
+
+<Prompts ids={['phis-together', 'swap-copies']} />
+
+<Callout kind="engine" label="Under the hood">
+V8's Maglev compiler uses the same idea. While it walks Ignition's
+bytecode it keeps an SSA value for each interpreter register, and where
+paths merge it inserts Phi nodes, "value nodes that know which value to
+pick depending on which path was taken at runtime"<Cite id="v8-maglev" />.
+Loops are the awkward case for it too, since the value arriving along
+the back edge is not known when the header is first reached; the
+chapter after next shows how Viscosity's builder handles that.
+</Callout>
+
+## Your turn
+
+<Exercise id="enter-block" />
+
+## What you learned
+
+- A **phi node** at the start of a join block has one operand per
+  incoming edge, in predecessor order, and takes the operand of the edge
+  that control arrived on.
+- Loop headers have phis whose later operand arrives on the back edge,
+  so it may be defined further down the listing.
+- All of a block's phis take their values **at once**; done one after
+  the other, a swap goes wrong.
+- Phis are not machine instructions: they become copies at the ends of
+  predecessors, carefully ordered.
+
+Next: where exactly to put the phis, and how to rename a whole CFG.
+
+
+{/* ── merge: from old chapter 90, SSA on the fly ── */}
+
+## SSA without a second pass
+
+Building SSA put a finished CFG into SSA in two passes: place the phis
+using dominance frontiers, then rename everything by walking the
+dominator tree. A compiler that works that way needs the whole CFG, its
+dominator tree and its frontiers first. VIR's builder has none of
+those: like the single-pass compiler of One pass from source to bytecode, it
+emits
+instructions while it walks the syntax tree, and the IR comes out in
+SSA form directly, with no version that has ordinary, reassignable
+variables. The trick, from Braun and colleagues<Cite id="braun2013" />,
+is to treat "what is the value of `x` here?" as a question a block can
+answer, or pass on to the blocks before it.
+
+## Each block keeps a notepad
+
+<Analogy title="a whiteboard in every room">
+Each room in a building has a whiteboard. When you set the thermostat in
+a room, you write the new setting on that room's board. To find the
+setting in a room with a blank board, you ask in the room you came
+from; if people arrive from two rooms that give different answers, the
+room needs a rule, "it depends on which door you came through".
+<span slot="breaks">People forget to update whiteboards; the builder
+writes every assignment down the moment it lowers it, and it also writes
+the answer to every question it had to ask, so the next reader in that
+room finds it at once.</span>
+</Analogy>
+
+Inside one block, SSA is a table: writing `x` records which value it now
+holds, and reading looks it up. From `packages/core/src/builder.ts`:
+
+```ts
+writeVariable(v, block, value) {
+  let m = this.defs.get(block);
+  if (!m) this.defs.set(block,
+    (m = new Map()));
+  m.set(v, value);
+}
+readVariable(v, block) {
+  const local =
+    this.defs.get(block)?.get(v);
+  if (local !== undefined) return local;
+  return this.readVariableRecursive(
+    v, block);
+}
+```
+
+`v` is any key the front end chooses for a variable, and `defs` maps
+each block to its own table (a `Map` from variable to value id).
+`writeVariable` records the value in the block's table (creating the
+table the first time), and `readVariable` looks there first. An assignment never
+emits an instruction; it only writes into the table, which is why
+`function f(x) { x = 2; return x; }` lowers to nothing more than
+`%1 = const 2` and `return %1`.
+
+## Asking the predecessors
+
+When a block has no entry for `v`, `readVariableRecursive` asks the
+blocks that lead to it. Simplified:
+
+```ts
+if (!this.sealed.has(block)) {
+  val = incompletePhi(v, block);
+} else if (b.preds.length === 1) {
+  val = this.readVariable(
+    v, b.preds[0]);
+} else if (b.preds.length === 0) {
+  val = undefinedConst();
+} else {
+  const phi = this.newPhi(block);
+  this.writeVariable(v, block, phi.id);
+  val = this.addPhiOperands(v, phi);
+}
+this.writeVariable(v, block, val);
+```
+
+Leave the first case for the next section. With **one predecessor**, the
+answer is whatever `v` is there. With **no predecessors**, the variable
+was read before any write, so it is `undefined`. With **several**, make a
+phi, record it *first*, then read `v` in every predecessor to get its
+operands; recording it first matters in loops, because if the search
+comes back round to this block it finds the phi and stops, rather than
+asking forever. The last line caches the answer, so the next read in
+this block is a plain look-up.
+
+<Figure takeaway="A block with no answer asks its predecessors; where they disagree, it makes a phi." caption="Reading x in b3 of a small if/else. b3’s table has no x, so it asks b1 and b2, gets %2 and %3, and makes %4 = φ(%2, %3), the phi in the real VIR, which it records as its answer.">
+  <AskPreds />
+</Figure>
+
+<Formal title="Reading a variable">
+
+```text
+read(v, B) = def(v, B)     if B wrote v
+           = read(v, P)    if pred(B) = {P}
+           = φ(read(v, P₁), …, read(v, Pₙ))
+                           otherwise
+```
+
+<span slot="read">To read v in block B: if B itself wrote v, the answer
+is that value. Otherwise, if B has exactly one predecessor P, the answer
+is whatever v is in P. Otherwise B has several predecessors P₁ to Pₙ,
+and the answer is a phi whose operands are the reads of v in each of
+them, in order (and if they all agree, the phi is not needed, as we will
+see).</span>
+</Formal>
+
+<Prompts ids={['assign-no-inst', 'one-pred', 'phi-first']} />
+
+## Loops: promise now, pay later
+
+<Analogy extra title="a wedding planner with replies still coming in">
+A planner is seating guests while invitations are still going out. For a
+table whose guests are not all confirmed, she puts a "reserved" card and
+a note to finish it once the last reply arrives.
+<span slot="breaks">A planner can wait for replies before seating
+anyone; the builder cannot wait, because the loop body it has not
+lowered yet will itself read the variables, so the "reserved" phi has to
+be usable as a value straight away.</span>
+</Analogy>
+
+A loop header is entered from before the loop *and* from the end of the
+body; however, when the builder lowers the loop test, it has not lowered
+the body yet, so the back edge does not exist and the header's list of
+predecessors is incomplete. Braun and colleagues call a block **sealed**
+once all its predecessors are known<Cite id="braun2013" />. Reading a
+variable in an unsealed block creates an empty, **incomplete phi** and
+remembers it, and sealing the block fills in every incomplete phi:
+
+```ts
+seal(block) {
+  const inc = this.incomplete.get(block);
+  if (inc) {
+    for (const [v, phi] of inc)
+      this.addPhiOperands(v, phi);
+    this.incomplete.delete(block);
+  }
+  this.sealed.add(block);
+}
+```
+
+The front end decides when. For a loop, `lower.ts` seals the header
+right after it emits the back edge:
+
+```ts
+fb.br(head.id); // the back edge
+fb.seal(head.id);
+```
+
+Step through the real `sum` function; a dashed block is unsealed:
+
+<BraunSteps client:visible />
+
+<Prompts ids={['sealed-what', 'unsealed-read', 'seal-when']} />
+
+## Trivial phis
+
+Look again at the step where the header asked "what is `n`?" and got a
+phi, because it could not yet know that the loop never changes `n`.
+Once sealed, the phi was `%4 = φ(%0, %4)`: whichever edge you take, it is
+`%0`. A phi whose operands are all one value, apart from the phi
+itself, is **trivial**:
+
+```ts
+let same = null;
+for (const op of phi.args) {
+  if (op === same || op === phi.id)
+    continue;
+  if (same !== null) return phi.id;
+  same = op; // first other value
+}
+// replace every use of phi with same,
+// then retry phis that used this phi
+```
+
+The loop skips operands equal to the value already found, or to the phi
+itself; the moment it meets a *second* different value, the phi really
+merges and is kept. Otherwise `tryRemoveTrivialPhi` rewires every use of
+the phi (including branch conditions, returns and the definition tables)
+to `same`, deletes the phi, and retries every phi that used it, since
+removing one phi can make another trivial.
+
+<Examples of="on-the-fly-ssa">
+
+```text
+x = 2      →   %1 = const 2
+              (table: x → %1)
+```
+
+```text
+b3: read x, preds disagree
+    →  %4 = phi %2, %3
+```
+
+```text
+b3: read y, preds agree
+    %5 = φ(%2, %2)  →  removed
+```
+
+</Examples>
+
+The first is the simplest case: an assignment emits only the value's own
+instruction and writes the table. The second is a join where the
+predecessors disagree, so the phi stays, as in the figure above. The
+third is from real VIR for
+`let x = 1; let y = 5; if (c) { x = 2; } return x + y;`: reading `y` at
+the join made `%5 = φ(%2, %2)`, both edges agree, so it was replaced by
+`%2`, and the listing jumps from `%4` to `%6`:
+
+```text
+  b3:  ; preds b1 b2
+    %4 = phi %3, %1
+    %6 = binop + %4, %2
+    return %6
+```
+
+In the module's list of values, instruction 5 is left behind as a dead
+entry noted `removed-trivial-phi`. Try the test on a few phis:
+
+<Run id="trivial" />
+
+It prints `%2` (both operands agree), `%0` (the phi and one other value,
+the loop that never changes `n`) and `null` (two real values: keep it).
+
+<Prompts ids={['trivial-what', 'trivial-cascade']} />
+
+<Callout kind="pitfall">
+Do not confuse "trivial" with "useless". `%3 = φ(%2, %10)`, the loop
+counter, has two different operands and is kept even if nothing read
+`i` after the loop; and `φ(%0, %4)` is removed even though the variable
+is used everywhere, because it always means `%0`.
+</Callout>
+
+<Callout kind="engine" label="Under the hood">
+Compared with placing phis at dominance frontiers<Cite id="cytron1991" />,
+this method needs no dominator tree and works while the IR is still
+being made, which suits a front end that lowers straight from a syntax
+tree. V8's Maglev meets the loop problem too, while building SSA from
+Ignition bytecode in one forward pass, and answers it differently: a
+prepass finds which variables are assigned inside each loop, so Maglev
+can create those loop phis before it processes the body, and fill in
+the back-edge input at the end<Cite id="v8-maglev" />. VIR's builder
+needs no prepass; it may create a few phis it does not need, and then
+deletes them as trivial.
+</Callout>
+
+## Your turn
+
+<Exercise id="remove-trivial" />
+
+<Exercise id="read-var" />
+
+## What you learned
+
+- **On-the-fly SSA construction** keeps a table of definitions per
+  block; assignments only write into it.
+- `readVariable` looks locally, then asks predecessors: one predecessor
+  passes the question on; several make a phi, recorded first so loops
+  terminate.
+- An **unsealed** block (a loop header, before its back edge) gets
+  **incomplete phis**, and `seal` fills them in.
+- A **trivial phi** chooses only one value (or itself); it is replaced,
+  and phis that used it are retried.
+
+Next: what you can compute once a program is in SSA, starting with
+facts that flow round loops.
+
+<Quiz />

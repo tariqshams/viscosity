@@ -1,0 +1,302 @@
+---
+n: 303
+day: 34
+part: XVII
+title: 'Trait objects and dispatch'
+tagline: 'A dyn call costs two loads and a jump you cannot see through, and that blindness, not the jump, is the real price. Some traits cannot pay it at all, because no vtable could hold their methods.'
+objectives:
+  - Read the machine code of a dyn call and of a generic call, and say what each one costs.
+  - Choose between generics, an enum and dyn for a set of types, and move a dyn call out of a hot loop.
+  - Explain why a trait with a generic method or a method returning Self is not dyn compatible.
+  - 'Fix a trait with where Self: Sized so it can be used behind dyn.'
+introduces: [dyn-dispatch-cost, object-safety]
+uses: [rust, rust-functions, struct, impl, self-receiver, enum, match, vec, box, trait, trait-object, rust-generics, trait-bound, monomorphization, rust-iterator, rust-closure, vtable, dynamic-dispatch, fat-pointer, dictionary-passing, generic-specialization, inlining, vectorization, branch-prediction, pointer-chasing, inline-cache, typescript, interface, garbage-collection, roots, language-plugin, tagged-union, decision-tree]
+sources: [rust-reference-trait-object, rustref-dyn-compatibility, rust-book-trait-objects, klabnik2026]
+---
+import DynCallSteps from '../../../components/diagrams/ch303/DynCallSteps';
+import VtableBuild from '../../../components/diagrams/ch303/VtableBuild';
+
+## Two loops, one answer
+
+Here is a trait, one type, and the same sum written twice: once with
+a generic (*Generics and trait bounds*) and once over trait objects
+(*Traits*).
+
+```rust
+trait Shape { fn area(&self) -> u32; }
+struct Sq(u32);
+impl Shape for Sq {
+    fn area(&self) -> u32 {
+        self.0 * self.0
+    }
+}
+fn total<S: Shape>(xs: &[S]) -> u32 {
+    xs.iter().map(|s| s.area()).sum()
+}
+fn total_dyn(xs: &[&dyn Shape]) -> u32 {
+    xs.iter().map(|s| s.area()).sum()
+}
+```
+
+Both give the same number. Compiled by rustc 1.97 with `-O` for x86-64,
+they become very different loops. This is the heart of `total_dyn`,
+trimmed:
+
+```text
+mov  rdi, [r14 + r12]      ; data ptr
+mov  rax, [r14 + r12 + 8]  ; vtable ptr
+call [rax + 24]            ; area()
+add  r15d, eax             ; sum += it
+add  r12, 16               ; next &dyn
+```
+
+And the heart of `total::<Sq>`:
+
+```text
+movdqu  xmm2, [rdi + rdx]       ; 4 Sqs
+movdqu  xmm3, [rdi + rdx + 16]  ; 4 more
+pmuludq xmm2, xmm2   ; square, 4 at once
+...
+paddd   xmm1, xmm2   ; add 4 at once
+add     rdx, 32      ; 8 done
+```
+
+The dyn loop handles one shape per trip and *calls* `area` every time.
+The generic loop has no call at all: `area` was pasted into the loop
+(inlined), and then the compiler squared and added eight numbers per
+trip with vector instructions. Step through both:
+
+<DynCallSteps client:visible />
+
+## What a dyn call costs
+
+<Analogy title="a switchboard">
+Ringing a company's main number, you ask reception for Sam and wait to
+be put through; with Sam's direct line you skip that. A dyn call rings
+reception: it looks the method up in the vtable (chapter 265,
+*Objects, vtables and dynamic dispatch*) before it can call it.
+<span slot="breaks">Reception is the cheap part. The real loss is that
+the caller cannot see what Sam will do once connected, so it cannot plan
+the work around it, which is what inlining lets a compiler do.</span>
+</Analogy>
+
+<Analogy extra title="see card 7">
+A recipe that says "make the sauce (see card 7)" sends you to a drawer
+for every batch. Copy card 7's steps into the recipe and you can
+streamline them: chop all eight onions at once instead of one per trip
+to the drawer.
+<span slot="breaks">A cook may copy the card for one batch and not the
+next; rustc decides once, when it compiles. Through `dyn` it cannot copy
+the card, because it does not know which card it will be.</span>
+</Analogy>
+
+<Callout kind="definition">
+The **cost of dynamic dispatch** has four parts. The call itself: load
+the vtable pointer, load the method's address from it, and make an
+indirect call (cheap when the processor predicts the target, as in
+*Pipelines and branch prediction*). Lost **inlining**: the compiler cannot see the body, so it cannot
+fold it into the caller, vectorise the loop or drop work that turns out
+useless<Cite id="rust-book-trait-objects" />. Indirection in the data:
+`Vec<Box<dyn Shape>>` stores each value in its own heap allocation,
+which is pointer chasing. And size: every `&dyn` is two words, a fat
+pointer (chapter 266, *Interfaces and traits: dictionary
+passing*)<Cite id="rust-reference-trait-object" />. In return you get
+one copy of the code, one list holding many types, and a choice made at
+run time.
+</Callout>
+
+<Formal title="A dyn call, as rustc 1.97 lays it out">
+
+```text
+vt(T as Tr) = [drop_T, size_T, align_T,
+               m₁_T, …, mₖ_T]
+p : &dyn Tr = (d, v), v = vt(T as Tr)
+p.mᵢ(a)  ⇝  (*v[2 + i])(d, a)
+```
+
+<span slot="read">The vtable for type T used as trait Tr starts with
+three words, T's drop function, size and alignment, followed by one
+function pointer per method. A trait object reference is a pair: a data
+pointer d and a vtable pointer v. Calling the i-th method loads entry
+2 + i of the vtable and calls it with d as self. (Slot 3, byte 24, is
+`area` in the listing above. The language does not promise this layout;
+it is what this rustc builds.)</span>
+</Formal>
+
+<Examples of="dyn-dispatch-cost">
+
+```rust
+// one dyn call per element
+fn total(xs: &[Box<dyn Shape>]) -> u32 {
+    xs.iter().map(|s| s.area()).sum()
+}
+```
+
+```rust
+// a closed set: an enum and a match
+enum Fig { Sq(u32), Tri(u32, u32) }
+fn area(f: &Fig) -> u32 {
+    match f {
+        Fig::Sq(s) => s * s,
+        Fig::Tri(b, h) => b * h / 2,
+    }
+}
+```
+
+```rust
+// one dyn call per *collection*
+trait Layout {
+    fn sum_x(&self) -> f64; // loops inside
+}
+fn report(ls: &[&dyn Layout]) -> f64 {
+    ls.iter().map(|l| l.sum_x()).sum()
+}
+```
+
+</Examples>
+
+The first pays every cost: a heap box per shape, a fat pointer per box
+and an indirect call per element. The second suits a set of types you
+know in full: an `enum` (chapter 271, *Sum types in memory*) stores the
+variants side by side with no boxes, and the `match` is a decision tree
+the compiler can inline like any other code. The third keeps `dyn` but
+moves it out of the hot loop: each layout makes *one* dyn call and then
+runs its own loop, which was compiled for its own type and can be
+vectorised. That is the shape Viscosity cares about: decide the layout
+once per collection, never once per particle.
+
+Run the sizes and both styles for yourself:
+
+<Run id="dyn-vs-enum" />
+
+<OtherLanguages title="Summing areas">
+
+```rust
+fn total(xs: &[Box<dyn Shape>]) -> f64 {
+    xs.iter().map(|s| s.area()).sum()
+}
+```
+
+```ts
+function total(xs: Shape[]): number {
+  return xs.reduce(
+    (t, s) => t + s.area(), 0);
+}
+```
+
+</OtherLanguages>
+
+In TypeScript every method call is dynamic: `s.area()` looks up a
+property, and V8's inline cache makes the lookup cheap once it has seen
+the shapes (*Inline caches*). You never choose. In Rust you do: a generic
+is resolved before the program runs, `dyn` while it runs, and the type
+tells the reader which one they are looking at.
+
+<Prompts ids={['dyn-loads', 'dyn-inline', 'dyn-enum', 'dyn-hoist']} />
+
+## Which traits can be dyn?
+
+Try to make a list of anything cloneable:
+
+```rust
+let a: Box<dyn Clone> = Box::new(5);
+```
+
+```text
+error[E0038]: the trait `Clone` is not dyn
+  compatible
+  = note: the trait is not dyn compatible
+    because it requires `Self: Sized`
+  = note: for a trait to be dyn compatible
+    it needs to allow building a vtable
+```
+
+That second note is the whole idea. A vtable is a fixed row of function
+pointers, built when the program is compiled, and `clone` returns
+`Self`: a value whose size the caller of a `dyn` method cannot know, so
+it cannot make room for the answer. Here is rustc building (or failing
+to build) a vtable, method by method:
+
+<Figure takeaway="Each method needs exactly one slot with a fixed signature, or it must opt out." caption="Building a vtable for a trait. A generic method would need one slot per type it might be called with; returning Self has no fixed size; a function without self has no data pointer to find the vtable through. where Self: Sized leaves a method out of the vtable.">
+  <VtableBuild />
+</Figure>
+
+<Analogy extra title="a vending machine's buttons">
+Before a machine ships, each button is wired to one fixed action: "drop
+a cola". Nobody can wire a button marked "drop whatever drink you are
+thinking of" (a generic method), or "build another machine like this
+one", when the buttons do not know which machine they are on.
+<span slot="breaks">A real machine cannot hide a button for some
+customers; `where Self: Sized` does exactly that, keeping the method for
+concrete types and leaving it off the dyn panel.</span>
+</Analogy>
+
+<Callout kind="definition">
+A trait is **dyn compatible** (the Rust Reference's current name for
+what used to be called **object safety**) when rustc can build a vtable
+for it<Cite id="rustref-dyn-compatibility" />. Roughly: `Sized` is not a
+supertrait, there are no associated constants, and every method either
+takes `&self`, `&mut self`, `Box<Self>` (or `Rc`, `Arc`, `Pin` of those),
+has no type parameters and does not mention `Self` except in that
+receiver, or opts out of dyn with `where Self: Sized`.
+</Callout>
+
+<Examples of="object-safety">
+
+```rust
+trait Trace {           // dyn compatible
+    fn trace(&self, m: &mut Marks);
+}
+```
+
+```rust
+trait Shape {
+    fn area(&self) -> f64;
+    fn scaled(&self, k: f64) -> Self;
+}  // ✗ E0038: `scaled` returns Self
+```
+
+```rust
+trait Shape {
+    fn area(&self) -> f64;
+    fn scaled(&self, k: f64) -> Self
+    where
+        Self: Sized; // ✓ off the vtable
+}
+```
+
+</Examples>
+
+The first is drip-rs's `Trace`, from `gc.rs`: one method, `&self`, no
+generics, which is why the collector can take its roots as
+`&[&dyn Trace]`. The second fails with rustc's reason, "method `scaled`
+references the `Self` type in its return type". The third keeps
+`scaled` for `Sq` and friends while `dyn Shape` does not have it.
+Its neighbour in `gc.rs` goes the other way on purpose: `HeapObject:
+Sized` has functions with no `self` at all (`fn arena(heap: &Heap) ->
+&Arena<Self>`), so it is only ever used as a generic bound, never as
+`dyn`. And a generic method, such as `fn put<T: Debug>(&self, x: T)`,
+fails because rustc reports "method `put` has generic type parameters":
+the vtable would need one `put` for every `T` in the program.
+
+<Prompts ids={['compat-clone', 'compat-generic', 'compat-fix', 'compat-trace']} />
+
+## Your turn
+
+<Exercise id="dynShapes" />
+
+## What you learned
+
+- A **dyn call** loads a function pointer from a vtable and calls it;
+  in a hot loop the bigger cost is often lost **inlining** (and with it
+  vectorisation), plus boxes and fat pointers.
+- Generics, an `enum`, or one `dyn` call per collection avoid paying
+  that cost per element.
+- A trait is **dyn compatible** (object safe) when a vtable can be
+  built: no generic methods, no `Self` outside the receiver, no
+  `Sized` supertrait; `where Self: Sized` opts one method out.
+
+Next: types that a trait lets each implementation choose, and the
+standard traits every Rust type is expected to know.
+
+<Quiz />

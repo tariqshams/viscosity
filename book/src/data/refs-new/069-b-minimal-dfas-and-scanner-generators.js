@@ -1,4 +1,4 @@
-// New references for the second half of chapter 75 (staged split:
+// New references for the second half of chapter 171 (staged split:
 // minimal DFAs and scanner generators).
 // Network note: only web search was reachable from this session, not the
 // project and publisher pages themselves; checkedAgainst says what was read.

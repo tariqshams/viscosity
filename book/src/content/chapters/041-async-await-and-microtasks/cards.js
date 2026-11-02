@@ -1,8 +1,5 @@
-// Cards for “async, await and the microtask queue” (split from chapter 40).
-// Keys are stable ids: never rename them.
-//
-// The runner waits for timers and promises, so the example and the core
-// exercise use real async code; the extra exercise models the two queues.
+// Chapter 41 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'async-returns': {
@@ -351,43 +348,113 @@ In the third test, the first task queues a task and a microtask. When it ends, t
 
 export const quiz = [
   {
-    q: "What does this print?\n```\nsetTimeout(() => console.log('T'));\nPromise.resolve()\n  .then(() => console.log('P'));\nconsole.log('S');\n```",
+    q: `What does this print?
+\`\`\`
+setTimeout(() => console.log('T'));
+Promise.resolve()
+  .then(() => console.log('P'));
+console.log('S');
+\`\`\``,
     options: [
-      { t: '`T`, `P`, `S`', why: 'Nothing queued can run before the code that queued it has finished, so `S` is first.' },
-      { t: '`S`, `T`, `P`', why: 'The timer was queued first, but it is a task; the promise callback is a microtask, and microtasks run before the next task.' },
-      { t: '`S`, `P`, `T`', correct: true, why: 'The code finishes (`S`), then every microtask runs (`P`), then the next task, the timer (`T`).' },
+      {
+        t: '`T`, `P`, `S`',
+        why: 'Nothing queued can run before the code that queued it has finished, so `S` is first.',
+      },
+      {
+        t: '`S`, `T`, `P`',
+        why: 'The timer was queued first, but it is a task; the promise callback is a microtask, and microtasks run before the next task.',
+      },
+      {
+        t: '`S`, `P`, `T`',
+        correct: true,
+        why: 'The code finishes (`S`), then every microtask runs (`P`), then the next task, the timer (`T`).',
+      },
     ],
   },
   {
-    q: 'What is `f()` here?\n```\nasync function f() {\n  return 5;\n}\n```',
+    q: `What is \`f()\` here?
+\`\`\`
+async function f() {
+  return 5;
+}
+\`\`\``,
     options: [
-      { t: 'A promise fulfilled with `5`', correct: true, why: 'An async function always returns a promise; `return 5` fulfils it with 5.' },
-      { t: 'The number `5`', why: 'Only `await f()` (inside another async function) gives the number itself.' },
-      { t: '`undefined`', why: 'The function does return something: a promise for its result.' },
+      {
+        t: 'A promise fulfilled with `5`',
+        correct: true,
+        why: 'An async function always returns a promise; `return 5` fulfils it with 5.',
+      },
+      {
+        t: 'The number `5`',
+        why: 'Only `await f()` (inside another async function) gives the number itself.',
+      },
+      {
+        t: '`undefined`',
+        why: 'The function does return something: a promise for its result.',
+      },
     ],
   },
   {
-    q: "What does this print?\n```\nasync function f() {\n  console.log('1');\n  await null;\n  console.log('3');\n}\nf();\nconsole.log('2');\n```",
+    q: `What does this print?
+\`\`\`
+async function f() {
+  console.log('1');
+  await null;
+  console.log('3');
+}
+f();
+console.log('2');
+\`\`\``,
     options: [
-      { t: '`1`, `3`, `2`', why: '`await` pauses `f`, even for a value that is ready, and the caller carries on first.' },
-      { t: '`1`, `2`, `3`', correct: true, why: 'The body runs at once up to the `await`, printing 1; `f()` returns, the caller prints 2; then the rest of `f` runs as a microtask.' },
-      { t: '`2`, `1`, `3`', why: 'Calling an async function runs its body straight away, up to the first `await`, so 1 comes first.' },
+      {
+        t: '`1`, `3`, `2`',
+        why: '`await` pauses `f`, even for a value that is ready, and the caller carries on first.',
+      },
+      {
+        t: '`1`, `2`, `3`',
+        correct: true,
+        why: 'The body runs at once up to the `await`, printing 1; `f()` returns, the caller prints 2; then the rest of `f` runs as a microtask.',
+      },
+      {
+        t: '`2`, `1`, `3`',
+        why: 'Calling an async function runs its body straight away, up to the first `await`, so 1 comes first.',
+      },
     ],
   },
   {
     q: 'A function without `async` contains `await fetchData()`. What happens?',
     options: [
-      { t: 'It waits, like in an async function', why: '`await` is only allowed in async functions and at the top level of modules.' },
-      { t: 'The file is refused with a `SyntaxError` before any of it runs', correct: true, why: 'Node will not even start it (in a module the message is “Unexpected reserved word”), and tsc reports error TS1308.' },
-      { t: '`await` is ignored, and the promise is used as the value', why: 'It is not ignored: the code does not compile at all.' },
+      {
+        t: 'It waits, like in an async function',
+        why: '`await` is only allowed in async functions and at the top level of modules.',
+      },
+      {
+        t: 'The file is refused with a `SyntaxError` before any of it runs',
+        correct: true,
+        why: 'Node will not even start it (in a module the message is “Unexpected reserved word”), and tsc reports error TS1308.',
+      },
+      {
+        t: '`await` is ignored, and the promise is used as the value',
+        why: 'It is not ignored: the code does not compile at all.',
+      },
     ],
   },
   {
     q: 'What is a real difference between async functions in JavaScript and in Python?',
     options: [
-      { t: 'Python has no `await` keyword', why: 'Python has both `async def` and `await`, used much as in JavaScript.' },
-      { t: 'In Python, calling an async function runs none of its body until it is awaited; in JavaScript the body runs at once, up to the first `await`', correct: true, why: 'Python makes a coroutine that does nothing until something awaits or schedules it.' },
-      { t: 'Python runs async functions on several threads at once', why: '`asyncio` runs them on one thread with an event loop, like JavaScript.' },
+      {
+        t: 'Python has no `await` keyword',
+        why: 'Python has both `async def` and `await`, used much as in JavaScript.',
+      },
+      {
+        t: 'In Python, calling an async function runs none of its body until it is awaited; in JavaScript the body runs at once, up to the first `await`',
+        correct: true,
+        why: 'Python makes a coroutine that does nothing until something awaits or schedules it.',
+      },
+      {
+        t: 'Python runs async functions on several threads at once',
+        why: '`asyncio` runs them on one thread with an event loop, like JavaScript.',
+      },
     ],
   },
 ];

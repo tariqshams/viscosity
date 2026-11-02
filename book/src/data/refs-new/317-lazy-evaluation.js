@@ -1,4 +1,4 @@
-// New references for chapter 317 and its staged second half (291-b,
+// New references for chapter 287 and its staged second half (291-b,
 // "Strictness analysis"). Checked 2026-11-02. The chapters also rely on
 // plotkin1975 and cousot1977. The Rust and Python listings are real
 // output produced in this session (rustc 1.97.0, Python 3.13.18). No
@@ -15,7 +15,7 @@ export default [
     url: 'https://github.com/ghc/ghc/blob/master/rts/Updates.h',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/ghc/ghc/master/rts/Updates.h on 2026-11-02: an updatable thunk carrying free variables “may transition through three states: 1. it starts life as a thunk, which carries with it free variables 2. if a thread enters it, it may turn into a blackhole 3. if evaluation finishes, it will be updated, turning it into an indirection pointing to the result”; the thunk layout is an info pointer, an indirectee field and the free variables as payload; eager blackholing happens only with -feager-blackholing, otherwise lazy blackholing; an updated thunk is represented as BLACKHOLE whose indirectee points to the result, so the update is a single store. rts/include/rts/storage/ClosureTypes.h defines THUNK, IND and BLACKHOLE closure types.',
-    shaped: 'Chapter 317: how a real lazy language stores, black-holes and updates thunks.',
+    shaped: 'Chapter 287: how a real lazy language stores, black-holes and updates thunks.',
   },
   {
     id: 'ghc-nontermination',
@@ -27,7 +27,7 @@ export default [
     url: 'https://github.com/ghc/ghc/blob/master/libraries/ghc-internal/src/GHC/Internal/Control/Exception/Base.hs',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw on 2026-11-02: “Thrown when the runtime system detects that the computation is guaranteed not to terminate. Note that there is no guarantee that the runtime system will notice whether any given computation is guaranteed to terminate or not.” data NonTermination = NonTermination, shown as “<<loop>>”.',
-    shaped: 'Chapter 317: the <<loop>> error a black hole lets the runtime report.',
+    shaped: 'Chapter 287: the <<loop>> error a black hole lets the runtime report.',
   },
   {
     id: 'rust-lazycell',
@@ -39,7 +39,7 @@ export default [
     url: 'https://doc.rust-lang.org/std/cell/struct.LazyCell.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/rust/master/library/core/src/cell/lazy.rs on 2026-11-02: “A value which is initialized on the first access”, stable since 1.80.0; enum State { Uninit(F), Init(T), Poisoned }; really_init does mem::replace(state, State::Poisoned) with the comment “Temporarily mark the state as poisoned. This prevents reentrant accesses and correctly poisons the cell if the closure panicked”; the panic message is “LazyCell instance has previously been poisoned”. std::sync::LazyLock is named as the thread-safe version. Both behaviours (one initialisation, and the panic on re-entry) were reproduced with rustc 1.97.0 here.',
-    shaped: 'Chapter 317: call-by-need as a library type, with its own black hole.',
+    shaped: 'Chapter 287: call-by-need as a library type, with its own black hole.',
   },
   {
     id: 'python-cached-property',
@@ -51,7 +51,7 @@ export default [
     url: 'https://docs.python.org/3/library/functools.html#functools.cached_property',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/python/cpython/main/Doc/library/functools.rst on 2026-11-02: cached_property transforms “a method of a class into a property whose value is computed once and then cached as a normal attribute for the life of the instance”. Reproduced with Python 3.13.18 here.',
-    shaped: 'Chapter 317: memoised, on-demand attributes in Python.',
+    shaped: 'Chapter 287: memoised, on-demand attributes in Python.',
   },
   {
     id: 'launchbury1993',
@@ -63,7 +63,7 @@ export default [
     url: 'https://doi.org/10.1145/158511.158618',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search on 2026-11-02: DBLP and the Wikipedia reference list for John Launchbury both give POPL 1993, pp. 144–154, DOI 10.1145/158511.158618; later papers (for example Breitner 2014 on its adequacy, in the Journal of Functional Programming) discuss it as the standard natural semantics of call-by-need with a heap. The ACM page could not be opened from this session; only the bibliographic facts and the well-known shape of its variable rule (evaluate the bound expression, then update the heap with its value) are relied on.',
-    shaped: 'Chapter 317: the formal rule for call-by-need with sharing.',
+    shaped: 'Chapter 287: the formal rule for call-by-need with sharing.',
   },
   {
     id: 'peytonjones1992stg',
@@ -75,7 +75,7 @@ export default [
     url: 'https://www.microsoft.com/en-us/research/publication/implementing-lazy-functional-languages-on-stock-hardware-the-spineless-tagless-g-machine/',
     accessed: '2026-11-02',
     checkedAgainst: 'The Microsoft Research publication page (fetched 2026-11-02) gives Journal of Functional Programming, Vol 2, pp. 127–202, 1992, and opens its abstract with “The Spineless Tagless G-machine is an abstract machine designed to support non-strict higher-order functional languages”, describing the STG language and its mapping to C. A web search gave the Cambridge Core DOI 10.1017/S0956796800000319.',
-    shaped: 'Chapter 317: the abstract machine behind GHC, whose runtime the chapter quotes.',
+    shaped: 'Chapter 287: the abstract machine behind GHC, whose runtime the chapter quotes.',
   },
   {
     id: 'mycroft1980',
@@ -87,7 +87,7 @@ export default [
     url: 'https://era.ed.ac.uk/handle/1842/6602',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search on 2026-11-02: an Edinburgh Research Archive record and Springer reference lists give A. Mycroft, 4th International Symposium on Programming, Paris 1980, LNCS 83 (ed. B. Robinet), pp. 269–281; his 1981 Edinburgh thesis is “Abstract Interpretation and Optimising Transformations for Applicative Programs”. Lecture notes and the Cousots’ 1993 slides describe the method as an abstract interpretation over a two-point domain, 0 for definite divergence and 1 for possible termination, used to find which call-by-need parameters may be passed by value. The paper itself and its publisher page could not be opened or confirmed here, so the URL given is the Edinburgh Research Archive record of the thesis (handle 1842/6602, found by the same search), which develops the same method; only these facts are relied on.',
-    shaped: 'Chapter 317-b: strictness analysis as abstract interpretation on {0, 1}.',
+    shaped: 'Chapter 287-b: strictness analysis as abstract interpretation on {0, 1}.',
   },
   {
     id: 'ghc-demand-analysis',
@@ -99,6 +99,6 @@ export default [
     url: 'https://downloads.haskell.org/ghc/latest/docs/users_guide/using-optimisation.html#ghc-flag-fstrictness',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/ghc/ghc/master/docs/users_guide/using-optimisation.rst on 2026-11-02: -fstrictness “Turn on demand analysis”, off by default but enabled by -O; “If an argument is scrutinised on every code path, the function is strict in that argument and GHC is free to use the more efficient call-by-value calling convention, as well as pass parameters unboxed”; usage analysis finds arguments evaluated at most once (call-by-name may replace call-by-need) or absent; the worker/wrapper transformation exploits the results. docs/users_guide/exts/strict.rst: BangPatterns, StrictData and Strict “specify use of strict (call-by-value) evaluation rather than lazy (call-by-need) evaluation”, and “eliminating thunks from an inner loop can be a huge win”.',
-    shaped: 'Chapter 317-b: what a production strictness analyser does with its answers.',
+    shaped: 'Chapter 287-b: what a production strictness analyser does with its answers.',
   },
 ];

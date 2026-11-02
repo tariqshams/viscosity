@@ -1,4 +1,4 @@
-// New references for chapter 319 and its staged second half (292-b,
+// New references for chapter 289 and its staged second half (292-b,
 // "Eval, with and proxies"). Checked 2026-11-02. The chapters also rely
 // on itanium-cxx-abi. Every listing is real output produced in this
 // session, trimmed to 44 columns: clang 18.1.3 (clang++ -O1 -S, and
@@ -17,7 +17,7 @@ export default [
     url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Reflect',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/mdn/content/main/.../global_objects/reflect/index.md on 2026-11-02: Reflect is not a constructor; its static functions have the same names as the proxy handler methods; “The major use case of Reflect is to provide default forwarding behavior in Proxy handler traps”, invoking the corresponding object internal method (for example Reflect.deleteProperty for [[Delete]]).',
-    shaped: 'Chapters 319 and 319-b: JavaScript’s reflection API and its link to proxies.',
+    shaped: 'Chapters 289 and 289-b: JavaScript’s reflection API and its link to proxies.',
   },
   {
     id: 'mdn-proxy',
@@ -29,7 +29,7 @@ export default [
     url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/mdn/content/main/.../global_objects/proxy/index.md and proxy/proxy/get/index.md on 2026-11-02: a Proxy wraps a target with a handler whose traps intercept the object internal methods ([[Get]], [[Set]], [[Has]], [[Delete]], [[Call]], [[Construct]] and others); a missing trap forwards the operation to the target; the get trap must respect invariants, such as reporting the same value for a non-writable, non-configurable own data property of the target.',
-    shaped: 'Chapter 319-b: proxies, traps and invariants.',
+    shaped: 'Chapter 289-b: proxies, traps and invariants.',
   },
   {
     id: 'mdn-eval',
@@ -41,7 +41,7 @@ export default [
     url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw on 2026-11-02: direct eval sees the caller’s local scope, indirect eval runs in the global scope; “Minifiers give up on any minification if the scope is transitively depended on by eval()”; with direct eval “the engine, and build tools, have to disable all optimizations related to inlining, because the eval() source can depend on any variable name in its surrounding scope”; the Function() constructor, like indirect eval, does not read or change local bindings.',
-    shaped: 'Chapter 319-b: direct and indirect eval, and what direct eval costs.',
+    shaped: 'Chapter 289-b: direct and indirect eval, and what direct eval costs.',
   },
   {
     id: 'mdn-with',
@@ -53,7 +53,7 @@ export default [
     url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/with',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw on 2026-11-02: with “is not recommended”, “makes optimization impossible, and is forbidden in strict mode”; it “forces the specified object to be searched first for all name lookups”, and “the optimizer cannot make any assumptions about what each unqualified identifier refers to”. Node 22 reports “SyntaxError: Strict mode code may not include a with statement”, checked here.',
-    shaped: 'Chapter 319-b: why with defeats static name resolution.',
+    shaped: 'Chapter 289-b: why with defeats static name resolution.',
   },
   {
     id: 'ecma262-eval-proxy',
@@ -65,7 +65,7 @@ export default [
     url: 'https://tc39.es/ecma262/',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/tc39/ecma262/main/spec.html on 2026-11-02. Call evaluation (sec-function-calls-runtime-semantics-evaluation): if the reference is not a property reference, its name is "eval" and the function is %eval%, PerformEval runs with ~direct-eval~; a call that takes that step “is a direct eval”. The with statement (sec-with-statement, marked legacy) “adds an Object Environment Record for a computed object to the lexical environment of the running execution context”. Proxy [[Get]]: get the handler’s "get" trap; if undefined, return target.[[Get]]; otherwise call it, then if the target’s own property is non-configurable and a non-writable data property whose value differs, throw a TypeError (and a similar check for accessors without a getter).',
-    shaped: 'Chapter 319-b: the exact rules for direct eval, with and the get trap.',
+    shaped: 'Chapter 289-b: the exact rules for direct eval, with and the get trap.',
   },
   {
     id: 'go-reflect',
@@ -77,7 +77,7 @@ export default [
     url: 'https://pkg.go.dev/reflect',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/golang/go/master/src/reflect/type.go on 2026-11-02: “Package reflect implements run-time reflection, allowing a program to manipulate objects with arbitrary types. The typical use is to take a value with static type interface{} and extract its dynamic type information by calling TypeOf, which returns a Type.” Field names, types and struct tags were read with Go 1.24.7 here.',
-    shaped: 'Chapter 319: Go keeps type descriptors, including struct tags, for reflection.',
+    shaped: 'Chapter 289: Go keeps type descriptors, including struct tags, for reflection.',
   },
   {
     id: 'rust-std-any',
@@ -89,7 +89,7 @@ export default [
     url: 'https://doc.rust-lang.org/std/any/index.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/rust/master/library/core/src/any.rs on 2026-11-02: “Utilities for dynamic typing or type reflection”; &dyn Any has is and downcast_ref “to test if the contained value is of a given type”; “&dyn Any is limited to testing whether a value is of a specified concrete type, and cannot be used to test whether a type implements a trait”. type_name, TypeId and downcast_ref were run with rustc 1.97.0 here.',
-    shaped: 'Chapter 319: Rust’s deliberately small runtime type information.',
+    shaped: 'Chapter 289: Rust’s deliberately small runtime type information.',
   },
   {
     id: 'openjdk-class-reflection',
@@ -101,7 +101,7 @@ export default [
     url: 'https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/lang/Class.java',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw on 2026-11-02. Class.getDeclaredFields “Returns an array of Field objects reflecting all the fields declared by the class or interface represented by this Class object”, including private ones but excluding inherited ones, in no particular order. Proxy “provides static methods for creating objects that act like instances of interfaces but allow for customized method invocation”; a proxy class “is a class created at runtime that implements a specified list of interfaces”. Both were run with Java 21.0.12 here (the proxy class printed as $Proxy0).',
-    shaped: 'Chapters 319 and 319-b: Java reflection reads class-file metadata; Java dynamic proxies.',
+    shaped: 'Chapters 289 and 289-b: Java reflection reads class-file metadata; Java dynamic proxies.',
   },
   {
     id: 'python-getattr',
@@ -113,6 +113,6 @@ export default [
     url: 'https://docs.python.org/3/reference/datamodel.html#object.__getattr__',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/python/cpython/main/Doc/reference/datamodel.rst on 2026-11-02: __getattr__ is “Called when the default attribute access fails with an AttributeError”; it should return the computed value or raise AttributeError. Run with Python 3.13.18 here.',
-    shaped: 'Chapter 319-b: Python’s hook for intercepting missing attributes.',
+    shaped: 'Chapter 289-b: Python’s hook for intercepting missing attributes.',
   },
 ];

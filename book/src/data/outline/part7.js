@@ -1,113 +1,109 @@
-// A native back end. Added in the 2026-11 expansion (scripts/expansion/plan.mjs).
 export default {
-  id: 'VII', track: 'A', days: '58–65', title: 'A native back end',
-  blurb: 'Machine code, RISC-V assembly, calling conventions, instruction selection, register allocation, scheduling, linking and a tiny JIT: everything between an IR and a running binary.',
+  id: 'VII', section: 'core', days: '18–23', title: 'Core 6: Rust for TypeScript engineers',
+  blurb: 'Cargo, the basics, ownership and borrowing, strings and slices, structs and enums, Option and Result, collections, traits and generics, lifetimes, closures and iterators, modules, errors, testing, smart pointers, arenas, layout, unsafe, and SoA in Rust.',
   chapters: [
-    { n: 230, title: 'Machine code and assembly', introduces: {
-      'machine-code': 'the bytes a CPU actually runs',
-      'assembly-language': 'machine code written as text',
+    { n: 116, title: 'Why Rust, and cargo', introduces: {
+      rust: 'a fast, memory-safe systems language',
+      cargo: 'Rust’s build tool and package manager',
+      crate: 'a Rust package or compilation unit',
     } },
-    { n: 231, title: 'Instruction sets and RISC-V', introduces: {
-      isa: 'instruction set architecture: the contract between hardware and software',
-      'risc-v': 'a small, open instruction set',
+    { n: 117, title: 'Rust basics: variables, numbers, functions and blocks', introduces: {
+      'let-mut': 'immutable by default, mut to allow change',
+      'scalar-types': 'i32, u8, f64, bool, char, usize',
+      'rust-functions': 'fn with typed parameters and return',
+      'expression-oriented': 'blocks and if produce values',
     } },
-    { n: 232, title: 'RISC-V: registers, memory and the stack', introduces: {
-      'load-store': 'only loads and stores touch memory',
-      'addressing-mode': 'how an instruction names a memory location',
-      'stack-pointer': 'the register that marks the top of the stack',
+    { n: 118, title: 'Ownership: moves, copies and clones', introduces: {
+      ownership: 'every value has exactly one owner',
+      drop: 'freeing a value when its owner goes away',
+      move: 'transferring ownership',
     } },
-    { n: 233, title: 'Calling conventions and the ABI', introduces: {
-      'calling-convention': 'where arguments, results and the return address go',
-      abi: 'application binary interface: the rules compiled code agrees on',
+    { n: 119, title: 'Borrowing and the borrowing rules', introduces: {
+      borrow: 'a reference that doesn’t take ownership',
+      'shared-vs-mutable': 'many &T or one &mut T, never both',
+      'borrow-checker': 'the compiler pass enforcing borrowing rules',
     } },
-    { n: 234, title: 'Saving registers: prologues and epilogues', introduces: {
-      'caller-callee-saved': 'which registers each side must preserve',
-      'prologue-epilogue': 'the code that builds and tears down a frame',
+    { n: 120, title: 'Slices, String and &str', introduces: {
+      slice: 'a view into part of a collection',
+      'string-vs-str': 'owned String vs borrowed &str',
     } },
-    { n: 235, title: 'Code shape: lowering control flow and data', introduces: {
-      'code-shape': 'the patterns a compiler uses to express each construct',
-      'array-address-arithmetic': 'base + index × size',
+    { n: 121, title: 'Structs, impl and methods', introduces: {
+      struct: 'a named record type',
+      impl: 'attaching methods to a type',
+      'self-receiver': '&self, &mut self and self',
     } },
-    { n: 236, title: 'Jump tables', introduces: {
-      'jump-table': 'switch compiled to an indexed jump',
+    { n: 122, title: 'Enums, match and patterns', introduces: {
+      enum: 'a type that is one of several variants',
+      match: 'exhaustive pattern matching',
+      pattern: 'a shape a value is matched against',
     } },
-    { n: 237, title: 'Instruction selection by tree tiling', introduces: {
-      'instruction-selection': 'choosing machine instructions for IR operations',
-      'tree-tiling': 'covering an IR tree with instruction patterns',
+    { n: 123, title: 'Option, Result and the ? operator', introduces: {
+      option: 'Some(value) or None',
+      result: 'Ok(value) or Err(error)',
+      'question-mark': 'the ? operator for propagating errors',
     } },
-    { n: 238, title: 'Optimal tiling by dynamic programming', introduces: {
-      'optimal-tiling': 'the cheapest cover, found by dynamic programming',
+    { n: 124, title: 'Vec and HashMap', introduces: {
+      vec: 'Rust’s growable array',
+      hashmap: 'Rust’s hash table',
     } },
-    { n: 239, title: 'Leaving SSA', introduces: {
-      'ssa-destruction': 'replacing phi nodes with copies',
-      'lost-copy-problem': 'the bug naive phi removal causes',
+    { n: 125, title: 'Traits, trait objects and derive', introduces: {
+      trait: 'a set of methods types can implement',
+      'trait-object': 'dyn Trait for dynamic dispatch',
+      'operator-traits': 'Add, Index and the other operator traits',
+      derive: '#[derive] writing standard impls for you',
     } },
-    { n: 240, title: 'Parallel copies and the swap problem', introduces: {
-      'parallel-copy': 'several copies that happen at once',
+    { n: 126, title: 'Generics and monomorphization', introduces: {
+      'rust-generics': 'type parameters in Rust',
+      'trait-bound': 'T: Trait constraints',
+      monomorphization: 'generating a copy per concrete type',
     } },
-    { n: 241, title: 'Live ranges and interference', introduces: {
-      'live-range': 'where a value is alive',
-      'interference-graph': 'values that are alive at the same time, as a graph',
+    { n: 127, title: 'Lifetimes', introduces: {
+      lifetime: 'how long a reference is valid',
+      'lifetime-annotation': '\'a: naming lifetimes',
     } },
-    { n: 242, title: 'Register allocation by graph colouring', introduces: {
-      'register-allocation': 'deciding which values live in which registers',
-      'graph-coloring': 'giving neighbours different colours',
-      'simplify-select': 'Chaitin and Briggs’s colouring algorithm',
+    { n: 128, title: 'Closures, iterators and associated types', introduces: {
+      'rust-closure': 'closures and the Fn traits',
+      'rust-iterator': 'the Iterator trait and adapters',
+      'associated-type': 'a type a trait implementation chooses',
+      'std-traits': 'Display, Debug, Default, Clone, From, Iterator and friends',
     } },
-    { n: 243, title: 'Coalescing', introduces: {
-      coalescing: 'merging copies so they disappear',
+    { n: 129, title: 'Modules, visibility and workspaces', introduces: {
+      'rust-module': 'mod and use',
+      visibility: 'pub and privacy',
+      workspace: 'several crates built together',
     } },
-    { n: 244, title: 'Spilling and linear scan', introduces: {
-      spilling: 'keeping a value in memory when registers run out',
+    { n: 130, title: 'Errors at scale', introduces: {
+      'error-enum': 'one enum describing every error a crate can return',
+      'from-trait': 'converting between error types',
     } },
-    { n: 245, title: 'Linear scan', introduces: {
-      'linear-scan': 'allocating registers in one pass over live intervals',
-      'live-interval': 'a live range flattened to a start and an end',
+    { n: 131, title: 'Testing in Rust', introduces: {
+      'cargo-test': '#[test] functions and cargo test',
+      'assert-macros': 'assert!, assert_eq!',
     } },
-    { n: 246, title: 'Instruction scheduling', introduces: {
-      'instruction-scheduling': 'reordering instructions to keep the CPU busy',
-      'dependence-dag': 'which instructions must wait for which',
+    { n: 132, title: 'Box, Rc and RefCell', introduces: {
+      box: 'a heap allocation with one owner',
+      rc: 'shared ownership by reference counting',
+      refcell: 'borrow checking at run time',
     } },
-    { n: 247, title: 'List scheduling', introduces: {
-      'list-scheduling': 'the greedy scheduling algorithm',
+    { n: 133, title: 'Arenas and typed indices', introduces: {
+      arena: 'one big Vec holding many objects',
+      'typed-index': 'a newtype index like NodeId(u32)',
     } },
-    { n: 248, title: 'Software pipelining', introduces: {
-      'software-pipelining': 'overlapping iterations of a loop',
+    { n: 134, title: 'Memory layout in Rust', introduces: {
+      'size-of': 'std::mem::size_of',
+      alignment: 'addresses a type must start at',
+      padding: 'unused bytes added for alignment',
+      repr: '#[repr(C)] and friends',
     } },
-    { n: 249, title: 'Iterative modulo scheduling', introduces: {
-      'modulo-scheduling': 'one schedule repeated every few cycles',
+    { n: 135, title: 'unsafe and raw pointers', introduces: {
+      unsafe: 'code where you uphold the rules the compiler cannot check',
+      'raw-pointer': '*const T and *mut T',
     } },
-    { n: 250, title: 'Peephole optimisation', introduces: {
-      peephole: 'improving short windows of instructions',
-      superoptimization: 'searching for the shortest correct sequence',
-    } },
-    { n: 251, title: 'Assemblers, object files and linking', introduces: {
-      assembler: 'a program that turns assembly into machine code',
-      'object-file': 'machine code plus symbols and relocations',
-      relocation: 'a hole the linker fills with an address',
-    } },
-    { n: 252, title: 'Linkers and loaders', introduces: {
-      linker: 'the program that joins object files',
-      loader: 'the program that puts a binary in memory and runs it',
-    } },
-    { n: 253, title: 'A tiny JIT', introduces: {
-      'runtime-code-generation': 'writing code while the program runs',
-    } },
-    { n: 254, title: 'Compiling hot Drip functions to WebAssembly', introduces: {
-      'jit-from-scratch': 'a JIT that compiles hot Drip functions to WebAssembly',
-    } },
-    { n: 255, title: 'Drip to RISC-V, end to end', introduces: {
-      'native-pipeline': 'source to native code through every stage',
-    } },
-    { n: 256, title: 'From virtual registers to a running program', introduces: {
-      'isa-simulator': 'a program that runs machine instructions in software, one at a time',
-    } },
-    { n: 257, title: 'Real back ends: LLVM, clang and rustc', introduces: {
-      'llvm-ir': 'LLVM’s typed SSA IR',
-      'llvm-pass': 'a transformation over LLVM IR',
-    } },
-    { n: 258, title: 'Inside LLVM’s code generator, clang and rustc', introduces: {
-      'compiler-architecture-tour': 'how clang and rustc are put together',
+    { n: 136, title: 'Struct of arrays in Rust, measured', introduces: {
+      'rust-soa': 'SoA layouts with Vec<f64> columns',
+      'release-build': 'compiling with optimizations',
+      'black-box': 'preventing the optimizer from deleting benchmark work',
+      criterion: 'statistical benchmarking for Rust',
     } },
   ],
 };

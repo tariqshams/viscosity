@@ -1,0 +1,571 @@
+---
+n: 129
+day: 21
+part: VII
+title: 'Modules, visibility and workspaces'
+tagline: 'In JavaScript a file is a module just by existing. In Rust the crate root names its modules, each module names its own, and every item has an address in that tree; a file nobody names is not compiled at all.'
+objectives:
+  - Declare modules inline and in files, and say which file mod name; reads.
+  - Name any item with a path starting from crate, super or self.
+  - Shorten paths with use, including braces, as and the glob, and know which scope a use covers.
+  - Read and fix E0583, E0425 and E0432, and read drip-rs's module tree.
+  - Say exactly where a private item can be used, and read E0603, E0616, E0624 and E0451.
+  - Keep a type's fields private so that only its own module can break its invariants.
+  - Shape a crate's public face with pub use, and know what pub(crate) is for.
+  - Read engine/rust's workspace, and explain how its crate split keeps JavaScript out of the analyses.
+introduces: [rust-module, visibility, workspace]
+uses: [rust, cargo, crate, rust-functions, struct, impl, self-receiver, enum, vec, trait, rust-generics, rust-closure, rust-iterator, module, import-export, program-structure, scanner, compiler, virtual-machine, garbage-collection, separate-compilation, module-graph, test, language-plugin, vir, ir, hash-table, open-addressing, aos-vs-soa, webassembly, npm-package]
+sources: [klabnik2026, rust-book-modules, rustref-visibility, rust-book-workspaces]
+---
+import ModTree from '../../../components/diagrams/ch129/ModTree';
+import PathSteps from '../../../components/diagrams/ch129/PathSteps';
+import PrivacyMap from '../../../components/diagrams/ch129/PrivacyMap';
+import CrateSteps from '../../../components/diagrams/ch129/CrateSteps';
+
+{/* ── merge: from old chapter 129, Modules, crates and visibility ── */}
+
+## Nine lines, nine files
+
+Here is the top of drip-rs's `src/lib.rs`, the root of the `drip`
+library crate (from *Cargo, crates and packages*):
+
+```rust
+pub mod chunk;
+pub mod compiler;
+pub mod debug;
+pub mod gc;
+pub mod object;
+pub mod scanner;
+pub mod table;
+pub mod value;
+pub mod vm;
+```
+
+In *Modules: import and export*, each JavaScript file was a module just
+by existing, and `import { scan } from './scanner.js'` found it by its
+path on disk. Rust works the other way round: the compiler starts at
+one file, the **crate root** (`src/lib.rs` for a library, `src/main.rs`
+for a program), and only compiles the files that root, or a module
+below it, asks for. `mod scanner;` says "there is a module called
+`scanner`, and its code is in `scanner.rs` next to me"; delete that
+line and `scanner.rs` is ignored, however much code is in it. (The
+`pub` in front lets code outside this module use it; the next chapter
+is all about `pub`, so for now read it as "others may use this".)
+
+<Analogy title="a family tree drawn from the top">
+A JavaScript project is like a pile of letters that mention each other
+by address. A Rust crate is a family tree drawn from the oldest
+ancestor down: the root names its children, each child names its own,
+and anyone not drawn on the tree is simply not in the family, however
+close they live.
+<span slot="breaks">Real families have two parents and cousins who
+marry; a module has exactly one parent, so the module tree is a true
+tree with no loops.</span>
+</Analogy>
+
+<Figure takeaway="A file is part of the crate only if a mod line names it." caption="drip-rs's lib.rs names nine modules, and each line pulls in the file of that name. A file that no mod line names (notes.rs here is imaginary) is never compiled.">
+  <ModTree />
+</Figure>
+
+Ask for a file that is not there and rustc 1.97 tells you where it
+looked:
+
+```text
+error[E0583]: file not found for module
+  `scanner`
+= help: to create the module `scanner`,
+  create file "scanner.rs" or
+  "scanner/mod.rs"
+```
+
+A module can also be written **inline**, with its body in braces right
+where it is declared. You have met one at the bottom of every Rust
+exercise: the tests are wrapped in `mod tests { use super::*; ... }`.
+Inline or in a file, the result is the same: one more node in the
+**module tree**, a tree of named scopes rooted at `crate`.
+
+<Prompts ids={['mod-file', 'mod-root', 'mod-inline']} />
+
+## Paths: an address for every item
+
+Every function, struct, enum or module in the tree has an address
+built from the names on the way to it, joined by `::`. A **path** may
+start in three places:
+
+- `crate::` starts at the root, like `/` at the start of a file path;
+- `super::` starts at the parent of the current module, like `..`;
+- `self::` (or nothing at all) starts in the current module.
+
+Step through some real paths in drip-rs:
+
+<PathSteps client:visible />
+
+<Analogy extra title="a postal address">
+"Flat 2, 14 Mill Lane, Leeds, UK" names one front door by going from
+the biggest area down to the smallest. `crate::scanner::Token` does the
+same, from the crate down to one struct. `super::` is "the house next
+door's street", worked out from where you are standing.
+<span slot="breaks">A letter can be addressed from anywhere in the
+world to anywhere; a Rust path can only be followed if every module on
+the way lets you through, which is what the next chapter's `pub`
+decides.</span>
+</Analogy>
+
+Writing `crate::scanner::Token` everywhere would be tiring, so **`use`**
+makes a short name for a path, the way `import` does. drip-rs's
+compiler opens with:
+
+```rust
+use crate::chunk::{Chunk, OpCode};
+use crate::gc::{Heap, Trace};
+use crate::scanner::{Scanner, Token};
+```
+
+Braces bring several names from one module at once; `use a::b as c;`
+renames on the way in; and `use a::*;` (the **glob**) brings in every
+public name, which is handy in tests and risky elsewhere, because you
+can no longer see where a name came from. A `use` covers only the
+module it is written in, not its children or its parent, so each
+module (each file, usually) has its own list<Cite id="rust-book-modules" />.
+
+<Callout kind="definition">
+A **module** is a named scope in a crate's module tree, declared with
+**`mod name { ... }`** (inline) or **`mod name;`** (its body is read
+from `name.rs`, or `name/mod.rs`, beside the declaring file). Items are
+reached by **paths**: `crate::a::b` from the root, `super::x` from the
+parent, `self::y` from here. **`use path;`** binds the last name of a
+path as a shortcut in the current module<Cite id="klabnik2026" />.
+</Callout>
+
+<Formal title="How a path is followed">
+
+```text
+crate::p  from m  →  p from the root
+super::p  from m  →  p from parent(m)
+self::p   from m  →  p from m
+a::p      from m  →  p from child a of m
+a         in m    →  the item named a
+```
+
+<span slot="read">To follow a path from module m: crate:: jumps to the
+root, super:: to m's parent, and self:: stays in m. Otherwise the first
+name a must be a child of m (or a name a use brought into m), and we
+carry on from there; the last name is the item itself.</span>
+</Formal>
+
+<Examples of="rust-module">
+
+```rust
+mod geom {
+    pub fn area(w: f64, h: f64) -> f64 {
+        w * h
+    }
+}
+fn main() {
+    println!("{}", geom::area(2.0, 3.0));
+}
+```
+
+```rust
+// src/lib.rs: mod vm;   src/vm.rs:
+use crate::compiler::compile;
+use crate::gc::Heap;
+pub struct Vm { /* ... */ }
+```
+
+<Run id="modules-play" />
+
+</Examples>
+
+The first is the smallest module there is: `geom` is inline, and
+`main`, at the root, reaches `area` by the path `geom::area` (relative,
+since `geom` is a child of the root), printing `6`. The second is the
+shape of every file in drip-rs: one `mod vm;` line in `lib.rs`, then
+`vm.rs` starts with its own `use` lines, which reach across the tree
+with `crate::`. The runnable one has a `scanner` module with a nested
+`tests` module that calls its parent's function through `super::`, and
+a `compiler` module that `use`s it; change the paths and watch the
+errors.
+
+The two errors you will meet most are a missing `use` and a `use`
+that starts in the wrong place:
+
+```rust
+mod report {
+    pub fn show() {
+        area(2.0, 3.0); // E0425
+    }
+}
+mod report2 {
+    use geom::area; // E0432
+}
+```
+
+```text
+error[E0425]: cannot find function `area`
+  in this scope
+help: consider importing this function:
+  use crate::geom::area;
+error[E0432]: unresolved import `geom`
+help: a similar path exists:
+  crate::geom::area
+```
+
+In the first, `area` lives in `geom`, and nothing brought it into
+`report`. In the second, a `use` path that does not start with
+`crate::` starts in the current module, and `report2` has no child
+called `geom`. Both help lines give the fix.
+
+<OtherLanguages title="Using a function from another module">
+
+```rust
+// src/lib.rs
+mod scanner;
+mod compiler;
+// src/compiler.rs
+use crate::scanner::scan;
+```
+
+```ts
+// compiler.ts
+import { scan } from './scanner.js';
+// scanner.ts is a module because it
+// is a file; nothing declares it
+```
+
+</OtherLanguages>
+
+TypeScript finds modules by file path, relative to the importing file,
+and every file is a module whether anyone imports it or not. Rust finds
+them by their place in one tree that the crate root declares, so
+`crate::scanner::scan` means the same thing in every file of the crate;
+and a Rust crate is compiled as one unit (the compilation unit of
+*Modules and separate compilation*), while each TypeScript file can be
+handled on its own.
+
+<Prompts ids={['mod-paths', 'mod-use', 'mod-glob', 'mod-use-scope', 'mod-e0432']} />
+
+<Callout kind="engine" label="Under the hood">
+engine/rust's README maps each module to the TypeScript file it was
+ported from, `plan.ts` to `core::plan` and `lower.ts` to
+`frontend_js::lower`, so the module tree mirrors the TypeScript
+engine's folders. Inside drip-rs, every module that has unit tests ends
+with an inline `#[cfg(test)] mod tests`, a child of the module it
+tests; *Testing in Rust* shows why being a child matters.
+</Callout>
+
+## Your turn
+
+<Exercise id="wireTree" />
+
+## What you learned
+
+- A crate is a **module tree** rooted at `crate`. `mod name;` pulls in
+  `name.rs` (or `name/mod.rs`); a file no `mod` line names is not
+  compiled. `mod name { ... }` declares one inline.
+- **Paths** name items: `crate::` from the root, `super::` from the
+  parent, `self::` (or nothing) from here.
+- **`use`** makes a short name for a path in the current module only;
+  braces, `as` and `*` bring in several, rename, or bring in all.
+
+Next: what `pub` really opens up, why private is the default, and how
+several crates are built together as one workspace.
+
+
+{/* ── merge: from old chapter 129, Privacy, pub and workspaces ── */}
+
+## A table that guards itself
+
+Here is drip-rs's hash table (`table.rs`, trimmed), the one from
+*Finding things fast: hash tables*:
+
+```rust
+pub struct Table {
+    count: usize,
+    keys: Vec<Option<StrRef>>,
+    values: Vec<Value>,
+}
+impl Table {
+    pub fn new() -> Self { ... }
+    fn grow(&mut self, cap: usize) { ... }
+}
+```
+
+The struct is `pub`, and so is `new` (and `get`, `set` and the rest of
+the API), but its three fields and `grow` have no `pub`, so they are
+**private**: other modules can name `Table` and use its API, and that is
+all. Try the rest
+from outside `table`, and rustc 1.97 refuses each with its own code (a
+private free function gives a third, E0603):
+
+```text
+error[E0624]: method `grow` is private
+13 |     t.grow(16);
+   |       ^^^^ private method
+error[E0616]: field `count` of struct
+  `Table` is private
+14 | println!("{}", t.count);
+   |                  ^^^^^ private field
+```
+
+Why bother? `count` must count live entries *and* tombstones, and the
+two columns must stay the same length. If any module could write `t.count = 0`, or push onto
+`keys` alone, the table could be broken from anywhere in the VM. With
+private fields only `table.rs` can break it, so `table.rs` is all you
+need to read to trust it. Outsiders cannot even build one with a struct
+literal: `table::Table { count: 1, ... }` is E0451, "field `count` of
+struct `Table` is private", so they must go through `new`.
+
+<Analogy title="a shop counter and the stock room">
+A shop sells through its counter: anyone can walk up and ask for what
+is on the menu. The stock room behind it is private; staff go in and
+out freely, but a customer who walks round the counter is stopped. The
+counter is the `pub` API, the stock room is the private fields and
+helpers, and the staff are the module itself and the modules inside it.
+<span slot="breaks">A determined customer can still sneak into a stock
+room; a Rust program that names a private item simply does not
+compile, so there is no way round the counter at all (short of changing
+the shop's own code).</span>
+</Analogy>
+
+## Private means "this module and below"
+
+The exact rule, from the Rust Reference: a **private** item may be used
+by the module it is in *and that module's descendants*; a **public**
+item may be used from anywhere that can reach all of its ancestor
+modules<Cite id="rustref-visibility" />.
+
+<Figure takeaway="A private item is visible in its own module and every module inside it." caption="table's private method grow can be called in table and in table's child tests, and nowhere else. A pub method such as new can be called from all of them.">
+  <PrivacyMap />
+</Figure>
+
+The first half is why a `tests` module inside `table.rs` can test
+`grow`, which nothing else may call. The second half is why `pub` on
+an item inside a *private* module does not make it reachable from
+outside: if `mod gc` in `vm` is private, then `vm::gc::collect()` from
+the root is E0603, "module `gc` is private", however `pub` `collect`
+is. Two shortcuts round out the rules: every variant of a `pub enum` is
+public, and so is every item of a `pub trait`<Cite id="rustref-visibility" />.
+For the cases in between there is **`pub(crate)`**, visible anywhere in
+this crate but not to other crates (neither drip-rs nor engine/rust
+needs it).
+
+<Callout kind="definition">
+**Visibility** says where a name may be used. Items, struct fields and
+methods are **private** by default: usable only in their own module and
+its descendants. **`pub`** makes them usable wherever their parent
+modules can be reached; **`pub(crate)`** limits that to the current
+crate. **`pub use path;`** re-exports an item, giving it a second,
+public path.
+</Callout>
+
+<Formal title="The privacy rule">
+
+```text
+private item i, defined in module m:
+  usable in n  ⟺  n = m  or  n is inside m
+pub item i, path m₁::m₂::…::i:
+  usable in n  ⟺  every mₖ is usable in n
+```
+
+<span slot="read">A private item i defined in module m can be used in
+module n exactly when n is m itself or a module somewhere inside m. A
+public item can be used in n exactly when every module on the way to it
+(m one, m two, and so on) can be used in n.</span>
+</Formal>
+
+<Examples of="visibility">
+
+```rust
+mod table {
+    pub fn new_table() {}
+    fn helper() {} // private
+}
+table::new_table(); // fine
+table::helper();    // E0603
+```
+
+```rust
+pub struct Particles {
+    xs: Vec<f64>,  // private
+    vxs: Vec<f64>, // private
+}
+```
+
+```rust
+// drip-rs's src/lib.rs
+pub mod vm;
+pub use vm::{Options, Outcome, Vm};
+```
+
+</Examples>
+
+The first is visibility at its plainest. The second is this chapter's
+exercise: the type is public but its two columns are not, so nobody
+outside can push to one column and forget the other. The
+third is a **re-export**: the VM really lives at `drip::vm::Vm`, and
+`pub use` gives it a second, shorter public path, `drip::Vm`, which is
+what drip-rs's `main.rs` (a separate binary crate in the same package)
+and its tests use. Like a package's exports on npm, a crate's set of
+`pub` paths is its public API, and changing it is what breaks other
+people's code.
+
+<Run id="privacy-play" />
+
+<OtherLanguages title="A counter nobody else can change">
+
+```rust
+mod tally {
+    pub struct Tally { n: u32 }
+    impl Tally {
+        pub fn new() -> Tally {
+            Tally { n: 0 }
+        }
+        pub fn add(&mut self) {
+            self.n += 1;
+        }
+    }
+}
+```
+
+```ts
+export class Tally {
+  #n = 0;   // private field
+  add() { this.#n += 1; }
+}
+// not exported: private to this file
+function helper() {}
+```
+
+</OtherLanguages>
+
+TypeScript has two privacy tools, a module's `export` list and `#` on
+class members (only the class's own methods may touch them). Rust has
+one rule, about *modules*, not types: any code in `tally` may read `n`,
+even outside `Tally`'s `impl`, while a sibling module may not, even in
+the same file.
+
+<Prompts ids={['vis-default', 'vis-field', 'vis-child', 'vis-why', 'vis-reexport']} />
+
+## Workspaces: several crates, one build
+
+drip-rs is one package holding two crates, the `drip` library and the
+`drip-rs` binary (from *Cargo, crates and packages*). The Rust
+Viscosity is bigger: six packages, each with its own `Cargo.toml`,
+built together as one **workspace**. Its root `Cargo.toml` holds no
+code, only this (trimmed, and wrapped to fit):
+
+```toml
+[workspace]
+members = ["crates/vir", "crates/core",
+  "crates/frontend-js",
+  "crates/frontend-python",
+  "crates/cli", "crates/wasm"]
+
+[workspace.dependencies]
+viscosity-vir = { path = "crates/vir",
+  version = "0.0.1" }
+oxc_parser = "0.156"
+```
+
+A member then writes `viscosity-vir.workspace = true` under
+`[dependencies]` instead of repeating the path or version, so every
+crate agrees on one version of oxc. (A package called `viscosity-core`
+is `viscosity_core` in Rust code, since `-` cannot appear in a path.)
+Step through what depends on what:
+
+<CrateSteps client:visible />
+
+<Analogy extra title="a block of flats">
+A block of flats has many front doors but one boiler, one bin store and
+one post room. Each flat (crate) is its own home with its own key, yet
+they share the services, so everyone gets the same hot water. A
+workspace's crates share one `Cargo.lock` (the same version of every
+dependency) and one `target/` folder (each dependency built once).
+<span slot="breaks">Neighbours can walk into the shared post room; a
+crate can only use another crate it lists as a dependency, and then
+only that crate's `pub` items.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **workspace** is a set of packages built together from one root
+`Cargo.toml` with a `[workspace]` table. Its members share one
+`Cargo.lock` and one output folder, `target/`<Cite id="rust-book-workspaces" />,
+and depend on each other with path dependencies. `cargo test
+--workspace` tests every member; `cargo build -p viscosity-cli` builds
+one.
+</Callout>
+
+<Examples of="workspace">
+
+```toml
+# Cargo.toml at the root
+[workspace]
+members = ["crates/core", "crates/fe"]
+```
+
+```toml
+# crates/core/Cargo.toml
+[dependencies]
+viscosity-vir.workspace = true
+```
+
+```text
+$ cargo test --workspace
+$ cargo run -p viscosity-cli -- build x.js
+```
+
+</Examples>
+
+The first is the smallest workspace: a root that lists two member
+folders, each with its own `Cargo.toml`. The second is how engine/rust's
+`core` asks for the IR crate, taking the path and version from the
+root's `[workspace.dependencies]`. The third is the daily routine: test
+every crate at once, or build and run just one, with `-p` naming the
+package (everything after `--` goes to the program).
+
+Crates may not depend on each other in a circle. In a scratch workspace
+where `demo-core` and `demo-fe` each list the other, cargo 1.97 refuses
+before compiling anything:
+
+```text
+error: cyclic package dependency: package
+  `demo-core v0.1.0 (...)` depends on
+  itself. Cycle: ...
+```
+
+<Prompts ids={['ws-what', 'ws-cycle', 'ws-dev']} />
+
+<Callout kind="engine" label="Under the hood">
+engine/rust's crate split turns *The plugin API*'s design into
+something the compiler checks. `viscosity-core` does not depend on
+`viscosity-frontend-js`, so its library code *cannot* mention oxc or
+JavaScript syntax, only VIR and its own `LanguagePlugin` trait; the
+README's claim that the analyses hold no JavaScript-specific code is
+kept true by the dependency graph. Core's tests do need a real plugin,
+so `frontend-js` is listed under `[dev-dependencies]`, which are built
+only for tests; that breaks the cycle (moving the same line to
+`[dependencies]` in the scratch workspace above gives the error shown).
+The command-line tool and the WebAssembly build are each a thin crate
+over the same core.
+</Callout>
+
+## Your turn
+
+<Exercise id="particles" />
+
+## What you learned
+
+- Everything is **private** by default, fields and methods included.
+  Private means "this module and its descendants"; `pub` opens an item
+  to anyone who can reach its parents; `pub use` re-exports.
+- Private fields let a type guard its invariants, like drip-rs's
+  `Table`, because only its own module can break them.
+- A **workspace** builds several crates together, with one
+  `Cargo.lock` and one `target/`. engine/rust's split makes the plugin
+  boundary a compile-time fact, and cargo refuses dependency cycles.
+
+Next: the tests that have graded every Rust exercise so far, and how to
+write your own.
+
+<Quiz />

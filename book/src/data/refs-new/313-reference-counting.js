@@ -1,4 +1,4 @@
-// New references for chapter 313. Checked 2026-11-02. The chapter also
+// New references for chapter 283. Checked 2026-11-02. The chapter also
 // relies on rust-std-rc (whose module docs were re-read at tag 1.97.0 in
 // this session: “Rc uses non-atomic reference counting”, the compile-time
 // check that Rc is not sent between threads, and struct RcInner { strong,
@@ -18,7 +18,7 @@ export default [
     url: 'https://doi.org/10.1145/367487.367501',
     accessed: '2026-11-02',
     checkedAgainst: 'Not opened (the ACM pages and doi.org are unreachable from this session, and the full text is paywalled). Web search on 2026-11-02 (the CACM December 1960 issue listing at cacm.acm.org, and a Harvard CS252 reading summary) gives the author, title, CACM 3(12) 655–657, December 1960, and DOI 10.1145/367487.367501, and describes it as the origin of reference counting (counts of references recording how lists overlap); the bibliography of golang-design/under-the-hood (read raw from GitHub) gives the same details and calls it “the earliest proposal of reference-counting collection”. Only these facts are relied on.',
-    shaped: 'Chapter 313: where reference counting comes from.',
+    shaped: 'Chapter 283: where reference counting comes from.',
   },
   {
     id: 'cpython-object-h',
@@ -30,7 +30,7 @@ export default [
     url: 'https://github.com/python/cpython/blob/3.13/Include/object.h',
     accessed: '2026-11-02',
     checkedAgainst: 'Include/object.h read raw from github.com/python/cpython (branch 3.13) on 2026-11-02: in the default build (#ifndef Py_GIL_DISABLED) struct _object holds a union with Py_ssize_t ob_refcnt, then PyTypeObject *ob_type; the free-threaded build instead has ob_tid, ob_ref_local (“local reference count”) and ob_ref_shared (“shared (atomic) reference count”). Python 3.13.18 reports sys.getsizeof(object()) as 16 on x86-64.',
-    shaped: 'Chapter 313: where CPython keeps the count.',
+    shaped: 'Chapter 283: where CPython keeps the count.',
   },
   {
     id: 'python-sys-getrefcount',
@@ -42,7 +42,7 @@ export default [
     url: 'https://docs.python.org/3.13/library/sys.html#sys.getrefcount',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from github.com/python/cpython (branch 3.13) on 2026-11-02. sys.rst: getrefcount “Return the reference count of the object. The count returned is generally one higher than you might expect, because it includes the (temporary) reference as an argument to getrefcount()”, and some objects are immortal. refcounting.rst: Py_INCREF “Indicate taking a new strong reference to object o”, Py_DECREF “Release a strong reference to object o”.',
-    shaped: 'Chapter 313: reading CPython’s counts.',
+    shaped: 'Chapter 283: reading CPython’s counts.',
   },
   {
     id: 'swift-arc',
@@ -54,6 +54,6 @@ export default [
     url: 'https://docs.swift.org/swift-book/documentation/the-swift-programming-language/automaticreferencecounting/',
     accessed: '2026-11-02',
     checkedAgainst: 'AutomaticReferenceCounting.md read raw from github.com/swiftlang/swift-book (main) on 2026-11-02: “Swift uses Automatic Reference Counting (ARC) to track and manage your app’s memory usage”; “ARC automatically frees up the memory used by class instances when those instances are no longer needed”; “Reference counting applies only to instances of classes”; ARC with Objective-C is “very similar”; and the sections on strong reference cycles and weak references (“A weak reference is a reference that doesn’t keep a strong hold on the instance it refers to … ARC automatically sets a weak reference to nil when the instance that it refers to is deallocated”).',
-    shaped: 'Chapters 313 and 313b: Swift’s ARC, cycles and weak references.',
+    shaped: 'Chapters 283 and 283b: Swift’s ARC, cycles and weak references.',
   },
 ];

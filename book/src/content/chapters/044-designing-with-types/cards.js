@@ -1,4 +1,5 @@
-// Chapter 44 cards. Keys are stable ids: never rename them.
+// Chapter 44 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'flag-count': {
@@ -66,8 +67,7 @@ export const exercises = {
   fromFlags: {
     lang: 'ts',
     title: 'From flags to a status',
-    prompt:
-      'Old code still produces `Flags` objects: `{ loading: boolean; text?: string; error?: string }`. Write `fromFlags(f)` that turns one into the chapter’s `Status` union. Only three flag states make sense: loading with no text and no error gives `{ kind: \'loading\' }`; not loading with text and no error gives `{ kind: \'loaded\', text }`; not loading with an error and no text gives `{ kind: \'failed\', error }`. Every other combination is nonsense: **throw** an `Error`. A field counts as there when it is not `undefined`, so an empty string `\'\'` is real text. (The runner erases types, so the tests check behaviour; the walkthrough explains how the checker reads your version.)',
+    prompt: 'Old code still produces `Flags` objects: `{ loading: boolean; text?: string; error?: string }`. Write `fromFlags(f)` that turns one into the chapter’s `Status` union. Only three flag states make sense: loading with no text and no error gives `{ kind: \'loading\' }`; not loading with text and no error gives `{ kind: \'loaded\', text }`; not loading with an error and no text gives `{ kind: \'failed\', error }`. Every other combination is nonsense: **throw** an `Error`. A field counts as there when it is not `undefined`, so an empty string `\'\'` is real text. (The runner erases types, so the tests check behaviour; the walkthrough explains how the checker reads your version.)',
     starter: `type Flags = {
   loading: boolean;
   text?: string;
@@ -203,8 +203,7 @@ Two details matter. First, "there" means "not \`undefined\`": an empty string is
     optional: true,
     lang: 'ts',
     title: 'The engine’s verdict, from a union',
-    prompt:
-      'Here is `CollectionPlan` redesigned as a union, so that only `\'aosoa\'` has a block size: `{ layout: \'aos\' } | { layout: \'soa\' } | { layout: \'aosoa\'; blockSize: number }`. Write `verdict(p)` returning the same words Viscosity’s `explain` prints: `\'kept as array of objects\'` for aos, `\'struct of arrays\'` for soa, and `` `AoSoA, blocks of ${n}` `` for aosoa with block size `n`. End with `unreachable(p)`, so that a layout arriving from bad data throws.',
+    prompt: 'Here is `CollectionPlan` redesigned as a union, so that only `\'aosoa\'` has a block size: `{ layout: \'aos\' } | { layout: \'soa\' } | { layout: \'aosoa\'; blockSize: number }`. Write `verdict(p)` returning the same words Viscosity’s `explain` prints: `\'kept as array of objects\'` for aos, `\'struct of arrays\'` for soa, and `` `AoSoA, blocks of ${n}` `` for aosoa with block size `n`. End with `unreachable(p)`, so that a layout arriving from bad data throws.',
     starter: `type Plan =
   | { layout: 'aos' }
   | { layout: 'soa' }
@@ -295,45 +294,107 @@ export const quiz = [
   {
     q: 'How many states does `{ on: boolean; level?: number }` allow, counting any number as one state, and how many does `{ kind: \'off\' } | { kind: \'on\'; level: number }` allow?',
     options: [
-      { t: '4 and 2', correct: true, why: 'Two for `on` times two for `level` (there or missing) is 4; the union adds 1 + 1. “Off with a level” and “on with no level” are gone.' },
-      { t: '3 and 2', why: 'Fields multiply: 2 × 2 is 4, not 2 + 1.' },
-      { t: '4 and 4', why: 'A union adds one state per variant, so it has 2.' },
-      { t: '2 and 2', why: 'The optional `level` doubles the states of the object type.' },
+      {
+        t: '4 and 2',
+        correct: true,
+        why: 'Two for `on` times two for `level` (there or missing) is 4; the union adds 1 + 1. “Off with a level” and “on with no level” are gone.',
+      },
+      {
+        t: '3 and 2',
+        why: 'Fields multiply: 2 × 2 is 4, not 2 + 1.',
+      },
+      {
+        t: '4 and 4',
+        why: 'A union adds one state per variant, so it has 2.',
+      },
+      {
+        t: '2 and 2',
+        why: 'The optional `level` doubles the states of the object type.',
+      },
     ],
   },
   {
     q: 'Which design makes “loaded but with no text” impossible to build?',
     options: [
-      { t: '`{ loaded: boolean; text?: string }`', why: '`{ loaded: true }` with no text is accepted.' },
-      { t: '`{ loaded: boolean; text: string | undefined }`', why: '`text` may still be `undefined` when `loaded` is true.' },
-      { t: '`{ kind: \'loading\' } | { kind: \'loaded\'; text: string }`', correct: true, why: 'The loaded variant requires `text`, and the checker refuses one without it.' },
-      { t: 'A comment saying “text is always set when loaded”', why: 'A comment is not checked by anything.' },
+      {
+        t: '`{ loaded: boolean; text?: string }`',
+        why: '`{ loaded: true }` with no text is accepted.',
+      },
+      {
+        t: '`{ loaded: boolean; text: string | undefined }`',
+        why: '`text` may still be `undefined` when `loaded` is true.',
+      },
+      {
+        t: '`{ kind: \'loading\' } | { kind: \'loaded\'; text: string }`',
+        correct: true,
+        why: 'The loaded variant requires `text`, and the checker refuses one without it.',
+      },
+      {
+        t: 'A comment saying “text is always set when loaded”',
+        why: 'A comment is not checked by anything.',
+      },
     ],
   },
   {
     q: 'In type-driven design, what is the usual order of work?',
     options: [
-      { t: 'Bodies, then tests, then types at the end', why: 'That is writing code first and adding labels afterwards; the types then describe whatever happened, nonsense included.' },
-      { t: 'Data types, then signatures, then bodies', correct: true, why: 'The types decide which states exist; the signatures what each function promises; the bodies follow them.' },
-      { t: 'Signatures, then bodies, then data types', why: 'The signatures need the data types to talk about.' },
+      {
+        t: 'Bodies, then tests, then types at the end',
+        why: 'That is writing code first and adding labels afterwards; the types then describe whatever happened, nonsense included.',
+      },
+      {
+        t: 'Data types, then signatures, then bodies',
+        correct: true,
+        why: 'The types decide which states exist; the signatures what each function promises; the bodies follow them.',
+      },
+      {
+        t: 'Signatures, then bodies, then data types',
+        why: 'The signatures need the data types to talk about.',
+      },
     ],
   },
   {
     q: '`type Light = \'red\' | \'amber\' | \'green\'` gains `\'flashing\'`, and `next(l)` ends with `return unreachable(l);`. What happens when you run `tsc`?',
     options: [
-      { t: 'Nothing: the program has to run to find out', why: 'The checker finds it without running anything.' },
-      { t: 'An error at every use of `Light` in the program', why: 'Only places that no longer cover every variant are reported.' },
-      { t: 'An error on the `unreachable(l)` line: `"flashing"` is not assignable to `never`', correct: true, why: 'l can still be flashing there, so the checker points at exactly the function that has to catch up.' },
-      { t: 'tsc adds the missing branch for you', why: 'The checker reports; you write the branch.' },
+      {
+        t: 'Nothing: the program has to run to find out',
+        why: 'The checker finds it without running anything.',
+      },
+      {
+        t: 'An error at every use of `Light` in the program',
+        why: 'Only places that no longer cover every variant are reported.',
+      },
+      {
+        t: 'An error on the `unreachable(l)` line: `"flashing"` is not assignable to `never`',
+        correct: true,
+        why: 'l can still be flashing there, so the checker points at exactly the function that has to catch up.',
+      },
+      {
+        t: 'tsc adds the missing branch for you',
+        why: 'The checker reports; you write the branch.',
+      },
     ],
   },
   {
     q: 'Viscosity’s printer writes `m.bindings[i.binding!]`. What does the `!` do?',
     options: [
-      { t: 'It tells the checker that `i.binding` is not `undefined`, without checking anything', correct: true, why: 'It is a non-null assertion (a promise to the checker, not a test), erased like every type; if the value were missing, nothing would stop it at run time.' },
-      { t: 'It throws if `i.binding` is `undefined`', why: 'No check happens at run time: `!` is removed with the types.' },
-      { t: 'It negates the value, like `!x`', why: 'A `!` *after* an expression is a different thing from the `!` before one.' },
-      { t: 'It makes the field required in the `Inst` type', why: 'It changes nothing about the type `Inst`; it only silences the checker at this one place.' },
+      {
+        t: 'It tells the checker that `i.binding` is not `undefined`, without checking anything',
+        correct: true,
+        why: 'It is a non-null assertion (a promise to the checker, not a test), erased like every type; if the value were missing, nothing would stop it at run time.',
+      },
+      {
+        t: 'It throws if `i.binding` is `undefined`',
+        why: 'No check happens at run time: `!` is removed with the types.',
+      },
+      {
+        t: 'It negates the value, like `!x`',
+        why: 'A `!` *after* an expression is a different thing from the `!` before one.',
+      },
+      {
+        t: 'It makes the field required in the `Inst` type',
+        why: 'It changes nothing about the type `Inst`; it only silences the checker at this one place.',
+      },
     ],
   },
 ];

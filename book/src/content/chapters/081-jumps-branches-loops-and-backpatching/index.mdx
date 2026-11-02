@@ -1,0 +1,552 @@
+---
+n: 81
+day: 9
+part: IV
+title: 'Jumps: branches, loops and backpatching'
+tagline: 'Bytecode is one flat row of instructions, with no inside to hide an if in; to choose and to repeat, the VM needs a single new power: moving its instruction pointer somewhere else.'
+objectives:
+  - Explain how jump, jump.unless and loop move the instruction pointer, and how their two-byte distances are encoded.
+  - Read the jumps an if, an else and a while compile to, and work out where each one lands.
+  - Explain why && and || use jumps that keep their value on the stack.
+  - Use emitJump and patchJump to emit a forward jump before its target is known.
+  - Explain why a backward jump (loop) never needs patching.
+  - Read how a for loop over a range or a list compiles, with its hidden locals.
+  - Explain how break and continue keep lists of jumps to patch, and why they pop locals first.
+introduces: [jump, backpatching]
+uses: [instruction-pointer, dispatch-loop, bytecode, opcode, chunk, disassembler, stack-machine, virtual-machine, single-pass-compiler, emit, stack-slot, compile-time-scope, control-flow, short-circuit, truthiness, tree-walking-interpreter, ast, global-table, byte, bit-ops, while-loop, for-loop, if, logical-operators, array, index, drip, numbers, desugaring, for-in-loop, drip-list]
+sources: [cpython-dis]
+---
+import JumpBytes from '../../../components/diagrams/ch081/JumpBytes';
+import LoopRunSteps from '../../../components/diagrams/ch081/LoopRunSteps';
+import PatchSteps from '../../../components/diagrams/ch081/PatchSteps';
+import ForLayout from '../../../components/diagrams/ch081/ForLayout';
+
+{/* ── merge: from old chapter 81, Branches and loops in bytecode ── */}
+
+## Bytecode has no inside
+
+When the tree-walker of Part III ran an `if`, both branches were
+*inside* the `if` node of the syntax tree, so choosing a branch meant
+choosing which child to visit. Bytecode has no inside. A function's bytecode is one flat row
+of bytes, and the dispatch loop from the chapter on the stack machine
+does only one thing, over and over: run the instruction at `ip` (the
+instruction pointer, the offset of the next byte to run), then move on
+to the one after it. To skip a branch, or to go round a loop again,
+something has to change `ip` itself.
+
+<Analogy title="snakes and ladders">
+The squares of a snakes-and-ladders board are numbered in one fixed
+order, and normally your counter moves straight on. Land at the foot
+of a ladder, though, and you jump forward to a square far ahead; land
+on a snake's head and you slide back to an earlier one. The board never
+changes shape, yet the path a counter takes through it can skip ahead
+and go round again.
+<span slot="breaks">A snake or ladder always fires when you land on
+it; some jumps in the VM fire only when a condition is false. Also, a
+ladder names the square it ends on, while a VM jump stores how *far*
+to move, counted from the end of the jump instruction.</span>
+</Analogy>
+
+<Analogy extra title="a recipe that says 'go back to step 3'">
+A bread recipe is a numbered list read top to bottom, but step 6 says
+"if the dough is still sticky, go back to step 3 and knead again", and
+step 2 says "if you are using dried yeast, skip to step 4". Two
+sentences that move your place in the list are enough to describe a
+choice and a repeat.
+<span slot="breaks">A cook judges "sticky" with their hands; the VM's
+only test is whether the value on top of the stack is truthy (in Drip,
+anything except `false` and `none`).</span>
+</Analogy>
+
+## Five jumps
+
+Drip's VM has five jump instructions, listed in `chunk.ts` with their
+operands (comments shortened to fit):
+
+```ts
+Jump: 34,      // j  forward
+JumpUnless: 35,// j  pops; jumps if false
+JumpUnlessKeep: 36, // j  for &&
+JumpIfKeep: 37,     // j  for ||
+Loop: 38,      // j  backward
+```
+
+A `j` operand is a **two-byte distance**: how many bytes to move,
+stored high byte first, so it can be anything from 0 to 65,535. Each
+jump is therefore three bytes long, and the distance is counted from
+the byte just *after* it, because by the time the VM has read the
+operand, that is where `ip` points. The figure takes one real jump
+apart:
+
+<Figure takeaway="A jump stores a distance, counted from the byte after the operand." caption="The bytes of if true { print 1; } else { print 2; }. jump.unless at offset 1 has the distance 0, 7 (that is 0 × 256 + 7). ip is 4 after the operand is read, so a jump lands at 4 + 7 = 11.">
+  <JumpBytes />
+</Figure>
+
+The VM reads the operand with `readShort` and then moves `ip`. From
+`vm.ts` (wrapped to fit):
+
+```ts
+const readShort = () => {
+  frame.ip += 2;
+  return (code[frame.ip - 2] << 8) |
+    code[frame.ip - 1];
+};
+case Op.Jump: {
+  const off = readShort();
+  frame.ip += off; break; }
+case Op.JumpUnless: {
+  const off = readShort();
+  if (isFalsey(this.pop()))
+    frame.ip += off; break; }
+case Op.Loop: {
+  const off = readShort();
+  frame.ip -= off; break; }
+```
+
+`readShort` moves `ip` past the operand and glues its bytes into one
+number (the high byte shifted left 8 bits, that is times 256, plus
+the low byte). `jump` adds the distance, always; `jump.unless` pops
+the condition and adds it only if the condition is falsey, so a true
+condition falls through; `loop` *subtracts* it, always.
+
+<Callout kind="definition">
+A **jump** is an instruction that changes the instruction pointer, so
+that execution continues somewhere other than the next instruction.
+Drip's jumps carry a two-byte distance, counted from the byte after
+the instruction: `jump` always moves forward by it, `jump.unless`
+pops the condition and moves forward only if it is falsey, and `loop`
+always moves backward.
+</Callout>
+
+<Formal title="Where a jump at offset p lands">
+
+```text
+jump d          ip := p + 3 + d
+jump.unless d   ip := p + 3 + d  if falsey
+                ip := p + 3      otherwise
+loop d          ip := p + 3 − d
+```
+
+<span slot="read">For a jump at offset p with distance d: jump sets
+ip to p plus 3 plus d; jump.unless does the same if the popped
+condition is falsey, and otherwise goes on to p plus 3; loop sets ip
+to p plus 3 minus d. The 3 is the jump's own length.</span>
+</Formal>
+
+<Prompts ids={['jump-what', 'offset-from', 'unless-pops', 'loop-back']} />
+
+## if and else
+
+The disassembler does the arithmetic for you and prints each jump as
+*where it is* `->` *where it lands*:
+
+```drip
+let x = 5;
+if x > 3 {
+  print "big";
+} else {
+  print "small";
+}
+```
+
+```text
+0006    2 load.global         2 'x'
+0009    | const               3 '3'
+0012    | gt
+0013    | jump.unless        13 -> 23
+0016    3 const               4 'big'
+0019    | print
+0020    4 jump               20 -> 27
+0023    5 const               5 'small'
+0027    6 none
+```
+
+(The two instructions that define `x`, and the `print` at 26, are
+left out.) Offsets 6 to 12 leave `x > 3`, `true`, on the stack. At 13,
+`jump.unless` pops it; it is true, so there is no jump, and the
+then-branch at 16 prints `big`. At 20, a plain `jump` to 27 skips the
+else-branch. Had `x` been 1, `jump.unless` would land at 23, the
+else-branch, which runs on into 27 by itself. So an `if` with an
+`else` costs two jumps: one *into* the else-branch, one *over* it.
+
+## while: one jump forward, one back
+
+A loop adds a backward jump. Step through the real bytecode for
+`let n = 0; while n < 2 { n += 1; }` and watch `ip`:
+
+<LoopRunSteps client:visible />
+
+The condition starts at offset 6. `jump.unless 13 -> 30` is the exit:
+while the condition holds it falls through into the body, and when
+it fails it lands on 30, just past the loop. The body ends with
+`loop 27 -> 6`, which sends `ip` back to the condition every time.
+
+<Prompts ids={['if-two-jumps', 'while-shape']} />
+
+## && and ||: jumps that keep their value
+
+In Drip, `a && b` is `a` when `a` is falsey (and `b` is never
+evaluated), otherwise it is `b`; `a || b` is `a` when `a` is truthy,
+otherwise `b`. That is a jump over `b`, but the left value must
+*stay* on the stack as the answer, so these two use the jumps that
+peek instead of popping:
+
+```text
+print false && 1;
+0000    1 false
+0001    | jump.unless.keep    1 -> 8
+0004    | pop
+0005    | const               0 '1'
+0008    | print
+```
+
+`false` is falsey, so `jump.unless.keep` jumps to the `print` at 8,
+leaving `false` on the stack to be printed. Had the left side been
+truthy, the VM would fall through, `pop` it and push `1` instead.
+`||` is the mirror image, with `jump.if.keep`.
+
+<Run id="short" />
+
+<Examples of="jump">
+
+```text
+if true { print 1; } print 2;
+
+0000    1 true
+0001    | jump.unless         1 -> 8
+0004    2 const               0 '1'
+0007    | print
+0008    4 const               1 '2'
+```
+
+```text
+if n == 1 { print "one"; }
+else if n == 2 { print "two"; }
+else { print "many"; }
+
+0013    | jump.unless        13 -> 23
+0020    4 jump               20 -> 44
+0030    | jump.unless        30 -> 40
+0037    6 jump               37 -> 44
+0040    7 const               8 'many'
+0044    8 none
+```
+
+```text
+if i < len(xs) && xs[i] > 0 {
+  print "ok";
+}
+
+0025    | lt
+0026    | jump.unless.keep   26 -> 41
+0029    | pop
+0040    | gt
+0041    | jump.unless        41 -> 48
+0044    4 const              10 'ok'
+```
+
+</Examples>
+
+The first is the smallest branch: with no `else` there is one jump,
+landing on 8, the statement after the `if`. In the second (only its
+jumps are listed), each test has a `jump.unless` to the next test,
+and each branch ends with a `jump` to 44, the end of the chain. The
+third is a guard from real programs: if `i < len(xs)` is false,
+`jump.unless.keep` lands on the `if`'s own `jump.unless` at 41 with
+`false` still on the stack, which skips the body, so `xs[i]` is
+never read with a bad index.
+
+<Prompts ids={['and-keeps', 'or-mirror']} />
+
+<Callout kind="engine" label="Under the hood">
+CPython's bytecode is built from the same ideas: `JUMP_FORWARD` and
+`JUMP_BACKWARD` move the bytecode counter by a distance, and
+`POP_JUMP_IF_FALSE` pops the top of the stack and jumps if it is
+false<Cite id="cpython-dis" />, just as Drip's `jump.unless` does.
+</Callout>
+
+## Your turn
+
+<Exercise id="target" />
+
+<Exercise id="powers" />
+
+## What you learned
+
+- A **jump** changes `ip`. `jump` and `loop` always move (forward and
+  back); `jump.unless` pops the condition and moves only if it is
+  falsey.
+- A jump's operand is a two-byte distance, high byte first, counted
+  from the byte after the three-byte instruction.
+- An `if` uses one `jump.unless`, plus a `jump` over the else-branch
+  when there is one; a `while` uses a `jump.unless` to leave and a
+  `loop` to go round.
+- `&&` and `||` use `jump.unless.keep` and `jump.if.keep`, which
+  leave the left value on the stack as the answer.
+
+Next: how the compiler writes a forward jump before it knows where it
+lands, and the loops (`for`, `break`, `continue`) built on that trick.
+
+
+{/* ── merge: from old chapter 81, Backpatching: if, for, break and continue ── */}
+
+## A jump to code that is not written yet
+
+The last chapter read finished jumps: `jump.unless 13 -> 23` knew
+it was going to 23. However, the compiler that wrote it works in a
+single pass, so when it reaches the `{` after `if x > 3` it must emit
+the `jump.unless` *now*, before the then-branch, and the distance is
+the size of a then-branch that has not been compiled yet. The answer
+is to write a placeholder, remember where it is, and come back.
+
+<Analogy title="a contents page written first">
+You can write the contents page of a report before the report itself:
+"Results ...... page __". As each section is finished you know where
+it starts, so you go back to the contents page and fill in that
+blank.
+<span slot="breaks">The compiler never rewrites anything else; it
+overwrites exactly the two bytes it set aside, and with a distance
+from the jump, not a page number.</span>
+</Analogy>
+
+<Analogy extra title="parcels with the address left blank">
+You are packing parcels for a friend who is moving, and you do not
+have the new address yet; you write "to: ______" on each label and
+keep a list of the parcels with blanks. When the address arrives, you
+go down the list and fill in every one.
+<span slot="breaks">Parcels might already be in the post; the
+compiler's bytes all stay put until it fills them. Also, the parcels
+all get the same address, while each jump to the same place gets a
+different distance.</span>
+</Analogy>
+
+The second picture is `break`, which comes at the end of the chapter;
+the first is every `if`.
+
+## emitJump and patchJump
+
+From `compiler.ts` (wrapped to fit):
+
+```ts
+function emitJump(op: number): number {
+  emit(op, 0xff, 0xff);
+  return chunk().code.length - 2;
+}
+function patchJump(offset: number) {
+  const jump = chunk().code.length
+    - offset - 2;
+  if (jump > 0xffff) staticError(previous,
+    'too much code to jump over');
+  chunk().code[offset] =
+    (jump >> 8) & 0xff;
+  chunk().code[offset + 1] = jump & 0xff;
+}
+```
+
+`emitJump` writes the opcode and two placeholder bytes, `0xff 0xff`,
+and returns the placeholder's position. `patchJump` is called when
+the compiler reaches the target, which is always "here", `code.length`.
+At run time `ip` will be at `offset + 2`, just past the operand, so the
+distance is `code.length - offset - 2`, written high byte first (and
+reported if it does not fit in two bytes). Step through an `if` with
+an `else`:
+
+<PatchSteps client:visible />
+
+<Callout kind="definition">
+**Backpatching** is emitting an instruction with a placeholder operand
+and filling the operand in later, once the information it needs
+(here, the target of a forward jump) is known. `emitJump` returns the
+placeholder's position, and `patchJump` writes the distance from just
+after the placeholder to the current end of the code.
+</Callout>
+
+<Formal title="The distance patchJump writes">
+
+```text
+d = target − (at + 2)
+```
+
+<span slot="read">The distance d is the target offset minus the
+position just after the two placeholder bytes, which start at
+"at".</span>
+</Formal>
+
+`ifStatement` uses the pair like this:
+
+```ts
+expression();
+const thenJump = emitJump(Op.JumpUnless);
+bracedBlock('\'{\' after the condition');
+if (match('else')) {
+  const elseJump = emitJump(Op.Jump);
+  patchJump(thenJump);
+  if (match('if')) ifStatement();
+  else bracedBlock(
+    '\'{\' or \'if\' after \'else\'');
+  patchJump(elseJump);
+} else {
+  patchJump(thenJump);
+}
+```
+
+A backward jump needs no patching: when the compiler writes `loop`,
+the loop's start is already compiled, so `emitLoop(loopStart)` knows
+the distance at once. Here is `whileStatement`, without the three
+lines that set up `break` and `continue`:
+
+```ts
+const loopStart = chunk().code.length;
+expression();
+const exitJump = emitJump(Op.JumpUnless);
+bracedBlock('\'{\' after the condition');
+emitLoop(loopStart);
+patchJump(exitJump);
+for (const b of loop.breaks) patchJump(b);
+```
+
+<Prompts ids={['why-placeholder', 'emitjump-returns', 'patch-math', 'loop-no-patch']} />
+
+## for loops and their hidden locals
+
+`for i in 0..3 { print i; }` needs somewhere to keep the counter and
+the end value, so the compiler gives the loop two **hidden locals**,
+slots with names a program can never write (they start with a space),
+plus the visible `i` as a fresh local each time round:
+
+<Figure takeaway="A for loop is a while loop with two hidden locals." caption="The real bytecode of for i in 0..3 { print i; }. iter.range only checks that both ends are numbers; the counter (slot 1) and end (slot 2) stay on the stack as hidden locals. inc.local adds 1 to the counter in place.">
+  <ForLayout />
+</Figure>
+
+The test `counter < end` is followed by an ordinary `jump.unless` to
+the exit, patched after the `loop`. Each time round, `load.local 1`
+copies the counter into slot 3, which becomes `i`; the body runs; the
+`pop` at 20 ends `i`'s life; `inc.local 1` adds 1 to the counter in
+place; and `loop` goes back to the test. A loop over a list,
+`for x in xs`, has the same shape, with `iter.list` (is it a list?),
+an index from 0, `list.len` in the test (read every time round, so
+pushing inside the loop extends it) and `index.get` for each element.
+
+## break and continue: lists of blanks
+
+A loop can contain any number of `break`s, all jumping to its end,
+which is not compiled yet: the parcels picture. So the compiler keeps
+a `Loop` record for each loop it is inside, holding a `breaks` list
+of placeholders (and a `continues` list), the scope depths to pop
+back to, and, for a `while`, where `continue` should go. Each `break`
+or `continue` does this:
+
+```ts
+if (!loop) staticError(keyword,
+  `'${keyword.lexeme}' outside a loop`);
+else if (keyword.type === 'break') {
+  popLocalsDeeperThan(loop.breakDepth);
+  loop.breaks.push(emitJump(Op.Jump));
+} else {
+  popLocalsDeeperThan(loop.continueDepth);
+  if (loop.continueTarget >= 0)
+    emitLoop(loop.continueTarget);
+  else loop.continues.push(
+    emitJump(Op.Jump));
+}
+```
+
+A `break` first emits a `pop` for the loop variable and every local
+declared in the body, because the jump skips the closing braces that
+would normally pop them; then it emits a `jump` with a blank and adds its position
+to `breaks`, and the loop patches every one of them at its end, as
+`whileStatement` did above. A `continue` in a `while` loop jumps back
+to the condition, which is already compiled, so it is a plain `loop`;
+in a `for` loop it must reach the increment, which comes *after* the
+body, so it is another list of blanks, patched as soon as the body
+ends. Using either outside a loop is a compile error:
+`'break' outside a loop`.
+
+Here are both kinds of loop, with both kinds of jump out of a loop;
+try moving the `break` above the `continue`:
+
+<Run id="loops" />
+
+<Examples of="backpatching">
+
+```text
+if true { print 1; } print 2;
+
+0001    | jump.unless         1 -> 8
+```
+
+```text
+let i = 0;
+while true {
+  i += 1;
+  if i == 3 { break; }
+}
+
+0007    | jump.unless         7 -> 37
+0028    | jump.unless        28 -> 34
+0031    | jump               31 -> 37
+0034    5 loop               34 -> 6
+```
+
+```text
+for i in 0..9 {
+  if i == 1 { continue; }
+  if i == 3 { break; }
+  print i;
+}
+
+0012    | jump.unless        12 -> 51
+0026    | jump               26 -> 45
+0038    | pop
+0039    | jump               39 -> 51
+0045    5 pop
+0046    1 inc.local           1
+0048    5 loop               48 -> 7
+```
+
+</Examples>
+
+In the first, one blank is filled in when the compiler reaches
+`print 2` at 8. In the second, two jumps go to 37: the loop's exit
+(patched after the `loop`) and the `break` (patched from the list
+straight after it); the `if`'s `jump.unless` at 28 was patched as soon
+as its body ended. The third prints `0` and `2`: the `continue` at 26
+jumps forward to 45, the `pop` that ends `i`'s life, so the counter is
+still incremented; the `break` pops `i` at 38, then jumps to 51, where
+the hidden locals are popped.
+
+<Prompts ids={['hidden-locals', 'breaks-list', 'break-pops', 'continue-for']} />
+
+<Callout kind="engine" label="Under the hood">
+CPython's bytecode has the same split between forward jumps that are
+written before their target and backward jumps written after it:
+`JUMP_FORWARD` adds its distance to the bytecode counter and
+`JUMP_BACKWARD` subtracts it<Cite id="cpython-dis" />. Any compiler
+that emits forward jumps in one pass has to leave room for the
+distance and fill it in later, whether it patches bytes as Drip does
+or attaches labels that are resolved at the end.
+</Callout>
+
+## Your turn
+
+<Exercise id="patch" />
+
+<Exercise id="skip-and-stop" />
+
+## What you learned
+
+- **Backpatching**: `emitJump` writes `0xff 0xff` and returns its
+  position; `patchJump` fills in `target − (at + 2)` once the target
+  is the current end of the code.
+- Backward jumps (`loop`) never need patching: their target is
+  already compiled.
+- A `for` loop is a `while` loop with two **hidden locals** (counter
+  and end, or list and index), a fresh local for the loop variable,
+  and `inc.local` to step the counter.
+- `break` (and `continue` in a `for`) collect lists of blanks that the
+  loop patches when it knows its end; both pop the loop's locals
+  before they jump.
+
+Next: functions, and the frames that let one loop run many calls.
+
+<Quiz />

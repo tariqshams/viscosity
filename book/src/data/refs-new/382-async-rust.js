@@ -1,4 +1,4 @@
-// New references for chapter 382 (and its second half, 327b).
+// New references for chapter 308 (and its second half, 327b).
 export default [
   {
     id: 'rustref-async-fn',
@@ -10,7 +10,7 @@ export default [
     url: 'https://doc.rust-lang.org/reference/items/functions.html#async-functions',
     accessed: '2026-11-02',
     checkedAgainst: 'src/items/functions.md read raw from raw.githubusercontent.com/rust-lang/reference/master on 2026-11-02, section “Async functions”: “Async functions do no work when called: instead, they capture their arguments into a future. When polled, that future will execute the function’s body”, and an async function “is roughly equivalent to a function that returns impl Future and with an async move block as its body”.',
-    shaped: 'Chapter 382: an async fn is lazy and returns a future.',
+    shaped: 'Chapter 308: an async fn is lazy and returns a future.',
   },
   {
     id: 'rust-std-future',
@@ -22,7 +22,7 @@ export default [
     url: 'https://doc.rust-lang.org/std/future/trait.Future.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Source read raw from raw.githubusercontent.com/rust-lang/rust/master on 2026-11-02. future.rs: the trait carries #[must_use = "futures do nothing unless you `.await` or poll them"], has `type Output` and `fn poll(self: Pin<&mut Self>, cx: &mut Context<\'_>) -> Poll<Self::Output>`; docs: poll returns Poll::Pending “if the future is not ready yet” and then “stores a clone of the Waker”, which “is then woken once the future can make progress”; “Futures alone are inert; they must be actively polled”; poll “should not be called repeatedly in a tight loop”. wake.rs: Waker::noop is stable since 1.85.0 and returns &\'static Waker.',
-    shaped: 'Chapters 382 and 382b: the Future trait, Poll, the waker, and Waker::noop.',
+    shaped: 'Chapters 308 and 308b: the Future trait, Poll, the waker, and Waker::noop.',
   },
   {
     id: 'rust-std-thread',
@@ -34,7 +34,7 @@ export default [
     url: 'https://doc.rust-lang.org/std/thread/index.html',
     accessed: '2026-11-02',
     checkedAgainst: 'library/std/src/thread/mod.rs read raw from raw.githubusercontent.com/rust-lang/rust/master on 2026-11-02, section on stack size: “The default stack size is platform-dependent and subject to change. Currently, it is 2 MiB on all Tier-1 platforms.” The same module documents thread::park and Thread::unpark.',
-    shaped: 'Chapter 382: what a thread per connection costs; 327b: park and unpark.',
+    shaped: 'Chapter 308: what a thread per connection costs; 327b: park and unpark.',
   },
   {
     id: 'async-book',
@@ -46,7 +46,7 @@ export default [
     url: 'https://rust-lang.github.io/async-book/',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/async-book/master on 2026-11-02: part-guide/async-await.md (“Rust is a low-level language and strives towards minimal runtime overhead… Rust lets you choose one depending on your requirements, rather than providing one”; reactor, scheduler and executor defined; Tokio “the most popular runtime”; #[tokio::main] lets main be async), and 02_execution/03_wakeups.md and 04_executor.md (a timer future that spawns a thread and wakes a stored waker; an executor that polls a task only after it is woken).',
-    shaped: 'Chapters 382 and 382b: why Rust ships no executor, and how a simple executor and timer future work.',
+    shaped: 'Chapters 308 and 308b: why Rust ships no executor, and how a simple executor and timer future work.',
   },
   {
     id: 'tokio-readme',
@@ -58,6 +58,6 @@ export default [
     url: 'https://tokio.rs/',
     accessed: '2026-11-02',
     checkedAgainst: 'README.md read raw from raw.githubusercontent.com/tokio-rs/tokio/master on 2026-11-02: Tokio is “an event-driven, non-blocking I/O platform” providing “a multithreaded, work-stealing based task scheduler”, a reactor backed by the operating system’s event queue (epoll, kqueue, IOCP) and asynchronous TCP and UDP sockets. Version 1.54.1 was built and run in a scratch project for the chapter.',
-    shaped: 'Chapter 382b: what a production executor adds.',
+    shaped: 'Chapter 308b: what a production executor adds.',
   },
 ];

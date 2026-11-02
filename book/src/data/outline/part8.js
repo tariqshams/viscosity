@@ -1,40 +1,54 @@
 export default {
-  id: 'VIII', track: 'A', days: '65–71', title: 'Building Viscosity',
-  blurb: 'The plugin architecture, VIR, the JavaScript front-end, collection discovery, safety analysis, the cost model, SoA and AoSoA code generation, materialization, PGO, explain, and testing it all.',
+  id: 'VIII', section: 'core', days: '23–25', title: 'Core 7: Drip in Rust',
+  blurb: 'drip-rs, the Drip VM ported to Rust: the scanner, bytecode and the VM loop, a Pratt compiler, heap objects in an arena, variables, frames and upvalues, a garbage collector, objects, errors, and three implementations measured.',
   chapters: [
-    { n: 259, title: 'The architecture of Viscosity', introduces: { 'viscosity-pipeline': 'front-end → VIR → analyses → layout plan → emit', 'source-to-source': 'a compiler whose output is source code' } },
-    { n: 260, title: 'The plugin API', introduces: { 'language-plugin': 'the interface a language front-end implements', 'layout-strategy': 'a pluggable way of storing a collection' } },
-    { n: 261, title: 'VIR: Viscosity’s IR', introduces: {
-      vir: 'Viscosity’s language-neutral SSA IR',
+    { n: 137, title: 'Planning drip-rs', introduces: {
+      'drip-rs': 'the Rust implementation of Drip',
     } },
-    { n: 262, title: 'Records, collections and the honest unknown', introduces: {
-      'record-collection-nodes': 'VIR’s first-class Record, Collection and FieldAccess',
+    { n: 138, title: 'Tokens and the scanner in Rust', introduces: {
+      'token-enum': 'token types as a Rust enum',
+      'byte-scanning': 'scanning &[u8] instead of chars',
     } },
-    { n: 263, title: 'Parsing real JavaScript', introduces: {
-      estree: 'the standard JavaScript AST format',
+    { n: 139, title: 'Bytecode, values and the VM loop in Rust', introduces: {
+      'opcode-enum': '#[repr(u8)] opcodes',
+      'value-enum': 'a Value enum and its size',
+      'match-dispatch': 'a match-based dispatch loop',
     } },
-    { n: 264, title: 'Swapping the parser: acorn and a hand-written one', introduces: {
-      'parser-adapter': 'wrapping a third-party parser behind the plugin API',
+    { n: 140, title: 'A Pratt compiler in Rust', introduces: {
+      'parse-rule-table': 'a table of prefix/infix parse functions',
+      'compiler-state': 'threading compiler state through &mut self',
     } },
-    { n: 265, title: 'Lowering JavaScript to VIR', introduces: { 'ast-to-ir': 'translating syntax trees into IR' } },
-    { n: 266, title: 'Emitting JavaScript', introduces: { codegen: 'turning IR back into output text', 'pretty-printing': 'emitting readable, formatted code' } },
-    { n: 267, title: 'Round-trip testing the front-end', introduces: { 'identity-transform': 'a compile that must change nothing' } },
-    { n: 268, title: 'Finding collections', introduces: { 'collection-discovery': 'finding arrays of same-shaped records' } },
-    { n: 269, title: 'Record shapes', introduces: { 'record-shape': 'the fields and types of a collection’s elements', 'shape-stability': 'whether a shape can change after creation' } },
-    { n: 270, title: 'Access patterns', introduces: { 'access-pattern': 'which fields a loop reads and writes, and how', 'hot-loop': 'a loop where most time is spent' } },
-    { n: 271, title: 'Proving it safe', introduces: { 'safety-analysis': 'proving no code can observe the layout change' } },
-    { n: 272, title: 'What Viscosity refuses to touch', introduces: { bailout: 'leaving a collection unchanged because safety cannot be proved' } },
-    { n: 273, title: 'The cost model', introduces: { 'cost-model': 'estimating whether a layout change pays off' } },
-    { n: 274, title: 'Opting in with @viscosity', introduces: { annotation: 'a comment that gives the compiler extra instructions' } },
-    { n: 275, title: 'Generating SoA storage', introduces: { 'column-storage': 'one typed array per field', 'soa-container': 'the generated object holding the columns' } },
-    { n: 276, title: 'Rewriting field accesses', introduces: { 'access-rewriting': 'turning a[i].x into a.x[i]' } },
-    { n: 277, title: 'Growing collections', introduces: { capacity: 'allocated slots vs used slots', 'amortized-growth': 'doubling so push is cheap on average' } },
-    { n: 278, title: 'Identity and materialization', introduces: { handle: 'a small object that stands for one element of a collection', 'identity-preservation': 'keeping === and aliasing correct after a layout change' } },
-    { n: 279, title: 'AoSoA code generation', introduces: { 'block-size': 'how many elements an AoSoA block holds' } },
-    { n: 280, title: 'Hot/cold splitting', introduces: { 'field-affinity': 'which fields are used together' } },
-    { n: 281, title: 'Profile-guided optimization', introduces: { pgo: 'using measurements from real runs to guide compilation', instrumentation: 'code added to record what a program does' } },
-    { n: 282, title: 'viscosity explain', introduces: { 'optimization-report': 'explaining every decision the compiler made' } },
-    { n: 283, title: 'Benchmarking Viscosity end to end', introduces: { 'end-to-end-benchmark': 'measuring whole programs, not single loops' } },
-    { n: 284, title: 'Differential testing at scale', introduces: { 'test-corpus': 'a large collection of programs used for testing' } },
+    { n: 141, title: 'Heap objects in an arena', introduces: {
+      'object-handle': 'a typed index standing for a heap object',
+      'rust-vm-list': 'a Drip list as a Vec<Value> behind an arena handle, traced by the collector',
+      'string-interner': 'a table mapping strings to ids',
+    } },
+    { n: 142, title: 'Variables, branches and loops in Rust', introduces: {
+      'rust-locals': 'compile-time locals in the Rust compiler',
+      'patch-jump': 'backpatching jumps in Rust',
+    } },
+    { n: 143, title: 'Call frames and upvalues in Rust', introduces: {
+      'frame-stack': 'a Vec of call frames',
+      'upvalue-handle': 'upvalues as arena handles',
+    } },
+    { n: 144, title: 'A garbage collector in Rust', introduces: {
+      'arena-gc': 'mark and sweep over an arena with a free list',
+    } },
+    { n: 145, title: 'Objects, methods and inheritance in Rust', introduces: {
+      'rust-instances': 'instances and field tables in the Rust VM',
+      'rust-bound-method': 'bound methods in the Rust VM',
+      'method-copy-down': 'copying inherited methods into the subclass',
+    } },
+    { n: 146, title: 'Errors, diagnostics and the shared corpus', introduces: {
+      'runtime-stack-trace': 'reporting where a runtime error happened',
+      'shared-corpus': 'one set of test programs for every implementation',
+    } },
+    { n: 147, title: 'Profiling and optimising drip-rs, and three implementations compared', introduces: {
+      profiling: 'measuring where time goes',
+      flamegraph: 'a picture of where time goes',
+      'unchecked-indexing': 'skipping bounds checks safely',
+      'implementation-comparison': 'the same programs on three implementations',
+      'rust-tradeoffs': 'what Rust gave and what it cost',
+    } },
   ],
 };

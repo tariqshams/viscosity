@@ -1,4 +1,4 @@
-// New references for chapter 315 and its staged second half (290-b,
+// New references for chapter 285 and its staged second half (290-b,
 // "Non-lexical lifetimes and region inference"). Checked 2026-11-02.
 // The chapters also rely on rust-book-ownership. Every rustc message
 // quoted in them is real output of rustc 1.97.0 (--edition 2021) run in
@@ -16,7 +16,7 @@ export default [
     url: 'https://rust-lang.github.io/rfcs/2094-nll.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/rfcs/master/text/2094-nll.md on 2026-11-02 (Start Date 2017-08-02, RFC PR rust-lang/rfcs#2094). Relied on: the summary (“lifetimes that are based on the control-flow graph, rather than lexical scopes”); problem case #1 (assigning a reference into a variable makes its lifetime the whole scope of the variable, so later data.push calls are errors); problem cases #2 and #3 (conditional control flow, and across functions); lifetimes as “a set of points in the control-flow graph”; the liveness constraint (“if a lifetime L is live at the point P”, insert P into L); subtyping gives outlives constraints (’foo: ’p) @ P when a reference is copied; solving “via fixed-point iteration: each lifetime variable begins as an empty set and we iterate over the constraints, repeatedly growing the lifetimes”; a constraint (’a: ’b) @ P means ’a must include all points of ’b reachable from P; phase 1 computes loans in scope with a forward dataflow (a loan is a lifetime, shared|uniq|mut and a path; loans whose region does not include P are killed); phase 2 classifies accesses as shallow/deep and read/write (StorageDead and assignments are shallow writes, moves and &mut are deep writes, & is a deep read) and errors unless both the access and the borrow are reads.',
-    shaped: 'Chapters 315 and 315-b: the loans-and-accesses algorithm, non-lexical lifetimes, and region inference as a fixpoint over outlives constraints.',
+    shaped: 'Chapters 285 and 285-b: the loans-and-accesses algorithm, non-lexical lifetimes, and region inference as a fixpoint over outlives constraints.',
   },
   {
     id: 'rustc-dev-guide-borrowck',
@@ -28,7 +28,7 @@ export default [
     url: 'https://rustc-dev-guide.rust-lang.org/borrow_check.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/rust/master/src/doc/rustc-dev-guide/src/borrow-check.md on 2026-11-02: the properties it enforces (initialised before use, no moving the same value twice, no moving while borrowed, no access while mutably borrowed except through the reference, no mutation while immutably borrowed); “The borrow checker operates on the MIR. An older implementation operated on the HIR”; MIR enables non-lexical lifetimes; the source is the rustc_borrowck crate with entry point mir_borrowck; the phases (replace regions with inference variables, dataflow for moves, a second type check to collect region constraints, region inference, borrows in scope, a final walk that reports errors).',
-    shaped: 'Chapters 315 and 315-b: how rustc’s real borrow checker is organised.',
+    shaped: 'Chapters 285 and 285-b: how rustc’s real borrow checker is organised.',
   },
   {
     id: 'rustc-dev-guide-region-inference',
@@ -40,7 +40,7 @@ export default [
     url: 'https://rustc-dev-guide.rust-lang.org/borrow_check/region_inference.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/rust/master/src/doc/rustc-dev-guide/src/borrow-check/region-inference.md on 2026-11-02: replace_regions_in_mir gives every region in the body a fresh inference variable; compute_regions runs the MIR type checker, which creates constraints between region variables, then constraint propagation in a RegionInferenceContext (its solve method); “The value of a region can be thought of as a set” of points in the MIR where it is valid, plus end(’b) for regions it outlives.',
-    shaped: 'Chapter 315-b: region values as sets of points, solved by propagating constraints.',
+    shaped: 'Chapter 285-b: region values as sets of points, solved by propagating constraints.',
   },
   {
     id: 'rust-error-codes',
@@ -52,7 +52,7 @@ export default [
     url: 'https://doc.rust-lang.org/error_codes/E0499.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/rust/master/compiler/rustc_error_codes/src/error_codes/E0382.md (and E0499, E0502, E0505, E0506) on 2026-11-02: E0382 “A variable was used after its contents have been moved elsewhere”; E0499 “A variable was borrowed as mutable more than once”; E0502 “A variable already borrowed with a certain mutability (either mutable or immutable) was borrowed again with a different mutability”; E0505 “A value was moved out while it was still borrowed”; E0506 “An attempt was made to assign to a borrowed value”. Each code was also reproduced with rustc 1.97.0 in this session.',
-    shaped: 'Chapter 315: the five errors the miniature borrow checker reports, with rustc’s exact wording.',
+    shaped: 'Chapter 285: the five errors the miniature borrow checker reports, with rustc’s exact wording.',
   },
   {
     id: 'rust-book-borrowing',
@@ -64,7 +64,7 @@ export default [
     url: 'https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/book/main/src/ch04-02-references-and-borrowing.md on 2026-11-02: “At any given time, you can have either one mutable reference or any number of immutable references” and “References must always be valid”; the scopes of r1 and r2 “end after the println! where they are last used”, before r3 is created, so the code is allowed; a data race happens when two or more pointers access the same data at the same time, at least one writes, and nothing synchronises access, and Rust refuses to compile code with data races.',
-    shaped: 'Chapters 315, 315-b and 293: the rules of references, last-use lifetimes, and the data-race definition.',
+    shaped: 'Chapters 285, 285-b and 293: the rules of references, last-use lifetimes, and the data-race definition.',
   },
   {
     id: 'polonius-update-2023',
@@ -76,6 +76,6 @@ export default [
     url: 'https://blog.rust-lang.org/inside-rust/2023/10/06/polonius-update/',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/blog.rust-lang.org/main/content/inside-rust/polonius-update/index.md on 2026-11-02 (path inside-rust/2023/10/06/polonius-update): “The motivating example for Polonius is the so-called Problem Case #3: conditional control flow across functions”, returning a reference out of a function from a conditional; issues like NLL problem case #3 “were therefore deferred from NLLs, and left as future work, Polonius”. The Polonius book (rust-lang/polonius, book/src/current_status.md) says it can be tried on nightly with -Zpolonius. rustc 1.97.0 still rejects the chapter’s get_default with E0499, checked here.',
-    shaped: 'Chapter 315-b: the limit of NLL, and where the borrow checker is heading.',
+    shaped: 'Chapter 285-b: the limit of NLL, and where the borrow checker is heading.',
   },
 ];

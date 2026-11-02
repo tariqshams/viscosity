@@ -1,0 +1,602 @@
+---
+n: 63
+day: 4
+part: III
+title: 'Recursive descent, precedence and associativity'
+tagline: 'Turn a grammar into code by giving each rule its own function. The functions call each other exactly as the rules mention each other, the call stack keeps everyone’s place, and out comes a syntax tree.'
+objectives:
+  - Say what a parser does, and what it needs from the scanner and the grammar.
+  - Turn each piece of a BNF rule into code (a call, a check, an if or a while loop).
+  - Use one token of lookahead to choose between a rule’s alternatives.
+  - Write a recursive descent parser for blocks of statements that nest.
+  - Explain precedence and associativity, and draw the tree each one produces.
+  - Write a grammar with one rule per precedence level, loosest first, and read it aloud.
+  - Turn that grammar into recursive descent functions, one loop per level.
+  - Explain why a loop, not a rule that starts with itself, gives left associativity.
+introduces: [parser, recursive-descent, precedence, associativity]
+uses: [grammar, production-rule, terminal, nonterminal, bnf, parse-tree, ast, ast-node, expression-vs-statement, tree-printer, token, token-type, lookahead, literal, keyword, identifier, drip, scanner, recursion, base-case, call-stack, tree, function, nested-function, closure, arrow-function, while-loop, array, push, index, object, return, throw, differential-testing-intro, template-literal, ambiguity, stack-overflow]
+sources: [ecma262-grammar, ecma262-operators]
+---
+import RuleToFunction from '../../../components/diagrams/ch063/RuleToFunction';
+import BlockSteps from '../../../components/diagrams/ch063/BlockSteps';
+import TwoTrees from '../../../components/diagrams/ch063/TwoTrees';
+import DescentSteps from '../../../components/diagrams/ch063/DescentSteps';
+
+{/* ── merge: from old chapter 63, Recursive descent parsing ── */}
+
+## The missing piece
+
+We have three of the four things a front end needs: the scanner makes
+a flat row of tokens, the grammar says which rows are allowed, and the
+syntax tree is the shape we want at the end. Missing is the program in
+the middle, which reads the tokens left to right, checks them against
+the grammar, and builds the tree.
+That program is the **parser**. You have written a gentle one already,
+in "Checkpoint: from tokens to JSON values"; this chapter shows the
+method behind it, so that you can write one for any grammar, starting
+with Drip's statements.
+
+<Analogy title="a post sorting office">
+Letters arrive in one long stream. The sorter drops each letter into the
+bag for its street, each full bag into the sack for its town, and each
+sack into the van for its region: a flat stream goes in, and nested
+containers come out.
+<span slot="breaks">A sorter can pick up the letters in any order and
+look at each one for as long as they like; a parser takes its tokens
+strictly in order, and decides what to do from the next one or two.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **parser** turns a row of tokens into a syntax tree, following a
+grammar. If the tokens do not fit the grammar, it reports a **syntax
+error** instead (the chapter "Syntax errors and recovery" makes those
+messages good).
+</Callout>
+
+## One function per rule
+
+The method is the most direct one possible: write one function for each
+rule of the grammar, and make each function do, in order, what its rule
+says.
+
+<Analogy extra title="a manual of procedures">
+An office manual has one page per procedure. The page for "new
+customer" says: take the form, then *follow the "check address" page*,
+then file the form. You turn to that page, follow it, and come back to
+where you were, keeping your place with a bookmark.
+<span slot="breaks">A person following a page that sends them to the
+same page again would soon lose track of their bookmarks; the computer
+keeps a fresh bookmark (a frame on the call stack) for every call, so a
+rule may send it back to itself as often as the tokens need.</span>
+</Analogy>
+
+Here is the grammar for this chapter, a small piece of Drip's
+statements, with tokens written as plain strings:
+
+<Formal title="Blocks of print statements">
+
+```text
+statement → printStmt | block
+printStmt → "print" expr ";"
+block     → "{" statement* "}"
+expr      → NUMBER | IDENTIFIER
+          | "(" expr ")"
+```
+
+<span slot="read">A statement is a print statement or a block. A print
+statement is the keyword print, an expression and a semicolon. A block
+is an opening curly bracket, zero or more statements, and a closing
+curly bracket. An expression is a number, or a name, or an expression
+in round brackets.</span>
+</Formal>
+
+Each piece of a rule becomes one piece of code, in order: a terminal
+becomes a check that takes the token, a nonterminal a call, a star a
+`while` loop, and the function returns the node it built:
+
+<Figure takeaway="Each piece of the rule becomes one piece of the function, in order." caption="The rule for block, and the function that parses it. The terminal { becomes consume('{'); statement* becomes a loop that calls statement until the next token is }; the terminal } becomes consume('}'). Last of all, the function returns the block node.">
+  <RuleToFunction />
+</Figure>
+
+<Formal title="From rule to code">
+
+```text
+rule  A → …        function A() { … }
+nonterminal  B     B()
+terminal  "x"      consume('x')
+( … )*             while (peek() starts it)
+( … )?             if (peek() starts it)
+α | β              if (peek() starts α) α
+                   else β
+```
+
+<span slot="read">A rule for A becomes a function called A. A
+nonterminal B in its body becomes a call to the function B. A terminal
+x becomes consume of x: take the next token, which must be x. A group
+with a star becomes a while loop that runs as long as the next token is
+one that can start the group. A group with a question mark becomes an
+if with the same test. A choice between α and β becomes an if that
+looks at the next token to decide which of the two to parse.</span>
+</Formal>
+
+`peek` and `consume` are two small helpers, the parser's equivalent of
+the scanner's `peek` and `advance`:
+
+```js
+let i = 0;
+const peek = () => ts[i];
+const next = () => ts[i++];
+function consume(t) {
+  if (next() !== t) {
+    throw new Error('expected ' + t);
+  }
+}
+```
+
+`ts` is the array of tokens and `i` the index of the next one. `peek()`
+returns that token without moving on; `next()` returns it and moves on
+(`i++` adds one after reading); `consume(t)` takes the next token and
+throws if it is not `t`. Now the four rules,
+one function each:
+
+```js
+function statement() {
+  if (peek() === '{') return block();
+  return printStmt();
+}
+function printStmt() {
+  consume('print');
+  const e = expr();
+  consume(';');
+  return { kind: 'print', e };
+}
+function block() {
+  consume('{');
+  const body = [];
+  while (peek() !== '}') {
+    body.push(statement());
+  }
+  consume('}');
+  return { kind: 'block', body };
+}
+```
+
+`statement` is the choice: it peeks, and calls `block` if the next
+token is `{`, otherwise `printStmt`. `printStmt` is its rule in code:
+take `print`, parse an expression, take `;`, return a print node.
+`block` takes `{`, loops while the next token is not `}` (parsing one
+more statement each time and pushing its node onto `body`), then takes
+`}` and returns a block node. (`expr`, the fourth rule, is in the runnable example below:
+it takes one token and decides by looking at it.) Watch the functions
+call each other:
+
+<BlockSteps client:visible />
+
+<Callout kind="definition">
+**Recursive descent** is a way to write a parser by hand, with one
+function per grammar rule. A terminal becomes a check, a nonterminal a
+call, an alternative an `if` that looks at the next token, and a `*`
+a `while` loop. Parsing starts at the top rule and *descends* through
+the calls, and because rules mention each other (and themselves), so
+do the functions: that is the *recursive* part.
+</Callout>
+
+<Examples of="parser recursive-descent">
+
+```text
+print 7 ;   →   (print 7)
+```
+
+```text
+{ print 1 ; { print ( x ) ; } }
+→ (block (print 1)
+     (block (print (group x))))
+```
+
+```ts
+function ifStatement(): Stmt {
+  const condition = expression();
+  const then = bracedBody(
+    "'{' after the condition");
+  let otherwise: Stmt | null = null;
+  if (match('else')) {
+    otherwise = match('if')
+      ? ifStatement()
+      : bracedBody("'{' or 'if'...");
+  }
+  return { kind: 'if', condition,
+           then, else: otherwise };
+}
+```
+
+</Examples>
+
+The first is the smallest program: `printStmt` takes `print`, `expr`
+takes `7`, and `printStmt` takes `;`. The second nests: the
+outer `block`'s second statement is a block of its own, so `block` runs
+twice at once, one call inside the other, each with its own `body`; the
+brackets round `x` go through `expr` calling itself. The third is real, from `companion/ts/src/parser.ts`: Drip's
+`ifStmt → "if" expression block ( "else" ( ifStmt | block ) )?`. The
+condition needs no brackets; `bracedBody` parses a `{ ... }` body, or
+reports its message if the `{` is missing. `match` takes a token only if
+it is there, which is how the optional `else` becomes code, and
+`ifStatement` calling itself is how `else if` works. (The `if` itself
+was taken by `statement`, which chose this rule.)
+
+<Run id="statements" />
+
+<Prompts ids={['parser-what', 'rd-what', 'rd-star', 'rd-terminal', 'block-twice']} />
+
+## Choosing with one token
+
+`statement` has to choose between two rules, and it decides by looking
+at a single token: `{` means block, anything else means print. That
+works because the two alternatives *start* with different tokens, so
+one token of **lookahead** (the scanner's idea, one level up) settles
+it before any token is taken. The chapter "FIRST and FOLLOW" works out, for
+any grammar, which tokens can start each rule, and when one is not
+enough.
+
+The mistake that bites everyone once is deciding with `next()` instead
+of `peek()`:
+
+```js
+function statement() {
+  if (next() === '{') return block();
+  return printStmt();
+}
+// { print 1 ; }  →  Error: expected {
+```
+
+`next()` *takes* the `{` while asking about it, so `block`'s own
+`consume('{')` finds `print` and throws on good input. Looking must not
+use up the token; only the function whose rule owns it should take it.
+
+<Prompts ids={['peek-not-next', 'one-token']} />
+
+## The companion's parser
+
+Every Drip statement is parsed this way in `companion/ts/src/parser.ts`:
+`declaration` and `statement` each choose by looking at one token, and
+every kind of statement has its own function. Expressions with
+operators are harder, because the parser must also decide which
+operator binds tighter and which way a chain leans; the next chapter,
+"Precedence and associativity", builds that in, and "Pratt parsing"
+shows the shorter method the companion uses.
+Both are meant to build the same trees, which is exactly the kind of
+claim a differential test (from "Edge cases and differential testing")
+checks: feed the same random expressions to both parsers and compare
+the printed trees.
+
+<Prompts ids={['companion-split']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript's specification defines its syntax as a context-free
+grammar of productions in this same style<Cite id="ecma262-grammar" />,
+so a recursive descent parser for it has one function per production,
+just as `block` has here ("Parsing JavaScript for real" looks at a
+production engine). Writing a parser by hand also makes it easy to give
+every mistake its own precise error message.
+</Callout>
+
+## Your turn
+
+<Exercise id="blockParser" />
+
+<Exercise id="ifParser" />
+
+## What you learned
+
+- A **parser** reads tokens left to right, checks them against the
+  grammar and builds a syntax tree.
+- **Recursive descent**: one function per rule; terminals are checks
+  (`consume`), nonterminals are calls, alternatives are `if`s on the
+  next token, and `*` is a `while` loop.
+- Choose with `peek()`, which looks without taking; take a token only in
+  the function whose rule owns it.
+- Because rules mention each other, the functions do too, and the call
+  stack keeps every rule's place.
+
+
+{/* ── merge: from old chapter 63, Precedence and associativity ── */}
+
+## Two trees for one line
+
+What is `1 + 2 * 3`? You learned the answer at school: 7, because
+multiplication happens first. The tokens alone do not say that, though;
+both of these trees fit them:
+
+<Figure takeaway="Multiplication must end up deeper in the tree than addition." caption="Two ways to group the tokens 1 + 2 * 3. In a tree, deeper operations happen first. Drip, like JavaScript and school arithmetic, builds the left one.">
+  <TwoTrees which="prec" />
+</Figure>
+
+This is the ambiguity from "Ambiguity and the Chomsky hierarchy": the
+grammar `expr → expr "+" expr | expr "*" expr | NUMBER` allows both
+trees. We need a grammar that allows only the left one.
+
+<Analogy title="packing for a move">
+You pack small things into boxes first, and only then load the boxes
+into the van; nobody puts a single spoon in the van and then builds a
+box round it. Multiplication is the boxes and addition is the van: each
+product is packed and sealed before the sum loads it.
+<span slot="breaks">Packing is a choice you could make differently;
+precedence is a fixed rule of the language, and brackets are the only
+way to ask for another order.</span>
+</Analogy>
+
+<Analogy extra title="superglue and tape">
+Stick 1 and 2 together with tape and 2 and 3 with superglue, then pull:
+the tape gives first, and the glued pair stays one piece. `*` holds its
+neighbours more strongly than `+` does, so `2 * 3` stays together.
+<span slot="breaks">Glue is about force; precedence is only about
+grouping, and says nothing about which operation is harder or slower to
+work out.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Precedence** says which operators bind tighter. In Drip, as in
+arithmetic, `*`, `/` and `%` bind tighter than `+` and `-`, which bind
+tighter than the comparisons, which bind tighter than `==` and `!=`; an
+operator that binds tighter ends up deeper in the tree, so it is worked
+out first.
+</Callout>
+
+<Examples of="precedence">
+
+```text
+1 + 2 * 3   →   (+ 1 (* 2 3))
+```
+
+```text
+2 * 3 + 4   →   (+ (* 2 3) 4)
+(1 + 2) * 3 →   (* (group (+ 1 2)) 3)
+```
+
+```text
+-x * 2 < 4 == true
+→ (== (< (* (- x) 2) 4) true)
+```
+
+</Examples>
+
+In the first, the product is the right child of the sum. In the second
+the `*` comes first in the source and is still the deeper node, and
+brackets override precedence, putting the sum inside. The third is a
+realistic condition with four levels: unary minus binds tightest, then
+`*`, then `<`, and `==` is the root, worked out last.
+
+<Prompts ids={['precedence-what']} />
+
+## A grammar with levels
+
+To build precedence into the grammar, give each level its own rule,
+loosest first, and let each rule build its operands from the next,
+tighter one:
+
+<Formal title="Drip’s expression grammar, from equality down">
+
+```text
+equality   → comparison
+               ( ( "==" | "!=" )
+                 comparison )*
+comparison → term
+               ( ( "<" | "<=" | ">" | ">=" )
+                 term )*
+term       → factor
+               ( ( "+" | "-" ) factor )*
+factor     → unary
+               ( ( "*" | "/" | "%" )
+                 unary )*
+unary      → ( "!" | "-" ) unary | call
+primary    → NUMBER | STRING | "true"
+           | "false" | "none" | IDENT
+           | "(" expression ")" | ...
+```
+
+<span slot="read">An equality is a comparison, followed by zero or more
+pairs of an equality operator and another comparison. A comparison is a
+term, followed by zero or more pairs of a comparison operator and a
+term. A term is a factor, followed by zero or more pairs of a plus or
+minus and a factor. A factor is a unary, followed by zero or more pairs
+of a times, divide or remainder sign and a unary. A unary is a not sign
+or a minus sign followed by another unary, or else a call. A primary is
+a number, a string, true, false, none, a name, a whole expression in
+brackets, or one of a few more forms you will meet later.</span>
+</Formal>
+
+Above `equality`, Drip's grammar has three looser levels, `assignment`, then `or` (with `||`) and `and`
+(with `&&`), and `call` sits between `unary` and `primary`. Our parser
+writes the six levels shown, taking `call` as plain `primary`; `||` and
+`&&` have exactly the same shape, and assignment comes back at the end.
+
+So `term` can only join *finished* factors: when it meets the `+` in
+`1 + 2 * 3`, the `2 * 3` on its right is one factor, built as a unit,
+and there is no way to build the other tree. The lower a rule sits in
+the list, the tighter its operators bind. The last rule, `primary`, is
+the base case: a single literal, or a whole expression in brackets,
+which starts again from the loosest level; that is why brackets can
+override precedence.
+
+<Prompts ids={['lower-tighter', 'brackets-restart']} />
+
+## One function per level
+
+Turned into recursive descent, each level is the same shape: get one
+operand from the level below, then loop while the next token is one of
+this level's operators. Tokens are plain strings here, and `i` is the
+index of the next one:
+
+```js
+const at = (...ops) =>
+  ops.includes(ts[i]);
+const next = () => ts[i++];
+
+function term() {
+  let left = factor();
+  while (at('+', '-')) {
+    const op = next();
+    const right = factor();
+    left = bin(left, op, right);
+  }
+  return left;
+}
+```
+
+`at` peeks: is the next token one of these? `next` takes it. `term`
+gets a factor, and then, as long as the next token is `+` or `-`, takes
+the operator, gets another factor, and replaces `left` with a binary
+node joining the two (`bin` makes that node). `factor` is the same
+function one level down, with `*`, `/` and `%` and calls to `unary`. `unary`
+checks for `!` or `-`; if it finds one, it takes it and calls *itself*
+for the operand (so `- - 1` and `!!x` work), and otherwise hands over to
+`primary`, which takes one token and returns a literal (or, for `(`,
+calls `expression` and then expects `)`). Watch
+the levels call each other on `1 + 2 * 3`:
+
+<DescentSteps client:visible />
+
+Nobody compared the priorities of `+` and `*`: `factor` simply never
+returns while a `*` is waiting, so by the time `term` sees the `+`, the
+product beside it is already one finished node. Here is the whole
+parser, all six levels, with a tree printer:
+
+<Run id="fullParser" />
+
+<Prompts ids={['factor-sees-plus', 'unary-self']} />
+
+## Which way does a chain lean?
+
+Precedence does not settle `1 - 2 - 3`: both operators are on the same
+level, and the two groupings give different answers.
+
+<Figure takeaway="Same-level operators group to the left." caption="1 - 2 - 3 grouped two ways. Drip, like arithmetic, groups to the left, so the first subtraction is deeper and happens first.">
+  <TwoTrees which="assoc" />
+</Figure>
+
+<Analogy extra title="paying from a wallet">
+You have 10 coins, pay 2 for a coffee and then 3 for a sandwich: you
+have 5 left. Nobody works out "2 minus 3" first; each payment comes out
+of whatever is left after the one before.
+<span slot="breaks">Money has a natural order in time; a program's
+operators only have the order the language's rules give them, which is
+why some operators can be defined to lean the other way.</span>
+</Analogy>
+
+<Analogy extra title="wrapping a parcel in layers">
+Wrap a present in one sheet of paper, then wrap that whole parcel in a
+second sheet, then the result in a third. The first sheet ends up
+innermost, and each new sheet goes round everything so far.
+<span slot="breaks">A parcel is unwrapped from the outside in; a tree is
+worked out from the inside out, so the innermost (first) subtraction is
+done first.</span>
+</Analogy>
+
+The loop in `term` does exactly that wrapping. After `1 - 2`, `left`
+holds the node `(- 1 2)`; the loop goes round again, sees the second
+`-`, and builds a new node with that *whole* subtraction on its left.
+Each pass wraps the tree so far, so the chain leans left.
+
+<Callout kind="definition">
+**Associativity** says how a chain of operators on the same precedence
+level groups. Drip's binary operators are **left-associative**:
+`a - b - c` means `(a - b) - c`. Assignment is the exception, and is
+**right-associative**: `a = b = 1` means `a = (b = 1)`.
+</Callout>
+
+<Examples of="associativity">
+
+```text
+1 - 2 - 3  →  (- (- 1 2) 3)    is -4
+```
+
+```text
+8 / 2 / 2  →  (/ (/ 8 2) 2)    is 2
+1 < 2 < 3  →  (< (< 1 2) 3)
+```
+
+```text
+a = b = 1  →  (= a (= b 1))
+```
+
+</Examples>
+
+In the first, the left grouping gives `-1 - 3`, which is `-4` (the
+other would give `2`). The second shows the same for division (`4 / 2`
+is `2`; the other way, `8`) and for comparisons, which lean left too.
+The third leans right: assignment stores `1` in `b`, and that value is
+then stored in `a`, so the rightmost one must happen first.
+
+<Formal title="Left and right associativity as trees">
+
+```text
+a ∘ b ∘ c  =  (a ∘ b) ∘ c    left
+a ∘ b ∘ c  =  a ∘ (b ∘ c)    right
+```
+
+<span slot="read">Here the small circle stands for any one binary
+operator. If the operator is left-associative, a chain a, operator, b,
+operator, c means: first combine a and b, then combine that result with
+c. If it is right-associative, it means: first combine b and c, then
+combine a with that result.</span>
+</Formal>
+
+<Prompts ids={['assoc-what', 'loop-left']} />
+
+## Why a loop, and not a rule that starts with itself
+
+The grammar in the chapter "Grammars" wrote this level as
+`expr → expr "+" item`, which says "left-associative" very clearly. Why
+not code that directly?
+
+```js
+function term() {
+  const left = term(); // ✗
+  // ...
+}
+// RangeError: Maximum call stack
+//   size exceeded
+```
+
+The first thing `term()` would do is call `term()`, with the same token
+still next, for ever, until the call stack runs out. A rule whose body
+starts with its own name is **left-recursive**, and cannot be coded
+directly in recursive descent; so the grammar uses `*` and the code a
+loop, which gives the same left-leaning trees ("LL(1) tables and
+rewriting grammars" shows how to rewrite any such rule). Recursing on
+the *right* instead, `return bin(left, op, term())`, does stop, but it
+makes the chain lean right, which is correct for assignment and wrong
+for `-`.
+
+<Prompts ids={['left-recursion']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript's specification layers its operators the same way. It
+defines an `AdditiveExpression` as a `MultiplicativeExpression`, or an
+`AdditiveExpression` followed by `+` or `-` and a
+`MultiplicativeExpression`<Cite id="ecma262-operators" />. That
+self-reference on the left is exactly the left recursion you just met:
+in a grammar it means left-associative, and in a hand-written parser it
+becomes a loop. The companion parses Drip's expressions with the method
+of "Pratt parsing", which builds the same trees from a table.
+</Callout>
+
+## Your turn
+
+<Exercise id="termFactor" />
+
+<Exercise id="comparison" />
+
+## What you learned
+
+- **Precedence**: one grammar rule per level, loosest first, each built
+  from the next. Tighter operators end up deeper, so they happen first;
+  brackets restart at the top.
+- Each level becomes a function: one operand from the level below, then
+  a loop over this level's operators.
+- **Associativity**: the loop wraps the tree so far, so `a - b - c`
+  leans left; recursing on the right makes a chain lean right, as
+  assignment does.
+- A left-recursive rule cannot be coded directly: the function would
+  call itself for ever.
+
+<Quiz />

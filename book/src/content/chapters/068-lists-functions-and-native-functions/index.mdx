@@ -1,0 +1,847 @@
+---
+n: 68
+day: 6
+part: III
+title: 'Lists, functions and native functions'
+tagline: 'Three particles should not need three variable names. Drip gets lists: a literal to make one, xs[i] to reach into it, and a for loop that walks it, with a runtime error for every way an index can be wrong.'
+objectives:
+  - Evaluate a list literal, and explain why two names can share one list.
+  - Implement reading and writing xs[i], with Drip’s exact error for each kind of bad index.
+  - Use len, push and pop, and say which of them change the list.
+  - Predict what for x in xs does when the body pushes onto xs, and why each time round has a fresh x.
+  - Declare named and anonymous Drip functions, and pass them around as values.
+  - Say which Drip values can be called, and what the interpreter does with each kind of callee.
+  - Trace a call of a Drip function, from the callee lookup to the new environment and the body.
+  - Explain arity, read Drip's arity errors, and say why Drip is stricter than JavaScript.
+  - Trace a call to a native function, and say how it differs from a call to a Drip function.
+  - Read how clock and len are built, and write a native-style call check of your own.
+introduces: [drip-list, index-expression, for-in-loop, callable, arity, native-function]
+uses: [array, index, length, push, array-loop, reference, aliasing, mutation, identity, array-of-objects, for-of, aos-vs-soa, pointer-chasing, control-flow, desugaring, short-circuit, environment, scope-chain, shadowing, evaluate, tree-walking-interpreter, runtime-value, runtime-error, truthiness, global-variable, side-effect, program-as-list, pratt-parser, prefix-infix, binding-power, ast-node, drip, class, typeof, throw, typescript, function, call, return, numbers, strings, comparison, if, for-loop, while-loop, variables, console-log, parameter, argument, local-variable, undefined, first-class-function, lexical-scope, closure, discriminated-union, keyword, identifier]
+sources: [mdn-array, mdn-array-values, mdn-functions, mdn-function-object, mdn-function-length, mdn-performance-now]
+---
+import ListSteps from '../../../components/diagrams/ch068/ListSteps';
+import RecordsLayout from '../../../components/diagrams/ch068/RecordsLayout';
+import CallSteps from '../../../components/diagrams/ch068/CallSteps';
+import CallDispatch from '../../../components/diagrams/ch068/CallDispatch';
+import ArityCompare from '../../../components/diagrams/ch068/ArityCompare';
+import NativeCallSteps from '../../../components/diagrams/ch068/NativeCallSteps';
+
+{/* ── merge: from old chapter 68, Lists in Drip ── */}
+
+## One name for many values
+
+Say a Drip program tracks the positions of three particles. With what we
+have so far, that is `let x0 = 0; let x1 = 5; let x2 = 9;`, and moving
+them all means three lines; with a thousand particles it means a
+thousand lines, because there is no way to say "the next one" in a loop
+when each value has its own name. Every language you have used solves
+this with an array, and Drip is about to get one: the **list**.
+
+<Analogy title="a row of numbered pigeonholes">
+A post room has a row of pigeonholes labelled 0, 1, 2 and so on; the
+row has one name ("the second-floor post"), and you reach one hole by
+its number.
+<span slot="breaks">A row of pigeonholes is built with a fixed number of
+holes; a Drip list grows by one every time you `push`, and shrinks with
+`pop`.</span>
+</Analogy>
+
+## Making a list
+
+A list is written as values in square brackets: `[0, 5, 9]`. In the
+parser, `[` at the start of an expression is a prefix rule that reads
+expressions separated by commas until `]` (at most 255 of them), and
+makes a `list` node holding their trees. Evaluating it is one line of
+`evaluate`:
+
+```ts
+case 'list':
+  return new DripList(e.elements.map(
+    (x) => this.evaluate(x)));
+```
+
+Each element is evaluated, left to right, and the values go into a
+`DripList`, a small class in `runtime.ts` whose one field, `items`, is
+a JavaScript array of runtime values. Because a `DripList` is an object,
+a variable holds a *reference* to it, as JavaScript arrays
+do<Cite id="mdn-array" />: `let ys = xs;` gives the same list a second
+name, and `==` compares lists by identity, not by contents.
+
+<Callout kind="definition">
+A **Drip list** is an ordered, growable collection of values, written
+`[a, b, c]`. Its elements may be any values, mixed freely, including
+other lists. Lists are passed by reference: assigning one or passing it
+on shares the same list, and two lists are `==` only if they are the
+same list.
+</Callout>
+
+<Examples of="drip-list">
+
+```text
+print [];          # []
+```
+
+```text
+print [1, "a", none, [2]];
+# [1, "a", none, [2]]
+```
+
+```text
+let xs = [1, 2];
+let ys = xs;       # one list, two names
+push(ys, 3);
+print xs;          # [1, 2, 3]
+print xs == ys;    # true
+print [1] == [1];  # false
+```
+
+</Examples>
+
+The first is the empty list. The second mixes types freely, and shows
+how printing works inside a list: strings are quoted (at the top level
+`print "a"` shows no quotes), `none` is written as `none`, and a nested
+list prints in its own brackets. The third is the aliasing you met with
+JavaScript arrays: `ys` is not a copy, so pushing through `ys` changes
+the list `xs` names, and the two names are `==`; two separate lists with
+the same contents are not.
+
+<Prompts ids={['list-eval-order', 'list-alias', 'list-equal']} />
+
+## Reaching one element: xs[i]
+
+`[` after an expression is an infix rule with call-level binding power,
+so `xs[i]` binds as tightly as a call: `ps[0][1]` reads element 1 of
+element 0. The parser makes an `index` node, or an `indexSet` node when
+an `=`, `+=` or `-=` follows. Both use one check, from
+`interpreter.ts`:
+
+```ts
+function checkIndex(xs: Value, i: Value,
+                    at: Token): DripList {
+  if (!(xs instanceof DripList))
+    throw new RuntimeError(at,
+      `cannot index ${describe(xs)}`);
+  if (typeof i !== 'number')
+    throw /* a list index must be a
+             number, not a string */;
+  if (!Number.isInteger(i))
+    throw /* index 1.5 is not a
+             whole number */;
+  if (i < 0 || i >= xs.items.length)
+    throw /* index 3 is out of range
+             for a list of length 3 */;
+  return xs;
+}
+```
+
+Four checks, four messages, in order: the thing before `[` must be a
+list (a string cannot be indexed in Drip), the index must be a number,
+a whole one, and between `0` and `len(xs) - 1`. Then `index` returns
+`xs.items[i]`, and `indexSet` stores into it. Writing can change an
+element but cannot add one: `xs[len(xs)] = v` is out of range, and
+growing is `push`'s job.
+
+<Analogy extra title="seats in a cinema row">
+Seat numbers in this cinema start at 0, so a row of ten seats is numbered
+0 to 9; a ticket for seat 10, or seat 2.5, or seat "B" gets you turned
+away at the door.
+<span slot="breaks">An usher might let you sit in an empty seat 10 at
+the end; Drip never does, and it says exactly which rule your ticket
+broke.</span>
+</Analogy>
+
+<Formal title="Reading xs[i]">
+
+```text
+xs ⇓ [v₀, …, vₙ₋₁]    i ⇓ k
+k a whole number,  0 ≤ k < n
+────────────────────────────
+         xs[i] ⇓ vₖ
+```
+
+<span slot="read">If xs evaluates to a list of n values, v-nought up to
+v n-minus-one, and i evaluates to k, and k is a whole number from 0 up
+to but not including n, then xs of i evaluates to v-k, the element at
+position k. Every other case is a runtime error.</span>
+</Formal>
+
+Three built-in functions finish the set: `len(xs)` returns the length,
+`push(xs, v)` appends `v` and returns `none`, and `pop(xs)` removes and
+returns the last element (`cannot pop from an empty list` if there is
+none). They are written in TypeScript inside the interpreter; for
+example, `push` checks that it was given a list (`push() needs a list,
+not a string`) and then calls the host array's own `push`.
+
+<Callout kind="definition">
+An **index expression** `xs[i]` reads element `i` of the list `xs`, and
+`xs[i] = v` overwrites it. The index must be a whole number from `0` to
+`len(xs) - 1`; anything else is a runtime error that names the problem.
+</Callout>
+
+<Examples of="index-expression">
+
+```text
+let xs = [10, 20, 30];
+print xs[0];             # 10
+```
+
+```text
+print xs[3];
+# index 3 is out of range for a
+# list of length 3
+print xs[len(xs) - 1];   # 30
+```
+
+```text
+let ps = [[0, 1], [5, -1]];
+ps[1][0] += ps[1][1];
+print ps[1];             # [4, -1]
+```
+
+</Examples>
+
+The first reads the element at position 0. The second is the
+spot-the-difference everyone meets: a list of length 3 has no element
+3, and the last element is at `len(xs) - 1`. The third is a list of
+records: `ps[1]` is the inner list `[5, -1]`, and `ps[1][0] += ps[1][1]`
+adds its second number to its first, in place.
+
+<Prompts ids={['index-errors', 'index-no-grow', 'push-returns']} />
+
+## Walking a list: for x in xs
+
+`for x in xs { ... }` runs the body once per element, in order. It is
+the list branch of the same `forLoop` that runs ranges:
+
+```ts
+if (!(start instanceof DripList))
+  throw new RuntimeError(s.keyword,
+    `cannot loop over ${describe(start)}`);
+let i = 0;
+next = () => (i < start.items.length
+  ? start.items[i++] : undefined);
+```
+
+`start` is the list, evaluated once. The length is read *each time
+round*, so a body that pushes onto the list extends the loop, which is
+also how JavaScript's `for...of` treats arrays<Cite id="mdn-array-values" />.
+And, as for ranges, each time round defines `x` in a fresh environment,
+so `x` is a new variable holding the element; assigning to it changes
+the variable, not the list. Step through a loop that grows its own list:
+
+<ListSteps client:visible />
+
+<Callout kind="definition">
+A **for-in loop**, `for x in xs { ... }`, evaluates `xs` once (it must
+be a list), then runs the body once per element in order, with `x` a
+fresh variable each time; the length is checked before every round, so
+elements pushed during the loop are visited too.
+</Callout>
+
+<Examples of="for-in-loop">
+
+```text
+for w in ["a", "b"] { print w; }
+# a, then b
+```
+
+```text
+let xs = [10, 20];
+for x in xs { x = 0; }
+print xs;     # [10, 20]: x was a copy
+```
+
+<Run id="particles" />
+
+</Examples>
+
+The first prints each string in turn. The second is a common surprise:
+`x = 0` changes the loop variable, not the list; to change elements,
+loop over positions, `for i in 0..len(xs) { xs[i] = 0; }`. The runnable
+example updates particles stored two ways, which is where lists meet
+the rest of this book.
+
+<Prompts ids={['for-in-length', 'for-in-copy', 'for-in-not-list']} />
+
+## Lists of records
+
+The particles in the runnable example are stored in the two shapes from
+the chapters on memory layout. `ps` is a list of records, each record a
+small list `[x, vx]`; `xs` and `vxs` are one list per field. In Drip as
+in JavaScript, the first is the natural way to write it, and the second
+is often the faster way to run it.
+
+<Figure takeaway="Same particles, two layouts: a list of records, or a list per field." caption="On the left, ps holds references to three small lists, each with an x (orange) and a vx (teal). On the right, the same numbers in two lists, xs and vxs, each holding one field for every particle.">
+  <RecordsLayout />
+</Figure>
+
+<Callout kind="engine" label="Under the hood">
+A `DripList` is a JavaScript array of runtime values, so `ps` is an
+array of references to other arrays, and reading every particle's `x`
+hops from one small array to the next, the pointer-chasing shape from
+Part II. Records will soon be written as classes, `new Particle(x, vx)`
+in the chapter on classes in Drip, and Viscosity's whole job is to take
+the first shape, as you naturally write it, and run it as the second.
+</Callout>
+
+## Your turn
+
+The core exercise is `checkIndex`, with all four messages; the extra one
+turns a list of records into a list per field.
+
+<Exercise id="check-index" />
+
+<Exercise id="to-columns" />
+
+## What you learned
+
+- A **Drip list**, `[a, b, c]`, is a `DripList` around a JavaScript
+  array; it is shared by reference and compared by identity.
+- An **index expression** `xs[i]` reads or overwrites one element; a bad
+  list, a non-number, a fraction or an index out of range each has its
+  own runtime error. `len`, `push` and `pop` measure, grow and shrink.
+- A **for-in loop** visits each element with a fresh variable, reading
+  the length each time round.
+
+Next: functions in Drip, and the call machinery behind `len` and `push`.
+
+
+{/* ── merge: from old chapter 68, Functions in Drip ── */}
+
+## The same work, written out every time
+
+Drip can choose and repeat now, and it can keep lists; however, every
+piece of work still has to be written out in full at the place it is
+used. Here is a program that prints the areas of two rooms:
+
+```
+let w = 3;
+let h = 4;
+print "area: " + str(w * h);
+w = 5;
+h = 2;
+print "area: " + str(w * h);
+```
+
+It works (it prints `area: 12` and then `area: 10`), but the idea
+"multiply, turn the answer into a string, print it with a label" is
+written twice, glued to whatever `w` and `h` happen to hold. The chapter
+*Functions: naming a piece of work* cured this in JavaScript, and Drip
+gets the same cure now:
+
+```
+fn area(w, h) {
+  print "area: " + str(w * h);
+}
+area(3, 4);
+area(5, 2);
+```
+
+Two new pieces of syntax arrive together. `fn area(w, h) { ... }` is a
+**function declaration**, which the parser turns into a node holding the
+name, the parameter tokens and the list of statements in the body.
+`area(3, 4)` is a **call expression**: in the Pratt table from the
+parsing chapters, `(` is an infix operator that binds as tightly as `.`
+and `[`, so whatever expression sits on its left becomes the **callee**,
+the thing being called, and `f(1)(2)` parses fine (it calls whatever
+`f(1)` gives back).
+
+## A function is a value
+
+Running a `fn` declaration does not run the body; it only makes a value
+and gives it a name. Here is the whole case in the companion's
+`interpreter.ts`:
+
+```ts
+case 'fn':
+  this.env.define(s.fn.name.lexeme,
+    new DripFunction(s.fn, this.env,
+      false));
+  return NORMAL;
+```
+
+A `DripFunction` holds two things: the declaration node (so the
+interpreter can find the parameters and the body later) and the
+environment that was current when the declaration ran, which it calls
+its `closure` (the chapter *Closures in Drip* is all about why it keeps
+that). The `false` says "this is not a class's `init`", which only
+matters once classes arrive, and `NORMAL` says the statement finished in
+the ordinary way (the completion values of "Choosing and repeating: if,
+while and for"). After that, `area` is a variable like any other, holding a
+function value: you can copy it with `let g = area;`, put it in a list,
+or pass it to another function, and `print area;` shows `fn area`.
+
+Drip also has a second way to make the same kind of value, with no name
+at all: an **anonymous function**, written `fn (params) { body }` in the
+middle of an expression. The parser makes the same declaration node,
+with its name left empty, and the interpreter wraps it in a
+`DripFunction` in exactly the same way; `print` shows it as plain `fn`.
+
+<Analogy title="a saved route in a maps app">
+Planning a route from home to the station and pressing "save" does not
+move you an inch; it stores the directions under a name. Later, each
+time you tap "station", the app starts a fresh trip that follows those
+directions from wherever the trip begins.
+<span slot="breaks">A saved route is followed the same way every time;
+a function's parameters let each call start from different values, and
+a Drip function always runs to the end of its steps (or to a
+`return`), with no chance to reroute half-way.</span>
+</Analogy>
+
+<Prompts ids={['decl-no-run', 'fn-value', 'anon-fn']} />
+
+## Which values can be called
+
+Now look at the call expression from the interpreter's side. It
+evaluates the callee, then the arguments, left to right, and only then
+asks what kind of value the callee turned out to be:
+
+```ts
+const callee = this.evaluate(e.callee);
+const args = e.args.map(
+  (a) => this.evaluate(a));
+if (callee instanceof DripFunction)
+  return this.callFunction(
+    callee, args, e.paren);
+if (callee instanceof NativeFunction) {
+  // check the arity, then run it
+}
+if (callee instanceof DripClass)
+  throw new RuntimeError(e.paren,
+    `cannot call a class: use ` +
+    `'new ${callee.name}(...)'`);
+throw new RuntimeError(e.paren,
+  `cannot call ${describe(callee)}`);
+```
+
+`e.paren` is the `(` token, kept so that an error can say which line the
+call was on, and `describe` names a value with its article (`a number`,
+`a list`, `none`), so `3(1)` stops with `cannot call a number`. (The real
+`call` has one more branch, for method calls such as `p.step(1)`, which
+evaluate their arguments before the method is looked up; the classes
+chapter shows why that order matters.)
+
+<Figure caption="After evaluating the callee and the arguments, a call looks at what kind of value the callee is. Two kinds run; the rest stop the program with a runtime error that says what went wrong." takeaway="Only Drip functions and natives can be called.">
+  <CallDispatch />
+</Figure>
+
+<Analogy extra title="a socket in the wall">
+A wall socket does not care whether you plug in a kettle or a lamp, as
+long as the plug has the right shape; a plug of the wrong shape (or a
+fork) is refused before any current flows. A call expression is the
+socket: Drip functions and natives have the right plug, and a number or
+a class does not.
+<span slot="breaks">A socket refuses a wrong plug by not letting it in;
+Drip only finds out at run time, when the call is reached, and then it
+stops the whole program with an error rather than quietly doing
+nothing.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **callable** is a runtime value that a call expression can run. In
+Drip there are two kinds: a **Drip function** (a `DripFunction`, made by
+`fn`, named or anonymous) and a **native function** (a
+`NativeFunction`, written in TypeScript, such as `len` or `clock`; the
+next chapter looks at these closely). Every other value is not callable: calling a number,
+a string, a list or `none` is the runtime error `cannot call a number`
+(with the right article and type), and calling a class is
+`cannot call a class: use 'new Point(...)'`, because Drip makes
+instances with `new`, never with a bare call.
+</Callout>
+
+<Examples of="callable">
+
+```
+fn hi() { print "hi"; }
+hi();      # hi
+print hi;  # fn hi
+```
+
+```
+let twice = fn (f) { f(); f(); };
+twice(fn () { print "drip"; });
+# drip
+# drip
+```
+
+<Run id="callables" />
+
+</Examples>
+
+The first is the smallest case: `hi` is declared, called once (printing
+`hi`), and then printed as a value, which shows `fn hi` without running
+anything. The second stores an anonymous function in `twice` and then
+calls it with another anonymous function as the argument; inside, `f`
+holds that second function, so `f(); f();` prints `drip` twice. The
+runnable one puts functions in a list and calls each one in a loop, then
+tries to call a number; change it and see which values the call accepts.
+
+<Prompts ids={['callable-what', 'class-not-callable']} />
+
+## Running the body
+
+Here is what `callFunction` does with a Drip function, with three pieces
+of bookkeeping left out (a check on the number of arguments, which the
+next chapter is about; the handling of `return`; and a record kept for
+error messages; the two chapters after that show them):
+
+```ts
+const env = new Environment(f.closure);
+const ps = f.decl.params;
+for (let i = 0; i < ps.length; i++)
+  env.define(ps[i].lexeme, args[i]);
+const c = this.executeBlock(
+  f.decl.body, env);
+```
+
+Line 1 makes a brand-new environment whose parent is the function's
+stored `closure`. Lines 2 to 4 walk the parameters, defining each one in
+the new environment and giving it the argument in the same position (the
+first argument goes to the first parameter, and so on). The last line
+runs the body's statements with that environment as the current one,
+through the same `executeBlock` you wrote for blocks in the chapter
+*Environments and scope*, which switches back to the caller's
+environment when the body is done. Step through two calls:
+
+<CallSteps client:visible />
+
+Because every call makes its own environment, two calls never share
+their parameters or their local variables, which is exactly what
+recursion needs: each call of a recursive function gets its own `n`.
+Notice too which environment is the parent: the one where the function
+was *written*, not the one it is called from. That is lexical scope,
+from the chapter *Scope: where a name can be seen*, and this program
+shows it (it prints `global`, because `show`'s calls hang off the
+globals, where `show` was declared, and never see the block's `x`):
+
+```
+fn show() { print x; }
+let x = "global";
+{
+  let x = "local";
+  show();   # global
+}
+```
+
+<Prompts ids={['call-order', 'fresh-env', 'parent-env']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript's functions are objects too<Cite id="mdn-function-object" />;
+Drip's are TypeScript objects holding a `decl` and a `closure`. Look at
+what one call costs here: an `args` array, a new `Environment` with its
+own `Map` inside, and a `define` for each parameter, all before the body
+starts. The chapter *Frames: calling and returning in the VM* shows how
+the bytecode VM makes a call with no maps at all, by giving each call a
+window onto one shared stack.
+</Callout>
+
+## Your turn
+
+The first exercise passes functions around as values; the second is a
+smaller warm-up, for extra practice.
+
+<Exercise id="each" />
+
+<Exercise id="squares" />
+
+## What you learned
+
+- Running `fn` does not run the body: it makes a function value holding
+  the declaration and its environment, and defines the name; an
+  anonymous `fn (x) { ... }` makes the same kind of value with no name.
+- A **callable** is a value a call can run: a Drip function or a native
+  function. Calling anything else is a runtime error, and a class must
+  be made with `new`.
+- A call evaluates the callee, then the arguments, left to right, and
+  only then looks at what the callee is.
+- Calling a Drip function makes a fresh environment whose parent is the
+  function's own, defines the parameters there and runs the body in it.
+
+Next: what happens when a call has the wrong number of arguments, and
+the functions Drip borrows from TypeScript.
+
+
+{/* ── merge: from old chapter 68, Arity and native functions ── */}
+
+## One argument short
+
+The last chapter ended with a call expression that evaluates its callee
+and its arguments and then runs the function. Here is a call that hands
+it too little:
+
+```
+fn area(w, h) {
+  print w * h;
+}
+area(3);
+```
+
+`area` was written to receive two values and `area(3)` gives it one.
+Something has to happen at that call, and a language can choose: it can
+fill the gap with some "nothing" value and carry on (JavaScript's
+choice), or it can stop and say so (Drip's). This chapter is about that
+choice, and then about the few functions, like `len` and `clock`, that
+a Drip program needs but cannot write.
+
+## Arity: the right number of arguments
+
+`area` has two parameters, so `area(3)` leaves `h` with nothing to hold.
+Drip does not guess what you meant; `callFunction` checks before
+anything else:
+
+```ts
+if (args.length !== f.arity)
+  throw new RuntimeError(at,
+    `${f.label} takes ` +
+    plural(f.arity, 'argument') +
+    ` but got ${args.length}`);
+```
+
+`f.arity` is the number of parameters in the declaration, `f.label` is
+the function's name with brackets (`area()`), or `anonymous fn` for one
+without a name, and `plural` writes `1 argument` or `2 arguments`, so
+`area(3)` stops with `area() takes 2 arguments but got 1`. The check
+comes before the new environment is made, so a call with the wrong
+count never runs a single line of the body.
+
+<Analogy title="a recipe that wants two eggs">
+A careful cook reading "beat two eggs" who finds only one in the box
+stops before cracking anything, rather than making half an omelette and
+hoping; the shopping is checked against the recipe first.
+<span slot="breaks">A cook could improvise with one egg; Drip never
+improvises, and it counts only how many arguments there are, not
+whether they are the right kind (a string where a number belongs is
+found later, when the body tries to use it).</span>
+</Analogy>
+
+<Analogy extra title="a table for two">
+A restaurant booking "for two" sets two places; turn up as a group of
+three and the waiter stops you at the door rather than seating you and
+hoping a chair appears, and turn up alone and you are asked whether the
+second guest is coming.
+<span slot="breaks">A restaurant can squeeze in an extra chair or clear
+a place; Drip has no such give, and a call with the wrong count is
+stopped every time, with nothing run at all.</span>
+</Analogy>
+
+Here is the same function called three ways, in Drip and in
+JavaScript:
+
+<Figure caption="One function with two parameters, called with one, two and three arguments. Drip runs only the call that matches its arity; JavaScript runs all three." takeaway="Drip checks the count; JavaScript fills the gaps.">
+  <ArityCompare />
+</Figure>
+
+
+<Callout kind="definition">
+A function's **arity** is the number of arguments it takes; for a Drip
+function it is the number of parameters in its declaration, and each
+native function has a fixed arity of its own. Drip checks arity on
+every call, before the body runs, and a mismatch is a runtime error:
+`area() takes 2 arguments but got 1`.
+</Callout>
+
+<Formal title="When a call may run">
+
+```text
+f = fn (p₁, …, pₙ) { body }
+f(a₁, …, aₘ) runs body  ⟺  m = n
+then  pᵢ ↦ value of aᵢ, for 1 ≤ i ≤ n
+```
+
+<span slot="read">If f is a function with n parameters, the call of f
+with m arguments runs its body exactly when m equals n (the symbol ⟺
+reads "exactly when"). If it does, each parameter number i is given the
+value of argument number i, for every i from 1 to n.</span>
+</Formal>
+
+<Examples of="arity">
+
+```
+fn ping() { print "ok"; }
+ping();   # ok: arity 0, got 0
+```
+
+```
+fn area(w, h) { print w * h; }
+area(3, 4); # 12
+area(3);
+# runtime error: area() takes
+#   2 arguments but got 1
+#   at line 3 in script
+```
+
+```
+let sq = fn (x) { print x * x; };
+sq(2, 3);
+# runtime error: anonymous fn
+#   takes 1 argument but got 2
+#   at line 2 in script
+```
+
+</Examples>
+
+The first shows that zero is an arity like any other: no parameters and
+no arguments, so the call runs. The second puts the call that works
+next to the classic slip, a forgotten argument: the error names the
+function and both counts, and its `at line 3` points at the call that
+forgot, which is where you would want to look (the chapter *Borrowing
+the host's call stack* explains those `at` lines). The third is an anonymous function given
+too many: it has no name, so the message calls it `anonymous fn`, and
+`1 argument` is singular.
+
+JavaScript is far more relaxed. A function does report how many
+parameters it declares, as `f.length`<Cite id="mdn-function-length" />,
+but a call never checks it: a missing argument leaves its parameter
+`undefined`, and extra ones are kept aside where most code never looks
+at them<Cite id="mdn-functions" />. Drip chooses to fail loudly, which
+turns a forgotten argument into an error at the call that forgot it,
+rather than an `undefined` that misbehaves somewhere far away.
+
+<Prompts ids={['arity-what', 'arity-before', 'arity-mismatch', 'js-lenient']} />
+
+## Native functions: help from the host
+
+Some things cannot be written in Drip at all. Drip has no way to read
+the time (no expression or statement asks the outside world anything),
+and a list's length is not something a Drip program can work out by
+itself. So the interpreter defines a few functions in TypeScript and
+puts them in the globals before your program starts:
+
+```ts
+const native = (name, arity, fn) =>
+  this.globals.define(name,
+    new NativeFunction(name, arity, fn));
+native('clock', 0, () =>
+  (performance.now() - this.start) / 1000);
+native('len', 1, ([x], at) => {
+  if (x instanceof DripList)
+    return x.items.length;
+  if (typeof x === 'string')
+    return [...x].length;
+  throw new RuntimeError(at,
+    `len() needs a list or a string, ` +
+    `not ${describe(x)}`);
+});
+```
+
+`native` is a small helper: it makes a `NativeFunction` holding a name,
+an arity and a TypeScript function, and defines it as a global. `clock`
+takes no arguments and returns the seconds since the program started,
+using JavaScript's `performance.now()`, a fine-grained timer that counts
+milliseconds<Cite id="mdn-performance-now" /> (hence the division by
+1000). `len` takes one: for a list it returns how many items it holds,
+for a string how many characters (`[...x]` counts whole Unicode
+characters), and for anything else it throws a runtime error in Drip's
+own words. `push`,
+`pop` and `str` are built the same way. When the call expression meets a
+`NativeFunction`, it checks the arity exactly as it does for a Drip
+function (`len(1, 2)` is `len() takes 1 argument but got 2`) and then
+runs `callee.fn(args, e.paren)`.
+
+
+Step through a call to a native, and notice what is missing compared
+with a call to a Drip function:
+
+<NativeCallSteps client:visible />
+
+No environment is made, no parameters are defined and no Drip statement
+runs: after the arity check, the call hands the argument list straight
+to a TypeScript function, and whatever that function returns becomes
+the value of the call (TypeScript's `null` is Drip's `none`).
+
+<Prompts ids={['native-no-env']} />
+
+<Analogy extra title="a café that buys its bread">
+A small café bakes its own cakes but buys its bread from the bakery down
+the road; on the menu the sandwich looks like everything else, and the
+customer never knows (or needs to know) which parts were made in the
+kitchen.
+<span slot="breaks">The café could learn to bake bread one day; some
+natives, like `clock`, can never be written in Drip, because nothing in
+Drip can reach the outside world.</span>
+</Analogy>
+
+<Analogy extra title="a hotel concierge">
+Guests who cannot leave the hotel can still get theatre tickets: they
+ask at the desk, the concierge goes out into the city, and the tickets
+appear. Natives are the concierge's desk, the one place a Drip program
+can ask for something from the world outside it.
+<span slot="breaks">A concierge might take an hour or say no; a native
+runs at once, and it fails only in the ways its TypeScript code was
+written to fail, with a message in Drip's words.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **native function** is a callable written in the host language (here
+TypeScript) rather than in the language being run. Natives are how a
+language reaches anything outside itself, such as the clock, files or
+the screen, and how it offers operations that would be slow or
+impossible to write in the language itself. Drip has five: `clock`,
+`len`, `push`, `pop` and `str`; `print len;` shows `native fn len`.
+</Callout>
+
+<Examples of="native-function">
+
+```
+print len([4, 8, 15]); # 3
+print len("drip");     # 4
+```
+
+```
+let xs = [];
+push(xs, "a");
+push(xs, "b");
+print pop(xs);  # b
+print xs;       # ["a"]
+print len(7);
+# runtime error: len() needs a
+#   list or a string, not a number
+#   at line 6 in script
+```
+
+<Run id="timing" />
+
+</Examples>
+
+The first asks `len` about a list of three numbers and a string of four
+characters. The second grows a list with `push`, takes the last item
+back off with `pop` (which returns it, so `print` shows `b`), prints
+what is left, and then hands `len` a number, which the TypeScript code
+rejects with a message written in Drip's terms. The runnable one times a
+loop with `clock`: it reads the clock, does some work, and prints the
+difference (your number will vary from run to run, which the
+benchmarking chapters had a lot to say about).
+
+<Prompts ids={['native-what', 'native-why', 'five-natives']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript's functions carry their parameter count as
+`length`<Cite id="mdn-function-object" />, which a call never consults;
+Drip compares `arity` on every call. A native call is also cheaper than
+a Drip call here, because it skips the new `Environment` and its `Map`.
+</Callout>
+
+## Your turn
+
+<Exercise id="callValue" />
+
+<Exercise id="sumAll" />
+
+## What you learned
+
+- A function's **arity** is how many arguments it takes. Drip checks it
+  before every call and stops with `area() takes 2 arguments but got 1`
+  (or `anonymous fn takes ...`); nothing in the body runs.
+- JavaScript never checks: a missing argument is `undefined` and an
+  extra one is ignored.
+- A **native function** is written in the host language. Drip has five,
+  `clock`, `len`, `push`, `pop` and `str`, defined as globals before the
+  program starts.
+- Calling a native checks its arity and runs its TypeScript code
+  directly, with no Drip environment; its errors are written in Drip's
+  words.
+
+Next: `return`, and how the interpreter gets out from deep inside a
+function's body in one move.
+
+<Quiz />

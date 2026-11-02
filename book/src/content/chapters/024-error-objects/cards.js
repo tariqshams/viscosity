@@ -1,5 +1,5 @@
-// Chapter 24 cards (split from chapter 23). Keys are stable ids:
-// never rename them.
+// Chapter 24 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'error-props': {
@@ -242,8 +242,7 @@ function expectDigit(s, i) {
   attempt: {
     optional: true,
     title: 'Turn a throw into a value',
-    prompt:
-      'Write `attempt(f)`. It calls the function `f` with no arguments. If `f` returns a value `v`, `attempt` returns `{ ok: true, value: v }`. If `f` throws an Error, `attempt` returns `{ ok: false, error: message }`, where `message` is the error’s message. `attempt` itself must never throw.',
+    prompt: 'Write `attempt(f)`. It calls the function `f` with no arguments. If `f` returns a value `v`, `attempt` returns `{ ok: true, value: v }`. If `f` throws an Error, `attempt` returns `{ ok: false, error: message }`, where `message` is the error’s message. `attempt` itself must never throw.',
     starter: `function attempt(f) {
   // your code here
 }
@@ -343,28 +342,67 @@ export const quiz = [
   {
     q: 'You `throw \'oops\'` (a string) and catch it as `e`. What is `e.message`?',
     options: [
-      { t: '`undefined`', correct: true, why: '`e` is the string itself, and strings have no `message` property. That’s why we throw Error objects.' },
-      { t: '`\'oops\'`', why: 'Only Error objects have a `message`; `e` here is just a string.' },
-      { t: '`\'Error\'`', why: 'That would be the `name` of an Error object; this is a plain string.' },
-      { t: 'It throws a second error', why: 'Reading a missing property gives `undefined`, it doesn’t throw.' },
+      {
+        t: '`undefined`',
+        correct: true,
+        why: '`e` is the string itself, and strings have no `message` property. That’s why we throw Error objects.',
+      },
+      {
+        t: '`\'oops\'`',
+        why: 'Only Error objects have a `message`; `e` here is just a string.',
+      },
+      {
+        t: '`\'Error\'`',
+        why: 'That would be the `name` of an Error object; this is a plain string.',
+      },
+      {
+        t: 'It throws a second error',
+        why: 'Reading a missing property gives `undefined`, it doesn’t throw.',
+      },
     ],
   },
   {
     q: 'What does `e instanceof ParseError` let a `catch` block do?',
     options: [
-      { t: 'Make the error stop unwinding', why: 'Being inside `catch` already did that.' },
-      { t: 'Handle parse errors and rethrow other kinds', correct: true, why: 'It tells the kinds of error apart, so the `catch` only deals with the ones it understands.' },
-      { t: 'Print the stack trace', why: '`instanceof` only checks which class made an object.' },
-      { t: 'Convert the error to a string', why: 'It returns `true` or `false`.' },
+      {
+        t: 'Make the error stop unwinding',
+        why: 'Being inside `catch` already did that.',
+      },
+      {
+        t: 'Handle parse errors and rethrow other kinds',
+        correct: true,
+        why: 'It tells the kinds of error apart, so the `catch` only deals with the ones it understands.',
+      },
+      {
+        t: 'Print the stack trace',
+        why: '`instanceof` only checks which class made an object.',
+      },
+      {
+        t: 'Convert the error to a string',
+        why: 'It returns `true` or `false`.',
+      },
     ],
   },
   {
     q: '`a()` calls `b()`, which calls `c()`, which throws. Only `a` has a `try/catch` around its call to `b`. What happens?',
     options: [
-      { t: '`c` returns `undefined` to `b`', why: 'A throw never returns. `c`’s frame is popped without producing a value.' },
-      { t: 'The program stops, because `c` has no `catch`', why: 'The error keeps unwinding until it finds a `try`, and `a` has one.' },
-      { t: '`b` catches it automatically', why: 'Only code inside a `try` catches errors.' },
-      { t: '`c` and `b` are popped without finishing, and `a`’s `catch` runs', correct: true, why: 'The error propagates down the stack to the nearest `try`.' },
+      {
+        t: '`c` returns `undefined` to `b`',
+        why: 'A throw never returns. `c`’s frame is popped without producing a value.',
+      },
+      {
+        t: 'The program stops, because `c` has no `catch`',
+        why: 'The error keeps unwinding until it finds a `try`, and `a` has one.',
+      },
+      {
+        t: '`b` catches it automatically',
+        why: 'Only code inside a `try` catches errors.',
+      },
+      {
+        t: '`c` and `b` are popped without finishing, and `a`’s `catch` runs',
+        correct: true,
+        why: 'The error propagates down the stack to the nearest `try`.',
+      },
     ],
   },
   {
@@ -381,18 +419,41 @@ try { b(); }
 catch (e) { console.log(e.message); }
 \`\`\``,
     options: [
-      { t: '`f`, then `x`', correct: true, why: '`b` has no `catch`, but its `finally` runs as the error passes; then the outer `catch` prints the message.' },
-      { t: '`x`, then `f`', why: 'The `finally` in `b` runs first, on the error’s way out of `b`.' },
-      { t: '`x` only', why: 'A `finally` block runs even while an error is unwinding.' },
+      {
+        t: '`f`, then `x`',
+        correct: true,
+        why: '`b` has no `catch`, but its `finally` runs as the error passes; then the outer `catch` prints the message.',
+      },
+      {
+        t: '`x`, then `f`',
+        why: 'The `finally` in `b` runs first, on the error’s way out of `b`.',
+      },
+      {
+        t: '`x` only',
+        why: 'A `finally` block runs even while an error is unwinding.',
+      },
     ],
   },
   {
     q: 'Why does a parser usually throw an error on bad input, rather than return a special value?',
     options: [
-      { t: 'Throwing is faster than returning', why: 'Speed isn’t the reason, and throwing is usually not faster.' },
-      { t: 'JavaScript functions can’t return objects', why: 'They can return anything.' },
-      { t: 'The problem is noticed deep in recursive calls, and a throw carries it straight to the code that reports it', correct: true, why: 'Every function in between would otherwise have to check for and pass along the special value.' },
-      { t: 'Return values can’t contain strings', why: 'They can.' },
+      {
+        t: 'Throwing is faster than returning',
+        why: 'Speed isn’t the reason, and throwing is usually not faster.',
+      },
+      {
+        t: 'JavaScript functions can’t return objects',
+        why: 'They can return anything.',
+      },
+      {
+        t: 'The problem is noticed deep in recursive calls, and a throw carries it straight to the code that reports it',
+        correct: true,
+        why: 'Every function in between would otherwise have to check for and pass along the special value.',
+      },
+      {
+        t: 'Return values can’t contain strings',
+        why: 'They can.',
+      },
     ],
   },
 ];

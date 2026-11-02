@@ -1,0 +1,271 @@
+---
+n: 169
+day: 1
+part: X
+title: 'Finite automata'
+tagline: 'A regular expression says which strings are allowed. A finite automaton is the machine that checks: it reads one character at a time, never looks back, and remembers nothing but which circle it is standing in.'
+objectives:
+  - Draw a finite automaton as a state diagram, and write the same machine as a table.
+  - Run a DFA on a string by hand, one character at a time, and say whether it accepts.
+  - Explain what an accepting state is, and how a scanner uses one to find the longest token.
+  - Write the function that runs any DFA from its table.
+introduces: [finite-automaton, dfa, accepting-state]
+uses: [regular-expression, regex-operators, regular-language, scanner, lookahead, maximal-munch, literal, token, lexeme, drip, object, property, bracket-access, for-of, array, function, return, undefined, strings, if, comparison, console-log]
+sources: [rabinscott1959, hmu2006, aho2006]
+---
+import NumberDfa from '../../../components/diagrams/ch169/NumberDfa';
+import DfaRunSteps from '../../../components/diagrams/ch169/DfaRunSteps';
+
+## Checking without looking back
+
+The last chapter wrote Drip's number rule as a pattern,
+`digit digit* (. digit digit*|ε)`. A pattern is a description, though,
+not a program; it does not say *how* to check that `12.5` fits it. You
+could try every way of splitting the string against every part of the
+pattern, but that sounds slow, and a scanner reads every character of
+every program you will ever run, so it needs something better: a way to
+decide by reading each character exactly once, left to right, while
+remembering as little as possible.
+
+Look at what Drip's number loop from *Numbers and strings* actually remembers. It
+never keeps a list of characters it has seen; at any moment it only
+knows which *part* of a number it is in: nothing read yet, the whole
+part, a dot with no digit after it yet, or the fraction. Four
+situations, and each new character moves it from one to another. That
+small idea is the whole of this chapter.
+
+<Analogy title="a board game">
+Picture a board with a few squares joined by arrows, each arrow marked
+with a card ("digit", "dot"). You stand on the start square, turn over
+the next card, and follow the arrow it names; some squares are painted
+gold. When the cards run out, you win if you are standing on gold.
+<span slot="breaks">In a board game you often choose where to move; in
+this machine each square has at most one arrow for each card, so there
+is never a choice. If there is no arrow for your card at all, you are
+out of the game at once.</span>
+</Analogy>
+
+<Analogy extra title="a door keypad">
+A door keypad with the code 1-9-8-4 does not keep a record of every key
+pressed; it only remembers how far along the code you are ("two right so
+far"). Each key press moves that one number on, or back to the
+beginning, and the door opens only in the "all four right" situation.
+<span slot="breaks">A keypad usually starts again after a wrong key, so
+you can keep trying; the machines in this chapter usually stop for good
+at a wrong character, which is what a scanner wants.</span>
+</Analogy>
+
+## States and arrows
+
+Here is that four-situation memory drawn as a machine. Each circle is a
+**state**; each arrow is a **transition**, labelled with what it reads.
+The arrow coming from nowhere marks the start state, and a double ring
+marks a state where it is fine to stop.
+
+<Figure takeaway="A DFA is a few states, one arrow per character from each, and some states marked as good places to finish." caption="Drip's number rule as a DFA. S is the start; I is the whole part, D a dot with no fraction yet, and F the fraction. The table below says the same thing: find the row for where you are and the column for what you read. A dash means there is no arrow.">
+  <NumberDfa />
+</Figure>
+
+Step through it reading `12.5`, and then `4.`:
+
+<DfaRunSteps client:visible />
+
+<Callout kind="definition">
+A **finite automaton** is a machine with a finite set of **states**,
+one of which is the **start state**. It reads its input one character
+at a time, and each character moves it along a **transition** from its
+current state to another (or the same) state. In a **DFA**
+(*deterministic* finite automaton), every state has **at most one**
+transition for each character, so the next state is never in doubt; a
+missing transition means the input is rejected.
+</Callout>
+
+The word *finite* is the important one: however long the input, the
+machine's memory is one of the same few states. That is why it can run
+in a single pass with no extra space, and also why it cannot count
+without limit (the language of the last chapter's backreference example
+needs unbounded counting, so no DFA accepts it).
+
+In code, a DFA's table is an object of objects: the outer key is the
+state, the inner key is the character class, and the value is the next
+state. Running it is one loop:
+
+```js
+const NUM = {
+  start: 'S',
+  accept: ['I', 'F'],
+  next: {
+    S: { d: 'I' },
+    I: { d: 'I', '.': 'D' },
+    D: { d: 'F' },
+    F: { d: 'F' },
+  },
+};
+const cls = (c) =>
+  c >= '0' && c <= '9' ? 'd' : c;
+
+function run(dfa, s) {
+  let q = dfa.start;
+  for (const c of s) {
+    q = dfa.next[q][cls(c)];
+    if (q === undefined) return false;
+  }
+  return dfa.accept.includes(q);
+}
+```
+
+`NUM` is the picture as data: `start` names the start state, `accept`
+lists the double rings, and `next.I['.']` is `'D'`, the arrow from I
+labelled dot. `cls` turns any digit into the one class name `'d'`, so
+the table needs one column for all ten digits. Inside `run`, `q` is the
+current state; for each character, the table gives the next state, and
+when there is no entry, `dfa.next[q][...]` is `undefined`, so the
+string is rejected on the spot. When the input ends, the answer is
+whether `q` is an accepting state.
+
+<Examples of="finite-automaton dfa">
+
+```text
+start A --a--> B --b--> C (accepting)
+accepts exactly "ab"
+```
+
+```text
+E (start, accepting) --a--> O
+O --a--> E
+accepts "", "aa", "aaaa", ...
+```
+
+<Run id="number-dfa" />
+
+</Examples>
+
+The first is the smallest interesting DFA: a chain of states that
+accepts one string, which is what every keyword looks like to a
+machine. The second has a cycle, and its two states mean "even number of
+`a`s so far" and "odd so far"; it accepts the empty string because its
+start state is accepting, and it shows a DFA remembering a fact about an
+unlimited input with only two states. The runnable one is the number
+machine above; try `'007'`, `'.5'` and `'1.2.3'`.
+
+<Prompts ids={['state-what', 'dfa-one-arrow', 'missing-arrow', 'why-finite']} />
+
+<Formal title="A DFA as five things">
+
+```text
+M = (Q, Σ, δ, q₀, F)
+δ : Q × Σ → Q
+δ*(q, "")  = q
+δ*(q, wa) = δ(δ*(q, w), a)
+M accepts w  ⟺  δ*(q₀, w) ∈ F
+```
+
+<span slot="read">A DFA M is five things: a finite set of states Q, an
+alphabet Σ (sigma), a transition function δ (delta), a start state q
+nought, and a set F of accepting states. δ takes a state and a character
+and gives the next state. δ star runs a whole string: on the empty
+string it stays put, and on w followed by one more character a, it runs
+w and then takes one more step on a. M accepts w exactly when running w
+from the start ends inside F.</span>
+</Formal>
+
+(In the strict textbook form, δ gives an answer for *every* state and
+character; our missing table entries all go to an invisible **dead
+state**, a non-accepting state whose arrows all point back to itself,
+so once you are in it you can never get out<Cite id="hmu2006" />.)
+
+## Where it is fine to stop
+
+<Callout kind="definition">
+An **accepting state** (also called a *final* state) is a state where
+the input read so far is a match. A finite automaton **accepts** a
+string when, after reading all of it, it is in an accepting state; the
+set of all strings it accepts is its language.
+</Callout>
+
+Being *in* an accepting state is not the same as being finished. In the
+number machine, I is accepting, so `12` is a number; but reading on can
+leave I and come back to accepting later, as `12.5` does, or leave it
+for good, as `12.` does. A scanner uses this to apply maximal munch
+(from *Lookahead and maximal munch*): it keeps running the machine and remembers the **last
+position where it was in an accepting state**; when the machine gets
+stuck, the token is everything up to that position.
+
+<Examples of="accepting-state">
+
+```text
+"12"  ends in I (accepting): yes
+"12." ends in D: no
+""    ends in S: no
+```
+
+```text
+even-a machine on "": ends in E,
+which is accepting, so "" is accepted
+```
+
+```text
+scan "1..5": accepting after "1",
+stuck at the second "." in D, so
+the token is "1", then ".." is next
+```
+
+</Examples>
+
+The first group shows that it is the *last* state that decides: `12` and
+`12.` share their first two steps, and the empty string never leaves S.
+The second is the one case people forget: a machine whose start state is
+accepting accepts the empty string. The third is a real scanner
+situation, because Drip writes a range of numbers as `1..5`: the
+longest accepted piece of `1..5` is `1`, so the scanner makes the number
+`1` and starts again at the first dot, where the two dots become Drip's
+`..` operator. A scanner that insisted on finishing in an accepting
+state would find no number here at all.
+
+Here is the slip that makes a scanner cut numbers short:
+
+```js
+// wrong: stops at the first accept
+if (accept.includes(q)) return i;
+// right: remember it, keep reading
+if (accept.includes(q)) last = i;
+```
+
+Returning as soon as the machine is in an accepting state would turn
+`4.25` into the token `4`, since I is accepting after one digit;
+remembering the position and reading on finds `4.25`.
+
+<Prompts ids={['accept-what', 'empty-accepted', 'last-accept', 'dead-state']} />
+
+<Callout kind="engine" label="Under the hood">
+Michael Rabin and Dana Scott set out the theory of finite automata in
+1959, in the paper that also introduced the nondeterministic machines of
+the next chapter<Cite id="rabinscott1959" />. The scanner you wrote by
+hand in *Writing a scanner* and *Numbers and strings* is a DFA in disguise: deciding what the
+first character begins picks a state, each loop that keeps taking
+digits is a self-loop arrow, and looking one character past the dot
+before taking it is how it avoids getting stuck in D. Chapter 3 of the classic compilers textbook by Aho, Lam, Sethi and Ullman develops this same machinery for
+scanners<Cite id="aho2006" />, and the next two chapters show how a
+program can build such machines from patterns automatically.
+</Callout>
+
+## Your turn
+
+<Exercise id="run-dfa" />
+
+<Exercise id="longest" />
+
+## What you learned
+
+- A **finite automaton** has a finite set of states, a start state and
+  labelled transitions, and reads its input one character at a time.
+- In a **DFA**, each state has at most one transition per character; a
+  missing one means reject (or, strictly, a move to a dead state).
+- An **accepting state** marks "the input so far is a match"; a string
+  is accepted if the machine ends in one, and a scanner finds the
+  longest token by remembering the last accepting position.
+
+Next: machines that are allowed to guess, and why that makes building
+them from patterns much easier.
+
+<Quiz />

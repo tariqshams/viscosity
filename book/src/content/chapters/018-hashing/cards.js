@@ -1,5 +1,5 @@
-// Cards for the chapter 18 (hashing).
-// Keys are stable ids: never rename them.
+// Chapter 18 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'linear-worst': {
@@ -210,8 +210,7 @@ function add(t, k) {
   bucketSizes: {
     optional: true,
     title: 'How evenly do keys spread?',
-    prompt:
-      'Write `bucketSizes(keys, B)`. It returns an array of `B` numbers: how many of the whole numbers in `keys` land in each bucket, using `k % B` as the bucket. For example `bucketSizes([1, 2, 3, 4], 2)` is `[2, 2]`, and `bucketSizes([0, 4, 8, 12], 4)` is `[4, 0, 0, 0]`: a very uneven spread.',
+    prompt: 'Write `bucketSizes(keys, B)`. It returns an array of `B` numbers: how many of the whole numbers in `keys` land in each bucket, using `k % B` as the bucket. For example `bucketSizes([1, 2, 3, 4], 2)` is `[2, 2]`, and `bucketSizes([0, 4, 8, 12], 4)` is `[4, 0, 0, 0]`: a very uneven spread.',
     starter: `function bucketSizes(keys, B) {
   // your code here
 }
@@ -292,46 +291,111 @@ export const quiz = [
   {
     q: 'A loop searches an unsorted array of 1000 names for one that is **not** there. How many names does it compare?',
     options: [
-      { t: '1', why: 'It cannot know the name is missing until it has looked everywhere.' },
-      { t: 'About 10', why: 'There is no shortcut in an unsorted array.' },
-      { t: 'All 1000', correct: true, why: 'Every slot has to be checked before it can say "not found".' },
-      { t: '500', why: 'That is the average when the name is there; a missing name needs every slot.' },
+      {
+        t: '1',
+        why: 'It cannot know the name is missing until it has looked everywhere.',
+      },
+      {
+        t: 'About 10',
+        why: 'There is no shortcut in an unsorted array.',
+      },
+      {
+        t: 'All 1000',
+        correct: true,
+        why: 'Every slot has to be checked before it can say "not found".',
+      },
+      {
+        t: '500',
+        why: 'That is the average when the name is there; a missing name needs every slot.',
+      },
     ],
   },
   {
     q: 'With the toy hash `key.length % 4`, which bucket does `\'green\'` go in?',
     options: [
-      { t: '1', correct: true, why: '`\'green\'` has 5 letters, and `5 % 4` is 1.' },
-      { t: '5', why: 'There are only buckets 0 to 3; the `% 4` brings 5 down to 1.' },
-      { t: '0', why: 'That is where four-letter keys go.' },
-      { t: '4', why: '`% 4` never gives 4: the remainders are 0, 1, 2 and 3.' },
+      {
+        t: '1',
+        correct: true,
+        why: '`\'green\'` has 5 letters, and `5 % 4` is 1.',
+      },
+      {
+        t: '5',
+        why: 'There are only buckets 0 to 3; the `% 4` brings 5 down to 1.',
+      },
+      {
+        t: '0',
+        why: 'That is where four-letter keys go.',
+      },
+      {
+        t: '4',
+        why: '`% 4` never gives 4: the remainders are 0, 1, 2 and 3.',
+      },
     ],
   },
   {
     q: 'What is a collision?',
     options: [
-      { t: 'Two entries with the same key', why: 'A table keeps each key once; a collision is about different keys.' },
-      { t: 'A lookup for a missing key', why: 'That simply finds nothing.' },
-      { t: 'A hash function that gives random numbers', why: 'That is a broken hash function, a different problem.' },
-      { t: 'Two different keys that hash to the same bucket', correct: true, why: 'They share the bucket, and a lookup checks each entry there.' },
+      {
+        t: 'Two entries with the same key',
+        why: 'A table keeps each key once; a collision is about different keys.',
+      },
+      {
+        t: 'A lookup for a missing key',
+        why: 'That simply finds nothing.',
+      },
+      {
+        t: 'A hash function that gives random numbers',
+        why: 'That is a broken hash function, a different problem.',
+      },
+      {
+        t: 'Two different keys that hash to the same bucket',
+        correct: true,
+        why: 'They share the bucket, and a lookup checks each entry there.',
+      },
     ],
   },
   {
     q: 'A hash function sometimes gives a different bucket for the same key. What goes wrong?',
     options: [
-      { t: 'Nothing, as long as the buckets are spread evenly', why: 'Spread does not matter if the key cannot be found again.' },
-      { t: 'A key can be stored in one bucket and looked for in another, so it seems missing', correct: true, why: 'Storing and finding must work out the same bucket.' },
-      { t: 'The table throws an error', why: 'There is no error message, which is what makes it hard to spot.' },
-      { t: 'Lookups become slower but still correct', why: 'They become wrong, not slower.' },
+      {
+        t: 'Nothing, as long as the buckets are spread evenly',
+        why: 'Spread does not matter if the key cannot be found again.',
+      },
+      {
+        t: 'A key can be stored in one bucket and looked for in another, so it seems missing',
+        correct: true,
+        why: 'Storing and finding must work out the same bucket.',
+      },
+      {
+        t: 'The table throws an error',
+        why: 'There is no error message, which is what makes it hard to spot.',
+      },
+      {
+        t: 'Lookups become slower but still correct',
+        why: 'They become wrong, not slower.',
+      },
     ],
   },
   {
     q: '1000 keys are spread evenly over 4 buckets. What does that mean for lookups, and what helps?',
     options: [
-      { t: 'Each bucket holds about 250 keys, so lookups are slow; more buckets help', correct: true, why: 'About n / B entries per bucket: with more buckets, each bucket is shorter.' },
-      { t: 'Lookups are instant whatever the number of buckets', why: 'Each lookup still searches its bucket, and these buckets are long.' },
-      { t: 'Nothing can help: hash tables are always slow', why: 'Adding buckets keeps each bucket short.' },
-      { t: 'Fewer buckets would help', why: 'Fewer buckets means longer buckets.' },
+      {
+        t: 'Each bucket holds about 250 keys, so lookups are slow; more buckets help',
+        correct: true,
+        why: 'About n / B entries per bucket: with more buckets, each bucket is shorter.',
+      },
+      {
+        t: 'Lookups are instant whatever the number of buckets',
+        why: 'Each lookup still searches its bucket, and these buckets are long.',
+      },
+      {
+        t: 'Nothing can help: hash tables are always slow',
+        why: 'Adding buckets keeps each bucket short.',
+      },
+      {
+        t: 'Fewer buckets would help',
+        why: 'Fewer buckets means longer buckets.',
+      },
     ],
   },
 ];

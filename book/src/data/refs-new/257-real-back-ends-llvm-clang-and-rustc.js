@@ -1,4 +1,4 @@
-// New references for chapter 257 and its staged second half, 241-b.
+// New references for chapter 252 and its staged second half, 241-b.
 // Checked 2026-11-02 by reading the raw source files named in each
 // checkedAgainst from GitHub (raw.githubusercontent.com). llvm-project main
 // was at f255ebf7065421c90112640aee4bc669a8b2001e and release/18.x at
@@ -18,7 +18,7 @@ export default [
     url: 'https://llvm.org/docs/LangRef.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/docs/LangRef.md, read on 2026-11-02: Abstract (“LLVM is a Static Single Assignment (SSA) based representation that provides type safety, low-level operations, flexibility, and the capability of representing ‘all’ high-level languages cleanly”); Introduction (three equivalent forms: in-memory compiler IR, on-disk bitcode, human-readable assembly); Well-Formedness (“%x = add i32 1, %x” is syntactically okay but not well formed “because the definition of %x does not dominate all of its uses”, and a verification pass checks this); Identifiers (global identifiers begin with @, local ones with %); the add/sub/mul entries (“nuw and nsw stand for No Unsigned Wrap and No Signed Wrap”); Integer Type (“Any bit width from 1 bit to 2^23 (about 8 million) can be specified”). The IR quoted in the chapter is clang 18.1.3 output.',
-    shaped: 'Chapter 257: what LLVM IR is, its syntax, its well-formedness rule, and the nsw and nuw flags.',
+    shaped: 'Chapter 252: what LLVM IR is, its syntax, its well-formedness rule, and the nsw and nuw flags.',
   },
   {
     id: 'llvm-passes-loops',
@@ -30,7 +30,7 @@ export default [
     url: 'https://llvm.org/docs/Passes.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/docs/Passes.md, read on 2026-11-02: sroa breaks up allocas and, if possible, “transforms the individual alloca instructions into nice clean scalar SSA form”; mem2reg promotes allocas with only loads and stores, using dominance frontiers (“the standard SSA construction algorithm”); indvars: “Any use outside of the loop of an expression derived from the indvar is changed to compute the derived value outside of the loop … If the only purpose of the loop is to compute the exit value of some derived expression, this transformation will make the loop dead”; loop-deletion eliminates loops “with non-infinite computable trip counts that have no side effects … and do not contribute to the computation of the function’s return value”; loop-rotate; instcombine. The order in which these passes changed sumsq was observed with opt 18.1.3 -passes=default<O2> -print-changed (110 pass runs printed, 16 of them changed the IR), and the final formula was checked against the loop for n = 0 to 2999.',
-    shaped: 'Chapter 257: the passes that turn sumsq’s -O0 IR into SSA and then replace its loop with a formula.',
+    shaped: 'Chapter 252: the passes that turn sumsq’s -O0 IR into SSA and then replace its loop with a formula.',
   },
   {
     id: 'llvm-new-pm-pass',
@@ -42,7 +42,7 @@ export default [
     url: 'https://llvm.org/docs/WritingAnLLVMNewPMPass.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/docs/WritingAnLLVMNewPMPass.md, read on 2026-11-02: passes under the new pass manager “rely on concept-based polymorphism”; the pass “should have a run() method which returns a PreservedAnalyses and takes in some unit of IR along with an analysis manager”, e.g. PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM); the HelloWorld example registered with FUNCTION_PASS and run with opt -disable-output -passes=helloworld. (On main the mix-in is now called OptionalPassInfoMixin or RequiredPassInfoMixin; the chapter avoids naming it.)',
-    shaped: 'Chapter 257: what an LLVM pass is and what its run method returns.',
+    shaped: 'Chapter 252: what an LLVM pass is and what its run method returns.',
   },
   {
     id: 'llvm-codegen',
@@ -54,7 +54,7 @@ export default [
     url: 'https://llvm.org/docs/CodeGenerator.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/docs/CodeGenerator.md, read on 2026-11-02: “The high-level design of the code generator” (seven stages: instruction selection, scheduling and formation, SSA-based machine code optimizations, register allocation, prolog/epilog code insertion, late machine code optimizations, code emission; virtual registers in SSA form until register allocation); “SelectionDAG Instruction Selection Process” (build the initial DAG, optimize, legalize types, optimize, legalize operations, optimize, select, schedule and form); “Built in register allocators” (Fast, “the default for debug builds”; Basic; Greedy, “The default allocator … incorporates global live range splitting”; PBQP; chosen with llc -regalloc=). The page’s own example llc -regalloc=linearscan was tried with llc 18.1.3, which answers “Cannot find option named ‘linearscan’”.',
-    shaped: 'Chapter 257-b: the shape of LLVM’s code generator, SelectionDAG’s phases and the register allocators.',
+    shaped: 'Chapter 252-b: the shape of LLVM’s code generator, SelectionDAG’s phases and the register allocators.',
   },
   {
     id: 'llvm-globalisel',
@@ -66,7 +66,7 @@ export default [
     url: 'https://llvm.org/docs/GlobalISel/index.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/docs/GlobalISel/index.md and .../GlobalISel/Pipeline.md, read on 2026-11-02: GlobalISel is “intended to be a replacement for SelectionDAG and FastISel”, working directly on MIR (no separate DAG IR) and on the whole function rather than one block; the core pipeline IRTranslator (LLVM IR to generic MIR), Legalizer, RegBankSelect and InstructionSelect. The chapter’s GlobalISel run is llc 18.1.3 -global-isel -global-isel-abort=1 on RISC-V (no fallback to SelectionDAG) and -stop-after=irtranslator.',
-    shaped: 'Chapter 257-b: GlobalISel, its four passes, and its generic MIR.',
+    shaped: 'Chapter 252-b: GlobalISel, its four passes, and its generic MIR.',
   },
   {
     id: 'llvm-riscv-split-regalloc',
@@ -78,7 +78,7 @@ export default [
     url: 'https://github.com/llvm/llvm-project/blob/release/18.x/llvm/lib/Target/RISCV/RISCVTargetMachine.cpp',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/release/18.x/llvm/lib/Target/RISCV/RISCVTargetMachine.cpp, read on 2026-11-02: the option riscv-split-regalloc, “Enable Split RegisterAlloc for RVV”, on by default, with a filter onlyAllocateRVVReg that lets the first allocator run take only vector register classes. This explains why llc 18.1.3 -debug-pass=Structure lists “Greedy Register Allocator” twice for a RISC-V function.',
-    shaped: 'Chapter 257-b: why the RISC-V pass list runs the register allocator twice.',
+    shaped: 'Chapter 252-b: why the RISC-V pass list runs the register allocator twice.',
   },
   {
     id: 'clang-internals',
@@ -90,7 +90,7 @@ export default [
     url: 'https://clang.llvm.org/docs/InternalsManual.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/clang/docs/InternalsManual.md and .../DriverInternals.md, read on 2026-11-02: the Lexer and Preprocessor library; the Parser library, “a recursive-descent parser that polls tokens from the preprocessor”, which always talks to Sema; the Sema library, called by the parser “to do semantic analysis of the input. For valid programs, Sema builds an AST”; the CodeGen library “takes an AST as input and produces LLVM IR code from it”; the driver’s -ccc-print-phases example (input, preprocessor, compiler, assembler, linker). clang 18.1.3 -ccc-print-phases was run on the chapter’s sumsq.c for --target=riscv64.',
-    shaped: 'Chapter 257-b: how clang is put together, from driver to LLVM IR.',
+    shaped: 'Chapter 252-b: how clang is put together, from driver to LLVM IR.',
   },
   {
     id: 'rustc-dev-guide-overview',
@@ -102,7 +102,7 @@ export default [
     url: 'https://rustc-dev-guide.rust-lang.org/overview.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/rust-lang/rustc-dev-guide/main/src/overview.md, read on 2026-11-02: the AST is lowered to HIR, “a more compiler-friendly representation of the AST” (with desugaring of loops and async fn); type inference, trait solving and type checking on HIR; THIR, “an even more desugared HIR used for pattern and exhaustiveness checking”; MIR, “basically a Control-Flow Graph”, used for borrow checking and optimisations while still generic; monomorphization collection at the MIR level; codegen converts MIR to LLVM IR (“This is where the MIR is actually monomorphized”); the query system. The MIR quoted in the chapter is rustc 1.97.0 --emit=mir output.',
-    shaped: 'Chapter 257-b: rustc’s stages and IRs, from AST through HIR, THIR and MIR to LLVM IR.',
+    shaped: 'Chapter 252-b: rustc’s stages and IRs, from AST through HIR, THIR and MIR to LLVM IR.',
   },
   {
     id: 'rustc-dev-guide-codegen',
@@ -114,7 +114,7 @@ export default [
     url: 'https://rustc-dev-guide.rust-lang.org/backend/codegen.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/rust-lang/rustc-dev-guide/main/src/backend/codegen.md, read on 2026-11-02: “Usually, rustc uses LLVM for code generation, but there is also support for Cranelift and GCC. The key is that rustc doesn’t implement codegen itself.”; the benefits of LLVM (no backend to write, its optimisations, its many platforms).',
-    shaped: 'Chapter 257-b: rustc’s code-generation back ends.',
+    shaped: 'Chapter 252-b: rustc’s code-generation back ends.',
   },
   {
     id: 'rustc-codegen-cranelift',
@@ -126,6 +126,6 @@ export default [
     url: 'https://github.com/rust-lang/rustc_codegen_cranelift',
     accessed: '2026-11-02',
     checkedAgainst: 'Readme.md at commit 74bc4c2cc696bbb7499bb6104e872314d590a8ed, read raw on 2026-11-02: “an alternative codegen backend for the rust compiler based on Cranelift. This has the potential to improve compilation times in debug mode.”; it is distributed in nightly builds as the rustup component rustc-codegen-cranelift-preview and enabled with -Zcodegen-backend. The writing session’s stable rustc 1.97.0 did not have the component, so no Cranelift output is shown.',
-    shaped: 'Chapter 257-b: rustc’s Cranelift back end, what it is for and how it is enabled.',
+    shaped: 'Chapter 252-b: rustc’s Cranelift back end, what it is for and how it is enabled.',
   },
 ];

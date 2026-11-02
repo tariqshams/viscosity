@@ -1,4 +1,5 @@
-// Chapter 32 cards. Keys are stable ids: never rename them.
+// Chapter 32 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'test-what': {
@@ -73,8 +74,7 @@ test('double 0', () => {
 export const exercises = {
   check: {
     title: 'Write your own assertion',
-    prompt:
-      'Write `check(got, want)`, the heart of `toBe`. If `got === want`, return `true`. Otherwise **throw** an `Error` whose message is exactly `expected WANT, got GOT`, for example `expected 2, got 1`.',
+    prompt: 'Write `check(got, want)`, the heart of `toBe`. If `got === want`, return `true`. Otherwise **throw** an `Error` whose message is exactly `expected WANT, got GOT`, for example `expected 2, got 1`.',
     starter: `function check(got, want) {
   // your code here
 }
@@ -160,8 +160,7 @@ test('uses === (identity) for objects', () => {
   sameItems: {
     optional: true,
     title: 'Your own toEqual for lists',
-    prompt:
-      'Write `sameItems(a, b)` for two arrays of numbers or strings. If they have the same length and `a[i] === b[i]` at every index, return `true`. Otherwise throw an `Error` with the message `different at index I`, where `I` is the first index that differs, or `different lengths` if the lengths differ.',
+    prompt: 'Write `sameItems(a, b)` for two arrays of numbers or strings. If they have the same length and `a[i] === b[i]` at every index, return `true`. Otherwise throw an `Error` with the message `different at index I`, where `I` is the first index that differs, or `different lengths` if the lengths differ.',
     starter: `function sameItems(a, b) {
   // your code here
 }
@@ -254,18 +253,41 @@ export const quiz = [
   {
     q: 'A test calls `expect(add(2, 2)).toBe(5)` and `add` correctly returns `4`. What happens?',
     options: [
-      { t: 'The test passes, because `add` works', why: 'The test checks for `5`, and `4` is not `5`, so the assertion fails. A test is only as right as its expected values.' },
-      { t: 'The assertion throws, and the test is reported as failed', correct: true, why: '`toBe` throws when the values differ. Here the test is wrong, not `add`: fix the expected value.' },
-      { t: 'JavaScript changes `add` to return `5`', why: 'Tests never change the code they check.' },
+      {
+        t: 'The test passes, because `add` works',
+        why: 'The test checks for `5`, and `4` is not `5`, so the assertion fails. A test is only as right as its expected values.',
+      },
+      {
+        t: 'The assertion throws, and the test is reported as failed',
+        correct: true,
+        why: '`toBe` throws when the values differ. Here the test is wrong, not `add`: fix the expected value.',
+      },
+      {
+        t: 'JavaScript changes `add` to return `5`',
+        why: 'Tests never change the code they check.',
+      },
     ],
   },
   {
     q: 'Which assertion passes?',
     options: [
-      { t: '`expect([1, 2]).toBe([1, 2])`', why: '`toBe` asks “same object?”, and these are two different arrays.' },
-      { t: '`expect(0.1 + 0.2).toBe(0.3)`', why: '`0.1 + 0.2` is `0.30000000000000004`, which is not exactly `0.3`.' },
-      { t: '`expect(\'7\').toBe(7)`', why: 'A string is never the same value as a number.' },
-      { t: '`expect({ x: 1 }).toEqual({ x: 1 })`', correct: true, why: '`toEqual` compares contents, and both objects have `x: 1`.' },
+      {
+        t: '`expect([1, 2]).toBe([1, 2])`',
+        why: '`toBe` asks “same object?”, and these are two different arrays.',
+      },
+      {
+        t: '`expect(0.1 + 0.2).toBe(0.3)`',
+        why: '`0.1 + 0.2` is `0.30000000000000004`, which is not exactly `0.3`.',
+      },
+      {
+        t: '`expect(\'7\').toBe(7)`',
+        why: 'A string is never the same value as a number.',
+      },
+      {
+        t: '`expect({ x: 1 }).toEqual({ x: 1 })`',
+        correct: true,
+        why: '`toEqual` compares contents, and both objects have `x: 1`.',
+      },
     ],
   },
   {
@@ -278,25 +300,55 @@ test('a', () => {
 });
 \`\`\``,
     options: [
-      { t: '`pass: a`', why: 'The second assertion is false, and one false assertion fails the whole test.' },
-      { t: '`FAIL: a`, then `expected 3, got 2`', correct: true, why: 'The second `expectBe` throws; the third never runs, and `catch` prints the failure and its message.' },
-      { t: 'Two passes and one fail', why: 'The runner reports once per test, not once per assertion.' },
+      {
+        t: '`pass: a`',
+        why: 'The second assertion is false, and one false assertion fails the whole test.',
+      },
+      {
+        t: '`FAIL: a`, then `expected 3, got 2`',
+        correct: true,
+        why: 'The second `expectBe` throws; the third never runs, and `catch` prints the failure and its message.',
+      },
+      {
+        t: 'Two passes and one fail',
+        why: 'The runner reports once per test, not once per assertion.',
+      },
     ],
   },
   {
     q: 'What is `toThrow` handed, and when does it pass?',
     options: [
-      { t: 'A function; it calls it, and passes only if the call throws', correct: true, why: 'That is why you write `expect(() => f(bad)).toThrow()`: the arrow function delays the call until `toThrow` makes it.' },
-      { t: 'An error object; it passes if the object is an `Error`', why: '`toThrow` needs something to call, so it is handed a function.' },
-      { t: 'Any value; it passes if the value is falsy', why: 'That would be `toBeFalsy`.' },
+      {
+        t: 'A function; it calls it, and passes only if the call throws',
+        correct: true,
+        why: 'That is why you write `expect(() => f(bad)).toThrow()`: the arrow function delays the call until `toThrow` makes it.',
+      },
+      {
+        t: 'An error object; it passes if the object is an `Error`',
+        why: '`toThrow` needs something to call, so it is handed a function.',
+      },
+      {
+        t: 'Any value; it passes if the value is falsy',
+        why: 'That would be `toBeFalsy`.',
+      },
     ],
   },
   {
     q: 'What is a real difference between C’s `assert` and a test runner like `node --test`?',
     options: [
-      { t: 'C’s `assert` cannot compare numbers', why: 'It checks any condition, such as `max(xs, 3) == 7`.' },
-      { t: 'There is none: both report every failing test', why: 'C’s `assert` has no runner behind it.' },
-      { t: 'A false C `assert` stops the whole program at once, so later checks never run', correct: true, why: 'A test runner catches each failure and carries on with the next test; C’s `assert` aborts.' },
+      {
+        t: 'C’s `assert` cannot compare numbers',
+        why: 'It checks any condition, such as `max(xs, 3) == 7`.',
+      },
+      {
+        t: 'There is none: both report every failing test',
+        why: 'C’s `assert` has no runner behind it.',
+      },
+      {
+        t: 'A false C `assert` stops the whole program at once, so later checks never run',
+        correct: true,
+        why: 'A test runner catches each failure and carries on with the next test; C’s `assert` aborts.',
+      },
     ],
   },
 ];

@@ -1,84 +1,112 @@
 export default {
-  id: 'XIII', track: 'B', days: '104–114', title: 'Viscosity in Rust',
-  blurb: 'Port the engine: VIR with typed indices, trait-based plugins, the oxc front-end, analyses, code generation, WebAssembly, and differential tests against the TypeScript engine.',
+  id: 'XIII', section: 'deep', days: '15–22', title: 'Deep dive: a native back end on RISC-V',
+  blurb: 'Machine code and RISC-V, calling conventions, instruction selection, leaving SSA, register allocation, scheduling, peephole optimisation, linking, a tiny JIT, Drip to RISC-V end to end, and how LLVM, clang and rustc are built.',
   chapters: [
-    { n: 416, title: 'The Rust workspace', introduces: { 'viscosity-rs': 'the Rust implementation of Viscosity' } },
-    { n: 417, title: 'VIR in Rust', introduces: { 'ir-arena': 'IR nodes stored in arenas with typed ids' } },
-    { n: 418, title: 'The plugin trait', introduces: { 'plugin-trait': 'LanguagePlugin as a Rust trait' } },
-    { n: 419, title: 'Parsing with oxc', introduces: { oxc: 'a fast JavaScript toolchain written in Rust' } },
-    { n: 420, title: 'Lowering oxc’s AST to VIR', introduces: { 'visitor-pattern': 'walking a tree with a visitor' } },
-    { n: 421, title: 'Emitting JavaScript from Rust', introduces: { 'rust-codegen': 'writing output with fmt::Write' } },
-    { n: 422, title: 'Round-trip tests across engines', introduces: { 'cross-implementation-tests': 'running TS and Rust engines on the same inputs' } },
-    { n: 423, title: 'Dominators and SSA in Rust', introduces: { 'rust-ssa': 'SSA construction over arena IR' } },
-    { n: 424, title: 'A generic dataflow framework', introduces: { 'generic-dataflow': 'a dataflow solver generic over the lattice' } },
-    { n: 425, title: 'Collection discovery in Rust', introduces: { 'rust-collections-pass': 'the collection pass in Rust' } },
-    { n: 426, title: 'Shape inference in Rust', introduces: { 'rust-shape-pass': 'the shape pass in Rust' } },
-    { n: 427, title: 'Escape and alias analysis in Rust', introduces: { 'rust-escape-pass': 'the escape and alias passes in Rust' } },
-    { n: 428, title: 'Access patterns in Rust', introduces: {
-      'rust-access-pass': 'the access-pattern pass in Rust',
+    { n: 225, title: 'Machine code and assembly', introduces: {
+      'machine-code': 'the bytes a CPU actually runs',
+      'assembly-language': 'machine code written as text',
     } },
-    { n: 429, title: 'Proving an index in bounds in Rust', introduces: {
-
+    { n: 226, title: 'Instruction sets and RISC-V', introduces: {
+      isa: 'instruction set architecture: the contract between hardware and software',
+      'risc-v': 'a small, open instruction set',
     } },
-    { n: 430, title: 'The cost model in Rust', introduces: {
-      'rust-cost-model': 'the cost model in Rust',
+    { n: 227, title: 'RISC-V: registers, memory and the stack', introduces: {
+      'load-store': 'only loads and stores touch memory',
+      'addressing-mode': 'how an instruction names a memory location',
+      'stack-pointer': 'the register that marks the top of the stack',
     } },
-    { n: 431, title: 'Sizes and thresholds in Rust', introduces: {
-
+    { n: 228, title: 'Calling conventions and the ABI', introduces: {
+      'calling-convention': 'where arguments, results and the return address go',
+      abi: 'application binary interface: the rules compiled code agrees on',
     } },
-    { n: 432, title: 'SoA code generation in Rust', introduces: {
-      'rust-soa-codegen': 'SoA emission in Rust',
+    { n: 229, title: 'Saving registers: prologues and epilogues', introduces: {
+      'caller-callee-saved': 'which registers each side must preserve',
+      'prologue-epilogue': 'the code that builds and tears down a frame',
     } },
-    { n: 433, title: 'The order of a field write in Rust', introduces: {
-
+    { n: 230, title: 'Code shape: lowering control flow and data', introduces: {
+      'code-shape': 'the patterns a compiler uses to express each construct',
+      'array-address-arithmetic': 'base + index × size',
     } },
-    { n: 434, title: 'AoSoA in Rust', introduces: {
-      'rust-aosoa': 'AoSoA and splitting in Rust',
+    { n: 231, title: 'Jump tables', introduces: {
+      'jump-table': 'switch compiled to an indexed jump',
     } },
-    { n: 435, title: 'Block sizes and typed columns in Rust', introduces: {
-
+    { n: 232, title: 'Instruction selection by tree tiling', introduces: {
+      'instruction-selection': 'choosing machine instructions for IR operations',
+      'tree-tiling': 'covering an IR tree with instruction patterns',
     } },
-    { n: 436, title: 'explain in Rust', introduces: {
-      'rust-explain': 'the optimization report in Rust',
+    { n: 233, title: 'Optimal tiling by dynamic programming', introduces: {
+      'optimal-tiling': 'the cheapest cover, found by dynamic programming',
     } },
-    { n: 437, title: 'Code frames in Rust', introduces: {
-
+    { n: 234, title: 'Leaving SSA', introduces: {
+      'ssa-destruction': 'replacing phi nodes with copies',
+      'lost-copy-problem': 'the bug naive phi removal causes',
     } },
-    { n: 438, title: 'PGO in Rust', introduces: {
-      'rust-pgo': 'profile loading and use in Rust',
+    { n: 235, title: 'Parallel copies and the swap problem', introduces: {
+      'parallel-copy': 'several copies that happen at once',
     } },
-    { n: 439, title: 'Reading a profile in Rust', introduces: {
-
+    { n: 236, title: 'Live ranges and interference', introduces: {
+      'live-range': 'where a value is alive',
+      'interference-graph': 'values that are alive at the same time, as a graph',
     } },
-    { n: 440, title: 'The Python plugin in Rust', introduces: { 'rust-python-plugin': 'the Python front-end in Rust' } },
-    { n: 441, title: 'TypeScript vs Rust: differential tests', introduces: { 'engine-parity': 'two engines making identical decisions' } },
-    { n: 442, title: 'Compiling the engine to WebAssembly', introduces: { 'wasm-pack': 'building npm packages from Rust' } },
-    { n: 443, title: 'The npm package', introduces: { 'native-vs-wasm': 'shipping WebAssembly vs native binaries' } },
-    { n: 444, title: 'The browser playground', introduces: { playground: 'the compiler running in a web page' } },
-    { n: 445, title: 'How fast is the compiler?', introduces: { 'compile-time-performance': 'the compiler’s own speed' } },
-    { n: 446, title: 'Fuzzing the Rust engine', introduces: {
-      'coverage-guided-fuzzing': 'fuzzing that explores new code paths',
+    { n: 237, title: 'Register allocation by graph colouring', introduces: {
+      'register-allocation': 'deciding which values live in which registers',
+      'graph-coloring': 'giving neighbours different colours',
+      'simplify-select': 'Chaitin and Briggs’s colouring algorithm',
     } },
-    { n: 447, title: 'Shrinking a failing program', introduces: {
-
+    { n: 238, title: 'Coalescing', introduces: {
+      coalescing: 'merging copies so they disappear',
     } },
-    { n: 448, title: 'Diagnostics', introduces: {
-      diagnostic: 'a compiler message pointing at source code',
+    { n: 239, title: 'Spilling and linear scan', introduces: {
+      spilling: 'keeping a value in memory when registers run out',
     } },
-    { n: 449, title: 'Lines and columns', introduces: {
-
+    { n: 240, title: 'Linear scan', introduces: {
+      'linear-scan': 'allocating registers in one pass over live intervals',
+      'live-interval': 'a live range flattened to a start and an end',
     } },
-    { n: 450, title: 'Compiling in parallel', introduces: {
-      'data-parallelism': 'splitting work across CPU cores',
+    { n: 241, title: 'Instruction scheduling', introduces: {
+      'instruction-scheduling': 'reordering instructions to keep the CPU busy',
+      'dependence-dag': 'which instructions must wait for which',
     } },
-    { n: 451, title: 'One bad file, and how fast it gets', introduces: {
-
+    { n: 242, title: 'List scheduling', introduces: {
+      'list-scheduling': 'the greedy scheduling algorithm',
     } },
-    { n: 452, title: 'Keeping it healthy', introduces: {
-      'continuous-integration': 'running every check on every change',
+    { n: 243, title: 'Software pipelining', introduces: {
+      'software-pipelining': 'overlapping iterations of a loop',
     } },
-    { n: 453, title: 'The gates: what each check protects', introduces: {
-
+    { n: 244, title: 'Iterative modulo scheduling', introduces: {
+      'modulo-scheduling': 'one schedule repeated every few cycles',
+    } },
+    { n: 245, title: 'Peephole optimisation', introduces: {
+      peephole: 'improving short windows of instructions',
+      superoptimization: 'searching for the shortest correct sequence',
+    } },
+    { n: 246, title: 'Assemblers, object files and linking', introduces: {
+      assembler: 'a program that turns assembly into machine code',
+      'object-file': 'machine code plus symbols and relocations',
+      relocation: 'a hole the linker fills with an address',
+    } },
+    { n: 247, title: 'Linkers and loaders', introduces: {
+      linker: 'the program that joins object files',
+      loader: 'the program that puts a binary in memory and runs it',
+    } },
+    { n: 248, title: 'A tiny JIT', introduces: {
+      'runtime-code-generation': 'writing code while the program runs',
+    } },
+    { n: 249, title: 'Compiling hot Drip functions to WebAssembly', introduces: {
+      'jit-from-scratch': 'a JIT that compiles hot Drip functions to WebAssembly',
+    } },
+    { n: 250, title: 'Drip to RISC-V, end to end', introduces: {
+      'native-pipeline': 'source to native code through every stage',
+    } },
+    { n: 251, title: 'From virtual registers to a running program', introduces: {
+      'isa-simulator': 'a program that runs machine instructions in software, one at a time',
+    } },
+    { n: 252, title: 'Real back ends: LLVM, clang and rustc', introduces: {
+      'llvm-ir': 'LLVM’s typed SSA IR',
+      'llvm-pass': 'a transformation over LLVM IR',
+    } },
+    { n: 253, title: 'Inside LLVM’s code generator, clang and rustc', introduces: {
+      'compiler-architecture-tour': 'how clang and rustc are put together',
     } },
   ],
 };

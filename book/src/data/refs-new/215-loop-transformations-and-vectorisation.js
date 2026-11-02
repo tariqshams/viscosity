@@ -1,4 +1,4 @@
-// New references for chapter 215 (and its staged second half, 194-b).
+// New references for chapter 217 (and its staged second half, 194-b).
 export default [
   {
     id: 'allenkennedy2001',

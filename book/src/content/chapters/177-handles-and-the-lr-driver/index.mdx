@@ -1,0 +1,192 @@
+---
+n: 177
+day: 3
+part: X
+title: 'Handles and the LR driver'
+tagline: 'A shift-reduce parser must reduce the right piece of its stack at the right moment. That piece is called the handle, and a small table of states can find it every time, with precedence decided by nothing more than a shift in one cell.'
+objectives:
+  - Find the handle of a right sentential form, and explain why it is always at the top of the stack.
+  - Explain why matching a rule body is not enough to reduce, using 1 + 2 * 3.
+  - Run an LR parser from its ACTION and GOTO table, by hand and in code.
+  - Turn a list of reductions back into the rightmost derivation it came from.
+introduces: [lr-handle]
+uses: [shift-reduce, bottom-up-parsing, derivation, parse-tree, ambiguity, chomsky-hierarchy, finite-automaton, dfa, regular-language, first-set, follow-set, ll1-table, grammar, production-rule, terminal, nonterminal, parser, precedence, associativity, token, array, push, object, set, for-of, copy-spread, throw, map-filter-reduce, arrow-function, string-methods]
+sources: [aho2006, knuth1965]
+---
+import LRSteps from '../../../components/diagrams/ch177/LRSteps';
+import LRTable from '../../../components/diagrams/ch177/LRTable';
+
+## Matching is not enough
+
+The last chapter's shift-reduce parser followed orders it was given. A
+real parser must make its own, and the obvious rule, "reduce whenever
+a body is on top of the stack, else shift", goes wrong. Here it is on
+`n + n * n` (`n` for a number) with the layered grammar from the
+chapter on ambiguity, its levels renamed `E`, `T` and `F`
+(`E → E "+" T | T`, `T → T "*" F | F`, `F → n`), reducing the longest
+body it can find:
+
+<Run id="greedy" />
+
+`greedy` checks every rule; `t = stack.slice(-b.length)` is the top of
+the stack as long as the body, and the rule wins if those symbols are the
+body (`same`) and it is longer than any found so far (`longer`). If a
+rule wins, the body comes off and the head goes on; otherwise it
+shifts; with nothing left to shift, it stops. It prints each stack,
+and the trouble comes early: as soon as `E + T` is on the stack, it is
+reduced to `E`, *before* the parser has looked at the `*`. The
+multiplication then has nothing to attach to, and the parse ends
+`stuck` with `E * E`.
+
+`E + T` matched a body; however, it was the wrong thing to reduce at
+that moment, because the `T` was not finished. The piece that is right
+to reduce has a name.
+
+## Handles
+
+<Analogy title="sums in brackets">
+To work out `(2 × (3 + 4)) − 1` by hand, you can't start with the `×`:
+its right side is not a number yet. You first do the innermost bracket
+that is complete, `3 + 4`, and only then the `×` around it.
+<span slot="breaks">Brackets show you the innermost piece; a parser
+has no brackets for `2 + 3 × 4`, and must work out from the grammar,
+and the next token, which piece is complete.</span>
+</Analogy>
+
+<Analogy extra title="nesting dolls">
+Packing nesting dolls, you close the smallest doll first, put it in
+the next one and close that, and so on outwards; you can only close a
+doll once everything that belongs inside it is already inside.
+<span slot="breaks">Each doll has exactly one place to go; a grammar
+symbol on the stack may later turn out to belong to a bigger piece
+than it seemed, which is what the next token can tell.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **right sentential form** is one that appears in some rightmost
+derivation. Its **handle** is the body of a rule `A → β`, at a
+particular place in the form, such that replacing that β with `A`
+gives the form one step earlier in the rightmost derivation. In a
+shift-reduce parse, the handle is always at the top of the stack;
+so the parser's only questions are whether the top is a handle yet,
+and of which rule<Cite id="aho2006" />.
+</Callout>
+
+<Formal title="A handle">
+
+```text
+S ⇒*rm α A w  ⇒rm  α β w
+       (w has only terminals)
+then  A → β, just after α,
+is a handle of  α β w
+```
+
+<span slot="read">The subscript rm means "rightmost": each step
+rewrites the rightmost nonterminal. If the start symbol S becomes alpha
+A w in zero or more rightmost steps, where w is all terminals, and one
+more rightmost step, using A is made of beta, gives alpha beta w, then
+that beta, just after alpha, is the handle of alpha beta w. Because w
+is all tokens, the handle is always the last piece of the form before
+the tokens the parser has not yet shifted: the top of the
+stack.</span>
+</Formal>
+
+<Examples of="lr-handle">
+
+```text
+greeting → "hello" name
+name → "Ada" | "Alan"
+hello Ada    handle: Ada  (name → Ada)
+hello name   handle: hello name
+```
+
+```text
+E → E "-" T | T,  T → NUMBER
+E - T - 3   handle: E - T
+            (not T, by E → T)
+```
+
+```text
+E → E "+" T | T
+T → T "*" F | F,  F → NUMBER
+stack E + T, next *: no handle
+stack E + T * F:     T * F
+```
+
+</Examples>
+
+The first is the smallest: `Ada` is reduced first, then the whole
+form. In the second, `T` alone matches `E → T`, but reducing it would
+give `E - E - 3`, which no rightmost derivation passes through; the
+step back is to `E - 3`, so `E - T` is the handle. The third is the
+greedy parser's mistake: with `*` next, `E + T` is not yet a handle,
+because the `T` will grow into `T * F`; once that is on the stack,
+`T * F` is the handle, and `E + T` becomes one after it.
+
+<Prompts ids={['handle-what', 'handle-top', 'match-not-handle']} />
+
+## A table that finds handles
+
+How can a parser know, without searching, whether the top of its stack
+is a handle? The key fact, from Donald Knuth's 1965 paper that defined
+LR parsing<Cite id="knuth1965" />, is that the stack contents that can
+ever appear during a parse form a *regular language*, so a finite
+automaton can keep track of them as symbols are pushed and
+popped<Cite id="aho2006" />. An LR parser therefore keeps a stack of
+that automaton's **states**, one above each symbol, and the state on
+top summarises everything below it. A table, with two parts, says
+what to do:
+
+<Figure takeaway="Two lookups per step: ACTION to decide, GOTO after a reduction." caption="The LR table for E → E + T | T, T → T * F | F, F → n. Rules are numbered 1 to 5 in that order. ACTION cells hold sN (shift, then go to state N), rN (reduce by rule N) or acc (accept); an empty cell is a syntax error. GOTO cells say which state to go to after reducing to E, T or F. Row 7, the state for E + T, shifts on * and reduces on + and $.">
+  <LRTable />
+</Figure>
+
+The **driver** that runs it is the same for every grammar. Look up
+ACTION for the state on top and the next token. To shift, push the
+state it names and move past the token. To reduce by a rule, pop one
+state per symbol of its body, then push GOTO for the state now on top
+and the rule's head. Accept when the table says so. Step through it:
+
+<LRSteps client:visible />
+
+Look at step 9. The stack holds `E + T`, exactly the body of rule 1;
+however, the next token is `*`, and row 7 says shift. That one cell is
+where `*` binds tighter than `+`: the table knows that, in this state,
+a `*` means the `T` is still growing. In step 13, with `$` next, the
+same row says reduce. The rules reduced, 5, 4, 2, 5, 4, 5, 3, 1, read
+backwards, are the rightmost derivation of `n + n * n`, with the
+product inside the sum.
+
+<Prompts ids={['lr-state', 'action-goto', 'reduce-steps', 'table-precedence', 'regular-prefixes']} />
+
+<Callout kind="engine" label="Under the hood">
+This driver loop is the whole run-time part of parsers made by tools
+such as yacc and its descendants: the tool's real work is building the
+table from the grammar, and the next two chapters do exactly that,
+from items that record how much of each rule has been seen, to the
+lookahead sets that decide each reduce<Cite id="aho2006" />.
+</Callout>
+
+## Your turn
+
+The first exercise is the LR driver; the second, for extra practice,
+turns its reductions back into a rightmost derivation.
+
+<Exercise id="lrParse" />
+
+<Exercise id="rightmostFrom" />
+
+## What you learned
+
+- The **handle** of a right sentential form is the rule body whose
+  reduction is one step back along the rightmost derivation; in a
+  shift-reduce parse it is always on top of the stack.
+- Matching a body is not enough: whether `E + T` is a handle depends
+  on the next token.
+- An **LR parser** keeps a stack of states; ACTION[state, token] says
+  shift, reduce or accept, and GOTO[state, head] says where to go after
+  a reduction. Precedence lives in the table's cells.
+- The driver is the same for every grammar; building the table is the
+  next chapter's work.
+
+<Quiz />

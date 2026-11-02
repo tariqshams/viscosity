@@ -1,0 +1,291 @@
+---
+n: 315
+day: 37
+part: XVII
+title: 'Docs, doc tests and clippy'
+tagline: 'In Rust the examples in your documentation are compiled and run with your tests, so they cannot quietly go stale; and a linter that knows several hundred idioms reads your code before anyone else does. Two tools, one habit: let the machine check what people will read.'
+objectives:
+  - Write doc comments with the standard sections (Examples, Errors, Panics, Safety) and build them with cargo doc.
+  - Explain how rustdoc turns an example into a test, hide setup lines with #, and read a failing doc test.
+  - Run cargo clippy, read its suggestions, and tell its lint categories and levels apart.
+  - Choose a lint level for a crate, and allow a single lint with a reason.
+introduces: [rustdoc, clippy]
+uses: [api-design, cargo-features, cargo, crate, cargo-test, assert-macros, rust-module, rust-functions, result, option, enum, slice, string-vs-str, vec, rust-iterator, test, compiler-pass]
+sources: [rustdoc-doctests, clippy-readme, api-guidelines, klabnik2026]
+---
+import DoctestSteps from '../../../components/diagrams/ch315/DoctestSteps';
+import LintLevels from '../../../components/diagrams/ch315/LintLevels';
+
+## Documentation that cannot lie
+
+Every programmer has followed an example in a README that no longer
+works, because the code changed and the example did not. Rust's answer
+is to make the examples part of the test suite. A comment that starts
+with `///` documents the item below it, and `cargo doc` turns those
+comments into web pages; however, every code block inside them is
+also compiled and run by `cargo test`, and a failing example fails the
+build, the same as a failing `#[test]`.
+
+<Analogy title="a recipe tested in the kitchen">
+A cookery magazine that cooks every recipe before printing it never
+prints one that does not work. A doc test is that test kitchen: the
+example is made, exactly as printed, every time you run the tests.
+<span slot="breaks">A test kitchen tastes the dish. A doc test only
+checks that the example compiles and does not panic; if the example
+asserts nothing, a wrong answer still passes, so good examples end in
+`assert_eq!`.</span>
+</Analogy>
+
+<Analogy extra title="a proofreader who knows the house style">
+A publisher's proofreader catches the typos, and also the house-style
+slips: the wrong dash, the spelling the house does not use. Clippy
+reads Rust code that way, for mistakes and for the community's style,
+and says how to fix each one.
+<span slot="breaks">A proofreader understands what you meant. Clippy
+matches patterns, so it is sometimes wrong (some lints are off by
+default for exactly that reason), and you may tell it so, in
+writing, with an `allow`.</span>
+</Analogy>
+
+## Doc comments and doc tests
+
+Here is the crate from the exercise, with its documentation:
+
+```rust
+/// Parses a colour written `#rrggbb`.
+///
+/// # Examples
+///
+/// ```
+/// # use colors::*;
+/// let c = parse_rgb("#ff8800");
+/// assert_eq!(c, Ok((255, 136, 0)));
+/// ```
+///
+/// # Errors
+///
+/// [`ColorError::BadShape`] if `s` is
+/// not `#` and six characters, ...
+pub fn parse_rgb(s: &str)
+    -> Result<Rgb, ColorError>
+```
+
+The doc comment is Markdown. The first line is the summary shown in
+lists. `# Examples` and `# Errors` are headings with fixed meanings:
+the API Guidelines ask for an example on every public item (C-EXAMPLE)
+and for sections saying when a function returns an error, when it
+panics, and, for an `unsafe fn`, what its caller must promise
+(C-FAILURE)<Cite id="api-guidelines" />. Square brackets around a path, as in
+`` [`ColorError::BadShape`] ``, make a link to that item's page. And the
+fenced block is a **doc test**. Step through what `cargo test` does
+with it:
+
+<DoctestSteps client:visible />
+
+The line `# use colors::*;` starts with `# `, so rustdoc compiles it
+but hides it from the page: readers see the three lines that matter,
+and the test still has its import<Cite id="rustdoc-doctests" />. A doc
+test is compiled as if it were a separate crate using yours, which is
+why it needs the `use`: it sees only your public API, exactly as a
+user would.
+
+<Examples of="rustdoc">
+
+```text
+$ cargo test --doc
+test src/lib.rs - parse_rgb (line 18)
+  ... ok
+test result: ok. 1 passed; 0 failed
+```
+
+```text
+test src/lib.rs - Celsius::to_f (line 12)
+  ... FAILED
+assertion `left == right` failed
+  left: 212.0
+ right: 211.0
+```
+
+```rust
+//! Temperatures, kept in Celsius.
+//! (`//!` documents the enclosing
+//! item: here, the whole crate.)
+```
+
+</Examples>
+
+The first is the exercise crate's doc test passing under cargo 1.97;
+the name says where it lives, the file and the line the block starts
+on. The second is the `temps` crate of the last chapter with its
+example broken on purpose (it claimed 100 °C is 211 °F): the doc test
+fails with the same message a `#[test]` would give, so a stale example
+is caught the first time anyone runs the tests. The third is an
+**inner** doc comment, `//!`, which documents the thing it is *inside*;
+at the top of `lib.rs` it writes the crate's front page. `cargo doc`
+built those pages and printed `Generated ./target/doc/temps/index.html`.
+
+<Callout kind="definition">
+**rustdoc** is Rust's documentation tool, run by `cargo doc`. It reads
+`///` comments (documenting the next item) and `//!` comments
+(documenting the enclosing item), written in Markdown, and builds HTML.
+Every Rust code block in them is a **doc test**: `cargo test` adds
+`extern crate` for your crate, wraps the code in a `main` function if
+it has none, compiles it as a separate program, and runs it; lines starting with `# ` are compiled but
+not shown<Cite id="rustdoc-doctests" />.
+</Callout>
+
+<Prompts ids={['doctest-what', 'hidden-line', 'inner-doc', 'doc-sections']} />
+
+## Clippy
+
+`cargo clippy` runs the compiler's checks and then a large set of
+extra lints: "over 800", says its README<Cite id="clippy-readme" />.
+Given this function:
+
+```rust
+pub fn total(xs: &Vec<i32>) -> i32 {
+    let mut sum = 0;
+    for i in 0..xs.len() {
+        sum = sum + xs[i];
+    }
+    return sum;
+}
+```
+
+clippy 0.1.97 gave four warnings, each with a fix (trimmed):
+
+```text
+warning: unneeded `return` statement
+  help: remove `return`
+warning: writing `&Vec` instead of `&[_]`
+  involves a new object where a slice
+  will do
+warning: the loop variable `i` is only
+  used to index `xs`
+  help: consider using an iterator
+warning: manual implementation of an
+  assign operation
+  help: replace it with: `sum += xs[i]`
+```
+
+Each warning also names its lint (`needless_return`, `ptr_arg`,
+`needless_range_loop`, `assign_op_pattern`) and links to a page that
+explains it. Taking all four, the function becomes
+`xs.iter().sum()` with `xs: &[i32]`, which is shorter and accepts
+more callers (the C-GENERIC point of the last chapter, found by a
+machine). Run both versions:
+
+<Run id="totals" />
+
+<Figure takeaway="Most lints warn; correctness lints stop the build; the strict groups are opt-in." caption="Clippy's lint groups and their default levels, from its README.">
+  <LintLevels />
+</Figure>
+
+<Examples of="clippy">
+
+```rust
+pub fn is_negative(x: u32) -> bool {
+    x < 0
+}
+// error: this comparison involving the
+//   minimum or maximum element for this
+//   type contains a case that is always
+//   true or always false
+```
+
+```rust
+pub fn empty(v: &[i32]) -> bool {
+    v.len() == 0
+}
+// warning: length comparison to zero
+//   help: `v.is_empty()`
+```
+
+```rust
+#![warn(clippy::pedantic)]
+#[allow(clippy::float_cmp,
+        reason = "exact by design")]
+#[must_use]
+pub fn same(a: f64, b: f64) -> bool {
+    a == b
+}
+```
+
+</Examples>
+
+The first is a **correctness** lint, `absurd_extreme_comparisons`: a
+`u32` can never be below zero, so the comparison is a bug, and the
+group's default level, `deny`, makes it an error that stops the build.
+The second is a **style** lint, a warning. The third shows lint
+**levels** chosen in code: `#![warn(clippy::pedantic)]` at the top of
+a crate turns on a stricter, opt-in group (with it, clippy also
+flagged `a == b` on floats, "strict comparison of `f32` or `f64`"),
+and `#[allow(...)]` on one item silences one lint there, with a
+`reason` that future readers will see. (Pedantic also asks for
+`#[must_use]` on functions whose result should not be ignored; with
+both, clippy was silent.) The README is firm about the
+`restriction` group: it "should, *emphatically*, not be enabled as a
+whole"<Cite id="clippy-readme" />.
+
+<OtherLanguages title="A linter, and docs from comments">
+
+```rust
+/// Adds one.
+/// ```
+/// assert_eq!(inc(1), 2);
+/// ```
+pub fn inc(x: i32) -> i32 { x + 1 }
+// cargo clippy; cargo test --doc
+```
+
+```ts
+/**
+ * Adds one.
+ * @example inc(1) // 2
+ */
+export function inc(x: number) {
+  return x + 1;
+}
+// eslint; the example is not run
+```
+
+</OtherLanguages>
+
+TypeScript has the same two habits with different tools: ESLint for
+lints, and JSDoc comments that editors and generators read. The
+difference is that a JSDoc `@example` is text, which no tool runs by
+default; Rust's is a test. Clippy is also part of the official
+toolchain (`rustup component add clippy`), so every Rust project has
+the same one.
+
+<Callout kind="definition">
+**Clippy** is Rust's official linter, run with `cargo clippy`. Its
+lints are grouped into categories with default **levels**:
+`correctness` is `deny` (an error), `suspicious`, `style`, `complexity`
+and `perf` are `warn`, and `pedantic`, `restriction`, `nursery` and
+`cargo` are `allow` (off) until you turn them on with `warn` or `deny`;
+`#[allow(clippy::name)]` silences one lint for one
+item<Cite id="clippy-readme" />.
+</Callout>
+
+<Prompts ids={['clippy-what', 'deny-default', 'pedantic', 'allow-reason']} />
+
+## Your turn
+
+The exercise is the `parse_rgb` documented above. Read its doc comment
+as a specification: the example and the `# Errors` section say exactly
+what the tests check.
+
+<Exercise id="parse-rgb" />
+
+## What you learned
+
+- **rustdoc** builds documentation from `///` and `//!` comments in
+  Markdown, with sections like `# Examples` and `# Errors`.
+- Every code block in a doc comment is a **doc test**, compiled as a
+  user's crate and run by `cargo test`; `# ` lines are hidden.
+- **Clippy** reads your code for mistakes and idioms; correctness
+  lints deny, most others warn, strict groups are opt-in, and `allow`
+  with a `reason` records a deliberate exception.
+
+<Quiz />

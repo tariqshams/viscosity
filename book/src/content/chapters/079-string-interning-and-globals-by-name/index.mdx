@@ -1,0 +1,551 @@
+---
+n: 79
+day: 8
+part: IV
+title: 'String interning and globals by name'
+tagline: 'Two strings made in completely different ways turn out to be the same object. That one rule lets the VM compare strings, and look up names, with a single ===.'
+objectives:
+  - Explain interning, and why it lets equal strings be compared by identity.
+  - Trace copyString and findString through the VM’s string table.
+  - Weigh what interning costs against what it saves, with the book's benchmark.
+  - Build an interner, and the lookup that compares hashes before characters.
+  - Explain how the compiler turns a variable's name into a two-byte constant operand.
+  - Trace define.global, load.global and store.global against the VM's globals table.
+  - "Explain store.global's trick: set first, and undo if the name was new."
+  - Say why a function can use a global that is defined after it, and what name lookups cost.
+introduces: [interning, global-table]
+uses: [hash-function, hash-table, open-addressing, load-factor, heap-object, object-list, tagged-value, value-representation, constant-pool, chunk, single-pass-compiler, virtual-machine, stack-machine, dispatch-loop, opcode, identity, reference, aliasing, map, set, hash-intuition, string-building, global-variable, literal, identifier, interface, typescript, object, property, class, method, this, constructor, new, function, return, if, for-loop, comparison, numbers, strings, booleans, console-log, drip, interpreter-overhead, bytecode, disassembler, emit, runtime-error, side-effect, expression-vs-statement, environment, native-function, call, variables]
+sources: [python-sys-intern, openjdk-string-intern, cpython-dis]
+---
+import InternSteps from '../../../components/diagrams/ch079/InternSteps';
+import TwoCompares from '../../../components/diagrams/ch079/TwoCompares';
+import GlobalSteps from '../../../components/diagrams/ch079/GlobalSteps';
+import NameToValue from '../../../components/diagrams/ch079/NameToValue';
+
+{/* ── merge: from old chapter 79, String interning ── */}
+
+## Two strings, one object
+
+The last chapter left a loose thread: `Table.find` compares keys with
+`k === key`. The VM's `eq` instruction is no better; here is all of
+Drip's `==`, from `vm/object.ts`:
+
+```ts
+export const valuesEqual =
+  (a: Value, b: Value): boolean => a === b;
+```
+
+For objects, `===` asks "is this the same object?", not "are these the
+same characters?" (the chapter on references showed the difference).
+Yet this prints `true`:
+
+```text
+let a = "ab";
+let b = "a" + "b";
+print a == b;
+```
+
+`a` holds a literal, made by the compiler. `b` is built while the
+program runs, by `add`, and the chapter on heap objects said that
+joining two strings makes a new string object. So how can `a` and `b` be
+the same object? Because that "new" was not the whole truth:
+`copyString`, which makes every string object, does not always
+allocate.
+
+## Interning
+
+<Analogy title="the badge desk at a conference">
+Before printing a name badge, the clerk looks through the box of
+badges already printed; if one says "Ada Lovelace", you get that one.
+As such, everyone called Ada Lovelace wears the very same badge, and
+checking whether two people have the same name is as quick as checking
+whether they are wearing the same badge.
+<span slot="breaks">Two real people cannot wear one badge at once; a
+string object can be pointed at from any number of places at the same
+time, because nothing in Drip can change a string's characters.</span>
+</Analogy>
+
+<Analogy extra title="songs in a music library">
+Add a song to five playlists and your music app does not store the file
+five times: each playlist holds a reference to the one file in the
+library.
+<span slot="breaks">The app keeps a file even when no playlist uses it;
+the VM's string table lets a string go once nothing else refers to it,
+as the end of this chapter explains. And the app matches songs by file,
+while interning matches by exact characters.</span>
+</Analogy>
+
+Here is the real `copyString`, from `vm/heap.ts` (line breaks added to
+fit the page):
+
+```ts
+copyString(chars: string): ObjString {
+  const hash = hashString(chars);
+  const interned =
+    this.strings.findString(chars, hash);
+  if (interned) return interned;
+  const s = this.allocate<ObjString>({
+    type: 'string', chars, hash,
+    isMarked: false, next: null });
+  this.push(s);
+  this.strings.set(s, null);
+  this.pop();
+  return s;
+}
+```
+
+Line 2 hashes the characters with the FNV-1a of *Finding things
+fast*. Lines 3 and 4 ask `heap.strings`, a `Table` used as a *set*
+(its keys are every string the VM has made, and its values are all
+`null`), whether a string with those characters already exists; if
+so, line 5 returns that object, and nothing is allocated. Only a string
+never seen before reaches line 6, which allocates it, and lines 9 to
+11 add it to the set, so the next request finds it. (`push` and `pop`
+keep `s` on a list of roots while it is being added, so the garbage
+collector of *Reclaiming memory* cannot free it halfway.)
+
+Every string in the VM comes through here: literals, names,
+concatenations, and the results of `str`. So there is never more than
+one object with the same characters.
+
+<InternSteps client:visible />
+
+Notice the first step: the name of the variable `a` and the literal
+`"a"` on line 2 are the same object, because when the compiler asked
+for `"a"` the second time, `copyString` found the first.
+
+<Callout kind="definition">
+**Interning** keeps exactly one copy of each distinct string. Every
+request for a string first looks in a table of the strings that exist,
+the **intern table** (here `heap.strings`), and gets the existing object
+if there is one. Because equal strings are then always the same object,
+comparing strings becomes comparing **identity**: one `===` on two
+references, however long the strings are.
+</Callout>
+
+<Formal title="What interning guarantees">
+
+```text
+intern(s) is intern(t)  ⟺  s = t
+a == b  ⟺  a is b       (a, b strings)
+```
+
+<span slot="read">The object you get for the characters s is the very
+same object as the one for t exactly when s and t are the same
+characters. So for two strings in the VM, being equal and being the
+same object are one and the same thing (the double arrow reads
+"exactly when").</span>
+</Formal>
+
+<Examples of="interning">
+
+```text
+print "ab" == "a" + "b"; # true
+```
+
+```js
+// without interning: two objects
+const s = { chars: 'ab' };
+const t = { chars: 'a' + 'b' };
+s === t; // false
+```
+
+<Run id="intern-vm" />
+
+</Examples>
+
+The first is the whole story in one line: the literal and the joined
+string are one object, so `eq`'s `===` says `true`. The second is the
+spot-the-difference: two JavaScript objects holding the same characters
+are still two objects, and `===` says `false`, which is what Drip's
+`==` would say for strings if `copyString` always allocated. The
+runnable one builds a string in a loop and compares it with a literal;
+change a letter and see `false`.
+
+<TwoCompares />
+
+<Prompts ids={['intern-what', 'copy-lookup-first', 'concat-no-alloc', 'equal-identity', 'name-literal-same']} />
+
+## Finding a string by its characters
+
+There is a catch. `Table.find` compares keys by identity, which is
+exactly what `copyString` cannot do yet: it is holding characters, not
+an object. So the table has a second lookup, the only place in the VM
+that compares a string's characters (from `vm/table.ts`):
+
+```ts
+findString(chars: string, hash: number):
+    ObjString | null {
+  if (this.count === 0) return null;
+  const mask = this.keys.length - 1;
+  let index = hash & mask;
+  for (;;) {
+    const k = this.keys[index];
+    if (k === null) {
+      if (this.values[index] === null)
+        return null;
+    } else if (k.hash === hash &&
+        k.chars === chars) {
+      return k;
+    }
+    index = (index + 1) & mask;
+  }
+}
+```
+
+The probing is the same as `find`'s; only the test differs.
+`k.hash === hash` compares two numbers, which is cheap and rules out
+almost every wrong string. Only when the hashes match are the characters
+compared (`k.chars === chars`, which JavaScript does letter by letter),
+and by then it is nearly always the right string. A tombstone (no key,
+value not `null`) is stepped over, as before.
+
+<Prompts ids={['findstring-chars', 'hash-first', 'table-as-set']} />
+
+## What it costs, what it buys
+
+Interning moves work around; it does not remove it.
+
+**Making a string costs more.** Every new string, including every
+concatenation and every `str(...)`, is hashed in full and looked up
+before it exists. The book's `strings` benchmark does little else: each
+of its 240,000 rounds builds six strings with `+` and `str`, about 1.4
+million hashes and lookups, although after the first few hundred
+rounds nearly all of them are already in the table. In this book's
+benchmark run of 2 November 2026 it took 383 ms on the VM and 365 ms on
+the tree-walker, which builds plain JavaScript strings and lets the
+engine compare them; the VM was slightly *slower*, because the work it
+saves elsewhere is paid back here.
+
+**Using a string costs less.** `==` on strings is one comparison, and
+every global variable lookup (*Globals by name*), field access and
+method call finds a name in a table by identity too. Most programs make
+a name once and use it many times, so this is usually a good trade. It
+also saves memory: a thousand mentions of `"name"` are one object.
+
+The intern table has one more duty. If it kept every string alive, no
+string could ever be freed. So it holds strings **weakly**: during a
+collection, after everything reachable is marked, `removeWhite` turns
+each entry whose string nothing else reached into a tombstone, just
+before the sweep frees it (*Reclaiming memory* shows the whole
+collector).
+
+<Prompts ids={['intern-cost', 'weak-table']} />
+
+<Callout kind="engine" label="Under the hood">
+Interning is everywhere. Python's `sys.intern` enters a string in a
+table of interned strings; its documentation says the names in Python
+programs are interned automatically, and that with interned keys a
+dictionary's key comparisons, after hashing, can be a pointer compare
+instead of a string compare<Cite id="python-sys-intern" />. Java
+interns every string literal, and `s.intern() == t.intern()` holds
+exactly when `s` and `t` have equal contents<Cite id="openjdk-string-intern" />.
+The companion VM interns every string it makes, which is simpler than
+choosing, and is what makes `===` correct for every Drip value.
+</Callout>
+
+## Your turn
+
+<Exercise id="interner" />
+
+<Exercise id="findStr" />
+
+## What you learned
+
+- **Interning** keeps one object per distinct string, so equal strings
+  are identical and Drip's `==` is a single `===`.
+- `copyString` hashes the characters and asks the intern table first;
+  it allocates only for a string it has never seen.
+- `findString` is the one place characters are compared, and only after
+  the hashes match.
+- The trade: every new string pays a hash and a lookup (the `strings`
+  benchmark shows the bill), so that every later comparison and name
+  lookup is one reference check.
+- The intern table holds strings weakly: unreachable strings leave it
+  before they are freed.
+
+Next, the VM puts its tables to work: global variables, found by name.
+
+
+{/* ── merge: from old chapter 79, Globals by name ── */}
+
+## A VM with no memory for names
+
+So far the VM can work out `print (1 + 2) * 3;`, but give it this and
+it has nowhere to keep `total`:
+
+```text
+let total = 10;
+total = total + 5;
+print total;
+```
+
+The tree-walker kept a `Map` from names to values; the VM does the
+same, with the hash table of *Finding things fast*, keyed by the
+interned strings of *String interning*.
+
+<Analogy title="a cloakroom">
+You hand your coat over and it goes on some hook; to get it back you
+give your name, and the attendant looks it up.
+<span slot="breaks">A real cloakroom gives you a numbered ticket, so
+the next look-up is instant; a global instruction keeps only the
+*name*, and looks it up every time it runs. (Locals, in the next
+chapter, are the numbered tickets.)</span>
+</Analogy>
+
+<Analogy extra title="the noticeboard in a shared kitchen">
+Anyone in the building can read the board ("milk: Sam") or rub out
+Sam's name and write Ana's.
+<span slot="breaks">Anyone can add a new line to a real board; in Drip
+only `let` adds a name, and assigning to an undeclared name is an
+error, which the trick later in this chapter has to catch.</span>
+</Analogy>
+
+## A name becomes a constant
+
+An instruction cannot carry a string: after the opcode come only bytes.
+So the compiler puts the *name* in the constant pool, as a string, and
+the instruction gives its index (from `vm/compiler.ts`, line breaks
+added to fit the page):
+
+```ts
+const identifierConstant =
+  (name: string) =>
+    makeConstant(heap.copyString(name));
+```
+
+`copyString` interns the name, so every mention of `total` refers to
+the *same* string object. A helper, `emitConstantOp`, then writes the
+opcode and the index in two bytes, high byte first (`(k >> 8) & 0xff`)
+and low byte second (`k & 0xff`), so one function can name up to 65,536
+constants. Here is how a `let` is compiled:
+
+```ts
+function letDeclaration() {
+  consume('identifier',
+    'a variable name after \'let\'');
+  const name = previous;
+  declareVariable(name);
+  if (match('=')) expression();
+  else emit(Op.None);
+  consume(';',
+    '\';\' after the variable declaration');
+  defineVariable(name);
+}
+```
+
+`letDeclaration` reads the name, compiles the initialiser (which leaves
+its value on the stack when the program runs) or emits `none` if there
+is none, checks the `;`, and calls `defineVariable`. At the top level,
+that emits `define.global` with `identifierConstant(name.lexeme)` as its
+operand (inside a block it does something else, the next chapter's
+subject). Reading and assigning go through `namedVariable`, which emits
+`load.global` or `store.global` the same way when the name is not a
+local.
+
+Here is the companion disassembler's output for a three-line program:
+
+```text
+let a = 1;
+print a;
+a = a + 2;
+```
+
+```text
+== <script> ==
+0000    1 const               0 '1'
+0003    | define.global       1 'a'
+0006    2 load.global         2 'a'
+0009    | print
+0010    3 load.global         4 'a'
+0013    | const               5 '2'
+0016    | add
+0017    | store.global        3 'a'
+0020    | pop
+0021    | none
+0022    | return
+```
+
+Every instruction with a constant is three bytes long (the offsets go
+up by 3). The constants for `a` are 1, 2, 4 and 3: each mention adds
+a pool entry, but all hold the same interned string, so the cost is a
+few pool slots, not copies of the text. (In `a = a + 2` the target is
+read first, so its constant, 3, comes before the right-hand side's.)
+The line ends in `pop`: an assignment produces a value, and an
+expression statement throws it away.
+
+<NameToValue />
+
+<Prompts ids={['name-in-pool', 'two-bytes']} />
+
+## Three instructions
+
+Now the VM side, from the dispatch loop in `vm/vm.ts` (`readString`
+reads two operand bytes and returns that constant as a string object):
+
+```ts
+case Op.LoadGlobal: {
+  const name = readString();
+  const v = this.globals.get(name);
+  if (v === undefined)
+    this.runtimeError(
+      `undefined variable '${name.chars}'`);
+  this.push(v!);
+  break;
+}
+case Op.DefineGlobal:
+  this.globals.set(readString(),
+    this.peek(0));
+  this.sp--;
+  break;
+```
+
+`load.global` pushes the value stored under the name, or stops with
+Drip's runtime error. `define.global` *peeks* at the value, stores it,
+and only then drops it (`this.sp--`), so the value is always somewhere
+a garbage collection would find it (a habit the VM keeps everywhere).
+It never complains about an existing name: as in the tree-walker, a
+second top-level `let` replaces the first.
+
+<Callout kind="definition">
+The VM's **global table** is one hash table (`vm.globals`) mapping
+interned name strings to values. `define.global` stores the value on
+top of the stack under a name and pops it; `load.global` pushes the
+value stored under a name, or reports `undefined variable`;
+`store.global` overwrites an *existing* name and leaves the value on
+the stack. Each takes one operand: the two-byte constant index of the
+name.
+</Callout>
+
+<Formal title="The three instructions">
+
+```text
+G : name ⇀ value          (the globals)
+define n:  G := G[n ↦ v], pop v
+load n:    push G(n)   if n ∈ dom G
+store n:   G := G[n ↦ v]  if n ∈ dom G
+otherwise: undefined variable 'n'
+```
+
+<span slot="read">G is a partial map (the half arrow) from names to
+values: not every name has one. define sets n to v, the value on top of
+the stack, and pops it. load pushes G of n if n is in G's domain, the
+names it has; store replaces n's value only if n is there. Otherwise
+both are a runtime error.</span>
+</Formal>
+
+<Examples of="global-table">
+
+```text
+let x;
+0000    1 none
+0001    | define.global       0 'x'
+```
+
+```text
+b = 5;
+runtime error: undefined variable 'b'
+  at line 1 in script
+let b = 5; # fine: this defines b
+```
+
+```text
+print len;    # native fn len
+let len = 3;
+print len;    # 3
+```
+
+</Examples>
+
+First, `let` with no initialiser: the compiler emits `none`, so
+`define.global` always has a value to store. Second, the mistake to
+know: assigning to a name no `let` defined is a runtime error, while
+`let b = 5;` works. Third, a surprise: the natives are globals in the
+same table, so a top-level `let len` replaces the native `len`.
+
+<Prompts ids={['global-table-what', 'peek-then-pop']} />
+
+## The store.global trick
+
+Assigning to an undefined name must be an error. The obvious code looks
+the name up, checks it is there, then stores: two lookups. The VM does
+one:
+
+```ts
+case Op.StoreGlobal: {
+  const name = readString();
+  if (this.globals.set(name,
+      this.peek(0))) {
+    // Assigning never creates a global:
+    // undo and complain.
+    this.globals.delete(name);
+    this.runtimeError(
+      `undefined variable '${name.chars}'`);
+  }
+  break;
+}
+```
+
+`Table.set` returns `true` when the key was *new*, which in a correct
+program never happens here, so a correct assignment costs one `set`. In
+a mistaken one the VM has just created a variable that should not
+exist, so it deletes it (leaving a tombstone) and reports the error; a
+program about to stop can afford that. There is no pop: the value
+stays, because `print a = 3;` needs it.
+
+Step through it, with the real slots (watch for a growth you might not
+expect, and the undo's tombstone):
+
+<GlobalSteps client:visible />
+
+<Prompts ids={['set-returns-new', 'why-delete', 'set-no-pop']} />
+
+## Found late, on purpose
+
+A global is looked up by name *when the instruction runs*, not when it
+is compiled, so a function can mention a global that does not exist yet,
+as long as it exists by the time the function is called:
+
+<Run id="late-global" />
+
+When `show` is compiled, `greeting` is only a string in its constant
+pool; by the time `show()` runs `load.global`, the `let` has run. That
+is also what lets two top-level functions call each other, whichever
+comes first in the file.
+
+<Prompts ids={['late-binding']} />
+
+<Callout kind="engine" label="Under the hood">
+Every global access is a hash-table lookup while the program runs, and
+in this book's benchmark run of 2 November 2026 it shows: the VM beat
+the tree-walker on six programs of ten, only by 1.08× to 1.3×, and lost
+on four, worst on `instantiation` (0.69×) and `fields` (0.74×, 712 ms
+against 530 ms). `fields` reads two globals and their fields millions
+of times, each a lookup in one of the VM's own tables, written in
+JavaScript, where the tree-walker uses the engine's built-in `Map`; a
+faster loop does not help when the lookups are the work. CPython's
+`LOAD_GLOBAL` also names a global by an index into a table of names,
+while locals use another instruction with a plain
+index<Cite id="cpython-dis" />. Drip is about to make the same split.
+</Callout>
+
+## Your turn
+
+<Exercise id="globals-vm" />
+
+<Exercise id="tick" />
+
+## What you learned
+
+- The compiler stores a global's **name** in the constant pool, and
+  the global instructions take its index as a two-byte operand.
+- The VM's **global table** is a hash table keyed by interned strings.
+- `define.global` stores, then pops; `load.global` pushes or reports
+  `undefined variable`; `store.global` sets first, leaves the value,
+  and deletes the key again if it was new.
+- Globals are found by name at run time, so a function can use a
+  global defined after it; the price is a lookup on every access.
+
+Next: local variables, which skip the table entirely.
+
+<Quiz />

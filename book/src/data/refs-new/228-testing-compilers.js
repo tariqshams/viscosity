@@ -1,4 +1,4 @@
-// New references for chapter 228 (Testing compilers) and its staged second
+// New references for chapter 97 (Testing compilers) and its staged second
 // half, 225-b (Fuzzing and test-case reduction). Checked 2026-11-02. This
 // session could reach GitHub (raw files and code search) and a web search
 // engine, but not doi.org, dl.acm.org, dblp.org or the authors' pages.
@@ -17,7 +17,7 @@ export default [
     url: 'https://doi.org/10.1145/3363562',
     accessed: '2026-11-02',
     checkedAgainst: 'The reference list of Livinskii, Babokin and Regehr, “Random Testing for C and C++ Compilers with YARPGen” (OOPSLA 2020), read from the PDF in github.com/intel/yarpgen: “Junjie Chen, Jibesh Patra, Michael Pradel, Yingfei Xiong, Hongyu Zhang, Dan Hao, and Lu Zhang. 2020. A Survey of Compiler Testing. ACM Comput. Surv. 53, 1, Article 4 (Feb. 2020), 36 pages. https://doi.org/10.1145/3363562”. Search results (OpenAlex, university repository records) give the same authors and venue, and the abstract: the survey covers how to construct test programs, which test oracles to use, how to execute compiler tests efficiently, and how to help developers act on the bugs found. The survey text was not opened.',
-    shaped: 'Chapters 228 and 228-b: the shape of the field, test programs, oracles and execution.',
+    shaped: 'Chapters 97 and 97-b: the shape of the field, test programs, oracles and execution.',
   },
   {
     id: 'mckeeman1998',
@@ -29,7 +29,7 @@ export default [
     url: 'https://www.hpl.hp.com/hpjournal/dtj/vol10num1/vol10num1art9.pdf',
     accessed: '2026-11-02',
     checkedAgainst: 'Only as cited: the reference list of Livinskii, Babokin and Regehr (OOPSLA 2020, PDF in github.com/intel/yarpgen) gives “William M. McKeeman. 1998. Differential Testing for Software. Digital Technical Journal 10, 1 (Dec. 1998), 100–107”, and its section 2.1 says YARPGen “is intended to be used for differential testing [McKeeman 1998]”. The url is the usual location of the journal’s archive and was not reachable from this session; the paper itself was not seen.',
-    shaped: 'Chapter 228: the name and origin of differential testing.',
+    shaped: 'Chapter 97: the name and origin of differential testing.',
   },
   {
     id: 'le2014emi',
@@ -41,7 +41,7 @@ export default [
     url: 'https://doi.org/10.1145/2594291.2594334',
     accessed: '2026-11-02',
     checkedAgainst: 'The YARPGen paper’s reference list (OOPSLA 2020, PDF in github.com/intel/yarpgen): “Vu Le, Mehrdad Afshari, and Zhendong Su. 2014. Compiler Validation via Equivalence modulo Inputs. In Proceedings of the 35th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI ’14) … 216–226. https://doi.org/10.1145/2594291.2594334”; the bibsleigh record conf/pldi/LeAS14 has the same DOI (its page field, “25-25”, disagrees and was not used). Search results (Microsoft Research and UC Davis pages) describe the method: profile a program on test inputs, then randomly prune code that never executed on them, giving variants that must behave the same on those inputs, for differential testing of compilers; 147 confirmed, unique bug reports for GCC and LLVM in about eleven months. The paper text was not opened.',
-    shaped: 'Chapter 228: metamorphic testing of compilers, by deleting code that did not run.',
+    shaped: 'Chapter 97: metamorphic testing of compilers, by deleting code that did not run.',
   },
   {
     id: 'yang2011',
@@ -53,7 +53,7 @@ export default [
     url: 'https://doi.org/10.1145/1993498.1993532',
     accessed: '2026-11-02',
     checkedAgainst: 'The YARPGen paper’s reference list (“Xuejun Yang, Yang Chen, Eric Eide, and John Regehr. 2011. Finding and Understanding Bugs in C Compilers. In Proceedings of the 32nd ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI ’11) … 283–294. https://doi.org/10.1145/1993498.1993532”) and the bibsleigh record conf/pldi/YangCER11 (same DOI, pp. 283–294). The Csmith README (raw.githubusercontent.com/csmith-project/csmith/master/README.md) says the research “is best summarized by our paper Finding and Understanding Bugs in C Compilers”. Search results: the SIGPLAN Most Influential PLDI Paper Award page lists it. The paper text was not opened.',
-    shaped: 'Chapter 228-b: Csmith, random differential testing of C compilers.',
+    shaped: 'Chapter 97-b: Csmith, random differential testing of C compilers.',
   },
   {
     id: 'regehr2012',
@@ -65,7 +65,7 @@ export default [
     url: 'https://doi.org/10.1145/2254064.2254104',
     accessed: '2026-11-02',
     checkedAgainst: 'The YARPGen paper’s reference list (“John Regehr, Yang Chen, Pascal Cuoq, Eric Eide, Chucky Ellison, and Xuejun Yang. 2012. Test-Case Reduction for C Compiler Bugs. In Proceedings of the 33rd ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI ’12) … 335–346. https://doi.org/10.1145/2254064.2254104”), the bibsleigh record conf/pldi/RegehrCCEEY12 (same), and the C-Reduce README (raw.githubusercontent.com/csmith-project/creduce/master/README.md): “C-Reduce is a tool that takes a large C or C++ program that has a property of interest (such as triggering a compiler bug) and automatically produces a much smaller C/C++ program that has the same property”; “Each invocation of the interestingness test is performed in a fresh temporary directory”. The YARPGen paper adds that C-Reduce’s transformations “are syntactical in nature and tend to introduce undefined behavior during reduction”. Search results summarize the paper’s finding that effective reduction needs more than plain delta debugging. The paper text was not opened.',
-    shaped: 'Chapter 228-b: C-Reduce and the interestingness test.',
+    shaped: 'Chapter 97-b: C-Reduce and the interestingness test.',
   },
   {
     id: 'livinskii2020',
@@ -77,7 +77,7 @@ export default [
     url: 'https://doi.org/10.1145/3428264',
     accessed: '2026-11-02',
     checkedAgainst: 'The paper itself, from github.com/intel/yarpgen (papers/yarpgen-ooplsa-2020.pdf, read with pdftotext): title page and ACM reference format (Proc. ACM Program. Lang. 4, OOPSLA, Article 196, November 2020, 25 pages, doi 10.1145/3428264); abstract: “we used to find and report more than 220 bugs in GCC, LLVM, and the Intel® C++ Compiler … a method for generating expressive programs that avoid undefined behavior without using dynamic checks, and generation policies”; section 2.1: self-checking tests would make reduction with C-Reduce very hard, while differential testing avoids that, and correlated bugs that make independent compilers agree on a wrong answer happen “very rarely”. The repository README says each generated program prints a hash of its global variables, which must be the same for every compiler and optimization level.',
-    shaped: 'Chapter 228-b: generators that avoid undefined behaviour by construction, and generation policies.',
+    shaped: 'Chapter 97-b: generators that avoid undefined behaviour by construction, and generation policies.',
   },
   {
     id: 'necula2000',
@@ -89,6 +89,6 @@ export default [
     url: 'https://doi.org/10.1145/349299.349314',
     accessed: '2026-11-02',
     checkedAgainst: 'The bibsleigh record conf/pldi/Necula00 (github.com/slebok/bibsleigh, corpus/PLT/2000/PLDI-2000/PLDI-2000-Necula.json, read raw): George C. Necula, PLDI 2000, pp. 83–94, doi 10.1145/349299.349314. Search results quoting a copy of the paper: “We describe a translation validation infrastructure for the GNU C compiler. During the compilation the infrastructure compares the intermediate form of the program before and …” (the snippet stops there), it “can be implemented with about the effort typically required to implement one compiler pass”, and equivalence checking is possible “if the compiler produces additional information to guide the translation validation infrastructure”; that copy gives pages 83–95, against dblp’s 83–94. Translation validation was first proposed by Pnueli et al. (TACAS 1998), per the same results. The paper text was not opened.',
-    shaped: 'Chapter 228-b: checking each compilation, rather than the compiler.',
+    shaped: 'Chapter 97-b: checking each compilation, rather than the compiler.',
   },
 ];

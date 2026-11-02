@@ -1,8 +1,5 @@
-// Chapter 37 cards. Keys are stable ids: never rename them.
-//
-// The runner erases types without checking them, so exercises
-// (lang: 'ts') are tested on behaviour; what keyof, T[K] and mapped types
-// add is explained in the text, the prompts and the walkthroughs.
+// Chapter 37 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'keyof-what': {
@@ -63,8 +60,7 @@ export const exercises = {
   pluck: {
     lang: 'ts',
     title: 'Pull out one column',
-    prompt:
-      'Write `pluck(xs, k)` that **returns** a new array holding the value of property `k` from each record in `xs`, in order. Its type is `pluck<T, K extends keyof T>(xs: T[], k: K): T[K][]`, so `pluck(ps, \'x\')` is a `number[]` and `pluck(ps, \'vX\')` is rejected by `tsc`. (The runner erases types, so the tests check behaviour.)',
+    prompt: 'Write `pluck(xs, k)` that **returns** a new array holding the value of property `k` from each record in `xs`, in order. Its type is `pluck<T, K extends keyof T>(xs: T[], k: K): T[K][]`, so `pluck(ps, \'x\')` is a `number[]` and `pluck(ps, \'vX\')` is rejected by `tsc`. (The runner erases types, so the tests check behaviour.)',
     starter: `function pluck<T, K extends keyof T>(
   xs: T[],
   k: K,
@@ -155,8 +151,7 @@ test('a new array each time', () => {
     optional: true,
     lang: 'ts',
     title: 'Records to columns',
-    prompt:
-      'Write `toColumns(xs)` that turns an array of records into an object of columns: one property per key of the **first** record, holding an array of that key’s values from every record, in order. For an empty array, return `{}`. Its type is `toColumns<T>(xs: T[]): Columns<T>`, with `Columns` from the chapter.',
+    prompt: 'Write `toColumns(xs)` that turns an array of records into an object of columns: one property per key of the **first** record, holding an array of that key’s values from every record, in order. For an empty array, return `{}`. Its type is `toColumns<T>(xs: T[]): Columns<T>`, with `Columns` from the chapter.',
     starter: `type Columns<T> = {
   [K in keyof T]: T[K][];
 };
@@ -272,41 +267,96 @@ export const quiz = [
   {
     q: 'For `type Row = { id: number; name: string }`, what is `keyof Row`?',
     options: [
-      { t: '`number | string`', why: 'That is `Row[keyof Row]`, the types of the values, not the keys.' },
-      { t: '`\'id\' | \'name\'`', correct: true, why: '`keyof` gives the union of the property names, each as an exact string type.' },
-      { t: '`string[]`', why: 'That is what `Object.keys` returns at run time; `keyof` is a union type, not an array.' },
+      {
+        t: '`number | string`',
+        why: 'That is `Row[keyof Row]`, the types of the values, not the keys.',
+      },
+      {
+        t: '`\'id\' | \'name\'`',
+        correct: true,
+        why: '`keyof` gives the union of the property names, each as an exact string type.',
+      },
+      {
+        t: '`string[]`',
+        why: 'That is what `Object.keys` returns at run time; `keyof` is a union type, not an array.',
+      },
     ],
   },
   {
-    q: 'Which line does `tsc` reject?\n```ts\nfunction get<T, K extends keyof T>(\n  o: T, k: K): T[K] { return o[k]; }\nconst r = { id: 1, name: \'a\' };\n```',
+    q: `Which line does \`tsc\` reject?
+\`\`\`ts
+function get<T, K extends keyof T>(
+  o: T, k: K): T[K] { return o[k]; }
+const r = { id: 1, name: 'a' };
+\`\`\``,
     options: [
-      { t: '`get(r, \'id\')`', why: '`\'id\'` is one of `keyof` the record type, and the result is a `number`.' },
-      { t: '`get(r, \'name\')`', why: '`\'name\'` is a key, so this is fine, and the result is a `string`.' },
-      { t: '`get(r, \'size\')`', correct: true, why: '`\'size\'` is not assignable to `\'id\' | \'name\'`, so the constraint `K extends keyof T` fails.' },
+      {
+        t: '`get(r, \'id\')`',
+        why: '`\'id\'` is one of `keyof` the record type, and the result is a `number`.',
+      },
+      {
+        t: '`get(r, \'name\')`',
+        why: '`\'name\'` is a key, so this is fine, and the result is a `string`.',
+      },
+      {
+        t: '`get(r, \'size\')`',
+        correct: true,
+        why: '`\'size\'` is not assignable to `\'id\' | \'name\'`, so the constraint `K extends keyof T` fails.',
+      },
     ],
   },
   {
     q: 'What is `Particle[][number]`?',
     options: [
-      { t: '`Particle`', correct: true, why: 'Indexing an array type with `number` gives the type of its elements.' },
-      { t: '`number`', why: 'The `number` is the index, not the answer: it asks for the type of an element.' },
-      { t: 'An error: you cannot index a type with `number`', why: '`number` is a valid index for array types; it is the standard way to get the element type.' },
+      {
+        t: '`Particle`',
+        correct: true,
+        why: 'Indexing an array type with `number` gives the type of its elements.',
+      },
+      {
+        t: '`number`',
+        why: 'The `number` is the index, not the answer: it asks for the type of an element.',
+      },
+      {
+        t: 'An error: you cannot index a type with `number`',
+        why: '`number` is a valid index for array types; it is the standard way to get the element type.',
+      },
     ],
   },
   {
     q: 'What is `{ [K in keyof T]: boolean }` for `T = { a: string; b: number }`?',
     options: [
-      { t: '`boolean`', why: 'A mapped type builds an object type, one property per key.' },
-      { t: '`{ a: string; b: number }`', why: 'The type after the colon is `boolean`, not `T[K]`, so the old types are replaced.' },
-      { t: '`{ a: boolean; b: boolean }`', correct: true, why: 'One property per key of `T`, each with the type written after the colon.' },
+      {
+        t: '`boolean`',
+        why: 'A mapped type builds an object type, one property per key.',
+      },
+      {
+        t: '`{ a: string; b: number }`',
+        why: 'The type after the colon is `boolean`, not `T[K]`, so the old types are replaced.',
+      },
+      {
+        t: '`{ a: boolean; b: boolean }`',
+        correct: true,
+        why: 'One property per key of `T`, each with the type written after the colon.',
+      },
     ],
   },
   {
     q: 'A variable is labelled with `{ readonly [K in keyof T]: T[K] }`. Which is true?',
     options: [
-      { t: 'The object is frozen at run time, so assignments throw', why: 'Types are erased: at run time it is an ordinary object. Only the checker refuses the assignment.' },
-      { t: '`tsc` reports any assignment to its properties through that label', correct: true, why: '“Cannot assign to \'x\' because it is a read-only property.” It guards your code, not the data.' },
-      { t: 'Only the first property is read-only', why: 'The modifier is applied to every key the mapped type visits.' },
+      {
+        t: 'The object is frozen at run time, so assignments throw',
+        why: 'Types are erased: at run time it is an ordinary object. Only the checker refuses the assignment.',
+      },
+      {
+        t: '`tsc` reports any assignment to its properties through that label',
+        correct: true,
+        why: '“Cannot assign to \'x\' because it is a read-only property.” It guards your code, not the data.',
+      },
+      {
+        t: 'Only the first property is read-only',
+        why: 'The modifier is applied to every key the mapped type visits.',
+      },
     ],
   },
 ];

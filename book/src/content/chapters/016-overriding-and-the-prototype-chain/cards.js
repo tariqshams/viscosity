@@ -1,5 +1,5 @@
-// Cards for chapter 15-b (Overriding and the prototype chain).
-// Keys are stable ids: never rename them.
+// Chapter 16 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'override-what': {
@@ -81,7 +81,11 @@ console.log(Object.hasOwn(p0, 'show'));`,
   },
 };
 
-const NODE = `class Node {
+export const exercises = {
+  add: {
+    title: 'An Add node',
+    prompt: 'The classes `Node` and `Num` from the chapter (with `show`) are already written above your code. Write `class Add extends Node`: `new Add(line, left, right)` stores the line (through `super`) and the two smaller pieces `left` and `right`, which are themselves nodes. Override `show()` so that it returns `\'(\'`, the left piece shown, `\' + \'`, the right piece shown, and `\')\'`; so `new Add(1, new Num(1, 2), new Num(1, 3)).show()` is `\'(2 + 3)\'`.',
+    starter: `class Node {
   constructor(line) {
     this.line = line;
   }
@@ -101,9 +105,51 @@ class Num extends Node {
     return String(this.value);
   }
 }
-`;
 
-const ADD_TESTS = `const two = new Num(1, 2);
+class Add extends Node {
+  // your code here
+}
+
+const a = new Add(
+  1,
+  new Num(1, 2),
+  new Num(1, 3),
+);
+console.log(a.show());`,
+    solution: `class Node {
+  constructor(line) {
+    this.line = line;
+  }
+  where() {
+    return 'line ' + this.line;
+  }
+  show() {
+    return '?';
+  }
+}
+class Num extends Node {
+  constructor(line, value) {
+    super(line);
+    this.value = value;
+  }
+  show() {
+    return String(this.value);
+  }
+}
+
+class Add extends Node {
+  constructor(line, left, right) {
+    super(line);
+    this.left = left;
+    this.right = right;
+  }
+  show() {
+    const l = this.left.show();
+    const r = this.right.show();
+    return '(' + l + ' + ' + r + ')';
+  }
+}`,
+    tests: `const two = new Num(1, 2);
 const three = new Num(1, 3);
 test('stores line, left and right', () => {
   const a = new Add(4, two, three);
@@ -124,38 +170,7 @@ test('inherits where from Node', () => {
   const a = new Add(7, two, three);
   expect(a.where()).toBe('line 7');
   expect(a instanceof Node).toBe(true);
-});`;
-
-export const exercises = {
-  add: {
-    title: 'An Add node',
-    prompt:
-      'The classes `Node` and `Num` from the chapter (with `show`) are already written above your code. Write `class Add extends Node`: `new Add(line, left, right)` stores the line (through `super`) and the two smaller pieces `left` and `right`, which are themselves nodes. Override `show()` so that it returns `\'(\'`, the left piece shown, `\' + \'`, the right piece shown, and `\')\'`; so `new Add(1, new Num(1, 2), new Num(1, 3)).show()` is `\'(2 + 3)\'`.',
-    starter: NODE + `
-class Add extends Node {
-  // your code here
-}
-
-const a = new Add(
-  1,
-  new Num(1, 2),
-  new Num(1, 3),
-);
-console.log(a.show());`,
-    solution: NODE + `
-class Add extends Node {
-  constructor(line, left, right) {
-    super(line);
-    this.left = left;
-    this.right = right;
-  }
-  show() {
-    const l = this.left.show();
-    const r = this.right.show();
-    return '(' + l + ' + ' + r + ')';
-  }
-}`,
-    tests: ADD_TESTS,
+});`,
     hints: [
       'Two pieces are needed: a constructor and a `show` method. Start with the constructor, and look at how `Num`’s constructor is written.',
       'The constructor takes `(line, left, right)`. Its first line hands `line` to the parent: `super(line);`. Then store the other two with `this.left = left;` and `this.right = right;`.',
@@ -186,7 +201,27 @@ class Add extends Node {
 - Using \`this.left.value\` works for numbers but gives \`undefined\` for a sum inside a sum, because an Add has no \`value\`. Asking the piece to \`show()\` itself works for every kind.`,
     wrong: [
       {
-        code: NODE + `
+        code: `class Node {
+  constructor(line) {
+    this.line = line;
+  }
+  where() {
+    return 'line ' + this.line;
+  }
+  show() {
+    return '?';
+  }
+}
+class Num extends Node {
+  constructor(line, value) {
+    super(line);
+    this.value = value;
+  }
+  show() {
+    return String(this.value);
+  }
+}
+
 class Add extends Node {
   constructor(line, left, right) {
     this.left = left;
@@ -201,7 +236,27 @@ class Add extends Node {
         why: 'No `super(line)`, so `this` is used before the parent has built the object: a ReferenceError at `new Add(...)`.',
       },
       {
-        code: NODE + `
+        code: `class Node {
+  constructor(line) {
+    this.line = line;
+  }
+  where() {
+    return 'line ' + this.line;
+  }
+  show() {
+    return '?';
+  }
+}
+class Num extends Node {
+  constructor(line, value) {
+    super(line);
+    this.value = value;
+  }
+  show() {
+    return String(this.value);
+  }
+}
+
 class Add extends Node {
   constructor(line, left, right) {
     super(line);
@@ -221,16 +276,55 @@ class Add extends Node {
   findOwner: {
     optional: true,
     title: 'Who owns this property?',
-    prompt:
-      'Write `findOwner(o, key)` that walks `o`’s prototype chain and returns the **first object on it that has `key` as an own property**: `o` itself, or one of its prototypes. If no link has it, return `null`. Use `Object.hasOwn(x, key)` to test one link and `Object.getPrototypeOf(x)` to move to the next. The classes `Node` and `Num` are written above your code.',
-    starter: NODE + `
+    prompt: 'Write `findOwner(o, key)` that walks `o`’s prototype chain and returns the **first object on it that has `key` as an own property**: `o` itself, or one of its prototypes. If no link has it, return `null`. Use `Object.hasOwn(x, key)` to test one link and `Object.getPrototypeOf(x)` to move to the next. The classes `Node` and `Num` are written above your code.',
+    starter: `class Node {
+  constructor(line) {
+    this.line = line;
+  }
+  where() {
+    return 'line ' + this.line;
+  }
+  show() {
+    return '?';
+  }
+}
+class Num extends Node {
+  constructor(line, value) {
+    super(line);
+    this.value = value;
+  }
+  show() {
+    return String(this.value);
+  }
+}
+
 function findOwner(o, key) {
   // your code here
 }
 
 const n = new Num(3, 42);
 console.log(findOwner(n, 'where'));`,
-    solution: NODE + `
+    solution: `class Node {
+  constructor(line) {
+    this.line = line;
+  }
+  where() {
+    return 'line ' + this.line;
+  }
+  show() {
+    return '?';
+  }
+}
+class Num extends Node {
+  constructor(line, value) {
+    super(line);
+    this.value = value;
+  }
+  show() {
+    return String(this.value);
+  }
+}
+
 function findOwner(o, key) {
   let x = o;
   while (x !== null) {
@@ -282,7 +376,27 @@ For \`findOwner(n, 'show')\` the loop checks \`n\` (no), then \`Num.prototype\` 
 - Forgetting the \`x = Object.getPrototypeOf(x);\` line loops for ever on the first link.`,
     wrong: [
       {
-        code: NODE + `
+        code: `class Node {
+  constructor(line) {
+    this.line = line;
+  }
+  where() {
+    return 'line ' + this.line;
+  }
+  show() {
+    return '?';
+  }
+}
+class Num extends Node {
+  constructor(line, value) {
+    super(line);
+    this.value = value;
+  }
+  show() {
+    return String(this.value);
+  }
+}
+
 function findOwner(o, key) {
   let x = o;
   while (x !== null) {
@@ -303,27 +417,63 @@ export const quiz = [
   {
     q: '`Num extends Node`, and both define `show()`. For `n = new Num(3, 42)`, which `show` does `n.show()` run?',
     options: [
-      { t: 'Both, Node’s first', why: 'Only one method runs. Node’s runs too only if Num’s calls `super.show()` itself.' },
-      { t: 'Node’s, because Node was written first', why: 'The order the classes were written in does not decide it; the nearer link of the chain does.' },
-      { t: 'Num’s: the subclass’s version overrides the inherited one', correct: true, why: 'The search reaches `Num.prototype` first, finds `show`, and stops there.' },
-      { t: 'It is an error to define the same method twice', why: 'Defining it again in a subclass is allowed, and is exactly what overriding is.' },
+      {
+        t: 'Both, Node’s first',
+        why: 'Only one method runs. Node’s runs too only if Num’s calls `super.show()` itself.',
+      },
+      {
+        t: 'Node’s, because Node was written first',
+        why: 'The order the classes were written in does not decide it; the nearer link of the chain does.',
+      },
+      {
+        t: 'Num’s: the subclass’s version overrides the inherited one',
+        correct: true,
+        why: 'The search reaches `Num.prototype` first, finds `show`, and stops there.',
+      },
+      {
+        t: 'It is an error to define the same method twice',
+        why: 'Defining it again in a subclass is allowed, and is exactly what overriding is.',
+      },
     ],
   },
   {
     q: 'Inside `where()` of `class Call extends Node`, what does `super.where()` do?',
     options: [
-      { t: 'Runs Node’s `where`, with `this` still the Call object', correct: true, why: 'It reaches the parent’s version, and that version works on the same object.' },
-      { t: 'Runs Call’s own `where` again', why: 'That is what `this.where()` would do (for ever). `super` skips to the parent.' },
-      { t: 'Makes a new Node and asks it', why: '`super.where()` makes no new object; it runs the parent’s method on this one.' },
-      { t: 'Calls Node’s constructor', why: 'That is `super(...)` on its own, and only in a constructor; `super.where()` calls a method.' },
+      {
+        t: 'Runs Node’s `where`, with `this` still the Call object',
+        correct: true,
+        why: 'It reaches the parent’s version, and that version works on the same object.',
+      },
+      {
+        t: 'Runs Call’s own `where` again',
+        why: 'That is what `this.where()` would do (for ever). `super` skips to the parent.',
+      },
+      {
+        t: 'Makes a new Node and asks it',
+        why: '`super.where()` makes no new object; it runs the parent’s method on this one.',
+      },
+      {
+        t: 'Calls Node’s constructor',
+        why: 'That is `super(...)` on its own, and only in a constructor; `super.where()` calls a method.',
+      },
     ],
   },
   {
     q: 'Nobody wrote a `toString` method, yet `n.toString()` works. Why?',
     options: [
-      { t: 'JavaScript adds a `toString` to every object when it is made', why: 'It is not copied into each object; `Object.hasOwn(n, \'toString\')` is false.' },
-      { t: '`toString` is on `Object.prototype`, the last link of the chain, so the lookup finds it there', correct: true, why: 'Every ordinary chain ends with `Object.prototype` before `null`.' },
-      { t: '`Node` defines it automatically', why: 'Node holds only the methods written in its class body.' },
+      {
+        t: 'JavaScript adds a `toString` to every object when it is made',
+        why: 'It is not copied into each object; `Object.hasOwn(n, \'toString\')` is false.',
+      },
+      {
+        t: '`toString` is on `Object.prototype`, the last link of the chain, so the lookup finds it there',
+        correct: true,
+        why: 'Every ordinary chain ends with `Object.prototype` before `null`.',
+      },
+      {
+        t: '`Node` defines it automatically',
+        why: 'Node holds only the methods written in its class body.',
+      },
     ],
   },
   {
@@ -336,19 +486,45 @@ a.where();
 b.where();
 \`\`\``,
     options: [
-      { t: `'mine' and 'mine'`, why: 'The new property is written on `a` only; `Node.prototype` is unchanged.' },
-      { t: `'line 1' and 'line 2'`, why: '`a` now has an own `where`, which is found before the inherited one.' },
-      { t: 'An error: methods cannot be replaced', why: 'Writing a property onto an object is always allowed here.' },
-      { t: `'mine' and 'line 2'`, correct: true, why: '`a`’s own `where` shadows Node’s for `a` alone; `b` still finds Node’s.' },
+      {
+        t: '\'mine\' and \'mine\'',
+        why: 'The new property is written on `a` only; `Node.prototype` is unchanged.',
+      },
+      {
+        t: '\'line 1\' and \'line 2\'',
+        why: '`a` now has an own `where`, which is found before the inherited one.',
+      },
+      {
+        t: 'An error: methods cannot be replaced',
+        why: 'Writing a property onto an object is always allowed here.',
+      },
+      {
+        t: '\'mine\' and \'line 2\'',
+        correct: true,
+        why: '`a`’s own `where` shadows Node’s for `a` alone; `b` still finds Node’s.',
+      },
     ],
   },
   {
     q: 'What does `Object.getPrototypeOf(Object.prototype)` give?',
     options: [
-      { t: '`Object.prototype` itself', why: 'Then the chain would loop for ever; it ends instead.' },
-      { t: '`null`: the end of the chain', correct: true, why: 'Object.prototype is the last real link, and its prototype is `null`, which is how a lookup knows to stop.' },
-      { t: '`undefined`', why: 'The end of the chain is marked with `null`, not `undefined`.' },
-      { t: 'A TypeError', why: 'Asking for any object’s prototype is fine.' },
+      {
+        t: '`Object.prototype` itself',
+        why: 'Then the chain would loop for ever; it ends instead.',
+      },
+      {
+        t: '`null`: the end of the chain',
+        correct: true,
+        why: 'Object.prototype is the last real link, and its prototype is `null`, which is how a lookup knows to stop.',
+      },
+      {
+        t: '`undefined`',
+        why: 'The end of the chain is marked with `null`, not `undefined`.',
+      },
+      {
+        t: 'A TypeError',
+        why: 'Asking for any object’s prototype is fine.',
+      },
     ],
   },
 ];

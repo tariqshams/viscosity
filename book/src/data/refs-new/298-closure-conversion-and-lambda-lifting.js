@@ -1,4 +1,4 @@
-// New references for chapter 298. Checked 2026-11-02. Chapter 298 also
+// New references for chapter 268. Checked 2026-11-02. Chapter 268 also
 // relies on rustref-closure-types (references.js), whose source
 // (rust-lang/reference src/types/closure.md, “A closure type is
 // approximately equivalent to a struct which contains the captured
@@ -18,7 +18,7 @@ export default [
     url: 'https://doi.org/10.1007/3-540-15975-4_37',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results on 2026-11-02 (the Springer chapter page via springerprofessional.de, and BRICS research reports RS-03-26 and RS-04-12 citing it): Thomas Johnsson, in J.-P. Jouannaud (ed.), Functional Programming Languages and Computer Architecture, LNCS 201, pp. 190–203, Nancy, France, September 1985, DOI 10.1007/3-540-15975-4_37 (chapter 37 of the volume). Lambda lifting is described there as transforming a functional program with local function definitions, possibly with free variables, into a program consisting only of global function definitions. Neither the paper nor the publisher’s page could be opened from this session (their hosts are not reachable), so only these bibliographic facts and that description are relied on.',
-    shaped: 'Chapter 298: the name and idea of lambda lifting.',
+    shaped: 'Chapter 268: the name and idea of lambda lifting.',
   },
   {
     id: 'cxx-closure-type',
@@ -30,6 +30,6 @@ export default [
     url: 'https://github.com/cplusplus/draft/blob/main/source/expressions.tex',
     accessed: '2026-11-02',
     checkedAgainst: 'source/expressions.tex read raw from github.com/cplusplus/draft (main) on 2026-11-02, section [expr.prim.lambda.closure]: “The type of a lambda-expression (which is also the type of the closure object) is a unique, unnamed non-union class type, called the closure type”. clang 18.1.3 output matched: [n](int x){...} became %class.anon = type { i32 }, with operator() taking a pointer to it.',
-    shaped: 'Chapter 298: a C++ lambda is a class whose fields are its captures.',
+    shaped: 'Chapter 268: a C++ lambda is a class whose fields are its captures.',
   },
 ];

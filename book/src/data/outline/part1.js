@@ -1,9 +1,6 @@
-// Part I: JavaScript for engine builders (days 1–6).
-// Each chapter lists the concepts it introduces: { id: description }.
-// The concept registry (../concepts.js) is built from these files.
 export default {
-  id: 'I', track: 'A', days: '1–12', title: 'JavaScript for engine builders',
-  blurb: 'Functions, arrays, objects, references, closures, classes, strings, errors, modules, TypeScript, testing, and the raw bytes behind typed arrays.',
+  id: 'I', section: 'prelude', days: '1–12', title: 'Prelude: programming from scratch, in JavaScript and TypeScript',
+  blurb: 'For readers new to programming: functions, values, arrays and objects, loops, errors, TypeScript, testing, bits and bytes, async code and the toolchain, ending with a JSON parser. Experienced engineers skip straight to the Core.',
   chapters: [
     { n: 1, title: 'Functions: naming a piece of work', introduces: {
       function: 'a named, reusable piece of work',
@@ -184,8 +181,8 @@ export default {
       'lazy-sequence': 'values produced only when asked for',
     } },
     { n: 40, title: 'Asynchronous code: promises and the event loop', introduces: {
-      promise: 'a value that will be ready later',
       'event-loop': 'the loop that runs callbacks one at a time',
+      promise: 'a value that will be ready later',
     } },
     { n: 41, title: 'async, await and the microtask queue', introduces: {
       'async-await': 'writing promise code as if it were sequential',
@@ -200,8 +197,8 @@ export default {
       bundler: 'a tool that joins modules into files to ship',
     } },
     { n: 44, title: 'Designing with types', introduces: {
-      'type-driven-design': 'choosing types first so the code follows',
       'illegal-states-unrepresentable': 'types that make wrong data impossible to build',
+      'type-driven-design': 'choosing types first so the code follows',
     } },
     { n: 45, title: 'Branded types: same shape, different meaning', introduces: {
       'branded-type': 'a nominal tag on a structural type',

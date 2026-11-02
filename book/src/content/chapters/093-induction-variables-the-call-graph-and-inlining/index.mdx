@@ -1,0 +1,730 @@
+---
+n: 93
+day: 12
+part: V
+title: 'Induction variables, the call graph and inlining'
+tagline: 'Inside a loop, some values climb by the same step every trip and some never change at all. Spotting both is what lets Viscosity prove that `ps[i]` never runs off the end, and what lets other compilers move work out of the loop.'
+objectives:
+  - Recognise a basic induction variable as a phi in the loop header, and a derived one as a sum or product built from it.
+  - Explain how Viscosity proves an element access in bounds from the header's test and dominance.
+  - Decide which instructions in a loop are loop-invariant, and why a memory read needs more care than arithmetic.
+  - Compute the invariant instructions of a loop with a small fixpoint.
+  - Draw a call graph, and spot recursion as a cycle in it.
+  - Explain why callbacks, methods and reassignable names make a JavaScript call graph uncertain, and how a JIT and Viscosity each cope.
+  - Describe the usual inlining heuristics (size budget, called once, leaves first) and why inliners work bottom-up.
+  - Find the recursive functions in a call graph built from code given as data.
+  - Inline a call by hand, binding all the parameters at once and giving the callee's locals fresh names.
+  - Describe inlining on a control-flow graph in SSA, where the call's block is split and each return becomes a jump to a join with a phi.
+  - Explain how inlining feeds constant folding, dead code elimination and value numbering, and what it costs.
+  - Implement inlining over expression trees given as data.
+introduces: [induction-variable, loop-invariant, call-graph, inlining]
+uses: [natural-loop, cfg, basic-block, dominator, ssa, phi-node, ir, three-address-code, dataflow, fixpoint, for-loop, array, index, length, push, typed-array, runtime-error, aos-vs-soa, logical-operators, comparison, side-effect, set, function, call, recursion, callback, higher-order-function, first-class-function, method, prototype-chain, jit-compiler, optimizing-tiers, speculation, type-feedback, deoptimization, constant-folding, dce, map, for-of, while-loop, arrow-function, parameter, argument, return, local-variable, call-stack, tree, ast, constant-propagation, value-numbering, gvn, array-of-objects, object, console-log]
+sources: [llvm-passes, llvm-loop-terminology, gcc-ipa-inline, v8-retiring-octane, v8-release-61, v8-array-sort, coopertorczon2022]
+---
+import IvSteps from '../../../components/diagrams/ch093/IvSteps';
+import InvariantSteps from '../../../components/diagrams/ch093/InvariantSteps';
+import CallGraphPic from '../../../components/diagrams/ch093/CallGraphPic';
+import BottomUpSteps from '../../../components/diagrams/ch093/BottomUpSteps';
+import InlineSteps from '../../../components/diagrams/ch093/InlineSteps';
+import InlineCfg from '../../../components/diagrams/ch093/InlineCfg';
+import Playground from '../../../components/playground/Playground';
+
+{/* ── merge: from old chapter 93, Induction variables and loop invariants ── */}
+
+## What is the loop counting?
+
+When Viscosity turns an array of objects `ps` into a struct of arrays,
+the read `ps[i].x` becomes `ps.x[i]`, and the two behave differently at
+the edges: past the end, `ps[i]` is `undefined` and `.x` on it throws a
+`TypeError`, while a typed array quietly returns `undefined`. So every
+rewritten access gets a check that throws the original error, unless
+Viscosity can prove the check never fires. To prove that, it needs to
+know what `i` *is* on every trip around the loop; the last chapter found
+the loops, and this one looks at the values inside them.
+
+## Values that climb in steps
+
+<Analogy title="climbing a staircase">
+Each step you take adds one to your step count, so after `k` steps the
+count is `k`; your height above the floor is not counted separately, it
+is always 17 centimetres times the step count. The step count is the
+thing that drives the climb; the height follows it in lockstep.
+<span slot="breaks">Real staircases end where the builder put the top;
+how many trips a loop makes is decided by its test while it runs, and
+is often unknown to the compiler.</span>
+</Analogy>
+
+<Analogy extra title="page numbers in a book">
+Turn a page and the page number goes up by one; the line number at the
+top of page `p`, in a book with 40 lines a page, is `40 × (p - 1) + 1`,
+another number that climbs in steps, just bigger ones.
+<span slot="breaks">You can flip back and forth in a book; an induction
+variable only ever moves forwards by its fixed step, once per trip.</span>
+</Analogy>
+
+In SSA (chapter 90) a loop counter is a phi in the header. Here is
+`for (let i = 0; i < n; i++)` with `const j = 2 * i + 1` in its body,
+as Viscosity's IR:
+
+```text
+b1:  ; preds b0 b3
+  %4 = phi %3, %17      ; i
+  %6 = binop < %4, %1   ; i < n
+b2:
+  %8 = binop * %7, %4   ; 2 * i
+  %10 = binop + %8, %9  ; 2 * i + 1
+b3:
+  %15 = unop + %4
+  %17 = binop + %15, %16 ; + 1
+```
+
+`%4` takes `%3` (the starting `0`) when it arrives from before the loop,
+and `%17` when it comes round from the latch `b3`; `%17` is `%4` plus
+one (the unary `+` is how `i++` first turns `i` into a number). `%8` and
+`%10` are built from `%4` with a constant multiply and a constant add.
+Step through four trips and watch them move together:
+
+<IvSteps client:visible />
+
+<Callout kind="definition">
+An **induction variable** is a value that changes by a fixed amount on
+every trip around a loop. A **basic** induction variable is a phi in the
+loop header whose inputs are a start value from outside the loop and
+`phi + step` from inside it, where the step is the same every trip. A
+**derived** induction variable is `c × i + d` for a basic one `i` and
+values `c` and `d` that do not change in the loop.
+</Callout>
+
+<Formal title="Induction variables, trip by trip">
+
+```text
+basic:    i₀ = start,   iₖ₊₁ = iₖ + s
+          so  iₖ = start + k·s
+derived:  jₖ = c·iₖ + d
+          so  jₖ₊₁ = jₖ + c·s
+```
+
+<span slot="read">On trip zero the basic variable i holds its start; on
+each later trip it is the last value plus the step s, so on trip k it is
+start plus k times s. A derived variable j is c times i plus d, so it
+too climbs by a fixed step, c times s, each trip.</span>
+</Formal>
+
+<Examples of="induction-variable">
+
+```js
+for (let i = 0; i < n; i++)  // step 1
+```
+
+```js
+for (let i = 10; i > 0; i -= 2)
+// step -2: still an induction variable
+```
+
+```js
+const i = y * W + x; // heat.js
+c[i - 1].h + c[i + 1].h  // derived
+```
+
+</Examples>
+
+The first is the everyday counter, step 1. The second steps by minus
+two, which is still a fixed step, so it is still an induction variable.
+The third is from the `heat` benchmark in this repository, which walks a
+grid stored row by row: inside the `x` loop, `y` and `W` do not change,
+so `i` is a derived induction variable of `x` (step 1), and so are
+`i - 1` and `i + 1`.
+
+Viscosity's own test is deliberately narrower. Its `isCountingPhi`, in
+`analysis.ts`, accepts only a phi whose step is exactly `+ 1` and whose
+start is provably a whole number that is zero or more:
+
+```ts
+const [x, y] = step.args.map(inst);
+const base = x.op === 'unop' &&
+  x.operator === '+'
+  ? inst(x.args[0]) : x;
+if (base.id !== phi.id || y.op !== 'const'
+    || y.value !== 1) continue;
+```
+
+The first line fetches the two operands of the step's `+`; the next
+three look through a unary `+` if there is one; the last two reject the
+phi unless the step adds the constant `1` to the phi itself. When the
+header then tests such a phi from `0` against a constant, `i < 100`,
+Viscosity knows the **trip count** (100), which it uses to estimate
+sizes: pushes inside loops of 10 and 20 trips give `about 200
+elements` in `explain`, while a bound read from the command line gives
+`size unknown statically`.
+
+<Prompts ids={['iv-what', 'derived-iv', 'trip-count']} />
+
+## Proving `ps[i]` is in bounds
+
+For an access `ps[idx]`, Viscosity drops the check when all three of
+these hold:
+
+1. `idx` is a counting phi, so on every trip it is a whole number, zero
+   or more.
+2. A loop containing the access has `idx`'s block as its header, and the
+   header's test (or one part of an `&&`) is `idx < ps.length`.
+3. The test's "true" successor dominates the access, so the access can
+   only run straight after the test has passed.
+
+Here are loops over `ps`, each followed by one `console.log(ps[0].x)`
+outside any loop (never proven), with the last line of `explain`, all
+run for this chapter:
+
+```text
+loop                         proven
+i < ps.length                2 of 3
+i < n   (const n = 1000)     0 of 3
+i < ps.length && go          2 of 3
+i <= ps.length               0 of 3
+i < ps.length; i += 2        0 of 3
+ps[i] in an inner k loop     2 of 3
+ps[i - 1], i from 1          1 of 3
+```
+
+Each failure breaks one condition: `n` is not `ps.length`, `<=` lets `i`
+equal the length, `i += 2` is not a step of one, and `i - 1` is not a
+phi at all. The inner `k` loop still works because condition 2 searches
+*every* loop around the access, not just the innermost. On the
+programs in `bench/e2e`, `viscosity explain` reports 12 of 12 accesses
+proven for `nbody` and 11 of 11 for `boids`, but 3 of 12 for `heat`,
+whose `c[i - 1]` and `c[i + W]` are derived, not counting, variables.
+
+<Prompts ids={['bounds-dominate', 'and-guard']} />
+
+## Values that never change
+
+Back in the last chapter's `sum`, the inner loop's header contains
+`%9 = const 3`, and the inner body reads `g[i]` with `%14 = index.get
+%0, %3`. Neither operand of that read is touched by the `k` loop, so
+every trip asks the same question again.
+
+<Analogy extra title="running laps of a track">
+While you run laps, your lap count goes up, but the length of the track
+is the same on every lap, so you could measure it once before you
+start, rather than on every lap.
+<span slot="breaks">Unless someone moves the cones while you run: a
+value read from memory (an array's length, a field) stays the same only
+if nothing in the loop writes to it, and proving that is a separate,
+harder question.</span>
+</Analogy>
+
+<Callout kind="definition">
+An instruction is **loop-invariant** in a loop if it computes the same
+value on every trip: it has no side effects, and each of its operands is
+either defined outside the loop or is itself loop-invariant. A phi in
+the header is never invariant (it merges a value from the latch), and a
+read from memory is invariant only if nothing in the loop may write
+the memory it reads.
+</Callout>
+
+<Formal title="Loop-invariant, as a rule">
+
+```text
+inv(x)  ⟺  pure(x) ∧ ∀ o ∈ args(x):
+             def(o) ∉ L  ∨  inv(o)
+```
+
+<span slot="read">x is invariant in loop L exactly when x is pure (no
+effects, not a phi, not a memory read), and every operand o of x is
+either defined outside L or is itself invariant. The rule refers to
+itself, so it is solved like chapter 92's dataflow: guess, sweep,
+repeat until nothing changes.</span>
+</Formal>
+
+<InvariantSteps client:visible />
+
+<Examples of="loop-invariant">
+
+```text
+b5:                ; inner loop header
+  %9 = const 3     ; invariant
+```
+
+```text
+b6:                ; inner x loop body
+  %32 = binop * %23, %21  ; y * W
+```
+
+```js
+for (let i = 0; i < g.length; i++)
+  g.push(0); // g.length: not invariant
+```
+
+</Examples>
+
+The first is the simplest case: a constant has no operands, so it is
+the same on every trip of `sum`'s `k` loop. The second is from the grid
+loop: `y` (`%23`) and `W` (`%21`) are both defined outside the inner `x`
+loop, so `y * W` is invariant there, though not in the outer `y` loop,
+where `%23` is its counter. The third is the memory trap: `g` itself
+never changes, but every `push` makes `g.length` bigger, so the read of
+`g.length` in the header gives a new answer each trip (and this loop
+never ends). LLVM's loop-invariant code motion pass uses alias analysis
+for exactly this question before it moves a memory read<Cite id="llvm-passes" />.
+
+<Prompts ids={['invariant-what', 'phi-not-invariant', 'length-not-invariant']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity uses invariance once, quietly, in its bounds proof: the outer
+counter `%3` never changes inside the `k` loop, so the outer test
+`i < g.length` still holds when `g[i]` is read in there. It never moves
+an invariant instruction out of a loop; the next chapter shows how a
+compiler that does would go about it, and why "before the loop" needs a
+block of its own<Cite id="llvm-loop-terminology" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="basicIvs" />
+
+<Exercise id="invariants" />
+
+## What you learned
+
+- A **basic induction variable** is a header phi fed by a start value
+  and `phi + step`; a **derived** one is `c × i + d`. Both climb by a
+  fixed step each trip.
+- Viscosity's bounds proof needs a counting phi (start ≥ 0, step 1), a
+  header test `i < ps.length` (perhaps inside `&&`), and a true branch
+  that dominates the access.
+- A **loop-invariant** instruction is pure and built only from values
+  defined outside the loop or themselves invariant; find them all with
+  a fixpoint.
+- Memory reads are invariant only if nothing in the loop writes there.
+
+
+{/* ── merge: from old chapter 93, The call graph ── */}
+
+## Who calls whom
+
+Inlining one call is a local decision; deciding *which* calls to inline
+in a whole program is not. Inline `clamp` into `move`, and `move` grows,
+which changes whether `move` is worth inlining into its own callers.
+Inline `fact` into itself, and a new call to `fact` appears in the copy,
+forever. Before deciding anything, a compiler draws a map:
+
+<Figure takeaway="Recursion is a cycle; an unknown callee is an edge to anywhere." caption="A small program's call graph. main calls step, step calls move and clamp, move calls clamp. even and odd call each other, a cycle, so both are recursive. run(xs, g) calls whatever function g holds, so its edge goes to unknown.">
+  <CallGraphPic />
+</Figure>
+
+<Analogy title="a phone tree">
+A school's phone tree says who rings whom when school is closed: the
+head rings three teachers, each teacher rings five parents. From it you
+can see who will hear the news and in what order, without ringing
+anybody.
+<span slot="breaks">A phone tree is a tree; a call graph can have
+cycles (two functions that call each other), and edges that say only
+"may call", since a function calls different things on different
+runs.</span>
+</Analogy>
+
+<Analogy extra title="a cookbook's cross-references">
+Recipes say "see the pastry on page 12", and the pastry says "see the
+glaze on page 30". Following the cross-references tells you every page
+a dish depends on, and if two pages ever refer to each other, you will
+go round in circles.
+<span slot="breaks">A cookbook's cross-references are printed and
+fixed. In JavaScript, a call like `g(x)` refers to whatever `g` holds
+when it runs, which may not be known until then.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **call graph** has one node per function and an edge `f → g` when
+`f` contains a call that may reach `g`. A cycle in it is recursion
+(direct, `f → f`, or mutual, `f → g → f`). A call whose target cannot
+be pinned down gets an edge to "unknown", which must be treated as
+possibly any function.
+</Callout>
+
+<Formal title="Call graph and recursion">
+
+```text
+CG = (F, E),  E = { (f, g) : f may call g }
+f is recursive  ⟺  f →⁺ f
+```
+
+<span slot="read">The call graph is a pair: the set F of functions, and
+the set E of pairs (f, g) such that f may call g. A function f is
+recursive exactly when there is a path of one or more edges (the little
+plus sign) from f back to itself.</span>
+</Formal>
+
+<Prompts ids={['call-graph-what', 'inline-recursion']} />
+
+## Why JavaScript makes the map hard
+
+In C, `clamp(x)` names one function, fixed when the program is linked.
+In JavaScript, a call names a *value*:
+
+<Examples of="call-graph">
+
+```js
+function sq(v) { return v * v; }
+sq(3);   // edge: caller → sq
+```
+
+```js
+const f = cond ? sq : cube;
+f(3);    // edges: → sq, → cube
+xs.map(g); // map → g: from inside map
+```
+
+```js
+o.area();
+// whichever area the prototype chain
+// of o finds at run time: unknown
+// unless o's shape is known
+```
+
+</Examples>
+
+The first is the easy case: a declared function, called by name. The
+second shows two ways the callee becomes a value: chosen at run time,
+or handed to another function (a callback), which calls it from code
+the caller never sees. The third is a method call, whose target depends
+on the object's prototype chain. An optimising JIT copes by *watching*:
+type feedback tells it which function a call site has actually called
+so far, so it can inline that one, guarded by a check, and deoptimise
+if the guess is ever wrong. A tool that compiles ahead of time, like
+Viscosity, has to *prove* it instead.
+
+Viscosity proves a small, exact piece of the call graph. A **known
+function** is one declared once whose name is never used for anything
+but a direct call: not passed as a value, not called as a method, not
+reassigned. For those, it can list every call site. Simplified from
+`analysis.ts`:
+
+```ts
+for (const l of loads.get(f.declaredAs)) {
+  for (const u of usesOf(l.id)) {
+    const i = u.inst;
+    if (i && i.op === 'call' &&
+        i.args[0] === l.id &&
+        i.note !== 'method') sites.push(i);
+    else ok = false;
+  }
+}
+if (ok) callSites.set(f, sites);
+```
+
+With every call site known, its numeric inference can say a parameter
+is a number when every call passes one, and its layout analysis can
+follow a collection into a known function, but only if every call site
+passes that same collection. When `total` is called with two different
+arrays, it stops (real output, wrapped):
+
+```text
+a (line 2) {x} → kept as array of objects
+  · unsafe: line 10: passed to total(),
+    which is also called with other values
+```
+
+Inlining `total` at each call would have given each array its own copy;
+Viscosity does not inline, so it keeps both as they are.
+
+<Prompts ids={['js-callee-unknown', 'known-fn', 'param-alias']} />
+
+## Deciding what to inline
+
+With the map drawn, an inliner needs rules. The common ones:
+
+- **Small callees** are inlined almost always: the copy is not much
+  bigger than the call it replaces.
+- **Functions called once** (and not visible outside the program) are
+  inlined, after which the original can be deleted, so the program gets
+  smaller.
+- **A growth budget** caps how much bigger a function, or the whole
+  program, may get.
+- **Hot call sites** (in loops, or seen often at run time) are worth
+  more than cold ones.
+- **Cycles are not chased**: a recursive call is inlined a few levels at
+  most, much like unrolling a loop.
+
+And the order matters. Inliners work **bottom-up**, leaves first: inline
+`clamp` into `move` before deciding about `move`, so that every function
+is already as optimised as it will get when its callers look at it.
+Step through it with a toy budget:
+
+<BottomUpSteps client:visible />
+
+The order itself is a postorder of the call graph: each function is
+listed after everything it calls. Run it, then add a function that calls
+`main` and see where it lands; notice that the cycle `even`, `odd` has
+no true "callees first" order, which is why inliners treat cycles
+separately:
+
+<Run id="order" />
+
+<Prompts ids={['bottom-up-why', 'called-once', 'inline-cost']} />
+
+<Callout kind="engine" label="Under the hood">
+GCC's inliner, `ipa-inline.cc`, describes exactly these heuristics: an
+early pass that runs over the call graph in topological order, so that
+callees have already been optimised when they are inlined, and allows
+small growth for leaf functions; then a whole-program pass that inlines
+small functions greedily, ordered by an estimate of "badness", while
+the limits allow, uses a special recursive inliner for recursive calls
+("with results similar to loop unrolling"), and inlines functions called
+once that are not exported<Cite id="gcc-ipa-inline" />. LLVM documents
+its `inline` pass as bottom-up<Cite id="llvm-passes" />. V8's team has
+written about the price of getting the budget wrong: the Octane
+benchmark rewarded aggressive inlining, and heuristics tuned to it
+caused regressions in real code through higher compile time and memory
+use<Cite id="v8-retiring-octane" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="recursiveFns" />
+
+## What you learned
+
+- A **call graph** has a node per function and an edge for each call
+  that may happen; recursion is a cycle.
+- In JavaScript, callees are values (callbacks, methods, reassigned
+  names), so edges can point to "unknown"; a JIT guesses from feedback
+  and guards the guess, while Viscosity proves a small exact part (known
+  functions and all their call sites).
+- Inliners use budgets, prefer small, once-called and hot callees, never
+  chase cycles, and work bottom-up so callees are optimised first.
+
+
+{/* ── merge: from old chapter 93, Inlining ── */}
+
+## One small function
+
+Here is a particle update, written the way most people would write it,
+with the work for one particle in its own function:
+
+```js
+const ps = [];
+for (let i = 0; i < 100; i++) {
+  ps.push({ x: i, vx: 1 });
+}
+function move(p) {
+  p.x += p.vx;
+}
+for (let i = 0; i < ps.length; i++) {
+  move(ps[i]);
+}
+console.log(ps[9].x);
+```
+
+Ask Viscosity what it makes of this, and it refuses to change the layout
+(its real explanation, wrapped to fit):
+
+```text
+ps (line 1) {x, vx}
+  → kept as array of objects
+  · unsafe: line 9: an element is passed
+    to a function call
+```
+
+Now paste the body of `move` into the loop yourself:
+
+```js
+for (let i = 0; i < ps.length; i++) {
+  const p = ps[i];
+  p.x += p.vx;
+}
+```
+
+Same program, same output, and this time Viscosity says
+`ps (line 1) {x, vx} → struct of arrays`, with typed `Float64Array`
+columns for both fields. Nothing about the work changed. What changed
+is what the analysis could *see*: inside one function every use of the
+element is in view; across a call, the element disappears into code the
+analysis does not follow. Pasting a function's body in place of a call
+is called **inlining**, and this is its real purpose.
+
+<Analogy title="a recipe that says &quot;see page 40&quot;">
+A recipe says "make the sauce (see page 40)". You can flip to page 40
+every time, or copy page 40 into the recipe. Copying saves the flipping,
+but the bigger win is that the whole dish is now on one page, and you
+notice that half the sauce steps are pointless for this dish.
+<span slot="breaks">Copying a page into every recipe that uses it makes
+the book thicker each time; a compiler pays for every copy in code size
+and compile time, which is why it cannot copy everything.</span>
+</Analogy>
+
+<Analogy extra title="quoting instead of citing">
+An essay can say "as Smith argues (2001, p. 12)" and send the reader
+off to find the book, or quote the paragraph right there. Quoted, the
+reader can weigh every word against the rest of the argument.
+<span slot="breaks">A quotation is read as it is; an inlined body is
+adapted to its new place: its parameters become the caller's arguments
+and its local names are changed so they cannot collide with the
+caller's.</span>
+</Analogy>
+
+<Prompts ids={['inline-what', 'element-call']} />
+
+## Pasting a function in
+
+Doing it by hand looks easy. Doing it mechanically, for every call, has
+two traps, both about names. Step through it:
+
+<InlineSteps client:visible />
+
+The first trap is a callee local with the same name as a caller
+variable, which the fresh name (`s1`) avoids. The second is subtler:
+the parameters must all be replaced **at once**. Here is the slip, with
+`sub(a, b)` returning `a - b`, inlined at the call `sub(b, a)`:
+
+```text
+body:          a - b
+a → b, then:   b - b
+b → a, then:   a - a     ; wrong
+at once:       b - a     ; right
+```
+
+One at a time, the second replacement rewrites a `b` that the first one
+had just put in. Done simultaneously, every parameter is replaced in the
+*original* body, and the call `sub(b, a)` becomes `b - a`, as it must.
+
+<Callout kind="definition">
+**Inlining** replaces a call with a copy of the callee's body, in which
+every parameter is replaced by its argument, all at once; every local
+of the callee gets a fresh name that the caller does not use; and each
+`return v` hands `v` to the code after the call. Each argument is
+evaluated once, before the body, exactly as the call would have done.
+</Callout>
+
+<Formal title="Simultaneous substitution">
+
+```text
+call f(e1, …, en),  f(x1, …, xn) = body
+───────────────────────────────────────
+body[x1 := e1, …, xn := en]
+```
+
+<span slot="read">If f has parameters x1 to xn and the given body, then
+a call f(e1, …, en) can be replaced by the body with x1 replaced by e1,
+x2 by e2, and so on, all in one step (the square brackets mean "with
+these replacements made together"). When an argument has side effects
+or is used twice, it is first stored in a fresh temporary, and the
+temporary is substituted instead.</span>
+</Formal>
+
+<Prompts ids={['inline-rename', 'inline-simultaneous', 'arg-once']} />
+
+## Inlining in a control-flow graph
+
+In an IR, the callee is a whole CFG, not one expression. The caller's
+block is cut in two at the call; the callee's blocks are copied in, with
+fresh ids for every block and every SSA value; the copy's entry is
+jumped to from the first half; each `return v` becomes a jump to the
+second half; and the call's result becomes a phi of the returned
+values, one per return:
+
+<Figure takeaway="Split at the call, copy the body, join the returns with a phi." caption="Left: block b4 calls abs. Right: b4 is cut at the call; abs's three blocks are copied in with new names (c0′, c1′, c2′); each return jumps to the second half, b4', where a phi picks whichever value was returned.">
+  <InlineCfg />
+</Figure>
+
+<Prompts ids={['return-join']} />
+
+## What it unlocks
+
+The call overhead it removes is small. What matters is that the passes
+of the last few chapters work inside one function, and inlining gives
+them a bigger one:
+
+<Examples of="inlining">
+
+```js
+function sq(v) { return v * v; }
+const y = sq(x) + 1;
+// inlined: const y = x * x + 1;
+```
+
+```js
+const k = sq(3);
+// inlined:  const k = 3 * 3;
+// folded:   const k = 9;
+```
+
+```js
+for (const p of ps) move(p);
+// inlined: for (const p of ps) {
+//            p.x += p.vx; }
+// Viscosity now sees every field use
+```
+
+</Examples>
+
+The first is the plain case: the call disappears and its body takes its
+place, with `v` replaced by `x`. The second is where inlining pays off:
+once the body is in the caller, the argument `3` meets the
+multiplication, and constant folding finishes the job at compile time;
+no call, no multiplication, just `9`. The same happens with dead code:
+an inlined function often computes things this caller never uses, and
+DCE now sees that they are unused here. Value numbering gains too, since
+a value computed in the caller and again in the callee is now in one
+function. The third is the chapter's opening example, where what
+inlining unlocks is an analysis rather than an optimisation.
+
+The price is size: every inlined call copies the whole body, so
+inlining a 50-line function at 20 call sites compiles 1,000 lines, and
+a JIT compiler pays for that in compile time and memory while the
+program runs. The next chapter is about deciding which calls are worth
+it.
+
+<Prompts ids={['inline-enables', 'inline-then-fold']} />
+
+<Callout kind="engine" label="Under the hood">
+V8's optimising compiler inlines. Its release notes for V8 6.1 say
+TurboFan began inlining `Array.prototype.forEach`<Cite id="v8-release-61" />,
+and when V8's team rewrote `Array.prototype.sort`, they noted that the
+old version, written in JavaScript, had let the optimising compiler
+inline the comparison function you passed in<Cite id="v8-array-sort" />.
+This book's own benchmark findings show the effect: in the
+`get-objects` case, which hands each SoA element to a small function
+that wants an object, SoA did not lose, because V8 inlined the function
+and then removed the temporary object altogether. Textbooks list
+inlining among the transformations whose value lies mostly in the
+optimisations it enables afterwards<Cite id="coopertorczon2022" />.
+
+Viscosity itself does **not** inline: it is a source-to-source tool,
+and pasting function bodies all over your program would rewrite far
+more than the collection code it means to touch. Try the opening
+example: inline `move` by hand below and watch the decision flip.
+</Callout>
+
+<Playground client:visible title="Inline move by hand" initial={`const ps = [];
+for (let i = 0; i < 100; i++) {
+  ps.push({ x: i, vx: 1 });
+}
+function move(p) {
+  p.x += p.vx;
+}
+for (let i = 0; i < ps.length; i++) {
+  move(ps[i]);
+}
+console.log(ps[9].x);`} />
+
+## Your turn
+
+<Exercise id="inlineTree" />
+
+## What you learned
+
+- **Inlining** replaces a call with the callee's body: parameters
+  replaced by arguments all at once, callee locals renamed, and each
+  `return` turned into the call's value.
+- On a CFG, the call's block is split, the callee's blocks are copied
+  with fresh names, and returns jump to a join where a phi picks the
+  result.
+- Its main benefit is visibility: folding, DCE, value numbering and
+  Viscosity's layout analysis all see caller and callee together.
+- Its cost is code size and compile time, so it cannot be applied
+  everywhere.
+
+Next: the map of which function calls which, and how compilers use it
+to decide what to inline.
+
+<Quiz />

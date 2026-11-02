@@ -1,0 +1,211 @@
+---
+n: 199
+day: 8
+part: XI
+title: 'Variance: functions, arrays and mutation'
+tagline: 'If every dog is an animal, is a list of dogs a list of animals? Is a function on dogs a function on animals? The answers are "only if you never write to it" and "no, the other way round", and TypeScript knowingly gets two of them wrong.'
+objectives:
+  - Decide whether one function type is a subtype of another, with results covariant and parameters contravariant.
+  - Explain why a read-only array can be covariant and a mutable one must be invariant.
+  - Show, with tsc and a run, where TypeScript allows covariant arrays and bivariant methods, and what crashes.
+  - Extend a subtype checker to function types and arrays in JavaScript.
+introduces: [variance]
+uses: [type-checker, typing-judgment, inference-rule, type-system, type-error, typescript, type-annotation, type-checking, interface, strict-mode-ts, tsconfig, generic, class, object, property, array, push, function, call, callback, reference, aliasing, mutation, recursion, subtyping, structural-vs-nominal]
+sources: [pierce2002, ts-type-compatibility, ts-strict-function-types, ts-26-strict-function-types, openjdk-arraystoreexception]
+---
+import VarianceSteps from '../../../components/diagrams/ch199/VarianceSteps';
+import SharedArray from '../../../components/diagrams/ch199/SharedArray';
+
+## Is a dog function an animal function?
+
+Take two record types, where every `Dog` is an `Animal` by width:
+
+```ts
+type Animal = { name: string };
+type Dog = { name: string; bark(): string };
+type Handler = (a: Animal) => void;
+const onDog = (d: Dog) => { d.bark(); };
+const h: Handler = onDog; // allowed?
+```
+
+A `Handler` is a function that takes any `Animal`. Line 4 is a
+function that takes a `Dog` and calls its `bark` method. Should line 5
+be allowed? Whoever holds `h` believes it may be called with *any*
+animal, a cat for instance, and then `onDog` would call `bark` on a cat
+that has no such method. So, no; and tsc (in strict mode) agrees:
+
+```text
+error TS2322: Type '(d: Dog) => void' is
+not assignable to type 'Handler'.
+  Types of parameters 'd' and 'a' are
+  incompatible.
+```
+
+Knowing that `Dog <: Animal` is not enough; we have to know how that
+fact carries over to bigger types built from them.
+
+<Analogy title="hiring a pet groomer">
+A kennel's job advert says "groom any animal that comes in". A groomer
+who only does dogs cannot take it: sooner or later a cat arrives.
+However, a groomer who does any animal can take a job advertised as
+"groom our dogs", since dogs are animals. The groomer who handles
+*more* is the one who fits *more* jobs.
+<span slot="breaks">A dog-only groomer might cope with a cat once, or
+refuse politely; a function given a value without the fields it uses
+has no judgement, and fails (or worse, carries on with
+`undefined`).</span>
+</Analogy>
+
+<Callout kind="definition">
+**Variance** says how subtyping of the parts carries over to a type
+built from them. A position is **covariant** if `S <: T` gives the same
+direction for the whole (a function's result); **contravariant** if it
+gives the opposite direction (a function's parameter); **invariant** if
+the whole types are related only when S and T are the same type; and
+**bivariant** if either direction is accepted.
+</Callout>
+
+<Formal title="Subtyping for function types">
+
+```text
+ T₁ <: S₁        S₂ <: T₂
+────────────────────────── (Arrow)
+   S₁ → S₂  <:  T₁ → T₂
+```
+
+<span slot="read">A function from S1 to S2 is a subtype of a function
+from T1 to T2 if T1 is a subtype of S1 (the parameters, the other way
+round: the stand-in must accept at least what the expected one would be
+given) and S2 is a subtype of T2 (the results, the same way round: it
+must return no more than what the expected one promises).</span>
+</Formal>
+
+Step through what happens when `Dog <: Animal` is wrapped in different
+kinds of type:
+
+<VarianceSteps client:visible />
+
+<Prompts ids={['variance-what', 'results-co', 'params-contra', 'arrow-why']} />
+
+## Arrays, and why writing changes everything
+
+A *read-only* array can only be read, and reading a `Dog` out of it
+where an `Animal` was expected is harmless; so `readonly Dog[]` can be a
+subtype of `readonly Animal[]`. A mutable array is also written to, and
+writing is a parameter in disguise: `push(x)` takes an element as an
+argument. Reading wants the arrow one way and writing wants it the
+other, so the only safe rule is that `Dog[]` and `Animal[]` are not
+related at all. Here is what goes wrong otherwise:
+
+<Figure takeaway="With two names for one mutable array, the wider name lets in values the narrower name never expects." caption="dogs and animals are one array. If Dog[] were a subtype of Animal[], a Cat could be pushed through animals, and then read out through dogs as if it were a Dog.">
+  <SharedArray />
+</Figure>
+
+<Analogy extra title="a crate labelled fruit">
+At a market, your stall keeps a crate of apples; a neighbour asks to
+borrow "a crate of fruit", and you lend it, since apples are fruit.
+Reading from it is fine: anything they take out is a fruit. However,
+they also put a banana in, and later your apple customer reaches in and
+bites into a banana.
+<span slot="breaks">You would spot the banana before biting; a program
+does not look, and calls the apple's method on whatever comes out, so
+the mistake only shows when that method is missing.</span>
+</Analogy>
+
+The same is true of a mutable *field*: depth subtyping (last chapter)
+is only safe for fields that are never written, since writing to a
+field through the wider type is another way to put a cat in a dog's
+place<Cite id="pierce2002" />.
+
+## Where TypeScript chose otherwise
+
+TypeScript's handbook is open that its type system "allows certain
+operations that can't be known at compile-time to be safe", and that
+these places were chosen on purpose<Cite id="ts-type-compatibility" />.
+Two of them are about variance. First, arrays are covariant even when
+mutable; this program passes tsc in strict mode, and crashes:
+
+```ts
+const rex: Dog = { name: 'rex',
+  bark: () => 'woof' };
+const dogs: Dog[] = [rex];
+const animals: Animal[] = dogs; // allowed
+animals.push({ name: 'tom' });
+dogs[1].bark();
+// TypeError: dogs[1].bark is not a function
+```
+
+Line 4 is the covariance: tsc accepts a `Dog[]` as an `Animal[]`. Line
+5 pushes a plain animal, which is fine for an `Animal[]`. Line 6 reads
+it back through `dogs`, where its type says `Dog`, and calls `bark`,
+which does not exist. Second, parameters. Since TypeScript 2.6 the
+`strictFunctionTypes` option (on under `strict`) checks parameters
+contravariantly, but only for function types, not for methods, which
+stay **bivariant** "to ensure generic classes and interfaces (such as
+`Array<T>`) continue to mostly relate
+covariantly"<Cite id="ts-26-strict-function-types" /><Cite id="ts-strict-function-types" />:
+
+<Examples of="variance">
+
+```ts
+type Make = () => Animal;
+const mk: Make = (): Dog => rex; // fine
+type Feed = (d: Dog) => void;
+const f: Feed = (a: Animal) => {}; // fine
+```
+
+```ts
+type A = { handle: (a: Animal) => void };
+const a: A = { handle: onDog };
+// error TS2322: Types of parameters
+//   'd' and 'a' are incompatible.
+type M = { handle(a: Animal): void };
+const m: M = { handle: onDog }; // allowed
+m.handle({ name: 'tom' });
+// TypeError: d.bark is not a function
+```
+
+```java
+String[] words = { "hi" };
+Object[] things = words;   // allowed
+things[0] = 42;
+// java.lang.ArrayStoreException:
+//   java.lang.Integer
+```
+
+</Examples>
+
+The first shows both safe directions: a function returning a `Dog` can
+be a `Make` (covariant result), and a function taking any `Animal` can
+be a `Feed` (contravariant parameter). The second is a spot the
+difference: the two types say the same thing, but `A` writes `handle`
+as a property holding a function, which strict mode checks
+contravariantly and rejects, while `M` writes it as a method, which is
+checked bivariantly, accepted, and crashes when called with a cat. The
+third is Java, whose arrays are covariant too; however, every Java
+array remembers its element type, and a store of the wrong kind throws
+`ArrayStoreException` at run time, rather than letting the bad value
+in<Cite id="openjdk-arraystoreexception" />. (All three were checked
+with tsc 5.9 in strict mode and OpenJDK 21.)
+
+<Prompts ids={['readonly-co', 'mutable-inv', 'ts-arrays', 'ts-methods', 'java-arrays']} />
+
+## Your turn
+
+<Exercise id="variance" />
+
+## What you learned
+
+- **Variance** says how `S <: T` carries over to bigger types:
+  **covariant** results, **contravariant** parameters.
+- Read-only arrays can be covariant; mutable arrays (and mutable fields)
+  must be **invariant**, because writing is a parameter.
+- TypeScript allows covariant mutable arrays and **bivariant** methods
+  on purpose; Java allows covariant arrays and checks each store at run
+  time.
+
+Next: a way of checking types that sends what is expected down into
+the program, and a precise statement of what a sound type system
+guarantees.
+
+<Quiz />

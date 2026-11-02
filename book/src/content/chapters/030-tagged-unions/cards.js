@@ -1,6 +1,5 @@
-// Chapter 30 cards (tagged unions). Keys are
-// stable ids: never rename them. As in chapter 27, the runner erases types
-// without checking them, so runnable code here is valid once stripped.
+// Chapter 30 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'tag-why': {
@@ -70,8 +69,7 @@ export const exercises = {
   evaluate: {
     lang: 'ts',
     title: 'An interpreter, typed',
-    prompt:
-      'Write `evaluate(e)` that computes the value of an expression tree. An `Expr` is one of: `{ kind: \'num\', value }`, `{ kind: \'add\', left, right }`, `{ kind: \'mul\', left, right }` or `{ kind: \'neg\', arg }` (negation: minus its argument). For any other kind, throw an `Error`. (The runner erases types, so the tests check behaviour; the walkthrough shows the typed version with an exhaustiveness check.)',
+    prompt: 'Write `evaluate(e)` that computes the value of an expression tree. An `Expr` is one of: `{ kind: \'num\', value }`, `{ kind: \'add\', left, right }`, `{ kind: \'mul\', left, right }` or `{ kind: \'neg\', arg }` (negation: minus its argument). For any other kind, throw an `Error`. (The runner erases types, so the tests check behaviour; the walkthrough shows the typed version with an exhaustiveness check.)',
     starter: `type Expr =
   | { kind: 'num'; value: number }
   | { kind: 'neg'; arg: Expr }
@@ -233,8 +231,7 @@ Delete the \`neg\` check and \`tsc\` reports that \`{ kind: "neg"; arg: Expr; }\
     optional: true,
     lang: 'ts',
     title: 'Print a tree back as text',
-    prompt:
-      'Write `toText(e)` for the `Expr` type with `num`, `add` and `mul` nodes. A `num` becomes its number as text (`String(e.value)`); an `add` becomes `(` + left + ` + ` + right + `)`, and a `mul` the same with ` * `. So `(1 + 2) * 4` comes out as `((1 + 2) * 4)`. Throw an `Error` for any other kind. (A program that turns a tree back into code is called a printer; Part III has one.)',
+    prompt: 'Write `toText(e)` for the `Expr` type with `num`, `add` and `mul` nodes. A `num` becomes its number as text (`String(e.value)`); an `add` becomes `(` + left + ` + ` + right + `)`, and a `mul` the same with ` * `. So `(1 + 2) * 4` comes out as `((1 + 2) * 4)`. Throw an `Error` for any other kind. (A program that turns a tree back into code is called a printer; Part III has one.)',
     starter: `type Expr =
   | { kind: 'num'; value: number }
   | { kind: 'add';
@@ -344,42 +341,95 @@ export const quiz = [
   {
     q: 'What makes a union a **discriminated** union?',
     options: [
-      { t: 'Every variant has a shared tag property, like `kind`, with a different literal type', correct: true, why: 'Checking that one property tells the checker (and you) which variant you have.' },
-      { t: 'It has more than two members', why: 'Size does not matter; the shared tag does.' },
-      { t: 'It uses `typeof` at run time', why: '`typeof` cannot tell two kinds of object apart; that is why we add a tag.' },
+      {
+        t: 'Every variant has a shared tag property, like `kind`, with a different literal type',
+        correct: true,
+        why: 'Checking that one property tells the checker (and you) which variant you have.',
+      },
+      {
+        t: 'It has more than two members',
+        why: 'Size does not matter; the shared tag does.',
+      },
+      {
+        t: 'It uses `typeof` at run time',
+        why: '`typeof` cannot tell two kinds of object apart; that is why we add a tag.',
+      },
     ],
   },
   {
     q: '`s` is a `Shape`: circle (`r`) or rect (`w`, `h`). Inside `if (s.kind === \'rect\') { ... }`, which access does the checker allow?',
     options: [
-      { t: '`s.r`', why: 'Inside this `if`, `s` has been narrowed to the rect variant, which has no `r`.' },
-      { t: '`s.w`', correct: true, why: 'The tag check narrowed `s` to the rect variant, which has `w` and `h`.' },
-      { t: 'Neither, until you also check `typeof s`', why: '`typeof s` is `\'object\'` for both; the tag check is what narrows.' },
+      {
+        t: '`s.r`',
+        why: 'Inside this `if`, `s` has been narrowed to the rect variant, which has no `r`.',
+      },
+      {
+        t: '`s.w`',
+        correct: true,
+        why: 'The tag check narrowed `s` to the rect variant, which has `w` and `h`.',
+      },
+      {
+        t: 'Neither, until you also check `typeof s`',
+        why: '`typeof s` is `\'object\'` for both; the tag check is what narrows.',
+      },
     ],
   },
   {
     q: 'A function ends with `return unreachable(s)`, where `unreachable(x: never)`. Every kind is handled above it. What is the type of `s` on that line?',
     options: [
-      { t: '`Shape`', why: 'Each check that returned removed one variant, so it is no longer the whole `Shape`.' },
-      { t: '`undefined`', why: '`undefined` is a real value; here no value at all can arrive.' },
-      { t: '`never`', correct: true, why: 'All variants have been narrowed away, so nothing is left. That is what lets the call type-check.' },
+      {
+        t: '`Shape`',
+        why: 'Each check that returned removed one variant, so it is no longer the whole `Shape`.',
+      },
+      {
+        t: '`undefined`',
+        why: '`undefined` is a real value; here no value at all can arrive.',
+      },
+      {
+        t: '`never`',
+        correct: true,
+        why: 'All variants have been narrowed away, so nothing is left. That is what lets the call type-check.',
+      },
     ],
   },
   {
     q: 'Why is the `throw` inside `unreachable` still useful, if the checker proved it cannot be reached?',
     options: [
-      { t: 'It is not; you can always delete it', why: 'You can delete it only if no unchecked data ever reaches the function, and you rarely know that.' },
-      { t: 'The checker needs it to see the `never` type', why: 'The `never` comes from the parameter type, not the throw.' },
-      { t: 'Types are erased, so data from outside the checked code can still have an unexpected kind at run time', correct: true, why: 'The throw turns that into a clear error instead of a quiet wrong answer.' },
+      {
+        t: 'It is not; you can always delete it',
+        why: 'You can delete it only if no unchecked data ever reaches the function, and you rarely know that.',
+      },
+      {
+        t: 'The checker needs it to see the `never` type',
+        why: 'The `never` comes from the parameter type, not the throw.',
+      },
+      {
+        t: 'Types are erased, so data from outside the checked code can still have an unexpected kind at run time',
+        correct: true,
+        why: 'The throw turns that into a clear error instead of a quiet wrong answer.',
+      },
     ],
   },
   {
     q: 'How many times is `evaluate` called, in total, to evaluate the tree for `(1 + 2) * 4`?',
     options: [
-      { t: '1', why: 'The first call on the root makes more calls for its children.' },
-      { t: '3', why: 'That counts only the `num` nodes; the `add` and `mul` nodes are evaluated too.' },
-      { t: '5', correct: true, why: 'Once per node: `mul`, `add`, and the three `num` nodes `1`, `2` and `4`.' },
-      { t: '12', why: '12 is the value of the tree, not the number of calls.' },
+      {
+        t: '1',
+        why: 'The first call on the root makes more calls for its children.',
+      },
+      {
+        t: '3',
+        why: 'That counts only the `num` nodes; the `add` and `mul` nodes are evaluated too.',
+      },
+      {
+        t: '5',
+        correct: true,
+        why: 'Once per node: `mul`, `add`, and the three `num` nodes `1`, `2` and `4`.',
+      },
+      {
+        t: '12',
+        why: '12 is the value of the tree, not the number of calls.',
+      },
     ],
   },
 ];

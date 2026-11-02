@@ -1,4 +1,5 @@
-// Chapter 7 cards. Keys are stable ids: never rename them.
+// Chapter 7 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'ref-what': {
@@ -59,8 +60,7 @@ console.log(a.x, b.x);`,
 export const exercises = {
   indexOfSame: {
     title: 'Find this exact object',
-    prompt:
-      'Write `indexOfSame(xs, target)` that returns the index of the first slot of `xs` holding **the very same object** as `target` (identity, not equal contents), or `-1` if there is none.',
+    prompt: 'Write `indexOfSame(xs, target)` that returns the index of the first slot of `xs` holding **the very same object** as `target` (identity, not equal contents), or `-1` if there is none.',
     starter: `function indexOfSame(xs, target) {
   // your code here
 }
@@ -143,8 +143,7 @@ The first test is the point of the exercise: slot 0 holds \`{ id: 1 }\`, which l
   distinct: {
     optional: true,
     title: 'How many different objects?',
-    prompt:
-      'Write `distinct(xs)` that returns how many **different objects** the array `xs` holds, counting by identity. An object that appears in several slots counts once; two lookalike objects count twice. For example, with `const a = {}` and `const b = {}`, `distinct([a, a, b])` is `2`.',
+    prompt: 'Write `distinct(xs)` that returns how many **different objects** the array `xs` holds, counting by identity. An object that appears in several slots counts once; two lookalike objects count twice. For example, with `const a = {}` and `const b = {}`, `distinct([a, a, b])` is `2`.',
     starter: `function distinct(xs) {
   // your code here
 }
@@ -228,19 +227,45 @@ b.n = 2;
 console.log(a.n);
 \`\`\``,
     options: [
-      { t: '`1`', why: 'That would be true if `b` were a copy, but `const b = a` copies only the arrow.' },
-      { t: '`undefined`', why: '`a.n` exists; it was changed through `b`.' },
-      { t: '`2`', correct: true, why: '`a` and `b` point at one object, so the change through `b` shows through `a`.' },
-      { t: 'An error, because `b` is `const`', why: '`const` stops re-aiming `b`, not changing the object it points at.' },
+      {
+        t: '`1`',
+        why: 'That would be true if `b` were a copy, but `const b = a` copies only the arrow.',
+      },
+      {
+        t: '`undefined`',
+        why: '`a.n` exists; it was changed through `b`.',
+      },
+      {
+        t: '`2`',
+        correct: true,
+        why: '`a` and `b` point at one object, so the change through `b` shows through `a`.',
+      },
+      {
+        t: 'An error, because `b` is `const`',
+        why: '`const` stops re-aiming `b`, not changing the object it points at.',
+      },
     ],
   },
   {
     q: 'What is `[1, 2] === [1, 2]`?',
     options: [
-      { t: '`true`', why: 'The contents are equal, but `===` on arrays checks identity.' },
-      { t: '`false`', correct: true, why: 'Each `[...]` makes a new array, so these are two different objects.' },
-      { t: 'An error', why: 'Comparing arrays with `===` is allowed; it just compares identity.' },
-      { t: 'It depends on the engine', why: 'The language specifies this precisely: different objects are never `===`.' },
+      {
+        t: '`true`',
+        why: 'The contents are equal, but `===` on arrays checks identity.',
+      },
+      {
+        t: '`false`',
+        correct: true,
+        why: 'Each `[...]` makes a new array, so these are two different objects.',
+      },
+      {
+        t: 'An error',
+        why: 'Comparing arrays with `===` is allowed; it just compares identity.',
+      },
+      {
+        t: 'It depends on the engine',
+        why: 'The language specifies this precisely: different objects are never `===`.',
+      },
     ],
   },
   {
@@ -254,10 +279,23 @@ f(x);
 console.log(x.v);
 \`\`\``,
     options: [
-      { t: '`1`', correct: true, why: '`o = ...` re-aims only the function’s own copy of the arrow; `x` still points at `{ v: 1 }`.' },
-      { t: '`2`', why: 'That would need `o.v = 2` (a mutation), not re-aiming `o`.' },
-      { t: '`undefined`', why: '`x` still points at its original object, which has `v: 1`.' },
-      { t: 'An error', why: 'Re-assigning a parameter is allowed.' },
+      {
+        t: '`1`',
+        correct: true,
+        why: '`o = ...` re-aims only the function’s own copy of the arrow; `x` still points at `{ v: 1 }`.',
+      },
+      {
+        t: '`2`',
+        why: 'That would need `o.v = 2` (a mutation), not re-aiming `o`.',
+      },
+      {
+        t: '`undefined`',
+        why: '`x` still points at its original object, which has `v: 1`.',
+      },
+      {
+        t: 'An error',
+        why: 'Re-assigning a parameter is allowed.',
+      },
     ],
   },
   {
@@ -269,10 +307,23 @@ p.y = 3;        // line 3
 p = { x: 4 };   // line 4
 \`\`\``,
     options: [
-      { t: 'Line 2', why: 'Changing a property is a mutation of the object, which `const` allows.' },
-      { t: 'Line 3', why: 'Adding a property is also a mutation of the object, so it is allowed.' },
-      { t: 'None of them', why: 'Line 4 tries to re-aim a `const` name, which is refused.' },
-      { t: 'Line 4', correct: true, why: 'It tries to point `p` at a different object: “TypeError: Assignment to constant variable.”' },
+      {
+        t: 'Line 2',
+        why: 'Changing a property is a mutation of the object, which `const` allows.',
+      },
+      {
+        t: 'Line 3',
+        why: 'Adding a property is also a mutation of the object, so it is allowed.',
+      },
+      {
+        t: 'None of them',
+        why: 'Line 4 tries to re-aim a `const` name, which is refused.',
+      },
+      {
+        t: 'Line 4',
+        correct: true,
+        why: 'It tries to point `p` at a different object: “TypeError: Assignment to constant variable.”',
+      },
     ],
   },
   {
@@ -284,18 +335,41 @@ cur.x = 9;
 console.log(ps[0].x, cur === ps[0]);
 \`\`\``,
     options: [
-      { t: '`0 false`', why: '`cur = ps[0]` copies the arrow from the slot, so it reaches the same object.' },
-      { t: '`9 true`', correct: true, why: '`cur` and `ps[0]` are aliases: the change shows through the slot, and `===` confirms it is one object.' },
-      { t: '`9 false`', why: 'They are the same object, so `===` is `true`.' },
-      { t: '`0 true`', why: 'If they are the same object (they are), the change through `cur` must show in `ps[0]`.' },
+      {
+        t: '`0 false`',
+        why: '`cur = ps[0]` copies the arrow from the slot, so it reaches the same object.',
+      },
+      {
+        t: '`9 true`',
+        correct: true,
+        why: '`cur` and `ps[0]` are aliases: the change shows through the slot, and `===` confirms it is one object.',
+      },
+      {
+        t: '`9 false`',
+        why: 'They are the same object, so `===` is `true`.',
+      },
+      {
+        t: '`0 true`',
+        why: 'If they are the same object (they are), the change through `cur` must show in `ps[0]`.',
+      },
     ],
   },
   {
     q: 'In C, `struct P b = a;` and then `b.x = 99;`. What happens to `a.x`?',
     options: [
-      { t: 'It becomes 99, as in JavaScript', why: 'In C, assigning a struct copies all of it, so `b` is a separate struct.' },
-      { t: 'It is unchanged: `b` is a copy', correct: true, why: 'C copies structs by value; to alias `a` you need a pointer, `&a`.' },
-      { t: 'The program will not compile', why: 'Copying a struct by assignment is ordinary C.' },
+      {
+        t: 'It becomes 99, as in JavaScript',
+        why: 'In C, assigning a struct copies all of it, so `b` is a separate struct.',
+      },
+      {
+        t: 'It is unchanged: `b` is a copy',
+        correct: true,
+        why: 'C copies structs by value; to alias `a` you need a pointer, `&a`.',
+      },
+      {
+        t: 'The program will not compile',
+        why: 'Copying a struct by assignment is ordinary C.',
+      },
     ],
   },
 ];

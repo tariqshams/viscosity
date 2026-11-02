@@ -1,4 +1,5 @@
-// Chapter 3 cards. Keys are stable ids: never rename them.
+// Chapter 3 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'array-what': {
@@ -53,8 +54,7 @@ console.log(scores[scores.length - 1]);`,
 export const exercises = {
   last: {
     title: 'The last value',
-    prompt:
-      'Write `last(arr)` that **returns** the value in the last slot of `arr`, whatever its length. For an empty array it should return `undefined` (there is no last value).',
+    prompt: 'Write `last(arr)` that **returns** the value in the last slot of `arr`, whatever its length. For an empty array it should return `undefined` (there is no last value).',
     starter: `function last(arr) {
   // your code here
 }
@@ -112,8 +112,7 @@ What about \`[]\`? Its length is 0, so the index is \`0 - 1\`, which is \`-1\`, 
   countdown: {
     optional: true,
     title: 'Build a countdown',
-    prompt:
-      'Write `countdown(n)` that **returns a new array** `[n, n - 1, ..., 1]`. For example `countdown(3)` returns `[3, 2, 1]`, and `countdown(0)` returns `[]`.',
+    prompt: 'Write `countdown(n)` that **returns a new array** `[n, n - 1, ..., 1]`. For example `countdown(3)` returns `[3, 2, 1]`, and `countdown(0)` returns `[]`.',
     starter: `function countdown(n) {
   // your code here
 }
@@ -187,19 +186,45 @@ export const quiz = [
   {
     q: '`const a = [10, 20, 30];` What is `a[1]`?',
     options: [
-      { t: '`10`', why: 'That is `a[0]`. Indexes start at 0.' },
-      { t: '`20`', correct: true, why: 'Index 1 is the second slot.' },
-      { t: '`30`', why: 'That is `a[2]`, the last slot.' },
-      { t: '`undefined`', why: 'Index 1 exists: the array has slots 0, 1 and 2.' },
+      {
+        t: '`10`',
+        why: 'That is `a[0]`. Indexes start at 0.',
+      },
+      {
+        t: '`20`',
+        correct: true,
+        why: 'Index 1 is the second slot.',
+      },
+      {
+        t: '`30`',
+        why: 'That is `a[2]`, the last slot.',
+      },
+      {
+        t: '`undefined`',
+        why: 'Index 1 exists: the array has slots 0, 1 and 2.',
+      },
     ],
   },
   {
     q: 'An array has 7 values. What is the index of the last one?',
     options: [
-      { t: '`7`', why: 'Index 7 would be the 8th slot, one past the end.' },
-      { t: '`8`', why: 'That is two past the end.' },
-      { t: '`6`', correct: true, why: 'The last index is always `length - 1`.' },
-      { t: 'It depends on the values', why: 'Indexes depend only on the number of slots, not on what is in them.' },
+      {
+        t: '`7`',
+        why: 'Index 7 would be the 8th slot, one past the end.',
+      },
+      {
+        t: '`8`',
+        why: 'That is two past the end.',
+      },
+      {
+        t: '`6`',
+        correct: true,
+        why: 'The last index is always `length - 1`.',
+      },
+      {
+        t: 'It depends on the values',
+        why: 'Indexes depend only on the number of slots, not on what is in them.',
+      },
     ],
   },
   {
@@ -210,36 +235,85 @@ a.push(4);
 console.log(a.length);
 \`\`\``,
     options: [
-      { t: '`3`', why: '`push` added a slot, so the length grew.' },
-      { t: '`4`', correct: true, why: 'Three slots plus one pushed value gives a length of 4.' },
-      { t: '`[1, 2, 3, 4]`', why: 'That is `a` itself; the code prints `a.length`.' },
-      { t: 'An error, because `a` is `const`', why: '`const` stops the name being pointed at another array, not the array being changed.' },
+      {
+        t: '`3`',
+        why: '`push` added a slot, so the length grew.',
+      },
+      {
+        t: '`4`',
+        correct: true,
+        why: 'Three slots plus one pushed value gives a length of 4.',
+      },
+      {
+        t: '`[1, 2, 3, 4]`',
+        why: 'That is `a` itself; the code prints `a.length`.',
+      },
+      {
+        t: 'An error, because `a` is `const`',
+        why: '`const` stops the name being pointed at another array, not the array being changed.',
+      },
     ],
   },
   {
     q: 'What is `[5, 6][2]`?',
     options: [
-      { t: '`6`', why: '`6` is at index 1.' },
-      { t: '`undefined`', correct: true, why: 'The array has slots 0 and 1 only; index 2 is past the end.' },
-      { t: 'An error', why: 'JavaScript does not stop for reading past the end; it gives `undefined`. (Python and Java would stop with an error.)' },
-      { t: '`5`', why: '`5` is at index 0.' },
+      {
+        t: '`6`',
+        why: '`6` is at index 1.',
+      },
+      {
+        t: '`undefined`',
+        correct: true,
+        why: 'The array has slots 0 and 1 only; index 2 is past the end.',
+      },
+      {
+        t: 'An error',
+        why: 'JavaScript does not stop for reading past the end; it gives `undefined`. (Python and Java would stop with an error.)',
+      },
+      {
+        t: '`5`',
+        why: '`5` is at index 0.',
+      },
     ],
   },
   {
     q: 'Why does reading a slot by index take the same time for index 2 or index 2,000,000?',
     options: [
-      { t: 'The engine searches from the start, but very quickly', why: 'No searching is needed at all.' },
-      { t: 'The slot’s place is worked out directly: the start of the array plus index steps', correct: true, why: 'That is exactly why indexes count steps from the start, beginning at 0.' },
-      { t: 'Arrays are always sorted', why: 'Arrays keep whatever order you put things in; sorting is unrelated.' },
+      {
+        t: 'The engine searches from the start, but very quickly',
+        why: 'No searching is needed at all.',
+      },
+      {
+        t: 'The slot’s place is worked out directly: the start of the array plus index steps',
+        correct: true,
+        why: 'That is exactly why indexes count steps from the start, beginning at 0.',
+      },
+      {
+        t: 'Arrays are always sorted',
+        why: 'Arrays keep whatever order you put things in; sorting is unrelated.',
+      },
     ],
   },
   {
     q: 'In Python, `[4, 8, 15][-1]` is `15`. What is `[4, 8, 15][-1]` in JavaScript?',
     options: [
-      { t: '`15`', why: 'That is Python’s rule; JavaScript has no slot -1. (JavaScript’s `xs.at(-1)` does read the last item.)' },
-      { t: 'An error', why: 'JavaScript does not stop for a missing slot.' },
-      { t: '`4`', why: 'Index -1 does not wrap round to the first slot either.' },
-      { t: '`undefined`', correct: true, why: 'There is no slot -1, so you get `undefined`, just as for reading past the end.' },
+      {
+        t: '`15`',
+        why: 'That is Python’s rule; JavaScript has no slot -1. (JavaScript’s `xs.at(-1)` does read the last item.)',
+      },
+      {
+        t: 'An error',
+        why: 'JavaScript does not stop for a missing slot.',
+      },
+      {
+        t: '`4`',
+        why: 'Index -1 does not wrap round to the first slot either.',
+      },
+      {
+        t: '`undefined`',
+        correct: true,
+        why: 'There is no slot -1, so you get `undefined`, just as for reading past the end.',
+      },
     ],
   },
 ];

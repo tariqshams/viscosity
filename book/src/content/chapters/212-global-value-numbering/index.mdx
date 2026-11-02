@@ -1,0 +1,219 @@
+---
+n: 212
+day: 12
+part: XII
+title: 'Global value numbering'
+tagline: 'A value computed in one block can be reused in another only if every path has computed it first; the dominator tree says exactly where that is true, and walking it with a table that grows and shrinks turns local value numbering into a whole-function pass.'
+objectives:
+  - Explain why a value computed in a dominating block can be reused, and one computed in a sibling block cannot.
+  - Run dominator-based value numbering by hand, with a table that gains a scope on entering a block and loses it on leaving.
+  - Simplify a phi whose operands all have one value number, and spot two phis that are the same.
+  - Say what hashing misses around loops, and how optimistic value numbering finds it.
+introduces: [gvn]
+uses: [value-numbering, cse, dce, constant-propagation, dominator, dominator-tree, cfg, basic-block, ssa, phi-node, ssa-construction, dataflow, fixpoint, available-expressions, hash-table, map, recursion, tree, array, for-of, function, arrow-function]
+sources: [coopertorczon2011, alpern1988, click1995, gcc-tree-ssa-sccvn, llvm-passes]
+---
+import GvnSteps from '../../../components/diagrams/ch212/GvnSteps';
+import WhoDominates from '../../../components/diagrams/ch212/WhoDominates';
+
+## Redundancy between blocks
+
+Local value numbering stops at the end of a block, but real redundancy
+does not. Here, `a * b` is computed in the entry block and again after
+an `if`:
+
+```text
+b0: %2 = binop * %0, %1    ; a * b
+    condbr %c, b1, b2
+b1: %5 = binop + %0, %1    ; a + b
+    br b3
+b2: %6 = binop + %0, %1    ; a + b
+    br b3
+b3: %9 = binop * %1, %0    ; b * a
+```
+
+`%9` is certainly redundant: whichever way the `if` went, `b0` ran
+first and computed the same product. `%6` is not: on the path through
+`b2`, `b1` never ran, so `%5` never existed. To tell the two apart, we
+need to know which blocks *must* have run before a given block, on
+every path. That is exactly what dominance means: `b0` dominates every
+block here, while `b1` dominates only itself.
+
+<Figure takeaway="Reuse a value only from a block that dominates you." caption="The CFG (left) and its dominator tree (right). b0 is an ancestor of b3 in the tree, so its values are available in b3. b1 and b2 are siblings: neither is on every path to the other, so neither may reuse the other's values.">
+  <WhoDominates />
+</Figure>
+
+<Analogy title="a family's stories">
+Children grow up hearing their parents' and grandparents' stories, so
+anything an ancestor knew, a descendant can be assumed to have heard.
+Cousins are a different matter: what your cousin heard at her house,
+you did not.
+<span slot="breaks">Family stories change in the retelling. In SSA a
+value never changes after it is defined, which is what makes "my
+ancestor computed it" a guarantee rather than a good bet.</span>
+</Analogy>
+
+<Analogy extra title="memos in a company">
+A memo from head office applies in every branch office below it; a
+memo pinned up in the Leeds branch says nothing about Bristol.
+<span slot="breaks">A later memo can overrule an earlier one. A
+compiler's "memo" (a value in the table) is never overruled, only
+taken down when the walk leaves the part of the tree it belongs
+to.</span>
+</Analogy>
+
+<Prompts ids={['gvn-why-dom', 'sibling-no']} />
+
+## Walking the dominator tree
+
+**Dominator-based value numbering** visits the blocks in a depth-first
+walk of the dominator tree, numbering each block's instructions exactly
+as local value numbering does, with one change to the table: it is
+**scoped**. Entering a block opens a new scope; everything the block
+adds goes in that scope; leaving the block (after all its children in
+the tree have been visited) throws the scope away. So, while a block is
+being numbered, the table holds exactly the values computed by its
+dominators, which are exactly the values every path has computed.
+
+Phis get two extra rules. A phi whose operands all have the same value
+number, such as `phi %2, %2`, is not a choice at all: it *is* that
+value (the "trivial phi" of the on-the-fly SSA chapter, met again). And
+two phis in the same block with the same operands, in the same order,
+are the same value. Step through the walk:
+
+<GvnSteps client:visible />
+
+The last instruction is the interesting failure. `a + b` was computed
+on *both* paths into `b3`, once as `%5` and once as `%6`, and the phi
+`%8` even holds it. But neither `%5` nor `%6` dominates `b3`, so the
+table never contains `a + b` there, and `%10` is computed again. Values
+that are available on every path, but from *different* instructions,
+are beyond dominator-based numbering; the next chapter, on partial
+redundancy, picks up exactly there.
+
+<Callout kind="definition">
+**Global value numbering** (**GVN**) gives value numbers to the
+instructions of a whole function, so that redundancy is found across
+blocks. The dominator-based form walks the dominator tree with a scoped
+hash table: an instruction is redundant if a block that dominates it
+(or an earlier instruction in its own block) computed the same key, and
+a phi whose operands all share one value number is replaced by that
+value.
+</Callout>
+
+<Formal title="When a dominating value can be reused">
+
+```text
+d dom b,  d computes key k as %v,
+%u in b computes key k
+──────────────────────────────
+uses of %u can use %v
+```
+
+<span slot="read">If block d dominates block b (d is on every path from
+the entry to b), d computes some key k as the value %v, and an
+instruction %u in b computes the same key, then every use of %u may use
+%v instead. (When d is b itself, %v must come earlier in the block.)
+Because d is on every path and SSA values never change, %v has always
+been computed, with the same operands, by the time %u runs.</span>
+</Formal>
+
+Here is the scoping on its own, with the instructions left out: each
+block prints the keys it is allowed to see, then hands its own table to
+its children. Add `'a*b'` to `b1` and see who notices:
+
+<Run id="scopes" />
+
+<Prompts ids={['gvn-what', 'scoped-table', 'phi-same', 'gvn-misses']} />
+
+<Examples of="gvn">
+
+```text
+b0: %2 = binop * %0, %1
+b3: %9 = binop * %1, %0   ; b0 dom b3: %2
+```
+
+```text
+b1: %4 = binop * %0, %1   ; is %2
+b3: %7 = phi %4, %2       ; phi %2, %2
+                          ; so %7 is %2
+```
+
+```text
+b1: %5 = binop + %0, %1
+b2: %6 = binop + %0, %1   ; b1 is a sibling:
+                          ; new value
+```
+
+</Examples>
+
+The first is the plain case from the top of the chapter: `b0` is the
+root of the dominator tree, so its table scope is open while every
+other block is numbered, and the sorted key of `b * a` finds `a * b`.
+The second shows numbering and phis working together: once `%4` is
+known to be `%2`, the phi in `b3` has the same value on both edges, so
+it is no choice at all. The third is the limit: `b1`'s scope was thrown
+away before `b2` was entered, as it must be, because on the path through
+`b2` nothing computed `%5`.
+
+## Loops, and being optimistic
+
+Around a loop, hashing has a blind spot. Two counters that step in
+lockstep,
+
+```text
+b1: %3 = phi %0, %5    ; i
+    %4 = phi %0, %6    ; j
+    ...
+b2: %5 = binop + %3, %1    ; i + 1
+    %6 = binop + %4, %1    ; j + 1
+```
+
+are always equal, but the walk reaches the phis before `%5` and `%6`
+have numbers, so `%3` and `%4` look different, and then so do `%5` and
+`%6`. Alpern, Wegman and Zadeck turned the question around: start by
+assuming that values computed the same way *are* equal, and split
+groups apart only when their operands are shown to
+differ<Cite id="alpern1988" />. That optimistic start (the same idea as
+SCCP's ⊤) proves `i` and `j` equal. Click later showed how to combine a
+simple hash-based GVN with *global code motion*, which moves each
+instruction to the best block once redundancy is gone<Cite id="click1995" />,
+and GCC iterates its hash-based numbering optimistically round each
+cycle of the SSA graph until nothing changes<Cite id="gcc-tree-ssa-sccvn" />.
+
+<Prompts ids={['loop-blind', 'optimistic-vn']} />
+
+<Callout kind="engine" label="Under the hood">
+Cooper and Torczon's textbook builds up value numbering in exactly this
+order: local, then over extended blocks, then over the dominator
+tree<Cite id="coopertorczon2011" />. LLVM's `gvn` pass, per its
+documentation, eliminates fully and partially redundant instructions
+and also removes redundant loads<Cite id="llvm-passes" />, which means
+it has to do the memory bookkeeping of the last chapter across blocks
+too. Viscosity has no GVN: like local value numbering, it is work the
+JavaScript engine does on Viscosity's output.
+</Callout>
+
+## Your turn
+
+<Exercise id="gvn" />
+
+## What you learned
+
+- **GVN** finds redundancy across a whole function. A value can be
+  reused in block `b` only if a block that dominates `b` computed it,
+  because only then has every path computed it.
+- The dominator-based form walks the dominator tree with a **scoped**
+  table: a block's entries vanish when the walk leaves it, so siblings
+  never see each other's values.
+- A phi whose operands share one number is that value; two phis with the
+  same operands in one block are equal.
+- Hashing is pessimistic around loops; optimistic, partition-based
+  numbering (Alpern, Wegman and Zadeck) finds equalities it misses.
+- Values available on every path from *different* instructions are
+  left for partial redundancy elimination.
+
+Next: computations that are redundant on some paths but not others, and
+how to make them redundant on all of them.
+
+<Quiz />

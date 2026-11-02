@@ -1,5 +1,5 @@
-// Chapter 26 cards (split from chapter 25). Keys are stable ids:
-// never rename them.
+// Chapter 26 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'run-once': {
@@ -90,20 +90,18 @@ try {
   },
 };
 
-const loadDeps = `const deps = {
-  main: ['parser', 'errors'],
-  parser: ['scanner', 'errors'],
-  scanner: ['errors'],
-  errors: [],
-};`;
-
 export const exercises = {
   loadOrder: {
     title: 'Which module runs first?',
     prompt: `A program's imports are given as an object: each module name maps to the array of names it imports, in the order its \`import\` lines appear.
 
 \`\`\`
-${loadDeps}
+const deps = {
+  main: ['parser', 'errors'],
+  parser: ['scanner', 'errors'],
+  scanner: ['errors'],
+  errors: [],
+};
 \`\`\`
 
 Write \`loadOrder(deps, entry)\` that returns the array of module names in the order they run, starting from \`entry\`: every module comes after all the modules it imports (taken in order), and each appears **once**. For the \`deps\` above, \`loadOrder(deps, 'main')\` is \`['errors', 'scanner', 'parser', 'main']\`. Modules that \`entry\` never reaches don't run. If there is a cycle, don't loop forever: a module that is already being loaded is skipped.`,
@@ -253,8 +251,7 @@ A module with no imports (\`errors\`) is the natural base case: its loop does no
   pointsDown: {
     optional: true,
     title: 'Do the imports point one way?',
-    prompt:
-      'Write `pointsDown(deps, layers)`. `deps` is an import table like the one in the core exercise, and `layers` is an array of every module name from the top layer to the bottom (for example `[\'main\', \'parser\', \'scanner\', \'errors\']`). Return `true` if every import goes to a module **later** in `layers` (further down), and `false` if any import goes to the same module or one above it.',
+    prompt: 'Write `pointsDown(deps, layers)`. `deps` is an import table like the one in the core exercise, and `layers` is an array of every module name from the top layer to the bottom (for example `[\'main\', \'parser\', \'scanner\', \'errors\']`). Return `true` if every import goes to a module **later** in `layers` (further down), and `false` if any import goes to the same module or one above it.',
     starter: `function pointsDown(deps, layers) {
   // your code here
 }
@@ -366,43 +363,99 @@ export const quiz = [
   {
     q: '`a.js` imports `b.js` and `c.js` (in that order). `b.js` imports `c.js`. `c.js` imports nothing. In what order do they run?',
     options: [
-      { t: '`c`, `b`, `a`', correct: true, why: '`a` needs `b`, which needs `c`, so `c` runs first, then `b`. `a`’s second import, `c`, has already run, and modules run once. Then `a`.' },
-      { t: '`a`, `b`, `c`', why: 'A module runs only after everything it imports.' },
-      { t: '`b`, `c`, `a`', why: '`b` imports `c`, so `c` must run before `b`.' },
-      { t: '`c`, `b`, `c`, `a`', why: 'A module runs only once, however many files import it.' },
+      {
+        t: '`c`, `b`, `a`',
+        correct: true,
+        why: '`a` needs `b`, which needs `c`, so `c` runs first, then `b`. `a`’s second import, `c`, has already run, and modules run once. Then `a`.',
+      },
+      {
+        t: '`a`, `b`, `c`',
+        why: 'A module runs only after everything it imports.',
+      },
+      {
+        t: '`b`, `c`, `a`',
+        why: '`b` imports `c`, so `c` must run before `b`.',
+      },
+      {
+        t: '`c`, `b`, `c`, `a`',
+        why: 'A module runs only once, however many files import it.',
+      },
     ],
   },
   {
     q: '`scanner.js` imports `parser.js` to report errors, and `parser.js` imports `scanner.js` to get tokens. What is the best fix?',
     options: [
-      { t: 'Merge every file of the program into one', why: 'That removes the cycle but throws away all the structure. Moving only the shared part is enough.' },
-      { t: 'Import each file twice', why: 'Modules run once anyway, and this doesn’t break the cycle.' },
-      { t: 'Move the error code into `errors.js`, imported by both', correct: true, why: 'The shared code moves down into a third module, and the imports point one way again.' },
-      { t: 'Nothing: cycles are always fine', why: 'Cycles can fail with a ReferenceError when a name is read before its module has run.' },
+      {
+        t: 'Merge every file of the program into one',
+        why: 'That removes the cycle but throws away all the structure. Moving only the shared part is enough.',
+      },
+      {
+        t: 'Import each file twice',
+        why: 'Modules run once anyway, and this doesn’t break the cycle.',
+      },
+      {
+        t: 'Move the error code into `errors.js`, imported by both',
+        correct: true,
+        why: 'The shared code moves down into a third module, and the imports point one way again.',
+      },
+      {
+        t: 'Nothing: cycles are always fine',
+        why: 'Cycles can fail with a ReferenceError when a name is read before its module has run.',
+      },
     ],
   },
   {
     q: 'In a cycle, `b.js` runs first and reads `x`, a `const` exported by `a.js`. What does it get?',
     options: [
-      { t: '`undefined`', why: 'A `const` that has not been given its value yet cannot be read at all.' },
-      { t: 'A `ReferenceError`: Cannot access \'x\' before initialization', correct: true, why: '`a.js` has not run yet, so its `const x` exists but has no value.' },
-      { t: 'The value `a.js` will give it later', why: 'JavaScript cannot see into the future: `a.js` runs after `b.js` here.' },
+      {
+        t: '`undefined`',
+        why: 'A `const` that has not been given its value yet cannot be read at all.',
+      },
+      {
+        t: 'A `ReferenceError`: Cannot access \'x\' before initialization',
+        correct: true,
+        why: '`a.js` has not run yet, so its `const x` exists but has no value.',
+      },
+      {
+        t: 'The value `a.js` will give it later',
+        why: 'JavaScript cannot see into the future: `a.js` runs after `b.js` here.',
+      },
     ],
   },
   {
     q: 'Which set of modules is better structured?',
     options: [
-      { t: 'One `everything.js` that holds the whole interpreter', why: 'Every name can see every other, so you can’t tell who uses what.' },
-      { t: 'Modules with one job each, importing only modules below them', correct: true, why: 'Small borders, and imports that point one way, so there are no cycles.' },
-      { t: 'Modules that each import all the others, just in case', why: 'That creates cycles everywhere, and hides which module really depends on which.' },
+      {
+        t: 'One `everything.js` that holds the whole interpreter',
+        why: 'Every name can see every other, so you can’t tell who uses what.',
+      },
+      {
+        t: 'Modules with one job each, importing only modules below them',
+        correct: true,
+        why: 'Small borders, and imports that point one way, so there are no cycles.',
+      },
+      {
+        t: 'Modules that each import all the others, just in case',
+        why: 'That creates cycles everywhere, and hides which module really depends on which.',
+      },
     ],
   },
   {
     q: 'Python and JavaScript both print `errors loaded` once for two imports of `errors`. How does C avoid pasting a header twice?',
     options: [
-      { t: 'C remembers which modules have run', why: 'C has no modules that run; `#include` only pastes text.' },
-      { t: 'It cannot: C always pastes it twice', why: 'It would, without help; the include guard is that help.' },
-      { t: 'An include guard: `#ifndef` / `#define` / `#endif` makes the second paste empty', correct: true, why: 'The first paste defines `ERRORS_H`, so the second time the `#ifndef` test fails and the text is skipped.' },
+      {
+        t: 'C remembers which modules have run',
+        why: 'C has no modules that run; `#include` only pastes text.',
+      },
+      {
+        t: 'It cannot: C always pastes it twice',
+        why: 'It would, without help; the include guard is that help.',
+      },
+      {
+        t: 'An include guard: `#ifndef` / `#define` / `#endif` makes the second paste empty',
+        correct: true,
+        why: 'The first paste defines `ERRORS_H`, so the second time the `#ifndef` test fails and the text is skipped.',
+      },
     ],
   },
 ];

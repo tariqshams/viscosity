@@ -1,0 +1,275 @@
+---
+n: 247
+day: 20
+part: XIII
+title: 'Linkers and loaders'
+tagline: 'The linker matches every name used to the one place it is defined, lays all the pieces out at real addresses and fills every hole; the loader then copies the result into memory and jumps to its first instruction.'
+objectives:
+  - Explain symbol resolution, and predict lld's "undefined symbol" and "duplicate symbol" errors.
+  - Follow a static link of two object files, from layout to every patched relocation.
+  - Read an executable's program headers and say what a loader does with each LOAD segment.
+introduces: [linker, loader]
+uses: [assembler, object-file, relocation, machine-code, risc-v, address, memory, call-stack, abi, function, object, map, throw, error-object, for-of]
+sources: [elf-gabi, riscv-psabi, lld-newlld, levine1999]
+---
+import LinkSteps from '../../../components/diagrams/ch247/LinkSteps';
+import LoadFigure from '../../../components/diagrams/ch247/LoadFigure';
+
+## Many files, one program
+
+The last chapter left us with two object files. `main.o` holds
+`_start`, which loads the address of a little table and calls `sumsq`;
+`loop.o` holds `sumsq`. Each was assembled on its own, so each thinks its
+code starts at address 0, `main.o` has three holes in it, and neither
+can run. The **linker** is the program that joins them: LLVM's is
+`ld.lld`, and one command does it:
+
+```text
+$ ld.lld -m elf64lriscv main.o loop.o
+    -o prog
+```
+
+It does three things, in this order: it **resolves** every symbol, it
+**lays out** the sections at real addresses, and it **relocates**,
+filling every hole. Step through the real link:
+
+<LinkSteps client:visible />
+
+<Analogy title="a book written by several authors">
+Each author writes a chapter with cross-references like "see the table
+in Amira's chapter". The editor collects the chapters, checks that every
+reference names a chapter that exists (and only one), numbers all the
+pages in order, and then fills in "see page 212" everywhere.
+<span slot="breaks">An editor can rewrite a confusing reference; a
+linker can only patch the bits a relocation tells it to, in exactly the
+way its type says, and a reference to a name nobody defined is an error,
+not a judgement call.</span>
+</Analogy>
+
+<Analogy extra title="name cards at a wedding">
+Each guest's card must match exactly one seat. A card with no seat, or
+two seats with the same name on them, and the planner has to stop and
+sort it out before anyone sits down.
+<span slot="breaks">Two guests can share a first name if their tables
+are separate; in the same way, two files can each have a private label
+called `loop`, because local symbols never meet. Only global names must
+be unique.</span>
+</Analogy>
+
+## Resolution, and its two errors
+
+**Resolution** pairs every undefined global symbol with exactly one
+definition. The ELF standard puts it plainly: "One file's definition of
+a global symbol will satisfy another file's undefined reference to the
+same global symbol", and the linker "does not allow multiple definitions
+of STB_GLOBAL symbols with the same name"<Cite id="elf-gabi" />. (A
+**weak** symbol is the exception: a definition that gives way to a
+normal one.) Both ways it can fail are easy to cause on purpose:
+
+<Examples of="linker">
+
+```text
+$ ld.lld main.o -o prog
+ld.lld: error: undefined symbol: sumsq
+>>> referenced by main.o:(.text+0xC)
+```
+
+```text
+$ ld.lld main.o loop.o loop2.o -o prog
+ld.lld: error: duplicate symbol: sumsq
+>>> defined at loop.o:(.text+0x0)
+>>> defined at loop2.o:(.text+0x0)
+```
+
+```text
+$ ld.lld main.o loop.o -o prog
+$ llvm-objdump -d prog
+11158: 37 25 01 00  lui  a0, 0x12
+1115c: 13 05 85 19  addi a0, a0, 0x198
+11164: 97 00 00 00  auipc ra, 0x0
+11168: e7 80 c0 00  jalr 0xc(ra)
+```
+
+</Examples>
+
+The first leaves out `loop.o`: the call at offset 0xC of `main.o`'s
+text has nothing to call, and lld says exactly where it was referenced.
+The second passes a copy of `loop.o` as well, so `sumsq` is defined
+twice and lld cannot choose. (Both are real output from `ld.lld` 18,
+with the `-m elf64lriscv` option left out to fit.) The third is the
+link that works: the same four instructions as before, with every hole
+filled; `lui` and `addi` now build 0x12198, and `jalr` jumps 12 bytes
+past the `auipc`, to `sumsq`.
+
+A **static library** (an archive, a `.a` file) is a bundle of object
+files. The traditional Unix linker keeps a set of still-undefined
+symbols and, when it reaches an archive, pulls out only the members that
+define something in that set; which is why the order of files on the
+command line used to matter, and why lld instead remembers every symbol
+it has seen, so that it can pull a member in whenever it is
+needed<Cite id="lld-newlld" />.
+
+Once every name is resolved, the linker lays out the output: all the
+`.text` sections one after another, then the data, each at an address
+chosen for the executable (0x11158 for `_start` in our link, then
+`sumsq` 24 bytes later, at 0x11170). Now every symbol has a final
+address, so every relocation can be computed with the psABI formulas of
+the last chapter<Cite id="riscv-psabi" />: the steps above show all
+three, and `llvm-objdump -d prog` confirms the bytes.
+
+<Callout kind="definition">
+A **linker** combines object files into one executable (or shared
+object): it **resolves** each undefined global symbol to exactly one
+definition, **lays out** the sections at final addresses, and
+**relocates**, computing and writing the value each relocation asks
+for. Linking everything into one file ahead of time, as here, is
+**static linking**.
+</Callout>
+
+(The standard book on all of this, from object formats to shared
+libraries, is Levine's *Linkers and Loaders*<Cite id="levine1999" />.)
+
+<Formal title="Resolution">
+
+```text
+for each global name x:
+  defs(x) = files that define x
+  refs(x) = files that use x
+refs(x) ≠ ∅ and |defs(x)| = 0
+    → undefined symbol: x
+|defs(x)| > 1  → duplicate symbol: x
+otherwise  addr(x) = base(file) + off(x)
+```
+
+<span slot="read">For every global name, collect the files that define
+it and the files that use it. If someone uses it and nobody defines it,
+that is an undefined-symbol error; if more than one file defines it, a
+duplicate-symbol error. Otherwise its address is where its file was
+placed plus its offset inside that file.</span>
+</Formal>
+
+<Prompts ids={['link-three', 'undef-error', 'dup-error', 'locals-ok', 'archive-pull']} />
+
+## The loader
+
+`prog` is an **executable**: no holes, every address final, and a header
+saying where to begin. Its first four bytes are `7f 45 4c 46`, that is
+0x7f and the letters "ELF", and `llvm-readelf -h prog` shows the
+**entry point**, 0x11158, the address of `_start`. What it does not do
+is run itself. That is the **loader**'s job, done by the operating
+system (the ELF standard's example is Unix's `exec` call), which reads the file's **program headers** and maps
+each loadable **segment** into memory. Here they are, for `prog` with a
+4 KiB zeroed buffer (a `.bss` section) added, trimmed to fit:
+
+```text
+Type  Offset  VirtAddr FileSiz MemSiz Flg
+LOAD  0x000   0x10000  0x158   0x158  R
+LOAD  0x158   0x11158  0x040   0x040  R E
+LOAD  0x198   0x12198  0x020   0x1020 RW
+```
+
+<Figure takeaway="The file says what goes where; the loader puts it there, then jumps to the entry point." caption="Each LOAD segment is copied (or mapped) from its file offset to its virtual address with its own permissions: the code may be read and executed but not written, the data read and written but not executed. The data segment is 0x1020 bytes in memory but only 0x20 in the file: the rest is the .bss buffer, which the ELF standard says is filled with zeros, so it costs no space on disk.">
+  <LoadFigure />
+</Figure>
+
+The ELF standard describes exactly that last detail: for a LOAD
+segment, "the bytes from the file are mapped to the beginning of the
+memory segment", and if the memory size is larger than the file size,
+"the extra bytes are defined to hold the value 0"<Cite id="elf-gabi" />.
+After mapping the segments, the loader sets up a stack for the program
+(and points `sp` at it), and jumps to the entry point.
+
+<Analogy extra title="a stage crew">
+Before the curtain rises, the crew reads the stage plan and puts every
+piece of scenery at its marked spot (some pieces may be touched, some
+must not be), then gives the first actor the cue.
+<span slot="breaks">A crew can improvise when a piece does not fit; a
+loader that finds a header it does not understand refuses to run the
+program at all.</span>
+</Analogy>
+
+<Analogy extra title="unpacking a removal van">
+Each box is labelled with the room it belongs in. You carry each one to
+its room, leave the empty rooms empty but ready, and only then is the
+house lived in.
+<span slot="breaks">Rooms have no rules about who may enter; memory
+segments do, and on systems that enforce them, writing to the code or
+running the data stops the program.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **loader** runs an executable: it reads its header and program
+headers, maps each LOAD segment from the file into memory at its virtual
+address with its permissions (zero-filling the part beyond the file's
+bytes), sets up the stack, and jumps to the entry point. For a
+dynamically linked program, a **dynamic linker** then combines it with
+shared objects to make the running program<Cite id="elf-gabi" />.
+</Callout>
+
+<Examples of="loader">
+
+```text
+7f 45 4c 46 02 01 01 ...
+^ "\x7fELF"  ^ 64-bit, little-endian
+Type: EXEC   Machine: RISC-V
+Entry point address: 0x11158
+```
+
+```text
+LOAD 0x158 → 0x11158  R E  (code)
+LOAD 0x198 → 0x12198  RW   (data)
+  FileSiz 0x20, MemSiz 0x1020
+  → 0x1000 bytes of zeros (.bss)
+```
+
+```text
+PT_INTERP  "path of an interpreter"
+→ the system starts the dynamic
+  linker first, which loads the
+  shared libraries, then jumps
+```
+
+<Run id="header" />
+
+</Examples>
+
+The first is the ELF header from `llvm-readelf -h prog`: the magic
+number, the class (02, 64-bit) and byte order (01, little-endian), the
+type, the machine and the entry point. The second is the two segments
+that matter, with the zero-filled tail. The third is what our `prog`
+does not have: a dynamically linked program carries a PT_INTERP header
+naming an interpreter, the dynamic linker, which the system runs first
+to bring in the shared objects and resolve their symbols before the
+program's own code starts<Cite id="elf-gabi" /> (the path itself differs
+between systems). The runnable one reads the first 20 bytes of `prog`'s
+header the way a loader starts to: the magic number, the class, the byte
+order, the type and the machine (243 is RISC-V's number<Cite id="riscv-psabi" />).
+
+We cannot run `prog` on this book's build machine, which is not a
+RISC-V computer; on a RISC-V Linux system, or under an emulator, the
+kernel would load it exactly as described and `_start` would call
+`sumsq` with the table. And Viscosity, again, has no loader of its own:
+its output is JavaScript, which the engine compiles in memory as the
+page runs. The next chapter does something similar on purpose: it
+writes code while the program is running.
+
+<Prompts ids={['loader-what', 'entry-point', 'memsz-filesz', 'perm-why']} />
+
+## Your turn
+
+<Exercise id="link" />
+
+<Exercise id="hilo" />
+
+## What you learned
+
+- A **linker** resolves every undefined global to exactly one
+  definition (or fails with "undefined symbol" or "duplicate symbol"),
+  lays out the sections and applies every relocation.
+- Static libraries are bundles of object files from which only the
+  members that are needed are pulled in.
+- A **loader** maps an executable's LOAD segments into memory with their
+  permissions, zero-fills `.bss`, sets up the stack and jumps to the
+  entry point; a dynamic linker joins in for shared libraries.
+
+<Quiz />

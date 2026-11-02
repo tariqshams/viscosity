@@ -1,4 +1,4 @@
-// New references for chapter 384 (and its second half, 328b).
+// New references for chapter 310 (and its second half, 328b).
 export default [
   {
     id: 'tlborm',
@@ -10,7 +10,7 @@ export default [
     url: 'https://veykril.github.io/tlborm/',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/Veykril/tlborm/master on 2026-11-02: src/decl-macros/minutiae/fragment-specifiers.md (14 fragment specifiers: block, expr, ident, item, lifetime, literal, meta, pat, pat_param, path, stmt, tt, ty, vis; captures other than ident, lifetime and tt become opaque), src/syntax-extensions/source-analysis.md (“Token trees are somewhere between tokens and the AST”; the grouping tokens (...), [...] and {...} are the interior nodes; a + b + (c + d[0]) + e has seven token trees at the root), and src/proc-macros/methodical.md (the three kinds of procedural macro, each a function from TokenStream to TokenStream).',
-    shaped: 'Chapters 384 and 384b: fragment specifiers, token trees and procedural macros.',
+    shaped: 'Chapters 310 and 310b: fragment specifiers, token trees and procedural macros.',
   },
   {
     id: 'rustref-procedural-macros',
@@ -22,7 +22,7 @@ export default [
     url: 'https://doc.rust-lang.org/reference/procedural-macros.html',
     accessed: '2026-11-02',
     checkedAgainst: 'src/procedural-macros.md read raw from raw.githubusercontent.com/rust-lang/reference/master on 2026-11-02: procedural macros come in three flavors (function-like, derive, attribute); they “must be defined in the root of a crate with the crate type of proc-macro” and “may not be used from the crate where they are defined”; they “run during compilation, and thus have the same resources that the compiler has” and “the same security concerns that Cargo’s build scripts have”; they operate on token streams, “roughly equivalent to Vec<TokenTree>”, where foo is an Ident token, . a Punct token and 1.2 a Literal token.',
-    shaped: 'Chapter 384b: what a procedural macro is, where it lives and what it reads.',
+    shaped: 'Chapter 310b: what a procedural macro is, where it lives and what it reads.',
   },
   {
     id: 'syn-readme',
@@ -34,7 +34,7 @@ export default [
     url: 'https://github.com/dtolnay/syn',
     accessed: '2026-11-02',
     checkedAgainst: 'README.md read raw from raw.githubusercontent.com/dtolnay/syn/master on 2026-11-02: “Syn is a parsing library for parsing a stream of Rust tokens into a syntax tree of Rust source code”; for derive macros it provides syn::DeriveInput. syn 2.0.119 was used in a scratch workspace for the chapter.',
-    shaped: 'Chapter 384b: parsing a derive macro’s input with syn.',
+    shaped: 'Chapter 310b: parsing a derive macro’s input with syn.',
   },
   {
     id: 'quote-readme',
@@ -46,6 +46,6 @@ export default [
     url: 'https://github.com/dtolnay/quote',
     accessed: '2026-11-02',
     checkedAgainst: 'README.md read raw from raw.githubusercontent.com/dtolnay/quote/master on 2026-11-02: quasi-quoting means writing “code that we treat as data”; within quote!, “interpolation is done with #var”, and repetition with #(...)* or #(...),* “similar to macro_rules!”. quote 1.0.47 was used in a scratch workspace for the chapter.',
-    shaped: 'Chapter 384b: writing a derive macro’s output with quote!.',
+    shaped: 'Chapter 310b: writing a derive macro’s output with quote!.',
   },
 ];

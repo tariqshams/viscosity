@@ -1,5 +1,5 @@
-// Chapter 22 cards (cutting and building strings).
-// Keys are stable ids: never rename them.
+// Chapter 22 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'slice-end': {
@@ -56,8 +56,7 @@ console.log(words.join('_'));`,
 export const exercises = {
   shift: {
     title: 'A secret code',
-    prompt:
-      'Write `shift(s, k)` that **returns a new string** in which every lowercase letter is moved `k` places along the alphabet, wrapping around from `z` back to `a`. Everything that isn’t a lowercase letter stays as it is. So `shift(\'abc\', 1)` is `\'bcd\'` and `shift(\'xyz\', 3)` is `\'abc\'`. `k` is between 0 and 25.',
+    prompt: 'Write `shift(s, k)` that **returns a new string** in which every lowercase letter is moved `k` places along the alphabet, wrapping around from `z` back to `a`. Everything that isn’t a lowercase letter stays as it is. So `shift(\'abc\', 1)` is `\'bcd\'` and `shift(\'xyz\', 3)` is `\'abc\'`. `k` is between 0 and 25.',
     starter: `function shift(s, k) {
   // your code here
 }
@@ -156,8 +155,7 @@ function shift(s, k) {
   padLeft: {
     optional: true,
     title: 'Line up a column',
-    prompt:
-      'Write `padLeft(s, n)` that returns `s` with spaces added **in front** until it is `n` characters long. If `s` is already `n` characters or longer, return it unchanged. For example `padLeft(\'42\', 5)` is `\'   42\'` (three spaces), so numbers of different lengths line up on the right.',
+    prompt: 'Write `padLeft(s, n)` that returns `s` with spaces added **in front** until it is `n` characters long. If `s` is already `n` characters or longer, return it unchanged. For example `padLeft(\'42\', 5)` is `\'   42\'` (three spaces), so numbers of different lengths line up on the right.',
     starter: `function padLeft(s, n) {
   // your code here
 }
@@ -233,46 +231,116 @@ export const quiz = [
   {
     q: 'What is `\'let x = 1\'.slice(4, 5)`?',
     options: [
-      { t: '`\'x \'`', why: '`slice` stops just before the end index, so only index 4 is included.' },
-      { t: '`\'x\'`', correct: true, why: 'Index 4 is `x`, and the end index 5 is not included.' },
-      { t: '`\'t\'`', why: 'Index 4 is the fifth character: `l e t ␣ x`.' },
-      { t: '`\' x\'`', why: 'Index 3 is the space; this slice starts at 4.' },
+      {
+        t: '`\'x \'`',
+        why: '`slice` stops just before the end index, so only index 4 is included.',
+      },
+      {
+        t: '`\'x\'`',
+        correct: true,
+        why: 'Index 4 is `x`, and the end index 5 is not included.',
+      },
+      {
+        t: '`\'t\'`',
+        why: 'Index 4 is the fifth character: `l e t ␣ x`.',
+      },
+      {
+        t: '`\' x\'`',
+        why: 'Index 3 is the space; this slice starts at 4.',
+      },
     ],
   },
   {
-    q: 'What does this print?\n```\nconst s = \'abc\';\ns.toUpperCase();\nconsole.log(s);\n```',
+    q: `What does this print?
+\`\`\`
+const s = 'abc';
+s.toUpperCase();
+console.log(s);
+\`\`\``,
     options: [
-      { t: '`ABC`', why: 'That is what `toUpperCase` *returns*, but nothing stored it.' },
-      { t: '`undefined`', why: '`s` still holds `\'abc\'`.' },
-      { t: '`abc`', correct: true, why: 'String methods return a new string. The result was thrown away, and `s` never changes.' },
-      { t: 'An error, because `s` is `const`', why: 'Calling a method on a `const` string is fine. Nothing is reassigned.' },
+      {
+        t: '`ABC`',
+        why: 'That is what `toUpperCase` *returns*, but nothing stored it.',
+      },
+      {
+        t: '`undefined`',
+        why: '`s` still holds `\'abc\'`.',
+      },
+      {
+        t: '`abc`',
+        correct: true,
+        why: 'String methods return a new string. The result was thrown away, and `s` never changes.',
+      },
+      {
+        t: 'An error, because `s` is `const`',
+        why: 'Calling a method on a `const` string is fine. Nothing is reassigned.',
+      },
     ],
   },
   {
     q: 'What is `\'a,b,c\'.split(\',\').join(\' + \')`?',
     options: [
-      { t: '`[\'a\', \'b\', \'c\']`', why: '`split` makes that array, but then `join` turns it back into a string.' },
-      { t: '`\'a,b,c\'`', why: 'The separator changed from `,` to `\' + \'`.' },
-      { t: '`\'abc\'`', why: '`join` puts its separator between the pieces.' },
-      { t: '`\'a + b + c\'`', correct: true, why: 'Cut at each comma, then glue the pieces with `\' + \'` between them.' },
+      {
+        t: '`[\'a\', \'b\', \'c\']`',
+        why: '`split` makes that array, but then `join` turns it back into a string.',
+      },
+      {
+        t: '`\'a,b,c\'`',
+        why: 'The separator changed from `,` to `\' + \'`.',
+      },
+      {
+        t: '`\'abc\'`',
+        why: '`join` puts its separator between the pieces.',
+      },
+      {
+        t: '`\'a + b + c\'`',
+        correct: true,
+        why: 'Cut at each comma, then glue the pieces with `\' + \'` between them.',
+      },
     ],
   },
   {
     q: 'With `const n = 3;`, what is `` `n is ${n * 2}` ``?',
     options: [
-      { t: '`\'n is 6\'`', correct: true, why: 'The expression inside `${...}` is worked out, and its value is dropped into the string.' },
-      { t: '`\'n is ${n * 2}\'`', why: 'That is what ordinary quotes would give; backticks fill in the blank.' },
-      { t: '`\'n is 3 * 2\'`', why: 'The expression is worked out, not copied as text.' },
-      { t: '`\'6 is 6\'`', why: 'Only the part inside `${...}` is replaced; the `n` before it is plain text.' },
+      {
+        t: '`\'n is 6\'`',
+        correct: true,
+        why: 'The expression inside `${...}` is worked out, and its value is dropped into the string.',
+      },
+      {
+        t: '`\'n is ${n * 2}\'`',
+        why: 'That is what ordinary quotes would give; backticks fill in the blank.',
+      },
+      {
+        t: '`\'n is 3 * 2\'`',
+        why: 'The expression is worked out, not copied as text.',
+      },
+      {
+        t: '`\'6 is 6\'`',
+        why: 'Only the part inside `${...}` is replaced; the `n` before it is plain text.',
+      },
     ],
   },
   {
     q: '`let out = \'\'; for (let i = 0; i < 3; i++) { out += i; }` What is `out`?',
     options: [
-      { t: '`3`', why: 'Adding a number to a string glues its digits on; nothing is summed.' },
-      { t: '`\'012\'`', correct: true, why: '`out` starts as a string, so each `+=` glues: `\'0\'`, then `\'01\'`, then `\'012\'`.' },
-      { t: '`\'123\'`', why: 'The loop counts 0, 1, 2.' },
-      { t: '`\'\'`', why: 'Each `+=` makes a new, longer string and stores it in `out`.' },
+      {
+        t: '`3`',
+        why: 'Adding a number to a string glues its digits on; nothing is summed.',
+      },
+      {
+        t: '`\'012\'`',
+        correct: true,
+        why: '`out` starts as a string, so each `+=` glues: `\'0\'`, then `\'01\'`, then `\'012\'`.',
+      },
+      {
+        t: '`\'123\'`',
+        why: 'The loop counts 0, 1, 2.',
+      },
+      {
+        t: '`\'\'`',
+        why: 'Each `+=` makes a new, longer string and stores it in `out`.',
+      },
     ],
   },
 ];

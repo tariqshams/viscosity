@@ -1,8 +1,5 @@
-// Chapter 39 cards. Keys are stable ids: never rename them.
-//
-// Tests that use endless sequences pull from a guarded generator that
-// throws after 50 values, so a solution that asks for too much fails
-// quickly instead of looping for ever.
+// Chapter 39 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'iter-next': {
@@ -67,8 +64,7 @@ for (const x of take(naturals(), 3)) {
 export const exercises = {
   range: {
     title: 'A range generator',
-    prompt:
-      'Write a generator `range(lo, hi, step)` that yields `lo`, `lo + step`, `lo + 2 * step` and so on, for as long as the number is **below** `hi`. `step` is 1 when it is left out (write `step = 1` in the parameter list for a default value). So `[...range(0, 4)]` is `[0, 1, 2, 3]` and `[...range(1, 10, 3)]` is `[1, 4, 7]`. You may assume `step` is positive.',
+    prompt: 'Write a generator `range(lo, hi, step)` that yields `lo`, `lo + step`, `lo + 2 * step` and so on, for as long as the number is **below** `hi`. `step` is 1 when it is left out (write `step = 1` in the parameter list for a default value). So `[...range(0, 4)]` is `[0, 1, 2, 3]` and `[...range(1, 10, 3)]` is `[1, 4, 7]`. You may assume `step` is positive.',
     starter: `function* range(lo, hi, step = 1) {
   // your code here
 }
@@ -147,8 +143,7 @@ For \`range(5, 1)\` the condition \`5 < 1\` is false at once, so nothing is yiel
   takeWhile: {
     optional: true,
     title: 'Take while it holds',
-    prompt:
-      'Write a generator `takeWhile(it, ok)` that yields the values of the iterable `it` for as long as `ok(value)` is true, and stops at the **first** value for which it is false (without yielding that value, and without asking for any more). It must work on endless sequences.',
+    prompt: 'Write a generator `takeWhile(it, ok)` that yields the values of the iterable `it` for as long as `ok(value)` is true, and stops at the **first** value for which it is false (without yielding that value, and without asking for any more). It must work on endless sequences.',
     starter: `function* takeWhile(it, ok) {
   // your code here
 }
@@ -238,43 +233,107 @@ test('none pass: nothing comes through', () => {
 
 export const quiz = [
   {
-    q: 'What does this print?\n```js\nconst it = [\'a\'][Symbol.iterator]();\nit.next();\nconsole.log(it.next().done);\n```',
+    q: `What does this print?
+\`\`\`js
+const it = ['a'][Symbol.iterator]();
+it.next();
+console.log(it.next().done);
+\`\`\``,
     options: [
-      { t: '`false`', why: 'The first `next()` already handed out `\'a\'`; there is nothing left.' },
-      { t: '`true`', correct: true, why: 'The second call finds no more values, so it returns `{ value: undefined, done: true }`.' },
-      { t: '`undefined`', why: '`done` is always present on an array iterator’s results; it is `true` here.' },
+      {
+        t: '`false`',
+        why: 'The first `next()` already handed out `\'a\'`; there is nothing left.',
+      },
+      {
+        t: '`true`',
+        correct: true,
+        why: 'The second call finds no more values, so it returns `{ value: undefined, done: true }`.',
+      },
+      {
+        t: '`undefined`',
+        why: '`done` is always present on an array iterator’s results; it is `true` here.',
+      },
     ],
   },
   {
-    q: 'In what order are the lines printed?\n```js\nfunction* g() {\n  console.log(\'B\');\n  yield 1;\n}\nconst it = g();\nconsole.log(\'A\');\nit.next();\n```',
+    q: `In what order are the lines printed?
+\`\`\`js
+function* g() {
+  console.log('B');
+  yield 1;
+}
+const it = g();
+console.log('A');
+it.next();
+\`\`\``,
     options: [
-      { t: 'B, then A', why: 'Calling `g()` runs none of the body, so `B` cannot come first.' },
-      { t: 'A only', why: 'The `next()` call does run the body up to `yield 1`, which prints `B`.' },
-      { t: 'A, then B', correct: true, why: '`g()` only makes the paused generator; the body (and `B`) runs at the first `next()`.' },
+      {
+        t: 'B, then A',
+        why: 'Calling `g()` runs none of the body, so `B` cannot come first.',
+      },
+      {
+        t: 'A only',
+        why: 'The `next()` call does run the body up to `yield 1`, which prints `B`.',
+      },
+      {
+        t: 'A, then B',
+        correct: true,
+        why: '`g()` only makes the paused generator; the body (and `B`) runs at the first `next()`.',
+      },
     ],
   },
   {
     q: 'Which of these can `for...of` loop over directly?',
     options: [
-      { t: 'A `Map`, a `Set`, a string and a generator', correct: true, why: 'All of them have a `[Symbol.iterator]()` method.' },
-      { t: 'Any object at all', why: 'Plain objects have no `[Symbol.iterator]`: “o is not iterable”.' },
-      { t: 'Only arrays', why: 'Strings, Maps, Sets, typed arrays and generators are iterable too.' },
+      {
+        t: 'A `Map`, a `Set`, a string and a generator',
+        correct: true,
+        why: 'All of them have a `[Symbol.iterator]()` method.',
+      },
+      {
+        t: 'Any object at all',
+        why: 'Plain objects have no `[Symbol.iterator]`: “o is not iterable”.',
+      },
+      {
+        t: 'Only arrays',
+        why: 'Strings, Maps, Sets, typed arrays and generators are iterable too.',
+      },
     ],
   },
   {
     q: '`function* f() { yield* [1, 2]; yield [3, 4]; }`. What is `[...f()]`?',
     options: [
-      { t: '`[1, 2, 3, 4]`', why: 'Only `yield*` spreads an iterable out; plain `yield [3, 4]` hands out the array as one value.' },
-      { t: '`[1, 2, [3, 4]]`', correct: true, why: '`yield*` hands out 1 and 2 one by one; `yield [3, 4]` hands out one array.' },
-      { t: '`[[1, 2], [3, 4]]`', why: '`yield*` does not hand out the array as one value; it hands out its elements.' },
+      {
+        t: '`[1, 2, 3, 4]`',
+        why: 'Only `yield*` spreads an iterable out; plain `yield [3, 4]` hands out the array as one value.',
+      },
+      {
+        t: '`[1, 2, [3, 4]]`',
+        correct: true,
+        why: '`yield*` hands out 1 and 2 one by one; `yield [3, 4]` hands out one array.',
+      },
+      {
+        t: '`[[1, 2], [3, 4]]`',
+        why: '`yield*` does not hand out the array as one value; it hands out its elements.',
+      },
     ],
   },
   {
     q: 'Why is `take(naturals(), 3)` fine but `[...naturals()]` never finishes?',
     options: [
-      { t: 'Because `naturals` runs faster inside `take`', why: 'Speed is not the issue: one is finite and one is not.' },
-      { t: 'Because spread makes a copy first', why: 'Spread does make an array, but the problem is that it never gets to the end of the values.' },
-      { t: 'Because the sequence is lazy: `take` asks for three values and stops, while spread asks for every value', correct: true, why: 'Values are made only when asked for, so asking for a finite number of them is safe.' },
+      {
+        t: 'Because `naturals` runs faster inside `take`',
+        why: 'Speed is not the issue: one is finite and one is not.',
+      },
+      {
+        t: 'Because spread makes a copy first',
+        why: 'Spread does make an array, but the problem is that it never gets to the end of the values.',
+      },
+      {
+        t: 'Because the sequence is lazy: `take` asks for three values and stops, while spread asks for every value',
+        correct: true,
+        why: 'Values are made only when asked for, so asking for a finite number of them is safe.',
+      },
     ],
   },
 ];

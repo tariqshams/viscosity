@@ -1,5 +1,5 @@
-// Chapter 35 cards (floats and typed arrays).
-// Keys are stable ids: never rename them.
+// Chapter 35 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'float64-what': {
@@ -63,8 +63,7 @@ console.log(2 ** 53 + 1 === 2 ** 53);`,
 export const exercises = {
   toSoa: {
     title: 'From objects to columns',
-    prompt:
-      'Write `toSoa(ps)`. `ps` is an array of objects like `{ x: 1, y: 2 }`. Return an object `{ x, y }` where `x` is a `Float64Array` holding every particle’s `x` in order, and `y` a `Float64Array` holding every `y`. This is the layout change Viscosity makes.',
+    prompt: 'Write `toSoa(ps)`. `ps` is an array of objects like `{ x: 1, y: 2 }`. Return an object `{ x, y }` where `x` is a `Float64Array` holding every particle’s `x` in order, and `y` a `Float64Array` holding every `y`. This is the layout change Viscosity makes.',
     starter: `function toSoa(ps) {
   // your code here
 }
@@ -165,8 +164,7 @@ Notice what was lost: there is no object for particle 1 any more; a particle is 
   grow: {
     optional: true,
     title: 'Growing a column',
-    prompt:
-      'A `Float64Array` cannot grow, so to add more particles you make a bigger one and copy. Write `grow(col)`: return a **new** `Float64Array` twice as long as `col` (or of length 1 if `col` is empty), with `col`’s values copied into the first slots and zeros after them. Do not change `col`.',
+    prompt: 'A `Float64Array` cannot grow, so to add more particles you make a bigger one and copy. Write `grow(col)`: return a **new** `Float64Array` twice as long as `col` (or of length 1 if `col` is empty), with `col`’s values copied into the first slots and zeros after them. Do not change `col`.',
     starter: `function grow(col) {
   // your code here
 }
@@ -251,43 +249,99 @@ export const quiz = [
   {
     q: 'How many bytes does one element of a `Float64Array` take?',
     options: [
-      { t: '1', why: 'One byte is a `Uint8Array` element.' },
-      { t: '4', why: 'Four bytes is an `Int32Array` element.' },
-      { t: '64', why: 'It is 64 *bits*. Divide by 8 to get bytes.' },
-      { t: '8', correct: true, why: '64 bits ÷ 8 bits per byte = 8 bytes, the same size as any JavaScript number.' },
+      {
+        t: '1',
+        why: 'One byte is a `Uint8Array` element.',
+      },
+      {
+        t: '4',
+        why: 'Four bytes is an `Int32Array` element.',
+      },
+      {
+        t: '64',
+        why: 'It is 64 *bits*. Divide by 8 to get bytes.',
+      },
+      {
+        t: '8',
+        correct: true,
+        why: '64 bits ÷ 8 bits per byte = 8 bytes, the same size as any JavaScript number.',
+      },
     ],
   },
   {
     q: '`const b = new ArrayBuffer(8); const f = new Float64Array(b); const u = new Uint8Array(b);` What are `f.length` and `u.length`?',
     options: [
-      { t: '`8` and `8`', why: 'The buffer has 8 bytes, but a float64 uses all 8 of them.' },
-      { t: '`1` and `8`', correct: true, why: 'One 8-byte float fits in 8 bytes; eight 1-byte integers do too. Both views share the same bytes.' },
-      { t: '`8` and `1`', why: 'That is the wrong way round: Uint8 elements are the small ones.' },
-      { t: 'An error: a buffer can only have one view', why: 'A buffer can have any number of views, all seeing the same bytes.' },
+      {
+        t: '`8` and `8`',
+        why: 'The buffer has 8 bytes, but a float64 uses all 8 of them.',
+      },
+      {
+        t: '`1` and `8`',
+        correct: true,
+        why: 'One 8-byte float fits in 8 bytes; eight 1-byte integers do too. Both views share the same bytes.',
+      },
+      {
+        t: '`8` and `1`',
+        why: 'That is the wrong way round: Uint8 elements are the small ones.',
+      },
+      {
+        t: 'An error: a buffer can only have one view',
+        why: 'A buffer can have any number of views, all seeing the same bytes.',
+      },
     ],
   },
   {
     q: 'You write `const a = new Int32Array(1); a[0] = 2.9;`. What is `a[0]`?',
     options: [
-      { t: '`2.9`', why: 'An `Int32Array` can only hold 32-bit integers; values are converted to fit.' },
-      { t: '`3`', why: 'The conversion drops the fraction rather than rounding.' },
-      { t: '`2`', correct: true, why: 'The fraction is dropped to fit a 32-bit integer.' },
+      {
+        t: '`2.9`',
+        why: 'An `Int32Array` can only hold 32-bit integers; values are converted to fit.',
+      },
+      {
+        t: '`3`',
+        why: 'The conversion drops the fraction rather than rounding.',
+      },
+      {
+        t: '`2`',
+        correct: true,
+        why: 'The fraction is dropped to fit a 32-bit integer.',
+      },
     ],
   },
   {
     q: 'Which of these is exactly true in JavaScript?',
     options: [
-      { t: '`0.1 + 0.2 === 0.3`', why: '`0.1 + 0.2` is `0.30000000000000004`.' },
-      { t: '`0.5 + 0.25 === 0.75`', correct: true, why: '0.5 and 0.25 are 2⁻¹ and 2⁻², exact in binary, and so is their sum.' },
-      { t: '`2 ** 53 + 1 > 2 ** 53`', why: '2⁵³ + 1 cannot be stored; it becomes 2⁵³ itself, so the two sides are equal and `>` is false.' },
+      {
+        t: '`0.1 + 0.2 === 0.3`',
+        why: '`0.1 + 0.2` is `0.30000000000000004`.',
+      },
+      {
+        t: '`0.5 + 0.25 === 0.75`',
+        correct: true,
+        why: '0.5 and 0.25 are 2⁻¹ and 2⁻², exact in binary, and so is their sum.',
+      },
+      {
+        t: '`2 ** 53 + 1 > 2 ** 53`',
+        why: '2⁵³ + 1 cannot be stored; it becomes 2⁵³ itself, so the two sides are equal and `>` is false.',
+      },
     ],
   },
   {
     q: 'Why does Viscosity use one `Float64Array` per field, instead of an array of objects?',
     options: [
-      { t: 'Typed arrays can be resized as needed', why: 'The opposite: their length is fixed.' },
-      { t: 'It is always faster, for every program', why: 'Not always: this repository’s benchmark shows columns losing badly when every particle must become a real object.' },
-      { t: 'Each field becomes one packed block of 8-byte numbers, which is fast for loops that touch a few fields of many particles', correct: true, why: 'That is the struct-of-arrays layout. Whether it wins depends on how the program uses the data, which is what Viscosity analyses.' },
+      {
+        t: 'Typed arrays can be resized as needed',
+        why: 'The opposite: their length is fixed.',
+      },
+      {
+        t: 'It is always faster, for every program',
+        why: 'Not always: this repository’s benchmark shows columns losing badly when every particle must become a real object.',
+      },
+      {
+        t: 'Each field becomes one packed block of 8-byte numbers, which is fast for loops that touch a few fields of many particles',
+        correct: true,
+        why: 'That is the struct-of-arrays layout. Whether it wins depends on how the program uses the data, which is what Viscosity analyses.',
+      },
     ],
   },
 ];

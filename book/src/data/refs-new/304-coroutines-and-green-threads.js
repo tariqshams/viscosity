@@ -1,4 +1,4 @@
-// New references for chapter 304. Checked 2026-11-02. The chapter also
+// New references for chapter 274. Checked 2026-11-02. The chapter also
 // relies on python-expressions (re-read raw from python/cpython 3.13,
 // Doc/reference/expressions.rst: generators are “quite similar to
 // coroutines ... The only difference is that a generator function cannot
@@ -21,7 +21,7 @@ export default [
     url: 'https://doi.org/10.1145/366663.366704',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search on 2026-11-02 (Wikipedia’s Melvin Conway article and several course notes citing it): Communications of the ACM 6(7):396–408, 1963, doi:10.1145/366663.366704, credited as the first published explanation of coroutines, proposing a compiler organised as a set of coroutines. The ACM page could not be opened from this session, so only these facts are relied on.',
-    shaped: 'Chapter 304: the origin of the coroutine.',
+    shaped: 'Chapter 274: the origin of the coroutine.',
   },
   {
     id: 'moura2009',
@@ -33,7 +33,7 @@ export default [
     url: 'https://doi.org/10.1145/1462166.1462167',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search on 2026-11-02 (lua.org/papers.html, the Tufts course archive copy, dcreager.net’s paper notes): TOPLAS 31(2), Article 6, February 2009, 31 pages, DOI 10.1145/1462166.1462167. The paper proposes a classification of coroutines and defines full asymmetric coroutines. The ACM page could not be opened from this session.',
-    shaped: 'Chapter 304: the terms asymmetric and full (stackful) coroutine.',
+    shaped: 'Chapter 274: the terms asymmetric and full (stackful) coroutine.',
   },
   {
     id: 'lua-manual-coroutines',
@@ -45,7 +45,7 @@ export default [
     url: 'https://www.lua.org/manual/5.4/manual.html#2.6',
     accessed: '2026-11-02',
     checkedAgainst: 'Section @sect2{coroutine} read raw from raw.githubusercontent.com/lua/lua/v5.4/manual/manual.of on 2026-11-02: “A coroutine in Lua represents an independent thread of execution”; coroutine.resume returns true plus the values passed to yield, and the coroutine yields “even if the yield happens inside nested function calls (that is, not in the main function, but in a function directly or indirectly called by the main function)”. www.lua.org itself was not reachable from this session.',
-    shaped: 'Chapter 304: Lua coroutines as stackful, asymmetric coroutines.',
+    shaped: 'Chapter 274: Lua coroutines as stackful, asymmetric coroutines.',
   },
   {
     id: 'go-spec-go-stmt',
@@ -57,7 +57,7 @@ export default [
     url: 'https://go.dev/ref/spec#Go_statements',
     accessed: '2026-11-02',
     checkedAgainst: 'doc/go_spec.html read raw from github.com/golang/go at tag go1.24.7 on 2026-11-02: “A "go" statement starts the execution of a function call as an independent concurrent thread of control, or goroutine, within the same address space.”',
-    shaped: 'Chapter 304: goroutines as green threads.',
+    shaped: 'Chapter 274: goroutines as green threads.',
   },
   {
     id: 'go-runtime-stack',
@@ -69,7 +69,7 @@ export default [
     url: 'https://github.com/golang/go/blob/go1.24.7/src/runtime/stack.go',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/golang/go/go1.24.7/src/runtime/stack.go on 2026-11-02: “stackMin = 2048”; newstack is “Called from runtime·morestack when more stack is needed. Allocate larger stack and relocate to new stack. Stack growth is multiplicative, for constant amortized cost.” with newsize := oldsize * 2, and copystack “Copies gp’s stack to a new stack of a different size.”',
-    shaped: 'Chapter 304: goroutine stacks start at 2 KB and grow by copying.',
+    shaped: 'Chapter 274: goroutine stacks start at 2 KB and grow by copying.',
   },
   {
     id: 'openjdk-virtualthread',
@@ -81,6 +81,6 @@ export default [
     url: 'https://github.com/openjdk/jdk/blob/jdk-21%2B35/src/java.base/share/classes/java/lang/VirtualThread.java',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/openjdk/jdk/jdk-21%2B35/src/java.base/share/classes/java/lang/VirtualThread.java on 2026-11-02: the class comment “A thread that is scheduled by the Java virtual machine rather than the operating system”; fields for a jdk.internal.vm.Continuation and the carrier thread (“carrier thread when mounted”); a DEFAULT_SCHEDULER that is a ForkJoinPool; and yieldContinuation(), which unmounts and calls Continuation.yield(VTHREAD_SCOPE), then mounts again. JEP 444 (openjdk.org) could not be reached from this session.',
-    shaped: 'Chapter 304: Java virtual threads as green threads built on continuations.',
+    shaped: 'Chapter 274: Java virtual threads as green threads built on continuations.',
   },
 ];

@@ -1,8 +1,5 @@
-// Chapter 29 cards. Keys are stable ids: never rename them.
-//
-// As in chapter 27: the runner erases types without checking them, and
-// scripts/check_chapters.mjs strips the types and runs the rest as plain
-// JavaScript. Exercises set lang: 'ts' so readers can write the types.
+// Chapter 29 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'union-what': {
@@ -33,7 +30,7 @@ export const prompts = {
     q: '`v` is `number | undefined`. Why is `if (v)` a risky way to rule out `undefined`?',
     a: 'Because `0` is falsy too, so a real zero is treated as if it were missing. Use `v !== undefined`.',
   },
-  'isarray': {
+  isarray: {
     q: 'Which check narrows `v: string | string[]` to `string[]`?',
     a: '`Array.isArray(v)`: inside the `if`, `v` is the array; after an `if` that returned, it is the string.',
   },
@@ -66,8 +63,7 @@ export const exercises = {
   label: {
     lang: 'ts',
     title: 'Label a value of three kinds',
-    prompt:
-      'Write `label(v)`, where `v` is labelled `number | string | undefined`. Return `\'(none)\'` for `undefined`, the number written with two decimal places (`v.toFixed(2)`) for a number, and the string in capitals (`v.toUpperCase()`) for a string. Be careful with `0` and the empty string `\'\'`: they are real values, not missing ones. (The runner erases types, so the tests check behaviour.)',
+    prompt: 'Write `label(v)`, where `v` is labelled `number | string | undefined`. Return `\'(none)\'` for `undefined`, the number written with two decimal places (`v.toFixed(2)`) for a number, and the string in capitals (`v.toUpperCase()`) for a string. Be careful with `0` and the empty string `\'\'`: they are real values, not missing ones. (The runner erases types, so the tests check behaviour.)',
     starter: `function label(
   v: number | string | undefined,
 ): string {
@@ -159,8 +155,7 @@ Try deleting the first \`if\` in a real TypeScript editor: on the last line \`ts
     optional: true,
     lang: 'ts',
     title: 'Prices that arrive as text',
-    prompt:
-      'A web form hands you prices, some already numbers and some still text, like `[2, \'3.5\', 1]`. Write `total(ps)`, where `ps` is labelled `(number | string)[]`, returning the sum as a number. Turn a string into a number with `Number(s)` (so `Number(\'3.5\')` is `3.5`).',
+    prompt: 'A web form hands you prices, some already numbers and some still text, like `[2, \'3.5\', 1]`. Write `total(ps)`, where `ps` is labelled `(number | string)[]`, returning the sum as a number. Turn a string into a number with `Number(s)` (so `Number(\'3.5\')` is `3.5`).',
     starter: `function total(
   ps: (number | string)[],
 ): number {
@@ -254,9 +249,19 @@ export const quiz = [
   {
     q: '`function len(v: string | string[]) { return v.length; }` Does this type-check?',
     options: [
-      { t: 'No: you must narrow `v` before using it', why: 'You only need to narrow before doing something that is *not* safe for every member.' },
-      { t: 'Yes: both strings and arrays have `length`, so it is safe for every member', correct: true, why: 'Operations allowed on every member of a union are allowed without narrowing.' },
-      { t: 'No: unions cannot contain array types', why: 'Any types can be combined in a union.' },
+      {
+        t: 'No: you must narrow `v` before using it',
+        why: 'You only need to narrow before doing something that is *not* safe for every member.',
+      },
+      {
+        t: 'Yes: both strings and arrays have `length`, so it is safe for every member',
+        correct: true,
+        why: 'Operations allowed on every member of a union are allowed without narrowing.',
+      },
+      {
+        t: 'No: unions cannot contain array types',
+        why: 'Any types can be combined in a union.',
+      },
     ],
   },
   {
@@ -268,33 +273,73 @@ if (typeof x === 'number') {
 // here
 \`\`\``,
     options: [
-      { t: '`number`', why: 'Numbers went into the `if` and returned, so they cannot reach this line.' },
-      { t: '`number | string`', why: 'The checker follows the `return`: one member has been ruled out.' },
-      { t: '`string`', correct: true, why: 'Every number returned inside the `if`, so only strings remain.' },
+      {
+        t: '`number`',
+        why: 'Numbers went into the `if` and returned, so they cannot reach this line.',
+      },
+      {
+        t: '`number | string`',
+        why: 'The checker follows the `return`: one member has been ruled out.',
+      },
+      {
+        t: '`string`',
+        correct: true,
+        why: 'Every number returned inside the `if`, so only strings remain.',
+      },
     ],
   },
   {
     q: 'The same code, but the `if` body is `console.log(x * 2);` with no `return`. What is `x`’s type at the marked line now?',
     options: [
-      { t: '`number | string`', correct: true, why: 'Numbers went into the `if` and came out again, so both kinds can reach the line after it.' },
-      { t: '`string`', why: 'That would need the numbers to leave, with a `return` or an `else`.' },
-      { t: '`number`', why: 'Strings skip the `if` entirely and certainly reach the next line.' },
+      {
+        t: '`number | string`',
+        correct: true,
+        why: 'Numbers went into the `if` and came out again, so both kinds can reach the line after it.',
+      },
+      {
+        t: '`string`',
+        why: 'That would need the numbers to leave, with a `return` or an `else`.',
+      },
+      {
+        t: '`number`',
+        why: 'Strings skip the `if` entirely and certainly reach the next line.',
+      },
     ],
   },
   {
     q: '`v` is `number | undefined` and holds `0`. Which branch runs: `if (v) { A } else { B }`?',
     options: [
-      { t: '`A`, because `0` is a real number', why: 'It is a real number, but `if` treats `0` as false (it is falsy).' },
-      { t: 'Neither: the checker rejects the code', why: 'TypeScript accepts truthiness checks and narrows on them.' },
-      { t: '`B`, the same branch `undefined` would take', correct: true, why: '`0` is falsy, so the zero is treated like a missing value. `v !== undefined` tells them apart.' },
+      {
+        t: '`A`, because `0` is a real number',
+        why: 'It is a real number, but `if` treats `0` as false (it is falsy).',
+      },
+      {
+        t: 'Neither: the checker rejects the code',
+        why: 'TypeScript accepts truthiness checks and narrows on them.',
+      },
+      {
+        t: '`B`, the same branch `undefined` would take',
+        correct: true,
+        why: '`0` is falsy, so the zero is treated like a missing value. `v !== undefined` tells them apart.',
+      },
     ],
   },
   {
     q: 'What does C’s `union` keyword lack, compared with a TypeScript union checked with `typeof`?',
     options: [
-      { t: 'It cannot hold numbers', why: 'A C union can hold numbers, pointers, anything.' },
-      { t: 'It does not record which kind was stored, so you keep your own tag beside it', correct: true, why: 'A C union is the same bytes read either way; nothing remembers which kind went in. The next chapter makes that tag official.' },
-      { t: 'It only exists at run time', why: 'C’s types are checked by the compiler, before the program runs.' },
+      {
+        t: 'It cannot hold numbers',
+        why: 'A C union can hold numbers, pointers, anything.',
+      },
+      {
+        t: 'It does not record which kind was stored, so you keep your own tag beside it',
+        correct: true,
+        why: 'A C union is the same bytes read either way; nothing remembers which kind went in. The next chapter makes that tag official.',
+      },
+      {
+        t: 'It only exists at run time',
+        why: 'C’s types are checked by the compiler, before the program runs.',
+      },
     ],
   },
 ];

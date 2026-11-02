@@ -1,0 +1,749 @@
+---
+n: 91
+day: 11
+part: V
+title: 'Dominators and natural loops'
+tagline: 'Some blocks can be skipped and some cannot. A block that every path must pass through is a checkpoint, and knowing the checkpoints is how a compiler finds loops and knows what has already happened.'
+objectives:
+  - Decide whether one block dominates another by thinking about paths from the entry.
+  - State the dominator equation and read it aloud.
+  - Compute dominator sets iteratively, and explain why the sets start full and why the visiting order matters.
+  - Write the iterative algorithm in JavaScript.
+  - Find immediate dominators and draw the dominator tree.
+  - Read Viscosity’s dominators function, which stores only the tree, and trace its two-finger intersect.
+  - Define the dominance frontier of a block and compute it by walking up the tree from each join.
+  - Write the dominance-frontier computation in JavaScript.
+  - Say what makes an edge a back edge, using dominance rather than the order blocks are listed in.
+  - Find the natural loop of a back edge by walking predecessors backwards from it.
+  - Explain why a cycle with two ways in is not a natural loop.
+  - Work out how deeply loops nest, and which loop is the innermost one around a block.
+introduces: [dominator, dominator-tree, natural-loop]
+uses: [cfg, basic-block, ir, three-address-code, temporary, recursion, set, map, array, while-loop, for-of, function, arrow-function, index, aos-vs-soa, tree, ssa, phi-node, for-loop, length, comparison]
+sources: [coopertorczon2022, cytron1991, llvm-loop-terminology, llvm-passes]
+---
+import DomSteps from '../../../components/diagrams/ch091/DomSteps';
+import AvoidingPath from '../../../components/diagrams/ch091/AvoidingPath';
+import DomTree from '../../../components/diagrams/ch091/DomTree';
+import FingerSteps from '../../../components/diagrams/ch091/FingerSteps';
+import Frontier from '../../../components/diagrams/ch091/Frontier';
+import LoopSteps from '../../../components/diagrams/ch091/LoopSteps';
+import TwoEntrances from '../../../components/diagrams/ch091/TwoEntrances';
+
+{/* ── merge: from old chapter 91, Dominators ── */}
+
+## Has this already happened?
+
+Look again at the Collatz loop's graph from Control-flow graphs.
+Suppose b2 computes `n % 2` and b7 wants to reuse it; is that safe? Only
+if b2 has *certainly* run by the time b7 runs. And the other way round:
+b5 computes `3 * n`, so can b7 use that? No, because on the path through
+b6, b5 never ran. The difference between b2 and b5 is not where they sit
+in the listing, or which runs first on some path; it is whether you can
+get to b7 *without* them. That idea, the blocks you cannot avoid, turns
+out to be one of the most useful facts a compiler can have.
+
+## Checkpoints
+
+<Analogy title="an island town with one bridge">
+However you plan the trip into town, by the coast road or through the
+hills, you cross the one bridge, so the bridge **dominates** the town. A
+café you sometimes stop at on the way does not, because there is a
+route that skips it.
+<span slot="breaks">Bridges are permanent; whether a block dominates
+another depends on the whole graph, so adding a single new edge (one new
+route into town) can take away a block's dominance.</span>
+</Analogy>
+
+<Analogy extra title="airport security">
+Every passenger who reaches a departure gate has been through security,
+whichever terminal entrance they used; the coffee shop and the duty-free
+shop are on some routes to the gate and not on others.
+<span slot="breaks">An airport is visited once per trip; a block inside
+a loop may be passed many times, and dominance says nothing about how
+often, only that you cannot reach the later block without having passed
+the earlier one at least once.</span>
+</Analogy>
+
+<Figure takeaway="One path that avoids A is enough to show A does not dominate B." caption="The highlighted path reaches the join b7 without passing b5, so b5 does not dominate b7 (b6 fails the same way, by the other branch). b2 is on every path to b7, so it does.">
+  <AvoidingPath />
+</Figure>
+
+<Callout kind="definition">
+In a CFG with entry block E, block A **dominates** block B if every path
+from E to B passes through A. Every block dominates itself, and E
+dominates every reachable block. A **strictly dominates** B if it
+dominates B and A ≠ B. The set of blocks that dominate B is written
+Dom(B).
+</Callout>
+
+<Formal title="Dominance">
+
+```text
+A dom B  ⟺  every path E → … → B
+            contains A
+Dom(B) = { A : A dom B }
+A sdom B ⟺ A dom B and A ≠ B
+```
+
+<span slot="read">A dominates B (written A dom B) exactly when every
+path from the entry E to B contains A; the symbol ⟺ reads "exactly
+when". Dom(B) is the set of all blocks A that dominate B. A strictly
+dominates B (A sdom B) when A dominates B and is a different
+block.</span>
+</Formal>
+
+<Examples of="dominator">
+
+```text
+b0 → b1 → b2
+Dom(b2) = {0, 1, 2}
+```
+
+```text
+     b0
+    ↙  ↘
+  b1    b2
+    ↘  ↙
+     b3       Dom(b3) = {0, 3}
+```
+
+```text
+Dom(b7) = {0, 1, 2, 7}
+Dom(b4) = {0, 1, 4}
+```
+
+</Examples>
+
+The first is the simplest case, a straight chain: there is only one path
+to b2, so everything on it (b0, b1, and b2 itself) dominates b2. The
+second is an `if`/`else`, a diamond: b3 can be reached through b1 or
+through b2, so neither branch dominates it, and only the entry and b3
+itself are left. The third is the real Collatz graph. b7, the join, is
+dominated by the entry, the loop test b1 and the parity test b2, since
+both ways into b7 come from b2's branches. b2 does *not* dominate b4,
+the exit, even though b2 can run before it: when `n` starts at 1 the
+loop test fails at once, and b4 runs with no visit to b2 at all.
+
+There is a second way to say the same thing, which makes a good check:
+A dominates B exactly when deleting A from the graph cuts B off from the
+entry. This program deletes each block in turn, searches from the entry,
+and lists the blocks that can no longer be reached:
+
+<Run id="delete-and-search" />
+
+`reach(gone)` is a search that refuses to step onto the deleted block;
+the loop then reports every block missing from what it reached. It
+prints, for example, `b2 dominates [ 2, 3, 5, 6, 7 ]` and
+`b7 dominates [ 3, 7 ]`, while b5 dominates only itself, `[ 5 ]`, which
+matches the picture above.
+
+<Prompts ids={['dom-what', 'self-entry', 'not-before']} />
+
+## Computing it: shrink until nothing changes
+
+There is a neat equation hidden in the definition. To reach B you must
+arrive from one of its predecessors; so a block dominates B exactly when
+it is B itself, or it dominates *every* predecessor of B (if it missed
+even one predecessor, the path through that one would avoid it).
+
+<Formal title="The dominator equation">
+
+```text
+Dom(E) = { E }
+Dom(B) = { B } ∪ ⋂ Dom(P)
+               P ∈ pred(B)
+```
+
+<span slot="read">The entry is dominated only by itself. For any other
+block B, its dominators are B itself together with (∪) the blocks that
+are in the dominator set of every predecessor P of B; the big ⋂ reads
+"the intersection over all P", which means "the blocks that every one
+of these sets has in common".</span>
+</Formal>
+
+Loops make this circular: b1's set depends on b3's, which depends on
+b7's, which depends (through b2) on b1's. The way out is to start every
+set except the entry's as large as possible, "all blocks", and apply the
+equation again and again; the sets only ever shrink, and when a whole
+pass changes nothing, you have the answer. Step through it:
+
+<DomSteps client:visible />
+
+Why start from "all" rather than from nothing? Because of b1. In the
+first pass its predecessor b3 has not been computed yet; if b3 started
+empty, the intersection for b1 would be empty too, and b1 would lose the
+entry from its set, which is wrong and could never be put back, since
+sets only shrink. Starting from "all", b3 contributes nothing misleading
+until its real set is known.
+
+The order of the visits matters for speed, not for the answer.
+Viscosity visits blocks in **reverse postorder**: do a depth-first
+search from the entry, write each block down once all its successors
+are finished, then reverse the list. From `packages/core/src/cfg.ts`:
+
+```ts
+function reversePostorder(f: Func) {
+  const seen = new Set<BlockId>();
+  const order: BlockId[] = [];
+  const visit = (b: BlockId) => {
+    seen.add(b);
+    for (const s of successors(f, b))
+      if (!seen.has(s)) visit(s);
+    order.push(b);
+  };
+  visit(f.entry);
+  return order.reverse();
+}
+```
+
+`visit` marks a block as seen, visits every successor not yet seen, and
+only then pushes the block onto `order`; so a block is pushed after
+everything reachable below it, and reversing the list puts each block
+before the blocks it leads to. In that order every block comes after its
+predecessors, except the ones that reach it by a back edge (an edge
+that jumps back to the start of a loop), so most of the information is
+already there when a block is visited. For the Collatz graph the order
+is `0 1 4 2 6 5 7 3`: one pass does the work, and a second confirms it.
+(Blocks that no path reaches are never visited, so they never appear in
+the order at all.)
+
+<Prompts ids={['start-all', 'only-shrink', 'intersect-why', 'why-rpo']} />
+
+<Callout kind="pitfall">
+A dominator is not "a block that runs earlier". b5 can run before b7,
+and b2 can run before b4, and neither dominates. Dominance is about
+*every* path, so a single path that avoids the block is enough to rule
+it out.
+</Callout>
+
+<Prompts ids={['back-edge-what']} />
+
+<Callout kind="engine" label="Under the hood">
+Dominators are one of the classic analyses of a compiler's middle end;
+two of their best-known uses are finding loops and placing the merge
+points of SSA form<Cite id="coopertorczon2022" />. Viscosity uses them
+for the first: its loop finder looks for edges that jump back to a block
+that dominates where they start, and the Loops chapter builds on it. The next chapter shows how
+Viscosity stores dominators without keeping a single set.
+</Callout>
+
+## Your turn
+
+<Exercise id="dom-sets" />
+
+## What you learned
+
+- A **dominates** B if every path from the entry to B goes through A.
+  Every block dominates itself; the entry dominates everything
+  reachable. One path that avoids A is enough to show A does not
+  dominate B.
+- Dominator sets satisfy Dom(B) = \{B\} ∪ the intersection of its
+  predecessors' sets.
+- Start from "all", repeat until **nothing changes**; sets only shrink.
+  **Reverse postorder** makes it quick.
+
+Next: the sets nest inside each other, so they fold into a tree.
+
+
+{/* ── merge: from old chapter 91, The dominator tree ── */}
+
+## Sets inside sets
+
+At the end of Dominators we had a set for every block of the Collatz
+loop, and they look suspiciously alike:
+
+```text
+Dom(b2) = {0, 1, 2}
+Dom(b7) = {0, 1, 2, 7}
+Dom(b3) = {0, 1, 2, 7, 3}
+```
+
+Each set is the one before it with one block added. That is no
+accident: if A and C both strictly dominate B, then one of them
+dominates the other (a short argument about paths shows it, which we
+will take on trust here). So the strict dominators of a block form a single chain,
+and you never need to store whole sets. For each block, keep only its
+nearest strict dominator, and the rest follow by walking upwards.
+
+<Analogy title="a postal address">
+"Flat 3, 12 Mill Lane, Leeds, England": each part sits inside the next,
+and to deliver a letter to the flat you must pass through every larger
+part. The post office does not store, for each flat, the list of every
+place that contains it; it only needs "this flat is in that building",
+"that building is on that street", and so on up.
+<span slot="breaks">Addresses are drawn up by people and change rarely;
+the dominator tree follows from the shape of the graph, and adding one
+edge (a new road into town) can move a block to a different parent.</span>
+</Analogy>
+
+<Analogy extra title="a chain of command">
+In a company, everyone has one direct manager, and your manager's
+manager is also above you; to list everyone above you, start with your
+manager and keep asking "and who is above them?".
+<span slot="breaks">A manager is above you because someone decided so;
+a block dominates another only because of the paths in the graph, and
+"being above" here means "every route to you passes them first", not
+that they give any orders.</span>
+</Analogy>
+
+<Callout kind="definition">
+The **immediate dominator** of B, idom(B), is the strict dominator of B
+that is closest to B: the one that every other strict dominator of B
+also dominates. Every reachable block except the entry has exactly one.
+Drawing an edge from idom(B) to B for every B gives the **dominator
+tree**, rooted at the entry. A dominates B exactly when A is B or an
+ancestor of B in this tree.
+</Callout>
+
+<Formal title="The immediate dominator">
+
+```text
+idom(B) = the D with  D sdom B  and
+  (A sdom B  ⟹  A dom D)
+```
+
+<span slot="read">The immediate dominator of B is the block D that
+strictly dominates B and is dominated by every other strict dominator A
+of B; the arrow ⟹ reads "implies", so the bracket says "whenever A
+strictly dominates B, A also dominates D". In other words, D is the
+lowest link of B's chain of strict dominators.</span>
+</Formal>
+
+<Figure takeaway="A block’s dominators are its ancestors in the tree." caption="The dominator tree of the Collatz CFG. b7, the join, is a child of b2, not of b5 or b6, since either branch can be skipped. b3, the jump back to the loop test, hangs below b7; its edge b3 → b1 in the CFG goes to one of its own ancestors.">
+  <DomTree />
+</Figure>
+
+<Examples of="dominator-tree">
+
+```text
+chain   b0 → b1 → b2
+tree    b0 ─ b1 ─ b2
+```
+
+```text
+diamond  b0 → b1, b2 → b3
+tree     b0 ─ b1, b0 ─ b2, b0 ─ b3
+```
+
+```text
+idom: 1→0  2→1  4→1  5→2
+      6→2  7→2  3→7
+```
+
+</Examples>
+
+The first is the simplest: in a straight chain each block's only strict
+dominators are the blocks above it, the nearest is the one just before
+it, and the tree is the chain itself. The second is the `if`/`else`
+diamond: b1 and b2 each have b0 as their nearest strict dominator, and
+so does the join b3, because neither branch dominates it; so the tree is
+flat, with three children under the entry, even though the CFG has
+depth. That is the lesson of this example: the tree and the graph can
+have quite different shapes. The third is the real Collatz tree as
+Viscosity's `dominators` returns it, a map from each block to its
+parent, which is the picture above written as text.
+
+<Prompts ids={['idom-what', 'tree-ancestor', 'sets-nest']} />
+
+## Viscosity's version stores only the tree
+
+`dominators` in `packages/core/src/cfg.ts` computes the immediate
+dominators directly, as a `Map` from each block to its idom, without
+ever building a set (the comment at the top of the file credits the
+method to Cooper, Harvey and Kennedy's "A Simple, Fast Dominance
+Algorithm"). Trimmed:
+
+```ts
+const intersect = (a, b) => {
+  while (a !== b) {
+    while (index.get(a) > index.get(b))
+      a = idom.get(a);
+    while (index.get(b) > index.get(a))
+      b = idom.get(b);
+  }
+  return a;
+};
+// until nothing changes, for each block
+// b in reverse postorder (not the entry):
+let d = preds[0];
+for (const p of preds.slice(1))
+  d = intersect(p, d);
+if (idom.get(b) !== d) {
+  idom.set(b, d); changed = true;
+}
+```
+
+It is the dominator equation from the last chapter, done on the tree.
+`index` gives each block's position in reverse postorder, and a block's
+idom always comes earlier in that order than the block itself; so
+`intersect` puts a finger on each of two blocks and keeps moving
+whichever finger is later in the order up to its idom, until the
+fingers meet. Where they meet is the nearest block that dominates both,
+which is the tree's version of "intersect the two sets". The loop
+below it does that for all of a block's predecessors (in the real code
+`preds` holds only predecessors that already have an idom, which also
+means unreachable blocks never get one). Step through it:
+
+<FingerSteps client:visible />
+
+Here is the same algorithm as plain JavaScript on the Collatz graph; it
+prints each block's idom and the number of passes, two (one to build
+the tree and one to confirm it):
+
+<Run id="rpo" />
+
+Asking "does A dominate B?" is then a walk up the tree from B:
+
+```ts
+function dominates(idom, a, b) {
+  if (!idom.has(b)) return false;
+  for (let x = b; ; x = idom.get(x)) {
+    if (x === a) return true;
+    if (idom.get(x) === x) return false;
+  }
+}
+```
+
+An unreachable `b` has no idom, so nothing dominates it. Otherwise the
+loop climbs from `b` towards the root, answering yes if it meets `a`;
+the entry is its own idom, which is how the walk knows it has reached
+the root without finding `a`. Viscosity's `naturalLoops` uses exactly
+this to find loops: an edge t → h where h dominates t is a **back
+edge**, because you can only jump back to a block you must already have
+passed, and h is a loop header. For the Collatz loop it finds b3 → b1.
+
+<Prompts ids={['intersect-fingers', 'unreachable-none', 'back-edge']} />
+
+## Where a block's territory ends
+
+The blocks a block dominates form its subtree, its territory. Building
+SSA will need to know where that territory *ends*: the first
+blocks you can step into from inside it that it does not own outright.
+
+<Figure takeaway="DF(B) is where B’s territory meets the rest of the graph." caption="b2 dominates the shaded blocks. The edge b3 → b1 leaves the region, landing on a block b2 does not strictly dominate, so DF(b2) = {b1}.">
+  <Frontier />
+</Figure>
+
+<Callout kind="definition">
+The **dominance frontier** of a block X, DF(X), is the set of blocks Y
+such that X dominates a predecessor of Y but does not strictly dominate
+Y itself<Cite id="cytron1991" />. They are the joins where a path that
+has passed through X meets a path that may not have.
+</Callout>
+
+<Formal title="The dominance frontier">
+
+```text
+DF(X) = { Y : X dom P for some
+          P ∈ pred(Y),
+          and not X sdom Y }
+```
+
+<span slot="read">The dominance frontier of X is the set of blocks Y for
+which some predecessor P of Y is dominated by X, while X does not
+strictly dominate Y. Y may be X itself: a loop header that dominates
+the end of its own loop is in its own frontier.</span>
+</Formal>
+
+For the Collatz loop: DF(b5) = DF(b6) = \{b7\}, because each branch
+dominates itself, a predecessor of the join, but not the join. DF(b2),
+DF(b7) and DF(b3) are all \{b1\}, since each dominates b3, the source of
+the back edge. DF(b1) = \{b1\}: the loop header dominates b3, which leads
+back to b1, and nothing strictly dominates itself. The entry and the
+exit have empty frontiers.
+
+Computing the frontiers is short once you have the tree. A block Y with
+two or more predecessors is where frontiers can end; for each
+predecessor P of Y, climb the tree from P, adding Y to the frontier of
+every block you pass, and stop when you reach idom(Y). Every block on
+that climb dominates P (it is P or above P), and none of them strictly
+dominates Y, because Y's strict dominators are idom(Y) and the blocks
+above it. Cytron and colleagues, who introduced dominance frontiers,
+compute them a different way, bottom-up over the
+tree<Cite id="cytron1991" />, but both give the same sets.
+
+<Prompts ids={['df-what', 'df-self']} />
+
+<Callout kind="engine" label="Under the hood">
+The dominator tree is the standard way compilers store dominance, and
+dominance frontiers are how the classic SSA construction decides where
+values from different paths must be merged<Cite id="coopertorczon2022" />.
+That is the job of Building SSA, three chapters on, which places its
+phis exactly at these frontiers.
+</Callout>
+
+## Your turn
+
+<Exercise id="frontiers" />
+
+<Exercise id="idoms" />
+
+## What you learned
+
+- The strict dominators of a block form a chain, so each block needs
+  only its **immediate dominator**; joining each block to its idom gives
+  the **dominator tree**, and a block's dominators are its ancestors.
+- Viscosity stores only `idom`, intersecting by walking two fingers up
+  the tree in reverse postorder; `dominates` walks up from B, and
+  `naturalLoops` uses it to find back edges.
+- The **dominance frontier** DF(X) holds the blocks just outside X's
+  territory: X dominates one of their predecessors but not them. Climb
+  from each predecessor of a join to the join's idom to compute it.
+
+Next: SSA form, where every value has exactly one definition.
+
+
+{/* ── merge: from old chapter 91, Loops ── */}
+
+## Where did the loop go?
+
+Almost every interesting decision a compiler makes is about a loop,
+because that is where a program spends its time; Viscosity, for one,
+wants to know which fields each loop touches, how many times each loop
+runs, and whether an index inside a loop can run off the end of an
+array. Here is a small function with two loops, one inside the other:
+
+```js
+function sum(g) {
+  let s = 0;
+  for (let i = 0; i < g.length; i++) {
+    for (let k = 0; k < 3; k++) {
+      s += g[i].x;
+    }
+  }
+  return s;
+}
+```
+
+By the time this reaches the IR (chapter 89's working form of a
+program), the word `for` is gone. Here are two of its basic blocks, as
+Viscosity prints them:
+
+```text
+b1:  ; preds b0 b3
+  %3 = phi %2, %23
+  %5 = field.get %0 .length
+  %6 = binop < %3, %5
+  condbr %6, b2, b4
+b3:  ; preds b8
+  %21 = unop + %3
+  %22 = const 1
+  %23 = binop + %21, %22
+  br b1
+```
+
+`b1` is the test `i < g.length`: its phi (chapter 90) picks `i`'s value,
+`%5` reads the length, `%6` compares, and `condbr` jumps into the body
+(`b2`) or out (`b4`). `b3` is the `i++`, and its last line, `br b1`,
+jumps back up to the test. That arrow from `b3` to `b1` is all that is
+left of the outer loop, so the compiler has to find the loop again from
+the shape of the graph.
+
+## A way back to a place you had to pass
+
+<Analogy title="a repeat sign in sheet music">
+A piece of music has a section marked with a repeat sign: when you reach
+the end of the section, you jump back to its first bar and play it
+again. You could only have reached that ending by playing through the
+first bar, which is what makes the jump a repeat and not a leap to some
+unrelated place.
+<span slot="breaks">A repeat sign says how many times to play; a loop
+in a CFG repeats for as long as its test says yes, which the compiler
+usually cannot know.</span>
+</Analogy>
+
+<Analogy extra title="a museum with one entrance hall">
+Every visitor comes in through the entrance hall. Deep in the building
+there is a door marked "back to the hall"; walking through it takes you
+somewhere you certainly passed on the way in, so following it puts you
+on a circuit you can walk again and again.
+<span slot="breaks">A visitor can see the floor plan; the compiler
+sees only blocks and arrows, and has to work out "certainly passed on
+the way in" from chapter 91's dominators.</span>
+</Analogy>
+
+"Certainly passed on the way in" is exactly dominance: block `h`
+dominates block `t` if every path from the entry to `t` goes through
+`h`. So an arrow from `t` up to a block `h` that dominates it is the
+compiler's version of the repeat sign.
+
+<Callout kind="definition">
+A **back edge** is a CFG edge `t → h` whose target `h` dominates its
+source `t`. The **natural loop** of that back edge is `h` together with
+every block that can reach `t` without passing through `h`. The block
+`h` is the loop's **header**, and the block `t`, which jumps back to it,
+is a **latch**. Every block in a natural loop is dominated by the
+header, so the header is the only way into the loop.
+</Callout>
+
+<Formal title="Back edges and natural loops">
+
+```text
+t → h is a back edge   ⟺   h dom t
+
+loop(t → h) = { h } ∪
+  { x | x ⇝ t on a path avoiding h }
+```
+
+<span slot="read">An edge from t to h is a back edge exactly when h
+dominates t. The loop of that edge is the set holding h, together with
+every block x that has a path to t which never goes through h. (The
+squiggly arrow is read "can reach".)</span>
+</Formal>
+
+The definition also tells you how to compute the loop. Start with the
+header, add the latch, then keep adding the predecessors of anything
+you have added, stopping whenever you reach a block that is already
+in. The header acts as a fence, since it is in from the start, so the
+walk never leaks out through the loop's entrance. Step through it on
+`sum`, whose CFG has two back edges:
+
+<LoopSteps client:visible />
+
+<Prompts ids={['back-edge-o211', 'natural-loop', 'walk-backwards']} />
+
+## Three loops, and one that is not
+
+<Examples of="natural-loop">
+
+```text
+b0 → b1    b1 → b1    b1 → b2
+```
+
+```text
+e → h    h → a    h → x
+a → b    a → h    b → h
+```
+
+```text
+header b1  depth 1
+  body b1 b2 b3 b5 b6 b7 b8
+header b5  depth 2
+  body b5 b6 b7
+```
+
+</Examples>
+
+The first is the smallest loop there is: a block `b1` with an edge to
+itself, the shape of a loop whose test and body fit in one block. `b1`
+dominates itself, so `b1 → b1` is a back edge, the walk starts and ends
+at `b1`, and the loop is the single block `{b1}`. The second has two
+ways back to its header `h`, from `a` and from `b`, the shape a
+`continue` statement often makes (one edge for the `continue`, one for
+the end of the body). Both are back edges with the same header and
+their walks overlap, so the compiler merges them into one loop,
+`{h, a, b}`, with two latches; LLVM does the same<Cite id="llvm-loop-terminology" />,
+while Viscosity's own lowering sends both through one shared block
+first, so its loops have one latch.
+The third is what Viscosity's loop finder really returns for `sum`: the
+outer loop has seven blocks, the inner loop's three among them.
+
+Now the case that catches people out: a cycle that is not a natural
+loop.
+
+<Figure takeaway="A loop needs one door: a header that dominates every block in it." caption="Left: one way in, through b1, so b2 → b1 is a back edge and {b1, b2} is a natural loop. Right: the entry can jump to a or to b, so neither dominates the other; the edges between them form a cycle, but neither is a back edge.">
+  <TwoEntrances />
+</Figure>
+
+On the right of the figure, the entry `e` can jump to `a` or to `b`, and
+from there round and round. It is tempting to call `b → a` a back edge
+because it points "up" the page; do that, and you get a "loop" with two entrances, and anything the
+compiler later puts "before the loop" (the subject of the next chapters)
+would be skipped by whoever enters at `b`. A cycle like this is called
+**irreducible**; structured `for` and `while` loops never produce one,
+so in JavaScript you only meet them in hand-written graphs.
+
+Here is the heart of Viscosity's loop finder, `naturalLoops` in
+`cfg.ts`, very slightly trimmed:
+
+```ts
+for (const s of successors(f, b.id)) {
+  if (!dominates(idom, s, b.id)) continue;
+  let body = byHeader.get(s);
+  if (!body)
+    byHeader.set(s, (body = new Set([s])));
+  const stack = [b.id];
+  while (stack.length) {
+    const x = stack.pop()!;
+    if (body.has(x)) continue;
+    body.add(x);
+    for (const p of f.blocks[x].preds)
+      stack.push(p);
+  }
+}
+```
+
+It runs for every block `b`. The first two lines let only back edges
+through: a successor `s` that dominates `b`. The next two find the body
+for header `s`, starting it as `{s}` the first time, and reusing it is
+how two latches merge. Then the walk: start at the latch, pop a block,
+skip it if it is already in (the header's fence), otherwise add it and
+push its predecessors.
+
+You can run the back-edge test yourself on the small graph from the
+exercise below; change `dom` so that `b1` no longer dominates `b2` and
+watch the loop disappear:
+
+<Run id="back-edges" />
+
+<Prompts ids={['dominance-not-order', 'two-latches', 'irreducible']} />
+
+## Loops inside loops
+
+Natural loops are either nested (one's blocks inside the other's) or
+share nothing, apart from the special case of two back edges to one
+header, which we merge. A loop's **depth** is how many loops contain
+its header, itself included, so an outermost loop has depth 1.
+Viscosity works it out after finding them all:
+
+```ts
+l.depth = loops.filter((o) =>
+  o !== l && o.body.has(l.header) &&
+  o.body.size > l.body.size).length + 1;
+```
+
+For each loop `l`, it counts the other loops that contain `l`'s header
+and are bigger than `l`, and adds one. For any one block, it also wants
+the innermost loop around it, which is the smallest loop whose body
+contains it (`loopOf` in the same file). That is the loop a field
+access is charged to; for the real `sum` above (with a thousand
+records pushed into `g` before the call), `viscosity explain` says:
+
+```text
+g (line 1) {x, y, m} → struct of arrays
+  · loop at line 6 in sum() touches 1 of
+    3 fields (x)
+```
+
+Line 6 is the `k` loop: the read of `g[i].x` sits in `b6`, which is in
+both loops, and the smaller, inner one wins. LLVM's loop information pass computes the same nesting
+for its own optimisations<Cite id="llvm-passes" />.
+
+<Prompts ids={['loop-depth', 'innermost']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity finds loops only to *describe* the program: which fields each
+loop reads and writes, how many times a loop runs, and whether its
+indexes stay in bounds (the next chapter). It never moves code in or
+out of a loop; the following chapters show what compilers that do
+rewrite loops build on top of exactly this loop finder.
+</Callout>
+
+## Your turn
+
+<Exercise id="findLoops" />
+
+## What you learned
+
+- In a CFG a loop survives only as a **back edge** `t → h`, where the
+  **header** `h` dominates the **latch** `t`. Dominance decides, never
+  the order blocks are listed in.
+- The **natural loop** of a back edge is `h` plus every block that can
+  reach `t` without passing `h`; find it by walking predecessors
+  backwards from `t`, with `h` as the fence.
+- Back edges to the same header make one loop. A cycle with two ways in
+  is **irreducible** and is not a natural loop.
+- Loops nest; **depth** counts the loops around a header, and the
+  innermost loop around a block is the smallest one containing it.
+
+<Quiz />

@@ -1,4 +1,5 @@
-// Chapter 25 cards. Keys are stable ids: never rename them.
+// Chapter 25 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'module-what': {
@@ -62,8 +63,7 @@ console.log(a.count);`,
 export const exercises = {
   makeReader: {
     title: 'A reader module',
-    prompt:
-      'Use the module pattern to write `makeReader(src)`. It returns an object with three functions: `peek()` returns the current character without moving on; `next()` returns the current character and moves one step on; `done()` returns `true` once every character has been read. The position must be **private**: `reader.pos` must be `undefined`. Each reader keeps its own position. (This is the start of a real scanner.)',
+    prompt: 'Use the module pattern to write `makeReader(src)`. It returns an object with three functions: `peek()` returns the current character without moving on; `next()` returns the current character and moves one step on; `done()` returns `true` once every character has been read. The position must be **private**: `reader.pos` must be `undefined`. Each reader keeps its own position. (This is the start of a real scanner.)',
     starter: `function makeReader(src) {
   // your code here
 }
@@ -285,44 +285,103 @@ export const quiz = [
   {
     q: '`scanner.js` contains `function isDigit(c) { ... }` with no `export`. What happens if `parser.js` tries to `import { isDigit } from \'./scanner.js\'`?',
     options: [
-      { t: 'It works: every function in a file can be imported', why: 'Only exported names can be imported. Everything else is private to the file.' },
-      { t: 'It fails with a SyntaxError, because `isDigit` is not exported', correct: true, why: 'A module’s names are private unless it exports them, and the import is checked before anything runs.' },
-      { t: 'It imports `undefined` silently', why: 'Asking for a name a module doesn’t export is an error, not a silent `undefined`.' },
-      { t: 'It copies the whole file into `parser.js`', why: 'Imports bring in names, never file contents.' },
+      {
+        t: 'It works: every function in a file can be imported',
+        why: 'Only exported names can be imported. Everything else is private to the file.',
+      },
+      {
+        t: 'It fails with a SyntaxError, because `isDigit` is not exported',
+        correct: true,
+        why: 'A module’s names are private unless it exports them, and the import is checked before anything runs.',
+      },
+      {
+        t: 'It imports `undefined` silently',
+        why: 'Asking for a name a module doesn’t export is an error, not a silent `undefined`.',
+      },
+      {
+        t: 'It copies the whole file into `parser.js`',
+        why: 'Imports bring in names, never file contents.',
+      },
     ],
   },
   {
     q: 'Which line imports the default export of `parser.js`?',
     options: [
-      { t: '`import { parse } from \'./parser.js\';`', why: 'Braces import a named export called `parse`, not the default.' },
-      { t: '`export default parse;`', why: 'That is how `parser.js` would *create* its default export.' },
-      { t: '`const parse = parser.js;`', why: 'That isn’t import syntax at all.' },
-      { t: '`import parse from \'./parser.js\';`', correct: true, why: 'With no braces, `import` gets the default export and lets you name it.' },
+      {
+        t: '`import { parse } from \'./parser.js\';`',
+        why: 'Braces import a named export called `parse`, not the default.',
+      },
+      {
+        t: '`export default parse;`',
+        why: 'That is how `parser.js` would *create* its default export.',
+      },
+      {
+        t: '`const parse = parser.js;`',
+        why: 'That isn’t import syntax at all.',
+      },
+      {
+        t: '`import parse from \'./parser.js\';`',
+        correct: true,
+        why: 'With no braces, `import` gets the default export and lets you name it.',
+      },
     ],
   },
   {
     q: 'After `import { scan as tokenize } from \'./scanner.js\';`, which name can this file use?',
     options: [
-      { t: '`tokenize`, which is the exported `scan` under a new name', correct: true, why: '`as` renames an import on the way in; the exporting file still calls it `scan`.' },
-      { t: '`scan` only', why: 'In this file the import is called `tokenize`; `scan` is not declared here.' },
-      { t: 'Both `scan` and `tokenize`', why: 'Only the new name is brought in.' },
+      {
+        t: '`tokenize`, which is the exported `scan` under a new name',
+        correct: true,
+        why: '`as` renames an import on the way in; the exporting file still calls it `scan`.',
+      },
+      {
+        t: '`scan` only',
+        why: 'In this file the import is called `tokenize`; `scan` is not declared here.',
+      },
+      {
+        t: 'Both `scan` and `tokenize`',
+        why: 'Only the new name is brought in.',
+      },
     ],
   },
   {
     q: 'In the module pattern, what plays the role of `export`?',
     options: [
-      { t: 'The `let` variables inside the function', why: 'Those are the private parts: nothing outside can see them.' },
-      { t: 'The function’s parameters', why: 'Parameters are inputs, and they are private to the call too.' },
-      { t: 'The object of functions that the outer function returns', correct: true, why: 'Only what you put in the returned object can be reached from outside.' },
-      { t: 'Nothing: the module pattern can’t hide anything', why: 'It hides everything that isn’t returned, thanks to closures.' },
+      {
+        t: 'The `let` variables inside the function',
+        why: 'Those are the private parts: nothing outside can see them.',
+      },
+      {
+        t: 'The function’s parameters',
+        why: 'Parameters are inputs, and they are private to the call too.',
+      },
+      {
+        t: 'The object of functions that the outer function returns',
+        correct: true,
+        why: 'Only what you put in the returned object can be reached from outside.',
+      },
+      {
+        t: 'Nothing: the module pattern can’t hide anything',
+        why: 'It hides everything that isn’t returned, thanks to closures.',
+      },
     ],
   },
   {
     q: 'In Python, `scanner.py` defines `_is_digit`. Can `parser.py` still import it?',
     options: [
-      { t: 'No, the underscore makes it private', why: 'Python does not enforce it; the underscore is only a convention.' },
-      { t: 'Yes: every top-level Python name can be imported, and the underscore only means “please don’t”', correct: true, why: 'That is a real difference from JavaScript, where nothing leaves a module without `export`.' },
-      { t: 'Only if `scanner.py` is in another folder', why: 'Folders have nothing to do with it.' },
+      {
+        t: 'No, the underscore makes it private',
+        why: 'Python does not enforce it; the underscore is only a convention.',
+      },
+      {
+        t: 'Yes: every top-level Python name can be imported, and the underscore only means “please don’t”',
+        correct: true,
+        why: 'That is a real difference from JavaScript, where nothing leaves a module without `export`.',
+      },
+      {
+        t: 'Only if `scanner.py` is in another folder',
+        why: 'Folders have nothing to do with it.',
+      },
     ],
   },
 ];

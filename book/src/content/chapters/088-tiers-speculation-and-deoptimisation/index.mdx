@@ -1,0 +1,1298 @@
+---
+n: 88
+day: 11
+part: V
+title: 'Tiers, speculation and deoptimisation'
+tagline: 'Your Drip VM runs a function the same way on its first call and its millionth; V8 does not, and with one flag you can watch the same function change how it runs, more than once, in a single program.'
+objectives:
+  - Explain why an engine starts every function in an interpreter and compiles only the code that turns out to be hot.
+  - Say what makes a compiler a JIT compiler, and what it knows that an ahead-of-time compiler cannot.
+  - Predict which functions in a small program V8 will optimise, and check the guess with --trace-opt.
+  - Explain warm-up, and why timing only the first calls of a function measures the wrong thing.
+  - Read a few lines of real Ignition bytecode and compare them with Drip's.
+  - Explain what the accumulator is, and what a feedback slot records.
+  - Name the tiers above Ignition (Sparkplug, Maglev and TurboFan) and say what each one removes or adds.
+  - Explain every line of the tier-watching program from the previous chapter, including the fall back down.
+  - Explain what type feedback is, and read three kinds of it (an add, a property load, a call) from real V8 output.
+  - Explain why feedback only ever widens, and model it as a lattice.
+  - Describe how speculative code guards its assumptions, with run-time checks and with dependencies.
+  - Name the guards behind real deoptimisation reasons such as "not a Smi", "wrong map" and "overflow".
+  - Trace a real deoptimisation, from the failed guard back to the interpreter.
+  - Explain what a frame state is, and read a rebuilt interpreter frame from --trace-deopt-verbose.
+  - Explain why a deopt never changes a program's result, only its speed.
+  - Explain why widening feedback prevents deoptimisation loops, and watch V8 reoptimise without repeating the guess.
+  - Print a function’s Ignition bytecode and find its feedback slots.
+  - Read --trace-opt and --trace-deopt output, and connect a deopt to the bytecode that caused it.
+  - Predict which of three small programs will deoptimise, and why.
+  - Read a --trace-gc line and tell a scavenge from a mark-compact.
+introduces: [tiering, jit-compiler, ignition, optimizing-tiers, type-feedback, speculation, deoptimization, engine-tracing]
+uses: [bytecode, opcode, virtual-machine, interpreter, compiler, compiler-pipeline, dispatch-loop, interpreter-overhead, stack-machine, disassembler, register, cpu, branch-prediction, smi, jit-warmup, single-pass-compiler, call-frame, drip, function, call, parameter, return, for-loop, inline-cache, monomorphic, shape, heap-number, dynamic-typing, type-erasure, typescript, strings, numbers, elements-kind, scavenger, mark-compact, benchmark-isolation, columnar-storage, string-methods]
+sources: [v8-ignition, v8-launch-ignition-turbofan, v8-sparkplug, v8-maglev, v8-src-tiering-12-4, v8-src-interpreter-12-4, v8-leaving-sea-of-nodes, v8-lazy-unlinking, v8-flag-definitions, v8-ignition-handlers, v8-deopt-kinds, v8-gc-tracer]
+---
+import TierSteps from '../../../components/diagrams/ch088/TierSteps';
+import AotVsJit from '../../../components/diagrams/ch088/AotVsJit';
+import AccSteps from '../../../components/diagrams/ch088/AccSteps';
+import TierLadder from '../../../components/diagrams/ch088/TierLadder';
+import FeedbackSteps from '../../../components/diagrams/ch088/FeedbackSteps';
+import GuardFigure from '../../../components/diagrams/ch088/GuardFigure';
+import DeoptSteps from '../../../components/diagrams/ch088/DeoptSteps';
+import FrameRebuild from '../../../components/diagrams/ch088/FrameRebuild';
+import FlagMap from '../../../components/diagrams/ch088/FlagMap';
+import DeoptLineSteps from '../../../components/diagrams/ch088/DeoptLineSteps';
+
+{/* ── merge: from old chapter 88, The V8 pipeline ── */}
+
+## The same function, three ways
+
+Part IV ended with a virtual machine that runs every function the same
+way, whether it runs once or a million times. The engine running this page
+works differently, and the quickest way to see it is to ask it: this
+program asks V8, after every call, *which kind of code is running `add`
+right now?* (The `%` functions are V8's internal helpers, which Node only
+lets you call with the flag `--allow-natives-syntax`.)
+
+```js
+// node --allow-natives-syntax tiers.js
+function add(a, b) { return a + b; }
+function tier(f) {
+  if (%ActiveTierIsTurbofan(f)) return 'TF';
+  if (%ActiveTierIsSparkplug(f))
+    return 'SP';
+  return 'Ignition';
+}
+let last = '', s = 0;
+for (let i = 1; i <= 1e5; i++) {
+  s = add(s, i);
+  const t = tier(add);
+  if (t !== last) console.log(i, t);
+  last = t;
+}
+```
+
+`tier` asks V8 two yes-or-no questions about `add` and turns the answers
+into a name (`TF` for TurboFan, `SP` for Sparkplug); the loop calls `add`
+a hundred thousand times and prints a line only when the answer
+*changes*. One real run:
+
+```
+Node v22.23.4, V8 12.4.254.21
+1 Ignition
+6256 SP
+10968 TF
+65536 SP
+76044 TF
+```
+
+The same one-line function ran in three different ways, and near call
+65,536 it went *back* before climbing again. (Run it again and the lines move: in my second run TurboFan
+arrived at call 7,739.) By the
+end of the next chapter you will be able to explain every line.
+
+## Start cheap, spend on what is hot
+
+Here is the problem V8 faces. Most of the JavaScript on a web page runs a
+handful of times, or never (the settings dialog nobody opens today); a few
+functions, however, run millions of times, and they are where nearly all
+the time goes. Compiling *everything* to the fastest machine code before
+running would spend most of that effort, and memory, on code that hardly
+matters, and the page would start late.
+
+<Analogy title="a chalkboard menu">
+A new café does not print a glossy menu on its first day; it writes the
+dishes on a chalkboard, which is quick and easy to change, and once a dish
+keeps selling it earns a place on the printed menu. Effort goes where the
+demand turned out to be.
+<span slot="breaks">The café decides once; V8 keeps watching, and can take
+a function off its "printed menu" the moment the reason for promoting it
+stops being true.</span>
+</Analogy>
+
+<Analogy extra title="a path across a park">
+Planners sometimes leave a new park as grass and wait to see where people
+actually walk; the worn tracks show which routes deserve a paved path, and
+the corners nobody crosses stay grass.
+<span slot="breaks">Nobody can walk on a path while it is being paved; V8
+compiles a hot function on another thread while the program keeps
+running on the old code.</span>
+</Analogy>
+
+So V8 starts every function in the cheapest form that can run, and spends
+more on it only once it has proved **hot** (run often enough to matter).
+Step through the life of `add`:
+
+<TierSteps client:visible />
+
+<Callout kind="definition">
+**Tiering** is running each function in one of several **tiers**
+(ways of executing the same code, from cheap to start and slow, to costly
+to start and fast) and moving a function to a faster tier as it gets
+hot<Cite id="v8-ignition" />.
+</Callout>
+
+How does V8 decide that a function is hot? It does not count calls. In
+the V8 inside Node 22, each function gets a **budget**, and the
+interpreter charges it on every `return` and every backward jump of a
+loop, by the size of the bytecode it ran through. The budget for TurboFan
+is the function's bytecode length times 3000, and Maglev's works the same
+way with 400<Cite id="v8-src-tiering-12-4" /> (`node --v8-options` lists
+both, as `--invocation-count-for-turbofan` and `-for-maglev`). As such,
+hotness measures *work done*, not calls.
+
+<Formal title="When a function is hot enough for TurboFan (V8 12.4)">
+
+```text
+budget(f) = length(f) × 3000
+spent(f)  = Σ bytes of bytecode f ran
+spent(f) ≥ budget(f)  ⇒  optimize f
+```
+
+<span slot="read">The budget of f is its bytecode length times 3000.
+What f has spent is the sum (Σ, "add them all up") of the bytecode it has
+run. Once spent reaches budget, the arrow (⇒, "implies") says V8 marks f
+for optimisation. The 3000 is a tuning knob of one version, not a
+law.</span>
+</Formal>
+
+<Examples of="tiering">
+
+```js
+// straight-line code: 6 bytes a call
+function add(a, b) { return a + b; }
+// 6256 Sparkplug, 10968 TurboFan
+```
+
+```js
+// a loop inside: thousands of bytes a call
+function total(n) {
+  let s = 0;
+  for (let i = 0; i < n; i++) s += i;
+  return s;
+}
+// called as total(1000):
+// marked for TurboFan in call 4
+```
+
+```js
+function make(n) {
+  const ps = [];
+  for (let i = 0; i < n; i++)
+    ps.push({ x: i, vx: 1 });
+  return ps;
+}
+function step(p) { p.x += p.vx; }
+const ps = make(1000);
+for (let t = 0; t < 100; t++)
+  for (const p of ps) step(p);
+// [marking … step …
+//   reason: hot and stable]
+// [compiling method …
+//   (target TURBOFAN) OSR]
+// (nothing at all for make)
+```
+
+</Examples>
+
+The first is `add` from the hook: each call runs six bytes of bytecode,
+so it takes thousands of calls to use up its budget. The second runs a
+thousand-step loop inside every call (each trip back round it charges 21
+bytes), so its budget of 32 × 3000 bytes runs out during call 4, where
+`--trace-opt` marks it; the code itself arrives some calls later, built
+on another thread. The third is a real program's shape: `make` builds a
+thousand particles once, and the loop calls `step` a hundred thousand
+times. `--trace-opt` prints a line whenever V8 marks or compiles a
+function, and only two things appear: `step`, and the top-level loop,
+compiled "OSR" (**on-stack replacement**, optimised code swapped in while
+the loop is still running<Cite id="v8-sparkplug" />). `make` ran once, so
+V8 never spent a moment on it.
+
+<Prompts ids={['tiering-what', 'why-not-all', 'budget', 'cold-never']} />
+
+## Compiling while the program runs
+
+Every compiler you have built finished before the program started:
+Drip's compiler turned the whole source into bytecode, and only then did
+the VM run it. That is **ahead-of-time** compiling. V8's upper tiers
+cannot work like that, because what they need (which functions are hot,
+and what values flow through them) only exists once the program runs.
+
+<Analogy extra title="a tailor">
+A suit off the rack is made ahead of time for an imagined, average
+customer; a tailor who has measured *you* can cut it closer. A JIT
+compiler is the tailor: it waits until it has seen the program run, then
+cuts the code to fit.
+<span slot="breaks">You stay the same shape for the fitting; a program can
+change its behaviour later, and then the "suit" no longer fits, which is
+why a JIT must check its assumptions and be ready to start again.</span>
+</Analogy>
+
+<Analogy extra title="a satnav that recalculates">
+A printed route is planned at home; a satnav plans while you drive,
+using what it sees right now (traffic, a closed road), while the car keeps
+moving.
+<span slot="breaks">A satnav that is slow to recalculate makes you miss
+the turn; when V8's compiler is slow, the program loses nothing but time,
+because the old code keeps running correctly until the new code is
+ready.</span>
+</Analogy>
+
+<Figure caption="Ahead of time, all the compiling happens before the first line runs. Just in time, the program starts at once in the interpreter, and hot functions are compiled on another thread while it keeps running." takeaway="A JIT compiles during the run, so it can use what the run has shown it.">
+  <AotVsJit />
+</Figure>
+
+<Callout kind="definition">
+A **JIT compiler** (just-in-time compiler) compiles code *while the
+program runs*, shortly before the compiled code is needed, rather than
+ahead of time. Because it runs during the program, it can use what the
+program has done so far, such as which functions are hot and which kinds
+of values they have seen, and it must compile fast, because its compile
+time is part of the program's running time.
+</Callout>
+
+<Examples of="jit-compiler">
+
+```
+// the same 10-million-call loop
+$ node jl.js
+10000000 12 ms
+$ node --jitless jl.js
+10000000 302 ms
+```
+
+```
+// node --trace-opt tiers.js, trimmed
+1 Ignition
+[marking … add … for optimization
+  to TURBOFAN, ConcurrencyMode::
+  kConcurrent, reason: hot and stable]
+[compiling method … add …]
+7342 SP
+```
+
+<Run id="warmup" />
+
+</Examples>
+
+The first times ten million calls of `add`, normally and with
+`--jitless`, a flag that turns every compiler to machine code off (one run on my machine; yours will differ).
+The second mixes the program's output with V8's: between `1 Ignition` and
+`7342 SP`, V8 decided `add` was "hot and stable" and began
+compiling it, and `ConcurrencyMode::kConcurrent` says that ran on another
+thread while the loop carried on. The third times five rounds of the same
+work, and the first is often slowest, because its calls run before the
+JIT has done its work. That is **warm-up**, and it is why timing one cold
+round measures the interpreter, not the compiled code.
+
+<Prompts ids={['jit-what', 'jit-knows', 'jit-background', 'jitless']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity is an ahead-of-time compiler: it rewrites your source before V8
+sees it, so its output goes through these same tiers, and a fair
+benchmark of it must wait out the same warm-up.
+</Callout>
+
+## Your turn
+
+<Exercise id="tierUp" />
+
+<Exercise id="budgetTier" />
+
+## What you learned
+
+- **Tiering** starts every function in the cheapest tier and moves hot
+  ones to faster tiers; most code never leaves the bottom.
+- In V8 12.4, hotness is a **budget** of bytecode run, not a count of
+  calls; the numbers change between versions.
+- A **JIT compiler** compiles while the program runs, using what the run
+  has shown it; **warm-up** is the time before its code arrives.
+
+Next: the tiers themselves, from the interpreter at the bottom (whose
+bytecode you can print and compare with Drip's) to the compiler at the
+top, and why `add` fell back down near call 65,536.
+
+
+{/* ── merge: from old chapter 88, Ignition and the tiers above it ── */}
+
+## What runs at the bottom
+
+The previous chapter watched `add` move between tiers without looking
+inside any of them. Start at the bottom, with **Ignition**, the
+interpreter every function begins in. It replaced a quick compiler to
+machine code in 2016, to save memory (its bytecode is a quarter to a half
+the size of that machine code<Cite id="v8-ignition" />), and since V8 5.9
+(Chrome 59, 2017) every function starts in
+it<Cite id="v8-launch-ignition-turbofan" />. Here is its bytecode next to
+Drip's:
+
+```
+// node --print-bytecode (trimmed)
+Bytecode length: 6
+@ 0 : 0b 04      Ldar a1
+@ 2 : 3b 03 00   Add a0, [0]
+@ 5 : ae         Return
+```
+
+```
+== add ==            (Drip VM)
+0000    1 load.local          1
+0002    | load.local          2
+0004    | add
+0005    | return
+0006    | none
+0007    | return
+```
+
+Both are `function add(a, b) { return a + b; }`, in the shape you know:
+an offset, then an instruction (Ignition also shows the raw bytes). Drip
+needs four instructions where Ignition needs three (Drip's last two are
+the implicit `return none` its compiler always adds), and the reason is
+how each machine holds its values.
+
+## A register machine with an accumulator
+
+Drip's VM is a stack machine: `load.local` pushes `a`, pushes `b`, and
+`add` pops both. Ignition is a **register machine**: values live in
+numbered **registers** (here `a0` and `a1`, the parameters), and one
+special register, the **accumulator**, is read and written by most
+instructions without being named<Cite id="v8-ignition" />.
+
+<Analogy title="a pocket calculator">
+A calculator has one display and a few memory keys, and every key you
+press works on the display: recall a number, press "+" and a memory key,
+and the sum appears there, ready for the next step. The display is the
+accumulator; the memory keys are the registers.
+<span slot="breaks">A calculator has two or three memories; Ignition gives
+each function as many registers as it needs, and it also writes down what
+kind of numbers it saw, which no calculator does.</span>
+</Analogy>
+
+<Analogy extra title="one mixing bowl">
+Drip cooks with a pile of plates: put one ingredient on top, another on
+top, then combine the top two. Ignition cooks with one bowl in hand and
+labelled jars on the shelf, adding a jar's contents straight to the
+bowl.
+<span slot="breaks">A cook can hold more than one bowl; Ignition's
+accumulator really is a single register, and anything that has to survive
+the next instruction must be stored back into a jar (`Star`, "store
+accumulator to register").</span>
+</Analogy>
+
+Step through one call of `add` in both machines:
+
+<AccSteps client:visible />
+
+`Ldar a1` loads the second parameter, `b`, into the accumulator; `Add a0,
+[0]` adds register `a0` (`a`) to it<Cite id="v8-src-interpreter-12-4" />;
+and `Return` returns whatever the accumulator holds. The `[0]` in `Add a0,
+[0]` is not a value: it is the number of a **feedback slot**, a place in
+the function's **feedback vector** where, as it adds, the handler records
+what kinds of values it saw<Cite id="v8-src-interpreter-12-4" />. Drip's VM
+never did this, and it is the single most important difference, because
+it is what the compilers above Ignition read.
+
+<Callout kind="definition">
+**Ignition** is V8's bytecode interpreter, the tier every function starts
+in. It is a **register machine** with an implicit **accumulator**, and
+many of its instructions carry a **feedback slot** number, where it
+records what that operation saw while running.
+</Callout>
+
+<Formal title="Three Ignition instructions, as rules">
+
+```text
+Ldar r       :  acc ← r
+Star r       :  r ← acc
+Add r, [k]   :  acc ← r + acc ;
+                feedback[k] ← kinds seen
+```
+
+<span slot="read">The arrow ← means "becomes". Ldar r: the accumulator
+becomes the value in register r. Star r: register r becomes the
+accumulator. Add r, [k]: the accumulator becomes r plus the accumulator,
+and feedback slot k is updated with the kinds of value seen.</span>
+</Formal>
+
+<Examples of="ignition">
+
+```
+// return a + b
+Ldar a1
+Add a0, [0]
+Return
+```
+
+```
+// function getX(o) { return o.x; }
+GetNamedProperty a0, [0], [0]
+Return
+```
+
+```
+// for (let i = 0; i < xs.length; i++)
+//   s += xs[i];      (part of sum(xs))
+@ 13 Ldar r1
+@ 15 GetKeyedProperty a0, [4]
+@ 18 Add r0, [3]
+...
+@ 30 JumpLoop [26], [0], [7]
+```
+
+</Examples>
+
+The first is `add` again. The second reads a property: `GetNamedProperty`
+takes the object in `a0`, entry `[0]` of the constant pool (the name
+`"x"`) and feedback slot `[0]`, and leaves `o.x` in the accumulator. The
+third is the heart of a loop that sums an array, with `s` in register
+`r0` and `i` in `r1`: `Ldar r1` puts `i` in the accumulator,
+`GetKeyedProperty` replaces it with `xs[i]` (slot 4), `Add r0, [3]` adds
+`s` (slot 3), and `JumpLoop` jumps 26 bytes back, to the loop test at
+offset 4. Every operation that can see different kinds of value has its
+own slot.
+
+<Prompts ids={['ignition-why', 'accumulator', 'feedback-slot']} />
+
+## Three compilers above it
+
+An interpreter keeps a cost it cannot remove, which you met in your own
+VM's dispatch loop: dispatching depends on the CPU's branch prediction,
+and decoding reads operands from memory every time<Cite id="v8-sparkplug" />. Each tier above Ignition spends more
+compile time to remove more of that cost.
+
+<Analogy extra title="finding your way to work">
+On day one you read the map at every junction (the interpreter). After a
+week you have a written list of turns: same roads, no map-reading
+(Sparkplug). After a month you take the side street that has always been
+empty at this hour, glancing at the corner first in case today is
+different (Maglev and TurboFan).
+<span slot="breaks">Your shortcut is a habit; an optimising tier's guess
+comes from feedback slots, and when the glance shows a blocked street, V8
+does not wait: it throws the shortcut away and goes back to the map.</span>
+</Analogy>
+
+<Analogy extra title="a workshop">
+A carpenter can make a chair by hand, use a jig that speeds up the same
+steps, or set up a machine line for one exact model. Each setup costs
+more before the first chair, and pays off only if many chairs follow.
+<span slot="breaks">A machine line makes only that one model; TurboFan's
+code is also made for the kinds of value it has seen, but it checks every
+call and hands anything else back to a slower tier instead of
+failing.</span>
+</Analogy>
+
+<Figure caption="V8's tiers, as the V8 team described them between 2016 and 2023, and which of them the Node 22 build used in this book has switched on." takeaway="Each tier up costs more to compile and runs faster.">
+  <TierLadder />
+</Figure>
+
+- **Sparkplug** (V8 9.1, 2021) compiles bytecode straight to machine code
+  in one pass; its code calls the interpreter's own helpers and keeps the
+  same frame layout, so V8 can switch between them almost for free. The
+  team calls it *non-optimising*<Cite id="v8-sparkplug" />.
+- **Maglev** (desktop Chrome M117, described in 2023) is a quick
+  optimising compiler; in 2023 the team reported that it compiled about
+  10 times slower than Sparkplug and about 10 times faster than
+  TurboFan<Cite id="v8-maglev" />.
+- **TurboFan** is the top tier, aimed at peak speed; since 2017 it
+  compiles from Ignition's bytecode<Cite id="v8-launch-ignition-turbofan" />.
+
+The two optimising tiers read the feedback and make **speculative** code:
+code that assumes what was seen will keep happening, plus a check that
+bails out if it does not<Cite id="v8-maglev" />.
+
+<Callout kind="definition">
+V8's **optimising tiers** are the compilers above Ignition: **Sparkplug**
+(one fast pass, no optimisations; it removes the interpreter's decode and
+dispatch cost), **Maglev** (a quick optimising compiler) and
+**TurboFan** (slow to compile, the best code). Maglev and TurboFan
+specialise the code using the recorded feedback.
+</Callout>
+
+<Examples of="optimizing-tiers">
+
+```
+// node --trace-baseline-batch-compilation
+//   --allow-natives-syntax tiers.js
+Enqueued SFI add with estimated size 42
+...
+Compiling current batch of 16 functions
+```
+
+```
+// node --trace-opt tiers.js
+[marking … add … to TURBOFAN, …
+  reason: hot and stable]
+[completed compiling … add …
+  (target TURBOFAN) - took 0.018,
+  0.945, 0.010 ms]
+```
+
+```
+// node --allow-natives-syntax --maglev
+%OptimizeMaglevOnNextCall(add);
+add(5, 6);
+// prints: Maglev is not enabled.
+```
+
+</Examples>
+
+The first shows Sparkplug: functions are queued with an estimated size,
+and once the queue passes a threshold (4096 by default, says `node
+--v8-options`) the whole batch is compiled at once, on the main thread;
+nothing there waits on another thread, which is why the Sparkplug line
+moves far less between runs than the TurboFan one. The second shows
+TurboFan marking `add` "hot and stable" and compiling it, in about a
+millisecond. The third asks for Maglev by hand, and this Node 22 build
+refuses, even with `--maglev`, which is why the run went straight from
+Sparkplug to TurboFan.
+
+<Prompts ids={['sparkplug-removes', 'speculate', 'sparkplug-batch', 'maglev-node']} />
+
+## Reading the run again
+
+Now the previous chapter's output reads line by line: `add` started in
+Ignition, was compiled by Sparkplug in a batch at call 6,256, and by
+TurboFan a few thousand calls later, at a call that varies because that
+compile runs on another thread. And near call 65,536? `--trace-deopt`,
+which prints a line whenever optimised code is abandoned, says why:
+
+```
+[bailout (kind: deopt-eager,
+  reason: not a Smi): ...
+  deoptimizing ... <JSFunction add ...>
+```
+
+After call *i* the running sum is *i* × (*i* + 1) / 2, which passes
+2<sup>31</sup> − 1, the largest **Smi** (small integer) in this build, at
+call 65,536. TurboFan's code had assumed small integers, because that was
+all feedback slot `[0]` had ever recorded; the guess failed, the code was
+dropped, and `add` carried on, correctly, in Sparkplug, until TurboFan
+compiled it again with the wider facts. Nothing was lost but time; the
+chapter on deoptimisation takes that moment apart.
+
+<Prompts ids={['why-fall']} />
+
+<Run id="acc" />
+
+<Callout kind="engine" label="Under the hood">
+The tiers keep changing: until 2017 V8 ran Full-codegen and
+Crankshaft<Cite id="v8-launch-ignition-turbofan" />, and in 2025 the team
+wrote that TurboFan's backend had moved to a new IR,
+Turboshaft<Cite id="v8-leaving-sea-of-nodes" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="runAcc" />
+
+## What you learned
+
+- **Ignition** is V8's interpreter: a **register machine** whose
+  **accumulator** is an implicit operand, so `a + b` is three instructions.
+- Its instructions carry **feedback slots**, which record what each
+  operation saw; Drip's VM keeps no such record.
+- The **optimising tiers**: **Sparkplug** removes decode and dispatch,
+  **Maglev** optimises quickly, **TurboFan** makes the best code; the last
+  two speculate from feedback, and fall back when a guess fails.
+
+Next: before any of this can start, V8 has to parse the source, and it
+tries hard not to.
+
+
+{/* ── merge: from old chapter 88, Speculation and deoptimization ── */}
+
+## What does `+` mean?
+
+Here is the smallest function that keeps an engine busy:
+
+```js
+function add(a, b) {
+  return a + b;
+}
+```
+
+`+` adds numbers, joins strings, and calls `valueOf` on objects. When
+Ignition runs `add`, its bytecode has one generic `Add`, and every call
+has to work out which of those cases it is in; your Drip VM's `add` did a
+smaller version of the same thing, checking for two strings or two
+numbers on every single add. However, in a real program `add` is almost
+always called the same way. If the engine could see that, it could
+compile a version that only adds integers, as long as it kept a way out
+for the day someone passes a string.
+
+## Type feedback
+
+<Analogy title="a barista's memory">
+A good barista remembers what you usually order. Nobody told her; she
+noticed, cup after cup. That memory is worth nothing on its own, but it
+lets her start your flat white the moment you walk in.
+<span slot="breaks">A barista forgets regulars who stop coming; V8's
+feedback for an operation never narrows again, so one strange call stays
+in the record for good.</span>
+</Analogy>
+
+<Analogy extra title="a shop's sales tally">
+A shop keeps a tally of what sells, by the till: so many loaves, so many
+pints of milk. Nobody plans the next order by guessing; they read the
+tally.
+<span slot="breaks">A shop's tally counts how many; a feedback slot mostly
+records which kinds were seen (small integers, numbers, anything), not
+how often each one came.</span>
+</Analogy>
+
+While unoptimised code runs, V8 keeps track of how the program behaves,
+including the shapes and types each operation sees<Cite id="v8-maglev" />.
+It lives in the function's feedback vector, the one whose slot numbers
+you saw in Ignition's bytecode (`Add a0, [0]`). Step through slot 0 of
+`add` as three kinds of call arrive:
+
+<FeedbackSteps client:visible />
+
+<Callout kind="definition">
+**Type feedback** is what unoptimised code records about the values it
+actually sees: the shapes at a property access, the kinds of operand at
+an `Add`, the functions called at a call site. The optimising tiers read
+it to decide what to specialise for<Cite id="v8-maglev" />. In V8 it lives
+in each function's **feedback vector**, one slot per operation that can
+see different kinds of value.
+</Callout>
+
+<Formal title="Feedback for +, as a lattice">
+
+```text
+None ⊑ SignedSmall ⊑ Number ⊑ Any
+after a call a + b :
+  fb ← fb ⊔ kindOf(a, b)
+```
+
+<span slot="read">The four states are ordered from narrowest to widest
+(⊑, "is at least as narrow as"). After each call, the slot becomes the
+join (⊔, "the wider of the two") of what it said before and what this
+call saw. Exactly like an array's elements kind, it can only move one
+way. (V8 has a few more states, such as one for strings; four are enough
+here.)</span>
+</Formal>
+
+You can read the slots with `%DebugPrint(f)` (start Node with
+`--allow-natives-syntax`), which prints a function's feedback vector:
+
+<Examples of="type-feedback">
+
+```
+// add: 20 integer calls, then 1.5,
+// then strings; grep 'slot #0'
+ - slot #0 BinaryOp BinaryOp:SignedSmall
+ - slot #0 BinaryOp BinaryOp:Number
+ - slot #0 BinaryOp BinaryOp:Any
+```
+
+```
+// getX(o) { return o.x; }, 20 calls
+ - slot #0 LoadProperty MONOMORPHIC
+   <Map[32]…>: LoadHandler(…
+     kind = kField, is in object = 1 …)
+```
+
+```
+// call(f) { return f(); }, with
+// f = Math.random, 20 calls
+ - slot #0 Call MONOMORPHIC {
+     [0]: <JSFunction random …>
+```
+
+</Examples>
+
+All three are real output from Node v22.23.4 (V8 12.4), trimmed. The
+first is the stepper's run: small integers, then any number, then
+anything. The second is a property load's feedback, which is its inline
+cache: one map seen (MONOMORPHIC), with a handler that loads a field
+stored inside the object. The third is a call site's feedback, which
+records *which function* was called, the fact a compiler needs before it
+can call that target directly or copy its body in (inlining, which a later
+part of this book builds). Every one of these
+is a fact about the past, and none is a promise about the future.
+
+<Prompts ids={['tf-what', 'tf-slots', 'tf-kinds', 'tf-widen']} />
+
+## Speculation
+
+<Analogy extra title="the barista, again">
+The barista starts your usual as you come through the door, but she still
+glances up to check it is really you; if it is your twin, she puts that
+cup aside and takes the order properly.
+<span slot="breaks">The barista's glance happens once; optimised code
+repeats its check on every single call, and it is so cheap (a compare or
+two) that it costs far less than the work it lets the code skip.</span>
+</Analogy>
+
+<Analogy extra title="a train timetable">
+A driver runs at full speed on the assumption that the line ahead is
+clear, because it always has been at this hour; but every signal is still
+checked, and a red one stops the train before anything goes wrong.
+<span slot="breaks">A red signal means waiting; a failed guard in V8 means
+leaving the fast code at once and finishing the same call, correctly, in
+the interpreter.</span>
+</Analogy>
+
+Once `add` is hot, the optimising compiler builds code from the feedback.
+It does not prove the feedback will stay true; it *speculates*, and puts a
+check in front of each guess. Maglev's post describes the pattern for
+`o.x`: if feedback says `o` always had one shape, it emits a node that
+checks the shape at run time, then a cheap load at a fixed
+offset<Cite id="v8-maglev" />. For arithmetic, TurboFan speculates that
+small integers stay small, using a checked add that deoptimises if the
+result overflows<Cite id="v8-leaving-sea-of-nodes" />.
+
+<Figure caption="The shape of speculative code for a + b when feedback says SignedSmall. Each check on a guess has a side exit; the labels are the reasons --trace-deopt prints when one fails." takeaway="Past the guards, the code can ignore every other case.">
+  <GuardFigure />
+</Figure>
+
+Some guesses need no check in the code at all. A global that has never
+changed can be built into Maglev's machine code as a constant; Maglev
+registers a **dependency** instead, and if the global is ever changed,
+the runtime invalidates and deoptimises that code<Cite id="v8-maglev" />.
+
+<Callout kind="definition">
+**Speculation** is compiling code that is only correct while what the
+feedback says stays true. Each assumption is protected, either by a
+**guard** (a run-time check, such as a check of an object's map) or by a
+**dependency** that invalidates the code when the assumption breaks. Past
+the guards, the code can skip every other case.
+</Callout>
+
+<Examples of="speculation">
+
+```
+// add, hot on integers, then
+// add('a', 'b'):
+[bailout (kind: deopt-eager,
+  reason: not a Smi) … add …]
+```
+
+```
+// getX, hot on 1000 { x, vx },
+// then getX({ vx: 1, x: 5 }):
+[bailout (kind: deopt-eager,
+  reason: wrong map) … getX …]
+```
+
+```
+// the tier-watching loop from
+// 'The V8 pipeline', OSR code:
+[bailout (kind: deopt-eager,
+  reason: overflow) …]
+```
+
+</Examples>
+
+You see a guard most clearly when it fails, so these are three real
+`--trace-deopt` lines (Node v22.23.4), one per kind of guess. The first is
+the Smi guess: TurboFan's `add` assumed small integers, and a string
+failed the check. The second is the shape guess: every particle had one
+map, so the load of `o.x` was a map check plus a fixed load, and an
+object with its keys in the other order failed the check ("wrong map").
+The third is the overflow check: integers that stayed small, until a sum
+grew past what a Smi can hold. Each bet was fine for a long time, and
+each one cost only time when it failed, which is the next chapter.
+
+<Prompts ids={['spec-what', 'spec-guard', 'spec-why', 'spec-deps']} />
+
+A guess with a guard, in plain JavaScript:
+
+<Run id="guarded" />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity has no such safety net. It compiles before the program runs,
+with no feedback and no way back, so it cannot guess and check; it must
+*prove* a change is safe, which is why Part VI is about analysis.
+TypeScript's types cannot stand in for feedback either: they are erased
+before V8 sees the code, so the engine learns only by watching.
+</Callout>
+
+## Your turn
+
+<Exercise id="feedbackLattice" />
+
+## What you learned
+
+- **Type feedback** is what unoptimised code observed: operand kinds,
+  shapes, call targets, kept per operation in the feedback vector.
+- Feedback only widens; for `+` in V8 12.4 it went `SignedSmall` →
+  `Number` → `Any`.
+- **Speculation** compiles for the feedback seen so far, and protects
+  each assumption with a **guard** or a **dependency**; past the guards,
+  the code skips every other case.
+
+Next: what exactly happens when a guard fails, and how V8 gets back into
+the interpreter in the middle of a call.
+
+
+{/* ── merge: from old chapter 88, Deoptimization ── */}
+
+## A guard fails mid-call
+
+The previous chapter ended with three bailout lines, one per kind of
+guess. Each of them happened in the *middle* of a call: some of the
+function had already run, as fast machine code with values in machine
+registers, and then a check said "this is not what I was compiled for".
+The call cannot simply start again (it might already have changed
+something), and it cannot stop with an error (the program did nothing
+wrong). It has to *continue*, correctly, in code that handles every case.
+
+<Analogy title="handing back from autopilot">
+When an aircraft's autopilot meets something it was not set up for, it
+disengages, and the pilot takes over at the exact position, height and
+speed the plane is at, instead of returning to the runway to start the
+flight again.
+<span slot="breaks">A pilot can look out of the window to see where the
+plane is; the interpreter cannot look at optimised code's registers and
+make sense of them, so the optimised code must carry a written map of
+where everything is at each point it might hand over.</span>
+</Analogy>
+
+<Analogy extra title="a supply teacher's notes">
+A teacher who has to leave mid-lesson leaves notes: "we are on page 42,
+question 3; the class has done questions 1 and 2". The supply teacher
+picks up from exactly there, and the pupils never notice a gap.
+<span slot="breaks">Notes can be incomplete, and the supply teacher can
+improvise; V8's notes (the frame state) must say where every live value
+is, and the interpreter resumes exactly at the recorded instruction,
+with nothing left to guess.</span>
+</Analogy>
+
+Step through `add`'s whole story, from Ignition to TurboFan and back:
+
+<DeoptSteps client:visible />
+
+Here is the real thing: warm `add` up with 100,000 integer calls, then
+call `add('a', 'b')` (Node v22.23.4, `add` lines only, shortened with
+`…`):
+
+```
+$ node --trace-opt --trace-deopt d2.js
+[marking … add … to TURBOFAN, …
+  reason: hot and stable]
+[completed optimizing … add …
+  (target TURBOFAN)]
+[bailout (kind: deopt-eager,
+  reason: not a Smi): begin.
+  deoptimizing … add …,
+  bytecode offset 2, …]
+ab
+```
+
+The last line, `ab`, is the program's own output: the call that failed
+the guard still returned the right answer. `--trace-deopt-verbose` shows
+where it happened and what the deoptimiser built:
+
+```
+;;; deoptimize at <…/d2.js:2:12>
+translating interpreted frame add
+  => bytecode_offset=2, …
+  <- "b" ; stack parameter
+  <- "a" ; stack parameter
+  <- "b" ; accumulator
+```
+
+Line 2, column 12 of the file is the `+`. To get back into Ignition, V8
+needs to know, at that exact point, where every interpreter register's
+value lives in the optimised code: in a machine register, on the stack,
+or not computed at all. So optimised code carries that map with it:
+Maglev attaches the interpreter's **frame state** to every node that can
+deoptimise, and the deoptimiser uses it to fill in a fresh interpreter
+frame, a mechanism TurboFan shares<Cite id="v8-maglev" />.
+
+<Figure caption="The frame the deoptimiser built for add('a', 'b'), read off --trace-deopt-verbose, next to add's bytecode." takeaway="Ignition resumes at the very instruction the optimised code could not finish.">
+  <FrameRebuild />
+</Figure>
+
+<Callout kind="definition">
+**Deoptimisation** leaves optimised code when an assumption fails, and
+continues the same call in unoptimised code. The deoptimiser reads the
+saved **frame state** for that point, rebuilds the interpreter frame from
+the optimised code's registers and stack, and resumes at the same
+bytecode. The result is the same as if the code had never been
+optimised; only speed changes.
+</Callout>
+
+<Formal title="Deoptimisation keeps meaning">
+
+```text
+fs(p) : optimized state → Ignition frame
+deopt at p : frame ← fs(p)(state)
+             resume Ignition at offset(p)
+result(optimized run) = result(Ignition)
+```
+
+<span slot="read">For every point p in the optimised code that can
+deoptimise, there is a frame state fs(p): a recipe that turns the
+optimised code's registers and stack at p into an Ignition frame. When a
+deopt happens at p, the deoptimiser builds that frame and Ignition
+resumes at the bytecode offset recorded for p. The last line is the
+promise all of this keeps: whatever happens, the program's result equals
+what Ignition alone would have produced.</span>
+</Formal>
+
+<Examples of="deoptimization">
+
+```
+[bailout (kind: deopt-eager,
+  reason: not a Smi) … add …,
+  bytecode offset 2]
+```
+
+```
+translating interpreted frame add
+  => bytecode_offset=2
+  <- "b" ; accumulator
+```
+
+```
+// d5.js: 1e5 integer calls, a string
+// call, 1e5 more, another string call
+[marking … add … reason: hot and stable]
+[completed optimizing … add …]
+[bailout (… reason: not a Smi) … add]
+[marking … add … reason: hot and stable]
+[completed optimizing … add …]
+// and no second bailout
+```
+
+</Examples>
+
+The first is the simplest view: which function, why, and at which
+bytecode. The second is the frame the deoptimiser built, and it lines up
+with `add`'s bytecode from the chapter on Ignition: `Ldar a1` (offset 0)
+had already loaded `b` into the accumulator, so Ignition resumes at offset
+2, `Add a0, [0]`, which adds `"a"` to it and returns `"ab"`. The third is
+the realistic one, the whole life of a function in a longer run: optimised,
+deoptimised by the first string call, hot again, optimised again, and
+then the second string call goes straight through, with no bailout.
+
+<Prompts ids={['deopt-what', 'deopt-frame', 'deopt-same', 'deopt-offset']} />
+
+## After the bailout
+
+A deopt also cleans up. The optimised code is no longer valid, so it is
+unlinked from the function, and the next call goes back to unoptimised
+code<Cite id="v8-lazy-unlinking" />. The failed call finished in Ignition,
+and on the way it updated the feedback to `Any`; when `add` got hot
+again, the new code was compiled from that wider feedback, with no Smi
+guess left to fail, which is why the third example shows no second
+bailout. Getting this wrong is expensive: Crankshaft, V8's optimising
+compiler before TurboFan, too often reoptimised a function with the same
+assumptions that had just failed, giving endless
+optimisation–deoptimisation loops<Cite id="v8-leaving-sea-of-nodes" />.
+
+<Prompts ids={['deopt-widen', 'deopt-loop', 'deopt-unlink', 'deopt-cheap']} />
+
+Time the cost of one deopt on your own device:
+
+<Run id="deopt-cost" />
+
+<Callout kind="engine" label="Under the hood">
+The cheaper compiling is, the cheaper a wrong guess. Maglev compiles
+roughly ten times faster than TurboFan, so V8 can use it earlier: if the
+feedback was not stable yet, deoptimising and recompiling costs
+little<Cite id="v8-maglev" />. (This Node 22 build does not enable Maglev,
+which is why every trace here says TURBOFAN.) Viscosity has no such
+safety net: it compiles before the program runs, with no deoptimiser to
+fall back on, so it must prove every change safe.
+</Callout>
+
+## Your turn
+
+<Exercise id="speculate" />
+
+## What you learned
+
+- **Deoptimisation** happens when a guard fails: the deoptimiser uses the
+  saved **frame state** to rebuild an Ignition frame, and the call
+  finishes in the interpreter with the same result.
+- `--trace-deopt` names the reason and bytecode offset;
+  `--trace-deopt-verbose` shows the rebuilt frame, down to the
+  accumulator.
+- After a deopt the code is unlinked and the feedback is wider, so the
+  next optimisation does not repeat the guess; repeating it is a
+  **deoptimisation loop**.
+
+
+{/* ── merge: from old chapter 88, Watching the engine work ── */}
+
+## Make the engine talk
+
+The chapters from *The V8 pipeline* to *Mark-compact and the write
+barrier* described V8's tiers, shapes, elements kinds, deoptimisation
+and garbage collector. You do not have to take any of it on trust: V8
+has flags that print what it is doing, and Node passes them through.
+Every output in this chapter is real, from this book's machine, trimmed
+only to fit your phone.
+
+<Analogy title="a car's diagnostic port">
+A modern car has a socket under the dashboard; plug a reader into it
+and the car's own computer tells you what it decided and why ("misfire
+on cylinder 2", "fuel mix adjusted"), things you could never see by
+driving.
+<span slot="breaks">A car's fault codes follow a published standard
+and mean the same thing for years; V8's output is private to its
+developers and can change in any release, so every reading must be
+labelled with the version that produced it.</span>
+</Analogy>
+
+<Analogy extra title="a chess player thinking aloud">
+Some chess players, streaming a game, say their reasoning as they go:
+"his bishop is pinned, so I'll take the pawn; no, wait, that loses the
+knight". You learn more from that commentary than from the moves alone.
+<span slot="breaks">The player picks what to say for an audience; V8
+prints everything a flag covers, tersely, in its own shorthand, and the
+printing itself takes time, so never benchmark with tracing on.</span>
+</Analogy>
+
+<Callout kind="pitfall" label="These flags are V8's, not yours">
+They are defined inside V8 for its own developers, in one file per V8
+version<Cite id="v8-flag-definitions" />. They are not part of
+JavaScript or of Node's stable interface, and names, output formats and
+defaults can change in any release. Everything below was run on
+**Node v22.23.4, V8 12.4.254.21**. Addresses (`0x…`) differ on every
+run. Run `node --v8-options` to see what your own version offers.
+</Callout>
+
+<Figure takeaway="One flag per question you want to ask the engine." caption="Each flag shows one part of V8. All of them were run on Node v22.23.4; the last two belong to the next chapter.">
+<FlagMap />
+</Figure>
+
+<Callout kind="definition">
+**Engine tracing** means running a program with an engine's diagnostic
+flags so that the engine reports its own decisions as it makes them.
+In V8 these include `--print-bytecode` (Ignition bytecode),
+`--trace-opt` (functions marked and compiled by the optimising tiers),
+`--trace-deopt` (every deoptimisation, with its kind, reason and
+bytecode offset), `--trace-generalization` (hidden-class fields
+becoming more general) and `--trace-gc` (one line per garbage
+collection)<Cite id="v8-flag-definitions" />. Their output is for
+diagnosis, not for parsing in production: it varies between versions.
+</Callout>
+
+## Bytecode
+
+Ignition is a register machine with an accumulator (one special
+register that most instructions read and write)<Cite id="v8-ignition" />.
+Ask for one function's bytecode, using the filter so that you do not get
+Node's own thousands of functions as well:
+
+```text
+$ node --print-bytecode \
+    --print-bytecode-filter=add bc.js
+```
+
+For `function add(a, b) { return a + b; }`:
+
+```text
+# Node v22.23.4, V8 12.4.254.21 (trimmed)
+[generated bytecode for function:
+ add (0x… <SharedFunctionInfo add>)]
+Bytecode length: 6
+Parameter count 3
+Register count 0
+ @ 0 : 0b 04     Ldar a1
+ @ 2 : 3b 03 00  Add a0, [0]
+ @ 5 : ae        Return
+```
+
+`Ldar a1` loads the second argument into the accumulator. `Add a0, [0]`
+adds the first argument to it, and `[0]` is a **feedback slot**: where
+this `+` records the types it sees (*Speculation and
+deoptimisation*)<Cite id="v8-ignition-handlers" />. `Return` hands back
+whatever is in the accumulator. The `@ 2` on the `Add` line is its
+offset, its position in bytes from the start of the bytecode; remember
+it.
+
+<Prompts ids={['flags-internal', 'bc-filter', 'feedback-slot-o183']} />
+
+## Optimising, and giving up
+
+This program makes `add` hot with integers, then hands it a double:
+
+```js
+function add(a, b) {
+  return a + b;
+}
+for (let i = 0; i < 1e5; i++) add(i, 1);
+add(0.5, 1); // a double!
+```
+
+```text
+$ node --trace-opt --trace-deopt opt.js
+```
+
+```text
+# Node v22.23.4, V8 12.4.254.21 (trimmed)
+[marking … <JSFunction add …> for
+ optimization to TURBOFAN, …,
+ reason: hot and stable]
+[compiling method … <JSFunction …>
+ (target TURBOFAN) OSR, …]
+[completed optimizing … add …
+ (target TURBOFAN)]
+[bailout (kind: deopt-eager, reason:
+ Insufficient type feedback for call):
+ … <JSFunction (sfi = …)>, …
+ bytecode offset 41, …]
+[bailout (kind: deopt-eager, reason:
+ not a Smi): … <JSFunction add …>,
+ … bytecode offset 2, …]
+```
+
+`add` is "hot and stable", so TurboFan compiles it, concurrently, on
+another thread. The nameless function is the top-level script; its
+loop is still running when it gets hot, so V8 uses **on-stack
+replacement** (OSR)<Cite id="v8-flag-definitions" />: it switches the
+loop over to optimised code in the middle of running it. You will not
+see Maglev here: in this Node build, `--v8-options` lists it as off by
+default.
+
+Then two bailouts. The script's optimised code reaches the call
+`add(0.5, 1)`, which had never run, so it had no feedback to go on. And
+`add` itself fails its small-integer check at bytecode offset 2: the
+`Add` above. Here is that last line in full, read part by part:
+
+<DeoptLineSteps client:visible />
+
+<Formal title="The shape of a bailout line">
+
+```text
+line   ::= "[bailout (kind: " kind
+           ", reason: " reason "): "
+           … "bytecode offset " n … "]"
+kind   ::= "deopt-eager" | …
+```
+
+<span slot="read">A bailout line is the text "[bailout (kind: ", then a
+kind, then ", reason: " and a reason, then "): ", then other details,
+somewhere among which is "bytecode offset " followed by a number, and a
+closing bracket. A kind is deopt-eager, or the name of the other kind
+V8 12.4 defines, the lazy one. This is the grammar the exercise's regular expression
+matches; like the output itself, it is only true for this
+version<Cite id="v8-deopt-kinds" />.</span>
+</Formal>
+
+<Prompts ids={['osr', 'eager-lazy', 'deopt-offset-o183']} />
+
+## Three programs, three traces
+
+Run each of these with `--trace-deopt` and see what V8 says. Try to
+predict each one before reading its output:
+
+<Examples of="engine-tracing">
+
+```js
+function sq(x) { return x * x; }
+for (let i = 0; i < 1e5; i++) sq(i);
+// [bailout (kind: deopt-eager,
+//   reason: overflow): … sq …
+//   bytecode offset 2, …]
+```
+
+```js
+// …the same loop, then:
+sq('3');
+// [bailout (kind: deopt-eager, reason:
+//   not a Number or Oddball): … sq …]
+```
+
+```js
+const x = new Float64Array(1e5);
+const vx = new Float64Array(1e5);
+function step(dt) {
+  for (let i = 0; i < 1e5; i++)
+    x[i] += vx[i] * dt;
+}
+for (let t = 0; t < 100; t++) step(0.5);
+// (no bailout lines at all)
+```
+
+</Examples>
+
+The first is the surprise: `sq` only ever sees integers, yet it
+deoptimises. The reason is `overflow`. The optimised code guessed that
+`x * x` stays a small integer, because every result so far had been
+one; on this build a Smi holds up to 2<sup>31</sup> − 1
+(`%DebugPrint(2 ** 31 - 1)`, from the next chapter, prints `Smi`), and 46341 × 46341 is the
+first square past that. (A loop that stopped at 46340 printed no
+overflow bailout; one that reached 46341 did.) V8 then compiles `sq`
+again with what it has learned. The second hands `sq` a string,
+and the reason changes to "not a Number or Oddball" (an *oddball*, in V8's own
+naming, is a special value such as `undefined`, `null` or `true`:
+`%DebugPrint(null)` labels it `[Oddball]`)<Cite id="v8-deopt-kinds" />: the multiply can no longer assume
+numbers at all. The third is the struct-of-arrays loop from Part II.
+With `--trace-opt` it shows `step` being compiled by TurboFan through
+OSR; with `--trace-deopt` it prints nothing, because two
+`Float64Array`s of doubles never surprise the optimised code. When you
+check your own hot loops, silence is the answer you want.
+
+<Prompts ids={['overflow-deopt']} />
+
+## Garbage collection
+
+Keep three million small objects alive and watch the collector:
+
+```text
+# Node v22.23.4, V8 12.4.254.21 (trimmed)
+[…]   24 ms: Scavenge 4.4 (5.1) ->
+  3.9 (6.1) MB, … 1.03 / 0.00 ms …
+  allocation failure;
+[…]  214 ms: Mark-Compact 53.7 (86.2)
+  -> 41.0 (74.2) MB, … 44.16 / 0.00
+  ms … GC in old space requested
+[…]  577 ms: Scavenge 166.9 (185.5)
+  -> 166.9 (201.5) MB, … 32.16 / 0.00
+  ms … allocation failure;
+3000000
+[…]  617 ms: Mark-Compact 205.6
+  (235.1) -> 3.6 (36.9) MB, …
+```
+
+Each line gives the time since start, the collector, the size of the
+objects before and after (with the heap's memory size in brackets), the
+time it took, and the reason<Cite id="v8-gc-tracer" />. Scavenges are
+young-generation collections, mark-compacts whole-heap ones (*V8's
+garbage collector*). At 577 ms a scavenge freed nothing: every object
+was still in `keep`. Once the script had finished, the last
+mark-compact found almost everything dead. This is also the flag behind
+*Escape analysis in V8*: counting scavenges with
+`--trace-gc | grep -c Scavenge` is how that chapter showed the
+temporary objects had vanished.
+
+<Prompts ids={['gc-line']} />
+
+<Callout kind="engine" label="Under the hood">
+These flags are how this book's findings were made, and how you should
+check them on your own code. Viscosity's output is ordinary
+JavaScript, so you can run its `Float64Array` columns under
+`--trace-deopt` and `--trace-opt` exactly like any other program, and
+compare with the original. Remember what you are reading, though: one
+engine's private diary, written for its own developers, in a format
+that will change.
+</Callout>
+
+## Your turn
+
+The first exercise is the core one; the second is extra practice.
+
+<Exercise id="parseDeopt" />
+
+<Exercise id="parseGc" />
+
+## What you learned
+
+- **Engine tracing**: V8's `--print-bytecode` (with a filter),
+  `--trace-opt`, `--trace-deopt` and `--trace-gc` report its decisions
+  as it makes them.
+- A bytecode listing shows each instruction's **offset** and its
+  **feedback slots**.
+- A deopt line gives the **kind** (eager or lazy), the **reason**, the
+  function, the tier and the **bytecode offset**, which you can match to
+  the `--print-bytecode` listing.
+- Even integer code can deoptimise, on **overflow**; a loop over typed
+  arrays of doubles should print no bailouts at all.
+- All of it is **V8-internal** and version-specific: label your output
+  with the version, and expect it to change.
+
+<Quiz />

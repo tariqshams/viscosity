@@ -1,4 +1,5 @@
-// Chapter 45 cards (branded types). Keys are stable ids: never rename them.
+// Chapter 45 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'alias-only': {
@@ -63,8 +64,7 @@ export const exercises = {
   toPort: {
     lang: 'ts',
     title: 'From text to a checked port',
-    prompt:
-      'Write `toPort(s)` that turns text from a settings file into a branded `Port`. The text must be one or more digits `0` to `9` and nothing else (no spaces, signs or decimal points; leading zeros are allowed, so `\'0080\'` is 80), and its value must be from 1 to 65535. Otherwise **throw** an `Error`. Work the value out digit by digit with `charCodeAt`, as in the strings chapters, and stamp it with `as Port` only at the end.',
+    prompt: 'Write `toPort(s)` that turns text from a settings file into a branded `Port`. The text must be one or more digits `0` to `9` and nothing else (no spaces, signs or decimal points; leading zeros are allowed, so `\'0080\'` is 80), and its value must be from 1 to 65535. Otherwise **throw** an `Error`. Work the value out digit by digit with `charCodeAt`, as in the strings chapters, and stamp it with `as Port` only at the end.',
     starter: `type Port = number &
   { readonly __brand: 'Port' };
 
@@ -178,8 +178,7 @@ After erasure the function is an ordinary checking loop that returns a number; t
     optional: true,
     lang: 'ts',
     title: 'Feet in, metres out',
-    prompt:
-      'Two brands that must not mix: `Feet` and `Meters`. Write `feet(n)`, the checking function, which throws for `NaN` or a negative length and otherwise stamps `n` as `Feet`; `toMeters(f)`, which converts (one foot is exactly 0.3048 metres); and `addMeters(a, b)`, which adds two lengths in metres. Arithmetic drops brands, so re-stamp the results with `as`.',
+    prompt: 'Two brands that must not mix: `Feet` and `Meters`. Write `feet(n)`, the checking function, which throws for `NaN` or a negative length and otherwise stamps `n` as `Feet`; `toMeters(f)`, which converts (one foot is exactly 0.3048 metres); and `addMeters(a, b)`, which adds two lengths in metres. Arithmetic drops brands, so re-stamp the results with `as`.',
     starter: `type Feet = number &
   { readonly __brand: 'Feet' };
 type Meters = number &
@@ -275,44 +274,103 @@ export const quiz = [
   {
     q: 'Why does TypeScript accept a `ValueId` where a `BlockId` is wanted, when both are declared as `type ... = number`?',
     options: [
-      { t: 'Because aliases are only other names, and types are compared by structure: both are exactly `number`', correct: true, why: 'Structural typing sees two identical structures, so they are one type.' },
-      { t: 'Because TypeScript does not check numbers', why: 'It checks them: a string would be refused. Two `number` aliases are simply the same type.' },
-      { t: 'Because the values happen to be equal', why: 'The checker never looks at values; it would accept any `ValueId` there.' },
+      {
+        t: 'Because aliases are only other names, and types are compared by structure: both are exactly `number`',
+        correct: true,
+        why: 'Structural typing sees two identical structures, so they are one type.',
+      },
+      {
+        t: 'Because TypeScript does not check numbers',
+        why: 'It checks them: a string would be refused. Two `number` aliases are simply the same type.',
+      },
+      {
+        t: 'Because the values happen to be equal',
+        why: 'The checker never looks at values; it would accept any `ValueId` there.',
+      },
     ],
   },
   {
     q: 'With `type BlockId = number & { readonly __brand: \'BlockId\' }`, which line does the checker accept?',
     options: [
-      { t: '`const b: BlockId = 3;`', why: 'A plain number has no `__brand`, so it is refused.' },
-      { t: '`const n: number = blockId(3);`', correct: true, why: 'A BlockId is a number with something extra, so it can be used wherever a number is wanted.' },
-      { t: '`const b: BlockId = blockId(3) + 1;`', why: 'Arithmetic drops the brand, so `+ 1` gives a plain number, which is refused.' },
-      { t: '`const b: BlockId = (3 as ValueId);`', why: 'A ValueId’s brand holds a different literal, so it is not a BlockId.' },
+      {
+        t: '`const b: BlockId = 3;`',
+        why: 'A plain number has no `__brand`, so it is refused.',
+      },
+      {
+        t: '`const n: number = blockId(3);`',
+        correct: true,
+        why: 'A BlockId is a number with something extra, so it can be used wherever a number is wanted.',
+      },
+      {
+        t: '`const b: BlockId = blockId(3) + 1;`',
+        why: 'Arithmetic drops the brand, so `+ 1` gives a plain number, which is refused.',
+      },
+      {
+        t: '`const b: BlockId = (3 as ValueId);`',
+        why: 'A ValueId’s brand holds a different literal, so it is not a BlockId.',
+      },
     ],
   },
   {
     q: 'What happens at run time when `toPort` returns `n as Port`?',
     options: [
-      { t: 'The number is checked against the Port type', why: 'Nothing is checked: the assertion is erased.' },
-      { t: 'A `__brand` property is added to the number', why: 'The property never exists; it is only in the checker’s picture of the type.' },
-      { t: 'The number is copied into a new Port object', why: 'There is no object: a Port is the plain number.' },
-      { t: 'Nothing: after erasure the line is `return n;`', correct: true, why: 'Brands and assertions are types, and types are erased before the program runs.' },
+      {
+        t: 'The number is checked against the Port type',
+        why: 'Nothing is checked: the assertion is erased.',
+      },
+      {
+        t: 'A `__brand` property is added to the number',
+        why: 'The property never exists; it is only in the checker’s picture of the type.',
+      },
+      {
+        t: 'The number is copied into a new Port object',
+        why: 'There is no object: a Port is the plain number.',
+      },
+      {
+        t: 'Nothing: after erasure the line is `return n;`',
+        correct: true,
+        why: 'Brands and assertions are types, and types are erased before the program runs.',
+      },
     ],
   },
   {
     q: 'Why should `as Port` appear only inside the one checking function?',
     options: [
-      { t: 'Because `as` is slow', why: '`as` costs nothing: it is erased.' },
-      { t: 'Because TypeScript allows only one `as` per type', why: 'There is no such rule; you can write as many as you like, which is the danger.' },
-      { t: 'Because anywhere else it would make a Port without doing the check, so a Port would no longer prove anything', correct: true, why: 'A brand is a receipt only while the checking function is the only way to get one.' },
+      {
+        t: 'Because `as` is slow',
+        why: '`as` costs nothing: it is erased.',
+      },
+      {
+        t: 'Because TypeScript allows only one `as` per type',
+        why: 'There is no such rule; you can write as many as you like, which is the danger.',
+      },
+      {
+        t: 'Because anywhere else it would make a Port without doing the check, so a Port would no longer prove anything',
+        correct: true,
+        why: 'A brand is a receipt only while the checking function is the only way to get one.',
+      },
     ],
   },
   {
     q: 'Which language compares types by their names (nominally), so that two wrapper types with the same fields are always different?',
     options: [
-      { t: 'TypeScript', why: 'TypeScript is structural; that is why it needs brands.' },
-      { t: 'Python with `NewType`', why: '`NewType` is checked by a separate tool and the value is a plain `int`, much like a TypeScript brand.' },
-      { t: 'Java, with two `record` classes', correct: true, why: 'Java’s types are nominal: `BlockId` and `ValueId` are different classes, even with identical fields.' },
-      { t: 'C with `typedef`', why: '`typedef` only adds a name, exactly like a TypeScript alias.' },
+      {
+        t: 'TypeScript',
+        why: 'TypeScript is structural; that is why it needs brands.',
+      },
+      {
+        t: 'Python with `NewType`',
+        why: '`NewType` is checked by a separate tool and the value is a plain `int`, much like a TypeScript brand.',
+      },
+      {
+        t: 'Java, with two `record` classes',
+        correct: true,
+        why: 'Java’s types are nominal: `BlockId` and `ValueId` are different classes, even with identical fields.',
+      },
+      {
+        t: 'C with `typedef`',
+        why: '`typedef` only adds a name, exactly like a TypeScript alias.',
+      },
     ],
   },
 ];

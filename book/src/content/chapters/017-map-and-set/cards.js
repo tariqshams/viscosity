@@ -1,4 +1,5 @@
-// Chapter 17 cards. Keys are stable ids: never rename them.
+// Chapter 17 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'object-keys-strings': {
@@ -60,8 +61,7 @@ console.log(s, s.has(2));`,
 export const exercises = {
   countEach: {
     title: 'Count every value',
-    prompt:
-      'Write `countEach(xs)`. It returns a **Map** from each value in the array `xs` to how many times it appears. For example `countEach([\'a\', \'b\', \'a\'])` maps `\'a\'` to `2` and `\'b\'` to `1`. The number `1` and the string `\'1\'` are different values and must be counted separately.',
+    prompt: 'Write `countEach(xs)`. It returns a **Map** from each value in the array `xs` to how many times it appears. For example `countEach([\'a\', \'b\', \'a\'])` maps `\'a\'` to `2` and `\'b\'` to `1`. The number `1` and the string `\'1\'` are different values and must be counted separately.',
     starter: `function countEach(xs) {
   // your code here
 }
@@ -151,8 +151,7 @@ The last test is why a Map is needed: \`1\` and \`'1'\` are different values, an
   firstRepeat: {
     optional: true,
     title: 'The first value you see twice',
-    prompt:
-      'Write `firstRepeat(xs)`. Read `xs` from left to right, and return the first value that you have **already seen**. If no value repeats, return `undefined`. For `[3, 1, 4, 1, 5, 3]` the answer is `1`: you reach the second `1` (index 3) before the second `3` (index 5).',
+    prompt: 'Write `firstRepeat(xs)`. Read `xs` from left to right, and return the first value that you have **already seen**. If no value repeats, return `undefined`. For `[3, 1, 4, 1, 5, 3]` the answer is `1`: you reach the second `1` (index 3) before the second `3` (index 5).',
     starter: `function firstRepeat(xs) {
   // your code here
 }
@@ -248,10 +247,23 @@ m.set('a', 2);
 console.log(m.size, m.get('a'));
 \`\`\``,
     options: [
-      { t: '`2 1`', why: 'A key appears only once, and the second `set` replaced the value.' },
-      { t: '`1 2`', correct: true, why: 'There is one key, `\'a\'`, and its value was replaced by `2`.' },
-      { t: '`2 2`', why: 'Setting the same key again doesn’t add a second entry.' },
-      { t: '`1 1`', why: 'The second `set` replaces the first value.' },
+      {
+        t: '`2 1`',
+        why: 'A key appears only once, and the second `set` replaced the value.',
+      },
+      {
+        t: '`1 2`',
+        correct: true,
+        why: 'There is one key, `\'a\'`, and its value was replaced by `2`.',
+      },
+      {
+        t: '`2 2`',
+        why: 'Setting the same key again doesn’t add a second entry.',
+      },
+      {
+        t: '`1 1`',
+        why: 'The second `set` replaces the first value.',
+      },
     ],
   },
   {
@@ -262,37 +274,89 @@ m.set({ id: 1 }, 'hi');
 console.log(m.get({ id: 1 }));
 \`\`\``,
     options: [
-      { t: '`hi`', why: 'The two `{ id: 1 }`s are different objects, and Map compares object keys by identity.' },
-      { t: 'An error', why: 'Looking up a missing key is fine; it just finds nothing.' },
-      { t: '`{ id: 1 }`', why: '`get` returns values, not keys.' },
-      { t: '`undefined`', correct: true, why: 'The lookup uses a new object, which was never stored as a key.' },
+      {
+        t: '`hi`',
+        why: 'The two `{ id: 1 }`s are different objects, and Map compares object keys by identity.',
+      },
+      {
+        t: 'An error',
+        why: 'Looking up a missing key is fine; it just finds nothing.',
+      },
+      {
+        t: '`{ id: 1 }`',
+        why: '`get` returns values, not keys.',
+      },
+      {
+        t: '`undefined`',
+        correct: true,
+        why: 'The lookup uses a new object, which was never stored as a key.',
+      },
     ],
   },
   {
     q: 'What is `new Set([1, 2, 2, 3, 3, 3]).size`?',
     options: [
-      { t: '`3`', correct: true, why: 'A Set keeps one of each value: 1, 2 and 3.' },
-      { t: '`6`', why: 'Duplicates are dropped, so the size isn’t the array’s length.' },
-      { t: '`1`', why: 'There are three different values.' },
-      { t: '`0`', why: 'Building a Set from an array adds every value.' },
+      {
+        t: '`3`',
+        correct: true,
+        why: 'A Set keeps one of each value: 1, 2 and 3.',
+      },
+      {
+        t: '`6`',
+        why: 'Duplicates are dropped, so the size isn’t the array’s length.',
+      },
+      {
+        t: '`1`',
+        why: 'There are three different values.',
+      },
+      {
+        t: '`0`',
+        why: 'Building a Set from an array adds every value.',
+      },
     ],
   },
   {
     q: 'Why is a Map a better lookup table than a plain object when the keys are particle objects?',
     options: [
-      { t: 'Maps use less memory', why: 'That isn’t the issue here.' },
-      { t: 'Objects can’t hold more than a few properties', why: 'Objects can hold many properties.' },
-      { t: 'An object turns every key into a string, so all particle objects become the same key', correct: true, why: 'They all become `\'[object Object]\'`. A Map keeps each object as its own key.' },
-      { t: 'Maps can only hold objects', why: 'Map keys can be any value: strings and numbers too.' },
+      {
+        t: 'Maps use less memory',
+        why: 'That isn’t the issue here.',
+      },
+      {
+        t: 'Objects can’t hold more than a few properties',
+        why: 'Objects can hold many properties.',
+      },
+      {
+        t: 'An object turns every key into a string, so all particle objects become the same key',
+        correct: true,
+        why: 'They all become `\'[object Object]\'`. A Map keeps each object as its own key.',
+      },
+      {
+        t: 'Maps can only hold objects',
+        why: 'Map keys can be any value: strings and numbers too.',
+      },
     ],
   },
   {
     q: 'In `for (const e of m)`, where `m` is a Map, what is `e`?',
     options: [
-      { t: 'Just the key', why: 'Looping over the Map itself gives both the key and the value.' },
-      { t: 'Just the value', why: 'You get the key as well.' },
-      { t: 'The index of the entry', why: '`for...of` never gives indexes.' },
-      { t: 'A `[key, value]` pair, as a two-slot array', correct: true, why: 'So `e[0]` is the key and `e[1]` the value, in insertion order.' },
+      {
+        t: 'Just the key',
+        why: 'Looping over the Map itself gives both the key and the value.',
+      },
+      {
+        t: 'Just the value',
+        why: 'You get the key as well.',
+      },
+      {
+        t: 'The index of the entry',
+        why: '`for...of` never gives indexes.',
+      },
+      {
+        t: 'A `[key, value]` pair, as a two-slot array',
+        correct: true,
+        why: 'So `e[0]` is the key and `e[1]` the value, in insertion order.',
+      },
     ],
   },
 ];

@@ -1,4 +1,5 @@
-// Chapter 11 cards. Keys are stable ids: never rename them.
+// Chapter 11 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'block-scope': {
@@ -63,8 +64,7 @@ if (true) {
 export const exercises = {
   lastBig: {
     title: 'Fix the vanishing variable',
-    prompt:
-      '`lastBig(xs)` should return the **last** number in `xs` that is greater than 10, or `undefined` if there is none. The starter code throws `ReferenceError: found is not defined`. Fix it by changing where `found` is declared (and how it is set).',
+    prompt: '`lastBig(xs)` should return the **last** number in `xs` that is greater than 10, or `undefined` if there is none. The starter code throws `ReferenceError: found is not defined`. Fix it by changing where `found` is declared (and how it is set).',
     starter: `function lastBig(xs) {
   for (let i = 0; i < xs.length; i++) {
     if (xs[i] > 10) {
@@ -147,8 +147,7 @@ test('empty array', () => {
   inRange: {
     optional: true,
     title: 'A callback that sees its surroundings',
-    prompt:
-      'Write `inRange(xs, lo, hi)` that returns a new array of the numbers in `xs` that are at least `lo` and at most `hi`, using `filter` with an arrow function written inside `inRange`. For example `inRange([1, 5, 9, 3], 2, 6)` is `[5, 3]`.',
+    prompt: 'Write `inRange(xs, lo, hi)` that returns a new array of the numbers in `xs` that are at least `lo` and at most `hi`, using `filter` with an arrow function written inside `inRange`. For example `inRange([1, 5, 9, 3], 2, 6)` is `[5, 3]`.',
     starter: `function inRange(xs, lo, hi) {
   // your code here
 }
@@ -219,10 +218,23 @@ if (true) {
 console.log(z);
 \`\`\``,
     options: [
-      { t: 'It prints `1`', why: '`z` is block-scoped: it doesn’t exist after the closing `}`.' },
-      { t: 'It prints `undefined`', why: 'A name that is out of scope isn’t `undefined`; it doesn’t exist at all here.' },
-      { t: 'A ReferenceError: `z` is not defined', correct: true, why: '`const` is visible only inside its block, and this line is outside it.' },
-      { t: 'It prints `true`', why: '`z` was set to `1`, and in any case it isn’t visible here.' },
+      {
+        t: 'It prints `1`',
+        why: '`z` is block-scoped: it doesn’t exist after the closing `}`.',
+      },
+      {
+        t: 'It prints `undefined`',
+        why: 'A name that is out of scope isn’t `undefined`; it doesn’t exist at all here.',
+      },
+      {
+        t: 'A ReferenceError: `z` is not defined',
+        correct: true,
+        why: '`const` is visible only inside its block, and this line is outside it.',
+      },
+      {
+        t: 'It prints `true`',
+        why: '`z` was set to `1`, and in any case it isn’t visible here.',
+      },
     ],
   },
   {
@@ -237,10 +249,23 @@ function run() {
 run();
 \`\`\``,
     options: [
-      { t: '`outer`', correct: true, why: 'Lexical scope: `show` was written at the top level, where the only `x` is `\'outer\'`. Where it is called from doesn’t matter.' },
-      { t: '`inner`', why: 'That would be true if scope followed calls. JavaScript scope follows where code is written.' },
-      { t: '`undefined`', why: '`show` can see the top-level `x`, which is `\'outer\'`.' },
-      { t: 'A ReferenceError', why: 'The top-level `x` is visible inside `show`.' },
+      {
+        t: '`outer`',
+        correct: true,
+        why: 'Lexical scope: `show` was written at the top level, where the only `x` is `\'outer\'`. Where it is called from doesn’t matter.',
+      },
+      {
+        t: '`inner`',
+        why: 'That would be true if scope followed calls. JavaScript scope follows where code is written.',
+      },
+      {
+        t: '`undefined`',
+        why: '`show` can see the top-level `x`, which is `\'outer\'`.',
+      },
+      {
+        t: 'A ReferenceError',
+        why: 'The top-level `x` is visible inside `show`.',
+      },
     ],
   },
   {
@@ -254,10 +279,23 @@ const n = 1;
 console.log(n);
 \`\`\``,
     options: [
-      { t: '`2` then `2`', why: 'The inner `n` exists only inside its braces; after them, the outer `n` is visible again.' },
-      { t: '`1` then `1`', why: 'Inside the block, the inner `n` shadows the outer one.' },
-      { t: 'An error: `n` is declared twice', why: 'The two `n`s are in different scopes, which is allowed; only two in the same scope would be an error.' },
-      { t: '`2` then `1`', correct: true, why: 'The inner `n` shadows the outer one inside the block; after the block, the outer `n` (1) is back.' },
+      {
+        t: '`2` then `2`',
+        why: 'The inner `n` exists only inside its braces; after them, the outer `n` is visible again.',
+      },
+      {
+        t: '`1` then `1`',
+        why: 'Inside the block, the inner `n` shadows the outer one.',
+      },
+      {
+        t: 'An error: `n` is declared twice',
+        why: 'The two `n`s are in different scopes, which is allowed; only two in the same scope would be an error.',
+      },
+      {
+        t: '`2` then `1`',
+        correct: true,
+        why: 'The inner `n` shadows the outer one inside the block; after the block, the outer `n` (1) is back.',
+      },
     ],
   },
   {
@@ -272,19 +310,45 @@ function total(xs) {
 }
 \`\`\``,
     options: [
-      { t: '`sum` must be a `const`', why: '`sum` changes, so `let` is right; the problem is where it is declared.' },
-      { t: '`sum` is declared inside the loop’s braces, so the `return` cannot see it', correct: true, why: 'Block scope: `sum` ends at the loop’s closing `}`. Declare it before the loop.' },
-      { t: '`xs[i]` is undefined', why: 'The loop reads only valid slots; the error is about the name `sum`.' },
-      { t: 'Loops cannot declare variables', why: 'They can; those variables just belong to the loop.' },
+      {
+        t: '`sum` must be a `const`',
+        why: '`sum` changes, so `let` is right; the problem is where it is declared.',
+      },
+      {
+        t: '`sum` is declared inside the loop’s braces, so the `return` cannot see it',
+        correct: true,
+        why: 'Block scope: `sum` ends at the loop’s closing `}`. Declare it before the loop.',
+      },
+      {
+        t: '`xs[i]` is undefined',
+        why: 'The loop reads only valid slots; the error is about the name `sum`.',
+      },
+      {
+        t: 'Loops cannot declare variables',
+        why: 'They can; those variables just belong to the loop.',
+      },
     ],
   },
   {
     q: 'A variable is given the value 1 inside an `if` block and printed after the block. In which language does that print `1` rather than fail?',
     options: [
-      { t: 'Java', why: 'Java has block scope, so using `a` after the block is a compile error.' },
-      { t: 'Python', correct: true, why: 'Python’s scopes are whole functions and modules, so `a` is still visible after the `if`.' },
-      { t: 'C', why: 'C has block scope: `a` is undeclared after the block.' },
-      { t: 'JavaScript with `let`', why: '`let` is block-scoped, so this is a ReferenceError.' },
+      {
+        t: 'Java',
+        why: 'Java has block scope, so using `a` after the block is a compile error.',
+      },
+      {
+        t: 'Python',
+        correct: true,
+        why: 'Python’s scopes are whole functions and modules, so `a` is still visible after the `if`.',
+      },
+      {
+        t: 'C',
+        why: 'C has block scope: `a` is undeclared after the block.',
+      },
+      {
+        t: 'JavaScript with `let`',
+        why: '`let` is block-scoped, so this is a ReferenceError.',
+      },
     ],
   },
 ];

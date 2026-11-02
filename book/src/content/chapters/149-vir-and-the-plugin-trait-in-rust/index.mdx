@@ -1,0 +1,560 @@
+---
+n: 149
+day: 26
+part: IX
+title: 'VIR and the plugin trait in Rust'
+tagline: 'Both engines print the same VIR, line for line. Underneath, the TypeScript blocks hold instruction objects while the Rust blocks hold numbers: four kinds of typed id into arenas that the module owns. Here is why, and what it changes.'
+objectives:
+  - Compare the TypeScript VIR with the arena IR in engine/rust’s vir crate, type by type.
+  - Explain why a Rust block holds ValueIds instead of instructions, and what happens to a removed instruction’s slot.
+  - Read VIR’s Op enum and Use lists as replacements for TypeScript’s optional fields and object references.
+  - Explain why the port formats numbers with js_number instead of Rust’s own formatting.
+  - Read engine/rust’s LanguagePlugin trait, and say what its associated type Extra replaces in the TypeScript interface.
+  - 'Explain how compile<P: LanguagePlugin> and the two implementors, JsPlugin and PyPlugin, fit together.'
+  - Explain why a Vec<&dyn LanguagePlugin> fails with E0191, and why naming Extra doesn’t fix it.
+  - Pick a plugin at run time without trait objects, and erase Extra behind a second trait when you need one.
+introduces: [ir-arena, plugin-trait]
+uses: [viscosity-rs, vir, record-collection-nodes, ssa, ssa-construction, phi-node, basic-block, cfg, arena, typed-index, object-handle, struct, impl, enum, match, pattern, option, vec, ownership, borrow, borrow-checker, shared-vs-mutable, size-of, typescript, interface, optimization-report, rust-iterator, drip-rs, language-plugin, multi-language-ir, python-subset, trait, trait-object, rust-generics, trait-bound, monomorphization, monomorphic, result, question-mark, hashmap, string-vs-str, lifetime, type-checking, webassembly, wasm-bindgen]
+sources: [braun2013, rust-std-flt2dec, ecma262, rustref-dyn-compatibility, rustc-e0191, rust-reference-trait-object]
+---
+import ArenaSteps from '../../../components/diagrams/ch149/ArenaSteps';
+import TwoOwners from '../../../components/diagrams/ch149/TwoOwners';
+import DispatchSteps from '../../../components/diagrams/ch149/DispatchSteps';
+import ExtraRoute from '../../../components/diagrams/ch149/ExtraRoute';
+
+{/* ── merge: from old chapter 149, VIR in Rust ── */}
+
+## The same listing
+
+*VIR: Viscosity's IR* printed functions with `printFunc`; the Rust
+`vir` crate has a `print_func`. I lowered this function with both
+engines here and compared the two listings with `diff`, which found no
+difference at all:
+
+```js
+function sum(n) {
+  let t = 0;
+  for (let i = 0; i < n; i++) t += i;
+  return t;
+}
+```
+
+Here is the loop header, block `b1`, from either engine:
+
+```
+  b1:  ; preds b0 b3
+    %6 = phi %1, %7
+    %3 = phi %2, %10
+    %5 = binop < %3, %0
+    condbr %5, b2, b4
+```
+
+`%3` is `i` and `%6` is `t`: each is a **phi** (the SSA join of *Phi
+nodes*), choosing the starting value on entry from `b0` and the updated
+value when the loop comes round from `b3`. Same blocks, same phis, same
+numbers, so the analyses read the same graph in both engines, which is
+what makes parity possible. The data structures behind the text differ,
+however, and the difference is **ownership**.
+
+## Who owns an instruction?
+
+In TypeScript, a block holds its instruction objects, and the module
+keeps a second list of the very same objects, by id (from `vir.ts`,
+trimmed):
+
+```ts
+interface Block {
+  id: BlockId;
+  insts: Inst[];
+  term: Terminator;
+  preds: BlockId[];
+}
+interface Module {
+  /** every instruction by id */
+  values: Inst[];
+}
+```
+
+Two references to one object cost nothing in JavaScript. In Rust a
+value has exactly one owner (*Ownership*), so the port has to pick one,
+and it picks the module (from `crates/vir/src/lib.rs`, doc comments
+left out):
+
+```rust
+pub struct Block {
+    pub id: BlockId,
+    pub insts: Vec<ValueId>,
+    pub term: Terminator,
+    pub preds: Vec<BlockId>,
+}
+```
+
+and `Module` has `pub values: Vec<Inst>`, next to its functions and
+bindings. Every instruction of every function lives in `values`, its id
+is its position there, and a block is a list of ids:
+
+<Figure takeaway="TypeScript shares objects; Rust gives them one owner and passes numbers." caption="Block b1 of sum(n). In TypeScript, b1.insts and m.values point at the same three objects. In Rust, m.values owns them and b1 lists 6, 3 and 5; slot 4 is a removed phi, kept so that no number moves.">
+  <TwoOwners />
+</Figure>
+
+<Analogy title="books on shelves, and reading lists">
+A library does not let each reading list own its books. The books stay
+on the shelves, and a reading list is a column of shelf numbers; ten
+lists can name the same book, and a book taken off every list still
+has its shelf.
+<span slot="breaks">A library reshelves books when it runs out of room;
+the arena never moves an instruction, so a number written down once
+stays right for the life of the module.</span>
+</Analogy>
+
+<Analogy extra title="house numbers on a street">
+A delivery list says "number 6, number 3, number 5", not where the
+houses stand or what they look like. If number 4 is pulled down, the
+street keeps the gap rather than renumbering every house after it, so
+no list goes wrong.
+<span slot="breaks">A street can have a 4a squeezed in; the arena only
+ever adds to the end, so ids are always handed out in creation
+order.</span>
+</Analogy>
+
+Step through the real arena behind `sum(n)`:
+
+<ArenaSteps client:visible />
+
+<Callout kind="definition">
+An **IR arena** stores the nodes of an intermediate representation in
+`Vec`s owned by one container, here the `Module`, and refers to them by
+**typed ids**: `ValueId`, `BlockId`, `FuncId` and `BindingId`, each a
+`u32` wrapped in its own struct. A node's id is its index in its arena,
+ids never move, and a reference between nodes is an id rather than a
+pointer.
+</Callout>
+
+<Formal title="Following an id">
+
+```text
+v : ValueId
+──────────────────────────────────
+m.inst(v) = &m.values[v.index()]
+          : &Inst
+```
+
+<span slot="read">If v is a value id, then asking the module for
+instruction v means reading slot v of the values arena, and what you
+get back is a borrowed instruction. Nothing is searched: the id is the
+position.</span>
+</Formal>
+
+<Examples of="ir-arena">
+
+```rust
+let i = m.inst(ValueId(5));
+// i.op is Op::Binop { operator: "<" }
+```
+
+```rust
+for &v in &f.block(BlockId(1)).insts {
+    println!("{:?}", m.inst(v).op);
+}
+```
+
+```rust
+for &i in &b.insts {
+    for &a in &m.inst(i).args {
+        uses[a.index()].push(Use::Inst(i));
+    }
+}
+```
+
+</Examples>
+
+The first follows one id: `ValueId(5)` is slot 5, the comparison
+`%5 = binop < %3, %0`. The second walks block `b1` of `sum`: the loop
+copies each id out of the block's list (the `&v` pattern takes the
+`ValueId` by value, so no borrow is kept) and looks it up, printing the two phis
+and the comparison in block order. The third is the heart of the real
+`build_uses` (from `lib.rs`, the loops over functions and blocks left
+out): for every operand `a` of every live instruction `i`, it records
+"`i` uses `a`" in a second arena of lists indexed by the same ids.
+
+<Prompts ids={['ira-what', 'ira-block', 'ira-dead']} />
+
+## Four kinds of id
+
+In the TypeScript VIR, `type ValueId = number` and `type BlockId =
+number` are only other names for `number`, so a block id passes where a
+value id is wanted without a word. The Rust crate writes a **newtype**
+(a struct with one field, so that it is a type of its own) once, as a
+`macro_rules!` template (*Macros: declarative and procedural*), and
+stamps it out four times. Simplified:
+
+```rust
+macro_rules! id_type {
+    ($name:ident, $prefix:literal) => {
+        #[derive(Copy, Clone, PartialEq,
+            Eq, PartialOrd, Ord, Hash)]
+        pub struct $name(pub u32);
+        // + index(), and a Debug that
+        // prints "%3", "b1", "f0", ...
+    };
+}
+id_type!(ValueId, "%");
+id_type!(BlockId, "b");
+```
+
+Each id is 4 bytes and `Copy`, so passing one around copies a number
+and borrows nothing. Run this, then uncomment the marked line:
+
+<Run id="typed-vir" />
+
+rustc 1.97 then stops with `error[E0308]: mismatched types ... expected
+ValueId, found BlockId`: the idea of *Arenas and typed indices*, applied
+to a compiler's IR.
+
+<Prompts ids={['ira-alias', 'ira-copy']} />
+
+## Optional fields become variants
+
+A TypeScript `Inst` carries every possible payload as an optional field
+(`value?`, `field?`, `binding?`, `fields?` and more), and code that
+knows the op asserts that the right one is there, as in
+`m.bindings[i.binding!].name`. The Rust `Op` is an enum whose 22
+variants each carry their own data (from `lib.rs`, trimmed):
+
+```rust
+pub enum Op {
+    Const(Const),
+    LoadBinding { binding: BindingId },
+    FieldGet { field: String },
+    IndexGet,
+    // ... 22 in all
+}
+```
+
+A `match` on `Op::LoadBinding { binding }` hands you the binding, so
+there is nothing to assert; and `op.name()` still returns the
+TypeScript spelling, such as `"index.get"`, because `explain` quotes it.
+The other types change the same way: a binding's owner is
+`Option<FuncId>` where TypeScript used `-1`, and a use is
+`Use::Inst(ValueId)` or `Use::Term { func, block }`, ids again where
+TypeScript stored object references.
+
+<Prompts ids={['ira-op', 'ira-use']} />
+
+## Numbers, the JavaScript way
+
+`explain` puts numbers in sentences, and TypeScript formats them with
+JavaScript's `String(x)`. Rust's `{}` agrees for everyday numbers and
+disagrees for very large and very small ones (*Values in Rust* met the
+same problem), so the port formats every number in its output with
+`vir::js_number`: take the shortest digits that read back as the same
+number from Rust's `{:e}`<Cite id="rust-std-flt2dec" />, then place the
+point where ECMAScript does<Cite id="ecma262" />. To see it matter, I
+gave both engines a minimum size of `1e21` for a 100-element
+collection, and both printed `about 100 elements: below the
+1e+21-element threshold`, where `{}` would have written
+`1000000000000000000000`. (One case differs from drip-rs:
+`js_number(-0.0)` is `"0"`, as `String(-0)` is, where Drip prints `-0`.)
+
+<Prompts ids={['ira-number']} />
+
+<Callout kind="engine" label="Under the hood">
+Arenas make the borrow checker's job easy. The analyses take `&Module`
+and pass ids around, so any number of them can read at once. The SSA
+builder (the algorithm of *SSA on the fly*<Cite id="braun2013" />) does
+not own the module either: in the words of `builder.rs`, every method
+that touches it takes `&mut Module`, which "lets a front-end keep one
+module and switch between several function builders (one per nested
+function) freely". A removed phi keeps its slot, marked `opaque` with
+the note `removed-trivial-phi`, and `all_insts()` walks blocks, not
+`values`, so it skips such slots. The cost is indirection: here an
+`Inst` is 112 bytes, and every step from a block to an instruction is
+an index into `values`.
+</Callout>
+
+<Prompts ids={['ira-borrow']} />
+
+## Your turn
+
+<Exercise id="useLists" />
+
+## What you learned
+
+- The TypeScript VIR shares instruction objects between blocks and
+  `values`. The Rust **IR arena** gives them one owner, `Module::values`,
+  and blocks list **typed ids**.
+- `ValueId`, `BlockId`, `FuncId` and `BindingId` are `u32` newtypes made
+  by one macro; mixing them is E0308, where TypeScript's number aliases
+  mix silently.
+- Ids never move: a removed phi keeps its slot, and walks go through
+  blocks.
+- Optional fields become **enum variants** with their data, and use
+  lists hold ids.
+- Numbers in the output go through `js_number`, so they print as
+  JavaScript prints them.
+
+
+{/* ── merge: from old chapter 149, The plugin trait ── */}
+
+## A cast nobody checks
+
+*The plugin API* gave every language plugin two halves: `lower` turns
+source into VIR, and `emit` rewrites the source from the plan, receiving
+the same `LoweredModule` that `lower` returned. The JavaScript plugin
+needs more than that base type holds, however (the ESTree program and
+the scope resolution), so its `lower` returns a bigger object and its
+`emit` casts it back (from `frontend-js/src/index.ts`, rewrapped):
+
+```ts
+emit(_source: string,
+     lowered: LoweredModule,
+     plan: Plan): string {
+  const l = lowered as JsLowered;
+  return emitJs(l.js, l.program,
+                l.resolution, plan);
+},
+```
+
+`as` is a promise to the type checker, not a check. I lowered a
+one-line Python program, `xs = []`, with the Python plugin and handed the result to
+the JavaScript plugin's `emit`; `tsc --strict` accepted the call, and
+when run it returned `undefined`, which is neither an error nor a
+string. The two halves of a plugin belong together, and TypeScript's
+types cannot see it.
+
+<Analogy title="a dry cleaner's ticket">
+Each dry cleaner prints its own tickets, and the counter only hands
+over clothes for a ticket it printed; take one shop's ticket to another
+and you are turned away, rather than handed a stranger's coat.
+<span slot="breaks">The shop checks at the counter, when you are
+already standing there; Rust checks before the program ever runs, so a
+mismatched ticket is a build error, never a bad afternoon.</span>
+</Analogy>
+
+<Analogy extra title="two jigsaw pieces cut together">
+A jigsaw maker cuts two neighbouring pieces with one stroke, so the tab
+of one fits the hole of the other exactly; the plugin's `lower` and
+`emit` are cut together in the same way, around one type.
+<span slot="breaks">Pieces from different puzzles can fit by accident,
+and so can plugins: two plugins that both chose the same type (say
+`usize`) for their private data could take each other's output, and
+the compiler would not object.</span>
+</Analogy>
+
+## The trait
+
+Here is the Rust version, from `crates/core/src/plugin.rs` (doc
+comments shortened, rewrapped):
+
+```rust
+pub trait LanguagePlugin {
+    /// carried from lower to emit
+    type Extra;
+
+    fn id(&self) -> &'static str;
+    fn extensions(&self)
+        -> &'static [&'static str];
+    fn lower(&self, source: &str) -> Result<
+        LoweredModule<Self::Extra>,
+        CompileError,
+    >;
+    fn emit(
+        &self,
+        source: &str,
+        lowered:
+            &LoweredModule<Self::Extra>,
+        plan: &Plan,
+    ) -> Result<String, CompileError>;
+}
+```
+
+`type Extra;` is an **associated type** (*Associated types and the
+standard traits*): a type that each implementation chooses, the way
+each iterator chooses its `Item`. `LoweredModule` is generic over it,
+holding the VIR `module`, the `annotations` found in the source, and
+`extra: X`, the plugin's private data, the part TypeScript smuggled
+through the cast. Follow where each part goes:
+
+<Figure takeaway="The core reads the module; the plugin's own data goes around it." caption="compile hands the module and annotations to the core and passes extra straight from lower to emit. Nothing that compile returns mentions Extra.">
+  <ExtraRoute />
+</Figure>
+
+Two types implement the trait. `JsPlugin` sets `type Extra = JsExtra`:
+facts about the syntax nodes behind instructions, and the VIR binding of
+each JavaScript binding (*Parsing with oxc* says why the tree itself
+cannot be kept). `PyPlugin` sets `type Extra = PyExtra`: the lowered
+Python, or `None` plus the reason when the source is outside the subset.
+Both plugins are empty structs, because neither has options.
+
+<Callout kind="definition">
+**LanguagePlugin** is the Rust trait a Viscosity front-end implements:
+`id`, `extensions`, `lower` and `emit`, plus an **associated type**
+`Extra` for the data that `lower` passes to `emit`. Because `emit` takes
+`&LoweredModule<Self::Extra>`, it only accepts what its own plugin's
+`lower` produced. Errors are `Result`s with a `CompileError` instead of
+exceptions.
+</Callout>
+
+<Formal title="The two halves share one type">
+
+```text
+P : LanguagePlugin
+lower : &str → Result<Lowered<P::Extra>>
+emit  : &Lowered<P::Extra> → Result<String>
+```
+
+<span slot="read">For any plugin type P, lower turns text into a
+lowered module carrying P's own Extra, and emit accepts a lowered module
+carrying that same Extra and nothing else. Lowered is short here for
+LoweredModule, and the error type is left out.</span>
+</Formal>
+
+<Examples of="plugin-trait">
+
+```rust
+let l = JsPlugin.lower(src)?;
+let out = JsPlugin.emit(src, &l, &p)?;
+```
+
+```rust
+let l = PyPlugin.lower(py)?;
+JsPlugin.emit(py, &l, &p)?;
+// error[E0308]: mismatched types
+//   expected `&LoweredModule<JsExtra>`,
+//   found `&LoweredModule<PyExtra>`
+```
+
+```rust
+impl LanguagePlugin for JsPlugin {
+    type Extra = JsExtra;
+    // id, extensions, lower ...
+    fn emit(&self, source: &str,
+        lowered: &LoweredModule<JsExtra>,
+        plan: &Plan)
+        -> Result<String, CompileError> {
+        emit::emit_js(source,
+            &lowered.module,
+            &lowered.extra.nodes, plan)
+    }
+}
+```
+
+</Examples>
+
+The first is the normal round trip: `lower` gives `l`, a
+`LoweredModule<JsExtra>`, and `emit` takes it back with a plan `p`; each
+`?` passes a `CompileError` up. The second is the TypeScript mix-up,
+spot the difference: the same two calls with the Python plugin's output,
+and rustc 1.97, compiling against the real crates, stops with the error
+shown (trimmed). The third is the real implementation from
+`frontend-js/src/lib.rs` (rewrapped): where TypeScript cast, Rust's
+`emit` reads `lowered.extra.nodes`, because the type already says
+what `extra` is.
+
+<Prompts ids={['pt-extra', 'pt-lowered', 'pt-mixup', 'pt-two']} />
+
+## One copy per plugin
+
+The pipeline is generic, as *Generics and trait bounds* described
+(from `crates/core/src/lib.rs`, the plan options folded into a comment):
+
+```rust
+pub fn compile<P: LanguagePlugin>(
+    source: &str,
+    plugin: &P,
+    opts: CompileOptions,
+) -> Result<CompileResult, CompileError> {
+    let lowered = plugin.lower(source)?;
+    let analysis = analyze(&lowered.module);
+    // options: opts + the annotations
+    let p = plan(&analysis, options);
+    let code =
+        plugin.emit(source, &lowered, &p)?;
+    let explain = explain(&p);
+    Ok(CompileResult { code, plan: p,
+        analysis, explain })
+}
+```
+
+Rust compiles a separate copy of a generic function for each type it is
+used with (**monomorphization**), so there is a `compile::<JsPlugin>`
+and a `compile::<PyPlugin>`, and inside each copy `Extra` is one known
+type. Look at what comes out, too: `CompileResult` has the code, the
+plan, the analysis and the explain text, and none of them mentions
+`Extra`, which is born in `lower`, used in `emit` and dropped before
+`compile` returns.
+
+<Run id="mono-pick" />
+
+<Prompts ids={['pt-mono', 'pt-result']} />
+
+## Why not dyn?
+
+*Trait objects and dyn* kept two plugins in one `Vec<&dyn Plugin>`, a list of **trait
+objects** (values whose type is only known at run time, called through
+a table of function pointers). Try that with the real trait:
+
+<DispatchSteps client:visible />
+
+The trait itself is fine: the Rust Reference's rules for a
+**dyn-compatible** trait forbid generic methods, associated constants
+and associated types with generics of their own, and ask for a receiver
+like `&self`<Cite id="rustref-dyn-compatibility" />, and `LanguagePlugin`
+breaks none of them. But a trait object has to name every associated
+type, which is what E0191 says<Cite id="rustc-e0191" />, and once you
+name it, `dyn LanguagePlugin<Extra = JsExtra>` and `dyn
+LanguagePlugin<Extra = PyExtra>` are different types. That is not
+fussiness: code that calls `lower` through the
+table<Cite id="rust-reference-trait-object" /> gets the result back and
+must know its type. So the port branches *before* the generic call
+(from `run_language` in `crates/wasm/src/lib.rs`, where `compile` is
+imported as `compile_with_plugin`, shortened here to `compile`):
+
+```rust
+let r = match language {
+    "javascript" | "js" =>
+        compile(source, &JsPlugin, opts),
+    "python" | "py" =>
+        compile(source, &PyPlugin, opts),
+    _ => return Err(/* ... */),
+};
+```
+
+Both arms have the type `Result<CompileResult, CompileError>`, so the
+`match` has one type; the CLI does the same on the file's extension.
+
+<Prompts ids={['pt-e0191', 'pt-dyncompat', 'pt-branch']} />
+
+<Callout kind="engine" label="Under the hood">
+A few smaller changes from the TypeScript interface. `jsPlugin(opts)`
+was a factory taking a parser choice and a TypeScript flag; `JsPlugin`
+has no options, because the port has one JavaScript parser (oxc) and
+rejects `.ts` files. `lower` takes no file name. `id` and `extensions`
+return `&'static` data: constants that live for the whole program
+(*Lifetimes*). A Python file outside the subset is not an error:
+`PyPlugin::lower` returns `Ok` with an empty module, as the TypeScript
+plugin does, so the core sees nothing to transform.
+</Callout>
+
+## Your turn
+
+If the port ever needs a list of plugins chosen at run time, the usual
+move is a second trait without the associated type, implemented for
+every plugin at once. That is a design, not code in engine/rust, and it
+is the exercise.
+
+<Exercise id="anyPlugin" />
+
+## What you learned
+
+- **LanguagePlugin** has `id`, `extensions`, `lower` and `emit`, and an
+  **associated type** `Extra` that carries each plugin's own data from
+  `lower` to `emit`. Passing one plugin's output to another is E0308.
+- `compile<P: LanguagePlugin>` is monomorphized per plugin, and its
+  result never mentions `Extra`.
+- `&dyn LanguagePlugin` is E0191: a trait object must name `Extra`, and
+  each choice is a different type (E0271 for the other plugin).
+- To pick a plugin at run time, branch first and call `compile` in each
+  arm, or erase `Extra` behind a second, dyn-friendly trait.
+
+<Quiz />

@@ -1,0 +1,305 @@
+---
+n: 227
+day: 15
+part: XIII
+title: 'RISC-V: registers, memory and the stack'
+tagline: 'Our running example never left the registers; real programs do, because lists, records and saved values live in memory. RISC-V reaches memory in exactly one way, with one way of naming an address, and keeps its stack with nothing more than an agreed register and some arithmetic.'
+objectives:
+  - Name RISC-V's 32 integer registers by number and by role.
+  - Explain what a load-store architecture is, and turn p.x += p.vx into loads, an add and a store.
+  - Use RISC-V's one addressing mode, base register plus offset, and work around its 12-bit limit.
+  - Claim, use and release stack space with sp, keeping it 16-byte aligned.
+introduces: [load-store, addressing-mode, stack-pointer]
+uses: [machine-code, assembly-language, isa, risc-v, register, memory, address, pointer, byte, bit-ops, stack-and-heap, call-stack, call-frame, stack-slot, frame-pointer, array, index, object, field, arraybuffer, typed-array, function, test]
+sources: [riscv-isa-unpriv, riscv-psabi]
+---
+import LoadStoreSteps from '../../../components/diagrams/ch227/LoadStoreSteps';
+import StackSteps from '../../../components/diagrams/ch227/StackSteps';
+
+## Thirty-two names
+
+`sumsq` was lucky: `n`, `s` and `i` fit in registers for the whole
+run. Most functions are not so lucky; a particle's fields and a list's
+elements live in memory, and values that must survive a call need
+somewhere safe to wait. Before memory, though, here is what RISC-V has
+instead of it: 32 integer registers, each 64 bits wide on RV64.
+
+To the base instructions, `x1` to `x31` are interchangeable (only
+`x0` is special); the names and roles below are an agreement among software, recorded in the
+RISC-V psABI (the processor-specific application binary interface,
+which the next chapter is about)<Cite id="riscv-psabi" />:
+
+```text
+x0        zero     always 0
+x1        ra       return address
+x2        sp       stack pointer
+x3, x4    gp, tp   reserved for the system
+x5-x7     t0-t2    temporaries
+x8-x9     s0-s1    saved
+x10-x17   a0-a7    arguments and results
+x18-x27   s2-s11   saved
+x28-x31   t3-t6    temporaries
+```
+
+So `a0` is `x10` and `sp` is `x2`; an assembler accepts either name.
+The `t` registers are scratch space, the `s` registers keep their
+values across calls, and the `a` registers carry arguments in and
+results out; why is the next chapter's story.
+
+<Prompts ids={['abi-names']} />
+
+## Only loads and stores touch memory
+
+Take one line of a particle simulation, `p.x += p.vx`, where `p` is a
+record in memory with two 8-byte fields. You might hope for one
+instruction, "add the value at this address to the value at that
+one"; RISC-V has none, because `add` takes registers and only
+registers.
+
+<Analogy title="a workshop bench and the storeroom">
+In a workshop you cannot saw a plank while it is on the storeroom
+shelf. You carry it to the bench, cut it there with the tools at hand,
+and carry the result back. Carrying in is a load, the bench is the
+registers, and carrying back is a store.
+<span slot="breaks">A plank on the bench is no longer on the shelf; a
+load copies, so the value stays in memory as well, and the two copies
+can drift apart until the store writes the new one back.</span>
+</Analogy>
+
+Step through the four instructions clang actually produces for that
+line (`clang -O2 --target=riscv64 -march=rv64im`, for a C function
+`step(struct P *p)` that does `p->x += p->vx`):
+
+<LoadStoreSteps client:visible />
+
+<Callout kind="definition">
+A **load-store architecture** is one in which only load and store
+instructions access memory and every other instruction works on
+registers. A **load** copies a value from memory into a register; a
+**store** copies a register's value into memory. RISC-V is one: "only
+load and store instructions access memory and arithmetic instructions
+only operate on CPU registers"<Cite id="riscv-isa-unpriv" />.
+</Callout>
+
+Loads and stores come in sizes: `ld`/`sd` move 8 bytes (RV64 only),
+`lw`/`sw` 4, `lh`/`sh` 2 and `lb`/`sb` 1. A smaller load must fill the
+rest of the register: `lw`, `lh` and `lb` **sign-extend**
+(copy the value's top bit upwards, so -1 stays -1), while `lwu`, `lhu`
+and `lbu` fill with zeros<Cite id="riscv-isa-unpriv" />. Memory is
+byte-addressed and, by default, little-endian: an 8-byte value is
+stored lowest byte first<Cite id="riscv-psabi" />. You can watch both
+with a JavaScript `DataView`, which reads the same bytes either way:
+
+<Run id="bytes" />
+
+<Examples of="load-store">
+
+```text
+ld  t0, 0(a0)    # t0 = the 8 bytes at a0
+sd  t0, 8(a0)    # the 8 bytes at a0+8 = t0
+```
+
+```text
+add a0, a0, 0(a1)
+error: invalid operand for instruction
+
+ld  t0, 0(a1)
+add a0, a0, t0
+```
+
+```text
+step:
+    ld   a1, 8(a0)
+    ld   a2, 0(a0)
+    add  a1, a2, a1
+    sd   a1, 0(a0)
+    ret
+```
+
+</Examples>
+
+The first copies one 8-byte value to the next slot along, through a
+register, since there is no memory-to-memory move. The second is a
+spot the difference: adding straight from memory is rejected by
+`llvm-mc` with exactly that message, and the fix is to load first. The
+third is the real `step` from the diagram: one line of source became
+four instructions, two of which wait on memory (which is why chapter
+51's caches matter so much).
+
+<Prompts ids={['load-store-what', 'add-from-memory', 'sign-extend']} />
+
+## One way to name an address
+
+Every load and store above wrote its address the same way: `8(a0)`
+means "the address in `a0`, plus 8".
+
+<Analogy extra title="directions from a landmark">
+"From the church, go 30 metres along" names a place by a starting
+point everyone can find and a short distance from it, rather than by
+map coordinates.
+<span slot="breaks">The distance has a hard limit: an offset must fit
+in 12 signed bits, -2048 to 2047 bytes, so for anything further you
+must first move the landmark (put a new base address in a
+register).</span>
+</Analogy>
+
+<Callout kind="definition">
+An **addressing mode** is a rule an instruction uses to name a memory
+location (its *effective address*). RISC-V loads and stores have one:
+**base plus offset**, a register `rs1` plus a sign-extended 12-bit
+immediate<Cite id="riscv-isa-unpriv" />. Other ISAs offer several
+modes (for example ones that also add a scaled index register); with
+RISC-V, anything more is built from ordinary instructions first.
+</Callout>
+
+<Formal title="RISC-V's effective address">
+
+```text
+EA = x[rs1] + sext(imm[11:0])
+ld rd, imm(rs1):   x[rd] ← mem64[EA]
+sd rs2, imm(rs1):  mem64[EA] ← x[rs2]
+```
+
+<span slot="read">The effective address EA is the value in register
+rs1 plus the 12-bit immediate, sign-extended so it may be negative. A
+64-bit load sets register rd to the eight bytes of memory starting at
+EA; a 64-bit store writes register rs2's eight bytes there. The arrow
+means "becomes".</span>
+</Formal>
+
+<Examples of="addressing-mode">
+
+```text
+ld   a0, 16(sp)   # a saved value
+ld   a0, -24(s0)  # offsets may be < 0
+```
+
+```text
+ld   a0, 4096(sp)
+error: operand must be ... an integer in
+the range [-2048, 2047]
+
+li   t0, 4096     # lui t0, 1
+add  t0, sp, t0
+ld   a0, 0(t0)
+```
+
+```text
+getg:              # return g (global)
+    lui  a0, %hi(g)
+    ld   a0, %lo(g)(a0)
+    ret
+```
+
+</Examples>
+
+The first shows the common case, stack slots near `sp` or `s0`, with
+offsets in either direction. The second is a spot the difference: 4096
+does not fit in 12 bits, `llvm-mc` says so (the message is shortened
+here), and the fix builds the address in a register first (the
+assembler turns `li t0, 4096` into `lui t0, 1`). The third is clang's
+real code for reading a global variable `g`: `lui` loads the upper 20
+bits of `g`'s address and the load supplies the lower 12 as its offset
+(`%hi` and `%lo` ask the assembler and linker to split the address,
+the same split as the last chapter's `li`). An array element is the
+same story: `xs[i]` needs `i × 8` added to the base first, which the
+Code shape chapter works through.
+
+<Prompts ids={['base-offset', 'offset-range']} />
+
+## The stack pointer
+
+A function that needs memory of its own (to save a register, or for a
+local that does not fit) takes it from the **stack**, the call stack of
+frames from chapter 19 and the VM of chapter 82. On RISC-V the stack is only memory plus an
+agreement: register `x2`, called `sp`, holds the address of its top,
+and the stack grows *downwards*, towards lower addresses. The hardware
+knows nothing of this; the manual says the base ISA has no dedicated
+stack pointer, and the calling convention picks `x2`<Cite id="riscv-isa-unpriv" />.
+
+<Analogy extra title="a notebook filled from the back">
+Picture a shared notebook that everyone fills from the last page
+towards the front, with a bookmark at the last page in use. To get two
+pages you move the bookmark two pages forward and write on them; when
+you are done you move it back.
+<span slot="breaks">Moving the bookmark back does not tear the pages
+out: the old writing is still there, below the mark, until the next
+person writes over it, which is why nobody may rely on what lies below
+sp.</span>
+</Analogy>
+
+<StackSteps client:visible />
+
+<Callout kind="definition">
+The **stack pointer**, `sp` (`x2`), holds the lowest address of the
+stack currently in use. The stack grows downwards: a function claims
+space by subtracting from `sp` and releases it by adding the same
+amount back, and it names its slots as offsets from `sp`. In the
+standard RISC-V ABI, `sp` is a multiple of 16 on entry to every
+function and stays aligned, and data below `sp` must not be relied
+on<Cite id="riscv-psabi" />.
+</Callout>
+
+<Examples of="stack-pointer">
+
+```text
+addi sp, sp, -16    # claim 16 bytes
+sd   a0, 0(sp)      # use them
+ld   a0, 0(sp)
+addi sp, sp, 16     # give them back
+```
+
+```text
+sumsq:              # clang -O0
+    addi sp, sp, -48
+    sd   ra, 40(sp)
+    sd   s0, 32(sp)
+    addi s0, sp, 48
+    sd   a0, -24(s0)    # n
+```
+
+```text
+addi sp, sp, -8     # wrong: 8 is not
+                    # a multiple of 16
+addi sp, sp, -16    # right, even if only
+sd   ra, 8(sp)      # 8 bytes are needed
+```
+
+</Examples>
+
+The first is the smallest frame: claim, use, release. The second is
+real: `sumsq` compiled *without* optimisation, which
+keeps every variable in a stack slot rather than a register. It claims
+48 bytes (a multiple of 16), saves `ra` and `s0`, then sets `s0` to the
+old `sp` so that `s0` serves as a **frame pointer** (chapter 82's idea,
+in hardware form) and the slots are named by negative offsets from it:
+`n` at `-24(s0)`, and a few lines later `s` and `i` at `-32(s0)` and
+`-40(s0)`. The optimised
+`sumsq` never touched memory at all. The third is the mistake to
+avoid: the assembler happily accepts `-8`, because
+alignment is a software rule rather than an encoding rule, but it
+breaks the promise every other function relies on.
+
+<Prompts ids={['stack-grows', 'sp-align']} />
+
+## Your turn
+
+<Exercise id="mini-machine" />
+
+## What you learned
+
+- RISC-V has 32 integer registers; software gives them roles and names
+  such as `zero`, `ra`, `sp`, `t0`, `s0` and `a0`.
+- It is a **load-store** architecture: only loads and stores touch
+  memory, in sizes of 1, 2, 4 and 8 bytes, signed or unsigned.
+- Its one **addressing mode** is a base register plus a 12-bit signed
+  offset; larger offsets, globals and array elements need the address
+  built in a register first.
+- The **stack pointer** `sp` marks the top of a downward-growing stack,
+  stays 16-byte aligned, and frames are claimed and released by
+  arithmetic on it.
+
+Next: the agreement about where arguments, results and the return
+address go when one function calls another.
+
+<Quiz />

@@ -1,0 +1,209 @@
+---
+n: 261
+day: 24
+part: XIV
+title: 'GraalJS and Truffle'
+tagline: 'What if you never wrote a JavaScript compiler at all? Truffle lets you write a tree-walking interpreter whose nodes watch the values passing through them and rewrite themselves to suit; GraalJS is a whole JavaScript engine built that way.'
+objectives:
+  - Say what Truffle and GraalJS are, and how their approach differs from V8’s.
+  - Explain how a self-optimising AST node specialises itself, and generalises when a guess fails.
+  - Read GraalJS’s real `+` node and say what `rewriteOn` does.
+  - Explain why specialisation only ever moves from specific to general.
+introduces: [self-optimizing-ast]
+uses: [tree-walking-interpreter, evaluate, ast, ast-node, interpreter-overhead, interpreter, compiler, runtime-value, dynamic-typing, class, method, closure, tiering, jit-compiler, ignition, optimizing-tiers, type-feedback, speculation, deoptimization, inline-cache, engine-diversity, smi, aos-vs-soa]
+sources: [truffle-readme, truffle-pe, truffle-node-replace, truffle-specialization, graaljs-add, graal-publications, wurthinger2012, wurthinger2013, v8-maglev]
+---
+import NodeStates from '../../../components/diagrams/ch261/NodeStates';
+import SpecializeSteps from '../../../components/diagrams/ch261/SpecializeSteps';
+
+## The question your tree-walker keeps asking
+
+Your Part III interpreter evaluates `a + b` by asking the same
+questions every single time: what kind of node is this? Are both
+values numbers? Strings? In a loop that runs a million times, the
+answers never change, and you pay for them a million times; that is the
+interpreter overhead you measured in *Inheritance, and measuring the
+tree-walker*.
+
+V8's answer is separate machinery: bytecode for Ignition, then
+compilers that rewrite hot code using what the interpreter
+observed<Cite id="v8-maglev" />. **Truffle**, from Oracle and the
+Johannes Kepler University Linz, takes another road. You write an
+interpreter for "self-modifying Abstract Syntax Trees", and the Graal
+compiler (GraalVM's own compiler) derives fast machine
+code from that interpreter itself<Cite id="truffle-readme" />.
+**GraalJS**, "a JavaScript engine implemented in Java on top of
+GraalVM", is built this way<Cite id="graaljs-add" />.
+
+Two ideas make it work: nodes that specialise themselves, which this
+chapter is about, and *partial evaluation*, which turns such an
+interpreter into compiled code and is the next chapter's subject.
+
+## Nodes that rewrite themselves
+
+<Analogy title="a post-room clerk">
+A post-room clerk notices that every letter for a month has been local,
+so she puts up a "local only" tray and stops checking addresses. The
+day a foreign letter turns up, she takes the tray down for good and
+goes back to checking every address: a little slower, but always
+right.
+<span slot="breaks">The clerk can glance at a letter and see it is
+foreign; a node only finds out its guess was wrong when a check inside
+its fast path fails, and it must then give the right answer for that
+very value before changing state.</span>
+</Analogy>
+
+<Analogy extra title="a barista and a regular">
+A regular orders a flat white every morning, so the barista starts
+making one as soon as he walks in. The morning he asks for tea, she
+makes tea, and from then on she waits for him to order.
+<span slot="breaks">A barista might drift back to the old habit after
+a few weeks of flat whites; a Truffle node never goes back to a more
+specific guess, so it cannot flip between states for ever.</span>
+</Analogy>
+
+A `+` node starts with no idea what it will see. After its first
+execution it narrows itself to the case it saw, and it widens again
+when something else turns up:
+
+<Figure takeaway="Specialise on what you have seen; widen when it stops being true." caption="A self-specialising + node. Each arrow is a rewrite. Arrows only go one way, so a node cannot flip back and forth for ever.">
+<NodeStates />
+</Figure>
+
+Step through one node meeting a series of calls. Watch the state, and
+the checks the node has to make on every call while it is in that
+state:
+
+<SpecializeSteps client:visible />
+
+<Callout kind="definition">
+A **self-optimising AST** interpreter is a tree-walking interpreter
+whose nodes record what they have seen and rewrite themselves (or swap
+in a replacement node) into a version specialised for those cases, with
+a check that falls back and generalises when a case fails. The GraalVM
+team traces the design to a 2012 paper on self-optimising,
+self-specialising interpreters applied to
+JavaScript<Cite id="graal-publications" /><Cite id="wurthinger2012" />.
+</Callout>
+
+<Formal title="Specialisation only moves up">
+
+```text
+uninit ⊏ int ⊏ double ⊏ generic
+state after a call ⊒ state before it
+```
+
+<span slot="read">The states are ordered from most specific to most
+general: uninitialised below int, int below double, double below
+generic. After any call, the node's state is the same as before or
+higher in that order, never lower. With only four states, a node can
+change at most three times, so it is guaranteed to settle.</span>
+</Formal>
+
+<Prompts ids={['self-opt-what', 'sa-uninit', 'one-way']} />
+
+## GraalJS's real `+`
+
+GraalJS writes these cases with Truffle's *DSL* (a small language for
+describing nodes, written as Java annotations). Each `@Specialization` is one case:
+
+<Examples of="self-optimizing-ast">
+
+```js
+add(1, 2);  // uninit → int: 3
+add(40, 2); // int: checks pass, 42
+```
+
+```js
+add(2 ** 31 - 1, 1);
+// int overflows → double, for good
+add(5, 6);  // still double: 11
+```
+
+```java
+// JSAddNormalNode.java (GraalJS)
+@Specialization(rewriteOn =
+    ArithmeticException.class)
+static int doInt(int a, int b) {
+  return Math.addExact(a, b);
+}
+// JSAddNode.java (GraalJS)
+@Specialization
+static double doDouble(double a,
+    double b) {
+  return a + b;
+}
+```
+
+</Examples>
+
+The first two are the stepper's calls written out: the first call
+picks the int case, and later integer calls only pay for its checks.
+The second shows the one-way rule: 2<sup>31</sup> − 1 is the largest
+32-bit integer, so adding 1 overflows, the node moves to double, and
+it stays there when small integers come back. The third is the real
+thing. `doInt` adds two `int`s with `Math.addExact`, Java's add that
+throws an `ArithmeticException` instead of wrapping round on overflow;
+`rewriteOn` means that if this exception is thrown even once, this node
+never uses that case again, and the next one runs
+instead<Cite id="truffle-specialization" />. `doDouble` handles any
+two numbers. Further down the file, a generic case that first converts
+its operands *replaces* all the specific ones<Cite id="graaljs-add" />,
+which is the step to `generic` in the stepper.
+
+At the lowest level, any node can swap itself for another in the tree
+with `replace`, which also throws away compiled code that relied on the
+old node<Cite id="truffle-node-replace" />. That is the price of
+changing your mind, and the reason the one-way rule matters: a node
+that kept flipping would keep throwing its compiled code away.
+
+<Prompts ids={['rewrite-on', 'sa-overflow', 'replace-invalidates']} />
+
+Here is the spot-the-difference version of the rule. Two nodes see
+integers, then one double, then integers again:
+
+```text
+one-way:   uninit int double double …
+flip-flop: uninit int double int double …
+```
+
+The first changes twice and then settles, so code compiled for its
+`double` state stays valid. The second changes on every switch of
+input, and under Truffle each change would invalidate the compiled
+code, so it would be compiled and thrown away over and over: Truffle's
+documentation calls this a *deoptimisation cycle*, and warns that
+state which never settles causes one<Cite id="truffle-pe" />.
+
+<Callout kind="engine" label="Under the hood">
+Truffle's documentation names the problem it avoids: a classic engine
+needs "semantics, profiling, and optimization knowledge to be
+represented in both interpreter and compiler". With Truffle, the
+optimised code is derived from the interpreter, so a node's
+specialisations do the job that type feedback does in V8 (the int state
+of a `+` node records what the node has seen), and the language's
+meaning lives in one place<Cite id="truffle-pe" />. The GraalVM team describes
+the whole stack, interpreter and dynamic compiler, in "One VM to Rule
+Them All"<Cite id="wurthinger2013" />; the next chapter shows how the
+compiler turns a tree of specialised nodes into machine code.
+</Callout>
+
+<Prompts ids={['graaljs-what', 'two-copies']} />
+
+## Your turn
+
+<Exercise id="selfAdd" />
+
+## What you learned
+
+- **Truffle** builds language engines as tree-walking interpreters;
+  **GraalJS** is a JavaScript engine built with it, on GraalVM.
+- A **self-optimising AST** node records the values it sees, rewrites
+  itself into a specialised version, and generalises when a check
+  fails.
+- GraalJS's `+` has an int case that rewrites on overflow
+  (`rewriteOn`), a double case, and a generic case that replaces them.
+- States only move from specific to general, so every node settles;
+  a node that flipped back and forth would cause a deoptimisation
+  cycle.
+
+<Quiz />

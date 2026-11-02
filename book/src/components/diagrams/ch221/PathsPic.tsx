@@ -1,4 +1,4 @@
-// Chapter 221: why context-insensitive analysis is imprecise. Two call
+// Chapter 95: why context-insensitive analysis is imprecise. Two call
 // sites enter id and two returns leave it; an analysis that merges id's
 // facts also follows the impossible path "in at s2, out at s1".
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';

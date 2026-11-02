@@ -1,5 +1,5 @@
-// Chapter 46 cards (the JSON checkpoint, first half).
-// Generated layout: edit freely; keys are stable ids, never rename them.
+// Chapter 46 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'json-what': {

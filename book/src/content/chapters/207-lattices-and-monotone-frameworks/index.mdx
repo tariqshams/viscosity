@@ -1,0 +1,256 @@
+---
+n: 207
+day: 10
+part: XII
+title: 'Lattices and monotone frameworks'
+tagline: 'Every analysis so far has stopped, and every answer has been safe. That is not luck: it follows from three small properties of the facts and the rules, and once you can name them you can check them for any analysis you invent.'
+objectives:
+  - Define a partial order and a lattice, find meets and joins on a Hasse diagram, and give a lattice’s height.
+  - Say what makes a transfer function monotone, and test one.
+  - State informally why iteration from the top reaches the greatest fixpoint of a monotone framework.
+  - Explain the gap between the meet over all paths and the iterative answer, with constant propagation as the example.
+introduces: []
+uses: [lattice, dataflow, fixpoint, worklist, gen-kill, reaching-definitions, available-expressions, very-busy-expressions, cfg, basic-block, ssa, phi-node, set, function, booleans, numbers, monotone-framework]
+sources: [kildall1973, kamullman1977, aho2006]
+---
+import HasseFigure from '../../../components/diagrams/ch207/HasseFigure';
+import ChainSteps from '../../../components/diagrams/ch207/ChainSteps';
+
+{/* ── remnant of old chapter 92: keep only what goes beyond the core ── */}
+
+## Why did they all stop?
+
+You have now solved five analyses: definitely assigned, reaching
+definitions, available expressions, very busy expressions and
+Viscosity's "is this a number?". Every one of them stopped, and every
+answer was safe (it never claimed more than was true). Suppose you
+invent a sixth tomorrow, say "is this index ever negative?"; how would
+you know, before running it on a single program, that it will stop and
+that its answers can be trusted? Gary Kildall in 1973, and John Kam and
+Jeffrey Ullman in 1977, answered this with a little lattice
+theory<Cite id="kildall1973" /><Cite id="kamullman1977" />. It comes
+down to three properties, and this chapter names them.
+
+## Orders where not everything compares
+
+Numbers are **totally** ordered: for any two, one is smaller. Facts are
+not. Of the sets `{a, b}` and `{b, c}`, neither contains the other, so
+neither promises more; they are only different. An order that allows
+this is a **partial order**.
+
+<Analogy title="boxes that fit inside each other">
+Say one box is "below" another if it fits inside it. A shoebox fits in
+a moving box, and the moving box fits in a crate, so the shoebox fits
+in the crate too. But a long, thin poster tube and a wide, flat pizza
+box may not fit inside each other either way: neither is "bigger".
+<span slot="breaks">Real boxes can fit in more than one way, or fit
+only when tilted; in a partial order, "below" is a plain yes or no
+between two facts.</span>
+</Analogy>
+
+<Formal title="A partial order">
+
+```text
+x ⊑ x                         reflexive
+x ⊑ y and y ⊑ x  ⟹  x = y     antisymmetric
+x ⊑ y and y ⊑ z  ⟹  x ⊑ z     transitive
+```
+
+<span slot="read">Every fact is below or equal to itself. If x is below
+or equal to y and y is below or equal to x, they are the same fact.
+And if x is below y and y is below z, then x is below z. Nothing in the
+rules says that any two facts must be comparable; that is what makes
+the order partial.</span>
+</Formal>
+
+A **Hasse diagram** draws a partial order with a line wherever one fact
+sits *directly* above another (the rest follows by transitivity). Here
+are two:
+
+<Figure takeaway="A lattice can be wide without being tall; what matters for stopping is its height." caption="Left: the sets drawn from a, b and c, ordered by “contains” (height 3). Right: the lattice of the Sparse conditional constant propagation chapter: every number in one row, between “no information yet” and “varies” (height 2).">
+  <HasseFigure />
+</Figure>
+
+The **meet** of two facts, `x ⊓ y`, is the highest fact below both
+(for `{a, b}` and `{b, c}`, it is `{b}`); the **join**, `x ⊔ y`, is the
+lowest fact above both (`{a, b, c}`). A partial order in which every
+pair has a meet and a join is a **lattice**, and its **height** is the
+largest number of steps down from top to bottom (three for the sets,
+two for the constants, although the constant lattice is infinitely
+wide).
+
+<Analogy extra title="the nearest common ancestor">
+In a family tree drawn with ancestors below, the meet of two cousins is
+their nearest common ancestor: someone both descend from, and no one
+lower down will do better.
+<span slot="breaks">Real families break the rule at once: two siblings
+have *two* equally near common ancestors, their mother and their
+father, and a lattice demands exactly one best answer. A family tree
+is a partial order, but not a lattice.</span>
+</Analogy>
+
+One more thing about direction. We have drawn facts that promise more
+at the top, so the starting guess is the top and facts move down; for
+a may problem such as reaching definitions, the picture is turned
+over, since a *smaller* set promises more ("only these definitions can
+reach"): its top is the empty set, and its meet is union. Abstract
+interpretation, next chapter, usually draws everything the other way
+up, with a join going upwards; it is the same picture, turned upside
+down.
+
+<Prompts ids={['partial-what', 'meet-join', 'height-what', 'wide-short']} />
+
+## Monotone rules
+
+The second property is about the transfer functions. A rule is
+**monotone** if giving it a better fact can never give you a worse
+answer.
+
+<Analogy extra title="a tap">
+Open a tap further and at least as much water comes out, never less.
+The tap may not be fair (half a turn might double the flow), but it is
+never contrary.
+<span slot="breaks">A tap's flow is a single number; a fact can be a
+whole set, so "more" means "higher in the order", and a monotone rule
+only has to respect that order, not grow in any simple way.</span>
+</Analogy>
+
+<Formal title="Monotone">
+
+```text
+x ⊑ y  ⟹  f(x) ⊑ f(y)
+```
+
+<span slot="read">For any two facts x and y, if x is below or equal to
+y, then f of x is below or equal to f of y: a higher input never gives
+a lower output.</span>
+</Formal>
+
+Every gen/kill transfer function is monotone: if `IN ⊆ IN′`, removing
+the same kill set and adding the same gen set keeps the first result
+inside the second. So is the meet itself. A rule that is *not*
+monotone would be "if nothing reaches, generate `d9`; otherwise
+generate nothing", where more coming in gives less going out; with
+rules like that, an iteration can go round for ever.
+
+<Prompts ids={['monotone-what', 'genkill-monotone']} />
+
+## The framework, and why iteration works
+
+Put the properties together and you have a **monotone framework**,
+the shape Kam and Ullman gave to Kildall's idea<Cite id="kamullman1977" />.
+
+<Callout kind="definition">
+A **monotone framework** is a dataflow analysis described by a lattice
+of facts with finite height, a meet operator, and a transfer function
+for each block that is monotone. For any such framework, iterating the
+equations from the top of the lattice stops, and it stops at the
+**greatest fixpoint**: the most precise answer that agrees with every
+equation.
+</Callout>
+
+Why? Start at the top and apply the equations. The first step can only
+go down, since nothing is above the top; and because the rules are
+monotone, a step down in the inputs can only cause a step down (or no
+step) in the outputs, so every later step goes down too. With finite
+height there are only so many steps down, so it stops. And it stops at
+the best answer: any fixpoint `Y` is below the top, so applying the
+rules to both keeps `Y` below each step of the chain.
+
+<ChainSteps client:visible />
+
+<Formal title="The descending chain">
+
+```text
+⊤ ⊒ F(⊤) ⊒ F(F(⊤)) ⊒ …  ⊒ Fᵏ(⊤) = Fᵏ⁺¹(⊤)
+Y = F(Y)  ⟹  Y ⊑ Fᵏ(⊤)
+```
+
+<span slot="read">Starting from the top, each application of F gives a
+fact below or equal to the one before (⊒ reads "is above or equal
+to"), and after some number k of steps, no more than the height, a
+step gives back the same fact: a fixpoint. The second line says that
+any fixpoint Y at all is below or equal to that one, which makes it the
+greatest fixpoint.</span>
+</Formal>
+
+<Examples of="monotone-framework">
+
+```text
+definitely assigned: sets, ⊓ = ∩,
+OUT = IN ∪ assigned(B)
+```
+
+```text
+reaching definitions: sets, ⊓ = ∪,
+OUT = gen ∪ (IN − kill)
+```
+
+```text
+Viscosity: {number, maybe-not},
+phi: number iff every operand is
+```
+
+</Examples>
+
+Each is a lattice of finite height, a meet and monotone rules, so each
+is guaranteed to stop. The third is Viscosity's numeric inference: its
+lattice has height 1, and its rules are monotone (turning an operand
+from "number" to "maybe not" can only turn a phi or a sum the same
+way). Viscosity starts only the values that can sit on a cycle at the
+top, rather than every value, which is one reason it keeps its cap of
+1000 rounds as a safety net.
+
+<Prompts ids={['framework-what', 'greatest-fixpoint']} />
+
+## How good is the answer?
+
+The ideal answer would follow each path separately, apply the
+transfer functions along it, and only then meet the results of all the
+paths: the **meet over all paths**. Iteration meets at every join
+instead, and those are not always the same. If every transfer function
+is **distributive** (`f(x ⊓ y) = f(x) ⊓ f(y)`), as gen/kill functions
+are, the two answers agree, which was Kildall's case<Cite id="kildall1973" />.
+Kam and Ullman showed that with rules that are only monotone, iteration
+still gives a safe answer, below the ideal one, and that no algorithm
+can compute the ideal answer for every monotone
+framework<Cite id="kamullman1977" />. Constant propagation is the
+standard example:
+
+<Run id="mop" />
+
+On each path `a + b` is 3, so the per-path answer is 3; however,
+meeting at the join first makes `a` and `b` both "varies", and their
+sum "varies" too. The iterative answer is safe (it never claims a wrong
+constant), only less precise.
+
+<Prompts ids={['mop-what', 'distributive-equal']} />
+
+<Callout kind="engine" label="Under the hood">
+This is the shape in which the standard textbook presents dataflow
+analysis, with the iterative algorithm, the greatest fixpoint and the
+meet over all paths<Cite id="aho2006" />; once a new analysis is written
+as a lattice, a meet and monotone rules, the same solver runs it, and
+the same argument proves it stops.
+</Callout>
+
+## Your turn
+
+<Exercise id="monotone" />
+
+## What you learned
+
+- A **partial order** lets some facts be incomparable; a **lattice**
+  adds a meet and a join for every pair; its **height** bounds how far
+  facts can fall.
+- A transfer function is **monotone** if a higher input never gives a
+  lower output. Gen/kill functions are.
+- A **monotone framework** (finite height, a meet, monotone rules)
+  always stops when iterated from the top, at the greatest fixpoint.
+- That answer is safe; it equals the meet over all paths when the
+  rules are distributive, and can be less precise when they are not.
+
+Next: running a whole program on descriptions of values rather than
+values, which turns all of this into one idea.
+
+<Quiz />

@@ -1,0 +1,298 @@
+---
+n: 175
+day: 2
+part: X
+title: 'LL(1) tables and rewriting grammars'
+tagline: 'Put FIRST and FOLLOW into a table and a twenty-line loop becomes a parser for any grammar the table fits. When it does not fit, two rewrites, removing left recursion and left factoring, usually make it fit.'
+objectives:
+  - Build the LL(1) table of a grammar from its FIRST and FOLLOW sets, and spot a conflict.
+  - Run a table-driven predictive parser by hand, with a stack, and read off the leftmost derivation.
+  - Remove left recursion from a rule, and explain what it does to the shape of the tree.
+  - Left-factor two rules that share a start, and connect the table to the recursive-descent parser you wrote.
+introduces: [ll1-table, left-recursion-elimination]
+uses: [first-set, follow-set, derivation, parse-tree, ambiguity, grammar, production-rule, terminal, nonterminal, bnf, parser, recursive-descent, precedence, associativity, syntax-error, lookahead, token, keyword, drip, call-stack, stack-overflow, try-catch, error-object, object, array, push, while-loop, for-of, map-filter-reduce, arrow-function, copy-spread]
+sources: [aho2006, lewisstearns1968]
+---
+import LLTable from '../../../components/diagrams/ch175/LLTable';
+import LLSteps from '../../../components/diagrams/ch175/LLSteps';
+
+## From sets to a table
+
+The last chapter ended with a recipe for the `rest` function: take
+`rest → "+" item rest` when the next token is `+` (FIRST), take
+`rest → ε` when it is `;` or `)` (FOLLOW), and report an error for
+anything else. Do that for every nonterminal at once, and the answers
+fit in a grid, with one row per nonterminal and one column per token.
+Here is the grid for the adding grammar of the last chapter (`stmt`,
+`expr → item rest`, `rest → "+" item rest | ε`, and `item`):
+
+<Figure takeaway="One look at the next token picks the rule." caption="The LL(1) table of the adding grammar. Each filled cell names the body to use when that row's nonterminal is being parsed and that column's token is next; an empty cell means a syntax error.">
+  <LLTable />
+</Figure>
+
+<Analogy title="signposts at a junction">
+At every junction on a country walk, a post has an arm for each
+village, pointing down its road; you read one arm and walk on, never
+needing the whole map.
+<span slot="breaks">A walker knows their destination from the start;
+the parser only ever knows the very next token, and it is that token,
+not the end of the journey, that the arm is chosen by.</span>
+</Analogy>
+
+<Analogy extra title="a phone menu">
+"Press 1 for bookings, 2 for a refund": each menu turns one key press
+into one choice, which leads to another menu.
+<span slot="breaks">A phone menu asks you; the parser reads a token
+that was already there, and a key with no use is a syntax error, not
+"please try again".</span>
+</Analogy>
+
+<Callout kind="definition">
+An **LL(1) table** has a row for each nonterminal and a column for
+each terminal (and `$`). A rule `A → α` goes into row `A` in every
+column of FIRST(α), and, if α can vanish, in every column of
+FOLLOW(A) too. A grammar is **LL(1)** when no cell holds two rules:
+then, reading the input **L**eft to right and building a **L**eftmost
+derivation, **1** token of lookahead always decides<Cite id="aho2006" />.
+</Callout>
+
+<Formal title="Filling the table">
+
+```text
+for each rule A → α:
+  M[A, a] ∋ (A → α)  for a ∈ FIRST(α)
+  if α ⇒* ε:
+  M[A, b] ∋ (A → α)  for b ∈ FOLLOW(A)
+G is LL(1) ⇔ every M[A, a] has ≤ 1 rule
+```
+
+<span slot="read">M is the table, and M of A, a is the cell in row A,
+column a. For each rule A is made of alpha: the cell M of A, a contains
+that rule for every terminal a in FIRST of alpha; and if alpha can
+become the empty row, the cell M of A, b contains it for every b in
+FOLLOW of A. The grammar is LL(1) exactly when every cell contains at
+most one rule.</span>
+</Formal>
+
+<Prompts ids={['cell-what', 'fill-rule', 'll1-what']} />
+
+## A parser that is only a loop
+
+With the table, the parser needs no function per rule. It keeps a
+**stack** of what it still expects to see, with the next expectation
+on top. If a token is on top, it must be the next token: match it and
+move on. If a nonterminal is on top, the cell for that nonterminal and
+the next token says which rule to use: replace the nonterminal by the
+rule's body. When only `$` is left on both sides, the input is
+accepted. Step through it:
+
+<LLSteps client:visible />
+
+The rules it used, in order, are the leftmost derivation of
+`print 1 + 2;`; and it is your recursive-descent parser in disguise. Each row of the table is one
+function's chain of `if`s, and the stack holds what the call stack
+held: the parts of each rule still to come.
+
+<Examples of="ll1-table">
+
+```text
+greeting → "hello" name
+name → "Ada" | "Alan"
+M[name, Ada] = name → Ada
+M[name, Alan] = name → Alan
+```
+
+```text
+M[rest, +] = rest → + item rest
+M[rest, ;] = rest → ε
+M[rest, )] = rest → ε
+M[rest, NUMBER]: empty (error)
+```
+
+```text
+Drip: declaration → fnDecl | ... | statement
+fnDecl  → "fn" IDENT ...
+primary → "fn" "(" ...   (anonymous)
+M[declaration, fn]: two rules
+```
+
+</Examples>
+
+The first is the smallest table worth drawing: each `name` rule gets
+its own cell. The second is the
+`rest` row from the figure, and the empty cell is how a table-driven
+parser reports `print 1 2;`: with `rest` on top and a `NUMBER` next,
+there is no rule, and the error is reported at the `2`. The third is
+real: in Drip, `fn` can begin a function declaration (`fn area(w, h)`)
+or an expression statement that starts with an anonymous function
+(`fn (x) { ... }(3);`), so Drip is not quite LL(1). The fix is to
+peek one token further, at the name or the `(`; a parser that does so
+is called LL(2) at that spot, and hand-written parsers do it freely.
+
+<Prompts ids={['push-reverse', 'drip-fn']} />
+
+## When the table does not fit: left recursion
+
+Try the table on the grammar as it was first written,
+`expr → expr "+" item | item`. Both rules begin with whatever `item`
+begins with, so both land in `[expr, NUMBER]` and `[expr, (]`: a
+conflict, and one that no amount of lookahead fixes, because the first
+rule can repeat. In recursive descent the same problem showed up as a
+function whose first act is to call itself, with the same token still
+next, until the stack overflows:
+
+<Run id="leftRecLoop" />
+
+`exprBad` calls itself before reading anything, so each call makes
+another, until JavaScript stops it with a `RangeError` ("Maximum call
+stack size exceeded"), which `try`/`catch` prints. `expr` is the rewritten
+grammar as a loop: it reads one item, then, while the next token is
+`+`, reads the `+` and another item and wraps what it has so far, so
+it prints `((1 + 2) + 3)`.
+
+The rewrite has a general form. A rule `A → A α | β` says "a β,
+followed by any number of αs", so write exactly that, with a new
+nonterminal for the "any number of αs":
+
+<Formal title="Removing immediate left recursion">
+
+```text
+A  → A α₁ | … | A αₙ | β₁ | … | βₘ
+becomes
+A  → β₁ A′ | … | βₘ A′
+A′ → α₁ A′ | … | αₙ A′ | ε
+```
+
+<span slot="read">If A has some rules that start with A itself (A
+followed by alpha one, up to A followed by alpha n) and some that do
+not (beta one up to beta m), replace them: A is made of any one of the
+betas followed by a new nonterminal A-prime; and A-prime is made of any
+one of the alphas followed by A-prime again, or of nothing at all. The
+recursion is now at the right-hand end, after some tokens have been
+used.</span>
+</Formal>
+
+<Examples of="left-recursion-elimination">
+
+```text
+list → list "," x | x
+becomes
+list  → x more
+more  → "," x more | ε
+```
+
+```text
+term → term "+" factor
+     | term "-" factor | factor
+becomes
+term  → factor term′
+term′ → "+" factor term′
+      | "-" factor term′ | ε
+```
+
+```text
+call → call "(" args ")"
+     | call "." IDENT | primary
+becomes Drip's own rule:
+call → primary
+       ( "(" args ")" | "." IDENT )*
+```
+
+</Examples>
+
+The first is a comma-separated list. In the second, both recursive
+rules move into the tail. The third is real: a
+Drip call like `ps[0].step(2)` is a primary followed by any number of
+calls, indexes and `.name`s, and Drip's grammar writes it with a star,
+which is this rewrite in BNF shorthand (the index case, `[ ... ]`, is
+left out to keep it short). Applied to `expr → expr "+" item | item`,
+the rewrite gives back exactly `expr → item rest` from the table
+above.
+
+One thing changes: the new grammar describes the same sentences, but its parse trees lean the other way: each `rest` hangs
+below the one before it, so the tree of `1 - 2 - 3` would group the
+right-hand end first. A parser that wants `(1 - 2) - 3` builds its
+syntax tree as it goes round the tail, the way the loop above wraps
+`left`; that is why recursive descent writes `*` as a loop and not as
+a recursive call. (If the recursion is hidden behind another rule, as
+in `A → B x`, `B → A y`, the textbooks first substitute one rule into
+the other to make it immediate<Cite id="aho2006" />.)
+
+<Prompts ids={['left-rec-breaks', 'elim-shape']} />
+
+## Left factoring
+
+A second kind of conflict comes from two rules that start the same
+way. In a C-style language, an `if` may or may not have an `else`:
+
+```text
+stmt → "if" "(" expr ")" stmt
+     | "if" "(" expr ")" stmt
+       "else" stmt
+```
+
+Both rules start with `if`, so both land in `[stmt, if]`. Pull the
+shared start out, and decide later:
+
+```text
+stmt     → "if" "(" expr ")" stmt
+           elsePart
+elsePart → "else" stmt | ε
+```
+
+That is **left factoring**: `A → α β₁ | α β₂` becomes `A → α A′` with
+`A′ → β₁ | β₂`, and the choice moves to after α, where the tokens
+differ. Drip's `letDecl → "let" IDENT ( "=" expression )? ";"` is the
+same idea in shorthand: one rule for `let x;` and `let x = 1;`, with
+the choice made at the `=` or the `;`.
+
+Here, though, the table has a surprise left. Because a `stmt` can be
+followed by `else` (it may be the inner statement of another `if`),
+`else` is in FOLLOW(elsePart), so `elsePart → ε` lands in
+`[elsePart, else]` beside `elsePart → "else" stmt`: the dangling else
+from the chapter on ambiguity, found by the table. Left factoring
+cannot remove an ambiguity; it only shows it plainly. Parsers resolve
+it by preferring `"else" stmt`, which gives the nearest `if` the
+`else`. Drip, with braces required, has no `else` in FOLLOW(elsePart)
+and no conflict at all.
+
+<Prompts ids={['left-factor']} />
+
+<Callout kind="engine" label="Under the hood">
+The theory of these top-down, one-token-lookahead parsers goes back to
+Philip Lewis and Richard Stearns in 1968<Cite id="lewisstearns1968" />.
+Tools that generate them build this table and report its conflicts;
+hand-written parsers use the same reasoning for their `if` tests, and
+peek a second token where that is cheaper than a rewrite.
+</Callout>
+
+## Your turn
+
+The first exercise builds a table and finds conflicts. The other two
+are extra practice: run the table-driven parser, and remove left
+recursion from a rule.
+
+<Exercise id="buildTable" />
+
+<Exercise id="parseLL" />
+
+<Exercise id="removeLeftRec" />
+
+## What you learned
+
+- An **LL(1) table** puts each rule `A → α` in the columns of
+  FIRST(α), and of FOLLOW(A) when α can vanish; a grammar is LL(1)
+  when no cell holds two rules.
+- A **table-driven parser** is a loop over a stack of expectations:
+  match a token, or replace a nonterminal by the rule its cell names;
+  the rules it uses form the leftmost derivation.
+- **Left-recursion elimination** turns `A → A α | β` into
+  `A → β A′`, `A′ → α A′ | ε`; the trees lean the other way, so the
+  parser builds left-leaning syntax trees itself.
+- **Left factoring** pulls a shared start out of two rules; it can
+  expose an ambiguity, such as the dangling else, but not remove it.
+
+Next: parsers that work from the other end, building the tree from
+the leaves up.
+
+<Quiz />

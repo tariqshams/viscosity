@@ -1,4 +1,4 @@
-// New references for chapter 388b.
+// New references for chapter 314b.
 export default [
   {
     id: 'rustdoc-doctests',
@@ -10,7 +10,7 @@ export default [
     url: 'https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html',
     accessed: '2026-11-02',
     checkedAgainst: 'documentation-tests.md read raw from raw.githubusercontent.com/rust-lang/rust/master on 2026-11-02: code blocks in documentation are compiled and run as tests, and pass if they compile and do not panic; “Pre-processing examples”: common allow attributes are inserted, `extern crate <mycrate>;` is inserted unless present, and if the example does not contain fn main it is wrapped in `fn main() { your_code }`; “Hiding portions of the example”: lines that start with `# ` are hidden from the output but used when compiling. Behaviour checked with cargo 1.97.0.',
-    shaped: 'Chapter 388b: how doc tests are built, hidden lines, and what passes.',
+    shaped: 'Chapter 314b: how doc tests are built, hidden lines, and what passes.',
   },
   {
     id: 'clippy-readme',
@@ -22,6 +22,6 @@ export default [
     url: 'https://github.com/rust-lang/rust-clippy',
     accessed: '2026-11-02',
     checkedAgainst: 'README.md read raw from raw.githubusercontent.com/rust-lang/rust-clippy/master on 2026-11-02: “There are over 800 lints included in this crate”; the category table (clippy::correctness deny; suspicious, style, complexity, perf warn; pedantic, restriction, nursery, cargo allow); “The restriction category should, emphatically, not be enabled as a whole”. Lint output checked with clippy 0.1.97.',
-    shaped: 'Chapter 388b: what clippy is, its categories and their default levels.',
+    shaped: 'Chapter 314b: what clippy is, its categories and their default levels.',
   },
 ];

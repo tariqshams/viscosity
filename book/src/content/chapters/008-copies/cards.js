@@ -1,4 +1,5 @@
-// Chapter 7b cards (split from chapter 7). Keys are stable ids: never rename them.
+// Chapter 8 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'spread-copy': {
@@ -60,8 +61,7 @@ console.log(xs, ys);`,
 export const exercises = {
   withX: {
     title: 'Change x without changing the original',
-    prompt:
-      'Write `withX(p, x)` that returns a **new** object just like `p` but with its `x` property set to `x`. The original `p` must not change.',
+    prompt: 'Write `withX(p, x)` that returns a **new** object just like `p` but with its `x` property set to `x`. The original `p` must not change.',
     starter: `function withX(p, x) {
   // your code here
 }
@@ -136,8 +136,7 @@ On the left of the colon, \`x\` is the property's name; on the right, \`x\` is t
   withPosX: {
     optional: true,
     title: 'A copy one level deeper',
-    prompt:
-      'Particles here keep their position in an inner object: `{ id: 1, pos: { x: 0, y: 0 } }`. Write `withPosX(a, x)` that returns a **new** particle like `a` whose `pos.x` is `x`, leaving `a` and `a.pos` completely unchanged.',
+    prompt: 'Particles here keep their position in an inner object: `{ id: 1, pos: { x: 0, y: 0 } }`. Write `withPosX(a, x)` that returns a **new** particle like `a` whose `pos.x` is `x`, leaving `a` and `a.pos` completely unchanged.',
     starter: `function withPosX(a, x) {
   // your code here
 }
@@ -208,28 +207,67 @@ export const quiz = [
   {
     q: '`const c = { ...a };` and `a.pos` is an object. Which is true?',
     options: [
-      { t: '`c.pos` is a separate copy of `a.pos`', why: 'Spread is shallow: inner objects aren’t copied.' },
-      { t: '`c === a`', why: 'Spread always creates a new outer object.' },
-      { t: '`c.pos` is `undefined`', why: 'Spread copies every property, including `pos`.' },
-      { t: '`c.pos === a.pos`', correct: true, why: 'The arrow to the inner object was copied, so both point at the same `pos`.' },
+      {
+        t: '`c.pos` is a separate copy of `a.pos`',
+        why: 'Spread is shallow: inner objects aren’t copied.',
+      },
+      {
+        t: '`c === a`',
+        why: 'Spread always creates a new outer object.',
+      },
+      {
+        t: '`c.pos` is `undefined`',
+        why: 'Spread copies every property, including `pos`.',
+      },
+      {
+        t: '`c.pos === a.pos`',
+        correct: true,
+        why: 'The arrow to the inner object was copied, so both point at the same `pos`.',
+      },
     ],
   },
   {
     q: 'Which line creates a **new** object rather than another alias of `p`?',
     options: [
-      { t: '`const q = p;`', why: 'That copies the arrow: `q` is an alias.' },
-      { t: '`const q = { ...p };`', correct: true, why: 'Spread builds a brand-new object and copies the properties in.' },
-      { t: '`p.copy = true;`', why: 'That mutates `p` itself.' },
-      { t: '`const q = [p][0];`', why: 'That puts the arrow in an array and takes it back out: still the same object.' },
+      {
+        t: '`const q = p;`',
+        why: 'That copies the arrow: `q` is an alias.',
+      },
+      {
+        t: '`const q = { ...p };`',
+        correct: true,
+        why: 'Spread builds a brand-new object and copies the properties in.',
+      },
+      {
+        t: '`p.copy = true;`',
+        why: 'That mutates `p` itself.',
+      },
+      {
+        t: '`const q = [p][0];`',
+        why: 'That puts the arrow in an array and takes it back out: still the same object.',
+      },
     ],
   },
   {
     q: 'What is `{ ...{ x: 1, y: 2 }, x: 3 }`?',
     options: [
-      { t: '`{ x: 1, y: 2 }`', why: 'The `x: 3` written after the spread overrides the copied `x`.' },
-      { t: '`{ x: 3, y: 2 }`', correct: true, why: 'Copy `x: 1` and `y: 2`, then `x: 3` replaces the `x`.' },
-      { t: '`{ x: 3 }`', why: 'Spread copied `y` as well, and nothing removes it.' },
-      { t: 'An error: `x` appears twice', why: 'Writing a key that is already there simply replaces its value.' },
+      {
+        t: '`{ x: 1, y: 2 }`',
+        why: 'The `x: 3` written after the spread overrides the copied `x`.',
+      },
+      {
+        t: '`{ x: 3, y: 2 }`',
+        correct: true,
+        why: 'Copy `x: 1` and `y: 2`, then `x: 3` replaces the `x`.',
+      },
+      {
+        t: '`{ x: 3 }`',
+        why: 'Spread copied `y` as well, and nothing removes it.',
+      },
+      {
+        t: 'An error: `x` appears twice',
+        why: 'Writing a key that is already there simply replaces its value.',
+      },
     ],
   },
   {
@@ -241,18 +279,41 @@ ys.push(3);
 console.log(xs.length);
 \`\`\``,
     options: [
-      { t: '`3`', why: '`[...xs]` is a new array, so pushing onto `ys` leaves `xs` alone.' },
-      { t: '`2`', correct: true, why: '`ys` is a copy, not an alias, so `xs` still has two slots.' },
-      { t: '`undefined`', why: '`xs` is still an array, with a length.' },
+      {
+        t: '`3`',
+        why: '`[...xs]` is a new array, so pushing onto `ys` leaves `xs` alone.',
+      },
+      {
+        t: '`2`',
+        correct: true,
+        why: '`ys` is a copy, not an alias, so `xs` still has two slots.',
+      },
+      {
+        t: '`undefined`',
+        why: '`xs` is still an array, with a length.',
+      },
     ],
   },
   {
     q: 'Why is aliasing a problem for an optimiser that changes an array of objects into a struct of arrays?',
     options: [
-      { t: 'Aliases make arrays longer', why: 'Aliasing doesn’t change any lengths.' },
-      { t: 'Struct of arrays can’t hold numbers', why: 'SoA is ideal for numbers; that isn’t the issue.' },
-      { t: 'Other references to the same objects must still see every change, so the optimiser must know where all the arrows can go', correct: true, why: 'If any alias could observe the old layout, the program could print wrong answers. Alias and escape analysis answer this.' },
-      { t: 'It isn’t a problem; layout never affects behaviour', why: 'Layout changes are only safe when no code can tell the difference, and aliases can.' },
+      {
+        t: 'Aliases make arrays longer',
+        why: 'Aliasing doesn’t change any lengths.',
+      },
+      {
+        t: 'Struct of arrays can’t hold numbers',
+        why: 'SoA is ideal for numbers; that isn’t the issue.',
+      },
+      {
+        t: 'Other references to the same objects must still see every change, so the optimiser must know where all the arrows can go',
+        correct: true,
+        why: 'If any alias could observe the old layout, the program could print wrong answers. Alias and escape analysis answer this.',
+      },
+      {
+        t: 'It isn’t a problem; layout never affects behaviour',
+        why: 'Layout changes are only safe when no code can tell the difference, and aliases can.',
+      },
     ],
   },
 ];

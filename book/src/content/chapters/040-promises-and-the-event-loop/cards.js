@@ -1,8 +1,5 @@
-// Chapter 40 cards. Keys are stable ids: never rename them.
-//
-// The runner waits for timers and promises before reporting, so the
-// example and the core exercise use real ones; the extra exercise
-// builds a small promise by hand to show what is inside one.
+// Chapter 40 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'async-what': {
@@ -315,43 +312,113 @@ For the test with two \`resolve\`s: the first fills the box with \`1\` and calls
 
 export const quiz = [
   {
-    q: "What does this print?\n```\nconsole.log('1');\nsetTimeout(() => console.log('2'), 0);\nconsole.log('3');\n```",
+    q: `What does this print?
+\`\`\`
+console.log('1');
+setTimeout(() => console.log('2'), 0);
+console.log('3');
+\`\`\``,
     options: [
-      { t: '`1`, `2`, `3`', why: 'A delay of 0 does not mean now: the callback waits until the code running now has finished.' },
-      { t: '`1`, `3`, `2`', correct: true, why: 'The whole snippet runs to the end first, printing 1 and 3; then the event loop runs the timer callback.' },
-      { t: '`2`, `1`, `3`', why: 'The callback cannot run before the code that scheduled it has even finished.' },
+      {
+        t: '`1`, `2`, `3`',
+        why: 'A delay of 0 does not mean now: the callback waits until the code running now has finished.',
+      },
+      {
+        t: '`1`, `3`, `2`',
+        correct: true,
+        why: 'The whole snippet runs to the end first, printing 1 and 3; then the event loop runs the timer callback.',
+      },
+      {
+        t: '`2`, `1`, `3`',
+        why: 'The callback cannot run before the code that scheduled it has even finished.',
+      },
     ],
   },
   {
-    q: "What happens here?\n```\ntry {\n  setTimeout(() => {\n    throw new Error('x');\n  }, 0);\n} catch (e) {\n  console.log('caught');\n}\n```",
+    q: `What happens here?
+\`\`\`
+try {
+  setTimeout(() => {
+    throw new Error('x');
+  }, 0);
+} catch (e) {
+  console.log('caught');
+}
+\`\`\``,
     options: [
-      { t: 'It prints `caught`', why: 'The `try` block has finished long before the callback runs, so its `catch` is no longer on the call stack.' },
-      { t: 'The error is not caught, and Node stops the program with `Error: x`', correct: true, why: 'The callback throws in a later turn of the loop, where no `catch` is waiting.' },
-      { t: 'Nothing: errors in callbacks are ignored', why: 'They are not ignored; with no `catch` to stop it, the error ends the program.' },
+      {
+        t: 'It prints `caught`',
+        why: 'The `try` block has finished long before the callback runs, so its `catch` is no longer on the call stack.',
+      },
+      {
+        t: 'The error is not caught, and Node stops the program with `Error: x`',
+        correct: true,
+        why: 'The callback throws in a later turn of the loop, where no `catch` is waiting.',
+      },
+      {
+        t: 'Nothing: errors in callbacks are ignored',
+        why: 'They are not ignored; with no `catch` to stop it, the error ends the program.',
+      },
     ],
   },
   {
-    q: "What does this print?\n```\nPromise.resolve(2)\n  .then((n) => n + 1)\n  .then((n) => { n * 2; })\n  .then((m) => console.log(m));\n```",
+    q: `What does this print?
+\`\`\`
+Promise.resolve(2)
+  .then((n) => n + 1)
+  .then((n) => { n * 2; })
+  .then((m) => console.log(m));
+\`\`\``,
     options: [
-      { t: '`6`', why: 'The second callback has braces and no `return`, so it returns `undefined`, not `6`.' },
-      { t: '`3`', why: 'Each `then` passes on its own callback’s result, not the one before.' },
-      { t: '`undefined`', correct: true, why: 'With braces, `n * 2` is worked out and thrown away; the callback returns `undefined`, and that is what the last step receives.' },
+      {
+        t: '`6`',
+        why: 'The second callback has braces and no `return`, so it returns `undefined`, not `6`.',
+      },
+      {
+        t: '`3`',
+        why: 'Each `then` passes on its own callback’s result, not the one before.',
+      },
+      {
+        t: '`undefined`',
+        correct: true,
+        why: 'With braces, `n * 2` is worked out and thrown away; the callback returns `undefined`, and that is what the last step receives.',
+      },
     ],
   },
   {
     q: 'A promise was rejected. Later, `p.then(f)` is called on it, with no second argument. What happens to `f`?',
     options: [
-      { t: 'It is called with the rejection reason', why: '`then`’s first callback is only for fulfilment; a reason goes to `catch`.' },
-      { t: 'It is never called; the new promise `then` returns is rejected with the same reason', correct: true, why: 'Without a rejection callback, the rejection passes straight down the chain, to the next `catch`.' },
-      { t: 'It is called with `undefined`', why: 'A rejected promise never calls fulfilment callbacks at all.' },
+      {
+        t: 'It is called with the rejection reason',
+        why: '`then`’s first callback is only for fulfilment; a reason goes to `catch`.',
+      },
+      {
+        t: 'It is never called; the new promise `then` returns is rejected with the same reason',
+        correct: true,
+        why: 'Without a rejection callback, the rejection passes straight down the chain, to the next `catch`.',
+      },
+      {
+        t: 'It is called with `undefined`',
+        why: 'A rejected promise never calls fulfilment callbacks at all.',
+      },
     ],
   },
   {
     q: 'What is a real difference between the JavaScript and the Java versions of “run this later”?',
     options: [
-      { t: 'Java runs the callback on a second thread, which can run at the same time as other code', correct: true, why: 'JavaScript runs one piece of code at a time on one thread; Java’s scheduler uses a thread of its own.' },
-      { t: 'Java cannot run anything later', why: 'It can: `schedule` runs the callback after the delay.' },
-      { t: 'JavaScript’s version blocks the program until the delay is over', why: 'That is C’s `sleep`. `setTimeout` returns at once.' },
+      {
+        t: 'Java runs the callback on a second thread, which can run at the same time as other code',
+        correct: true,
+        why: 'JavaScript runs one piece of code at a time on one thread; Java’s scheduler uses a thread of its own.',
+      },
+      {
+        t: 'Java cannot run anything later',
+        why: 'It can: `schedule` runs the callback after the delay.',
+      },
+      {
+        t: 'JavaScript’s version blocks the program until the delay is over',
+        why: 'That is C’s `sleep`. `setTimeout` returns at once.',
+      },
     ],
   },
 ];

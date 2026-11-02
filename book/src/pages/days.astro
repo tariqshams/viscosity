@@ -2,17 +2,14 @@
 import Book from '../layouts/Book.astro';
 import DayPlan from '../components/book/DayPlan';
 import { curriculum } from '../lib/chapters';
-import { PARTS, TOTAL_DAYS, CHAPTERS_PER_DAY } from '../data/book.js';
-import { OUTLINE } from '../data/outline/index.js';
-const lastA = Math.max(...OUTLINE.filter((c) => c.track === 'A').map((c) => c.n));
-const daysA = Math.ceil(lastA / CHAPTERS_PER_DAY);
+import { CORE_DAYS, SECTION_DAYS } from '../data/book.js';
 const { days } = await curriculum();
 ---
-<Book title={`The ${TOTAL_DAYS}-day plan · Viscosity`} current="days">
+<Book title={`The day plan · Viscosity`} current="days">
   <div class="mx-auto max-w-reading px-4 pb-16 pt-8 sm:px-6 lg:pt-12">
-    <h1 class="font-display text-[2.2rem] font-semibold leading-tight">The {TOTAL_DAYS}-day plan</h1>
+    <h1 class="font-display text-[2.2rem] font-semibold leading-tight">The day plan</h1>
     <p class="mb-6 mt-2 font-serif text-[1.08rem] leading-relaxed text-ink/85">
-      About an hour a day: your reviews first (a few minutes), then four 15-minute chapters. Days 1–{daysA} are Track A in TypeScript. Days {daysA + 1}–{TOTAL_DAYS} are Track B, where you learn Rust and rebuild everything.
+      About an hour a day: your reviews first (a few minutes), then four chapters. If you already know TypeScript, the core path takes {CORE_DAYS} days: you build Drip and its virtual machine, then Viscosity, then learn Rust and rebuild both in it. New to programming? The Prelude ({SECTION_DAYS.prelude} days) comes first. The deep dives ({SECTION_DAYS.deep} days) are for afterwards: parsing and type theory, the rest of the middle end, a native back end, real engines, language features, garbage collection and more Rust.
     </p>
     <DayPlan client:load days={days} />
   </div>

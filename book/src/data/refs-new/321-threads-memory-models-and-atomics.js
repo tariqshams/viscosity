@@ -1,4 +1,4 @@
-// New references for chapter 321 and its staged second half (293-b,
+// New references for chapter 291 and its staged second half (293-b,
 // "Atomics and happens-before"). Checked 2026-11-02. The chapters also
 // rely on rust-book-borrowing and mdn-typed-arrays. Every listing is
 // real output produced in this session on an x86-64 Intel Xeon with 4
@@ -20,7 +20,7 @@ export default [
     url: 'https://www.microsoft.com/en-us/research/publication/make-multiprocessor-computer-correctly-executes-multiprocess-programs/',
     accessed: '2026-11-02',
     checkedAgainst: 'Microsoft Research publication page fetched 2026-11-02: Leslie Lamport, IEEE Transactions on Computers, C-28, pp. 690–691, September 1979; the page credits the paper with its “simple, precise definition of sequential consistency as the required correctness condition”. The definition itself could not be read from this session, so the chapter states it in its own words, matched against the C++ draft’s note (cxx-draft-races).',
-    shaped: 'Chapter 321: sequential consistency, the first and simplest memory model.',
+    shaped: 'Chapter 291: sequential consistency, the first and simplest memory model.',
   },
   {
     id: 'sewell2010x86tso',
@@ -32,7 +32,7 @@ export default [
     url: 'https://doi.org/10.1145/1785414.1785443',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search on 2026-11-02: the Cambridge bibliography, Kent and St Andrews repositories agree on CACM 53(7):89–97, July 2010, DOI 10.1145/1785414.1785443. Search snippets from the x86-TSO papers (Cambridge) and MIT 6.826 notes describe the model: a FIFO buffer of pending writes per hardware thread, reads that return the thread’s most recent buffered write before going to memory, MFENCE blocking until the local buffer is flushed, and the store-buffering test’s r1 = r2 = 0 outcome allowed, forbidden with MFENCEs. The full text could not be opened here; the store-buffer outcome was reproduced on this machine.',
-    shaped: 'Chapter 321: the store-buffer model of x86 that the chapter’s model checker implements.',
+    shaped: 'Chapter 291: the store-buffer model of x86 that the chapter’s model checker implements.',
   },
   {
     id: 'cxx-draft-races',
@@ -44,7 +44,7 @@ export default [
     url: 'https://eel.is/c++draft/intro.races',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/cplusplus/draft/main/source/basic.tex on 2026-11-02: “The execution of a program contains a data race if it contains two potentially concurrent conflicting actions, at least one of which is not atomic, and neither happens before the other … Any such data race results in undefined behavior.” The note: programs that use mutexes and memory_order::seq_cst operations to prevent all data races “behave as if the operations executed by their constituent threads were simply interleaved … This is normally referred to as sequential consistency”, which “applies only to data-race-free programs”. Also: “an atomic store-release synchronizes with a load-acquire that takes its value from the store”.',
-    shaped: 'Chapters 321 and 321-b: the C++ definitions of data race, synchronizes-with and DRF-SC.',
+    shaped: 'Chapters 291 and 291-b: the C++ definitions of data race, synchronizes-with and DRF-SC.',
   },
   {
     id: 'go-memory-model',
@@ -56,7 +56,7 @@ export default [
     url: 'https://go.dev/ref/mem',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/golang/go/master/doc/go_mem.html on 2026-11-02: a data race is “a write to a memory location happening concurrently with another read or write to that same location, unless all the accesses involved are atomic data accesses as provided by the sync/atomic package”; “data-race-free programs execute in a sequentially consistent manner” (DRF-SC); an implementation may report a race and stop, otherwise a read must observe a value actually written and not yet overwritten, which makes Go “more like Java or JavaScript, in that most races have a limited number of outcomes, and less like C and C++, where the meaning of any program with a race is entirely undefined”; happens before is “the transitive closure of the union of the sequenced before and synchronized before relations”; sync/atomic operations behave as if executed in some sequentially consistent order.',
-    shaped: 'Chapters 321 and 321-b: Go’s memory model, and the comparison of what a race means in Go, Java, JavaScript and C/C++.',
+    shaped: 'Chapters 291 and 291-b: Go’s memory model, and the comparison of what a race means in Go, Java, JavaScript and C/C++.',
   },
   {
     id: 'ecma262-memory-model',
@@ -68,7 +68,7 @@ export default [
     url: 'https://tc39.es/ecma262/#sec-memory-model',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/tc39/ecma262/main/spec.html on 2026-11-02: the memory model covers accesses to TypedArrays backed by a SharedArrayBuffer and the Atomics methods; data-race-free programs appear sequentially consistent; with races, “shared memory operations may appear sequentially inconsistent”, arising “from compiler transforms and the design of CPUs”, but “there is no undefined behaviour”; atomic accesses are sequentially consistent and “No orderings weaker than sequentially consistent and stronger than unordered, such as release-acquire, are supported”; two events are in a data race if they race and are not both seq-cst atomic accesses of the same range.',
-    shaped: 'Chapters 321 and 321-b: JavaScript’s memory model and its single, sequentially consistent kind of atomic.',
+    shaped: 'Chapters 291 and 291-b: JavaScript’s memory model and its single, sequentially consistent kind of atomic.',
   },
   {
     id: 'mdn-atomics',
@@ -80,7 +80,7 @@ export default [
     url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/mdn/content/main/files/en-us/web/javascript/reference/global_objects/{atomics,sharedarraybuffer,atomics/wait}/index.md on 2026-11-02: the Atomics namespace object “contains static methods for carrying out atomic operations” used with SharedArrayBuffer and ArrayBuffer objects; a SharedArrayBuffer sent to another agent (the main program or a web worker) refers to the same data block, and “a side effect to the block in one agent will eventually become visible in the other agent”; Atomics.wait works only on an Int32Array or BigInt64Array viewing a SharedArrayBuffer, “is blocking and cannot be used in the main thread”. Node 22.23.4’s worker_threads were used for the chapter’s runs.',
-    shaped: 'Chapters 321 and 321-b: shared memory and atomics in JavaScript.',
+    shaped: 'Chapters 291 and 291-b: shared memory and atomics in JavaScript.',
   },
   {
     id: 'rust-std-atomic',
@@ -92,7 +92,7 @@ export default [
     url: 'https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw on 2026-11-02. atomic.rs: “Rust atomics currently follow the same rules as C++20 atomics”; Ordering is Relaxed, Release, Acquire, AcqRel or SeqCst, “the same as those of C++20”; “The most important aspect of this model is that data races are undefined behavior”, a data race being conflicting non-synchronized accesses where at least one is non-atomic, and non-synchronized meaning neither happens-before the other. nomicon src/atomics.md: Rust “inherits the memory model for atomics from C++20”; compilers may reorder or remove accesses; hardware is “strongly-ordered” (x86/64) or “weakly-ordered” (ARM), and on weak hardware a thread may see x = 1 but not an earlier y = 3; a release access keeps every earlier access before it, an acquire keeps every later access after it, and when B acquires the location A released, every write that happened before A’s release is observed by B; even on strongly ordered platforms SeqCst involves emitting fences.',
-    shaped: 'Chapters 321 and 321-b: compiler and hardware reordering, and Rust’s orderings.',
+    shaped: 'Chapters 291 and 291-b: compiler and hardware reordering, and Rust’s orderings.',
   },
   {
     id: 'openjdk-varhandle',
@@ -104,7 +104,7 @@ export default [
     url: 'https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/invoke/VarHandle.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw on 2026-11-02: Plain get/set “impose no observable ordering constraints with respect to threads other than the executing thread”; Opaque operations are bitwise atomic and coherently ordered per variable; “Acquire mode reads and their subsequent accesses are ordered after matching Release mode writes and their previous accesses”; “all Volatile operations are totally ordered with respect to each other”; setVolatile has the memory semantics of writing a variable declared volatile.',
-    shaped: 'Chapter 321-b: Java’s ladder of access modes, from plain to volatile.',
+    shaped: 'Chapter 291-b: Java’s ladder of access modes, from plain to volatile.',
   },
   {
     id: 'manson2005jmm',
@@ -116,7 +116,7 @@ export default [
     url: 'https://doi.org/10.1145/1040305.1040336',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search on 2026-11-02: a 2025 survey of weak memory formalisms, the UMIACS record and a Wisconsin BibTeX entry all give POPL 2005, pp. 378–391, DOI 10.1145/1040305.1040336, describing the memory model revised for Java 5.0. The paper was not opened; only these facts are relied on.',
-    shaped: 'Chapter 321-b: Java’s memory model, which gives racy programs limited rather than undefined meaning.',
+    shaped: 'Chapter 291-b: Java’s memory model, which gives racy programs limited rather than undefined meaning.',
   },
   {
     id: 'boehm2008cxxmm',
@@ -128,7 +128,7 @@ export default [
     url: 'https://doi.org/10.1145/1375581.1375591',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search on 2026-11-02: a BibTeX entry on the Wisconsin transactional memory bibliography gives PLDI 2008, pp. 68–78, DOI 10.1145/1375581.1375591; an HP Labs report version is HPL-2008-56. The paper was not opened; it is cited only as the design paper of the C++ model whose rules the chapter quotes from the C++ draft.',
-    shaped: 'Chapter 321-b: where the C++ (and so C and Rust) memory model comes from.',
+    shaped: 'Chapter 291-b: where the C++ (and so C and Rust) memory model comes from.',
   },
   {
     id: 'node-worker-threads',
@@ -140,6 +140,6 @@ export default [
     url: 'https://nodejs.org/api/worker_threads.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Fetched from nodejs.org on 2026-11-02 (HTTP 200): the node:worker_threads module runs JavaScript in parallel threads, and workers can share memory by transferring ArrayBuffer instances or sharing SharedArrayBuffer instances. Used with Node 22.23.4 for the chapter’s runs.',
-    shaped: 'Chapters 321 and 321-b: real threads and shared memory in Node.',
+    shaped: 'Chapters 291 and 291-b: real threads and shared memory in Node.',
   },
 ];

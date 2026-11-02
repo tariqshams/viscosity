@@ -1,5 +1,5 @@
-// Cards for “Packages and bundlers” (split from chapter 42).
-// Keys are stable ids: never rename them.
+// Chapter 43 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'pkg-what': {
@@ -268,41 +268,91 @@ export const quiz = [
   {
     q: '`package.json` asks for `"typescript": "^5.9.3"`. Which of these could `npm install` choose?',
     options: [
-      { t: '`6.0.2`', why: 'A caret range keeps the major number: 6.x is outside `^5.9.3`.' },
-      { t: '`5.12.0`', correct: true, why: 'It is later than 5.9.3 and has the same major number, 5.' },
-      { t: '`5.9.2`', why: 'That is older than 5.9.3, the lowest version the range accepts.' },
+      {
+        t: '`6.0.2`',
+        why: 'A caret range keeps the major number: 6.x is outside `^5.9.3`.',
+      },
+      {
+        t: '`5.12.0`',
+        correct: true,
+        why: 'It is later than 5.9.3 and has the same major number, 5.',
+      },
+      {
+        t: '`5.9.2`',
+        why: 'That is older than 5.9.3, the lowest version the range accepts.',
+      },
     ],
   },
   {
     q: 'A teammate runs `npm install` in your project a month later. What makes them get exactly the versions you had?',
     options: [
-      { t: 'The ranges in `package.json`', why: 'A range allows newer versions; a month later, npm could choose different ones.' },
-      { t: 'Nothing: they will always get the newest versions', why: 'Not if the lock file is committed: npm installs what it records.' },
-      { t: 'The committed `package-lock.json`, which records the exact versions installed', correct: true, why: 'It describes the exact tree, so later installs make the identical one.' },
+      {
+        t: 'The ranges in `package.json`',
+        why: 'A range allows newer versions; a month later, npm could choose different ones.',
+      },
+      {
+        t: 'Nothing: they will always get the newest versions',
+        why: 'Not if the lock file is committed: npm installs what it records.',
+      },
+      {
+        t: 'The committed `package-lock.json`, which records the exact versions installed',
+        correct: true,
+        why: 'It describes the exact tree, so later installs make the identical one.',
+      },
     ],
   },
   {
     q: 'Why does `npm run check` (with `"check": "tsc --noEmit"`) use the project’s TypeScript rather than one installed elsewhere on the computer?',
     options: [
-      { t: 'npm adds the project’s `node_modules/.bin` to the path while the script runs', correct: true, why: 'So `tsc` means the project’s own copy, at the version in its lock file.' },
-      { t: 'It downloads TypeScript again every time', why: 'npm runs what is already installed in `node_modules`.' },
-      { t: 'It does not: it uses whichever `tsc` was installed last', why: 'Inside a script, the project’s tools come first.' },
+      {
+        t: 'npm adds the project’s `node_modules/.bin` to the path while the script runs',
+        correct: true,
+        why: 'So `tsc` means the project’s own copy, at the version in its lock file.',
+      },
+      {
+        t: 'It downloads TypeScript again every time',
+        why: 'npm runs what is already installed in `node_modules`.',
+      },
+      {
+        t: 'It does not: it uses whichever `tsc` was installed last',
+        why: 'Inside a script, the project’s tools come first.',
+      },
     ],
   },
   {
     q: '`math.ts` exports `double` and `unused`; `main.ts` imports only `double`. What is in the bundle esbuild makes from `main.ts`?',
     options: [
-      { t: 'Both functions, since `math.ts` exports both', why: 'Tree shaking leaves out what nothing can reach, and nothing imports `unused`.' },
-      { t: '`double` and the code of `main.ts`, with types erased', correct: true, why: 'The bundler follows the import, keeps what is used, and drops `unused`.' },
-      { t: 'Only `main.ts`: imported modules are loaded separately', why: 'Packing the imported modules into the same file is the point of bundling.' },
+      {
+        t: 'Both functions, since `math.ts` exports both',
+        why: 'Tree shaking leaves out what nothing can reach, and nothing imports `unused`.',
+      },
+      {
+        t: '`double` and the code of `main.ts`, with types erased',
+        correct: true,
+        why: 'The bundler follows the import, keeps what is used, and drops `unused`.',
+      },
+      {
+        t: 'Only `main.ts`: imported modules are loaded separately',
+        why: 'Packing the imported modules into the same file is the point of bundling.',
+      },
     ],
   },
   {
     q: '`main.ts` contains `const n: number = \'five\';`. What does `esbuild --bundle` do?',
     options: [
-      { t: 'Refuses, with a type error', why: 'esbuild erases types without checking them; that is tsc’s job.' },
-      { t: 'Fixes the type for you', why: 'No tool changes your code to match its labels.' },
-      { t: 'Bundles it without complaint', correct: true, why: 'Which is why a build script runs `tsc --noEmit` first, and bundles only if that passes.' },
+      {
+        t: 'Refuses, with a type error',
+        why: 'esbuild erases types without checking them; that is tsc’s job.',
+      },
+      {
+        t: 'Fixes the type for you',
+        why: 'No tool changes your code to match its labels.',
+      },
+      {
+        t: 'Bundles it without complaint',
+        correct: true,
+        why: 'Which is why a build script runs `tsc --noEmit` first, and bundles only if that passes.',
+      },
     ],
   },
 ];

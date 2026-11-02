@@ -1,4 +1,4 @@
-// New references for chapter 311. Checked 2026-11-02. The chapter also
+// New references for chapter 281. Checked 2026-11-02. The chapter also
 // relies on python-datamodel (whose "Emulating numeric types" section,
 // with __add__, __radd__ and NotImplemented, was re-read raw from
 // python/cpython 3.13 Doc/reference/datamodel.rst in this session),
@@ -18,7 +18,7 @@ export default [
     url: 'https://github.com/cplusplus/draft/blob/main/source/overloading.tex',
     accessed: '2026-11-02',
     checkedAgainst: 'source/overloading.tex read raw from github.com/cplusplus/draft (main) on 2026-11-02: “If either operand has a type that is a class or an enumeration, a user-defined operator function can be declared that implements this operator … In this case, overload resolution is used to determine which operator function or built-in operator is to be invoked to implement the operator. Therefore, the operator notation is first transformed to the equivalent function-call notation”. clang 18.1.3 named operator+(V, V) _Zpl1VS_ and called it from p + q at -O0.',
-    shaped: 'Chapter 311: a C++ operator is a function chosen by overload resolution.',
+    shaped: 'Chapter 281: a C++ operator is a function chosen by overload resolution.',
   },
   {
     id: 'rust-std-ops-add',
@@ -30,6 +30,6 @@ export default [
     url: 'https://doc.rust-lang.org/std/ops/trait.Add.html',
     accessed: '2026-11-02',
     checkedAgainst: 'library/core/src/ops/arith.rs at tag 1.97.0, read raw from github.com/rust-lang/rust on 2026-11-02: the trait’s documentation begins “The addition operator +”, and notes that Rhs is Self by default but need not be. rustc 1.97.0 --emit=mir turned (p + q).x into _3 = <V as Add>::add(copy _1, copy _2).',
-    shaped: 'Chapter 311: Rust’s + is a call of the Add trait’s method.',
+    shaped: 'Chapter 281: Rust’s + is a call of the Add trait’s method.',
   },
 ];

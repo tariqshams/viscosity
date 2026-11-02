@@ -1,0 +1,461 @@
+---
+n: 97
+day: 13
+part: V
+title: 'Testing compilers: differential, round-trip, fuzzing and shrinking'
+tagline: 'A compiler bug is the worst kind: your program is right, and what runs is wrong. The hard part of testing a compiler is knowing the right answer, and this chapter shows four ways round that, each of them at work in this repository.'
+objectives:
+  - Explain the oracle problem, and tell unit, golden, differential, metamorphic and round-trip tests apart.
+  - Explain how Viscosity's differential test uses the original program as its own oracle, comparing output and errors, and why it also checks decisions.
+  - Describe the repository's parity tests (TypeScript against Rust, tree-walker against VM, acorn against the mini parser) as differential testing.
+  - Write a differential tester that treats errors as results.
+  - Explain what fuzzing adds to a hand-written corpus, and why a compiler fuzzer must be seeded and must generate valid programs.
+  - Describe Csmith and YARPGen, and the repository's own fuzzers for Viscosity and for Drip.
+  - Reduce a failing input by removing chunks while the failure stays, and say what 1-minimal means.
+  - Say what translation validation checks, and how it differs from testing.
+introduces: [differential-testing, round-trip-testing, fuzzing]
+uses: [test, assertion, edge-case, differential-testing-intro, parser, ast, tree-walking-interpreter, virtual-machine, garbage-collection, roots, compiler-pipeline, constant-folding, escape-analysis, pass-manager, compiler-pass, typed-array, aos-vs-soa, recursion, try-catch, error-object, throw, module, function, callback, array]
+sources: [csmith, test262, chen2020survey, mckeeman1998, le2014emi, yang2011, livinskii2020, regehr2012, necula2000]
+---
+import DiffSteps from '../../../components/diagrams/ch097/DiffSteps';
+import OracleKinds from '../../../components/diagrams/ch097/OracleKinds';
+import FuzzLoop from '../../../components/diagrams/ch097/FuzzLoop';
+import ReduceSteps from '../../../components/diagrams/ch097/ReduceSteps';
+
+{/* ── merge: from old chapter 97, Testing compilers ── */}
+
+## The worst kind of bug
+
+When your code has a bug, you read your code. When the compiler has a
+bug, your code is fine and the program still does the wrong thing, and
+nothing in your source points at the cause. Viscosity rewrites your
+arrays into columns; if the rewritten program ever prints something
+different, or fails differently, Viscosity is broken, however fast it is.
+
+So we test it, and at once hit the hard part. A test needs an
+**oracle**, something that says what the right answer is, and for a
+compiler the "answer" is a whole program's behaviour; writing it out by
+hand for thousands of programs would be slow and error-prone. The
+research on compiler testing treats the choice of oracle as one of its
+central questions<Cite id="chen2020survey" />, and there are four good
+answers.
+
+<Figure takeaway="You rarely need the right answer if you have something it must equal." caption="Four oracles. Golden: compare with an output stored earlier. Differential: two implementations must agree. Metamorphic: a change that must not change the output. Round trip: an operation and its inverse must give back the input.">
+  <OracleKinds />
+</Figure>
+
+A **unit test** checks one small piece against an answer you know, such
+as the mini parser's test that `2 ** 3 ** 2` groups to the right. A
+**golden test** stores a whole output once (checked by a person) and
+compares every later run against it; the Drip corpus does this with its
+`# expect:` comments, and the Rust port's parity fixtures are golden
+files generated from the TypeScript engine. The other two need no
+stored answer at all.
+
+<Prompts ids={['oracle-what', 'golden-what']} />
+
+## Two programs that must agree
+
+<Analogy title="checking a translation without the language">
+You can check a translated set of directions without speaking either
+language: hand the original to one person and the translation to
+another, ask both to follow them, and see whether they end up at the
+same door.
+<span slot="breaks">Both walkers could take the same wrong turn, and you
+would never know; two implementations can share a bug, which is why
+agreement is strong evidence, never a proof.</span>
+</Analogy>
+
+<Analogy extra title="two clocks in the house">
+If the kitchen clock and the bedroom clock disagree, at least one of
+them is wrong, even though you do not know the time.
+<span slot="breaks">Clocks drift a little and you shrug; programs must
+agree exactly, and a single different character in the output counts as
+a failure.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Differential testing** runs two implementations of the same thing on
+many inputs and compares the results; every difference is a bug in one
+of them, and no expected outputs are needed<Cite id="mckeeman1998" />.
+For a compiler the two are usually the program before and after
+compiling, two compilers, or two versions of one compiler.
+</Callout>
+
+<Formal title="What a compiler must preserve">
+
+```text
+∀ x.  run(P, x) = run(C(P), x)
+```
+
+<span slot="read">For every input x (∀ reads "for every"), running the
+program P on x gives the same outcome, the same output and the same
+error, as running C(P), the compiled program. A differential test checks
+this for many inputs and many programs, never for all of them.</span>
+</Formal>
+
+Viscosity's test corpus is a folder of small JavaScript programs, each
+built to probe one case (an escape, a shape mismatch, an out-of-bounds
+read), with a first line saying what Viscosity should decide, such as
+`// viscosity: ps=soa`. The test, from
+`frontend-js/test/differential.test.ts`, simplified:
+
+```ts
+const r = compile(src, jsPlugin());
+expect(got(r.plan)).toEqual(want(src));
+const before = runIsolated(src);
+const after = runIsolated(r.code);
+expect(after).toEqual(before);
+```
+
+The first `expect` checks the decisions against the header; the second
+runs both versions with `runIsolated`, which gives each a brand-new Node
+VM context (its own globals, so neither run can see the other's leftovers)
+and records every `console.log` line *and* the uncaught error, if any, as
+`'TypeError: ' + message`. Step through one corpus program:
+
+<DiffSteps client:visible />
+
+The last step is a real experiment, not a test in the repository:
+compiled with `--bounds assume`, that file prints `0` where the original
+threw a `TypeError`, and only comparing errors as well as output catches
+it. The header check catches the opposite failure, because a compiler
+that never transforms anything passes every behaviour test.
+
+<Examples of="differential-testing">
+
+```js
+// a fast sort against a slow, obvious one
+fast([3, 1, 2]);   // [1, 2, 3]
+slow([3, 1, 2]);   // [1, 2, 3]: agree
+```
+
+```ts
+// acorn against the hand-written parser
+const a = compile(src,
+  jsPlugin({ parser: 'acorn' }));
+const m = compile(src,
+  jsPlugin({ parser: 'mini' }));
+expect(m.code).toBe(a.code);
+```
+
+```text
+TS engine   → code + explain  ┐ byte for
+Rust engine → code + explain  ┘ byte
+```
+
+</Examples>
+
+The first is the idea at its smallest: a fast sort is checked against a
+slow one too simple to be wrong. The second is
+`mini-parser.test.ts`: for every corpus and benchmark program, Viscosity
+compiled with acorn and with its own small parser must give
+byte-identical code and explanations. The third is the parity guarantee
+of the Rust port, whose README counts 95 programs, each compiled in two
+bounds modes, 190 pairs that all match; and the Drip companion does the
+same with its two interpreters, requiring the tree-walker and the VM to
+print the same, byte for byte, on every corpus program.
+
+<Prompts ids={['dt-oracle', 'dt-errors', 'dt-header']} />
+
+## Changing the input on purpose
+
+A **metamorphic test** needs only one implementation: change the input
+in a way that must not change the answer, and check that it does not.
+Sorting a list and sorting its reverse must give the same result;
+renaming every variable must not change what a program prints. Le,
+Afshari and Su made this a powerful compiler test: run a program on an
+input, delete some of the code that did not execute on that input, and
+the new program must still behave the same on it. In about eleven
+months this gave them 147 confirmed, unique bug reports against GCC and
+LLVM alone<Cite id="le2014emi" />.
+
+## Round trips
+
+There is one more trick, made for front ends. Parse a program, print the
+tree back to source, and parse that: you must get the same tree, and any
+difference means the parser or the printer lost something (a missing
+pair of brackets is the classic).
+
+<Callout kind="definition">
+**Round-trip testing** checks that a pair of opposite operations undo
+each other: parse → print → parse gives the same tree, encode → decode
+gives the same value. Like differential testing, it needs only the
+input, not an expected output.
+</Callout>
+
+<Examples of="round-trip-testing">
+
+```js
+const v = { x: 1, y: [2, 3] };
+JSON.parse(JSON.stringify(v)); // same data
+```
+
+```js
+show(['*', ['+', 1, 2], 3]);
+// '(1 + 2) * 3'; without brackets,
+// '1 + 2 * 3' parses as 1 + (2 * 3)
+```
+
+```ts
+const src = 'const a = [1, 2, 3];\n' +
+  '// a comment\n' +
+  'console.log(a.length);\n';
+expect(compile(src, jsPlugin()).code)
+  .toBe(src);
+```
+
+</Examples>
+
+The first is the everyday round trip: JSON out and back in again gives
+the same data. The second is the bug it is famous for catching: a
+printer that leaves out brackets turns `(1 + 2) * 3` into `1 + 2 * 3`,
+and parsing that back gives a different tree. The third is Viscosity's
+own version. It never prints a whole tree (it edits only the parts of
+the source it changes), so its round trip is the identity: a program
+with nothing to transform must come back byte for byte, comment
+included.
+
+Try all three ideas on a sort: a differential check against a slow sort,
+a metamorphic check with a shuffled input, and a JSON round trip.
+
+<Run id="oracles" />
+
+<Prompts ids={['rt-what', 'rt-identity', 'meta-what']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript itself is tested the golden way: Test262 is the language's
+conformance suite, with tens of thousands of test files covering the
+specification<Cite id="test262" />. Compiler bugs that no one thought to
+write a test for are a different matter; Csmith, a random generator of
+C programs, finds them using differential testing as its
+oracle<Cite id="csmith" />, and the next chapter takes up that idea,
+fuzzing, along with this repository's own fuzzers.
+</Callout>
+
+## Your turn
+
+<Exercise id="diffTest" />
+
+## What you learned
+
+- Testing a compiler is mostly the **oracle problem**: knowing the right
+  answer. Unit and golden tests store it; the others avoid needing it.
+- **Differential testing** compares two implementations. Viscosity
+  compares each program before and after compiling, output *and*
+  errors, in fresh VM contexts, and checks its decisions too.
+- Two parsers, two engines and two interpreters that must agree byte for
+  byte are all differential tests.
+- **Metamorphic** tests change the input in a way that must not change
+  the answer; **round-trip testing** checks that opposite operations
+  undo each other.
+
+Next: letting the computer write the test programs.
+
+
+{/* ── merge: from old chapter 97, Fuzzing and test-case reduction ── */}
+
+## The programs nobody thought of
+
+The last chapter's corpus is a folder of programs that somebody
+imagined: an escape here, an out-of-bounds read there. The bugs that
+hurt are the ones nobody imagined. When the repository's fuzzer for
+Viscosity was first run, about 8,000 random programs turned up five
+such bugs, all in both engines; one of them, a field write
+`ps[i].x = rhs`, checked the index *before* evaluating `rhs`, while the
+original program evaluates `rhs` first, so out of bounds the two threw
+different errors. Each now has a corpus program of its own (the Rust
+port's README lists them).
+
+<Analogy title="a food inspector ordering at random">
+A careful inspector does not only taste the dishes the chef suggests;
+they order odd combinations off the menu, at random, because that is
+where the kitchen has never practised.
+<span slot="breaks">Every combination off a menu is at least a dish; a
+random string of characters is usually not a program at all, so a
+fuzzer has to build its orders carefully, or the kitchen rejects
+them.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Fuzzing** generates large numbers of random inputs (for a compiler,
+random programs) to find bugs that no hand-written test covers. Paired
+with differential testing as the oracle, it needs no expected outputs at
+all.
+</Callout>
+
+<Prompts ids={['fuzz-what']} />
+
+## Programs worth running
+
+Two things make a compiler fuzzer useful. The first is a **seed**: the
+random choices come from a generator started at a known number, so the
+same seed always gives the same program, and a failure found at 3 a.m.
+can be made again at 9. The second is harder: the programs must be
+**valid**, with exactly one right behaviour. A program that reads
+uninitialised memory in C may legitimately do different things under two
+correct compilers, so a disagreement on it proves nothing. Csmith, the
+best-known C program generator, finds compiler bugs with differential
+testing as its oracle, and its authors note that generating programs
+free of undefined behaviour is "not trivial"<Cite id="csmith" /><Cite id="yang2011" />.
+YARPGen, a later generator, avoids undefined behaviour without dynamic
+checks and uses **generation policies** to steer its programs towards
+the optimisations it wants to stress; its authors found more than 220
+bugs in GCC, LLVM and the Intel C++ compiler<Cite id="livinskii2020" />.
+
+<FuzzLoop client:visible />
+
+JavaScript has no undefined behaviour, but it has its own traps:
+programs that never stop, or that read the clock. The repository's
+fuzzer, `engine/rust/scripts/fuzz.mjs`, runs every program with a
+timeout, builds only programs in the subset Viscosity cares about, and
+runs a program that may index out of bounds only in the mode that checks
+bounds. Its random numbers come from a tiny seeded generator:
+
+```js
+function rng(seed) {
+  let a = seed >>> 0;
+  const next = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    // ... a few shifts and multiplies
+  };
+  ...
+}
+```
+
+`>>> 0` keeps `a` a whole number from 0 to 2³² − 1, and each call to
+`next` moves it on by a fixed odd step and scrambles the bits, so the
+sequence looks random but depends only on the seed.
+
+<Examples of="fuzzing">
+
+```js
+// random expressions: a number, 'x',
+// or [op, left, right]
+['+', ['*', 'x', 3], 0]
+```
+
+```text
+drop, replace or insert one token in a
+Drip corpus program; tree-walker and VM
+must report the same compile errors
+```
+
+```text
+fuzz: seed 1, 300 programs (134
+transformed, 174 may go out of bounds,
+20 with an early error), 0 failing
+```
+
+</Examples>
+
+The first is the toy fuzzer below: random expression trees, an
+"optimiser" with algebraic rules, and the slow evaluator as the oracle.
+The second is the Drip companion's fuzzer, `test/fuzz.mjs`, which
+mangles corpus programs and checks that the two front ends reject them
+in exactly the same words; 2,000 mangled programs gave 0 disagreements
+when run for this chapter. The third is the summary line of Viscosity's
+fuzzer on its default campaign, also run for this chapter; the Rust test
+suite runs a fixed-seed campaign of 200 programs on every build
+(`crates/cli/tests/fuzz.rs`).
+
+Here is a toy fuzzer. One of its rules is wrong; run it, then find and
+fix the rule:
+
+<Run id="fuzz" />
+
+<Prompts ids={['fuzz-seed', 'fuzz-valid', 'fuzz-two-oracles']} />
+
+## Shrinking what fails
+
+A fuzzer's failures are big and noisy: a dozen lines, of which the bug
+needs two. **Test-case reduction** finds the small version
+automatically: try removing part of the input, and keep the removal if
+the failure is still there. C-Reduce, from the Csmith group, does this
+for C programs, driven by an **interestingness test**, a script that
+says whether a candidate still shows the bug<Cite id="regehr2012" />;
+the YARPGen authors use it on their failures, and warn that its
+syntactic cuts can introduce undefined behaviour along the way, which
+has to be checked for<Cite id="livinskii2020" />.
+
+<Analogy extra title="finding the ingredient you react to">
+If a meal of twelve ingredients makes you ill, you cook it again with
+half of them left out; if you are still ill, that half was innocent, and
+you keep halving until only the culprit (or the two that only harm you
+together) is left.
+<span slot="breaks">Leaving out an ingredient never stops the rest
+being food; leaving out a line of a program can stop the rest parsing,
+so a reducer must check that every candidate is still a valid
+program.</span>
+</Analogy>
+
+The repository's reducer (`--reduce`) is line-based delta debugging:
+
+```js
+for (let chunk = len >> 1; chunk >= 1; ...)
+  // try removing each chunk of lines;
+  // keep the removal if it parses and
+  // the same kind of failure remains
+```
+
+<ReduceSteps client:visible />
+
+<Formal title="1-minimal">
+
+```text
+fails(R)  ∧  ∀ r ∈ R. ¬fails(R − {r})
+```
+
+<span slot="read">A reduced input R is 1-minimal if it still fails, and
+for every single piece r in it (∀ reads "for every"), removing r makes
+it stop failing (¬ reads "not"). It need not be the smallest failing
+input there is, only one where no single piece can go.</span>
+</Formal>
+
+<Prompts ids={['reduce-what', 'reduce-valid', 'one-minimal']} />
+
+## Checking each compilation instead
+
+Testing samples programs; it can never cover them all. **Translation
+validation** turns the question round: instead of proving the compiler
+correct for every program, check, each time it runs, that the program it
+produced is equivalent to the one it was given. Necula built such a
+checker for the GNU C compiler, comparing the program before and after
+the optimiser, and reported that it took about the effort of writing one
+compiler pass, with the compiler supplying hints that make the check
+possible<Cite id="necula2000" />. Viscosity has none; its differential
+tests are the sampled version of the same question.
+
+<Prompts ids={['tv-what']} />
+
+<Callout kind="engine" label="Under the hood">
+The research on compiler testing sorts its methods by how they make test
+programs, which oracle they use and how they run tests
+efficiently<Cite id="chen2020survey" />; in those terms this repository
+has hand-written corpora, a generating fuzzer and a mutating fuzzer, all
+with differential oracles. What it does not have yet is coverage
+guidance, keeping the random inputs that reach new code, which Part XIII
+adds for the Rust engine.
+</Callout>
+
+## Your turn
+
+<Exercise id="reduce" />
+
+## What you learned
+
+- **Fuzzing** generates random programs to find bugs no one wrote a test
+  for; with a differential oracle it needs no expected outputs.
+- Seed the generator so failures can be made again, and generate only
+  **valid** programs, with one right behaviour (Csmith and YARPGen avoid
+  undefined behaviour by construction).
+- The repository fuzzes Viscosity (behaviour and TS/Rust parity, early
+  errors included) and Drip's front ends (mangled programs).
+- **Test-case reduction** removes chunks while the failure stays,
+  ending with a **1-minimal** input.
+- **Translation validation** checks each compilation, rather than
+  testing the compiler on samples.
+
+Next: Part VII, the back end, starting with machine code and assembly.
+
+<Quiz />

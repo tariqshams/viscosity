@@ -1,0 +1,271 @@
+---
+n: 318
+day: 38
+part: XVIII
+title: 'A small Python front-end'
+tagline: 'Python has no braces: a block ends where the spaces stop. The tokenizer measures those spaces and turns every change into a token, so that after it Python parses like every language you have parsed before.'
+objectives:
+  - Turn indentation into INDENT and DEDENT tokens with a stack of widths, by hand and in code.
+  - Predict how many DEDENTs a line produces, and when a dedent is an error.
+  - Explain why lines inside brackets produce no NEWLINE and no indentation tokens.
+  - Compare Viscosity's tokenizer with CPython's, including where they still differ.
+introduces: [indentation-tokens]
+uses: [token, token-type, lexeme, scanner, lookahead, maximal-munch, keyword, grammar, parser, recursive-descent, syntax-error, language-plugin, lowering, vir, multi-language-ir, array, push, string-index, function, for-loop, while-loop, comparison, logical-operators, throw, error-object]
+sources: [python-lexical, cpython-tokenize]
+---
+import IndentSteps from '../../../components/diagrams/ch318/IndentSteps';
+import BracketJoin from '../../../components/diagrams/ch318/BracketJoin';
+
+## Where does the loop end?
+
+The Python plugin begins where every front end begins, with a
+tokenizer (the *scanner* you wrote for Drip, which groups characters
+into tokens). Here is a Python function for it to read:
+
+```py
+def step(ps):
+    for p in ps:
+        p.x += p.vx
+    return ps
+print(1)
+```
+
+In JavaScript a `}` would close the loop body; here nothing closes
+anything. The body of the `for` is everything indented further than the
+`for`, and it ends at `return`, which moves back to the left; the
+spaces at the start of a line *are* syntax. The parsers you wrote for
+Drip ignore whitespace entirely, so Python's answer is neat: let the
+tokenizer measure the spaces and turn each change into a token, and the
+parser never sees a space at all.
+
+<Analogy title="a stack of trays">
+Keep a stack of trays, each with a width written on it, and start with
+one tray marked 0. When a line is indented further than the top tray,
+put a new tray on top with the new width. When a line comes back to the
+left, take trays off until the top one shows that line's width; each
+tray you take off closes one block. If no tray has that width, the line
+does not belong anywhere.
+<span slot="breaks">This stack grows by at most one tray per line
+(however far a line jumps right, it opens exactly one block), and the
+bottom tray, the 0, is never taken off.</span>
+</Analogy>
+
+<Analogy extra title="levels of a bulleted outline">
+In a word processor's outline, pressing Tab moves a bullet one level in
+(a sub-point of the one above), and Shift-Tab moves it back out. You can
+back out several levels at once, but only to a level that already
+exists above you; there is no "level two and a half".
+<span slot="breaks">An outline counts levels; Python counts spaces. A
+block may be indented by 2, 3 or 7 spaces, as long as its lines agree,
+so "the same level" means "exactly the same number of spaces", which is
+why the tokenizer stores widths rather than level numbers.</span>
+</Analogy>
+
+## A stack of widths
+
+Step through the tokenizer on that function. Watch the width of each
+line, the top of the stack, and the tokens that come out:
+
+<IndentSteps client:visible />
+
+This is the heart of `frontend-python/src/tokens.ts`, which runs at the
+start of every logical line. It is quoted as it is, except that
+`top()` stands for `indents[indents.length - 1]` so the lines fit, and
+a bounds check, a line that resets a flag and the code that
+skips blank and comment-only lines are left out:
+
+```ts
+let col = 0;
+let j = i;
+while (src[j] === ' ' || src[j] === '\t') {
+  col += src[j] === '\t'
+    ? 8 - (col % 8) : 1;
+  j++;
+}
+i = j;
+if (col > top()) {
+  indents.push(col);
+  toks.push({ type: 'indent', ... });
+} else {
+  while (col < top()) {
+    indents.pop();
+    toks.push({ type: 'dedent', ... });
+  }
+  if (col !== top())
+    err('inconsistent indentation');
+}
+```
+
+The first loop measures the width: a space adds one, and a tab jumps to
+the next multiple of 8 (so a tab after 3 spaces lands on 8). Then there
+are three cases. A wider line pushes its width and emits one `indent`.
+A narrower line pops every wider entry, emitting one `dedent` per pop,
+and must then match the new top exactly, or the tokenizer throws. A line
+of the same width emits nothing. When the file ends, one more loop pops
+every width above 0 and emits a `dedent` for each, so every block that
+was opened gets closed.
+
+<Callout kind="definition">
+**Indentation tokens** are the tokens a tokenizer emits for significant
+whitespace. A stack holds the widths of the open blocks, starting with
+0. A wider line pushes its width and emits **INDENT**; a narrower line
+pops every larger width, emitting one **DEDENT** per pop, and must then
+match the new top exactly; each logical line ends with a **NEWLINE**.
+To the parser, INDENT and DEDENT are `{` and `}`.
+</Callout>
+
+<Formal title="The indentation rule">
+
+```text
+S starts as [0]; w is a line's width
+w > top(S):  push w; emit INDENT
+w = top(S):  emit nothing
+w < top(S):  pop while w < top(S),
+             emit one DEDENT per pop;
+             if w ≠ top(S): error
+end of file: one DEDENT per entry > 0
+```
+
+<span slot="read">The stack S starts holding just 0, and w is the
+number of leading spaces on the current line. If w is bigger than the
+top of S, push w and emit an INDENT. If it is equal, emit nothing. If
+it is smaller, keep popping while w is smaller than the top, emitting a
+DEDENT for each pop; then, if w is not equal to the new top, the line
+matches no open block and it is an error. At the end of the file, emit a
+DEDENT for every entry above 0 still on the stack.</span>
+</Formal>
+
+<Examples of="indentation-tokens">
+
+```text
+if x:          if x : NEWLINE
+    y = 1      INDENT y = 1 NEWLINE
+z = 2          DEDENT z = 2 NEWLINE EOF
+```
+
+```text
+def f(ps):        def f ( ps ) : NEWLINE
+    for p in ps:  INDENT for p in ps :
+        p.x += 1    NEWLINE INDENT p . x
+f(qs)               += 1 NEWLINE DEDENT
+                    DEDENT f ( qs ) ...
+```
+
+```py
+if x:
+        y = 1
+    z = 2
+# Viscosity: inconsistent indentation
+#   (line 3)
+# CPython: IndentationError: unindent
+#   does not match any outer
+#   indentation level
+```
+
+</Examples>
+
+These are real outputs of Viscosity's `tokenize`. In the first,
+`y = 1` is wider than 0, so it opens one block (INDENT), and `z = 2`
+comes back to 0 and closes it (DEDENT). The second drops two levels at
+once: `f(qs)` has width 0 while the stack is `[0, 4, 8]`, so two
+widths are popped and two DEDENTs come out, closing the `for` and the
+`def`. The third is the classic mistake: the stack is `[0, 8]` when
+`z = 2` arrives with width 4, so 8 is popped, the top is 0, and 4
+matches nothing, so both Viscosity and CPython refuse it. Give the `z`
+line 8 spaces, or none, and both accept it.
+
+Here is the same algorithm in plain JavaScript, working on a list of
+lines; change the indentation and watch the tokens change:
+
+<Run id="indents" />
+
+<Prompts ids={['it-what', 'it-stack', 'it-two', 'it-bad', 'it-eof']} />
+
+## Brackets switch it off
+
+Python lets a long expression run over several lines when it is inside
+brackets:
+
+```py
+ps.append(P(float(i),
+            1.0))
+print(ps)
+```
+
+The second line's spaces mean nothing (they only line the arguments up
+for a human), and there must be no NEWLINE between the first two lines,
+because they are one statement. The tokenizer keeps a counter, `depth`:
+`(`, `[` and `{` add one, and the closing brackets take one away. While
+`depth` is above 0, a line end is plain whitespace, and the next line's
+width is never measured. This is the real code for a line end:
+
+```ts
+if (c === '\n') {
+  if (depth === 0)
+    toks.push({ type: 'newline', ... });
+  line++;
+  i++;
+  if (depth === 0) atLineStart = true;
+  continue;
+}
+```
+
+It emits a NEWLINE, and sets `atLineStart` so the next line's width is
+measured, only when no bracket is open.
+
+<Figure takeaway="Bracket depth, not line ends, decides where a statement stops." caption="Three physical lines, two logical lines. The tokens for this source are ps . append ( P ( float ( i ) , 1.0 ) ) NEWLINE print ( ps ) NEWLINE: nothing at all between the two halves of the call.">
+  <BracketJoin />
+</Figure>
+
+<Callout kind="pitfall">
+The real tokenizer had a bug exactly here, found while this chapter was
+first written and since fixed. A line end inside brackets used to set
+`atLineStart` anyway, and the flag was still set when the bracket
+closed, so the line end *after* `1.0))` was taken for a blank line and
+its NEWLINE was lost. The next statement ran into this one, the parser
+stopped with "expected end of line", and the whole file was left
+untouched. It failed safely, but every file with a bracket closing on a
+continuation line was skipped; the corpus program `multiline_call.py`
+now pins the fix, and the exercise below gets it right too.
+</Callout>
+
+<Prompts ids={['it-brackets']} />
+
+<Callout kind="engine" label="Under the hood">
+This is CPython's own design. Its language reference describes the same
+stack: a single 0 pushed before the first line, a push and an INDENT for
+a wider line, a DEDENT per pop for a narrower one, and an error if the
+width matches nothing on the stack<Cite id="python-lexical" />. Running
+CPython's `tokenize` module<Cite id="cpython-tokenize" /> on the
+function at the top of this chapter gives the same INDENT, DEDENT and
+NEWLINE tokens, in the same places, as Viscosity's. Both leave an
+*unexpected* indent to the parser (Viscosity's says `expected an
+expression` where CPython says `unexpected indent`). One difference
+remains: CPython 3.13 refuses a file that mixes tabs and spaces
+inconsistently, with `TabError`, while Viscosity expands the tabs and
+moves on; that is harmless, since such a file never runs, but it is a
+difference.
+</Callout>
+
+<Prompts ids={['it-cpython', 'it-tab']} />
+
+## Your turn
+
+The parser's side of these tokens, and the part of Python that
+Viscosity agrees to read, come in the next chapter. First, build the
+bracket rule yourself.
+
+<Exercise id="logicalLines" />
+
+## What you learned
+
+- **Indentation tokens** turn significant whitespace into INDENT and
+  DEDENT, using a stack of open-block widths that starts at 0.
+- A wider line opens exactly one block; a narrower one closes one block
+  per popped width, and must land on a width already on the stack.
+- Inside brackets, line ends and indentation do not count: one logical
+  line can span several physical lines, and `depth` decides.
+- Viscosity's tokenizer gives CPython's tokens for the subset, with one
+  known difference: it does not reject inconsistent tabs.
+
+<Quiz />

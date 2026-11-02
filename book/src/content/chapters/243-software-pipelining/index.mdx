@@ -1,0 +1,231 @@
+---
+n: 243
+day: 19
+part: XIII
+title: 'Software pipelining'
+tagline: 'One trip round a loop is a chain of waits, but the next trip does not have to wait for this one; start it early, and a loop that cost 8 cycles an element costs 5.'
+objectives:
+  - Explain why scheduling one trip of a loop cannot remove its stalls, and why overlapping trips can.
+  - Read a software-pipelined loop as a prologue, a kernel and an epilogue, and say which trip each instruction works on.
+  - Build the stage table of a pipelined loop for any number of elements.
+  - 'Name the costs: code size, registers, and loops too short to fill the pipeline.'
+introduces: [software-pipelining]
+uses: [instruction-scheduling, dependence-dag, list-scheduling, loop-unrolling, dependence-analysis, latency, pipeline, register, register-allocation, risc-v, assembly-language, natural-loop, function, array, for-loop, for-of]
+sources: [llvm-machinepipeliner, coopertorczon2022, llvm-sifive7-sched]
+---
+import PipeSteps from '../../../components/diagrams/ch243/PipeSteps';
+import KernelFigure from '../../../components/diagrams/ch243/KernelFigure';
+
+## The stalls that will not go away
+
+After list scheduling, one trip round our sum-of-squares loop takes 8
+cycles on the toy machine (one instruction per cycle; loads and
+multiplies take 3), and 3 of those cycles are still stalls. No order of
+these five instructions can do better, because the chain `ld`, `mul`,
+`add` is the critical path: the multiply cannot start until the load has
+finished, and the add cannot start until the multiply has.
+
+However, look at the next trip. Its load reads the next element, which has
+nothing to do with this trip's multiply; the only thing it needs is the
+pointer, and that is ready after one cycle. Within one trip there is
+nothing to fill the gaps with, but across trips there is plenty. Chapter
+217 showed one way to use that: **unroll** the loop, so that a single
+block holds two or more trips and the list scheduler can interleave
+them, as it did in the last chapter. That works, but every copy makes the
+code longer, and the stalls at the start and end of each unrolled block
+remain.
+
+**Software pipelining** goes further: it builds a new loop whose body
+holds a *piece* of several different trips. Each pass of the new loop
+adds the square of element i, squares element i + 1 and loads element
+i + 2, so the add never waits for its multiply and the multiply never
+waits for its load: they were started a whole pass earlier.
+
+<Analogy title="three loads of washing">
+With one washing machine, one dryer and one folding table, you do not
+wash, dry and fold the first load before starting the second. Once the
+first load moves to the dryer, the second goes in the washer; once it
+moves on, the third goes in, while the first is being folded. In the
+middle of the afternoon all three machines are busy, each with a
+different load.
+<span slot="breaks">At the start of the afternoon the dryer and table
+stand idle, and at the end the washer does; a pipelined loop needs extra
+code, the prologue and epilogue, for exactly those moments. And the
+washing carries itself from machine to machine, whereas each trip's
+values must be kept in registers of their own.</span>
+</Analogy>
+
+<Analogy extra title="a sandwich counter">
+One person slices the bread, the next adds the filling, the next wraps
+it. At any moment three sandwiches are being made, each at a different
+step, and a finished sandwich comes off the end every step, even though
+each one takes three steps to make.
+<span slot="breaks">Each sandwich sits on its own board; in a loop, the
+half-finished values sit in registers, and the order of the instructions
+in each pass is what stops one trip's value being overwritten by the
+next trip's before it is used.</span>
+</Analogy>
+
+## Prologue, kernel, epilogue
+
+Step through four elements, with each pass of the new loop as a row:
+
+<PipeSteps client:visible />
+
+The middle rows, where every stage is busy, are the **kernel**: the new
+loop body, run again and again. The rows before it, while the pipeline
+fills, are the **prologue**, and the rows after it, while it drains, are
+the **epilogue**. Here is the whole function in RISC-V, assembled and
+checked with `llvm-mc` and run on a small simulator of the toy machine
+(it assumes at least two elements; a real compiler adds a test and falls
+back to the plain loop for shorter lists):
+
+```text
+sumsq:              # a0 = xs, a1 = n
+  slli a1, a1, 3
+  add  a1, a0, a1   # a1 = end of list
+  li   a2, 0        # s = 0
+  ld   a4, 0(a0)    # load x0
+  mul  a5, a4, a4   # square x0
+  ld   a4, 8(a0)    # load x1
+  addi a0, a0, 16
+  beq  a0, a1, drain
+loop:
+  add  a2, a2, a5   # add square of x[i]
+  mul  a5, a4, a4   # square x[i+1]
+  ld   a4, 0(a0)    # load x[i+2]
+  addi a0, a0, 8
+  bne  a0, a1, loop
+drain:
+  add  a2, a2, a5   # add square of x[n-2]
+  mul  a5, a4, a4   # square x[n-1]
+  add  a2, a2, a5   # add it
+  mv   a0, a2
+  ret
+```
+
+The first two lines work out the end of the list: `slli` shifts `n` left
+by 3, which multiplies it by 8 (the bytes in one element), and `add`
+adds the start. The prologue loads element 0, squares it and loads
+element 1. In the kernel, `a5` always holds a square waiting to be
+added and `a4` an element waiting to be squared; the order of the three
+lines matters, because `add` must read the old `a5` before `mul`
+replaces it, and `mul` must read the old `a4` before `ld` replaces it
+(anti dependences, now between trips). The epilogue finishes the last
+two elements. On the toy machine each pass of the kernel takes 5 cycles
+with no stalls at all:
+
+<Figure takeaway="Overlapping trips removes the stalls that scheduling one trip could not." caption="Top: one trip of the list-scheduled loop, 8 cycles, with stalls in cycles 1, 2 and 5. Bottom: one pass of the kernel, 5 cycles, no stalls; its add, mul and ld work on elements i, i + 1 and i + 2. When the kernel's mul starts, the value it needs was loaded 4 cycles earlier, in the previous pass, which is more than the 3 a load takes.">
+  <KernelFigure />
+</Figure>
+
+On the simulator, a list of 10 elements takes 85 cycles with the plain
+loop and 57 with the pipelined one; every extra element costs 8 cycles
+in the first and 5 in the second.
+
+<Callout kind="definition">
+**Software pipelining** rewrites a loop so that each pass of the new loop
+body, the **kernel**, runs parts of several consecutive trips of the old
+one, each at a different **stage**. A **prologue** before the kernel
+starts the first trips, and an **epilogue** after it finishes the last.
+The number of cycles between the starts of consecutive trips is the
+**initiation interval** (here 5).
+</Callout>
+
+<Formal title="The stage table">
+
+```text
+S stages, n trips; row t = 0 … n + S − 2
+row t runs stage s of trip t − s,
+  for every s with 0 ≤ t − s < n
+prologue: rows 0 … S − 2
+kernel:   rows S − 1 … n − 1
+epilogue: rows n … n + S − 2
+```
+
+<span slot="read">With S stages and n trips there are n + S − 1 rows.
+Row t runs stage s of trip t minus s, whenever that trip exists. The
+first S − 1 rows are the prologue, the next n − S + 1 rows are the
+kernel (every stage busy), and the last S − 1 rows are the
+epilogue.</span>
+</Formal>
+
+<Examples of="software-pipelining">
+
+```text
+copy:                # two stages
+  sd   a3, 0(a1)     # store x[i]
+  ld   a3, 8(a0)     # load x[i+1]
+  ...pointer bumps and branch
+```
+
+```text
+n = 4, S = 3:
+row 0: L0        (prologue)
+row 1: L1 M0     (prologue)
+row 2: L2 M1 A0  (kernel)
+row 3: L3 M2 A1  (kernel)
+row 4: M3 A2     (epilogue)
+row 5: A3        (epilogue)
+```
+
+<Run id="piped" />
+
+</Examples>
+
+The first is the smallest pipelined loop there is, a copy from one list
+to another: each pass stores the element loaded in the previous pass
+and loads the next, so the store never waits for its load. The second is
+the table from the steps above, written out: L, M and A are the load,
+square and add stages, and the number is the element. The runnable one
+is the same pipeline written in JavaScript, with `x` playing `a4` and
+`sq` playing `a5`; it checks that the pipelined loop adds up to the same
+answer as the plain one. Try it with a list of two elements, where the
+kernel never runs at all.
+
+<Prompts ids={['why-not-one-trip', 'kernel-what', 'pro-epi', 'kernel-order', 'ii-what']} />
+
+## What it costs
+
+Nothing here is free. The prologue and epilogue make the code longer. Each trip in flight needs
+registers of its own (`a4` and `a5` hold two different trips' values at
+once), so pipelining raises register pressure in exactly the way the
+last chapter warned about. A loop with fewer trips than stages never
+reaches the kernel, so the compiler needs a guard and a plain copy of
+the loop for short lists. And a value that has to live longer than one
+pass of the kernel would be overwritten by the next trip before it is
+used; the usual fix is to unroll the kernel, so that each trip in
+flight gets a register of its own (this is called *modulo variable
+expansion*).
+
+Real compilers do this. LLVM has a software pipeliner that runs just
+before register allocation, while the code is still in SSA form; if it
+succeeds, it replaces the loop with prologue blocks, the pipelined kernel
+and epilogue blocks, and each target turns it on by providing a few hooks
+about its loops<Cite id="llvm-machinepipeliner" />. It matters most on
+in-order cores, where nothing in the hardware hides a stall; LLVM's model
+of SiFive's in-order 7-series cores, for example, gives loads and
+multiplies a latency of 3<Cite id="llvm-sifive7-sched" />, just like our
+toy machine.
+
+<Prompts ids={['cost-registers', 'short-loops', 'pipeliner-when']} />
+
+## Your turn
+
+<Exercise id="stagetable" />
+
+## What you learned
+
+- One trip's stalls cannot be filled from the same trip, but they can be
+  filled from the **next** trips.
+- **Software pipelining** overlaps trips: each pass of the **kernel**
+  runs a different **stage** of several trips, with a **prologue** to
+  fill the pipeline and an **epilogue** to drain it.
+- Inside the kernel, the order of instructions keeps each trip's values
+  from being overwritten too early.
+- It costs code size and registers, and needs a fallback for short loops.
+
+Next: how a compiler finds a kernel like ours automatically, for any loop
+and any machine.
+
+<Quiz />

@@ -2,3 +2,4 @@ node_modules
 .DS_Store
 results/*.tmp
 .claude/
+book/restructure-log.txt

@@ -52,8 +52,7 @@ console.log(double(3) + 1);`,
 export const exercises = {
   average: {
     title: 'The average of two numbers',
-    prompt:
-      'Write a function `average(a, b)` that **returns** the average of its two arguments. For example `average(2, 4)` should return `3`.',
+    prompt: 'Write a function `average(a, b)` that **returns** the average of its two arguments. For example `average(2, 4)` should return `3`.',
     starter: `function average(a, b) {
   // your code here
 }
@@ -109,8 +108,7 @@ test('returns, not just prints', () => {
   clamp: {
     optional: true,
     title: 'Keep a number in range',
-    prompt:
-      'Write `clamp(x, lo, hi)`: it returns `lo` if `x` is below `lo`, returns `hi` if `x` is above `hi`, and otherwise returns `x` unchanged. Games use this all the time, for example to keep a player inside the screen.',
+    prompt: 'Write `clamp(x, lo, hi)`: it returns `lo` if `x` is below `lo`, returns `hi` if `x` is above `hi`, and otherwise returns `x` unchanged. Games use this all the time, for example to keep a player inside the screen.',
     starter: `function clamp(x, lo, hi) {
   // your code here
 }
@@ -190,11 +188,27 @@ For \`clamp(15, 0, 10)\`: \`15 < 0\` is false, \`15 > 10\` is true, so the answe
 
 export const quiz = [
   {
-    q: 'What does this print?\n```\nfunction f(n) {\n  return n + 1;\n}\nconsole.log(f(f(1)));\n```',
+    q: `What does this print?
+\`\`\`
+function f(n) {
+  return n + 1;
+}
+console.log(f(f(1)));
+\`\`\``,
     options: [
-      { t: '`2`', why: 'That is `f(1)`. But that result is fed into `f` again.' },
-      { t: '`3`', correct: true, why: 'The inner call runs first: `f(1)` is `2`. Then `f(2)` is `3`.' },
-      { t: '`1`', why: 'Each call adds 1, and there are two calls.' },
+      {
+        t: '`2`',
+        why: 'That is `f(1)`. But that result is fed into `f` again.',
+      },
+      {
+        t: '`3`',
+        correct: true,
+        why: 'The inner call runs first: `f(1)` is `2`. Then `f(2)` is `3`.',
+      },
+      {
+        t: '`1`',
+        why: 'Each call adds 1, and there are two calls.',
+      },
     ],
   },
   {
@@ -210,34 +224,77 @@ function g(x) {
 console.log(g(5));
 \`\`\``,
     options: [
-      { t: '`yes` then `done`', why: 'The `console.log(\'done\')` comes after a `return`, so it never runs.' },
-      { t: '`yes`', correct: true, why: '`x > 0`, so `return \'yes\'` runs and the function stops immediately.' },
-      { t: '`no`', why: '5 is greater than 0, so the first `return` runs.' },
+      {
+        t: '`yes` then `done`',
+        why: 'The `console.log(\'done\')` comes after a `return`, so it never runs.',
+      },
+      {
+        t: '`yes`',
+        correct: true,
+        why: '`x > 0`, so `return \'yes\'` runs and the function stops immediately.',
+      },
+      {
+        t: '`no`',
+        why: '5 is greater than 0, so the first `return` runs.',
+      },
     ],
   },
   {
     q: 'With `function minus(a, b) { return a - b; }`, what is `minus(2, 9)`?',
     options: [
-      { t: '`7`', why: 'That would be `9 - 2`. The first argument goes to `a`, so this is `2 - 9`.' },
-      { t: '`11`', why: 'The body subtracts; it does not add.' },
-      { t: '`-7`', correct: true, why: 'By position, `a` is 2 and `b` is 9, and `2 - 9` is `-7`.' },
+      {
+        t: '`7`',
+        why: 'That would be `9 - 2`. The first argument goes to `a`, so this is `2 - 9`.',
+      },
+      {
+        t: '`11`',
+        why: 'The body subtracts; it does not add.',
+      },
+      {
+        t: '`-7`',
+        correct: true,
+        why: 'By position, `a` is 2 and `b` is 9, and `2 - 9` is `-7`.',
+      },
     ],
   },
   {
     q: 'Which line **calls** a function (rather than defining it)?',
     options: [
-      { t: '`const s = square(4);`', correct: true, why: 'Name followed by parentheses with arguments: the function runs, and `s` becomes `16`.' },
-      { t: '`function square(x) { return x * x; }`', why: 'That defines `square`; it computes nothing yet.' },
-      { t: '`return x * x;`', why: 'That is a statement inside the body of a definition.' },
-      { t: '`square`', why: 'The name alone refers to the function without running it. The parentheses are what call it.' },
+      {
+        t: '`const s = square(4);`',
+        correct: true,
+        why: 'Name followed by parentheses with arguments: the function runs, and `s` becomes `16`.',
+      },
+      {
+        t: '`function square(x) { return x * x; }`',
+        why: 'That defines `square`; it computes nothing yet.',
+      },
+      {
+        t: '`return x * x;`',
+        why: 'That is a statement inside the body of a definition.',
+      },
+      {
+        t: '`square`',
+        why: 'The name alone refers to the function without running it. The parentheses are what call it.',
+      },
     ],
   },
   {
     q: 'What is one real difference between the JavaScript and the Java version of `area(w, h)`?',
     options: [
-      { t: 'Java has no `return`', why: 'Both use `return` to send the answer back.' },
-      { t: 'Java calls functions without parentheses', why: 'Java calls `area(3, 4)` exactly the way JavaScript does.' },
-      { t: 'Java makes you write the type of each parameter and of the result', correct: true, why: '`static int area(int w, int h)` says both parameters and the answer are whole numbers; JavaScript checks no types.' },
+      {
+        t: 'Java has no `return`',
+        why: 'Both use `return` to send the answer back.',
+      },
+      {
+        t: 'Java calls functions without parentheses',
+        why: 'Java calls `area(3, 4)` exactly the way JavaScript does.',
+      },
+      {
+        t: 'Java makes you write the type of each parameter and of the result',
+        correct: true,
+        why: '`static int area(int w, int h)` says both parameters and the answer are whole numbers; JavaScript checks no types.',
+      },
     ],
   },
 ];

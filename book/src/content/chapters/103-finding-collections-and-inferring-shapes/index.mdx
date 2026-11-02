@@ -1,0 +1,582 @@
+---
+n: 103
+day: 14
+part: VI
+title: 'Finding collections, and inferring shapes'
+tagline: 'Before Viscosity can store anything as columns, it has to find the arrays that are really tables: one variable, one array, and records that all have the same fields in the same order. Here is how it searches VIR for them, as a small dataflow problem, and every reason it gives for saying no.'
+objectives:
+  - Explain how candidate collections are found from stores of array.empty and array.new, and why var and reassigned names are left out.
+  - Describe collection discovery as a dataflow problem over def-use edges, and trace its worklist on real VIR.
+  - Name the uses of a collection that discovery accepts, including calls to known functions.
+  - Explain the shape check, including why field order and a record used twice cause a bailout.
+  - Give each SSA value a fact, and explain why that makes the facts flow-sensitive and why a merge of different facts is a union.
+  - Run an optimistic fixpoint on a loop by hand, and say why a pessimistic start proves nothing there.
+  - Infer a collection's record shape from its object literals, and say why field order is part of the shape.
+  - Contrast inferring facts ahead of time (Viscosity) with watching them at run time (V8's feedback).
+introduces: [collection-discovery, type-inference, shape-inference]
+uses: [vir, record-collection-nodes, ast-to-ir, viscosity-pipeline, layout-strategy, aos-vs-soa, array-of-objects, shape, transition-tree, alias-analysis, aliasing, escape-analysis, escape-sites, worklist, static-analysis, ssa, push, array, object, property, map, set, variables, typescript, type-annotation, type-erasure, typeof, union-type, narrowing, hindley-milner, type-feedback, speculation, deoptimization, typed-array, float64, field-representation, phi-node, dataflow, lattice, fixpoint, constant-propagation, call-graph]
+sources: [v8-fast-properties, ts-basics, ts-narrowing, v8-maglev]
+---
+import DiscoverySteps from '../../../components/diagrams/ch103/DiscoverySteps';
+import RefsFlow from '../../../components/diagrams/ch103/RefsFlow';
+import Playground from '../../../components/playground/Playground';
+import LatticeSteps from '../../../components/diagrams/ch103/LatticeSteps';
+import UnionMerge from '../../../components/diagrams/ch103/UnionMerge';
+
+{/* ── merge: from old chapter 103, Finding collections ── */}
+
+## Which arrays are tables?
+
+A program is full of arrays: lists of numbers, of strings, of
+callbacks, of other arrays. Only some of them are what *AoS vs SoA,
+measured* called an array of structs, a table in which every element is
+a record with the same fields; those are the only ones a column layout
+can help, so the first job of Viscosity's analyses is to find them,
+and to say, for each array it passes over, why.
+
+<Analogy title="a librarian and a set of encyclopaedias">
+A librarian wants to move a shelf of encyclopaedias into a cabinet
+with one drawer per volume. First she checks that it really is one
+set: the same series and the same format all the way along, no volume
+out on a long loan, and nobody planning to swap the whole shelf for a
+different set tomorrow.
+<span slot="breaks">She can see the shelf and judge it at a glance;
+Viscosity cannot see the array at all, only the code that builds and
+uses it, so it has to reason from every line that touches the array
+instead of looking at it.</span>
+</Analogy>
+
+<Analogy extra title="tracking a parcel">
+To know everywhere a parcel has been, you follow its tracking history:
+each scan says where it went next, and you follow that scan in turn
+until the trail ends at the front door.
+<span slot="breaks">A parcel is in one place at a time, so its trail
+is a single line; a value in a program can be used in many places at
+once, so the trail branches, and Viscosity keeps a to-do list of every
+branch it has not followed yet.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Collection discovery** finds the variables that hold an array of
+same-shaped records: a `const` or `let` given a fresh array literal,
+filled only with fresh object literals of one shape, and never given a
+different value. Each one found becomes a **collection**; anything that
+breaks the rules adds a **bailout** reason to it, and a collection with
+any reason is left exactly as it is.
+</Callout>
+
+All of it runs on VIR, in `packages/core/src/analysis.ts`, so it works
+for the Python front-end too. *Lowering JavaScript to VIR* made this
+easy on purpose: a variable whose initial value is an array literal
+always becomes a binding, never an SSA value, so every place that
+reads it is an explicit `load` instruction, and a load is something an
+analysis can collect.
+
+<Prompts ids={['cd-what', 'cd-vir']} />
+
+## Step 1: candidates from stores
+
+The first pass walks every instruction once and files each
+`storeBinding` and `loadBinding` under its binding. Then, simplified:
+
+```ts
+for (const binding of m.bindings) {
+  if (binding.kind !== 'const'
+    && binding.kind !== 'let') continue;
+  const st = stores.get(binding.id) ?? [];
+  const arrayStores = st.filter((x) =>
+    ['array.empty', 'array.new']
+      .includes(inst(x.args[0]).op));
+  if (arrayStores.length === 0) continue;
+  const c = newCollection(binding,
+    inst(arrayStores[0].args[0]));
+  if (st.length > 1) bail(c, 'reassigned');
+}
+```
+
+Line by line: a binding that is not a `const` or a `let` is skipped
+outright; `st` is every store into it; `arrayStores` keeps the stores
+whose value is an `array.empty` (`[]`) or an `array.new` (`[a, b]`);
+with none, this name never holds a fresh array, so it is skipped; with
+one, it becomes a candidate collection, made from that array; and if
+the name has **any** second store, it may not always hold this array,
+so the candidate gets a bailout at once. (The real message names the
+line of the last store.) For an `array.new`, each element must also be
+a `record.new`, an object literal.
+
+<Examples of="collection-discovery">
+
+```text
+const ps = [];  … ps.push({ x: i });
+ps (line 1) {x} → kept as array of
+  objects
+  · no loop reads or writes its fields,
+    so a new layout cannot pay off
+```
+
+```text
+const xs = [1, 2, 3];
+xs (line 1) {} → kept as array of
+  objects
+  · unsafe: line 1: an element of the
+    array literal is not a plain object
+    literal
+```
+
+```text
+var ps = [];  … (the same program)
+No arrays of objects found.
+```
+
+</Examples>
+
+(Here and below, the first line is the program and the rest is the
+real output of `viscosity explain`, wrapped to fit the page.) The
+first is a collection: a `const`, one store, records pushed in. It is
+not *transformed*, because nothing reads its fields in a loop, but that
+is the cost model's decision, a later chapter's business; discovery
+found it. The second is a candidate that fails at once, since `1` is
+not an object literal. The third is the surprise: the same table
+declared with `var` is never a candidate, so explain finds nothing to
+talk about. The rule is a plain `kind` check in the code above (a
+`var` can be declared twice and is visible before its own line, which
+makes "the one array this name holds" harder to pin down, and leaving
+it out keeps the analysis small).
+
+<Prompts ids={['cd-var', 'cd-reassigned']} />
+
+## Step 2: following the fact "refers to ps"
+
+A candidate's loads are not the end of the story: a load can be passed
+to a function, where the parameter becomes another name for the same
+array. So discovery is a small **dataflow problem**, in the sense of
+*Dataflow analysis*: each value in VIR either refers to the collection
+or does not (a lattice with two points), the fact starts at the loads,
+and it flows forward along **def-use edges** (from the instruction that
+makes a value to each instruction that uses it). It is a *sparse*
+problem, because VIR is in SSA form and every value already has its
+list of uses, so there is no need to walk blocks and carry sets
+between them. Here is the flow for a program in which `step(qs)` is
+called twice with `ps`:
+
+<Figure takeaway="The fact flows from the store, through every load, and across both calls into the parameter." caption="Real VIR value numbers. Every load of ps refers to it; both calls of step pass ps, so the parameter qs (%0) refers to it too, and its uses inside step are checked like any other.">
+  <RefsFlow />
+</Figure>
+
+<Formal title="The values that refer to a collection">
+
+```text
+Refs(c) is the smallest set where:
+  load c  ∈ Refs(c)
+  v ∈ Refs(c), f(…v at k…) a call,
+  f known, every call passes c at k
+      ⇒  param_k(f) ∈ Refs(c)
+```
+
+<span slot="read">Refs of c, the values that refer to collection c, is
+the smallest set with two properties: every load of c is in it; and
+whenever a value in it is passed as argument k to a known function
+(declared once, only ever called directly), and every call of that
+function passes c in position k, then that function's parameter k is
+in it as well. "Smallest" means nothing else gets in, which is exactly
+what a worklist computes, as in *Fixpoints and worklists*.</span>
+</Formal>
+
+The worklist starts with every load and pops one at a time; for each
+use of the popped value it asks whether the use is on a short list of
+things Viscosity knows how to rewrite:
+
+- `ps.length`: a `field.get` of `length`, fine.
+- `ps.push(r)`: exactly one argument, and `r` must be a fresh
+  `record.new`, whose fields are then checked against the shape.
+- `ps[i]`: an `index.get`, which hands out an element whose own uses
+  are checked later (in *Proving it safe*).
+- passed to a known function whose every call passes this same
+  collection: the parameter joins the worklist, as in the figure.
+
+Anything else is a bailout, with a reason. Step through the scan on a
+smaller program, with its real VIR:
+
+<DiscoverySteps client:visible />
+
+Because the worklist pops from the end, the *last* push in the program
+is met first and sets the shape. That is why a mismatch reads
+`{x, y} vs {y, x}` and blames line 2: the record on line 3 came first.
+The verdict never depends on the order, only the wording does.
+
+<Prompts ids={['cd-dataflow', 'cd-worklist', 'cd-push-fresh', 'cd-other-use']} />
+
+## The shape check
+
+Every record that enters the collection, from the literal or from a
+push, goes through one small function, `setShape`, which applies two
+rules (*Record shapes* shows its code in full). First, the first record sets the field list, and every later one must
+match it exactly, order included. Order is part of the shape because the
+emitter turns `push({ x: a, y: b })` into `push(a, b)`, arguments in
+column order; it is part of V8's idea of shape too, where objects that
+get the same properties in a different order end up with different
+hidden classes<Cite id="v8-fast-properties" />. Second, the record must be **used exactly once**, by the push itself. Here it
+is as a spot the difference:
+
+```js
+// accepted: r is used once, by push
+const r = { x: i };
+ps.push(r);
+
+// refused: r is also written later
+const r = { x: i };
+ps.push(r);
+if (i === 5) r.x = 500;
+```
+
+```text
+· unsafe: line 6: the new record is also
+  referenced elsewhere, so it could be
+  aliased
+```
+
+The first is fine, because `r` is an SSA value whose only use is the
+push, so it is the same as pushing the literal directly. In the second
+(trimmed from the corpus file `record_shared.js`), the `record.new`
+has two uses, the push and the `field.set`; after a layout change
+there would be no object `r` any more, only a slot in a column, so the
+write `r.x = 500` would go nowhere. In the language of *Alias
+analysis*, `r` and `ps[5]` must alias, and Viscosity refuses any
+record that has a second name. Last, a candidate that never receives a
+single record, such as a `[]` that is only measured, gets "no records
+are ever added, so there is nothing to lay out".
+
+<Prompts ids={['cd-order', 'cd-alias']} />
+
+## Try it
+
+Swap the field order in the push, push the same object twice, add a
+`ps.filter(...)` call, or add `ps = [];` at the end (after changing
+`const` to `let`), and read the reasons:
+
+<Playground client:visible title="Is it a collection?" initial={`const ps = [];
+for (let i = 0; i < 200; i++) {
+  ps.push({ x: i, y: 2 * i });
+}
+let s = 0;
+for (let i = 0; i < ps.length; i++) {
+  s += ps[i].x + ps[i].y;
+}
+console.log(s);`} />
+
+<Callout kind="engine" label="Under the hood">
+Discovery is a cheap first filter, and it never proves that a
+collection is *safe* to change; that takes following every element
+(*Proving it safe*) and an estimate of whether it pays (*The cost
+model*). What it buys is the list of candidates, their shapes, and
+every instruction that creates, pushes, indexes or measures them,
+which is exactly the list of places the emitter has to rewrite.
+</Callout>
+
+## Your turn
+
+The first exercise is the core one; the second is extra practice.
+
+<Exercise id="findCollections" />
+
+<Exercise id="aliased" />
+
+## What you learned
+
+- **Collection discovery** starts from `const`/`let` names given a
+  fresh array literal; a second store is a reassignment bailout, and
+  `var` is never considered.
+- It is a sparse **dataflow problem**: the fact "refers to this
+  collection" flows from the loads along def-use edges, and into the
+  parameter of a **known function** when every call passes the same
+  collection. A worklist computes the smallest such set.
+- Each use must be `.length`, `push` of one fresh record, `ps[i]`, or
+  such a call; anything else is a bailout with a reason.
+- **setShape** requires the same fields in the same order, and a
+  record used only by its push, so that nothing can alias it.
+
+
+{/* ── merge: from old chapter 103, Type and shape inference ── */}
+
+## Two facts nobody wrote down
+
+Before Viscosity can give a field its own `Float64Array` column (a typed
+array that stores raw 64-bit numbers), it needs two facts that no
+JavaScript program ever states: that every element has **the same
+fields**, so there is one set of columns, and that the field only ever
+holds **numbers**, so a typed array can store it. Getting the second one
+wrong changes what the program prints, because a `Float64Array` quietly
+turns a string such as `'far'` into `NaN`. Viscosity cannot ask the
+programmer, and it does not trust TypeScript annotations either, because
+they are erased before the code runs and never change what it
+does<Cite id="ts-basics" />; as such, it has to deduce both facts from
+the code itself.
+
+You have met inference before: Hindley–Milner (chapter 196) worked out
+every type in a language that was designed for it. JavaScript was not:
+one variable may hold a number on one line and a string on the next, so
+the question becomes "what can this value be *here*?".
+
+<Analogy title="a detective with no confession">
+A detective has no one admitting anything, only evidence. "The butler did
+it" is a guess; the real work is checking every clue against the guess,
+dropping it the moment one clue contradicts it, and keeping it only if
+every clue fits.
+<span slot="breaks">A detective may convict on a strong hunch; Viscosity
+never acts on a hunch, only on a guess that every one of its rules has
+confirmed, and when in doubt it keeps your objects as they are.</span>
+</Analogy>
+
+<Analogy extra title="sorting the post without opening it">
+A sorting office decides where each parcel goes from the outside alone:
+the label, the size, the weight. It never opens one, so a parcel with no
+clear label goes in the "we cannot be sure" pile.
+<span slot="breaks">A parcel's label was written by someone who knew what
+was inside; a compiler has no labels at all and reads what it needs from
+how each value was made.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Type inference** deduces the types of values from how they are made and
+used, without annotations. In a dynamic language it is done per value,
+at each point in the program. Viscosity's version answers one question
+per value: is it provably a number?
+</Callout>
+
+<Prompts ids={['ti-what', 'ti-annotations']} />
+
+## Facts belong to values, not to variables
+
+In SSA (chapter 90) every assignment makes a new value, so a variable
+that changes its mind becomes several values, and each can carry its own
+fact. That makes the facts **flow-sensitive**: the same name can have a
+different fact at different points. Where paths meet, a phi joins its
+inputs, and the joined fact is a **union**: "a number *or* a string".
+
+<Figure takeaway="Each SSA value has its own fact; a phi joins them." caption="x is 1 on one path and 'one' on the other. x1 and x2 each have an exact fact; the phi x3 can be either, a union. Viscosity's lattice has only two levels, so the union is recorded as “maybe not a number”.">
+  <UnionMerge />
+</Figure>
+
+TypeScript's checker does the same kind of flow analysis: its handbook
+shows one variable observed with a different type at each point, and a
+union where paths re-merge<Cite id="ts-narrowing" />. Viscosity's lattice
+is coarser, with only *number* above *maybe not*, because that is all a
+`Float64Array` needs to know.
+
+<Formal title="Two rules and a join">
+
+```text
+n(a) = num    n(b) = num
+────────────────────────
+     n(a + b) = num
+
+num ⊔ num   = num
+num ⊔ other = maybe not
+```
+
+<span slot="read">If a is a number and b is a number, then a + b is a
+number. Joining two facts at a phi (the ⊔ sign, read "join") keeps
+"number" only when both sides are numbers; anything else becomes
+"maybe not".</span>
+</Formal>
+
+<Examples of="type-inference">
+
+```js
+const a = 2 * 3;   // number
+```
+
+```js
+let x = 1;          // x1: number
+if (c) x = 'one';   // x2: string
+use(x);  // x3 = phi: number | string
+```
+
+```js
+function f(p) { return p + 1; }
+f(2); f(3);   // every call passes a number:
+              // p and p + 1 are numbers
+```
+
+</Examples>
+
+The first is a constant times a constant. The second is the diagram: after the `if`, `x` is the phi's value, a union, so Viscosity says
+"maybe not". The third is the realistic case: `p` is a parameter of a
+known function (one whose every call site is visible, as in the last
+chapter), and every call passes a number.
+
+<Prompts ids={['ti-flow', 'ti-union']} />
+
+## Rules for one value
+
+Each value's fact comes from a small rule. Simplified, from
+`packages/core/src/analysis.ts`:
+
+```ts
+switch (i.op) {
+  case 'const':
+    return typeof i.value === 'number';
+  case 'binop':
+    return ARITH.has(i.operator!)
+      && n(i.args[0]) && n(i.args[1]);
+  case 'phi': return i.args.every(n);
+  case 'param':  // every caller passes one
+    return sites.every((s) =>
+      n(s.args[i.index! + 1]));
+  default: return false;
+}
+```
+
+`n(v)` reads the current fact for `v`. A constant is a number if its
+JavaScript `typeof` says so. `+` counts only when both sides are numbers,
+since `1 + '1'` is `'11'`. A phi needs *every* input to be a number,
+which is the join from above. A parameter needs every call site to pass
+a number; and anything the rules do not know falls to `default`: not a
+number.
+
+<Prompts ids={['ti-plus', 'ti-param']} />
+
+## The loop problem
+
+The rules refer to each other. In a loop, the phi at the top depends on
+the addition at the bottom, which depends on the phi; where do you
+start? Step through both answers:
+
+<LatticeSteps client:visible />
+
+<Callout kind="definition">
+An **optimistic** analysis starts every value on a cycle at the best
+answer ("number") and knocks down whatever a rule contradicts, round
+after round, until a whole round changes nothing. A **pessimistic** one
+starts at the worst answer and adds only what it can prove, so on a cycle
+it never gets started: each value waits for the other.
+</Callout>
+
+This is the lattice and fixpoint machinery of chapters 92, 92 and 92. A
+fact can only fall, and there are finitely many facts, so the rounds
+must end; as a guard, the real code stops after 1000 rounds and, if it
+has not settled, throws away every guess (it **fails closed**):
+
+```ts
+const MAX_ROUNDS = 1000;
+// Fail closed: if the fixpoint did not
+// converge, nothing is proven.
+```
+
+<Prompts ids={['ti-optimistic', 'ti-terminates']} />
+
+One string is enough to spread. Here records are pushed by `add(i, 0)`
+in a loop and then once by `add(5, 'far')`; `viscosity explain` gives
+`x` a typed column and `y` a plain array column (a field that may hold
+non-numbers still gets a column, only an ordinary array). Change the last
+loop to `ps[i].x += ps[i].y` and it says "no field is provably numeric",
+because `x + y` might now be a string, so `x` falls too:
+
+<Playground client:visible title="Which columns are typed?" initial={`const ps = [];
+function add(a, b) {
+  ps.push({ x: a, y: b });
+}
+for (let i = 0; i < 100; i++) add(i, 0);
+add(5, 'far');
+for (let i = 0; i < ps.length; i++)
+  ps[i].x *= 2;
+console.log(ps[100].x, ps[100].y);`} />
+
+## Shapes from object literals
+
+The other fact is the shape. Viscosity only accepts records made by
+object literals (in `push({...})` or in an array literal), and each
+becomes a `record.new` instruction carrying its field list. The first
+list it meets becomes the collection's shape; every other one must match
+it exactly, order included:
+
+```ts
+if (c.fields.length === 0)
+  c.fields = [...r.fields!];
+else if (JSON.stringify(c.fields)
+    !== JSON.stringify(r.fields))
+  bail(c, `${where}: records with ` +
+    'different fields or field order');
+```
+
+<Analogy extra title="pasting rows into a spreadsheet">
+You can paste a stack of forms into one spreadsheet only if every form
+has the same boxes in the same order; one form with an extra box, or
+with "y" before "x", and the columns no longer line up.
+<span slot="breaks">A spreadsheet happily leaves a cell empty; Viscosity
+has no "missing" value, so a record with a missing field is a different
+shape, not a row with a gap.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Shape inference** deduces an object's layout (its fields and their
+order) statically, from the code that creates the objects. Viscosity's
+rule for combining the shapes of a collection is the strictest possible:
+they must all be equal.
+</Callout>
+
+<Examples of="shape-inference">
+
+```js
+ps.push({ x: i, y: 0 });  // shape {x, y}
+```
+
+```js
+ps.push({ x: 1, y: 0, z: 2 });
+// unsafe: records with different fields
+// or field order ({x, y} vs {x, y, z})
+```
+
+```js
+if (i % 2) ps.push({ x: i, y: 1 });
+else ps.push({ y: 1, x: i });
+// unsafe: ... ({x, y} vs {y, x})
+```
+
+</Examples>
+
+The first is a single literal, so the shape is its field list. The
+second adds one record with an extra field, and the third alternates two
+orders; both are real `explain` messages, and both keep the array of
+objects. Why should order matter when `{x, y}` and `{y, x}` hold the same
+data? Partly for Viscosity, which reads each column's value from a fixed
+position in the literal; and partly because JavaScript itself can tell
+the two apart:
+
+<Run id="order" />
+
+<Prompts ids={['si-what', 'si-order']} />
+
+<Callout kind="engine" label="Under the hood">
+V8 learns the same two facts by watching rather than proving: its type
+feedback records which shapes and number representations each operation
+has seen, its optimising tiers specialise on that, and deoptimisation is
+the way back when a guess turns out wrong<Cite id="v8-maglev" />.
+Viscosity runs before the program and has no way back, so a guess has
+to become a proof, which is why one string or one reordered literal is
+enough to change its decision.
+</Callout>
+
+## Your turn
+
+<Exercise id="unifyShapes" />
+
+<Exercise id="inferNumeric" />
+
+## What you learned
+
+- **Type inference** deduces types from how values are made and used.
+  Facts attach to SSA values, so they are **flow-sensitive**, and a phi
+  joins them into a **union**; Viscosity keeps only "number" or
+  "maybe not".
+- Loops make the rules circular. An **optimistic** fixpoint starts at
+  "number" and knocks guesses down; it fails closed if it never settles.
+- One string spreads: through `+`, phis and stores into fields.
+- **Shape inference** takes the field lists of the object literals; in
+  Viscosity they must match exactly, order included.
+- V8 watches and can undo a guess; Viscosity must prove.
+
+Next: the graph-shaped IRs that some compilers use instead of lists of
+instructions.
+
+<Quiz />

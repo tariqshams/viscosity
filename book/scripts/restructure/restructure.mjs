@@ -44,12 +44,20 @@ function parseChapter(n) {
   const scalar = (k) => fmText.match(new RegExp(`^${k}: (.*)$`, 'm'))?.[1];
   const list = (k) => (fmText.match(new RegExp(`^${k}: \\[(.*)\\]`, 'm'))?.[1] ?? '').split(',').map((x) => x.trim()).filter(Boolean);
   const objectives = [...(fmText.match(/^objectives:\n((?:  - .*\n?)+)/m)?.[1] ?? '').matchAll(/^  - (.*)$/gm)].map((x) => x[1]);
-  const imports = [...body.matchAll(/^import .*$/gm)].map((x) => x[0]);
-  const rest = body.replace(/^import .*\n?/gm, '');
+  // Top-level imports only: the import lines before the first other line.
+  // (Lines starting with `import` inside code fences are examples, not ESM.)
+  const lines = body.split('\n');
+  const imports = [];
+  let i = 0;
+  for (; i < lines.length; i++) {
+    if (/^import .*$/.test(lines[i])) imports.push(lines[i]);
+    else if (lines[i].trim() !== '') break;
+  }
+  const rest = lines.slice(i).join('\n');
   return { n, folder, slug: folder.slice(4), title: scalar('title'), tagline: scalar('tagline'), objectives, introduces: list('introduces'), uses: list('uses'), sources: list('sources'), imports, body: rest };
 }
 
-const unquote = (s) => (s ?? '').replace(/^'(.*)'$/, '$1').replace(/^"(.*)"$/, '$1').replace(/\\'/g, "'");
+const unquote = (s) => (s ?? '').replace(/^'(.*)'$/, '$1').replace(/^"(.*)"$/, '$1').replace(/\\'/g, "'").replace(/''/g, "'");
 const q = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 const slugify = (t) => t.toLowerCase().replace(/&/g, 'and').replace(/[’'`]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60).replace(/-$/, '');
 
@@ -96,7 +104,8 @@ function toJs(v, ind = '') {
 
 const pathFix = (text) => text
   .replace(/(chapters\/)(\d{3})(-[a-z0-9-]+)/g, (all, a, n) => (home[Number(n)] ? `${a}${home[Number(n)].folder}` : all))
-  .replace(/(\.\.\/ch)(\d{3})(?=\/)/g, (all, a, n) => (home[Number(n)] ? `${a}${pad(home[Number(n)].n)}` : all));
+  .replace(/(\.\.\/ch)(\d{3})(?=\/)/g, (all, a, n) => (home[Number(n)] ? `${a}${pad(home[Number(n)].n)}` : all))
+  .replace(/(components\/diagrams\/ch)(\d{3})(?=\/)/g, (all, a, n) => (home[Number(n)] ? `${a}${pad(home[Number(n)].n)}` : all));
 
 for (const c of NEW) {
   const outDir = join(stage, c.folder);
@@ -145,15 +154,13 @@ for (const c of NEW) {
         for (const f of readdirSync(dOld)) {
           let text = readFileSync(join(dOld, f), 'utf8');
           text = text.replace(/(from\s+['"]\.\/)([^'"]+)(['"])/g, (all, a, name, b) => `${a}${fileMap[name] ?? name}${b}`);
-          text = pathFix(text);
           const to = fileMap[f.replace(/\.[a-z]+$/, '')] + (f.match(/\.[a-z]+$/)?.[0] ?? '');
           writeFileSync(join(outDiag, to), text);
         }
       }
     }
     for (let line of ch.imports) {
-      line = line.replace(new RegExp(`(components/diagrams/)ch${pad(n)}/([^'"]+)`), (all, a, name) => `${a}ch${pad(c.n)}/${fileMap[name] ?? name}`);
-      line = pathFix(line).replace(/(components\/diagrams\/)ch(\d{3})\//, (all, a, m) => (Number(m) === n ? all : home[Number(m)] ? `${a}ch${pad(home[Number(m)].n)}/` : all));
+      line = line.replace(new RegExp(`(components/diagrams/)ch${pad(n)}/([^'"]+)`), (all, a, name) => `${a}@@SELF@@/${fileMap[name] ?? name}`);
       const id = line.match(/^import\s+(\w+)\s+from/)?.[1];
       if (id && usedIds.has(id)) {
         const re = imports.find((x) => x === line);
@@ -187,7 +194,7 @@ for (const c of NEW) {
     `n: ${c.n}`,
     `day: ${c.day}`,
     `part: ${c.part.id}`,
-    `title: ${q(c.title)}`,
+    `title: '${c.title.replace(/'/g, "''")}'`,
     `tagline: ${first ? first.tagline : q('TODO: one sentence on what this chapter gives the reader.')}`,
     'objectives:',
     ...(objectives.length >= 2 ? objectives : ['TODO: first objective.', 'TODO: second objective.']).map((o) => `  - ${o}`),
@@ -196,7 +203,7 @@ for (const c of NEW) {
     `sources: [${sources.join(', ')}]`,
     '---',
   ].join('\n');
-  const mdx = `${fm}\n${imports.join('\n')}${imports.length ? '\n' : ''}\n${pathFix(body).trim()}\n`;
+  const mdx = `${fm}\n${imports.join('\n')}${imports.length ? '\n' : ''}\n${body.trim()}\n`;
   const cardsJs = `// Chapter ${c.n} cards: recall prompts, examples, exercises and quiz.\n// Keys are stable ids: renaming one would orphan readers' review history.\n${parsed.length > 1 ? `// Merged from old chapters ${parsed.map((p) => p.n).join(', ')}.\n` : ''}\n${['prompts', 'examples', 'exercises'].map((k) => `export const ${k} = ${toJs(cards[k])};\n`).join('\n')}\nexport const quiz = ${toJs(cards.quiz)};\n`;
   if (!dry) { writeFileSync(join(outDir, 'index.mdx'), mdx); writeFileSync(join(outDir, 'cards.js'), cardsJs); }
   c.introduces = Object.fromEntries(own.map((k) => [k, parsed.map((p) => oldIntro[p.n]?.[k]).find(Boolean) ?? k]));
@@ -246,7 +253,9 @@ const others = [...walk(join(root, 'src'), EXTS), ...walk(join(repo, 'website/sr
 const staged = dry ? [] : [...walk(stage, EXTS), ...walk(stageDiag, EXTS)];
 for (const p of [...others, ...staged]) {
   const s = readFileSync(p, 'utf8');
-  const t = pathFix(refFix(s, relative(repo, p)));
+  let t = pathFix(refFix(s, relative(repo, p)));
+  const self = p.startsWith(stage) ? relative(stage, p).split('/')[0].slice(0, 3) : null;
+  if (self) t = t.replace(/@@SELF@@/g, `ch${self}`);
   if (t !== s && !dry) writeFileSync(p, t);
 }
 

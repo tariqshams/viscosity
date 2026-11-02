@@ -1,11 +1,5 @@
-// Chapter 28 cards (split from chapter 27). Keys are stable ids:
-// never rename them.
-//
-// The in-page runner erases TypeScript types (sucrase) and never checks
-// them, and scripts/check_chapters.mjs runs code as plain JavaScript. So
-// every example, solution and wrong attempt here is valid JavaScript, the
-// exercises set lang: 'ts' so readers may add annotations, and the typed
-// version of each solution is shown in its walkthrough.
+// Chapter 28 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'interface-what': {
@@ -69,8 +63,7 @@ export const exercises = {
   isParticle: {
     lang: 'ts',
     title: 'Check a particle at runtime',
-    prompt:
-      'Types are erased, so data from outside the program is never checked for you. Write `isParticle(v)` that returns `true` only when `v` is an object (not `null`) whose `x`, `y`, `vx` and `vy` properties are all numbers, and `false` otherwise. Extra properties are fine. (The runner erases types, so the tests check behaviour. The walkthrough shows the typed version.)',
+    prompt: 'Types are erased, so data from outside the program is never checked for you. Write `isParticle(v)` that returns `true` only when `v` is an object (not `null`) whose `x`, `y`, `vx` and `vy` properties are all numbers, and `false` otherwise. Extra properties are fine. (The runner erases types, so the tests check behaviour. The walkthrough shows the typed version.)',
     starter: `interface Particle {
   x: number;
   y: number;
@@ -212,8 +205,7 @@ Next chapter you will see how checks like \`typeof v === 'object'\` teach the ch
     optional: true,
     lang: 'ts',
     title: 'Add up only the numbers',
-    prompt:
-      'Data from outside often mixes kinds. Write `sumNumbers(xs)`: given an array of any values, return the sum of the ones that are numbers, skipping everything else (strings like `\'3\'` included). For an array with no numbers, return `0`.',
+    prompt: 'Data from outside often mixes kinds. Write `sumNumbers(xs)`: given an array of any values, return the sum of the ones that are numbers, skipping everything else (strings like `\'3\'` included). For an array with no numbers, return `0`.',
     starter: `function sumNumbers(xs: any[]): number {
   // your code here
 }
@@ -293,46 +285,111 @@ export const quiz = [
   {
     q: 'Which object fits `interface Point { x: number; y: number }`?',
     options: [
-      { t: '`{ x: 1 }`', why: 'It is missing `y`, so the checker reports “Property \'y\' is missing”.' },
-      { t: '`{ x: 1, y: 2 }`', correct: true, why: 'Both properties are present and both are numbers.' },
-      { t: '`{ x: \'1\', y: 2 }`', why: '`x` holds a string, but the interface says `x: number`.' },
-      { t: '`{ X: 1, Y: 2 }`', why: 'Property names are case-sensitive: `X` is not `x`.' },
+      {
+        t: '`{ x: 1 }`',
+        why: 'It is missing `y`, so the checker reports “Property \'y\' is missing”.',
+      },
+      {
+        t: '`{ x: 1, y: 2 }`',
+        correct: true,
+        why: 'Both properties are present and both are numbers.',
+      },
+      {
+        t: '`{ x: \'1\', y: 2 }`',
+        why: '`x` holds a string, but the interface says `x: number`.',
+      },
+      {
+        t: '`{ X: 1, Y: 2 }`',
+        why: 'Property names are case-sensitive: `X` is not `x`.',
+      },
     ],
   },
   {
     q: 'With a modern target setting, what does `tsc` output for the line `let n: number = 3;`?',
     options: [
-      { t: '`let n: number = 3;` unchanged', why: 'Engines can’t run type syntax, so `tsc` must remove it.' },
-      { t: '`let n = Number(3);`', why: 'Erasure deletes annotations; it doesn’t add conversions.' },
-      { t: 'A run-time check that `n` is a number', why: 'TypeScript doesn’t insert run-time checks. All checking happens before the program runs.' },
-      { t: '`let n = 3;`', correct: true, why: 'The annotation is erased and nothing else changes. (With no settings at all, `tsc` would also turn `let` into `var` for old engines, a separate job.)' },
+      {
+        t: '`let n: number = 3;` unchanged',
+        why: 'Engines can’t run type syntax, so `tsc` must remove it.',
+      },
+      {
+        t: '`let n = Number(3);`',
+        why: 'Erasure deletes annotations; it doesn’t add conversions.',
+      },
+      {
+        t: 'A run-time check that `n` is a number',
+        why: 'TypeScript doesn’t insert run-time checks. All checking happens before the program runs.',
+      },
+      {
+        t: '`let n = 3;`',
+        correct: true,
+        why: 'The annotation is erased and nothing else changes. (With no settings at all, `tsc` would also turn `let` into `var` for old engines, a separate job.)',
+      },
     ],
   },
   {
     q: 'You run plain `tsc file.ts` (no flags) and it reports a type error. What about the JavaScript file?',
     options: [
-      { t: 'No JavaScript is written until you fix the error', why: 'That only happens with the `--noEmitOnError` flag.' },
-      { t: 'The JavaScript is written with the bad line deleted', why: '`tsc` never deletes your code; it only erases types.' },
-      { t: 'The JavaScript is still written, because `tsc` emits even when it finds errors', correct: true, why: 'By default `tsc` reports the error and still emits. Use `--noEmitOnError` to stop that.' },
-      { t: 'The JavaScript is written with a crash inserted at that line', why: 'TypeScript adds no run-time code for type errors.' },
+      {
+        t: 'No JavaScript is written until you fix the error',
+        why: 'That only happens with the `--noEmitOnError` flag.',
+      },
+      {
+        t: 'The JavaScript is written with the bad line deleted',
+        why: '`tsc` never deletes your code; it only erases types.',
+      },
+      {
+        t: 'The JavaScript is still written, because `tsc` emits even when it finds errors',
+        correct: true,
+        why: 'By default `tsc` reports the error and still emits. Use `--noEmitOnError` to stop that.',
+      },
+      {
+        t: 'The JavaScript is written with a crash inserted at that line',
+        why: 'TypeScript adds no run-time code for type errors.',
+      },
     ],
   },
   {
     q: '`const p: Particle = JSON.parse(text);` type-checks fine. Why can `p.x` still be a string at run time?',
     options: [
-      { t: 'It can’t: the label guarantees `p.x` is a number', why: 'Labels are promises about code. The checker never saw the text, and `JSON.parse` returns `any`, so nothing was checked.' },
-      { t: 'Because `JSON.parse` turns every number into a string', why: '`JSON.parse` keeps numbers as numbers. The problem is that the text itself might contain a string.' },
-      { t: 'The data came from outside the program, the checker never saw it, and types are erased before it arrives', correct: true, why: 'Only a run-time check, like `isParticle`, can inspect data that arrives while the program runs.' },
-      { t: 'Because interfaces only work on classes', why: 'Interfaces describe any object with the right shape.' },
+      {
+        t: 'It can’t: the label guarantees `p.x` is a number',
+        why: 'Labels are promises about code. The checker never saw the text, and `JSON.parse` returns `any`, so nothing was checked.',
+      },
+      {
+        t: 'Because `JSON.parse` turns every number into a string',
+        why: '`JSON.parse` keeps numbers as numbers. The problem is that the text itself might contain a string.',
+      },
+      {
+        t: 'The data came from outside the program, the checker never saw it, and types are erased before it arrives',
+        correct: true,
+        why: 'Only a run-time check, like `isParticle`, can inspect data that arrives while the program runs.',
+      },
+      {
+        t: 'Because interfaces only work on classes',
+        why: 'Interfaces describe any object with the right shape.',
+      },
     ],
   },
   {
     q: 'Why can’t V8 use your TypeScript interfaces to speed up your program?',
     options: [
-      { t: 'V8 ignores interfaces on purpose because they are often wrong', why: 'V8 never gets the chance to ignore them: they are gone before it sees the code.' },
-      { t: 'They have been erased: V8 only ever receives plain JavaScript', correct: true, why: 'Erasure happens before the engine runs anything, so the engine works out object shapes for itself as the program runs.' },
-      { t: 'Interfaces are only for strings', why: 'Interfaces describe object shapes of any kind.' },
-      { t: 'It does use them, as long as you run `tsc` first', why: 'Running `tsc` is exactly what removes them.' },
+      {
+        t: 'V8 ignores interfaces on purpose because they are often wrong',
+        why: 'V8 never gets the chance to ignore them: they are gone before it sees the code.',
+      },
+      {
+        t: 'They have been erased: V8 only ever receives plain JavaScript',
+        correct: true,
+        why: 'Erasure happens before the engine runs anything, so the engine works out object shapes for itself as the program runs.',
+      },
+      {
+        t: 'Interfaces are only for strings',
+        why: 'Interfaces describe object shapes of any kind.',
+      },
+      {
+        t: 'It does use them, as long as you run `tsc` first',
+        why: 'Running `tsc` is exactly what removes them.',
+      },
     ],
   },
 ];

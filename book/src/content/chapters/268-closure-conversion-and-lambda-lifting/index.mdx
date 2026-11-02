@@ -1,0 +1,290 @@
+---
+n: 268
+day: 26
+part: XV
+title: 'Closure conversion and lambda lifting'
+tagline: 'Machine code has no nested functions: a function is an address, and when its caller returns, the caller’s variables are gone. Two rewrites remove every free variable, one by packing them in a record, the other by passing them in.'
+objectives:
+  - Find the free variables of a nested function, the ones a compiler has to deal with.
+  - Closure-convert a function into code plus an environment record, and call the result.
+  - Read how Python, V8, C++ and Rust represent the record.
+  - Lambda-lift a nested function that never escapes, and say why an escaping one cannot be lifted.
+introduces: [closure-conversion, lambda-lifting]
+uses: [closure, nested-function, lexical-scope, free-and-bound-variables, captured-environment, environment-lifetime, upvalue, closed-upvalue, first-class-function, higher-order-function, function, parameter, argument, return, object, array, recursion, call-stack, stack-and-heap, heap-object, ast, generic-specialization, fat-pointer, dictionary-passing]
+sources: [johnsson1985, mdn-closures, cpython-dis, rustref-closure-types, cxx-closure-type]
+---
+import ConvertSteps from '../../../components/diagrams/ch268/ConvertSteps';
+import LiftFigure from '../../../components/diagrams/ch268/LiftFigure';
+
+## A variable from a frame that is gone
+
+Here is the closure from chapter 12 that every language with nested
+functions can write:
+
+```js
+function adder(n) {
+  return (x) => x + n;
+}
+const add1 = adder(1);
+add1(2); // 3
+```
+
+By the time `add1(2)` runs, `adder` has returned and its stack frame,
+the only place `n` lived, has been thrown away; yet the inner function
+still reads `n`<Cite id="mdn-closures" />. Your Drip VM solved this at
+run time with upvalues, which are moved to the heap when their frame
+dies (chapters 83 and 83). A compiler to machine code needs the same
+effect, but a machine function is only an address, with nowhere to keep
+an `n`. So compilers rewrite the program, before generating code, until
+no function refers to a variable it does not own.
+
+The variables to deal with are the **free variables** of a function
+(chapter 186): those it uses but neither declares nor takes as
+parameters. In `(x) => x + n`, `x` is bound and `n` is free. You will
+write the function that finds them in the exercise; every closure
+compiler starts with it.
+
+## Closure conversion: code plus a record
+
+The first rewrite gives every function one extra parameter, its
+**environment**, and turns each read of a free variable into a read
+from it. A function value is no longer an address but a pair: the code,
+and the record holding the free variables' values at the moment the
+function was made.
+
+```js
+function addCode(env, x) {
+  return x + env.n;
+}
+function adder(n) {
+  const env = { n };
+  return { code: addCode, env };
+}
+const add1 = adder(1);
+add1.code(add1.env, 2); // 3
+```
+
+`addCode` is now a plain top-level function with no free variables: `n`
+arrives inside `env`. `adder` builds the record `{ n }` and returns the
+pair, and a call `add1(2)` becomes "call the pair's code, passing the
+pair's environment first". Step through it:
+
+<ConvertSteps client:visible />
+
+<Analogy title="a packed lunch">
+A child going on a school trip cannot pop home for lunch, so it goes
+with a lunchbox packed with exactly what it will need; the trip goes
+ahead wherever it takes them.
+<span slot="breaks">A lunchbox is packed with copies, eaten once and
+gone; if a captured variable can still be changed, the record must hold
+a shared box rather than a copy, or the two would drift apart (more on
+that below).</span>
+</Analogy>
+
+<Analogy extra title="a takeaway order slip">
+The kitchen does not remember your order; the slip clipped to the bag
+says "no onions, extra sauce", so any cook can make it right. The
+recipe (the code) is the same for every order; the slip (the
+environment) differs.
+<span slot="breaks">A slip is read by a person who can ask questions; a
+closure's code reads fixed positions in its record, laid out by the
+compiler, and has no way to ask for anything that is not there.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Closure conversion** rewrites every function so that it has no free
+variables: it gains an environment parameter, and each free variable
+`y` is read as `env.y`. Creating a function value builds a **closure**,
+a pair of a code pointer and an environment record holding the free
+variables; calling it calls the code with the record as an extra first
+argument.
+</Callout>
+
+<Formal title="The conversion">
+
+```text
+⟦λx. e⟧ = ⟨ λ(env, x). ⟦e⟧[env.y/y],
+            { y = y, ... } ⟩
+            for each y in FV(λx. e)
+⟦f a⟧   = let c = ⟦f⟧ in c.code(c.env, ⟦a⟧)
+```
+
+<span slot="read">The double brackets mean "the converted form of". A
+function of x with body e becomes a pair: code taking env and x, whose
+body is the converted e with every free variable y replaced by env.y;
+and a record with a field y holding y's current value, one field for
+each free variable of the function. A call f(a) converts f to a pair c
+and calls c's code with c's environment and the converted
+argument.</span>
+</Formal>
+
+Real implementations build exactly this pair; only the record's shape
+differs. Python 3.13's `dis` (real output, trimmed) shows the closure
+being assembled<Cite id="cpython-dis" />:
+
+<Examples of="closure-conversion">
+
+```text
+# Python 3.13: def adder(n): def add(x)
+MAKE_CELL      0 (n)     # box n
+LOAD_FAST      0 (n)
+BUILD_TUPLE    1         # the record
+LOAD_CONST     1 (<code object add>)
+MAKE_FUNCTION
+SET_FUNCTION_ATTRIBUTE 8 (closure)
+# inside add:  LOAD_DEREF 1 (n)
+```
+
+```text
+# Node 22 --print-bytecode: adder
+CreateFunctionContext [0], [1]
+PushContext r0
+Ldar a0
+StaCurrentContextSlot [2]  # n
+CreateClosure [1], [0], #2
+# inside add:
+LdaImmutableCurrentContextSlot [2]
+```
+
+```text
+// C++ [n](int x) { return x + n; }
+// clang -emit-llvm:
+%class.anon = type { i32 }  // the record
+// operator() gets it as a ptr argument
+// Rust: size_of_val of |x| x+1, move
+// |x| x+n, move |x| x+n+m, |x| x+n:
+0 8 16 8
+```
+
+</Examples>
+
+The first is Python: `MAKE_CELL` puts `n` in a **cell** (a small box),
+`BUILD_TUPLE 1` makes a one-element tuple of cells, which is the
+environment, and `MAKE_FUNCTION` with `SET_FUNCTION_ATTRIBUTE 8
+(closure)` pairs it with `add`'s code object; inside, `add` reads `n`
+with `LOAD_DEREF`. The second is V8's Ignition: `adder` creates a
+**context** (V8's environment record), stores its argument `a0` into
+slot 2, and `CreateClosure` pairs `add`'s code with that context; `add`
+reads `n` back from slot 2. The third shows compiled languages, where
+the record is a struct: the C++ standard calls a lambda's type a
+"closure type", an unnamed class<Cite id="cxx-closure-type" />, and
+clang gives it one `i32` field for `n`. Rust's closure types are
+likewise "approximately equivalent to a struct which contains the
+captured values"<Cite id="rustref-closure-types" />, and the sizes
+rustc 1.97 printed say so: a closure capturing nothing is 0 bytes, one
+`i64` by value 8, two 16, and one captured by reference 8 (a pointer).
+(Each Rust closure has its own type, so a generic function taking it is
+specialised, chapter 267, and the call needs no code pointer at all; a
+`Box<dyn Fn>` is a fat pointer, chapter 266.)
+
+Try it, with two closures sharing one piece of code:
+
+<Run id="convert-by-hand" />
+
+It prints `3 7` and then `true`: two closures, two records, one
+`addCode`.
+
+<Callout kind="pitfall">
+Copying values into the record is only right if nobody changes the
+variable afterwards. In `let c = 0; const inc = () => ++c;` the closure
+and its maker must share one `c`, so a compiler first gives each
+assigned, captured variable its own heap box (**assignment
+conversion**) and copies the *box* into the record. Python's cells and
+your Drip VM's closed upvalues are such boxes.
+</Callout>
+
+<Prompts ids={['free-what', 'cc-what', 'cc-call', 'cc-real', 'cc-mutate']} />
+
+## Lambda lifting: pass it in instead
+
+Closure conversion allocates a record each time a function value is
+made. Often that is wasted: a helper function that is only ever called
+by name, never stored or returned, can have its free variables handed
+to it as ordinary arguments instead.
+
+<Examples of="lambda-lifting">
+
+```js
+function sumTo(n, k) {
+  function go(i) {
+    if (i > n) return 0;
+    return i * k + go(i + 1);
+  }
+  return go(1);
+}
+```
+
+```js
+// lifted: n and k become parameters
+function go(i, n, k) {
+  if (i > n) return 0;
+  return i * k + go(i + 1, n, k);
+}
+function sumTo(n, k) {
+  return go(1, n, k);
+}
+```
+
+```js
+// broken: adder's result escapes
+function add(x, n) { return x + n; }
+function adder(n) { return add; }
+adder(1)(2); // NaN, since n is undefined
+```
+
+</Examples>
+
+The first has a nested `go` whose free variables are `n` and `k`. The
+second is the lifted program: `go` moves to the top level with `n` and
+`k` added as parameters, and every call to it, including its own
+recursive call, passes them along; `sumTo(3, 2)` is `2 + 4 + 6`, which
+is 12, in both. The third is the spot-the-difference: lifting `adder`'s
+inner function would need every caller of `add1` to supply `n`, but
+the caller only has `add1`, so the extra parameter arrives as
+`undefined` and `2 + undefined` is `NaN`. A function that escapes must
+be closure-converted.
+
+<Analogy extra title="a work order with every measurement">
+A carpenter who has to come back to your house to measure a shelf
+again is like a function reading its free variables; write every
+measurement on the work order and the carpenter never needs the house.
+<span slot="breaks">A work order is written once; lambda lifting must
+also change every place that calls the function, so it can only be
+done when all the calls are known.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Lambda lifting** turns a nested function into a top-level one by
+adding its free variables as extra parameters and passing them at
+every call. It allocates nothing, but it needs every call site to be
+known, so it applies only to functions that never escape as values.
+The name and the algorithm come from Johnsson's 1985 paper, which
+transforms a program with local function definitions into one made
+only of global ones<Cite id="johnsson1985" />.
+</Callout>
+
+<Figure takeaway="Escaping functions get a record; known calls get extra arguments." caption="Both rewrites leave no free variables. A compiler can lift the functions whose every call it can see, and convert the rest.">
+  <LiftFigure />
+</Figure>
+
+<Prompts ids={['lift-what', 'lift-when', 'lift-cost']} />
+
+## Your turn
+
+<Exercise id="free-vars" />
+
+## What you learned
+
+- A function's **free variables** are the ones it uses but does not
+  own; machine code has nowhere to keep them, so they must be removed.
+- **Closure conversion** adds an environment parameter and makes each
+  function value a pair of code and a record (Python's cells tuple, V8's
+  context, a C++ or Rust closure struct); assigned variables are boxed.
+- **Lambda lifting** passes free variables as extra arguments and moves
+  the function to the top level, with no allocation, but only for
+  functions that never escape.
+
+Next: exceptions, and how a thrown error finds its way back up the
+stack to a handler.
+
+<Quiz />

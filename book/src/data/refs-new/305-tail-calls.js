@@ -1,4 +1,4 @@
-// New references for chapter 305. Checked 2026-11-02. The chapter also
+// New references for chapter 275. Checked 2026-11-02. The chapter also
 // relies on ecma262 (spec.html re-read raw from github.com/tc39/ecma262 on
 // 2026-11-02: IsInTailPosition returns false for non-strict code;
 // HasCallInTailPosition covers both arms of ?: and only the right side of
@@ -26,7 +26,7 @@ export default [
     url: 'https://research.scheme.org/lambda-papers/',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search on 2026-11-02 (MIT DSpace handle 1721.1/5753 record, research.scheme.org/lambda-papers, the Internet Archive copy of AIM-443): AI Memo 443, October 1977, by Guy Lewis Steele Jr., with the three titles above, an annotated version of a paper for ACM ’77 in Seattle; its thesis is that the folklore that procedure calls are expensive “is largely a result of poorly designed language implementations”. The full text could not be opened from this session, so nothing beyond this is relied on.',
-    shaped: 'Chapter 305: the argument that calls, including tail calls, need not be expensive.',
+    shaped: 'Chapter 275: the argument that calls, including tail calls, need not be expensive.',
   },
   {
     id: 'clang-musttail',
@@ -38,7 +38,7 @@ export default [
     url: 'https://clang.llvm.org/docs/AttributeReference.html#musttail',
     accessed: '2026-11-02',
     checkedAgainst: 'MustTailDocs read raw from raw.githubusercontent.com/llvm/llvm-project/main/clang/include/clang/Basic/AttrDocs.td on 2026-11-02: “If a return statement is marked musttail, this indicates that the compiler must generate a tail call for the program to be correct, even when optimizations are disabled. This guarantees that the call will not cause unbounded stack growth if it is part of a recursive cycle in the call graph.” clang.llvm.org itself was not reachable from this session.',
-    shaped: 'Chapter 305: guaranteed tail calls in C and C++ with clang.',
+    shaped: 'Chapter 275: guaranteed tail calls in C and C++ with clang.',
   },
   {
     id: 'ganz1999',
@@ -50,6 +50,6 @@ export default [
     url: 'https://dl.acm.org/doi/proceedings/10.1145/317636',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search on 2026-11-02 (the ICFP ’99 programme listing, a PLDI paper list linking dl.acm.org, and a library record): “Trampolined Style” by Steven E. Ganz, Daniel P. Friedman and Mitchell Wand, ICFP ’99, September 1999, published in ACM SIGPLAN Notices 34(9). The abstract describes trampolining as scheduling computations in a single loop. The paper’s own DOI could not be confirmed, so the URL is the proceedings’ prefix and no DOI is given.',
-    shaped: 'Chapter 305: the trampoline.',
+    shaped: 'Chapter 275: the trampoline.',
   },
 ];

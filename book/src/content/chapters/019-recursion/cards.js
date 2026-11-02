@@ -1,4 +1,5 @@
-// Chapter 19 cards. Keys are stable ids: never rename them.
+// Chapter 19 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'rec-what': {
@@ -55,8 +56,7 @@ down(3);`,
 export const exercises = {
   power: {
     title: 'Powers, recursively',
-    prompt:
-      'Write a **recursive** `power(b, e)` that returns `b` multiplied by itself `e` times, for any whole number `e` that is 0 or more. Anything to the power 0 is `1`. For example `power(2, 3)` is `8` and `power(5, 0)` is `1`. Do not use a loop or `**`: let the function call itself.',
+    prompt: 'Write a **recursive** `power(b, e)` that returns `b` multiplied by itself `e` times, for any whole number `e` that is 0 or more. Anything to the power 0 is `1`. For example `power(2, 3)` is `8` and `power(5, 0)` is `1`. Do not use a loop or `**`: let the function call itself.',
     starter: `function power(b, e) {
   // your code here
 }
@@ -129,8 +129,7 @@ Trace \`power(2, 3)\`: it waits on \`power(2, 2)\`, which waits on \`power(2, 1)
   collatz: {
     optional: true,
     title: 'How many steps to 1?',
-    prompt:
-      'Start with a whole number `n` of 1 or more. If it is even, halve it; if it is odd, make it `3 * n + 1`; repeat until you reach 1. Write a **recursive** `steps(n)` that returns how many steps that takes. `steps(1)` is `0`, `steps(2)` is `1` (2 → 1) and `steps(6)` is `8` (6 → 3 → 10 → 5 → 16 → 8 → 4 → 2 → 1).',
+    prompt: 'Start with a whole number `n` of 1 or more. If it is even, halve it; if it is odd, make it `3 * n + 1`; repeat until you reach 1. Write a **recursive** `steps(n)` that returns how many steps that takes. `steps(1)` is `0`, `steps(2)` is `1` (2 → 1) and `steps(6)` is `8` (6 → 3 → 10 → 5 → 16 → 8 → 4 → 2 → 1).',
     starter: `function steps(n) {
   // your code here
 }
@@ -211,46 +210,119 @@ function f(n) {
 console.log(f(4));
 \`\`\``,
     options: [
-      { t: '`4`', why: 'That would be `f(4)` without the recursive call. Here `4` is multiplied by `f(3)`.' },
-      { t: '`10`', why: 'That is 4 + 3 + 2 + 1. This function multiplies.' },
-      { t: '`24`', correct: true, why: '4 × f(3) = 4 × 3 × f(2) = 4 × 3 × 2 × f(1) = 4 × 3 × 2 × 1 = 24.' },
-      { t: 'A stack overflow', why: 'Each call uses a smaller `n`, so the calls reach the base case `n === 1`.' },
+      {
+        t: '`4`',
+        why: 'That would be `f(4)` without the recursive call. Here `4` is multiplied by `f(3)`.',
+      },
+      {
+        t: '`10`',
+        why: 'That is 4 + 3 + 2 + 1. This function multiplies.',
+      },
+      {
+        t: '`24`',
+        correct: true,
+        why: '4 × f(3) = 4 × 3 × f(2) = 4 × 3 × 2 × f(1) = 4 × 3 × 2 × 1 = 24.',
+      },
+      {
+        t: 'A stack overflow',
+        why: 'Each call uses a smaller `n`, so the calls reach the base case `n === 1`.',
+      },
     ],
   },
   {
     q: 'In `sumTo(3)`, at the moment the base case `sumTo(0)` is running, how many `sumTo` frames are on the call stack?',
     options: [
-      { t: '1', why: 'The earlier calls haven’t finished: each is waiting for the one above it.' },
-      { t: '4', correct: true, why: '`sumTo(3)`, `sumTo(2)`, `sumTo(1)` and `sumTo(0)` have all started, and none has returned yet.' },
-      { t: '3', why: 'Count `sumTo(0)` itself: it is on top of the other three.' },
-      { t: '0', why: 'A running call always has a frame.' },
+      {
+        t: '1',
+        why: 'The earlier calls haven’t finished: each is waiting for the one above it.',
+      },
+      {
+        t: '4',
+        correct: true,
+        why: '`sumTo(3)`, `sumTo(2)`, `sumTo(1)` and `sumTo(0)` have all started, and none has returned yet.',
+      },
+      {
+        t: '3',
+        why: 'Count `sumTo(0)` itself: it is on top of the other three.',
+      },
+      {
+        t: '0',
+        why: 'A running call always has a frame.',
+      },
     ],
   },
   {
-    q: 'What does `down(2)` print, in order?\n```\nfunction down(n) {\n  if (n === 0) { return; }\n  console.log(\'in \' + n);\n  down(n - 1);\n  console.log(\'out \' + n);\n}\n```',
+    q: `What does \`down(2)\` print, in order?
+\`\`\`
+function down(n) {
+  if (n === 0) { return; }
+  console.log('in ' + n);
+  down(n - 1);
+  console.log('out ' + n);
+}
+\`\`\``,
     options: [
-      { t: '`in 2, out 2, in 1, out 1`', why: 'The `out` line waits until the recursive call has finished, and that call prints its own lines first.' },
-      { t: '`in 2, in 1, out 2, out 1`', why: 'The `out` lines come in reverse: the most recent call finishes first.' },
-      { t: '`in 1, in 2, out 2, out 1`', why: 'The first call is `down(2)`, so `in 2` prints first.' },
-      { t: '`in 2, in 1, out 1, out 2`', correct: true, why: 'Going down prints `in 2`, `in 1`. Then the frames pop in reverse order: `out 1`, then `out 2`.' },
+      {
+        t: '`in 2, out 2, in 1, out 1`',
+        why: 'The `out` line waits until the recursive call has finished, and that call prints its own lines first.',
+      },
+      {
+        t: '`in 2, in 1, out 2, out 1`',
+        why: 'The `out` lines come in reverse: the most recent call finishes first.',
+      },
+      {
+        t: '`in 1, in 2, out 2, out 1`',
+        why: 'The first call is `down(2)`, so `in 2` prints first.',
+      },
+      {
+        t: '`in 2, in 1, out 1, out 2`',
+        correct: true,
+        why: 'Going down prints `in 2`, `in 1`. Then the frames pop in reverse order: `out 1`, then `out 2`.',
+      },
     ],
   },
   {
     q: 'Which of these will cause a stack overflow?',
     options: [
-      { t: '`function g(n) { if (n <= 0) return 0; return g(n - 1); }` called as `g(5)`', why: 'Each call gets closer to 0 and stops there.' },
-      { t: '`function g(n) { if (n === 0) return 0; return g(n - 2); }` called as `g(5)`', correct: true, why: '5, 3, 1, -1, -3 … skips right past 0. The base case exists but is never reached.' },
-      { t: '`function g(n) { return n * 2; }` called as `g(5)`', why: 'No recursion at all: one call, one frame.' },
-      { t: '`function g(n) { if (n === 0) return 0; return g(n - 1); }` called as `g(5)`', why: 'Counting down by 1 from 5 lands exactly on 0.' },
+      {
+        t: '`function g(n) { if (n <= 0) return 0; return g(n - 1); }` called as `g(5)`',
+        why: 'Each call gets closer to 0 and stops there.',
+      },
+      {
+        t: '`function g(n) { if (n === 0) return 0; return g(n - 2); }` called as `g(5)`',
+        correct: true,
+        why: '5, 3, 1, -1, -3 … skips right past 0. The base case exists but is never reached.',
+      },
+      {
+        t: '`function g(n) { return n * 2; }` called as `g(5)`',
+        why: 'No recursion at all: one call, one frame.',
+      },
+      {
+        t: '`function g(n) { if (n === 0) return 0; return g(n - 1); }` called as `g(5)`',
+        why: 'Counting down by 1 from 5 lands exactly on 0.',
+      },
     ],
   },
   {
     q: 'A recursive function goes far too deep. What happens in C, compared with JavaScript?',
     options: [
-      { t: 'C gives the same RangeError as JavaScript', why: 'RangeError is JavaScript’s; C has no such check.' },
-      { t: 'C checks nothing, so the program usually just crashes', correct: true, why: 'JavaScript stops with a RangeError; C runs off the end of its stack and typically crashes with no friendly message.' },
-      { t: 'C makes the stack bigger automatically', why: 'The stack has a fixed size in C too.' },
-      { t: 'C does not allow recursion', why: 'It does; the function looks almost the same as in JavaScript.' },
+      {
+        t: 'C gives the same RangeError as JavaScript',
+        why: 'RangeError is JavaScript’s; C has no such check.',
+      },
+      {
+        t: 'C checks nothing, so the program usually just crashes',
+        correct: true,
+        why: 'JavaScript stops with a RangeError; C runs off the end of its stack and typically crashes with no friendly message.',
+      },
+      {
+        t: 'C makes the stack bigger automatically',
+        why: 'The stack has a fixed size in C too.',
+      },
+      {
+        t: 'C does not allow recursion',
+        why: 'It does; the function looks almost the same as in JavaScript.',
+      },
     ],
   },
 ];

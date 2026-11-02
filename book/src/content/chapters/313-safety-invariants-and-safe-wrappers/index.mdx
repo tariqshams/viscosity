@@ -1,0 +1,269 @@
+---
+n: 313
+day: 37
+part: XVII
+title: 'Safety invariants and safe wrappers'
+tagline: 'An unsafe block is only as sound as the promises around it: what its callers must guarantee, and what every value of a type must always satisfy. Write those promises down, fence them in with privacy, and a few unsafe lines become a safe API that nobody can misuse.'
+objectives:
+  - Tell a safety contract (what a caller of an unsafe fn must ensure) from a safety invariant (what every value of a type must satisfy).
+  - Tell a validity invariant, which the compiler relies on, from a safety invariant, which your code relies on.
+  - Use a private field and a checking constructor to keep an invariant that an unsafe block depends on.
+  - Wrap a C-owned resource in a type whose Drop frees it exactly once.
+introduces: [safety-invariant]
+uses: [ffi, extern-c, unsafe, raw-pointer, visibility, rust-module, struct, impl, drop, ownership, option, string-vs-str, utf8-utf16, trait, send-sync, derive, std-traits]
+sources: [klabnik2026, nomicon-safe-unsafe, nomicon-working-with-unsafe, ucg-glossary, nomicon-ffi]
+---
+import InvariantSteps from '../../../components/diagrams/ch313/InvariantSteps';
+import ContractFigure from '../../../components/diagrams/ch313/ContractFigure';
+
+## A promise that lives in a type
+
+Here is a small type that wants to be fast. `Ascii` holds bytes that
+are all below 128, and its `as_str` turns them into a `&str` without
+checking, because ASCII is always valid UTF-8:
+
+```rust
+pub struct Ascii(Vec<u8>);
+
+impl Ascii {
+    pub fn as_str(&self) -> &str {
+        // SAFETY: every byte is < 128?
+        unsafe {
+            from_utf8_unchecked(&self.0)
+        }
+    }
+}
+```
+
+`std::str::from_utf8_unchecked` is an `unsafe fn` whose promise is
+"these bytes are valid UTF-8"; break it and every `&str` method that
+follows may misbehave. Look at the question mark in the comment. The
+`unsafe` block is one line, but whether it is right depends on every
+`Ascii` that will ever exist, made by any code, anywhere. That promise
+does not belong to the block; it belongs to the *type*. The last
+chapter's FFI wrappers had the same shape: a few unchecked lines whose
+correctness rested on something true about the values around them.
+
+<Analogy title="a tamper-evident seal">
+A medicine bottle's seal lets the pharmacist promise what is inside
+without testing every pill: the factory filled it, and nobody has
+opened it since. An invariant is that seal: checked once, at the
+factory (the constructor), and relied on afterwards.
+<span slot="breaks">A real seal shows when it has been broken. A Rust
+invariant, once broken, shows nothing at all; the code that relies on
+it goes wrong, possibly far away. The only protection is making
+it impossible to break, by keeping the lid out of reach.</span>
+</Analogy>
+
+<Analogy extra title="a shop's till">
+At closing, the shop counts the till and trusts the total to match the
+sales log, because only the till's own buttons can move money in or
+out. If customers could reach into the drawer, the log would mean
+nothing.
+<span slot="breaks">A shop can recount by hand. Unsafe code usually
+cannot re-check its invariant cheaply (that was the point of skipping
+the check), so it must be sure nobody but the type's own methods can
+touch the drawer.</span>
+</Analogy>
+
+## Contracts, invariants, and validity
+
+Three words, three different promises. A **safety contract** belongs
+to an `unsafe fn`: the conditions its *caller* must make true, written
+in a `# Safety` section of its documentation, as with
+`get_unchecked`'s "the index is in bounds" in *Unsafe Rust*. A
+**safety invariant** belongs to a *type*: a condition every value of
+it satisfies whenever safe code can see it, such as "every byte of an
+`Ascii` is below 128", or the standard library's "a `str` is always
+UTF-8". A **validity invariant** is the compiler's own, much smaller
+list: a `bool` is 0 or 1, a reference is non-null and aligned. The
+Unsafe Code Guidelines put the difference precisely: the compiler
+exploits validity, and breaking it is undefined behaviour on the spot,
+while a safety invariant "can be temporarily violated by unsafe code,
+but must always be upheld when interfacing with unknown safe
+code"<Cite id="ucg-glossary" />. Their example is ours: a `str` that
+is not UTF-8 is *valid* but not *safe*, and handing one to safe code
+lets that code cause undefined behaviour with nothing more than
+`.chars()`<Cite id="ucg-glossary" />.
+
+<Figure takeaway="Callers keep contracts; types keep invariants; together they prove each unsafe block." caption="The promises around one unsafe block. The contract of from_utf8_unchecked is met because of Ascii's invariant, which the constructor establishes and every method keeps.">
+  <ContractFigure />
+</Figure>
+
+<Callout kind="definition">
+A **safety invariant** of a type is a condition that every value of
+the type must satisfy whenever code outside the type's own `unsafe`
+code can observe it. Unsafe code may rely on it; every safe function
+that creates or changes a value must keep it. A type whose safe API
+cannot be used, by any safe code, to break its invariant or cause
+undefined behaviour is **sound**<Cite id="ucg-glossary" /><Cite id="nomicon-safe-unsafe" />.
+</Callout>
+
+<Formal title="An invariant, kept">
+
+```text
+I(a)  ≡  ∀ byte b in a.0 : b < 128
+new(v) = Some(a)   ⟹  I(a)
+I(a) ∧ a.push(x)   ⟹  I(a) afterwards
+I(a)  ⟹  contract of from_utf8_unchecked
+         holds for a.0
+```
+
+<span slot="read">Write I of a for "every byte in a's vector is below
+128". If new returns some a, then I of a holds. If I of a holds and we
+push, it still holds afterwards. And whenever I of a holds, the
+promise from_utf8_unchecked needs is true, so as_str is safe to
+call.</span>
+</Formal>
+
+<Prompts ids={['contract-vs-inv', 'validity', 'sound-def']} />
+
+## Privacy is the fence
+
+The invariant only holds if *every* way of making or changing an
+`Ascii` keeps it. Rust's tool for "every way" is privacy: a field
+without `pub` can be touched only inside the module that defines the
+type, so the module's own functions are the only ones you must check.
+The Rustonomicon puts it this way: unsafe code that relies on a
+struct's fields "pollutes a whole *module*", and "the only
+bullet-proof way to limit the scope of unsafe code is at the module
+boundary with privacy"<Cite id="nomicon-working-with-unsafe" />.
+Step through what one `pub` costs:
+
+<InvariantSteps client:visible />
+
+<Examples of="safety-invariant">
+
+```rust
+/// # Safety
+/// `bytes` must be valid UTF-8.
+pub unsafe fn from_utf8_unchecked(
+    bytes: &[u8],
+) -> &str
+// a contract: the caller's job
+```
+
+```rust
+mod ascii {
+    pub struct Ascii(Vec<u8>);
+    impl Ascii {
+        pub fn new(b: Vec<u8>)
+            -> Option<Ascii> {
+            if b.is_ascii() {
+                Some(Ascii(b))
+            } else { None }
+        }
+    }
+}
+// outside: Ascii(vec![0xFF]) is
+// error[E0603]: tuple struct
+//   constructor `Ascii` is private
+```
+
+<Run id="c-text" />
+
+</Examples>
+
+The first is a contract, from the standard library: the signature of
+`from_utf8_unchecked`, whose `# Safety` section is the promise every
+caller signs. The second is an invariant fenced by privacy: outside the
+`ascii` module the field cannot be named, so the only way to get an
+`Ascii` is `new`, which checks; trying to build one directly is
+rustc's error E0603. The runnable one wraps memory owned by C. `CText`
+holds a pointer from C's `strdup`, and its invariant is "non-null,
+NUL-terminated, from `strdup`, and freed by nobody else". Its methods
+rely on that (`CStr::from_ptr` needs it), and its `Drop` impl (the
+trait from *Associated types and the standard traits*) calls C's
+`free` exactly once. It prints `"hi from C"`, `9 bytes`, and then
+`free("hi from C")` as the value goes out of scope.
+
+Now break it by adding one innocent-looking line, `#[derive(Clone)]`.
+A derived `Clone` copies the pointer, so two `CText`s own the same
+string and *both* free it. With glibc on this machine, rustc 1.97's
+program printed:
+
+```text
+"hi from C"
+free("hi from C")
+free("\x16\xc3\xf6C\x94U")
+free(): double free detected in tcache 2
+Aborted
+```
+
+The second drop read memory that had already been freed (the garbage
+differs from run to run), then freed it again, and the C library
+stopped the process. Not one line inside an `unsafe` block changed;
+the invariant "nothing else frees it" was broken by safe code that the
+type allowed. A correct `Clone` would call `strdup` again.
+
+<OtherLanguages title="Keep a field out of reach">
+
+```rust
+mod ascii {
+    pub struct Ascii(Vec<u8>);
+}
+// ascii::Ascii(vec![]) outside:
+// error[E0603]
+```
+
+```ts
+class Ascii {
+  #bytes: number[];
+  constructor(b: number[]) {
+    this.#bytes = b;
+  }
+}
+// new Ascii([]).#bytes outside:
+// SyntaxError
+```
+
+```c
+struct ascii { unsigned char *bytes; };
+/* every field is public: hide it by
+   giving callers only an incomplete
+   `struct ascii;` in the header */
+```
+
+</OtherLanguages>
+
+TypeScript's `#private` fields are enforced by the JavaScript engine
+itself (Node rejects the access with "SyntaxError: Private field
+'#bytes' must be declared in an enclosing class"). C has no field
+privacy at all, so libraries hide a struct's layout by
+publishing only its name. Rust checks privacy at compile time, per
+module, which is exactly the boundary unsafe code needs.
+
+<Prompts ids={['privacy-fence', 'derive-clone', 'drop-once']} />
+
+## Do not trust code you did not write
+
+One more rule from the Rustonomicon: unsafe code may trust the safe
+code it chose to depend on, but not safe code supplied by its
+callers<Cite id="nomicon-safe-unsafe" />. Its example is `BTreeMap`,
+whose unsafe internals must stay memory-safe even if a user's `Ord`
+implementation is nonsense, because writing a wrong `Ord` takes no
+`unsafe` at all. The same goes for a closure you are handed, or a
+`len()` from a trait the user implements. When unsafe code truly must
+rely on a trait, the trait itself is declared `unsafe`, so that
+implementing it is a promise: that is what `Send` and `Sync` are, as
+*Threads, Send and Sync* showed (`unsafe impl Send for T {}`).
+
+<Prompts ids={['trust-generic', 'unsafe-trait']} />
+
+## Your turn
+
+<Exercise id="ascii" />
+
+## What you learned
+
+- A **safety contract** is what a caller of an `unsafe fn` must make
+  true; a **safety invariant** is what every value of a type must
+  satisfy; a **validity invariant** is the compiler's own.
+- An invariant that unsafe code relies on must be kept by every safe
+  method, and **privacy** (a non-`pub` field, a checking constructor)
+  makes the module the only place to check.
+- Safe code can still break an unsound type, as a derived `Clone` on a
+  pointer-owning wrapper did; and unsafe code must not trust generic
+  code its callers supply.
+
+<Quiz />

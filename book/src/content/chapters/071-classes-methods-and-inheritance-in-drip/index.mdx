@@ -1,0 +1,762 @@
+---
+n: 71
+day: 6
+part: III
+title: 'Classes, methods and inheritance in Drip'
+tagline: 'Two maps are all Drip needs for objects: one on the class for the methods every instance shares, and one on each instance for its own fields.'
+objectives:
+  - Describe how the interpreter represents a class, an instance and its fields.
+  - Trace new from the class lookup through init to the instance it gives back.
+  - Trace a property read through the fields first, then the class's methods, and read Drip's property errors.
+  - Explain how a method body finds self, using the resolver's scopes and the interpreter's environments.
+  - Trace how reading a method off an instance binds it, and why a Drip method keeps its self when passed around.
+  - Predict what init gives back, and which init and self mistakes are compile errors.
+  - Explain how a Drip method lookup finds an inherited method through the superclass chain.
+  - Explain overriding, and read the errors for a bad superclass.
+  - Trace a super call, and explain why super is stored in an environment instead of found through self.
+introduces: [drip-class, field, bound-method, inheritance, super]
+uses: [resolver, scope-depth, static-analysis, captured-environment, environment-lifetime, environment, closure, callable, arity, native-function, runtime-value, runtime-error, tree-walking-interpreter, drip, drip-list, class, constructor, instance, this, method, new, object, property, dot-access, map, reference, identity, function, call, return, parameter, variables, scope-chain, callback, first-class-function, return-unwinding, host-stack, recursion]
+sources: [bynensmeurer2018, mdn-this, mdn-map]
+---
+import InstanceFigure from '../../../components/diagrams/ch071/InstanceFigure';
+import NewSteps from '../../../components/diagrams/ch071/NewSteps';
+import BindSteps from '../../../components/diagrams/ch071/BindSteps';
+import SelfScopes from '../../../components/diagrams/ch071/SelfScopes';
+import SuperSteps from '../../../components/diagrams/ch071/SuperSteps';
+import ChainFigure from '../../../components/diagrams/ch071/ChainFigure';
+
+{/* ── merge: from old chapter 71, Records with behaviour: classes in Drip ── */}
+
+## Data that knows what to do
+
+Every value in Drip so far is either plain data (numbers, strings,
+lists) or behaviour (functions). Real programs keep wanting the two
+together: a particle with its position *and* a way to move, a cake with
+its flavour *and* a way to taste it. Here is a Drip class, which should
+look familiar from the chapter *Classes: a blueprint for objects*:
+
+```
+class Cake {
+  init(flavour) {
+    self.flavour = flavour;
+  }
+  taste() {
+    print "Mmm, " + self.flavour;
+  }
+}
+let c = new Cake("lemon");
+c.taste();  # Mmm, lemon
+print c;    # Cake { flavour: "lemon" }
+```
+
+The shape is JavaScript's, with three small differences. The method that
+sets up a new object is called `init` rather than `constructor` (and
+`init` is a keyword, so it can never be used as an ordinary name); the
+object a method is working on is called `self` rather than `this`; and
+you can print an instance, which shows its class's name and its fields.
+`new Cake("lemon")` makes the object, runs `init` with `"lemon"`, and
+gives the object back; `c.taste()` reads the method `taste` off it and
+calls it.
+
+## Classes and instances
+
+The `class` statement makes a value, the way `fn` does. Here is its case
+in `execute`, without the part about superclasses (that comes in the
+chapter *Inheritance: extends and super*):
+
+```ts
+const methods = new Map();
+for (const m of s.methods)
+  methods.set(m.name.lexeme,
+    new DripFunction(m, env,
+      m.name.type === 'init'));
+this.env.define(s.name.lexeme,
+  new DripClass(s.name.lexeme,
+    superclass, methods));
+```
+
+Each method becomes an ordinary `DripFunction`, capturing the
+environment the class was declared in, exactly like a function
+declaration; the last argument marks the one called `init`. They all go
+in a `Map` from name to function, and a `DripClass` holds the name, the
+superclass (none, for now) and that map. Then the class's name is
+defined like any variable, so `print Cake;` shows `class Cake`.
+
+<Analogy title="a cookie cutter">
+One cutter, many cookies: every cookie gets the cutter's shape, and each
+can be iced differently. The cutter is the class; each cookie is an
+instance, and its icing is its own data.
+<span slot="breaks">A cookie's shape is fixed once it is cut; a Drip
+instance can gain a new field at any moment, and its methods are not
+copied into it at all, but looked up on the class every time they are
+used.</span>
+</Analogy>
+
+Making an instance is the job of `new`:
+
+```ts
+case 'new': {
+  const klass = this.lookUp(
+    e.className, e);
+  const args = e.args.map(
+    (a) => this.evaluate(a));
+  if (!(klass instanceof DripClass))
+    throw new RuntimeError(e.keyword,
+      `'new' needs a class, not ` +
+      describe(klass));
+  const inst = new DripInstance(klass);
+  const init = klass.findMethod('init');
+  if (init)
+    this.callFunction(init.bind(inst),
+      args, e.keyword);
+  else if (args.length !== 0)
+    throw new RuntimeError(...);
+  return inst;
+}
+```
+
+It looks the class name up, evaluates the arguments, and checks that the
+name really holds a class (`new f()` for a function `f` stops with
+`'new' needs a class, not a function`). Then it makes a `DripInstance`,
+which starts with no fields at all, finds `init`, and calls it with the
+arguments, through the same `callFunction` as any call, so `init`'s
+arity is checked as usual (`init() takes 2 arguments but got 1`).
+`init.bind(inst)` is what makes `self` mean this instance inside
+`init`; the next chapter takes binding apart. A class with no `init`
+must be made with no arguments, or the error is
+`Box has no init, so it takes no arguments, but got 1`. Whatever `init`
+does, `new` gives back the instance. Step through it:
+
+<NewSteps client:visible />
+
+<Callout kind="definition">
+A **Drip class** is a runtime value holding a name, an optional
+superclass and a map from method names to functions. `new C(args)`
+makes an **instance** (a `DripInstance`), which holds a pointer to its
+class and a map of fields; if the class (or an ancestor) has an `init`,
+it is called on the new instance with the arguments, and the instance is
+the value of the `new` expression either way. A class can only be used
+with `new`: calling it like a function is the runtime error
+`cannot call a class: use 'new C(...)'`.
+</Callout>
+
+<Prompts ids={['class-holds', 'new-steps', 'new-returns', 'call-the-class']} />
+
+## Fields
+
+An instance is its class plus a second `Map`, of fields. Fields are
+never declared: assigning to one creates it, which is how `init`
+builds an instance up. Reading checks the fields first and only then the
+class:
+
+```ts
+get(name: Token): Value {
+  const v = this.fields.get(name.lexeme);
+  if (v !== undefined) return v;
+  const m = this.klass.findMethod(
+    name.lexeme);
+  if (m) return m.bind(this);
+  throw new RuntimeError(name,
+    `${this.klass.name} has no ` +
+    `property '${name.lexeme}'`);
+}
+```
+
+Line 2 looks in the instance's own fields; if the name is there, that
+value is the answer. Otherwise lines 4 to 6 ask the class for a method
+of that name and hand it back bound to this instance; and if neither has
+it, the program stops with `Cake has no property 'size'`. Because fields
+come first, a field can hide a method with the same name. Writing is
+simpler still: the `set` case checks that the object is an instance and
+does `obj.fields.set(name, value)`. Only instances have properties, so
+`n.x = 1` on a number stops with `cannot set 'x' on a number`, and
+reading `n.x` with `cannot read 'x' of a number`.
+
+<Figure caption="Each instance has its own map of fields and a pointer to its class. The class holds the methods, once, for every instance. A property read checks the fields first, then the class." takeaway="Fields live on the instance; methods live on the class.">
+  <InstanceFigure />
+</Figure>
+
+<Analogy extra title="labels on a jar">
+A jar in the kitchen gets a label for whatever you want to remember
+about it: "flour", then later "opened in May", then "nearly empty". You
+never had to plan the labels; you stick one on when you need it, and
+each jar has its own.
+<span slot="breaks">A label can be peeled off; Drip has no way to remove
+a field once it exists, only to give it a new value.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **field** is a piece of data stored on one instance, under a name, in
+the instance's own map. Assigning `obj.name = value` creates the field if
+it is missing and replaces its value if not; reading `obj.name` returns
+the field if there is one, otherwise the class's method of that name
+(bound to `obj`), otherwise it is the runtime error
+`C has no property 'name'`. Fields print in the order they were first
+set.
+</Callout>
+
+<Examples of="drip-class field">
+
+```
+class Box {}
+let b = new Box();
+print b;      # Box {}
+b.size = 3;
+b.size += 1;
+print b;      # Box { size: 4 }
+```
+
+```
+class Box {}
+let b = new Box();
+print b.colour;
+# runtime error: Box has no
+#   property 'colour'
+#   at line 3 in script
+```
+
+<Run id="fields" />
+
+</Examples>
+
+The first is the simplest class there is, with no methods at all: `new
+Box()` (no `init`, so no arguments) gives an instance with no fields,
+which prints as `Box {}`; assigning `b.size` creates a field, `+=` reads
+it and writes it back, and printing shows the result. The second is the
+classic slip, reading a field that was never set: there is no field and
+no method called `colour`, so the read is an error, at the line of the
+read. The runnable one gives two instances of one class different
+fields, then hides a method behind a field; try calling the method on
+each instance.
+
+<Prompts ids={['fields-where', 'field-created', 'field-first', 'not-instance']} />
+
+<Callout kind="engine" label="Under the hood">
+Every `self.flavour` in Drip is a lookup by name in that instance's own
+`Map`. JavaScript engines do better for objects that share a shape:
+objects with the same properties, added in the same order, share one
+*hidden class*, which records where each property sits, so a property
+read can go straight to a fixed position<Cite id="bynensmeurer2018" />.
+Drip has no shapes; the chapter *Shapes in depth* shows how V8's work.
+</Callout>
+
+## Your turn
+
+<Exercise id="rect" />
+
+<Exercise id="particles" />
+
+## What you learned
+
+- A **Drip class** is a name, an optional superclass and a map of
+  methods; each method is a `DripFunction` that captured the class's
+  environment.
+- `new C(args)` makes an empty instance, calls `init` on it (checking
+  the arity), and gives back the instance; a class must be used with
+  `new`.
+- An instance holds its class and a map of **fields**. Fields appear
+  when you assign them; a read checks the fields first, then the class's
+  methods, then fails with `C has no property 'x'`.
+- Only instances have properties.
+
+Next: how a method finds `self`, and why a Drip method, unlike a
+JavaScript one, never forgets which object it belongs to.
+
+
+{/* ── merge: from old chapter 71, Methods that keep their self ── */}
+
+## A method that does not forget
+
+The chapter *Methods and this* showed a JavaScript trap: read a method
+off an object, call it later without the dot, and `this` is lost,
+because JavaScript decides `this` from the dot in each call<Cite id="mdn-this" />.
+Try the same thing in Drip:
+
+```
+class Cake {
+  init(f) { self.flavour = f; }
+  taste() {
+    print "Mmm, " + self.flavour;
+  }
+}
+let c = new Cake("lemon");
+let f = c.taste;
+f();  # Mmm, lemon
+```
+
+`let f = c.taste;` reads the method without calling it, and `f()` calls
+it with no object in sight; yet it still prints `Mmm, lemon`, so `self`
+inside it still means `c`. By the end of this chapter you will know
+exactly which object makes that work, and it is not a special rule
+about `self`: it is the same machinery as closures.
+
+## self is a variable
+
+How does `taste`'s body find `self` at all? Not by a special case in the
+interpreter. The `self` expression is evaluated like any variable:
+
+```ts
+case 'self':
+  return this.lookUp(e.keyword, e);
+```
+
+That means `self` must be *declared* somewhere, in a scope the resolver
+knows about, at a distance it can record. The resolver puts it there:
+when it meets a class, it wraps all the class's methods in one extra
+scope that declares the name `self`:
+
+```ts
+begin();
+scopes[scopes.length - 1]
+  .set('self', true);
+for (const m of s.methods)
+  fn(m, m.name.type === 'init'
+    ? 'initializer' : 'method');
+end();
+```
+
+So, inside `taste`'s body, `self` is found one scope out, and the
+resolver records a distance of 1. Outside any class there is no such
+scope, which is why `self` in an ordinary function is the compile error
+`cannot use 'self' outside a method`.
+
+<Figure caption="While resolving taste, self is one scope out, in the class scope. When c.taste() runs, the interpreter must have a matching environment one step out, holding self." takeaway="self is found by distance, like any variable.">
+  <SelfScopes />
+</Figure>
+
+<Prompts ids={['self-where', 'self-outside']} />
+
+## Binding a method
+
+The resolver's rule (one resolver scope for every runtime
+environment) now demands that, when `taste`'s body runs, there is an
+environment one step out holding `self`. It is made by `bind`, every
+time a method is read off an instance (you saw `get` call it):
+
+```ts
+bind(instance: DripInstance) {
+  const env = new Environment(
+    this.closure);
+  env.define('self', instance);
+  return new DripFunction(this.decl,
+    env, this.isInitializer);
+}
+```
+
+`bind` makes a small environment whose parent is the method's own
+captured environment (where the class was declared), defines one name
+in it, `self`, holding the instance, and returns a *new* `DripFunction`
+with the same declaration whose captured environment is that small one.
+When the new function is called, `callFunction` hangs the call's
+environment off it as always, so the body's `self` is exactly one hop
+up. Step through it:
+
+<BindSteps client:visible />
+
+<Analogy title="a TV remote paired with one TV">
+A remote that has been paired with the living-room TV works whoever
+presses it and wherever they stand; you can hand it to a guest, and the
+living-room TV still answers. Pairing happened once, before anyone
+pressed anything.
+<span slot="breaks">One remote stays one remote; Drip pairs again on
+every read, so `c.taste` read twice gives two different function
+values (both paired with `c`), and `c.taste == c.taste` is
+false.</span>
+</Analogy>
+
+<Analogy extra title="a pre-addressed envelope">
+A reply envelope that arrives with the address already printed can be
+posted from any post box in the country, by anyone, and it still goes to
+the same house.
+<span slot="breaks">An envelope carries a copy of the address; a bound
+method carries the instance itself, so if the instance's fields change
+before the call, the method sees the new values.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **bound method** is a method together with the instance it was read
+from. Drip makes one in `bind`: a new environment whose only variable is
+`self`, holding the instance, wrapped around the method's captured
+environment, and a new function value that captures it. The binding
+happens when the method is *read* (`c.taste`), not when it is called,
+so `self` travels with the value wherever it goes.
+</Callout>
+
+<Examples of="bound-method">
+
+```
+class Cake {
+  init(f) { self.flavour = f; }
+  taste() { print self.flavour; }
+}
+let c = new Cake("plum");
+let f = c.taste;  # bound to c
+f();              # plum
+print f;          # fn taste
+print c.taste == c.taste; # false
+```
+
+```
+class A {
+  m() {
+    return fn () { return self.n; };
+  }
+}
+let a = new A();
+a.n = 7;
+let g = a.m();
+print g(); # 7
+```
+
+<Run id="bound-callback" />
+
+</Examples>
+
+The first is the cake again: `f` holds a bound method, prints like the
+function it wraps, and every read of `c.taste` makes a new bound
+method, so two reads are never the same value. The second shows that
+`self` really is just a variable: the anonymous function made inside `m`
+captures `m`'s call environment, whose parent is the bind environment,
+so `self` is found two hops up from inside it (in JavaScript, only an
+arrow function would keep `this` here). The runnable one passes a method
+as a callback, the case that goes wrong in JavaScript.
+
+There is also a cost hidden here: every method read allocates *two*
+objects, an environment and a `DripFunction`, even for an immediate call
+like `c.taste()`, which reads the method and calls it at once.
+
+<Prompts ids={['bind-makes', 'keeps-self', 'new-each-read', 'two-objects']} />
+
+## init always gives back the instance
+
+`init` is an ordinary method with one difference, the `isInitializer`
+flag the class statement set on it. At the end of a call, `callFunction`
+checks it:
+
+```ts
+if (f.isInitializer)
+  return f.closure.getAt(0, 'self');
+```
+
+The closure of a bound `init` is its bind environment, so `getAt(0,
+'self')` is the instance: an initialiser's call always gives back the
+instance, whatever its body did. Because of that, `return value;`
+inside `init` would be meaningless, so the resolver rejects it (a bare
+`return;`, leaving early, is fine):
+
+```
+class V {
+  init(x) {
+    return x;
+  }
+}
+# line 3: 'init' cannot return a value
+```
+
+And because `init` is a keyword, `c.init()` cannot even be parsed (`expected a property name after '.', found 'init'`):
+only `new`, and in the next chapter `super.init(...)`, ever run an
+initialiser.
+
+<Prompts ids={['init-returns', 'init-keyword']} />
+
+## Your turn
+
+<Exercise id="tally" />
+
+<Exercise id="getProp" />
+
+## What you learned
+
+- `self` is an ordinary variable: the resolver declares it in a scope
+  around a class's methods, and records its distance like any other.
+- Reading a method off an instance **binds** it: a new environment
+  holding only `self`, around the method's captured environment, and a
+  new function value capturing it. That is a **bound method**.
+- Binding happens on the read, so a Drip method keeps its `self` when
+  stored or passed as a callback; each read makes a new value.
+- An initialiser always gives back the instance; `return value;` in
+  `init` and `self` outside a method are compile errors.
+
+Next: classes that build on other classes, and `super`.
+
+
+{/* ── merge: from old chapter 71, Inheritance: extends and super ── */}
+
+## A dog is an animal
+
+Every animal has a name and can make a sound; a dog does that *and*
+barks. Writing the shared part twice would bring back the copy-and-fix
+problem that functions cured, so Drip, like JavaScript in the chapter
+*Inheritance: extends and super*, lets one class build on another:
+
+```
+class Animal {
+  init(name) { self.name = name; }
+  speak() {
+    print self.name + " makes a sound";
+  }
+}
+class Dog extends Animal {
+  speak() {
+    super.speak();
+    print self.name + " barks";
+  }
+}
+new Dog("Rex").speak();
+# Rex makes a sound
+# Rex barks
+```
+
+`Dog` has no `init`, yet `new Dog("Rex")` sets `name`; and `Dog`'s
+`speak` replaces `Animal`'s, but can still call it through `super`. This
+chapter is about the two lookups that make that happen.
+
+## Inheritance: one more place to look
+
+`class Dog extends Animal` gives `Dog` a **superclass**, `Animal`. The
+class statement evaluates the name after `extends` like any variable and
+checks that it holds a class, so `let A = "x"; class B extends A {}`
+stops at run time; `class A extends A {}` is caught even earlier, as the
+compile error `a class cannot extend itself`. Then finding a method becomes a walk up the
+chain of superclasses:
+
+```ts
+findMethod(name: string) {
+  return this.methods.get(name)
+    ?? this.superclass?.findMethod(name);
+}
+```
+
+Look in this class's own methods; if the name is not there (`??` means
+"if the left side is missing, use the right"), ask the superclass, which
+does the same, until a class has no superclass (where `?.` gives
+`undefined`). That is the whole of inheritance in the interpreter. `new Dog("Rex")` calls `findMethod('init')`, which is not
+in `Dog` but is in `Animal`, so `Animal`'s `init` is bound to the new
+`Dog` instance and sets its `name`.
+
+<Analogy title="family recipe books">
+If your own notebook has no recipe for scones, you look in your
+parent's book, then in your grandparent's. A recipe in your own
+notebook wins over an older one with the same name, because you look
+there first.
+<span slot="breaks">A family recipe can be adapted as it is copied;
+Drip copies nothing, it looks up the chain every single time a method is
+read, and a class has at most one parent book to look in.</span>
+</Analogy>
+
+<Figure caption="A method lookup starts at the instance's class and walks up the superclass links until a class has the method. If no class has it, the read is an error." takeaway="Inheritance is a walk up the superclass chain.">
+  <ChainFigure />
+</Figure>
+
+<Callout kind="definition">
+**Inheritance** lets a class reuse another class's methods. The class it
+builds on is its **superclass** (`class B extends A` makes `A` the
+superclass of `B`), which must be a class, and not `B` itself. Looking a
+method up checks the class's own methods first and then walks the
+superclass chain, so a subclass **overrides** a method by defining one
+with the same name. `init` is inherited like any method, so a subclass
+with no `init` is made with its superclass's.
+</Callout>
+
+<Examples of="inheritance">
+
+```
+class A { hi() { print "A"; } }
+class B extends A {}
+new B().hi(); # A
+```
+
+```
+class S { init(a) { self.a = a; } }
+class T extends S {}
+print new T(1); # T { a: 1 }
+print new T();
+# runtime error: init() takes
+#   1 argument but got 0
+#   at line 4 in script
+```
+
+```
+let A = "x";
+class B extends A {}
+# runtime error: a class can only
+#   extend a class, not a string
+#   at line 2 in script
+```
+
+</Examples>
+
+The first is the simplest inheritance there is: `B` has no methods, so
+`hi` is found one class up. The second shows `init` inherited: `new
+T(1)` runs `S`'s, and the instance prints as a `T`; the inherited `init`
+has arity 1, so `new T()` fails. The third is the runtime check on the
+superclass.
+
+<Prompts ids={['find-walk', 'override', 'super-must-be-class', 'extends-self', 'init-inherited']} />
+
+## super: decided where it is written
+
+`super.speak()` means "the `speak` above the class this method was
+written in, called on the same `self`". A tempting shortcut is to take
+`self`'s class and ask for *its* superclass. It breaks with three
+levels:
+
+```
+class A {
+  m() { print "A.m"; }
+}
+class B extends A {
+  m() {
+    print "B.m";
+    super.m();
+  }
+}
+class C extends B {}
+new C().m(); # B.m, then A.m
+```
+
+`new C().m()` reaches `B`'s `m` with `self` a `C` instance. "The
+superclass of `self`'s class" is `B`, so the shortcut would make
+`super.m()` call `B`'s `m` again, which would call it again, until
+`stack overflow`. The right answer, `A`, depends on where the method was
+*written*, which is lexical scope again, so the interpreter uses the
+same trick it used for `self`: an environment. When a class with a
+superclass is declared, its methods capture an environment holding
+`super`:
+
+```ts
+let env = this.env;
+if (superclass) {
+  env = new Environment(env);
+  env.define('super', superclass);
+}
+// ... each method captures env ...
+```
+
+The resolver begins a matching scope (declaring `super`) around the
+class's `self` scope, so `super` gets a distance like any variable, and
+`self` is always exactly one environment closer:
+
+```ts
+private superMethod(e) {
+  const d = this.locals.get(e)!;
+  const sc = this.env.getAt(d, 'super');
+  const me = this.env.getAt(d - 1,
+    'self');
+  const m = sc.findMethod(
+    e.method.lexeme);
+  if (!m) throw new RuntimeError(...);
+  return m.bind(me);
+}
+```
+
+It finds the superclass `d` environments out and the instance one
+closer, looks the method up starting at the superclass, and binds it to
+the instance (if nothing is found: `Shape has no method 'm'`). Step
+through the three-level example:
+
+<SuperSteps client:visible />
+
+<Analogy extra title="a family motto">
+"Do as your grandmother did" means one particular grandmother, fixed by
+which family the saying was handed down in, whoever happens to be
+repeating it today; a grandchild who repeats it does not mean *their*
+grandchild's grandmother.
+<span slot="breaks">A motto can be misremembered as it passes down;
+`super` is fixed exactly, once, when the class is declared, and it
+names only the class directly above.</span>
+</Analogy>
+
+<Callout kind="definition">
+**`super.name`** finds the method `name` starting from the superclass of
+the class the current method was *written in*, and binds it to the
+current `self`. Drip stores that superclass in an environment made when
+the subclass is declared, so `super` is found by scope depth, like any
+variable, with `self` one environment closer. Using `super` outside a
+method, or in a class that does not extend another, is a compile error.
+</Callout>
+
+<Formal title="Method lookup and super">
+
+```text
+find(C, m) = C.methods[m]  if it exists
+           = find(C.super, m)  otherwise
+super.m, written in class B:
+  = find(B.super, m), bound to self
+```
+
+<span slot="read">Finding method m in class C gives C's own m if it has
+one, and otherwise the result of finding m in C's superclass. super.m in
+a method written in class B finds m starting from B's superclass, and
+binds it to the current self, whatever the instance's own class
+is.</span>
+</Formal>
+
+<Examples of="super">
+
+```
+class S { init(a) { self.a = a; } }
+class T extends S {
+  init(a, b) {
+    super.init(a);
+    self.b = b;
+  }
+}
+print new T(1, 2); # T { a: 1, b: 2 }
+```
+
+```
+class S {}
+class T extends S {
+  m() { super.m(); }
+}
+new T().m();
+# runtime error: S has no method 'm'
+#   at line 3 in fn m
+#   at line 5 in script
+```
+
+<Run id="animals" />
+
+</Examples>
+
+The first is the most common use of all: a subclass's `init` runs its
+superclass's `init` on the same instance first, then adds its own field
+(`super.init` is the only way to reach an initialiser other than `new`).
+The second asks `super` for a method no class above has, and the error
+names the superclass where the search began. The runnable one is the
+animals from the start with one more class; predict each line before
+you run it.
+
+<Prompts ids={['why-not-self-class', 'super-env', 'super-self-distance']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript does the same walk on a *prototype chain* (the chapter
+*Overriding and the prototype chain*). Part IV's VM trades it away: when
+a subclass is declared it copies the superclass's methods into its own
+table once, so a lookup never walks a chain (the tree-walker's tables
+are JavaScript `Map`s<Cite id="mdn-map" />; the VM's are its own hash
+tables).
+</Callout>
+
+## Your turn
+
+<Exercise id="square" />
+
+<Exercise id="findMethod" />
+
+## What you learned
+
+- **Inheritance**: `class B extends A` makes `A` the superclass (it must
+  be a class, and not `B` itself), and `findMethod` walks up the chain.
+  A subclass overrides by reusing a name; `init` is inherited too.
+- **`super`** is decided by where a method is written. Drip keeps the
+  superclass in an environment made when the subclass is declared, so
+  `super` is found by scope depth, with `self` one environment closer.
+- `super.init(...)` runs the superclass's initialiser on the same
+  instance.
+
+That is the whole of Drip. Next: how fast all of this really is, and why
+walking a tree is slow.
+
+<Quiz />

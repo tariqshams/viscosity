@@ -1,0 +1,578 @@
+---
+n: 59
+day: 3
+part: III
+title: 'Tokens and a scanner'
+tagline: 'A parser that worked on single characters would drown in detail. Before anything else, Drip cuts its source into words, and each word comes with a label, its exact spelling, and a note of where it was found.'
+objectives:
+  - Explain what a token is, and tell its type, lexeme and literal apart.
+  - Read Drip's TokenType union and say which type a piece of source gets.
+  - Explain why tokens carry a source location, and turn a character offset into a line and column.
+  - Explain how a scanner uses start and current to cut tokens out of a string.
+  - Read the main loop of Drip's scanner and say what each case does.
+  - Say how the scanner handles whitespace, newlines, the end of the source and characters it does not know.
+  - Write a small scanner of your own.
+introduces: [token, lexeme, token-type, source-location, scanner]
+uses: [string-index, char-code, string-methods, object, property, array, union-type, discriminated-union, typescript, type-checking, interface, compiler-pipeline, front-end-back-end, drip, language-spec, json, variables, strings, numbers, for-loop, if, function, arrow-function, closure, push, while-loop, comparison]
+sources: [coopertorczon2022]
+---
+import TokenSteps from '../../../components/diagrams/ch059/TokenSteps';
+import OffsetGrid from '../../../components/diagrams/ch059/OffsetGrid';
+import TwoPointers from '../../../components/diagrams/ch059/TwoPointers';
+import ScanLoopSteps from '../../../components/diagrams/ch059/ScanLoopSteps';
+
+{/* ── merge: from old chapter 59, Tokens and lexemes ── */}
+
+## Characters are too small
+
+Here is a line of Drip:
+
+```
+let speed = 10.5;
+```
+
+The parser's job (a few chapters on) is to
+recognise the shape of this line: "a `let`, then a name, then `=`, then
+a value, then `;`". Now imagine it had to do that one character at a
+time. Is `l` the start of `let`, or of a name like `lemon`? Is `1` a
+whole number, or the start of `10.5`? Every rule of the grammar would
+have to worry about spelling as well as shape. So the pipeline splits
+the work: the scanner deals with spelling once, and hands the parser a
+list of whole words, called **tokens**. You met the idea in *Checkpoint: JSON
+and its scanner*; this chapter pins it down.
+
+<Analogy title="a sentence marked up by a teacher">
+A teacher marks up a sentence by underlining each word and writing a
+label under it: *noun*, *verb*, *number*. The word as written, say
+"cats", is its exact spelling; the label is its category; and a note in
+the margin ("line 3") says where it was, so they can talk about it
+later. A token is those three things together.
+<span slot="breaks">A teacher's label depends on meaning: "run" can be
+a noun or a verb. A scanner decides a token's category from its spelling
+alone, without knowing what the program means.</span>
+</Analogy>
+
+## Cutting a line into tokens
+
+Step through two lines being cut up, and watch the card: every token
+has the same four parts.
+
+<TokenSteps client:visible />
+
+In the companion code a token is a plain object; this is the interface
+from `companion/ts/src/token.ts`, with its comments removed:
+
+```ts
+interface Token {
+  type: TokenType;
+  lexeme: string;
+  literal: string | number | null;
+  line: number;
+}
+```
+
+<Analogy extra title="a price tag">
+A price tag shows the text "£4.25" in print; the till reads the actual
+amount, four pounds twenty-five, which it can add up; and the tag also
+says which shelf the item came from. The printed text is the lexeme,
+the amount is the literal, and the shelf is the location.
+<span slot="breaks">The text on a price tag was chosen by someone who
+knew what the item was. A token's lexeme is simply whatever characters
+were in the source, and its literal is worked out from them.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **token** is one meaningful word of source code. Its **lexeme** is
+the exact characters it was made from, such as `"10.5"`. Its **token
+type** is its category: a number, an identifier, a keyword, the `+`
+operator. For numbers and strings, the scanner also stores the
+**literal**: the actual value the characters stand for, such as the
+number `10.5`. (Compiler textbooks often call the token type the
+token's *syntactic category*<Cite id="coopertorczon2022" />.)
+</Callout>
+
+<Formal title="A token, and where its lexeme comes from">
+
+```text
+token  = (type, lexeme, literal, line)
+lexeme = source[start .. end)
+```
+
+<span slot="read">A token is four values kept together, in that order.
+Its lexeme is the slice of the source from position start up to, but
+not including, position end; the round bracket on the right means "end
+itself is left out", exactly like JavaScript's slice.</span>
+</Formal>
+
+<Examples of="token lexeme">
+
+```text
+print x;  →  print   x   ;   eof
+```
+
+```text
+"fast"    lexeme  "fast"  (6 chars)
+          literal fast    (4 chars)
+```
+
+```text
+10.5   type     number
+       lexeme   '10.5'  (text)
+       literal  10.5    (a number)
+       line     1
+```
+
+</Examples>
+
+The first is the smallest case: three words make three tokens, the
+space makes none, and the scanner always adds `eof` (end of file), so
+the parser asking "what is next?" gets a clear answer at the end. The second shows lexeme and
+literal coming apart most clearly: the lexeme of a string includes its
+quote marks, while the literal is the text inside them, which is what
+`print` will show. The third is the full card for the number in our
+`let` line: the lexeme is the four characters `10.5`, while the literal
+is a JavaScript number the interpreter can do arithmetic with.
+
+<Prompts ids={['token-what', 'lexeme-literal', 'not-tokens', 'eof-why']} />
+
+## The list of token types
+
+Why bother with a type at all, if the lexeme already says everything?
+Because the parser thinks in categories. Its rule is "a `let` is
+followed by *any* name", not "followed by `speed`, or `x`, or
+`total`…"; thousands of different lexemes share the one type
+`identifier`. Here is every token type Drip has, from `token.ts`,
+rewrapped to fit:
+
+```ts
+type TokenType =
+  // punctuation and operators
+  | '(' | ')' | '{' | '}' | '[' | ']'
+  | ',' | '.' | '..' | ';' | '+' | '-'
+  | '*' | '/' | '%' | '!' | '!=' | '='
+  | '==' | '<' | '<=' | '>' | '>='
+  | '&&' | '||' | '+=' | '-='
+  // literals
+  | 'identifier' | 'string' | 'number'
+  // keywords
+  | 'break' | 'class' | 'continue'
+  | 'else' | 'extends' | 'false' | 'fn'
+  | 'for' | 'if' | 'in' | 'init' | 'let'
+  | 'new' | 'none' | 'print' | 'return'
+  | 'self' | 'super' | 'true' | 'while'
+  | 'error' | 'eof';
+```
+
+It is a union of string literal types, from *TypeScript II: unions and
+narrowing*. For punctuation and keywords the type *is* the spelling
+(the token for `<=` has type `'<='`); only for names, numbers and
+strings do type and lexeme differ. And TypeScript rejects a misspelt
+type before the scanner ever runs:
+
+```ts
+const t: TokenType = 'eqaul';
+// Type '"eqaul"' is not assignable
+// to type 'TokenType'.
+const ok: TokenType = '==';
+```
+
+<Callout kind="definition">
+A **token type** is the category of a token. Drip has 52: one for each
+of its 27 punctuation marks and operators, three for literals
+(`identifier`, `string`, `number`), one for each of its 20 keywords,
+`eof`, and `error`, for a piece of source the scanner could not use
+(the next chapter shows why that is a token too). Spaces, newlines and
+`#` comments separate tokens but never become tokens.
+</Callout>
+
+<Examples of="token-type">
+
+```text
++        →  '+'
+<=       →  '<='
+```
+
+```text
+speed  total  x  →  identifier
+```
+
+```text
+while n <= 10 {  →  'while'
+  identifier '<=' number '{'
+```
+
+</Examples>
+
+In the first, each operator is its own type, and `<=` is one token,
+not `<` then `=` (the next chapter shows how). In the second, three
+names share one type: the parser only cares that it is a name. In the
+third, the start of a real loop, `while` has the type `'while'` and `n`
+and `10` get the shared types `identifier` and `number`.
+
+<Prompts ids={['why-types', 'punct-type']} />
+
+## Where did it come from?
+
+A token also remembers where it was found, because when something goes
+wrong much later (say in the parser, which never sees the characters)
+that is the only way to tell you *where*:
+
+<Run id="error-lines" />
+
+The parser reports line 3, read from the `;` token where it expected a
+value; `one` is never printed, because the whole program is checked
+before any of it runs.
+
+<Analogy extra title="a grid reference on a map">
+A map is divided into squares, so "row 3, square 9" finds one spot on
+the sheet; a line and column do the same for a point in a file.
+<span slot="breaks">Every square on a map is the same size. In source
+text, a tab or an emoji can take a different width on screen from its
+places in the string, so "column 9" can mean different things to a
+program and to your eyes.</span>
+</Analogy>
+
+A scanner walks the source by **offset**: the index of a character in
+the whole string, counting newlines as characters too. People want a
+line and a column instead, and one turns into the other by counting:
+
+<Figure takeaway="Count the newlines you pass." caption="The source let x;, an empty line, then print x +;. Every character, newlines included, has one offset in the whole string. The + at offset 16 comes after two newlines, so it is on line 3, and it is the ninth character of that line.">
+  <OffsetGrid />
+</Figure>
+
+<Callout kind="definition">
+A token's **source location** says where in the source it came from:
+its line, and often its column (its position within the line, counting
+from 1). Error messages use it to point at the problem. Drip's tokens
+record only the line, because Drip's error messages name only the
+line.
+</Callout>
+
+<Formal title="From an offset to a line">
+
+```text
+line(o) = 1 + (newlines in source[0 .. o))
+col(o)  = o − (offset after the last
+               of those newlines) + 1
+```
+
+<span slot="read">The line of the character at offset o is one more
+than the number of newline characters before it. Its column is how far
+it is past the start of its line, plus one, because columns are counted
+from 1. For the + in the figure: two newlines come before offset 16, so
+it is on line 3; line 3 starts at offset 8, so its column is 16 − 8 + 1,
+which is 9.</span>
+</Formal>
+
+<Examples of="source-location">
+
+```text
+line 3: expected an expression,
+found ';'
+```
+
+```text
+print x +;
+         ^
+```
+
+```text
+print 1;
+print 2;
+bytes: const 0 0 print const 0 1 …
+lines: 1     1 1 1     2     2 2 …
+```
+
+</Examples>
+
+The first is Drip's real message for the program above: the line comes
+from the token, and the quoted `';'` is the token's lexeme. The second
+is what many compilers print instead, the offending line with a caret
+`^` under the exact spot, which needs the column too; the exercises
+build it. The third is how far the line number travels: when Drip's VM
+in Part IV compiles these two lines to bytecode, it keeps a line number
+beside every byte (`const` and its two-byte constant index make three
+bytes, so three line numbers), and an error deep inside the VM can
+still name your source line.
+
+<Prompts ids={['location-what', 'front-end-first']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity takes the same care. Every instruction in its IR, VIR,
+carries a `SourceRef` with the start and end offsets and the line it
+came from (`engine/ts/packages/core/src/vir.ts`), so the back end can
+rewrite exactly the right characters, and its explanations can point at
+the line *you* wrote.
+</Callout>
+
+## Your turn
+
+The core exercise is the counting in the figure, as code; the extra one
+draws a caret under an error.
+
+<Exercise id="locate" />
+
+<Exercise id="point-at" />
+
+## What you learned
+
+- A **token** is one meaningful word of source. Its **lexeme** is the
+  exact characters, its **token type** is its category, and numbers and
+  strings also carry a **literal** value.
+- Drip's `TokenType` is a union of 52 string literal types; for
+  punctuation and keywords the type is the spelling itself.
+- Whitespace and comments separate tokens but never become tokens.
+- A **source location** (line, and often column) lets later stages
+  report errors in the right place; Drip records the line.
+
+Next: the scanner itself, the loop that makes all these tokens.
+
+
+{/* ── merge: from old chapter 59, Writing a scanner ── */}
+
+## A hundred lines
+
+The last chapter described tokens; now for the program that makes them.
+In the companion code it is a single function, `scan`, in
+`companion/ts/src/scanner.ts`: about a hundred lines that take a
+string and return an array of tokens.
+
+```ts
+function scan(source: string): Token[]
+```
+
+It takes nothing else, not even somewhere to send error messages: a
+character it cannot use becomes a token too, as you will see below, and
+everything else happens inside. You wrote a smaller relative of this function for JSON
+in *Checkpoint: JSON and its scanner*, and the question it answers is
+the same one: given a long row of characters, where does each word
+start, where does it end, and what kind of word is it?
+
+<Analogy title="two fingers on a line of text">
+Run two fingers along a line of print. Your left finger marks where the
+current word began; your right finger slides forward, letter by letter,
+until the word ends. Everything between your fingers is the word: write
+it down, move your left finger up to your right one, and start again.
+<span slot="breaks">Fingers can jump back to reread. Drip's scanner
+never moves backwards: once a character is behind the right finger, it
+is never looked at again.</span>
+</Analogy>
+
+<Analogy extra title="a cashier at a till">
+Shopping comes down the belt in order. The cashier takes the next
+item, decides what it is, and rings it up as one line on the receipt;
+the plastic dividers between customers' shopping are not rung up at
+all, they only separate.
+<span slot="breaks">A cashier sees each item whole. A scanner sees one
+character at a time, so for most tokens its real work is finding where
+the item *ends*.</span>
+</Analogy>
+
+## The state and the helpers
+
+The two fingers are two numbers, and there is a line counter for the
+source location:
+
+```ts
+let start = 0;   // where this token began
+let current = 0; // the next char to read
+let line = 1;
+```
+
+`start` is the left finger, the index of the first character of the
+token being built; `current` is the right finger, the index of the next
+character to read. Around them sit a few tiny helper functions. They are
+closures, from *Closures: functions that remember*: arrow functions
+declared inside `scan`, so they can all see `source`, `start` and
+`current` without being passed them. Here are the first three:
+
+```ts
+const atEnd = () =>
+  current >= source.length;
+const advance = () => source[current++];
+const peek = () =>
+  atEnd() ? '\0' : source[current];
+```
+
+`atEnd` is true once `current` has gone past the last character.
+`advance` reads the character at `current` *and* moves `current` past it
+(`current++` gives the old value, then adds one). `peek` only looks,
+without moving; at the end of the source it returns `'\0'`, a stand-in
+character that none of the scanner's checks will match, so callers
+never have to deal with `undefined`. When a token is complete, `add`
+cuts its lexeme out of the source with `slice`, from `start` up to (not
+including) `current`:
+
+```ts
+const add = (type, literal = null) => {
+  tokens.push({
+    type,
+    lexeme: source.slice(start, current),
+    literal,
+    line,
+  });
+};
+```
+
+(The real `add` also has type annotations. Here and below, the code is
+simplified from `scanner.ts` to fit your screen.)
+
+<Figure takeaway="The lexeme is everything between the pointers." caption="Scanning x = 12;. The token being built started at offset 4 and current has moved to offset 6, the semicolon, which is not part of it. slice(4, 6) takes offsets 4 and 5: the lexeme 12.">
+  <TwoPointers />
+</Figure>
+
+<Callout kind="definition">
+A **scanner** (also called a *lexer*) is the first stage of a front
+end. It reads source text character by character and produces a list of
+tokens, skipping the characters that only separate them. Drip's keeps
+two indexes into the text: `start`, the first character of the token
+being built, and `current`, the next character to read.
+</Callout>
+
+<Formal title="What a scanner promises">
+
+```text
+scan : string → Token[]
+lexeme(t) = source[start .. current)
+lexemes, in order, with the skipped
+characters put back  =  source
+```
+
+<span slot="read">A scanner is a function from a string to an array of
+tokens. Each token's lexeme is the slice from start up to, not
+including, current at the moment the token was added. And nothing is
+lost or reordered: if you laid the lexemes end to end and put the
+skipped spaces, newlines and comments back where they were, you would
+get the source again, character for character.</span>
+</Formal>
+
+<Prompts ids={['scanner-what', 'start-current', 'advance-moves', 'slice-lexeme']} />
+
+## The loop
+
+Every round of the loop makes at most one token. It moves `start` up to
+`current`, reads one character, and lets a `switch` decide what that
+character begins. Step through it on a short line:
+
+<ScanLoopSteps client:visible />
+
+The real loop has the same shape, with a case for every kind of
+character:
+
+```ts
+while (!atEnd()) {
+  start = current;
+  const c = advance();
+  switch (c) {
+    case '(': case ')': case '{':
+    // … the other one-character tokens
+      add(c);
+      break;
+    case ' ': case '\r': case '\t':
+      break;
+    case '\n':
+      line++;
+      break;
+    // … more cases
+    default:
+      error(`unexpected character '${c}'`);
+  }
+}
+tokens.push({ type: 'eof', lexeme: '',
+  literal: null, line });
+```
+
+Line 1 keeps going until every character has been read. Line 2 starts a
+new token: the left finger jumps up to the right one. Line 3 reads one
+character into `c` and moves past it. The `switch` then picks a case by
+that character. For a one-character token, `add(c)` is enough: because
+a punctuation token's type is its own spelling (from the last chapter),
+the character `c` *is* the type. The whitespace cases (space, carriage
+return `'\r'` and tab `'\t'`) do nothing at all, so they make no token,
+and a newline only adds one to `line`. The `default` case catches any
+character no other case wanted, such as `@`, and `error` pushes a token
+of type `error` whose lexeme is the message. After the loop, one `eof`
+token is pushed, with an empty lexeme and the last line.
+
+<Examples of="scanner">
+
+```text
+"( )"   →  (  )  eof
+```
+
+```text
+"{\n}"  →  {  line 1
+           }  line 2
+           eof
+```
+
+<Run id="mini-scan" />
+
+</Examples>
+
+The first is the plainest round trip: two one-character tokens, the
+space between them skipped, then `eof`. The second shows the line
+counter at work: the newline makes no token, but it bumps `line`, so
+the closing brace is recorded on line 2. The third is a scanner small
+enough to read in one go, written for this page with the same loop: it
+knows brackets, braces and semicolons, skips spaces, counts lines, and
+reports anything else; change the input strings at the bottom and run
+it again.
+
+When the `default` case finds a character it does not know, it does
+not stop and it prints nothing: it adds an `error` token, with the
+message `unexpected character '@'` as its lexeme and the current line,
+and *carries on*. The parser reports that token when it reaches it, so
+every error, from the scanner or the parser, comes out in source order;
+spot the difference between Drip's output for a program with one stray
+character and for the fixed one:
+
+```
+print 1 @ 2;
+# line 1: unexpected character '@'
+print 1 + 2;  # 3
+```
+
+The parser reports only the first error in each statement and then
+skips to the next one, so the leftover `1 2` draws no second complaint.
+Nothing runs, because the pipeline stops before the interpreter if
+anything was reported.
+
+<Prompts ids={['newline-case', 'eof-push', 'keep-going']} />
+
+<Callout kind="engine" label="Under the hood">
+Drip's scanner makes the whole list of tokens before the parser starts.
+Drip's VM in Part IV makes a different choice: its scanner hands out one
+token at a time, whenever the compiler asks for the next one, so the
+full list is never built (see `companion/ts/src/vm/scanner.ts`). Both
+use the same two pointers. Handing out tokens one by one saves memory
+for a long program, while a list is easier to inspect and test; either
+way the scanner is the part a compiler textbook calls the *lexical
+analyser*<Cite id="coopertorczon2022" />.
+</Callout>
+
+<Prompts ids={['one-at-a-time']} />
+
+## Your turn
+
+The exercise is a complete little scanner for arithmetic: one loop, two
+pointers, and a run of digits treated as one number.
+
+<Exercise id="scan-arith" />
+
+## What you learned
+
+- A **scanner** turns characters into tokens. Drip's keeps two
+  pointers: `start`, where the token began, and `current`, the next
+  character to read; each lexeme is `source.slice(start, current)`.
+- `advance` reads a character and moves on; `peek` only looks, and
+  returns `'\0'` at the end.
+- The main loop reads one character, and a `switch` decides what it
+  begins. Whitespace makes no token, `'\n'` bumps the line count, and an
+  unknown character becomes an `error` token while scanning carries on.
+- After the loop, one `eof` token marks the end.
+
+Next: the characters that cannot be decided on their own, like the `<`
+that might be the start of `<=`.
+
+<Quiz />

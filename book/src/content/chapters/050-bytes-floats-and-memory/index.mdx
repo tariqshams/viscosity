@@ -1,0 +1,581 @@
+---
+n: 50
+day: 1
+part: II
+title: 'Bytes, floats and memory'
+tagline: 'Every number, every array and every object you have made so far lives in one place: a single, enormous row of numbered bytes. Learn to see that row, and to work out where a value sits in it, and the speed-ups in the rest of this book start to make sense.'
+objectives:
+  - Describe memory as one long array of bytes, and say what an address is.
+  - Explain what it means for values to be contiguous, and why that makes finding them a sum.
+  - Work out the address of element i of a typed array, and of one field of a packed record.
+  - Say how C lets you see addresses that JavaScript keeps hidden.
+  - Explain what a pointer is, and how it makes two variables share one object.
+  - Describe what the engine does, step by step, to run p.x.
+  - Contrast the call stack with the heap, and say why an object outlives the call that made it.
+  - Explain why an array of objects is really a row of pointers, while a typed array is the numbers themselves.
+introduces: [memory, address, contiguous, pointer, stack-and-heap]
+uses: [array, index, length, array-loop, object, property, array-of-objects, byte, bit, arraybuffer, typed-array, float64, function, parameter, return, numbers, for-loop, console-log, dot-access, reference, aliasing, copy-spread, call-stack, local-variable, recursion, stack-overflow, while-loop]
+sources: [mdn-typed-arrays, v8-pointer-compression, mdn-execution-model]
+---
+import MemoryRow from '../../../components/diagrams/ch050/MemoryRow';
+import ElementAddress from '../../../components/diagrams/ch050/ElementAddress';
+import PointerSteps from '../../../components/diagrams/ch050/PointerSteps';
+import HeapSteps from '../../../components/diagrams/ch050/HeapSteps';
+import StackHeap from '../../../components/diagrams/ch050/StackHeap';
+
+{/* ── merge: from old chapter 50, Memory is one long array ── */}
+
+## Where does a value actually go?
+
+Part I gave you two pictures of data that never quite met. In the
+chapter on references, a variable held an *arrow* to an object; in
+*Floats and typed arrays*, a `Float64Array` was a block of raw *bytes*,
+8 to a number. Part II is about the machine underneath both pictures,
+and it starts with one question: when the engine stores a value, where
+does it put it?
+
+Here is a puzzle to keep in mind while we answer it:
+
+```js
+const xs = new Float64Array(1000000);
+xs[999999] = 1;
+console.log(xs[999999]); // 1
+```
+
+The array has a million slots, and yet writing the very last one takes
+no longer than writing the first; nothing is searched, and nothing is
+counted along the way. By the end of this chapter you will be able to
+do the sum the machine does to find that slot, by hand.
+
+## One long row of bytes
+
+<Analogy title="a street of numbered mailboxes">
+Picture a street so long it never seems to end, lined with tiny
+mailboxes. Every mailbox holds exactly one small thing, and every
+mailbox has a number painted on it: 0, 1, 2, 3, and on into the
+billions. To fetch something you do not need its name; you need its
+mailbox number.
+<span slot="breaks">On a real street, mailbox 9,000 is a long walk
+from mailbox 1; in memory, any number can be reached directly, without
+passing the ones in between (the chapter on caches adds an important
+"but" to that). Also, a mailbox can hold a parcel of any size, while each of
+these holds exactly one byte, a whole number from 0 to 255.</span>
+</Analogy>
+
+<Analogy extra title="page numbers in a very thick book">
+A book with a billion pages would be useless if its pages were not
+numbered; with numbers, "page 37" tells you exactly where to open it,
+and a reference to a page is just a number you can write down.
+<span slot="breaks">A page holds many words; a byte holds one small
+number, so anything bigger (a float64, say) needs several bytes in a
+row. And a book's pages are printed once, while every byte of memory
+can be rewritten as often as you like.</span>
+</Analogy>
+
+That street, or book, is your computer's **memory** (also called
+**RAM**). Step through it. The row is far too long to draw in one line,
+so it wraps like text: each line of boxes carries on where the last one
+stopped.
+
+<MemoryRow client:visible />
+
+<Callout kind="definition">
+**Memory** (RAM) is one enormous array of bytes, each holding a whole
+number from 0 to 255. A byte's index in that array is its **address**:
+a plain whole number that says where the byte is. Anything bigger than
+a byte is stored in several neighbouring bytes, and is found by the
+address of its first one.
+</Callout>
+
+JavaScript never shows you real addresses, but a `Uint8Array` (a typed
+array of single bytes) behaves exactly like a small memory of your own,
+which makes it a good model:
+
+<Examples of="memory address">
+
+```js
+const mem = new Uint8Array(8);
+mem[3] = 200;
+mem[3]; // 200
+```
+
+```js
+const mem = new Uint8Array(8);
+mem[1] = 300;
+mem[1]; // 44
+```
+
+```js
+// a toy 8-bit computer's memory
+const mem = new Uint8Array(65536);
+mem[0x10] = 42;
+mem.length; // 65536 = 2 ** 16
+```
+
+</Examples>
+
+The first makes eight bytes, all zero, writes 200 at index 3 and reads
+it back; here the index plays the part of an address. The second is a
+reminder from *Bits and bytes* that a byte cannot hold more than 255:
+300 does not fit in 8 bits, so only the low 8 bits are kept, which is
+300 − 256 = 44. The third is the realistic one: an old 8-bit computer
+used 16-bit addresses, and 16 bits can count 2¹⁶ = 65,536 different
+places, so a program that imitates such a machine can keep its entire
+memory in one `Uint8Array` of that length (`0x10` is hexadecimal for
+16, the usual way to write addresses).
+
+<Prompts ids={['memory-what', 'address-what', 'byte-holds']} />
+
+## Side by side, with no gaps
+
+Back to the puzzle. A `Float64Array` stores its numbers one after
+another, each taking 8 bytes, with nothing in between:
+
+```js
+const xs = new Float64Array(3);
+xs.BYTES_PER_ELEMENT; // 8
+xs.byteLength;        // 24
+```
+
+Line 1 makes three float64s. Line 2 asks how many bytes each element
+takes, which is 8; line 3 asks how many bytes the whole array takes,
+which is 3 × 8 = 24, so there is no room left over for anything but the
+numbers.
+
+<Analogy extra title="encyclopedia volumes on a shelf">
+A set of encyclopedias stands on one shelf, every volume the same
+thickness, in order, with no gaps. If volume 1 starts at the left end
+and each is 4 cm wide, volume 7 starts 6 × 4 = 24 cm along; you can put
+your hand on it without reading a single spine.
+<span slot="breaks">Real volumes differ in thickness, and then the
+trick fails; the elements of one typed array are all exactly the same
+size, which is the only reason the sum works. (An array of objects, in
+the next chapter, is a shelf of index cards pointing at books kept
+elsewhere.)</span>
+</Analogy>
+
+<ElementAddress client:visible />
+
+<Callout kind="definition">
+Values are **contiguous** when they are stored side by side in memory,
+with no gaps between them. A typed array's elements are
+contiguous<Cite id="mdn-typed-arrays" />, so if a `Float64Array`
+starts at address `b`, element `i` starts at `b + i × 8`: one multiply
+and one add, whatever the length.
+</Callout>
+
+<Formal title="Where element i lives">
+
+```text
+s = bytes per element
+addr(a[i]) = base(a) + i × s
+contiguous ⟺ addr(a[i+1]) = addr(a[i]) + s
+```
+
+<span slot="read">The address of element i is the address where the
+array starts plus i times the size of one element. The array is
+contiguous exactly when (that is what ⟺ means) each element starts one
+element-size after the one before it.</span>
+</Formal>
+
+<Examples of="contiguous">
+
+```js
+// Float64Array at 1000, element 3
+1000 + 3 * 8; // 1024
+```
+
+```js
+const ys = new Int32Array(10);
+ys.BYTES_PER_ELEMENT; // 4
+// at 100, ys[5] starts at 100 + 5 * 4 = 120
+```
+
+<Run id="columns-in-one-buffer" />
+
+</Examples>
+
+The first is the formula with numbers in: a `Float64Array` starting at
+address 1000 has element 3 at 1000 + 24 = 1024. The second changes the
+element size: an `Int32Array` uses 4 bytes per element, so the step is
+4, and element 5 of one starting at 100 is at 120. The runnable one is
+the shape Viscosity generates: two columns of particle data, `x` and
+`vx`, laid out in one `ArrayBuffer`, the second starting right after the
+first. A typed array's `byteOffset` says where it starts inside its
+buffer, which is the nearest JavaScript lets you get to an address; run
+it, and check every printed position against the formula.
+
+Contiguous elements also have to start on a multiple of their size
+inside the buffer, and the engine checks this for you:
+
+```js
+const buf = new ArrayBuffer(32);
+new Float64Array(buf, 8); // fine
+new Float64Array(buf, 4);
+// RangeError: start offset of
+// Float64Array should be a multiple of 8
+```
+
+The second argument is the byte where the view should start. Starting
+at byte 8 lines every element up on a multiple of 8; starting at byte 4
+would put each float64 across two of those 8-byte steps, and JavaScript
+refuses.
+
+<Prompts ids={['contig-what', 'f64-addr', 'int32-addr', 'why-instant', 'byteoffset']} />
+
+## Seeing addresses in other languages
+
+JavaScript, Python and Java give you no way to work with addresses; C
+shows them to you, which makes it a good place to check that the
+formula is real.
+
+<OtherLanguages>
+
+```js
+const xs = new Float64Array(3);
+// no way to print an address;
+// only the step is visible:
+console.log(xs.BYTES_PER_ELEMENT); // 8
+```
+
+```c
+double xs[3];
+printf("%p\n", (void *)&xs[0]);
+printf("%p\n", (void *)&xs[1]);
+/* e.g. 0x7ffd5c10 then 0x7ffd5c18 */
+```
+
+</OtherLanguages>
+
+In C, `&xs[1]` means "the address of `xs[1]`", and `%p` prints an
+address in hexadecimal. The exact numbers change every run, but the two
+are always 8 apart (`0x18` − `0x10` is 8), because a C array of
+`double` is contiguous, just like a `Float64Array`.
+
+<Callout kind="engine" label="Under the hood">
+When an optimised engine runs `xs[i]` on a `Float64Array`, it does what
+you did above: it checks that `i` is inside the array, multiplies `i` by
+8, adds the address where the bytes start, and loads 8 bytes from
+there. Addresses on today's 64-bit machines are 64 bits long, so even
+the numbers that say *where* things are take up bytes of their own (V8
+can squeeze many of them into 4 bytes to save room<Cite id="v8-pointer-compression" />,
+as the next chapter explains). Viscosity's whole job, in these terms, is
+to take data scattered across memory and rewrite it into a few long,
+contiguous typed arrays, where finding element `i` is one sum.
+</Callout>
+
+## Your turn
+
+<Exercise id="fieldAddr" />
+
+<Exercise id="elemAt" />
+
+## What you learned
+
+- **Memory** is one long array of bytes, each holding 0 to 255.
+- A byte's index in that array is its **address**; a bigger value is
+  found by the address of its first byte.
+- **Contiguous** values sit side by side with no gaps, so element `i` of
+  a typed array starting at `b` is at `b + i × size`, which is why
+  reading the millionth element is as quick as reading the first.
+
+Next: what an arrow to an object really is, and where objects live.
+
+
+{/* ── merge: from old chapter 50, Pointers, the stack and the heap ── */}
+
+## What is an arrow made of?
+
+In the chapter on references you drew a variable as a box with an arrow
+coming out of it, pointing at an object somewhere else, and you saw the
+surprising thing that arrow does:
+
+```js
+const p = { x: 1 };
+const q = p;
+q.x = 5;
+console.log(p.x); // 5
+```
+
+Changing `q.x` changed `p.x`, because there is only one object and both
+names lead to it. However, memory is only a long row of numbered bytes,
+with nowhere to draw an arrow; so what is actually stored in `p`, and
+what does the engine do with it when you write `p.x`?
+
+## Arrows are addresses
+
+The answer is that `p` holds a number: the address where the object's
+bytes begin. An "arrow" is that number, and following the arrow means
+going to that address.
+
+<Analogy title="an address written on a card">
+You write a friend's home address on a card and give a copy of the card
+to someone else. Now two people can find the same house; if one of them
+paints the front door, the other sees a painted door when they visit.
+Copying the card did not build a second house.
+<span slot="breaks">A written address is words you can read; JavaScript
+never lets you see or change the number in a pointer, only follow it.
+And a house stays put even when every card is lost, while an object
+nobody can reach any more is cleared away by the engine.</span>
+</Analogy>
+
+<Analogy extra title="a catalogue entry in a library">
+A library's catalogue does not hold the books; each entry says which
+shelf a book is on. Two entries (say, one under the author and one
+under the subject) can lead to the same copy, and a note written in its
+margin is seen by whoever fetches it next.
+<span slot="breaks">A catalogue entry also carries the title and the
+author; a pointer carries nothing but the address. The engine has to go
+there and look to find out anything about the object.</span>
+</Analogy>
+
+Step through what happens in memory for the four lines above:
+
+<PointerSteps client:visible />
+
+<Callout kind="definition">
+A **pointer** is a stored address: a number, kept in memory, that says
+where something else is. A JavaScript reference is a pointer the engine
+manages for you: you can follow it (`p.x`) and copy it (`q = p`), but
+you can never see or change the number inside. Running `p.x` means:
+read the address in `p`, add the position of `x` inside the object, and
+read the bytes found there.
+</Callout>
+
+<Formal title="Following a pointer">
+
+```text
+p.x      ≡  mem[ p + off(x) ]
+q = p    ⇒  q and p hold the same address
+```
+
+<span slot="read">Reading p.x means the same as (that is what ≡ says)
+reading memory at the address stored in p plus the offset of x, the
+number of bytes from the start of the object to x. Copying p into q
+means (⇒) that both hold the same address, so both lead to the same
+bytes.</span>
+</Formal>
+
+How big is a pointer? On a 64-bit machine an address is 64 bits, so a
+full pointer takes 8 bytes. V8, the engine in Chrome and Node, can
+squeeze them into 4 bytes by storing a 32-bit offset from a base
+address instead, a trick called pointer compression<Cite id="v8-pointer-compression" />.
+Either way, an arrow costs real bytes, and following one costs a trip
+to memory.
+
+<Examples of="pointer">
+
+```js
+const p = { x: 1 };
+const q = p;
+q.x = 5;
+p.x; // 5
+```
+
+```js
+const p = { x: 1 };
+const ps = [p, p];
+ps[1].x = 9;
+p.x; // 9
+```
+
+<Run id="mem-list" />
+
+</Examples>
+
+The first is the puzzle again, now with an explanation: `q = p` copies
+an address, so the write through `q` lands in the one object. The
+second shows that array slots hold pointers too: `ps` has two slots,
+both holding `p`'s address, so `ps[1].x = 9` changes the object `p`
+leads to. The runnable one builds pointers by hand, with an ordinary
+array `mem` playing memory and its indexes playing addresses. Each list
+node takes two slots, a value and then the address of the next node,
+and address `0` means "no next node", the way `null` does. Start at
+address 2, read the value, then follow the pointer stored next to it;
+run it, then change the pointers to reorder the list without moving a
+single value.
+
+The common slip is expecting `=` to copy the object. Compare:
+
+```js
+const p = { x: 1 };
+const q = p;           // same address
+const r = { ...p };    // a new object
+q.x = 5;
+console.log(p.x, r.x); // 5 1
+```
+
+`q` holds `p`'s address, so it sees the change; the spread `{ ...p }`
+from the chapter on copies builds a new object at a new address and
+copies the *values* across, so `r.x` keeps its old value.
+
+<Prompts ids={['pointer-what', 'alias-memory', 'deref', 'pointer-size']} />
+
+## Two neighbourhoods: the stack and the heap
+
+Memory is one row, but a running program divides it into regions with
+different jobs, and two matter to us. You met the first in *Recursion
+and the call stack*: the **call stack**, where each active call keeps a
+frame for its parameters and local variables. The second is the
+**heap**: a large region where objects are put as they are
+created<Cite id="mdn-execution-model" />.
+
+<Analogy extra title="a notepad and a filing cabinet">
+At your desk you keep a notepad. When a phone call starts you take a
+fresh page for it, and when the call ends you tear that page off; if a
+call is interrupted by another one, the new page goes on top. Anything
+you need to keep after the call goes into the filing cabinet, and on the
+page you only write which drawer it is in.
+<span slot="breaks">You empty a filing cabinet yourself; the heap is
+tidied by the engine, which reuses an object's bytes once nothing can
+reach it any more. And notepad pages are all one size, while frames are
+as big as their variables need.</span>
+</Analogy>
+
+<Analogy extra title="a pile of trays in a canteen">
+Trays go onto a spring-loaded pile and come off in reverse order: the
+last one put on is the first one taken off. A call's frame is a tray;
+the call that is running right now is always the one on top.
+<span slot="breaks">Trays sit there unused until someone takes them; a
+frame exists only while its call runs, and is gone the moment the call
+returns.</span>
+</Analogy>
+
+<HeapSteps client:visible />
+
+<Callout kind="definition">
+The **call stack** holds one frame per active call, with its parameters
+and local variables, and a frame's memory is released when its call
+returns. The **heap** holds objects, which stay as long as something can
+still reach them, however many calls come and go. Together these are
+the **stack and heap**: the two regions where a JavaScript program's
+data lives<Cite id="mdn-execution-model" />.
+</Callout>
+
+<Examples of="stack-and-heap">
+
+```js
+function twice(v) {
+  const n = v * 2;
+  return n;
+}
+twice(3); // 6, and n is gone
+```
+
+```js
+function make() {
+  return { x: 6 };
+}
+const a = make();
+a.x; // 6: the object outlived make
+```
+
+```js
+function down(n) {
+  return down(n + 1);
+}
+down(0);
+// RangeError: Maximum call stack
+// size exceeded
+```
+
+</Examples>
+
+In the first, `v` and `n` live in `twice`'s frame, which is released
+when the call returns; only the value 6 comes back. In the
+second, the object is made on the heap, and `return` hands back its
+address, so it survives the call that created it and `a` can still use
+it. The third is the realistic warning: the stack has a limited size, and
+a recursion that never stops pushes frame after frame until there is
+no room left, which is the stack overflow
+from the chapter on recursion.
+
+<Prompts ids={['stack-heap', 'heap-lifetime', 'stack-overflow']} />
+
+## Two ways to store a thousand numbers
+
+Now look at a frame holding both kinds of collection:
+
+<Figure takeaway="Frames on the stack hold arrows into the heap." caption="Inside main’s frame, n holds a number; ps and xs hold pointers. The array ps is a row of pointers, and each points at a particle object somewhere else in the heap. The Float64Array’s three numbers sit in one contiguous block. Positions are illustrative: you never choose where things go.">
+  <StackHeap />
+</Figure>
+
+The two collections hold the same kind of data in very different shapes.
+`ps`, an array of objects, is really a row of **pointers**, each leading
+somewhere else; to read every `x`, the machine reads a pointer, jumps to
+an object, reads `x` there, and repeats. `xs`, a `Float64Array`, *is*
+the numbers, packed side by side<Cite id="mdn-typed-arrays" />; to read
+them all, the machine walks straight along one block.
+
+<OtherLanguages>
+
+```js
+const xs = [1.5, 2.5];
+const p = xs; // a reference
+p[0] = 9;
+console.log(xs[0]); // 9
+```
+
+```python
+xs = [1.5, 2.5]
+p = xs  # a reference, as in JavaScript
+p[0] = 9
+print(xs[0])  # 9
+```
+
+```java
+double[] xs = {1.5, 2.5};
+double[] p = xs; // a reference
+p[0] = 9;
+System.out.println(xs[0]); // 9.0
+```
+
+```c
+double xs[] = {1.5, 2.5};
+double *p = &xs[0]; /* an address */
+*p = 9;             /* write there */
+p = p + 1;          /* next double */
+printf("%f\n", *p); /* 2.500000 */
+```
+
+</OtherLanguages>
+
+JavaScript, Python and Java behave the same way: the variable holds a
+reference, and the language keeps the address hidden. C makes it
+visible: `&xs[0]` is the address of the first element, `double *p`
+declares a variable that holds an address, `*p` means "the value at that
+address", and `p + 1` moves on by one whole `double` (8 bytes), which is
+the address arithmetic of the last chapter done by the language itself.
+
+<Callout kind="engine" label="Under the hood">
+The toy memory in the runnable example is closer to the truth than it
+looks: in V8, JavaScript values live on the V8 heap and are referred to
+by pointers<Cite id="v8-pointer-compression" />, and an object's fields
+sit at known offsets from its start. Viscosity's job, in these terms,
+is to take a heap full of small objects connected by pointers and
+rewrite it into a few long, contiguous typed arrays; the next chapter
+shows why the machine cares so much.
+</Callout>
+
+<Prompts ids={['aos-is-pointers', 'null-zero']} />
+
+## Your turn
+
+<Exercise id="sumList" />
+
+<Exercise id="reverseList" />
+
+## What you learned
+
+- A **pointer** is a stored address. JavaScript references are pointers
+  that the engine manages for you; a full one is 8 bytes on a 64-bit
+  machine, and copying one shares the object rather than copying it.
+- `p.x` means: read the address in `p`, add the offset of `x`, read
+  there.
+- The **stack and heap**: call frames on the stack, released when the
+  call returns; objects on the heap, kept while something can reach
+  them.
+- An array of objects is a row of pointers to objects that may be
+  anywhere; a typed array is one contiguous block of numbers.
+
+<Quiz />

@@ -1,4 +1,4 @@
-// New references for chapter 379 (Threads, Send and Sync) and its staged
+// New references for chapter 305 (Threads, Send and Sync) and its staged
 // second half (325-b, Sharing and sending between threads). Checked
 // 2026-11-02 by reading the raw sources: the Rust book from
 // github.com/rust-lang/book (main), the Reference from
@@ -16,7 +16,7 @@ export default [
     url: 'https://doc.rust-lang.org/book/ch16-01-threads.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/book/main/src/ch16-01-threads.md on 2026-11-02: thread::spawn takes a closure containing the code to run in the new thread; its return type is JoinHandle<T>, an owned value whose join method waits for the thread to finish; “We’ll often use the move keyword with closures passed to thread::spawn because the closure will then take ownership of the values it uses from the environment”; without move, rustc cannot tell how long the spawned thread will run, so it cannot know whether a borrowed reference will still be valid.',
-    shaped: 'Chapter 379: spawn, JoinHandle, join and move closures.',
+    shaped: 'Chapter 305: spawn, JoinHandle, join and move closures.',
   },
   {
     id: 'rust-std-thread-spawn',
@@ -28,7 +28,7 @@ export default [
     url: 'https://doc.rust-lang.org/std/thread/fn.spawn.html',
     accessed: '2026-11-02',
     checkedAgainst: 'library/std/src/thread/functions.rs on the main branch of github.com/rust-lang/rust, read raw on 2026-11-02: pub fn spawn<F, T>(f: F) -> JoinHandle<T> where F: FnOnce() -> T, F: Send + \'static, T: Send + \'static; the \'static constraint “means that the closure and its return value must have a lifetime of the whole program execution”, because “threads can outlive the lifetime they have been created in”; the Send constraint is because the closure is passed by value to the new thread and its return value back to the thread that joins; the docs show channels and move closures as the usual way to communicate.',
-    shaped: 'Chapter 379: why spawn needs Send and \'static.',
+    shaped: 'Chapter 305: why spawn needs Send and \'static.',
   },
   {
     id: 'rust-std-send-sync',
@@ -40,7 +40,7 @@ export default [
     url: 'https://doc.rust-lang.org/std/marker/trait.Send.html',
     accessed: '2026-11-02',
     checkedAgainst: 'library/core/src/marker.rs on the main branch of github.com/rust-lang/rust, read raw on 2026-11-02: Send is for “Types that can be transferred across thread boundaries”, automatically implemented when the compiler determines it is appropriate; Rc is not Send because two threads might update its reference count at the same time, which is undefined behaviour since Rc does not use atomic operations, while Arc does and is Send; Sync is for “Types for which it is safe to share references between threads”, and precisely “a type T is Sync if and only if &T is Send”; &T is Send iff T is Sync; types with non-thread-safe interior mutability such as Cell and RefCell are not Sync; *const T and *mut T have negative impls of both Send and Sync.',
-    shaped: 'Chapter 379: the definitions of Send and Sync and the table of common types.',
+    shaped: 'Chapter 305: the definitions of Send and Sync and the table of common types.',
   },
   {
     id: 'rustref-auto-traits',
@@ -52,7 +52,7 @@ export default [
     url: 'https://doc.rust-lang.org/reference/special-types-and-traits.html#auto-traits',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/reference/master/src/special-types-and-traits.md on 2026-11-02: “The Send trait indicates that a value of this type is safe to send from one thread to another”; “The Sync trait indicates that a value of this type is safe to share between multiple threads”; Send, Sync, Unpin, UnwindSafe and RefUnwindSafe are auto traits, implemented automatically when no explicit or negative impl exists, for structs, enums and unions when all field types implement them, and for closures when the types of all their captures do; auto traits may be added as extra bounds to a trait object, e.g. Box<dyn Debug + Send + UnwindSafe>.',
-    shaped: 'Chapter 379: Send and Sync as auto traits, field by field and capture by capture.',
+    shaped: 'Chapter 305: Send and Sync as auto traits, field by field and capture by capture.',
   },
   {
     id: 'rust-book-send-sync',
@@ -64,7 +64,7 @@ export default [
     url: 'https://doc.rust-lang.org/book/ch16-04-extensible-concurrency-sync-and-send.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/book/main/src/ch16-04-extensible-concurrency-sync-and-send.md on 2026-11-02: Send and Sync are std::marker traits embedded in the language; Send means ownership can be transferred between threads, and Rc<T> is not Send; any type composed entirely of Send types is automatically Send; Sync means it is safe to be referenced from multiple threads, i.e. T is Sync if &T is Send; RefCell and the Cell family are not Sync, while Mutex<T> is; as marker traits they have no methods, and implementing them manually involves unsafe code.',
-    shaped: 'Chapter 379: marker traits and why implementing them by hand is unsafe.',
+    shaped: 'Chapter 305: marker traits and why implementing them by hand is unsafe.',
   },
   {
     id: 'node-worker-data',
@@ -76,7 +76,7 @@ export default [
     url: 'https://nodejs.org/api/worker_threads.html#workerworkerdata',
     accessed: '2026-11-02',
     checkedAgainst: 'Fetched https://nodejs.org/api/worker_threads.html on 2026-11-02 (HTTP 200): worker_threads.workerData is “An arbitrary JavaScript value that contains a clone of the data passed to this thread’s Worker constructor. The data is cloned as if using postMessage(), according to the HTML structured clone algorithm.”',
-    shaped: 'Chapter 379: what a Node worker receives, compared with Rust threads that borrow.',
+    shaped: 'Chapter 305: what a Node worker receives, compared with Rust threads that borrow.',
   },
   {
     id: 'rust-book-message-passing',
@@ -88,7 +88,7 @@ export default [
     url: 'https://doc.rust-lang.org/book/ch16-02-message-passing.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/book/main/src/ch16-02-message-passing.md on 2026-11-02: a channel has two halves, a transmitter and a receiver, and is closed if either half is dropped; mpsc stands for multiple producer, single consumer; mpsc::channel returns a (tx, rx) tuple; send returns a Result (an error if the receiver has been dropped) and takes ownership of the value, so the value cannot be used after it is sent; recv blocks until a value is sent and returns an error when the transmitter closes; try_recv does not block; the receiver can be used as an iterator, which ends when the channel is closed; cloning the transmitter gives multiple producers.',
-    shaped: 'Chapter 379-b: channels, ownership passing through send, and multiple producers.',
+    shaped: 'Chapter 305-b: channels, ownership passing through send, and multiple producers.',
   },
   {
     id: 'rust-book-shared-state',
@@ -100,7 +100,7 @@ export default [
     url: 'https://doc.rust-lang.org/book/ch16-03-shared-state.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/book/main/src/ch16-03-shared-state.md on 2026-11-02: a mutex allows only one thread to access some data at any given time; lock returns a MutexGuard wrapped in a LockResult; MutexGuard implements Deref to point at the inner data and has a Drop implementation that releases the lock automatically when it goes out of scope; Rc<Mutex<i32>> cannot be moved into spawned threads because Rc is not Send; Arc<T> is like Rc<T> but atomically reference counted and safe to share across threads, at a performance cost, which is why not every type uses it; Mutex<T> provides interior mutability like RefCell, and comes with the risk of deadlocks.',
-    shaped: 'Chapter 379-b: Arc<Mutex<T>>, MutexGuard and unlocking on drop.',
+    shaped: 'Chapter 305-b: Arc<Mutex<T>>, MutexGuard and unlocking on drop.',
   },
   {
     id: 'rust-std-mpsc',
@@ -112,7 +112,7 @@ export default [
     url: 'https://doc.rust-lang.org/std/sync/mpsc/index.html',
     accessed: '2026-11-02',
     checkedAgainst: 'library/std/src/sync/mpsc.rs on the main branch of github.com/rust-lang/rust, read raw on 2026-11-02: “Multi-producer, single-consumer FIFO queue communication primitives”; Sender and SyncSender are clone-able so many threads can send to one Receiver; channel() gives an asynchronous, conceptually infinitely buffered channel whose sends never block, and sync_channel(n) a bounded one whose sends block until there is room (n = 0 is a rendezvous channel); send and receive return a Result, and an error normally means the other half has been dropped (“hung up”).',
-    shaped: 'Chapter 379-b: channel and sync_channel, and what an Err from send or recv means.',
+    shaped: 'Chapter 305-b: channel and sync_channel, and what an Err from send or recv means.',
   },
   {
     id: 'rust-std-arc',
@@ -124,6 +124,6 @@ export default [
     url: 'https://doc.rust-lang.org/std/sync/struct.Arc.html',
     accessed: '2026-11-02',
     checkedAgainst: 'library/alloc/src/rcs/arc.rs on the main branch of github.com/rust-lang/rust, read raw on 2026-11-02: “A thread-safe reference-counting pointer. ‘Arc’ stands for ‘Atomically Reference Counted’”; clone produces a new Arc pointing to the same allocation while increasing a reference count, and the inner value is dropped when the last Arc is destroyed; shared references disallow mutation and Arc is no exception, so to mutate through an Arc use a Mutex, RwLock or an atomic type; unlike Rc<T>, Arc<T> uses atomic operations for its reference counting, which are more expensive; Arc<T> implements Send and Sync as long as T implements Send and Sync.',
-    shaped: 'Chapter 379-b: Arc, its atomic count, and why it needs a Mutex to change what it holds.',
+    shaped: 'Chapter 305-b: Arc, its atomic count, and why it needs a Mutex to change what it holds.',
   },
 ];

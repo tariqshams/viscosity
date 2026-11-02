@@ -1,0 +1,1118 @@
+---
+n: 117
+day: 18
+part: VII
+title: 'Rust basics: variables, numbers, functions and blocks'
+tagline: 'Rust’s let is TypeScript’s const, and a value that changes has to say so. One small word, mut, turns out to be a promise the compiler can check and a reader can see.'
+objectives:
+  - Declare variables with let and let mut, and say which TypeScript keyword each matches.
+  - Explain why Rust’s immutability covers the whole value, not only the name.
+  - Tell shadowing apart from mutation, including what each does to a variable’s type.
+  - Declare a const and say how it differs from an immutable let.
+  - Choose between i32, u8, i64, usize, f64, bool and char, and say how big each is.
+  - Read the range of an integer type from its name.
+  - Convert between number types with as, and predict integer division and what as loses.
+  - Say what happens when an integer overflows in a debug build and in a release build, and ask for wrapping on purpose.
+  - Write Rust functions with typed parameters and a return type, and call them.
+  - Read the compiler errors for a missing parameter type, a wrong argument and a missing return type.
+  - Say what a function with no return type returns, and what () is.
+  - List what TypeScript functions can do that Rust functions cannot (defaults, overloads), and why.
+  - Use blocks and if as expressions that produce values.
+  - Explain how a missing or extra semicolon changes what a block is worth.
+  - Write a function body whose last expression is the return value, and keep return for early exits.
+  - Read the compiler errors for mismatched branch types, a missing else and a stray semicolon.
+introduces: [let-mut, scalar-types, rust-functions, expression-oriented]
+uses: [rust, cargo, crate, variables, numbers, booleans, strings, typescript, type-annotation, type-checking, mutation, reference, push, array, shadowing, block-scope, while-loop, compiler, float64, ieee754, smi, byte, bit, binary, char-code, string-index, chunk, constant-pool, test, index, function, parameter, argument, return, call, if, call-stack, scanner, expression-vs-statement, ast, jump, backpatching, short-circuit, stack-machine, single-pass-compiler]
+sources: [rust-book-variables, klabnik2026, rust-book-data-types, rustref-operator-expr, rustref-overflow-not-unsafe, cargo-profiles, rust-book-functions, rustref-block-expr, rustref-if-expr]
+---
+import BindingSteps from '../../../components/diagrams/ch117/BindingSteps';
+import ShadowVsMut from '../../../components/diagrams/ch117/ShadowVsMut';
+import TypeWidths from '../../../components/diagrams/ch117/TypeWidths';
+import OverflowSteps from '../../../components/diagrams/ch117/OverflowSteps';
+import SignatureParts from '../../../components/diagrams/ch117/SignatureParts';
+import TypedCallSteps from '../../../components/diagrams/ch117/TypedCallSteps';
+import ExprSteps from '../../../components/diagrams/ch117/ExprSteps';
+import SemicolonSwitch from '../../../components/diagrams/ch117/SemicolonSwitch';
+
+{/* ── merge: from old chapter 117, Variables, types and mutability ── */}
+
+## A counter that will not count
+
+Here is the first loop counter anyone writes, in Rust:
+
+```rust
+fn main() {
+    let x = 5;
+    x = 6;
+    println!("{x}");
+}
+```
+
+In TypeScript, `let x = 5; x = 6;` is perfectly fine; rustc 1.97 refuses
+(its messages in this book are real, wrapped to fit your screen):
+
+```text
+error[E0384]: cannot assign twice to
+  immutable variable `x`
+2 |     let x = 5;
+  |         - first assignment to `x`
+3 |     x = 6;
+  |     ^^^^^ cannot assign twice to
+  |           immutable variable
+help: consider making this binding mutable
+2 |     let mut x = 5;
+  |         +++
+```
+
+Read it from the top: line 2 gave `x` its value, line 3 tried to give it
+another, and the `help:` line shows the fix, with `+++` under the three
+letters to add. That fix is the whole first idea of this chapter.
+
+<Analogy title="ink and pencil">
+A plain `let` writes the value in ink: once it is on the page it stays.
+`let mut` writes it in pencil, so you may rub it out and write a new one
+as often as you like. Anyone reading the page can tell at a glance which
+entries were written in pencil, and so which ones might have changed
+since they last looked.
+<span slot="breaks">Ink can still be scribbled over by a determined
+hand; Rust's compiler refuses to build a program that writes to
+a variable without `mut`, so there is no way round it.</span>
+</Analogy>
+
+## let and let mut
+
+Step through a short program; locked boxes are plain `let`, open ones are
+`let mut`:
+
+<BindingSteps client:visible />
+
+The mapping from TypeScript is short, and it is the wrong way round from
+what you might guess:
+
+<OtherLanguages title="A value that never changes, and one that does">
+
+```rust
+let limit = 10;     // never changes
+let mut count = 0;  // may change
+count += 1;
+```
+
+```ts
+const limit = 10;   // never changes
+let count = 0;      // may change
+count += 1;
+```
+
+```c
+const int limit = 10;
+int count = 0;
+count += 1;
+```
+
+```python
+LIMIT = 10  # a naming habit only
+count = 0
+count += 1
+```
+
+</OtherLanguages>
+
+Rust makes the safe choice the short one: most variables never change,
+so the default is "never changes", and the compiler can then promise it.
+C is the other way round (everything may change unless you add `const`),
+and Python has no way to forbid it at all, only the habit of writing a
+constant's name in capitals.
+
+<Callout kind="definition">
+`let` binds a name to a value. Without `mut` the binding is
+**immutable**: assigning to it again is a compile error. `let mut`
+makes it **mutable**, so it may be assigned again, always with a value
+of the same type<Cite id="rust-book-variables" />.
+</Callout>
+
+<Examples of="let-mut">
+
+```rust
+let mut hits = 0;
+hits += 1;
+hits += 1;
+println!("{hits}"); // 2
+```
+
+```rust
+let total = 10;
+let mut left = total;
+left -= 3;
+println!("{total} {left}"); // 10 7
+```
+
+```rust
+// from companion/rust/src/compiler.rs
+let mut count: usize = 0;
+// ...for each element of a Drip list:
+count += 1;
+if count == 256 { /* report an error */ }
+```
+
+</Examples>
+
+In the first, `hits` starts at 0 and changes twice, which needs `mut`,
+so it prints `2`. In the second, `total` never changes and stays
+immutable, while `left` starts as a copy of it and goes down by 3;
+changing `left` leaves `total` alone, so it prints `10 7`. The third is
+the Rust Drip compiler counting the elements of a list literal as it
+compiles them: `count` must change, so it is `mut`, and its type,
+`usize`, is a whole number used for counting (the next chapter covers
+the number types).
+
+## Immutable all the way down
+
+One difference from `const` matters a great deal. In *References: two
+names, one object*, `const` froze only the arrow: you could still `push`
+onto a `const` array. In Rust an immutable binding covers the value
+itself (`vec![1, 2]` makes a growable array, a `Vec`, which has its own
+chapter):
+
+```rust
+let xs = vec![1, 2];     // broken
+xs.push(3);
+let mut ys = vec![1, 2]; // fixed
+ys.push(3);
+```
+
+```text
+error[E0596]: cannot borrow `xs` as
+  mutable, as it is not declared as mutable
+3 |     xs.push(3);
+  |     ^^ cannot borrow as mutable
+help: consider changing this to be mutable
+```
+
+"Borrow" is the word of a later chapter, *Borrowing*; for now read the
+message as "changing `xs` in any way needs `let mut xs`". (The chapter
+*Box, Rc and RefCell* meets the few types that bend this rule on
+purpose.) The reverse slip only earns a warning: write `let mut` and
+never change the variable, and rustc says "variable does not need to be
+mutable", because a `mut` that is not needed misleads the reader.
+
+<Prompts ids={['vr-let-const', 'vr-mut-let', 'vr-deep', 'vr-unused-mut']} />
+
+## Shadowing: a new variable with an old name
+
+You may write `let` again with a name that already exists. That does not
+change the old variable; it makes a **new** one that hides it, which is
+called **shadowing**.
+
+<Analogy extra title="a new edition of a book">
+When a publisher brings out a new edition, the old one is not rewritten:
+a new book is printed, with the same title, and from then on that title
+means the new edition. The new edition may even come in a different
+format (an audiobook, say), just as a shadowing `let` may give the name
+a value of a different type.
+<span slot="breaks">The old edition can still be found in a library; a
+shadowed variable cannot be reached by its name again until the block
+that shadowed it ends.</span>
+</Analogy>
+
+<Figure takeaway="mut changes what is in one box; shadowing makes a new box; const is fixed before the program runs." caption="Three ways to give a name a value. Only shadowing may change the type, because only shadowing makes a new variable.">
+  <ShadowVsMut />
+</Figure>
+
+Here is the difference as a spot-the-difference pair: changing the type
+of a `mut` variable is an error, while shadowing it is fine.
+
+```rust
+let mut n = "5";  // broken
+n = 5;
+let m = "5";      // fixed: a new m
+let m = 5;
+```
+
+```text
+error[E0308]: mismatched types
+2 |     let mut n = "5";
+  |                 --- expected due to
+  |                     this value
+3 |     n = 5;
+  |         ^ expected `&str`, found integer
+```
+
+A `mut` variable keeps the type it started with (`&str` is the type of
+a piece of text, which the chapter *Slices and strings* explains), while
+the second `let m` makes a brand-new variable that happens to share the
+name.
+
+Shadowing also ends with its block, which surprises people:
+
+```rust
+let x = 1;
+{
+    let x = x * 10; // a new x, inside
+    println!("{x}"); // 10
+}
+println!("{x}");     // 1 again
+```
+
+The inner `let x` hides the outer one only until the `}`; after that the
+name means the outer `x` again, which was never changed.
+
+<Prompts ids={['vr-shadow', 'vr-shadow-type', 'vr-shadow-scope']} />
+
+## Constants
+
+Rust also has `const`, for values fixed before the program runs. The
+type must be written, the value must be something the compiler can work
+out by itself (a number, or arithmetic on numbers), and by habit the
+name is in capitals<Cite id="rust-book-variables" />. Here is one from
+the Rust Drip compiler:
+
+```rust
+const MAX_SLOTS: usize = 256;
+```
+
+That is the limit you met in *Locals as stack slots*: one byte can name
+only 256 locals. Unlike `let`, a `const` may be declared outside every
+function, and it can never be `mut`.
+
+<Prompts ids={['vr-const']} />
+
+<Callout kind="engine" label="Under the hood">
+Immutability by default helps the reader more than the machine: an
+optimising compiler can see for itself that a variable is never
+assigned twice (that is what SSA form, from Part VI, makes plain).
+What `mut` buys is a promise in the source, so that a reader (and the
+borrow checker, a few chapters on) knows exactly which names can change
+underneath them.
+</Callout>
+
+## Your turn
+
+<Exercise id="sum-to" />
+
+## What you learned
+
+- `let` is TypeScript's `const`; **`let mut`** is TypeScript's `let`.
+  Rust's immutability covers the whole value, so even `push` needs
+  `mut`.
+- A `mut` variable may change its value but never its type.
+- **Shadowing** with a second `let` makes a new variable, possibly of a
+  new type, and it lasts until the end of its block.
+- `const` is fixed before the program runs, needs its type written, and
+  may live outside any function.
+
+Next: the types themselves, where TypeScript's one `number` becomes a
+dozen.
+
+
+{/* ── merge: from old chapter 117, Numbers, characters and booleans ── */}
+
+## One number becomes many
+
+TypeScript has one `number`, and it is always a 64-bit float (as *How
+JavaScript stores numbers and objects* showed). V8 quietly stores small
+whole numbers as Smis when it can, but that is the engine's choice, not
+yours, and you cannot ask for a one-byte number even when one byte is all
+you need. Rust makes you choose, and in return a value takes exactly the
+room its type says.
+
+<Analogy title="containers in a kitchen">
+You would not keep a pinch of salt in a bucket or soup in an egg cup;
+each container is sized for what it holds. Rust's number types are
+containers of fixed sizes: a `u8` is an egg cup (one byte), an `i64` a
+saucepan (eight). Pour in more than fits and it spills, which in Rust
+is called **overflow**.
+<span slot="breaks">A kitchen container holds any amount up to its
+brim; a Rust integer of a given type also has a fixed lowest value, and
+some types cannot hold negatives at all.</span>
+</Analogy>
+
+<Figure takeaway="Rust's number types say how many bytes a value takes." caption="Sizes on a 64-bit machine, from std::mem::size_of with rustc 1.97. usize matches the machine's pointer width.">
+  <TypeWidths />
+</Figure>
+
+- **Signed integers** `i8`, `i16`, `i32`, `i64` and `i128` hold negative
+  and positive whole numbers; **unsigned** `u8` to `u128` hold zero and
+  up. The number in the name is the width in bits.
+- **`usize`** is unsigned and as wide as an address (eight bytes on a
+  64-bit machine). Indexes and lengths use it.
+- **`f64`** is exactly JavaScript's number; `f32` is half the size.
+- **`bool`** is `true` or `false`. **`char`** is one Unicode scalar
+  value in four bytes, written in single quotes: `'é'`. (That is not
+  what a JavaScript string index gives you, which is a UTF-16 code unit,
+  as *Strings up close* showed.)
+
+<Formal title="What an integer type can hold">
+
+```text
+iN :  −2^(N−1)  ..=  2^(N−1) − 1
+uN :         0  ..=  2^N − 1
+
+u8 :      0 ..= 255
+i8 :   −128 ..= 127
+i32: −2147483648 ..= 2147483647
+```
+
+<span slot="read">A signed type with N bits holds every whole number
+from minus two to the power N minus one, up to two to the power N minus
+one, take away one; an unsigned type holds zero up to two to the power
+N, take away one. So eight bits hold 256 different values either way:
+0 to 255 unsigned, or −128 to 127 signed (`..=` means "up to and
+including").</span>
+</Formal>
+
+You rarely write types on a `let`: Rust infers them, and when nothing
+else decides, a whole number is an `i32` and a decimal is an
+`f64`<Cite id="rust-book-data-types" />.
+
+<Examples of="scalar-types">
+
+```rust
+let n = 5;          // i32
+let f = 2.5;        // f64
+let ok = n > 3;     // bool: true
+let c = 'λ';        // char
+```
+
+```rust
+let b: u8 = 255;        // annotated
+let big = 1_000_000_i64; // suffix
+let mask = 0xff;        // hex, i32
+let ch = b'A';          // u8: 65
+```
+
+<Run id="types" />
+
+</Examples>
+
+In the first, each type comes from the value: no annotation, so the
+defaults apply, and a comparison gives a `bool`. The second shows the
+ways to choose: an annotation after the name (`: u8`), a suffix on the
+literal (`_i64`, with `_` allowed anywhere in a number to group digits),
+a hex literal, and `b'A'`, a byte literal, which is the `u8` 65 (the
+Rust Drip scanner compares bytes this way). The runnable one prints the
+surprises from the rest of this chapter; run it, then change the
+numbers.
+
+Ask a type to hold a literal it cannot, and rustc stops you before the
+program runs: `let b: u8 = 256;` gives "literal out of range for
+`u8`". Put a string where a `char` belongs, and the help line says which
+quotes you meant:
+
+```rust
+let c: char = "a"; // broken: a &str
+let c: char = 'a'; // fixed
+```
+
+```text
+error[E0308]: mismatched types
+2 |     let c: char = "a";
+  |            ----   ^^^ expected `char`,
+  |                       found `&str`
+help: if you meant to write a `char`
+literal, use single quotes
+```
+
+<Callout kind="definition">
+The **scalar types** hold a single value: the integers `i8` to `i128`
+and `u8` to `u128`, plus `isize` and `usize`; the floats `f32` and
+`f64`; `bool`; and `char`, a four-byte Unicode scalar value. Integer
+literals default to `i32` and decimals to `f64`.
+</Callout>
+
+<Prompts ids={['vr-default', 'vr-range', 'vr-usize', 'vr-char']} />
+
+## No silent conversions
+
+Adding an `i32` to an `f64` is an error, and so is indexing an array with
+an `i32`, because indexes are `usize`:
+
+```text
+error[E0277]: cannot add `f64` to `i32`
+4 |     println!("{}", a + b);
+  |                      ^ no implementation
+  |                        for `i32 + f64`
+```
+
+<Analogy extra title="money in two currencies">
+You cannot add five pounds to five dollars and call it ten; you first
+convert one into the other at a stated rate. Rust's `as` is that
+conversion, written exactly where it happens, so a reader can see each
+place a number changes type.
+<span slot="breaks">A currency exchange keeps roughly the same value;
+`as` can lose a great deal, cutting off a fraction or most of the bits,
+with no warning at all.</span>
+</Analogy>
+
+You convert with `as`, and you say exactly where:
+
+```rust
+let a: i32 = 7;
+let b: f64 = 2.0;
+println!("{}", a as f64 / b); // 3.5
+println!("{}", a / 2);        // 3
+println!("{}", -7 / 2);       // -3
+println!("{}", 300_i32 as u8); // 44
+```
+
+The second line is a trap for TypeScript hands: **dividing two integers
+gives an integer**, cut toward zero, so `7 / 2` is `3` and `-7 / 2` is
+`-3`<Cite id="rust-book-data-types" />. The last shows what `as` can
+lose: `300_i32` (the suffix makes it an `i32` first; a bare `300 as u8`
+is rejected as a literal out of range) does not fit in a byte, so `as u8` keeps only the low eight
+bits, which is 44; and a float becomes an integer by cutting off the
+fraction, so `3.9 as i32` is `3`<Cite id="rustref-operator-expr" />.
+
+<OtherLanguages title="Seven divided by two">
+
+```rust
+println!("{}", 7 / 2);         // 3
+println!("{}", -7 / 2);        // -3
+println!("{}", 7 as f64 / 2.0); // 3.5
+```
+
+```ts
+console.log(7 / 2);             // 3.5
+console.log(Math.trunc(-7 / 2)); // -3
+```
+
+```c
+printf("%d\n", 7 / 2);         // 3
+printf("%d\n", -7 / 2);        // -3
+printf("%f\n", (double)7 / 2); // 3.500000
+```
+
+```python
+print(7 // 2)   # 3
+print(-7 // 2)  # -4, rounds down
+print(7 / 2)    # 3.5
+```
+
+</OtherLanguages>
+
+Rust and C agree here: integers divide to an integer, cut toward zero.
+TypeScript has no integers to divide, so you trim the answer yourself;
+Python's `//` rounds *down*, so `-7 // 2` is `-4` where Rust says `-3`
+(all four checked by running them). And only C converts between number
+types silently; Rust insists on `as`.
+
+<Prompts ids={['vr-int-div', 'vr-as']} />
+
+## When a number outgrows its box
+
+What happens when a `u8` holding 255 has one added to it? Step through
+it:
+
+<OverflowSteps client:visible />
+
+In a debug build (which is what `cargo run` and `cargo test` make) the
+program stops with a **panic**, Rust's word for "stop the program now
+with a message":
+
+```rust
+let mut r: u8 = 255;
+r += 1;
+```
+
+```text
+thread 'main' (23000) panicked at
+src/main.rs:3:5:
+attempt to add with overflow
+```
+
+(The number in brackets is the thread's id, and changes from run to
+run.) In a release build rustc leaves that check out by default, and the
+same program prints 0<Cite id="cargo-profiles" />. The Rust Reference is
+clear that the overflow is an error in your program either way; the
+release build just does not catch it<Cite id="rustref-overflow-not-unsafe" />.
+If you *want* wrapping (a byte counter, a hash), say so with
+`wrapping_add`, and if you want to be told, use `checked_add`.
+
+<Callout kind="pitfall">
+Never rely on release builds wrapping. Debug builds panic at the same
+spot, and the overflow is a bug either way. Use `wrapping_add` and its
+relatives (`wrapping_sub`, `wrapping_mul`) to ask for wrapping on
+purpose.
+</Callout>
+
+<Prompts ids={['vr-overflow', 'vr-wrapping']} />
+
+<Callout kind="engine" label="Under the hood">
+Your TypeScript VM stored bytecode in a `number[]`, so each byte was, as
+far as the type said, a float64 that happened to hold a byte. In the
+Rust Drip VM, `companion/rust/src/chunk.rs` declares the chunk's code as
+`Vec<u8>`: one byte per byte, as *Bytecode as data* drew it. Line
+numbers are a `Vec<usize>`, and a Drip number is still an `f64`
+(`Value::Number(f64)`), because Drip numbers behave like JavaScript's.
+</Callout>
+
+## Your turn
+
+<Exercise id="mean" />
+
+<Exercise id="byte-counter" />
+
+## What you learned
+
+- The **scalar types**: `i32` (the default integer), `u8`, `i64`,
+  `usize` for indexes and lengths, `f64` (JavaScript's number), `bool`
+  and `char` (four bytes). An N-bit type holds 2^N values.
+- No silent conversions: use `as`, and know that it cuts off fractions
+  and high bits. Integer division cuts toward zero.
+- Overflow panics in debug builds and wraps, uncaught, in release
+  builds; `wrapping_add` wraps on purpose and `checked_add` reports it.
+
+Next: functions, now with typed parameters and a return type.
+
+
+{/* ── merge: from old chapter 117, Functions and expressions ── */}
+
+## The same function, with nothing left to guess
+
+You have met one Rust function already, `seconds_in`, and it looked a
+lot like TypeScript. Here is a slightly bigger one, side by side with
+its TypeScript twin:
+
+```rust
+fn area(w: i32, h: i32) -> i32 {
+    return w * h;
+}
+```
+
+```ts
+function area(
+  w: number, h: number,
+): number {
+  return w * h;
+}
+```
+
+The shape is the same: a keyword, a name, parameters in brackets, a
+return type, a body in braces and a `return`. The difference is that in
+TypeScript the types are optional and vanish before the program runs,
+while in Rust every parameter type and the return type are required, and
+rustc checks every call against them before the program is built.
+
+<Analogy title="a parcel with a customs form">
+A parcel crossing a border carries a form saying what is inside, and
+the customs officer checks each parcel against its form before it goes
+any further. A Rust signature is that form: it says exactly what goes in
+and what comes out, and the compiler checks every call against it at
+the border (compile time), so nothing undeclared gets through.
+<span slot="breaks">Customs opens only some parcels; rustc checks every
+single call, every time you build, and a call that does not match the
+form is never allowed to run at all.</span>
+</Analogy>
+
+## Signatures
+
+<Figure takeaway="Every parameter has a type, and the arrow says what comes back." caption="The parts of a Rust signature. The TypeScript signature below says the same thing, but its types are optional and erased.">
+  <SignatureParts />
+</Figure>
+
+`fn` starts a function; the name is in snake_case (words joined with
+underscores, so `seconds_in`, never `secondsIn`, and rustc warns "should
+have a snake case name" if you forget); each parameter is a name, a
+colon and a type; and `-> i32` after the brackets is the type of the
+value that comes back. A function may be defined above or below the code
+that calls it, in any order, because rustc reads the whole file before
+it checks anything<Cite id="rust-book-functions" />.
+
+Why insist on parameter types, when rustc can work out the type of a
+`let` by itself? It is a deliberate choice: with every signature written
+out, the compiler almost never needs annotations anywhere else, and its
+error messages can point at the exact call that broke the
+contract<Cite id="rust-book-functions" />. Leave a type out and the
+parser stops you at once:
+
+```rust
+fn area(w, h) -> i32 {         // broken
+fn area(w: i32, h: i32) -> i32 { // fixed
+```
+
+```text
+error: expected one of `:`, `@`, or `|`,
+  found `,`
+1 | fn area(w, h) -> i32 {
+  |          ^ expected one of `:`,
+  |            `@`, or `|`
+help: if this is a parameter name, give it
+a type
+```
+
+<Prompts ids={['fn-param-types', 'fn-why-types', 'fn-order']} />
+
+## Calling, checked
+
+Step through a call: first what the compiler checks, then what happens
+when it runs.
+
+<TypedCallSteps client:visible />
+
+A call must pass exactly as many arguments as there are parameters, each
+of the right type. Both mistakes are caught while compiling:
+
+```rust
+let a = area(3);      // broken: one short
+let b = area(3, 2.5); // broken: a float
+let c = area(3, 4);   // fixed
+```
+
+```text
+error[E0061]: this function takes 2
+  arguments but 1 argument was supplied
+error[E0308]: mismatched types
+6 |     let b = area(3, 2.5);
+  |                     ^^^ expected
+  |       `i32`, found floating-point number
+```
+
+<Analogy extra title="a socket and a plug">
+A plug fits a socket only if it has the right number of pins in the
+right shapes; a two-pin plug will not go into a three-pin socket, and
+you find out when you try to push it in, not after the lights go out.
+A call is the plug, the signature is the socket, and rustc is the
+moment you try to push it in.
+<span slot="breaks">An adapter can make a plug fit a foreign socket;
+Rust has no hidden adapters, so even a whole number where a float is
+wanted needs you to convert it yourself with `as`.</span>
+</Analogy>
+
+<Prompts ids={['fn-arg-count']} />
+
+## What comes back
+
+`-> i32` promises an `i32`, and `return value;` keeps the promise, ending
+the call at once, as in TypeScript. Leave the arrow out, and the function
+returns `()`, called **unit**, Rust's value for "nothing to report" (it
+plays the part of `void`). That means you cannot forget the arrow and
+still return a number:
+
+```rust
+fn area(w: i32, h: i32) {        // broken
+    return w * h;
+}
+fn area(w: i32, h: i32) -> i32 { // fixed
+    return w * h;
+}
+```
+
+```text
+error[E0308]: mismatched types
+1 | fn area(w: i32, h: i32) {
+  |                        - help: try
+  |                          adding a return
+  |                          type: `-> i32`
+2 |     return w * h;
+  |            ^^^^^ expected `()`,
+  |                  found `i32`
+```
+
+<Examples of="rust-functions">
+
+```rust
+fn double(n: i32) -> i32 {
+    return n * 2;
+}
+// double(21) is 42
+```
+
+```rust
+fn greet(name: &str) {
+    println!("Hello, {name}!");
+}
+fn max(a: f64, b: f64) -> f64 {
+    if a > b { return a; }
+    return b;
+}
+```
+
+```rust
+// the Rust Drip scanner's is_alpha,
+// written here with return
+fn is_alpha(c: u8) -> bool {
+    return c.is_ascii_alphabetic()
+        || c == b'_';
+}
+```
+
+</Examples>
+
+The first is the smallest useful function: one `i32` in, one out. The
+second shows two shapes: `greet` has no arrow, so it returns `()` and is
+called for what it prints (`&str` is the type of a piece of text, from
+*Slices and strings*), while `max` has two `return`s and the first one
+that runs ends the call, as in *Functions: naming a piece of work*. The
+third is the Rust Drip scanner's test for "can this byte start a name?":
+a byte in, a `bool` out, true for an ASCII letter or `_`
+(`is_ascii_alphabetic` is a method every `u8` has). The real file writes
+it without `return`, which the next chapter explains.
+
+<OtherLanguages title="A function that might return early">
+
+```rust
+fn safe_div(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        return 0;
+    }
+    return a / b;
+}
+```
+
+```ts
+function safeDiv(
+  a: number, b: number,
+): number {
+  if (b === 0) return 0;
+  return a / b;
+}
+```
+
+```c
+int safe_div(int a, int b) {
+    if (b == 0) return 0;
+    return a / b;
+}
+```
+
+```python
+def safe_div(a, b):
+    if b == 0:
+        return 0
+    return a // b
+```
+
+</OtherLanguages>
+
+Rust's version is closest to C's: both type every parameter and divide
+whole numbers to a whole number. The genuine differences: Rust requires
+braces round every `if` body and no brackets round its condition; C
+silently converts an argument of the wrong number type, where Rust
+refuses; and only TypeScript and Python let a parameter have a default
+value. In Rust, `fn greet(times: i32 = 1)` is "parameter defaults are not
+supported", and two functions with the same name are E0428, "the name
+is defined multiple times": one name, one signature.
+
+<Callout kind="definition">
+A **Rust function** is declared with `fn name(param: Type, ...) -> Ret`
+followed by a body in braces. Every parameter needs a type. Every call
+must pass one argument of the right type per parameter, which rustc
+checks before the program runs. `return value;` ends the call with that
+value; a function with no `->` returns `()`, the **unit**
+value<Cite id="rust-book-functions" />.
+</Callout>
+
+<Formal title="The rule for a call">
+
+```text
+f : (T1, T2) → R    Γ ⊢ a : T1    Γ ⊢ b : T2
+──────────────────────────────────────────
+              Γ ⊢ f(a, b) : R
+```
+
+<span slot="read">If f is a function from a T1 and a T2 to an R, and in
+the current scope a has type T1 and b has type T2, then the call f(a, b)
+has type R. If either argument has another type, no rule applies, and
+that is exactly the moment rustc reports an error.</span>
+</Formal>
+
+<Prompts ids={['fn-no-arrow', 'fn-unit', 'fn-no-defaults', 'fn-early-return']} />
+
+<Callout kind="engine" label="Under the hood">
+This is the typing rule you implemented for typed Drip, in *Checking
+annotations, functions and calls*, with one difference: there the
+annotations were optional, and here they are not. Because every Rust
+signature is complete, rustc can check each function's body on its own,
+knowing only the signatures of the functions it calls; and because the
+types are settled before the program runs, the machine code passes an
+`i32` as four bytes in a register, with no type tag and no check.
+</Callout>
+
+## Your turn
+
+<Exercise id="scanner-helpers" />
+
+## What you learned
+
+- A **Rust function** is `fn name(p: T, ...) -> R { ... }`: snake_case
+  name, a type on every parameter, and the return type after the arrow.
+- Every call is checked against the signature before the program runs:
+  the number of arguments (E0061) and their types (E0308).
+- `return` ends the call with a value; a function with no `->` returns
+  `()`, the **unit** value. There are no default parameters and no
+  overloads.
+
+Next: why the Rust Drip scanner writes `is_alpha` without `return`, and
+why almost everything in Rust is an expression.
+
+
+{/* ── merge: from old chapter 117, Blocks, if and the tail expression ── */}
+
+## The ternary you never liked
+
+You want a label that depends on a number. In TypeScript:
+
+```ts
+let label: string;
+if (n < 0) {
+  label = 'negative';
+} else {
+  label = 'not negative';
+}
+```
+
+That is six lines, a variable that has to be `let`, and a moment where
+it holds nothing at all; so you write a ternary instead, `const label =
+n < 0 ? 'negative' : 'not negative';`. The ternary exists because `if`
+is a **statement**: it *does* something but has no value. *Syntax
+trees* drew that line through Drip's own grammar (expressions produce
+values, statements do not), and Rust moves almost everything to the
+expression side:
+
+```rust
+let label = if n < 0 {
+    "negative"
+} else {
+    "not negative"
+};
+```
+
+No ternary (Rust has none, and `?` `:` is the error "Rust has no ternary
+operator"), no `mut`, and `label` is never empty.
+
+<Analogy title="a vending machine">
+In TypeScript, a block of code is a corridor you walk through. In Rust,
+most blocks are vending machines: you walk through, and something drops
+out at the bottom, namely whatever the last line was. Put a semicolon on
+that last line and the machine drops nothing (an empty tray, which Rust
+writes `()`).
+<span slot="breaks">A vending machine hands over its can only when you
+pay; a Rust block always produces its value, every time it runs, even
+if nobody uses it.</span>
+</Analogy>
+
+## Blocks have values
+
+Any `{ ... }` block is an expression. Its value is its last expression,
+written **without** a semicolon, which the Rust Reference calls the
+block's *final operand*<Cite id="rustref-block-expr" />:
+
+<Figure takeaway="The semicolon after the last line decides what a block is worth." caption="The same block twice. Without the semicolon, a + 1 is the block's value; with it, the block ends in a statement and is worth (), the unit value.">
+  <SemicolonSwitch />
+</Figure>
+
+`let a = 3;` is a statement, and ends with a semicolon. `a + 1` has none,
+so it is the block's value, 4. Put a semicolon after it and it becomes
+a statement too; the block then has the value `()`, the unit value
+you met as the return value of functions with no arrow.
+
+<Analogy extra title="a worksheet with a boxed answer">
+A maths worksheet has working lines and, at the bottom, one line with a
+box round it: the answer, the only part that gets carried to the next
+page. In a Rust block the working lines end in semicolons, and the boxed
+answer is the last line without one. Add a semicolon and you have rubbed
+out the box: all working, no answer.
+<span slot="breaks">A worksheet's answer can be anywhere on the page
+if it is boxed; a Rust block's value must be its very last line.</span>
+</Analogy>
+
+`let` itself is a statement, so `let x = let y = 6;` is an error
+("expected expression, found `let` statement"); in JavaScript, `x = y =
+6` works, because assignment there is an expression.
+
+## if is an expression
+
+An `if` is an expression too: its value is the value of the branch that
+ran. That has two consequences, both checked by rustc. Every branch must
+produce the same type, because the `if` has one type; and an `if` used
+for its value needs an `else`, because otherwise there is no value when
+the condition is false<Cite id="rustref-if-expr" />.
+
+```rust
+let s = if b { 1 } else { "no" }; // broken
+let s = if b { 1 } else { 0 };    // fixed
+```
+
+```text
+error[E0308]: `if` and `else` have
+  incompatible types
+3 |     let s = if b { 1 } else { "no" };
+  |                    -          ^^^^
+  |                    |  expected integer,
+  |                    |  found `&str`
+  |                    expected because
+  |                    of this
+```
+
+TypeScript would happily give `s` the type `number | string`; Rust wants
+one type. Leave the `else` off, as in `let s = if ok { 1 };`, and the
+error is E0317, "`if` may be missing an `else` clause". (The condition
+must also be a real `bool`: `if n { ... }` with a number is "expected
+`bool`, found integer", since Rust has no truthy and falsy values.)
+
+<Examples of="expression-oriented">
+
+```rust
+let y = {
+    let a = 3;
+    a + 1
+};
+// y is 4
+```
+
+```rust
+let sign = if n < 0 {
+    -1
+} else if n == 0 {
+    0
+} else {
+    1
+};
+```
+
+```rust
+// companion/rust/src/scanner.rs
+fn is_alpha(c: u8) -> bool {
+    c.is_ascii_alphabetic() || c == b'_'
+}
+```
+
+</Examples>
+
+In the first, the block runs `let a = 3;` and then is worth `a + 1`, so
+`y` is 4. In the second, a chain of `if`, `else if` and `else` is one
+expression, and each branch is a block whose value is a plain number,
+so `sign` is −1, 0 or 1 (all `i32`, so the types agree); the `;` at the
+very end belongs to the `let`. The third is the real `is_alpha` from the
+Rust Drip scanner, which the last chapter wrote with `return`: the
+function's body is a block, so its last expression is the return value.
+
+<OtherLanguages title="A value that depends on a condition">
+
+```rust
+let label =
+    if n < 0 { "neg" } else { "pos" };
+```
+
+```ts
+const label = n < 0 ? 'neg' : 'pos';
+```
+
+```c
+const char *label = n < 0 ? "neg" : "pos";
+```
+
+```python
+label = "neg" if n < 0 else "pos"
+```
+
+</OtherLanguages>
+
+All four produce a value from a condition; the genuine difference is
+that TypeScript, C and Python need a special expression form for it (the
+ternary, or Python's `x if c else y`), while Rust's ordinary `if` already
+is one, so it can hold whole blocks of statements in each branch.
+
+<Callout kind="definition">
+Rust is **expression-oriented**. A block `{ ... }` evaluates to its
+final expression, or to `()` if it ends in a statement. `if` is an
+expression: every branch must have the same type, and an `if` without
+`else` has type `()`. Adding `;` after an expression turns it into a
+statement and throws its value away<Cite id="rust-book-functions" />.
+</Callout>
+
+<Formal title="Typing a block and an if">
+
+```text
+Γ ⊢ s1   …   Γ ⊢ sn   Γ ⊢ e : T
+───────────────────────────────
+  Γ ⊢ { s1; … sn; e } : T
+
+Γ ⊢ c : bool  Γ ⊢ b1 : T  Γ ⊢ b2 : T
+─────────────────────────────────
+     Γ ⊢ if c b1 else b2 : T
+```
+
+<span slot="read">A block whose statements all check, and whose final
+expression e has type T, has type T itself (with no final expression, T
+is the unit type). An if whose condition is a bool, and whose two
+branches both have the same type T, has type T. If the branches have
+different types, no rule applies, and that is error E0308.</span>
+</Formal>
+
+<Prompts ids={['ex-block-value', 'ex-semicolon', 'ex-let-stmt', 'ex-if-types', 'ex-if-else', 'ex-no-truthy']} />
+
+## The tail expression
+
+A function body is a block, so its last expression is what the function
+returns, and `return` is only needed to leave early. Here is
+*Functions: naming a piece of work*'s `clamp` the Rust way, with no
+`return` and no variables, only one `if` expression whose value becomes
+the function's. Step through it:
+
+<ExprSteps client:visible />
+
+The last step is the famous mistake. Here it is for real, in a smaller
+function, next to the fix:
+
+```rust
+fn inc(x: i32) -> i32 { // broken
+    x + 1;
+}
+fn inc(x: i32) -> i32 { // fixed
+    x + 1
+}
+```
+
+```text
+error[E0308]: mismatched types
+1 | fn inc(x: i32) -> i32 {
+  |    ---            ^^^ expected `i32`,
+  |    |                  found `()`
+  |    implicitly returns `()` as its body
+  |    has no tail or `return` expression
+2 |     x + 1;
+  |          - help: remove this semicolon
+  |            to return this value
+```
+
+The compiler points straight at the semicolon. Whenever you see
+"expected `i32`, found `()`", look for a semicolon at the end of a block.
+Idiomatic Rust keeps `return` for early exits and lets the last
+expression do the rest<Cite id="klabnik2026" />.
+
+<Run id="exprs" />
+
+<Prompts ids={['fn-tail', 'ex-found-unit']} />
+
+<Callout kind="engine" label="Under the hood">
+Your Drip VM already compiles expressions with branches. In
+`companion/ts/src/vm/compiler.ts`, `||` compiles to a `JumpIfKeep` that
+skips the right-hand side and leaves exactly one value on the stack,
+and `ifStatement` wraps its two blocks in a `JumpUnless` and a `Jump`.
+An `if` *expression* would compile with the same two jumps; the only
+change is that each branch compiles an expression whose value stays on
+the stack, instead of statements whose values are popped. Being
+expression-oriented costs nothing extra at run time.
+</Callout>
+
+## Your turn
+
+<Exercise id="grade" />
+
+<Exercise id="collatz" />
+
+## What you learned
+
+- Rust is **expression-oriented**: blocks and `if` produce values. A
+  block's value is its final expression, without a semicolon.
+- A trailing `;` turns an expression into a statement, giving `()`.
+  "expected `i32`, found `()`" usually means a stray semicolon.
+- Both branches of an `if` must have the same type, an `if` used as a
+  value needs an `else`, and the condition must be a `bool`.
+- A function's last expression is its return value; `return` is for
+  leaving early.
+
+Next comes the idea that makes Rust Rust: who owns a value, and when it
+goes away.
+
+<Quiz />

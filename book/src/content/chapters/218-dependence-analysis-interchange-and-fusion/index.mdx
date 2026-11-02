@@ -1,0 +1,294 @@
+---
+n: 218
+day: 13
+part: XII
+title: 'Dependence analysis, interchange and fusion'
+tagline: 'Before a compiler may run a loop''s trips in a new order, it has to know which trips need which. Dependence analysis answers that with a few small vectors and some school arithmetic, and the answer decides when loops may be swapped, merged or split.'
+objectives:
+  - Find the dependences in a small loop nest, and say whether each is a flow, anti or output dependence.
+  - Write a dependence as a distance vector and a direction vector, and say which loop carries it.
+  - Use the GCD test to prove two array accesses never touch the same element.
+  - Decide whether two nested loops may be interchanged, and whether two loops may be fused.
+introduces: [dependence-analysis, loop-interchange-fusion]
+uses: [loop-unrolling, auto-vectorization, natural-loop, induction-variable, cache-line, spatial-locality, temporal-locality, stride, simd, lane, aliasing, typed-array, array, index, for-loop]
+sources: [allenkennedy2001, banerjee1988, aho2006, llvm-passes]
+---
+import DepSteps from '../../../components/diagrams/ch218/DepSteps';
+import GcdFigure from '../../../components/diagrams/ch218/GcdFigure';
+
+## Which trip needs which?
+
+The last chapter asked one narrow question, whether four trips can run
+at once; however, every interesting loop transformation asks a version
+of the same thing. Swapping two nested loops, merging two loops into
+one, splitting one into two: each runs the trips in a different order,
+and each is only correct if no trip ends up running before a trip whose
+work it needs. Working out "which trips need which" is called
+dependence analysis, and the whole of this chapter rests on it.
+
+There are three ways for two trips to be tied together through an array
+element, depending on which of them reads and which writes:
+
+```js
+for (let i = 1; i < n; i++)
+  a[i] = a[i - 1] + 1; // flow
+for (let i = 0; i < n - 1; i++)
+  b[i] = b[i + 1];     // anti
+for (let i = 0; i < n; i++)
+  c[i % 2] = i;        // output
+```
+
+In the first loop, trip `i` reads what trip `i - 1` wrote: a write
+followed by a read of the same element, a **flow** (or true)
+dependence, since the value really flows from one trip to the next. In
+the second, trip `i` reads `b[i + 1]` before trip `i + 1` overwrites
+it: a read followed by a write, an **anti** dependence. In the third,
+every other trip writes the same `c[0]` or `c[1]`: a write followed by a
+write, an **output** dependence, which decides what is left in the
+array at the end.
+
+<Analogy title="a relay race">
+The second runner cannot start until the baton arrives from the first,
+and the third must wait for the second: each leg depends on the leg
+just before it, one leg back.
+<span slot="breaks">A relay has a single chain of runners; a loop
+whose trips depend on the trip *two* back is really two separate chains
+interleaved (the odd trips and the even trips), which could run side by
+side, something no relay allows.</span>
+</Analogy>
+
+<Analogy extra title="a shared whiteboard">
+Each morning someone reads the day's number off the whiteboard, and
+later someone else rubs it out and writes tomorrow's. Swap their order
+and the reader gets tomorrow's number: the reader does not need the
+writer, but the writer must wait for the reader.
+<span slot="breaks">People can make a copy of the board first; a
+compiler can do the same (copy the array, or rename a variable) to
+remove anti and output dependences, which is why they are sometimes
+called false dependences, while a flow dependence can never be copied
+away.</span>
+</Analogy>
+
+## Distance and direction
+
+In a loop nest, a trip is named by its counters, outermost first, such
+as `(i, j)`; we call that its **iteration**. A dependence goes from the
+earlier iteration (in the original order) to the later one, and the
+difference between them is its **distance vector**. The **direction
+vector** keeps only the sign of each entry: `<` where the later
+iteration's counter is bigger, `=` where they are equal, and `>` where
+it is smaller. Step through the dependences of one small nest:
+
+<DepSteps client:visible />
+
+<Callout kind="definition">
+A **dependence** exists from iteration `I` to a later iteration `J` when
+both touch the same memory and at least one of them writes it. Its
+**distance vector** is `J - I`, entry by entry; its **direction vector**
+replaces each entry by `<`, `=` or `>` according to its sign. A
+dependence is **carried** by the outermost loop whose entry is not `=`
+(that loop must keep the order), and is **loop-independent** if every
+entry is `=`. **Dependence analysis** finds all of these for a loop
+nest<Cite id="allenkennedy2001" />.
+</Callout>
+
+<Formal title="A dependence, written down">
+
+```text
+dep(S at I → T at J)  ⟺
+  I ≺ J  ∧  addr_S(I) = addr_T(J)
+  ∧ (S writes ∨ T writes)
+distance  d = J − I,  so  d ≻ 0
+```
+
+<span slot="read">There is a dependence from statement S at iteration I
+to statement T at iteration J when I comes before J, both use the same
+address, and at least one of them writes. The distance d is J minus I;
+since J comes later, d is lexicographically positive: its first entry
+that is not zero is above zero. (≺ is "comes before in the original
+order", read entry by entry from the outermost loop.)</span>
+</Formal>
+
+<Examples of="dependence-analysis">
+
+```js
+a[i] = a[i - 1] + 1;
+// flow, distance (1), direction (<)
+```
+
+```js
+a[i][j] = a[i - 1][j + 1];
+// flow, distance (1, -1): (<, >)
+```
+
+```js
+// heat.js reads h, writes next:
+next[i] = h[i - 1] + h[i + 1] /* ... */;
+// no dependence between trips at all
+```
+
+</Examples>
+
+The first is the relay from the start of the chapter: carried by its
+only loop, distance 1. The second is the nest in the stepper: iteration
+`(i, j)` reads what `(i - 1, j + 1)` wrote, one row down and one column
+back, so the distance is `(1, -1)` and the direction `(<, >)`, carried
+by the `i` loop. The third is the `heat` benchmark in this repository:
+it reads every cell's `h` and writes a separate `next` field, then
+copies `next` into `h` in a second loop, so no trip of the first loop
+reads anything another trip writes. Had it updated `h` in place, each
+cell would read neighbours that earlier trips had already changed (a
+flow dependence of distance `(0, 1)` from the cell before it in the row,
+and `(1, 0)` from the cell above), and the answer would depend on the
+order of the walk.
+
+<Prompts ids={['dep-kinds', 'dep-distance', 'dep-carried', 'false-deps']} />
+
+## Proving there is none: the GCD test
+
+Usually the question is not "what is the distance" but "can these two
+accesses ever touch the same element at all?". Take a loop that writes
+`a[2 * i]` and reads `a[2 * i + 1]`: one only ever touches even slots
+and the other odd ones, so they never meet. The general version of
+that argument is a piece of school arithmetic.
+
+<Figure takeaway="2i is always even and 2i + 1 always odd, so the two never meet." caption="Slots of a written by a[2i] (top) and read by a[2i + 1] (bottom). They interleave without ever landing on the same slot; the GCD test proves it without looking at any particular i.">
+  <GcdFigure />
+</Figure>
+
+<Callout kind="definition">
+The **GCD test**: a write to `x[a·i + b]` and a read of `x[c·i + d]`
+(with whole numbers `a`, `b`, `c`, `d`) can only touch the same element
+if `a·i₁ + b = c·i₂ + d` has a whole-number solution, which happens
+exactly when the greatest common divisor of `a` and `c` divides
+`d - b`. If it does not, there is **no** dependence; if it does, there
+**may** be one (the test ignores the loop bounds, so the solutions might
+all lie outside the loop).
+</Callout>
+
+<Formal title="The GCD test">
+
+```text
+a·i₁ − c·i₂ = d − b  has a solution
+   in whole numbers
+⟺  gcd(a, c) divides (d − b)
+```
+
+<span slot="read">The equation a times i-one minus c times i-two equals
+d minus b can be solved with whole numbers exactly when the greatest
+common divisor of a and c divides d minus b. Banerjee's book on dependence analysis is a classic
+treatment of tests built on equations like this<Cite id="banerjee1988" />.</span>
+</Formal>
+
+For `a[2i]` against `a[2i + 1]`: `gcd(2, 2) = 2`, which does not divide
+`1 - 0 = 1`, so they are independent. For `a[4i]` against `a[6i + 2]`:
+`gcd(4, 6) = 2` divides `2`, so they may meet, and they do (`i₁ = 2`,
+`i₂ = 1` both give slot 8). For `a[i]` against `a[i + 100]` in a loop of
+50 trips: `gcd(1, 1) = 1` divides everything, so the test says "maybe",
+although the bounds rule it out; better tests that use the bounds exist,
+and Allen and Kennedy's book is the standard tour of them<Cite id="allenkennedy2001" />.
+
+<Prompts ids={['gcd-test', 'gcd-maybe']} />
+
+## Swapping, merging and splitting loops
+
+**Loop interchange** swaps two nested loops. Chapter 51 showed why you
+would want to: walking a grid stored row by row down its columns jumps a
+whole row per step and wastes most of every cache line. On the machine
+these chapters were written on (Node v22.23.4, a shared four-core Intel
+Xeon cloud machine, best of seven runs), summing a 2048 × 2048
+`Float64Array` grid took about 7.5 ms row by row and about 30 ms column
+by column; swapping the loops is the fix. It is legal when it keeps
+every dependence pointing forwards: swap the entries of each direction
+vector, and the first entry that is not `=` must still be `<`. `(<, =)`
+becomes `(=, <)`, fine; but our nest's `(<, >)` becomes `(>, <)`, which
+would run a reader before its writer, so that nest must not be swapped.
+
+**Loop fusion** merges two neighbouring loops over the same range into
+one, so data is used again while it is still in the cache (chapter 51).
+It is illegal when the second loop, at trip `i`, would need something
+the first loop only writes at a later trip. **Loop fission** (or
+distribution) is the reverse: splitting one loop into two, for example
+so that one half can be vectorised while the other, with its
+dependence, stays as it is. LLVM has a loop fusion pass that "merges
+adjacent loops when it can prove the transformation preserves the
+program's semantics"<Cite id="llvm-passes" />, and chapter 11 of Aho,
+Lam, Sethi and Ullman, "Optimizing for Parallelism and Locality", is a
+textbook treatment of this whole family<Cite id="aho2006" />.
+
+<Callout kind="definition">
+**Loop interchange** swaps the order of two loops in a nest; it is legal
+when every dependence's direction vector, with those two entries
+swapped, still has `<` as its first entry that is not `=`. **Loop
+fusion** merges adjacent loops with the same range into one; it is
+illegal if a trip of the second loop needs a value the first loop writes
+at a later trip. **Loop fission** splits one loop into several, which is
+legal when statements that depend on each other in a cycle stay in the same loop,
+and the loops are placed in the order their dependences need.
+</Callout>
+
+<Examples of="loop-interchange-fusion">
+
+```js
+// interchange: j outer → i outer
+for (let i = 0; i < n; i++)
+  for (let j = 0; j < n; j++)
+    s += g[i * n + j]; // stride 1
+```
+
+```js
+for (let i = 0; i < n; i++) {
+  ps.x[i] += ps.vx[i]; // fused: one
+  ps.y[i] += ps.vy[i]; // pass, not two
+}
+```
+
+```js
+for (let i = 0; i < n; i++) a[i] = 2 * i;
+for (let i = 0; i < n - 1; i++)
+  b[i] = a[i + 1]; // cannot fuse
+```
+
+</Examples>
+
+The first is the column-sum fixed by interchange: with `i` outside,
+`j` walks along a row, stride one, and the sum is the same because no
+trip writes anything (the only dependence is through `s`, and
+reordering a sum of whole numbers does not change it; of fractions, it
+might, chapter 52). The second is two loops over the particles, one for
+`x` and one for `y`, fused into one pass; the two statements touch
+different columns, so nothing ties them. The third cannot be fused:
+trip `i` of the second loop reads `a[i + 1]`, which the first loop
+writes at trip `i + 1`; merged, that read would run before the write.
+
+<Prompts ids={['interchange-legal', 'fusion-legal']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity does no dependence analysis: it never reorders trips, so it
+never needs to. What it does record per loop is which *fields* are read
+and which are written (the `loop at line 8 ... touches 2 of 5 fields`
+lines of `explain`), a much coarser fact, about columns rather than
+elements, that decides the layout rather than the order.
+</Callout>
+
+## Your turn
+
+<Exercise id="gcdTest" />
+
+<Exercise id="interchangeLegal" />
+
+## What you learned
+
+- A **dependence** ties two iterations that touch the same element,
+  one of them writing: **flow** (write, then read), **anti** (read, then
+  write) or **output** (write, then write).
+- Its **distance vector** is the later iteration minus the earlier; the
+  **direction vector** keeps the signs; the outermost non-`=` entry says
+  which loop **carries** it.
+- The **GCD test**: `x[a·i + b]` and `x[c·i + d]` can only meet if
+  `gcd(a, c)` divides `d - b`.
+- **Interchange** is legal when swapped direction vectors still start
+  with `<`; **fusion** fails when the second loop needs a later write of
+  the first; **fission** splits a loop without reversing a dependence.
+
+<Quiz />

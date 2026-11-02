@@ -1,4 +1,5 @@
-// Chapter 23 cards. Keys are stable ids: never rename them.
+// Chapter 23 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'throw-what': {
@@ -210,8 +211,7 @@ Notice what you *don't* need: no special "failed" value, and no check after ever
   orDefault: {
     optional: true,
     title: 'A fallback value',
-    prompt:
-      'Write `orDefault(f, d)`. It calls the function `f` with no arguments and returns what `f` returns; but if `f` throws, it returns `d` instead. `orDefault` itself must never throw. For example `orDefault(() => 5, 0)` is `5`, and `orDefault(() => { throw new Error(\'no\'); }, 0)` is `0`.',
+    prompt: 'Write `orDefault(f, d)`. It calls the function `f` with no arguments and returns what `f` returns; but if `f` throws, it returns `d` instead. `orDefault` itself must never throw. For example `orDefault(() => 5, 0)` is `5`, and `orDefault(() => { throw new Error(\'no\'); }, 0)` is `0`.',
     starter: `function orDefault(f, d) {
   // your code here
 }
@@ -300,10 +300,23 @@ try {
 }
 \`\`\``,
     options: [
-      { t: '`a`, `c`, `b`', why: 'The line after `throw` never runs: the rest of the `try` block is skipped.' },
-      { t: '`a`, `b`', correct: true, why: '`a` prints, then the throw jumps straight to `catch`, which prints the message `b`.' },
-      { t: '`b`', why: '`a` prints before anything is thrown.' },
-      { t: '`a`, then the program stops with an error', why: 'The error is caught, so the program carries on.' },
+      {
+        t: '`a`, `c`, `b`',
+        why: 'The line after `throw` never runs: the rest of the `try` block is skipped.',
+      },
+      {
+        t: '`a`, `b`',
+        correct: true,
+        why: '`a` prints, then the throw jumps straight to `catch`, which prints the message `b`.',
+      },
+      {
+        t: '`b`',
+        why: '`a` prints before anything is thrown.',
+      },
+      {
+        t: '`a`, then the program stops with an error',
+        why: 'The error is caught, so the program carries on.',
+      },
     ],
   },
   {
@@ -318,19 +331,45 @@ try {
 }
 \`\`\``,
     options: [
-      { t: '`a`, `b`, `c`', why: 'Nothing threw, so the `catch` block is skipped.' },
-      { t: '`a`', why: '`finally` runs whether or not anything was thrown.' },
-      { t: '`b`, `c`', why: 'The `try` block runs first, and it prints `a`.' },
-      { t: '`a`, `c`', correct: true, why: 'The `try` block finishes normally, `catch` is skipped, and `finally` runs anyway.' },
+      {
+        t: '`a`, `b`, `c`',
+        why: 'Nothing threw, so the `catch` block is skipped.',
+      },
+      {
+        t: '`a`',
+        why: '`finally` runs whether or not anything was thrown.',
+      },
+      {
+        t: '`b`, `c`',
+        why: 'The `try` block runs first, and it prints `a`.',
+      },
+      {
+        t: '`a`, `c`',
+        correct: true,
+        why: 'The `try` block finishes normally, `catch` is skipped, and `finally` runs anyway.',
+      },
     ],
   },
   {
     q: 'When does a `finally` block run?',
     options: [
-      { t: 'Only if an error was thrown', why: 'That describes `catch`.' },
-      { t: 'Always, after the `try` and any `catch`', correct: true, why: 'That is its job: clean-up that must happen however the `try` ended, even after a `return`.' },
-      { t: 'Only if no error was thrown', why: '`finally` doesn’t depend on whether anything was thrown.' },
-      { t: 'Only if there is no `catch` block', why: '`finally` can sit alongside a `catch`, and runs in both cases.' },
+      {
+        t: 'Only if an error was thrown',
+        why: 'That describes `catch`.',
+      },
+      {
+        t: 'Always, after the `try` and any `catch`',
+        correct: true,
+        why: 'That is its job: clean-up that must happen however the `try` ended, even after a `return`.',
+      },
+      {
+        t: 'Only if no error was thrown',
+        why: '`finally` doesn’t depend on whether anything was thrown.',
+      },
+      {
+        t: 'Only if there is no `catch` block',
+        why: '`finally` can sit alongside a `catch`, and runs in both cases.',
+      },
     ],
   },
   {
@@ -342,17 +381,37 @@ try {
 console.log(n);
 \`\`\``,
     options: [
-      { t: 'It prints `5`', why: '`const n` is block-scoped: it only exists between the `try` braces.' },
-      { t: 'It prints `undefined`', why: 'The name `n` does not exist out here at all, which is different from holding `undefined`.' },
-      { t: 'A `ReferenceError`: `n is not defined`', correct: true, why: 'The `try` block is a block like any other, so `n` vanished at its closing brace. Declare `let n` before the `try`.' },
+      {
+        t: 'It prints `5`',
+        why: '`const n` is block-scoped: it only exists between the `try` braces.',
+      },
+      {
+        t: 'It prints `undefined`',
+        why: 'The name `n` does not exist out here at all, which is different from holding `undefined`.',
+      },
+      {
+        t: 'A `ReferenceError`: `n is not defined`',
+        correct: true,
+        why: 'The `try` block is a block like any other, so `n` vanished at its closing brace. Declare `let n` before the `try`.',
+      },
     ],
   },
   {
     q: 'Which language has no exceptions, so a caller must check a returned value to find out that something failed?',
     options: [
-      { t: 'Python', why: 'Python has exceptions: `raise`, `try` and `except`.' },
-      { t: 'Java', why: 'Java has exceptions, and even makes you declare some of them.' },
-      { t: 'C', correct: true, why: 'C functions report failure through return values (or values they fill in), and every caller must check by hand.' },
+      {
+        t: 'Python',
+        why: 'Python has exceptions: `raise`, `try` and `except`.',
+      },
+      {
+        t: 'Java',
+        why: 'Java has exceptions, and even makes you declare some of them.',
+      },
+      {
+        t: 'C',
+        correct: true,
+        why: 'C functions report failure through return values (or values they fill in), and every caller must check by hand.',
+      },
     ],
   },
 ];

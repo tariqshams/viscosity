@@ -1,4 +1,5 @@
-// Chapter 9b cards (split from chapter 9). Keys are stable ids: never rename them.
+// Chapter 10 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'map-length': {
@@ -65,8 +66,7 @@ console.log(ps.length);`,
 export const exercises = {
   sumBy: {
     title: 'Add up one field with reduce',
-    prompt:
-      'Write `sumBy(ps, f)` using `reduce`. It returns the total of `f(p)` over every item `p` in `ps`. For example `sumBy(ps, (p) => p.mass)` is the total mass. An empty array must give `0`.',
+    prompt: 'Write `sumBy(ps, f)` using `reduce`. It returns the total of `f(p)` over every item `p` in `ps`. For example `sumBy(ps, (p) => p.mass)` is the total mass. An empty array must give `0`.',
     starter: `function sumBy(ps, f) {
   // your code here
 }
@@ -127,8 +127,7 @@ Two callbacks are at work: \`f\`, which the caller supplies, and \`add\`, which 
   doublings: {
     optional: true,
     title: 'How many doublings?',
-    prompt:
-      'Write `doublings(n)` with a `while` loop. Start from `1` and keep doubling. Return how many doublings it takes to reach **at least** `n`. So `doublings(1)` is `0`, `doublings(2)` is `1`, and `doublings(5)` is `3` (1 → 2 → 4 → 8).',
+    prompt: 'Write `doublings(n)` with a `while` loop. Start from `1` and keep doubling. Return how many doublings it takes to reach **at least** `n`. So `doublings(1)` is `0`, `doublings(2)` is `1`, and `doublings(5)` is `3` (1 → 2 → 4 → 8).',
     starter: `function doublings(n) {
   // your code here
 }
@@ -197,19 +196,45 @@ export const quiz = [
   {
     q: 'What is `[1, 2, 3].map((n) => { n * 2 })`?',
     options: [
-      { t: '`[ 2, 4, 6 ]`', why: 'That would need `(n) => n * 2` without braces, or a `return`.' },
-      { t: '`[ undefined, undefined, undefined ]`', correct: true, why: 'The braces make a statement body with no `return`, so each call returns `undefined`. map still makes one slot per item.' },
-      { t: '`[]`', why: 'map always returns an array of the same length as the input.' },
-      { t: '`undefined`', why: 'map always returns an array; it is the *items* that are `undefined`.' },
+      {
+        t: '`[ 2, 4, 6 ]`',
+        why: 'That would need `(n) => n * 2` without braces, or a `return`.',
+      },
+      {
+        t: '`[ undefined, undefined, undefined ]`',
+        correct: true,
+        why: 'The braces make a statement body with no `return`, so each call returns `undefined`. map still makes one slot per item.',
+      },
+      {
+        t: '`[]`',
+        why: 'map always returns an array of the same length as the input.',
+      },
+      {
+        t: '`undefined`',
+        why: 'map always returns an array; it is the *items* that are `undefined`.',
+      },
     ],
   },
   {
     q: 'What is `[2, 3, 4].reduce((t, n) => t + n, 10)`?',
     options: [
-      { t: '`9`', why: 'That forgets the starting value, 10.' },
-      { t: '`10`', why: 'That is only the starting value; each item is then added.' },
-      { t: '`[ 12, 13, 14 ]`', why: 'reduce combines everything into one value; it doesn’t return an array here.' },
-      { t: '`19`', correct: true, why: 'The running value starts at 10, then becomes 12, 15 and finally 19.' },
+      {
+        t: '`9`',
+        why: 'That forgets the starting value, 10.',
+      },
+      {
+        t: '`10`',
+        why: 'That is only the starting value; each item is then added.',
+      },
+      {
+        t: '`[ 12, 13, 14 ]`',
+        why: 'reduce combines everything into one value; it doesn’t return an array here.',
+      },
+      {
+        t: '`19`',
+        correct: true,
+        why: 'The running value starts at 10, then becomes 12, 15 and finally 19.',
+      },
     ],
   },
   {
@@ -221,10 +246,23 @@ fast[0].vx = 9;
 console.log(ps[0].vx);
 \`\`\``,
     options: [
-      { t: '`9`', correct: true, why: '`filter` makes a new array, but its slot holds an arrow to the same particle, so the change shows in `ps`.' },
-      { t: '`2`', why: 'That would be true if filter copied the objects. It copies only the arrows.' },
-      { t: '`-1`', why: '`ps[0]` is the particle with `vx: 2`, which filter kept and the next line changed.' },
-      { t: 'An error', why: 'Changing a property of a kept object is allowed.' },
+      {
+        t: '`9`',
+        correct: true,
+        why: '`filter` makes a new array, but its slot holds an arrow to the same particle, so the change shows in `ps`.',
+      },
+      {
+        t: '`2`',
+        why: 'That would be true if filter copied the objects. It copies only the arrows.',
+      },
+      {
+        t: '`-1`',
+        why: '`ps[0]` is the particle with `vx: 2`, which filter kept and the next line changed.',
+      },
+      {
+        t: 'An error',
+        why: 'Changing a property of a kept object is allowed.',
+      },
     ],
   },
   {
@@ -236,10 +274,23 @@ while (i < 3) {
 }
 \`\`\``,
     options: [
-      { t: 'Three times', why: '`i` starts at 10, not 0.' },
-      { t: 'Once', why: 'A while loop checks *before* the first pass, not after it.' },
-      { t: 'Zero times', correct: true, why: '`10 < 3` is false at the very first check, so the body never runs.' },
-      { t: 'Forever', why: 'The condition is false at the start, so the loop ends at once.' },
+      {
+        t: 'Three times',
+        why: '`i` starts at 10, not 0.',
+      },
+      {
+        t: 'Once',
+        why: 'A while loop checks *before* the first pass, not after it.',
+      },
+      {
+        t: 'Zero times',
+        correct: true,
+        why: '`10 < 3` is false at the very first check, so the body never runs.',
+      },
+      {
+        t: 'Forever',
+        why: 'The condition is false at the start, so the loop ends at once.',
+      },
     ],
   },
   {
@@ -258,10 +309,23 @@ while (i < vs.length) {
 console.log(t);
 \`\`\``,
     options: [
-      { t: '`29`', why: 'That adds every non-negative value; `break` stops the loop at 20, so 20 and 1 are never added.' },
-      { t: '`10`', correct: true, why: '4 is added, −2 is skipped by `continue`, 6 is added, and 20 triggers `break`: 4 + 6 = 10.' },
-      { t: '`8`', why: '`continue` skips −2 rather than adding it.' },
-      { t: '`11`', why: 'The 1 at the end is never reached, because `break` ends the loop at 20.' },
+      {
+        t: '`29`',
+        why: 'That adds every non-negative value; `break` stops the loop at 20, so 20 and 1 are never added.',
+      },
+      {
+        t: '`10`',
+        correct: true,
+        why: '4 is added, −2 is skipped by `continue`, 6 is added, and 20 triggers `break`: 4 + 6 = 10.',
+      },
+      {
+        t: '`8`',
+        why: '`continue` skips −2 rather than adding it.',
+      },
+      {
+        t: '`11`',
+        why: 'The 1 at the end is never reached, because `break` ends the loop at 20.',
+      },
     ],
   },
 ];

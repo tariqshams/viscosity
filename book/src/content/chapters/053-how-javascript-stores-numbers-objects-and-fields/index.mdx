@@ -1,0 +1,582 @@
+---
+n: 53
+day: 2
+part: II
+title: 'How JavaScript stores numbers, objects and fields'
+tagline: 'The language promises that every number is a 64-bit double; behind that promise, V8 keeps small integers inside the slot itself, boxes everything else, and puts a hidden header in front of every object.'
+objectives:
+  - Describe the IEEE 754 double format that every JavaScript number follows, and read its three parts.
+  - Explain how V8 stores small integers (Smis) and other numbers (HeapNumbers), and decide which one a value needs.
+  - Sketch what an object looks like in memory, header first.
+  - Compare an object's layout with a C struct, a Java object and a Python object.
+  - Explain what a field representation is, and predict how a field widens as different values are stored in it.
+  - "Explain why a TypeScript field declaration like `x: number;` makes the field start as undefined."
+  - Connect that to this book's benchmark, where the class with field declarations was several times slower.
+  - Choose a way to write a class, or a layout, that keeps number fields fast.
+introduces: [ieee754, smi, heap-number, object-header, field-representation]
+uses: [float64, binary, bit, byte, bit-ops, memory, address, pointer, stack-and-heap, object, property, arrow-function, typed-array, arraybuffer, reference, numbers, cache-line, for-loop, console-log, class, constructor, new, instance, typescript, type-annotation, type-erasure, undefined, function]
+sources: [mdn-number, v8-react-cliff, v8-pointer-compression, v8-fast-properties, mdn-typed-arrays, mdn-class-fields, ts-use-define, ts-37-declare]
+---
+import Float64Bits from '../../../components/diagrams/ch053/Float64Bits';
+import TagSteps from '../../../components/diagrams/ch053/TagSteps';
+import ObjectLayout from '../../../components/diagrams/ch053/ObjectLayout';
+import FieldSteps from '../../../components/diagrams/ch053/FieldSteps';
+import RepLadder from '../../../components/diagrams/ch053/RepLadder';
+import BenchBars from '../../../components/bench/BenchBars';
+
+{/* ── merge: from old chapter 53, How JavaScript stores numbers and objects ── */}
+
+## Two numbers that look the same
+
+Here are three ordinary lines:
+
+```js
+let a = 42;
+let b = 4.2;
+const p = { x: 0.5, n: 3 };
+```
+
+To the language, `a` and `b` are both 64-bit doubles, and `p` is an
+object with two numbers in it. Inside V8, though, `a` is stored quite
+differently from `b`, and `p` is a small block of bookkeeping with the
+numbers behind it (one of them not even inside the object). Where bytes sit decides
+how fast a loop runs, so this chapter shows where JavaScript's own
+numbers and objects sit.
+
+## Every number is a double
+
+The language says every JavaScript number is a 64-bit floating-point
+value in the **IEEE 754** double format<Cite id="mdn-number" />: the
+`float64` from the chapter on floats and typed arrays. IEEE 754 is the
+standard's name, and Python, Java and C doubles use it too.
+
+<Analogy title="a form with three boxes">
+Picture a form for writing down a number in scientific notation: one box
+for the sign (+ or −), a small box for the power of ten, and a long box
+for the digits, so 6.02 × 10²³ is written as "+", "23" and "602". Every
+number, huge or tiny, fits the same three boxes.
+<span slot="breaks">IEEE 754 works in twos rather than tens, never
+writes the leading 1 of the digits (it is always there, so it is
+implied), and stores the power with 1023 added so it is never negative;
+none of that is on a paper form.</span>
+</Analogy>
+
+<Figure takeaway="A double is a sign, an exponent and a fraction." caption="The number 1.5 in IEEE 754 form. The sign bit is 0 (positive). The exponent bits say 1023, which means 2 to the power 0. The fraction holds the digits after an implied leading 1: binary 1.1, which is 1.5.">
+  <Float64Bits />
+</Figure>
+
+<Callout kind="definition">
+**IEEE 754** is the standard format for floating-point numbers. Its
+**double** uses 64 bits: one **sign** bit, 11 **exponent** bits (a power
+of two, stored with 1023 added) and 52 **fraction** bits (the
+significant digits after an implied leading 1, also called the
+*mantissa*). Whole numbers are all exact up to 2<sup>53</sup> − 1<Cite id="mdn-number" />.
+</Callout>
+
+<Formal title="Reading a double">
+
+```text
+value = (−1)ˢ × 1.f × 2^(e − 1023)
+1.5:  s = 0,  e = 1023,  f = .1 (binary)
+−0:   s = 1,  e = 0,  f = 0
+```
+
+<span slot="read">The value is plus or minus (by the sign bit), times
+"one point f", times two to the power of the stored exponent minus
+1023. For 1.5 the sign is 0, the
+power is zero, and binary 1.1 is one and a half. The third line is the
+odd one: an exponent of all zeros is a special case that means zero (or
+a very tiny number), and with the sign bit set it is minus zero, a value
+that must remember its sign.</span>
+</Formal>
+
+<Examples of="ieee754">
+
+```js
+Number.isInteger(5.0); // true: 5.0 is 5
+```
+
+```js
+0 === -0;          // true
+Object.is(0, -0);  // false
+1 / -0;            // -Infinity
+```
+
+```js
+NaN === NaN;          // false
+Number.isNaN(0 / 0);  // true
+```
+
+</Examples>
+
+The first shows there is no separate whole-number type: `5.0` and `5`
+are the same value. The second shows a value the format has and integers do not:
+`-0`, a zero with the sign bit set. `===` says it equals `0`, but
+`Object.is` (which compares the exact value) can tell them apart, and
+dividing by it gives `-Infinity`, so an engine must never quietly turn
+`-0` into `0`. The third is IEEE 754's "not a number", the result of
+`0 / 0`, the one value not equal to itself (so you test for it with
+`Number.isNaN`).
+
+The language, however, only fixes what numbers *behave* like. An engine
+may store them however it likes, as long as no program can tell the
+difference<Cite id="v8-react-cliff" />; and V8 does.
+
+<Prompts ids={['ieee-parts', 'engine-free']} />
+
+## Small integers live in the slot
+
+Loop counters, array indexes and lengths are small whole numbers, and
+they are everywhere. Giving each one its own 8-byte double, in its own
+box on the heap, would waste memory and time, so V8 uses a trick called
+**pointer tagging**: a slot that would normally hold an address can hold
+a small integer instead, and its lowest bit says which of the two it
+is<Cite id="v8-pointer-compression" />.
+
+<Analogy extra title="pigeonholes and claim tickets">
+At a hotel desk, a small letter for you goes straight into your
+pigeonhole; a big parcel goes on a shelf in the back room, and your
+pigeonhole gets a claim ticket saying where to find it. A dot in the
+corner of the slip tells the clerk at a glance whether it is the letter
+itself or a ticket.
+<span slot="breaks">Parcels on a shelf stay as they are; a HeapNumber is
+never changed once made, so "changing" the number means putting a new
+parcel on the shelf and a new ticket in the pigeonhole, and throwing the
+old parcel away later.</span>
+</Analogy>
+
+Step through four variables and watch the tag bit decide:
+
+<TagSteps client:visible />
+
+<Callout kind="definition">
+A **Smi** (small integer) is an integer stored directly in a
+pointer-sized slot, marked by a lowest bit of 0; anything else in a slot
+is a pointer to a heap object. A **HeapNumber** is a heap object that
+holds one double; V8 uses it for numbers that are not Smis, such as
+`4.2`, `-0`, `NaN` or integers that are too big<Cite id="v8-react-cliff" />.
+HeapNumbers are immutable, so changing the value means allocating a new
+one<Cite id="v8-react-cliff" />.
+</Callout>
+
+How big a Smi can be depends on how V8 was built. With **pointer
+compression**, which the V8 team added to save memory in Chrome, slots
+are 32 bits and a Smi carries 31 bits including its sign; a 64-bit build
+without it uses 32-bit Smi payloads<Cite id="v8-pointer-compression" />.
+
+<Formal title="Tagging a small integer">
+
+```text
+slot = n × 2          (lowest bit 0: a Smi)
+n    = slot ÷ 2
+−2³⁰ ≤ n ≤ 2³⁰ − 1   (31 bits)
+```
+
+<span slot="read">To store a small integer n, V8 doubles it, which
+shifts every bit one place left and leaves a 0 in the lowest bit; to
+read it back, it halves the slot. Pointers have their lowest bit set
+to 1. With pointer compression, n must lie between minus two to the thirty and
+two to the thirty minus one, inclusive.</span>
+</Formal>
+
+<Examples of="smi heap-number">
+
+```js
+let i = 0;      // Smi
+i = i + 1;      // still a Smi: 1
+```
+
+```js
+let t = 4.2;    // HeapNumber
+let z = -0;     // HeapNumber
+// HeapNumber with pointer compression:
+let big = 2 ** 30;
+```
+
+<Run id="tag" />
+
+</Examples>
+
+The first is the common case: a loop counter is always a small whole
+number, so it never touches the heap. The second shows the three ways to miss: `4.2` has a fraction,
+`-0` needs its sign bit (and an integer has only one zero), and
+`2 ** 30` is a whole number but one too big for 31 bits, so each gets a
+HeapNumber box and the variable holds its address. (Without pointer
+compression, as on the Node this book's benchmark used, it still
+fits.) The third you can
+run, with the bit operators from the chapter on bits and bytes: `tag`
+shifts 42 left by one, giving `84` with a lowest bit of 0; `isSmi` checks
+that bit with `s & 1`; `value` shifts back and recovers `42` (and `-5`
+works too). The made-up address `4097` is odd, so it reads as a pointer.
+(Real heap addresses are even, because objects start on aligned
+boundaries, so V8 is free to set the low bit itself.)
+
+<Prompts ids={['smi-what', 'tag-bit', 'heapnumber-what', 'heapnumber-update']} />
+
+## What an object looks like
+
+An object is a block of memory too, and V8's blog describes its start:
+the first word (one pointer-sized slot) points to the object's **hidden class** (its shape: which
+properties it has and where each one sits), then come pointers to a
+store for extra properties and a store for indexed elements, and after
+that the **in-object properties**, the fastest kind<Cite id="v8-fast-properties" />.
+
+<Analogy extra title="a moving box and a packing list">
+Every box in a house move carries a label at the top before its
+contents: "see packing list 7" (which says the plates are on the left,
+the cups on the right), plus "extra bits: bag 3" and "loose items: tray
+5". Boxes packed the same way share one packing list, so the label is
+short, but every box still has its own label.
+<span slot="breaks">You can open a box and look; an object's header is
+invisible to JavaScript, and no program can read it, which is exactly
+why the engine is free to design it however it likes.</span>
+</Analogy>
+
+<Figure takeaway="An object is a header, then its fields; numbers that are not Smis live elsewhere." caption="Two objects of the same shape. Each starts with a three-word header; both hidden-class words point to one shared shape that says where x and n live. n is a Smi, stored in its slot; x is a double, so its slot points to a box on the heap.">
+  <ObjectLayout />
+</Figure>
+
+<Callout kind="definition">
+The **object header** is the hidden bookkeeping at the start of every
+object; in V8 it is a pointer to the object's hidden class, then
+pointers to its properties store and its elements store<Cite id="v8-fast-properties" />.
+Objects with the same shape share one hidden class, but each object has
+its own header.
+</Callout>
+
+<Examples of="object-header">
+
+```js
+const e = {};  // a header, no fields
+```
+
+```js
+const a = { x: 0.5, n: 3 };
+const b = { x: 2.5, n: 7 };
+// one hidden class, two headers
+```
+
+```js
+const p = { x: 0, y: 0, vx: 1.5,
+  vy: -2, mass: 1, health: 100 };
+// 3 header words + 6 field slots
+```
+
+</Examples>
+
+The first shows that even an empty object pays for a header. The
+second is the picture above: `a` and `b` share one hidden class, and
+each pays for its own header and slots. The third is our particle: three header words, six slots, and
+for each field holding a value that is not a Smi (here `vx = 1.5`) a
+pointer to somewhere else again. A million particles means a million headers, overhead
+that a struct of arrays does not carry.
+
+<OtherLanguages>
+
+```js
+// JavaScript (V8): header, then slots
+const p = { x: 0.5, n: 3 };
+```
+
+```python
+# CPython: every object, every float,
+# starts with a header of its own
+p = {"x": 0.5, "n": 3}
+```
+
+```java
+// a header, then fields stored inline
+class P { double x; int n; }
+P p = new P();
+```
+
+```c
+/* no header at all: 8 + 4 bytes of
+   data, plus padding */
+struct P { double x; int n; };
+struct P p = { 0.5, 3 };
+```
+
+</OtherLanguages>
+
+The four genuinely differ here. A C `struct` is the data and nothing
+else: the compiler knows the layout, so there is no header. A Java
+object has a small header, but its `double` and `int` fields sit inline,
+raw, because their types are declared. In CPython every value has its
+own header (a reference count and a pointer to its type), so even `0.5`
+is a boxed object. V8 sits in between: a header per object, small
+integers inline as Smis, other numbers often boxed.
+
+<Prompts ids={['header-what', 'shared-shape']} />
+
+<Callout kind="engine" label="Under the hood">
+A `Float64Array` has none of this: it stores raw 64-bit doubles side by
+side, with no tags, no boxes and no per-element headers<Cite id="mdn-typed-arrays" />,
+and the pointer compression post itself recommends Float64 typed arrays
+for number-crunching code<Cite id="v8-pointer-compression" />. That is
+why Viscosity's struct-of-arrays columns are `Float64Array`s: whatever
+the source program wrote, a column of doubles stays a column of doubles.
+</Callout>
+
+## Your turn
+
+The core exercise turns the Smi rule into code; the extra one pulls the
+exponent bits out of a real double.
+
+<Exercise id="smiFits" />
+
+<Exercise id="exponentBits" />
+
+## What you learned
+
+- Every JavaScript number behaves like an **IEEE 754** double: a sign,
+  an exponent and a fraction, 64 bits in all, with special values such as
+  `-0` and `NaN`.
+- V8 stores small integers as **Smis**, inside the slot itself, marked by
+  a lowest bit of 0.
+- Other numbers (fractions, `-0`, `NaN`, big integers) become
+  **HeapNumbers**: immutable boxes on the heap, so an update allocates.
+- Every object starts with an **object header**: a hidden-class pointer
+  plus pointers to its properties and elements stores, then its fields.
+
+Next: how V8 decides to store each *field* of an object, and the
+TypeScript line that made this book's particle loop several times
+slower.
+
+
+{/* ── merge: from old chapter 53, Field representations: one TypeScript line, a slower loop ── */}
+
+## Two classes that look the same
+
+Here are two TypeScript classes for a particle. Read them carefully:
+
+```ts
+class P {
+  x: number;
+  constructor(x: number) {
+    this.x = x;
+  }
+}
+
+class K {
+  declare x: number;
+  constructor(x: number) {
+    this.x = x;
+  }
+}
+```
+
+They hold the same data and run the same constructor; the only
+difference is the word `declare` on the second line. Yet in this book's
+benchmark, moving particles made from the first class was several times
+slower than moving particles made from the second. The last chapter
+showed what numbers and objects look like inside V8: small integers as
+Smis in the slot, other numbers as HeapNumber boxes, and a header at the
+front of every object. This chapter adds the last piece, which is how V8
+decides to store each *field*, and with it the whole explanation.
+
+## A field remembers what it has held
+
+V8 does not treat every field as "could be anything". It watches the
+values stored into each field, records what kind they have been, and
+picks the cheapest storage that fits all of them; a field that has only
+ever held small integers can keep them as Smis, and a field that has
+only ever held numbers can keep a double that is updated in place. When a value arrives that
+does not fit, the field is widened to something more general, and in
+general it does not go back<Cite id="v8-react-cliff" />.
+
+<Analogy title="a labelled kitchen drawer">
+A drawer labelled "teaspoons" lets you grab one without looking. The day
+someone drops a whisk in, the label becomes "spoons and whisks"; after
+the first ladle, it says "utensils", and now you have to look at
+whatever you pull out. Nobody ever writes the narrower label back on.
+<span slot="breaks">A drawer's label is a guess you could check by
+opening it; V8's record is a promise it relies on when it generates
+machine code, so when a value breaks it, the code built on the old label
+has to be thrown away and rebuilt, which costs time on its own.</span>
+</Analogy>
+
+<Analogy extra title="a spreadsheet column's format">
+Format a spreadsheet column as "number" and every cell is stored as a
+number, so summing it is quick. Type a word into one cell, and the
+column becomes "general": each cell might now be text, and the
+spreadsheet has to check every cell before using it.
+<span slot="breaks">A spreadsheet changes one column for one sheet; V8
+records the field's kind in the hidden class, which is shared by every
+object of that shape, so one odd value can slow down a million
+objects at once.</span>
+</Analogy>
+
+<Figure takeaway="A field's representation only moves up the ladder." caption="Field representations as a ladder. A field that has held only Smis stays Smi; a fraction widens it to Double; anything that is not a number (undefined, null, an object) is a heap object; a mix of numbers and heap objects widens to Tagged, the most general and, for numbers, the slowest.">
+  <RepLadder />
+</Figure>
+
+<Callout kind="definition">
+A **field representation** is how the engine has decided to store one
+field, recorded in the object's hidden class. The V8 blog describes the
+**Smi** and **Double** representations, and a field moving to a more
+general one when it receives a value that does not fit<Cite id="v8-react-cliff" />;
+V8's own trace output, below, also shows **heap object** (h) and
+**tagged** (t, anything at all). A field with the Double representation
+keeps its value in a box that only its object can see, so V8 can
+update it in place; a Tagged field keeps numbers as ordinary immutable
+HeapNumbers<Cite id="v8-react-cliff" />.
+</Callout>
+
+<Formal title="Widening: the smallest rung that fits">
+
+```text
+Smi ⊑ Double ⊑ Tagged    HeapObject ⊑ Tagged
+rep' = rep ⊔ kind(v)
+Smi ⊔ Double = Double
+Double ⊔ HeapObject = Tagged
+```
+
+<span slot="read">The symbol ⊑ is read "is below, or equal to, on the
+ladder": Smi is below Double, Double is below Tagged, and a heap object
+is below Tagged. Storing a value v into a field changes its
+representation to rep ⊔ kind(v), read "rep joined with the kind of v",
+which means the lowest rung that is at or above both. So a Smi field
+that receives a fraction becomes Double, and a Double field that
+receives undefined (or any other heap object) has to jump all the way to
+Tagged.</span>
+</Formal>
+
+<Examples of="field-representation">
+
+```js
+const o = { n: 1 }; // n: Smi
+o.n = 2;            // still Smi
+```
+
+```js
+o.n = 1.5;  // widens to Double
+o.n = 7;    // stays Double
+```
+
+```js
+const t = { start: null };
+// start: heap object (null)
+t.start = performance.now();
+// a double arrives: Tagged
+```
+
+</Examples>
+
+The first is the easy case: `n` has only ever held small integers, so it
+stays a Smi, and updates are written straight into the slot. In the
+second, `1.5` does not fit a Smi, so the field moves up one rung to
+Double; storing `7` afterwards does not move it back (`7` is stored as
+the double 7.0), because a field only moves up. The third is the one to
+remember. `null` is not a number, so `start` begins as a heap-object
+field; then `performance.now()` returns a fraction of a millisecond, a
+double, and the only rung above both is Tagged. From then on every new
+time stored in `start` is a fresh HeapNumber. The V8 team's advice is
+exactly this: do not start numeric fields as `null`<Cite id="v8-react-cliff" />.
+
+<Prompts ids={['rep-what', 'widen-only', 'double-in-place', 'null-start']} />
+
+## Back to the two classes
+
+In modern JavaScript, `x;` inside a class body is a real **class
+field**. Fields are added before the constructor's body runs, and a
+field without a starting value starts as `undefined`<Cite id="mdn-class-fields" />.
+You can watch it happen:
+
+<Run id="field-undefined" />
+
+The constructor prints `before: undefined` and `has x? true`: the field
+already exists, holding `undefined`, before the line `this.x = x` has
+run; after the constructor, `p.x` is `0.5`. TypeScript turns
+`x: number;` into exactly that kind of field when the target is ES2022
+or later<Cite id="ts-use-define" />. Writing `declare x: number;`
+instead emits nothing at all, so there is no field until the constructor
+first stores a number<Cite id="ts-37-declare" />. Here is the difference
+side by side, as it reaches the engine:
+
+```js
+// what class P becomes
+class P {
+  x; // starts as undefined
+  constructor(x) { this.x = x; }
+}
+// what class K becomes
+class K {
+  constructor(x) { this.x = x; }
+}
+```
+
+Now put the ladder to work: in `P`, the first value `x` ever holds is
+`undefined` (a heap object), and the second is a double, so the field
+jumps to Tagged; in `K`, the first value is a double, so the field is
+Double. Step through both:
+
+<FieldSteps client:visible />
+
+This is not guesswork. Running the benchmark with V8's
+`--trace-generalization` flag printed this line for class `P`:
+
+```text
+x:h{Any;const}->t{Any;mutable}
+```
+
+Read it as "field `x` went from `h` (the heap-object representation,
+because of the `undefined`) to `t` (Tagged)". Here is what that costs:
+
+<BenchBars suite="update-xy" n={1000000} title="Moving particles: x += vx, y += vy" highlight={['aos-class']} layouts={['aos', 'aos-class', 'aos-ctor']} caption="The class with TypeScript field declarations is the slow one: every update allocates a new HeapNumber." />
+
+In this book's benchmark run, the class with field declarations was
+about 3 times slower than the object literal and the constructor-only
+class at 100,000 particles, and 5 to 7 times slower at 1,000 and at
+1,000,000. The object literal and the constructor-only class were about
+equal, which tells you the slowdown is not about classes; it is about
+the field's first value.
+
+<Callout kind="pitfall">
+The fix is to make sure a number field's first value is a number: use
+`declare` for fields the constructor always sets, or assign them only in
+the constructor, and never start a numeric field as `null` or
+`undefined`. Better still, do not depend on it at all: struct-of-arrays
+columns, in the next chapter, sidestep the whole question.
+</Callout>
+
+<Prompts ids={['ts-field-undefined', 'declare-emits', 'generalize-cost']} />
+
+<Callout kind="engine" label="Under the hood">
+A `Float64Array` has no per-element representation to widen: it stores
+raw 64-bit doubles side by side, with no tags and no boxes<Cite id="mdn-typed-arrays" />,
+and V8's pointer compression post recommends Float64 typed arrays for
+number-crunching code<Cite id="v8-pointer-compression" />. That is why
+Viscosity's columns are `Float64Array`s: whatever the source declared, a
+column of doubles stays a column of doubles. It also means a
+TypeScript-aware Viscosity pass can fix the slow class for free, since
+the compiler reads the field's declared `number` type before any of it
+reaches the engine.
+</Callout>
+
+<Prompts ids={['float64array-rep']} />
+
+## Your turn
+
+The exercise is a small model of the ladder: feed it the values a field
+receives, in order, and it reports where the field ends up.
+
+<Exercise id="track" />
+
+## What you learned
+
+- A **field representation** is how V8 stores one field (Smi, Double,
+  heap object or Tagged), recorded in the hidden class.
+- A field only **widens**: to the lowest rung that fits every value it
+  has held. Smi plus a fraction is Double; a number plus a heap object
+  is Tagged.
+- A Double field can be updated in place; a Tagged field keeps numbers
+  as immutable HeapNumbers, so every update allocates.
+- A TypeScript field declaration (`x: number;`) becomes a real class
+  field that starts as `undefined`, which made this book's class several
+  times slower; `declare`, or constructor-only fields, avoid it.
+
+Next: arrays of structs against structs of arrays, measured properly,
+loop by loop.
+
+<Quiz />

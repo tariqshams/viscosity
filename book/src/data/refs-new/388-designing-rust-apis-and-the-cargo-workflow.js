@@ -1,4 +1,4 @@
-// New references for chapter 388 (and its second half, 330b).
+// New references for chapter 314 (and its second half, 330b).
 export default [
   {
     id: 'api-guidelines',
@@ -10,7 +10,7 @@ export default [
     url: 'https://rust-lang.github.io/api-guidelines/',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/api-guidelines/master on 2026-11-02: src/naming.md (C-CONV: as_ is free, borrowed to borrowed; to_ is expensive; into_ is variable cost, owned to owned; C-GETTER: “the get_ prefix is not used for getters in Rust code”, except e.g. Cell::get; C-FEATURE: name the feature std, not use-std or with-std), src/interoperability.md (C-COMMON-TRAITS: because of the orphan rule “crates that define new types should eagerly implement all applicable, common traits”; C-CONV-TRAITS: implement From, TryFrom, AsRef, AsMut, never Into or TryInto), src/future-proofing.md (C-STRUCT-PRIVATE: a public field “prevents the type from providing any validation or maintaining any invariants”), src/type-safety.md (C-CUSTOM-TYPE: prefer Widget::new(Small, Round) over Widget::new(true, false); C-NEWTYPE), src/flexibility.md (C-GENERIC), src/documentation.md (C-EXAMPLE, C-QUESTION-MARK, C-FAILURE: document Errors, Panics and Safety; C-LINK), src/checklist.md.',
-    shaped: 'Chapters 388 and 388b: naming, traits, argument types, private fields, features and documentation.',
+    shaped: 'Chapters 314 and 314b: naming, traits, argument types, private fields, features and documentation.',
   },
   {
     id: 'cargo-features',
@@ -22,7 +22,7 @@ export default [
     url: 'https://doc.rust-lang.org/cargo/reference/features.html',
     accessed: '2026-11-02',
     checkedAgainst: 'doc/book/src/reference/features.md read raw from raw.githubusercontent.com/rust-lang/cargo/master on 2026-11-02: features are declared in the [features] table and tested with cfg(feature = "..."); the default feature and --no-default-features; optional dependencies (optional = true) and the dep: prefix; “Feature unification”: when a dependency is used by multiple packages, “Cargo will use the union of all features enabled on that dependency when building it”; “features should be additive… it should usually be safe to enable any combination of features”, with the advice to use a std feature rather than a no_std one. Behaviour checked in a scratch crate with cargo 1.97.0.',
-    shaped: 'Chapter 388: declaring, enabling and unifying features.',
+    shaped: 'Chapter 314: declaring, enabling and unifying features.',
   },
   {
     id: 'rustref-non-exhaustive',
@@ -34,6 +34,6 @@ export default [
     url: 'https://doc.rust-lang.org/reference/attributes/type_system.html',
     accessed: '2026-11-02',
     checkedAgainst: 'src/attributes/type_system.md read raw from raw.githubusercontent.com/rust-lang/reference/master on 2026-11-02: non_exhaustive indicates a type or variant may have “more fields or variants added in the future”; outside the defining crate such types cannot be constructed, and matching on a non-exhaustive enum requires a wildcard arm. Checked with rustc 1.97.0, which reports E0004 “non-exhaustive patterns: `_` not covered”.',
-    shaped: 'Chapter 388: leaving room to add enum variants.',
+    shaped: 'Chapter 314: leaving room to add enum variants.',
   },
 ];

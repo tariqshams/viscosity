@@ -1,0 +1,297 @@
+---
+n: 284
+day: 30
+part: XV
+title: 'Cycle collection and eliding counts'
+tagline: 'Reference counting has two weak spots: objects that point at each other keep their counts above zero forever, and a count update on every pointer copy is expensive. Runtimes answer the first by deleting references on trial, and compilers the second by proving updates unnecessary.'
+objectives:
+  - Show why a cycle of objects is never freed by reference counting alone, in Python and Rust.
+  - Break cycles with weak references, and find them with trial deletion.
+  - Run trial deletion by hand, and implement it.
+  - Explain how compilers remove count updates, with rustc’s output as evidence.
+introduces: [cycle-collection, rc-elision]
+uses: [reference-counting, garbage-collection, roots, tricolor, mark-sweep, generational-gc, reference, heap-object, pointer, recursion, object, map, set, array, liveness, dce, peephole, inlining, calling-convention, function, parameter, call]
+sources: [bacon2001, firefox-cycle-collector, python-gc, rust-std-rc, swift-arc, lean-explicit-rc, swift-arc-optimization]
+---
+import TrialSteps from '../../../components/diagrams/ch284/TrialSteps';
+import ElisionFigure from '../../../components/diagrams/ch284/ElisionFigure';
+
+## Garbage that keeps itself alive
+
+Here is a doubly linked pair in Python 3.13, where each object's
+`__del__` prints a line when it is freed:
+
+```python
+b = N(); b.name = 'b'
+c = N(); c.name = 'c'
+b.o = c; c.o = b
+del b, c
+print('after del')   # after del
+print(gc.collect())  # freed b, freed c, 2
+```
+
+After `del`, nothing in the program can reach either object, yet
+neither is freed, because each still holds a reference to the other:
+both counts are 1, not 0. They are freed only when `gc.collect()` runs
+the separate collector CPython keeps for exactly this, which "supplements
+the reference counting already used in Python"<Cite id="python-gc" />,
+and it reports two objects found. Rust's documentation is blunter: "A
+cycle between `Rc` pointers will never be deallocated"<Cite id="rust-std-rc" />.
+Real programs make such cycles all the time: doubly linked lists, or
+trees whose children point to their parents.
+
+There are two answers. The programmer can make one link of each cycle
+**weak**, a reference that does not add to the count: Rust's `Weak`
+exists "to break cycles", and Swift's `weak` references are set to
+`nil` when their object is freed<Cite id="swift-arc" />. Or the
+runtime can find garbage cycles itself.
+
+## Deleting references on trial
+
+A tracing collector (chapter 84) would find the cycle, but it walks
+the whole heap. Bacon and Rajan's **trial deletion** walks only the part of the heap a cycle
+could be in<Cite id="bacon2001" />. Its insight is that a cycle can
+only become garbage at the moment one of its counts is *decremented
+to a value that is not zero* (the last outside reference went away,
+and the inside ones kept it alive); so such objects are remembered as
+**candidates**<Cite id="firefox-cycle-collector" />. Later, the collector pretends to delete every
+reference between the objects it can reach from the candidates; any
+object whose count drops to zero was held only from inside, and is
+garbage unless a surviving object can reach it:
+
+<TrialSteps client:visible />
+
+<Analogy title="a club that only knows itself">
+A club's members all vouch for each other, so each has a sponsor and
+looks respectable. To check whether anyone outside the club knows them,
+an auditor crosses out every reference that comes from another member;
+a member with no references left is known only to the club.
+<span slot="breaks">An auditor can cross references out in pen; the
+collector must be able to undo it, restoring the true count of every
+member that turns out to be known from outside (and of everyone they
+vouch for).</span>
+</Analogy>
+
+<Analogy extra title="lights left on in a closed wing">
+Two offices in an empty wing each keep the other's light on through a
+shared switch, so "last one out turns off the lights" never fires. A
+night guard visits only the wings where someone recently left, rather
+than the whole building.
+<span slot="breaks">A guard sees that the wing is empty; the collector
+cannot see emptiness, and has to infer it by subtracting the internal
+references and looking at what is left.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Cycle collection** frees groups of objects that reference each
+other but are unreachable. **Trial deletion** does it locally: starting
+from candidate objects (those whose count was decremented to a
+non-zero value), it subtracts every reference among the objects it can
+reach (*mark grey*); objects whose count is still above zero are held
+from outside, so they and everything they reach get their counts
+restored (*scan black*); the rest (*white*) are garbage and are freed.
+</Callout>
+
+<Formal title="Garbage, by internal references">
+
+```text
+R      = objects reachable from candidates
+int(o) = |{ p ∈ R : p references o }|
+live₀  = { o ∈ R : rc(o) − int(o) > 0 }
+garbage = R − (everything reachable
+               from live₀)
+```
+
+<span slot="read">R is the set of objects the collector walks. The
+internal count of an object o is how many references to it come from
+objects inside R. An object whose true count is larger than its internal
+count is referenced from outside, so it is alive, and so is everything
+it reaches. Whatever in R is left over is referenced only from inside:
+a garbage cycle, or something only a garbage cycle holds.</span>
+</Formal>
+
+<Examples of="cycle-collection">
+
+```python
+# Python 3.13
+del b, c          # nothing printed
+gc.collect()      # freed b, freed c → 2
+```
+
+```rust
+// Rust: break the cycle with Weak
+struct Node {
+    parent: RefCell<Weak<Node>>,
+    children: RefCell<Vec<Rc<Node>>>,
+}
+```
+
+```text
+// Firefox, xpcom/base/nsCycleCollector.cpp:
+// a garbage-cycle collector based on
+// Bacon & Rajan (2001); purple nodes are
+// candidates, white nodes garbage cycles
+if (pi->mInternalRefs == pi->mRefCount
+    || pi->IsGrayJS()) { ... }
+```
+
+</Examples>
+
+The first is the Python run above. The second is the standard shape of a
+Rust tree with parent links (the `RefCell` lets the links be changed
+later): children are held by strong `Rc`s and the parent by a `Weak`,
+so a parent and child never keep each other alive. The third is a
+cycle collector in a real browser: Firefox's, whose source says it is
+"based on the paper" by Bacon and Rajan, using its purple, grey, white
+and black colours<Cite id="firefox-cycle-collector" />; instead of
+subtracting, it counts each object's references from inside the graph
+(`mInternalRefs`) and compares them with its real count, the same test
+as the formula.
+
+<Prompts ids={['cy-leak', 'cy-weak', 'cy-gray', 'cy-black']} />
+
+## Counting less
+
+The other weak spot is cost. A compiler that inserts an increment for
+every copy of a reference and a decrement for every one that dies
+produces pairs like this, from a Rust function that clones an `Rc`
+only to read through it:
+
+```rust
+fn peek(r: &Rc<i32>) -> i32 {
+    let c = Rc::clone(r); // strong += 1
+    *c                    // read
+}   // c dropped here: strong -= 1
+```
+
+The increment and the decrement cancel out, and nothing between them
+can free the object (the caller's `r` keeps it alive throughout), so
+both can go. That is **reference-count elision**:
+
+<Figure takeaway="A paired increment and decrement with nothing between them that can free the object can both be deleted." caption="peek before and after rustc 1.97 -O (x86-64): the optimised code loads the value and keeps only the clone's overflow check, which aborts if the count is usize::MAX.">
+  <ElisionFigure />
+</Figure>
+
+<Analogy extra title="a visitor's badge for a one-minute errand">
+A courier who steps into the lobby for a minute to hand over a parcel,
+while the receptionist watches, does not need a visitor's badge
+printed and then shredded; someone is already responsible for them.
+<span slot="breaks">The receptionist must really be watching the whole
+time; a compiler may remove the pair only if it can prove that nothing
+between the two updates (an unknown call, another decrement) can drop
+the last other reference.</span>
+</Analogy>
+
+<Analogy extra title="lending a book without signing it out">
+If a friend reads a page of your book at your desk, you do not record
+a loan and then cancel it: you were holding it all along.
+<span slot="breaks">A loan record also protects you if you forget; an
+elided count protects nothing, so the proof that the owner outlives
+the borrower must be airtight.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Reference-count elision** removes count updates a compiler can prove
+unnecessary: an increment and a later decrement of the same object with
+nothing between them that could release another reference to it;
+updates for a **borrowed** parameter, whose caller promises to keep the
+object alive for the call; and a copy at a variable's last use, which
+can *move* the reference instead of incrementing and later
+decrementing.
+</Callout>
+
+<Formal title="Removing a pair">
+
+```text
+inc x; S; dec x   ⇒   S
+  provided S cannot make rc(x) reach 0:
+  S contains no dec of any object and
+  no call that may release references
+```
+
+<span slot="read">An increment of x, then some code S, then a
+decrement of x can be replaced by S alone, as long as nothing in S can
+take x's count to zero. A simple, safe test is that S decrements
+nothing and calls nothing that might; then x is kept alive by its other
+references throughout, and the two updates cancel.</span>
+</Formal>
+
+<Examples of="rc-elision">
+
+```text
+// peek(&Rc<i32>), rustc 1.97 -O:
+movq  (%rdi), %rax
+cmpq  $-1, (%rax)     // strong == MAX?
+je    .LBB0_1         //   → abort (ud2)
+movl  16(%rax), %eax  // load the i32
+retq
+```
+
+```text
+// int call(const shared_ptr<int>& p)
+//   { return peek(p); }, clang++ -O2:
+lock incl  8(%rax)
+... call ...
+lock xaddl %ecx, 8(%rbx)
+// atomic updates: kept
+```
+
+```text
+// Lean 4 compiler, InferBorrow.lean:
+// "When a parameter is marked as borrowed,
+// the caller can be sure that the function
+// will not decrement the reference count
+// of the parameter."
+```
+
+</Examples>
+
+The first is rustc 1.97's real output for `peek` (at `-O0` the same
+function calls `Rc::clone` and the drop code): `Rc`'s counts are plain
+memory, so after inlining, LLVM sees an add and a subtract of the same
+field with only a load between them, and deletes both. The second is
+the spot-the-difference: the C++ equivalent copies a `shared_ptr`, and
+clang at `-O2` keeps both updates, because they are atomic operations
+that other threads may observe, and clang does not merge them away. The
+third is a compiler designed around elision: Lean 4 infers which
+parameters can be **borrowed**, and its reference-counting pass is
+based on Ullrich and de Moura's paper *Counting Immutable Beans*; it
+inserts decrements "at the first position where values need not be
+alive anymore", and increments only "whenever values are used in an
+'owned' fashion … and continue being used later
+on"<Cite id="lean-explicit-rc" />. Swift's
+compiler also hoists retains and releases out of
+loops<Cite id="swift-arc-optimization" />.
+
+<Run id="elide" />
+
+`elide` looks at each `inc x` and searches forward for a `dec x`,
+giving up at anything that might free (`mayFree`: any `dec`, or any
+`call`); when it finds one first, it deletes both. It prints `load r;
+inc s; call g s; dec s`: the pair around `load r` is gone, and the
+pair around the call stays, because `g` might drop another reference to
+`s`.
+
+<Prompts ids={['el-what', 'el-pair', 'el-borrow', 'el-atomic']} />
+
+## Your turn
+
+<Exercise id="collect-cycles" />
+
+## What you learned
+
+- A **cycle** of references keeps every count above zero, so counting
+  alone never frees it; **weak** references break cycles by design.
+- **Trial deletion** finds garbage cycles by subtracting the
+  references among candidates' reachable objects, restoring the counts
+  of whatever is still held from outside, and freeing the rest (Firefox
+  and CPython both collect cycles alongside their counts).
+- **Reference-count elision** deletes updates the compiler can prove
+  cancel out, borrows parameters instead of counting them, and moves
+  references at their last use; atomic counts are much harder to
+  remove.
+
+Next: Rust's borrow checker, which proves at compile time what a
+reference count checks at run time.
+
+<Quiz />

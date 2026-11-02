@@ -1,0 +1,232 @@
+---
+n: 211
+day: 11
+part: XII
+title: 'Value numbering and common subexpressions'
+tagline: 'When a block computes a * b twice, the second time is wasted work, but only a compiler that can tell when two computations must give the same value can safely reuse the first; value numbering gives every value a number so that "the same" becomes a table lookup.'
+objectives:
+  - Give each value in a block a number, so that two instructions with the same operation on the same numbers get the same number.
+  - Remove a common subexpression by reusing the earlier value, and say why a commutative operation is keyed with its operands sorted.
+  - Explain why loads must be forgotten after a store or a call, and why JavaScript makes even + careful.
+  - Implement local value numbering over a block given as data.
+introduces: [value-numbering, cse]
+uses: [constant-folding, constant-propagation, dce, liveness, ir, three-address-code, temporary, basic-block, ssa, phi-node, side-effect, hash-table, hash-function, map, set, array, for-of, function, arrow-function, object, method, call, numbers, strings]
+sources: [coopertorczon2022, gcc-tree-ssa-sccvn]
+---
+import LvnSteps from '../../../components/diagrams/ch211/LvnSteps';
+import KillTable from '../../../components/diagrams/ch211/KillTable';
+
+## The same work, twice
+
+Here is a function that computes `a * b` twice, the way code often does
+when two lines were written at different times:
+
+```js
+function f(a, b) {
+  let x = a * b;
+  let y = a * b;
+  return x + y;
+}
+```
+
+The real VIR that Viscosity prints for it keeps both:
+
+```text
+func f(%0, %1):
+  b0:
+    %0 = param
+    %1 = param
+    %2 = binop * %0, %1
+    %3 = binop * %0, %1
+    %4 = binop + %2, %3
+    return %4
+```
+
+`%2` and `%3` are the same operation on the same two values, and in SSA
+neither `%0` nor `%1` can change in between, so they must be equal.
+A compiler could compute the product once and use `%2` wherever `%3`
+appears; the second multiplication is a **common subexpression**, and
+removing it is **common subexpression elimination**. The hard part is
+not the removing; it is noticing, quickly and safely, that two
+instructions are the same.
+
+<Analogy title="barcodes in a shop">
+Every tin of the same soup carries the same barcode, whichever shelf it
+sits on and whoever put it there; the till never has to read the label,
+it compares numbers. Value numbering gives every value a number in the
+same spirit, so that "is this the same as something I have already
+got?" becomes "is this number already in my table?".
+<span slot="breaks">Barcodes are printed by the maker in advance. Value
+numbers are invented by the compiler as it reads, and it decides
+sameness from *how* a value was computed, so `a * b` and `b * a` get
+the same number even though they are written differently.</span>
+</Analogy>
+
+<Analogy extra title="a recipe that says &quot;two beaten eggs&quot; twice">
+If step 2 and step 5 of a recipe both need two beaten eggs, and you
+still have the bowl from step 2, you do not beat two more: you use the
+bowl you have.
+<span slot="breaks">A bowl of eggs gets used up; a value can be used
+as many times as you like. The real danger runs the other way: if
+someone added sugar to the bowl in between (a store), it is no longer
+the bowl you need, and the compiler must notice that.</span>
+</Analogy>
+
+<Prompts ids={['cse-what', 'same-in-ssa']} />
+
+## A number for every value
+
+**Local value numbering** walks down one block with a table. For each
+instruction it builds a **key** from the operation and the *value
+numbers* of its operands, then looks the key up. If the key is new,
+the instruction gets a fresh number (its own id is a fine choice) and
+the key goes in the table. If the key is already there, the instruction
+computes a value the block already has: it gets that number, and its
+uses can be pointed at the earlier instruction. Step through it:
+
+<LvnSteps client:visible />
+
+Two details carry the whole method. First, the key uses operands'
+*numbers*, not their names, so once `%3` is known to be `%2`, any later
+`%3 + 2` has the same key as `%2 + 2`, and redundancy is found in
+chains. Second, for an operation where order does not matter (`+` and
+`*` on numbers), the operand numbers are sorted before building the
+key, so `b * a` finds `a * b`; for `-`, `/` and `<` they are not,
+because `a - b` and `b - a` differ.
+
+<Callout kind="definition">
+**Value numbering** assigns a number to every value so that two values
+get the same number only if they are certain to be equal: same
+operation, same operand numbers (sorted, for a commutative operation),
+or the same constant. **Common subexpression elimination** (**CSE**)
+then keeps the first instruction with each number and replaces the
+uses of the later ones with it, after which dead code elimination
+deletes them.
+</Callout>
+
+<Formal title="Numbering one instruction">
+
+```text
+key(%d = op %a, %b) = (op, VN(%a), VN(%b))
+VN(%d) = T[key]      if key ∈ T
+VN(%d) = d,  T[key] := d   otherwise
+```
+
+<span slot="read">The key of an instruction is its operation together
+with the value numbers of its two operands (sorted first, if op is
+commutative). If the table T already holds that key, %d's value number
+is the one stored there, and %d is redundant. Otherwise %d gets a new
+number (here, its own id d), and the table records that this key now
+means d.</span>
+</Formal>
+
+<Prompts ids={['vn-key', 'vn-numbers', 'commutative']} />
+
+<Examples of="value-numbering cse">
+
+```text
+%2 = binop * %0, %1   ; key (*, 0, 1): new
+%3 = binop * %0, %1   ; (*, 0, 1): is %2
+```
+
+```text
+%2 = binop * %0, %1   ; key (*, 0, 1)
+%3 = binop * %1, %0   ; sorted: (*, 0, 1)
+%4 = binop - %0, %1   ; (-, 0, 1): new
+%5 = binop - %1, %0   ; (-, 1, 0): new
+```
+
+```text
+%2 = binop * %0, %1   ; VN 2
+%3 = binop * %0, %1   ; VN 2
+%5 = binop + %2, %4   ; (+, 2, 4): VN 5
+%6 = binop + %3, %4   ; (+, 2, 4): VN 5
+```
+
+</Examples>
+
+The first is `f` from the top of the chapter: the second product finds
+the first, so `return x + y` becomes `%2 + %2`, and `%3` is left
+without uses for DCE to sweep. The second shows the sorting at work,
+and also its limit: the two subtractions keep different keys, as they
+must, since they give opposite answers. The third is the chain: `%6`
+looks different from `%5` on paper (it adds `%3`, not `%2`), but its
+key is built from `%3`'s *number*, which is 2, so it is found too. That
+is something a search for identical text would miss. Try building
+keys yourself; add a line, or swap an operator to `-`, and predict
+what the table says:
+
+<Run id="keys" />
+
+## What the table must forget
+
+Everything so far was about pure arithmetic on SSA values, which can
+never change. Reading memory is different. Here is a piece of the real
+VIR for `sq(p) + sq(3)`, where `sq` is a function declared in the
+module (so the name `sq` is a binding, read with `load`):
+
+```text
+%23 = load sq
+%24 = call %23, %22
+%25 = load sq
+%26 = const 3
+%27 = call %25, %26
+```
+
+The two loads have the same key, `(load, sq)`, but they are **not**
+safe to merge: the call in between runs code the compiler cannot see,
+and that code could assign a new function to `sq`. So a value-numbering
+pass must forget keys that read memory whenever something might write
+that memory: a store to the same place forgets that place, and a call
+to unknown code forgets every load.
+
+<Figure takeaway="A store or a call wipes the table's memory reads." caption="Local value numbering with loads (%0 is p, and %3 is the value being stored). The first read of p.x enters the table; the second finds it; the store to p.x removes the key, so the third read is new. Arithmetic keys are untouched, because SSA values never change.">
+  <KillTable />
+</Figure>
+
+JavaScript adds one more trap. If `a` might be an object, each `a + b`
+calls `a.valueOf()`, so two "identical" additions run that method
+twice, and merging them would run it once. A JavaScript compiler only
+numbers `+` this way once it knows the operands are primitives, the
+same type fact that made `+` safe to delete in the DCE chapter.
+
+<Prompts ids={['load-kill', 'call-kill', 'plus-twice']} />
+
+<Callout kind="engine" label="Under the hood">
+Local value numbering is one of the oldest optimisations, and
+textbooks present it first among the redundancy
+eliminations<Cite id="coopertorczon2022" />. GCC's value numbering, in
+`tree-ssa-sccvn.cc`, notes that on straight-line code its algorithm is
+the same as "a regular hash based value numbering" done in reverse
+postorder<Cite id="gcc-tree-ssa-sccvn" />: a table keyed by operation
+and operand numbers, as here.
+
+Viscosity has no value numbering, which is why both multiplications in
+`f` survive in its VIR; it leaves arithmetic to the JavaScript engine.
+It does use the trick at the heart of the method, turning a structure
+into a key that can be compared in one step: to check that every record
+pushed into a collection has the same fields in the same order, it
+compares `JSON.stringify(c.fields)` with `JSON.stringify(r.fields)`.
+</Callout>
+
+## Your turn
+
+<Exercise id="lvn" />
+
+## What you learned
+
+- **Value numbering** gives each value a number, built from its
+  operation and its operands' numbers, so that equal computations get
+  equal numbers; a hash table makes each check one lookup.
+- **CSE** keeps the first instruction with each number and points later
+  uses at it; DCE then deletes the copies.
+- Commutative operations sort their operand numbers; others must not.
+- Keys built on operands' numbers catch chains of redundancy that a
+  search for identical text would miss.
+- Loads are forgotten after a store to the same place, and all of them
+  after an unknown call; in JavaScript, `+` needs primitive operands.
+
+Next: the same idea across a whole function, using dominators to know
+which earlier values every path has already computed.
+
+<Quiz />

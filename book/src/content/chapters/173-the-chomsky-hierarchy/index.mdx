@@ -1,0 +1,304 @@
+---
+n: 173
+day: 2
+part: X
+title: 'The Chomsky hierarchy'
+tagline: 'Some grammars give one sentence two trees, and two trees can mean two different answers. Here is how to spot that, how precedence levels and braces remove it, and where grammars sit in a family of four.'
+objectives:
+  - Show that a grammar is ambiguous by drawing two parse trees for one sentence.
+  - Rewrite an ambiguous expression grammar into levels, so that * binds tighter than + and - groups to the left.
+  - Explain the dangling else, and three ways languages remove it.
+  - Place regular, context-free, context-sensitive and unrestricted grammars in the Chomsky hierarchy, with the machine for each.
+introduces: []
+uses: [derivation, parse-tree, grammar, production-rule, terminal, nonterminal, bnf, regular-expression, regular-language, finite-automaton, dfa, token, keyword, drip, tree, recursion, base-case, function, array, for-of, for-loop, string-methods, object, ambiguity, chomsky-hierarchy]
+sources: [aho2006, hmu2006, ecma262-if, chomsky1959]
+---
+import AmbigSteps from '../../../components/diagrams/ch173/AmbigSteps';
+import DanglingElse from '../../../components/diagrams/ch173/DanglingElse';
+import ChomskyNest from '../../../components/diagrams/ch173/ChomskyNest';
+
+{/* ── remnant of old chapter 61: keep only what goes beyond the core ── */}
+
+## A short grammar with a long problem
+
+Here is the grammar most people write first for arithmetic, and it is
+pleasingly short:
+
+```text
+expr → expr "-" expr
+     | expr "+" expr
+     | expr "*" expr
+     | NUMBER
+```
+
+`1 - 2 - 3`, `1 + 2 * 3` and `4` all fit; the trouble is *how*. Step through two leftmost
+derivations of `1 - 2 - 3`; both follow the rules exactly, and they
+draw different trees:
+
+<AmbigSteps client:visible />
+
+The first tree says `(1 - 2) - 3`, which is `-4`; the second says
+`1 - (2 - 3)`, which is `2`. A compiler builds its program from the
+tree, so a grammar that allows both trees has not decided what the
+program means, and two compilers built from it could print different
+answers.
+
+<Analogy title="a newspaper headline">
+"Squad helps dog bite victim" can be read as a squad helping someone a
+dog bit, or as a squad helping a dog to bite someone. Every word is
+right, and the order of the words is right; what is missing is which
+words group together.
+<span slot="breaks">A reader picks the sensible meaning without
+noticing; a parser has no common sense, so a grammar must leave it no
+choice to make.</span>
+</Analogy>
+
+<Analogy extra title="two pocket calculators">
+Type `2 + 3 × 4 =` into a cheap calculator, which works out each step
+as you press it, and you get 20; type the same keys into a scientific
+one and you get 14. Same keys, two groupings, two answers.
+<span slot="breaks">Each calculator is perfectly definite; it has one
+fixed habit. The ambiguity is in the keys alone, until someone writes
+down which habit is the rule, which is the grammar's job.</span>
+</Analogy>
+
+<Callout kind="definition">
+A grammar is **ambiguous** when at least one sentence has two (or more)
+different parse trees. Since each parse tree has exactly one leftmost
+derivation, that is the same as some sentence having two different
+leftmost derivations.
+</Callout>
+
+<Formal title="Ambiguity">
+
+```text
+G is ambiguous  ⇔
+  some w ∈ L(G) has two different
+  parse trees under G
+```
+
+<span slot="read">The grammar G is ambiguous if and only if (the double
+arrow) there is some sentence w in the language of G that has two
+different parse trees under G's rules. Notice that the definition is
+about one grammar; a different grammar for the same sentences may have
+one tree for each.</span>
+</Formal>
+
+A program can list every tree such a grammar allows. Every tree of
+`expr op expr` has some operator at its root, so try each one, and
+combine every tree of the left part with every tree of the right:
+
+<Run id="allValues" />
+
+`values` returns one value per tree. A single number is the base case;
+otherwise the loop takes each operator at the odd positions `i` as the
+root, calls itself on the tokens to the left (`slice(0, i)`) and to the
+right (`slice(i + 1)`), and combines every pair. It prints `[ 2, -4 ]`
+for `1 - 2 - 3`, `[ 7, 9 ]` for `1 + 2 * 3`, and five values for
+`8 - 4 - 2 - 1`, one per tree.
+
+<Prompts ids={['ambiguous-what']} />
+
+## Removing it: levels and a lean
+
+The fix is to rewrite the grammar so that only the tree we want can
+be built. Two decisions go into it. **Precedence** (which operators
+bind tighter) says `*` is done before `+` and `-`; **associativity**
+(how a chain of operators on the same level groups) says
+`1 - 2 - 3` means `(1 - 2) - 3`. Both go into the rules:
+
+```text
+term    → term "-" factor
+        | term "+" factor | factor
+factor  → factor "*" primary | primary
+primary → NUMBER | "(" term ")"
+```
+
+Each level of precedence has its own nonterminal, loosest first. A `*`
+can only join `primary`s, so `2 * 3` becomes one `factor` before any
+`+` can see it; to put a sum under a `*`, you must write brackets,
+which restart at the top level. And in `term → term "-" factor`, the
+right side of a `-` is a `factor`, which cannot contain a `-`, so in
+`1 - 2 - 3` the only way to place the first `-` lower in the tree is
+inside the *left* `term`: the tree leans left, as arithmetic does.
+(The chapter "Precedence and associativity" turns these levels into code,
+and Drip's own grammar, in which `term` handles `+` and `-` and
+`factor` handles `*`, `/` and `%`, has more levels on the same plan.)
+
+<Examples of="ambiguity">
+
+```text
+expr → expr "-" expr | NUMBER
+1 - 2 - 3:  (1 - 2) - 3   or
+            1 - (2 - 3)
+```
+
+```text
+expr → expr "+" expr
+     | expr "*" expr | NUMBER
+1 + 2 * 3:  1 + (2 * 3)   or
+            (1 + 2) * 3
+```
+
+```text
+stmt → "if" "(" expr ")" stmt
+     | "if" "(" expr ")" stmt
+       "else" stmt
+     | other
+```
+
+</Examples>
+
+The first is ambiguity of associativity: one operator, two ways to
+chain it, and two answers, `-4` or `2`. The second is ambiguity of
+precedence: the trees give `7` and `9`. The third is the most famous
+ambiguity in programming, a grammar for `if` in the style of C and
+JavaScript, where a bracketed condition is followed by a single
+statement; it is the subject of the next section.
+
+<Prompts ids={['levels-fix', 'left-rec-assoc', 'grammar-not-language']} />
+
+## The dangling else
+
+Under that third grammar, `if (a) if (b) s1 else s2` has two trees,
+because the rules allow the `else` to belong to either `if`:
+
+<Figure takeaway="The rules allow the else to belong to either if." caption="The tokens of if (a) if (b) s1 else s2 (brackets left out), grouped two ways. Top: the else belongs to the inner, nearest if, so s2 runs when a is true and b is false. Bottom: it belongs to the outer if, so s2 runs when a is false.">
+  <DanglingElse />
+</Figure>
+
+Languages take one of three ways out. The first is a **rule beside the
+grammar**: JavaScript's specification keeps the short rules and adds a
+note that when the choice is otherwise ambiguous, the `else` goes with
+the nearest `if`<Cite id="ecma262-if" />, and a hand-written parser
+does this for free, because the inner `if` is still being parsed when
+the `else` arrives and takes it greedily. The second is to **rewrite
+the grammar**, with one rule for an `if` whose branches are all
+"matched" and one for an `if` that may still take an `else`, which
+works but doubles the rules<Cite id="aho2006" />. The third is to
+**change the language**: Drip requires braces round every branch, as
+in `if a { if b { s1 } } else { s2 }`, so the braces themselves show
+which `if` an `else` belongs to, and there is only one tree.
+
+Ambiguity belongs to the grammar, not to the sentences: the levelled
+grammar above and the short one describe exactly the same rows of
+tokens, and only one is ambiguous. (Some sets of sentences have no
+unambiguous grammar at all, and no program can decide, for every
+grammar, whether it is ambiguous<Cite id="hmu2006" />; however,
+neither problem arises with the grammars of programming languages,
+which are designed to have one tree per program.)
+
+<Prompts ids={['dangling-what', 'dangling-fix']} />
+
+## A family of four
+
+Grammars are one member of a family. In 1959 Noam Chomsky described
+grammars by the shapes their rules may take, and showed that each
+stricter shape describes a smaller class of languages<Cite id="chomsky1959" />;
+the ladder he described is now called the **Chomsky hierarchy**.
+
+<Analogy extra title="driving licences">
+A moped licence lets you ride a moped; a car licence also lets you
+drive a car; a lorry licence adds lorries. Each licence covers
+everything the one below it does, and more, and each needs a bigger
+test.
+<span slot="breaks">You can hold a lorry licence and still choose to
+ride a moped; a language does not "hold" a level, it simply is at the
+lowest level whose rules can describe it.</span>
+</Analogy>
+
+<Figure takeaway="Each level contains the one inside it, and needs a stronger machine." caption="The Chomsky hierarchy, with the machine that recognises each level and an example. Programming-language syntax lives at type 2; its tokens at type 3.">
+  <ChomskyNest />
+</Figure>
+
+<Callout kind="definition">
+The **Chomsky hierarchy** sorts grammars by the shape of their rules.
+**Regular** grammars (type 3) give exactly the regular languages, the
+ones regular expressions and finite automata describe. **Context-free**
+grammars (type 2), whose heads are a single nonterminal, are the ones
+in this part of the book; they need a *pushdown automaton*, a finite
+automaton with a stack. **Context-sensitive** grammars (type 1) may
+look at the symbols round a nonterminal, and **unrestricted** grammars
+(type 0) may rewrite anything; the first need a *linear-bounded
+automaton*, the second a *Turing machine* (a model of any
+program)<Cite id="hmu2006" />.
+</Callout>
+
+<Formal title="The four rule shapes">
+
+```text
+type 3   A → a B   or   A → a
+type 2   A → γ
+type 1   α A β → α γ β   (γ ≠ ε)
+type 0   α → β           (α ≠ ε)
+```
+
+<span slot="read">A and B are nonterminals, a is one terminal, and the
+Greek letters stand for rows of symbols. Type 3: a nonterminal becomes
+a terminal followed by at most one nonterminal. Type 2: a nonterminal
+becomes any row, wherever it stands. Type 1: A may become gamma only
+when it stands between alpha and beta, its context, and gamma is not
+empty. Type 0: any nonempty row may become any row. (Books differ in
+small details, such as where ε is allowed.)</span>
+</Formal>
+
+<Examples of="chomsky-hierarchy">
+
+```text
+type 3, a Drip number's digits:
+num → DIGIT num | DIGIT
+```
+
+```text
+type 2, brackets nested to any depth:
+p → "(" p ")" | ε
+```
+
+```text
+beyond type 2:
+let x = 1;  print x;   ✓
+let x = 1;  print y;   ✗ y never declared
+```
+
+</Examples>
+
+The first is regular: each rule adds one digit and moves on, which a
+finite automaton can follow with a single loop. The second is context-free
+and not regular: to match each `(` with its `)`, the rule puts `p` in
+the *middle*, and a machine must count the open brackets, which takes a
+stack (this is the nesting a regular expression cannot check). The
+third is a rule every programming language has, "use a name only after
+declaring it", and it cannot be written as a context-free grammar at
+all; the textbooks prove this with a language of a word, a separator
+and the same word again<Cite id="aho2006" />. That is why compilers
+check it in a separate pass after parsing (the chapter "Finding every name before running: the resolver"
+builds one for Drip), and keep the grammar context-free.
+
+<Prompts ids={['chomsky-four', 'cf-machine', 'declare-before-use']} />
+
+## Your turn
+
+The first exercise lists every tree an ambiguous grammar allows; the
+second, for extra practice, checks whether a grammar is regular.
+
+<Exercise id="groupings" />
+
+<Exercise id="rightLinear" />
+
+## What you learned
+
+- A grammar is **ambiguous** when one sentence has two parse trees;
+  the trees can mean different things, as `1 - 2 - 3` shows.
+- One nonterminal per precedence level, loosest first, makes `*` bind
+  tighter; putting the recursion on the left makes `-` group to the
+  left.
+- The **dangling else** is fixed by a "nearest `if`" rule
+  (JavaScript), by a longer grammar, or by required braces (Drip).
+- The **Chomsky hierarchy**: regular ⊂ context-free ⊂
+  context-sensitive ⊂ unrestricted; programming-language syntax is
+  context-free, and rules such as "declare before use" are checked
+  after parsing.
+
+Next: "Syntax trees", the smaller tree the parser actually builds.
+
+<Quiz />

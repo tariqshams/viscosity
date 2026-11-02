@@ -1,5 +1,5 @@
-// Cards for the chapter 20 (trees).
-// Keys are stable ids: never rename them.
+// Chapter 20 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'tree-what': {
@@ -61,33 +61,6 @@ console.log(count(docs));`,
   },
 };
 
-const evalTests = `const num = (v) => ({ kind: 'num', value: v });
-test('a number is its own value', () => {
-  expect(evaluate(num(7))).toBe(7);
-});
-test('adds two numbers', () => {
-  const t = { kind: 'add', left: num(2), right: num(3) };
-  expect(evaluate(t)).toBe(5);
-});
-test('multiplies two numbers', () => {
-  const t = { kind: 'mul', left: num(6), right: num(7) };
-  expect(evaluate(t)).toBe(42);
-});
-test('(2 + 3) * 4 is 20', () => {
-  const t = {
-    kind: 'mul',
-    left: { kind: 'add', left: num(2), right: num(3) },
-    right: num(4),
-  };
-  expect(evaluate(t)).toBe(20);
-});
-test('deep nesting: 1 + (2 + (3 + 4))', () => {
-  const t = { kind: 'add', left: num(1), right: {
-    kind: 'add', left: num(2), right: {
-      kind: 'add', left: num(3), right: num(4) } } };
-  expect(evaluate(t)).toBe(10);
-});`;
-
 export const exercises = {
   evaluate: {
     title: 'A tiny interpreter',
@@ -118,7 +91,32 @@ console.log(evaluate(t));`,
   }
   return a * b;
 }`,
-    tests: evalTests,
+    tests: `const num = (v) => ({ kind: 'num', value: v });
+test('a number is its own value', () => {
+  expect(evaluate(num(7))).toBe(7);
+});
+test('adds two numbers', () => {
+  const t = { kind: 'add', left: num(2), right: num(3) };
+  expect(evaluate(t)).toBe(5);
+});
+test('multiplies two numbers', () => {
+  const t = { kind: 'mul', left: num(6), right: num(7) };
+  expect(evaluate(t)).toBe(42);
+});
+test('(2 + 3) * 4 is 20', () => {
+  const t = {
+    kind: 'mul',
+    left: { kind: 'add', left: num(2), right: num(3) },
+    right: num(4),
+  };
+  expect(evaluate(t)).toBe(20);
+});
+test('deep nesting: 1 + (2 + (3 + 4))', () => {
+  const t = { kind: 'add', left: num(1), right: {
+    kind: 'add', left: num(2), right: {
+      kind: 'add', left: num(3), right: num(4) } } };
+  expect(evaluate(t)).toBe(10);
+});`,
     hints: [
       'Which kind of node can you answer without looking any deeper? That is your base case.',
       'For `add` and `mul`, you don’t know the values of `left` and `right` yet. But `evaluate` computes the value of *any* node…',
@@ -178,8 +176,7 @@ This is, in miniature, the tree-walking interpreter you will build in Part III. 
   depth: {
     optional: true,
     title: 'How deep do the folders go?',
-    prompt:
-      'Write `depth(node)` for a folder tree like the one at the start of the chapter (every node has a `children` array). A node with no children has depth `1`. Otherwise its depth is one more than the deepest of its children. The chapter’s `docs` tree has depth `3` (docs → pics → cat.png).',
+    prompt: 'Write `depth(node)` for a folder tree like the one at the start of the chapter (every node has a `children` array). A node with no children has depth `1`. Otherwise its depth is one more than the deepest of its children. The chapter’s `docs` tree has depth `3` (docs → pics → cat.png).',
     starter: `function depth(node) {
   // your code here
 }
@@ -266,46 +263,111 @@ export const quiz = [
   {
     q: 'A recursive function walks a tree whose nodes have a `children` array. What is the natural base case?',
     options: [
-      { t: 'The root node', why: 'The root is where the walk starts, not where it stops.' },
-      { t: 'A node with no children (a leaf)', correct: true, why: 'There is nothing smaller to recurse on, so the answer is known directly.' },
-      { t: 'A node with exactly two children', why: 'Such a node still has children to recurse on.' },
-      { t: 'Trees do not need a base case', why: 'Every recursion needs one; for trees it is often hidden in a loop that runs zero times at a leaf.' },
+      {
+        t: 'The root node',
+        why: 'The root is where the walk starts, not where it stops.',
+      },
+      {
+        t: 'A node with no children (a leaf)',
+        correct: true,
+        why: 'There is nothing smaller to recurse on, so the answer is known directly.',
+      },
+      {
+        t: 'A node with exactly two children',
+        why: 'Such a node still has children to recurse on.',
+      },
+      {
+        t: 'Trees do not need a base case',
+        why: 'Every recursion needs one; for trees it is often hidden in a loop that runs zero times at a leaf.',
+      },
     ],
   },
   {
     q: 'A root has three children, and each of them is a leaf. What is `count(root)`?',
     options: [
-      { t: '3', why: 'The root counts itself as well: `total` starts at 1.' },
-      { t: '1', why: 'Each child adds its own count of 1.' },
-      { t: '4', correct: true, why: '1 for the root, plus 1 for each of the three leaves.' },
-      { t: '2', why: 'That would be the tree’s depth, not its number of nodes.' },
+      {
+        t: '3',
+        why: 'The root counts itself as well: `total` starts at 1.',
+      },
+      {
+        t: '1',
+        why: 'Each child adds its own count of 1.',
+      },
+      {
+        t: '4',
+        correct: true,
+        why: '1 for the root, plus 1 for each of the three leaves.',
+      },
+      {
+        t: '2',
+        why: 'That would be the tree’s depth, not its number of nodes.',
+      },
     ],
   },
   {
     q: 'In the tree for `(2 + 3) * 4`, which node is the root?',
     options: [
-      { t: 'The `add` node', why: 'The addition is inside the multiplication, so it is a child.' },
-      { t: 'The leaf `2`', why: 'Leaves are at the bottom.' },
-      { t: 'The leaf `4`', why: '`4` is the right child of the root.' },
-      { t: 'The `mul` node', correct: true, why: 'The multiplication is the last thing worked out, so it sits at the top, with the addition as its left child.' },
+      {
+        t: 'The `add` node',
+        why: 'The addition is inside the multiplication, so it is a child.',
+      },
+      {
+        t: 'The leaf `2`',
+        why: 'Leaves are at the bottom.',
+      },
+      {
+        t: 'The leaf `4`',
+        why: '`4` is the right child of the root.',
+      },
+      {
+        t: 'The `mul` node',
+        correct: true,
+        why: 'The multiplication is the last thing worked out, so it sits at the top, with the addition as its left child.',
+      },
     ],
   },
   {
     q: 'What does `show` (from the chapter) return for the tree of `1 + (2 * 3)`?',
     options: [
-      { t: "`'(1 + (2 * 3))'`", correct: true, why: 'Every operation gets its own brackets: the addition is the root, and the multiplication is its right child.' },
-      { t: "`'1 + 2 * 3'`", why: '`show` always adds a pair of brackets around each operation.' },
-      { t: "`'((1 + 2) * 3)'`", why: 'That is a different tree, with the addition inside the multiplication.' },
-      { t: '`7`', why: '`show` turns the tree back into text; it does not work out its value.' },
+      {
+        t: '`\'(1 + (2 * 3))\'`',
+        correct: true,
+        why: 'Every operation gets its own brackets: the addition is the root, and the multiplication is its right child.',
+      },
+      {
+        t: '`\'1 + 2 * 3\'`',
+        why: '`show` always adds a pair of brackets around each operation.',
+      },
+      {
+        t: '`\'((1 + 2) * 3)\'`',
+        why: 'That is a different tree, with the addition inside the multiplication.',
+      },
+      {
+        t: '`7`',
+        why: '`show` turns the tree back into text; it does not work out its value.',
+      },
     ],
   },
   {
     q: 'Why does a tree-walking interpreter for deeply nested programs risk a stack overflow?',
     options: [
-      { t: 'Trees take up too much memory to store', why: 'Storing the tree is fine. The problem is the calls made while walking it.' },
-      { t: 'It recurses once per level of nesting, and every level adds a frame to the call stack', correct: true, why: 'Deep enough nesting means more unfinished calls than the stack can hold.' },
-      { t: 'Interpreters cannot use recursion', why: 'They can, and the one in this book does.' },
-      { t: 'Strings in the program are too long', why: 'String length does not add frames.' },
+      {
+        t: 'Trees take up too much memory to store',
+        why: 'Storing the tree is fine. The problem is the calls made while walking it.',
+      },
+      {
+        t: 'It recurses once per level of nesting, and every level adds a frame to the call stack',
+        correct: true,
+        why: 'Deep enough nesting means more unfinished calls than the stack can hold.',
+      },
+      {
+        t: 'Interpreters cannot use recursion',
+        why: 'They can, and the one in this book does.',
+      },
+      {
+        t: 'Strings in the program are too long',
+        why: 'String length does not add frames.',
+      },
     ],
   },
 ];

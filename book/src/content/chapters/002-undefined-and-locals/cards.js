@@ -1,6 +1,5 @@
-// Cards for the second half of chapter 1 (split from 001-functions).
-// Keys are stable ids: several moved here from chapter 1 unchanged, so
-// readers keep their review history.
+// Chapter 2 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'no-return': {
@@ -63,8 +62,7 @@ console.log(tick(), tick());`,
 export const exercises = {
   greetOrStranger: {
     title: 'Hello, stranger',
-    prompt:
-      'Write `greet(name)` that **returns** `\'Hello, Ada!\'` when called as `greet(\'Ada\')`, and returns `\'Hello, stranger!\'` when called with no argument at all, as `greet()`.',
+    prompt: 'Write `greet(name)` that **returns** `\'Hello, Ada!\'` when called as `greet(\'Ada\')`, and returns `\'Hello, stranger!\'` when called with no argument at all, as `greet()`.',
     starter: `function greet(name) {
   // your code here
 }
@@ -137,8 +135,7 @@ test('no argument: a stranger', () => {
   distance: {
     optional: true,
     title: 'The distance between two points',
-    prompt:
-      'Using the given `square`, write `distance(x1, y1, x2, y2)` that returns the straight-line distance between the points (x1, y1) and (x2, y2): the square root of `square(x2 - x1) + square(y2 - y1)`.',
+    prompt: 'Using the given `square`, write `distance(x1, y1, x2, y2)` that returns the straight-line distance between the points (x1, y1) and (x2, y2): the square root of `square(x2 - x1) + square(y2 - y1)`.',
     starter: `function square(x) {
   return x * x;
 }
@@ -218,27 +215,63 @@ export const quiz = [
   {
     q: 'A function prints a number with `console.log` but has no `return`. You write `const r = f();`. What is `r`?',
     options: [
-      { t: 'The printed number', why: 'Printing does not hand a value back to the caller.' },
-      { t: '`undefined`', correct: true, why: 'With no `return`, every call produces `undefined`.' },
-      { t: '`null`', why: 'JavaScript uses `undefined` (not `null`) for “no return value”.' },
-      { t: 'An error', why: 'It is perfectly legal; `r` just ends up `undefined`.' },
+      {
+        t: 'The printed number',
+        why: 'Printing does not hand a value back to the caller.',
+      },
+      {
+        t: '`undefined`',
+        correct: true,
+        why: 'With no `return`, every call produces `undefined`.',
+      },
+      {
+        t: '`null`',
+        why: 'JavaScript uses `undefined` (not `null`) for “no return value”.',
+      },
+      {
+        t: 'An error',
+        why: 'It is perfectly legal; `r` just ends up `undefined`.',
+      },
     ],
   },
   {
     q: 'With `function greet(name) { return \'Hi \' + name; }`, what is `greet()`?',
     options: [
-      { t: 'An error: an argument is missing', why: 'JavaScript does not complain about missing arguments (Python and Java would).' },
-      { t: '`\'Hi \'`', why: 'The missing argument is not the empty string; it is `undefined`.' },
-      { t: '`\'Hi undefined\'`', correct: true, why: '`name` holds `undefined`, and `+` turns it into the word “undefined”.' },
+      {
+        t: 'An error: an argument is missing',
+        why: 'JavaScript does not complain about missing arguments (Python and Java would).',
+      },
+      {
+        t: '`\'Hi \'`',
+        why: 'The missing argument is not the empty string; it is `undefined`.',
+      },
+      {
+        t: '`\'Hi undefined\'`',
+        correct: true,
+        why: '`name` holds `undefined`, and `+` turns it into the word “undefined”.',
+      },
     ],
   },
   {
     q: 'Why can two different functions both have a local variable called `total` without any conflict?',
     options: [
-      { t: 'Each call keeps its local variables on its own private page', correct: true, why: 'Local variables live only in the call that created them, so they never collide.' },
-      { t: 'JavaScript renames one of them secretly', why: 'No renaming happens. Each call simply has its own page.' },
-      { t: 'The second one overwrites the first', why: 'They don’t share storage, so nothing is overwritten.' },
-      { t: 'They can’t; it causes an error', why: 'It is completely normal and allowed.' },
+      {
+        t: 'Each call keeps its local variables on its own private page',
+        correct: true,
+        why: 'Local variables live only in the call that created them, so they never collide.',
+      },
+      {
+        t: 'JavaScript renames one of them secretly',
+        why: 'No renaming happens. Each call simply has its own page.',
+      },
+      {
+        t: 'The second one overwrites the first',
+        why: 'They don’t share storage, so nothing is overwritten.',
+      },
+      {
+        t: 'They can’t; it causes an error',
+        why: 'It is completely normal and allowed.',
+      },
     ],
   },
   {
@@ -253,9 +286,19 @@ tick();
 console.log(tick());
 \`\`\``,
     options: [
-      { t: '`2`', why: 'The first call’s `count` was thrown away with its page; the second call starts again from 0.' },
-      { t: '`0`', why: 'Each call adds one before returning.' },
-      { t: '`1`', correct: true, why: 'Every call makes a fresh `count = 0`, adds one, and returns `1`.' },
+      {
+        t: '`2`',
+        why: 'The first call’s `count` was thrown away with its page; the second call starts again from 0.',
+      },
+      {
+        t: '`0`',
+        why: 'Each call adds one before returning.',
+      },
+      {
+        t: '`1`',
+        correct: true,
+        why: 'Every call makes a fresh `count = 0`, adds one, and returns `1`.',
+      },
     ],
   },
   {
@@ -269,9 +312,19 @@ area(3, 4);
 console.log(a);
 \`\`\``,
     options: [
-      { t: 'It prints `12`', why: '`a` lived only on the call’s page, which is gone by the last line.' },
-      { t: 'It prints `undefined`', why: 'There is no variable `a` at all out here, which is an error rather than `undefined`.' },
-      { t: 'It stops with `ReferenceError: a is not defined`', correct: true, why: 'The outside code cannot see a finished call’s local variables.' },
+      {
+        t: 'It prints `12`',
+        why: '`a` lived only on the call’s page, which is gone by the last line.',
+      },
+      {
+        t: 'It prints `undefined`',
+        why: 'There is no variable `a` at all out here, which is an error rather than `undefined`.',
+      },
+      {
+        t: 'It stops with `ReferenceError: a is not defined`',
+        correct: true,
+        why: 'The outside code cannot see a finished call’s local variables.',
+      },
     ],
   },
 ];

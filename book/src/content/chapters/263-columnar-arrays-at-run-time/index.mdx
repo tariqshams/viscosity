@@ -1,0 +1,290 @@
+---
+n: 263
+day: 24
+part: XIV
+title: 'Columnar arrays at run time: the research'
+tagline: 'Viscosity’s central idea came from researchers who taught a JavaScript engine to turn arrays of objects into columns while the program runs. Here is what they did, what they report, and why Viscosity does the same job in a completely different place.'
+objectives:
+  - Define columnar storage and relate it to struct-of-arrays.
+  - Describe the run-time approach of Makor et al. and Kloibhofer et al., as far as their abstracts state it.
+  - Explain control-flow duplication and why a run-time transformation needs it.
+  - Contrast run-time transformation with Viscosity’s ahead-of-time, proof-based rewrite, using the repo’s results.
+introduces: [columnar-storage, run-time-transformation]
+uses: [aos-vs-soa, materialization, array-of-objects, typed-array, float64, speculation, deoptimization, type-feedback, jit-compiler, tiering, partial-evaluation, self-optimizing-ast, engine-diversity, shape, elements-kind, static-analysis, benchmark-isolation, jit-warmup]
+sources: [makor2022, kloibhofer2023, graal-publications, graaljs-add, ziap2025, truffle-pe]
+---
+import TwoWaySteps from '../../../components/diagrams/ch263/TwoWaySteps';
+import E2EBars from '../../../components/diagrams/ch263/E2EBars';
+import Playground from '../../../components/playground/Playground';
+
+## Where the idea came from
+
+Back in *AoS vs SoA, measured* you saw struct-of-arrays beat an array of
+objects whenever a loop touches a few fields of many elements. Doing
+that rewrite by hand is tedious and easy to get wrong; so why does the
+engine not do it for you?
+
+Lukas Makor, Sebastian Kloibhofer and colleagues, whose papers appear
+in the GraalVM team's publication list, asked exactly that, and built
+an answer into GraalJS, the Truffle-based engine from *GraalJS and
+Truffle*<Cite id="makor2022" /><Cite id="graal-publications" />. Their
+work is the closest earlier work to Viscosity, and this chapter is a
+careful reading of it.
+
+<Callout kind="pitfall" label="What this chapter could check">
+The two papers themselves were not reachable when this chapter was
+written. Everything below about them sticks to what their abstracts
+and the GraalVM team's publication list say. For the details (which
+operations are supported, how storage changes back, the exact
+benchmarks), read the papers.
+</Callout>
+
+## Columnar storage
+
+<Analogy title="a spreadsheet saved two ways">
+A spreadsheet of people can be saved row by row, each person's name,
+age and city together; or column by column, all the names, then all
+the ages, then all the cities. To work out the average age you only
+want the second file's middle part; to print one person's address card
+you want the first.
+<span slot="breaks">A spreadsheet's columns are lined up on one sheet
+for you; in memory the columns are separate arrays, and only the code
+that writes them keeps entry 7 of one column matching entry 7 of
+another.</span>
+</Analogy>
+
+**Columnar** is the database word for the layout you know as SoA. The
+research describes it as a layout used in analytical applications,
+because it speeds up read-heavy work<Cite id="makor2022" />; a loop
+over particles that reads `x` and `vx` of every element is exactly
+that kind of work.
+
+<Callout kind="definition">
+**Columnar storage** keeps each field of a collection of records in its
+own contiguous array (a *column*), indexed by element number, instead
+of keeping each record's fields together. It is struct-of-arrays under
+a database name. Reading one field of many records touches only that
+field's column; rebuilding a whole record (materialisation) needs one
+read from every column.
+</Callout>
+
+<Examples of="columnar-storage">
+
+```js
+// rows: one object per record
+const ps = [{ x: 1, vx: 9 },
+            { x: 2, vx: 8 }];
+```
+
+```js
+// columns: one array per field
+const x = new Float64Array([1, 2]);
+const vx = new Float64Array([9, 8]);
+```
+
+```js
+// a read-heavy loop over columns
+let s = 0;
+for (let i = 0; i < n; i++) s += x[i];
+```
+
+</Examples>
+
+The first is the row layout every JavaScript program starts with: two
+records, each an object holding both fields. The second holds exactly
+the same four numbers as columns: all the `x` values in one
+`Float64Array`, all the `vx` values in another, and record 1 is
+whatever sits at index 1 of each. The third is the kind of work
+columns are for: summing one field reads one column from start to end
+and touches nothing else.
+
+<Prompts ids={['columnar-what', 'columnar-db']} />
+
+## Columns while the program runs
+
+Makor and colleagues transform arrays of JavaScript objects into
+columnar arrays automatically, *at run time*, inside the GraalJS
+engine; the transformation has a cost, which they amortise over the
+later accesses<Cite id="makor2022" /> (to **amortise** a cost is to pay
+it once and spread it over many later uses that each save a little).
+Running inside a speculating engine gives them two things a compiler
+reading source does not have: the real sizes and values of the arrays,
+and a way to recover from a wrong guess, deoptimisation (from
+*Speculation and deoptimisation*).
+
+<Analogy extra title="rearranging a shop during opening hours">
+A shop decides that its best sellers should sit together by the door,
+and moves them while customers are still inside. The move costs a
+morning's work, which is only worth it if those items keep selling;
+and until it is finished, every assistant has to check whether an item
+is on its old shelf or its new one.
+<span slot="breaks">A customer who finds an empty shelf can ask; a
+compiled loop cannot ask, so it must test which layout the array has
+before it reads, and fall back to slower code when the test says
+"old".</span>
+</Analogy>
+
+The follow-up paper starts from a weakness: by its abstract's account,
+the first approach had performance issues on smaller workloads and on
+more complex, nested data<Cite id="kloibhofer2023" />. Its answer has
+two parts. First, **control-flow duplication** in the Graal compiler:
+loops that may touch a columnar array are duplicated, and a check
+decides which copy runs. Second, a *multi-level* transformation for
+arrays of objects that contain objects, demonstrated with JavaScript
+`Date` objects, whose values become a column of their own. Their
+abstract reports TPC-H data-analytics queries running up to 10 times
+faster for particular queries, with the multi-level transformation
+adding around 2 times more<Cite id="kloibhofer2023" />.
+
+<Callout kind="definition">
+A **run-time transformation** changes a program's data layout while the
+program is running, using what the engine observes (sizes, types,
+access counts) to decide when it pays. Because the layout can change
+under compiled code, the code must check which layout it has (with
+guards, or duplicated paths) and fall back when a check fails.
+</Callout>
+
+<Formal title="When converting pays">
+
+```text
+convert ⇔ k × (t_rows − t_cols) > C
+```
+
+<span slot="read">Converting is worth it exactly when the number of
+later passes k, times the time each pass saves by reading columns
+rather than rows, is more than the one-off cost C of converting. A
+small array saves little per pass, so it needs many passes before the
+conversion pays, which is one way to see why small workloads are
+hard. (This is a simple model, not the papers' cost function.)</span>
+</Formal>
+
+<Examples of="run-time-transformation">
+
+```js
+// the shape of the idea, not their code
+if (ps.length > big && hot(ps))
+  toColumns(ps); // cost C, paid now
+```
+
+```js
+// a duplicated loop
+if (isColumnar(ps)) {
+  // fast copy: column reads only
+} else {
+  // the original loop, which must cope
+  // with either kind of storage
+}
+```
+
+```text
+cost C = 10 ms, each pass saves 2 ms:
+pays after 5 passes (10 / 2)
+```
+
+</Examples>
+
+The first is the decision: the engine converts only an array it has
+seen to be large and used often, and it pays the conversion cost then
+and there. The second is the shape of control-flow duplication: the
+compiled code keeps both versions of the loop and a cheap check picks
+one, because the layout could have changed since the code was
+compiled. The third puts made-up numbers into the formula: a 10 ms
+conversion that saves 2 ms per later pass breaks even after five
+passes, and an array that is only looped over twice should never be
+converted.
+
+<Prompts ids={['rtt-what', 'amortize', 'duplication-why']} />
+
+## The same job, somewhere else
+
+Viscosity asks the research's question in a different place: in a
+compiler that reads your source before anything runs. Step through the
+two side by side:
+
+<TwoWaySteps client:visible />
+
+The differences follow from where each one stands:
+
+- **Safety.** The engine can guess and deoptimise. Viscosity cannot, so
+  every use of the array must be one it can prove it rewrites
+  correctly; if not, it bails out and the array stays as objects.
+- **Cost.** The run-time version pays for converting during the run.
+  Viscosity's output allocates columns from the first `push`.
+- **Information.** The engine knows the real sizes. Viscosity has to
+  estimate them, leaves small arrays alone (64 elements by default),
+  or uses a profile you record.
+- **Reach.** The run-time version needs a modified engine. Viscosity's
+  output is plain JavaScript that runs anywhere.
+
+Try it: this is the real compiler. Then delete the line that adds
+`.tag` to one element, and watch the decision change:
+
+<Playground client:visible title="Can Viscosity prove it?" initial={`const ps = [];
+for (let i = 0; i < 1000; i++) {
+  ps.push({ x: i, vx: 1 });
+}
+ps[3].tag = 'odd';
+for (let t = 0; t < 10; t++) {
+  for (let i = 0; i < ps.length; i++) {
+    ps[i].x += ps[i].vx;
+  }
+}
+console.log(ps[0].x);`} />
+
+With `.tag` there, `explain` keeps `ps` as an array of objects and says
+why: line 5 "adds a new property .tag to an element". An engine would
+see that write happen and handle it at run time; Viscosity sees it in
+the source and does not transform at all.
+
+<Prompts ids={['aot-safety', 'no-deopt', 'bail-out-result']} />
+
+Here is what the ahead-of-time version achieved on this book's five
+end-to-end programs, in one recorded run:
+
+<E2EBars caption="Big wins where a loop reads a few fields of a large array; small ones for nbody, whose 1,500 bodies each read every field of the others, and boids." />
+
+Notice the same weakness the follow-up paper started from. In this
+book's microbenchmarks, gains shrink for small collections
+(FINDINGS.md, section 3), and Zap's TypeScript experiments found SoA
+losing when whole objects must be rebuilt<Cite id="ziap2025" />. Moving
+the decision earlier does not make that go away; it only changes who
+has to decide, and with what information.
+
+<Callout kind="engine" label="Under the hood">
+Both approaches need the same three things: a guarantee nobody can
+observe the old layout, specialised loops, and a reason to believe it
+pays. The research gets the first from speculation and deoptimisation,
+the second from the Graal compiler's control-flow duplication, and the
+third from run-time observation<Cite id="kloibhofer2023" />. Viscosity
+gets the first from static analysis with bail-outs, the second for free
+(its loops only ever see one layout), and the third from a cost model.
+Neither is strictly better: a run-time system adapts to the data it
+sees, while an ahead-of-time one is predictable, needs no special
+engine, and can explain every decision before you ship.
+</Callout>
+
+## Your turn
+
+The first exercise is the core one; the second is extra practice.
+
+<Exercise id="hotArray" />
+
+<Exercise id="twoCopies" />
+
+## What you learned
+
+- **Columnar storage** is struct-of-arrays by its database name: one
+  contiguous column per field.
+- **Run-time transformation** (Makor et al.) converts arrays of objects
+  into columns inside GraalJS while the program runs, amortising the
+  cost; the follow-up adds **control-flow duplication** and multi-level
+  columns (for `Date`), and reports large speed-ups on particular TPC-H
+  queries.
+- Converting pays only when enough later passes each save enough time.
+- Viscosity does the job **ahead of time**: safety by proof, a
+  **bail-out** that leaves the array untouched, no guards and no
+  deoptimisation.
+- Both pay off on large arrays and few fields, and struggle with small
+  ones and whole-object use.
+
+<Quiz />

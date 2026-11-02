@@ -1,0 +1,313 @@
+---
+n: 312
+day: 37
+part: XVII
+title: 'FFI and unsafe boundaries'
+tagline: 'Half the world’s useful code is written in C, and every operating system speaks it. Rust can call it, and be called by it, through one agreed way of passing arguments; what Rust cannot do is check the other side, which is why every crossing is unsafe.'
+objectives:
+  - Declare a C function in an unsafe extern "C" block, link it with a build script, and call it.
+  - Explain what the "C" ABI fixes (registers, layout, names) and why Rust's own ABI is not stable.
+  - Export a Rust function to C with extern "C" and no_mangle, and read the symbol table to check.
+  - Pass strings, slices and callbacks across the boundary with CString, raw pointers and extern "C" fn types.
+introduces: [ffi, extern-c]
+uses: [unsafe, raw-pointer, repr, size-of, slice, string-vs-str, option, result, rust-functions, crate, cargo, calling-convention, abi, register, object-file, linker, name-mangling, separate-compilation, callback]
+sources: [klabnik2026, rustref-external-blocks, nomicon-ffi, rustc-symbol-mangling, node-api]
+---
+import BoundarySteps from '../../../components/diagrams/ch312/BoundarySteps';
+import LinkFigure from '../../../components/diagrams/ch312/LinkFigure';
+
+## Code that was written in C
+
+Say a colleague hands you a small C file, `stats.c`, with one function
+in it:
+
+```c
+double mean(const double *xs, size_t n) {
+    if (n == 0) return 0.0;
+    double s = 0.0;
+    for (size_t i = 0; i < n; i++)
+        s += xs[i];
+    return s / (double)n;
+}
+```
+
+It takes a pointer to the first of `n` doubles, adds them up and
+divides. Real versions of this are compression libraries, databases
+and the operating system itself, all reachable through C, and
+rewriting them is rarely an option; Rust needs a way to call them, and
+to be called back. That way is the **foreign function
+interface**, or FFI.
+
+<Analogy title="a travel plug adaptor">
+Your laptop's plug does not fit a socket abroad, but an adaptor makes
+the pins line up, and the power flows. The "C" calling convention is
+the agreed shape of the pins: both sides put arguments and results in
+the same places, so the call goes through.
+<span slot="breaks">An adaptor matches the pins and says nothing about
+the voltage; plug a 110-volt device into 230 volts and it burns. FFI
+is the same: the shapes match, but nothing checks that the C code
+behaves as its declaration says, which is why calling it is
+`unsafe`.</span>
+</Analogy>
+
+<Analogy extra title="a shipping container">
+Any port's crane can lift any container, because the boxes come in one
+standard size with corners in standard places. A C function signature
+is a standard box: any language that knows the standard can hand one
+over.
+<span slot="breaks">A crane cannot see inside the box. If the label
+says "bananas" and it holds bricks, the crane does not know; Rust
+likewise trusts the `extern` declaration you wrote, and a wrong one
+(say `i32` where C has `long`) compiles and then misbehaves.</span>
+</Analogy>
+
+## Calling C from Rust
+
+<Figure takeaway="Rust and C are compiled separately and meet only at the linker, by symbol name." caption="Building the project. The build script compiles stats.c into a static library; rustc compiles main.rs; the linker joins them because both say mean.">
+  <LinkFigure />
+</Figure>
+
+Three pieces make the call work, in a scratch cargo project built for
+this chapter. A **build script**, `build.rs`, which cargo runs before
+compiling the crate, has one statement,
+`cc::Build::new().file("c/stats.c").compile("stats")`: the `cc` crate
+compiles `stats.c` into a static library and tells cargo to link it.
+Then `main.rs` *declares* the function, in an **`extern` block**, with
+Rust types that match C's, and calls it:
+
+```rust
+use std::ffi::c_double;
+
+unsafe extern "C" {
+    fn mean(xs: *const c_double,
+            n: usize) -> c_double;
+}
+
+fn safe_mean(xs: &[f64]) -> f64 {
+    // SAFETY: the pointer and length
+    // come from one live slice.
+    unsafe { mean(xs.as_ptr(), xs.len()) }
+}
+```
+
+`unsafe extern "C" { ... }` lists functions defined somewhere else, in
+the "C" ABI; Rust cannot see their bodies, so it trusts the signatures
+you write, and every call to one is `unsafe`<Cite id="rustref-external-blocks" />.
+(The `unsafe` before `extern` is required from the 2024 edition on,
+where a plain `extern "C" {` is an error, "extern blocks must be
+unsafe"; the 2021 edition accepts both.) `*const c_double` is a raw
+pointer, as in *Unsafe Rust*, and `usize` matches C's `size_t` on the
+platforms Rust supports. `safe_mean` wraps the call so callers never
+see a pointer: a slice is exactly "a pointer to the first element, and
+a length", the two things C wants. `cargo run` printed `3` for
+`[1.0, 2.0, 6.0]` and `0` for an empty slice.
+
+<Examples of="ffi">
+
+```rust
+unsafe extern "C" {
+    fn abs(x: c_int) -> c_int;
+}
+let a = unsafe { abs(-3) }; // 3
+```
+
+```rust
+let s = CString::new("héllo").unwrap();
+let n = unsafe { strlen(s.as_ptr()) };
+// 6: bytes, up to the NUL at the end
+```
+
+<Run id="libc-calls" />
+
+</Examples>
+
+The first calls `abs` from the C library, which Rust links by
+default<Cite id="nomicon-ffi" />, so no build script is needed. The second shows the
+string problem: a C string is a pointer to bytes ending in a zero byte
+(NUL), while a Rust `&str` has a length and no NUL. **`CString::new`**
+copies the text and adds the NUL, and refuses (with an `Err`) text that
+already contains one, since C would stop reading there<Cite id="nomicon-ffi" />.
+`strlen` counts bytes, so `héllo` is 6. The runnable example does both,
+and prints the error for `"a\0b"`: `Err(NulError(1, [97, 0, 98]))`,
+the NUL's position and the bytes.
+
+Two mistakes, with what rustc 1.97 says (trimmed and wrapped):
+
+```rust
+let a = abs(-3);
+// error[E0133]: call to unsafe function
+//   `abs` is unsafe and requires unsafe
+//   function or block
+
+unsafe extern "C" {
+    fn puts(s: String) -> i32;
+}
+// warning: `extern` block uses type
+//   `String`, which is not FFI-safe
+```
+
+The first is the rule from *Unsafe Rust*: functions in an `unsafe
+extern` block are unsafe to call. The second is a lint called
+`improper_ctypes`: a `String`'s layout is Rust's private business
+(three words, in an order Rust may change), so C cannot read one. Only
+types with a fixed, C-compatible layout cross the boundary: integers,
+floats, raw pointers, and structs marked `#[repr(C)]` from *Memory
+layout in Rust*.
+
+<Prompts ids={['ffi-what', 'extern-block', 'cstring', 'ffi-safe']} />
+
+## The "C" ABI
+
+What exactly is agreed? *Calling conventions and the ABI* answered this
+for RISC-V: which registers hold the arguments, where the result goes,
+who saves what. `extern "C"` means "use the convention the platform's
+C compiler uses", which the Reference words as "the default ABI chosen
+by the dominant C compiler for the target"<Cite id="rustref-external-blocks" />.
+On x86-64 Linux, `gcc` compiled `mean` to read the pointer from
+register `rdi`, the count from `rsi`, and leave the answer in `xmm0`:
+
+<BoundarySteps client:visible />
+
+Rust's *own* calling convention, the one plain `fn`s use, is
+deliberately unspecified: "The Rust ABI offers no stability
+guarantees"<Cite id="rustref-external-blocks" />, which lets the
+compiler pass arguments however is fastest and change its mind between
+versions. So anything that crosses to another language, in either
+direction, is marked `extern "C"`.
+
+Going the other way, a Rust function can be exported to C:
+
+```rust
+#[unsafe(no_mangle)]
+pub extern "C" fn add_squares(
+    a: i32,
+    b: i32,
+) -> i32 {
+    a * a + b * b
+}
+```
+
+`extern "C"` gives it the C calling convention, and **`no_mangle`**
+keeps its name as written. Without it, rustc renames every function,
+as *Modules and separate compilation* explained, so that names from
+different crates and generic copies cannot clash<Cite id="rustc-symbol-mangling" />.
+In a scratch crate built as a static library (`crate-type =
+["staticlib"]`), `nm` listed the exported function as plain
+`add_squares`, while an `extern "C"` function without the attribute
+appeared as `_RNvCs9LJNAIJthoq_2mg6hidden`, and a C program asking for
+`hidden` failed to link: `undefined reference to 'hidden'`. A C
+`main` that declares `int add_squares(int a, int b);` and calls it with
+3 and 4 printed `25`. (In the 2024 edition the attribute is written
+`#[unsafe(no_mangle)]`: without mangling, two libraries could export
+the same name, and making sure yours is safe to export is your
+job<Cite id="klabnik2026" />.)
+
+<Examples of="extern-c">
+
+```rust
+extern "C" fn twice(x: i32) -> i32 {
+    x * 2
+}
+// callable from C, through a pointer
+```
+
+```rust
+type Cmp = extern "C" fn(
+    *const c_void,
+    *const c_void,
+) -> c_int;
+// the type C's qsort wants for its
+// comparison callback
+```
+
+```rust
+extern "C" fn boom() {
+    panic!("boom");
+}
+// panic in a function that cannot
+// unwind ... aborting.
+```
+
+</Examples>
+
+The first is the smallest `extern "C"` function: a Rust body with C's
+calling convention, which C can call through a pointer. The second is
+the type of such a pointer, the comparison callback of C's `qsort`,
+which calls *back* into Rust for each pair (the optional exercise
+sorts with it). The third shows what happens
+when a panic tries to cross: C has no idea how to unwind a Rust panic,
+so a panic that would leave an `extern "C"` function stops the whole
+process instead. rustc 1.97's program printed the panic, then "panic
+in a function that cannot unwind", then "thread caused non-unwinding
+panic. aborting.", and exited with signal 6<Cite id="nomicon-ffi" />.
+
+<Callout kind="definition">
+The **foreign function interface (FFI)** is how code in one language
+calls code in another. In Rust, an **`unsafe extern "C"` block**
+declares foreign functions, every call to which is `unsafe`; an
+**`extern "C" fn`** is a Rust function with the C calling convention;
+and **`#[no_mangle]`** exports a function under its own name. Only
+types with a C-compatible layout should cross<Cite id="rustref-external-blocks" /><Cite id="nomicon-ffi" />.
+</Callout>
+
+<OtherLanguages title="Call C's abs(-3)">
+
+```rust
+unsafe extern "C" {
+    fn abs(x: c_int) -> c_int;
+}
+let a = unsafe { abs(-3) };
+```
+
+```c
+#include <stdlib.h>
+/* the declaration Rust copies: */
+int abs(int x);
+int a = abs(-3);
+```
+
+```ts
+// Node 22 has no built-in FFI. C is
+// wrapped in a native add-on built
+// against Node-API, then loaded:
+const { abs } = require('./abs.node');
+const a = abs(-3);
+```
+
+```python
+import ctypes
+libc = ctypes.CDLL(None)
+a = libc.abs(-3)  # 3
+```
+
+</OtherLanguages>
+
+C reads the declaration from a header; Rust needs you to copy it into
+an `extern` block (or have the `bindgen` tool generate it). Node.js
+cannot call C from JavaScript directly at all: C code is compiled into
+an add-on written against Node-API, which is itself a C interface that
+Node promises to keep ABI-stable across versions<Cite id="node-api" />. Python's
+`ctypes` loads the library at run time and assumes `int` unless told
+otherwise; Rust fixes the types at compile time, though it still
+cannot check them against the C code.
+
+<Prompts ids={['abi-why', 'no-mangle', 'callback', 'panic-cross']} />
+
+## Your turn
+
+<Exercise id="c-len" />
+
+<Exercise id="sort-down" />
+
+## What you learned
+
+- **FFI** lets Rust call C and C call Rust. Foreign functions are
+  declared in an **`unsafe extern "C"`** block and every call is
+  `unsafe`, because Rust cannot check the other side.
+- **`extern "C"`** fixes the calling convention, which Rust's own ABI
+  does not promise; **`no_mangle`** keeps a name for the linker.
+- Only C-compatible types cross: `CString` for text, a pointer and a
+  length for a slice, `extern "C" fn` for callbacks; a panic must not
+  cross, and aborts if it tries.
+
+<Quiz />

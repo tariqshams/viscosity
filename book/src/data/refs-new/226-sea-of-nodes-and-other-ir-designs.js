@@ -1,4 +1,4 @@
-// New references for chapter 226 (Sea of nodes and other IR designs).
+// New references for chapter 223 (Sea of nodes and other IR designs).
 // Checked 2026-11-02. This session could reach GitHub (raw files and code
 // search) and a web search engine, but not doi.org, dl.acm.org, dblp.org,
 // university pages or Wikipedia; each entry says exactly what was seen.
@@ -13,7 +13,7 @@ export default [
     url: 'https://hdl.handle.net/1911/16807',
     accessed: '2026-11-02',
     checkedAgainst: 'Search results only (the Rice repository, WorldCat and ProQuest pages were not reachable): WorldCat record OCLC 1031097124 with this title; its summary says the thesis gives a framework for describing optimizations, a way to combine two such frameworks, and an O(n log n) algorithm combining constant propagation, unreachable code elimination, global congruence finding and global value numbering, plus a parse-time peephole approach; Math Genealogy and Wikipedia give Rice University, 1995, advisor Keith D. Cooper; ProQuest lists it as No. 9610626; the Rice handle 1911/16807 was given in the results. Corroborated on GitHub by libfirm (include/libfirm/iroptimize.h: “CLiff Click’s combo algorithm from ‘Combining Analyses, combining Optimizations’ … Does conditional constant propagation, unreachable code elimination and optimistic global value numbering at once”). The thesis text was not opened.',
-    shaped: 'Chapter 226: the work out of which the sea of nodes came, where many optimizations run together on one graph.',
+    shaped: 'Chapter 223: the work out of which the sea of nodes came, where many optimizations run together on one graph.',
   },
   {
     id: 'clickpaleczny1995',
@@ -25,7 +25,7 @@ export default [
     url: 'https://doi.org/10.1145/202529.202534',
     accessed: '2026-11-02',
     checkedAgainst: 'Search results only: dblp’s IR 1995 listing (pp. 35–49); a later paper’s reference list giving the same title, venue, date and DOI 10.1145/202529.202534; a library catalogue record listing the proceedings as ACM SIGPLAN Notices v. 30, no. 3 (March 1995) with this paper among its contents; and snippets of the paper (“The intermediate representation is a graph-based, object-oriented structure, similar in spirit to an operator-level Program Dependence Graph or Gated Single Assignment form”; its edges represent use-def chains). The DOI landing page itself could not be opened.',
-    shaped: 'Chapter 226: the sea of nodes as Click and Paleczny described it, one graph whose edges are uses.',
+    shaped: 'Chapter 223: the sea of nodes as Click and Paleczny described it, one graph whose edges are uses.',
   },
   {
     id: 'simple-son-gcm',
@@ -37,7 +37,7 @@ export default [
     url: 'https://github.com/SeaOfNodes/Simple/blob/main/chapter13/README.md',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/SeaOfNodes/Simple/main/chapter13/README.md, read raw: “Schedule Early … We schedule each data node to the first control block where they are dominated by their inputs”; “Schedule Late … move data nodes to a block between the first block calculated above, and the last control block where they dominate all their uses. The placement is subject to the condition that it is in the shallowest loop nest possible, and is as control dependent as possible”; “Floating nodes receive the deepest input block as their earliest placement”. The repository README (main branch) says it “is intended to demonstrate the Sea-of-Nodes compiler IR” and lists Click’s “Global Code Motion Global Value Numbering” among its references.',
-    shaped: 'Chapter 226: the early and late schedules of global code motion, and the rule for choosing between them.',
+    shaped: 'Chapter 223: the early and late schedules of global code motion, and the rule for choosing between them.',
   },
   {
     id: 'lattner2021',
@@ -49,7 +49,7 @@ export default [
     url: 'https://doi.org/10.1109/CGO51591.2021.9370308',
     accessed: '2026-11-02',
     checkedAgainst: 'The MLIR project’s own FAQ, read raw from https://raw.githubusercontent.com/llvm/mlir-www/main/website/content/getting_started/Faq.md: “To cite MLIR in academic or other publications, please use: Chris Lattner, Mehdi Amini, Uday Bondhugula, Albert Cohen, Andy Davis, Jacques Pienaar, River Riddle, Tatiana Shpeisman, Nicolas Vasilache, and Oleksandr Zinenko. ‘MLIR: Scaling compiler infrastructure for domain specific computation.’ In 2021 IEEE/ACM International Symposium on Code Generation and Optimization (CGO), pp. 2-14. IEEE, 2021”, with BibTeX doi={10.1109/CGO51591.2021.9370308}, and the request not to cite the arXiv preprint. Also search results (Google Research publication page). The paper text was not opened.',
-    shaped: 'Chapter 226: MLIR as a framework of many dialects.',
+    shaped: 'Chapter 223: MLIR as a framework of many dialects.',
   },
   {
     id: 'mlir-langref',
@@ -61,7 +61,7 @@ export default [
     url: 'https://mlir.llvm.org/docs/LangRef/',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/mlir/docs/LangRef.md, read raw. Introduction: MLIR (Multi-Level IR) is “a compiler intermediate representation with similarities to traditional three-address SSA representations”. High-Level Structure: “MLIR is fundamentally based on a graph-like data structure of nodes, called Operations, and edges, called Values … Operations are contained in Blocks and Blocks are contained in Regions … Operations may also contain regions”. Dialects: “Dialects are the mechanism by which to engage with and extend the MLIR ecosystem … Each dialect is given a unique namespace that is prefixed to each defined attribute/operation/type … MLIR allows for multiple dialects, even those outside of the main tree, to co-exist together within one module. Dialects are produced and consumed by certain passes.” Also https://raw.githubusercontent.com/llvm/llvm-project/main/mlir/docs/Rationale/Rationale.md: “MLIR’s design allows a progressive lowering to target-specific forms.”',
-    shaped: 'Chapter 226: operations, values, regions and dialects; progressive lowering.',
+    shaped: 'Chapter 223: operations, values, regions and dialects; progressive lowering.',
   },
   {
     id: 'mlir-toy',
@@ -73,7 +73,7 @@ export default [
     url: 'https://mlir.llvm.org/docs/Tutorials/Toy/Ch-5/',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/mlir/docs/Tutorials/Toy/Ch-5.md and Ch-6.md, read raw. Ch-5: “we will show how to perform progressive lowering through a mix of dialects coexisting in the same function”; the example main (toy.constant, toy.transpose, toy.mul, toy.print) becomes memref.alloc, affine.store, nested affine.for loops with affine.load and arith.mulf, while toy.print stays (“toy.print … will still need its operands”, kept legal during the partial lowering). Ch-6: “we will finally lower to LLVM”, “a full conversion to the LLVM dialect”, toy.print lowered to a loop nest calling printf; the output uses llvm.load, llvm.call @printf, llvm.br and llvm.return.',
-    shaped: 'Chapter 226: a worked example of partial, then full, lowering through dialects.',
+    shaped: 'Chapter 223: a worked example of partial, then full, lowering through dialects.',
   },
   {
     id: 'flanagan1993',
@@ -85,6 +85,6 @@ export default [
     url: 'https://doi.org/10.1145/155090.155113',
     accessed: '2026-11-02',
     checkedAgainst: 'The dblp-derived record conf/pldi/FlanaganSDF93 in github.com/slebok/bibsleigh (corpus/PLT/1993/PLDI-1993/PLDI-1993-FlanaganSDF.json, read raw): authors, title, PLDI 1993, pp. 237–247, doi 10.1145/155090.155113. Search results describing the paper (a copy at cs.tufts.edu): compilers that translate to continuation-passing style can get the same results with a source-level transformation to A-normal form, and the CPS machine is identical to one for A-normal forms. The paper text was not opened.',
-    shaped: 'Chapter 226: continuation-passing style and A-normal form as IR designs.',
+    shaped: 'Chapter 223: continuation-passing style and A-normal form as IR designs.',
   },
 ];

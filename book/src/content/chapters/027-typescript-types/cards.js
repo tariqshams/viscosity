@@ -1,10 +1,5 @@
-// Chapter 27 cards. Keys are stable ids: never rename them.
-//
-// The in-page runner erases TypeScript types (sucrase) and never checks
-// them, and scripts/check_chapters.mjs runs code as plain JavaScript. So
-// every example, solution and wrong attempt here is valid JavaScript, the
-// exercises set lang: 'ts' so readers may add annotations, and the typed
-// version of each solution is shown in its walkthrough.
+// Chapter 27 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'ts-what': {
@@ -66,8 +61,7 @@ export const exercises = {
   fixTotal: {
     lang: 'ts',
     title: 'The bug tsc would have caught',
-    prompt:
-      '`tsc` rejects this function with “Type \'string\' is not assignable to type \'number\'” on the `return` line. Run it first to see what goes wrong at runtime, then fix it so `total(xs)` returns the sum of the numbers in `xs`, and `0` for an empty array. (The runner removes types without checking them, so the tests check what the code *does*.)',
+    prompt: '`tsc` rejects this function with “Type \'string\' is not assignable to type \'number\'” on the `return` line. Run it first to see what goes wrong at runtime, then fix it so `total(xs)` returns the sum of the numbers in `xs`, and `0` for an empty array. (The runner removes types without checking them, so the tests check what the code *does*.)',
     starter: `function total(xs: number[]): number {
   let t = '0';
   for (const x of xs) {
@@ -157,42 +151,95 @@ export const quiz = [
   {
     q: 'With `function mul(a: number, b: number): number`, what happens to the line `mul(\'3\', 4);` when you run `tsc`?',
     options: [
-      { t: 'It reports that a string is not assignable to a parameter of type number', correct: true, why: 'The argument `\'3\'` breaks the label `a: number`, and the checker finds it without running anything.' },
-      { t: 'Nothing: `\'3\' * 4` is 12, so it works', why: 'At runtime JavaScript would happily turn `\'3\'` into 3. But `tsc` checks the labels, not the arithmetic.' },
-      { t: 'It converts `\'3\'` to the number 3 for you', why: 'TypeScript never changes your values; it only reports problems.' },
-      { t: 'The program crashes when it reaches that line', why: 'Type errors are reported before the program runs, by a separate step.' },
+      {
+        t: 'It reports that a string is not assignable to a parameter of type number',
+        correct: true,
+        why: 'The argument `\'3\'` breaks the label `a: number`, and the checker finds it without running anything.',
+      },
+      {
+        t: 'Nothing: `\'3\' * 4` is 12, so it works',
+        why: 'At runtime JavaScript would happily turn `\'3\'` into 3. But `tsc` checks the labels, not the arithmetic.',
+      },
+      {
+        t: 'It converts `\'3\'` to the number 3 for you',
+        why: 'TypeScript never changes your values; it only reports problems.',
+      },
+      {
+        t: 'The program crashes when it reaches that line',
+        why: 'Type errors are reported before the program runs, by a separate step.',
+      },
     ],
   },
   {
     q: '`let total = 0;` has no annotation. What type does the checker give `total`?',
     options: [
-      { t: 'None: unlabelled names are never checked', why: 'Where you give a starting value, TypeScript works out a type from it.' },
-      { t: '`string`', why: '`0` without quotes is a number.' },
-      { t: '`number`, inferred from the starting value `0`', correct: true, why: 'That is inference: assigning a string to `total` later would be reported.' },
+      {
+        t: 'None: unlabelled names are never checked',
+        why: 'Where you give a starting value, TypeScript works out a type from it.',
+      },
+      {
+        t: '`string`',
+        why: '`0` without quotes is a number.',
+      },
+      {
+        t: '`number`, inferred from the starting value `0`',
+        correct: true,
+        why: 'That is inference: assigning a string to `total` later would be reported.',
+      },
     ],
   },
   {
     q: 'A program takes an hour to run, and has a type error on its last line. When does `tsc` report it?',
     options: [
-      { t: 'After an hour, when the line is reached', why: 'The checker does not run the program at all.' },
-      { t: 'Straight away: it reads the whole file before anything runs', correct: true, why: 'Type checking compares types line by line without running any code.' },
-      { t: 'Never: only lines that run are checked', why: 'Every line is checked, including ones that would never run.' },
+      {
+        t: 'After an hour, when the line is reached',
+        why: 'The checker does not run the program at all.',
+      },
+      {
+        t: 'Straight away: it reads the whole file before anything runs',
+        correct: true,
+        why: 'Type checking compares types line by line without running any code.',
+      },
+      {
+        t: 'Never: only lines that run are checked',
+        why: 'Every line is checked, including ones that would never run.',
+      },
     ],
   },
   {
     q: 'What does `function isDigit(c: string): boolean` promise?',
     options: [
-      { t: 'It takes a boolean and returns a string', why: 'The label after `c` is the parameter’s type; the one after the parentheses is the result’s.' },
-      { t: 'It takes a string and returns `true` or `false`', correct: true, why: '`c: string` labels the parameter, and `: boolean` labels the return value.' },
-      { t: 'It checks at run time that `c` is a string', why: 'Annotations are checked by `tsc` before running, not by the program while it runs.' },
+      {
+        t: 'It takes a boolean and returns a string',
+        why: 'The label after `c` is the parameter’s type; the one after the parentheses is the result’s.',
+      },
+      {
+        t: 'It takes a string and returns `true` or `false`',
+        correct: true,
+        why: '`c: string` labels the parameter, and `: boolean` labels the return value.',
+      },
+      {
+        t: 'It checks at run time that `c` is a string',
+        why: 'Annotations are checked by `tsc` before running, not by the program while it runs.',
+      },
     ],
   },
   {
     q: 'In Python, `def mul(a: int, b: int) -> int` is called as `mul(\'3\', 4)`. What happens when the program runs?',
     options: [
-      { t: 'Python refuses to run the call', why: 'Python itself ignores type hints; only a separate checker such as mypy would complain.' },
-      { t: 'It returns 12', why: 'Python does not turn `\'3\'` into a number for `*`.' },
-      { t: 'It returns `\'3333\'`: the hints are not enforced, and `\'3\' * 4` repeats the string', correct: true, why: 'That is a real difference from Java, which refuses to compile a call like this.' },
+      {
+        t: 'Python refuses to run the call',
+        why: 'Python itself ignores type hints; only a separate checker such as mypy would complain.',
+      },
+      {
+        t: 'It returns 12',
+        why: 'Python does not turn `\'3\'` into a number for `*`.',
+      },
+      {
+        t: 'It returns `\'3333\'`: the hints are not enforced, and `\'3\' * 4` repeats the string',
+        correct: true,
+        why: 'That is a real difference from Java, which refuses to compile a call like this.',
+      },
     ],
   },
 ];

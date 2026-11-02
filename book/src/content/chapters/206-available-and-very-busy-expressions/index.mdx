@@ -1,0 +1,260 @@
+---
+n: 206
+day: 10
+part: XII
+title: 'Available and very busy expressions'
+tagline: 'Has this sum already been worked out on every path to here? Will every path ahead work it out anyway? Two “must” questions, one looking back and one looking forward, from the same gen and kill sets.'
+objectives:
+  - Compute gen and kill sets for expressions, and say how they differ from those for definitions.
+  - Solve available expressions (forward, intersection) and use the answer to reuse a computed value.
+  - Solve very busy expressions (backward, intersection) and use the answer to hoist a computation.
+  - Place the four classic problems by direction and meet.
+introduces: [available-expressions, very-busy-expressions]
+uses: [gen-kill, reaching-definitions, dataflow, lattice, fixpoint, worklist, cfg, basic-block, three-address-code, temporary, set, array, function]
+sources: [aho2006, kildall1973, coopertorczon2022]
+---
+import AvailSteps from '../../../components/diagrams/ch206/AvailSteps';
+import BusyFigure from '../../../components/diagrams/ch206/BusyFigure';
+
+## Work already done
+
+Look at this three-address code (the last line is in the block where
+the two branches join):
+
+```text
+b0: x = a + b
+    if c goto b1 else b2
+b1: y = a * b
+    goto b3
+b2: a = 0
+    y = a * b
+b3: z = a + b
+    w = a * b
+```
+
+Can `w = a * b` reuse a value instead of multiplying again? On the path
+through b1, `y` holds `a * b` and `a` has not changed since; on the path
+through b2, `a` changed, but then `y = a * b` worked it out again with
+the new `a`. Either way `y` already holds the answer, so `w = y` would
+do. What about `z = a + b`? Through b1 it was computed in b0 and nothing
+changed since, but through b2 `a` changed after it, so it must really
+be computed. The question "has this been computed on **every** path to
+here, with no operand changed since?" is a **must** question, and the
+expressions for which the answer is yes are called **available**.
+
+<Analogy title="did I lock the door?">
+You may skip going back to check the front door only if every way you
+could have left the house included locking it, and nobody has opened
+it since. One route where you rushed out, or someone came back in for
+their keys, and you have to check.
+<span slot="breaks">You can walk back and look; a compiler has to
+decide from the plan of the program alone, so "not sure" always counts
+as "not locked".</span>
+</Analogy>
+
+The gen and kill sets are now sets of expressions. A block **generates**
+an expression it computes, as long as it does not change one of its
+operands later in the block; it **kills** every expression that uses a
+variable it assigns. Then the transfer function is the familiar
+`OUT = gen ∪ (IN − kill)`. Step through the example:
+
+<AvailSteps client:visible />
+
+<Callout kind="definition">
+An expression `e` is **available** at a point `p` if every path from
+the entry to `p` computes `e`, and none of `e`'s operands is assigned
+after that computation on the way to `p`. **Available expressions** is
+a forward "must" problem: the meet is intersection, nothing is
+available at the entry, and every other OUT starts with all
+expressions<Cite id="aho2006" />.
+</Callout>
+
+<Formal title="Available expressions">
+
+```text
+IN[entry] = ∅
+IN[B]  = ⋂ OUT[P]   for P ∈ pred(B)
+OUT[B] = gen[B] ∪ (IN[B] − kill[B])
+start: OUT[B] = U for every B
+```
+
+<span slot="read">Nothing is available at the start of the function.
+Every other block's IN is the intersection of its predecessors' OUT
+sets: available only if available on every way in. Its OUT is its gen
+set together with what was available at its start minus what it
+kills. U stands for the set of all the expressions in the function,
+the top of this lattice, which intersection leaves alone.</span>
+</Formal>
+
+<Examples of="available-expressions">
+
+```text
+t = a + b
+u = a + b    →  u = t
+```
+
+```text
+t = a + b
+a = 1
+u = a + b    (not available: a changed)
+```
+
+```text
+b3 in the example:  IN = {a*b}
+w = a * b    →  w = y
+```
+
+</Examples>
+
+The first is the simplest reuse: nothing between the two lines changes
+`a` or `b`, so the second sum can copy `t`. The second is the kill:
+assigning `a` destroys every expression that uses `a`. The third is the
+diamond's answer, where `a * b` survives on both paths and `a + b` does
+not. A careful case: `a = a + b` computes `a + b` and then kills it at
+once, so it is *not* in its block's gen set.
+
+<Prompts ids={['avail-what', 'avail-kill', 'avail-start', 'self-kill']} />
+
+## Work that will be done anyway
+
+Now look the other way, into the future. In this diamond both branches
+compute `a + b` before anything changes `a` or `b`:
+
+```text
+b0: if c goto b1 else b2
+b1: x = a + b
+    y = a * 2
+    goto b3
+b2: y = a + b
+    a = 0
+b3: z = a * 2
+```
+
+Whichever way the test goes, `a + b` is the next thing computed from
+those operands; so the compiler could compute it once, in b0, into a
+temporary, and have both branches use it, which makes the code smaller.
+`a * 2` is different: b1 computes it, but b2 changes `a` first, so on
+that path the value computed in b0 would be the wrong one. Expressions
+like `a + b` here are called **very busy**.
+
+<Analogy extra title="packing an umbrella">
+If every route you might take tomorrow walks you through rain before
+you would pass a shop that sells umbrellas, you might as well pack one
+now. If even one route stays dry, or passes a shop first, packing it is
+not certain to pay off.
+<span slot="breaks">Packing an umbrella you never use costs a little
+weight; a compiler that hoists a computation onto a path that never
+needed it might compute something that throws an error, so it insists
+on "every path".</span>
+</Analogy>
+
+Because the question is about what happens *later*, facts flow
+backward: a block's OUT is the meet of its successors' IN. Gen is now
+the expressions a block computes **before** it assigns any of their
+operands (`y = a + b` comes before `a = 0` in b2, so `a + b` is in
+b2's gen), and kill is, as before, every expression using a variable the
+block assigns.
+
+<Figure takeaway="Very busy expressions flow backward; one that is very busy at a branch can be computed once, before it." caption="Each block’s IN and OUT, computed from the exit upwards. a + b is very busy at the end of b0, so it can be hoisted there; a * 2 is not, because b2 changes a first.">
+  <BusyFigure />
+</Figure>
+
+<Callout kind="definition">
+An expression `e` is **very busy** at a point `p` if every path from
+`p` to the exit computes `e` before any of its operands is assigned.
+**Very busy expressions** is a backward "must" problem: the meet is
+intersection over successors, nothing is very busy at the exit, and
+every other IN starts with all expressions.
+</Callout>
+
+<Formal title="Very busy expressions">
+
+```text
+OUT[exit] = ∅
+OUT[B] = ⋂ IN[S]    for S ∈ succ(B)
+IN[B]  = gen[B] ∪ (OUT[B] − kill[B])
+start: IN[B] = U for every B
+```
+
+<span slot="read">Nothing is very busy at the end of the function.
+Every other block's OUT is the intersection of its successors' IN sets:
+busy only if every way out computes it. Its IN is its gen set together
+with its OUT minus what it kills. The equations are the available
+expressions ones turned round, IN and OUT swapping places and
+predecessors becoming successors.</span>
+</Formal>
+
+<Examples of="very-busy-expressions">
+
+```text
+if c { x = a + b } else { y = a + b }
+a + b is very busy at the if
+```
+
+```text
+if c { x = a + b }
+else { a = 0; y = a + b }
+not very busy: a changes first
+```
+
+<Run id="busy" />
+
+</Examples>
+
+The first is the textbook case for hoisting: both branches start with
+the same computation. The second shows the kill: the `else` branch
+assigns `a` before computing `a + b`, so a value computed at the `if`
+would be stale on that path. The runnable one computes the figure's
+table from the exit upwards and prints `b0 IN a+b`; empty b2's `gen` list
+(as if it assigned `a` first) and watch `a+b` disappear from b0.
+
+<Prompts ids={['busy-what', 'busy-backward', 'busy-gen']} />
+
+## Four problems, two choices
+
+Every classic problem is a choice of direction and a choice of meet:
+
+| problem | direction | meet | asks |
+|---|---|---|---|
+| reaching definitions | forward | ∪ | which definitions may reach |
+| available expressions | forward | ∩ | computed on every path behind |
+| very busy expressions | backward | ∩ | computed on every path ahead |
+| live variables | backward | ∪ | may be read later |
+
+The fourth, **live variables**, is the one the Liveness chapter
+introduces properly, to find assignments nobody reads. And the
+later chapter on partial redundancy elimination combines a backward
+"will be computed" question with a forward "has been computed" one to
+move computations to the best place<Cite id="coopertorczon2022" />.
+
+<Prompts ids={['four-problems']} />
+
+<Callout kind="engine" label="Under the hood">
+Kildall's 1973 framework was built to drive exactly this kind of
+optimisation: common subexpression elimination across blocks is the
+use of available expressions<Cite id="kildall1973" />. The standard
+textbook treats available expressions alongside reaching definitions
+and live variables, with the same gen and kill sets you have used
+here<Cite id="aho2006" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="available" />
+
+## What you learned
+
+- **Available expressions**: computed on every path to here with no
+  operand changed since. Forward, intersection, OUT starting at all
+  expressions. It lets a later computation reuse an earlier value.
+- **Very busy expressions**: computed on every path from here before
+  any operand changes. Backward, intersection, IN starting at all
+  expressions. It lets a computation be hoisted above a branch.
+- For expressions, kill means "uses a variable the block assigns", and
+  gen depends on direction: computed *after* the last change of an
+  operand (available) or *before* the first (very busy).
+
+Next: why every one of these analyses was certain to stop, in the
+language of lattices, and a way of thinking that covers them all.
+
+<Quiz />

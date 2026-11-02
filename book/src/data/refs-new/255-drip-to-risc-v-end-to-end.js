@@ -1,5 +1,5 @@
-// New references for chapter 255 and its staged second half, 240-b.
-// Checked 2026-11-02. Chapters 255 and 255-b also rely on riscv-isa-unpriv,
+// New references for chapter 250 and its staged second half, 240-b.
+// Checked 2026-11-02. Chapters 250 and 250-b also rely on riscv-isa-unpriv,
 // riscv-psabi and riscv-asm-manual (refs-new/230-machine-code-and-assembly.js);
 // for the facts these chapters use from them, the following source files were
 // re-read raw from GitHub in this session: riscv-isa-manual
@@ -28,6 +28,6 @@ export default [
     url: 'https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-elf.adoc',
     accessed: '2026-11-02',
     checkedAgainst: 'riscv-elf.adoc at commit 9b2767e2a8851709608c4e1452998ad232d6278b, read raw: the relocation table (19 CALL_PLT, “32-bit PC-relative function call, macros call, tail (PIC)”; CALL is deprecated in its favour); “Unconditional jump (J-Type) instructions have a R_RISCV_JAL relocation” and “Branch (B-Type) instructions have a R_RISCV_BRANCH relocation that can represent an even signed 13-bit offset”; the Linker Relaxation section: relaxation “may delete bytes (and thus invalidate references that are commonly resolved at compile-time, such as intra-function jumps), code generators must in general ensure that relocations are always emitted when relaxation is enabled”, and function-call relaxation can turn AUIPC+JALR into JAL. Also observed: llvm-mc 18.1.3 resolves local branches and leaves R_RISCV_CALL_PLT on each call; clang 18.1.3 --target=riscv64 -c leaves R_RISCV_BRANCH and R_RISCV_JAL on local branches too, and with -mno-relax produces the same bytes as llvm-mc.',
-    shaped: 'Chapter 255-b: what the relocations in the compiled Drip program mean, and why clang leaves even local branches to the linker.',
+    shaped: 'Chapter 250-b: what the relocations in the compiled Drip program mean, and why clang leaves even local branches to the linker.',
   },
 ];

@@ -73,21 +73,25 @@ export async function neighbours(key: string): Promise<{ prev: ReadingLink | nul
   return { prev: all[i - 1] ?? null, next: all[i + 1] ?? null };
 }
 
-/** The whole curriculum, written or planned, grouped into days. */
+/**
+ * The whole curriculum grouped into days. Days count within a section (the
+ * core path is days 1–30); the plan lists the core first, then the Prelude,
+ * then the deep dives.
+ */
 export async function curriculum() {
-  // Every chapter, written or planned, in outline order. Parts no longer
-  // start on day boundaries (chapters are inserted and split), so the part
-  // of each chapter comes from the outline itself, not from day ranges.
   const written = await allChapters();
   const byN = new Map(written.map((c) => [c.data.n, c]));
-  const entries: { n: number; title: string; part: string; href: string | null }[] = OUTLINE.map((c) => {
+  const entries: { n: number; title: string; part: string; section: string; href: string | null }[] = OUTLINE.map((c) => {
     const w = byN.get(c.n);
-    return { n: c.n, part: c.part, title: w ? w.data.title : c.title, href: w ? chapterHref(w) : null };
+    return { n: c.n, part: c.part, section: c.section, title: w ? w.data.title : c.title, href: w ? chapterHref(w) : null };
   });
-  const days: { day: number; part: string; chapters: typeof entries }[] = [];
-  for (let i = 0; i < entries.length; i += CHAPTERS_PER_DAY) {
-    const chunk = entries.slice(i, i + CHAPTERS_PER_DAY);
-    days.push({ day: i / CHAPTERS_PER_DAY + 1, part: chunk[0].part, chapters: chunk });
+  const days: { section: string; day: number; part: string; chapters: typeof entries }[] = [];
+  for (const section of ['core', 'prelude', 'deep']) {
+    const inSection = entries.filter((e) => e.section === section);
+    for (let i = 0; i < inSection.length; i += CHAPTERS_PER_DAY) {
+      const chunk = inSection.slice(i, i + CHAPTERS_PER_DAY);
+      days.push({ section, day: i / CHAPTERS_PER_DAY + 1, part: chunk[0].part, chapters: chunk });
+    }
   }
   return { entries, days };
 }

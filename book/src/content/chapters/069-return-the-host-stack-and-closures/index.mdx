@@ -1,0 +1,1039 @@
+---
+n: 69
+day: 6
+part: III
+title: 'Return, the host stack and closures'
+tagline: 'A return statement can sit deep inside loops and ifs, yet it has to leave all of them at once. The interpreter does it by having every statement report how it finished.'
+objectives:
+  - Explain why return has to leave several nested statements, and several interpreter methods, at once.
+  - Trace a return through the companion's completion codes, from the return statement to the edge of the call.
+  - Compare completion codes with throwing an exception, and say what each design costs.
+  - Predict what a Drip call returns with a value, with a bare return, and with no return at all.
+  - Explain how a tree-walker reuses its host language's call stack, and count the host methods a Drip call adds.
+  - Read a Drip stack trace, and explain how the frames array produces it.
+  - Explain Drip's depth limit, and how stack overflow is reported in Drip's words.
+  - Weigh what borrowing the host stack gives and what it costs.
+  - Explain which environment a Drip function stores, and why it is the one current when the function is made.
+  - Trace a call whose new environment hangs off the function's captured environment, and predict what it can see.
+  - Explain why closures capture variables rather than copies of values.
+  - Predict what closures made in a for loop and in a while loop print, and say why they differ.
+  - Explain why an environment can outlive the call that made it, and what keeps it alive.
+  - Say when an environment can be reclaimed, in terms of what refers to it.
+  - Predict what closures made in the same call see when one of them changes a shared variable.
+  - Name the cost of making every environment a heap object, and how the VM avoids it.
+introduces: [return-unwinding, host-stack, captured-environment, environment-lifetime]
+uses: [callable, arity, native-function, return, call, function, local-variable, recursion, base-case, call-stack, throw, try-catch, environment, scope-chain, control-flow, desugaring, while-loop, evaluate, tree-walking-interpreter, runtime-value, runtime-error, ast-node, drip, drip-list, index-expression, for-in-loop, typescript, discriminated-union, variables, numbers, comparison, if, console-log, stack-overflow, error-object, closure, lexical-scope, nested-function, shadowing, global-variable, reference, parameter, for-loop, stack-and-heap]
+sources: [mdn-call-stack, mdn-too-much-recursion, mdn-closures]
+---
+import ReturnSteps from '../../../components/diagrams/ch069/ReturnSteps';
+import UnwindFigure from '../../../components/diagrams/ch069/UnwindFigure';
+import HostFrames from '../../../components/diagrams/ch069/HostFrames';
+import TraceSteps from '../../../components/diagrams/ch069/TraceSteps';
+import KeptEnvSteps from '../../../components/diagrams/ch069/KeptEnvSteps';
+import SharedLoopEnv from '../../../components/diagrams/ch069/SharedLoopEnv';
+import LifetimeSteps from '../../../components/diagrams/ch069/LifetimeSteps';
+import SharedBox from '../../../components/diagrams/ch069/SharedBox';
+
+{/* ── merge: from old chapter 69, Return and the call stack ── */}
+
+## A way out from deep inside
+
+Drip functions can do work, but so far the only way to get an answer out
+of one is to print it. They need `return`. Here is a function that finds
+the first whole number whose square is bigger than a limit:
+
+```
+fn find(limit) {
+  let i = 0;
+  while true {
+    if i * i > limit {
+      return i;
+    }
+    i += 1;
+  }
+}
+print find(50); # 8
+```
+
+The `while true` loop would go round forever on its own; each time round
+the `if` asks whether `i * i` has passed the limit, and the first `i`
+for which it has is 8 (7 × 7 is 49, 8 × 8 is 64), so `return i;` hands
+8 back.
+
+Now think about where the interpreter *is* when it reaches `return i;`.
+It is not in one place; it is inside a whole pile of its own TypeScript
+method calls, each one half-way through its work:
+
+```text
+callFunction           the call of find
+  executeBlock         find's body
+    execute(while)     going round
+      executeBlock     the loop body
+        execute(if)
+          execute(block)
+            executeBlock
+              execute(return)
+```
+
+`execute(while)` is in the middle of a loop that would never end by
+itself, and two `executeBlock`s are each half-way down a list of
+statements. `return` has to abandon *all* of them at once and land back
+at `callFunction`, carrying the 8, without running another statement on
+the way.
+
+## Two ways out
+
+There are two well-known ways to build this, and it helps to see both.
+
+<Analogy title="a note passed down a line">
+You are at the back of a long queue and need to tell the person at the
+front that you are leaving. You hand a note forward; each person reads
+it, stops whatever they were doing for you, and passes it on, until it
+reaches the front.
+<span slot="breaks">People in a queue can read a note however they like;
+in the interpreter, every method that runs statements must be written to
+check the note and pass it on, and one that forgets breaks `return` for
+every statement inside it.</span>
+</Analogy>
+
+<Analogy extra title="a fire alarm">
+Pull the alarm on the top floor and nobody on the way down needs a
+message: everyone between you and the street stops at once and leaves,
+and only the person at the door (who was waiting for exactly that)
+reacts.
+<span slot="breaks">A real alarm empties the whole building; an
+exception in an interpreter stops only at the nearest `catch` that wants
+it, which is placed at the edge of each call, and the alarm has to be
+pulled (an object made and thrown) for every single `return`.</span>
+</Analogy>
+
+The fire alarm is an exception: the chapter *Errors and exceptions*
+showed that a `throw` abandons every frame between it and the nearest
+`catch`, which is exactly the shape of `return`, and a tree-walker can
+throw a small object holding the return value and catch it in the
+method that runs a call. The note is a **completion code**: every
+`execute` returns a small value that says how the statement finished,
+and every method that runs statements looks at it. The companion's
+interpreter passes notes:
+
+```ts
+const NORMAL = 0, BREAK = 1;
+const CONTINUE = 2, RETURN = 3;
+```
+
+`break` and `continue` need to leave nested statements too, so one
+mechanism serves all three, and a thrown TypeScript exception always
+means a real runtime error. The price is that every method that runs
+statements has to remember to check.
+
+<Prompts ids={['return-deep', 'two-ways', 'four-codes']} />
+
+## Passing the note
+
+Here is the `return` case of `execute`:
+
+```ts
+case 'return':
+  this.returnValue = s.value
+    ? this.evaluate(s.value) : null;
+  return RETURN;
+```
+
+It evaluates the value (or uses `null`, Drip's `none`, for a bare
+`return;`), parks it in a field of the interpreter called
+`returnValue`, and returns the code `RETURN` instead of `NORMAL`, so
+the code can stay a small number. Then every method between here and the call passes the code on.
+`executeBlock` stops running its list of statements as soon as one does
+not finish normally:
+
+```ts
+for (const s of statements) {
+  const c = this.execute(s);
+  if (c !== NORMAL) return c;
+}
+return NORMAL;
+```
+
+(A `finally` around this loop switches the environment back, so even a
+block left early cleans up after itself.) An `if` returns whatever its chosen branch returned, and
+a loop stops on `BREAK` but hands `RETURN` straight up, because a
+`return` inside a loop leaves the whole function, not only the loop:
+
+```ts
+const c = this.executeBlock(s.body,
+  new Environment(this.env));
+if (c === BREAK) break;
+if (c === RETURN) return c;
+```
+
+Finally, at the edge of the call, `callFunction` turns the code back
+into a value (two lines that keep stack traces and classes working are
+left out; the next chapter and the classes chapter show them):
+
+```ts
+const c = this.executeBlock(
+  f.decl.body, env);
+if (c === RETURN) {
+  const v = this.returnValue;
+  this.returnValue = null;
+  return v;
+}
+return null;
+```
+
+If the body finished with `RETURN`, the parked value is taken out (and
+the field cleared, so a stale value can never leak into a later call)
+and returned as an ordinary TypeScript value; if the body ran off its
+end, the call gives `null`, Drip's `none`. Step through it in a
+recursive function, where each call's `return` has to find its *own*
+`callFunction`:
+
+<ReturnSteps client:visible />
+
+Each code travels only as far as its own call's `callFunction`: `fib(3)`
+never sees the `RETURN` inside `fib(2)`, only the 1 it produced.
+
+<Figure caption="Each method that runs statements gets a completion code back from the statement below it and decides what to do with it. RETURN goes straight up to callFunction; BREAK stops at the nearest loop." takeaway="Every level checks the code; only callFunction turns RETURN into a value.">
+  <UnwindFigure />
+</Figure>
+
+<Callout kind="definition">
+**Return unwinding** is leaving every statement between a `return` and
+the start of its function call in one move. Drip's tree-walker does it
+with **completion codes**: `execute` returns `NORMAL`, `BREAK`,
+`CONTINUE` or `RETURN`; a `return` parks its value in `returnValue` and
+returns `RETURN`; blocks, `if`s and loops pass `RETURN` up unchanged;
+and `callFunction` takes the parked value and returns it. A body that
+ends without a `return`, or with a bare `return;`, gives `none`.
+</Callout>
+
+<Formal title="How a statement can finish">
+
+```text
+execute : Stmt → NORMAL | BREAK
+               | CONTINUE | RETURN
+execute(return e;) = RETURN,
+  and returnValue := value of e
+call f(args) = returnValue  if the
+  body gave RETURN, else none
+```
+
+<span slot="read">Running a statement always ends in one of four ways.
+Running return e gives RETURN, and as it does so it sets returnValue to
+the value of e (the symbol := reads "becomes"). A call of f produces the
+parked return value if its body finished with RETURN, and none
+otherwise.</span>
+</Formal>
+
+<Prompts ids={['parked-where', 'block-passes', 'loop-return', 'own-call']} />
+
+## What a call gives back
+
+<Examples of="return-unwinding">
+
+```
+fn indexOf(xs, v) {
+  for i in 0..len(xs) {
+    if xs[i] == v {
+      return i;
+    }
+  }
+  return -1;
+}
+print indexOf([4, 8, 15], 8); # 1
+print indexOf([4, 8, 15], 7); # -1
+```
+
+```
+fn quiet() {
+  print "a";
+  return;
+  print "b";
+}
+print quiet();
+# a
+# none
+```
+
+<Run id="pair" />
+
+</Examples>
+
+The first is the most common shape of all: search, and leave the moment
+you find it. For 8, the `if` matches when `i` is 1, so `return i;` parks
+1 and the code leaves the `if`, the loop body and the loop; for 7
+nothing matches, the loop ends normally, and the last line returns -1.
+The second shows a bare `return;`: it stops the call (so `b` is never
+printed) and gives `none`, as a body with no `return` at all does. The runnable one leaves from inside
+*two* nested loops at once, and returns a list; it also shows what
+happens when the search fails and the body runs off its end.
+
+A `return` must sit inside a function, and Drip checks that before the
+program starts:
+
+```
+return 1;
+# line 1: 'return' outside a function
+```
+
+There is no call for the code to travel back to, so this is a compile
+error (the resolver chapter shows where it is caught).
+
+<Prompts ids={['return-none']} />
+
+<Callout kind="engine" label="Under the hood">
+The bytecode VM in Part IV needs neither notes nor alarms: its code is a
+flat list of instructions, so there is nothing nested to climb out of,
+and a `return` instruction pops the current call's record off the VM's
+own call stack<Cite id="mdn-call-stack" />. The chapter *Frames:
+calling and returning in the VM* builds it.
+</Callout>
+
+## Your turn
+
+<Exercise id="callFn" />
+
+<Exercise id="power" />
+
+## What you learned
+
+- `return` can sit deep inside loops, blocks and `if`s, and must leave
+  them all in one move: **return unwinding**.
+- The companion's interpreter uses **completion codes**: `execute`
+  returns `NORMAL`, `BREAK`, `CONTINUE` or `RETURN`, and a `return` parks
+  its value in `returnValue`.
+- Blocks, `if`s and loops pass `RETURN` up; `callFunction` takes the
+  value and clears the field. No `return`, or a bare `return;`, gives
+  `none`.
+- The other design throws an exception and catches it at the edge of
+  the call; it is shorter to write, but throws on every `return`.
+
+Next: the call stack itself, which the interpreter quietly borrows from
+TypeScript, and the stack traces Drip prints when something goes wrong.
+
+
+{/* ── merge: from old chapter 69, Borrowing the host's call stack ── */}
+
+## Who keeps track of the calls?
+
+In the step-through of `fib(3)` in the last chapter, Drip clearly had a
+call stack: `fib(3)` was paused half-way through an addition, waiting
+for `fib(2)`, which was waiting for `fib(1)`. Something has to remember
+each of those pauses (which call is waiting, and where in its body it
+will carry on), because when `fib(1)` hands back its value, the
+interpreter must land in exactly the right half-finished addition.
+
+Yet search `interpreter.ts` for anything like "the list of paused Drip
+calls and where each one will resume" and you will not find it. There
+is no such list, because the interpreter does not need one: each Drip
+call *is* a handful of TypeScript method calls, and TypeScript already
+keeps a call stack<Cite id="mdn-call-stack" /> for those.
+
+## Riding on TypeScript's stack
+
+When `fib(3)` calls `fib(2)`, the interpreter is inside `callFunction`
+for `fib(3)`, inside `executeBlock` for its body, inside `execute` for
+its last `return`, inside `evaluate` for the addition, inside `evaluate`
+for the call, inside `call`; and from there it calls `callFunction` for
+`fib(2)`. "`fib(3)` is waiting for its left operand" is not written down
+anywhere as Drip data; it is the plain fact that TypeScript's `evaluate`
+for that addition has not returned yet, and when it does get its answer,
+TypeScript itself knows where it was. Measured on the companion's
+interpreter, every level of `fib` recursion adds six TypeScript methods
+to the host stack.
+
+<Analogy title="boxes in a friend's garage">
+You are moving house, and a friend lets you keep your boxes in their
+garage. You never build shelves or rent a unit; you only keep a short
+list on your phone of what is in there. The garage does the real work
+of holding everything.
+<span slot="breaks">You could empty the garage and take your boxes
+somewhere else; Drip's calls cannot be taken out of TypeScript's stack
+and put back later, so a Drip program cannot be paused half-way and
+resumed, or moved.</span>
+</Analogy>
+
+<Callout kind="definition">
+The **host stack** is the call stack of the language an interpreter is
+written in (its *host language*). A tree-walking interpreter that runs a
+Drip call by making ordinary host-language calls is reusing the host
+stack: each Drip call becomes several host frames, waiting in the
+middle of a call is a host method that has not returned yet, and
+returning from a Drip call is returning from those host methods.
+</Callout>
+
+<Figure caption="Inside area, called from report, called from the script. Each Drip call is four or five TypeScript methods on the host stack; the interpreter's own frames array holds one small entry per call." takeaway="The host stack does the work; Drip keeps only a list of names and lines.">
+  <HostFrames />
+</Figure>
+
+The variables are not on that stack, by the way: they live in
+`Environment` objects, which every call makes with `new`, so they sit on
+the heap and only *references* to them are in the host frames (which
+matters a great deal for closures, two chapters on).
+
+<Prompts ids={['host-stack-what', 'where-waiting', 'six-per-level']} />
+
+## A small record, for error messages
+
+There is one list of calls in the interpreter, and its job is narrow.
+When something goes wrong, Drip prints a **stack trace**, the message
+and then one line per active call, innermost first:
+
+```
+fn area(w, h) {
+  return w * h;
+}
+fn report(w) {
+  print area(w, "x");
+}
+report(3);
+# runtime error: cannot use '*'
+#   on a number and a string
+#   at line 2 in fn area
+#   at line 5 in fn report
+#   at line 7 in script
+```
+
+JavaScript gives a program no standard way to read its own call stack,
+so the interpreter keeps a shadow list of its own, `frames`, holding only a
+name and a line per call. `callFunction` keeps it up to date:
+
+```ts
+if (this.frames.length === FRAMES_MAX)
+  throw new RuntimeError(at,
+    'stack overflow');
+this.frames[this.frames.length - 1]
+  .line = at.line;
+this.frames.push({
+  place: f.decl.name
+    ? `fn ${f.decl.name.lexeme}`
+    : 'anonymous fn',
+  line: 0 });
+// ... run the body ...
+this.frames.pop();
+```
+
+Before the body runs, it writes the line of the call (the `(` token,
+`at`) into the caller's entry, which is where the caller is waiting, and
+pushes an entry for the new call; when the body finishes, it pops it. A
+runtime error, however, is thrown straight past the `pop`, so after an
+error `frames` still holds every call that was active when it happened,
+and `drip.ts` prints them (names shortened here):
+
+```ts
+const lines = [
+  `runtime error: ${error.message}`];
+const fs = interp.frames;
+for (let i = fs.length - 1; i >= 0; i--) {
+  const line = i === fs.length - 1
+    ? error.line : fs[i].line;
+  lines.push(
+    `  at line ${line} in ${fs[i].place}`);
+}
+```
+
+The innermost call uses the line the error itself remembers; every call
+further out uses the line it was waiting on. Step through it:
+
+<TraceSteps client:visible />
+
+<Examples of="host-stack">
+
+```
+fn isEven(n) {
+  if n == 0 { return true; }
+  return isOdd(n - 1);
+}
+fn isOdd(n) {
+  if n == 0 { return false; }
+  return isEven(n - 1);
+}
+print isEven(10); # true
+```
+
+```
+let twice = fn (f) { f(); f(); };
+twice(fn () {
+  print len(5);
+});
+# runtime error: len() needs a
+#   list or a string, not a number
+#   at line 3 in anonymous fn
+#   at line 1 in anonymous fn
+#   at line 2 in script
+```
+
+<Run id="overflow" />
+
+</Examples>
+
+The first is two functions that call each other (*mutual recursion*):
+nothing in the interpreter had to be written for it, because each call
+is ordinary TypeScript calls stacked on the last, and `isEven(10)` is
+eleven Drip calls deep at its base case. The second fails inside a
+native, called from one anonymous function, called from another: the
+trace names them `anonymous fn`, and the outer lines are where each was
+waiting (line 1 is `f();` inside `twice`, line 2 is where `twice` was
+called). The runnable one recurses without a base case, which is the
+subject of the next section.
+
+<Prompts ids={['trace-order', 'frames-what', 'not-popped']} />
+
+## How deep can it go?
+
+A stack is a fixed amount of memory, so calls cannot nest for ever. Drip
+sets its own limit, `FRAMES_MAX`, of 256 active calls (the script counts
+as one), and the check you saw in `callFunction` turns one more into the
+runtime error `stack overflow`. That is why `isEven(300)` fails while
+`isEven(10)` works: three hundred calls deep is too deep.
+
+The host stack has a limit too, and since each Drip call costs several
+host frames, it could in principle run out first; when JavaScript runs
+out of stack, it throws a `RangeError`<Cite id="mdn-too-much-recursion" />.
+`drip.ts` catches that and reports it in Drip's terms, at the line the
+innermost call had reached:
+
+```ts
+} else if (e instanceof RangeError) {
+  const top = interp.frames[
+    interp.frames.length - 1];
+  error = new RuntimeError(top.line,
+    'stack overflow');
+}
+```
+
+<Analogy extra title="a stack of plates in a cupboard">
+Each call is a plate put on the pile and each return takes the top one
+off; the cupboard has a shelf above, and the pile can only grow so high
+before the next plate will not fit.
+<span slot="breaks">A cupboard's shelf is the same height every day; the
+host stack's real limit depends on how much each frame holds and on the
+JavaScript engine, which is exactly why Drip sets a limit of its own
+that is the same everywhere.</span>
+</Analogy>
+
+<Prompts ids={['frames-max']} />
+
+## What borrowing costs
+
+Borrowing the host stack is a fine bargain for very little code:
+recursion, mutual recursion and calls nested inside arguments all work
+with nothing written for them. Three costs come with it.
+
+**Depth.** Every Drip call costs several host frames, so a deep Drip
+recursion uses far more of the host's stack than the same recursion in
+TypeScript would.
+
+**Visibility.** The real record of a paused call (where it will carry
+on, and what it was half-way through) is TypeScript's, not Drip's. The
+`frames` list is only names and lines, enough for a stack trace but not
+enough to pause a Drip program and resume it later, which a debugger
+needs.
+
+**Speed.** Each Drip call pays for several host calls, plus a new
+`Environment` with its own `Map`, before the body runs.
+
+<Prompts ids={['borrow-cost']} />
+
+<Callout kind="engine" label="Under the hood">
+Part IV's bytecode VM pays all three costs back. It keeps its *own*
+array of call frames, each a small record of which function is running,
+where it has got to in that function's bytecode, and where its slots
+start on a shared value stack; a Drip call pushes one record and a
+return pops it, so a Drip call costs no host frames at all, and the VM
+can see (and could save) its whole stack. The chapter *Frames: calling
+and returning in the VM* builds it, with the same 256-call limit and the
+same stack traces.
+</Callout>
+
+## Your turn
+
+<Exercise id="formatTrace" />
+
+<Exercise id="countdown" />
+
+## What you learned
+
+- The tree-walker reuses the **host stack**: a Drip call is a chain of
+  TypeScript method calls, and a paused Drip call is a TypeScript method
+  that has not returned yet.
+- Variables live in `Environment`s on the heap; the host frames only
+  refer to them.
+- For error messages the interpreter keeps a small `frames` list (a
+  place and a line per call), which an error leaves unpopped, so it can
+  print a **stack trace**, innermost call first.
+- Drip allows 256 active calls; one more is `stack overflow`, and a host
+  `RangeError` is reported the same way.
+- Borrowing costs depth, visibility and speed; the VM will keep its own
+  frames.
+
+Next: closures in Drip, and what happens to a call's environment when a
+function made inside it outlives the call.
+
+
+{/* ── merge: from old chapter 69, Closures in Drip ── */}
+
+## A counter, in Drip
+
+In the chapter *Closures: functions that remember* you wrote a counter in
+JavaScript. Here it is in Drip:
+
+```
+fn makeCounter() {
+  let n = 0;
+  fn count() {
+    n += 1;
+    return n;
+  }
+  return count;
+}
+let a = makeCounter();
+print a(); # 1
+print a(); # 2
+```
+
+`makeCounter` makes a local `n`, declares a function `count` inside
+itself, and hands `count` back as a value; the program keeps it in `a`
+and calls it twice. However, `count`'s body uses `n`, and `n` was a
+local of a call that has already returned by the time `a()` runs. Where
+does the interpreter find it?
+
+Everything hangs on one decision. A call makes a fresh environment for
+its parameters, and every environment has a parent, the place a lookup
+goes next when a name is not found. **Which environment should be the
+parent of a call's environment?**
+
+<Prompts ids={['call-parent-question']} />
+
+## Three possible parents
+
+There are three candidates, and each gives a different language.
+
+1. **The globals.** Simple, but then `count` cannot see `n` at all: the
+   lookup searches the call's environment, then the globals, and stops
+   with `undefined variable 'n'`.
+2. **The caller's environment.** Then what a name means depends on *who
+   calls* the function, not where it was written. That rule is called
+   *dynamic scope*, and Drip does not use it.
+3. **The environment the function was made in.** That is lexical scope,
+   the rule JavaScript follows<Cite id="mdn-closures" /> and the rule
+   Drip follows too: inside `count`, `n` means the `n` that was visible
+   where `count` was written.
+
+<Analogy title="a letter written in a particular house">
+A note says "the spare key is under the blue pot". Whoever reads it,
+wherever they read it, the words mean the blue pot at the house where
+the note was written, not one at the reader's house.
+<span slot="breaks">A note is a frozen description; a Drip function
+reads the *current* contents of the place it was written, so if someone
+moves the key, the next call finds it in its new spot.</span>
+</Analogy>
+
+Option 3 has a cost: the function must *remember* where it was made,
+which is the job of the `closure` field the chapter *Functions in Drip*
+gave `DripFunction`.
+
+<Prompts ids={['parent-globals', 'parent-caller']} />
+
+## The closure field
+
+When the interpreter makes a function value, from a `fn` declaration or
+from an anonymous `fn (...) { ... }`, it stores the environment that is
+current at that moment:
+
+```ts
+case 'fn':   // a declaration
+  this.env.define(s.fn.name.lexeme,
+    new DripFunction(s.fn, this.env,
+      false));
+  return NORMAL;
+// ...
+case 'function': // fn (x) { ... }
+  return new DripFunction(e.fn,
+    this.env, false);
+```
+
+And when the function is called, `callFunction` hangs the new
+environment off that stored one, not off whatever environment the caller
+happens to be in:
+
+```ts
+const env = new Environment(f.closure);
+```
+
+That is the whole feature: one field, filled in when the function value
+is made, and used as the parent at every call. While `makeCounter` runs,
+the current environment is its call's own, so that is what `count`
+keeps. Step through it:
+
+<KeptEnvSteps client:visible />
+
+<Analogy extra title="a bookmark in someone else's copy">
+A friend lends you their copy of a novel with a bookmark in it. The
+bookmark does not point at "page 112 of any copy"; it sits in *that*
+copy, and if your friend scribbles a note on page 112 tomorrow, you will
+see it when you open the book there.
+<span slot="breaks">A bookmark points at one page; a captured
+environment gives the function the whole chain of environments around
+it, from its own maker's call out to the globals.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **captured environment** is the environment a function value stores
+when it is made: the one that was current when its `fn` declaration ran,
+or when its anonymous `fn` expression was evaluated. In the companion
+code it is the `closure` field of `DripFunction`. Every call of the
+function makes a new environment whose parent is the captured one, so
+the body sees the names around where it was *written*. The function plus
+its captured environment is a **closure**; it holds the variables
+themselves, not copies of their values.
+</Callout>
+
+<Formal title="Making and calling a closure">
+
+```text
+make fn in env E   ⟹  value ⟨decl, E⟩
+call ⟨decl, E⟩(args) runs decl.body in
+  E′ = new env, parent E, params ↦ args
+```
+
+<span slot="read">Making a function while the current environment is E
+gives the pair of its declaration and E (the arrow ⟹ reads "gives").
+Calling that pair runs the body in a new environment E prime, whose
+parent is E and in which each parameter holds its argument.</span>
+</Formal>
+
+<Examples of="captured-environment">
+
+```
+fn makeAdder(n) {
+  return fn (x) { return x + n; };
+}
+let add2 = makeAdder(2);
+let add10 = makeAdder(10);
+print add2(5);  # 7
+print add10(5); # 15
+```
+
+```
+let x = 1;
+let f = fn () { print x; };
+x = 2;
+f(); # 2
+```
+
+<Run id="two-counters" />
+
+</Examples>
+
+In the first, each call of `makeAdder` makes its own environment holding
+its own `n`, and the anonymous function made during that call captures
+it; so `add2` carries an environment where `n` is 2, `add10` one where
+`n` is 10, and the same body gives 7 and 15. The second shows that a
+closure captures the *variable*, not its value at the time: `f` was made
+while `x` was 1, but by the time `f()` runs, `x` is 2, and the lookup
+reads the variable as it is now. The runnable one makes two counters
+from one `makeCounter`, and shows that they count separately, because
+each call of `makeCounter` made a separate `n`.
+
+<Prompts ids={['closure-field', 'which-env', 'variable-not-value']} />
+
+## Closures in a loop
+
+In JavaScript, the chapter on closures showed that each pass of a
+`for (let i ...)` loop gets its own `i`, so functions made in the loop
+remember different values. Drip's `for` is the same, and you can see
+exactly why in `forLoop`:
+
+```ts
+const loopEnv = new Environment(this.env);
+loopEnv.define(s.name.lexeme, v);
+const c = this.executeBlock(s.body,
+  new Environment(loopEnv));
+```
+
+These three lines run once *per pass*: each pass makes a brand-new
+environment holding that pass's value of the loop variable, and runs the
+body in a fresh environment inside it. A function made in the body
+captures the body's environment, whose parent is that pass's own
+variable. A `while` loop is different: its counter is an ordinary
+variable declared *before* the loop, so there is only one of it, and
+every function made in the loop shares it.
+
+<Figure caption="Left: each pass of a for loop has its own environment for i, so each function sees its own pass's value. Right: a while loop's counter lives outside the loop, so every function made in it sees the one j, which has reached 3 by the time they run." takeaway="A fresh environment per pass gives each closure its own variable.">
+  <SharedLoopEnv />
+</Figure>
+
+Here is the difference side by side, three functions saved from each
+kind of loop:
+
+```
+let fs = [];
+for i in 1..4 {
+  push(fs, fn () { print i; });
+}
+fs[0](); # 1
+fs[2](); # 3
+```
+
+```
+let gs = [];
+let j = 1;
+while j < 4 {
+  push(gs, fn () { print j; });
+  j += 1;
+}
+gs[0](); # 4
+gs[2](); # 4
+```
+
+In the first, each anonymous function captured a different pass's `i`,
+so they print 1 and 3. In the second, all three captured environments
+lead to the one `j`, which the loop left at 4, so they all print 4. The
+fix, if you need a `while`, is to make a new variable inside the body
+(`let mine = j;`), because the body gets a fresh environment on every
+pass, and to capture that instead.
+
+<Prompts ids={['loop-fresh', 'while-shared']} />
+
+<Callout kind="engine" label="Under the hood">
+The tree-walker gets closures almost for free, because every
+environment is an ordinary object that the function can point at. The
+bytecode VM in Part IV keeps locals in a fast stack instead, where a
+variable cannot outlive its call, so it has to spot the variables that
+closures capture and move them somewhere safer when the call returns;
+the chapter *Capturing variables: upvalues* builds that. The idea is the
+same as here; only the bookkeeping changes.
+</Callout>
+
+## Your turn
+
+<Exercise id="fixLoop" />
+
+<Exercise id="accumulator" />
+
+## What you learned
+
+- A Drip function value stores its **captured environment**: the one
+  current when it was made, by a `fn` declaration or an anonymous `fn`.
+- Each call makes a new environment whose parent is that captured
+  environment, not the globals and not the caller's. That is lexical
+  scope.
+- A closure captures variables, not copies: it sees later changes.
+- Each pass of a `for` loop makes a fresh environment for the loop
+  variable, so closures made in the loop keep their own values; a
+  `while` loop's counter is shared.
+
+Next: the call that made `n` has returned, yet `n` lives on. The next
+chapter is about how long an environment lasts, and what keeps it alive.
+
+
+{/* ── merge: from old chapter 69, Environments that outlive their call ── */}
+
+## The call is over; its variables are not
+
+Here is the counter from the last chapter once more, written with an
+anonymous function:
+
+```
+fn makeCounter() {
+  let n = 0;
+  return fn () {
+    n += 1;
+    return n;
+  };
+}
+let a = makeCounter();
+print a(); # 1
+print a(); # 2
+```
+
+By the time `a()` runs, the call of `makeCounter` is completely over:
+its `callFunction` has returned, and so have the `executeBlock` and
+`execute` that ran its body, so every TypeScript frame it used on the
+host stack (from the chapter *Borrowing the host's call stack*) is gone.
+Yet `n` is still there, and it even keeps its value from one call of
+`a` to the next. If the frames are gone, where is `n`?
+
+## Environments live on the heap
+
+The answer is that `n` was never in those frames. `callFunction` makes
+each call's environment with `new Environment(...)`, and in JavaScript
+an object made with `new` lives on the **heap**, the big pool of memory
+from the chapter *Pointers, the stack and the heap*. The frame only held
+a *reference* to it, in a local variable called `env`. When the frame
+went away, that reference went with it, but the environment did not,
+because something else still refers to it: the anonymous function's
+`closure` field.
+
+The rule JavaScript (and so TypeScript) follows is the simple one: an
+object stays alive as long as the program can still reach it by
+following references, starting from the variables currently in use.
+When nothing refers to it any more, the engine's **garbage collector**
+is free to reclaim its memory, whenever it chooses.
+
+<Prompts ids={['heap-why', 'gc-what']} />
+
+<Analogy title="a library book on loan">
+A library book is not thrown out because the person who first borrowed
+it brought it back; it stays on the shelf while anyone might still ask
+for it. Only when the catalogue drops it, and no one has it out, can it
+be cleared away.
+<span slot="breaks">A library withdraws a book on a schedule; the
+garbage collector never removes an environment that can still be
+reached, and it can remove one the moment nothing reaches it, with no
+one asking.</span>
+</Analogy>
+
+<Analogy extra title="a balloon on strings">
+A balloon held by three children stays down as long as any one of them
+holds a string; when the last one lets go, it drifts off. Each string
+is a reference: the running call, a closure, a child environment.
+<span slot="breaks">A balloon floats away at once; an unreachable
+environment just sits there until the garbage collector gets round to
+it, and your program cannot tell when that happens.</span>
+</Analogy>
+
+Step through the life of the counter's environment:
+
+<LifetimeSteps client:visible />
+
+<Callout kind="definition">
+**Environment lifetime** is how long an environment exists. In a
+tree-walking interpreter, environments are ordinary heap objects, so an
+environment lives as long as anything can reach it: the running call, a
+child environment (through its parent link), or a function's captured
+environment. It can therefore **outlive** the call that made it, and it
+is reclaimed by the host's garbage collector once nothing reaches it.
+</Callout>
+
+<Formal title="When an environment is alive">
+
+```text
+alive(E)  ⟺  E is reachable from a root
+roots: the running calls' environments
+       and the globals
+reach: env → its parent,
+       env → each value it holds,
+       function → its closure
+```
+
+<span slot="read">An environment E is alive exactly when it can be
+reached from a root (the symbol ⟺ reads "exactly when"). The roots are
+the environments of the calls now running, and the globals. From an
+environment you can reach its parent and every value it holds; from a
+function you can reach its captured environment.</span>
+</Formal>
+
+<Prompts ids={['outlives', 'host-frame', 'what-keeps']} />
+
+## Sharing a kept environment
+
+Two functions made in the same call capture the same environment, so
+they share its variables, live, for as long as either of them lives:
+
+```
+fn makeBox(v) {
+  let get = fn () { return v; };
+  let set = fn (x) { v = x; };
+  return [get, set];
+}
+let box = makeBox("old");
+print box[0](); # old
+box[1]("new");
+print box[0](); # new
+```
+
+`makeBox("old")` makes one environment holding `v`, then two anonymous
+functions that both capture it, and returns them in a list. `box[0]()`
+calls `get`, which reads `v` and prints `old`; `box[1]("new")` calls
+`set`, whose body assigns to `v`, found one step out in the shared
+environment; and the next `box[0]()` reads the same `v` and prints
+`new`.
+
+<Figure caption="get and set were made in the same call, so both closure fields point at one environment. A change through set is seen by get; the environment lives as long as either function is reachable." takeaway="Closures made together share one environment.">
+  <SharedBox />
+</Figure>
+
+<Examples of="environment-lifetime">
+
+```
+fn mk() {
+  let n = 0;
+  return fn () { n += 1; return n; };
+}
+let a = mk();
+print a(); # 1
+a = none;
+# nothing reaches n's environment now
+```
+
+```
+let fs = [];
+for i in 0..3 {
+  push(fs, fn () { return i * i; });
+}
+print fs[2](); # 4
+```
+
+<Run id="shared-box" />
+
+</Examples>
+
+The first is the end of a life: once `a` stops holding the function,
+nothing reaches the function, and so nothing reaches the environment
+with `n` in it either; neither is ever used again, and both can go. The
+second keeps environments alive in bulk: the loop is over, but each of
+the three functions in the list keeps its own pass's environment alive
+(holding that pass's `i`), so `fs[2]()` still finds `i` is 2, and those
+three environments will live exactly as long as the list. The runnable
+one is the box above; add a third function to it, or make a second box,
+and check which values are shared.
+
+<Prompts ids={['live-shared', 'reclaimed-when']} />
+
+## What this costs
+
+The tree-walker gets all of this almost for free, because it makes every
+environment an ordinary heap object and lets the host's garbage
+collector decide when one is dead. The price is paid on every call:
+`callFunction` makes a new `Environment`, with its own `Map` inside,
+even for a function whose environment no closure will ever capture
+(which is most of them), and every one of those objects is work for the
+garbage collector later. The chapter *Measuring the tree-walker*, a
+few chapters on, measures what calls cost.
+
+<Callout kind="engine" label="Under the hood">
+The bytecode VM in Part IV makes the opposite choice. It keeps locals in
+slots on one shared stack, which is fast and needs no garbage collecting,
+but a slot disappears when its call returns. So the VM looks for the few
+variables that closures capture and, when the call ends, moves each one
+into a small heap object of its own that the closures point at; the
+chapter *Capturing variables: upvalues* builds it, and JavaScript
+engines manage closures' variables in a similar spirit<Cite id="mdn-closures" />.
+</Callout>
+
+<Prompts ids={['call-allocates']} />
+
+## Your turn
+
+<Exercise id="liveEnvs" />
+
+<Exercise id="account" />
+
+## What you learned
+
+- Environments are heap objects; a call's TypeScript frames only refer
+  to them, so an environment can **outlive** the call that made it.
+- An environment lives as long as something can reach it: a running
+  call, a child environment, or a closure. Once nothing does, the
+  garbage collector may reclaim it.
+- Closures made in the same call share one environment, live.
+- The price: every call allocates an `Environment` and a `Map`, whether
+  or not anything captures them. The VM keeps locals on a stack instead,
+  and moves only captured variables to the heap.
+
+Next: a quiet bug in looking names up through the chain at run time, and
+a whole extra pass over the program that fixes it.
+
+<Quiz />

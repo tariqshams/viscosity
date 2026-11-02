@@ -1,10 +1,12 @@
 ---
 import Book from '../layouts/Book.astro';
-import { BOOK, PARTS, TOTAL_DAYS } from '../data/book.js';
+import { BOOK, PARTS, TOTAL_DAYS, SECTIONS } from '../data/book.js';
 import { curriculum, START_HREF } from '../lib/chapters';
 import { href } from '../lib/url';
 const { entries } = await curriculum();
 const written = entries.filter((e) => e.href);
+const coreStart = entries.find((e) => e.section === 'core' && e.href)?.href;
+const preludeStart = entries.find((e) => e.section === 'prelude' && e.href)?.href;
 ---
 <Book title={BOOK.subtitle} current="home">
   <div class="mx-auto max-w-reading px-4 pb-16 pt-10 sm:px-6 lg:pt-16">
@@ -45,7 +47,11 @@ const written = entries.filter((e) => e.href);
     <div class="mt-7 flex flex-wrap gap-3 font-sans">
       <a href={START_HREF} class="btn-3d btn-3d-primary px-5 py-2.5 text-base font-semibold" data-start>Start with the preface →</a>
       <a href={href('/front/about-the-author/')} class="btn-3d px-5 py-2.5 text-base">About the author</a>
-      <a href={href('/days/')} class="btn-3d px-5 py-2.5 text-base">See the {TOTAL_DAYS}-day plan</a>
+      <a href={href('/days/')} class="btn-3d px-5 py-2.5 text-base">See the day plan</a>
+    </div>
+    <div class="mt-4 grid gap-3 font-sans sm:grid-cols-2" data-doors>
+      <a href={coreStart ?? href('/days/')} class="btn-3d block px-4 py-3" data-door="core"><span class="block text-xs text-muted">Already know TypeScript?</span><span class="font-semibold">Start the {TOTAL_DAYS}-day core path →</span></a>
+      <a href={preludeStart ?? href('/days/')} class="btn-3d block px-4 py-3" data-door="prelude"><span class="block text-xs text-muted">New to programming?</span><span class="font-semibold">Start with the Prelude →</span></a>
     </div>
 
     <h2 class="mt-14 font-display text-2xl font-semibold">Contents</h2>
@@ -55,10 +61,9 @@ const written = entries.filter((e) => e.href);
         <li class="border border-line bg-panel px-4 py-3">
           <div class="flex items-baseline gap-2">
             <span class="font-display text-lg font-semibold">Part {p.id}. {p.title}</span>
-            <span class="ml-auto shrink-0 text-xs text-muted">Days {p.days}</span>
+            <span class="ml-auto shrink-0 text-xs text-muted">{SECTIONS.find((x) => x.id === p.section)?.label} days {p.days}</span>
           </div>
-          {p.id === 'I' && <div class="text-xs font-semibold uppercase tracking-[0.06em] text-brand">Track A · TypeScript</div>}
-          {p.id === PARTS.find((x) => x.track === 'B')?.id && <div class="text-xs font-semibold uppercase tracking-[0.06em] text-brand">Track B · Rust</div>}
+          {p.id === PARTS.find((x) => x.section === p.section)?.id && <div class="text-xs font-semibold uppercase tracking-[0.06em] text-brand">{SECTIONS.find((x) => x.id === p.section)?.long}</div>}
           <p class="mt-1 text-[0.95rem] text-ink/80">{p.blurb}</p>
           <ul class="mt-2 list-none p-0 text-[0.95rem]">
             {entries.filter((e) => e.part === p.id && e.href).map((e) => (

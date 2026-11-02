@@ -1,4 +1,4 @@
-// New references for chapter 297. Checked 2026-11-02 by reading the raw
+// New references for chapter 267. Checked 2026-11-02 by reading the raw
 // files from GitHub. The listings are real output, trimmed to 44 columns:
 // rustc 1.97.0 (-O --crate-type=lib, x86-64; nm -C from GNU binutils),
 // javac/javap 21.0.12 (javap -c), and Go 1.24.7 (go build -gcflags=-S,
@@ -15,7 +15,7 @@ export default [
     url: 'https://rustc-dev-guide.rust-lang.org/backend/monomorph.html',
     accessed: '2026-11-02',
     checkedAgainst: 'src/backend/monomorph.md read raw from github.com/rust-lang/rustc-dev-guide (master) on 2026-11-02: Rust “monomorphizes all generic types. This means that compiler stamps out a different copy of the code of a generic function for each concrete type needed”; “The result is fast programs, but it comes at the cost of compile time (creating all those copies can take a while) and binary size”; it contrasts Java, where almost all variables are references.',
-    shaped: 'Chapter 297: specialisation in rustc, and its costs.',
+    shaped: 'Chapter 267: specialisation in rustc, and its costs.',
   },
   {
     id: 'javac-transtypes',
@@ -27,7 +27,7 @@ export default [
     url: 'https://github.com/openjdk/jdk/blob/master/src/jdk.compiler/share/classes/com/sun/tools/javac/comp/TransTypes.java',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from the master branch on 2026-11-02: the class comment “This pass translates Generic Java to conventional Java”, and its use of erasure(...) for expression and target types and of bridge methods. javap -c on javac 21 output matched: List.get erased to return Object, checkcast inserted where the caller knows the type, Integer.valueOf and intValue around List<Integer>.',
-    shaped: 'Chapter 297: Java generics are erased, with casts and boxing inserted by javac.',
+    shaped: 'Chapter 267: Java generics are erased, with casts and boxing inserted by javac.',
   },
   {
     id: 'ocaml-manual-value',
@@ -39,7 +39,7 @@ export default [
     url: 'https://ocaml.org/manual/intfc.html',
     accessed: '2026-11-02',
     checkedAgainst: 'manual/src/cmds/intf-c.etex read raw from github.com/ocaml/ocaml (trunk) on 2026-11-02: “All OCaml objects are represented by the C type value … An object of type value is either: an unboxed integer; or a pointer to a block inside the heap”; “Integer values encode 63-bit signed integers (31-bit on 32-bit architectures). They are unboxed (unallocated).”; Is_long(v) is true if v is an immediate integer, Is_block(v) if it is a pointer to a block.',
-    shaped: 'Chapter 297: OCaml’s uniform representation, which lets one compiled copy serve every type.',
+    shaped: 'Chapter 267: OCaml’s uniform representation, which lets one compiled copy serve every type.',
   },
   {
     id: 'go-generics-dictionaries',
@@ -51,7 +51,7 @@ export default [
     url: 'https://github.com/golang/proposal/blob/master/design/generics-implementation-dictionaries-go1.18.md',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from the master branch on 2026-11-02: “we pass a dictionary along with every call to a generic function/method”; “we share an instantiation of a generic function/method among sets of type arguments that have the same gcshape”; “Two concrete types are in the same gcshape grouping if and only if they have the same underlying type or they are both pointer types”; int and float64 are never in the same gcshape; shape types live in the builtin package go.shape; the dictionary is added as a first parameter “.dict”.',
-    shaped: 'Chapter 297: Go’s middle road between specialisation and erasure.',
+    shaped: 'Chapter 267: Go’s middle road between specialisation and erasure.',
   },
   {
     id: 'swift-optimization-tips',
@@ -63,6 +63,6 @@ export default [
     url: 'https://github.com/swiftlang/swift/blob/main/docs/OptimizationTips.rst',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from the main branch on 2026-11-02, section on generics: unspecialised generic code “will emit code that works with Int … as well as String”; “If the generic function’s definition is visible to the optimizer and the concrete type is known, the Swift compiler will emit a version of the generic function specialized to the specific type. This process, called specialization, enables the removal of the overhead associated with generics”; specialization needs the definition visible in the current module (or -whole-module-optimization).',
-    shaped: 'Chapter 297: Swift specialises generics as an optimisation when it can see the definition.',
+    shaped: 'Chapter 267: Swift specialises generics as an optimisation when it can see the definition.',
   },
 ];

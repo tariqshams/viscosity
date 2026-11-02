@@ -1,0 +1,356 @@
+---
+n: 258
+day: 23
+part: XIV
+title: 'Stub caches and feedback vectors'
+tagline: 'An inline cache that sees one shape is one check and one load; one that sees five gives up and asks a shared table every time, and a tree-walking interpreter is exactly the kind of code that makes it.'
+objectives:
+  - Trace an inline cache from monomorphic to polymorphic to megamorphic, and say where V8 12.4 draws the line.
+  - Read V8's real --log-ic output for a site that sees five shapes.
+  - Explain what the stub cache is, and why a megamorphic site gives the optimising tiers nothing to build on.
+  - Spot megamorphic sites in ordinary code, such as an interpreter reading node.type, and keep hot ones monomorphic.
+  - Explain what a hole is, and why it is not the same as storing undefined.
+  - Explain why holey arrays need extra checks, using the prototype chain.
+  - Predict whether an array ends up PACKED or HOLEY from the way it was built, including new Array(n).
+  - Combine both one-way rules to predict an array's full elements kind.
+introduces: [holey-array]
+uses: [inline-cache, monomorphic, shape, transition-tree, ignition, optimizing-tiers, bytecode, hash-table, property, dot-access, object, function, class, inheritance, super, array-of-objects, for-of, ast, tree-walking-interpreter, elements-kind, array, index, length, push, array-loop, prototype-chain, smi, undefined, polymorphic, megamorphic]
+sources: [v8-src-ic-12-4, v8-src-tiering-12-4, v8-maglev, v8-fast-super, holzle1991, v8-elements-kinds, v8-src-elements-kind]
+---
+import ICSteps from '../../../components/diagrams/ch258/ICSteps';
+import StubTable from '../../../components/diagrams/ch258/StubTable';
+import HoleReadSteps from '../../../components/diagrams/ch258/HoleReadSteps';
+import SixKinds from '../../../components/diagrams/ch258/SixKinds';
+
+{/* ── merge: from old chapter 87 (remnant: keep only what goes beyond the core), Polymorphic and megamorphic sites ── */}
+
+## One site, many shapes
+
+The previous chapter's caches each saw one shape, because every particle
+was built the same way. Real code is not always so tidy. Your Drip
+tree-walking interpreter had a line that looked at whatever node it was
+handed and asked what kind it was, and every kind of node was a
+different class. Here is that idea in JavaScript, with five node classes:
+
+```js
+class Num { constructor(v) {
+  this.type = 'num'; this.v = v; } }
+class Add { constructor(l, r) {
+  this.type = 'add'; this.l = l;
+  this.r = r; } }
+// ...and Mul, Neg and Var, alike
+const kindOf = (n) => n.type;
+```
+
+Every class sets `type` first, so `type` is always field 0; but objects
+made by different classes have different maps, so the one load `n.type`
+in `kindOf` meets five shapes. What does its cache do?
+
+## A short list, then a shared table
+
+<Analogy title="a receptionist">
+A receptionist at a small office recognises the four people who come in
+every day, and waves each of them through at once. When strangers start
+arriving by the dozen, she stops trying to remember faces and looks
+everyone up in the building's directory, which every desk shares.
+<span slot="breaks">A receptionist might learn a fifth face in time; in my
+V8 12.4 test, a site that had gone megamorphic stayed so through 100,000
+more calls that all brought the same shape.</span>
+</Analogy>
+
+<Analogy extra title="a key ring">
+With up to four keys on a ring you try each in turn, and that is still
+quick. Give someone twenty doors, and trying keys stops making sense; they
+go to the caretaker's cabinet, where every key hangs under a label for its
+door.
+<span slot="breaks">The cabinet is slow because you have to walk to it;
+the stub cache is a fast hash table, but every lookup still costs a hash
+and a compare, and it tells the optimising compiler nothing about which
+shapes to expect.</span>
+</Analogy>
+
+Step through one access as five different shapes arrive:
+
+<ICSteps client:visible />
+
+<Callout kind="definition">
+An inline cache is **polymorphic** ("many forms") when it has seen
+several shapes and keeps an entry for each, and **megamorphic** ("huge
+number of forms") when it has seen too many to list. In the V8 inside
+Node 22, "too many" means more than four: the flag
+`--max-valid-polymorphic-map-count` defaults to
+4<Cite id="v8-src-tiering-12-4" />. A megamorphic access stops keeping
+entries of its own and uses the **stub cache**, a table shared by all
+megamorphic loads that maps a shape and a name to a
+handler<Cite id="v8-src-ic-12-4" />.
+</Callout>
+
+<Formal title="The states of one site (V8 12.4)">
+
+```text
+n = number of different shapes seen
+state = 0  if n = 0     (uninitialized)
+        1  if n = 1     (monomorphic)
+        P  if 2 ≤ n ≤ 4 (polymorphic)
+        N  if n > 4     (megamorphic)
+```
+
+<span slot="read">Count the different shapes that have reached the site
+(not the number of accesses). None: state 0. One: state 1. Two to four:
+P. More than four: N. The letters are the ones V8's own log
+prints<Cite id="v8-src-ic-12-4" />, and the count only grows, so the
+state only moves down the list.</span>
+</Formal>
+
+<Figure caption="A polymorphic site keeps its own short list; megamorphic sites share one table keyed by map and name." takeaway="Past four shapes, a site stops remembering and starts asking.">
+  <StubTable />
+</Figure>
+
+<Examples of="polymorphic megamorphic">
+
+```
+// getX called with { x } and { x, y }
+LoadIC 1:29 0 1 x
+LoadIC 1:29 1 P x
+```
+
+```
+// getX called ten times each with
+// { x }, { x, a }, { x, b },
+// { x, c }, { x, d }
+LoadIC 1:29 0 1 x
+LoadIC 1:29 1 P x
+LoadIC 1:29 P P x
+LoadIC 1:29 P P x
+LoadIC 1:29 P N x
+```
+
+```
+// kindOf(n) over the five node classes,
+// ten calls each
+LoadIC 6:25 0 1 type
+LoadIC 6:25 1 P type
+LoadIC 6:25 P P type
+LoadIC 6:25 P P type
+LoadIC 6:25 P N type
+```
+
+</Examples>
+
+All three are real `node --log-ic` runs (Node v22.23.4, V8 12.4, Node's
+own lines removed). The first is the smallest polymorphic site: two
+shapes, so `0 → 1` on the first and `1 → P` on the second. The second
+walks the whole ladder: the third and fourth shapes are added to the list
+(`P → P`), and the fifth sends the site to `N`. (Why ten calls each? A function only gets its feedback vector after about eight calls in Node 22, and
+with five calls each, the first shape was never recorded and the site
+stopped at `P`.) The third is the interpreter case: one innocent-looking
+`n.type`, five classes, and the site is megamorphic, which is worth
+knowing before you write a tree-walker in JavaScript for real.
+
+<Prompts ids={['poly-what', 'mega-what', 'log-letters', 'count-shapes', 'eight-calls']} />
+
+## Why the optimising tiers care
+
+A monomorphic site gives Maglev something precise to build on: check one
+shape, then load at a fixed offset<Cite id="v8-maglev" />. A polymorphic
+site still gives it a short list of cases, which is the observation
+Hölzle, Chambers and Ungar made for Self in 1991: the types a polymorphic
+inline cache records are information an optimising compiler can
+use<Cite id="holzle1991" />. A megamorphic site gives it nothing: the
+stub cache is shared, so it says nothing about which shapes *this* line
+sees.
+
+Megamorphic sites turn up in ordinary code. A helper called with many
+kinds of object is one; the V8 team's 2021 post on `super` shows another,
+a `super.m()` call inside a mixin, where each use of the mixin creates a
+new class, so that one access site goes megamorphic<Cite id="v8-fast-super" />.
+Try one shape against twenty on your device:
+
+<Run id="mono-vs-mega" />
+
+<Callout kind="pitfall">
+Do not reshape a whole program around this. A site that sees two or three
+shapes is polymorphic, not megamorphic, and what matters is the *hot*
+code: the inner loop that reads `p.x` for every particle. Make every
+particle with the same function, in the same order, and that loop sees
+one shape.
+</Callout>
+
+<Prompts ids={['stub-shared', 'mixin-mega', 'poly-ok']} />
+
+## Your turn
+
+<Exercise id="icStates" />
+
+## What you learned
+
+- **Polymorphic**: several shapes seen at one site, each with its own
+  entry; in the V8 inside Node 22, up to four.
+- **Megamorphic**: more than four; the site gives up its own entries and
+  looks up (shape, name) in the shared **stub cache**.
+- The states count different shapes, not accesses, and only move one way.
+- Different classes mean different shapes even with the same fields, so
+  an interpreter's `node.type` is a classic megamorphic site.
+
+Next: arrays get their own version of shapes, elements kinds.
+
+
+{/* ── merge: from old chapter 258, Holey arrays ── */}
+
+## An index with nothing in it
+
+The previous chapter's kinds all began with `PACKED_`, and one of the
+stepper's lines ended in `HOLEY_ELEMENTS`. That other half of the name is
+about a question every array read has to answer: is there really an
+element at this index? In most languages the answer is always yes for an
+index below the length; in JavaScript it is not:
+
+```js
+const xs = [0, , 2];  // a hole at 1
+const ys = [];
+ys[3] = 'x';          // holes at 0, 1, 2
+```
+
+`xs` has length 3, but nothing at index 1 (the empty space between the
+commas); `ys` has length 4, and only index 3 holds anything. A hole is not
+the same as storing `undefined`: `Object.hasOwn(xs, 1)` is `false`, the
+array simply does not have an element 1, and reading `xs[1]` makes
+JavaScript look further, at the object the array inherits from,
+`Array.prototype`<Cite id="v8-elements-kinds" />.
+
+<Analogy title="numbered lockers">
+A row of lockers numbered 0 to 2, where locker 1 has never been assigned
+to anyone. Ask for whatever is in locker 1 and the attendant does not hand
+you an empty box; she goes to the office to ask whether anything for
+locker 1 was left there, and only then tells you there is nothing.
+<span slot="breaks">An unassigned locker is still a real, empty locker; a
+hole is a marker that says "no element here", and the look-up it causes
+goes through the prototype objects, which code can change.</span>
+</Analogy>
+
+<Analogy extra title="an egg box">
+In a full egg box you can reach into any cup without looking. Once you
+know some cups might be empty, you have to look before every grab, even
+in the cups that are full.
+<span slot="breaks">You can refill an egg box and forget it was ever
+short; in V8 12.4 an array that has had a hole stays HOLEY even after
+every hole is filled.</span>
+</Analogy>
+
+Step through a read of index 1, first from a packed array and then from a
+holey one:
+
+<HoleReadSteps client:visible />
+
+Usually nothing is on the prototypes and the read gives `undefined`, but
+code can put something there, and then a hole shows it:
+
+<Run id="hole-proto" />
+
+That is why holes are costly: for a packed array V8 knows every index
+below the length has its own element, while for a holey one a read needs
+extra checks and may have to search the prototype
+chain<Cite id="v8-elements-kinds" />.
+
+<Callout kind="definition">
+A **holey array** has at least one index below its `length` with no
+element of its own. Each basic kind has a holey variant
+(`HOLEY_SMI_ELEMENTS`, `HOLEY_DOUBLE_ELEMENTS`, `HOLEY_ELEMENTS`), and
+PACKED → HOLEY is one-way too: filling every hole later does not make the
+array packed again<Cite id="v8-elements-kinds" />.
+</Callout>
+
+<Formal title="When an array is holey">
+
+```text
+holey(a) ⇔ at some time, ∃ i < a.length :
+              ¬ hasOwn(a, i)
+```
+
+<span slot="read">An array a is holey if and only if (⇔), at some moment
+in its life, there existed (∃) an index i below its length for which a
+did not (¬) have an own element. "At some time" is the one-way part: the
+condition only has to have been true once.</span>
+</Formal>
+
+<Figure caption="The six common elements kinds. Every example is what %DebugPrint reported for it in Node v22.23.4 (V8 12.4)." takeaway="Two one-way moves: down to a more general base, right to holey.">
+  <SixKinds />
+</Figure>
+
+<Examples of="holey-array">
+
+```js
+[0, , 2]   // HOLEY_SMI_ELEMENTS
+```
+
+```js
+const h = new Array(3); // HOLEY_SMI
+for (let i = 0; i < 3; i++) h[i] = i;
+// still HOLEY_SMI_ELEMENTS
+new Array(3).fill(0);   // HOLEY_SMI too
+```
+
+```js
+// building n particles' x values:
+const xs = [];
+for (let i = 0; i < n; i++) xs.push(i);
+// PACKED_SMI_ELEMENTS: push never
+// skips an index
+```
+
+</Examples>
+
+The first is the smallest hole, written directly. The second is the
+common surprise: `new Array(3)` makes an array of length 3 with three
+holes, and filling them in order does not make it packed. The V8 post
+that describes the lattice adds a 2025 update saying `fill` is now an
+exception to this rule<Cite id="v8-elements-kinds" />, but that is too
+recent for Node 22, where `new Array(3).fill(0)` is still
+`HOLEY_SMI_ELEMENTS` (checked with `%DebugPrint`). The third is the
+habit to keep: start from `[]` and `push`, which always writes at the
+current length, so no index is ever skipped.
+
+Element loads see the difference too. Reading a hole once with
+`--log-ic` gives a line that ends in a modifier the other loads in this
+book never had:
+
+```
+KeyedLoadIC 2:29 0 1 1 .HOLES
+```
+
+(Node v22.23.4, V8 12.4, for `xs[1]` on `[0, , 2]`.) The cache records
+that this load may meet holes, which is the extra checking of the
+stepper, written down.
+
+<Prompts ids={['holey-what', 'hole-not-undefined', 'holey-why', 'holey-new-array', 'holey-fill', 'holey-avoid', 'holey-one-way', 'holes-log']} />
+
+<Callout kind="engine" label="Under the hood">
+A typed array can never be holey: every index below its length holds a
+number, and `%DebugPrint` reports a fixed kind such as `FLOAT64ELEMENTS`
+for a `Float64Array`<Cite id="v8-elements-kinds" />. Viscosity's
+struct-of-arrays columns are typed arrays for exactly this reason, among
+others: no hole checks, ever.
+</Callout>
+
+## Your turn
+
+The first exercise combines both one-way rules; the second (extra
+practice) joins two kinds.
+
+<Exercise id="kindAfter" />
+
+<Exercise id="joinKinds" />
+
+## What you learned
+
+- A **hole** is an index below `length` with no element of its own; it is
+  not `undefined`, and reading it continues along the prototype chain.
+- Every basic kind has a **holey** variant, and PACKED → HOLEY is one-way;
+  in V8 12.4 even `new Array(n).fill(v)` stays holey.
+- Build arrays with literals or `push` to keep them packed, or use a
+  typed array, which has no holes at all.
+
+Next: the feedback all these caches collect, and the bets V8's optimising
+compilers place on it.
+
+<Quiz />

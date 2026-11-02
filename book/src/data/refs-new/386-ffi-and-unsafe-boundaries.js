@@ -1,4 +1,4 @@
-// New references for chapter 386 (and its second half, 329b).
+// New references for chapter 312 (and its second half, 329b).
 export default [
   {
     id: 'rustref-external-blocks',
@@ -10,7 +10,7 @@ export default [
     url: 'https://doc.rust-lang.org/reference/items/external-blocks.html',
     accessed: '2026-11-02',
     checkedAgainst: 'src/items/external-blocks.md read raw from raw.githubusercontent.com/rust-lang/reference/master on 2026-11-02: external blocks declare items not defined in the current crate; the ABI string “specifies the calling convention of the functions in the block. The calling convention defines a low-level interface for functions, such as how arguments are placed in registers or on the stack, how return values are passed”; the default ABI is "C"; unsafe extern "Rust" is “the native calling convention for Rust functions… The Rust ABI offers no stability guarantees”; unsafe extern "C" “matches the default ABI chosen by the dominant C compiler for the target”; "C-unwind" differs when the callee unwinds.',
-    shaped: 'Chapter 386: extern blocks, the "C" ABI, and why Rust’s own ABI is not used across languages.',
+    shaped: 'Chapter 312: extern blocks, the "C" ABI, and why Rust’s own ABI is not used across languages.',
   },
   {
     id: 'nomicon-ffi',
@@ -22,7 +22,7 @@ export default [
     url: 'https://doc.rust-lang.org/nomicon/ffi.html',
     accessed: '2026-11-02',
     checkedAgainst: 'src/ffi.md read raw from raw.githubusercontent.com/rust-lang/nomicon/master on 2026-11-02: “strings are not terminated with \\0. If you need a NUL-terminated string for interoperability with C, you should use the CString type in the std::ffi module”; “Rust links against libc and libm by default”; structs have a C representation only with #[repr(C)]; section “FFI and unwinding”: if an unwinding Rust panic meets an ABI boundary that is not permitted to unwind, “panic will cause the process to safely abort”, and -unwind ABI strings exist for boundaries that must allow it; callbacks from C to Rust are extern "C" fns.',
-    shaped: 'Chapters 386 and 386b: CString, C-compatible types, callbacks and panics at the boundary.',
+    shaped: 'Chapters 312 and 312b: CString, C-compatible types, callbacks and panics at the boundary.',
   },
   {
     id: 'nomicon-safe-unsafe',
@@ -34,7 +34,7 @@ export default [
     url: 'https://doc.rust-lang.org/nomicon/safe-unsafe-meaning.html',
     accessed: '2026-11-02',
     checkedAgainst: 'src/safe-unsafe-meaning.md read raw from raw.githubusercontent.com/rust-lang/nomicon/master on 2026-11-02: the unsafe keyword has two uses, “to declare the existence of contracts the compiler can’t check, and to declare that a programmer has checked that these contracts have been upheld”; on functions and traits it declares contracts for callers and implementors; “All FFI … functions are unsafe to call”; the soundness property: “No matter what, Safe Rust clients can’t cause Undefined Behavior”; unsafe code “cannot trust Safe Rust without care”, e.g. BTreeMap must be robust against an Ord that is not total; Send and Sync are unsafe traits.',
-    shaped: 'Chapter 386b: contracts, soundness, and why unsafe code must not trust generic safe code.',
+    shaped: 'Chapter 312b: contracts, soundness, and why unsafe code must not trust generic safe code.',
   },
   {
     id: 'ucg-glossary',
@@ -46,7 +46,7 @@ export default [
     url: 'https://rust-lang.github.io/unsafe-code-guidelines/glossary.html',
     accessed: '2026-11-02',
     checkedAgainst: 'reference/src/glossary.md read raw from raw.githubusercontent.com/rust-lang/unsafe-code-guidelines/master on 2026-11-02, “Validity and safety invariant”: the validity invariant must hold whenever data is accessed or copied at its type, and the compiler exploits it; the safety invariant “can be temporarily violated by unsafe code, but must always be upheld when interfacing with unknown safe code”; example: a &str or String that is not UTF-8 is valid but unsafe, and unsafe code “must not return a non-UTF-8 string to the outside of its safe abstraction boundary”.',
-    shaped: 'Chapter 386b: validity versus safety invariants, with the UTF-8 example.',
+    shaped: 'Chapter 312b: validity versus safety invariants, with the UTF-8 example.',
   },
   {
     id: 'node-api',
@@ -58,7 +58,7 @@ export default [
     url: 'https://nodejs.org/docs/latest-v22.x/api/n-api.html',
     accessed: '2026-11-02',
     checkedAgainst: 'doc/api/n-api.md read raw from raw.githubusercontent.com/nodejs/node/v22.x on 2026-11-02: “Node-API (formerly N-API) is an API for building native Addons”, maintained as part of Node.js, and “will be Application Binary Interface (ABI) stable across versions of Node.js”. Node 22.23 has no built-in FFI module (require("node:ffi") fails with ERR_UNKNOWN_BUILTIN_MODULE).',
-    shaped: 'Chapter 386: how JavaScript on Node reaches C code, for comparison.',
+    shaped: 'Chapter 312: how JavaScript on Node reaches C code, for comparison.',
   },
   {
     id: 'node-worker-threads-v22',
@@ -70,6 +70,6 @@ export default [
     url: 'https://nodejs.org/docs/latest-v22.x/api/worker_threads.html',
     accessed: '2026-11-02',
     checkedAgainst: 'doc/api/worker_threads.md read raw from raw.githubusercontent.com/nodejs/node/v22.x on 2026-11-02: new Worker(filename, { workerData }) passes “any arbitrary, cloneable JavaScript value that will be cloned”; messages are sent with postMessage and received with the message event, and data “is cloned as if using postMessage()”. The pattern was run with Node 22.23.',
-    shaped: 'Chapter 390: comparing a Rust worker pool with Node workers.',
+    shaped: 'Chapter 316: comparing a Rust worker pool with Node workers.',
   },
 ];

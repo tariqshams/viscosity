@@ -1,5 +1,5 @@
-// Chapter 47 cards (the JSON parser, second half).
-// Generated layout: edit freely; keys are stable ids, never rename them.
+// Chapter 47 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'shape-code': {

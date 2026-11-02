@@ -1,4 +1,5 @@
-// Chapter 5b cards (split from chapter 5). Keys are stable ids: never rename them.
+// Chapter 6 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'particles-i-x': {
@@ -59,8 +60,7 @@ console.log(right);`,
 export const exercises = {
   centerX: {
     title: 'The average x position',
-    prompt:
-      'Write `centerX(ps)` that returns the **average** of the `x` properties of all the particle objects in the array `ps`. You can assume the array is not empty.',
+    prompt: 'Write `centerX(ps)` that returns the **average** of the `x` properties of all the particle objects in the array `ps`. You can assume the array is not empty.',
     starter: `function centerX(ps) {
   // your code here
 }
@@ -139,8 +139,7 @@ The second test gives each particle a \`y\` as well; the loop never reads it, so
   step: {
     optional: true,
     title: 'Move every particle',
-    prompt:
-      'Write `step(ps)` that moves every particle by its velocity: `x` grows by `vx`, and `y` grows by `vy`. Change the objects themselves; the function doesn’t need to return anything.',
+    prompt: 'Write `step(ps)` that moves every particle by its velocity: `x` grows by `vx`, and `y` grows by `vy`. Change the objects themselves; the function doesn’t need to return anything.',
     starter: `function step(ps) {
   // your code here
 }
@@ -215,8 +214,7 @@ The third test calls \`step\` twice and checks that \`x\` moved twice (to 14) wh
   toSoA: {
     optional: true,
     title: 'Turn the table sideways',
-    prompt:
-      'Write `toSoA(ps)`. `ps` is an array of objects, each with an `x` and a `vx`. Return **one object** with two arrays: `x`, holding every particle’s `x` in order, and `vx`, holding every `vx`. For example `toSoA([{ x: 0, vx: 1 }, { x: 5, vx: -1 }])` returns `{ x: [0, 5], vx: [1, -1] }`.',
+    prompt: 'Write `toSoA(ps)`. `ps` is an array of objects, each with an `x` and a `vx`. Return **one object** with two arrays: `x`, holding every particle’s `x` in order, and `vx`, holding every `vx`. For example `toSoA([{ x: 0, vx: 1 }, { x: 5, vx: -1 }])` returns `{ x: [0, 5], vx: [1, -1] }`.',
     starter: `function toSoA(ps) {
   // your code here
 }
@@ -298,10 +296,23 @@ export const quiz = [
   {
     q: 'In an array of particle objects, which expression is the `vy` of the first particle?',
     options: [
-      { t: '`particles.vy[0]`', why: 'That would be SoA-style, a `vy` array. Here each slot holds an object.' },
-      { t: '`particles[1].vy`', why: 'Index 1 is the second particle.' },
-      { t: '`particles.vy`', why: 'The array itself has no `vy` property, so this is `undefined`.' },
-      { t: '`particles[0].vy`', correct: true, why: 'Slot 0 holds the first particle object; `.vy` reads its property.' },
+      {
+        t: '`particles.vy[0]`',
+        why: 'That would be SoA-style, a `vy` array. Here each slot holds an object.',
+      },
+      {
+        t: '`particles[1].vy`',
+        why: 'Index 1 is the second particle.',
+      },
+      {
+        t: '`particles.vy`',
+        why: 'The array itself has no `vy` property, so this is `undefined`.',
+      },
+      {
+        t: '`particles[0].vy`',
+        correct: true,
+        why: 'Slot 0 holds the first particle object; `.vy` reads its property.',
+      },
     ],
   },
   {
@@ -310,10 +321,23 @@ export const quiz = [
 console.log(ps[2].x);
 \`\`\``,
     options: [
-      { t: 'It prints `undefined`', why: 'That would be `ps[2]` alone. Here the code goes on to ask `undefined` for a property.' },
-      { t: 'A TypeError: Cannot read properties of undefined', correct: true, why: '`ps[2]` is past the end, so it is `undefined`, and reading `.x` of `undefined` stops the program.' },
-      { t: 'It prints the last particle’s x', why: 'Index 2 is one past the last index (1); JavaScript does not wrap round.' },
-      { t: 'It prints `0`', why: 'Nothing gives a default of 0 for a missing slot.' },
+      {
+        t: 'It prints `undefined`',
+        why: 'That would be `ps[2]` alone. Here the code goes on to ask `undefined` for a property.',
+      },
+      {
+        t: 'A TypeError: Cannot read properties of undefined',
+        correct: true,
+        why: '`ps[2]` is past the end, so it is `undefined`, and reading `.x` of `undefined` stops the program.',
+      },
+      {
+        t: 'It prints the last particle’s x',
+        why: 'Index 2 is one past the last index (1); JavaScript does not wrap round.',
+      },
+      {
+        t: 'It prints `0`',
+        why: 'Nothing gives a default of 0 for a missing slot.',
+      },
     ],
   },
   {
@@ -327,37 +351,89 @@ for (let i = 0; i < ps.length; i++) {
 console.log(ps[1].x);
 \`\`\``,
     options: [
-      { t: '`2`', why: '`p` is not a copy: it reaches the object in the slot, so writing `p.x` changes the array’s particle.' },
-      { t: '`10`', why: 'That is the first particle’s new x. Slot 1 held 2, which became 20.' },
-      { t: '`20`', correct: true, why: 'Each pass names the record in the slot `p` and multiplies its own `x` by 10, so slot 1 goes from 2 to 20.' },
-      { t: 'An error, because `p` is `const`', why: '`const` stops `p` being given a different record; changing a property of the record is allowed.' },
+      {
+        t: '`2`',
+        why: '`p` is not a copy: it reaches the object in the slot, so writing `p.x` changes the array’s particle.',
+      },
+      {
+        t: '`10`',
+        why: 'That is the first particle’s new x. Slot 1 held 2, which became 20.',
+      },
+      {
+        t: '`20`',
+        correct: true,
+        why: 'Each pass names the record in the slot `p` and multiplies its own `x` by 10, so slot 1 goes from 2 to 20.',
+      },
+      {
+        t: 'An error, because `p` is `const`',
+        why: '`const` stops `p` being given a different record; changing a property of the record is allowed.',
+      },
     ],
   },
   {
     q: 'What is the difference between AoS and SoA?',
     options: [
-      { t: 'AoS keeps each record’s fields together; SoA keeps each field’s values together', correct: true, why: 'Same data, two arrangements: by record (row), or by field (column).' },
-      { t: 'AoS is for numbers and SoA is for strings', why: 'Both can hold any kind of field.' },
-      { t: 'SoA stores fewer values', why: 'Both store exactly the same values, just arranged differently.' },
-      { t: 'They are two names for the same layout', why: 'They are different layouts: one groups by record, the other by field.' },
+      {
+        t: 'AoS keeps each record’s fields together; SoA keeps each field’s values together',
+        correct: true,
+        why: 'Same data, two arrangements: by record (row), or by field (column).',
+      },
+      {
+        t: 'AoS is for numbers and SoA is for strings',
+        why: 'Both can hold any kind of field.',
+      },
+      {
+        t: 'SoA stores fewer values',
+        why: 'Both store exactly the same values, just arranged differently.',
+      },
+      {
+        t: 'They are two names for the same layout',
+        why: 'They are different layouts: one groups by record, the other by field.',
+      },
     ],
   },
   {
     q: 'With `const soa = { x: [0, 5, 9], vx: [1, -1, 0] };`, which reads particle 2’s `vx`?',
     options: [
-      { t: '`soa[2].vx`', why: '`soa` is an object, not an array of records, so `soa[2]` is `undefined`.' },
-      { t: '`soa.vx[2]`', correct: true, why: 'In a struct of arrays you pick the field first (`vx`, an array), then the slot.' },
-      { t: '`soa.vx.2`', why: 'A dot must be followed by a name; slots of an array are read with brackets.' },
-      { t: '`soa[vx][2]`', why: 'Without quotes, `vx` is a variable name, and no variable `vx` exists here. `soa[\'vx\'][2]` would work.' },
+      {
+        t: '`soa[2].vx`',
+        why: '`soa` is an object, not an array of records, so `soa[2]` is `undefined`.',
+      },
+      {
+        t: '`soa.vx[2]`',
+        correct: true,
+        why: 'In a struct of arrays you pick the field first (`vx`, an array), then the slot.',
+      },
+      {
+        t: '`soa.vx.2`',
+        why: 'A dot must be followed by a name; slots of an array are read with brackets.',
+      },
+      {
+        t: '`soa[vx][2]`',
+        why: 'Without quotes, `vx` is a variable name, and no variable `vx` exists here. `soa[\'vx\'][2]` would work.',
+      },
     ],
   },
   {
     q: 'In which language is an array of records stored with the records packed one after another, with no arrows?',
     options: [
-      { t: 'Python, in a list of dictionaries', why: 'A Python list holds references to its dictionaries, which live elsewhere.' },
-      { t: 'Java, in an array of objects', why: 'A Java array of objects holds references, much like JavaScript.' },
-      { t: 'JavaScript, in an array of objects', why: 'The array usually holds arrows to separate objects; this is what Viscosity changes.' },
-      { t: 'C, in an array of structs', correct: true, why: '`struct P ps[2]` lays the structs out side by side in memory.' },
+      {
+        t: 'Python, in a list of dictionaries',
+        why: 'A Python list holds references to its dictionaries, which live elsewhere.',
+      },
+      {
+        t: 'Java, in an array of objects',
+        why: 'A Java array of objects holds references, much like JavaScript.',
+      },
+      {
+        t: 'JavaScript, in an array of objects',
+        why: 'The array usually holds arrows to separate objects; this is what Viscosity changes.',
+      },
+      {
+        t: 'C, in an array of structs',
+        correct: true,
+        why: '`struct P ps[2]` lays the structs out side by side in memory.',
+      },
     ],
   },
 ];

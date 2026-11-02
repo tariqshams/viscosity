@@ -1,4 +1,4 @@
-// Chapter 221: the identity function called from two call sites, analysed
+// Chapter 95: the identity function called from two call sites, analysed
 // once without contexts (the answers smear together) and once with one
 // call site of context (each call keeps its own answer).
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';

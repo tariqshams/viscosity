@@ -1,4 +1,4 @@
-// New references for chapter 246 (and its staged second half, 235-b).
+// New references for chapter 241 (and its staged second half, 235-b).
 export default [
   {
     id: 'gibbonsmuchnick1986',
@@ -10,7 +10,7 @@ export default [
     url: 'https://dblp.dagstuhl.de/pid/02/6379.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: the dblp listing for the authors (SIGPLAN Symposium on Compiler Construction 1986, pages 11–16, also reprinted with a retrospective in Best of PLDI 1986, pp. 167–174); University of Illinois CS 426 lecture notes (courses.grainger.illinois.edu/cs426/fa2022/Notes/13sched.pdf), which describe it as list scheduling within basic blocks, assuming hardware pipeline interlocks; and the text of US patent 5,202,993, which summarises it as using a dependency-graph representation and simple heuristics in place of look-ahead. dblp, dl.acm.org and doi.org could not be fetched from this session, so the DOI is left out and the paper itself was not read. One newsgroup bibliography gives different pages (48–57); the dblp pages are used.',
-    shaped: 'Chapters 246 and 246-b: list scheduling over a dependence graph for a pipelined machine, choosing among ready instructions with simple rules instead of looking ahead.',
+    shaped: 'Chapters 241 and 241-b: list scheduling over a dependence graph for a pipelined machine, choosing among ready instructions with simple rules instead of looking ahead.',
   },
   {
     id: 'llvm-sifive7-sched',
@@ -22,7 +22,7 @@ export default [
     url: 'https://github.com/llvm/llvm-project/blob/main/llvm/lib/Target/RISCV/RISCVSchedSiFive7.td',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/lib/Target/RISCV/RISCVSchedSiFive7.td, read on 2026-11-02: “The SiFive7 microarchitecture has three kinds of pipelines: A, B, V. Pipe A can handle memory, integer alu and vector operations. Pipe B can handle integer alu, control flow, integer multiply and divide, and floating point computation.” WriteIMul and WriteIMul32 have Latency = 3 on PipeB; WriteLDB/LDH/LDW/LDD have Latency = 3 on PipeA; the model sets MicroOpBufferSize = 0 (“SiFive7 is in-order”), IssueWidth = 2 (“2 micro-ops are dispatched per cycle”) and LoadLatency = 3. Also checked by compiling a sum-of-squares loop with clang 18.1.3, --target=riscv64 -march=rv64im -O2 -mcpu=sifive-u74.',
-    shaped: 'Chapters 246 to 248-b: the load and multiply latencies of the book’s toy machine, and a real in-order core with separate memory and multiply pipes.',
+    shaped: 'Chapters 241 to 243-b: the load and multiply latencies of the book’s toy machine, and a real in-order core with separate memory and multiply pipes.',
   },
   {
     id: 'llvm-machinescheduler',
@@ -34,6 +34,6 @@ export default [
     url: 'https://github.com/llvm/llvm-project/blob/main/llvm/include/llvm/CodeGen/MachineScheduler.h',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/llvm/include/llvm/CodeGen/MachineScheduler.h, read on 2026-11-02: “The default scheduler, ScheduleDAGMILive, builds the DAG and drives list scheduling while updating the instruction stream, register pressure, and live intervals.” and “The strategy is responsible for selecting the highest priority node from the list”; the file also declares a post-RA scheduler (“Construct a post-RA scheduler with the requested anti-dependency mode”) and both “PreRA and PostRA MachineScheduler” policies. The generic strategy’s list of reasons for preferring one candidate over another (enum CandReason) includes RegExcess, RegCritical and RegMax, register-pressure reasons, ahead of Stall.',
-    shaped: 'Chapter 246-b: list scheduling in a production compiler, tracking register pressure before register allocation and running again after it.',
+    shaped: 'Chapter 241-b: list scheduling in a production compiler, tracking register pressure before register allocation and running again after it.',
   },
 ];

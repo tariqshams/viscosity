@@ -1,0 +1,175 @@
+---
+n: 195
+day: 7
+part: XI
+title: 'Inferring types, and the occurs check'
+tagline: 'With type variables and unify in hand, a checker can work out the type of a function nobody annotated. Almost always: one tiny program makes the solver chase its own tail, and one small check stops it.'
+objectives:
+  - Infer the type of a small unannotated function by giving its parameters fresh variables and unifying at every use.
+  - Follow the substitution through a whole inference, and read the final type off it.
+  - Explain why 'a = ['a] has no solution, and what goes wrong without the occurs check.
+  - Add the occurs check to unify in JavaScript.
+introduces: [occurs-check]
+uses: [type-variable, unification, typed-drip, type-checker, type-annotation-checking, typing-judgment, type-environment, substitution, lambda-calculus, recursion, stack-overflow, generic, map, function, parameter, object, property, copy-spread, strings, numbers]
+sources: [robinson1965, pierce2002]
+---
+import InferSteps from '../../../components/diagrams/ch195/InferSteps';
+import OccursLoop from '../../../components/diagrams/ch195/OccursLoop';
+
+## Putting the pieces together
+
+The last chapter built the two parts of inference separately: type
+variables for what we do not know, and `unify` for solving one equation.
+Joined up, they infer types like this, for a function with no
+annotations at all:
+
+1. Give each parameter a **fresh** type variable (one never used
+   before), and put it in Γ.
+2. Check the body as usual, but wherever a rule needs two types to be
+   equal, `unify` them instead of comparing, and keep the substitution.
+   For an operator such as `*`, unify each operand with `number`. For a
+   call `f(a)`, make a fresh variable `'r` for the result and unify the
+   type of `f` with `fn(type of a) -> 'r`.
+3. At the end, apply the substitution to the function's type.
+
+That is the whole method; the rest of this section runs it. (It is the
+heart of what chapter 196 calls Hindley–Milner inference, and of
+Pierce's "type reconstruction"<Cite id="pierce2002" />.)
+
+```
+fn (x) { return x * 2; }
+# x : 'a; * gives 'a = number
+# so: fn(number) -> number
+```
+
+`x` starts as `'a`; the `*` rule unifies `'a` with `number` (and `2`
+with `number`, which is already true), so the substitution is
+`{ 'a ↦ number }`, the body is a `number`, and applying it to
+`fn('a) -> number` gives `fn(number) -> number`.
+
+Now a harder one, with a function as an argument:
+
+<InferSteps client:visible />
+
+The result, `fn(fn('a) -> 'a, 'a) -> 'a`, says exactly what
+`f(f(x))` needs: `f` must return the same type it takes (its result is
+fed back into it), and `x` must be that type too. Nobody wrote any of
+that down.
+
+<Run id="infer" />
+
+The runnable box infers five functions (its fresh variables are called
+`'t0`, `'t1` and so on, renamed `'a`, `'b` at the end for printing). The
+first four come out as expected; the fifth, `fn (x) { return x(x); }`,
+crashes with `Maximum call stack size exceeded`. Something in our
+`unify` is missing.
+
+<Prompts ids={['fresh-why', 'call-unify', 'twice-type', 'no-check-crash']} />
+
+## A type that contains itself
+
+Follow `x(x)` by hand. `x` gets `'a`. The call makes a fresh `'b` for
+its result and unifies the type of the callee, `'a`, with
+`fn('a) -> 'b` (the argument is `x` again, of type `'a`). `'a` is an
+unbound variable, so `unify` binds it: `'a ↦ fn('a) -> 'b`. But that
+binding mentions `'a` itself, so applying it never ends:
+
+<Figure takeaway="A variable bound to a type that contains it can only be written out forever." caption="'a ↦ fn('a) -> 'b, unfolded: every replacement of 'a brings a new 'a with it, so the type grows without end, and apply recurses until the stack runs out.">
+  <OccursLoop />
+</Figure>
+
+The equation `'a = fn('a) -> 'b` has no solution among finite types,
+and nor does `'a = ['a]`: a list whose elements are lists of its own
+type, all the way down. The cure is the **occurs check**: before binding
+a variable to a type, look inside that type, through the substitution,
+and refuse if the variable occurs there<Cite id="robinson1965" />.
+
+<Analogy title="two mirrors facing each other">
+Stand between two mirrors and you see a mirror in a mirror in a mirror,
+on and on; no finite drawing shows the whole scene.
+<span slot="breaks">The reflections fade and stop being visible; a type
+never fades, so writing one out (or applying the substitution) would go
+on forever, until the program runs out of stack.</span>
+</Analogy>
+
+<Analogy extra title="a dictionary that defines a word by itself">
+"Recursion: see recursion." The entry sends you back to itself, and you
+never learn anything; the equation `'a = ['a]` is that entry.
+<span slot="breaks">Some languages do allow types that mention
+themselves, by *name*: TypeScript accepts
+`type Tree = { kids: Tree[] }` (try it in `tsc`), because
+the name stops the unfolding. The occurs check refuses only nameless
+types that would have to contain themselves.</span>
+</Analogy>
+
+<Formal title="Binding with the occurs check">
+
+```text
+bind α ↦ T
+  if α occurs in S(T)   fail
+  otherwise             S, α ↦ T
+```
+
+<span slot="read">To bind the type variable alpha to the type T under
+the substitution S: first apply S to T; if alpha appears anywhere inside
+the result, fail, because alpha would have to contain itself;
+otherwise, add the binding alpha goes to T. The case where T is alpha
+itself never gets here, because unify returns early when both sides are
+the same variable.</span>
+</Formal>
+
+<Callout kind="definition">
+The **occurs check** is the test, made each time unification is about
+to bind a type variable α to a type T, that α does not occur inside T
+(after applying the bindings made so far). If it does, the equation
+α = T has no finite solution, and unification fails instead of building
+an infinite type<Cite id="robinson1965" />.
+</Callout>
+
+<Examples of="occurs-check">
+
+```text
+'a  with  ['b]          'a ↦ ['b]
+'a  with  ['a]          refused
+```
+
+```text
+'a  with  fn('a) -> 'b  refused
+fn (x) { return x(x); } has no type
+```
+
+```text
+'b ↦ ['a] already, then
+'a  with  'b            refused
+```
+
+</Examples>
+
+The first pair shows what the check looks for: `'a` may be bound to a
+list of *some other* variable, but not to a list of itself. The second
+is the `x(x)` case, now reported as a type error instead of a crash.
+The third is the sneaky one: `'b` looks harmless, but the substitution
+already says `'b` is `['a]`, so binding `'a ↦ 'b` would mean
+`'a = ['a]`; that is why the check must look *through* the bindings.
+
+<Prompts ids={['occurs-what', 'occurs-why', 'occurs-through', 'occurs-named']} />
+
+## Your turn
+
+<Exercise id="occurs" />
+
+## What you learned
+
+- Inference gives each parameter a **fresh** type variable, unifies
+  wherever the rules need equal types, and applies the substitution at
+  the end.
+- `fn (f, x) { return f(f(x)); }` gets the type
+  `fn(fn('a) -> 'a, 'a) -> 'a` with no annotation at all.
+- The **occurs check** refuses to bind α to a type containing α, such
+  as `['a]`; without it, unification builds an infinite type and never
+  finishes.
+
+Next: what to do with a leftover variable like the `'a` in
+`fn('a) -> 'a`, so that one function can be used at many types.
+
+<Quiz />

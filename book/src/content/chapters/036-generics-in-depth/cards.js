@@ -1,8 +1,5 @@
-// Chapter 36 cards. Keys are stable ids: never rename them.
-//
-// As in chapters 27 and 29, the runner erases types without checking
-// them, so exercises (lang: 'ts') are tested on what the code does, and
-// the type-level ideas live in the text, the prompts and the walkthroughs.
+// Chapter 36 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'constraint-what': {
@@ -69,8 +66,7 @@ export const exercises = {
   byId: {
     lang: 'ts',
     title: 'An index by id',
-    prompt:
-      'Write `byId(xs)` that takes an array of records, each with a numeric `id`, and **returns** a `Map` from each id to its record. If two records share an id, the later one wins. Its type is `byId<T extends { id: number }>(xs: T[]): Map<number, T>`. (The runner erases types, so the tests check behaviour; the walkthrough explains what the types buy you.)',
+    prompt: 'Write `byId(xs)` that takes an array of records, each with a numeric `id`, and **returns** a `Map` from each id to its record. If two records share an id, the later one wins. Its type is `byId<T extends { id: number }>(xs: T[]): Map<number, T>`. (The runner erases types, so the tests check behaviour; the walkthrough explains what the types buy you.)',
     starter: `function byId<T extends { id: number }>(
   xs: T[],
 ): Map<number, T> {
@@ -164,8 +160,7 @@ test('a later record with the same id wins', () => {
     optional: true,
     lang: 'ts',
     title: 'The best item by a score',
-    prompt:
-      'Write `maxBy(xs, score)`: it calls `score` on each item and **returns** the item with the highest score (the first one, if several tie), or `undefined` for an empty array. Its type is `maxBy<T>(xs: T[], score: (x: T) => number): T | undefined`, so in `maxBy(ps, (p) => p.x)` inference makes `p` a particle without a label.',
+    prompt: 'Write `maxBy(xs, score)`: it calls `score` on each item and **returns** the item with the highest score (the first one, if several tie), or `undefined` for an empty array. Its type is `maxBy<T>(xs: T[], score: (x: T) => number): T | undefined`, so in `maxBy(ps, (p) => p.x)` inference makes `p` a particle without a label.',
     starter: `function maxBy<T>(
   xs: T[],
   score: (x: T) => number,
@@ -274,41 +269,91 @@ export const quiz = [
   {
     q: 'With `longest<T extends { length: number }>(a: T, b: T): T`, what type does `longest(\'ab\', \'c\')` have?',
     options: [
-      { t: '`string`', correct: true, why: 'Inference fills `T` with `string`, and the function returns `T`, so string methods are allowed on the result.' },
-      { t: '`{ length: number }`', why: 'That would be the type with a plain annotation. A constraint keeps the exact type that filled the blank.' },
-      { t: '`any`', why: 'There is plenty to infer from: both arguments are strings.' },
+      {
+        t: '`string`',
+        correct: true,
+        why: 'Inference fills `T` with `string`, and the function returns `T`, so string methods are allowed on the result.',
+      },
+      {
+        t: '`{ length: number }`',
+        why: 'That would be the type with a plain annotation. A constraint keeps the exact type that filled the blank.',
+      },
+      {
+        t: '`any`',
+        why: 'There is plenty to infer from: both arguments are strings.',
+      },
     ],
   },
   {
     q: '`map<A, B>(xs: A[], f: (x: A) => B): B[]` is called as `map([\'a\', \'bb\'], (s) => s.length)`. What is the result type?',
     options: [
-      { t: '`string[]`', why: 'That is `A[]`, the input. The result is `B[]`, and `B` comes from what the callback returns.' },
-      { t: '`number[]`', correct: true, why: '`A` is `string` from the array, so `s` is a string, `s.length` is a number, so `B` is `number`.' },
-      { t: 'An error: `s` has no label', why: 'Inference labels `s` as `A`, which is `string`, so no label is needed.' },
+      {
+        t: '`string[]`',
+        why: 'That is `A[]`, the input. The result is `B[]`, and `B` comes from what the callback returns.',
+      },
+      {
+        t: '`number[]`',
+        correct: true,
+        why: '`A` is `string` from the array, so `s` is a string, `s.length` is a number, so `B` is `number`.',
+      },
+      {
+        t: 'An error: `s` has no label',
+        why: 'Inference labels `s` as `A`, which is `string`, so no label is needed.',
+      },
     ],
   },
   {
     q: 'When do you need to write type arguments yourself, as in `f<string>(...)`?',
     options: [
-      { t: 'On every call to a generic function', why: 'Most calls infer their type arguments from the arguments.' },
-      { t: 'Only for generic classes', why: 'Inference works for functions and for `new` alike; `new Map([[1, \'a\']])` infers both blanks.' },
-      { t: 'When there is nothing to infer from, or the clues disagree', correct: true, why: 'For example `new Map()` (no arguments) or `combine([1], [\'a\'])` (number versus string).' },
+      {
+        t: 'On every call to a generic function',
+        why: 'Most calls infer their type arguments from the arguments.',
+      },
+      {
+        t: 'Only for generic classes',
+        why: 'Inference works for functions and for `new` alike; `new Map([[1, \'a\']])` infers both blanks.',
+      },
+      {
+        t: 'When there is nothing to infer from, or the clues disagree',
+        correct: true,
+        why: 'For example `new Map()` (no arguments) or `combine([1], [\'a\'])` (number versus string).',
+      },
     ],
   },
   {
     q: 'Given `function make<T = string>(): T[]`, what is the type of `make()`?',
     options: [
-      { t: '`unknown[]`', why: 'With no default, an uninferable blank becomes `unknown` here; but this blank has a default.' },
-      { t: '`any[]`', why: 'The default is used before anything falls back to `any`.' },
-      { t: '`string[]`', correct: true, why: 'There are no arguments to infer `T` from, so the default `string` fills it.' },
+      {
+        t: '`unknown[]`',
+        why: 'With no default, an uninferable blank becomes `unknown` here; but this blank has a default.',
+      },
+      {
+        t: '`any[]`',
+        why: 'The default is used before anything falls back to `any`.',
+      },
+      {
+        t: '`string[]`',
+        correct: true,
+        why: 'There are no arguments to infer `T` from, so the default `string` fills it.',
+      },
     ],
   },
   {
     q: 'Which is a real difference between TypeScript generics and Python’s `def longest[T: Sized](a: T, b: T) -> T`?',
     options: [
-      { t: 'Python checks the constraint while the program runs', why: 'Python itself ignores the annotations; a separate checker such as mypy checks them, much as `tsc` does.' },
-      { t: 'They differ in spelling (`extends` versus `:`), and TypeScript accepts any object shape as a constraint', correct: true, why: 'TypeScript constraints can be written as a shape like `{ length: number }`; Python uses a named type such as `Sized`.' },
-      { t: 'TypeScript keeps the type parameters when the program runs', why: 'TypeScript erases them before running, like Java.' },
+      {
+        t: 'Python checks the constraint while the program runs',
+        why: 'Python itself ignores the annotations; a separate checker such as mypy checks them, much as `tsc` does.',
+      },
+      {
+        t: 'They differ in spelling (`extends` versus `:`), and TypeScript accepts any object shape as a constraint',
+        correct: true,
+        why: 'TypeScript constraints can be written as a shape like `{ length: number }`; Python uses a named type such as `Sized`.',
+      },
+      {
+        t: 'TypeScript keeps the type parameters when the program runs',
+        why: 'TypeScript erases them before running, like Java.',
+      },
     ],
   },
 ];

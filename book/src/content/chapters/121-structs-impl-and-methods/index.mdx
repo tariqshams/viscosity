@@ -1,0 +1,622 @@
+---
+n: 121
+day: 19
+part: VII
+title: 'Structs, impl and methods'
+tagline: 'The particle has been an object since the first part of this book. In Rust it becomes a struct: a record whose shape is fixed before the program runs, built whole and stored inline.'
+objectives:
+  - Define a struct, build a value of it with every field, and read and change its fields.
+  - Use field init shorthand, struct update syntax, tuple structs and unit structs.
+  - Pass a struct to a function by borrowing it, and say how a struct differs from a TypeScript interface.
+  - Explain why an array of Rust structs holds its fields inline, where a JavaScript array holds references.
+  - Attach associated functions and methods to a type with an impl block, and call each the right way.
+  - Choose between &self, &mut self and self for each method, from what the method does.
+  - Explain what p.step(1.0) means as an ordinary function call, and why a method call can fail with E0596 or E0382.
+  - Read the receivers of the Rust Drip VM's stack methods.
+introduces: [struct, impl, self-receiver]
+uses: [borrow, shared-vs-mutable, borrow-checker, slice, ownership, move, drop, let-mut, scalar-types, rust-functions, expression-oriented, object, property, class, interface, type-erasure, typescript, array-of-objects, aos-vs-soa, record-shape, memory, contiguous, pointer, pointer-chasing, shape, method, this, constructor, stack-machine, virtual-machine]
+sources: [klabnik2026, rustref-type-layout, rust-book-structs, rust-book-methods, rustref-method-call]
+---
+import FieldSteps from '../../../components/diagrams/ch121/FieldSteps';
+import InlineArray from '../../../components/diagrams/ch121/InlineArray';
+import ReceiverSteps from '../../../components/diagrams/ch121/ReceiverSteps';
+import CallSugar from '../../../components/diagrams/ch121/CallSugar';
+
+{/* ── merge: from old chapter 121, Structs and impl ── */}
+
+## Four numbers that belong together
+
+A particle has a position and a velocity: four numbers. With the tools
+so far you would keep them in a tuple (values grouped in brackets):
+
+```rust
+let p = (0.0, 0.0, 3.0, 4.0);
+let speed_x = p.2; // which one was vx?
+```
+
+The numbers travel together, but nothing says which is which; `p.2`
+means "the third one", and a reader has to remember that the third one
+is the horizontal speed. In TypeScript you solved this in *Objects:
+things with named parts*, by giving every part a name. Rust has the same
+idea, with one difference that runs through this whole chapter: you
+declare the shape first, and every value is built from it.
+
+<Analogy title="a printed form">
+A passport application is printed with labelled boxes: surname, date of
+birth, place of birth. Every copy has the same boxes in the same places,
+the office will not accept one with a box missing, and you cannot add a
+box of your own in the margin. The printed blank form is the **struct
+definition**; each filled-in copy is one **value** of the struct.
+<span slot="breaks">A paper form can be photocopied, so two people can
+hold the same answers; a Rust struct value has one owner, and handing it
+over moves it (as *Moves, copies and clones* showed for strings) unless the
+type says it may be copied.</span>
+</Analogy>
+
+<Analogy extra title="a bento box">
+A bento box is moulded with compartments: one for rice, one for fish,
+one for pickles. Whatever lunch you pack, it has exactly those
+compartments, and you reach into one by name ("the rice"). Every box from
+the same mould is the same size, so a stack of them fits neatly on a
+shelf.
+<span slot="breaks">You can leave a compartment of a lunch box empty;
+a struct must have something in every field (when "nothing" is a real
+possibility, the field's type says so, as the chapter *Option and
+Result* shows).</span>
+</Analogy>
+
+## Defining and building a struct
+
+Here is the particle as a Rust struct:
+
+```rust
+struct Particle {
+    x: f64,
+    y: f64,
+    vx: f64,
+    vy: f64,
+}
+```
+
+`struct Particle` names a new type, and the braces list its **fields**,
+each with a name and a type (`f64` is the 64-bit floating-point number
+from *Numbers, characters and booleans*). This defines no value yet,
+only the shape every `Particle` will have. Step through one particle's
+life:
+
+<FieldSteps client:visible />
+
+<Callout kind="definition">
+A **struct** is a named record type: a fixed list of **fields**, each
+with a name and a type. A **struct expression**, `Name { field: value,
+... }`, builds a value of it and must give every field. `value.field`
+reads one field; writing to a field needs the whole value to be bound
+with `let mut`<Cite id="rust-book-structs" />.
+</Callout>
+
+<Examples of="struct">
+
+```rust
+struct Point { x: f64, y: f64 }
+let p = Point { x: 1.0, y: 2.0 };
+println!("{}", p.x + p.y); // 3
+```
+
+```rust
+let (x, y) = (5.0, 6.0);
+let a = Point { x, y };
+let b = Point { y: 0.0, ..a };
+println!("{} {}", b.x, b.y); // 5 0
+```
+
+```rust
+// from companion/rust/src/vm.rs
+struct CallFrame {
+    closure: Gc<ObjClosure>,
+    chunk: Rc<Chunk>,
+    ip: usize,
+    slots: usize,
+}
+```
+
+</Examples>
+
+The first is the smallest struct there is: two fields, one value built
+with both, and two fields read with a dot and added, so it prints `3`.
+The second shows two shortcuts. `Point { x, y }` is **field init
+shorthand**: when a variable has the same name as the field, `x` alone
+means `x: x`. `Point { y: 0.0, ..a }` is **struct update syntax**: give
+the fields you want to change, then `..a` (last) to take every other
+field from `a`; so `b` has `a`'s `x`, `5`, and its own `y`, `0`. The
+third is real: the Rust Drip VM keeps one `CallFrame` per call in
+progress, holding the closure being run, its bytecode, the index of the
+next byte to run (`ip`) and where its stack slots start: the call frame
+of Part IV, with a fixed shape.
+
+Two errors catch everyone in their first week, so here they are as
+pairs, each with rustc 1.97's real message (trimmed, and wrapped to fit
+your screen). Leaving out a field:
+
+```rust
+let p = Point { x: 1.0 };           // ✗
+let p = Point { x: 1.0, y: 0.0 };   // ✓
+```
+
+```text
+error[E0063]: missing field `y` in
+  initializer of `Point`
+7 |     let p = Point { x: 1.0 };
+  |             ^^^^^ missing `y`
+```
+
+and changing a field without `mut`:
+
+```rust
+let p = Point { x: 1.0, y: 2.0 };   // ✗
+let mut p = Point { x: 1.0, y: 2.0 };
+p.x = 5.0;                          // ✓
+```
+
+```text
+error[E0594]: cannot assign to `p.x`, as
+  `p` is not declared as mutable
+8 |     p.x = 5.0;
+  |     ^^^^^^^^^ cannot assign
+help: consider changing this to be mutable
+```
+
+Mutability belongs to the binding, so `let mut p` makes all of `p`
+changeable; no single field can be marked `mut`<Cite id="rust-book-structs" />.
+
+<Prompts ids={['struct-what', 'struct-all-fields', 'struct-mut', 'field-shorthand']} />
+
+## Three shapes of struct
+
+Rust has two more kinds of struct, and the Rust Drip code uses both.
+A **tuple struct** has fields with no names, only positions, and is
+handy for wrapping one value in a type of its own; a **unit struct** has
+no fields at all, and exists only as a name (the chapter *Traits* gives
+them work to do).
+
+```rust
+struct Meters(f64);   // tuple struct
+struct Origin;        // unit struct
+let m = Meters(2.5);
+println!("{}", m.0);  // 2.5
+let o = Origin;
+```
+
+`m.0` reads the first field by position. The point of `Meters` is that
+it is a *different type* from `f64`, so a function that asks for
+`Meters` will not accept a plain number of seconds by mistake (the idea
+of *Branded types: same shape, different meaning*, without the trick).
+
+A struct moves like a `String` does: `let q = p;` hands the particle to
+`q`, and `p` becomes unusable, as the diagram's last step showed. To
+print a whole struct with `{:?}`, put `#[derive(Debug)]` above it, which
+asks the compiler to write the printing code (the chapter *Traits*
+explains `derive`).
+
+<Prompts ids={['struct-move', 'tuple-struct']} />
+
+## Passing structs to functions
+
+A struct is an ordinary value, so functions can take one and hand one
+back. A function that only reads a struct borrows it with `&`, exactly
+as in the chapter *Borrowing*, so the caller keeps it:
+
+```rust
+fn speed(p: &Particle) -> f64 {
+    (p.vx * p.vx + p.vy * p.vy).sqrt()
+}
+println!("{}", speed(&p)); // 5
+```
+
+For the particle from the diagram, `speed(&p)` lends `p`; inside, `p.vx`
+reads through the borrow with the same dot, and the answer is the square
+root of 3² + 4², which is `5`. Afterwards `p` is still yours. Try it:
+
+<Run id="particle" />
+
+<OtherLanguages title="A record type and one value of it">
+
+```rust
+struct Particle { x: f64, y: f64 }
+let p = Particle { x: 0.0, y: 4.0 };
+```
+
+```ts
+interface Particle { x: number; y: number }
+const p: Particle = { x: 0, y: 4 };
+```
+
+</OtherLanguages>
+
+They look alike, but the TypeScript interface is only a promise to the
+type checker: it is erased before the program runs (*Interfaces, erasure
+and typeof*), and the engine has to discover the object's shape for
+itself (*Shapes in depth*). The Rust struct *is* the type at run time: a
+value can only be built from it, by name, with every field, and the
+compiler knows its size and the place of every field before the program
+starts.
+
+<Prompts ids={['struct-pass', 'struct-vs-interface']} />
+
+## Structs in memory
+
+A struct is a **product** of its fields: one `Particle` is one `x`
+*and* one `y` *and* one `vx` *and* one `vy`, all present at once. The
+chapter *Sum types in memory* met the other kind, a value that is one
+thing *or* another; the chapter *Enums and match* builds those in
+Rust.
+
+<Formal title="A struct is a product of its fields">
+
+```text
+struct P { a: A, b: B }
+P  ≅  A × B
+|P| = |A| × |B|
+```
+
+<span slot="read">A struct with a field of type A and a field of type
+B holds one A together with one B, which mathematicians write A × B.
+So the number of different values P can have is the number of A values
+times the number of B values: a struct of two bools has 2 × 2 = 4
+possible values.</span>
+</Formal>
+
+How the fields sit in memory matters for this book. Rust's default
+layout promises little about a struct on its own (the fields do not
+overlap, and each starts at an offset its type allows, but the compiler
+may reorder them); what it does promise is that an array of `T` puts
+element `n` exactly `n × size_of::<T>()` bytes from the
+start<Cite id="rustref-type-layout" />. So `[Particle; 3]` is an array of
+structs in the most literal sense:
+
+<Figure takeaway="Rust stores structs inline; JavaScript stores references to objects." caption="On this machine a Particle is 32 bytes (four 8-byte f64s), and [Particle; 1000] is exactly 32,000 bytes. A JavaScript array of particle objects holds references, and each object lives somewhere else.">
+  <InlineArray />
+</Figure>
+
+The fields sit inline, one particle after another, with no pointer to
+follow; a JavaScript array of objects holds references to objects that
+live elsewhere, which is what made pointer chasing slow in *Prefetching
+and pointer chasing*.
+
+<Callout kind="engine" label="Under the hood">
+The chapter *Memory layout in Rust* measures struct layouts with
+`size_of`, and *Struct of arrays in Rust by hand* turns an array of
+`Particle` structs into one column per field, the rewrite Viscosity
+does for JavaScript.
+</Callout>
+
+<Prompts ids={['array-inline']} />
+
+## Your turn
+
+<Exercise id="span" />
+
+## What you learned
+
+- A **struct** is a named record with typed fields. Build it with every
+  field, read and write fields with a dot, and change it only through a
+  `let mut` binding; field init shorthand and `..other` save typing.
+- Tuple structs (`Meters(f64)`) name fields by position; unit structs
+  have none. Structs move, like `String`s, and functions that only read
+  one borrow it with `&`.
+- Unlike a TypeScript interface, a struct is the real type at run time,
+  with a fixed size and shape.
+- A struct is a product of its fields, and an array of structs stores
+  them inline, back to back.
+
+Next: `impl` blocks, which give a struct functions of its own, and the
+three ways such a function can take the struct it belongs to.
+
+
+{/* ── merge: from old chapter 121, Methods: impl and self ── */}
+
+## Functions that belong to a type
+
+The last chapter wrote `speed(&p)` as a free function, which works, but
+leaves `speed` lying about with every other function in the file, and
+the reader has to guess that it is about particles. TypeScript keeps
+such functions inside the class, as methods. Rust has methods too, with
+a twist that is the whole point of this chapter: every method says, in
+its first parameter, what it will do to the value it is called on.
+
+## impl blocks
+
+A TypeScript class (*Classes: a blueprint for objects*) puts the fields
+and the methods in one block. Rust splits them: the `struct` holds the
+data, and a separate **`impl` block** attaches functions to the type.
+
+<Analogy title="an appliance and its manual">
+A washing machine comes with a manual. The machine is the struct: its
+parts (drum, door, dial) are its fields. One page of the manual says how
+to order a new machine from the maker (you need no machine in hand for
+that); the others say what to do with the machine you have ("start a
+wash", "read the timer"). The `impl` block is the manual, kept separate
+from the machine.
+<span slot="breaks">A manual only describes; the functions in an `impl`
+block are the behaviour itself, and the compiler checks each against the
+struct's fields. A type may also have several `impl` blocks, like a
+manual in several booklets.</span>
+</Analogy>
+
+```rust
+impl Particle {
+    fn new(vx: f64, vy: f64) -> Self {
+        Particle { x: 0.0, y: 0.0, vx, vy }
+    }
+
+    fn speed(&self) -> f64 {
+        (self.vx * self.vx
+            + self.vy * self.vy).sqrt()
+    }
+}
+```
+
+Every function inside an `impl` block is an **associated function** of
+the type. `new` has no `self` parameter, so it is called on the type
+itself, with two colons: `Particle::new(3.0, 4.0)` builds a particle at
+the origin. Rust has no `new` keyword and no constructors; `new` is only
+the usual name for a function that builds a value<Cite id="rust-book-methods" />.
+Inside the block, **`Self`** is another name for the type, `Particle`.
+
+`speed` has `self` as its first parameter, the value the function is
+called on, so it is also a **method**, called with a dot: `p.speed()`.
+It is last chapter's `speed(&p)`, moved inside.
+
+<Callout kind="definition">
+An **`impl` block**, `impl Type { ... }`, attaches functions to a type.
+All of them are **associated functions**; those whose first parameter is
+`self` are also **methods**, called as `value.method(...)`, and the
+others are called as `Type::function(...)`. Inside the block, **`Self`**
+names the type being implemented.
+</Callout>
+
+<Examples of="impl">
+
+```rust
+impl Point {
+    fn origin() -> Self {
+        Point { x: 0.0, y: 0.0 }
+    }
+}
+let o = Point::origin();
+```
+
+```rust
+let p = Particle::new(3.0, 4.0);
+println!("{}", p.speed()); // 5
+```
+
+```rust
+// from companion/rust/src/chunk.rs
+impl Chunk {
+    pub fn add_constant(&mut self,
+        value: Value) -> usize {
+        self.constants.push(value);
+        self.constants.len() - 1
+    }
+}
+```
+
+</Examples>
+
+The first is an associated function with no parameters at all: it hands
+back the point at the origin, and is called on the type. In the second,
+`Particle::new` builds a particle moving 3 across and 4 up, and
+`p.speed()` works out the length of that velocity, `5`. The third is
+the Rust Drip compiler's constant pool: `add_constant` appends a value
+to the chunk's list of constants and returns its index, the number the
+bytecode will use to find it (`pub` makes it callable from other files,
+which the chapter *Modules, crates and visibility* explains).
+
+Mixing up the two call styles is the usual first slip, and rustc's
+message for it is unusually kind:
+
+```rust
+let o = p.origin();       // ✗
+let o = Point::origin();  // ✓
+```
+
+```text
+error[E0599]: no method named `origin`
+  found for struct `Point` in the
+  current scope
+14 |     let o = p.origin();
+   |               ^^^^^^ this is an
+   |     associated function, not a method
+help: use associated function syntax
+```
+
+<Prompts ids={['impl-what', 'assoc-fn', 'self-alias']} />
+
+## Three kinds of self
+
+JavaScript's `this` is whatever object you called the method on, and the
+method may read it, change it or keep it. Rust's `self` is an ordinary
+parameter, so its type says exactly which of those the method does, and
+there are three choices.
+
+<Analogy extra title="handing over your car">
+A friend who borrows your car for a ride can look but not change
+anything; a mechanic borrows it to work on it, and gives it back changed;
+a buyer takes it for good, and you never drive it again. That is `&self`,
+`&mut self` and `self`, in that order.
+<span slot="breaks">A real mechanic might keep the car for a week while
+you take the bus; a `&mut self` borrow lasts only for the one call, and
+the value is yours again the moment the method returns.</span>
+</Analogy>
+
+<ReceiverSteps client:visible />
+
+- **`&self`** borrows the value to read it. Most methods are like this.
+- **`&mut self`** borrows it to change it, so the caller's variable needs
+  `let mut`.
+- **`self`** takes ownership: the value moves into the method, and the
+  caller cannot use it afterwards. It is rare, and used when a method
+  turns the value into something else<Cite id="rust-book-methods" />.
+
+<Callout kind="definition">
+The **self receiver** is a method's first parameter. **`&self`** (short
+for `self: &Self`) borrows the value shared, **`&mut self`** borrows it
+mutably, and **`self`** takes ownership of it. The rules of the chapter
+*The borrowing rules* then apply to every method call.
+</Callout>
+
+<Examples of="self-receiver">
+
+```rust
+fn speed(&self) -> f64 { /* reads */ }
+```
+
+```rust
+fn step(&mut self, dt: f64) {
+    self.x += self.vx * dt;
+    self.y += self.vy * dt;
+}
+```
+
+```rust
+// from companion/rust/src/vm.rs
+fn push(&mut self, value: Value)
+fn pop(&mut self) -> Value
+fn peek(&self, distance: usize) -> Value
+```
+
+</Examples>
+
+`speed` only reads, so `&self` is enough. `step` moves the particle
+along by its velocity, writing two fields, so it needs `&mut self`. The
+third is the Rust Drip VM's stack: `push` and `pop` change the stack, so
+they borrow it mutably, while `peek`, which reads the value `distance`
+slots below the top, only needs to look. A reader can tell which methods
+change the VM from their first line alone.
+
+Each receiver has its own mistake, and rustc names it exactly. Calling a
+changing method on a plain `let`:
+
+```text
+error[E0596]: cannot borrow `p` as
+  mutable, as it is not declared as mutable
+21 |     p.step(1.0);
+   |     ^ cannot borrow as mutable
+help: consider changing this to be mutable
+```
+
+writing a field inside a method that took `&self`:
+
+```text
+error[E0594]: cannot assign to `self.x`,
+  which is behind a `&` reference
+help: consider changing this to be a
+  mutable reference
+14 |     fn reset(&mut self) {
+   |               +++
+```
+
+and using `p` after a method that took `self`:
+
+```text
+error[E0382]: borrow of moved value: `p`
+21 |     let q = p.stopped();
+   |               --------- `p` moved due
+   |               to this method call
+note: `Particle::stopped` takes ownership
+  of the receiver `self`, which moves `p`
+```
+
+<Prompts ids={['recv-ref', 'recv-mut', 'recv-own']} />
+
+## A method call is a function call
+
+You never write the borrow at the call. When Rust looks up a method, it
+may borrow the receiver automatically to match the method's
+`self`<Cite id="rustref-method-call" />, so `p.step(1.0)` means
+`Particle::step(&mut p, 1.0)`:
+
+<Figure takeaway="A method call is an ordinary call with the borrow filled in." caption="Rust adds &, &mut or nothing to match the method's receiver, which is why the borrowing rules apply to method calls although no & is written.">
+  <CallSugar />
+</Figure>
+
+<Formal title="Method calls, spelled out">
+
+```text
+&self:     v.m(a) ≡ T::m(&v, a)
+&mut self: v.m(a) ≡ T::m(&mut v, a)
+self:      v.m(a) ≡ T::m(v, a)
+```
+
+<span slot="read">For a value v of type T: if the method m takes
+&self, then v.m(a) means calling T's function m with a shared borrow of
+v and the argument a; if it takes &mut self, the call lends v mutably;
+and if it takes self, v itself is passed, so it moves. (The sign ≡
+reads "means the same as".)</span>
+</Formal>
+
+<Run id="particle-o342" />
+
+<OtherLanguages title="A constructor and a method">
+
+```rust
+impl Particle {
+    fn new(vx: f64, vy: f64) -> Self {
+        Particle { x: 0.0, y: 0.0, vx, vy }
+    }
+    fn step(&mut self, dt: f64) {
+        self.x += self.vx * dt;
+    }
+}
+let mut p = Particle::new(3.0, 4.0);
+p.step(1.0);
+```
+
+```ts
+class Particle {
+  x = 0; y = 0;
+  constructor(
+    public vx: number,
+    public vy: number,
+  ) {}
+  step(dt: number) {
+    this.x += this.vx * dt;
+  }
+}
+const p = new Particle(3, 4);
+p.step(1);
+```
+
+</OtherLanguages>
+
+TypeScript keeps fields and methods together and builds values with
+`new` and a `constructor`; Rust keeps them apart, and building is an
+ordinary function. `this` is there without being asked for, and any
+method may change it; Rust's `self` is written as the first parameter,
+and `step` must ask for `&mut`, which in turn makes the caller write
+`let mut p`. The `const` in the TypeScript only fixes the name; nothing
+there says that `step` changes the particle.
+
+<Prompts ids={['auto-ref', 'method-sugar']} />
+
+## Your turn
+
+<Exercise id="stack" />
+
+<Exercise id="spanMethods" />
+
+## What you learned
+
+- An **`impl`** block attaches associated functions to a type. Those
+  with `self` are methods, called with a dot; the rest, like `new`, are
+  called with `Type::`. `Self` names the type.
+- The **self receiver** says what a method does to the value: `&self`
+  reads, `&mut self` changes (and needs a `let mut` caller), `self` takes
+  it.
+- `p.step(1.0)` is `Particle::step(&mut p, 1.0)`: Rust adds the borrow,
+  so every method call obeys the borrowing rules.
+
+Next: enums and `match`, Rust's discriminated unions, and the `match`
+over opcodes at the heart of the Rust VM.
+
+<Quiz />

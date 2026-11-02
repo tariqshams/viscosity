@@ -1,4 +1,4 @@
-// New references for chapter 313b (staged split of chapter 313). Checked
+// New references for chapter 283b (staged split of chapter 283). Checked
 // 2026-11-02. The chapter also relies on rust-std-rc (“A cycle between Rc
 // pointers will never be deallocated. For this reason, Weak is used to
 // break cycles”, re-read at tag 1.97.0) and swift-arc. The listings are
@@ -17,7 +17,7 @@ export default [
     url: 'https://doi.org/10.1007/3-540-45337-7_12',
     accessed: '2026-11-02',
     checkedAgainst: 'Not opened (Springer and doi.org are unreachable from this session). The header comment of xpcom/base/nsCycleCollector.cpp in mozilla-firefox/firefox, read raw from GitHub on 2026-11-02, cites it as “Concurrent Cycle Collection in Reference Counted Systems, Bacon & Rajan (2001), ECOOP 2001 / Springer LNCS vol 2072”; web search (the Unpaywall record of the Springer chapter) gives DOI 10.1007/3-540-45337-7_12. The trial-deletion steps in the chapter are described as Firefox’s source implements them (purple candidates, gray, black, white), not from the paper’s text.',
-    shaped: 'Chapter 313b: trial deletion, the synchronous cycle collector.',
+    shaped: 'Chapter 283b: trial deletion, the synchronous cycle collector.',
   },
   {
     id: 'firefox-cycle-collector',
@@ -29,7 +29,7 @@ export default [
     url: 'https://github.com/mozilla-firefox/firefox/blob/main/xpcom/base/nsCycleCollector.cpp',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from GitHub on 2026-11-02. Header comment: “This file implements a garbage-cycle collector based on the paper Concurrent Cycle Collection in Reference Counted Systems, Bacon & Rajan (2001)”; black nodes “are definitely live”, white nodes “are definitely garbage cycles”, grey nodes “are being scanned”, purple nodes “are candidates for being scanned”; objects must report turning purple “when their refcount transitions from N+1 -> N, for nonzero N”. ScanWhiteNodes tests pi->mInternalRefs == pi->mRefCount || pi->IsGrayJS().',
-    shaped: 'Chapter 313b: a cycle collector in a real browser.',
+    shaped: 'Chapter 283b: a cycle collector in a real browser.',
   },
   {
     id: 'python-gc',
@@ -41,7 +41,7 @@ export default [
     url: 'https://docs.python.org/3.13/library/gc.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Doc/library/gc.rst read raw from github.com/python/cpython (branch 3.13) on 2026-11-02: “Since the collector supplements the reference counting already used in Python, you can disable the collector if you are sure your program does not create reference cycles.” Python 3.13.18 freed a two-object cycle only on gc.collect(), which returned 2.',
-    shaped: 'Chapter 313b: CPython’s cycle collector alongside its counts.',
+    shaped: 'Chapter 283b: CPython’s cycle collector alongside its counts.',
   },
   {
     id: 'lean-explicit-rc',
@@ -53,7 +53,7 @@ export default [
     url: 'https://github.com/leanprover/lean4/tree/master/src/Lean/Compiler/LCNF',
     accessed: '2026-11-02',
     checkedAgainst: 'ExplicitRC.lean and InferBorrow.lean read raw from github.com/leanprover/lean4 (HEAD) on 2026-11-02. ExplicitRC: “This pass inserts explicit reference counting instructions … based on the ‘Immutable Beans Counting’ paper”; it performs “a liveness analysis, inserting decrements at the first position where values need not be alive anymore”, and “inserts increments whenever values are used in an ‘owned’ fashion (e.g. passed as an owned parameter) and continue being used later on”. InferBorrow: “When a parameter is marked as borrowed, the caller can be sure that the function will not decrement the reference count of the parameter.” The paper itself (Sebastian Ullrich and Leonardo de Moura, “Counting Immutable Beans: Reference Counting Optimized for Purely Functional Programming”, IFL 2019, arXiv 1908.05647) is named by ResetReuse.lean and by leanprover/reference-manual Manual/Papers.lean; it was not opened.',
-    shaped: 'Chapter 313b: borrowed parameters and liveness-based count insertion.',
+    shaped: 'Chapter 283b: borrowed parameters and liveness-based count insertion.',
   },
   {
     id: 'swift-arc-optimization',
@@ -65,6 +65,6 @@ export default [
     url: 'https://github.com/swiftlang/swift/blob/main/docs/SIL/ARCOptimization.md',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from github.com/swiftlang/swift (main) on 2026-11-02: lists the reference counting instructions (strong_retain, strong_release, …), and its section ARC Loop Hoisting “describes the ARCLoopHoisting algorithm that hoists retains and releases out of loops”; the section ARC Sequence Optimization is marked TODO, so nothing is cited from it.',
-    shaped: 'Chapter 313b: Swift’s compiler removes and moves retains and releases.',
+    shaped: 'Chapter 283b: Swift’s compiler removes and moves retains and releases.',
   },
 ];

@@ -1,4 +1,5 @@
-// Chapter 5 cards. Keys are stable ids: never rename them.
+// Chapter 5 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'object-what': {
@@ -59,8 +60,7 @@ console.log(p[field]);`,
 export const exercises = {
   sumFields: {
     title: 'Add up the named fields',
-    prompt:
-      'Write `sumFields(p, ks)`. `p` is an object whose values are numbers, and `ks` is an array of key names (strings; `ks` is short for "keys"). Return the **total** of the properties those keys name. For example `sumFields({ a: 1, b: 2, c: 3 }, [\'a\', \'c\'])` is `4`. An empty `ks` array gives `0`.',
+    prompt: 'Write `sumFields(p, ks)`. `p` is an object whose values are numbers, and `ks` is an array of key names (strings; `ks` is short for "keys"). Return the **total** of the properties those keys name. For example `sumFields({ a: 1, b: 2, c: 3 }, [\'a\', \'c\'])` is `4`. An empty `ks` array gives `0`.',
     starter: `function sumFields(p, ks) {
   // your code here
 }
@@ -140,8 +140,7 @@ The last test uses the key \`'unit cost'\`, with a space in it. Brackets do not 
   pick: {
     optional: true,
     title: 'Keep only some properties',
-    prompt:
-      'Write `pick(p, ks)` that returns a **new** object holding only the properties of `p` named in the array `ks`, with the same values. For example `pick({ x: 3, y: 4, vx: 1 }, [\'x\', \'vx\'])` returns `{ x: 3, vx: 1 }`.',
+    prompt: 'Write `pick(p, ks)` that returns a **new** object holding only the properties of `p` named in the array `ks`, with the same values. For example `pick({ x: 3, y: 4, vx: 1 }, [\'x\', \'vx\'])` returns `{ x: 3, vx: 1 }`.',
     starter: `function pick(p, ks) {
   // your code here
 }
@@ -207,10 +206,23 @@ export const quiz = [
   {
     q: '`const p = { x: 1, y: 2 };` What is `p.z`?',
     options: [
-      { t: 'An error', why: 'Reading a missing property is not an error in JavaScript (Python’s dictionaries would stop with a `KeyError`).' },
-      { t: '`0`', why: 'Missing properties are not zero.' },
-      { t: '`undefined`', correct: true, why: 'There is no property `z`, so you get `undefined`.' },
-      { t: '`null`', why: 'JavaScript gives `undefined`, not `null`, for missing properties.' },
+      {
+        t: 'An error',
+        why: 'Reading a missing property is not an error in JavaScript (Python’s dictionaries would stop with a `KeyError`).',
+      },
+      {
+        t: '`0`',
+        why: 'Missing properties are not zero.',
+      },
+      {
+        t: '`undefined`',
+        correct: true,
+        why: 'There is no property `z`, so you get `undefined`.',
+      },
+      {
+        t: '`null`',
+        why: 'JavaScript gives `undefined`, not `null`, for missing properties.',
+      },
     ],
   },
   {
@@ -221,19 +233,45 @@ const k = 'b';
 console.log(p[k]);
 \`\`\``,
     options: [
-      { t: '`2`', correct: true, why: '`k` holds the string `\'b\'`, so `p[k]` is `p.b`.' },
-      { t: '`undefined`', why: 'That would be `p.k`, the property literally named “k”.' },
-      { t: '`1`', why: 'That is `p.a`.' },
-      { t: '`\'b\'`', why: 'That is the key, not the value stored under it.' },
+      {
+        t: '`2`',
+        correct: true,
+        why: '`k` holds the string `\'b\'`, so `p[k]` is `p.b`.',
+      },
+      {
+        t: '`undefined`',
+        why: 'That would be `p.k`, the property literally named “k”.',
+      },
+      {
+        t: '`1`',
+        why: 'That is `p.a`.',
+      },
+      {
+        t: '`\'b\'`',
+        why: 'That is the key, not the value stored under it.',
+      },
     ],
   },
   {
     q: 'Which line is a common bug when the key is held in a variable `key`?',
     options: [
-      { t: '`obj[key]`', why: 'That is the correct way: it looks up the key stored in the variable.' },
-      { t: '`obj.key`', correct: true, why: 'This reads the property literally named “key”, ignoring the variable.' },
-      { t: '`obj[\'x\']`', why: 'That is fine; it means the same as `obj.x`.' },
-      { t: '`obj.x`', why: 'That is fine when the key is known in advance.' },
+      {
+        t: '`obj[key]`',
+        why: 'That is the correct way: it looks up the key stored in the variable.',
+      },
+      {
+        t: '`obj.key`',
+        correct: true,
+        why: 'This reads the property literally named “key”, ignoring the variable.',
+      },
+      {
+        t: '`obj[\'x\']`',
+        why: 'That is fine; it means the same as `obj.x`.',
+      },
+      {
+        t: '`obj.x`',
+        why: 'That is fine when the key is known in advance.',
+      },
     ],
   },
   {
@@ -245,28 +283,67 @@ p.y = p.x + 1;
 console.log(p);
 \`\`\``,
     options: [
-      { t: '`{ x: 1 }`', why: 'Line 2 changed `x` and line 3 added `y`; an object can change after it is made, even under `const`.' },
-      { t: '`{ x: 5, y: 6 }`', correct: true, why: '`x` was changed to 5, then a new property `y` was added holding `5 + 1`.' },
-      { t: '`{ x: 5 }`', why: 'Assigning to a key that is not there adds it, so `y` now exists.' },
-      { t: 'An error, because `y` does not exist yet', why: 'Writing to a missing property creates it; only reading a property of `undefined` is an error.' },
+      {
+        t: '`{ x: 1 }`',
+        why: 'Line 2 changed `x` and line 3 added `y`; an object can change after it is made, even under `const`.',
+      },
+      {
+        t: '`{ x: 5, y: 6 }`',
+        correct: true,
+        why: '`x` was changed to 5, then a new property `y` was added holding `5 + 1`.',
+      },
+      {
+        t: '`{ x: 5 }`',
+        why: 'Assigning to a key that is not there adds it, so `y` now exists.',
+      },
+      {
+        t: 'An error, because `y` does not exist yet',
+        why: 'Writing to a missing property creates it; only reading a property of `undefined` is an error.',
+      },
     ],
   },
   {
     q: '`const p = { x: 3, vx: 1 };` What is `p.x + p.vX` (capital X)?',
     options: [
-      { t: '`4`', why: 'Keys are exact strings: `vX` and `vx` are different keys, so `p.vX` is not 1.' },
-      { t: 'A TypeError', why: 'Reading a missing property of an object is not an error; only reading a property of `undefined` itself is.' },
-      { t: '`3`', why: '`p.vX` is `undefined`, and adding `undefined` to a number does not leave the number alone.' },
-      { t: '`NaN`', correct: true, why: '`p.vX` is `undefined`, and `3 + undefined` is `NaN` (“not a number”), with no warning.' },
+      {
+        t: '`4`',
+        why: 'Keys are exact strings: `vX` and `vx` are different keys, so `p.vX` is not 1.',
+      },
+      {
+        t: 'A TypeError',
+        why: 'Reading a missing property of an object is not an error; only reading a property of `undefined` itself is.',
+      },
+      {
+        t: '`3`',
+        why: '`p.vX` is `undefined`, and adding `undefined` to a number does not leave the number alone.',
+      },
+      {
+        t: '`NaN`',
+        correct: true,
+        why: '`p.vX` is `undefined`, and `3 + undefined` is `NaN` (“not a number”), with no warning.',
+      },
     ],
   },
   {
     q: 'Why do engines like V8 give many objects a shared hidden “shape”?',
     options: [
-      { t: 'To save the text of the source code', why: 'Shapes describe objects’ properties, not source text.' },
-      { t: 'So a property like `x` can be found without searching by name every time', correct: true, why: 'Objects with the same properties in the same order share a shape, so the engine knows where `x` lives.' },
-      { t: 'To stop properties from being added', why: 'You can still add properties; the object just moves to a new shape.' },
-      { t: 'Because JavaScript requires classes', why: 'Plain object literals get shapes too.' },
+      {
+        t: 'To save the text of the source code',
+        why: 'Shapes describe objects’ properties, not source text.',
+      },
+      {
+        t: 'So a property like `x` can be found without searching by name every time',
+        correct: true,
+        why: 'Objects with the same properties in the same order share a shape, so the engine knows where `x` lives.',
+      },
+      {
+        t: 'To stop properties from being added',
+        why: 'You can still add properties; the object just moves to a new shape.',
+      },
+      {
+        t: 'Because JavaScript requires classes',
+        why: 'Plain object literals get shapes too.',
+      },
     ],
   },
 ];

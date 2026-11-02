@@ -1,0 +1,196 @@
+---
+n: 189
+day: 6
+part: XI
+title: 'Big-step semantics and the interpreter'
+tagline: 'Instead of one small step at a time, a rule can say in one leap what an expression is worth. Written that way, the rules for Drip turn out to be the tree-walking interpreter you already wrote, one case per rule.'
+objectives:
+  - Read and use big-step rules, e ⇓ v, and build a derivation tree for a small expression.
+  - Write big-step rules for a fragment of Drip with variables, ||, && and let, using an environment.
+  - Match each rule to a case of the tree-walking interpreter, and each premise to a recursive call.
+  - Say what big-step rules cannot express that small-step rules can.
+introduces: [big-step-semantics]
+uses: [operational-semantics, small-step-semantics, evaluate, tree-walking-interpreter, runtime-value, truthiness, runtime-error, environment, global-variable, short-circuit, side-effect, drip, interpreter, call-stack, recursion, host-stack, function, return, map, object, property, strings, numbers, booleans, if, throw, error-object, template-literal]
+sources: [kahn1987, plotkin1981, pierce2002]
+---
+import BigStepTree from '../../../components/diagrams/ch189/BigStepTree';
+import RuleToCode from '../../../components/diagrams/ch189/RuleToCode';
+
+## Straight to the answer
+
+The small-step rules of the last chapter are exact, but long-winded:
+`(1 + 2) + (3 + 4)` took three steps, each with its own derivation, and
+a real program takes millions. Your interpreter never worked that way:
+`evaluate` was handed a tree and gave back its value, in one call. There
+is a way to write rules in that style too, and it relates an expression
+directly to its final value.
+
+<Analogy title="a receipt with the till slips stapled on">
+The total at the bottom of an expense claim only counts because each
+item's slip is stapled behind it, and a slip for a meal may have its own
+slips (the starter, the main) behind it in turn.
+<span slot="breaks">A receipt can be wrong and still be stapled on; a
+derivation exists only if every premise has its own correct derivation,
+all the way down to the axioms, so a finished one cannot be wrong.</span>
+</Analogy>
+
+<Formal title="Big steps for the tiny language">
+
+```text
+ n ⇓ n  (Num)       b ⇓ b  (Bool)
+
+ e₁ ⇓ n₁   e₂ ⇓ n₂   n is n₁ plus n₂
+ ────────────────────────────── (Add)
+          e₁ + e₂ ⇓ n
+
+ e₁ ⇓ true   e₂ ⇓ v
+ ──────────────────────────── (IfT)
+ if e₁ then e₂ else e₃ ⇓ v
+```
+
+<span slot="read">The ⇓ is read "evaluates to". A number evaluates to
+itself, and so does a boolean. If e1 evaluates to the number n1 and e2
+to the number n2, then e1 plus e2 evaluates to their sum. If the
+condition evaluates to true and the then branch evaluates to v, the
+whole if evaluates to v. IfF is the same with false and e3, and Lt is
+like Add, giving true or false.</span>
+</Formal>
+
+<BigStepTree client:visible />
+
+<Callout kind="definition">
+A **big-step semantics** (also called a *natural semantics*, Kahn's
+name for it<Cite id="kahn1987" />) defines a relation `e ⇓ v`, "e
+evaluates to the value v", by rules whose premises are the evaluations
+of the parts. A program means `v` when there is a derivation of
+`e ⇓ v`. For the little language here, the two styles agree: `e ⇓ v`
+holds exactly when `e →* v`<Cite id="pierce2002" />.
+</Callout>
+
+<Examples of="big-step-semantics">
+
+```text
+7 ⇓ 7                       (Num)
+```
+
+```text
+1 ⇓ 1   2 ⇓ 2
+─────────────  (Add)
+  1 + 2 ⇓ 3
+```
+
+<Run id="drip-or" />
+
+</Examples>
+
+The first is an axiom: a number is already its own value. The second
+is the smallest derivation with a premise, two axioms above one
+conclusion. The third is real Drip, and its output follows the rules
+for `||` and `&&` in the next section exactly: `none || "default"`
+gives `"default"`, `0 || "default"` gives `0` (in Drip, `0` is truthy),
+and `false && missing` gives `false` without ever looking up `missing`,
+which does not exist.
+
+<Prompts ids={['bigstep-what', 'bigstep-read', 'bigstep-agree']} />
+
+## Rules for a piece of Drip
+
+Drip has variables, so the rules need to know what each name holds.
+We add an environment `ρ` (the Greek letter rho), a table from names to
+values, and write `ρ ⊢ e ⇓ v`: "in environment ρ, e evaluates to v".
+
+<Formal title="Variables, ||, and let">
+
+```text
+   ρ(x) = v
+ ─────────── (Var)
+  ρ ⊢ x ⇓ v
+
+ ρ ⊢ e₁ ⇓ v₁    v₁ truthy
+ ───────────────────────── (OrL)
+ ρ ⊢ e₁ || e₂ ⇓ v₁
+
+ ρ ⊢ e₁ ⇓ v₁  v₁ falsey  ρ ⊢ e₂ ⇓ v₂
+ ─────────────────────────────── (OrR)
+ ρ ⊢ e₁ || e₂ ⇓ v₂
+
+        ρ ⊢ e ⇓ v
+ ─────────────────────────── (Let)
+ ρ ⊢ let x = e; ⇓ ρ[x ↦ v]
+```
+
+<span slot="read">Var: if the environment maps x to v, then x evaluates
+to v. OrL: if e1 evaluates to a truthy value, the or evaluates to that
+value, and e2 is never mentioned. OrR: if e1 is falsey (none or false),
+the or evaluates to whatever e2 evaluates to. Let: a statement produces
+a new environment, the old one with x now mapped to v. The rules for
+&& are the mirror image.</span>
+</Formal>
+
+(The Let rule is simplified: the real one also has to respect blocks
+and scopes.) Two more things in these rules are worth noticing. A name with no entry in
+`ρ` has no Var rule, so `x` alone has no derivation: that is Drip's
+`undefined variable 'x'`, stated as a missing rule. And OrL has no
+premise about `e₂`, which is what short-circuiting *is*: the rules
+never ask for `e₂`'s value, so it is not evaluated.
+
+<Prompts ids={['env-rho', 'orl-no-e2', 'let-env']} />
+
+## The interpreter is these rules, run
+
+<Analogy extra title="arrival time or turn-by-turn directions">
+A satnav can tell you only "you will arrive at 3:40", or it can read out
+every turn on the way; both describe the same journey, and which one you
+want depends on whether you care about the route.
+<span slot="breaks">If the road never ends, the big-step answer
+never comes, and it looks the same as a road that leads nowhere: big
+steps cannot tell a program that loops from one that gets stuck.</span>
+</Analogy>
+
+Put the rules for `||` next to the interpreter's code for it, from
+`companion/ts/src/interpreter.ts`:
+
+<Figure takeaway="Each rule is a case of evaluate; each premise is a recursive call; the side conditions choose the rule." caption="Top: OrL and OrR. Bottom: the || half of the interpreter's case for logical expressions. Evaluating e₁ is the first line; the truthiness test chooses between the two rules; OrR's extra premise is the second recursive call.">
+  <RuleToCode />
+</Figure>
+
+The match is exact, and it holds for every case: `case 'literal'` is
+Num and Bool, `case 'variable'` is Var (with the runtime error where
+the rule is missing), and `case 'binary'` is Add, its two premises the
+two calls `this.evaluate(e.left)` and `this.evaluate(e.right)`. While
+the interpreter runs, the host's call stack holds the part of the
+derivation tree still being built, and each `return` finishes one
+judgment. The rules say nothing about which premise to prove first,
+however, while the code must choose: Drip evaluates the left operand
+first, which only starts to matter when evaluating can print something
+or fail, and a full semantics must say so (the small-step rules did,
+with AddR)<Cite id="plotkin1981" />.
+
+That is also where big steps run out. A program that loops has no
+derivation, and neither does a stuck one, so the rules cannot tell
+them apart; and they say nothing about the states in between, which is
+what a debugger shows, or what two threads would share. Small steps
+can say all of that, which is why the proof in the chapter *Soundness:
+progress and preservation*, that well-typed programs do not go wrong,
+is stated with them.
+
+<Prompts ids={['premise-call', 'loop-vs-stuck', 'order-matters']} />
+
+## Your turn
+
+<Exercise id="big-step" />
+
+## What you learned
+
+- A **big-step semantics** relates an expression to its value, `e ⇓ v`,
+  with the parts' evaluations as premises; a derivation tree is the
+  proof.
+- With an environment, `ρ ⊢ e ⇓ v`, the rules cover Drip's variables,
+  `||`, `&&` and `let`; a missing rule is a runtime error.
+- A tree-walking interpreter is big-step semantics run as code: one
+  case per rule, one recursive call per premise.
+
+Next: types, and the promise a type system makes about which programs
+can get stuck.
+
+<Quiz />

@@ -1,0 +1,277 @@
+---
+n: 300
+day: 34
+part: XVI
+title: 'Allocation, compaction and real collectors'
+tagline: 'Every collector is also half of an allocator. Free memory in one piece makes allocating a matter of moving a pointer; free memory in holes needs a list, and the holes slowly waste the heap until something slides the survivors together again.'
+objectives:
+  - Write a bump allocator, and say why it needs free memory in one piece.
+  - Explain free lists, first fit, splitting and size classes, and what fragmentation costs.
+  - Run Lisp 2 sliding compaction by hand, pass by pass, and say what it costs compared with copying.
+  - Write a three-pass sliding compactor over a heap given as data.
+introduces: [bump-allocation, free-list, sliding-compaction]
+uses: [garbage-collection, roots, mark-sweep, mark-compact, scavenger, copying-gc, cheney-scan, forwarding-pointer, nursery, incremental-gc, concurrent-gc, heap-object, object-header, address, memory, pointer, spatial-locality, cache-line, array, object, map, function, while-loop, test]
+sources: [v8-trash-talk, go-runtime-gc, dotnet-gc-botr, gchandbook2012]
+---
+import BumpVsList from '../../../components/diagrams/ch300/BumpVsList';
+import SlideSteps from '../../../components/diagrams/ch300/SlideSteps';
+
+## Where does the next object go?
+
+Every chapter so far has been about *freeing*. The other half of a
+memory manager is *allocating*: when the program says `{ x: 1 }`, some
+code must pick an address for it, and that code runs far more often
+than the collector does. How fast it can be depends entirely on the
+shape the collector left the free memory in. A copying collector
+leaves it in one piece; mark-sweep leaves it in holes between the
+survivors. This chapter is about those two shapes, and about the
+collector that turns holes back into one piece without needing a
+spare half: sliding compaction.
+
+## Bump allocation
+
+When free memory is one unbroken run, the allocator needs two
+addresses: `top`, where the free run starts, and `limit`, where it
+ends. Allocating `n` words is: check that `top + n` does not pass
+`limit`, hand out `top`, and add `n` to it.
+
+<Run id="bump" />
+
+<Analogy title="tearing tickets off a roll">
+A cloakroom attendant tears the next ticket off a roll: no searching,
+no choosing, just the next one. When the roll runs out, a new roll is
+needed.
+<span slot="breaks">Tickets are all one size; objects are not, so the
+pointer moves by each object's size. And the new roll, for a
+collector, means a collection.</span>
+</Analogy>
+
+<Analogy extra title="writing in a notebook">
+You write each note right after the last one, on the next free line.
+You never look for space, because all the space is after the last
+note.
+<span slot="breaks">You can cross a note out in a notebook and leave
+a gap; bump allocation never reuses a gap. The space comes back only
+when a collection packs the survivors together and resets
+`top`.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Bump allocation** (or *pointer-bump* allocation) gives out memory
+from one contiguous free region by returning the current `top` address
+and adding the object's size to it, after checking `top` against
+`limit`. When the check fails, the program needs a collection (or a
+new region). It needs free memory in one piece, which copying and
+compacting collectors provide.
+</Callout>
+
+<Examples of="bump-allocation">
+
+```text
+top = 40, limit = 64
+alloc(8)  → 40,  top = 48
+alloc(20) → null: 48 + 20 > 64
+```
+
+```text
+after a scavenge: "new allocations
+happen at the next free address"
+```
+
+```text
+.NET: an allocation context per thread,
+"typically 8k", average object ~35 bytes
+```
+
+</Examples>
+
+The first is the whole algorithm: one add and one compare, and the
+failing case is where a collection starts (the `allocation failure`
+reason in V8's trace lines from the chapter "Copying collection"). The second is V8's own
+description of its young generation<Cite id="v8-trash-talk" />. The
+third is how .NET makes bump allocation safe with many threads: the
+collector hands each thread an **allocation context**, a small region
+of its own, usually 8 KB, so a thread bumps its own pointer with no
+locks, and with objects averaging about 35 bytes, one region serves
+many allocations<Cite id="dotnet-gc-botr" />. V8's parallel scavenging
+tasks use **thread-local allocation buffers** for the same
+reason<Cite id="v8-trash-talk" />.
+
+<Prompts ids={['bump-what', 'bump-needs', 'bump-tlab']} />
+
+## Free lists
+
+After mark-sweep, the dead objects leave holes of all sizes among the
+survivors. The sweep links them into a **free list**, and the allocator
+searches it.
+
+<Figure takeaway="A bump allocator never searches; a free-list allocator must, and can fail even when enough memory is free in total." caption="Above: one free run, with top and limit. Below: the same 12 free words in three holes, linked into a list; a request for 7 words fails.">
+  <BumpVsList />
+</Figure>
+
+The simplest policy is **first fit**: walk the list and take the first
+hole big enough. If it is bigger than needed, **split** it: give out
+the front and leave the rest on the list. When neighbouring blocks are
+both free, **coalesce** them into one bigger hole. Real allocators
+avoid most of the walking with **size classes**: one list per size, so
+a request goes straight to the right list. Go's runtime rounds small
+sizes up to one of about 70 classes, each with its own set of free
+slots found through a bitmap<Cite id="go-runtime-gc" />, and V8's
+free-lists are "separated by the size of the memory chunk for quick
+lookup"<Cite id="v8-trash-talk" />.
+
+<Analogy extra title="finding a seat in a cinema">
+A group of four looks along the rows for four empty seats together.
+There may be thirty empty seats in the cinema, all in ones and twos,
+and the group still cannot sit.
+<span slot="breaks">People can split up; an object cannot. Its words
+must be next to each other, which is exactly why scattered free space
+can be useless.</span>
+</Analogy>
+
+That last situation has a name: **fragmentation**, free memory that
+exists in total but not in pieces big enough to use. Over a long run a
+heap can end up mostly holes, and a non-moving collector can do
+nothing about it except choose sizes cleverly.
+
+<Callout kind="definition">
+A **free list** links the free blocks of a heap, each block recording
+its size (and the next block). Allocation searches it (for example by
+**first fit**), **splits** a block that is too big, and freeing
+**coalesces** neighbouring free blocks. **Segregated** free lists keep
+one list per size class. **Fragmentation** is free memory that cannot
+be used because it is broken into pieces too small for the requests.
+</Callout>
+
+<Examples of="free-list">
+
+```text
+free: [3 @ 0] → [5 @ 10] → [6 @ 20]
+alloc(4): skip 3, take 4 of the 5
+free: [3 @ 0] → [1 @ 14] → [6 @ 20]
+```
+
+```text
+Go: about 70 size classes up to 32 kB;
+a 20-byte request uses the 24-byte class
+```
+
+```text
+.NET sweep: dead space becomes free
+objects; neighbours are made into one
+```
+
+</Examples>
+
+The first is first fit and splitting: the 3-word hole is too small, the
+5-word hole at address 10 fits, and the last word of it stays on the
+list as a 1-word hole at 14 (a hole likely to stay unused: a little
+fragmentation, made on the spot). The second is Go's size classes: the
+four bytes of padding are the price of never searching (the 24-byte
+class is in the table in Go's `sizeclasses.go`). The third is .NET's
+sweep phase, which coalesces adjacent dead objects into one free
+object and puts it on the free list<Cite id="dotnet-gc-botr" />.
+
+<Prompts ids={['fl-what', 'fl-split', 'fl-classes', 'frag-what']} />
+
+## Sliding compaction
+
+To get rid of fragmentation, move the survivors together. A copying
+collector does that, but needs a spare half. **Sliding compaction**
+moves every live object *down*, towards the start of the same space,
+keeping their order, so it needs no second space. The classic version
+is the **Lisp 2** algorithm, run after an ordinary marking phase, and
+it takes three passes over the heap:
+
+1. **Compute forwarding addresses.** Walk the heap in address order
+   with a `free` pointer starting at 0; give each live object the
+   address `free`, store it in the object, and add its size.
+2. **Update pointers.** Walk again, and replace every pointer in every
+   live object (and every root) with the forwarding address of its
+   target.
+3. **Move.** Walk a third time and copy each live object to its
+   forwarding address. Objects only ever move down, into space already
+   passed, so nothing is overwritten before it is moved.
+
+<SlideSteps client:visible />
+
+<Callout kind="definition">
+**Sliding compaction** moves the live objects of a space to one end of
+it, in their original order, so that free memory becomes one run. The
+**Lisp 2** algorithm does it in three passes after marking: compute
+each live object's new address (stored in an extra word in the
+object), update every pointer, then move the objects. It needs no
+spare space, but its passes visit the whole heap, live and dead.
+</Callout>
+
+<Formal title="Where each object slides to">
+
+```text
+new(o) = Σ size(p)  over live p
+         with addr(p) < addr(o)
+cost ≈ c₁ × L + c₂ × H  (three passes)
+```
+
+<span slot="read">An object's new address is the total size of all the
+live objects before it in the heap. The passes cost something in
+proportion to the live data L plus something in proportion to the
+whole heap H, since every pass walks all of it; compare copying,
+which costs only L but needs a second space.</span>
+</Formal>
+
+<Examples of="sliding-compaction">
+
+```text
+before: [A 2][dead 3][B 4][dead 1][C 2]
+after:  [A 2][B 4][C 2][  free 4  ]
+B: 5 → 2,  C: 10 → 6
+```
+
+```text
+.NET: plan (work out new addresses),
+relocate (fix references), compact (move)
+```
+
+```text
+V8: no sliding; it evacuates a few
+fragmented pages into other pages
+```
+
+</Examples>
+
+The first works the formula: A stays at 0; B's new address is A's
+size, 2; C's is A plus B, 6; and the 4 dead words come free in one piece.
+Order is kept, so objects allocated together stay together, which is
+good for the cache (the chapter "Cache lines and locality"). The second is
+.NET, whose collection after marking has a plan phase that "simulates
+a compaction", a relocate phase that updates references and a compact
+phase that copies objects to the addresses the plan
+computed<Cite id="dotnet-gc-botr" />: the same three steps. The third
+is V8's choice from the chapter "Mark-compact and the write barrier":
+it does not slide the whole old generation, but copies the survivors
+of a few badly fragmented pages into free space elsewhere, and only
+sweeps the rest<Cite id="v8-trash-talk" />.
+
+<Prompts ids={['sl-passes', 'sl-order', 'sl-cost']} />
+
+## Your turn
+
+<Exercise id="lisp2" />
+
+<Exercise id="firstFit" />
+
+## What you learned
+
+- **Bump allocation** is one add and one compare, and needs free
+  memory in one piece; per-thread regions make it lock-free.
+- A **free list** serves memory with holes: first fit, splitting,
+  coalescing, and size classes to skip the search; **fragmentation**
+  is the cost.
+- **Sliding compaction** (Lisp 2) computes new addresses, updates
+  pointers, then moves objects down in order: no spare space, but three
+  passes over the whole heap.
+
+Next: references the collector is allowed to clear, code that runs
+when an object dies, and how real collectors put all of this together.
+
+<Quiz />

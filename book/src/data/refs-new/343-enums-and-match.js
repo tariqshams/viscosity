@@ -1,4 +1,4 @@
-// New references for chapter 343 (Enums and match) and its staged second
+// New references for chapter 122 (Enums and match) and its staged second
 // half (305-b, "Patterns"). Checked 2026-11-02 by reading the raw sources
 // from github.com/rust-lang/book (main) and github.com/rust-lang/reference
 // (master). Every rustc message and printed size in the chapters is real
@@ -14,7 +14,7 @@ export default [
     url: 'https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/book/main/src/ch06-01-defining-an-enum.md on 2026-11-02: an enum says a value is one of a possible set of values, its variants; variants are namespaced under the enum’s identifier and written with two colons; “We attach data to each variant of the enum directly”, and each variant can hold different types and amounts of data, including named fields “like a struct does”; enums can have methods in impl blocks; the Option<T> enum as the standard library’s replacement for null.',
-    shaped: 'Chapter 343: enums, variants with data, and naming a variant with a path.',
+    shaped: 'Chapter 122: enums, variants with data, and naming a variant with a path.',
   },
   {
     id: 'rust-book-match',
@@ -26,7 +26,7 @@ export default [
     url: 'https://doc.rust-lang.org/book/ch06-02-match.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/book/main/src/ch06-02-match.md on 2026-11-02: match compares a value against a series of patterns and executes code based on which pattern matches; values go through each pattern and “at the first pattern the value fits” fall into that block; an arm has a pattern and some code separated by =>; the result of the matching arm’s expression is the value of the whole match; patterns can bind to the parts of the values that match; “Matches in Rust are exhaustive: We must exhaust every last possibility in order for the code to be valid”; the catch-all and the _ placeholder, which must come last. E0004 (“non-exhaustive patterns: `Value::Bool(false)` not covered”) and E0308 (“`match` arms have incompatible types”) were reproduced with rustc 1.97.0.',
-    shaped: 'Chapter 343: match arms, match as an expression, and exhaustiveness.',
+    shaped: 'Chapter 122: match arms, match as an expression, and exhaustiveness.',
   },
   {
     id: 'rust-book-patterns',
@@ -38,7 +38,7 @@ export default [
     url: 'https://doc.rust-lang.org/book/ch19-03-pattern-syntax.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/book/main/src/ch19-01-all-the-places-for-patterns.md and ch19-03-pattern-syntax.md on 2026-11-02: patterns appear in match arms, let statements, if let, while let, for loops and function parameters; matching literals; a named variable in a match arm is a new variable that shadows any outer variable of the same name, so comparing with an outer variable needs a match guard; multiple patterns with |; inclusive ranges with ..=, allowed for numeric and char values; destructuring structs (with field shorthand), enums and nested values, and tuples; ignoring values with _, _name and ..; match guards, an extra if condition after the pattern; @ bindings. The “unreachable pattern” warning was reproduced with rustc 1.97.0.',
-    shaped: 'Chapter 343-b: the kinds of pattern, where patterns appear, guards and the shadowing pitfall.',
+    shaped: 'Chapter 122-b: the kinds of pattern, where patterns appear, guards and the shadowing pitfall.',
   },
   {
     id: 'rust-book-if-let',
@@ -50,7 +50,7 @@ export default [
     url: 'https://doc.rust-lang.org/book/ch06-03-if-let.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/book/main/src/ch06-03-if-let.md on 2026-11-02: if let takes a pattern and an expression separated by an equal sign and runs its block only when the value matches, binding the pattern’s variables; it is a match that runs code for one pattern and ignores the rest, at the cost of the exhaustive check; it may have an else; let...else takes a pattern on the left and an expression on the right, binds the variables in the outer scope when the pattern matches, and otherwise runs the else branch, which must return from the function.',
-    shaped: 'Chapters 343-b and 306: if let and let ... else.',
+    shaped: 'Chapters 122-b and 306: if let and let ... else.',
   },
   {
     id: 'rustref-patterns',
@@ -62,6 +62,6 @@ export default [
     url: 'https://doc.rust-lang.org/reference/patterns.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/reference/master/src/patterns.md on 2026-11-02: “Patterns are used to match values against structures and to, optionally, bind variables to values inside these structures”; they are used in let declarations, function and closure parameters, match expressions, if let, while let and for; a pattern is refutable when it may fail to match and irrefutable when it always matches; identifier, wildcard, range, tuple, struct and or-patterns; or-patterns are allowed wherever patterns are, except at the top of let bindings and function and closure parameters.',
-    shaped: 'Chapter 343-b: the precise definition of a pattern, and refutable versus irrefutable patterns.',
+    shaped: 'Chapter 122-b: the precise definition of a pattern, and refutable versus irrefutable patterns.',
   },
 ];

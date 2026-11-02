@@ -1,0 +1,1292 @@
+---
+n: 92
+day: 12
+part: V
+title: 'Dataflow, fixpoints and constant propagation'
+tagline: 'Has this variable been given a value on every path to here? A compiler cannot try every path, so it lets small facts flow along the edges of the CFG instead, changing at each block and merging where paths meet.'
+objectives:
+  - Describe a dataflow analysis as a fact at the start and end of every block, a transfer function per block and a meet where paths join.
+  - Tell a forward analysis from a backward one, and a "must" analysis (intersection) from a "may" one (union).
+  - Write the dataflow equations for "definitely assigned" and solve them by hand on an if/else.
+  - Explain what a lattice of facts is, and why the meet is the highest fact below both.
+  - Explain why a loop makes the dataflow equations circular, and what a fixpoint is.
+  - Choose a starting guess for an analysis, and say why the optimistic start finds the most precise answer.
+  - Run a worklist solver by hand on a loop, and say why it must stop.
+  - Read Viscosity’s numeric inference as a fixpoint computed in rounds, which fails closed.
+  - Define a partial order and a lattice, find meets and joins on a Hasse diagram, and give a lattice’s height.
+  - Say what makes a transfer function monotone, and test one.
+  - State informally why iteration from the top reaches the greatest fixpoint of a monotone framework.
+  - Explain the gap between the meet over all paths and the iterative answer, with constant propagation as the example.
+  - Fold an instruction whose operands are all constants, and say why the result must match the run-time answer exactly.
+  - List what a folder must leave alone even when every operand is a constant, and why.
+  - Tell a safe algebraic shortcut (x * 0, x + 0) from one that changes a JavaScript program.
+  - Write a folder for a block of SSA instructions given as data.
+  - Merge constant facts at a phi with the three-level lattice (unknown yet, one constant, varies).
+  - Explain why starting optimistic keeps constants that flow round a loop.
+  - Run sparse conditional constant propagation by hand, tracking executable edges as well as values.
+  - Implement it over a small CFG given as data.
+introduces: [dataflow, lattice, fixpoint, worklist, monotone-framework, constant-folding, constant-propagation]
+uses: [cfg, basic-block, ir, three-address-code, dominator, ssa, phi-node, static-analysis, typescript, set, function, if, while-loop, for-loop, booleans, numbers, map, array, gen-kill, reaching-definitions, available-expressions, very-busy-expressions, temporary, compiler, side-effect, ieee754, float64, optimizing-tiers, dead-code-elimination, object, method, strings, for-of, arrow-function, ssa-construction]
+sources: [kildall1973, coopertorczon2022, aho2006, kamullman1977, v8-constant-folding-reducer, wegmanzadeck1991, llvm-passes, gcc-tree-ssa-ccp]
+---
+import AssignSteps from '../../../components/diagrams/ch092/AssignSteps';
+import FactLattice from '../../../components/diagrams/ch092/FactLattice';
+import LoopSteps from '../../../components/diagrams/ch092/LoopSteps';
+import WorklistSteps from '../../../components/diagrams/ch092/WorklistSteps';
+import HasseFigure from '../../../components/diagrams/ch092/HasseFigure';
+import ChainSteps from '../../../components/diagrams/ch092/ChainSteps';
+import FoldSteps from '../../../components/diagrams/ch092/FoldSteps';
+import FoldGate from '../../../components/diagrams/ch092/FoldGate';
+import SccpSteps from '../../../components/diagrams/ch092/SccpSteps';
+import ConstLattice from '../../../components/diagrams/ch092/ConstLattice';
+
+{/* ── merge: from old chapter 92, Dataflow analysis ── */}
+
+## A question about every path
+
+Here is a small TypeScript function with a bug in it, and the error
+TypeScript gives when you check it with `strict` turned on:
+
+```ts
+let x: number, y: number;
+x = 1;
+if (c) {
+  y = 2;
+} else {
+  x = 3;
+}
+console.log(x + y);
+// error TS2454: Variable 'y' is used
+// before being assigned.
+```
+
+Line 1 declares two variables without values, line 2 sets `x`, the
+`if` sets `y` on one side and `x` again on the other, and the last line
+reads both. TypeScript is right to
+complain, because if `c` is false the program reaches the last line
+without ever having set `y`. How could a compiler work that out? The
+honest question is "on **every** path from the start of the function to
+this line, was `y` given a value?", and listing paths is hopeless: a
+function with ten `if`s in a row has over a thousand of them, and a
+loop gives a function infinitely many (once round, twice round, and so
+on). We need a way to answer a question about every path without
+walking any path at all.
+
+## Facts that flow along the edges
+
+The way out is to stop thinking about paths and think about the
+control-flow graph instead. We attach a small **fact** to the start and
+the end of every basic block (here, "the set of variables that are
+definitely assigned by now"), and we describe how each block changes
+the fact as control passes through it. Facts then travel along the
+edges of the CFG, block to block, like goods along a road network.
+
+<Analogy title="tour groups meeting at a museum door">
+Two tour groups take different routes through a city and meet at the
+museum door. Each guide carries a list of sights their group has seen.
+The museum guide wants to know which sights *everyone* now in front of
+her has seen, so she keeps only the sights that are on both lists; a
+sight on one list only might have been missed by half the crowd.
+<span slot="breaks">A real guide could ask each visitor; the analysis
+cannot, because once the two groups merge it no longer knows which path
+anyone came by, only the merged list.</span>
+</Analogy>
+
+<Analogy extra title="a parcel's label on its way through depots">
+A parcel passes through sorting depots, and each depot updates the
+label (adds a stamp, crosses out an old route) before sending it on.
+Knowing what each depot does to a label, you can say what the label
+reads at any point of the journey without following a single parcel.
+<span slot="breaks">A parcel takes one route; a fact in a dataflow
+analysis has to describe every route at once, which is why it needs a
+rule for combining labels where routes meet.</span>
+</Analogy>
+
+Every dataflow analysis has the same three parts. The **fact** at each
+point is written `IN[B]` at the start of block `B` and `OUT[B]` at its
+end. The **transfer function** of a block says how it turns `IN[B]`
+into `OUT[B]`; for our question it adds every variable the block
+assigns. The **meet** says how to combine facts where several edges
+come into one block; for our question it keeps only what is true on
+every incoming edge, which is the intersection of the sets (written
+`∩`). Step through the example, one block at a time:
+
+<AssignSteps client:visible />
+
+<Callout kind="definition">
+A **dataflow analysis** computes a fact for every point of a program
+(usually the start and end of each basic block), where each fact
+depends on the facts flowing into it along CFG edges. A block's
+**transfer function** turns the fact at its start into the fact at its
+end, and the **meet** operator combines the facts arriving from
+several predecessors into one. The answer is a set of facts that
+agrees with every transfer function and every meet at once<Cite id="kildall1973" />.
+</Callout>
+
+<Formal title="Definitely assigned, as equations">
+
+```text
+IN[entry] = ∅
+IN[B]  = ⋂ OUT[P]   for P ∈ pred(B)
+OUT[B] = IN[B] ∪ assigned(B)
+```
+
+<span slot="read">At the start of the entry block, nothing is assigned
+(∅ is the empty set). For any other block B, the fact at its start is
+the intersection, over every predecessor P of B, of the facts at the
+ends of those predecessors: only the variables assigned on every way
+in. The fact at the end of B is the fact at its start together with
+(∪, "union") the variables that B itself assigns.</span>
+</Formal>
+
+The answer is the facts that make every equation true at once. On the
+example, `OUT[b1]` is `{x, y}` and
+`OUT[b2]` is `{x}`, so `IN[b3]` is their intersection, `{x}`; `y` is
+missing from it, which is TypeScript's error. (You have met an equation
+like this before: the dominator equation of the Dominators chapter is
+a dataflow equation too, whose fact is a set of blocks.)
+
+<Examples of="dataflow">
+
+```text
+IN = {x}      block: y = 2     OUT = {x, y}
+```
+
+```text
+OUT[b1] = {x, y}  OUT[b2] = {x}
+IN[b3] = {x, y} ∩ {x} = {x}
+```
+
+```text
+%6 = phi %1, %7
+number if %1 and %7 are numbers
+```
+
+</Examples>
+
+The first is a transfer function on its own: the block assigns `y`, so
+`y` joins the set. The second is the meet at the join, keeping only
+`x`. The third is Viscosity's own question, "is this value always a
+number?"; there the fact belongs to each SSA value rather than each
+block, and the phi's rule (a number only if every operand is) plays the
+part of the meet.
+
+<Prompts ids={['why-not-paths', 'dataflow-what', 'in-out', 'meet-where']} />
+
+## Forward and backward, must and may
+
+Our question looked **back** in time ("has this happened already?"),
+so facts flowed the same way as the edges: from a block to its
+successors. Other questions look **forward** ("will this value be read
+later?", which the Liveness chapter answers); for those,
+facts flow against the edges, from a block's successors back to it, and
+the transfer function turns `OUT[B]` into `IN[B]`. The second choice is
+the meet. Our question was a **must** question ("on every path"), so
+the meet is intersection; a **may** question ("on some path") uses
+union (`∪`) instead, keeping anything true on at least one way in.
+
+<Formal title="The two directions">
+
+```text
+forward:  IN[B]  = ⊓ OUT[P], P ∈ pred(B)
+          OUT[B] = f_B(IN[B])
+backward: OUT[B] = ⊓ IN[S],  S ∈ succ(B)
+          IN[B]  = f_B(OUT[B])
+```
+
+<span slot="read">In a forward analysis, the fact at the start of B is
+the meet (⊓, which is ∩ or ∪ depending on the question) of the facts at
+the ends of its predecessors, and B's transfer function f_B turns the
+fact at its start into the fact at its end. A backward analysis is the
+mirror image: the fact at the end of B is the meet of the facts at the
+starts of its successors, and f_B turns the end fact into the start
+fact.</span>
+</Formal>
+
+Try changing the meet yourself; the same two incoming facts give a
+different answer depending on whether the question is "must" or "may":
+
+<Run id="must-may" />
+
+<Prompts ids={['forward-backward', 'must-may']} />
+
+## A ladder of facts: the lattice
+
+The meet only makes sense if the facts have an order: "keep what both
+promise" assumes we know which facts promise more than which. For our
+sets, a bigger set promises more (`{x, y}` promises two assigned
+variables, `{x}` only one), and the meet of two sets is the biggest set
+that both of them contain. Drawn with the facts that promise most at
+the top and a line wherever one fact sits directly above another, they
+make a small diamond:
+
+<Figure takeaway="The meet of two facts is the highest fact that sits below both of them." caption="Left: every set of variables drawn from x and y, ordered by “contains”. The meet of {x, y} and {x} is {x}. Right: Viscosity’s two-point lattice for “is this a number?”.">
+  <FactLattice />
+</Figure>
+
+<Analogy extra title="what a weather forecast can promise">
+"Sunny all day" promises more than "sunny this morning", which promises
+more than "no promise at all". If two forecasters disagree, one saying
+"sunny all day" and the other "sunny this morning", the most you can
+safely tell a friend is the strongest promise both of them make:
+"sunny this morning".
+<span slot="breaks">Forecasts come with chances and shades of grey; a
+lattice is exact, and two facts can also sit side by side with neither
+above the other, like `{x}` and `{y}`, whose meet is the empty set.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **lattice**, in a dataflow analysis, is the set of possible facts
+together with an order on them (here, higher means "promises more"),
+in which any two facts have a **meet**: the highest fact that is below
+both of them. Merging facts at a join is taking their meet. The top of
+the lattice promises everything, and the bottom promises nothing.
+</Callout>
+
+<Formal title="The meet">
+
+```text
+a ⊓ b ⊑ a      a ⊓ b ⊑ b
+c ⊑ a and c ⊑ b  ⟹  c ⊑ a ⊓ b
+```
+
+<span slot="read">The symbol ⊑ reads "is below or equal to". The first
+line says the meet of a and b is below a, and also below b. The second
+says it is the highest such fact: any fact c that is below both a and b
+is also below their meet (⟹ reads "means that").</span>
+</Formal>
+
+<Examples of="lattice">
+
+```text
+{x, y} ⊓ {x}  =  {x}
+{x} ⊓ {y}     =  { }
+```
+
+```text
+number ⊓ maybe-not  =  maybe-not
+```
+
+```text
+the constant 4 ⊓ the constant 4  =  4
+the constant 4 ⊓ the constant 5  =  varies
+```
+
+</Examples>
+
+The first shows sets: a set below another, and two sets side by side
+whose meet is empty. The second is the two-point lattice: if either
+side might not be a number, the merge might not be one either. The
+third is the lattice of the Sparse conditional constant propagation
+chapter,
+where two different constants merge to "varies". Different questions,
+different lattices, the same machinery.
+
+<Prompts ids={['lattice-what', 'merge-two', 'side-by-side']} />
+
+<Callout kind="engine" label="Under the hood">
+This framework (a fact per node of the control graph, a function per
+node, and a meet where information from different nodes comes
+together) was set out by Gary Kildall in 1973, who showed that
+constant propagation, common subexpression elimination and several
+other optimisations are all instances of one algorithm<Cite id="kildall1973" />.
+Today's textbooks still teach the middle of a compiler this
+way<Cite id="aho2006" /><Cite id="coopertorczon2022" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="one-pass" />
+
+## What you learned
+
+- A **dataflow analysis** attaches a fact to the start (`IN`) and end
+  (`OUT`) of each block, changes it with each block's **transfer
+  function**, and combines facts at joins with a **meet**.
+- **Forward** analyses follow the edges; **backward** ones go against
+  them. **Must** questions meet with intersection, **may** questions
+  with union.
+- The facts form a **lattice**: an order in which any two facts have a
+  meet, the highest fact below both.
+
+Next: with no loops, one pass in the right order is enough. With a
+loop, a block's fact depends on itself, and we need a new idea.
+
+
+{/* ── merge: from old chapter 92, Fixpoints and worklists ── */}
+
+## When the answer depends on itself
+
+The last chapter's if/else could be solved in one pass, visiting every
+block after the blocks that lead into it. Add a loop, and there is no
+such order:
+
+```ts
+let i = 0, x = 0, y: number;
+while (i < 3) {
+  y = i * 2;
+  x = x + y;
+  i = i + 1;
+}
+console.log(x, y);
+// error TS2454: Variable 'y' is used
+// before being assigned.
+```
+
+In the CFG this is four blocks: b0 sets `i` and `x`, b1 is the loop
+test `i < 3`, b2 is the body (which jumps back to b1), and b3 prints.
+The loop test b1 has two predecessors, b0 and the end of the body b2;
+so `IN[b1]` needs `OUT[b2]`, which needs `IN[b2]`, which is `OUT[b1]`.
+Each answer waits on another, round in a circle.
+
+## Guess, then correct
+
+The way out of the circle is to **guess** the facts we do not know yet,
+work everything out from the guesses, and correct whatever turns out to
+be wrong, again and again, until nothing needs correcting.
+
+<Analogy title="pencil marks in a sudoku">
+In a hard sudoku you pencil every possible digit into each empty square,
+then cross digits out as the other squares rule them out. Crossing out
+one digit can rule out a digit somewhere else, so you keep sweeping,
+and you never write a crossed-out digit back in. When a whole sweep
+crosses nothing out, you are done.
+<span slot="breaks">A sudoku has one right answer that the marks
+narrow down to; a dataflow analysis can have several self-consistent
+answers, and which one you get depends on where you start.</span>
+</Analogy>
+
+<Analogy extra title="a rumour going round a group of friends">
+Each friend repeats what they last heard from the friends next to them.
+Nobody knows the truth at the start, but if everyone keeps updating
+from their neighbours, the story eventually stops changing, and that
+settled story is what the group "knows".
+<span slot="breaks">A real rumour can go round for ever, or change
+back and forth; the facts in an analysis can only move one way, which
+is exactly what guarantees that they settle, as we will see.</span>
+</Analogy>
+
+Which guess? You have seen the answer once already: the Dominators
+chapter started every block except the entry at "all blocks", the top
+of its lattice, and let the sets shrink. We do the same: every `OUT`
+starts at the top, "all variables are assigned", which is the
+**optimistic** guess, and the meet with the top changes nothing, so a
+guess cannot spoil a real fact it is met with. Then we apply the
+equations until a whole sweep changes nothing. That state is a
+**fixpoint**.
+
+<Callout kind="definition">
+A **fixpoint** of a set of dataflow equations is a choice of facts
+that the equations leave unchanged: applying every transfer function
+and every meet once more gives back exactly the same facts. An
+**optimistic** analysis starts every unknown fact at the top of the
+lattice and only lowers facts the equations contradict; it reaches the
+most precise fixpoint. A **pessimistic** one starts low and may stop at
+a weaker answer that is still self-consistent.
+</Callout>
+
+<Formal title="Solving by iteration">
+
+```text
+X = F(X)
+X₀ = ⊤
+Xₖ₊₁ = F(Xₖ)   until Xₖ₊₁ = Xₖ
+```
+
+<span slot="read">Write all the facts together as X, and all the
+equations together as one function F that computes new facts from old
+ones; a fixpoint is any X that F gives back unchanged. To find one,
+start from X nought, the top of the lattice (⊤, read "top"), apply F to
+get X one, apply it again to get X two, and so on, stopping when a step
+gives back what it was given.</span>
+</Formal>
+
+<Examples of="fixpoint">
+
+```text
+OUT[b2] = OUT[b1] ∪ {i, x, y}
+guess all → {i, x, y} → {i, x, y}
+```
+
+<Run id="optimistic" />
+
+```text
+Dom(b1) = {b1} ∪ (Dom(b0) ∩ Dom(b3))
+```
+
+</Examples>
+
+The first is the loop body from the example: guess "all", apply the
+equation, and the same set comes back. The runnable one has two values
+chasing each other round a loop, `v2 = φ(v1, v3)` and `v3 = v2 + i`,
+asking "is it a number?". Starting pessimistic (`false`), each stays
+"maybe not" because the other is: consistent, but useless. Starting
+optimistic (`true`), both stay "number", which is also consistent and
+is the true answer. The third is the dominator equation for the Collatz loop's
+header, a fixpoint you have already computed by hand.
+
+<Prompts ids={['loop-circle', 'fixpoint-what', 'start-top', 'why-optimistic']} />
+
+## A worklist
+
+Sweeping over every block until nothing changes works, but most blocks
+did not change since last time, and only a block whose inputs changed
+can change itself. So we keep a list of the blocks that might be out of
+date, and look only at those.
+
+<Analogy extra title="a to-do list at work">
+When a supplier changes a price, you do not recheck every order ever
+placed; you put the orders that use that supplier on your to-do list,
+and add more only when a fix you make changes something they depend
+on. When the list is empty, everything is consistent.
+<span slot="breaks">At work, a task can be forgotten or done twice by
+mistake; the solver adds a block only if it is not already on the list,
+and takes them off in a fixed order.</span>
+</Analogy>
+
+Step through it on the loop above; watch how b2's result matches the
+guess used for the back edge, so nothing needs to be redone:
+
+<LoopSteps client:visible />
+
+In code, for a forward analysis, the whole solver is a dozen lines:
+
+```js
+const work = [...blocks];
+while (work.length > 0) {
+  const b = work.shift();
+  let f = b === entry ? start : top;
+  for (const p of preds[b])
+    f = meet(f, out[p]);
+  const o = transfer(b, f);
+  if (same(o, out[b])) continue;
+  out[b] = o;
+  for (const s of succs[b])
+    if (!work.includes(s)) work.push(s);
+}
+```
+
+Every `out[b]` starts at the top and every block starts on the list;
+`shift` takes the first one off.
+Its IN is the meet of its predecessors' OUT facts, starting from the
+entry's starting fact or from the top (which the meet leaves alone);
+the transfer function gives a new OUT. If that equals the old OUT,
+nothing downstream can change, so we move on; otherwise we store it
+and put every successor back on the list, unless it is already there.
+
+<Callout kind="definition">
+A **worklist** is the list of blocks (or values, in an SSA analysis)
+whose facts may be out of date. The solver takes one off, recomputes
+its fact, and, only if the fact changed, adds the blocks that depend on
+it: successors in a forward analysis, predecessors in a backward one.
+When the worklist is empty, the facts are a fixpoint.
+</Callout>
+
+<Examples of="worklist">
+
+```text
+forward:  OUT[b] changed → add succ(b)
+```
+
+```text
+backward: IN[b] changed → add pred(b)
+```
+
+```text
+SSA:      fact[v] changed → add users(v)
+```
+
+</Examples>
+
+Each says whom to tell when a fact changes: whoever reads it. The third
+is the same idea on SSA values instead of blocks, the way Viscosity
+asks "is this a number?": when a value's fact changes, its *users* go
+back on the list. Watch a doubt travel round a loop's back edge into
+the header:
+
+<WorklistSteps client:visible />
+
+The order matters for
+speed, not for the answer; in reverse postorder (the Dominators
+chapter's order) most blocks see their predecessors' real facts first.
+
+<Prompts ids={['worklist-what', 'requeue']} />
+
+## Why it always stops
+
+Every fact starts at the top and can only move down the lattice: in our
+example a set of assigned variables can lose members but never gain
+them back, because a smaller set coming in never gives a bigger set
+going out. A lattice
+of finite **height** (the longest chain of steps from top to bottom;
+here, one step for each variable) lets each fact move down only
+so many times. Each block is put back on the list only when a fact it
+reads has just moved, so the total work is bounded, and the list must
+run dry, even for a program whose loop would run for ever.
+
+<Prompts ids={['finite-height']} />
+
+## Viscosity: rounds instead of a worklist
+
+Viscosity's numeric inference answers "is this a number?" for every SSA
+value, and also for variables stored outside SSA and for each field of
+a collection. It starts optimistic for phis, parameters, variable loads
+and field reads (the values that can sit on a cycle), and rather than a
+worklist it uses rounds: rerun every rule, and repeat until a whole
+round changes nothing. From `packages/core/src/analysis.ts`, simplified:
+
+```ts
+const MAX_ROUNDS = 1000;
+let converged = false;
+for (let rounds = 0; rounds < MAX_ROUNDS;
+     rounds++) {
+  let changed = false;
+  for (const v of m.values) {
+    const nv = compute(v);
+    if (num.get(v.id) !== nv) {
+      num.set(v.id, nv);
+      changed = true;
+    }
+  }
+  // ...then bindings and fields
+  if (!changed) { converged = true; break; }
+}
+```
+
+`compute(v)` applies the rule for `v`'s kind of instruction (a phi is a
+number only if every operand is), and `changed` records whether any
+fact moved this round. The cap of 1000 rounds is a safety net: if the
+rounds have not settled by then, the code that follows sets every fact
+to "not proven", so Viscosity **fails closed**, choosing the slow but
+safe layout rather than trusting an unfinished answer.
+
+<Prompts ids={['viscosity-rounds']} />
+
+<Callout kind="engine" label="Under the hood">
+Kildall's 1973 paper already solved the equations this way, by
+iterating until nothing changes<Cite id="kildall1973" />,
+and the worklist with a good visiting order is the standard textbook
+solver today<Cite id="coopertorczon2022" />. Rounds are simpler, and
+fast enough for the programs Viscosity looks at; a worklist pays off on
+large functions, where most blocks settle early.
+</Callout>
+
+## Your turn
+
+<Exercise id="solver" />
+
+<Exercise id="numeric" />
+
+## What you learned
+
+- In a loop, a block's fact depends on itself, so the equations are
+  solved by **iteration**: guess, apply every equation, repeat.
+- A **fixpoint** is a set of facts the equations give back unchanged.
+  Starting at the top (optimistic) finds the most precise one.
+- A **worklist** holds only the blocks whose inputs changed; when it is
+  empty, you are at a fixpoint.
+- Facts only move down a lattice of finite height, so the solver must
+  stop. Viscosity iterates in rounds, capped, and fails closed.
+
+Next: the four classic questions this machinery was invented to answer.
+
+
+{/* ── merge: from old chapter 92, Lattices and monotone frameworks ── */}
+
+## Why did they all stop?
+
+You have now solved five analyses: definitely assigned, reaching
+definitions, available expressions, very busy expressions and
+Viscosity's "is this a number?". Every one of them stopped, and every
+answer was safe (it never claimed more than was true). Suppose you
+invent a sixth tomorrow, say "is this index ever negative?"; how would
+you know, before running it on a single program, that it will stop and
+that its answers can be trusted? Gary Kildall in 1973, and John Kam and
+Jeffrey Ullman in 1977, answered this with a little lattice
+theory<Cite id="kildall1973" /><Cite id="kamullman1977" />. It comes
+down to three properties, and this chapter names them.
+
+## Orders where not everything compares
+
+Numbers are **totally** ordered: for any two, one is smaller. Facts are
+not. Of the sets `{a, b}` and `{b, c}`, neither contains the other, so
+neither promises more; they are only different. An order that allows
+this is a **partial order**.
+
+<Analogy title="boxes that fit inside each other">
+Say one box is "below" another if it fits inside it. A shoebox fits in
+a moving box, and the moving box fits in a crate, so the shoebox fits
+in the crate too. But a long, thin poster tube and a wide, flat pizza
+box may not fit inside each other either way: neither is "bigger".
+<span slot="breaks">Real boxes can fit in more than one way, or fit
+only when tilted; in a partial order, "below" is a plain yes or no
+between two facts.</span>
+</Analogy>
+
+<Formal title="A partial order">
+
+```text
+x ⊑ x                         reflexive
+x ⊑ y and y ⊑ x  ⟹  x = y     antisymmetric
+x ⊑ y and y ⊑ z  ⟹  x ⊑ z     transitive
+```
+
+<span slot="read">Every fact is below or equal to itself. If x is below
+or equal to y and y is below or equal to x, they are the same fact.
+And if x is below y and y is below z, then x is below z. Nothing in the
+rules says that any two facts must be comparable; that is what makes
+the order partial.</span>
+</Formal>
+
+A **Hasse diagram** draws a partial order with a line wherever one fact
+sits *directly* above another (the rest follows by transitivity). Here
+are two:
+
+<Figure takeaway="A lattice can be wide without being tall; what matters for stopping is its height." caption="Left: the sets drawn from a, b and c, ordered by “contains” (height 3). Right: the lattice of the Sparse conditional constant propagation chapter: every number in one row, between “no information yet” and “varies” (height 2).">
+  <HasseFigure />
+</Figure>
+
+The **meet** of two facts, `x ⊓ y`, is the highest fact below both
+(for `{a, b}` and `{b, c}`, it is `{b}`); the **join**, `x ⊔ y`, is the
+lowest fact above both (`{a, b, c}`). A partial order in which every
+pair has a meet and a join is a **lattice**, and its **height** is the
+largest number of steps down from top to bottom (three for the sets,
+two for the constants, although the constant lattice is infinitely
+wide).
+
+<Analogy extra title="the nearest common ancestor">
+In a family tree drawn with ancestors below, the meet of two cousins is
+their nearest common ancestor: someone both descend from, and no one
+lower down will do better.
+<span slot="breaks">Real families break the rule at once: two siblings
+have *two* equally near common ancestors, their mother and their
+father, and a lattice demands exactly one best answer. A family tree
+is a partial order, but not a lattice.</span>
+</Analogy>
+
+One more thing about direction. We have drawn facts that promise more
+at the top, so the starting guess is the top and facts move down; for
+a may problem such as reaching definitions, the picture is turned
+over, since a *smaller* set promises more ("only these definitions can
+reach"): its top is the empty set, and its meet is union. Abstract
+interpretation, next chapter, usually draws everything the other way
+up, with a join going upwards; it is the same picture, turned upside
+down.
+
+<Prompts ids={['partial-what', 'meet-join', 'height-what', 'wide-short']} />
+
+## Monotone rules
+
+The second property is about the transfer functions. A rule is
+**monotone** if giving it a better fact can never give you a worse
+answer.
+
+<Analogy extra title="a tap">
+Open a tap further and at least as much water comes out, never less.
+The tap may not be fair (half a turn might double the flow), but it is
+never contrary.
+<span slot="breaks">A tap's flow is a single number; a fact can be a
+whole set, so "more" means "higher in the order", and a monotone rule
+only has to respect that order, not grow in any simple way.</span>
+</Analogy>
+
+<Formal title="Monotone">
+
+```text
+x ⊑ y  ⟹  f(x) ⊑ f(y)
+```
+
+<span slot="read">For any two facts x and y, if x is below or equal to
+y, then f of x is below or equal to f of y: a higher input never gives
+a lower output.</span>
+</Formal>
+
+Every gen/kill transfer function is monotone: if `IN ⊆ IN′`, removing
+the same kill set and adding the same gen set keeps the first result
+inside the second. So is the meet itself. A rule that is *not*
+monotone would be "if nothing reaches, generate `d9`; otherwise
+generate nothing", where more coming in gives less going out; with
+rules like that, an iteration can go round for ever.
+
+<Prompts ids={['monotone-what', 'genkill-monotone']} />
+
+## The framework, and why iteration works
+
+Put the properties together and you have a **monotone framework**,
+the shape Kam and Ullman gave to Kildall's idea<Cite id="kamullman1977" />.
+
+<Callout kind="definition">
+A **monotone framework** is a dataflow analysis described by a lattice
+of facts with finite height, a meet operator, and a transfer function
+for each block that is monotone. For any such framework, iterating the
+equations from the top of the lattice stops, and it stops at the
+**greatest fixpoint**: the most precise answer that agrees with every
+equation.
+</Callout>
+
+Why? Start at the top and apply the equations. The first step can only
+go down, since nothing is above the top; and because the rules are
+monotone, a step down in the inputs can only cause a step down (or no
+step) in the outputs, so every later step goes down too. With finite
+height there are only so many steps down, so it stops. And it stops at
+the best answer: any fixpoint `Y` is below the top, so applying the
+rules to both keeps `Y` below each step of the chain.
+
+<ChainSteps client:visible />
+
+<Formal title="The descending chain">
+
+```text
+⊤ ⊒ F(⊤) ⊒ F(F(⊤)) ⊒ …  ⊒ Fᵏ(⊤) = Fᵏ⁺¹(⊤)
+Y = F(Y)  ⟹  Y ⊑ Fᵏ(⊤)
+```
+
+<span slot="read">Starting from the top, each application of F gives a
+fact below or equal to the one before (⊒ reads "is above or equal
+to"), and after some number k of steps, no more than the height, a
+step gives back the same fact: a fixpoint. The second line says that
+any fixpoint Y at all is below or equal to that one, which makes it the
+greatest fixpoint.</span>
+</Formal>
+
+<Examples of="monotone-framework">
+
+```text
+definitely assigned: sets, ⊓ = ∩,
+OUT = IN ∪ assigned(B)
+```
+
+```text
+reaching definitions: sets, ⊓ = ∪,
+OUT = gen ∪ (IN − kill)
+```
+
+```text
+Viscosity: {number, maybe-not},
+phi: number iff every operand is
+```
+
+</Examples>
+
+Each is a lattice of finite height, a meet and monotone rules, so each
+is guaranteed to stop. The third is Viscosity's numeric inference: its
+lattice has height 1, and its rules are monotone (turning an operand
+from "number" to "maybe not" can only turn a phi or a sum the same
+way). Viscosity starts only the values that can sit on a cycle at the
+top, rather than every value, which is one reason it keeps its cap of
+1000 rounds as a safety net.
+
+<Prompts ids={['framework-what', 'greatest-fixpoint']} />
+
+## How good is the answer?
+
+The ideal answer would follow each path separately, apply the
+transfer functions along it, and only then meet the results of all the
+paths: the **meet over all paths**. Iteration meets at every join
+instead, and those are not always the same. If every transfer function
+is **distributive** (`f(x ⊓ y) = f(x) ⊓ f(y)`), as gen/kill functions
+are, the two answers agree, which was Kildall's case<Cite id="kildall1973" />.
+Kam and Ullman showed that with rules that are only monotone, iteration
+still gives a safe answer, below the ideal one, and that no algorithm
+can compute the ideal answer for every monotone
+framework<Cite id="kamullman1977" />. Constant propagation is the
+standard example:
+
+<Run id="mop" />
+
+On each path `a + b` is 3, so the per-path answer is 3; however,
+meeting at the join first makes `a` and `b` both "varies", and their
+sum "varies" too. The iterative answer is safe (it never claims a wrong
+constant), only less precise.
+
+<Prompts ids={['mop-what', 'distributive-equal']} />
+
+<Callout kind="engine" label="Under the hood">
+This is the shape in which the standard textbook presents dataflow
+analysis, with the iterative algorithm, the greatest fixpoint and the
+meet over all paths<Cite id="aho2006" />; once a new analysis is written
+as a lattice, a meet and monotone rules, the same solver runs it, and
+the same argument proves it stops.
+</Callout>
+
+## Your turn
+
+<Exercise id="monotone" />
+
+## What you learned
+
+- A **partial order** lets some facts be incomparable; a **lattice**
+  adds a meet and a join for every pair; its **height** bounds how far
+  facts can fall.
+- A transfer function is **monotone** if a higher input never gives a
+  lower output. Gen/kill functions are.
+- A **monotone framework** (finite height, a meet, monotone rules)
+  always stops when iterated from the top, at the greatest fixpoint.
+- That answer is safe; it equals the meet over all paths when the
+  rules are distributive, and can be less precise when they are not.
+
+Next: running a whole program on descriptions of values rather than
+values, which turns all of this into one idea.
+
+
+{/* ── merge: from old chapter 92, Constant folding ── */}
+
+## The same sum, a hundred times
+
+Here is a loop that builds a hundred particles, with the count written
+as a small sum (the kind of thing people write to show where a number
+comes from, such as `60 * 60 * 24` for the seconds in a day):
+
+```js
+const ps = [];
+for (let i = 0; i < 2 * 50; i++) {
+  ps.push({ x: i, vx: 1 });
+}
+```
+
+Viscosity lowers the loop test into its IR, VIR, and this is the real
+block it prints for it (block `b1`, the loop header from the
+control-flow graph chapters):
+
+```text
+b1:  ; preds b0 b3
+  %3 = phi %2, %14
+  %4 = const 2
+  %5 = const 50
+  %6 = binop * %4, %5
+  %7 = binop < %3, %6
+  condbr %7, b2, b4
+```
+
+Every time round the loop, `%6` multiplies 2 by 50 and gets 100; the
+answer never changes, because neither operand can. A compiler can do
+that multiplication once, while it compiles, and write `const 100` in
+its place. That small act has a name, **constant folding**, and it is
+the first optimisation of this part, because it is the simplest one
+that changes the program, and so the first place we have to be careful.
+
+<Analogy title="adding up the bill before you go out">
+Planning a trip, you add up the train fares at home the night before,
+write the total on a card and take the card with you; you do not redo
+the same sum at every station. The sum was always going to come out
+the same, so doing it early costs nothing and saves work later.
+<span slot="breaks">At home you might round the fares or forget a
+penny, and nobody would mind; a compiler has no such freedom. Its
+"early sum" must give exactly, to the last bit, the answer the machine
+would have given while the program ran, or the program changes.</span>
+</Analogy>
+
+<Analogy extra title="a ready-mixed cake">
+A packet of cake mix has the flour, sugar and baking powder already
+weighed and mixed at the factory; at home you only add the parts that
+change from kitchen to kitchen (the eggs, the milk). The factory did the
+work that is the same for everyone, once, for millions of cakes.
+<span slot="breaks">The factory mixes ingredients it can see. A
+compiler can only fold what it *knows*: the moment one operand comes
+from outside (a parameter, user input, a value from a loop), it must
+leave that part of the recipe to be done at run time.</span>
+</Analogy>
+
+## Folding one instruction
+
+In SSA (the form where every value is defined exactly once) the rule
+fits in a sentence: when every operand of an instruction is a `const`,
+and the operation is one the compiler is allowed to do early (the next
+two sections say which), work it out now and replace the instruction
+with a `const` holding the answer. Step through it on the loop header:
+
+<FoldSteps client:visible />
+
+Notice what happened to `%7`. Its second operand became a constant, but
+its first, `%3`, is the loop counter (a phi that is 0, then 1, then 2),
+so `%7` stays as it is; one unknown operand is enough to stop a fold.
+Notice also that nothing had to be copied anywhere: `%7` already
+referred to `%6`, and `%6` is now `const 100`, so every user of `%6` sees
+the constant at once. That is SSA paying off again; without it, the
+compiler would first have to check that no other assignment could
+change the value between the definition and the use.
+
+<Callout kind="definition">
+**Constant folding** replaces an instruction whose operands are all
+constants with a single constant: the result of doing the operation at
+compile time. It is allowed only when the operation has no side effects,
+cannot throw an exception, and gives exactly the value it would have
+given at run time.
+</Callout>
+
+<Formal title="The folding rule">
+
+```text
+%a = const x    %b = const y
+op is pure and total on (x, y)
+──────────────────────────────
+%d = op %a, %b
+    ⟶  %d = const ⟦op⟧(x, y)
+```
+
+<span slot="read">If %a is the constant x and %b is the constant y, and
+op has no side effects and gives an answer (rather than throwing) for
+those two values, then the instruction %d = op %a, %b may be rewritten
+as %d = const, where the double brackets ⟦op⟧ mean "the operation op
+as the language defines it", applied to x and y.</span>
+</Formal>
+
+<Prompts ids={['fold-what', 'fold-one-unknown', 'fold-ssa-free']} />
+
+## The answer must be the machine's answer
+
+The second line of that rule hides the hard part. The folder runs
+inside the compiler, but its answer must be the one the *program* would
+have computed, and JavaScript has some surprising answers:
+
+<Run id="corners" />
+
+`'1' + 2` is the string `'12'`, because `+` joins strings; `1 / 0` is
+`Infinity`, not an error; `0.1 + 0.2` carries the rounding of a 64-bit
+float (`0.30000000000000004`); `0 * -1` is negative zero, a real and
+different value (`1 / -0` is `-Infinity`); and `2 ** 53 + 1` comes back
+as `2 ** 53`, because a float64 cannot hold the odd number above it. A
+folder written in JavaScript gets all of this right for free by doing
+the very same operation. A folder written in C++ or Rust (V8's is in
+C++) must copy JavaScript's rules exactly, or it changes your program.
+
+<Examples of="constant-folding">
+
+```text
+%0 = const 2
+%1 = const 50
+%2 = binop * %0, %1  ⟶  %2 = const 100
+```
+
+```text
+%1 = const "1"
+%2 = const 2
+%3 = binop + %1, %2  ⟶  %3 = const "12"
+%4 = const 0
+%5 = binop / %4, %4  ⟶  %5 = const NaN
+```
+
+```text
+%4 = const 1
+%5 = const 0
+%6 = binop < %4, %5  ⟶  %6 = const false
+condbr %6, b1, b2    ; can only go to b2
+```
+
+</Examples>
+
+The first is the loop header again, the plainest case: two numbers and
+an operation that cannot surprise anyone. The second shows that the
+folded constant can be a string or `NaN` ("not a number"), whatever the
+language says the answer is, never what feels natural. The third is the
+one with the biggest payoff: a comparison folds to a boolean, and now
+the branch that tests it can only ever go one way, so a whole block
+becomes unreachable. The next chapter, on constant propagation, takes
+that idea much further.
+
+A common slip is folding with "the obvious" answer instead of the
+computed one:
+
+```text
+%3 = binop + %1, %2  ; 0.1 + 0.2
+%3 = const 0.3       ; wrong
+%3 = const 0.30000000000000004  ; right
+```
+
+The first rewrite looks tidier, and any test that prints the result
+would show the program now printing `0.3` where it used to print
+`0.30000000000000004`.
+
+<Prompts ids={['fold-exact', 'fold-host']} />
+
+## What must never be folded
+
+Constant operands are necessary, but not enough. Before folding, ask
+four questions, in this order:
+
+<Figure takeaway="Fold only when all four answers are yes." caption="The four questions a folder asks. The first rules out unknowns; the second and third rule out instructions that do more than produce a value; the last is about computing the answer exactly as the language does.">
+  <FoldGate />
+</Figure>
+
+A `call` with constant arguments, such as `console.log(5)`, prints; its
+result may be thrown away, but the printing may not. Reading `xs[9]`
+can throw if `xs` is not an array. And in JavaScript even `+` can run
+code: if an operand is an object, `+` first calls that object's
+`valueOf` method, which may print or change things. That is why a
+JavaScript folder only folds `+` on primitive constants (numbers,
+strings, booleans), which a `const` instruction always holds.
+
+<Callout kind="pitfall">
+**Algebra is not always safe.** Folding has a cousin, *algebraic
+simplification*, which uses identities when only one operand is known:
+`x * 1` becomes `x`, `x - x` becomes `0`. In JavaScript most of these
+are wrong unless `x` is known to be a number: `'3' * 1` is the number
+`3`, not the string `'3'`; `x - x` is `NaN` when `x` is `NaN`; and
+`x + 0` is not even `x` for numbers, because `-0 + 0` is `+0`. A
+compiler that has proved `x` is a number (as Viscosity's numeric
+inference does) may use some of them; one that has not must leave them.
+</Callout>
+
+<Prompts ids={['fold-never', 'plus-object', 'algebra-trap']} />
+
+<Callout kind="engine" label="Under the hood">
+V8's optimising compiler, TurboFan, has a `ConstantFoldingReducer`.
+TurboFan's typer works out a type for each node of its graph, and when
+that type allows only a single value (`null`, `undefined`, `NaN`, `-0`,
+one particular object, or one plain number) and the node can be
+removed safely, the reducer replaces it with that
+constant<Cite id="v8-constant-folding-reducer" />. Textbooks treat
+folding as the first and simplest of the scalar optimisations that the
+rest of this part builds on<Cite id="coopertorczon2022" />.
+
+Viscosity, by contrast, has **no** folding pass: it rewrites only the
+code that touches the collections it changes, and leaves your
+arithmetic to the JavaScript engine. You can see the cost of that in
+its own output. Its size estimate counts loop trips only when the loop
+bound is a `const` instruction, so for `i < 100` the explanation says
+"about 100 elements", while for `i < 2 * 50` it says "size unknown
+statically": the bound is a `binop`, which nobody folded.
+</Callout>
+
+## Your turn
+
+<Exercise id="fold" />
+
+## What you learned
+
+- **Constant folding** replaces an instruction whose operands are all
+  constants with the constant it computes, at compile time.
+- The answer must be exactly the run-time answer, quirks included:
+  strings, `NaN`, `Infinity`, `-0` and float rounding.
+- Instructions with side effects, or that can throw, are never folded,
+  even with constant operands; in JavaScript that includes `+` on
+  objects.
+- Algebraic shortcuts such as `x * 1 → x` need a proof that `x` is a
+  number.
+- In SSA, folding needs no copying: every user of a folded value sees
+  the constant at once.
+
+Next: constants that travel between blocks, through phis and branches,
+and an algorithm that is optimistic about both.
+
+
+{/* ── merge: from old chapter 92, Sparse conditional constant propagation ── */}
+
+## Constants that meet at a join
+
+Folding works inside a block, on instructions whose operands are
+already constants. Here is a function where that is not enough, and
+below it the VIR that Viscosity prints for it (trimmed: the
+`const undefined` for `let y` is left out, and each block's first
+instruction sits beside its label):
+
+```js
+function g() {
+  let x = 1;
+  let y;
+  if (x > 0) { y = 2; } else { y = 3; }
+  return y * 10;
+}
+```
+
+```text
+b0: %0 = const 1
+    %2 = const 0
+    %3 = binop > %0, %2
+    condbr %3, b1, b2
+b1: %4 = const 2       ; y = 2
+    br b3
+b2: %5 = const 3       ; y = 3
+    br b3
+b3: %6 = phi %4, %5    ; y
+    %7 = const 10
+    %8 = binop * %6, %7
+    return %8
+```
+
+Folding turns `%3` into `true`, but then it stops: `%6` is a phi, not
+arithmetic, and its two operands are different constants. Yet you can
+see that `g` always returns 20, because `x > 0` is always true, so the
+`else` block never runs and `y` is always 2. This chapter teaches a
+compiler to see it too. Carrying facts about constants from block to
+block, through phis and branches, is called **constant propagation**.
+
+<Prompts ids={['prop-what', 'fold-not-enough']} />
+
+## A ladder with three rungs
+
+At a phi we need to merge what we know about each operand. Three kinds
+of fact are enough:
+
+<Figure takeaway="Facts only ever move down the ladder." caption="The constant lattice. At the top, ⊤: nothing known yet. In the middle, one rung holding every possible constant side by side. At the bottom, ⊥: varies. Merging two facts gives the highest fact below both of them.">
+  <ConstLattice />
+</Figure>
+
+- **⊤** (read "top"): no information yet, because the value has not
+  been worked out, or its block has not been reached;
+- **a constant** such as `2`, `"hi"` or `true`;
+- **⊥** (read "bottom"): varies, not a constant.
+
+Merging follows from the picture: ⊤ gives way to anything; two equal
+constants stay that constant; two different constants, or anything with
+⊥, fall to ⊥. This is the lattice idea from the dataflow chapters with
+one constant rung that is very wide.
+
+<Analogy title="a detective's notebook">
+A detective keeps one line per question. At first it is blank (⊤).
+After one witness, it says "the butler". If every later witness agrees,
+it stays "the butler"; the moment one says "the cook", the honest entry
+becomes "could be either" (⊥), and no later witness can make it a
+single name again.
+<span slot="breaks">A detective can be told a witness lied and go back
+to a single name; facts in this lattice only ever move down, which is
+exactly what guarantees the analysis stops.</span>
+</Analogy>
+
+<Formal title="Meet in the constant lattice">
+
+```text
+⊤ ⊓ x = x          x ⊓ ⊤ = x
+⊥ ⊓ x = ⊥          x ⊓ ⊥ = ⊥
+c ⊓ c = c
+c ⊓ d = ⊥    when c and d differ
+```
+
+<span slot="read">The symbol ⊓ is read "meet" and means "merge two
+facts". Meeting top with anything gives that thing; meeting bottom with
+anything gives bottom; meeting a constant with itself gives the same
+constant; meeting two different constants gives bottom. "Same" means
+the same value in JavaScript's strictest sense, so 0 and -0 differ.</span>
+</Formal>
+
+<Examples of="constant-propagation">
+
+```text
+%6 = phi %4, %5   ; %4 = 2, %5 = 2
+                  ; %6 = 2 ⊓ 2 = 2
+```
+
+```text
+b1: %5 = phi %1, %5  ; %1 = const 7
+    ; first time: 7 ⊓ ⊤ = 7, and stays 7
+```
+
+```text
+b1: %3 = phi %2, %14 ; i: 0, then i + 1
+    ; 0 ⊓ 1 = ⊥: a counter varies
+```
+
+</Examples>
+
+The first is the easy case: both paths bring 2, so the phi is 2 and
+`%6 * 10` can fold to 20 later. The second is a loop that never changes
+a variable: its header phi takes 7 from the entry and *itself* round
+the back edge. If we start every value at ⊤, the back edge contributes
+nothing the first time, the phi becomes 7, and when the back edge is
+looked at again it brings 7, which agrees; this is the optimistic start
+from the dataflow chapters, and it is the only start that proves 7. The
+third is a real loop counter: 0 from the entry meets 1 from the back
+edge, which falls to ⊥, as it must.
+
+<Prompts ids={['top-what', 'meet-rule', 'loop-seven', 'counter']} />
+
+## Being optimistic about branches too
+
+Plain propagation still fails on `g`: it treats every block as if it
+might run, so it meets 2 with 3 at `%6` and gets ⊥. **Sparse
+conditional constant propagation** (SCCP), published by Wegman and
+Zadeck<Cite id="wegmanzadeck1991" />, adds a second kind of fact: which
+CFG edges can actually be taken (are **executable**). It is optimistic
+about both kinds. Every value starts at ⊤ and every edge starts not
+executable; the entry block is reachable, and a block becomes reachable
+when its first incoming edge becomes executable.
+
+<Analogy extra title="mapping a cave with a torch">
+You only draw the passages you have walked into. When you reach a gate
+that you can see is locked shut, you do not draw anything beyond it,
+so nothing behind the gate can confuse your map.
+<span slot="breaks">A locked gate might be opened tomorrow; a branch on
+a constant can never go the other way. And the explorer walks the
+passages, while SCCP never runs the program: it reasons about every
+run at once.</span>
+</Analogy>
+
+The rules are short:
+
+- visit an instruction only in a reachable block, and give it the
+  folded value of its operands (⊥ if any operand is ⊥, ⊤ if any is
+  still ⊤);
+- a phi meets only the operands that arrive along executable edges;
+- `br` makes its one edge executable; `condbr` makes the `then` edge
+  executable when its condition is `true`, the `else` edge when it is
+  `false`, both when it is ⊥, and neither while it is still ⊤.
+
+Step through it on `g`:
+
+<SccpSteps client:visible />
+
+Real SCCP avoids revisiting everything by keeping two worklists: one of
+CFG edges that have just become executable (visit the block they lead
+to), and one of SSA values whose fact just changed (revisit the
+instructions that use them). That is the "sparse" in the name: facts
+are kept per SSA value and pushed along def-use links, not recomputed
+for every block. When both lists are empty, the analysis is at a
+fixpoint, and every value still at ⊤ is in a block that never runs.
+
+<Callout kind="definition">
+**Constant propagation** finds, for each value, whether it is the same
+constant on every run, and replaces its uses with that constant.
+**Sparse conditional constant propagation** does it optimistically
+over SSA with the three-level lattice, while also tracking which CFG
+edges are executable: a phi merges only operands from executable edges,
+and a branch on a constant makes only one edge executable.
+</Callout>
+
+<Prompts ids={['sccp-edges', 'sccp-phi', 'sccp-sparse']} />
+
+Try the merges yourself; change the operands and predict each answer
+before you run it:
+
+<Run id="merges" />
+
+<Callout kind="engine" label="Under the hood">
+LLVM's `sccp` pass is this algorithm. Its documentation sums it up as:
+assume values are constant and blocks dead unless proven otherwise,
+replace values proven constant, and turn branches proven to go one way
+into unconditional ones; it adds that the pass tends to leave dead
+definitions behind, so a dead code pass should run
+afterwards<Cite id="llvm-passes" />. GCC's version, in
+`tree-ssa-ccp.cc`, describes a four-level lattice (an extra
+"uninitialized" state that a value has only until it is first looked
+at),
+ignores phi arguments that arrive through non-executable edges, and
+names Wegman and Zadeck as its source<Cite id="gcc-tree-ssa-ccp" />.
+
+Viscosity does not propagate constants, but its numeric inference is
+the same machine with a smaller ladder: an optimistic fixpoint over SSA
+values on the two-level lattice "number" and "maybe not". It does not
+track executable edges, so a value from a branch that can never run
+still counts against it.
+</Callout>
+
+## Your turn
+
+<Exercise id="sccp" />
+
+<Exercise id="meet" />
+
+## What you learned
+
+- **Constant propagation** carries "this is always the constant c"
+  across blocks; at a phi, facts merge in the lattice ⊤, constants, ⊥.
+- Starting every value at ⊤ (optimistic) is what keeps constants that
+  flow round a loop; a counter still falls to ⊥.
+- **SCCP** is optimistic about edges as well: phis ignore operands from
+  edges not proven executable, and a branch on a constant marks only one
+  edge, so values from impossible paths never spoil a merge.
+- It is sparse: facts live on SSA values and move along def-use links,
+  driven by two worklists.
+
+Next: deleting the code these passes have just made useless.
+
+<Quiz />

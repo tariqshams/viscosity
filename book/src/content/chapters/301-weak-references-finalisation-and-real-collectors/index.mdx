@@ -1,0 +1,291 @@
+---
+n: 301
+day: 34
+part: XVI
+title: 'Weak references, finalisation and real collectors'
+tagline: 'Sometimes a program wants to point at an object without keeping it alive, or to hear when it dies. Both are easy to add to a collector and hard to use well. Then, with every piece of this part in hand, five real collectors and the choices that make each one what it is.'
+objectives:
+  - Explain what a weak reference is, how a collector clears it, and use JavaScript's WeakRef.
+  - Explain finalisation, and give three reasons it is fragile, with real output from Node.
+  - Place V8, G1, ZGC, Go and .NET in the design space by what they move, when they pause and which barriers they use.
+  - Add weak references and finalisers to a toy collector.
+introduces: [weak-reference, finalization, collector-design-space]
+uses: [bump-allocation, free-list, sliding-compaction, incremental-gc, concurrent-gc, snapshot-at-the-beginning, read-barrier, copying-gc, cheney-scan, forwarding-pointer, nursery, remembered-set, card-table, garbage-collection, roots, mark-sweep, tricolor, generational-gc, scavenger, mark-compact, write-barrier, heap-object, pointer, memory, event-loop, microtask, promise, closure, map, set, array, object, class, function, test]
+sources: [mdn-weakref, mdn-finalizationregistry, v8-weakrefs, java-object-finalize, go-runtime-gc, v8-trash-talk, v8-concurrent-marking, hotspot-card-table, zgc-barrier, dotnet-gc-botr]
+---
+import WeakSteps from '../../../components/diagrams/ch301/WeakSteps';
+import DesignSpace from '../../../components/diagrams/ch301/DesignSpace';
+
+## A cache that never forgets
+
+Say you cache a computed thumbnail for each image object, in a `Map`
+from image to thumbnail. The map holds a reference to every image it
+has seen, so as far as the collector can tell, every image is still in
+use: once an image is cached, it can never be freed, however long ago
+the program stopped needing it. What you want is a pointer that lets
+you *reach* an object while it lives, without being a reason for it to
+live.
+
+## Weak references
+
+<Analogy title="a bookmark to a web page">
+A bookmark takes you to a page while it exists, but the site's owner
+can delete the page whenever they like; then your bookmark leads
+nowhere, and you find out only when you click it.
+<span slot="breaks">A deleted web page can come back; a collected
+object never does. And the collector deletes it only when no ordinary
+(strong) reference is left, never on a whim.</span>
+</Analogy>
+
+<Analogy extra title="a shop's phone number">
+You keep a shop's number in case you need it. Keeping the number does
+not keep the shop open; if it closes, the number simply stops
+working.
+<span slot="breaks">A dead number might be given to a new shop. A
+cleared weak reference reads as empty, never as some other object,
+because the collector clears it before the memory can be reused.</span>
+</Analogy>
+
+For the collector the rule is short. Marking does not follow weak
+references, so they keep nothing alive. After marking, before memory is
+reused, the collector visits each weak reference and **clears** any
+whose target was not marked. JavaScript's `WeakRef` exposes exactly
+this: `deref()` returns the target, or `undefined` once it has been
+collected<Cite id="mdn-weakref" />. One extra rule stops programs from
+seeing the collector at work in the middle of their code: a target
+created or dereferenced in the current job stays alive until that job
+(and its promise reactions) ends, so a collection can only become
+visible between turns of the event loop<Cite id="mdn-weakref" />.
+
+<Callout kind="definition">
+A **weak reference** is a reference that does not keep its target
+alive. The collector does not trace through it; after marking, every
+weak reference whose target is unmarked is **cleared**. A program must
+check a weak reference each time it uses it, since the target may have
+gone.
+</Callout>
+
+<Examples of="weak-reference">
+
+<Run id="sameJob" />
+
+```text
+$ node --expose-gc weak.js   (trimmed)
+before: big
+after gc: undefined
+```
+
+```text
+Go 1.24: weak.Pointer[T]; once the
+object is unreachable, Value may be nil
+```
+
+</Examples>
+
+The runnable one drops the only strong reference and asks the
+`WeakRef` straight away, in the same job: the target is guaranteed to
+be there, so it prints `big` whatever the collector does. The second is
+real Node v22.23.4 output, with `--expose-gc` so the program can call
+`gc()` itself: the program prints `ref.deref()?.name` (which is `big`),
+sets its only strong reference to `null`, and in a later timer task
+calls `gc()` and asks again; the target is gone. (Run in the same job,
+the same `gc()` call left the target in place, as the rule above says.)
+The third is Go's `weak` package, new in Go 1.24, whose documentation
+names the uses: caches, canonicalisation maps and tying lifetimes
+together<Cite id="go-runtime-gc" />.
+
+<WeakSteps client:visible />
+
+<Prompts ids={['wr-what', 'wr-clear', 'wr-job']} />
+
+## Finalisation, and why it is fragile
+
+The second wish is to *hear* when an object dies, to release something
+the collector does not manage: a file handle, a socket, a block of
+native memory. That is **finalisation**. JavaScript's form is
+`FinalizationRegistry`: you register an object with a *held value*, and
+some time after the object is collected, the registry's callback may be
+called with the held value<Cite id="mdn-finalizationregistry" />.
+
+<Analogy extra title="a will">
+A will says what should happen to your things after you die, carried
+out later by someone else, at a time you do not choose.
+<span slot="breaks">A will is always read eventually. A finaliser may
+never run at all: the program may exit first, and the collector is not
+obliged to call it.</span>
+</Analogy>
+
+"May" is the important word, and V8's own article on the feature lists
+what it does not promise: callbacks "might not happen immediately after
+garbage collection", "might not happen in the same order", and "might
+not happen at all"<Cite id="v8-weakrefs" />. Here is a fourth way,
+produced on this book's machine:
+
+```js
+const reg = new FinalizationRegistry(
+  (held) => console.log('cleanup:', held));
+reg.register(big, 'big is gone');
+big = null;
+// later: gc(); …   (prints nothing!)
+```
+
+(That is a shortened version; the full program also holds a `WeakRef`
+to `big`, which reads `undefined` after the `gc()`.) Nothing was
+printed, run after run, although `big` was collected. The likely reason
+is the one V8's article warns about, "If a registry is itself
+garbage-collected, its finalizer may not run"<Cite id="v8-weakrefs" />:
+the registry lived in a `const` that nothing used after the main
+script.
+Keeping the registry reachable (`globalThis.keepReg = reg`) made the
+same program print `cleanup: big is gone`, every time.
+
+Other languages have learned the same lessons, harder. A finaliser that
+gets the dying object can store it somewhere and bring it back to life
+(**resurrection**): Go's `SetFinalizer` says running the finaliser
+"makes obj reachable again", and that a cycle containing an object with
+a finaliser "is not guaranteed to be garbage collected"; new Go code is
+told to prefer `AddCleanup`, whose cleanup is passed a separate value,
+not the object<Cite id="go-runtime-gc" />. Java deprecated `finalize`
+in Java 9 and now marks it for removal, citing "problems with security, performance,
+and reliability", and points to `Cleaner`, phantom references and
+`try`-with-resources instead<Cite id="java-object-finalize" />.
+
+<Callout kind="definition">
+**Finalisation** runs code after the collector finds an object dead.
+It is fragile: callbacks run late, in no promised order, possibly never
+(the program exits, or the registry itself dies); code that receives
+the dead object can **resurrect** it; and timing depends on when the
+collector happens to run. Use it only as a safety net behind explicit
+cleanup.
+</Callout>
+
+<Examples of="finalization">
+
+```text
+$ node --expose-gc weak5.js
+after gc: undefined
+cleanup: big is gone
+end
+```
+
+```java
+// Java 21: Object.finalize is
+// @Deprecated(since="9", forRemoval=true)
+// use Cleaner, or try-with-resources
+```
+
+```js
+// explicit cleanup first; the registry
+// is only a safety net
+const f = openFile(path);
+try { use(f); } finally { f.close(); }
+```
+
+</Examples>
+
+The first is the repaired program, run on Node v22.23.4: the
+`WeakRef` is cleared at once, but the cleanup callback runs later, in a
+task of its own, after the timer that called `gc()` had finished. The second is the
+annotation on `finalize` in OpenJDK 21's `Object.java`<Cite id="java-object-finalize" />.
+The third is the advice in practice: release resources on purpose,
+when you are done with them, and let finalisation only catch what you
+forgot (MDN gives the same advice: avoid `FinalizationRegistry` where
+possible<Cite id="mdn-finalizationregistry" />).
+
+<Prompts ids={['fin-what', 'fin-never', 'fin-registry', 'fin-resurrect']} />
+
+## Five real collectors
+
+You now know every part a production collector is built from. Here
+is how five of them combine those parts, from their own sources.
+
+<Figure takeaway="Every collector picks a point in the same space: what to move, when to pause, and which barriers to pay for on every store or load." caption="Five collectors compared. Generational: splits the heap by age. Moves: copies or compacts objects. Concurrent: marks while the program runs. Barriers: what runs on pointer stores or loads.">
+  <DesignSpace />
+</Figure>
+
+- **V8 (Orinoco).** Generational. The young generation is copied by a
+  parallel Scavenger; the old one is marked concurrently (with
+  incremental steps as a fallback), swept concurrently, and only some
+  fragmented pages are compacted, in parallel, during a short final
+  pause<Cite id="v8-trash-talk" />. Its write barrier is Dijkstra-style
+  for marking, and records old-to-new pointers<Cite id="v8-concurrent-marking" />.
+- **HotSpot G1.** Generational; it copies ("evacuates") the live
+  objects out of the parts of the heap it collects, in pauses its log
+  calls evacuation pauses.
+  Its pre-barrier is SATB and its post-barrier marks cards, skipping
+  young ones<Cite id="hotspot-card-table" />.
+- **HotSpot ZGC.** Marks and relocates concurrently with load barriers
+  on coloured pointers, so pauses stay tiny whatever the heap
+  size<Cite id="zgc-barrier" />; generational in Java 21 with
+  `-XX:+ZGenerational`.
+- **Go.** "Non-generational and non-compacting": a concurrent
+  mark-sweep with a hybrid Yuasa and Dijkstra barrier, size-class
+  allocation, and `GOGC` setting how far the heap may grow (by default,
+  to twice the live heap) before the next cycle<Cite id="go-runtime-gc" />.
+- **.NET.** Generational (gen0, gen1, gen2, plus a large-object heap),
+  card marking by the JIT's store helpers, a plan phase that decides
+  between compacting and sweeping, and a background collection that
+  lets threads keep allocating while it runs<Cite id="dotnet-gc-botr" />.
+
+<Callout kind="definition">
+The **collector design space** is the set of choices every collector
+makes: whether to split the heap by age; whether to move objects
+(copying, sliding or none) and so allocate by bumping or from free
+lists; whether to collect stopped, incrementally or concurrently; and
+which barriers to put on stores and loads to make that safe. Each
+choice trades pause time, throughput and memory against the others.
+</Callout>
+
+<Examples of="collector-design-space">
+
+```text
+G1:  Pause Young (Normal) (G1 Evacuation
+     Pause) 79M->8M(128M) 7.871ms
+ZGC: Y: Pause Mark Start (Major) 0.016ms
+```
+
+```text
+Go: gc 120 @1.043s 8%: 0.024+9.9+0.058
+    ms clock, 15->15->9 MB, 16 MB goal
+```
+
+```text
+Node: Scavenge 18.3 (27.5) -> 11.9 (28.0)
+      MB, … 4.46 / 0.00 ms
+```
+
+</Examples>
+
+All three are real, from one kind of program (make tens of millions of
+small records, keep one in ten or a hundred) on this book's machine.
+The first is OpenJDK 21: G1 stopped the program for 7.9 ms to evacuate
+the young objects, and ZGC's pauses on the same program were around
+0.01 to 0.15 ms, paid for by load barriers everywhere. The second is
+Go 1.24: about 0.08 ms of stopped time around 9.9 ms of concurrent
+marking, with the goal at about twice the 9 MB still live; Go never
+moves a heap object, so it needs no read barrier. The third is Node
+v22.23.4: a 4.5 ms scavenge, a copying young collection in the style
+of the chapter "Copying collection".
+
+<Prompts ids={['ds-what', 'ds-go']} />
+
+## Your turn
+
+<Exercise id="weakGc" />
+
+## What you learned
+
+- A **weak reference** does not keep its target alive; marking ignores
+  it and the collector clears it if the target died. JavaScript's
+  `WeakRef` keeps a target alive until the current job ends.
+- **Finalisation** runs code after death, late, unordered and maybe
+  never; even the registry can die first. Clean up on purpose, and use
+  finalisers only as a net.
+- The **collector design space**: generations, moving or not, pauses
+  or concurrency, and barriers. V8, G1, ZGC, Go and .NET each pick a
+  different point, and their logs show the result.
+
+That closes Part X, and with it the tour of how languages are built and
+run underneath.
+
+<Quiz />

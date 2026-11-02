@@ -1,4 +1,4 @@
-// New references for chapter 132 (bidirectional checking) and its staged
+// New references for chapter 200 (bidirectional checking) and its staged
 // second half (soundness). Network note: from this session only web search
 // and raw.githubusercontent.com were reachable (doi.org, dl.acm.org,
 // sciencedirect.com, arxiv.org and typescriptlang.org did not resolve), so
@@ -14,7 +14,7 @@ export default [
     url: 'https://www.cis.upenn.edu/~bcpierce/papers/lti-toplas.pdf',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: the TOPLAS copy on the author’s page (cis.upenn.edu/~bcpierce/papers/lti-toplas.pdf) gives ACM Transactions on Programming Languages and Systems 22, No. 1, January 2000, pages 1–44, Pierce (Indiana University) and Turner (An Teallach Ltd.), an extended version of their POPL 1998 paper; the abstract, as quoted in the results, studies two partial type inference methods for a language with subtyping and impredicative polymorphism: local synthesis of type arguments, and bidirectional propagation of type information, which lets the parameter types of anonymous functions be inferred from context. The DOI is the usual one for this article but did not appear in the results and could not be opened.',
-    shaped: 'Chapter 132: local type inference, bidirectional propagation, and parameter types of anonymous functions coming from their context.',
+    shaped: 'Chapter 200: local type inference, bidirectional propagation, and parameter types of anonymous functions coming from their context.',
   },
   {
     id: 'dunfield-krishnaswami2021',
@@ -26,7 +26,7 @@ export default [
     url: 'https://research.cs.queensu.ca/home/jana/papers/bidir-survey/',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: the first author’s page for the survey (research.cs.queensu.ca/home/jana/papers/bidir-survey) with its BibTeX (ACM Comput. Surv., 2021, volume 54, number 5, doi 10.1145/3450952) and the arXiv preprint 1908.05839; a third-party listing gives pages 1–38 (the article number, 98, could not be confirmed). Summaries describe the survey’s subject: bidirectional type systems, checking and synthesis judgements, their design principles, checking as support for features where inference is undecidable and synthesis as a way to reduce annotations, and the history from before Pierce and Turner.',
-    shaped: 'Chapter 132: the two judgements (checking and synthesis), the rules switching between them, and why the approach copes with features where full inference is impossible.',
+    shaped: 'Chapter 200: the two judgements (checking and synthesis), the rules switching between them, and why the approach copes with features where full inference is impossible.',
   },
   {
     id: 'ts-type-inference',
@@ -38,7 +38,7 @@ export default [
     url: 'https://www.typescriptlang.org/docs/handbook/type-inference.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/documentation/copy/en/reference/Type%20Inference.md (front matter permalink /docs/handbook/type-inference.html), section “Contextual Typing”: “Type inference also works in “the other direction” in some cases in TypeScript. This is known as “contextual typing”. Contextual typing occurs when the type of an expression is implied by its location.” Reproduced with tsc 5.9.3 --strict: const f = (x) => x + 1 gives error TS7006 (Parameter \'x\' implicitly has an \'any\' type.), while the same arrow assigned to a variable declared (x: number) => number, and [1, 2].map((x) => x.toFixed(1)), check.',
-    shaped: 'Chapter 132: contextual typing as TypeScript’s form of checking mode.',
+    shaped: 'Chapter 200: contextual typing as TypeScript’s form of checking mode.',
   },
   {
     id: 'wright-felleisen1994',
@@ -50,7 +50,7 @@ export default [
     url: 'https://doi.org/10.1006/inco.1994.1093',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: a Springer reference list gives Wright, A.K., Felleisen, M.: A syntactic approach to type soundness. Inf. Comput. 115(1), 38–94 (1994), https://doi.org/10.1006/inco.1994.1093; course notes (Harvard CS252, Northwestern) and later papers describe the method: semantics as rewriting of program syntax, with soundness shown by subject reduction (reduction preserves types) together with a progress-style argument, applied to the core of Standard ML. One course bibliography gives 1992 (the technical report year), the journal paper is 1994.',
-    shaped: 'Chapter 132b: type soundness proved syntactically, as progress and preservation over a small-step semantics.',
+    shaped: 'Chapter 200b: type soundness proved syntactically, as progress and preservation over a small-step semantics.',
   },
   {
     id: 'ts-design-goals',
@@ -62,7 +62,7 @@ export default [
     url: 'https://github.com/microsoft/TypeScript/wiki/TypeScript-Design-Goals',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/wiki/microsoft/TypeScript/TypeScript-Design-Goals.md, Non-goals, item 3: “Apply a sound or “provably correct” type system. Instead, strike a balance between correctness and productivity.”',
-    shaped: 'Chapter 132b: that TypeScript is unsound by design, in its own words.',
+    shaped: 'Chapter 200b: that TypeScript is unsound by design, in its own words.',
   },
   {
     id: 'ts-option-nouncheckedindexedaccess',
@@ -74,6 +74,6 @@ export default [
     url: 'https://www.typescriptlang.org/tsconfig/#noUncheckedIndexedAccess',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript-Website/v2/packages/tsconfig-reference/copy/en/options/noUncheckedIndexedAccess.md: “Turning on noUncheckedIndexedAccess will add undefined to any un-declared field in the type”, for reads through an index signature. tsc 5.9.3 --help --all: “Add \'undefined\' to a type when accessed using an index. type: boolean, default: false”; it is not among the flags strict turns on (see ts-option-strict). Reproduced with tsc 5.9.3 --strict: const n: number = xs[5] on a number[] checks, and n.toFixed(1) throws “TypeError: Cannot read properties of undefined (reading \'toFixed\')”.',
-    shaped: 'Chapter 132b: unchecked index access as one of TypeScript’s deliberate unsound spots, and the option that closes it.',
+    shaped: 'Chapter 200b: unchecked index access as one of TypeScript’s deliberate unsound spots, and the option that closes it.',
   },
 ];

@@ -1,0 +1,495 @@
+---
+n: 86
+day: 10
+part: IV
+title: 'Measuring and speeding up the VM'
+tagline: 'The bytecode VM was supposed to be the fast one, and on this host it is barely faster than the tree-walker, sometimes slower; measuring why, and which changes really help, teaches more than the speed-up would have.'
+objectives:
+  - Read the VM-versus-tree-walker results honestly, and say what they do and do not show.
+  - Explain why a bytecode VM written in JavaScript gains little over a tree-walker written in JavaScript.
+  - Say which changes to the companion VM measurably help, and how they were measured.
+  - Explain what a superinstruction is, find one in the companion, and name its costs.
+  - Explain why NaN leaves room to store other values inside a double, and encode and decode values with typed-array views.
+  - Explain why a NaN-boxing VM must store every real NaN in one canonical form.
+  - State the generational hypothesis, and check it against the companion VM’s own collections.
+  - Explain why a generational collector needs a write barrier, and name the companion instructions that would need one.
+introduces: [superinstruction, nan-boxing, generational-gc]
+uses: [garbage-collection, roots, mark-sweep, tricolor, heap-object, object-list, hash-table, bytecode, opcode, dispatch-loop, single-pass-compiler, emit, stack-machine, virtual-machine, jump, interpreter-overhead, benchmark-isolation, jit-warmup, method-invocation, initializer, call-frame, stack-slot, drip, object, property, array, map, value-representation, tagged-value, ieee754, float64, typed-array, arraybuffer, bit-ops, bit, byte, smi, heap-number, pointer, memory]
+sources: [v8-maglev, v8-sparkplug, v8-fast-properties, cpython-superinstructions, spidermonkey-value, ecma262, v8-trash-talk, v8-orinoco-scavenger]
+---
+import VmVsTreeChart from '../../../components/diagrams/ch086/VmVsTreeChart';
+import ExperimentsChart from '../../../components/diagrams/ch086/ExperimentsChart';
+import DispatchSteps from '../../../components/diagrams/ch086/DispatchSteps';
+import NanBoxSteps from '../../../components/diagrams/ch086/NanBoxSteps';
+import GenerationsFigure from '../../../components/diagrams/ch086/GenerationsFigure';
+
+{/* ── merge: from old chapter 86, Measuring and speeding up the VM ── */}
+
+## The numbers, as they came out
+
+Part IV began with a promise, in the chapter "Why bytecode?": flatten
+the tree into a compact list of instructions, run them in one tight
+loop, and the interpreter gets faster. The companion's benchmark script
+runs ten Drip programs on both engines, each in a fresh process, and
+keeps the best of three runs. Here is the most recent result:
+
+<VmVsTreeChart />
+
+The best the VM manages is 1.3 times faster (`method_calls`), and on
+four programs (`fields`, `instantiation`, `strings` and `trees`) it is
+*slower* than the tree-walker. That is not the textbook result, and it
+is worth saying plainly why, because the reasons are about where the
+program runs, not about bytecode being a bad idea.
+
+<Prompts ids={['vm-result']} />
+
+## Why so little
+
+**Both engines are JavaScript, and V8 compiles both.** In C, a
+tree-walker pays for chasing pointers between scattered nodes and for
+deciding what each node is, and a bytecode loop removes most of that.
+Here, both engines are JavaScript programs run by V8, which watches
+which functions are hot and compiles them to machine code with its
+optimising tiers<Cite id="v8-maglev" />. The tree-walker's
+`evaluate` methods get that treatment as well as the VM's `run` loop,
+so the tree-walker is far from the slow, naive interpreter the
+argument assumed. On the simplest loop there is, three million passes
+of `for i in 0..3000000 { s += i; }`, the tree-walker was faster in my
+runs: its best was 653 ms against the VM's 814 ms.
+
+<Run id="time-loop" />
+
+That is the same loop, a tenth as long, so you can time it on your own
+device; `clock()` is in seconds, and your numbers will differ from mine.
+
+**Every instruction is a trip round a loop written in JavaScript.** A
+bytecode interpreter pays for decoding each instruction and jumping to
+its code, every time, however simple the instruction<Cite id="v8-sparkplug" />.
+That loop of three million passes runs 39,000,015 instructions in the
+companion's VM (its `instructionsExecuted` counter says so), which at
+814 ms is about 21 nanoseconds per instruction, around forty clock
+cycles on this 2.1 GHz machine, for work like "push slot 1". Most of
+that is the loop around the work, not the work: counting the
+instruction, reading the opcode, choosing the `case`, and reaching the
+stack and `sp` through the VM object.
+
+**The VM rebuilds in JavaScript what the tree-walker borrows from
+V8.** The tree-walker stores fields and variables in JavaScript `Map`s,
+which are hash tables V8 implements in its own fast, built-in code; the
+VM stores them in its own `Table`, written in JavaScript. The
+tree-walker's objects are freed by V8 alone; the VM's are also tracked
+on its object list and swept by its own collector, on top of V8's. That
+is why the four slow programs are the ones about fields and allocation.
+One measurement backs it up: a copy of the VM with instance fields in a
+JavaScript `Map` ran `instantiation` 1.20 times faster than the real
+one, and `fields` 1.09 times faster.
+
+<Analogy title="a fluent reader and a phrasebook">
+Suppose you hand a fluent reader a novel, and alongside it a version
+you have rewritten in a compact shorthand of your own, with a key. For
+a beginner, the shorthand might be quicker; for someone who already
+reads fast, looking up each symbol in the key costs more than the
+shorthand saves.
+<span slot="breaks">Shorthand is a one-way loss of meaning; bytecode
+loses nothing, and on a host without a JIT (or in C) the same VM would
+beat the same tree-walker comfortably.</span>
+</Analogy>
+
+<Prompts ids={['why-jit', 'per-instruction', 'rebuilt']} />
+
+## What measurably helps
+
+So I measured the changes themselves. Each row below is two versions
+of the companion, identical except for one change, run alternately nine
+times each in fresh processes, on the same shared machine; the bar is
+the slower version's best time divided by the faster one's.
+
+<ExperimentsChart />
+
+The biggest by far is a deletion. When the heap frees an object, it can
+**poison** it (the chapter "Reclaiming memory: mark and sweep"), which
+deletes every property; V8 handles objects whose properties are
+deleted by switching them to slower "dictionary" properties<Cite id="v8-fast-properties" />,
+and doing that to every dead object is expensive. The repository's
+history records that profiling first found this, when poisoning was
+always on, and that the fix was to run it only in stress and debug
+mode. Forcing it back on now makes `instantiation` 2.03 times slower and
+`trees` 1.43 times slower. The lesson: profile before you guess, because
+nobody would have guessed a safety net was the bottleneck.
+
+Next comes `invoke` (the chapter "Invoking methods, and inheritance
+in the VM"):
+without it, `method_calls` is 1.32 times slower. Then `inc.local`,
+which this chapter is about: 1.15 times on the plain loop, and 1.12 on
+`sieve` by best times, though the medians for `sieve` were equal, so
+that one is within the noise. And one change I expected to matter did
+not: removing the instruction counter that `run` increments on every
+instruction gave 1.03 times on `fib`, which is noise on a shared
+machine.
+
+<Prompts ids={['poison-cost', 'measure-first']} />
+
+## Superinstructions
+
+`inc.local` and `invoke` have something in common: each does, in one
+instruction, the work that would otherwise take several. Since every
+instruction pays its trip round the dispatch loop, fewer, bigger
+instructions mean fewer trips. Step through one pass of that loop to
+see where `inc.local` sits:
+
+<DispatchSteps client:visible />
+
+<Analogy extra title="a set menu">
+Ordering a starter, a main and a dessert one at a time means three
+trips to the kitchen and three waits; the set menu is one order and one
+trip, for the combination people choose most often.
+<span slot="breaks">You can change your mind halfway through a meal;
+the VM must make sure no jump ever lands in the middle of a fused
+sequence, because there is no middle any more.</span>
+</Analogy>
+
+<Analogy extra title="a rubber address stamp">
+A business that writes the same five-line address hundreds of times a
+day buys a stamp: one press does the work of five lines of handwriting.
+<span slot="breaks">A stamp prints one fixed address; a
+superinstruction still takes operands (`inc.local 1` names its slot),
+so it fits every use of the pattern, not one particular use.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **superinstruction** is a single opcode that does the work of a common
+sequence of several, chosen by measuring which sequences run most
+often. It saves dispatches and pushes and pops. Its costs are more
+opcodes in the dispatch loop, a compiler that recognises the pattern,
+and the rule that no jump may target the middle of the sequence.
+</Callout>
+
+<Formal title="What fusing saves">
+
+```text
+T ≈ N × (d + w)
+fuse k instructions, run f times:
+  N' = N − (k − 1) × f
+```
+
+<span slot="read">Running time T is roughly the number of instructions
+run, N, times the cost of a dispatch d plus the instruction's own work
+w. Fusing a sequence of k instructions that runs f times removes k
+minus 1 dispatches each time, so N shrinks by (k − 1) × f, while the
+work w stays about the same.</span>
+</Formal>
+
+<Examples of="superinstruction">
+
+```text
+inc.local 1
+# = load.local 1, const 1, add,
+#   store.local 1, pop
+```
+
+```text
+invoke 'm' (1 args)
+# = get.prop 'm', then call 1
+```
+
+```text
+LOAD_FAST_LOAD_FAST
+# CPython: two LOAD_FAST in one
+```
+
+</Examples>
+
+The first is the companion's own: the compiler emits it for the hidden
+counter of every `for` loop, replacing five instructions with one, so
+k is 5 and f is the number of passes; for the three-million-pass loop
+that is twelve million dispatches saved, exactly the difference between
+51,000,015 and 39,000,015. The second is `invoke`, which fuses a
+property read and a call and, as a bonus, skips an allocation. The
+third is from CPython, whose compiler fuses two adjacent `LOAD_FAST`
+instructions into one, but only inside a basic block (a straight run
+of code that jumps enter only at the top) and only when both operands
+are small enough to share one argument<Cite id="cpython-superinstructions" />.
+
+<Prompts ids={['dispatch-cost', 'super-jump', 'inc-local', 'invoke-fused']} />
+
+## Your turn
+
+<Exercise id="fusePairs" />
+
+<Exercise id="countPairs" />
+
+## What you learned
+
+- On this host the VM is at most **1.3×** faster than the tree-walker,
+  and slower on four programs. V8 compiles both engines, each
+  instruction costs about 20 ns of JavaScript, and the VM rebuilds hash
+  tables and garbage collection that the tree-walker borrows from V8.
+- Measured, one change at a time: poisoning off (up to 2×), `invoke`
+  (1.3×), `inc.local` (small), fields in a `Map` (small), the
+  instruction counter (nothing measurable).
+- A **superinstruction** fuses a common sequence into one opcode,
+  saving (k − 1) dispatches per use; `inc.local` and `invoke` are two.
+
+Next: two ideas real VMs use that the companion does not, a smaller
+value and a smarter collector.
+
+
+{/* ── merge: from old chapter 86, NaN-boxing and generational collection ── */}
+
+## Every value in eight bytes
+
+The companion's `Value` is `null | boolean | number | Obj`, and V8
+decides how each of those is laid out in memory (the chapter "How
+JavaScript stores numbers and objects"). A VM written in C has to
+decide for itself. The obvious layout is the tagged value of the
+chapter "Tagging values at run time": a tag saying what kind of value
+it is, plus an 8-byte payload, which a C compiler usually pads to 16
+bytes. Every stack slot, every field and every list element then costs
+16 bytes, of which most of the tag's 8 are wasted.
+
+**NaN-boxing** fits every value into one 8-byte double instead. In IEEE
+754 (the chapter "Floats and typed arrays: numbers as bytes"), a double
+whose eleven exponent bits are all ones and whose fraction is not zero
+is a NaN, "not a number". That is a huge family of bit patterns
+(about 2⁵³ of them, counting both signs), and ordinary arithmetic only ever produces one or
+two. So a VM can pick a NaN pattern that arithmetic never makes (here,
+the quiet-NaN bits plus one extra "box" bit), and decide that any
+double with those bits set is not a number at all, but a boxed value
+whose other bits carry a tag and a payload.
+
+<Analogy title="a stamp on an envelope">
+Every value travels in the same 8-byte envelope. Nearly every envelope
+holds a number; however, one stamp, "not a number", is almost never
+needed for arithmetic, so once a VM sees that stamp it reads the rest of
+the envelope as "what kind of thing, and which one".
+<span slot="breaks">A real envelope keeps its contents separate from
+the stamp; in a double, the stamp *is* some of the bits, so the space
+left for the contents is smaller (here 16 bits of tag and 32 of
+payload).</span>
+</Analogy>
+
+<Analogy extra title="phone numbers for services">
+Almost every phone number belongs to a person, but a short range is
+kept back for services, and a number in that range is read as "which
+service" rather than "which person".
+<span slot="breaks">A phone network keeps the range free by agreement;
+a NaN-boxing VM relies on arithmetic never producing its chosen
+patterns, so it must make sure every real NaN it stores looks the
+same.</span>
+</Analogy>
+
+<NanBoxSteps client:visible />
+
+In JavaScript you can try this with two views over one buffer: a
+`Float64Array` to read and write doubles, and a `Uint32Array` over the
+same bytes to reach their bits. On a little-endian machine (almost
+every machine today), the high word of slot `i` is `u32[2 * i + 1]`
+and the low word `u32[2 * i]`:
+
+<Run id="nan-box" />
+
+Two catches. First, a real NaN must never look boxed, so a NaN-boxing
+VM stores every NaN in one **canonical** form; that matters in
+JavaScript too, because when a NaN is written into a typed array the
+specification lets the engine choose its bit pattern<Cite id="ecma262" />,
+so a NaN carrying "boxed" bits could survive the trip and be misread.
+Second, JavaScript cannot put a pointer inside a double, so in this
+experiment an object's payload is an index into an array of objects; in
+C the spare bits can hold the pointer itself.
+
+<Examples of="nan-boxing">
+
+```text
+1.5      hi 3ff80000  lo 00000000
+none     hi 7ffc0001  lo 00000000
+obj #7   hi 7ffc0004  lo 00000007
+```
+
+```text
+is it a number?
+  (hi & 0x7ffc0000) !== 0x7ffc0000
+```
+
+```text
+NaN, as stored: hi 7ff80000 lo 0
+(the box bit is clear: still a number)
+```
+
+</Examples>
+
+The first shows three values as their two words: `1.5` is an ordinary
+double, while `none` and object number 7 both have the box pattern
+`7ffc` at the top, with tags 1 and 4 in the bottom of the high word and
+the object's index 7 in the low word. The second is the whole type test
+for "is this a number?": one AND and one compare, the cheapest check a
+VM can make. The third is the canonical NaN: its exponent is all ones
+and its quiet bit is set, but the box bit is clear, so it still reads
+as a number.
+
+<Callout kind="definition">
+**NaN-boxing** represents every value as one 64-bit IEEE 754 double.
+Numbers are stored as themselves; every other value is stored as a NaN
+bit pattern that arithmetic never produces, with a tag (none, boolean,
+object and so on) and a payload (a pointer or an index) in its fraction
+bits. Telling a number from anything else is one mask and compare, and
+every real NaN must be stored in one canonical form.
+</Callout>
+
+<Formal title="The two words of a boxed value">
+
+```text
+value = hi : lo        (32 + 32 bits)
+number(v)  ⇔  hi ∧ BOX ≠ BOX
+tag(v)     =  hi ∧ FFFF
+payload(v) =  lo
+```
+
+<span slot="read">A value is a high word and a low word. It is a number
+exactly when its high word, masked with BOX, is not BOX itself;
+otherwise its tag is the low sixteen bits of the high word, and its
+payload is the whole low word.</span>
+</Formal>
+
+<Prompts ids={['nan-room', 'nan-canonical', 'nan-js-payload', 'nan-test']} />
+
+## Most objects die young
+
+The collector of the chapter "Tracing and sweeping: white, grey and
+black" marks every live object on every collection. Is that wasteful?
+I counted, for this chapter, how many of the objects present at each
+collection survived it:
+
+```text
+program        collections  survived
+instantiation           27      0.1%
+closures                 4      0.1%
+sort                     4      8.5%
+trees                   10       54%
+```
+
+In three of the four programs, nearly everything the collector looked
+at was already dead: the 600,000 points and segments `instantiation`
+makes are garbage almost as soon as they exist. That is the
+**generational hypothesis**, the observation that most objects die
+young, and production collectors are built around it<Cite id="v8-trash-talk" />.
+`trees` is the honest exception: it keeps big trees alive across
+collections, so each full collection re-marks them.
+
+<Analogy extra title="an inbox and a filing cabinet">
+You clear your inbox every day, because most of what arrives there is
+junk you can bin at a glance; the filing cabinet, where the few
+important letters end up, you sort through once a year.
+<span slot="breaks">You can see that a letter is junk; a collector can
+only tell that an object is dead by finding that nothing reaches it,
+and an old letter in the cabinet can still point at something in
+today's inbox.</span>
+</Analogy>
+
+So split the heap in two. New objects start in the **young**
+generation. A *minor* collection looks only at the young generation,
+which is small and mostly garbage, so it is quick; objects that survive
+a few minor collections are promoted to the **old** generation, which
+is collected rarely.
+
+<Figure caption="A generational heap: a minor collection traces only the young side, starting from the roots and the remembered set." takeaway="An old object pointing at a young one must be remembered, or the minor collection would free a live object.">
+  <GenerationsFigure />
+</Figure>
+
+The catch is the picture's arrow: a reference from an old object to a
+young one. A minor collection does not trace the old generation, so a
+young object kept alive *only* by an old one would look dead. The fix
+is a **write barrier**: a small check on every store of a reference
+into an object, which records an old object that now points at a young
+one in a **remembered set**, and the remembered set joins the roots
+for the next minor collection. In the companion, the stores that would
+need it are `set.prop` (a field), `index.set` and the native `push` (a
+list element), `store.upvalue` on a closed upvalue, and `method` and
+`inherit` (a class's method table); globals and the stack are roots
+already. A sketch, not in the companion:
+
+```ts
+// a sketch: not in the companion
+function barrier(owner: Obj, v: Value) {
+  if (owner.old && isObj(v) && !v.old) {
+    remembered.add(owner); // a root
+  }
+}
+```
+
+<Examples of="generational-gc">
+
+```text
+for i in 0..200000 {
+  let s = [i, i];   # dies young
+}
+```
+
+```text
+let ps = [];       # survives, gets old
+push(ps, [1, 2]);  # old -> young: barrier
+```
+
+```text
+class O {}
+let o = new O();
+o.f = 3;   # a number: no barrier needed
+```
+
+</Examples>
+
+The first is the shape of `instantiation`'s loop: every list is
+garbage by the next pass, so a minor collection would find almost nothing to keep,
+exactly the 0.1% above. In the second, `ps` lives for the whole program
+and would be promoted, and pushing a new list into it creates an
+old-to-young reference that the barrier must record, or the next minor
+collection would free `[1, 2]`. The third shows the barrier's cheap
+case: storing a number creates no reference at all, which is why the
+check starts with `isObj(v)`.
+
+<Callout kind="definition">
+A **generational garbage collector** divides the heap by age. It
+collects the young generation often and cheaply, promotes the objects
+that survive, and collects the old generation rarely. Because a minor
+collection skips the old generation, it needs a write barrier that
+records old-to-young references in a remembered set, which serves as
+extra roots.
+</Callout>
+
+<Prompts ids={['gen-hypothesis', 'write-barrier', 'trees-exception', 'number-store']} />
+
+<Callout kind="engine" label="Under the hood">
+These are the moves real engines make. SpiderMonkey, Firefox's engine,
+stores JavaScript values NaN-boxed: on 64-bit machines it packs a tag
+into the bits next to the exponent and a pointer into the rest, and
+canonicalises NaNs before storing them<Cite id="spidermonkey-value" />.
+V8's heap is generational, with a young generation (split into nursery
+and intermediate parts) and an old one, a fast collector for the young
+generation that copies survivors, and write barriers that keep track of
+old-to-new references<Cite id="v8-trash-talk" />; those remembered
+sets, kept per page of memory, are usually most of a minor collection's
+roots<Cite id="v8-orinoco-scavenger" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="nanBox" />
+
+<Exercise id="barrier" />
+
+## What you learned
+
+- **NaN-boxing** keeps every value in one double: numbers as
+  themselves, everything else in NaN patterns arithmetic never makes,
+  with a tag and a payload. One mask tells numbers apart, and real NaNs
+  must be canonical.
+- The **generational hypothesis**, most objects die young, held for
+  three of four companion programs measured; `trees` kept half.
+- A **generational collector** collects the young often and the old
+  rarely, and needs a **write barrier** to remember old-to-young
+  references as extra roots.
+
+That is Part IV: a compiler, a virtual machine and a garbage collector,
+all your own, and an honest measure of what they are worth on the host
+they run on. Part V looks inside that host.
+
+<Quiz />

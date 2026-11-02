@@ -1,4 +1,4 @@
-// New references for chapter 195 (Dataflow analysis), also cited by the
+// New references for chapter 92 (Dataflow analysis), also cited by the
 // chapters that follow it (the classic dataflow problems, lattices and
 // abstract interpretation, and their split second halves).
 // Network note: in this session only web search was reachable; doi.org,
@@ -15,7 +15,7 @@ export default [
     url: 'https://doi.org/10.1145/512927.512945',
     accessed: '2026-11-02',
     checkedAgainst: 'Search records: the DBLP table of contents for POPL 1973 (mirrored at vldb.org/dblp/db/conf/popl/popl73.html) lists “Gary A. Kildall: A Unified Approach to Global Program Optimization. 194–206”; a Wikipedia-derived reference list gives the same venue, page 194 and doi:10.1145/512927.512945; course notes (Washington CSE 501, Northwestern EECS 396, IIT BHU) describe its content: one iterative algorithm for global analysis, with a function per control-graph node and a meet that merges information arriving from different nodes, applied to constant propagation, common subexpression elimination and redundant register loads. The ACM page itself could not be fetched.',
-    shaped: 'Chapters 195–199: where the dataflow framework (facts, a transfer function per node, a meet at joins, iteration to a fixpoint) comes from.',
+    shaped: 'Chapters 92–92: where the dataflow framework (facts, a transfer function per node, a meet at joins, iteration to a fixpoint) comes from.',
   },
   {
     id: 'kamullman1977',

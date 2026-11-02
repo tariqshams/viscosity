@@ -1,4 +1,4 @@
-// New references for chapter 250.
+// New references for chapter 245.
 export default [
   {
     id: 'mckeeman1965',
@@ -10,7 +10,7 @@ export default [
     url: 'https://doi.org/10.1145/364995.365000',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: the CACM “Research and Advances” page for the article (cacm.acm.org/research/peephole-optimization), whose abstract reads “Redundant instructions may be discarded during the final stage of compilation by using a simple optimizing technique called peephole optimization. The method is described and examples are given.”; Wikipedia’s citation (McKeeman, William Marshall, July 1965, Communications of the ACM, DOI 10.1145/364995.365000, credited with introducing the term); a Springer reference list giving “CACM 8, 443–444 (1965)”; and the 2013 instruction-selection survey (arXiv 1306.4898), which describes it as a post-code-generation step inspecting a short window of assembly. cacm.acm.org and doi.org could not be fetched from this session, so the paper was not read; issue 7 is inferred from the July 1965 date.',
-    shaped: 'Chapter 250: the origin of the term and the idea of discarding redundant instructions by looking at a few at a time.',
+    shaped: 'Chapter 245: the origin of the term and the idea of discarding redundant instructions by looking at a few at a time.',
   },
   {
     id: 'gcc-md-peephole',
@@ -22,7 +22,7 @@ export default [
     url: 'https://gcc.gnu.org/onlinedocs/gccint/Peephole-Definitions.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/gcc-mirror/gcc/master/gcc/doc/md.texi (the source of that page), node “Peephole Definitions”, read on 2026-11-02: “In addition to instruction patterns the md file may contain definitions of machine-specific peephole optimizations.” … “A newer define_peephole2 matches insns and substitutes new insns. The peephole2 pass is run after register allocation but before scheduling, which may result in much better code for targets that do scheduling.” gcc.gnu.org itself could not be fetched from this session.',
-    shaped: 'Chapter 250: peephole rules defined per target in a production compiler, and where the pass runs.',
+    shaped: 'Chapter 245: peephole rules defined per target in a production compiler, and where the pass runs.',
   },
   {
     id: 'massalin1987',
@@ -34,7 +34,7 @@ export default [
     url: 'https://doi.org/10.1145/36177.36194',
     accessed: '2026-11-02',
     checkedAgainst: 'The STOKE paper (Schkufza, Sharma and Aiken, ASPLOS 2013, read in full from raw.githubusercontent.com/StanfordPL/stoke/develop/docs/papers/asplos13.pdf): reference [14] “H. Massalin. Superoptimizer - a look at the smallest program. In ASPLOS, pages 122–126, 1987.”, and its section 2: Massalin’s system “explicitly enumerates sequences of code of increasing length and selects the first such code identical to the input program on a set of testcases. Massalin reports being able to optimize instruction sequences of up to length 12. However to do so, it is necessary to restrict the set of enumerable opcodes to between 10 and 15.” Also web search results: the paper’s abstract as quoted in course pages (“Given an instruction set, the superoptimizer finds the shortest program to compute a function”; a probabilistic test makes exhaustive search practical), a Usenet post giving ASPLOS II, 5–8 October 1987, Palo Alto, and Wikipedia’s DOI 10.1145/36177.36194. doi.org and dl.acm.org could not be fetched, so the DOI rests on Wikipedia.',
-    shaped: 'Chapter 250: superoptimisation as enumeration by length with a cheap test filter.',
+    shaped: 'Chapter 245: superoptimisation as enumeration by length with a cheap test filter.',
   },
   {
     id: 'stoke2013',
@@ -46,7 +46,7 @@ export default [
     url: 'https://raw.githubusercontent.com/StanfordPL/stoke/develop/docs/papers/asplos13.pdf',
     accessed: '2026-11-02',
     checkedAgainst: 'The paper itself, read from raw.githubusercontent.com/StanfordPL/stoke/develop/docs/papers/asplos13.pdf (linked from the STOKE README): abstract (“We formulate the loop-free binary superoptimization task as a stochastic search problem … a Markov Chain Monte Carlo sampler is used to rapidly explore the space of all possible programs”), the ASPLOS ’13 copyright line (March 16–20, 2013, Houston, Texas), and section 2 on Massalin. The STOKE README (raw.githubusercontent.com/StanfordPL/stoke/develop/README.md): “a stochastic optimizer and program synthesizer for the x86-64 instruction set … uses random search … the repeated application of millions of transformations” and “contains verification infrastructure to show the equivalence between x86-64 programs”. The DOI is the one a dx.doi.org record in web search results gives for the ASPLOS ’13 entry (10.1145/2490301.2451150); doi.org could not be fetched to confirm it.',
-    shaped: 'Chapter 250: superoptimisation by random search with verification.',
+    shaped: 'Chapter 245: superoptimisation by random search with verification.',
   },
   {
     id: 'souper2017',
@@ -58,6 +58,6 @@ export default [
     url: 'https://arxiv.org/abs/1711.04422',
     accessed: '2026-11-02',
     checkedAgainst: 'The Souper README (raw.githubusercontent.com/google/souper/main/README.md): “Souper is a superoptimizer for LLVM IR. It uses an SMT solver to help identify missing peephole optimizations in LLVM’s midend optimizers. The architecture and concepts of Souper are described in [Souper: A synthesizing superoptimizer](https://arxiv.org/pdf/1711.04422.pdf).” Web search results for the arXiv record (submitted 13 Nov 2017, revised 6 Apr 2018): the abstract says shipping or about-to-ship versions of LLVM and Microsoft Visual C++ contain optimisations suggested by Souper but implemented by hand. arxiv.org could not be fetched from this session; the author list is as given in those search results (Sasnauskas, Chen, Collingbourne, Ketema, Taneja and Regehr) and should be compared with the arXiv page, which may list more authors.',
-    shaped: 'Chapter 250: a superoptimiser over compiler IR whose discoveries become hand-written peephole rules.',
+    shaped: 'Chapter 245: a superoptimiser over compiler IR whose discoveries become hand-written peephole rules.',
   },
 ];

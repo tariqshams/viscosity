@@ -1,0 +1,233 @@
+---
+n: 262
+day: 24
+part: XIV
+title: 'Partial evaluation: compiling by specializing an interpreter'
+tagline: 'Fix the part of a program’s input you already know, simplify everything that depends on it, and a program becomes a faster, narrower one. Do that to an interpreter, with the guest program as the known input, and what is left is compiled code.'
+objectives:
+  - Define partial evaluation, static and dynamic inputs, and the residual program.
+  - Partially evaluate a small interpreter by hand, step by step, down to its residual program.
+  - State the first Futamura projection and say why Truffle relies on it.
+  - Say what Truffle treats as constant during compilation, and what happens when such a value changes.
+introduces: [partial-evaluation]
+uses: [self-optimizing-ast, tree-walking-interpreter, evaluate, ast, ast-node, interpreter-overhead, interpreter, compiler, closure, class, method, function, call, argument, return, jit-compiler, speculation, deoptimization, inline-cache]
+sources: [truffle-pe, truffle-readme, graal-publications, wurthinger2013]
+---
+import PESteps from '../../../components/diagrams/ch262/PESteps';
+import Futamura from '../../../components/diagrams/ch262/Futamura';
+
+## An interpreter is still an interpreter
+
+The previous chapter's `+` node learns that it only ever sees
+integers, and its int case is short: two checks and an add. However, it
+is still a node in a tree; to reach it, the interpreter calls
+`execute` on its parent, which calls `execute` on it, which calls
+`execute` on its two children, and each of those calls has to find out
+which kind of node it is talking to. The specialisation made each node
+cheaper, but the walking is still there.
+
+Truffle's answer is that the Graal compiler does not compile your
+JavaScript at all: it compiles the *interpreter*, specialised to your
+program, and that specialisation is called partial
+evaluation<Cite id="truffle-readme" />. It sounds like a trick; it
+turns out to be an old and precise idea, and this chapter builds it up
+from a two-line example.
+
+## Fix what you know, simplify the rest
+
+<Analogy title="a recipe for tonight">
+A recipe says "if a guest is vegetarian, use beans, otherwise use
+beef". Once you know tonight's guests, you can cross out the branch
+that cannot happen. You are left with a shorter recipe that only works
+for tonight, and needs no more thinking while you cook.
+<span slot="breaks">You would cross out the branch in pencil and could
+change your mind; a partial evaluator produces a new program, and if
+what it assumed later turns out wrong, that program must be thrown away
+and made again.</span>
+</Analogy>
+
+<Analogy extra title="a pocket timetable">
+A railway publishes one huge timetable for every station on the
+network. If you only ever travel from your own station, you can copy
+out just its departures onto a card for your pocket: same trains, same
+times, but nothing to search through.
+<span slot="breaks">The card is a copy of part of the timetable; a
+residual program is not a copy of part of the original, but a new
+program in which the work that depended on the known input has already
+been done.</span>
+</Analogy>
+
+Truffle's documentation starts with exactly this kind of
+example<Cite id="truffle-pe" />, here in JavaScript:
+
+```js
+function round(v, up) {
+  return up ? Math.ceil(v)
+            : Math.floor(v);
+}
+// specialized for up = true:
+function roundUp(v) {
+  return Math.ceil(v);
+}
+```
+
+`round` takes two inputs: the number `v` and a flag `up` that chooses
+between rounding up and rounding down. If we know that every call will
+pass `up = true`, the question `up ?` always has the same answer, so we
+can do it once, now, and keep only the branch that will run: `roundUp`
+takes one input and does no test at all. The known input is called
+**static**, the one still to come **dynamic**, and what is left is the
+**residual program**.
+
+<Callout kind="definition">
+**Partial evaluation** specialises a program for the inputs that are
+known (static), producing a **residual program** that only takes the
+rest (dynamic): `Input -> Output` becomes `DynamicInput -> Output`.
+Partially evaluating an interpreter with respect to one guest program
+gives code specialised to that program, with the interpretation
+removed. This is the **first Futamura projection**<Cite id="truffle-pe" />.
+</Callout>
+
+<Examples of="partial-evaluation">
+
+```js
+// round(v, up), with up = true known:
+const roundUp = (v) => Math.ceil(v);
+```
+
+```js
+function pow(x, n) {
+  return n === 0 ? 1 : x * pow(x, n - 1);
+}
+// with n = 3 known:
+const cube = (x) => x * x * x * 1;
+```
+
+```js
+// interpret(prog, args), with
+// prog = Add(Arg(1), Arg(2)) known:
+const run = (args) =>
+  args[1] + args[2];
+```
+
+</Examples>
+
+The first is the two-line example again, written as the residual
+program alone. The second fixes the exponent: `pow(x, 3)` asks
+"`3 === 0`?", then "`2 === 0`?", then "`1 === 0`?", then "`0 === 0`?",
+and every one of those questions is about `n`, which we know; so the
+partial evaluator answers them all now, unrolls the recursion, and
+leaves three multiplications (and a `* 1` that a later pass would
+remove). The third is the one that matters for Truffle: the known input
+is a *program*, and the residual program is that program, compiled.
+
+<Formal title="The first Futamura projection">
+
+```text
+mix(p, s)(d)       = p(s, d)
+mix(interp, prog)  = target
+target(input)      = interp(prog, input)
+```
+
+<span slot="read">Write mix for the partial evaluator. Given a program
+p and its static input s, mix gives a new program that, called with the
+dynamic input d, does exactly what p would do with both. Put an
+interpreter in for p and a guest program in for s: the result is a
+target program, and running the target on an input gives exactly what
+the interpreter would give when running the guest program on that
+input. The target is the guest program, compiled.</span>
+</Formal>
+
+<Figure takeaway="Specialise the interpreter to one program and the residual program is that program, compiled." caption="The first Futamura projection: the interpreter and the program are known now; only the input comes later.">
+  <Futamura />
+</Figure>
+
+<Prompts ids={['pe-what', 'pe-static-dynamic', 'residual', 'futamura']} />
+
+## Folding an interpreter away
+
+Now do it to an interpreter. Its two inputs are the program and the
+program's data; the program does not change while it runs, so fix it
+and simplify, one step at a time:
+
+<PESteps client:visible />
+
+Each step uses one fact: the tree is constant, so a call on one of its
+nodes has exactly one possible target, which can be inlined; and the
+fields of a constant node (its children, its argument index) are
+constants too, which can be folded. Once there is nothing left to ask
+about the tree, the tree is gone.
+
+You can do a version of this yourself in JavaScript. Rather than a
+`switch` that runs on every evaluation, walk the tree *once* and build
+closures (functions that remember the values around them): the kind of
+each node is decided while building, not while running.
+
+<Run id="closure-pe" />
+
+`run(t, args)` is the interpreter: every call walks the tree and
+switches on `n.op`. `spec(t)` walks the same tree only once and returns
+a function, `f`, built out of small closures; `f` never looks at `op`
+again. Both lines print the same answers, `27 27` and `21 21`, because
+they compute the same thing; `f` does none of the deciding.
+This is not what Truffle does (it specialises the interpreter's own
+code inside its compiler), but it shows the same split: the work that
+depends on the program is done once, and the work that depends on the
+data is done every time.
+
+<Prompts ids={['pe-closure']} />
+
+## What counts as known
+
+How does Truffle know what may be treated as constant? It starts from
+the root node of the code being compiled and `static final` fields,
+then follows stable fields: `final` fields and declared `@Child` nodes.
+Fields marked `@CompilationFinal` can still change, so a node can
+record what it has seen, but once compilation starts they are folded
+like constants. Truffle counts calls and loop iterations, and compiles
+a root node (roughly, a function) once it is hot<Cite id="truffle-pe" />.
+
+That is how the previous chapter's specialisations reach the compiled
+code. Truffle's documentation shows a node that records whether it has
+seen integers or strings in `@CompilationFinal` fields; while it has
+seen only integers, the partial evaluator reads that as a constant and
+keeps only the integer path, guarded, as the stepper's last step
+shows. If a recorded fact later turns out wrong, the node calls
+`transferToInterpreterAndInvalidate`: the compiled code is thrown away
+and execution continues in the interpreter, which re-specialises and
+may be compiled again<Cite id="truffle-pe" />. If the state never
+settles, that becomes a **deoptimisation cycle**, compiled and thrown
+away over and over, which is why the previous chapter's one-way rule
+matters so much.
+
+<Prompts ids={['pe-constants', 'compilation-final', 'deopt-cycle']} />
+
+<Callout kind="engine" label="Under the hood">
+The previous chapter quoted the problem Truffle avoids: a language's
+meaning written twice, once in the interpreter and once in the
+compiler. Deriving the optimised code from the interpreter instead has a
+price: the interpreter must be written carefully, so that partial evaluation can
+see what is stable, and every speculation must eventually settle, or
+the code loops through compiling and invalidating<Cite id="truffle-pe" />.
+The same stack, which "One VM to Rule Them All" describes
+whole<Cite id="wurthinger2013" />, is also where the columnar-array
+research of the next chapter was built<Cite id="graal-publications" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="peString" />
+
+## What you learned
+
+- **Partial evaluation** fixes the **static** inputs and simplifies,
+  leaving a **residual program** of the **dynamic** ones.
+- Applied to an interpreter and one program, it inlines and folds the
+  interpreter away: the **first Futamura projection**, which gives that
+  program, compiled.
+- Truffle treats the root node, `static final` and `final` fields,
+  `@Child` nodes and `@CompilationFinal` fields as constants, and
+  **invalidates** compiled code when one of them must change.
+- A node state that never settles causes a **deoptimisation cycle**.
+
+<Quiz />

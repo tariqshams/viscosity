@@ -1,4 +1,5 @@
-// Chapter 34 cards. Keys are stable ids: never rename them.
+// Chapter 34 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'binary-what': {
@@ -61,8 +62,7 @@ console.log((flags & VISIBLE) !== 0);
 export const exercises = {
   countBits: {
     title: 'Count the switches that are on',
-    prompt:
-      'Write `countBits(n)`: how many bits are 1 in the 32-bit pattern of `n`? For example, `13` is `1101`, so `countBits(13)` is `3`. Use `&` and `>>>`. (For `-1`, all 32 bits are on.)',
+    prompt: 'Write `countBits(n)`: how many bits are 1 in the 32-bit pattern of `n`? For example, `13` is `1101`, so `countBits(13)` is `3`. Use `&` and `>>>`. (For `-1`, all 32 bits are on.)',
     starter: `function countBits(n) {
   // your code here
 }
@@ -148,8 +148,7 @@ For \`13\`: \`1101\` adds 1, \`110\` adds 0, \`11\` adds 1, \`1\` adds 1, then \
   isPowerOfTwo: {
     optional: true,
     title: 'Is it a power of two?',
-    prompt:
-      'Write `isPowerOfTwo(n)` for a whole number `n` from 0 up to 2³⁰: return `true` if `n` is 1, 2, 4, 8, … (exactly one bit on), and `false` otherwise. Use the trick that `n & (n - 1)` turns off the lowest 1 bit of `n`.',
+    prompt: 'Write `isPowerOfTwo(n)` for a whole number `n` from 0 up to 2³⁰: return `true` if `n` is 1, 2, 4, 8, … (exactly one bit on), and `false` otherwise. Use the trick that `n & (n - 1)` turns off the lowest 1 bit of `n`.',
     starter: `function isPowerOfTwo(n) {
   // your code here
 }
@@ -208,43 +207,99 @@ export const quiz = [
   {
     q: 'What is the binary number `1011` in decimal?',
     options: [
-      { t: '`1011`', why: 'That is the same digits read as decimal. In binary the places are 8, 4, 2, 1.' },
-      { t: '`7`', why: '`7` is `0111`. `1011` has the 8 on.' },
-      { t: '`11`', correct: true, why: '8 + 0 + 2 + 1 = 11.' },
-      { t: '`13`', why: '`13` is `1101`: the middle bits are swapped.' },
+      {
+        t: '`1011`',
+        why: 'That is the same digits read as decimal. In binary the places are 8, 4, 2, 1.',
+      },
+      {
+        t: '`7`',
+        why: '`7` is `0111`. `1011` has the 8 on.',
+      },
+      {
+        t: '`11`',
+        correct: true,
+        why: '8 + 0 + 2 + 1 = 11.',
+      },
+      {
+        t: '`13`',
+        why: '`13` is `1101`: the middle bits are swapped.',
+      },
     ],
   },
   {
     q: 'What is `12 & 10`? (12 is `1100`, 10 is `1010`.)',
     options: [
-      { t: '`8`', correct: true, why: 'Only the 8s place is on in both: `1000`.' },
-      { t: '`14`', why: '`14` (`1110`) is `12 | 10`: on in either.' },
-      { t: '`6`', why: '`6` (`0110`) is `12 ^ 10`: on in exactly one.' },
-      { t: '`22`', why: 'That is `12 + 10`. `&` works bit by bit and never carries.' },
+      {
+        t: '`8`',
+        correct: true,
+        why: 'Only the 8s place is on in both: `1000`.',
+      },
+      {
+        t: '`14`',
+        why: '`14` (`1110`) is `12 | 10`: on in either.',
+      },
+      {
+        t: '`6`',
+        why: '`6` (`0110`) is `12 ^ 10`: on in exactly one.',
+      },
+      {
+        t: '`22`',
+        why: 'That is `12 + 10`. `&` works bit by bit and never carries.',
+      },
     ],
   },
   {
     q: 'How many different patterns can 4 bits make?',
     options: [
-      { t: '4', why: 'That is the number of bits, not the number of patterns.' },
-      { t: '8', why: 'Each extra bit doubles the count: 2, 4, 8, 16 for 1, 2, 3, 4 bits.' },
-      { t: '16', correct: true, why: '2⁴ = 16 patterns, so 4 bits can count from 0 to 15.' },
+      {
+        t: '4',
+        why: 'That is the number of bits, not the number of patterns.',
+      },
+      {
+        t: '8',
+        why: 'Each extra bit doubles the count: 2, 4, 8, 16 for 1, 2, 3, 4 bits.',
+      },
+      {
+        t: '16',
+        correct: true,
+        why: '2⁴ = 16 patterns, so 4 bits can count from 0 to 15.',
+      },
     ],
   },
   {
     q: '`flags` is `1` (only `ALIVE`), and `VISIBLE` is `2`. What is `flags & VISIBLE !== 0`?',
     options: [
-      { t: '`false`, because the particle is not visible', why: 'That is what `(flags & VISIBLE) !== 0` gives. Without brackets the line means something else.' },
-      { t: '`1`', correct: true, why: '`!==` runs first: `VISIBLE !== 0` is `true`, and `1 & true` is `1 & 1`, which is `1`: truthy, the wrong answer.' },
-      { t: 'A `TypeError`', why: 'JavaScript quietly converts `true` to `1`; no error is reported.' },
+      {
+        t: '`false`, because the particle is not visible',
+        why: 'That is what `(flags & VISIBLE) !== 0` gives. Without brackets the line means something else.',
+      },
+      {
+        t: '`1`',
+        correct: true,
+        why: '`!==` runs first: `VISIBLE !== 0` is `true`, and `1 & true` is `1 & 1`, which is `1`: truthy, the wrong answer.',
+      },
+      {
+        t: 'A `TypeError`',
+        why: 'JavaScript quietly converts `true` to `1`; no error is reported.',
+      },
     ],
   },
   {
     q: 'What is `2 ** 32 | 0`?',
     options: [
-      { t: '`4294967296`', why: 'That is `2 ** 32` itself, but `|` first converts to 32 bits.' },
-      { t: '`-1`', why: '`-1` is all 32 bits on. `2 ** 32` has only bit 32 on, which does not fit.' },
-      { t: '`0`', correct: true, why: '`2 ** 32` is a 1 followed by 32 zeros; the conversion keeps only the low 32 bits, all zero.' },
+      {
+        t: '`4294967296`',
+        why: 'That is `2 ** 32` itself, but `|` first converts to 32 bits.',
+      },
+      {
+        t: '`-1`',
+        why: '`-1` is all 32 bits on. `2 ** 32` has only bit 32 on, which does not fit.',
+      },
+      {
+        t: '`0`',
+        correct: true,
+        why: '`2 ** 32` is a 1 followed by 32 zeros; the conversion keeps only the low 32 bits, all zero.',
+      },
     ],
   },
 ];

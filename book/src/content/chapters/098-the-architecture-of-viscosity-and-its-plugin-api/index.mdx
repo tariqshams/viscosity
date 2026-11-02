@@ -1,0 +1,625 @@
+---
+n: 98
+day: 13
+part: VI
+title: 'The architecture of Viscosity and its plugin API'
+tagline: 'Part VIII builds the real thing. Before any single piece, here is the whole machine: what goes in, what comes out, which parts know about JavaScript, and why the output is one more JavaScript file.'
+objectives:
+  - Name the four steps of Viscosity’s compile function and say what each one takes in and gives back.
+  - Say which steps belong to a language plugin and which belong to the core, and why the line falls there.
+  - Explain what a source-to-source compiler is, and contrast it with changing layouts inside a running engine.
+  - Run the real compiler on a small particle program and read its decisions.
+  - Read the LanguagePlugin interface and say what lower and emit each receive and return.
+  - Explain why parsing, lowering and emitting are per language while analysis and planning are shared.
+  - Describe what a layout strategy is, write the address of a field under each of the three, and say how far they are pluggable today.
+  - Write a tiny plugin, with lower and emit, for a toy language.
+introduces: [viscosity-pipeline, source-to-source, language-plugin, layout-strategy]
+uses: [compiler-pipeline, front-end-back-end, compiler, parser, ast, ir, lowering, ssa, cfg, dataflow, escape-analysis, alias-analysis, compiler-pass, run-time-transformation, columnar-storage, aos-vs-soa, array-of-objects, typed-array, jit-compiler, speculation, deoptimization, differential-testing, round-trip-testing, emit, module, function, interface, object, method, constant-folding, aosoa, float64, interpreter, heap-number, map]
+sources: [makor2022, kloibhofer2023, wurthinger2013, braun2013]
+---
+import PipelineSteps from '../../../components/diagrams/ch098/PipelineSteps';
+import WhenItHappens from '../../../components/diagrams/ch098/WhenItHappens';
+import Playground from '../../../components/playground/Playground';
+import TwoPlugins from '../../../components/diagrams/ch098/TwoPlugins';
+import PrivateParcel from '../../../components/diagrams/ch098/PrivateParcel';
+
+{/* ── merge: from old chapter 98, The architecture of Viscosity ── */}
+
+## One file in, one file out
+
+Seven parts have handed you the pieces: arrays of objects, parsers,
+IRs, SSA form, dataflow, alias and escape analysis, a native back end
+and differential tests. Part VIII puts them together into
+**Viscosity**, the compiler in this repository's `engine/ts` folder, and
+the first question to ask of any machine is what goes in and what comes
+out. In goes a plain particle program:
+
+```js
+const ps = [];
+for (let i = 0; i < 1000; i++)
+  ps.push({ x: i, vx: 1 });
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += ps[i].vx;
+console.log(ps[3].x);
+```
+
+and what comes out, a new JavaScript file whose last lines are these (a
+generated class `__Vsc_ps` with one `Float64Array` per field sits above
+them, along with a small bounds-check helper):
+
+```js
+const ps = new __Vsc_ps();
+for (let i = 0; i < 1000; i++)
+  ps.push(i, 1);
+for (let i = 0; i < ps.length; i++)
+  ps.x[i] += ps.vx[i];
+console.log(ps.x[__vsc_bc(ps, 3, 'x',
+  false)]);
+```
+
+(The last line is split here to fit.) Every `ps[i].x` became a column
+access `ps.x[i]`, the struct-of-arrays change from the chapter *AoS vs
+SoA, measured*; this chapter is about what happened in between.
+
+## Four steps, two owners
+
+The top of the compiler is surprisingly small. The function `compile`,
+in `packages/core/src/index.ts`, is the whole pipeline, and this is the
+part that matters:
+
+```ts
+function compile(source, plugin, opts) {
+  const lowered = plugin.lower(source);
+  const analysis =
+    analyze(lowered.module);
+  const p = plan(analysis, opts);
+  const code =
+    plugin.emit(source, lowered, p);
+  return { code, plan: p, analysis,
+    explain: explain(p) };
+}
+```
+
+(Trimmed: the real one also fills in default options.) Line 2 hands
+the text to a
+**plugin**, the part that knows one language, which parses it and
+**lowers** it to VIR, Viscosity's IR. Line 3 runs the **analyses** on
+that VIR, and line 5 turns their facts into a **plan**: one layout per
+collection. Line 6 gives the plan back to the same plugin, which
+**emits** new source text; the last line returns that text, the plan,
+the analysis and a readable explanation of every decision.
+
+<Analogy title="a hospital laboratory">
+On each ward, a nurse who speaks the patient's language takes a blood
+sample and labels the tube in the hospital's standard form. The central
+laboratory never meets a patient: it reads the tubes, runs the same tests
+for every ward and sends back a result sheet. Then the ward nurse, who
+knows the patient, acts on the sheet. The wards are the plugins, the
+labelled tube is VIR, and the laboratory is the core.
+<span slot="breaks">A laboratory can send back a result that nobody acts
+on; Viscosity's plan is always carried out, and when the core is unsure it
+plans to change nothing at all.</span>
+</Analogy>
+
+<Analogy extra title="a removal company re-packing a kitchen">
+A local crew reads the labels on your boxes, in whatever language you
+wrote them, and phones head office with a list ("40 forks, all the same
+size"). Head office decides how they should be packed without ever seeing
+your kitchen, and the crew re-packs to that plan, leaving everything it
+was not told about exactly where it was.
+<span slot="breaks">Real removers move everything; Viscosity's crew
+touches only the few characters the plan names, and the rest of your
+file is copied through byte for byte.</span>
+</Analogy>
+
+Step through one program, and watch the label above each stage: two of
+the steps belong to the language plugin, and the rest to the core.
+
+<PipelineSteps client:visible />
+
+<Callout kind="definition">
+The **Viscosity pipeline** is `lower → analyze → plan → emit`. A
+language plugin **lowers** source code to **VIR**, Viscosity's IR. The
+analyses and the **layout planner** work on VIR alone and choose a
+layout for each collection (`aos`, `soa` or `aosoa`). The same plugin
+then **emits** new source code by applying the plan. Only lowering and
+emitting know the language.
+</Callout>
+
+This is the front-end and back-end split from the chapter *From source
+text to a running program*, with a twist: the plugin does both ends, and
+the middle (the SSA, dataflow and escape analysis of Part VI) is
+shared.
+
+<Formal title="The pipeline as function composition">
+
+```text
+lower   : Source → Lowered
+analyze : VIR → Analysis
+plan    : Analysis → Plan
+emit    : Source × Lowered × Plan → Source
+
+compile(s) = emit(s, L,
+                  plan(analyze(L.module)))
+  where L = lower(s)
+```
+
+<span slot="read">Each step is a function from one kind of thing to
+another (× means "together with"): emit takes the source, the lowered
+module and the plan, and gives back source. To compile s, lower it once
+and call the result L; feed L's module to analyze, the facts to plan,
+and everything to emit. The output has the same type as the input:
+source.</span>
+</Formal>
+
+<Prompts ids={['arch-four', 'arch-owners', 'arch-why-split']} />
+
+Notice that emit does *not* print the program back out of VIR: it
+replaces only the ranges of your text that the plan requires, using the
+pointer back to the source that each VIR instruction keeps, so your
+comments, formatting and unrelated lines come through as you wrote
+them.
+
+<Prompts ids={['arch-emit-text']} />
+
+Every program goes through all four steps, whatever the verdict; here
+is what `viscosity explain` prints for three of them (wrapped to fit).
+
+<Examples of="viscosity-pipeline">
+
+```js
+let total = 0;
+for (let i = 0; i < 10; i++) total += i;
+// explain: No arrays of objects found.
+```
+
+```js
+const ps = [];
+for (let i = 0; i < 10; i++)
+  ps.push({ x: i, vx: 1 });
+for (const p of ps) p.x += p.vx;
+// ps (line 1) {x, vx} → kept as array
+//   of objects
+//   · about 10 elements: below the
+//     64-element threshold, where the
+//     benefit is too small
+```
+
+```js
+// the particle program, as above
+// ps (line 1) {x, vx} → struct of arrays
+//   · loop at line 4 … touches 2 of 2
+//   · about 1000 elements
+//   · 2 of 3 element accesses proven
+//     in bounds
+```
+
+</Examples>
+
+In the first, lowering finds no array of records, so the plan is empty
+and emit returns your file unchanged. In the second, the analyses find a
+collection, `ps`, but the planner's cost rule (at least 64 elements by
+default) says a new layout cannot pay for itself. In the third, every
+check passes and the plan says struct of arrays; "2 of 3" is because
+`ps[3]` is not proven in bounds, which is why the output wraps it in the
+`__vsc_bc` check.
+
+## Output that is source code
+
+The input was JavaScript, and so is the output: you can read it, diff it,
+commit it, and run it on any engine.
+
+<Callout kind="definition">
+A **source-to-source compiler** (sometimes called a *transpiler*) is a
+compiler whose output is source code in a high-level language, often the
+same language it reads. That output is then run or compiled by an
+ordinary tool. Viscosity reads JavaScript, TypeScript or Python and
+writes JavaScript or Python.
+</Callout>
+
+<Examples of="source-to-source">
+
+```ts
+interface P { x: number; vx: number }
+const ps: P[] = [];
+// out (the interface line is now blank):
+const ps = new __Vsc_ps();
+```
+
+```py
+# @viscosity soa
+ps = []
+# out: ps = _Vsc_ps()
+```
+
+<Run id="before-after" />
+
+</Examples>
+
+The first is real output for a TypeScript file: the plugin strips the
+types first (as in the chapter *Interfaces, erasure and typeof*), so the
+output is plain JavaScript. The second is the Python plugin, writing
+Python with a generated `_Vsc_ps` class. The runnable one does the
+change by hand and prints the same answer twice; change the numbers and
+check that both halves still agree.
+
+<Prompts ids={['s2s-what']} />
+
+## Ahead of time, or inside the engine
+
+Viscosity is not the first system to turn arrays of JavaScript objects
+into columns. As the chapter *Columnar arrays at run time: the research*
+described, Makor and colleagues did it *while the program runs*, inside a
+JavaScript engine built on Truffle and Graal<Cite id="makor2022" /><Cite id="wurthinger2013" />,
+and a follow-up generated specialised loop code for the converted
+arrays<Cite id="kloibhofer2023" />.
+
+<Figure caption="The same idea in two places. Viscosity changes the program before it runs; the run-time approach changes the engine." takeaway="Ahead of time works with any engine but must prove safety from the code alone.">
+  <WhenItHappens />
+</Figure>
+
+The trade is real in both directions. A run-time transformation sees the
+actual values and can speculate, then back out with deoptimisation if a
+guess fails (as in the chapter *Speculation and deoptimization*);
+however, it only helps programs on that one engine. Viscosity's
+output runs anywhere, adds no work at start-up and can be read by a
+person; in exchange it gets one look at the code, with no values and no
+way to back out. As such, every decision must be *proved* from the text
+alone, and when a proof fails the collection stays exactly as it was.
+
+<Prompts ids={['aot-vs-rt', 'aot-cost', 'arch-conservative']} />
+
+## Try it
+
+This is the real compiler, in your browser; "Run both" checks that the
+two versions print the same thing. Change the last line to
+`console.log(ps[3])` and see what the explanation says now.
+
+<Playground client:visible title="Particles" initial={`const ps = [];
+for (let i = 0; i < 1000; i++)
+  ps.push({ x: i, vx: 1 });
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += ps[i].vx;
+console.log(ps[3].x);`} />
+
+<Callout kind="engine" label="Under the hood">
+The packages follow the pipeline: `packages/core` holds VIR, its
+builder (SSA on the fly, as in the chapter *SSA on the fly*), the
+control-flow graph utilities, the analyses and the planner;
+`frontend-js` and `frontend-python` are the two plugins; and `cli` wraps
+`compile` as `viscosity build` and `viscosity explain`. Because every
+step is a plain function of its input, each can be tested alone, and the
+whole differentially, as in the chapter *Testing compilers*.
+</Callout>
+
+## Your turn
+
+The first exercise is emit in miniature; the second, extra practice,
+wires the four steps together.
+
+<Exercise id="rewriteAccess" />
+
+<Exercise id="miniCompile" />
+
+## What you learned
+
+- The **Viscosity pipeline** is `lower → analyze → plan → emit`, in one
+  short `compile` function.
+- **Lower** and **emit** belong to a language plugin; **analyze** and
+  **plan** belong to the core and see only VIR.
+- Emit edits the *original text* range by range, so untouched code
+  survives exactly.
+- Viscosity is a **source-to-source compiler**: JavaScript in,
+  JavaScript out, runnable on any engine.
+- Working ahead of time trades run-time values and deoptimisation for
+  portability and readable output, so every decision must be proved.
+
+Next: the interface between the core and a language, and how a second
+language joined without changing a line of the analyses.
+
+
+{/* ── merge: from old chapter 98, The plugin API ── */}
+
+## The same loop, twice
+
+Here is a familiar loop in Python (`P` is a dataclass, Python's short
+way to declare a record type, with fields `x` and `vx`):
+
+```py
+ps = []
+for i in range(1000):
+    ps.append(P(float(i), 1.0))
+for p in ps:
+    p.x += p.vx
+```
+
+`viscosity explain` gives the opposite verdict to the JavaScript
+version's (wrapped to fit):
+
+```
+ps (line 8) {x, vx} → kept as array of
+  objects
+  · CPython: column access measured
+    slower per element than objects
+    (the win is about 5x less memory);
+    add "# @viscosity soa" … to opt in
+```
+
+Same program, same analyses, different answer; to see why, you need
+the boundary between the core and a language.
+
+<Analogy title="a wall socket">
+A wall socket does not care what you plug into it: a lamp, a kettle and a
+phone charger all have the same prongs, and each handles its own insides.
+Adding a new appliance never means rewiring the house. A language plugin
+is the plug, with two prongs, `lower` and `emit`, and the core is the
+wiring behind the wall.
+<span slot="breaks">Electricity flows one way, into the appliance; a
+plugin both hands the core something (VIR) and gets something back (a
+plan) that it must act on.</span>
+</Analogy>
+
+<Analogy extra title="order tickets in a restaurant">
+A waiter takes your order in whatever words you use ("the usual, no
+onions") and writes it on the kitchen's standard ticket. The cooks read
+only tickets, never customers, and the same waiter brings the plate back
+to your table.
+<span slot="breaks">A ticket is all the kitchen gets; Viscosity's plugin
+also keeps private notes about your table (its syntax tree) that travel
+with the ticket, unread, and come back to it with the plate.</span>
+</Analogy>
+
+## Two functions
+
+This is the whole interface, from `packages/core/src/plugin.ts`
+(comments shortened):
+
+```ts
+interface LoweredModule {
+  module: Module;
+  annotations: Map<BindingId, Annotation>;
+}
+
+interface LanguagePlugin {
+  id: string;      // 'javascript'
+  extensions: string[];
+  lower(source: string,
+    filename?: string): LoweredModule;
+  emit(source: string,
+    lowered: LoweredModule,
+    plan: Plan): string;
+}
+```
+
+Read it as a contract. `lower` takes source text and gives back a VIR
+`Module` and any `@viscosity` annotations it found in comments (each
+language writes comments differently, so that is the plugin's job).
+`emit` gets the source, the same `lowered` object and the plan, and
+returns new source. `id` names the language,
+and `extensions` lists the file endings it handles (the command line
+itself picks by ending: `.py` goes to Python, everything else to
+JavaScript).
+
+There is no `parse` in the interface: parsing happens inside `lower`, and
+which parser to use is the plugin's own business. The JavaScript plugin
+uses acorn or a hand-written parser (the next chapters show both), and
+the Python plugin its own tokeniser and parser; the core only ever
+receives VIR.
+
+<Callout kind="definition">
+A **language plugin** is the object a language front end gives
+Viscosity: an `id`, the file `extensions` it handles, and two functions.
+**`lower`** parses source and lowers it to VIR. **`emit`** rewrites that
+source according to a layout plan. Everything between them (analysis,
+planning, explain) is shared by every language.
+</Callout>
+
+<Examples of="language-plugin">
+
+```js
+// the smallest correct plugin
+const none = { id: 'none', extensions: [],
+  lower: (s) => ({ module: EMPTY,
+    annotations: new Map() }),
+  emit: (s) => s };
+```
+
+```js
+jsPlugin().id;          // 'javascript'
+jsPlugin().extensions;
+// ['.js', '.mjs', '.ts', '.mts']
+```
+
+```js
+pythonPlugin().id;      // 'python'
+// syntax outside its subset: lower
+// returns an empty module, and emit
+// returns the source unchanged
+```
+
+</Examples>
+
+The first plugin understands nothing (`EMPTY` stands for a module with
+one empty function), so the plan is empty and `emit` hands the text
+back: useless, but *correct*, the floor every real plugin stands on. The
+second is the real JavaScript plugin, which handles four file endings,
+TypeScript included. The third is the Python plugin's real safety net:
+on syntax it does not support, `lower` falls back to exactly that empty
+module, so the file comes out as it went in.
+
+<Prompts ids={['lp-what', 'lp-no-parse']} />
+
+## The private parcel
+
+Look again at `emit`'s arguments. It gets `lowered` back, typed as a
+plain `LoweredModule`; however, a plugin may return a *bigger* object from
+`lower`. The JavaScript plugin adds its ESTree syntax tree, its scope
+resolution, and the JavaScript text it actually analysed (TypeScript is
+stripped first), and the core passes the whole object along without
+looking inside:
+
+<Figure caption="lower returns one object. The core reads only its LoweredModule part; emit gets all of it back." takeaway="A plugin keeps private state across the core without the core knowing its type.">
+  <PrivateParcel />
+</Figure>
+
+(An interface promises *at least* these fields, as in the chapter
+*Interfaces, erasure and typeof*, so an object with more still fits.)
+
+<Prompts ids={['lp-private']} />
+
+## Why the line falls there
+
+Step through both programs, and watch which box lights up:
+
+<TwoPlugins client:visible />
+
+Parsing, lowering and emitting need someone who knows the language:
+only the Python plugin knows that `P(...)` builds a record (it saw the
+`@dataclass`), and only emit can write Python's indentation or
+JavaScript's braces. The rest is about data, not spelling: "which fields
+does this loop touch?" has the same answer however the loop was written,
+so the escape checks of the chapter *Escape analysis* and the bounds
+proofs are written once, on VIR, and a fix there fixes every
+language.
+
+<Formal title="What every plugin promises">
+
+```text
+lower(s).module is valid VIR
+emit(s, lower(s), keepAll) = s
+  for a JavaScript file s
+```
+
+<span slot="read">Lowering any source s must produce well-formed VIR,
+and for a JavaScript file, emitting with a plan that keeps every
+collection as it is (call that plan keepAll) must give back s exactly,
+character for character. (A TypeScript file comes back with its types
+stripped, since that is the text the plugin analysed.)</span>
+</Formal>
+
+<Prompts ids={['lp-why-split']} />
+
+## A language is also a fact
+
+So why did the Python program keep its objects? The core never sees
+Python syntax, but it does read one field of the module,
+`module.language`. In this book's benchmark run on CPython 3.13 with
+100,000 elements (`packages/bench/FINDINGS.md`, section 6), the update
+loop took 26.7 ns per element over dataclass objects and 72.7 ns over
+`array('d')` columns, while memory went from 16.0 MB to 3.3 MB. CPython
+is an interpreter, and reading an `array('d')` element creates a new
+float object each time, while V8's optimising compiler reads a
+`Float64Array` element as a raw double. So Python keeps objects by
+default and lets you opt in with `# @viscosity soa` (or
+`--python-auto`) when memory matters more.
+
+<Prompts ids={['lp-python-default', 'lp-python-why']} />
+
+## Layout strategies
+
+The other way to extend Viscosity is *how* a collection is stored, and
+the same file declares that list too: `STRATEGIES`, three entries named
+`aos`, `soa` and `aosoa`, each with a one-line description.
+
+<Analogy extra title="shelving in a warehouse">
+A warehouse can shelve each customer's order in its own box (everything
+for one customer together), or keep all the screws on one shelf and all
+the hinges on another (everything of one kind together), or pack pallets
+of eight orders with the screws for those eight in one tray. Which is
+best depends on whether pickers fetch whole orders or sweep along one
+kind of part.
+<span slot="breaks">A warehouse can re-shelve while open; Viscosity
+picks once, before the program runs, and never changes its mind.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **layout strategy** is one way of storing a collection: `aos` leaves
+the array of objects, `soa` uses one column per field, and `aosoa` uses
+blocks of N elements, field-major inside each block. The planner chooses
+a strategy per collection; each plugin's `emit` knows how to write it.
+</Callout>
+
+<Examples of="layout-strategy">
+
+```js
+ps[i].x    // aos: left as it was
+```
+
+```js
+ps.x[i]    // soa: column x, slot i
+```
+
+```js
+// aosoa(8), fields x and vx:
+ps.data[((i) >> 3) * 16 + 0
+  + ((i) & 7)]
+```
+
+<Run id="addresses" />
+
+</Examples>
+
+These are the real accesses Viscosity writes for `ps[i].x` under each
+strategy. Under `aos` nothing changes. Under `soa`, field `x` has its
+own `Float64Array`, and element `i` is slot `i` of it. Under `aosoa(8)`
+everything lives in one `Float64Array` called `data`: `i >> 3` is the
+block number (`i` divided by 8, rounded down), each block holds 16
+numbers (8 `x`s, then 8 `vx`s), `+ 0` picks the `x` part, and `i & 7` is
+the position inside the block (`i` modulo 8). The runnable one
+computes those positions for a few elements; try `B = 4`.
+
+<Formal title="Where field k of element i lives">
+
+```text
+aos:    ps[i].f_k
+soa:    col_k[i]
+aosoa:  data[⌊i / B⌋·F·B + k·B + (i mod B)]
+```
+
+<span slot="read">With F fields numbered from 0 and blocks of B
+elements: under aos it is a property of the i-th object; under soa it is
+slot i of column k; under aosoa, element i is in block ⌊i / B⌋ (i
+divided by B, rounded down), each block holds F·B numbers, field k's
+run starts k·B into the block, and the element sits i mod B along that
+run.</span>
+</Formal>
+
+To be honest about where this stands: the comment says "strategies
+are plugins too", but today the list is only names and descriptions: the planner's `Layout` type names the same three, and each
+emitter implements each one, the JavaScript emitter all three and the
+Python emitter `aos` and `soa` (it throws on `aosoa`). Adding a fourth,
+say hot/cold splitting, means a planner rule plus emitter code in each
+plugin.
+
+<Prompts ids={['ls-what', 'ls-today']} />
+
+<Callout kind="engine" label="Under the hood">
+Both plugins build VIR with the same `ModuleBuilder`
+(`packages/core/src/builder.ts`), so both get SSA construction from one
+implementation, the algorithm of the chapter *SSA on the
+fly*<Cite id="braun2013" />: a plugin never writes a phi by hand.
+</Callout>
+
+## Your turn
+
+The first exercise builds both halves of a plugin for a toy language;
+the second, extra practice, adds a second language to the same core.
+
+<Exercise id="eqPlugin" />
+
+<Exercise id="lispPlugin" />
+
+## What you learned
+
+- A **language plugin** provides `id`, `extensions`, `lower` and `emit`;
+  parsing lives inside `lower`.
+- `lower` returns VIR and annotations, and may add private data that the
+  core passes, unread, back to `emit`.
+- Syntax work is per language; work on data (analysis, planning) is
+  shared, on VIR. The core reads `module.language` as a fact.
+- A **layout strategy** is a way of storing a collection: `aos`, `soa`,
+  `aosoa`. Today they are a fixed list that each emitter implements.
+
+Next: the IR in the middle, VIR itself.
+
+<Quiz />

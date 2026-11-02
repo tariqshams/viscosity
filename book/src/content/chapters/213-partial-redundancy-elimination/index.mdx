@@ -1,0 +1,292 @@
+---
+n: 213
+day: 12
+part: XII
+title: 'Partial redundancy elimination'
+tagline: 'Some computations are wasted on one path and needed on another. Adding a copy on the path that lacks it makes the wasted one disappear, but only where the copy was certain to run anyway, which is what anticipability measures.'
+objectives:
+  - Tell a fully redundant computation from a partially redundant one, by looking at the paths into a block.
+  - Compute anticipability (very busy expressions) backwards over a CFG, and say why insertions are only safe where an expression is anticipable.
+  - Remove a partial redundancy by inserting a copy where it is missing and joining the two with a phi.
+  - Recognise a critical edge, and split it so that there is somewhere to insert.
+introduces: [pre, anticipable-expressions, critical-edge]
+uses: [gvn, value-numbering, cse, dce, liveness, available-expressions, very-busy-expressions, gen-kill, dataflow, fixpoint, worklist, cfg, basic-block, dominator, ssa, phi-node, throw, set, array, for-of, while-loop, function, arrow-function]
+sources: [morelrenvoise1979, gcc-tree-ssa-pre, llvm-passes, coopertorczon2022]
+---
+import PreSteps from '../../../components/diagrams/ch213/PreSteps';
+import CriticalEdge from '../../../components/diagrams/ch213/CriticalEdge';
+
+## Wasted on one path, needed on another
+
+Global value numbering left one case behind. Here, `a + b` is computed
+in one arm of an `if`, and again after the join:
+
+```text
+b0: condbr %c, b1, b2
+b1: %5 = binop + %0, %1    ; a + b
+    br b3
+b2: br b3
+b3: %9 = binop + %0, %1    ; a + b again
+```
+
+On the path through `b1`, `%9` repeats work that `%5` has just done; on
+the path through `b2`, it is the first and only time `a + b` is
+computed. So `%9` is neither redundant nor needed: it is redundant on
+*some* paths, which is called **partially redundant**. GVN cannot
+remove it, because no single earlier instruction is there on every
+path. But look what happens if we add a copy at the end of `b2`:
+
+```text
+b2: %7 = binop + %0, %1    ; inserted
+    br b3
+b3: %9 = phi %5, %7        ; was a + b
+```
+
+Now each path computes `a + b` exactly once: the `b1` path saves one
+addition, and the `b2` path does the same amount of work as before, only
+a little earlier. The computation in `b3` has become fully redundant,
+and a phi picks whichever copy actually ran. That move, insert where
+missing so that the rest becomes fully redundant, is **partial
+redundancy elimination**.
+
+<Analogy title="two roads to work">
+On the road past the station you always buy a coffee, and at the
+office you make another one anyway. Instead of drinking two coffees on
+station days, put a coffee stop on the other road too, and stop making
+coffee at the office: every day, one coffee, picked up on whichever
+road you took.
+<span slot="breaks">A new coffee stop costs time; the compiler's
+inserted copy costs nothing extra only because that road was going to
+make the coffee at the office anyway. Inserting it on a road that would
+not have had one at all would be adding work, not moving it.</span>
+</Analogy>
+
+<Prompts ids={['partial-what', 'pre-what', 'no-path-slower']} />
+
+## Where a copy is safe: anticipability
+
+The break in that analogy is the whole difficulty. Inserting `a + b` on
+a path that would never have computed it is wasteful at best; and if
+the expression were `a / b`, or a property read like `p.x`, which can
+throw an exception, it would make a program fail that used to work. So
+PRE only inserts a computation at a point where, on **every** path
+leaving that point, the program is certain to compute it anyway, before
+any of its operands change. Such an expression is **anticipable** (or
+"anticipated") there; it is the very busy expression of the classic
+dataflow problems, under its PRE name.
+
+<Analogy extra title="packing an umbrella">
+You pack an umbrella at the door only if every route you might take
+today goes through rain before you are home; then carrying it from the
+start costs nothing extra, since you were going to need it.
+<span slot="breaks">You might pack one "just in case", and lose
+nothing but some space. A compiler that inserts a computation "just in
+case" can change what the program does, if that computation can throw;
+it never guesses.</span>
+</Analogy>
+
+Anticipability flows backwards, like liveness, but it asks about
+**every** path rather than *some* path, so successors are merged by
+intersection. A block's **use** set holds the expressions it computes
+before changing any of their operands (the gen set of the very busy
+expressions problem), and its **kill** set those whose operands it
+changes.
+
+<Formal title="Anticipability">
+
+```text
+ANTout(b) = ⋂ { ANTin(s) : s ∈ succ(b) }
+ANTout(b) = ∅   when b has no successors
+ANTin(b)  = use(b) ∪ (ANTout(b) − kill(b))
+```
+
+<span slot="read">An expression is anticipable on exit from b if it is
+anticipable on entry to every successor of b (⋂ is "intersection":
+what all the sets share); nothing is anticipable after a block that
+leaves the function. It is anticipable on entry to b if b computes it
+before touching its operands, or if it is anticipable on exit and b
+does not change its operands.</span>
+</Formal>
+
+Because of the intersection, the starting guess must be generous: every
+set starts full ("everything is anticipable"), except at the exits,
+and rounds only ever remove expressions, until nothing changes. Step
+through the whole method on the example, both dataflow problems and the
+insertion:
+
+<PreSteps client:visible />
+
+<Callout kind="definition">
+An expression is **anticipable** at a point if every path from that
+point computes it before any of its operands is changed. A computation
+is **partially redundant** if the same expression is available on some,
+but not all, of the paths that reach it. **Partial redundancy
+elimination** (**PRE**) inserts the expression where it is anticipable
+but not available, so that the partially redundant computation becomes
+fully redundant, and then replaces it with the value already computed
+(in SSA, a phi of the copies).
+</Callout>
+
+The decision at the join fits in a few lines. Try setting `avOut.b2`
+to `true` (the second example below), or `antOut.b2` to `false` (as if
+`b2` could also leave without reaching `b3`):
+
+<Run id="where-insert" />
+
+<Prompts ids={['ant-what', 'ant-intersect', 'ant-why-safe']} />
+
+<Examples of="pre">
+
+```text
+b1: %5 = a + b ; b2: (nothing)
+b3: %9 = a + b
+; insert in b2; %9 = phi %5, %7
+```
+
+```text
+b1: %5 = a + b ; b2: %6 = a + b
+b3: %9 = a + b
+; available on both: %9 = phi %5, %6
+```
+
+```text
+do { x = a + b; ... } while (c)
+; a + b in the body is redundant on
+; the back edge: one copy before the
+; loop serves every trip
+```
+
+</Examples>
+
+The first is the chapter's example. The second is the case dominator
+GVN missed at the end of the last chapter: `a + b` is already available
+on both paths, from two different instructions, so PRE inserts nothing
+and only adds the phi. The third is a loop: from the second trip on,
+`a + b` repeats what the previous trip computed (its operands do not
+change in the loop), while the first trip has nothing before it. That is
+a partial redundancy too, and inserting one copy before the loop makes
+the one inside fully redundant: PRE moves loop-invariant work out of
+loops as a side effect, which was one of the selling points of the
+original method<Cite id="morelrenvoise1979" />. (For a `while` loop,
+whose body may run zero times, `a + b` is not anticipable before the
+loop, so PRE leaves it alone; the Loops chapters come back to this.)
+
+<Examples of="anticipable-expressions">
+
+```text
+b0: condbr %c, b1, b2
+b1: x = a + b    b2: y = a + b
+; a + b anticipable at the end of b0
+```
+
+```text
+b1: x = a + b    b2: return 0
+; not anticipable in b0: b2 never
+; computes it
+```
+
+```text
+b1: a = 7        ; kill
+b2: x = a + b
+; anticipable after b1's store, not
+; before it
+```
+
+</Examples>
+
+Both arms compute `a + b` in the first, so a copy at the end of `b0`
+would be safe. In the second, one path leaves without ever computing
+it, so a copy in `b0` would add work to that path (and if the
+expression could throw, a new failure). In the third, `b1` changes `a`,
+so `a + b` computed before `b1` would be a different value from the
+one `b2` needs.
+
+## Critical edges
+
+Sometimes there is no good place to put the copy. Suppose the block
+that lacks `a + b` also branches somewhere else:
+
+<Figure takeaway="Split a critical edge and the insertion has a home." caption="Left: b2 has two successors and b3 two predecessors, so the edge b2 → b3 is critical. Inserting a + b at the end of b2 would also run on the way to b4, which never needed it; inserting at the start of b3 would run again on the way from b1. Right: a new, empty block b5 on that edge is exactly the place.">
+  <CriticalEdge />
+</Figure>
+
+<Callout kind="definition">
+A **critical edge** goes from a block with more than one successor to a
+block with more than one predecessor. Code placed at the end of its
+source also runs on the source's other edges; code placed at the start
+of its target also runs on the target's other edges. **Splitting** the
+edge inserts a new, empty block on it, which runs exactly when that edge
+is taken.
+</Callout>
+
+<Examples of="critical-edge">
+
+```text
+b0 → b1, b2;  b1 → b3;  b2 → b3
+; no critical edge: each edge has a
+; single-exit source or single-entry end
+```
+
+```text
+b2 → b3, b4;  b1 → b3
+; b2 → b3 is critical
+```
+
+```text
+b0 → b1, b3   ; enter the loop, or skip
+b2 → b1       ; back edge from the body
+; b0 → b1 is critical
+```
+
+</Examples>
+
+The first is the diamond: every edge either leaves a block with one way
+out or enters a block with one way in, so there is always a block that
+runs exactly when the edge is taken. The second is the figure. The third
+shows where critical edges usually hide: the edge into a loop header
+from a block that could also skip the loop. Compilers that do PRE
+usually split every critical edge before they start, so that every edge
+has a block to receive an insertion.
+
+<Prompts ids={['critical-what', 'critical-split']} />
+
+<Callout kind="engine" label="Under the hood">
+PRE was introduced by Morel and Renvoise, who pointed out that one
+transformation covers both removing redundant computations and moving
+loop-invariant ones out of loops<Cite id="morelrenvoise1979" />. GCC's
+`tree-ssa-pre.cc` describes the SSA version step by step: compute
+available values (forward), compute anticipatable ones (backward,
+iterated to a fixpoint), then insert an expression into the
+predecessors where it is not available but is anticipatable, so that a
+partially redundant computation becomes fully
+redundant<Cite id="gcc-tree-ssa-pre" />. LLVM's `gvn` pass also
+eliminates partially redundant instructions<Cite id="llvm-passes" />.
+Textbooks present PRE as the redundancy elimination that subsumes the
+others<Cite id="coopertorczon2022" />. Viscosity does none of this; its
+output goes to a JavaScript engine that does its own.
+</Callout>
+
+## Your turn
+
+<Exercise id="anticipable" />
+
+<Exercise id="splitCritical" />
+
+## What you learned
+
+- A computation is **partially redundant** if the same expression is
+  available on some paths that reach it but not all.
+- **PRE** inserts copies where the expression is missing, making the
+  original fully redundant, then replaces it with a phi of the copies;
+  no path gets slower.
+- Copies may only go where the expression is **anticipable**: every
+  path from there computes it before its operands change. It is a
+  backward analysis with intersection, started from full sets.
+- A **critical edge** (many successors to many predecessors) has no
+  block of its own; splitting it gives insertions a home.
+- PRE moves loop-invariant work out of loops that are sure to run.
+
+Next: where exactly to put the copies, as late as possible, and the
+algorithm that finds that place.
+
+<Quiz />

@@ -1,0 +1,238 @@
+---
+n: 203
+day: 9
+part: XI
+title: 'Linear types and effect systems'
+tagline: 'Two more ways a type can say more than "what kind of value": how many times a value may be used, and what a piece of code may do when it runs. The first is the idea under Rust’s ownership; the second is hiding in Java’s throws and TypeScript’s Promise.'
+objectives:
+  - Say what linear and affine types promise, and why a linear value cannot be copied or dropped.
+  - Connect Rust's moves to affine types, with the exact error rustc gives.
+  - Read a function type that records its effects, and work out the effects of a sequence.
+  - Write a checker that tests whether each parameter is used exactly once.
+introduces: [linear-types, effect-systems]
+uses: [hindley-milner, bidirectional-typing, soundness, lambda-calculus, substitution, free-and-bound-variables, typing-judgment, inference-rule, type-environment, type-checker, typescript, type-annotation, promise, async-await, throw, try-catch, function, call, recursion, system-f, dependent-types]
+sources: [wadler1990, idris2-docs-multiplicities, rust-book-ownership, lucassen-gifford1988, jls-checked-exceptions, mdn-async-function, pierce2002]
+---
+import MoveSteps from '../../../components/diagrams/ch203/MoveSteps';
+import EffectTree from '../../../components/diagrams/ch203/EffectTree';
+
+The survey goes on. Every type system so far has answered one question
+about a value: *what kind* of value is it? This chapter adds two more:
+*how many times* may it be used, and *what may happen* when a piece of
+code runs. As before, each idea gets its definition and real examples,
+not its full theory.
+
+## Values that must be used once
+
+A file handle should be closed exactly once: closing it twice is an
+error, and never closing it leaks it. A type that only says `File`
+cannot tell those programs apart:
+
+```text
+let h = open("log.txt") in
+  close(h); close(h)     closed twice
+let h = open("log.txt") in
+  42                     never closed
+```
+
+Both have perfectly good types in every system we have seen, because
+types so far say nothing about *how often* a name is used. Wadler's
+1990 paper "Linear types can change the world!" proposed types that
+do, so that, for example, a pure language may update an array in place
+when its type proves nobody else can see the old
+version<Cite id="wadler1990" />.
+
+<Analogy title="a concert ticket">
+A ticket is torn at the door: it gets one person in once, it cannot be
+photocopied for a friend, and the venue would like it used rather than
+wasted. Using it is what makes it stop being yours.
+<span slot="breaks">Nobody stops you from leaving a ticket in a drawer;
+a *linear* type does stop that (the value must be used), while an
+*affine* type, like Rust's, allows it, and only forbids using it
+twice.</span>
+</Analogy>
+
+<Analogy extra title="a relay baton">
+In a relay there is one baton, held by one runner at a time; handing it
+on means you no longer have it, and a runner who has handed it on
+cannot hand it on again.
+<span slot="breaks">A runner can drop the baton and pick it up; a
+moved value cannot be got back by the variable that moved it, unless
+the new owner explicitly hands it back.</span>
+</Analogy>
+
+<Callout kind="definition">
+In a **linear type system**, a variable of linear type must be used
+**exactly once**: it cannot be duplicated (used twice) or discarded
+(never used). An **affine** type relaxes this to **at most once**,
+allowing a value to be dropped. Idris 2, for example, lets a function
+mark an argument with the quantity 1, meaning it is "used exactly once
+at run time"<Cite id="idris2-docs-multiplicities" />.
+</Callout>
+
+<Formal title="Splitting the environment">
+
+```text
+───────────── (Var)
+ x : A ⊢ x : A
+
+Γ₁ ⊢ f : A ⊸ B     Γ₂ ⊢ a : A
+───────────────────────────── (App)
+    Γ₁, Γ₂ ⊢ f a : B
+```
+
+<span slot="read">Var: x has type A in an environment that contains
+x and nothing else; so every linear variable in scope must be used.
+App: if f has the linear function type A to B (the arrow written as a
+lollipop, ⊸) using the variables in gamma-1, and a has type A using
+those in gamma-2, then f a has type B using both; each variable goes to
+exactly one side, so none can be used twice.</span>
+</Formal>
+
+<MoveSteps client:visible />
+
+<Examples of="linear-types">
+
+```text
+λx. x          linear: x used once
+λx. λy. x      not linear: y never used
+               (but affine)
+λx. pair x x   neither: x used twice
+```
+
+```text
+duplicate : (1 x : a) -> (a, a)
+-- no implementation can exist
+```
+
+```rust
+let s = String::from("hi");
+let t = s;
+println!("{}", s);
+// error[E0382]: borrow of moved value: `s`
+```
+
+</Examples>
+
+The first shows the three cases on small λ terms: one use is linear,
+zero uses is only affine, and two uses is neither. The second is the
+Idris 2 tutorial's example: the type promises to use `x` exactly once
+and return a pair, and since a pair of `x` would need it twice, no
+definition can satisfy the type<Cite id="idris2-docs-multiplicities" />.
+The third is Rust, which you will meet properly in Track B. Rust's rules
+say each value has one owner at a time, and `let t = s;` *moves* the
+string to `t`<Cite id="rust-book-ownership" />; using `s` afterwards is
+error E0382 (checked with rustc 1.97). That is the affine rule: a
+variable can give its string away at most once, and leaving it unused
+is fine, since Rust frees a value when its owner goes out of
+scope.
+
+<Prompts ids={['linear-what', 'affine-what', 'rust-affine', 'linear-why']} />
+
+## Types that record what code may do
+
+The type `number → number` promises a number back; it says nothing
+about whether the function also prints, throws, or reads a file. An
+**effect system** adds that: alongside its type, every expression gets
+an **effect**, a set of things it may do when it runs, and a function
+type records the effects of its body. Lucassen and Gifford's FX
+language gave every expression exactly these two static properties, a
+type and an effect<Cite id="lucassen-gifford1988" />.
+
+<Analogy extra title="allergen labels">
+A ready meal's label lists what it may contain ("nuts, milk"), and a
+meal made from several parts lists everything any part may contain;
+someone with an allergy reads the label, not the recipe.
+<span slot="breaks">A label is written by a person, who can forget an
+ingredient; an effect system works out the label from the parts, so it
+cannot leave one out (though, like "may contain", it can list an effect
+that a particular run never performs).</span>
+</Analogy>
+
+<Callout kind="definition">
+An **effect system** extends typing judgements to `Γ ⊢ e : T ! ε`,
+"e has type T and may perform the effects in the set ε". Effects of
+parts are joined (by union), and a function's type carries the effects
+of its body, written here `A →ε B`. A function with an empty effect set
+is **pure**.
+</Callout>
+
+<Formal title="Effects of a sequence">
+
+```text
+Γ ⊢ e₁ : A ! ε₁     Γ ⊢ e₂ : B ! ε₂
+──────────────────────────────── (Seq)
+    Γ ⊢ e₁; e₂ : B ! ε₁ ∪ ε₂
+```
+
+<span slot="read">If e1 has type A with effects epsilon-1, and e2 has
+type B with effects epsilon-2, then running e1 and then e2 has type B
+(the value of the second) and may perform the effects of either, the
+union of the two sets.</span>
+</Formal>
+
+<Figure takeaway="Effects flow up the tree and are joined; the function type records them." caption="A Drip-style function that prints and then adds. print has the effect io, x + 1 has none, the body has their union, and the function's type is number →{io} number.">
+  <EffectTree />
+</Figure>
+
+<Examples of="effect-systems">
+
+```text
+λx. x + 1          : number →{} number
+λx. print(x); x    : string →{io} string
+```
+
+```java
+static void load() {
+  throw new IOException("no file");
+}
+// error: unreported exception IOException;
+//   must be caught or declared to be thrown
+static void load() throws IOException {
+```
+
+```ts
+async function size(): Promise<number> {
+  return 3;
+}
+const n: number = size();
+// error TS2322: Type 'Promise<number>' is
+//   not assignable to type 'number'.
+```
+
+</Examples>
+
+The first shows the notation: adding has no effect, so the first
+function is pure; the second prints, so `io` appears in its type. The
+second is the effect system most programmers have met without the
+name: Java's **checked exceptions**. A method whose body may throw an
+`IOException` must say so with `throws IOException`, and javac rejects
+it otherwise, with the error shown<Cite id="jls-checked-exceptions" />.
+The last line is the fix: the effect is now part of the method's
+signature, and every caller must handle it or declare it too. The third
+is TypeScript: an `async` function always returns a
+promise<Cite id="mdn-async-function" />, so "this runs later" shows up in its
+type, `Promise<number>`, and using it as a plain `number` is an error
+(both checked with javac 21 and tsc 5.9).
+
+<Prompts ids={['effect-what', 'effect-union', 'pure-what', 'java-effect', 'async-effect']} />
+
+## Your turn
+
+<Exercise id="linear" />
+
+## What you learned
+
+- **Linear types**: a value used exactly once, never copied or
+  dropped; **affine** types allow dropping. Rust's moves are affine.
+- **Effect systems** record what code may do (`T ! ε`), joining the
+  effects of the parts; Java's checked exceptions and TypeScript's
+  `Promise` are everyday examples.
+- With System F and dependent types, these are four directions in which
+  the types of this part grow; Pierce's book is the place to follow
+  any of them further<Cite id="pierce2002" />.
+
+Next: Part IV leaves the tree-walking interpreter behind and compiles
+Drip to bytecode.
+
+<Quiz />

@@ -1,5 +1,5 @@
-// Cards for the second half of chapter 13 (methods and this).
-// Keys are stable ids: never rename them.
+// Chapter 14 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'method-what': {
@@ -65,8 +65,7 @@ console.log(ps[0].move === ps[1].move);`,
 export const exercises = {
   vec: {
     title: 'A 2D vector class',
-    prompt:
-      'Write a class `Vec`. `new Vec(x, y)` stores `x` and `y`. The method `add(o)` returns a **new** `Vec` that is the sum of this vector and the vector `o`, without changing either. The method `len()` returns the length, `Math.sqrt(x * x + y * y)` (`Math.sqrt` is the square root).',
+    prompt: 'Write a class `Vec`. `new Vec(x, y)` stores `x` and `y`. The method `add(o)` returns a **new** `Vec` that is the sum of this vector and the vector `o`, without changing either. The method `len()` returns the length, `Math.sqrt(x * x + y * y)` (`Math.sqrt` is the square root).',
     starter: `class Vec {
   constructor(x, y) {
     // your code here
@@ -187,8 +186,7 @@ Why return a new Vec rather than changing \`this\`? Because \`a\` might be share
   stack: {
     optional: true,
     title: 'A stack class',
-    prompt:
-      'Write a class `Stack`. `push(v)` puts a value on top. `pop()` removes the top value and returns it (or `undefined` if the stack is empty). `peek()` returns the top value without removing it. `size()` returns how many values it holds. Arrays have a `pop()` method that removes and returns the last slot, which will help. Part IV’s virtual machine is built around exactly this.',
+    prompt: 'Write a class `Stack`. `push(v)` puts a value on top. `pop()` removes the top value and returns it (or `undefined` if the stack is empty). `peek()` returns the top value without removing it. `size()` returns how many values it holds. Arrays have a `pop()` method that removes and returns the last slot, which will help. Part IV’s virtual machine is built around exactly this.',
     starter: `class Stack {
   // your code here
 }
@@ -313,46 +311,111 @@ q.move();
 console.log(p.x, q.x);
 \`\`\``,
     options: [
-      { t: '`1 5`', why: 'Only `q.move()` was called, so `p` did not move.' },
-      { t: '`0 5`', correct: true, why: 'In `q.move()`, `this` is `q`, so only `q.x` changes: 0 + 5.' },
-      { t: '`5 5`', why: '`p` and `q` are separate instances; moving `q` does not touch `p`.' },
-      { t: '`0 0`', why: '`q.move()` adds `q.vx` to `q.x`.' },
+      {
+        t: '`1 5`',
+        why: 'Only `q.move()` was called, so `p` did not move.',
+      },
+      {
+        t: '`0 5`',
+        correct: true,
+        why: 'In `q.move()`, `this` is `q`, so only `q.x` changes: 0 + 5.',
+      },
+      {
+        t: '`5 5`',
+        why: '`p` and `q` are separate instances; moving `q` does not touch `p`.',
+      },
+      {
+        t: '`0 0`',
+        why: '`q.move()` adds `q.vx` to `q.x`.',
+      },
     ],
   },
   {
     q: '`const m = p.move; m();` What happens?',
     options: [
-      { t: '`p` moves as usual', why: '`m` is only the function. Called without a dot, it has no object to work on.' },
-      { t: 'Every particle moves', why: 'A method never acts on all instances at once.' },
-      { t: 'Nothing: `m()` is ignored', why: 'The function does run, and fails on its first use of `this`.' },
-      { t: 'A TypeError, because `this` is `undefined` inside `move`', correct: true, why: 'With no object before the dot, `this` is `undefined` in class code, and reading `this.x` fails.' },
+      {
+        t: '`p` moves as usual',
+        why: '`m` is only the function. Called without a dot, it has no object to work on.',
+      },
+      {
+        t: 'Every particle moves',
+        why: 'A method never acts on all instances at once.',
+      },
+      {
+        t: 'Nothing: `m()` is ignored',
+        why: 'The function does run, and fails on its first use of `this`.',
+      },
+      {
+        t: 'A TypeError, because `this` is `undefined` inside `move`',
+        correct: true,
+        why: 'With no object before the dot, `this` is `undefined` in class code, and reading `this.x` fails.',
+      },
     ],
   },
   {
     q: 'Where does the `move` method of 1000 Particle instances live?',
     options: [
-      { t: 'Once, with the class, shared by all of them', correct: true, why: 'Methods in a class body are stored once. Each call works on a different object through `this`.' },
-      { t: 'A copy inside each instance', why: 'Instances hold their own properties (`x`, `vx`), not copies of the methods.' },
-      { t: 'Only in the first instance', why: 'All instances share it equally.' },
-      { t: 'Nowhere until it is called', why: 'It exists from the moment the class is defined.' },
+      {
+        t: 'Once, with the class, shared by all of them',
+        correct: true,
+        why: 'Methods in a class body are stored once. Each call works on a different object through `this`.',
+      },
+      {
+        t: 'A copy inside each instance',
+        why: 'Instances hold their own properties (`x`, `vx`), not copies of the methods.',
+      },
+      {
+        t: 'Only in the first instance',
+        why: 'All instances share it equally.',
+      },
+      {
+        t: 'Nowhere until it is called',
+        why: 'It exists from the moment the class is defined.',
+      },
     ],
   },
   {
     q: '`const o = { x: 0, vx: 2 };` What is `o instanceof Particle`?',
     options: [
-      { t: '`true`, because it has the same properties', why: '`instanceof` does not compare properties.' },
-      { t: 'An error, because `o` is not a class', why: 'Any object can be tested; the answer is `false`.' },
-      { t: '`undefined`', why: '`instanceof` always gives `true` or `false`.' },
-      { t: '`false`', correct: true, why: '`o` was not made by `new Particle`, so it is not a Particle instance.' },
+      {
+        t: '`true`, because it has the same properties',
+        why: '`instanceof` does not compare properties.',
+      },
+      {
+        t: 'An error, because `o` is not a class',
+        why: 'Any object can be tested; the answer is `false`.',
+      },
+      {
+        t: '`undefined`',
+        why: '`instanceof` always gives `true` or `false`.',
+      },
+      {
+        t: '`false`',
+        correct: true,
+        why: '`o` was not made by `new Particle`, so it is not a Particle instance.',
+      },
     ],
   },
   {
     q: 'In Python, `f = c.inc` followed by `f()` works. Why does the same thing fail in JavaScript class code?',
     options: [
-      { t: 'JavaScript methods cannot be stored in variables', why: 'They can: `const f = c.inc` is fine. The trouble comes when `f` is called.' },
-      { t: 'In JavaScript `this` comes from the call, and `f()` has no object before a dot', correct: true, why: 'Python’s `c.inc` remembers `c`; a JavaScript method does not, so `this` is `undefined`.' },
-      { t: 'JavaScript has no `this` outside constructors', why: 'Methods use `this` all the time; it is set by each call.' },
-      { t: 'Python checks types and JavaScript does not', why: 'That is not what makes the difference here.' },
+      {
+        t: 'JavaScript methods cannot be stored in variables',
+        why: 'They can: `const f = c.inc` is fine. The trouble comes when `f` is called.',
+      },
+      {
+        t: 'In JavaScript `this` comes from the call, and `f()` has no object before a dot',
+        correct: true,
+        why: 'Python’s `c.inc` remembers `c`; a JavaScript method does not, so `this` is `undefined`.',
+      },
+      {
+        t: 'JavaScript has no `this` outside constructors',
+        why: 'Methods use `this` all the time; it is set by each call.',
+      },
+      {
+        t: 'Python checks types and JavaScript does not',
+        why: 'That is not what makes the difference here.',
+      },
     ],
   },
 ];

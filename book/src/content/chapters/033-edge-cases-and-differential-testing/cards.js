@@ -1,5 +1,5 @@
-// Chapter 33 cards (edge cases and differential testing). Keys are
-// stable ids: never rename them.
+// Chapter 33 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'edge-what': {
@@ -92,8 +92,7 @@ console.log(\`\${t} lists agreed\`);
 export const exercises = {
   findMismatch: {
     title: 'A differential tester',
-    prompt:
-      'Write `findMismatch(f, g, inputs)`. `f` and `g` are two functions that should do the same thing. Call both on each input in order, and return the **first input** where their results differ (by `!==`). If they agree on every input, return `undefined`.',
+    prompt: 'Write `findMismatch(f, g, inputs)`. `f` and `g` are two functions that should do the same thing. Call both on each input in order, and return the **first input** where their results differ (by `!==`). If they agree on every input, return `undefined`.',
     starter: `function findMismatch(f, g, inputs) {
   // your code here
 }
@@ -197,8 +196,7 @@ In a real tester, \`inputs\` would be thousands of random values, like the \`dif
   middle: {
     optional: true,
     title: 'The middle item, edges and all',
-    prompt:
-      'Write `middle(xs)`: it returns the middle item of the list. For an even length there are two middle items; return the **left** one, so `middle([1, 2, 3, 4])` is `2`. For an empty list, return `undefined`. The tests are mostly edge cases.',
+    prompt: 'Write `middle(xs)`: it returns the middle item of the list. For an even length there are two middle items; return the **left** one, so `middle([1, 2, 3, 4])` is `2`. For an empty list, return `undefined`. The tests are mostly edge cases.',
     starter: `function middle(xs) {
   // your code here
 }
@@ -269,41 +267,91 @@ export const quiz = [
   {
     q: 'You are testing `average(xs)`. Which input is the best edge case to add to `[2, 4, 6]`?',
     options: [
-      { t: '`[1, 3, 5]`', why: 'That is another ordinary list: it exercises exactly the same path as `[2, 4, 6]`.' },
-      { t: '`[]`', correct: true, why: 'The empty list is a classic edge: dividing by a length of 0 gives `NaN`, so you have to decide what `average([])` should be.' },
-      { t: '`[10, 20, 30]`', why: 'Bigger numbers, but still an ordinary case.' },
+      {
+        t: '`[1, 3, 5]`',
+        why: 'That is another ordinary list: it exercises exactly the same path as `[2, 4, 6]`.',
+      },
+      {
+        t: '`[]`',
+        correct: true,
+        why: 'The empty list is a classic edge: dividing by a length of 0 gives `NaN`, so you have to decide what `average([])` should be.',
+      },
+      {
+        t: '`[10, 20, 30]`',
+        why: 'Bigger numbers, but still an ordinary case.',
+      },
     ],
   },
   {
     q: '`isTeen(age)` should be true for ages 13 to 19. By the boundary rule, which set of inputs is best?',
     options: [
-      { t: '`15, 16, 17`', why: 'All in the middle of the range: they cannot tell `<` from `<=` at either end.' },
-      { t: '`0, 50, 100`', why: 'Far from both edges, so a slip at 13 or 19 goes unnoticed.' },
-      { t: '`12, 13, 14, 18, 19, 20`', correct: true, why: 'Just below, at and just above each end: exactly where an off-by-one slip shows.' },
+      {
+        t: '`15, 16, 17`',
+        why: 'All in the middle of the range: they cannot tell `<` from `<=` at either end.',
+      },
+      {
+        t: '`0, 50, 100`',
+        why: 'Far from both edges, so a slip at 13 or 19 goes unnoticed.',
+      },
+      {
+        t: '`12, 13, 14, 18, 19, 20`',
+        correct: true,
+        why: 'Just below, at and just above each end: exactly where an off-by-one slip shows.',
+      },
     ],
   },
   {
     q: 'What is the big advantage of differential testing?',
     options: [
-      { t: 'It proves both implementations are correct', why: 'Both could share the same bug. Agreement is evidence, not proof.' },
-      { t: 'It only needs one implementation', why: 'It needs two, compared against each other.' },
-      { t: 'You do not need to know the right answers, so inputs can be random and plentiful', correct: true, why: 'You only check that the two versions agree, so a program can generate thousands of inputs.' },
+      {
+        t: 'It proves both implementations are correct',
+        why: 'Both could share the same bug. Agreement is evidence, not proof.',
+      },
+      {
+        t: 'It only needs one implementation',
+        why: 'It needs two, compared against each other.',
+      },
+      {
+        t: 'You do not need to know the right answers, so inputs can be random and plentiful',
+        correct: true,
+        why: 'You only check that the two versions agree, so a program can generate thousands of inputs.',
+      },
     ],
   },
   {
     q: 'A fast `sumTo(n)` uses the formula `n * (n + 1) / 2`. What is a good reference to test it against?',
     options: [
-      { t: 'A loop that adds 1, 2, …, n: slow, but obviously right', correct: true, why: 'A simple, clearly correct version is the ideal partner for a clever one.' },
-      { t: 'The same formula, copied into a second function', why: 'A copy shares every bug of the original, so they always agree.' },
-      { t: 'Nothing: formulas do not need tests', why: 'Formulas are easy to get subtly wrong (try `n * (n - 1) / 2`).' },
+      {
+        t: 'A loop that adds 1, 2, …, n: slow, but obviously right',
+        correct: true,
+        why: 'A simple, clearly correct version is the ideal partner for a clever one.',
+      },
+      {
+        t: 'The same formula, copied into a second function',
+        why: 'A copy shares every bug of the original, so they always agree.',
+      },
+      {
+        t: 'Nothing: formulas do not need tests',
+        why: 'Formulas are easy to get subtly wrong (try `n * (n - 1) / 2`).',
+      },
     ],
   },
   {
     q: 'How does this book’s repository check that Viscosity’s rewritten programs are correct?',
     options: [
-      { t: 'By reading the generated code carefully', why: 'Reading helps, but it does not scale to thousands of programs.' },
-      { t: 'It assumes a program is correct if it is faster', why: 'A faster program that gives a wrong answer is broken.' },
-      { t: 'By running the original and the rewritten program and checking their output matches', correct: true, why: 'That is differential testing, in `frontend-js/test/differential.test.ts`.' },
+      {
+        t: 'By reading the generated code carefully',
+        why: 'Reading helps, but it does not scale to thousands of programs.',
+      },
+      {
+        t: 'It assumes a program is correct if it is faster',
+        why: 'A faster program that gives a wrong answer is broken.',
+      },
+      {
+        t: 'By running the original and the rewritten program and checking their output matches',
+        correct: true,
+        why: 'That is differential testing, in `frontend-js/test/differential.test.ts`.',
+      },
     ],
   },
 ];

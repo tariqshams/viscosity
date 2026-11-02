@@ -1,4 +1,5 @@
-// Chapter 13 cards. Keys are stable ids: never rename them.
+// Chapter 13 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'class-what': {
@@ -58,8 +59,7 @@ console.log(ps[0] === ps[1]);`,
 export const exercises = {
   token: {
     title: 'A token class',
-    prompt:
-      'Write a class `Token`. `new Token(kind, text)` stores `kind` and `text` on the new object, and also a third property, `length`, holding the number of characters in `text` (a string has a `length`, just like an array). For example `new Token(\'name\', \'width\')` has `kind` `\'name\'`, `text` `\'width\'` and `length` `5`.',
+    prompt: 'Write a class `Token`. `new Token(kind, text)` stores `kind` and `text` on the new object, and also a third property, `length`, holding the number of characters in `text` (a string has a `length`, just like an array). For example `new Token(\'name\', \'width\')` has `kind` `\'name\'`, `text` `\'width\'` and `length` `5`.',
     starter: `class Token {
   constructor(kind, text) {
     // your code here
@@ -138,8 +138,7 @@ The last test makes two tokens from the same arguments and checks they are diffe
   row: {
     optional: true,
     title: 'A row of particles',
-    prompt:
-      'The class `Particle` is given. Write `makeRow(n)` that **returns an array** of `n` separate Particle instances, where the one at index `i` has `x` equal to `i` and `vx` equal to `1`. For example `makeRow(3)` holds particles at `x` 0, 1 and 2, and `makeRow(0)` is `[]`.',
+    prompt: 'The class `Particle` is given. Write `makeRow(n)` that **returns an array** of `n` separate Particle instances, where the one at index `i` has `x` equal to `i` and `vx` equal to `1`. For example `makeRow(3)` holds particles at `x` 0, 1 and 2, and `makeRow(0)` is `[]`.',
     starter: `class Particle {
   constructor(x, vx) {
     this.x = x;
@@ -247,10 +246,23 @@ export const quiz = [
   {
     q: 'What is the **first** thing `new Particle(3, 1)` does?',
     options: [
-      { t: 'Runs the constructor on the class itself', why: 'The constructor runs on a new object, which has to exist first.' },
-      { t: 'Creates a fresh empty object', correct: true, why: 'Then it runs the constructor with `this` set to that object, and gives it back.' },
-      { t: 'Copies an existing particle', why: '`new` always starts from a brand-new object.' },
-      { t: 'Prints the new particle', why: 'Nothing is printed unless you call `console.log`.' },
+      {
+        t: 'Runs the constructor on the class itself',
+        why: 'The constructor runs on a new object, which has to exist first.',
+      },
+      {
+        t: 'Creates a fresh empty object',
+        correct: true,
+        why: 'Then it runs the constructor with `this` set to that object, and gives it back.',
+      },
+      {
+        t: 'Copies an existing particle',
+        why: '`new` always starts from a brand-new object.',
+      },
+      {
+        t: 'Prints the new particle',
+        why: 'Nothing is printed unless you call `console.log`.',
+      },
     ],
   },
   {
@@ -262,19 +274,45 @@ q.x = 7;
 console.log(p.x, q.x);
 \`\`\``,
     options: [
-      { t: '`7 7`', why: '`p` and `q` are separate instances. Changing `q` does not touch `p`.' },
-      { t: '`0 0`', why: '`q.x = 7` does change `q`.' },
-      { t: '`0 7`', correct: true, why: 'Each `new` made its own object; only `q.x` was changed.' },
-      { t: '`1 5`', why: 'Those are the `vx` values; `x` started at 0 for both.' },
+      {
+        t: '`7 7`',
+        why: '`p` and `q` are separate instances. Changing `q` does not touch `p`.',
+      },
+      {
+        t: '`0 0`',
+        why: '`q.x = 7` does change `q`.',
+      },
+      {
+        t: '`0 7`',
+        correct: true,
+        why: 'Each `new` made its own object; only `q.x` was changed.',
+      },
+      {
+        t: '`1 5`',
+        why: 'Those are the `vx` values; `x` started at 0 for both.',
+      },
     ],
   },
   {
     q: '`const p = Particle(3, 1);` (no `new`). What happens?',
     options: [
-      { t: '`p` is a particle as usual', why: 'A class cannot be called like an ordinary function.' },
-      { t: '`p` is `undefined`', why: 'It never gets that far: JavaScript stops with an error first.' },
-      { t: 'A TypeError: a class constructor cannot be invoked without `new`', correct: true, why: 'Only `new` makes the fresh object, so JavaScript refuses the call.' },
-      { t: 'A new particle with no properties', why: 'No object is made at all.' },
+      {
+        t: '`p` is a particle as usual',
+        why: 'A class cannot be called like an ordinary function.',
+      },
+      {
+        t: '`p` is `undefined`',
+        why: 'It never gets that far: JavaScript stops with an error first.',
+      },
+      {
+        t: 'A TypeError: a class constructor cannot be invoked without `new`',
+        correct: true,
+        why: 'Only `new` makes the fresh object, so JavaScript refuses the call.',
+      },
+      {
+        t: 'A new particle with no properties',
+        why: 'No object is made at all.',
+      },
     ],
   },
   {
@@ -287,19 +325,45 @@ class Bad {
 }
 \`\`\``,
     options: [
-      { t: '`undefined`', correct: true, why: '`x = x` only reassigns the parameter; `this.x` was never set, so the object has no `x`.' },
-      { t: '`3`', why: 'That would need `this.x = x`.' },
-      { t: 'A TypeError', why: 'Nothing here is an error: the slip is silent, which is why it is easy to miss.' },
-      { t: '`NaN`', why: 'No arithmetic happens.' },
+      {
+        t: '`undefined`',
+        correct: true,
+        why: '`x = x` only reassigns the parameter; `this.x` was never set, so the object has no `x`.',
+      },
+      {
+        t: '`3`',
+        why: 'That would need `this.x = x`.',
+      },
+      {
+        t: 'A TypeError',
+        why: 'Nothing here is an error: the slip is silent, which is why it is easy to miss.',
+      },
+      {
+        t: '`NaN`',
+        why: 'No arithmetic happens.',
+      },
     ],
   },
   {
     q: 'Why do classes help engines like V8 run property access fast?',
     options: [
-      { t: 'Classes are compiled before the page loads', why: 'Classes run like any other JavaScript; that is not the reason.' },
-      { t: 'Instances of a class cannot gain new properties', why: 'They can: `p.colour = \'red\'` works. That is why it is a hint, not a guarantee.' },
-      { t: 'One constructor adds the same properties in the same order, so instances tend to share one shape', correct: true, why: 'Objects with the same shape let the engine know where each property sits without searching.' },
-      { t: 'Classes store numbers as typed arrays', why: 'Instances are ordinary objects.' },
+      {
+        t: 'Classes are compiled before the page loads',
+        why: 'Classes run like any other JavaScript; that is not the reason.',
+      },
+      {
+        t: 'Instances of a class cannot gain new properties',
+        why: 'They can: `p.colour = \'red\'` works. That is why it is a hint, not a guarantee.',
+      },
+      {
+        t: 'One constructor adds the same properties in the same order, so instances tend to share one shape',
+        correct: true,
+        why: 'Objects with the same shape let the engine know where each property sits without searching.',
+      },
+      {
+        t: 'Classes store numbers as typed arrays',
+        why: 'Instances are ordinary objects.',
+      },
     ],
   },
 ];

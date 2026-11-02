@@ -1,4 +1,4 @@
-// New references for chapter 217 (and its staged second half, 195-b).
+// New references for chapter 219 (and its staged second half, 195-b).
 export default [
   {
     id: 'wolflam1991',
@@ -10,7 +10,7 @@ export default [
     url: 'https://doi.org/10.1145/113445.113449',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results for the title: the dblp entry (PLDI 1991, pages 30–44), AcaWiki’s summary page (giving DOI 10.1145/113445.113449) and the abstract of the paper as hosted for a UT Austin course (cs.utexas.edu/~pingali/CS380C/2025/papers/wolf91a.pdf), which says the algorithm improves the locality of a loop nest by interchange, reversal, skewing and tiling, built on a mathematical formulation of reuse and locality and a theory that unifies those transforms as unimodular matrix transformations. doi.org, dl.acm.org and cs.utexas.edu could not be fetched from this session, so the check rests on those search results.',
-    shaped: 'Chapters 217 and 217-b: tiling as the main tool for locality in loop nests, the legality of tiling, and loop transformations as matrices on iteration vectors.',
+    shaped: 'Chapters 219 and 219-b: tiling as the main tool for locality in loop nests, the legality of tiling, and loop transformations as matrices on iteration vectors.',
   },
   {
     id: 'feautrier1991',
@@ -22,7 +22,7 @@ export default [
     url: 'https://doi.org/10.1007/BF01407931',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results for the DOI: Springer’s article page (link.springer.com/doi/10.1007/BF01407931) and Altmetric’s record give International Journal of Parallel Programming, February 1991, volume 20, issue 1, pages 23–53; Springer’s abstract says that, for a given reference, the method finds the source statement and its iteration vector as a function of the referencing statement’s iteration vector, with applications including conversion to recurrence equations, array and scalar expansion and parallel program construction. The Springer page could not be fetched directly from this session.',
-    shaped: 'Chapter 217-b: exact, per-element dataflow for array references in loop nests, one foundation of the polyhedral model.',
+    shaped: 'Chapter 219-b: exact, per-element dataflow for array references in loop nests, one foundation of the polyhedral model.',
   },
   {
     id: 'feautrier1992',
@@ -34,7 +34,7 @@ export default [
     url: 'https://doi.org/10.1007/BF01407835',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results for the title: the Crossref record and Springer’s article page give Feautrier, P., “Some efficient solutions to the affine scheduling problem. I. One-dimensional time”, Int J Parallel Prog 21, 313–347 (1992), DOI 10.1007/BF01407835, issue 5 (October 1992); a Part II, “Multidimensional time”, followed in the same journal. api.crossref.org and doi.org could not be fetched directly from this session.',
-    shaped: 'Chapter 217-b: schedules as affine functions of the iteration vector, chosen so that every dependence goes forwards in time.',
+    shaped: 'Chapter 219-b: schedules as affine functions of the iteration vector, chosen so that every dependence goes forwards in time.',
   },
   {
     id: 'bondhugula2008',
@@ -46,7 +46,7 @@ export default [
     url: 'https://doi.org/10.1145/1375581.1375595',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results: the LSU scholarly repository record (repository.lsu.edu/eecs_pubs/1617) gives the DOI 10.1145/1375581.1375595 and pages 101–113 of the PLDI proceedings; LSU’s and Ohio State’s news pages record that it received the SIGPLAN Most Influential PLDI Paper Award (for 2008, presented in 2018). The repository and DOI pages could not be fetched directly from this session.',
-    shaped: 'Chapter 217-b: polyhedral tools that choose affine schedules for both locality (tiling) and parallelism.',
+    shaped: 'Chapter 219-b: polyhedral tools that choose affine schedules for both locality (tiling) and parallelism.',
   },
   {
     id: 'polly-readme',
@@ -58,6 +58,6 @@ export default [
     url: 'https://github.com/llvm/llvm-project/blob/main/polly/README',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/polly/README, read in full: “Polly uses a mathematical representation, the polyhedral model, to represent and transform loops and other control flow structures. Using an abstract representation it is possible to reason about transformations in a more general way and to use highly optimized linear programming libraries to figure out the optimal loop structure. These transformations can be used to do constant propagation through arrays, remove dead loop iterations, optimize loops for cache locality, optimize arrays, apply advanced automatic parallelization, drive vectorization, or they can be used to do software pipelining.”',
-    shaped: 'Chapter 217-b: the polyhedral model in a production compiler toolkit.',
+    shaped: 'Chapter 219-b: the polyhedral model in a production compiler toolkit.',
   },
 ];

@@ -1,0 +1,204 @@
+---
+n: 197
+day: 8
+part: XI
+title: 'Algorithm W, step by step'
+tagline: 'Unification, schemes, generalisation and instantiation, put together into one short recursive function that finds the most general type of any program in our small language, with not a single annotation written.'
+objectives:
+  - Say what algorithm W does with each kind of term, and why.
+  - Run W by hand on a small term, keeping track of the environment and the substitution.
+  - Explain what a principal type is, and tell it apart from the other types a term has.
+  - Implement Hindley–Milner inference for a small lambda-plus-let language in JavaScript.
+introduces: [hindley-milner]
+uses: [type-variable, unification, occurs-check, typing-judgment, inference-rule, type-environment, type-checker, lambda-calculus, substitution, free-and-bound-variables, generic, generic-inference, function, call, map, object, recursion, tree, ast, let-polymorphism, generalization, instantiation]
+sources: [milner1978, damas1982, pierce2002]
+---
+import WSteps from '../../../components/diagrams/ch197/WSteps';
+import InferTree from '../../../components/diagrams/ch197/InferTree';
+
+## From pieces to a whole
+
+We now have every piece: unification with the occurs check (the
+chapters *Unification* and *Inferring types, and the occurs check*), and schemes with generalisation at `let` and instantiation at
+each use (the last chapter). What is missing is the order to use them
+in. Given any term of our small language, with not one annotation in
+it, we want a single function that either returns its type or says
+precisely why there is none. Milner's 1978 paper gave exactly such a
+function and called it **algorithm W**<Cite id="milner1978" />; this
+chapter runs it by hand and then you write it.
+
+<Analogy title="pencil marks in a sudoku">
+A careful sudoku player writes small pencil marks in an empty square
+("it is a 3 or a 7") and rubs them out as other squares are filled in;
+nothing is guessed, and every mark is forced by a rule.
+<span slot="breaks">A sudoku ends with every square filled with a
+digit; W may finish with some marks still open, and those open marks
+are what become the ∀ of a polymorphic type, a good outcome rather than
+an unfinished puzzle.</span>
+</Analogy>
+
+<Analogy extra title="a crossword's crossings">
+In a crossword, an across answer and a down answer that cross must agree
+on the shared letter, and that one letter often settles both words.
+W works the same way: wherever a function meets its argument, their
+types must agree, and unification settles whatever that agreement
+forces.
+<span slot="breaks">A crossword has clues; W has none, and works only
+from how the pieces fit together, which is why it can find a type that
+no one ever wrote down.</span>
+</Analogy>
+
+## What W does with each kind of term
+
+W takes an environment Γ and a term, and returns a type. Along the
+way it keeps one substitution, the table of what each type variable has
+turned out to be, which unify adds to. (Milner's paper writes W so that
+each call hands back the substitution it found along with the type; one
+shared table does the same work with less bookkeeping.)
+
+<Formal title="Algorithm W, one case per kind of term">
+
+```text
+W(Γ, n)  = number      W(Γ, true) = bool
+W(Γ, x)  = inst(Γ(x))
+W(Γ, λx. e)
+  = α → W(Γ + x : α, e)      α fresh
+W(Γ, e₁ e₂)
+  = β, after unify(W(Γ, e₁),
+                   W(Γ, e₂) → β)
+W(Γ, let x = e₁ in e₂)
+  = W(Γ + x : gen(Γ, W(Γ, e₁)), e₂)
+W(Γ, if c then e₁ else e₂)
+  = τ, after unify(W(Γ, c), bool),
+     τ = W(Γ, e₁), unify(τ, W(Γ, e₂))
+```
+
+<span slot="read">A number has type number, and true and false have
+type bool. A variable gets a fresh copy of its scheme from gamma. A
+lambda gives its parameter a fresh variable alpha (with no ∀), infers
+the body with that, and returns alpha to the body's type. An
+application infers both sides, makes a fresh beta for the result, and
+unifies the function's type with "argument's type to beta". A let
+infers its definition, generalises it, and infers the body with the
+scheme in scope. An if unifies the condition with bool and the two
+branches with each other.</span>
+</Formal>
+
+Each case says one plain thing. A **variable** is where instantiation
+happens. A **λ** cannot know its parameter's type yet, so it writes a
+fresh pencil mark, `α`, and lets the body's uses of the parameter
+settle it. An **application** is a crossing: the function must be
+something that takes the argument's type, so W invents `β` for the
+result and unifies. **let** is the only place that makes a scheme, and
+**if** asks for a bool condition and two branches that agree.
+
+<Prompts ids={['w-what', 'w-var', 'w-lam', 'w-app', 'w-let']} />
+
+## Running it by hand
+
+The term `λf. λx. f (f x)` is "twice", the
+`fn (f, x) { return f(f(x)); }` of the chapter *Inferring types, and
+the occurs check*, taking one argument at a time.
+Nothing in it says what `f` or `x` are, so let us watch W find out:
+
+<WSteps client:visible />
+
+Notice that every equation came from an application, and the λs only
+contributed fresh variables. The answer, `(a → a) → a → a`, says
+exactly what twice needs: some type `a`, a function from `a` to `a`,
+and a starting `a`. Here is the same result, written on the tree:
+
+<Figure takeaway="Once the substitution is applied, every node of the tree has a type, and the root's type is the answer." caption="The tree of λf. λx. f (f x) after W. Both uses of f have type a → a, which is why f's argument and result had to be the same type.">
+  <InferTree />
+</Figure>
+
+## The most general type
+
+`twice` also has the type `(number → number) → number → number`: give
+it a function on numbers and a number, and it works. However, that type
+is only one **instance** of `(a → a) → a → a`, obtained by putting
+`number` for `a`, while the reverse is not true. Damas and Milner proved
+that whenever a term has any type at all, W succeeds, and the type it
+returns is one of which every other type of the term is an
+instance<Cite id="damas1982" />.
+
+<Callout kind="definition">
+A type τ′ is an **instance** of τ if some substitution of types for τ's
+variables turns τ into τ′. A **principal type** of a term is one that
+has every other type of the term as an instance. **Hindley–Milner type
+inference** is algorithm W (or an algorithm like it) over a language with
+let-polymorphism: it needs no annotations, and it always finds the
+principal type, or reports, through a failed unification, that there is
+no type at all<Cite id="pierce2002" />.
+</Callout>
+
+<Formal title="What Damas and Milner proved">
+
+```text
+if Γ ⊢ e : τ′ for some τ′, then
+  W(Γ, e) succeeds with some τ, and
+  τ′ = [α ↦ σ] τ for some types σ
+```
+
+<span slot="read">If, in environment gamma, the term e has any type
+tau-prime at all, then W run on gamma and e succeeds and returns a type
+tau, and tau-prime can be got from tau by substituting some types for
+tau's variables. In other words, W's answer is the most general one,
+and W never misses a type that exists.</span>
+</Formal>
+
+<Examples of="hindley-milner">
+
+```text
+λx. λy. x        : a → b → a
+```
+
+```text
+let compose =
+  λf. λg. λx. f (g x)
+in compose
+  : (b → c) → (a → b) → a → c
+```
+
+```text
+λx. x x
+  unify a = a → b: occurs check fails
+let id = λx. x in id id   : a → a
+```
+
+</Examples>
+
+The first ignores its second argument, so its two parameters never
+meet and keep separate variables. In the second, `compose` glues two
+functions together; W discovers that `g`'s result must be `f`'s
+argument (both are `b`), purely from the application `f (g x)`. The
+third is a spot the difference: `x x` applies `x` to itself, so `x`'s
+type would have to be `a` and also `a → b`, and the occurs check
+refuses; yet `id id` is fine, because the two uses of `id` get
+separate copies, `(c → c) → c → c` for the first and `c → c` for the
+second.
+
+<Prompts ids={['w-if', 'principal-what', 'instance-of', 'w-errors']} />
+
+## Your turn
+
+The exercise gives you unify (with the occurs check), `resolve` (apply
+the substitution), `generalize` and `instantiate`; you write W itself.
+
+<Exercise id="infer" />
+
+## What you learned
+
+- **Algorithm W** infers a type with one case per kind of term:
+  variables instantiate, λs make fresh variables, applications unify,
+  `let` generalises, `if` unifies the branches.
+- A **principal type** has every other type of the term as an
+  instance; W always finds it when any type exists.
+- **Hindley–Milner** inference needs no annotations at all, which is
+  why it has to give up some things, such as a parameter used at two
+  types.
+
+Next: a different way for types to relate, where one type can stand in
+for another: subtyping.
+
+<Quiz />

@@ -3,7 +3,7 @@
 // Parts listed in STRICT_PARTS have been rewritten to the full contract, so
 // the rules below are errors there; everywhere else they are warnings, to
 // show what is left to do. Add a part's id here when its rewrite lands.
-export const STRICT_PARTS = new Set(['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV']);
+export const STRICT_PARTS = new Set(['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII']);
 
 /**
  * Every chapter: exactly one open analogy (the essential picture), saying
@@ -23,7 +23,7 @@ export const MIN_EXAMPLES = 1;
  * Parts of the 30-day core path. Their chapters have a tighter open reading
  * time and at most two required exercises, so four of them fit in an hour.
  */
-export const CORE_PARTS = new Set([]);
+export const CORE_PARTS = new Set(['II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX']);
 /** Open reading time, in minutes, for core chapters and for all others. */
 export const CORE_MINUTES = [9, 14];
 export const OTHER_MINUTES = [9, 18];

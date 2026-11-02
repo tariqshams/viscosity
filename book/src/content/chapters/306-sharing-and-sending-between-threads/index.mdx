@@ -1,0 +1,291 @@
+---
+n: 306
+day: 35
+part: XVII
+title: 'Sharing and sending between threads'
+tagline: 'Threads that must change shared data take turns through a Mutex, kept alive by an Arc; threads that only need to hand results on pass them down a channel. Both are ordinary library types, made safe by Send and Sync.'
+objectives:
+  - Protect shared data with a Mutex, and explain how the guard unlocks it.
+  - Share ownership across spawned threads with Arc, and say why Rc will not do.
+  - Pass values between threads with mpsc channels, with one or many senders.
+  - Choose between a lock, an atomic and a channel for a given job.
+introduces: [arc-mutex, channel]
+uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, shared-vs-mutable, borrow-checker, vec, hashmap, option, result, trait, rust-closure, rust-iterator, rc, refcell, reference-counting, data-race, atomics, rust-thread, send-sync, typescript]
+sources: [rust-std-mutex, rust-std-arc, rust-book-shared-state, rust-book-message-passing, rust-std-mpsc]
+---
+import LockSteps from '../../../components/diagrams/ch306/LockSteps';
+import ChannelFlow from '../../../components/diagrams/ch306/ChannelFlow';
+
+## Taking turns
+
+Last chapter's threads only *read* what they shared, and an atomic
+counter covered the one case of a shared number. Real work wants more:
+several threads appending to one `Vec`, or filling in one `HashMap`.
+Two threads cannot both hold `&mut`, and a `RefCell` is not `Sync`. What
+we need is a way to say "one at a time" that the type system
+understands.
+
+<Analogy title="the café bathroom key">
+The café has one bathroom and one key, tied to a big wooden spoon. You
+ask for the key, use the room, and hand the key back; anyone else who
+asks meanwhile waits at the counter. A `Mutex` is the key, and its guard
+is you holding the spoon.
+<span slot="breaks">People forget to return keys. A Rust guard returns
+itself when it goes out of scope, so the only way to block everyone is
+to keep the guard around for too long.</span>
+</Analogy>
+
+```rust
+let total = Mutex::new(0);
+thread::scope(|s| {
+    for _ in 0..4 {
+        s.spawn(|| {
+            let mut g =
+                total.lock().unwrap();
+            *g += 1;
+        }); // g dropped: unlocked
+    }
+});
+assert_eq!(total.into_inner().unwrap(), 4);
+```
+
+`Mutex::new(0)` wraps the number; the only way in is `lock`, which
+waits until no other thread holds the lock and then returns a
+**guard**, a `MutexGuard`, through which you read and write the number
+(`*g += 1`). When the guard goes out of scope it is dropped, and
+dropping it unlocks the mutex<Cite id="rust-book-shared-state" />.
+`lock` returns a `Result` because a thread that panicked while holding
+the guard leaves the mutex *poisoned*; `unwrap` treats that as a bug.
+Step through two threads taking turns:
+
+<LockSteps client:visible />
+
+A `Mutex<T>` is `Sync` whenever `T` is `Send`<Cite id="rust-std-mutex" />,
+so scoped threads may share it through a plain `&`. Spawned threads
+cannot borrow, so they must *own* the mutex together, which is what
+**`Arc`** is for: the thread-safe twin of `Rc`, whose
+count is changed with atomic instructions<Cite id="rust-std-arc" />.
+Use `Rc` there and rustc refuses:
+
+```text
+error[E0277]: `Rc<std::sync::Mutex<i32>>`
+  cannot be sent between threads safely
+```
+
+<Analogy extra title="a shared allotment">
+Five neighbours share an allotment, and the gate has a sign-in sheet:
+each new holder signs, each who gives up their share crosses out a
+line, and when the last line is crossed out the plot is cleared. `Arc`
+is the sheet; the plot itself still needs a rota (the `Mutex`) before
+two people dig in the same bed.
+<span slot="breaks">Neighbours can argue about whose turn it is; an
+`Arc` count is updated atomically, so it is never wrong, and nobody can
+dig without the lock.</span>
+</Analogy>
+
+<Callout kind="definition">
+**`Mutex<T>`** guards a `T` so that one thread at a time can use it:
+`lock()` waits, then returns a `MutexGuard` that dereferences to the
+`T` and unlocks when dropped; `into_inner()` takes the `T` back out once
+no one else can lock it<Cite id="rust-std-mutex" />. **`Arc<T>`** is
+shared ownership with an atomic count, `Send` and `Sync` when `T` is
+both. Together, **`Arc<Mutex<T>>`** is the usual way for spawned threads
+to own and change the same data; scoped threads can use `&Mutex<T>`.
+</Callout>
+
+<Formal title="What a mutex promises">
+
+```text
+always:  guards(m) ≤ 1
+lock(m):  wait until guards(m) = 0,
+          then guards(m) := 1
+drop(g):  guards(m) := 0
+```
+
+<span slot="read">For a mutex m, at most one guard exists at any time.
+Locking waits until there is no guard, then makes one; dropping the
+guard takes it away again, which lets the next waiting thread in. The
+data inside m is reachable only through a guard, so only one thread can
+reach it at a time.</span>
+</Formal>
+
+<Examples of="arc-mutex">
+
+```rust
+let words = Mutex::new(Vec::new());
+thread::scope(|s| {
+    s.spawn(|| words.lock().unwrap()
+        .push("left"));
+    s.spawn(|| words.lock().unwrap()
+        .push("right"));
+});
+```
+
+```rust
+let log = Arc::new(Mutex::new(Vec::new()));
+for i in 0..3 {
+    let log = Arc::clone(&log);
+    thread::spawn(move || {
+        log.lock().unwrap().push(i);
+    });
+}
+```
+
+```rust
+// engine/rust: cli/src/main.rs, trimmed
+let next = AtomicUsize::new(0);
+let slots: Mutex<Vec<Option<T>>> =
+    Mutex::new((0..n).map(|_| None)
+        .collect());
+// each worker thread, in a loop:
+let k = next.fetch_add(1, Relaxed);
+if k >= n { break; }
+let r = f(k);
+slots.lock().expect("...")[k] = Some(r);
+```
+
+</Examples>
+
+The first shares a `Mutex<Vec>` between two scoped threads through `&`;
+the pushes take turns, so the vector ends up with both words, in either
+order. The second uses spawned threads, so each gets its own `Arc`
+handle to the same mutex (`Arc::clone` copies the pointer and adds one
+to the count, never the vector). The third is how Viscosity's parallel
+build hands out work: an atomic counter gives each worker the next file
+number `k` (no lock needed for one number), and the results go into a
+`Mutex<Vec<Option<T>>>` of slots, one per file, so they come back in
+input order whichever finishes first. Note that it locks only to store
+a finished result, never while compiling: a guard held across slow work
+makes every other thread wait. Lock twice in one thread and it never
+gets the second lock (std says it may deadlock or panic)<Cite id="rust-std-mutex" />.
+
+<Prompts ids={['mutex-guard', 'mutex-unlock', 'arc-why', 'lock-short']} />
+
+## Channels
+
+Sometimes threads do not need to share anything at all: each one
+produces results, and someone collects them. Then you can **send** the
+results instead of sharing a place to put them.
+
+```rust
+let (tx, rx) = mpsc::channel();
+thread::spawn(move || {
+    tx.send(String::from("done")).unwrap();
+});
+let msg = rx.recv().unwrap(); // waits
+```
+
+`mpsc::channel()` makes a pair: a `Sender` (`tx`) and a `Receiver`
+(`rx`). `send` *moves* the value into the channel, so the sending thread
+cannot touch it afterwards; `recv` waits until a value arrives. Use the
+value after sending it and rustc stops you:
+
+```text
+error[E0382]: borrow of moved value: `s`
+5 |     tx.send(s).unwrap();
+  |             - value moved here
+6 |     println!("{s}");
+  |                ^ value borrowed here
+  |                  after move
+```
+
+That is the whole safety story of channels: a value has one owner, and
+sending it changes the owner, so two threads can never touch it at
+once<Cite id="rust-book-message-passing" />.
+
+<Figure takeaway="Many senders, one receiver; values move through in order." caption="An mpsc channel. Each Sender is a clone that can move to its own thread; values from one sender arrive in the order sent; the receiver's loop ends once every Sender has been dropped.">
+  <ChannelFlow />
+</Figure>
+
+<Callout kind="definition">
+A **channel** is a queue between threads: `mpsc::channel()` returns a
+`Sender<T>` and a `Receiver<T>`. *mpsc* means multi-producer,
+single-consumer: clone the `Sender` for each producing thread, keep one
+`Receiver`<Cite id="rust-std-mpsc" />. `send` moves a value in (and fails
+only if the receiver is gone); `recv` blocks until a value arrives, and
+returns `Err` once every sender has been dropped and the queue is
+empty. `sync_channel(n)` holds at most `n` values, so senders wait when
+it is full.
+</Callout>
+
+<Examples of="channel">
+
+```rust
+for i in 0..3 {
+    let tx = tx.clone();
+    thread::spawn(move || tx.send(i * i));
+}
+drop(tx);
+let got: Vec<i32> = rx.iter().collect();
+```
+
+```rust
+let (tx, rx) = mpsc::sync_channel(2);
+thread::spawn(move || {
+    for line in lines { tx.send(line); }
+});
+for line in rx { print(line); }
+```
+
+```rust
+// workers send (index, result) pairs
+tx.send((k, compile(file))).unwrap();
+// the collector puts each in its slot
+for (k, r) in rx { out[k] = Some(r); }
+```
+
+</Examples>
+
+The first has three producers, each with its own clone of `tx`. The
+`drop(tx)` matters: `rx.iter()` ends only when *every* sender is gone,
+and the original `tx` would otherwise live on in this thread, so the
+loop would wait forever. The second is a bounded channel: the reading
+thread can get at most two lines ahead of the printer before `send`
+waits, which keeps memory small. The third is a channel version of
+Viscosity's ordered results: each worker sends its file's index with the
+output, and one collector puts every result in its place; no lock at
+all.
+
+<OtherLanguages title="Hand a result to another thread">
+
+```rust
+let s = String::from("done");
+tx.send(s).unwrap(); // s moves
+```
+
+```ts
+const s = { msg: 'done' };
+port.postMessage(s); // s is cloned
+s.msg = 'oops'; // fine: a copy left
+```
+
+</OtherLanguages>
+
+A Node worker's message is a structured clone: the receiver gets a
+copy, and the sender may go on changing the original. A Rust `send`
+copies only the `String`'s pointer, length and capacity (its text stays
+where it was on the heap) and makes the sender give up ownership, so
+large values travel without copying and still cannot be shared by
+accident.
+
+<Run id="channel-build" />
+
+<Prompts ids={['chan-move', 'chan-drop', 'chan-mpsc', 'chan-vs-lock']} />
+
+## Your turn
+
+<Exercise id="gather" />
+
+## What you learned
+
+- A **`Mutex<T>`** lets one thread at a time use its `T`, through a
+  guard that unlocks when dropped; keep guards short.
+- **`Arc<T>`** gives spawned threads shared ownership with an atomic
+  count; `Arc<Mutex<T>>` is the classic pair, and scoped threads can
+  use `&Mutex<T>`.
+- A **channel** moves values from many senders to one receiver;
+  iteration ends when every sender is dropped.
+
+Next: letting a library split the work for you, with rayon.
+
+<Quiz />

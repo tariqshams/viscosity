@@ -1,4 +1,4 @@
-// New references for chapter 79 (Derivations, parse trees and ambiguity)
+// New references for chapter 61 (Derivations, parse trees and ambiguity)
 // and its staged second half (ambiguity and the Chomsky hierarchy).
 // Network note: in this session only web search and raw.githubusercontent.com
 // were reachable, not the publishers' pages; each checkedAgainst says what

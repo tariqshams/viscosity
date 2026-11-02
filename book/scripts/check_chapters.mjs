@@ -25,6 +25,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { ASSUMED, CONCEPTS, knownBefore } from '../src/data/concepts.js';
 import { OUTLINE } from '../src/data/outline/index.js';
+// Days count within a section (Prelude, Core, Deep dives), four chapters a day.
+const DAY_OF = (() => { const seen = {}; const out = {}; for (const c of OUTLINE) { const i = seen[c.section] ?? 0; seen[c.section] = i + 1; out[c.n] = Math.floor(i / 4) + 1; } return out; })();
 import { references, pending } from '../src/data/references.js';
 import { runWithTestsAsync } from '../src/lib/minitest.js';
 import { checkDripOutput } from '../src/lib/drip.js';
@@ -189,7 +191,7 @@ for (const folder of folders) {
   if (fm.n <= prevN) err(folder, `chapter number ${fm.n} is not after ${prevN}`);
   prevN = fm.n;
   if (Number(folder.slice(0, 3)) !== fm.n) err(folder, `folder number does not match n=${fm.n}`);
-  if (fm.day !== Math.ceil(fm.n / 4)) err(folder, `day ${fm.day} should be ${Math.ceil(fm.n / 4)}`);
+  if (fm.day !== DAY_OF[fm.n]) err(folder, `day ${fm.day} should be ${DAY_OF[fm.n]} (days count within a section)`);
   expectN++;
 
   // 2. concepts: introduces must match the outline; uses must be known.

@@ -1,9 +1,5 @@
-// Chapter 38 cards (conditional and template types). Keys are stable
-// ids: never rename them.
-//
-// The runner erases types without checking them, so exercises
-// (lang: 'ts') are tested on behaviour; the type-level ideas are in the
-// text, the prompts and the walkthroughs.
+// Chapter 38 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'cond-what': {
@@ -78,8 +74,7 @@ export const exercises = {
   omit: {
     lang: 'ts',
     title: 'Leave some keys out',
-    prompt:
-      'Write `omit(o, ks)` that **returns** a new object with every property of `o` except the keys listed in the array `ks`. The original object must not change. Its type is `omit<T, K extends keyof T>(o: T, ks: K[]): Omit<T, K>`.',
+    prompt: 'Write `omit(o, ks)` that **returns** a new object with every property of `o` except the keys listed in the array `ks`. The original object must not change. Its type is `omit<T, K extends keyof T>(o: T, ks: K[]): Omit<T, K>`.',
     starter: `function omit<T, K extends keyof T>(
   o: T,
   ks: K[],
@@ -164,8 +159,7 @@ test('the original is unchanged', () => {
     optional: true,
     lang: 'ts',
     title: 'Getters from keys',
-    prompt:
-      'Write `makeGetters(o)` that **returns** an object with one function per key of `o`: key `x` gives `getX`, key `vx` gives `getVx` (the first letter made upper case). Each function returns the **current** value of that property of `o`, read when it is called. Its type is `Getters<T>` from the chapter.',
+    prompt: 'Write `makeGetters(o)` that **returns** an object with one function per key of `o`: key `x` gives `getX`, key `vx` gives `getVx` (the first letter made upper case). Each function returns the **current** value of that property of `o`, read when it is called. Its type is `Getters<T>` from the chapter.',
     starter: `type Getters<T> = {
   [K in keyof T as K extends string
     ? \`get\${Capitalize<K>}\`
@@ -272,41 +266,91 @@ export const quiz = [
   {
     q: 'What is `IsStr<string | number>`, with `type IsStr<T> = T extends string ? \'yes\' : \'no\'`?',
     options: [
-      { t: '`\'no\'`', why: 'That would be the answer without distribution, with the union tested as a whole (as `[T] extends [string]` does).' },
-      { t: '`\'yes\' | \'no\'`', correct: true, why: 'It distributes: `string` gives `\'yes\'`, `number` gives `\'no\'`, joined into a union.' },
-      { t: '`\'yes\'`', why: '`number` is a member of the union too, and it does not fit `string`.' },
+      {
+        t: '`\'no\'`',
+        why: 'That would be the answer without distribution, with the union tested as a whole (as `[T] extends [string]` does).',
+      },
+      {
+        t: '`\'yes\' | \'no\'`',
+        correct: true,
+        why: 'It distributes: `string` gives `\'yes\'`, `number` gives `\'no\'`, joined into a union.',
+      },
+      {
+        t: '`\'yes\'`',
+        why: '`number` is a member of the union too, and it does not fit `string`.',
+      },
     ],
   },
   {
     q: 'What is `Exclude<\'a\' | \'b\' | \'c\', \'a\' | \'c\'>`?',
     options: [
-      { t: '`\'a\' | \'c\'`', why: 'That is `Extract`, which keeps the members that fit.' },
-      { t: '`never`', why: '`\'b\'` does not fit `\'a\' | \'c\'`, so it survives.' },
-      { t: '`\'b\'`', correct: true, why: '`\'a\'` and `\'c\'` fit and become `never`; only `\'b\'` is left.' },
+      {
+        t: '`\'a\' | \'c\'`',
+        why: 'That is `Extract`, which keeps the members that fit.',
+      },
+      {
+        t: '`never`',
+        why: '`\'b\'` does not fit `\'a\' | \'c\'`, so it survives.',
+      },
+      {
+        t: '`\'b\'`',
+        correct: true,
+        why: '`\'a\'` and `\'c\'` fit and become `never`; only `\'b\'` is left.',
+      },
     ],
   },
   {
     q: 'How many members does `` `${\'x\' | \'y\'}${\'1\' | \'2\' | \'3\'}` `` have?',
     options: [
-      { t: '6', correct: true, why: 'Every combination: 2 × 3, from `\'x1\'` to `\'y3\'`.' },
-      { t: '5', why: 'Template literal types multiply the choices, they do not add them.' },
-      { t: '2', why: 'Each union inside the pattern is expanded, not only the first.' },
+      {
+        t: '6',
+        correct: true,
+        why: 'Every combination: 2 × 3, from `\'x1\'` to `\'y3\'`.',
+      },
+      {
+        t: '5',
+        why: 'Template literal types multiply the choices, they do not add them.',
+      },
+      {
+        t: '2',
+        why: 'Each union inside the pattern is expanded, not only the first.',
+      },
     ],
   },
   {
     q: 'Which object fits `Pick<Particle, \'x\' | \'y\'>`, for `interface Particle { x: number; y: number; vx: number; vy: number }`?',
     options: [
-      { t: '`{ x: 1 }`', why: '`Pick` keeps the properties as they were, required, so `y` is missing.' },
-      { t: '`{ x: 1, y: 2 }`', correct: true, why: 'Exactly the two picked keys, each a number.' },
-      { t: '`{ x: 1, y: 2, vx: 3 }` (written directly as the value)', why: 'An object literal with an extra property is rejected: “\'vx\' does not exist in type \'Pick<Particle, "x" | "y">\'”.' },
+      {
+        t: '`{ x: 1 }`',
+        why: '`Pick` keeps the properties as they were, required, so `y` is missing.',
+      },
+      {
+        t: '`{ x: 1, y: 2 }`',
+        correct: true,
+        why: 'Exactly the two picked keys, each a number.',
+      },
+      {
+        t: '`{ x: 1, y: 2, vx: 3 }` (written directly as the value)',
+        why: 'An object literal with an extra property is rejected: “\'vx\' does not exist in type \'Pick<Particle, "x" | "y">\'”.',
+      },
     ],
   },
   {
     q: 'Why does the solution of `omit` label its working object `any`?',
     options: [
-      { t: 'Because `Omit` only works on `any`', why: '`Omit<T, K>` works on any object type; the signature uses it precisely.' },
-      { t: 'Because `delete` is not allowed in TypeScript', why: '`delete` is ordinary JavaScript and allowed; the issue is following a type through it.' },
-      { t: 'The checker cannot follow a type changing as properties are deleted, so the inside is left unchecked while the signature stays exact', correct: true, why: 'A small unchecked inside behind a precise signature is a common, honest pattern.' },
+      {
+        t: 'Because `Omit` only works on `any`',
+        why: '`Omit<T, K>` works on any object type; the signature uses it precisely.',
+      },
+      {
+        t: 'Because `delete` is not allowed in TypeScript',
+        why: '`delete` is ordinary JavaScript and allowed; the issue is following a type through it.',
+      },
+      {
+        t: 'The checker cannot follow a type changing as properties are deleted, so the inside is left unchecked while the signature stays exact',
+        correct: true,
+        why: 'A small unchecked inside behind a precise signature is a common, honest pattern.',
+      },
     ],
   },
 ];

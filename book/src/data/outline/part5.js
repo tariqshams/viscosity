@@ -1,70 +1,79 @@
 export default {
-  id: 'V', track: 'A', days: '41–46', title: 'Inside real JavaScript engines',
-  blurb: 'V8’s tiers, shapes and inline caches, elements kinds, speculation and deoptimization, garbage collection, other engines, and the columnar-array research.',
+  id: 'V', section: 'core', days: '10–13', title: 'Core 4: compiler essentials for Viscosity',
+  blurb: 'What real engines do with objects, then the compiler ideas Viscosity is built on: IR and control-flow graphs, SSA, dominators and loops, dataflow, inlining, alias and escape analysis, and testing compilers.',
   chapters: [
-    { n: 164, title: 'The V8 pipeline', introduces: {
-      tiering: 'running code in faster tiers as it gets hot',
-      'jit-compiler': 'compiling while the program runs',
-    } },
-    { n: 165, title: 'Ignition and the tiers above it', introduces: {
-      ignition: 'V8’s bytecode interpreter',
-      'optimizing-tiers': 'Sparkplug, Maglev and TurboFan',
-    } },
-    { n: 166, title: 'Parsing JavaScript for real', introduces: {
-      'lazy-parsing': 'pre-parsing function bodies until they are called',
-    } },
-    { n: 167, title: 'Bytecode caches', introduces: {
-      'bytecode-cache': 'reusing compiled bytecode',
-    } },
-    { n: 168, title: 'Shapes in depth', introduces: {
+    { n: 87, title: 'Shapes, inline caches and elements kinds', introduces: {
       shape: 'a hidden class describing an object’s layout',
       'transition-tree': 'the tree of shapes created as properties are added',
-    } },
-    { n: 169, title: 'Slack tracking and dictionary mode', introduces: {
-      'dictionary-mode': 'objects that fall back to a hash table',
-    } },
-    { n: 170, title: 'Inline caches', introduces: {
       'inline-cache': 'remembering the shape seen at a property access',
       monomorphic: 'one shape seen',
-    } },
-    { n: 171, title: 'Polymorphic and megamorphic sites', introduces: {
       polymorphic: 'a few shapes seen',
       megamorphic: 'too many shapes: slow path',
-    } },
-    { n: 172, title: 'Elements kinds', introduces: {
       'elements-kind': 'how V8 stores an array’s elements: SMI, DOUBLE or ELEMENTS',
     } },
-    { n: 173, title: 'Holey arrays', introduces: {
-      'holey-array': 'arrays with missing slots',
-    } },
-    { n: 174, title: 'Speculation and deoptimization', introduces: {
+    { n: 88, title: 'Tiers, speculation and deoptimisation', introduces: {
+      tiering: 'running code in faster tiers as it gets hot',
+      'jit-compiler': 'compiling while the program runs',
+      ignition: 'V8’s bytecode interpreter',
+      'optimizing-tiers': 'Sparkplug, Maglev and TurboFan',
       'type-feedback': 'the types observed while running',
       speculation: 'optimizing for what was seen so far',
-    } },
-    { n: 175, title: 'Deoptimization', introduces: {
       deoptimization: 'bailing back to the interpreter when a guess fails',
-    } },
-    { n: 176, title: 'Escape analysis in V8', introduces: { 'allocation-sinking': 'removing allocations that never escape', 'scalar-replacement': 'replacing an object with its fields as local values' } },
-    { n: 177, title: 'V8’s garbage collector', introduces: {
-      scavenger: 'the young-generation copying collector',
-    } },
-    { n: 178, title: 'Mark-compact and the write barrier', introduces: {
-      'mark-compact': 'old-generation collection with compaction',
-      'write-barrier': 'bookkeeping when old objects point at young ones',
-    } },
-    { n: 179, title: 'JavaScriptCore and SpiderMonkey', introduces: { 'engine-diversity': 'why the same code is fast in one engine and slower in another' } },
-    { n: 180, title: 'GraalJS and Truffle', introduces: {
-      'self-optimizing-ast': 'AST nodes that rewrite themselves',
-    } },
-    { n: 181, title: 'Partial evaluation: compiling by specializing an interpreter', introduces: {
-      'partial-evaluation': 'specializing an interpreter for one program',
-    } },
-    { n: 182, title: 'Columnar arrays at run time: the research', introduces: { 'columnar-storage': 'storing a field’s values together, like SoA', 'run-time-transformation': 'changing layout while the program runs' } },
-    { n: 183, title: 'Watching the engine work', introduces: {
       'engine-tracing': 'flags like --trace-opt and --trace-deopt',
     } },
-    { n: 184, title: 'Looking inside objects with natives syntax', introduces: {
-      'natives-syntax': '%DebugPrint and friends',
+    { n: 89, title: 'IR, three-address code and control-flow graphs', introduces: {
+      ir: 'intermediate representation: the compiler’s working form of a program',
+      lowering: 'translating to a lower-level form',
+      'three-address-code': 'instructions like t1 = a + b',
+      temporary: 'a compiler-made variable',
+      'basic-block': 'straight-line code with one entry and one exit',
+      cfg: 'control-flow graph: blocks joined by edges',
+    } },
+    { n: 90, title: 'SSA and phi nodes, built on the fly', introduces: {
+      ssa: 'static single assignment: each variable assigned once',
+      'phi-node': 'choosing a value by which edge was taken',
+      'on-the-fly-ssa': 'building SSA while lowering, asking predecessors for values (Braun et al.)',
+    } },
+    { n: 91, title: 'Dominators and natural loops', introduces: {
+      dominator: 'a block every path to another block must pass through',
+      'dominator-tree': 'the tree of immediate dominators',
+      'natural-loop': 'a loop found from a back edge in the CFG',
+    } },
+    { n: 92, title: 'Dataflow, fixpoints and constant propagation', introduces: {
+      dataflow: 'computing facts that flow along CFG edges',
+      lattice: 'an ordering of facts used to merge them',
+      fixpoint: 'iterating until nothing changes',
+      worklist: 'the queue of blocks still to process',
+      'monotone-framework': 'dataflow as monotone functions on a lattice',
+      'constant-folding': 'computing constant expressions at compile time',
+      'constant-propagation': 'replacing variables known to be constant',
+    } },
+    { n: 93, title: 'Induction variables, the call graph and inlining', introduces: {
+      'induction-variable': 'a variable that steps regularly, like i',
+      'loop-invariant': 'a value that doesn’t change inside a loop',
+      'call-graph': 'which functions call which',
+      inlining: 'replacing a call with the callee’s body',
+    } },
+    { n: 94, title: 'Alias analysis and points-to', introduces: {
+      'alias-analysis': 'deciding which references may point at the same object',
+      'points-to': 'the set of objects a reference may point at',
+    } },
+    { n: 95, title: 'Escape analysis across functions', introduces: {
+      'interprocedural-analysis': 'analysis across function boundaries',
+      'context-sensitivity': 'analysing a function separately for each kind of caller',
+      'function-summary': 'what a function does, recorded once and reused',
+      'datalog-analysis': 'program analyses written as logic rules',
+      'escape-analysis': 'deciding whether a reference can leave a region of code',
+      'allocation-sinking': 'removing allocations that never escape',
+      'scalar-replacement': 'replacing an object with its fields as local values',
+    } },
+    { n: 96, title: 'Escape sites: how Viscosity proves a rewrite safe', introduces: {
+      'escape-sites': 'the places a value can escape: stores, calls, returns',
+    } },
+    { n: 97, title: 'Testing compilers: differential, round-trip, fuzzing and shrinking', introduces: {
+      'differential-testing': 'comparing two implementations on many inputs',
+      'round-trip-testing': 'parse → print → parse gives the same tree',
+      fuzzing: 'generating random programs to find bugs',
     } },
   ],
 };

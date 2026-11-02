@@ -1,0 +1,494 @@
+---
+n: 204
+day: 10
+part: XII
+title: 'Dominance frontiers and classic SSA construction'
+tagline: 'Dominator sets nest inside each other like addresses, so a compiler never needs to store them: one parent per block, a tree, says it all. And the edge of each block’s territory, its dominance frontier, is where Building SSA will put its phis.'
+objectives:
+  - Find immediate dominators and draw the dominator tree.
+  - Read Viscosity’s dominators function, which stores only the tree, and trace its two-finger intersect.
+  - Define the dominance frontier of a block and compute it by walking up the tree from each join.
+  - Write the dominance-frontier computation in JavaScript.
+  - Explain why a variable needs a phi exactly at the iterated dominance frontier of the blocks that assign it.
+  - Place phis with the worklist algorithm, and say why a new phi is itself an assignment.
+  - Rename a whole CFG by walking the dominator tree with a stack of versions per variable.
+  - Write the phi-placement algorithm in JavaScript.
+introduces: [ssa-construction]
+uses: [dominator, cfg, basic-block, ir, tree, recursion, set, map, array, while-loop, for-of, function, arrow-function, index, ssa, phi-node, dominator-tree, lowering, three-address-code, compiler]
+sources: [coopertorczon2022, cytron1991, llvm-passes]
+---
+import DomTree from '../../../components/diagrams/ch204/DomTree';
+import FingerSteps from '../../../components/diagrams/ch204/FingerSteps';
+import Frontier from '../../../components/diagrams/ch204/Frontier';
+import PlaceSteps from '../../../components/diagrams/ch204/PlaceSteps';
+import RenameStackSteps from '../../../components/diagrams/ch204/RenameStackSteps';
+
+{/* ── merge: from old chapter 91 (remnant: keep only what goes beyond the core), The dominator tree ── */}
+
+## Sets inside sets
+
+At the end of Dominators we had a set for every block of the Collatz
+loop, and they look suspiciously alike:
+
+```text
+Dom(b2) = {0, 1, 2}
+Dom(b7) = {0, 1, 2, 7}
+Dom(b3) = {0, 1, 2, 7, 3}
+```
+
+Each set is the one before it with one block added. That is no
+accident: if A and C both strictly dominate B, then one of them
+dominates the other (a short argument about paths shows it, which we
+will take on trust here). So the strict dominators of a block form a single chain,
+and you never need to store whole sets. For each block, keep only its
+nearest strict dominator, and the rest follow by walking upwards.
+
+<Analogy title="a postal address">
+"Flat 3, 12 Mill Lane, Leeds, England": each part sits inside the next,
+and to deliver a letter to the flat you must pass through every larger
+part. The post office does not store, for each flat, the list of every
+place that contains it; it only needs "this flat is in that building",
+"that building is on that street", and so on up.
+<span slot="breaks">Addresses are drawn up by people and change rarely;
+the dominator tree follows from the shape of the graph, and adding one
+edge (a new road into town) can move a block to a different parent.</span>
+</Analogy>
+
+<Analogy extra title="a chain of command">
+In a company, everyone has one direct manager, and your manager's
+manager is also above you; to list everyone above you, start with your
+manager and keep asking "and who is above them?".
+<span slot="breaks">A manager is above you because someone decided so;
+a block dominates another only because of the paths in the graph, and
+"being above" here means "every route to you passes them first", not
+that they give any orders.</span>
+</Analogy>
+
+<Callout kind="definition">
+The **immediate dominator** of B, idom(B), is the strict dominator of B
+that is closest to B: the one that every other strict dominator of B
+also dominates. Every reachable block except the entry has exactly one.
+Drawing an edge from idom(B) to B for every B gives the **dominator
+tree**, rooted at the entry. A dominates B exactly when A is B or an
+ancestor of B in this tree.
+</Callout>
+
+<Formal title="The immediate dominator">
+
+```text
+idom(B) = the D with  D sdom B  and
+  (A sdom B  ⟹  A dom D)
+```
+
+<span slot="read">The immediate dominator of B is the block D that
+strictly dominates B and is dominated by every other strict dominator A
+of B; the arrow ⟹ reads "implies", so the bracket says "whenever A
+strictly dominates B, A also dominates D". In other words, D is the
+lowest link of B's chain of strict dominators.</span>
+</Formal>
+
+<Figure takeaway="A block’s dominators are its ancestors in the tree." caption="The dominator tree of the Collatz CFG. b7, the join, is a child of b2, not of b5 or b6, since either branch can be skipped. b3, the jump back to the loop test, hangs below b7; its edge b3 → b1 in the CFG goes to one of its own ancestors.">
+  <DomTree />
+</Figure>
+
+<Examples of="dominator-tree">
+
+```text
+chain   b0 → b1 → b2
+tree    b0 ─ b1 ─ b2
+```
+
+```text
+diamond  b0 → b1, b2 → b3
+tree     b0 ─ b1, b0 ─ b2, b0 ─ b3
+```
+
+```text
+idom: 1→0  2→1  4→1  5→2
+      6→2  7→2  3→7
+```
+
+</Examples>
+
+The first is the simplest: in a straight chain each block's only strict
+dominators are the blocks above it, the nearest is the one just before
+it, and the tree is the chain itself. The second is the `if`/`else`
+diamond: b1 and b2 each have b0 as their nearest strict dominator, and
+so does the join b3, because neither branch dominates it; so the tree is
+flat, with three children under the entry, even though the CFG has
+depth. That is the lesson of this example: the tree and the graph can
+have quite different shapes. The third is the real Collatz tree as
+Viscosity's `dominators` returns it, a map from each block to its
+parent, which is the picture above written as text.
+
+<Prompts ids={['idom-what', 'tree-ancestor', 'sets-nest']} />
+
+## Viscosity's version stores only the tree
+
+`dominators` in `packages/core/src/cfg.ts` computes the immediate
+dominators directly, as a `Map` from each block to its idom, without
+ever building a set (the comment at the top of the file credits the
+method to Cooper, Harvey and Kennedy's "A Simple, Fast Dominance
+Algorithm"). Trimmed:
+
+```ts
+const intersect = (a, b) => {
+  while (a !== b) {
+    while (index.get(a) > index.get(b))
+      a = idom.get(a);
+    while (index.get(b) > index.get(a))
+      b = idom.get(b);
+  }
+  return a;
+};
+// until nothing changes, for each block
+// b in reverse postorder (not the entry):
+let d = preds[0];
+for (const p of preds.slice(1))
+  d = intersect(p, d);
+if (idom.get(b) !== d) {
+  idom.set(b, d); changed = true;
+}
+```
+
+It is the dominator equation from the last chapter, done on the tree.
+`index` gives each block's position in reverse postorder, and a block's
+idom always comes earlier in that order than the block itself; so
+`intersect` puts a finger on each of two blocks and keeps moving
+whichever finger is later in the order up to its idom, until the
+fingers meet. Where they meet is the nearest block that dominates both,
+which is the tree's version of "intersect the two sets". The loop
+below it does that for all of a block's predecessors (in the real code
+`preds` holds only predecessors that already have an idom, which also
+means unreachable blocks never get one). Step through it:
+
+<FingerSteps client:visible />
+
+Here is the same algorithm as plain JavaScript on the Collatz graph; it
+prints each block's idom and the number of passes, two (one to build
+the tree and one to confirm it):
+
+<Run id="rpo" />
+
+Asking "does A dominate B?" is then a walk up the tree from B:
+
+```ts
+function dominates(idom, a, b) {
+  if (!idom.has(b)) return false;
+  for (let x = b; ; x = idom.get(x)) {
+    if (x === a) return true;
+    if (idom.get(x) === x) return false;
+  }
+}
+```
+
+An unreachable `b` has no idom, so nothing dominates it. Otherwise the
+loop climbs from `b` towards the root, answering yes if it meets `a`;
+the entry is its own idom, which is how the walk knows it has reached
+the root without finding `a`. Viscosity's `naturalLoops` uses exactly
+this to find loops: an edge t → h where h dominates t is a **back
+edge**, because you can only jump back to a block you must already have
+passed, and h is a loop header. For the Collatz loop it finds b3 → b1.
+
+<Prompts ids={['intersect-fingers', 'unreachable-none', 'back-edge']} />
+
+## Where a block's territory ends
+
+The blocks a block dominates form its subtree, its territory. Building
+SSA will need to know where that territory *ends*: the first
+blocks you can step into from inside it that it does not own outright.
+
+<Figure takeaway="DF(B) is where B’s territory meets the rest of the graph." caption="b2 dominates the shaded blocks. The edge b3 → b1 leaves the region, landing on a block b2 does not strictly dominate, so DF(b2) = {b1}.">
+  <Frontier />
+</Figure>
+
+<Callout kind="definition">
+The **dominance frontier** of a block X, DF(X), is the set of blocks Y
+such that X dominates a predecessor of Y but does not strictly dominate
+Y itself<Cite id="cytron1991" />. They are the joins where a path that
+has passed through X meets a path that may not have.
+</Callout>
+
+<Formal title="The dominance frontier">
+
+```text
+DF(X) = { Y : X dom P for some
+          P ∈ pred(Y),
+          and not X sdom Y }
+```
+
+<span slot="read">The dominance frontier of X is the set of blocks Y for
+which some predecessor P of Y is dominated by X, while X does not
+strictly dominate Y. Y may be X itself: a loop header that dominates
+the end of its own loop is in its own frontier.</span>
+</Formal>
+
+For the Collatz loop: DF(b5) = DF(b6) = \{b7\}, because each branch
+dominates itself, a predecessor of the join, but not the join. DF(b2),
+DF(b7) and DF(b3) are all \{b1\}, since each dominates b3, the source of
+the back edge. DF(b1) = \{b1\}: the loop header dominates b3, which leads
+back to b1, and nothing strictly dominates itself. The entry and the
+exit have empty frontiers.
+
+Computing the frontiers is short once you have the tree. A block Y with
+two or more predecessors is where frontiers can end; for each
+predecessor P of Y, climb the tree from P, adding Y to the frontier of
+every block you pass, and stop when you reach idom(Y). Every block on
+that climb dominates P (it is P or above P), and none of them strictly
+dominates Y, because Y's strict dominators are idom(Y) and the blocks
+above it. Cytron and colleagues, who introduced dominance frontiers,
+compute them a different way, bottom-up over the
+tree<Cite id="cytron1991" />, but both give the same sets.
+
+<Prompts ids={['df-what', 'df-self']} />
+
+<Callout kind="engine" label="Under the hood">
+The dominator tree is the standard way compilers store dominance, and
+dominance frontiers are how the classic SSA construction decides where
+values from different paths must be merged<Cite id="coopertorczon2022" />.
+That is the job of Building SSA, three chapters on, which places its
+phis exactly at these frontiers.
+</Callout>
+
+## Your turn
+
+<Exercise id="frontiers" />
+
+<Exercise id="idoms" />
+
+## What you learned
+
+- The strict dominators of a block form a chain, so each block needs
+  only its **immediate dominator**; joining each block to its idom gives
+  the **dominator tree**, and a block's dominators are its ancestors.
+- Viscosity stores only `idom`, intersecting by walking two fingers up
+  the tree in reverse postorder; `dominates` walks up from B, and
+  `naturalLoops` uses it to find back edges.
+- The **dominance frontier** DF(X) holds the blocks just outside X's
+  territory: X dominates one of their predecessors but not them. Climb
+  from each predecessor of a join to the join's idom to compute it.
+
+Next: SSA form, where every value has exactly one definition.
+
+
+{/* ── merge: from old chapter 204, Building SSA ── */}
+
+## From a finished CFG to SSA
+
+In SSA form you renamed straight-line code by hand, and in Phi nodes you
+saw where versions meet. Now we want a compiler to do the whole job for
+any function: take a finished CFG in which variables are assigned many
+times, and produce SSA. The easy answer ("put a phi for every variable
+at every join") works, but it fills the program with phis that choose
+between identical values, and every later pass would have to wade
+through them. The classic algorithm, from Cytron, Ferrante, Rosen,
+Wegman and Zadeck in 1991<Cite id="cytron1991" />, puts phis only where
+they are needed, and it does it in two steps: **place** the phis, then
+**rename** every assignment and use.
+
+## Where phis are needed
+
+A variable `v` needs a phi at a block exactly when two different
+assignments of `v` can reach that block along different paths. Think
+of the blocks that assign `v`, and of each one's territory, the blocks
+it dominates: inside the territory, its version is the only one that
+can arrive. Its version first has to compete with another at the
+blocks just outside the territory, which is its dominance frontier.
+
+<Analogy title="border towns">
+Each assignment rules a territory, and inside it everyone uses its
+coins. Travellers from the territory only meet travellers carrying other
+coins at the border towns just outside, so those are the only places
+that need a money changer (the phi).
+<span slot="breaks">A money changer is a lasting business; once a phi
+is placed it counts as a new assignment with a territory of its own, so
+it can make further border towns need changers, which is why the
+placement is repeated until nothing new appears.</span>
+</Analogy>
+
+<Analogy extra title="ripples in a pond">
+Drop a stone where `v` is assigned and its ripple spreads outward;
+where two ripples from different stones meet, the water is mixed, and
+that line is where a phi goes.
+<span slot="breaks">Ripples spread in every direction and fade with
+distance; a version spreads only forwards along edges, never fades, and
+the "meeting line" is exactly the dominance frontier, not wherever
+the waves happen to be strongest.</span>
+</Analogy>
+
+Because a phi is itself an assignment of `v`, placing one can make
+another necessary, at the phi's own frontier. So the set of blocks is
+the frontier of the assigning blocks, plus the frontier of those
+frontiers, and so on until nothing new is added: the **iterated
+dominance frontier**.
+
+<Formal title="The iterated dominance frontier">
+
+```text
+DF(S)     = ⋃ DF(X), X ∈ S
+DF₁       = DF(S)
+DFᵢ₊₁     = DF(S ∪ DFᵢ)
+phis(v)   = DF⁺(defs(v)), the limit
+```
+
+<span slot="read">For a set of blocks S, DF(S) is all their frontiers
+put together (⋃ reads "the union over"). Start with DF₁, the frontier
+of S; then repeatedly take the frontier of S together with what you have
+so far. The sets only grow, so they stop changing; the final set is
+DF⁺(S). The blocks that need a phi for v are DF⁺ of the blocks that
+assign v<Cite id="cytron1991" />.</span>
+</Formal>
+
+The paper computes DF⁺ with a worklist: put every block that assigns
+`v` on a list; take blocks off one at a time; give each block in its
+frontier a phi for `v` (once), and since a phi is an assignment, put
+that block on the list too, if it has never been there. Step through
+it for `n` in the Collatz loop:
+
+<PlaceSteps client:visible />
+
+<Callout kind="definition">
+**SSA construction** turns a program whose variables are assigned many
+times into SSA form. The classic method (Cytron et al.) works on a
+finished CFG in two steps: it **places** a phi for each variable `v` at
+every block of the iterated dominance frontier of the blocks that
+assign `v`, then **renames** by walking the dominator tree with a stack
+of versions per variable, so that every assignment and every phi defines
+a new name and every use reads the version on top of its stack.
+</Callout>
+
+<Prompts ids={['frontier', 'phi-is-def', 'iterate-why']} />
+
+## Placement, three ways
+
+<Examples of="ssa-construction">
+
+```text
+x assigned in b0 only
+DF(b0) = {}   →  no phis
+```
+
+```text
+diamond b0 → b1, b2 → b3
+x assigned in b0 and b1
+DF(b1) = {b3}  →  phi at b3
+```
+
+```text
+n assigned in b0, b5, b6
+DF⁺ = {b7, b1}  →  phis at b7, b1
+```
+
+</Examples>
+
+The first is the simplest: a variable assigned once, in the entry,
+needs no phi anywhere, because the entry dominates every block and its
+frontier is empty. The second is the varied one, and the one that
+surprises people: `x` is assigned before the `if` and again only in the
+*left* branch, yet the join b3 still needs a phi, `x3 = φ(x2, x1)`,
+because the right-hand path brings the old value; DF(b1) = \{b3\} finds
+it. (This is why the paper treats the entry as assigning every variable:
+there is always an "old value" to meet.) The third is the realistic one
+you stepped through: the worklist found b7 from the branches and then
+b1 from b7's phi, which is exactly where Viscosity's VIR has its two
+phis for `n`, `%12` and `%1`.
+
+<Prompts ids={['one-branch-phi']} />
+
+## Renaming with a stack
+
+With the phis placed, every assignment (phis included) gets a fresh
+version and every use must read the right one. In straight-line code a
+table of "latest versions" was enough; with branches, the latest version
+depends on where you are. The trick is to walk the **dominator tree**,
+because the versions that can reach a block are exactly those made in
+it and in its ancestors in the tree.
+
+<Analogy extra title="sticky notes in a house tour">
+Touring a house room by room, you stick a note on a board each time
+something is renamed in a room, and peel that room's notes off as you
+leave it; the note on top always says what the name means where you are
+standing.
+<span slot="breaks">A house tour walks the corridors; the renaming
+walks the dominator tree, which can jump from a room to one it is not
+directly connected to, because "dominates" is not the same as "is next
+to".</span>
+</Analogy>
+
+Keep one stack per variable, starting with version 0 (the value on
+entry). In each block, in order: a phi or assignment of `v` pushes a new
+version; a use of `v` reads the top. Then, for each CFG successor that
+has a phi for `v`, fill in the operand that belongs to this block with
+the top of the stack. Then visit this block's children in the dominator
+tree, and on the way out pop every version this block pushed. Step
+through it:
+
+<RenameStackSteps client:visible />
+
+The result matches VIR: `n1 = φ(n0, n4)` at the loop head and
+`n4 = φ(n2, n3)` at the join, `%1 = phi %0, %12` and
+`%12 = phi %9, %11` with different numbers. Notice two things the
+stack gets right without any extra work. b6 reads `n1`, not b5's `n2`,
+because b5's push was popped before the walk moved to its sibling. And
+the back edge from b3 fills b1's phi with `n4`, because b3 sits under b7
+in the tree, so `n4` is on top when the walk is in b3.
+
+Here is the walk as a program, for the one-branch diamond from the
+examples, where `x` is assigned in b0 and again only in the left branch
+b1:
+
+<Run id="rename-diamond" />
+
+`search` processes a block's code (a `def` or `phi` pushes the next
+version; a `use` reads the top), fills b3's phi operand if this block
+leads to b3, visits the block's children in the dominator tree (b0's
+children are b1, b2 and b3, since b0 is the nearest dominator of all
+three), and finally pops what it pushed. It prints `b1: use x1, def x2`,
+an empty b2, `b3: phi x3, use x3`, and the phi operands `[ 'x2', 'x1' ]`:
+the right-hand path really does bring the old `x1`.
+
+<Prompts ids={['stack-why', 'tree-walk', 'pop-why']} />
+
+<Callout kind="pitfall">
+Cytron's placement is *minimal*, not perfect: it puts a phi wherever two
+versions meet, even if nothing reads the variable after the join. Such a
+phi is harmless but useless, and later passes delete it. LLVM's
+`mem2reg` places phis "using dominator frontiers" and then rewrites
+loads and stores "in depth-first order", which it calls "the standard
+SSA construction algorithm", building the "pruned" form that leaves
+those useless phis out<Cite id="llvm-passes" />.
+</Callout>
+
+<Prompts ids={['pruned']} />
+
+<Callout kind="engine" label="Under the hood">
+This two-step method is the one compiler textbooks
+teach<Cite id="coopertorczon2022" />, and LLVM uses it for the local
+variables it can lift out of memory<Cite id="llvm-passes" />.
+It needs the whole CFG, the dominator tree and the frontiers before it
+starts. Viscosity's builder does not have those while it is still
+lowering, so it uses a different method that builds SSA as it goes;
+that is the next chapter.
+</Callout>
+
+## Your turn
+
+<Exercise id="place-phis" />
+
+<Exercise id="rename" />
+
+## What you learned
+
+- A variable needs a phi where two of its versions can meet: at the
+  **dominance frontier** of the blocks that assign it.
+- A phi is an assignment too, so the frontier is **iterated** until
+  nothing new appears; a worklist computes DF⁺.
+- **Renaming** walks the dominator tree with a stack of versions per
+  variable: push on assignment, read the top on use, fill successors'
+  phi operands, pop on the way out.
+- Placement plus renaming is **SSA construction** in the classic style
+  of Cytron et al.; LLVM's `mem2reg` builds a pruned version of it.
+
+Next: building SSA while the IR is still being made, the way VIR does.
+
+<Quiz />

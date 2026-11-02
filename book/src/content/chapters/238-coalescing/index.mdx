@@ -1,0 +1,219 @@
+---
+n: 238
+day: 18
+part: XIII
+title: 'Coalescing'
+tagline: 'Leaving SSA filled sumsq with copies, and colouring removed them only by luck. Coalescing removes them on purpose, by merging the two ends of a copy into one node; done greedily it can ruin a colouring, so this chapter learns the two cautious tests that real allocators use.'
+objectives:
+  - Explain how merging the source and destination of a copy makes the copy disappear.
+  - Show how merging every copy (aggressive coalescing) can turn a colourable graph into one that needs a spill.
+  - Apply the Briggs and George tests to decide whether a merge is safe.
+  - Write both tests in JavaScript and use them to coalesce sumsq's copies.
+introduces: [coalescing]
+uses: [register-allocation, graph-coloring, simplify-select, interference-graph, live-range, ssa-destruction, parallel-copy, register, risc-v, assembly-language, set, map, array, object, for-of, function, test]
+sources: [chaitin1982, briggs1994, georgeappel1996, boissinot2009]
+---
+import CoalesceSteps from '../../../components/diagrams/ch238/CoalesceSteps';
+import AggressiveFigure from '../../../components/diagrams/ch238/AggressiveFigure';
+
+## Copies, by luck or on purpose
+
+When simplify and select coloured `sumsq` with four registers, `s0`,
+`s1` and `s2` all happened to get the same register, and so did the
+three versions of `i`; every `mv` became a copy of a register to
+itself, which the back end simply deletes. Change the order in which
+nodes are picked, and `s2` could as easily get a different register
+from `s1`, leaving `mv s1, s2` in the loop body, one wasted
+instruction on every trip. Leaving SSA creates a great many copies
+(LLVM's phi elimination made six for `sumsq`), so the allocator
+should not leave them to chance.
+
+Recall the copy rule of the interference graph: a copy does not make
+its source and destination interfere. So, unless something else
+joins them, the two ends of a copy have no edge between them, and we
+could decide in advance that they *will* share a register, by merging
+the two nodes into one. The merged node interferes with everything
+either of them interfered with, and the copy, now from a register to
+itself, disappears. That is **coalescing**.
+
+<Analogy title="one jar instead of two">
+A kitchen has a jar of "flour" and a jar of "flour for the cake", and
+you keep pouring from one into the other. If the two are never needed
+separately at the same time, keep one jar, and the pouring stops.
+<span slot="breaks">The single jar now has to fit in every place
+either jar used to: whatever was in the way of either one is in the
+way of the merged one, so a merged node has more neighbours, which is
+exactly what can make the graph harder to colour.</span>
+</Analogy>
+
+<Analogy extra title="staying on the same train">
+Changing trains at a junction costs time. If one train could run both
+legs of your journey, you would stay in your seat and the change
+would disappear.
+<span slot="breaks">A train that runs both legs must keep to both
+timetables, so it may clash with more trains than either did alone;
+and, unlike a traveller, the compiler decides before anything runs,
+for every possible journey at once.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Coalescing** merges the source and destination of a copy, two
+values that do not interfere, into a single node of the interference
+graph, whose neighbours are the neighbours of both. Both values then
+get the same register, and the copy between them is deleted.
+</Callout>
+
+<Prompts ids={['coalesce-what', 'why-possible', 'merged-neighbours']} />
+
+## Too much of a good thing
+
+Chaitin's allocator coalesced every copy it could, as long as the two
+ends did not interfere<Cite id="chaitin1982" />, which is now called
+**aggressive** coalescing. The trouble is the breaks note above: the
+merged node has the neighbours of both, and a node with many
+neighbours is hard to colour. Here two values joined by a copy are
+each easy to colour with two registers, but merged, they are not:
+
+<Figure takeaway="Merging can turn two easy nodes into one hard one." caption="Left: with k = 2, the graph colours (a and b get different registers, so the copy stays). Right: merging a and b makes ab a neighbour of both x and y, which are neighbours of each other: a triangle, which two registers cannot colour. Removing one copy would cost a spill.">
+  <AggressiveFigure />
+</Figure>
+
+A copy costs one cheap instruction; a spill costs loads and stores,
+perhaps inside a loop. So we want **conservative** coalescing: merge
+only when we can be sure the merge cannot make the graph harder to
+colour by simplify and select.
+
+## Two cautious tests
+
+Both tests come from the same thought as simplify. A neighbour with
+fewer than k neighbours of its own (a neighbour of *insignificant
+degree*) will be removed by simplify anyway, so it can never be what
+blocks a colouring. Only neighbours of degree k or more (*significant
+degree*) are a threat.
+
+The **Briggs test**: merge `a` and `b` only if the merged node would
+have fewer than k neighbours of significant degree. Then, once
+simplify has removed all the insignificant neighbours, the merged
+node itself has fewer than k neighbours left and is removable too, so
+the merge cannot cause a spill. (The test comes from the work of
+Briggs, Cooper and Torczon<Cite id="briggs1994" />; George and Appel
+gave it the name it has<Cite id="georgeappel1996" />.)
+
+The **George test**, from George and Appel: merge `a` into `b` if
+every neighbour of `a` either already interferes with `b`, or has
+insignificant degree. The merged node's only new neighbours then are
+ones simplify would remove anyway<Cite id="georgeappel1996" />. It is
+one-sided (it looks only at the neighbours of `a`), which makes it
+useful when `b` has a great many neighbours, such as a register fixed
+by the calling convention.
+
+<Formal title="The two conservative tests">
+
+```text
+Briggs(a, b):
+  |{ t ∈ adj(a) ∪ adj(b) :
+       deg(t) ≥ k }|  <  k
+George(a → b):
+  ∀ t ∈ adj(a):
+       t ∈ adj(b)  ∨  deg(t) < k
+```
+
+<span slot="read">The Briggs test counts the neighbours t of a or b
+whose degree (in the merged graph) is at least k, and allows the merge
+if there are fewer than k of them. The George test allows merging a
+into b if, for every neighbour t of a, either t is already a neighbour
+of b, or t has fewer than k neighbours. (∀ reads "for every", ∨ reads
+"or".)</span>
+</Formal>
+
+One detail in the Briggs count: a neighbour of *both* `a` and `b`
+loses one neighbour when they merge (two edges become one), so its
+degree must be counted after the merge. Step through `sumsq`'s four
+copies with k = 4:
+
+<CoalesceSteps client:visible />
+
+<Prompts ids={['aggressive-risk', 'insignificant', 'briggs-test', 'george-test']} />
+
+<Examples of="coalescing">
+
+```text
+b = a + 1
+mv c, b       ; b and c do not interfere
+use c
+→ merge b, c: c = a + 1, no mv
+```
+
+```text
+k = 2: a–x, b–y, x–y, copy a → b
+Briggs: x and y would have degree 2
+  2 significant, not < 2: keep
+```
+
+```text
+llc -O2, sumsq after its coalescer:
+  %7:gpr = MUL %9:gpr, %9:gpr
+  %8:gpr = ADD %8:gpr, %7:gpr
+  %9:gpr = ADDI %9:gpr, 1
+```
+
+</Examples>
+
+The first is the simplest case: `b` dies at the copy, so `b` and `c`
+are a copy pair with no edge, and merging them writes `a + 1` straight
+into `c`. The second is the figure's trap, caught: the Briggs test
+sees two significant neighbours and refuses. The third is real: LLVM's
+loop body for `sumsq` after its register coalescer has run (its slot
+numbers left out). The four copies that were in the loop are gone
+(the two at the entry have become copies of the zero register, an
+`li 0` in disguise); `%8` is `s` and `%9` is `i`, each one register, both read and
+written in place, which is the loop of mul, add and addi you saw at
+the start of the part. Here is the Briggs test coalescing `sumsq` in
+JavaScript:
+
+<Run id="coalesce" />
+
+<Prompts ids={['george-one-sided']} />
+
+## Coalescing inside the allocator
+
+George and Appel's **iterated register coalescing** puts the tests
+inside the simplify loop rather than before it: simplify removes
+nodes that are not part of any copy first, which lowers degrees, so
+that more merges pass the conservative tests; it coalesces whenever a
+test passes; and when neither can make progress, it **freezes** a copy
+(gives up on merging it, so its nodes can be simplified like any
+other) before it ever considers a spill<Cite id="georgeappel1996" />.
+The same idea, correctness from copies and quality from coalescing,
+is the second half of the out-of-SSA recipe in the leaving-SSA
+chapter<Cite id="boissinot2009" />.
+
+<Callout kind="engine" label="Under the hood">
+The LLVM listing above comes from `llc -O2 -print-after=register-coalescer`
+on the same `sumsq` as before: LLVM runs a dedicated coalescing pass
+between phi elimination and register allocation, and the four copies
+of the loop are gone by the time its allocator starts. Viscosity has
+no copies to coalesce, since it never leaves SSA and allocates no
+registers.
+</Callout>
+
+## Your turn
+
+<Exercise id="tests" />
+
+## What you learned
+
+- **Coalescing** merges the two ends of a copy that do not interfere
+  into one node, so they share a register and the copy disappears.
+- **Aggressive** coalescing merges every such pair, and can turn a
+  colourable graph into one that needs a spill, because the merged
+  node has the neighbours of both.
+- **Conservative** tests only allow safe merges: **Briggs** (fewer
+  than k significant neighbours after merging) and **George** (every
+  neighbour of `a` already touches `b` or has degree below k).
+- **Iterated coalescing** interleaves simplify and coalescing, and
+  freezes a copy before spilling.
+
+Next: what to do when there are simply not enough registers.
+
+<Quiz />

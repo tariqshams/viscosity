@@ -1,0 +1,280 @@
+---
+n: 310
+day: 36
+part: XVII
+title: 'Macros: declarative and procedural'
+tagline: 'println! and vec! have an exclamation mark because they are not functions: they take your code apart and write new code before the compiler reads it. Here is how to write your own with macro_rules!, and why Rust macros do not fall into the traps of C’s.'
+objectives:
+  - Write a macro_rules! macro with several rules, and say which rule an invocation uses.
+  - Use fragment specifiers (expr, ident, ty, tt) and repetition with $( ... ),* to accept any number of arguments.
+  - Explain why square!(1 + 2) is 9 in Rust and 5 with a C macro, and read a hygiene error.
+  - Look at what a macro expanded to, and decide when a function would do instead.
+introduces: [macro-rules]
+uses: [rust, rust-functions, expression-oriented, vec, hashmap, enum, derive, pattern, match, token, ast, macro-expansion, hygiene, quasiquote]
+sources: [klabnik2026, rustref-macros-by-example, tlborm]
+---
+import MatchSteps from '../../../components/diagrams/ch310/MatchSteps';
+import HygieneFigure from '../../../components/diagrams/ch310/HygieneFigure';
+
+## Something a function cannot do
+
+You have been calling `println!` and `vec!` since the start of this
+part, and the `!` has been quietly telling you something: they are not
+functions. A Rust function takes a fixed number of arguments of fixed
+types, so no function could accept `vec![1, 2, 3]` today and
+`vec![1, 2, 3, 4, 5]` tomorrow, or check a format string against its
+arguments before the program runs. A **macro** can, because it works
+one step earlier: it is handed *code*, as tokens, and hands code back,
+which the compiler then reads as if you had typed it. *Macros and
+hygiene* in Part X showed this idea in general; this chapter is Rust's
+version, starting with the kind you will write most, `macro_rules!`.
+
+<Analogy title="a mail merge">
+A mail merge letter has holes: "Dear «name», your order «number» has
+shipped." The merge reads each row of a spreadsheet, fills the holes,
+and prints a finished letter. A `macro_rules!` rule is the same: a
+pattern that pulls pieces out of what you wrote, and a template with
+holes that those pieces fill.
+<span slot="breaks">A mail merge pastes text, so a name with a comma
+in it can break the sentence. A Rust macro pastes whole pieces of
+syntax (an expression stays one expression), and it keeps its own
+variable names apart from yours.</span>
+</Analogy>
+
+<Analogy extra title="a phrasebook">
+A traveller's phrasebook lists patterns: "Where is the ___?", "I would
+like ___, please". You find the first pattern that fits what you want
+to say, and fill in the blank.
+<span slot="breaks">A phrasebook is read by a person who can bend a
+pattern a little; the compiler tries each rule in order and takes the
+first one that matches *exactly*, or stops with an error if none
+does.</span>
+</Analogy>
+
+## Rules: a matcher and a transcriber
+
+<Examples of="macro-rules">
+
+```rust
+macro_rules! square {
+    ($x:expr) => {
+        $x * $x
+    };
+}
+square!(1 + 2) // 9
+```
+
+```rust
+macro_rules! max_of {
+    ($x:expr) => { $x };
+    ($x:expr, $($rest:expr),+) => {{
+        let a = $x;
+        let b = max_of!($($rest),+);
+        if a > b { a } else { b }
+    }};
+}
+max_of!(3, 9, 4) // 9
+```
+
+<Run id="three-macros" />
+
+</Examples>
+
+A `macro_rules!` definition is a list of **rules**, each written
+`(matcher) => { transcriber };`. The **matcher** is a pattern over
+tokens, and `$x:expr` in it means "match one complete Rust expression
+here, and call it `$x`". The **transcriber** is the code to produce
+(a quasiquote, in Part X's word: a template of code with holes), with
+`$x` standing for whatever matched<Cite id="rustref-macros-by-example" />.
+
+`square!` has one rule; `square!(1 + 2)` matches `$x` against
+`1 + 2` and produces `$x * $x`. `max_of!` has two, and the compiler
+tries them in order and takes the first that matches: one expression
+is its own maximum, and for more than one it takes the first, works
+out the maximum of the rest by *calling itself*, and compares. The
+doubled braces `{{ ... }}` matter: the outer pair belongs to the rule,
+and the inner pair is a block in the output, so `let a` and `let b`
+become one expression with a value. The runnable example shows
+`square!`, a `twice!` you will meet below, and a `my_vec!`.
+
+A macro is checked against its rules when it is *called*, and a call
+that fits none is an error. rustc 1.97 (trimmed):
+
+```rust
+let n = square!(2, 3);
+// error: no rules expected `,`
+// note: while trying to match
+//   meta-variable `$x:expr`
+let n = square!(2 + 3); // fine: 25
+```
+
+<Callout kind="definition">
+A **declarative macro** is defined with `macro_rules!` as a list of
+rules, `(matcher) => { transcriber }`. A call `name!(...)` is matched
+against the rules in order; the first that matches is **expanded**: its
+transcriber, with each `$var` replaced by the code it matched, takes
+the call's place before type checking. If no rule matches, the call is
+a compile error<Cite id="rustref-macros-by-example" />.
+</Callout>
+
+<Formal title="One rule, read as a rewrite">
+
+```text
+macro_rules! m {
+  (P₁) => {T₁}; (P₂) => {T₂}
+}
+m!(input)  ⟶  Tᵢ[σ]
+  where i is the least index such that
+  Pᵢ matches input, binding σ
+```
+
+<span slot="read">A call m!(input) is rewritten to the transcriber of
+the first rule whose pattern matches the input, with the bindings
+sigma (each $var and the code it matched) substituted into it.</span>
+</Formal>
+
+<Prompts ids={['macro-not-fn', 'first-rule', 'double-brace']} />
+
+## Fragments and repetition
+
+The word after the colon is a **fragment specifier**: what kind of
+syntax the variable may match. The common ones are `expr` (an
+expression), `ident` (a name), `ty` (a type), `pat` (a pattern),
+`literal`, `block`, and `tt`, one **token tree**: a single token, or
+a whole bracketed group with everything inside it<Cite id="tlborm" />.
+
+To accept any number of things, wrap part of the matcher in
+`$( ... )` followed by a separator and `*` (zero or more), `+` (one or
+more) or `?` (zero or one). The same `$( ... )*` in the transcriber
+repeats its contents once per match. This is how `my_vec!` works:
+
+```rust
+macro_rules! my_vec {
+    ($($x:expr),* $(,)?) => {{
+        let mut v = Vec::new();
+        $( v.push($x); )*
+        v
+    }};
+}
+```
+
+The matcher reads "zero or more expressions separated by commas, then
+an optional trailing comma". Step through `my_vec![1, 2, 3]`:
+
+<MatchSteps client:visible />
+
+Want to see what a macro wrote? The nightly compiler can print the
+expanded program (`rustc +nightly -Zunpretty=expanded`, or the
+`cargo expand` tool that wraps it). For our three calls it printed,
+trimmed:
+
+```rust
+(1 + 2) * (1 + 2)
+{
+    let mut v = Vec::new();
+    v.push(1);
+    v.push(2);
+    v.push(3);
+    v
+}
+```
+
+<Prompts ids={['frag-spec', 'tt-what', 'repeat']} />
+
+## Hygiene, and why 9 is not 5
+
+Notice the brackets in `(1 + 2) * (1 + 2)`. They are not really in the
+output; the printer adds them, because `$x` was matched as *one
+expression* and is pasted in as one node of the syntax tree. A C macro
+pastes text, so its version gives a different answer:
+
+<OtherLanguages title="square of 1 + 2">
+
+```rust
+macro_rules! square {
+    ($x:expr) => { $x * $x };
+}
+square!(1 + 2) // 9
+```
+
+```c
+#define SQUARE(x) x * x
+SQUARE(1 + 2) /* 1 + 2 * 1 + 2 = 5 */
+```
+
+```ts
+// No macros: a function, or a code
+// generator run before tsc.
+const square = (x: number) => x * x;
+square(1 + 2); // 9
+```
+
+</OtherLanguages>
+
+With `gcc` 13 the C program prints 5, because `1 + 2 * 1 + 2` is
+`1 + 2 + 2`; Rust prints 9. TypeScript has no macros at all (decorators
+and code generators fill some of the same needs), so the nearest thing
+is a function, which works on values rather than code.
+
+The second trap is names. A Rust macro's local variables live in their
+own world, the **hygiene** of *Macros and hygiene*: in Rust's words,
+local variables and labels are looked up where the macro was
+*defined*, and most other names where it is *called*<Cite id="rustref-macros-by-example" />.
+
+<Figure takeaway="Same spelling, different variables: the macro's t and the caller's t never meet." caption="twice!(t + 1) with the caller's t = 5. The macro's own t = 2 cannot capture it, so the result is (5 + 1) × 2 = 12.">
+  <HygieneFigure />
+</Figure>
+
+So `twice!(t + 1)`, whose transcriber says `let t = 2; $e * t`,
+prints 12 in the runnable example: the `t` in your `t + 1` is your
+`t`. It works the other way too, which is the common surprise:
+
+```rust
+macro_rules! add_x {
+    ($e:expr) => { $e + x };
+}
+let x = 10;
+add_x!(1)
+// error[E0425]: cannot find value `x`
+//   in this scope
+// help: an identifier with the same
+//   name exists, but is not accessible
+//   due to macro hygiene
+```
+
+The macro cannot reach into your scope and grab a variable it was not
+given. Pass it in instead, as an `ident`:
+
+```rust
+macro_rules! add_x {
+    ($x:ident, $e:expr) => { $e + $x };
+}
+add_x!(x, 1) // 11
+```
+
+<Prompts ids={['nine-not-five', 'hygiene-rust']} />
+
+When should you write a macro at all? When a function cannot do it:
+any number of arguments, new items such as structs and `impl`s,
+or syntax of your own. Otherwise use a function, which is easier to
+read, to type-check and to debug; the Rust book gives the same
+advice<Cite id="klabnik2026" />. The next chapter covers the other
+kind, procedural macros, which are Rust programs that write Rust.
+
+## Your turn
+
+<Exercise id="hashmap" />
+
+<Exercise id="named-enum" />
+
+## What you learned
+
+- A **`macro_rules!`** macro is a list of rules, `(matcher) =>
+  { transcriber }`; the first rule that matches the call's tokens is
+  expanded in its place, before type checking.
+- **Fragment specifiers** (`expr`, `ident`, `ty`, `tt`, ...) say what
+  each `$var` matches, and **`$( ... ),*`** repeats.
+- An `expr` is pasted as one node, so `square!(1 + 2)` is 9, and
+  **hygiene** keeps the macro's local names apart from yours.
+
+<Quiz />

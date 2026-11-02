@@ -1,4 +1,5 @@
-// Chapter 11b cards (split from chapter 11). Keys are stable ids: never rename them.
+// Chapter 12 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'closure-what': {
@@ -57,8 +58,7 @@ console.log(a());`,
 export const exercises = {
   makeTotal: {
     title: 'A private running total',
-    prompt:
-      'Write `makeTotal()`. It returns a function `add(n)` that adds `n` to a running total and returns the new total. The total starts at `0`, is private, and every call of `makeTotal` gets its own. So after `const add = makeTotal();`, `add(5)` is `5` and then `add(3)` is `8`.',
+    prompt: 'Write `makeTotal()`. It returns a function `add(n)` that adds `n` to a running total and returns the new total. The total starts at `0`, is private, and every call of `makeTotal` gets its own. So after `const add = makeTotal();`, `add(5)` is `5` and then `add(3)` is `8`.',
     starter: `function makeTotal() {
   // your code here
 }
@@ -140,8 +140,7 @@ function makeTotal() {
   once: {
     optional: true,
     title: 'Run only once',
-    prompt:
-      'Write `once(f)`. It returns a new function. The first time that function is called, it calls `f()` and returns its result. Every later call returns that same result **without** calling `f` again. `f` must not be called before the first call.',
+    prompt: 'Write `once(f)`. It returns a new function. The first time that function is called, it calls `f()` and returns its result. Every later call returns that same result **without** calling `f` again. `f` must not be called before the first call.',
     starter: `function once(f) {
   // your code here
 }
@@ -241,10 +240,23 @@ export const quiz = [
   {
     q: '`const a = makeCounter(); const b = makeCounter();` Then `a(); a(); a();`. What does `b()` return?',
     options: [
-      { t: '`4`', why: 'That would need `a` and `b` to share one `count`. They don’t.' },
-      { t: '`3`', why: 'That is `a`’s count. `b` has never been called before.' },
-      { t: '`0`', why: '`b()` adds one before returning, so it returns 1.' },
-      { t: '`1`', correct: true, why: 'Each `makeCounter()` call made its own page with its own `count`, so `b` starts from 0 and returns 1.' },
+      {
+        t: '`4`',
+        why: 'That would need `a` and `b` to share one `count`. They don’t.',
+      },
+      {
+        t: '`3`',
+        why: 'That is `a`’s count. `b` has never been called before.',
+      },
+      {
+        t: '`0`',
+        why: '`b()` adds one before returning, so it returns 1.',
+      },
+      {
+        t: '`1`',
+        correct: true,
+        why: 'Each `makeCounter()` call made its own page with its own `count`, so `b` starts from 0 and returns 1.',
+      },
     ],
   },
   {
@@ -256,19 +268,45 @@ n = 5;
 console.log(f());
 \`\`\``,
     options: [
-      { t: '`10`', why: 'A closure doesn’t take a snapshot of `n` when it is made.' },
-      { t: '`50`', correct: true, why: '`f` reads the variable `n` itself when it runs, and by then `n` is 5.' },
-      { t: '`undefined`', why: '`f` can see `n`, which is in scope where `f` is written.' },
-      { t: 'An error, because `n` changed', why: '`n` is a `let`, so changing it is fine.' },
+      {
+        t: '`10`',
+        why: 'A closure doesn’t take a snapshot of `n` when it is made.',
+      },
+      {
+        t: '`50`',
+        correct: true,
+        why: '`f` reads the variable `n` itself when it runs, and by then `n` is 5.',
+      },
+      {
+        t: '`undefined`',
+        why: '`f` can see `n`, which is in scope where `f` is written.',
+      },
+      {
+        t: 'An error, because `n` changed',
+        why: '`n` is a `let`, so changing it is fine.',
+      },
     ],
   },
   {
     q: 'Which best describes a closure?',
     options: [
-      { t: 'A function that has finished running', why: 'Closures are about what a function can *see*, not whether it has run.' },
-      { t: 'A copy of all the program’s variables', why: 'A closure keeps access to the variables where it was written, live, not a copy of everything.' },
-      { t: 'A function together with the variables from the place it was written', correct: true, why: 'That is the definition: the function keeps access to its surrounding variables even after that code has finished.' },
-      { t: 'A way to stop a function from being called', why: 'That’s not what closures do (though you could build one, like `once`, *with* a closure).' },
+      {
+        t: 'A function that has finished running',
+        why: 'Closures are about what a function can *see*, not whether it has run.',
+      },
+      {
+        t: 'A copy of all the program’s variables',
+        why: 'A closure keeps access to the variables where it was written, live, not a copy of everything.',
+      },
+      {
+        t: 'A function together with the variables from the place it was written',
+        correct: true,
+        why: 'That is the definition: the function keeps access to its surrounding variables even after that code has finished.',
+      },
+      {
+        t: 'A way to stop a function from being called',
+        why: 'That’s not what closures do (though you could build one, like `once`, *with* a closure).',
+      },
     ],
   },
   {
@@ -281,19 +319,45 @@ for (let i = 0; i < 3; i++) {
 console.log(fs[1]());
 \`\`\``,
     options: [
-      { t: '`30`', why: 'That is what `var` would give (one shared `i`, left at 3). With `let`, each pass has its own `i`.' },
-      { t: '`10`', correct: true, why: '`fs[1]` was made on the pass where its own `i` was 1, so it returns 1 × 10.' },
-      { t: '`0`', why: 'That is `fs[0]()`.' },
-      { t: 'A ReferenceError, because the loop is over', why: 'The closure keeps its pass’s `i` alive after the loop ends.' },
+      {
+        t: '`30`',
+        why: 'That is what `var` would give (one shared `i`, left at 3). With `let`, each pass has its own `i`.',
+      },
+      {
+        t: '`10`',
+        correct: true,
+        why: '`fs[1]` was made on the pass where its own `i` was 1, so it returns 1 × 10.',
+      },
+      {
+        t: '`0`',
+        why: 'That is `fs[0]()`.',
+      },
+      {
+        t: 'A ReferenceError, because the loop is over',
+        why: 'The closure keeps its pass’s `i` alive after the loop ends.',
+      },
     ],
   },
   {
     q: 'Why is `makeCounter`’s `count` safe from the rest of the program?',
     options: [
-      { t: 'It is a `const`', why: 'It is a `let`; it changes on every call.' },
-      { t: 'JavaScript locks variables inside functions', why: 'Nothing is locked. It’s simply not in scope anywhere else.' },
-      { t: 'It isn’t: any code can change it', why: 'Code outside `makeCounter` can’t even name `count`, let alone change it.' },
-      { t: 'It is in `makeCounter`’s scope, and only the returned function can reach it', correct: true, why: 'Outer code can’t see into `makeCounter`. The only way to the variable is through the closure.' },
+      {
+        t: 'It is a `const`',
+        why: 'It is a `let`; it changes on every call.',
+      },
+      {
+        t: 'JavaScript locks variables inside functions',
+        why: 'Nothing is locked. It’s simply not in scope anywhere else.',
+      },
+      {
+        t: 'It isn’t: any code can change it',
+        why: 'Code outside `makeCounter` can’t even name `count`, let alone change it.',
+      },
+      {
+        t: 'It is in `makeCounter`’s scope, and only the returned function can reach it',
+        correct: true,
+        why: 'Outer code can’t see into `makeCounter`. The only way to the variable is through the closure.',
+      },
     ],
   },
 ];

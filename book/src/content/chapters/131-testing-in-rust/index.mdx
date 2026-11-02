@@ -1,0 +1,556 @@
+---
+n: 131
+day: 21
+part: VII
+title: 'Testing in Rust'
+tagline: 'Every Rust exercise so far has been graded by #[test] functions you could read but did not write. A test is an ordinary function with a label on it: it passes if it returns and fails if it panics, and cargo test runs them all.'
+objectives:
+  - Write a unit test with #[test] in a #[cfg(test)] mod tests, and say why it can test private functions.
+  - Read cargo test's output, run a subset of tests by name, and say what makes a test fail.
+  - Tell unit tests from integration tests, and say what each one can see.
+  - Read drip-rs's test layout and the six test programs cargo test builds for it.
+  - Choose between assert!, assert_eq! and assert_ne!, and add a message that explains a failure.
+  - Read an assert_eq! failure, and fix the E0369 and E0277 errors a type without PartialEq or Debug causes.
+  - Test that code panics with #[should_panic(expected = ...)], and write a test that returns Result.
+  - Read drip-rs's corpus runner and engine/rust's parity test, and explain why each reports every failure.
+introduces: [cargo-test, assert-macros]
+uses: [rust, cargo, crate, rust-functions, struct, impl, option, result, vec, trait, rust-closure, rust-iterator, rust-module, visibility, workspace, test, assertion, edge-case, differential-testing-intro, test-corpus, drip, virtual-machine, scanner, garbage-collection, question-mark, differential-testing, interning, aos-vs-soa]
+sources: [rust-book-testing, klabnik2026]
+---
+import RunnerFlow from '../../../components/diagrams/ch131/RunnerFlow';
+import TestSteps from '../../../components/diagrams/ch131/TestSteps';
+import AssertSteps from '../../../components/diagrams/ch131/AssertSteps';
+import FailureAnatomy from '../../../components/diagrams/ch131/FailureAnatomy';
+
+{/* ── merge: from old chapter 131, Testing in Rust ── */}
+
+## You have been graded all along
+
+*Testing your code* wrote its tests like this:
+
+```js
+test('max picks the largest', () => {
+  expect(max([3, 7, 2])).toBe(7);
+});
+```
+
+A test framework (a library) provided `test` and `expect`, and a test
+was a call to `test` with a name and a function. Rust builds testing
+into the compiler and cargo instead, and a test is simpler still: an
+ordinary function with a label on it. Every Rust exercise since *Why
+Rust? Hello, cargo* has been checked this way, and `todo!()` in the
+starters made them fail on purpose.
+
+```rust
+fn is_alpha(c: u8) -> bool {
+    c.is_ascii_alphabetic() || c == b'_'
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn letters_and_underscore() {
+        assert!(is_alpha(b'a'));
+        assert!(is_alpha(b'_'));
+        assert!(!is_alpha(b'7'));
+    }
+}
+```
+
+Lines 1 to 3 are the code under test, the scanner's "can this byte
+start a name?" question from *Writing a scanner*. `#[test]` on line 9
+is an **attribute**, a note to the compiler written `#[...]` above an
+item; this one says "this function is a test". The function takes no
+arguments and returns nothing. Inside, `assert!(cond)` stops the
+function with a panic if `cond` is false (the next chapter covers it
+and its relatives properly), so each line is one check: `a` is a name
+character, `_` is, and `7` is not.
+
+<Analogy title="a driving test">
+The examiner hands you a route, and you drive it. Finish the route
+without a fault and you pass; make one serious fault and the test stops
+there and then, and you fail, with the examiner's note saying what went
+wrong. A Rust test is the route, each `assert!` is a point where the
+examiner is watching, and a panic is the fault.
+<span slot="breaks">A driving test is marked by a person who can be
+lenient; a Rust test has no judgement at all. It passes if the function
+returns and fails if anything panics, even code you did not mean to
+test, such as an index out of range.</span>
+</Analogy>
+
+## Pass by returning, fail by panicking
+
+That is the whole contract: a test **passes if it returns** and
+**fails if it panics**. The test runner (the **harness**, a `main`
+function cargo writes for you) runs each test on a thread of its own,
+and when a test's thread dies of a panic it marks the test failed and
+carries on with the rest<Cite id="rust-book-testing" />:
+
+<Figure takeaway="A test passes by returning and fails by panicking; one failure does not stop the others." caption="The harness runs each #[test] function separately and prints ok or FAILED for each, then one summary line.">
+  <RunnerFlow />
+</Figure>
+
+Here is a real run, with a second test, `max_picks_the_largest`, whose
+function still says `todo!()` (rustc 1.97's harness, thread number
+trimmed):
+
+```text
+running 2 tests
+test tests::letters_and_underscore ... ok
+test tests::max_picks_the_largest
+  ... FAILED
+
+---- tests::max_picks_the_largest
+  stdout ----
+thread 'tests::max_picks_the_largest'
+  panicked at t1.rs:6:5:
+not yet implemented
+
+test result: FAILED. 1 passed; 1 failed;
+  0 ignored; 0 measured; 0 filtered out
+```
+
+Each test is named by its module path, `tests::...`. The failure shows
+the panic's message and the line it came from (`todo!()` panics with
+"not yet implemented"), and the whole run ends with a summary and a
+failing exit code, so a script or CI system can tell. Add a word after
+`cargo test` and only tests whose path contains it run: `cargo test
+letters` ran one test and reported `1 filtered out`.
+
+<Analogy extra title="a yearly car inspection">
+At a car's yearly inspection the tester works through a checklist:
+brakes, lights, tyres, wipers. A failed brake light does not stop them
+checking the tyres; at the end you get the whole list, each item marked
+pass or fail. `cargo test` works through every test the same way, even
+after one fails, and prints the full list.
+<span slot="breaks">An inspection checks one car once; your tests run
+again on every change, and they check *your* code against *your*
+expectations, which can themselves be wrong.</span>
+</Analogy>
+
+## Where unit tests live, and what they can see
+
+The `tests` module sits in the same file as the code it tests, and two
+details from earlier chapters make that work:
+
+- `#[cfg(test)]` means "compile this only when building tests", so a
+  normal build carries no test code at all.
+- `tests` is a child module, so `use super::*` brings in the parent's
+  items, and the privacy rule of *Privacy, pub and workspaces* (a
+  private item is visible to its module's descendants) lets the test
+  call private helpers that nothing else in the program may call.
+
+Two slips are common, and they fail in very different ways:
+
+```rust
+#[cfg(test)]
+mod tests {
+    // no use super::*
+    #[test]
+    fn letters() {
+        assert!(is_alpha(b'a'));
+    }
+    fn forgotten() { panic!(); }
+}
+```
+
+```text
+error[E0425]: cannot find function
+  `is_alpha` in this scope
+help: consider importing this function:
+  use crate::is_alpha;
+```
+
+Without `use super::*`, `is_alpha` is not in scope in `tests`, and the
+compiler says so. The second slip is quieter: `forgotten` has no
+`#[test]`, so it is just a helper nobody calls. A module whose only
+function lacks the label reports `running 0 tests` and `test result:
+ok`, a pass that checked nothing, which is why it is worth glancing at
+the count.
+
+<Callout kind="definition">
+A **unit test** is a function marked **`#[test]`**, usually inside a
+`#[cfg(test)] mod tests` beside the code it tests. **`cargo test`**
+compiles the crate in test mode, runs every test (in parallel threads
+by default), and reports each as `ok` or `FAILED`; a test fails exactly
+when it panics. A filter argument runs only the tests whose names
+contain it<Cite id="rust-book-testing" />.
+</Callout>
+
+<Formal title="The test contract">
+
+```text
+run(t) = ok      if t() returns
+run(t) = FAILED  if t() panics
+suite passes  ⟺  ∀ t ∈ tests: run(t) = ok
+```
+
+<span slot="read">Running a test t gives ok if calling t returns, and
+FAILED if it panics. The whole suite passes exactly when, for every t
+in the tests (the ∀ reads "for all", and ∈ reads "in"), running t gives
+ok.</span>
+</Formal>
+
+<Examples of="cargo-test">
+
+```rust
+#[test]
+fn two_plus_two() {
+    assert_eq!(2 + 2, 4);
+}
+```
+
+```rust
+// drip-rs's object.rs
+#[test]
+fn hashes_with_fnv_1a() {
+    assert_eq!(hash_string(""),
+        2_166_136_261);
+    assert_eq!(hash_string("a"),
+        0xe40c292c);
+}
+```
+
+<Run id="mini-harness" />
+
+</Examples>
+
+The first is the smallest test there is: one check, `2 + 2` equals `4`
+(`assert_eq!` compares two values; the next chapter explains it). The
+second is real, from drip-rs's `object.rs`: it pins the string hash
+of *String interning* to known answers (the hash of the empty string
+is the FNV-1a starting value, and `0xe40c292c` is the hash of `"a"`,
+written in hexadecimal), and its name reads as a sentence, so a
+failure explains itself. The runnable one is
+`cargo test` in miniature: a list of functions, each run inside
+`catch_unwind` (which catches a panic instead of letting it end the
+program), printing `ok` or `FAILED` like the real harness. One of its
+"tests" is wrong on purpose; fix it and run it again.
+
+<Prompts ids={['test-pass', 'test-attr', 'test-cfg', 'test-private', 'test-filter']} />
+
+## Integration tests
+
+Files in a crate's `tests/` folder are **integration tests**. Each file
+is compiled as a *separate crate* that depends on yours, so it sees
+only your `pub` items, exactly as a user would. drip-rs's `tests/vm.rs`
+starts like a user's program:
+
+```rust
+use drip::compiler::compile;
+use drip::gc::Heap;
+use drip::{Options, Vm};
+```
+
+Helpers shared by several test files go in `tests/common/mod.rs`: a
+`tests/common.rs` would itself be compiled as one more test crate, but
+a folder with a `mod.rs` is only a module, which each test file pulls
+in with `mod common;`<Cite id="rust-book-testing" />. So one
+`cargo test` builds and runs several test programs. Step through
+drip-rs's, with the counts from a run on this machine:
+
+<TestSteps client:visible />
+
+<OtherLanguages title="One test, two languages">
+
+```rust
+#[test]
+fn max_picks_the_largest() {
+    assert_eq!(max(&[3, 7, 2]), 7);
+}
+```
+
+```ts
+test('max picks the largest', () => {
+  expect(max([3, 7, 2])).toBe(7);
+});
+```
+
+</OtherLanguages>
+
+The shape is the same, but in TypeScript `test` and `expect` are
+functions from a library you install, and the name is a string; in Rust
+the test is a named function with an attribute, the checks are macros
+from the standard library, and the runner comes with cargo. A failing
+`expect` throws an exception; a failing `assert_eq!` panics, which is
+Rust's nearest equivalent.
+
+<Prompts ids={['integ-what', 'integ-common', 'test-zero']} />
+
+## Your turn
+
+<Exercise id="firstDiff" />
+
+## What you learned
+
+- A test is a function marked **`#[test]`**. It passes if it returns
+  and fails if it panics; `#[cfg(test)] mod tests` keeps tests beside
+  the code, and as a child module they may call private items.
+- **`cargo test`** runs every test on its own thread, prints `ok` or
+  `FAILED` for each and a summary, and runs only the matching tests
+  when given a name.
+- **Integration tests** in `tests/` are separate crates that see only
+  the `pub` API; shared helpers go in `tests/common/mod.rs`.
+
+Next: the assert macros in detail, tests that are meant to panic, and
+the corpus runner that checks drip-rs against hundreds of programs.
+
+
+{/* ── merge: from old chapter 131, Assertions and test suites ── */}
+
+## Three checks
+
+*Testing in Rust* used `assert!` and `assert_eq!` without stopping to
+look at them. They are the whole vocabulary of a Rust test, and there
+are only three:
+
+- `assert!(cond)` panics if `cond` is false.
+- `assert_eq!(a, b)` panics if `a != b`, and prints both.
+- `assert_ne!(a, b)` panics if `a == b`, and prints both.
+
+The `!` marks each one as a **macro** (code that writes code, as
+`println!` is). drip-rs's string-interning test, from *String
+interning*, uses two of them: the same text must give the same handle,
+and different text a different one.
+
+```rust
+let a = heap.intern("hello");
+let b = heap.intern_owned(
+    String::from("hel") + "lo");
+assert_eq!(a, b);
+assert_ne!(a, heap.intern("world"));
+```
+
+`a` interns `"hello"` from a literal; `b` builds the same text at run
+time and interns that; the `assert_eq!` checks that interning gave one
+handle for both, and the `assert_ne!` that `"world"` got a different
+one.
+
+<Analogy title="a tripwire">
+Each assertion is a wire stretched across the path your code takes:
+"by here, this had better equal 2". Code that keeps its promises walks
+over every wire without touching them; the moment something is wrong,
+it trips the nearest wire, and the alarm says exactly which wire and
+what was on each side of it.
+<span slot="breaks">A tripwire catches only what crosses it; an
+assertion checks only the one thing you wrote, so a bug that never
+reaches a checked value goes unnoticed.</span>
+</Analogy>
+
+## What a failure says
+
+Here is a check of the array-of-structs slot formula (in one flat
+array of numbers, element `i`'s field `f`, with `nf` fields per element,
+lives at index `i * nf + f`), with the formula written wrong on
+purpose. Step
+through what `assert_eq!` does:
+
+<AssertSteps client:visible />
+
+When the two sides differ, the output names the test, the file and
+line, your message, and both values:
+
+<Figure takeaway="A failing assert_eq! shows where, why (your message), and both values." caption="The parts of an assert_eq! failure in cargo test's output, from rustc 1.97 with the thread number trimmed; rustc prints your message on the same line, straight after failed:, and it is given a line of its own here.">
+  <FailureAnatomy />
+</Figure>
+
+That is the whole reason to prefer `assert_eq!(a, b)` over
+`assert!(a == b)`: both panic at the same time, but the plain `assert!`
+can only say `assertion failed: a == b`, while `assert_eq!` shows the
+two values, which is usually all you need to see the bug. Every assert
+macro also takes a message after its checks, formatted like `println!`:
+`assert!(n > 0, "n = {n} must be positive")` fails with
+`n = 0 must be positive`<Cite id="rust-book-testing" />.
+
+To compare, `assert_eq!` uses `==`, which needs the trait `PartialEq`;
+to print, it uses `{:?}`, which needs `Debug` (both from *Traits*). Try
+it on a struct with neither, and rustc 1.97 asks for both:
+
+```text
+error[E0369]: binary operation `==`
+  cannot be applied to type `P`
+help: consider annotating `P` with
+  `#[derive(PartialEq)]`
+error[E0277]: `P` doesn't implement
+  `Debug`
+help: consider annotating `P` with
+  `#[derive(Debug)]`
+```
+
+That is why types meant for testing usually start with
+`#[derive(Debug, PartialEq)]`, which writes both for you.
+
+<Callout kind="definition">
+The **assert macros** are `assert!(cond)`, `assert_eq!(left, right)`
+and `assert_ne!(left, right)`. Each panics when its check fails, which
+fails the test it is in (or stops the thread, in ordinary code); the
+`eq` and `ne` forms print both values, which must implement `Debug`,
+and compare them with `PartialEq`. An optional message, written as in
+`println!`, is added to the panic<Cite id="rust-book-testing" />.
+</Callout>
+
+<Formal title="What assert_eq! means">
+
+```text
+assert_eq!(a, b, m)  ≈
+  let (l, r) = (&a, &b);
+  if !(*l == *r) {
+      panic!(m, "left: {l:?}",
+                "right: {r:?}")
+  }
+```
+
+<span slot="read">assert_eq of a and b with message m works out a and b
+once each, borrowing them as l and r; if l does not equal r, it panics
+with the message followed by both values printed with Debug. The ≈
+means "roughly": the real panic text is laid out as in the figure.</span>
+</Formal>
+
+<Examples of="assert-macros">
+
+```rust
+assert!(xs.is_empty());
+```
+
+```rust
+assert_eq!(tokens.len(), 5,
+    "source was {src:?}");
+```
+
+<Run id="asserts-play" />
+
+</Examples>
+
+The first is the simplest check: a condition that should be true. The
+second compares two values and adds a message that prints the input,
+so the failure says *which* source produced the wrong count; `{src:?}`
+prints it with `Debug`, quotes included. The runnable one is the slot
+formula above as a whole program: the first two checks pass, the third
+trips, and `never printed` is never printed. Fix the formula and run it
+again.
+
+<Prompts ids={['assert-three', 'assert-eq', 'assert-traits', 'assert-msg']} />
+
+## Tests that should panic, and tests that return Result
+
+Some code is *supposed* to panic. drip-rs's arenas panic if you use a
+handle to an object the collector freed, and a test checks exactly
+that:
+
+```rust
+#[test]
+#[should_panic(expected = "use after free")]
+fn using_a_freed_handle_panics() {
+    let mut arena = Arena::default();
+    let a = arena.insert("x");
+    arena.remove(a.index(), false);
+    let _ = arena[a];
+}
+```
+
+`#[should_panic]` flips the contract: the test passes only if the body
+panics, and `expected = "..."` also requires the panic message to
+contain that text, so a panic for some other reason does not count.
+Both ways of getting it wrong are reported plainly by the harness:
+`note: test did not panic as expected`, or `note: panic did not contain
+expected string`, followed by the message it did get.
+
+A test may also return `Result<(), E>` instead of nothing: `Ok(())` is
+a pass, `Err(e)` a failure, and inside it the `?` of *Result and the
+? operator* works, so a test of code that returns `Result` can read like the
+code itself<Cite id="rust-book-testing" />.
+
+<Analogy extra title="a smoke alarm">
+An assertion in ordinary code, outside any test, is a smoke alarm in a
+kitchen: it sits quietly through every normal meal and only goes off
+when something is genuinely wrong, and when it does, everyone stops. A
+`should_panic` test is the button on the alarm that you press on
+purpose, to check that it does go off.
+<span slot="breaks">A smoke alarm can be taken down and silenced; an
+assertion in released code keeps running every time (only
+`debug_assert!` is left out of optimised builds).</span>
+</Analogy>
+
+<OtherLanguages title="Checking values and expecting failure">
+
+```rust
+assert_eq!(max(&[3, 7, 2]), 7);
+// and, on a test function:
+#[should_panic(expected = "empty")]
+```
+
+```ts
+expect(max([3, 7, 2])).toBe(7);
+// and:
+expect(() => max([])).toThrow('empty');
+```
+
+</OtherLanguages>
+
+TypeScript's `expect` is a library function that builds a checker, and
+a failure throws; `toThrow` wraps the call in a function so the library
+can catch the exception. Rust's checks are macros that panic, and
+expecting a panic is an attribute on the whole test, so a
+`should_panic` test should contain only the call that ought to panic.
+
+<Prompts ids={['should-panic', 'should-panic-expected', 'test-result']} />
+
+## Suites of hundreds of programs
+
+The VM's corpus is a folder of Drip programs whose expected output is
+written in their comments (*Differential testing at scale*). Wrapping
+all of them in one `#[test]` would report a single `ok` or `FAILED` for
+the lot, so drip-rs switches the standard harness off for that file in
+`Cargo.toml`:
+
+```toml
+[[test]]
+name = "corpus"
+harness = false
+```
+
+`tests/corpus.rs` is then an ordinary program with its own `main`, and
+cargo runs it and looks only at its exit code. That `main` lists the
+`.drip` files, runs each through the VM, catches any panic with
+`catch_unwind`, prints one line per program the way the standard
+harness would, and calls `std::process::exit(1)` if any failed. On this
+machine, `cargo test --test corpus -- programs/` ran 13 of them and
+ended `corpus result: ok. 13 passed; 0 failed`; the full suite is 334
+programs.
+
+<Callout kind="engine" label="Under the hood">
+engine/rust's `crates/cli/tests/parity.rs` is *Differential testing at
+scale* across two languages: for every test program, with and without
+`--bounds assume`, the Rust engine's output and explain text must equal
+fixtures made by the TypeScript engine, byte for byte. Instead of
+stopping at the first mismatch, it pushes each difference onto a `Vec`
+with its first differing line, then asserts once:
+`assert!(failures.is_empty(), "{} of {total} differ:\n{}", ...)`, so
+one run reports every difference. Run with `--show-output` on this
+machine, the test printed `parity: 190/190 (54 Python)`.
+</Callout>
+
+<Prompts ids={['harness-false']} />
+
+## Your turn
+
+<Exercise id="checkColumns" />
+
+## What you learned
+
+- **`assert!`**, **`assert_eq!`** and **`assert_ne!`** panic when their
+  check fails; the last two print both values, so they need `Debug`
+  and `PartialEq`. Each takes an optional message.
+- **`#[should_panic(expected = "...")]`** passes only if the test panics
+  with that text; a test returning `Result` fails on `Err` and may use
+  `?`.
+- `harness = false` lets a test file be its own program, as drip-rs's
+  corpus runner is; engine/rust's parity test collects every difference
+  before asserting once.
+
+Next: `Box`, `Rc` and `RefCell`, the standard library's tools for data
+that does not fit one owner.
+
+<Quiz />

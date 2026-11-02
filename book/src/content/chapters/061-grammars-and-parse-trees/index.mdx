@@ -1,0 +1,1160 @@
+---
+n: 61
+day: 4
+part: III
+title: 'Grammars and parse trees'
+tagline: 'The scanner checks that every word is spelled right; nothing yet checks that the words come in a sensible order. A grammar is a short list of rules that says exactly which orders are allowed, and a handful of them can describe every program anyone will ever write.'
+objectives:
+  - Read a production rule aloud, and say which of its symbols are terminals and which are nonterminals.
+  - Write a small grammar for a piece of Drip, and say which token rows it allows.
+  - Explain how a rule that mentions itself describes endlessly many programs, and why it needs a way out.
+  - Describe a grammar formally as nonterminals, terminals, rules and a start symbol.
+  - Write rules in BNF, and read the shorthands |, ( ), ? and * aloud.
+  - Unfold each shorthand into plain rules, and explain why that adds no power.
+  - Read Drip's statement grammar, and trace how blocks nest inside blocks.
+  - Say what a grammar can describe that the shorthands alone (a regular expression) cannot.
+  - Write a derivation of a sentence, one rule at a time, and check each step.
+  - Tell a leftmost derivation from a rightmost one, and produce both for the same sentence.
+  - Draw the parse tree a derivation builds, and read the sentence back from its leaves.
+  - Explain why different derivations of one sentence can still give one tree.
+  - Show that a grammar is ambiguous by drawing two parse trees for one sentence.
+  - Rewrite an ambiguous expression grammar into levels, so that * binds tighter than + and - groups to the left.
+  - Explain the dangling else, and three ways languages remove it.
+  - Place regular, context-free, context-sensitive and unrestricted grammars in the Chomsky hierarchy, with the machine for each.
+introduces: [grammar, production-rule, terminal, nonterminal, bnf, derivation, parse-tree, ambiguity, chomsky-hierarchy]
+uses: [token, token-type, scanner, literal, identifier, keyword, drip, language-spec, regular-expression, recursion, base-case, function, array, index, length, while-loop, if, comparison, booleans, tree, closure, object, for-of, copy-spread, throw, map-filter-reduce, arrow-function, regular-language, finite-automaton, dfa, for-loop, string-methods]
+sources: [ecma262-grammar, aho2006, hmu2006, ecma262-if, chomsky1959]
+---
+import ReadRuleSteps from '../../../components/diagrams/ch061/ReadRuleSteps';
+import DerivePlay from '../../../components/diagrams/ch061/DerivePlay';
+import ShorthandSteps from '../../../components/diagrams/ch061/ShorthandSteps';
+import DripGrammarMap from '../../../components/diagrams/ch061/DripGrammarMap';
+import DeriveSteps from '../../../components/diagrams/ch061/DeriveSteps_o79';
+import YieldTree from '../../../components/diagrams/ch061/YieldTree';
+import AmbigSteps from '../../../components/diagrams/ch061/AmbigSteps';
+import DanglingElse from '../../../components/diagrams/ch061/DanglingElse';
+import ChomskyNest from '../../../components/diagrams/ch061/ChomskyNest';
+
+{/* ── merge: from old chapter 61, Grammars ── */}
+
+## Right words, wrong order
+
+Give Drip's scanner this line:
+
+```
+print + ; 3 (
+```
+
+It does not complain: `print` is a keyword, `+`, `;` and `(` are good
+tokens, and `3` is a number literal. Every word is spelled correctly;
+however, the line means nothing, in the same way that "sat the on cat
+mat the" is good English words in a bad order. The scanner cannot catch
+this, because it looks at one token at a time, and the problem is in how
+the tokens are arranged. We need rules about **order**, written down
+precisely enough for a program to check them.
+
+## Rules for sentences
+
+<Analogy title="a form with blanks">
+A greetings card company prints cards from templates: "Dear ___, happy
+___!", where the first blank says *a name* under it and the second says
+*an occasion*. A separate sheet lists what may go in each blank: a name
+is "Ada" or "Alan"; an occasion is "birthday" or "anniversary". Any card
+you can fill in from those sheets is allowed, and nothing else is.
+<span slot="breaks">A real blank takes whatever you write in it; a
+grammar's blank only takes what its own rules allow, and those rules may
+contain more blanks, even blanks of the same kind.</span>
+</Analogy>
+
+<Analogy extra title="a cookbook with sub-recipes">
+A cookbook says "a sandwich is bread, a filling, then bread", and on
+another page "a filling is cheese, or ham and tomato". To follow the
+sandwich recipe you turn to the filling page, follow that, and come back.
+The printed words (bread, cheese) are things you actually use; the
+recipe names (sandwich, filling) only tell you which page to turn to.
+<span slot="breaks">A cookbook tells you how to *make* one thing; a
+grammar is more like a judge, deciding whether a row of tokens you
+already have could have been made by its recipes.</span>
+</Analogy>
+
+Here is a grammar for a very small piece of Drip: print statements that
+add numbers, with brackets allowed.
+
+<Formal title="A grammar for adding numbers">
+
+```text
+stmt → "print" expr ";"
+expr → expr "+" item
+expr → item
+item → NUMBER
+item → "(" expr ")"
+```
+
+<span slot="read">Read each arrow as "is made of", or "can be made of"
+when a name has several rules. A stmt is made of the keyword print, then
+an expr, then a semicolon. An expr can be made of an expr, then a plus
+sign, then an item. An expr can also be made of a single item. An item
+can be made of one number token. An item can also be made of an opening
+bracket, an expr, and a closing bracket.</span>
+</Formal>
+
+Words in quotes are exact tokens; `NUMBER` in capitals stands for any
+token of the number type (such as `3` or `4.25`); and the bare words
+`stmt`, `expr` and `item` are the blanks, each one the name of some
+rules. As such, `print 3;` fits (a `stmt` whose `expr` is one `item`,
+which is the number `3`), and so does `print (1 + 2) + 3;`, but
+`print + ; 3 (` does not, because no rule lets a `stmt` start with
+`print +`. (How you show, step by step, that a row of tokens fits is
+called a *derivation*, and it has its own chapter, *Derivations and
+parse trees*; here we only learn to write and read the rules.)
+
+<Callout kind="definition">
+A **grammar** is a set of rules that says which rows of tokens are valid
+programs. Each rule is a **production rule**: one name (the rule's
+*head*), an arrow, and a *body*, the row of symbols that name may be
+replaced by. One name may have several rules; any of them may be used.
+</Callout>
+
+<Examples of="grammar production-rule">
+
+```text
+greeting → "hello" name
+name → "Ada"
+name → "Alan"
+```
+
+```text
+letDecl → "let" IDENT ";"
+letDecl → "let" IDENT "=" NUMBER ";"
+```
+
+```text
+WhileStatement :
+  while ( Expression ) Statement
+```
+
+</Examples>
+
+The first is the smallest useful grammar: a `greeting` is the word
+`hello` followed by a `name`, and a `name` is `Ada` or `Alan`, so the
+whole grammar allows exactly two sentences, `hello Ada` and `hello Alan`.
+The second has two rules for one head, which is how a grammar says "or":
+`let x;` fits the first rule and `let x = 4;` fits the second, while
+`let = 4;` fits neither, because both bodies need an `IDENT` (any
+identifier token, a name) right after `let`. The third is real: it is how JavaScript's own specification
+writes the rule for a `while` loop, with a colon where we write an arrow
+and no quotes round its terminals<Cite id="ecma262-grammar" />.
+
+<Prompts ids={['grammar-what', 'scanner-cant', 'arrow-read']} />
+
+## Terminals and nonterminals
+
+Every symbol in a rule's body is one of two sorts, and telling them
+apart is most of what reading a grammar means. Step through one rule:
+
+<ReadRuleSteps client:visible />
+
+<Callout kind="definition">
+A **terminal** is a symbol that stands for a token, such as `"print"`
+(exactly that keyword) or `NUMBER` (any token of that type). It is where
+the rules stop: a terminal is never replaced. A **nonterminal** is the
+name of one or more rules, such as `expr`: a blank to be filled in. One
+nonterminal is the **start symbol**, the one every program begins from
+(here, `stmt`).
+</Callout>
+
+<Examples of="terminal nonterminal">
+
+```text
+item → "(" expr ")"
+terminals: "(" and ")"
+nonterminals: item, expr
+```
+
+```text
+item → NUMBER
+NUMBER is a terminal: any number token
+```
+
+```text
+ifStmt → "if" expr block
+         "else" block
+```
+
+</Examples>
+
+In the first, the brackets are in quotes, so they are terminals, each
+meaning one bracket token; `item` and `expr` have rules of their own, so
+they are nonterminals. The second shows a terminal standing for a whole
+*type* of token: `NUMBER` matches `3`, `0.5` or `1000` alike, because
+the scanner already decided they are numbers. The third is a shape Drip
+really uses (its full rule, next chapter, makes the `else` part
+optional), with two terminals (`"if"` and `"else"`; Drip needs no
+brackets round the condition) and three nonterminals (`ifStmt`, `expr`,
+and `block` once per branch).
+
+The most common slip is putting quotes round a name that should be a
+blank:
+
+```text
+stmt → "print" "expr" ";"   ✗
+stmt → "print" expr ";"     ✓
+```
+
+The first asks for three exact tokens, so it allows only `print expr;`
+(printing a variable called `expr`); the second leaves a blank that any
+expression can fill.
+
+<Formal title="A grammar as four things">
+
+```text
+G = (N, Σ, P, S)
+every rule in P:  A → α
+  where A ∈ N  and  α ∈ (N ∪ Σ)*
+S ∈ N
+```
+
+<span slot="read">A grammar G is four things: N, the set of
+nonterminals; Σ (the Greek capital sigma), the set of terminals, the
+alphabet of tokens; P, the set of production rules; and S, the start
+symbol. Every rule in P has the form "A is made
+of α", where A is one nonterminal (the symbol ∈ reads "is a member of")
+and α (the Greek letter alpha) is a row of zero or more symbols, each
+one either a nonterminal or a terminal (∪ reads "together with", and the
+star means "a row of any length", the star from "Regular expressions as
+a language"). S is one of the nonterminals. For our grammar, N is stmt,
+expr and item; Σ is print, plus, the brackets, the semicolon and NUMBER;
+and S is stmt.</span>
+</Formal>
+
+Because every head is a *single* nonterminal, an `expr` may be replaced
+the same way wherever it stands, whatever surrounds it; grammars like
+this are called **context-free**, and they are the kind almost every
+programming language is defined with (JavaScript's specification says
+so in as many words<Cite id="ecma262-grammar" />).
+
+<Prompts ids={['terminal-what', 'nonterminal-what', 'quoted-name']} />
+
+## Rules that mention themselves
+
+Look again at `expr → expr "+" item`: `expr` appears on both sides.
+Each use gains one more `+ item` and still leaves an `expr` to fill in,
+so you can use it again; and `item → "(" expr ")"` puts a whole new
+`expr` inside brackets, which can hold more brackets. With five rules, the grammar allows `print 1;`,
+`print 1 + 2;`, `print ((1) + 2) + 3;` and endlessly many more.
+
+This is **recursion**, exactly as in the chapter "Recursion and the call
+stack", and like any recursion it needs a base case. If `expr` had only
+its recursive rule, every use would leave another `expr` behind, and no
+row of tokens could ever be finished; `expr → item` and `item → NUMBER`
+are the ways out. Recursion is also what grammars have that regular
+expressions lack: a regular expression can describe a number or a name,
+but no regular expression can check that every `(` has its `)` at any
+depth of nesting, and a grammar does it with one rule.
+
+Try it: fill in the blanks yourself. Each button uses one rule on the
+underlined nonterminal, and you are done when only terminals are left.
+
+<DerivePlay client:visible />
+
+A program can do the same, choosing rules at random; here the grammar
+is plain JavaScript data, one list of bodies per nonterminal:
+
+<Run id="randomSentences" />
+
+`rules` maps each nonterminal to its list of bodies. `make(sym)` looks
+the symbol up: with no rules it is a terminal, so it is written out (a
+`NUMBER` becomes a random digit); otherwise one body is chosen and
+`make` is called on each of its symbols, which is the recursion. Past
+`depth` 3 it always takes the first body, the way out, so every sentence
+finishes, and every line it prints fits the grammar.
+
+<Prompts ids={['recursive-rule', 'no-way-out']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript itself is defined this way. Its specification describes its
+syntax as a context-free grammar of productions, each with a nonterminal
+on the left, and calls the tokens its terminal symbols; it writes
+recursive rules for lists such as function arguments, and marks an
+optional symbol with a small "opt"<Cite id="ecma262-grammar" />.
+A grammar says only which programs are well formed; what they *mean*
+is the rest of the specification, and the rest of this book.
+</Callout>
+
+## Your turn
+
+Both exercises use the grammar-as-data form from the runnable example;
+the second is extra practice.
+
+<Exercise id="sortSymbols" />
+
+<Exercise id="selfRules" />
+
+## What you learned
+
+- A **grammar** is a set of **production rules** saying which rows of
+  tokens are valid; the scanner checks words, the grammar checks order.
+- In a rule, **terminals** are tokens (in quotes, or a token type such
+  as `NUMBER`); **nonterminals** are rule names, blanks still to be
+  filled in, and one of them is the start symbol.
+- A rule that mentions itself gives endlessly many programs, and needs a
+  non-recursive way out, like any recursion.
+- Formally, a grammar is four things: nonterminals, terminals, rules
+  and a start symbol.
+
+Next: a shorter way to write the same rules, called BNF, and the whole
+of Drip's grammar written in it.
+
+
+{/* ── merge: from old chapter 61, Writing grammars down: BNF ── */}
+
+## Five rules for one idea
+
+In the last chapter it took five plain rules to describe print statements
+that add numbers, and two of them only said "an `item`, then any number
+of `+ item`". Drip's whole grammar written that way would run to dozens
+of rules, and JavaScript's to hundreds, with the *idea* of each rule ("a
+list of arguments separated by commas") lost among helper rules that
+exist only to make things repeat. We want a shared, compact way to write
+rules down, which a person can read aloud and a program can still follow
+exactly.
+
+## BNF
+
+The standard way is called **BNF** (the letters stand for Backus–Naur
+form). In its plain form it is exactly what you already know: a head, an
+arrow, and a body of terminals and nonterminals. Older books and some
+specifications spell the same rule differently, with `::=` for the arrow
+and angle brackets round each nonterminal, so all three of these say
+the same thing:
+
+<Examples of="bnf">
+
+```text
+stmt → "print" expr ";"
+```
+
+```text
+<stmt> ::= "print" <expr> ";"
+```
+
+```text
+PrintStatement :
+  print Expression ;
+```
+
+</Examples>
+
+The first is the arrow style this book uses, with terminals in quotes.
+In the second, `::=` reads "is made of" and the angle brackets mark the
+nonterminals. The third is the style of JavaScript's own specification,
+with a colon, capitalised names and no quotes<Cite id="ecma262-grammar" />
+(JavaScript has no `print` statement, so this rule is made up, but the
+spelling is real). Read all three the same way: "a print statement is
+made of the keyword print, then an expression, then a semicolon".
+
+<Prompts ids={['bnf-what']} />
+
+## Three shorthands
+
+<Analogy title="a knitting pattern">
+Knitting patterns use a shorthand: "*knit 2, purl 2; repeat from * to
+end of row" saves writing "knit 2, purl 2" forty times, and "(make 1)" in
+brackets can mean "only if you want the wider size". Anyone who knows
+the shorthand can expand it back into every single stitch.
+<span slot="breaks">"To the end of the row" depends on how long the row
+is; a grammar's repeat has no outside limit, so it may repeat zero times
+or a million, and the tokens alone decide.</span>
+</Analogy>
+
+<Analogy extra title="repeat signs in music">
+Sheet music marks a passage with repeat signs instead of printing it
+twice, and a bracket over a bar marked "1." says "play this only the
+first time through". The written page is shorter, and the music you hear
+is exactly the same.
+<span slot="breaks">A repeat in music is played a fixed number of times,
+written on the page; a star in a grammar allows any number of repeats,
+including none.</span>
+</Analogy>
+
+Here are the five rules from the last chapter, written with the
+shorthands; they become three lines:
+
+```text
+stmt → "print" expr ";"
+expr → item ( "+" item )*
+item → NUMBER | "(" expr ")"
+```
+
+A bar `|` means "or", joining several bodies for one head into one line,
+so the third line is both rules for `item`. Brackets `( )` group symbols
+into one piece. A star `*` after a piece means "zero or more times", so
+the second line reads "an expr is an item, followed by zero or more
+pairs of a plus sign and an item". A question mark `?` after a piece
+means "optional: once, or not at all". The star has replaced the rule
+that mentioned itself, and both grammars allow exactly the same rows.
+Step through how each shorthand unfolds back into plain rules:
+
+<ShorthandSteps client:visible />
+
+<Callout kind="definition">
+**BNF** is the standard notation for grammars: each production rule is
+a nonterminal, an arrow (or `::=`), and a row of terminals and
+nonterminals. Most grammars use *extended* BNF (often written **EBNF**),
+which adds four shorthands: `|` for alternatives, `( )` for grouping,
+`*` for "zero or more times" and `?` for "optional". Some also write `+`
+for "one or more times".
+</Callout>
+
+<Formal title="What each shorthand means">
+
+```text
+A → α | β      is   A → α
+                    A → β
+A → α ( β )?   is   A → α
+                    A → α β
+A → α ( β )*   is   A → α R
+                    R → β R
+                    R → ε
+```
+
+<span slot="read">Here A is a nonterminal, α and β (the Greek letters
+alpha and beta) stand for any rows of symbols, and R is a brand-new
+nonterminal. "A is made of α or β" is two rules: A is made of α, and A
+is made of β. "A is made of α, then β optionally" is also two rules: A
+is made of α alone, or of α then β. "A is made of α, then zero or more
+βs" needs the helper R: A is made of α then R, where R is made of one β
+and then R again, or of ε (the Greek letter epsilon), which means the
+empty row of symbols, nothing at all. That last rule is R's way
+out.</span>
+</Formal>
+
+Since every shorthand unfolds into plain rules, they let you describe
+nothing new; they only make grammars shorter and easier to read.
+
+<Examples of="bnf">
+
+```text
+bool → "true" | "false"
+```
+
+```text
+call → IDENT "(" args? ")"
+args → expr ( "," expr )*
+```
+
+```text
+fnDecl → "fn" IDENT
+         "(" params? ")" block
+params → IDENT ( "," IDENT )*
+```
+
+</Examples>
+
+The first is the bar alone: a `bool` is the token `true` or the token
+`false`. The second combines two shorthands into the shape of every
+function call: a name, a bracket, *optionally* some arguments, and a
+closing bracket, where the arguments are one `expr` followed by zero or
+more `, expr` pairs; so `f()`, `f(x)` and `f(x, y, z)` fit, while
+`f(x,)` does not, because each comma brings an `expr` with it. The third
+is Drip's real rule for declaring a function: the keyword `fn`, a name,
+its parameters in brackets (names separated by commas, or none) and a
+block, the body.
+
+The mistake people make most often is putting a shorthand on the wrong
+piece:
+
+```text
+args → expr "," expr*     ✗
+args → expr ( "," expr )* ✓
+```
+
+Without the brackets the star applies only to the `expr` just before
+it, so the first rule demands exactly one comma, and allows `x,` and
+`x, y z`, but not `x, y, z`; with the brackets, the comma and the
+`expr` repeat together.
+
+<Prompts ids={['bar-means', 'star-means', 'question-means', 'star-binds', 'epsilon-what']} />
+
+## Drip's grammar on one page
+
+With the shorthands, the statements of Drip fit in a few lines. This is
+the part the next chapters build a parser for; read it slowly, aloud:
+
+<Formal title="Drip's statements">
+
+```text
+program     → declaration* EOF
+declaration → fnDecl | letDecl
+            | statement
+letDecl     → "let" IDENT
+              ( "=" expression )? ";"
+statement   → printStmt | ifStmt
+            | block | exprStmt
+printStmt   → "print" expression ";"
+ifStmt      → "if" expression block
+              ( "else" ( ifStmt | block ) )?
+block       → "{" declaration* "}"
+exprStmt    → expression ";"
+```
+
+<span slot="read">A program is zero or more declarations, then the end
+of the input (EOF, a token the scanner adds at the very end). A
+declaration is a let declaration, a function declaration (the fnDecl
+rule above), or a statement. A let declaration is the keyword let, a
+name, optionally an equals sign and an expression, then a semicolon. A
+statement is a print statement, an if statement, a block or an
+expression statement. A print statement is the keyword
+print, an expression and a semicolon. An if statement is the keyword
+if, a condition (with no brackets needed round it), a block, and
+optionally the keyword else followed by either another if statement or
+a block. A block is zero or more
+declarations between curly brackets. An expression statement is an
+expression followed by a semicolon.</span>
+</Formal>
+
+(This is Drip's real grammar, from the language's specification, with
+some statements left out: the full one also has `while`, `for`,
+`return`, `break`, `continue` and classes, and its `expression` has
+rules of its own, which the chapter on recursive descent parsing
+builds.)
+
+<Figure takeaway="Loops of rules let statements nest to any depth." caption="Which rules use which: an arrow from one rule to another means the second appears in the first one's body. The dashed arrows close the loops: a block holds declarations, which can be statements, which can be blocks; an if statement's branches are blocks, so they can hold anything; and after else an if statement can name itself.">
+  <DripGrammarMap />
+</Figure>
+
+Those loops are what give Drip its nesting. A `block` holds
+declarations, a declaration can be a statement, and a statement can be
+a block, so `{ { print 1; } }` is a block inside a block; an `ifStmt`'s
+branches are blocks, so an `if` can hold another `if` inside its braces;
+and because the `else` may be followed by an `ifStmt` directly, the
+rule mentions itself, which is how `else if x { ... }` is written with
+no extra braces.
+
+<Prompts ids={['nest-how']} />
+
+## Shorthands and regular expressions
+
+The shorthands may look familiar: `|`, grouping and `*` are exactly the
+three operators of a regular expression, from "Regular expressions as a
+language", only applied to tokens rather than characters. As such, a
+rule that uses shorthands but never mentions a nonterminal can be
+written as a regular expression. Here, with one letter per token type,
+JavaScript's own regular expressions check calls with number arguments:
+
+<Run id="callRegex" />
+
+`args` is the rule `NUMBER ( "," NUMBER )*`, with `n` for a number: an
+`n`, then zero or more `,n` pairs. `call` adds the name and brackets:
+`^` and `$` say the whole row must match, `\(` and `\)` are bracket
+tokens (a bare bracket would group; inside a JavaScript string the
+backslash is doubled), and `?` makes the arguments optional. It prints
+`true` for the first three rows and `false` for the last three.
+
+That works because nothing here nests. The moment an argument may be a
+whole call, `f(g(h(1)))`, the rule for `call` mentions `call` (through
+`expr`), and no regular expression can check nesting to any depth; the
+chapter "Ambiguity and the Chomsky hierarchy" shows where grammars
+and regular expressions sit in one family of descriptions, and why.
+
+<Prompts ids={['regex-limit']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript's specification is written in its own dialect of BNF. Its
+productions use a colon for the arrow, it writes lists such as function
+arguments with recursive rules rather than a star, and it marks an
+optional symbol with a small "opt" after it, where we write
+`?`<Cite id="ecma262-grammar" />, which unfolds exactly as `?` does.
+</Callout>
+
+## Your turn
+
+The first exercise turns a star into a loop; the second, for extra
+practice, adds a `?`.
+
+<Exercise id="isSum" />
+
+<Exercise id="isCall" />
+
+## What you learned
+
+- **BNF** writes each rule as `head → body` (or `<head> ::= body`).
+- Extended BNF adds `|` (or), `( )` (group), `?` (optional) and `*`
+  (zero or more); each one unfolds into plain rules, so they add
+  readability, not power.
+- A shorthand applies to the single piece just before it; brackets make
+  a bigger piece.
+- Drip's statement grammar fits on a page, and loops of rules let
+  blocks and `if` statements nest.
+- Shorthands alone are regular expressions over tokens; nesting needs
+  rules that mention themselves.
+
+Next: "Derivations and parse trees" shows, step by step, how a row of
+tokens is proved to fit a grammar; the chapter after it shows what goes
+wrong when it fits in two different ways.
+
+
+{/* ── merge: from old chapter 61, Derivations and parse trees ── */}
+
+## "It fits", but how do you know?
+
+The chapter on grammars ended with a claim: `print 1 + 2;` fits the
+adding grammar, while `print + ; 3 (` does not. Here is that grammar
+again (each `|` joins two rules for one head):
+
+```text
+stmt → "print" expr ";"
+expr → expr "+" item | item
+item → NUMBER | "(" expr ")"
+```
+
+You probably believe the claim; however, a compiler cannot run on
+belief, and `print ((1) + 2) + (3 + 4);` is hard to judge by eye. We
+want a way to *show* that a row of tokens fits, written so plainly
+that anyone, or any program, can check each piece of it.
+
+## Derivations
+
+Start from the start symbol and rewrite it, one rule at a time, until
+only tokens are left; if they are the tokens you were given, that is
+the proof.
+
+<Analogy title="showing your working in algebra">
+To simplify `2(x + 3) - x` you write a line for each move: `2x + 6 - x`,
+then `x + 6`. Each line follows from the one before by one small,
+allowed move, so a reader can check every line on its own, and if every
+line is right, the answer is right.
+<span slot="breaks">In algebra you choose any move that helps, and the
+lines get shorter; in a derivation the only allowed move is "replace one
+nonterminal by one of its rule bodies", and the lines usually get
+longer.</span>
+</Analogy>
+
+<Analogy extra title="a travel plan, filled in">
+"Get to Rome" becomes "train to Paris, then a sleeper to Rome", and
+"train to Paris" becomes "bus to the station, then the 9:15". You keep
+replacing a vague step by its parts until every step is something you
+can buy a ticket for.
+<span slot="breaks">A real plan can be filled in any way that works; a
+derivation may only use the rules the grammar lists, and the tickets
+(the tokens) must come out exactly as given, in exactly that
+order.</span>
+</Analogy>
+
+Here is `print 1 + 2;` derived, with `⇒` read as "becomes in one step"
+and the rule used on the right:
+
+```text
+stmt
+⇒ print expr ;            stmt → …
+⇒ print expr + item ;     expr → expr + item
+⇒ print item + item ;     expr → item
+⇒ print NUMBER + item ;   item → NUMBER
+⇒ print NUMBER + NUMBER ; item → NUMBER
+```
+
+Each line is called a **sentential form**: a row of symbols you can
+reach from the start symbol, which may still hold nonterminals. Each
+step picks one nonterminal and replaces it with the body of one of its
+rules. The last line has no nonterminals, so it is a **sentence**, and
+it is the token row the scanner makes from `print 1 + 2;` (where `1` and `2` became `NUMBER` tokens).
+
+<Callout kind="definition">
+A **derivation** is a list of sentential forms that begins with the
+start symbol, where each form comes from the one before by replacing
+exactly **one** nonterminal with the body of one of that nonterminal's
+rules. A row of tokens fits the grammar exactly when some derivation
+ends with it.
+</Callout>
+
+<Formal title="One step, many steps, and the language">
+
+```text
+α A β  ⇒  α γ β      if  A → γ is a rule
+S  ⇒*  w             in zero or more steps
+L(G) = { w ∈ Σ* | S ⇒* w }
+```
+
+<span slot="read">Here A is one nonterminal, and α, β and γ (the Greek
+letters alpha, beta and gamma) are rows of symbols. The first line says:
+anything of the shape alpha, A, beta becomes alpha, gamma, beta in one
+step, if A is made of gamma is one of the rules; alpha and beta, the
+symbols round A, are left alone. The arrow with a star means "in zero
+or more steps". The last line says the language of the grammar G, L of
+G, is the set of all rows w of terminals (Σ star, from "Regular
+expressions as a language") that the start symbol S becomes in zero or
+more steps.</span>
+</Formal>
+
+<Prompts ids={['derivation-what', 'sentential-form', 'one-step']} />
+
+## Leftmost and rightmost
+
+In the third line above there were two nonterminals, `expr` and
+`item`, and we rewrote `expr`; we could just as well have rewritten
+`item` first. Usually we fix the order. In a
+**leftmost derivation** every step rewrites the leftmost nonterminal
+(the buttons in the chapter on grammars always did this); in a
+**rightmost derivation** every step rewrites the rightmost one. Step
+through both, and watch the tree drawn below the forms:
+
+<DeriveSteps client:visible />
+
+<Examples of="derivation">
+
+```text
+greeting → "hello" name
+name → "Ada" | "Alan"
+
+greeting
+⇒ hello name
+⇒ hello Ada
+```
+
+```text
+rightmost, print 1 + 2;
+stmt
+⇒ print expr ;
+⇒ print expr + item ;
+⇒ print expr + NUMBER ;
+⇒ print item + NUMBER ;
+⇒ print NUMBER + NUMBER ;
+```
+
+```text
+ifStmt → "if" expr block elsePart
+elsePart → "else" block | ε
+
+ifStmt
+⇒ if expr block elsePart
+⇒ if expr block
+```
+
+</Examples>
+
+The first is the smallest derivation there is: two steps, with one
+nonterminal in each form, so leftmost and rightmost are the same. The second is the rightmost derivation of `print 1 + 2;`: it
+uses exactly the five rules of the leftmost one, but on the third line
+it rewrites `item` (further right) before `expr`. The third is a piece
+of Drip, an `if` with no `else` (`if ready { ... }`), with the optional
+`else` part unfolded into plain rules as the chapter on BNF showed
+(simplified: the real rule also allows `else if`); the
+last step uses `elsePart → ε`, so `elsePart` turns into nothing at
+all, and the form gets shorter.
+
+The step people most often get wrong is a shortcut:
+
+```text
+✗  expr + item ⇒ NUMBER + item
+✓  expr + item ⇒ item + item
+               ⇒ NUMBER + item
+```
+
+There is no rule `expr → NUMBER`, so the first line is two steps
+squeezed into one, and a checker that follows the rules rejects it.
+
+A program can do the same work. Here `picks` says which body to use at each step:
+
+<Run id="rightmost" />
+
+`rightmost` keeps the form as an array. On each step, the `while` loop
+walks `i` back from the end until `form[i]` is a key of `rules` (the
+`in` operator asks "is this a key of that object?"), which is the
+rightmost nonterminal; `rules[form[i]][k]` is the chosen body; and the
+new form is the part before `i`, the body, and the part after, joined
+with `...` into a new array. It prints the five forms above.
+
+<Prompts ids={['leftmost-what']} />
+
+## Parse trees
+
+The leftmost and rightmost derivations of `print 1 + 2;` look
+different on paper, yet in the step-through they drew the very same
+tree; and the tree is what a compiler really wants, because it shows
+that `1` and `2` are the two sides of the `+`, and that the sum is
+what gets printed.
+
+<Analogy extra title="a tournament bracket">
+A knockout bracket shows who played whom; it does not show whether the Saturday match was played
+before the Sunday one; two weekends with different schedules can fill
+in the same bracket.
+<span slot="breaks">A bracket narrows many players down to one winner;
+a parse tree grows outwards from one start symbol to many tokens, and
+its leaves are kept in a fixed left-to-right order.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **parse tree** for a grammar has the start symbol at its root. Each
+inner node is a nonterminal, and its children, from left to right, are
+the symbols of the body of the rule used on it. Each leaf is a terminal
+(or `ε`, for an empty body). Reading the leaves from left to right gives
+the tree's **yield**: the sentence it derives.
+</Callout>
+
+<Figure takeaway="Read the leaves left to right and you get the sentence back." caption="The parse tree of print (1 + 2) + 3; under the adding grammar, with each NUMBER leaf shown by its lexeme. The dashed lines drop every leaf to the bottom row: in order, they spell the sentence.">
+  <YieldTree />
+</Figure>
+
+<Examples of="parse-tree">
+
+```text
+greeting
+├── hello
+└── name
+    └── Ada
+```
+
+```text
+ifStmt ┬ if
+       ├ expr
+       ├ block
+       └ elsePart ── ε
+```
+
+```text
+stmt ┬ print
+     ├ expr ┬ expr ── item ── NUMBER
+     │      ├ +
+     │      └ item ── NUMBER
+     └ ;
+```
+
+</Examples>
+
+The first is the tree of `hello Ada`: a root, a leaf and one inner
+node, one node for each rule used plus the tokens. The second is the top
+of the tree of `if ready { ... }`, where the `elsePart` node has a
+single `ε` leaf; the yield skips it, leaving `if expr block` (and the
+`expr` and `block` nodes grow trees of their own below). The third is the tree from
+the step-through, drawn sideways: the inner `expr` with its single
+child `item` is the step `expr ⇒ item`, and the `+` sits between the
+two `item`s, which is how the tree says "these two are added". (A parse tree keeps every rule and every token, even the `;`; the
+chapter "Syntax trees" strips it down to what the interpreter needs.)
+
+One parse tree stands for many derivations, which differ only in the
+order of their steps; however, it stands for exactly *one* leftmost
+derivation (always grow the leftmost unfinished node) and exactly one
+rightmost derivation. That is why parsers are often described by the
+derivation they find: the parsers that work from the top down find a
+leftmost derivation, and the ones that work from the bottom up, later
+in this part, find a rightmost derivation, backwards<Cite id="aho2006" />.
+
+<Prompts ids={['parse-tree-what', 'tree-yield', 'tree-forgets', 'epsilon-leaf']} />
+
+<Callout kind="engine" label="Under the hood">
+A hand-written parser such as Drip's rarely builds this full tree as
+data; instead, its functions call each other in the shape of the tree
+(the call for `stmt` calls the one for `expr`, which calls the one for
+`item`), and it builds a smaller syntax tree as it goes. The words
+used here are the textbooks' standard ones<Cite id="aho2006" /><Cite id="hmu2006" />.
+</Callout>
+
+## Your turn
+
+The first exercise writes a leftmost derivation as code; the second,
+for extra practice, turns the same picks into a parse tree.
+
+<Exercise id="leftmost" />
+
+<Exercise id="toTree" />
+
+## What you learned
+
+- A **derivation** starts at the start symbol and replaces one
+  nonterminal per step by one of its rule bodies, until only tokens
+  are left; each row on the way is a **sentential form**.
+- A **leftmost** derivation always rewrites the leftmost nonterminal,
+  a **rightmost** one the rightmost; both reach the same sentence.
+- A **parse tree** records which rule was used on which nonterminal
+  and forgets the order; its leaves, read left to right, are its
+  **yield**, the sentence.
+
+Next: what happens when one sentence has *two* different parse trees,
+and why that is a problem a language designer must fix.
+
+
+{/* ── merge: from old chapter 61, Ambiguity and the Chomsky hierarchy ── */}
+
+## A short grammar with a long problem
+
+Here is the grammar most people write first for arithmetic, and it is
+pleasingly short:
+
+```text
+expr → expr "-" expr
+     | expr "+" expr
+     | expr "*" expr
+     | NUMBER
+```
+
+`1 - 2 - 3`, `1 + 2 * 3` and `4` all fit; the trouble is *how*. Step through two leftmost
+derivations of `1 - 2 - 3`; both follow the rules exactly, and they
+draw different trees:
+
+<AmbigSteps client:visible />
+
+The first tree says `(1 - 2) - 3`, which is `-4`; the second says
+`1 - (2 - 3)`, which is `2`. A compiler builds its program from the
+tree, so a grammar that allows both trees has not decided what the
+program means, and two compilers built from it could print different
+answers.
+
+<Analogy title="a newspaper headline">
+"Squad helps dog bite victim" can be read as a squad helping someone a
+dog bit, or as a squad helping a dog to bite someone. Every word is
+right, and the order of the words is right; what is missing is which
+words group together.
+<span slot="breaks">A reader picks the sensible meaning without
+noticing; a parser has no common sense, so a grammar must leave it no
+choice to make.</span>
+</Analogy>
+
+<Analogy extra title="two pocket calculators">
+Type `2 + 3 × 4 =` into a cheap calculator, which works out each step
+as you press it, and you get 20; type the same keys into a scientific
+one and you get 14. Same keys, two groupings, two answers.
+<span slot="breaks">Each calculator is perfectly definite; it has one
+fixed habit. The ambiguity is in the keys alone, until someone writes
+down which habit is the rule, which is the grammar's job.</span>
+</Analogy>
+
+<Callout kind="definition">
+A grammar is **ambiguous** when at least one sentence has two (or more)
+different parse trees. Since each parse tree has exactly one leftmost
+derivation, that is the same as some sentence having two different
+leftmost derivations.
+</Callout>
+
+<Formal title="Ambiguity">
+
+```text
+G is ambiguous  ⇔
+  some w ∈ L(G) has two different
+  parse trees under G
+```
+
+<span slot="read">The grammar G is ambiguous if and only if (the double
+arrow) there is some sentence w in the language of G that has two
+different parse trees under G's rules. Notice that the definition is
+about one grammar; a different grammar for the same sentences may have
+one tree for each.</span>
+</Formal>
+
+A program can list every tree such a grammar allows. Every tree of
+`expr op expr` has some operator at its root, so try each one, and
+combine every tree of the left part with every tree of the right:
+
+<Run id="allValues" />
+
+`values` returns one value per tree. A single number is the base case;
+otherwise the loop takes each operator at the odd positions `i` as the
+root, calls itself on the tokens to the left (`slice(0, i)`) and to the
+right (`slice(i + 1)`), and combines every pair. It prints `[ 2, -4 ]`
+for `1 - 2 - 3`, `[ 7, 9 ]` for `1 + 2 * 3`, and five values for
+`8 - 4 - 2 - 1`, one per tree.
+
+<Prompts ids={['ambiguous-what']} />
+
+## Removing it: levels and a lean
+
+The fix is to rewrite the grammar so that only the tree we want can
+be built. Two decisions go into it. **Precedence** (which operators
+bind tighter) says `*` is done before `+` and `-`; **associativity**
+(how a chain of operators on the same level groups) says
+`1 - 2 - 3` means `(1 - 2) - 3`. Both go into the rules:
+
+```text
+term    → term "-" factor
+        | term "+" factor | factor
+factor  → factor "*" primary | primary
+primary → NUMBER | "(" term ")"
+```
+
+Each level of precedence has its own nonterminal, loosest first. A `*`
+can only join `primary`s, so `2 * 3` becomes one `factor` before any
+`+` can see it; to put a sum under a `*`, you must write brackets,
+which restart at the top level. And in `term → term "-" factor`, the
+right side of a `-` is a `factor`, which cannot contain a `-`, so in
+`1 - 2 - 3` the only way to place the first `-` lower in the tree is
+inside the *left* `term`: the tree leans left, as arithmetic does.
+(The chapter "Precedence and associativity" turns these levels into code,
+and Drip's own grammar, in which `term` handles `+` and `-` and
+`factor` handles `*`, `/` and `%`, has more levels on the same plan.)
+
+<Examples of="ambiguity">
+
+```text
+expr → expr "-" expr | NUMBER
+1 - 2 - 3:  (1 - 2) - 3   or
+            1 - (2 - 3)
+```
+
+```text
+expr → expr "+" expr
+     | expr "*" expr | NUMBER
+1 + 2 * 3:  1 + (2 * 3)   or
+            (1 + 2) * 3
+```
+
+```text
+stmt → "if" "(" expr ")" stmt
+     | "if" "(" expr ")" stmt
+       "else" stmt
+     | other
+```
+
+</Examples>
+
+The first is ambiguity of associativity: one operator, two ways to
+chain it, and two answers, `-4` or `2`. The second is ambiguity of
+precedence: the trees give `7` and `9`. The third is the most famous
+ambiguity in programming, a grammar for `if` in the style of C and
+JavaScript, where a bracketed condition is followed by a single
+statement; it is the subject of the next section.
+
+<Prompts ids={['levels-fix', 'left-rec-assoc', 'grammar-not-language']} />
+
+## The dangling else
+
+Under that third grammar, `if (a) if (b) s1 else s2` has two trees,
+because the rules allow the `else` to belong to either `if`:
+
+<Figure takeaway="The rules allow the else to belong to either if." caption="The tokens of if (a) if (b) s1 else s2 (brackets left out), grouped two ways. Top: the else belongs to the inner, nearest if, so s2 runs when a is true and b is false. Bottom: it belongs to the outer if, so s2 runs when a is false.">
+  <DanglingElse />
+</Figure>
+
+Languages take one of three ways out. The first is a **rule beside the
+grammar**: JavaScript's specification keeps the short rules and adds a
+note that when the choice is otherwise ambiguous, the `else` goes with
+the nearest `if`<Cite id="ecma262-if" />, and a hand-written parser
+does this for free, because the inner `if` is still being parsed when
+the `else` arrives and takes it greedily. The second is to **rewrite
+the grammar**, with one rule for an `if` whose branches are all
+"matched" and one for an `if` that may still take an `else`, which
+works but doubles the rules<Cite id="aho2006" />. The third is to
+**change the language**: Drip requires braces round every branch, as
+in `if a { if b { s1 } } else { s2 }`, so the braces themselves show
+which `if` an `else` belongs to, and there is only one tree.
+
+Ambiguity belongs to the grammar, not to the sentences: the levelled
+grammar above and the short one describe exactly the same rows of
+tokens, and only one is ambiguous. (Some sets of sentences have no
+unambiguous grammar at all, and no program can decide, for every
+grammar, whether it is ambiguous<Cite id="hmu2006" />; however,
+neither problem arises with the grammars of programming languages,
+which are designed to have one tree per program.)
+
+<Prompts ids={['dangling-what', 'dangling-fix']} />
+
+## A family of four
+
+Grammars are one member of a family. In 1959 Noam Chomsky described
+grammars by the shapes their rules may take, and showed that each
+stricter shape describes a smaller class of languages<Cite id="chomsky1959" />;
+the ladder he described is now called the **Chomsky hierarchy**.
+
+<Analogy extra title="driving licences">
+A moped licence lets you ride a moped; a car licence also lets you
+drive a car; a lorry licence adds lorries. Each licence covers
+everything the one below it does, and more, and each needs a bigger
+test.
+<span slot="breaks">You can hold a lorry licence and still choose to
+ride a moped; a language does not "hold" a level, it simply is at the
+lowest level whose rules can describe it.</span>
+</Analogy>
+
+<Figure takeaway="Each level contains the one inside it, and needs a stronger machine." caption="The Chomsky hierarchy, with the machine that recognises each level and an example. Programming-language syntax lives at type 2; its tokens at type 3.">
+  <ChomskyNest />
+</Figure>
+
+<Callout kind="definition">
+The **Chomsky hierarchy** sorts grammars by the shape of their rules.
+**Regular** grammars (type 3) give exactly the regular languages, the
+ones regular expressions and finite automata describe. **Context-free**
+grammars (type 2), whose heads are a single nonterminal, are the ones
+in this part of the book; they need a *pushdown automaton*, a finite
+automaton with a stack. **Context-sensitive** grammars (type 1) may
+look at the symbols round a nonterminal, and **unrestricted** grammars
+(type 0) may rewrite anything; the first need a *linear-bounded
+automaton*, the second a *Turing machine* (a model of any
+program)<Cite id="hmu2006" />.
+</Callout>
+
+<Formal title="The four rule shapes">
+
+```text
+type 3   A → a B   or   A → a
+type 2   A → γ
+type 1   α A β → α γ β   (γ ≠ ε)
+type 0   α → β           (α ≠ ε)
+```
+
+<span slot="read">A and B are nonterminals, a is one terminal, and the
+Greek letters stand for rows of symbols. Type 3: a nonterminal becomes
+a terminal followed by at most one nonterminal. Type 2: a nonterminal
+becomes any row, wherever it stands. Type 1: A may become gamma only
+when it stands between alpha and beta, its context, and gamma is not
+empty. Type 0: any nonempty row may become any row. (Books differ in
+small details, such as where ε is allowed.)</span>
+</Formal>
+
+<Examples of="chomsky-hierarchy">
+
+```text
+type 3, a Drip number's digits:
+num → DIGIT num | DIGIT
+```
+
+```text
+type 2, brackets nested to any depth:
+p → "(" p ")" | ε
+```
+
+```text
+beyond type 2:
+let x = 1;  print x;   ✓
+let x = 1;  print y;   ✗ y never declared
+```
+
+</Examples>
+
+The first is regular: each rule adds one digit and moves on, which a
+finite automaton can follow with a single loop. The second is context-free
+and not regular: to match each `(` with its `)`, the rule puts `p` in
+the *middle*, and a machine must count the open brackets, which takes a
+stack (this is the nesting a regular expression cannot check). The
+third is a rule every programming language has, "use a name only after
+declaring it", and it cannot be written as a context-free grammar at
+all; the textbooks prove this with a language of a word, a separator
+and the same word again<Cite id="aho2006" />. That is why compilers
+check it in a separate pass after parsing (the chapter "Finding every name before running: the resolver"
+builds one for Drip), and keep the grammar context-free.
+
+<Prompts ids={['chomsky-four', 'cf-machine', 'declare-before-use']} />
+
+## Your turn
+
+The first exercise lists every tree an ambiguous grammar allows; the
+second, for extra practice, checks whether a grammar is regular.
+
+<Exercise id="groupings" />
+
+<Exercise id="rightLinear" />
+
+## What you learned
+
+- A grammar is **ambiguous** when one sentence has two parse trees;
+  the trees can mean different things, as `1 - 2 - 3` shows.
+- One nonterminal per precedence level, loosest first, makes `*` bind
+  tighter; putting the recursion on the left makes `-` group to the
+  left.
+- The **dangling else** is fixed by a "nearest `if`" rule
+  (JavaScript), by a longer grammar, or by required braces (Drip).
+- The **Chomsky hierarchy**: regular ⊂ context-free ⊂
+  context-sensitive ⊂ unrestricted; programming-language syntax is
+  context-free, and rules such as "declare before use" are checked
+  after parsing.
+
+Next: "Syntax trees", the smaller tree the parser actually builds.
+
+<Quiz />

@@ -1,4 +1,4 @@
-// New references for chapter 134 (System F, dependent types) and its
+// New references for chapter 202 (System F, dependent types) and its
 // staged second half (linear types, effect systems). Network note: from
 // this session only web search and raw.githubusercontent.com were
 // reachable (doi.org, springer, dl.acm.org, idris-lang.org and
@@ -15,7 +15,7 @@ export default [
     url: 'https://girard.perso.math.cnrs.fr/These.pdf',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: the scanned thesis on Girard’s own site (girard.perso.math.cnrs.fr/These.pdf) and a second copy at prl.khoury.northeastern.edu, whose title page (as described in the results) gives a Thèse de Doctorat d’État in mathematics, Université Paris VII, defended 26 June 1972, with G. Kreisel as rapporteur; a Collège de France course document and other course notes credit Girard with System F (in his 1971 paper and this thesis) and its normalisation proof. The title is spelled in several ways in bibliographies; the one here follows the usual form.',
-    shaped: 'Chapter 134: System F, found by Girard in logic, independently of Reynolds.',
+    shaped: 'Chapter 202: System F, found by Girard in logic, independently of Reynolds.',
   },
   {
     id: 'reynolds1974',
@@ -27,7 +27,7 @@ export default [
     url: 'https://doi.org/10.1007/3-540-06859-7_148',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: the DOI listed by doi.org and OpenAlex for Reynolds, “Towards a theory of type structure”, Programming Symposium, LNCS 19, editor B. Robinet; Springer’s citation gives pages 408–425 (other bibliographies give 408–423 or 408–424); a copy at prl.khoury.northeastern.edu/img/r-cp-1974.pdf; a course bibliography describes it as introducing the polymorphic lambda calculus.',
-    shaped: 'Chapter 134: the polymorphic lambda calculus, found by Reynolds for programming languages.',
+    shaped: 'Chapter 202: the polymorphic lambda calculus, found by Reynolds for programming languages.',
   },
   {
     id: 'idris2-docs-types',
@@ -39,7 +39,7 @@ export default [
     url: 'https://idris2.readthedocs.io/en/latest/tutorial/typesfuns.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/idris-lang/Idris2/main/docs/source/tutorial/typesfuns.rst, section “Vectors”: “A standard example of a dependent data type is the type of “lists with length”, conventionally called vectors”; the declaration data Vect : Nat -> Type -> Type with Nil : Vect Z a and (::) : a -> Vect k a -> Vect (S k) a; (++) : Vect n a -> Vect m a -> Vect (n + m) a, whose type “states that the resulting vector’s length will be the sum of the input lengths”; and the broken definition x :: xs ++ xs, which Idris rejects with “When unifying plus k k and plus k m / Mismatch between: k and m”.',
-    shaped: 'Chapter 134: dependent types, Vect n a, and a type error that comes from a length.',
+    shaped: 'Chapter 202: dependent types, Vect n a, and a type error that comes from a length.',
   },
   {
     id: 'wadler1990',
@@ -51,7 +51,7 @@ export default [
     url: 'https://homepages.inf.ed.ac.uk/wadler/topics/linear-logic.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: several bibliographies (a UCSD course reading list, a Northwestern course handout, papers on linear Haskell) cite it as Wadler, “Linear types can change the world!”, in Broy and Jones (eds.), Programming Concepts and Methods, North-Holland, 1990, from the IFIP working conference at the Sea of Galilee, 2–5 April 1990; one gives page 561. No DOI or publisher page exists for the volume, and the page number is unconfirmed, so it is left out. The url is the author’s page of papers on linear logic, which could not be opened from this session.',
-    shaped: 'Chapter 134b: linear types as a way to allow in-place update in a pure language, by making sure a value is used exactly once.',
+    shaped: 'Chapter 202b: linear types as a way to allow in-place update in a pure language, by making sure a value is used exactly once.',
   },
   {
     id: 'idris2-docs-multiplicities',
@@ -63,7 +63,7 @@ export default [
     url: 'https://idris2.readthedocs.io/en/latest/tutorial/multiplicities.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/idris-lang/Idris2/main/docs/source/tutorial/multiplicities.rst: Idris 2 is based on Quantitative Type Theory; every variable has a quantity, 0 (erased at run time), 1 (“used exactly once at run time”) or unrestricted; the example duplicate : (1 x : a) -> (a, a), which “must use x exactly once”, so it has no implementation.',
-    shaped: 'Chapter 134b: a linear function type in a real language, and why a linear argument cannot be duplicated.',
+    shaped: 'Chapter 202b: a linear function type in a real language, and why a linear argument cannot be duplicated.',
   },
   {
     id: 'rust-book-ownership',
@@ -75,7 +75,7 @@ export default [
     url: 'https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/rust-lang/book/main/src/ch04-01-what-is-ownership.md, “Ownership Rules”: “Each value in Rust has an owner. There can only be one owner at a time. When the owner goes out of scope, the value will be dropped.”, and the section on moves, where after let s2 = s1; the first variable is no longer valid. Reproduced with rustc 1.97.0: using a String after moving it is error[E0382]: borrow of moved value: `s`, with “value moved here” and “value borrowed here after move”.',
-    shaped: 'Chapter 134b: Rust’s moves as an everyday form of affine types (a value used at most once), ahead of Track B.',
+    shaped: 'Chapter 202b: Rust’s moves as an everyday form of affine types (a value used at most once), ahead of Track B.',
   },
   {
     id: 'lucassen-gifford1988',
@@ -87,7 +87,7 @@ export default [
     url: 'https://doi.org/10.1145/73560.73564',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: the DBLP index of POPL 1988 (mirrored at vldb.org) lists John M. Lucassen, David K. Gifford: Polymorphic Effect Systems, 47–57; a 2017 arXiv paper cites it with DOI 10.1145/73560.73564; the Wikipedia article on FX-87 describes the language as one in which every expression has two static properties, a type and an effect, with its kernel described in this paper.',
-    shaped: 'Chapter 134b: effect systems, where an expression has an effect as well as a type.',
+    shaped: 'Chapter 202b: effect systems, where an expression has an effect as well as a type.',
   },
   {
     id: 'jls-checked-exceptions',
@@ -99,6 +99,6 @@ export default [
     url: 'https://docs.oracle.com/javase/specs/jls/se21/html/jls-11.html#jls-11.2',
     accessed: '2026-11-02',
     checkedAgainst: 'docs.oracle.com was not reachable from this session. Web search results: the official chapter 11 pages for SE 11 and SE 20 at docs.oracle.com list §11.2 Compile-Time Checking of Exceptions (with Exception Analysis of Expressions, of Statements, and Exception Checking), and the SE 20 text says checked exception classes are checked at compile time while unchecked ones are exempt; an OpenJDK bug report quotes the rule that it is a compile-time error if a method or constructor body can throw a checked exception class not covered by its throws clause. Reproduced with OpenJDK 21.0.12 javac: a method whose body is throw new IOException("no file"); with no throws clause gives “error: unreported exception IOException; must be caught or declared to be thrown”. The SE 21 page itself could not be opened, so no author list or year is given.',
-    shaped: 'Chapter 134b: Java’s checked exceptions as an everyday effect system.',
+    shaped: 'Chapter 202b: Java’s checked exceptions as an everyday effect system.',
   },
 ];

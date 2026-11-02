@@ -1,4 +1,5 @@
-// Chapter 21 cards. Keys are stable ids: never rename them.
+// Chapter 21 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'str-index': {
@@ -54,7 +55,7 @@ console.log('7'.charCodeAt(0) - 48);`,
 export const exercises = {
   toNumber: {
     title: 'Digits into a number',
-    prompt: `Write \`toNumber(s)\` that turns a string of digits, like \`'472'\`, into the number \`472\`. **Don't** use \`Number\` or \`parseInt\`: work it out from the char codes, the way a scanner does. You may assume \`s\` contains only the digits \`0\` to \`9\`. The empty string gives \`0\`.`,
+    prompt: 'Write `toNumber(s)` that turns a string of digits, like `\'472\'`, into the number `472`. **Don\'t** use `Number` or `parseInt`: work it out from the char codes, the way a scanner does. You may assume `s` contains only the digits `0` to `9`. The empty string gives `0`.',
     starter: `function toNumber(s) {
   // your code here
 }
@@ -149,8 +150,7 @@ The edge cases fall out for free. Leading zeros multiply 0 by 10, which is still
   countLetters: {
     optional: true,
     title: 'Count the letters',
-    prompt:
-      'Write `countLetters(s)` that returns how many characters of `s` are letters, capital (`A` to `Z`, codes 65 to 90) or small (`a` to `z`, codes 97 to 122). Digits, spaces and symbols do not count. For example `countLetters(\'x = 42;\')` is `1`.',
+    prompt: 'Write `countLetters(s)` that returns how many characters of `s` are letters, capital (`A` to `Z`, codes 65 to 90) or small (`a` to `z`, codes 97 to 122). Digits, spaces and symbols do not count. For example `countLetters(\'x = 42;\')` is `1`.',
     starter: `function countLetters(s) {
   // your code here
 }
@@ -249,46 +249,116 @@ export const quiz = [
   {
     q: 'What is `\'hello\'.length` and what is `\'hello\'[5]`?',
     options: [
-      { t: '`5` and `\'o\'`', why: 'Indexes start at 0, so `\'o\'` is at index 4.' },
-      { t: '`5` and `undefined`', correct: true, why: 'Five characters at indexes 0 to 4. Index 5 is past the end.' },
-      { t: '`4` and `\'o\'`', why: '`length` counts the characters: there are 5.' },
-      { t: '`6` and `\'\'`', why: 'There is no hidden extra character, and a missing index gives `undefined`.' },
+      {
+        t: '`5` and `\'o\'`',
+        why: 'Indexes start at 0, so `\'o\'` is at index 4.',
+      },
+      {
+        t: '`5` and `undefined`',
+        correct: true,
+        why: 'Five characters at indexes 0 to 4. Index 5 is past the end.',
+      },
+      {
+        t: '`4` and `\'o\'`',
+        why: '`length` counts the characters: there are 5.',
+      },
+      {
+        t: '`6` and `\'\'`',
+        why: 'There is no hidden extra character, and a missing index gives `undefined`.',
+      },
     ],
   },
   {
     q: '`\'a\'.charCodeAt(0)` is 97. What is `String.fromCharCode(99)`?',
     options: [
-      { t: '`\'99\'`', why: '`fromCharCode` makes the character with that code, not the digits of the number.' },
-      { t: '`\'b\'`', why: '`\'b\'` is 98, one after 97.' },
-      { t: '`\'C\'`', why: 'Capital letters have different codes (65 to 90).' },
-      { t: '`\'c\'`', correct: true, why: 'Letters are consecutive: 97 is `a`, 98 `b`, 99 `c`.' },
+      {
+        t: '`\'99\'`',
+        why: '`fromCharCode` makes the character with that code, not the digits of the number.',
+      },
+      {
+        t: '`\'b\'`',
+        why: '`\'b\'` is 98, one after 97.',
+      },
+      {
+        t: '`\'C\'`',
+        why: 'Capital letters have different codes (65 to 90).',
+      },
+      {
+        t: '`\'c\'`',
+        correct: true,
+        why: 'Letters are consecutive: 97 is `a`, 98 `b`, 99 `c`.',
+      },
     ],
   },
   {
     q: 'A scanner holds `c = src.charCodeAt(i)`. Which test is true exactly when that character is a digit?',
     options: [
-      { t: '`c >= 0 && c <= 9`', why: 'Those are the digit *values*. The digit characters’ *codes* are 48 to 57.' },
-      { t: '`c >= 48 && c <= 57`', correct: true, why: '`\'0\'` is 48 and `\'9\'` is 57, and the digits in between are consecutive.' },
-      { t: '`c === \'0\'`', why: '`c` is a number, and this would only match one digit anyway.' },
-      { t: '`c > 48 && c < 57`', why: 'This leaves out `\'0\'` (48) and `\'9\'` (57).' },
+      {
+        t: '`c >= 0 && c <= 9`',
+        why: 'Those are the digit *values*. The digit characters’ *codes* are 48 to 57.',
+      },
+      {
+        t: '`c >= 48 && c <= 57`',
+        correct: true,
+        why: '`\'0\'` is 48 and `\'9\'` is 57, and the digits in between are consecutive.',
+      },
+      {
+        t: '`c === \'0\'`',
+        why: '`c` is a number, and this would only match one digit anyway.',
+      },
+      {
+        t: '`c > 48 && c < 57`',
+        why: 'This leaves out `\'0\'` (48) and `\'9\'` (57).',
+      },
     ],
   },
   {
-    q: 'What does this print?\n```\nlet t = \'dog\';\nt[0] = \'f\';\nconsole.log(t);\n```',
+    q: `What does this print?
+\`\`\`
+let t = 'dog';
+t[0] = 'f';
+console.log(t);
+\`\`\``,
     options: [
-      { t: '`dog`', correct: true, why: 'Strings are immutable, so writing to `t[0]` changes nothing (or, in strict mode, throws a TypeError).' },
-      { t: '`fog`', why: 'That would need a new string: `t = \'fog\'`.' },
-      { t: '`f`', why: '`t` still holds the whole string.' },
-      { t: '`undefined`', why: '`t` still holds `\'dog\'`.' },
+      {
+        t: '`dog`',
+        correct: true,
+        why: 'Strings are immutable, so writing to `t[0]` changes nothing (or, in strict mode, throws a TypeError).',
+      },
+      {
+        t: '`fog`',
+        why: 'That would need a new string: `t = \'fog\'`.',
+      },
+      {
+        t: '`f`',
+        why: '`t` still holds the whole string.',
+      },
+      {
+        t: '`undefined`',
+        why: '`t` still holds `\'dog\'`.',
+      },
     ],
   },
   {
     q: 'What is `\'4\' + 2`, and what is `\'4\'.charCodeAt(0) - 48 + 2`?',
     options: [
-      { t: '`6` and `6`', why: 'The first glues, because `\'4\'` is a string.' },
-      { t: '`\'42\'` and `\'42\'`', why: 'The second works on numbers: the code of `\'4\'` is 52, and `52 - 48 + 2` is 6.' },
-      { t: '`\'42\'` and `6`', correct: true, why: '`+` with a string glues; turning the character into its value first gives real arithmetic.' },
-      { t: '`6` and `54`', why: 'The first is a string, `\'42\'`; the second subtracts 48 first.' },
+      {
+        t: '`6` and `6`',
+        why: 'The first glues, because `\'4\'` is a string.',
+      },
+      {
+        t: '`\'42\'` and `\'42\'`',
+        why: 'The second works on numbers: the code of `\'4\'` is 52, and `52 - 48 + 2` is 6.',
+      },
+      {
+        t: '`\'42\'` and `6`',
+        correct: true,
+        why: '`+` with a string glues; turning the character into its value first gives real arithmetic.',
+      },
+      {
+        t: '`6` and `54`',
+        why: 'The first is a string, `\'42\'`; the second subtracts 48 first.',
+      },
     ],
   },
 ];

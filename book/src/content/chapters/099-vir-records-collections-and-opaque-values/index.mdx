@@ -1,0 +1,487 @@
+---
+n: 99
+day: 13
+part: VI
+title: 'VIR: records, collections and opaque values'
+tagline: 'Every analysis in Viscosity reads one data structure. It is small enough to print on a phone, it is a control-flow graph in SSA form, and it decides, variable by variable, what may be a value and what must stay a name.'
+objectives:
+  - Describe the parts of a VIR module (functions, blocks, instructions, terminators, bindings) and read a real listing.
+  - Explain what a phi in VIR means, and predict where the builder puts one.
+  - Say which variables become SSA values and which become bindings, and why.
+  - Write a printer for a small VIR function.
+  - List VIR’s record and collection instructions and say what each one stands for.
+  - Explain why first-class data operations make the layout questions direct, and hide each language’s spelling.
+  - Find the fields a loop touches by reading VIR alone.
+  - Explain how opaque instructions keep the analyses sound without modelling all of JavaScript.
+introduces: [vir, record-collection-nodes]
+uses: [viscosity-pipeline, language-plugin, ir, lowering, three-address-code, temporary, basic-block, cfg, ssa, phi-node, ssa-construction, closure, captured-environment, global-variable, dataflow, static-analysis, discriminated-union, interface, array-of-objects, property, escape-analysis, escape-sites, alias-analysis, object, array, push, template-literal]
+sources: [braun2013, coopertorczon2022]
+---
+import VirSteps from '../../../components/diagrams/ch099/VirSteps';
+import CfgShape from '../../../components/diagrams/ch099/CfgShape';
+import TouchedSteps from '../../../components/diagrams/ch099/TouchedSteps';
+import OneRecord from '../../../components/diagrams/ch099/OneRecord';
+
+{/* ── merge: from old chapter 99, VIR: Viscosity’s IR ── */}
+
+## One data structure
+
+Every analysis from here to the end of Part VIII asks questions about
+how a program *runs*: which value flows into which instruction, which
+loop reads which field, what could reach a call. A syntax tree is a poor
+place to ask them, because it is shaped like the text, so `t = t + v`
+inside a loop is one node that stands for a different value on every
+pass. Viscosity asks them of **VIR**, its intermediate representation,
+and all of it lives in one file, `packages/core/src/vir.ts`, 176 lines
+long.
+
+<Analogy title="a metro map">
+A metro map drops the streets, the parks and the shape of the river, and
+keeps what a traveller needs: the stations, and which line leads from
+each one to the next. VIR is a metro map of your program: each station
+is a run of steps with no choices in it, and the lines between them are
+the only ways control can go.
+<span slot="breaks">You can ride a metro line in either direction; a VIR
+edge goes one way only, and at a fork the program does not choose, a
+value does.</span>
+</Analogy>
+
+## Modules, functions, blocks
+
+A `Module` holds a list of `Func`s (one per function, plus `<module>` for
+the top-level code), a list of `Binding`s, and every instruction by its
+id. A `Func` is a control-flow graph, exactly as in the chapter *Basic
+blocks and control-flow graphs*: a list of `Block`s and an entry block.
+Each block holds instructions, a list of the blocks that can jump to it
+(its *predecessors*), and exactly one **terminator** that says where
+control goes next:
+
+```ts
+type Terminator =
+  | { kind: 'br'; target: BlockId }
+  | { kind: 'condbr'; cond: ValueId;
+      then: BlockId; else: BlockId }
+  | { kind: 'return';
+      value: ValueId | null }
+  | { kind: 'throw'; value: ValueId }
+  | { kind: 'unreachable' };
+```
+
+`br` always jumps to one block; `condbr` jumps to `then` or `else`
+depending on a value; `return` and `throw` leave the function; and
+`unreachable` marks a block nothing can reach. An instruction is one
+record type for every operation (a tagged union in spirit, as in the
+chapter *Tagged unions: the shape of every syntax tree*), with optional
+fields that only some operations use:
+
+```ts
+interface Inst {
+  id: ValueId;      // %7
+  op: Op;           // 'binop'
+  args: ValueId[];  // operands
+  block: BlockId;
+  operator?: string; // '+', for binop
+  binding?: BindingId;
+  src?: SourceRef;  // where it came from
+  // … value, field, fields, note, …
+}
+```
+
+Each instruction is three-address code, as in the chapter
+*Three-address code*: one operation, a few operands named by id, one
+result, which is the instruction's own id. `src` is the link back to your
+text (the plugin's syntax node, its start and end offsets, and its
+line); emit uses it to know what to replace, and explain uses it to say
+"line 4".
+
+<Prompts ids={['vir-func', 'vir-term', 'vir-src']} />
+
+Here is the graph for a small loop that sums `x * vx` over a list, drawn
+from the real listing; read it top to bottom, following the arrows:
+
+<Figure caption="A for loop in VIR: five blocks, a loop header with two phis, and one back edge." takeaway="Control is explicit: every block ends in exactly one terminator.">
+  <CfgShape />
+</Figure>
+
+## SSA, and what a phi means
+
+VIR is in SSA form, as in the chapter *SSA form*: every value is defined
+exactly once. `let t = 0` and `t = t + …` do not overwrite a box called
+`t`; they make two different values, and where two paths meet (the loop
+header, which you reach from the entry the first time and from the loop
+body after that), a `phi` picks the one that matches the path you came
+in by.
+
+<Analogy extra title="signed delivery notes">
+Each delivery to a building comes with its own signed note, and a note is
+never edited afterwards; a new delivery means a new note. At the front
+desk, the clerk who wants "the latest parcel for flat 3" looks at which
+door the courier came in through, and takes the note from that route.
+Each note is an SSA value; the clerk's rule is a phi.
+<span slot="breaks">A clerk really looks and chooses; a phi is not run
+like other instructions, it is a statement of which value holds on each
+incoming edge, and the back end turns it into plain copies (as in the
+chapter *Leaving SSA*).</span>
+</Analogy>
+
+Now step through the real listing, one source line at a time:
+
+<VirSteps client:visible />
+
+<Callout kind="definition">
+**VIR** is Viscosity's intermediate representation. It is
+language-neutral: every plugin lowers to it, and every analysis reads
+only it. Each function is a **CFG** of basic blocks in **SSA form**:
+local variables that no closure captures become values defined once and
+joined by `phi`s. Other variables become **bindings**, read and written
+with explicit `load` and `store` instructions.
+</Callout>
+
+<Formal title="Single assignment, and the phi rule">
+
+```text
+∀ v. v has exactly one definition
+B has preds p₁ … pₙ, and in B:
+  %v = phi %a₁, …, %aₙ
+entering B from pₖ  ⟹  %v = %aₖ
+```
+
+<span slot="read">For every value v, there is exactly one instruction
+that defines it. If block B has n predecessors, listed p1 to pn, and
+starts with a phi whose arguments are a1 to an in the same order, then
+whenever control enters B from the k-th predecessor, the phi's value is
+the k-th argument.</span>
+</Formal>
+
+Try the rule by hand: the runnable version below plays out the VIR of a
+two-way `if`, keeping track of which block it came from, so that the phi
+can pick its argument.
+
+<Run id="phi-by-hand" />
+
+<Prompts ids={['vir-what', 'phi-pick', 'ssa-cheap']} />
+
+## SSA values and bindings
+
+Look again at the listing: `t` and `i` never appear by name, because they
+are SSA values joined by phis, while `ps` and `console` appear as
+`store ps` and `load console`, because they are **bindings**. Here is why
+some variables cannot be SSA. This function has two counters:
+
+```js
+function count(xs) {
+  let n = 0;
+  let k = 0;
+  const bump = () => { n = n + 1; };
+  for (const x of xs) {
+    bump(); k = k + 1;
+  }
+  return n + k;
+}
+```
+
+`k` becomes phis, as always (`%16 = phi %3, %18` in the real listing).
+However, `n` is changed inside `bump`, and a call to `bump` could happen
+anywhere; a phi cannot describe "whatever the closure did", so `n` stays a
+binding, and the arrow's body really is `load n`, `binop +`, `store n`.
+The JavaScript plugin also makes a binding of any variable that starts
+out as an array, so the analyses see every read of a candidate collection as a
+`load` they can follow (the chapter *Lowering JavaScript to VIR* gives
+the full rule).
+
+<Examples of="vir">
+
+```
+const a = 1 + 2;
+  %0 = const 1
+  %1 = const 2
+  %2 = binop + %0, %1
+```
+
+```
+function pick(c) {   b0: condbr %0, b1, b2
+  let s = 0;         b1: %2 = const 1
+  if (c) s = 1;      b2: %3 = const 2
+  else s = 2;        b3: %4 = phi %2, %3
+  return s; }            return %4
+```
+
+```
+let n = 0;            %0 = const 0
+const get = () => n;  store n, %0
+n = 5;                %4 = const 5
+                      store n, %4
+  in get:  %2 = load n
+```
+
+</Examples>
+
+The first is the smallest listing there is: two constants and one
+`binop`, with no variable named anywhere (`a` is a plain local, so it is
+just the value `%2`). In the second (each branch's `br b3` is left out to fit), `s` gets
+three values, and `b3`,
+where the two branches meet, has a phi that picks `%2` when it is
+entered from `b1` and `%3` from `b2` (the first `s = 0`, `%1`, is never
+read). In the third, `get` reads `n` long after the module's code has
+moved on, so `n` must be a binding with real stores, and the closure's
+own body loads it.
+
+<Prompts ids={['ssa-vs-binding', 'binding-arrays']} />
+
+<Callout kind="engine" label="Under the hood">
+Plugins do not build SSA by hand. `packages/core/src/builder.ts` gives
+them `readVariable` and `writeVariable`, and builds SSA on the fly with
+the algorithm of Braun and colleagues from the chapter *SSA on the
+fly*<Cite id="braun2013" />: a read in a block with several predecessors
+creates a phi, loop headers get incomplete phis until they are sealed,
+and trivial phis are removed. That is why phi ids look out of order (in
+the listing, `t`'s phi is `%11`, created only when the loop body first
+read `t`). One shared IR for many analyses is the standard middle-end
+design<Cite id="coopertorczon2022" />; VIR's twist, the next chapter's
+subject, is that its instructions are chosen for data layout.
+</Callout>
+
+## Your turn
+
+<Exercise id="printFunc" />
+
+## What you learned
+
+- A VIR **module** has functions (each a CFG of blocks), bindings, and
+  every instruction by id; each block ends in one **terminator**.
+- **VIR** is language-neutral SSA: each value is defined once, and a
+  **phi** at a join takes the value from the edge control came in by.
+- Uncaptured locals are SSA values; captured variables, and variables
+  that start out as an array, are **bindings** with `load` and `store`.
+- Every instruction keeps a **source reference**, for emit and explain.
+
+Next: VIR's own instructions for records and collections, and its honest
+word for everything else.
+
+
+{/* ── merge: from old chapter 99, Records, collections and the honest unknown ── */}
+
+## The question every analysis asks
+
+Most of what the layout analyses need to know comes down to one
+question, asked again and again: *which fields of which collection does
+this code read and write?* Imagine answering it on a low-level IR, the
+kind a native back end uses, where `ps[i].x` has become "load the
+pointer at `ps` plus 8 times `i`, then load the number 16 bytes past
+that". The facts are all there, but buried: every analysis would have to
+recognise the same patterns of loads and additions, again and again,
+and get each one right.
+
+<Analogy title="a customs declaration form">
+A customs form does not ask travellers to describe their luggage in
+their own words. It has a box for "goods over the allowance" and a box
+for "food or plants", because those are what the officers check. A
+traveller from anywhere fills in the same boxes, and an officer reads
+them at a glance.
+<span slot="breaks">A traveller can lie on a form; a VIR instruction is
+made by the plugin from the code itself, and when the plugin is unsure,
+it writes "unknown" rather than guessing.</span>
+</Analogy>
+
+<Analogy extra title="a warehouse inventory">
+A warehouse's inventory does not record the colour of a box's label or
+the handwriting on it; it records what matters to the warehouse: what
+kind of item, how many, which shelf, who took one out. Everything else
+is filed under "miscellaneous".
+<span slot="breaks">A miscellaneous shelf in a warehouse is harmless;
+in VIR, the "miscellaneous" instruction is treated as able to do
+anything at all with what it touches, which is exactly what keeps it
+safe.</span>
+</Analogy>
+
+## Data operations as instructions
+
+Most of VIR's 22 operations are what you would expect from the chapter
+*Three-address code*: `const`, `binop`, `unop`, `phi`, `call`,
+`closure`. The unusual ones are about data:
+
+- `record.new` builds a record, with its field names in order:
+  `record {x, vx} %0, %1`.
+- `array.empty` and `array.new` build arrays; `push` appends.
+- `index.get` and `index.set` read and write an element.
+- `field.get` and `field.set` read and write a named field.
+- `intrinsic` is a known built-in numeric function, such as
+  `Math.sqrt`: it returns a number and keeps no reference to its
+  arguments.
+
+<Callout kind="definition">
+VIR's **record and collection nodes** are its first-class data
+operations: `record.new` (a record with named fields), `array.empty`,
+`array.new` and `push` (building a collection), `index.get` and
+`index.set` (its elements), and `field.get` and `field.set` (a **field
+access** on a record).
+</Callout>
+
+These are exactly the questions the layout analyses ask, so they read
+the answers directly instead of recognising them. First-class nodes also
+hide each language's spelling:
+
+<Figure caption="Different spellings, one instruction: the analyses never see which language a record came from." takeaway="A record is a record, whether it was an object literal or a dataclass call.">
+  <OneRecord />
+</Figure>
+
+<Examples of="record-collection-nodes">
+
+```
+const o = { x: 1, vx: 2 };
+  %2 = record {x, vx} %0, %1
+```
+
+```
+const xs = [o];
+xs.push({ x: 3, vx: 4 });
+  %3 = array.new %2
+  %8 = record {x, vx} %6, %7
+  %9 = push %5, %8
+```
+
+```
+xs[0].vx = Math.sqrt(o.x * o.x);
+  %12 = index.get %10, %11
+  %16 = Math.sqrt(%15)
+  field.set %12, %16 .vx
+```
+
+</Examples>
+
+All three come from one real listing. In the first, the object literal
+becomes one `record` instruction that names its fields in order and
+takes their values, `%0` and `%1`, as arguments. In the second, the
+array literal is `array.new` with the record as its one element, and
+`push` takes the array (`%5`, loaded from the binding `xs`) and the new
+record. In the third, `Math.sqrt` is an `intrinsic` (printed as a call
+by name), `xs[0]` is an `index.get`, and the assignment is a
+`field.set` on that element with the field name `.vx` written last. One
+detail: `ps.length` (and Python's `len(ps)`) also becomes a
+`field.get .length`, which the analyses recognise on a collection.
+
+<Prompts ids={['rc-why', 'vir-neutral', 'rc-length', 'rc-intrinsic']} />
+
+## Reading a loop's fields off the VIR
+
+Here is the payoff. To find which fields a loop touches, collect the
+`index.get`s on the collection (their results are elements), then every
+`field.get` and `field.set` whose first argument is one of those
+elements. Step through the real loop body of the particle program:
+
+<TouchedSteps client:visible />
+
+<Formal title="The fields a loop touches (simplified)">
+
+```text
+Elems(L, c) = { e | e = index.get c', _
+               in L, c' a load of c }
+Reads(L, c) = { f | field.get e .f in L,
+               e ∈ Elems(L, c) }
+Writes(L, c) = { f | field.set e, _ .f
+               in L, e ∈ Elems(L, c) }
+```
+
+<span slot="read">For a loop L and a collection c: the elements are the
+results of index.get instructions in L whose array is a load of c. The
+fields read are the names f of field.get instructions in L whose object
+is one of those elements; the fields written are the same, for
+field.set. Nothing about syntax appears anywhere.</span>
+</Formal>
+
+The runnable version does the same two passes on the same listing,
+written as plain arrays; add a line `[26, 'field.get', 22, 'y']` and
+see `y` join the reads.
+
+<Run id="touched" />
+
+<Prompts ids={['rc-touched']} />
+
+## Opaque: an honest unknown
+
+JavaScript is enormous: getters, proxies, `with`, tagged templates,
+classes, destructuring. Modelling all of it before shipping anything
+would take years. So the JavaScript plugin models the subset that
+matters for data layout, and turns everything else into **opaque**,
+with every variable the code mentions as an argument. Put a template
+literal on line 4 of the particle program, for example:
+
+```js
+const s = `${ps[0]}`;
+```
+
+lowers to
+
+```
+%15 = index.get %13, %14
+%16 = opaque(template) %15
+```
+
+and `viscosity explain` says (wrapped to fit):
+
+```
+ps (line 1) {x, vx} → kept as array of
+  objects
+  · unsafe: line 4: an element is used
+    by code Viscosity doesn't model
+    (template)
+```
+
+Opaque means "might do anything with these arguments": keep them, change
+them, hand them to someone else. Every analysis treats it in the worst
+way, so its arguments **escape**, in the sense of the chapter *Escape
+analysis*, and its result is unknown. That is **conservative
+soundness**: being unsure can only ever lead to a missed rewrite, never
+a wrong one, and because the reason is printed, a missed one can be
+fixed by changing the code.
+
+<Formal title="What opaque means to the analyses">
+
+```text
+%r = opaque(note) %a₁, …, %aₙ
+  ⟹  escapes(%aₖ) for every k
+  ⟹  %r may be any value
+```
+
+<span slot="read">If an opaque instruction takes arguments a1 to an,
+then each of them is treated as escaping (anything could now hold or
+change it), and its result r is treated as unknown: it could be any
+value at all.</span>
+</Formal>
+
+<Prompts ids={['op-what', 'op-args', 'op-sound']} />
+
+<Callout kind="engine" label="Under the hood">
+Choosing the level of an IR is a classic trade-off: a low-level IR
+exposes every load and address for the back end, while a high-level one
+keeps the structure that analyses want to see<Cite id="coopertorczon2022" />.
+VIR deliberately stays high, at the level of records and elements,
+because its only users are the layout analyses; it is never run, and no
+machine code is ever made from it. The `intrinsic` list is a fixed set
+of `Math` functions (`sqrt`, `floor`, `hypot`, `max` and others), and
+only when `Math` really is the global: a local variable called `Math`
+could be anything, so it is lowered as an ordinary call.
+</Callout>
+
+## Your turn
+
+The core exercise is the touched-fields analysis in miniature; the
+second, extra practice, is the escape rule for opaque.
+
+<Exercise id="fieldsTouched" />
+
+<Exercise id="escapes" />
+
+## What you learned
+
+- VIR's **record and collection nodes** (`record.new`, `array.new`,
+  `push`, `index.get`, `field.get`, `field.set`, `intrinsic`) make the
+  layout questions direct.
+- They also hide each language's spelling: a dataclass call and an
+  object literal are the same `record`.
+- "Which fields does this loop touch?" is two passes over VIR: elements,
+  then field accesses on them.
+- **opaque** stands for anything not modelled; treating its arguments
+  as escaping keeps every analysis sound.
+
+<Quiz />

@@ -1,4 +1,4 @@
-// New references for chapter 128 (Hindley–Milner type inference) and its
+// New references for chapter 196 (Hindley–Milner type inference) and its
 // staged second half (algorithm W). Network note: from this session only
 // web search and raw.githubusercontent.com were reachable (doi.org,
 // dl.acm.org, sciencedirect.com, ams.org and dblp did not resolve), so
@@ -14,7 +14,7 @@ export default [
     url: 'https://doi.org/10.1016/0022-0000(78)90014-4',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: scanned copies of the paper hosted at classes.cs.uchicago.edu and research.cs.queensu.ca give Journal of Computer and System Sciences 17, 348–375 (1978), Robin Milner, University of Edinburgh, received 10 October 1977; the abstract (as quoted in the results) presents a type discipline for polymorphic procedures in a simple language, a compile-time type-checking algorithm W that enforces it, a syntactic soundness theorem (if W accepts a program then it is well typed), and “a more efficient algorithm” that simulates W. The DOI was given by one aggregator listing (datalearner) and follows Elsevier’s pattern for the journal; it could not be opened from this session.',
-    shaped: 'Chapter 128 and its second half: let-polymorphism (let-bound names get polymorphic types, lambda-bound ones do not), and algorithm W as the inference algorithm.',
+    shaped: 'Chapter 196 and its second half: let-polymorphism (let-bound names get polymorphic types, lambda-bound ones do not), and algorithm W as the inference algorithm.',
   },
   {
     id: 'damas1982',
@@ -26,7 +26,7 @@ export default [
     url: 'https://doi.org/10.1145/582153.582176',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: copies of the paper hosted at courses.cs.washington.edu (p207-damas.pdf) and classes.cs.uchicago.edu; a reference list giving POPL ’82, pages 207–212, ACM, 1982; the ACM copyright line “© 1982 ACM 0-89791-065-6/82/001/0207”; the Papers We Love summary (type inference for functional languages, the existence of principal type-schemes, algorithm W). The DOI, the usual one for this paper, did not appear in the results and could not be opened (dl.acm.org and doi.org unreachable).',
-    shaped: 'Chapter 128 and its second half: principal type schemes, the most general type of a program, and that algorithm W finds it.',
+    shaped: 'Chapter 196 and its second half: principal type schemes, the most general type of a program, and that algorithm W finds it.',
   },
   {
     id: 'hindley1969',
@@ -38,7 +38,7 @@ export default [
     url: 'https://doi.org/10.1090/S0002-9947-1969-0253905-6',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: the AMS listing (Trans. Amer. Math. Soc. 146 (1969), 29–60, with DOI 10.1090/S0002-9947-1969-0253905-6 in its additional information; the page title misspells “principle”, the PDF says “principal”), and copies of the paper at cs.tufts.edu and dcreager.net, whose first section describes the work as about the “functional character” (type-scheme) of an object of combinatory logic.',
-    shaped: 'Chapter 128: the name Hindley–Milner, and that principal type schemes appeared first in logic.',
+    shaped: 'Chapter 196: the name Hindley–Milner, and that principal type schemes appeared first in logic.',
   },
   {
     id: 'wright1995',
@@ -50,6 +50,6 @@ export default [
     url: 'https://doi.org/10.1007/BF01018828',
     accessed: '2026-11-02',
     checkedAgainst: 'Web search results only: the citation as LISP and Symbolic Computation 8(4): 343–355, December 1995, DOI 10.1007/BF01018828 (Wright at Rice University), as listed by Wikipedia’s Value restriction article; a copy at cs.tufts.edu/~nr/cs257/archive/andrew-wright/imperative-poly.pdf; summaries saying it restricts generalisation at let-bindings to bound terms that are syntactic values, and that the revised Definition of Standard ML adopted this.',
-    shaped: 'Chapter 128: the value restriction, generalising only syntactic values when the language has mutable references.',
+    shaped: 'Chapter 196: the value restriction, generalising only syntactic values when the language has mutable references.',
   },
 ];

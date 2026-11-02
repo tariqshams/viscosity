@@ -1,0 +1,819 @@
+---
+n: 161
+day: 29
+part: IX
+title: 'WebAssembly: the target, and the engine compiled to it'
+tagline: 'Every browser ships a second virtual machine next to its JavaScript engine. You can hand it bytecode you wrote yourself, byte by byte, and its one flat memory is exactly where struct-of-arrays columns want to live.'
+objectives:
+  - Read a small WebAssembly module byte by byte and say what each section does.
+  - Load a module from JavaScript and call its exported function.
+  - Explain linear memory, pages, traps, and how JavaScript and WebAssembly share it.
+  - Lay out SoA columns in linear memory, and say what Viscosity has and has not built here.
+  - Mark Rust functions and structs with #[wasm_bindgen], and build them for wasm32-unknown-unknown.
+  - Explain how a &str argument and a struct result cross the boundary, and what each crossing copies.
+  - Say what a Result's Err becomes in JavaScript, and why free() exists.
+  - Follow engine/rust's build from crate to npm package and Playground, and say what was checked.
+  - Say what wasm-pack automates, and why Viscosity does the same steps in its own build.mjs.
+  - Follow the .wasm through cargo, wasm-bindgen and wasm-opt, and say what each step removes.
+  - Tell the nodejs and web targets apart by how they load the module.
+  - Write the lockfile check that keeps the wasm-bindgen CLI and crate in step.
+introduces: [webassembly, linear-memory, wasm-bindgen, wasm-pack]
+uses: [function, array, typed-array, arraybuffer, byte, binary, float64, ieee754, memory, address, contiguous, bytecode, opcode, virtual-machine, stack-machine, stack-slot, aos-vs-soa, column-storage, soa-container, capacity, amortized-growth, simd, lane, compiler-pipeline, front-end-back-end, codegen, language-plugin, vir, source-to-source, multi-language-ir, try-catch, error-object, rust, cargo, crate, ownership, borrow, string-vs-str, struct, impl, enum, match, result, question-mark, trait, typed-index, handle, garbage-collection, typescript, interface, viscosity-pipeline, npm-package, workspace, release-build, viscosity-rs, oxc, engine-parity, module, import-export, option, lifetime, rust-iterator]
+sources: [wasm-spec-core, wasm-spec-jsapi, wasm-finished-proposals, wasm-simd, wasm-bindgen-guide, rustc-wasm32-unknown-unknown, wasm-pack-book, npm-publish-docs, wasm-bindgen-cli-descriptors, binaryen-readme]
+---
+import ModuleBytes from '../../../components/diagrams/ch161/ModuleBytes';
+import ColumnsInMemory from '../../../components/diagrams/ch161/ColumnsInMemory';
+import BoundarySteps from '../../../components/diagrams/ch161/BoundarySteps';
+import WasmPipeline from '../../../components/diagrams/ch161/WasmPipeline';
+import PipelineSteps from '../../../components/diagrams/ch161/PipelineSteps';
+import TwoGlues from '../../../components/diagrams/ch161/TwoGlues';
+
+{/* ── merge: from old chapter 161, WebAssembly as a target ── */}
+
+## A VM you did not have to write
+
+In Part IV you wrote a bytecode VM for Drip. Your compiler and your VM
+agreed on a private format (which byte means "add", how a constant is
+stored), and nobody else in the world could run your bytecode. *A tiny
+JIT* then borrowed a format that every browser and Node already
+understand, specified so precisely that independent engines run it the
+same way: **WebAssembly**. There it was a door to machine code; here it
+is the last target this track looks at, together with the one part that
+JIT never needed, its memory.
+
+<Analogy title="a shipping container">
+A shipper does not care which port, crane or lorry handles the box,
+because every one of them is built for the same standard size. Pack
+your goods into the standard box once, and the whole world's equipment
+can move it.
+<span slot="breaks">A port does not open the box to check what is
+inside. A WebAssembly engine does: it *validates* every module (checks
+that each instruction gets the kinds of values it expects) before
+running a single instruction of it.</span>
+</Analogy>
+
+## Forty-one bytes
+
+Here is a whole WebAssembly program, written by hand as 41 bytes (a
+cousin of the JIT's `sq` module, so this is a quick refresher). It
+exports one function, `add`, that adds two 32-bit integers; step
+through the bytes:
+
+<ModuleBytes client:visible />
+
+The format begins with the 4-byte magic number `\0asm` and the version,
+1, and then comes a list of **sections**. Each section is a one-byte
+id, the length of its contents, and the contents. The ids used here are
+1 (types), 3 (functions), 7 (exports) and 10 (code), and those sections
+must appear in that order<Cite id="wasm-spec-core" />. Lengths and
+other integers are written in **LEB128**, a variable-length encoding in
+which small numbers take a single byte, which is why each length here
+is one byte.
+
+<Formal title="Reading an unsigned LEB128 number">
+
+```text
+bytes b₀ b₁ … bₘ, where only bₘ < 0x80
+n = Σₖ (bₖ & 0x7f) × 2^(7k)
+e.g. 0x80 0x01 → 0 + 1 × 128 = 128
+```
+
+<span slot="read">A number is a run of bytes, and every byte except the
+last has its top bit set (it is at least 0x80, "more follows"). Take the
+low 7 bits of each byte, multiply the k-th group by 2 to the power 7k
+(1, 128, 16,384, and so on), and add them up. The bytes 0x80 then 0x01
+give 0 from the first and 1 times 128 from the second, so 128.</span>
+</Formal>
+
+The body of `add`, `20 00 20 01 6a 0b`, is bytecode for a stack
+machine, like Drip's: push local 0, push local 1, add, end. The
+difference is what happens before it runs. An engine first
+**validates** the module, type-checking every function so that, for
+example, `i32.add` can never find a missing value on the stack. The
+specification notes that engines need no real operand stack at all:
+because validation fixes the stack height at every point, the slots can
+be treated as registers<Cite id="wasm-spec-core" />, and engines compile
+modules to machine code.
+
+<Callout kind="definition">
+**WebAssembly** (Wasm) is a standardised, portable, low-level binary
+format for code. A **module** is a preamble (`\0asm`, version 1)
+followed by **sections**: types, functions, memories, exports, code and
+others. Function bodies are bytecode for a typed **stack machine**.
+Engines **validate** a module before running it, and usually compile it
+to machine code.
+</Callout>
+
+<Examples of="webassembly">
+
+```js
+WebAssembly.validate(new Uint8Array([
+  0x00, 0x61, 0x73, 0x6d,
+  0x01, 0x00, 0x00, 0x00,
+])); // true: no sections at all
+```
+
+<Run id="wasm-add" />
+
+```js
+import { compile } from '@viscosity/wasm';
+const { code, explain } = compile(src);
+// explain: ps (line 1) {x, vx} →
+//   struct of arrays ...
+```
+
+</Examples>
+
+The first is the smallest module there is, the preamble alone, which
+`WebAssembly.validate` accepts (with version byte `0x02` it says
+`false`). The second runs the 41-byte module: it prints its length,
+`add(2, 3)`, and `add(2147483647, 1)`, which is `-2147483648`, because
+`i32` arithmetic wraps around at 2³². (It uses the synchronous
+`new WebAssembly.Module` because the book's runner stops when your code
+returns; a real page uses `await WebAssembly.instantiate(bytes)`, which
+compiles without freezing the page<Cite id="wasm-spec-jsapi" />.) The
+third is realistic: `@viscosity/wasm` is the Rust port of Viscosity
+compiled to WebAssembly and published to npm; its `compile` gives the
+same `code` and `explain` as the TypeScript engine, and its 1.3 MB
+`.wasm` file starts with the same eight bytes as the first example.
+
+<Prompts ids={['wasm-what', 'wasm-magic', 'wasm-validate', 'wasm-wrap']} />
+
+## One flat memory
+
+The `add` function touched only its parameters. Real programs need
+memory, and here WebAssembly is very different from JavaScript: in the
+classic design there are no objects, no shapes and no garbage-collected
+heap. There is one long array of bytes, the **linear memory**, and
+instructions such as `f64.load` and `f64.store` read and write 8 bytes
+at a numeric address<Cite id="wasm-spec-core" />. It is the picture
+from *Memory is one long array*, made literal. The memory grows in
+**pages** of 65,536 bytes; numbers are stored little-endian, smallest
+byte first; and an access past the end does not corrupt anything: it
+**traps**, which JavaScript sees as a thrown `WebAssembly.RuntimeError`.
+
+<Analogy extra title="a street of numbered lockers">
+A JavaScript heap is a city: objects live at addresses you never see,
+and the garbage collector moves them around. Linear memory is one very
+long street of numbered lockers, eight bytes wide each if you like. You
+decide which locker holds what, and if you ask for locker 70,000 on a
+street of 65,536, a guard stops you.
+<span slot="breaks">Real lockers hold anything. These hold only bytes:
+a string or an object has to be turned into bytes, and given an
+address, by your own code, because the memory has no idea what a string
+is.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Linear memory** is a WebAssembly module's contiguous, mutable array
+of raw bytes, addressed by integers from 0. Its size is a whole number
+of 64 KiB **pages**, and it can grow. Loads and stores are
+little-endian, and an out-of-bounds access **traps**. JavaScript reaches
+it as `memory.buffer`, an `ArrayBuffer` that typed arrays can view.
+</Callout>
+
+JavaScript and WebAssembly can look at the very same bytes: put a
+`Float64Array` over `memory.buffer`, and what JavaScript writes,
+WebAssembly reads.
+
+<Examples of="linear-memory">
+
+```js
+// column k, element i, capacity cap
+const addr = k * cap * 8 + i * 8;
+// vx is column 1, cap 4, element 2:
+// 1 * 4 * 8 + 2 * 8 = 48
+```
+
+<Run id="wasm-columns" />
+
+```js
+const xs = new Float64Array(mem.buffer);
+mem.grow(1);
+xs.length; // 0: the old buffer is gone
+const ys = new Float64Array(mem.buffer);
+ys.length; // 16384: two pages of f64s
+```
+
+</Examples>
+
+The first is the whole layout of a struct of arrays in linear memory:
+with capacity `cap`, column number `k` starts at byte `k * cap * 8`, and
+element `i` is `i * 8` bytes further on, so `vx[2]` is at byte 48. The
+second runs it: the module exports its memory and a `get(i)` doing
+`f64.load` at `i * 8`; JavaScript writes four numbers and WebAssembly
+reads `get(2)` as `3.5`, then 99 after JavaScript changes it. It also
+prints the bytes of `1.5`, smallest first (ending `248 63`, which is
+`0x3ff8...` backwards), shows the trap past the page, and grows the
+memory. The third is the spot the difference that last line
+hints at: growing the memory **detaches** the old `ArrayBuffer` and
+makes a new one<Cite id="wasm-spec-jsapi" />, so a view made before the
+grow suddenly has length 0, while a view made afterwards sees both
+pages (131,072 bytes, 16,384 doubles). Make views again after every
+grow, as *Growing collections* replaced its columns.
+
+<Prompts ids={['lm-what', 'lm-trap', 'lm-detach']} />
+
+## Columns in linear memory
+
+Viscosity's SoA containers already hold their numeric fields in
+`Float64Array` columns; in linear memory, those columns become regions
+of one memory:
+
+<Figure caption="A design for two columns, x and vx, with capacity 4. Each f64 is 8 bytes, so the vx column starts at byte 32. WebAssembly loads from the addresses; JavaScript views each column as a Float64Array over the same memory." takeaway="SoA in linear memory is a list of start addresses, one per column.">
+  <ColumnsInMemory />
+</Figure>
+
+A loop over `x` and `vx` walks two contiguous runs of bytes, the
+pattern Part II measured as fast, and WebAssembly's SIMD instructions
+(from *SIMD: one instruction, many numbers*), such as `f64x2.add`, can
+handle two lanes per instruction<Cite id="wasm-simd" />. So is this
+what Viscosity does? Not yet, and the honest answer has three parts:
+
+- **Neither engine has a WebAssembly back end.** Both plugins rewrite
+  source code: JavaScript in, JavaScript out, and Python in, Python
+  out.
+- **WebAssembly runs the compiler, not its output.** The Rust port's
+  `viscosity-wasm` crate wraps the whole compiler; it reproduces every
+  parity fixture, is published as `@viscosity/wasm`, and is what the
+  book's Playground runs when you switch it to **Rust** (Track B's
+  *Compiling the engine to WebAssembly* builds it). Its output is still
+  JavaScript or Python.
+- **Emitting loops as WebAssembly is a design, not code.** Strings and
+  objects have no place in linear memory, columns would move when it
+  grows, and every call crosses a boundary; whether a hot loop gains
+  enough to pay for that is unmeasured.
+
+<Prompts ids={['visc-wasm-status']} />
+
+<Callout kind="engine" label="Under the hood">
+WebAssembly keeps growing through proposals. Fixed-width SIMD became
+part of version 2.0; version 3.0 added, among others, garbage
+collection, multiple memories and 64-bit memories
+(Memory64)<Cite id="wasm-finished-proposals" />. With garbage
+collection a compiler can ask the engine for managed structs and arrays
+instead of managing linear memory by hand, so a future Viscosity back
+end would face the same choice this whole track has been about: which
+layout, decided by whom.
+</Callout>
+
+## Your turn
+
+<Exercise id="planMemory" />
+
+<Exercise id="uleb" />
+
+## What you learned
+
+- **WebAssembly** is a standardised, portable binary format for code:
+  a preamble (`\0asm`, version 1) and **sections** with ids, lengths
+  and contents, with lengths in LEB128. Bodies are bytecode for a
+  **stack machine** that engines **validate** and then compile.
+- JavaScript loads modules through the `WebAssembly` object and calls
+  their **exports**; `i32` arithmetic wraps around.
+- **Linear memory** is one flat, growable array of bytes, in 64 KiB
+  **pages**, little-endian, **trapping** on out-of-bounds access, seen
+  from JavaScript through `memory.buffer`, which a grow detaches.
+- SoA columns map onto linear memory as one start address per column.
+  Viscosity does not emit WebAssembly; the Rust port compiles *the
+  compiler* to WebAssembly, which is a different job.
+
+
+{/* ── merge: from old chapter 161, Rust and WebAssembly ── */}
+
+## Numbers only
+
+*WebAssembly as a target* called a WebAssembly function from
+JavaScript, `add(40, 2)`, whose parameters were `i32`s, because numbers
+are all a WebAssembly function can take or return. Now look at the
+function the Rust port of Viscosity offers the browser:
+
+```rust
+fn compile(source: &str)
+    -> Result<Output, JsError>
+```
+
+A string goes in; a struct of two strings, or an error, comes out.
+None of that is a number, so something must translate on both sides
+of every call. That something is this chapter's subject, and it runs
+in this book: every Playground has a small **TS / Rust**
+switch, and choosing Rust compiles your code with this exact function,
+as WebAssembly, in your browser.
+
+<Analogy title="a hatch in a wall">
+WebAssembly is a hatch in a wall, just big enough for a few numbers at
+a time. wasm-bindgen is a pair of clerks, one on each side. Yours puts
+your letter in a locker on the far side and passes the locker number
+through the hatch; the other clerk opens the locker and reads it.
+<span slot="breaks">Real clerks hand over the original letter; the
+JavaScript clerk writes out a *copy* in a different alphabet (UTF-8
+rather than UTF-16), and a letter with a malformed character arrives
+slightly changed.</span>
+</Analogy>
+
+<Analogy extra title="an interpreter at a meeting">
+Two delegations speak different languages, and an interpreter turns
+each sentence into the other language as it is said, so each side
+talks as if the other spoke its own. Rust says `Result<Output,
+JsError>`; JavaScript hears "an `Output` object, or an exception".
+<span slot="breaks">A human interpreter can translate any idea; the
+generated glue only knows the types wasm-bindgen supports (numbers,
+strings, marked structs, `Result` and a few more), and it was written
+once, at build time, not invented during the call.</span>
+</Analogy>
+
+## The real crate
+
+`engine/rust/crates/wasm/src/lib.rs` is the whole wrapper, about 120
+lines with its tests. Its core, simplified:
+
+```rust
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen(getter_with_clone)]
+pub struct Output {
+    pub code: String,
+    pub explain: String,
+}
+
+#[wasm_bindgen]
+pub fn compile(source: &str)
+    -> Result<Output, JsError> {
+    let r = compile_js(source)
+        .map_err(|e| JsError::new(&e))?;
+    Ok(Output {
+        code: r.code,
+        explain: r.explain,
+    })
+}
+```
+
+`#[wasm_bindgen]` marks what JavaScript should see: the struct
+`Output` becomes a JavaScript class, and `compile` an exported
+function. `getter_with_clone` lets JavaScript read the `String` fields:
+a generated getter normally needs a `Copy` field, and this one clones
+instead<Cite id="wasm-bindgen-guide" />. Inside `compile`, the engine
+runs; its error, a message string, is wrapped in a `JsError` by
+`map_err`, and `?` returns it early; otherwise the two strings are
+moved into an `Output`. (The real code calls the core compiler with the
+JavaScript plugin and default options; the crate also exports
+`compileWith`, with explicit options, and `compileLanguage`, which
+takes Python too.) Its `Cargo.toml` asks for `crate-type = ["cdylib",
+"rlib"]`, and the `cdylib` is what becomes the `.wasm` file.
+
+<Examples of="wasm-bindgen">
+
+```rust
+#[wasm_bindgen]
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+// JS: add(40, 2) === 42, no copying
+```
+
+```ts
+// what wasm-bindgen wrote for the crate
+export class Output {
+  free(): void;
+  [Symbol.dispose](): void;
+  code: string;
+  explain: string;
+}
+export function compile(
+  source: string): Output;
+```
+
+<Run id="boundary-model" />
+
+</Examples>
+
+The first is the smallest export: numbers in, a number out, so the
+glue has nothing to convert. The second is the TypeScript declaration file wasm-bindgen
+generated for the real crate (trimmed): `compile` takes a `string` and
+returns an `Output`, and the `Err` side has vanished from the type,
+because it becomes an exception; `Output` has a `free()` method, and a
+`[Symbol.dispose]`, both explained below. The runnable one models what
+the glue does with a string, with a `Vec<u8>` standing in for linear
+memory: it copies `"ps[i].x += 1; // naïve"` in as UTF-8, hands over
+a start and a length, and rebuilds a `&str` from them. Notice the two
+lengths it prints: 23 UTF-8 bytes, but a JavaScript length of 22,
+since `ï` takes two bytes in UTF-8 and one unit in UTF-16.
+
+<Callout kind="definition">
+**wasm-bindgen** generates the bindings between Rust compiled to
+WebAssembly and JavaScript. The `#[wasm_bindgen]` attribute marks
+exported functions and structs; the `wasm-bindgen` command-line tool
+then reads the `.wasm` file and writes the JavaScript glue and `.d.ts`
+types that turn strings, structs and `Result`s into the numbers
+WebAssembly actually passes, and back<Cite id="wasm-bindgen-guide" />.
+</Callout>
+
+<Prompts ids={['numbers-only', 'bindgen-what']} />
+
+## From crate to npm, and to this page
+
+Building takes three tools, run in order by
+`engine/rust/packages/wasm/build.mjs`:
+
+<Figure takeaway="One Rust crate, three tools, two destinations: the npm package and this book's Playground." caption="What build.mjs does, with the sizes recorded in the committed build's sizes.json.">
+  <WasmPipeline />
+</Figure>
+
+Cargo compiles the crate for `wasm32-unknown-unknown`, WebAssembly with
+no operating system underneath (the standard library is there, but
+`println!` does nothing and files always fail)<Cite id="rustc-wasm32-unknown-unknown" />.
+The `wasm-bindgen` tool, pinned at version 0.2.106 to match the crate,
+reads that `.wasm` and writes glue twice, once for Node (`--target
+nodejs`) and once for browsers (`--target web`). Then `wasm-opt -O3`
+shrinks the module from about 1.76 MB to 1.37 MB. The result is
+published on npm as **`@viscosity/wasm`**, version 0.0.1 (a published
+version can never be reused<Cite id="npm-publish-docs" />), and in
+Node it is one import:
+
+```js
+import { compile } from '@viscosity/wasm';
+const r = compile(source);
+console.log(r.explain);
+r.free();
+```
+
+With `--book`, the same script copies the browser build into this
+book: the glue into `src/vendor`, the module into `public/wasm`. The
+Playground loads it in a worker only when you first pick Rust, since
+the module is about 1.4 MB.
+
+<Prompts ids={['npm-package']} />
+
+## Crossing the boundary
+
+Here is the generated `compile`, as it sits in the book's copy of the
+glue (re-indented):
+
+```js
+function compile(source) {
+  const ptr0 = passStringToWasm0(source,
+    wasm.__wbindgen_malloc,
+    wasm.__wbindgen_realloc);
+  const len0 = WASM_VECTOR_LEN;
+  const ret = wasm.compile(ptr0, len0);
+  if (ret[2]) {
+    throw takeFromExternrefTable0(ret[1]);
+  }
+  return Output.__wrap(ret[0]);
+}
+```
+
+`passStringToWasm0` asks the module's own allocator for room in linear
+memory and writes the string there as UTF-8, returning where it starts;
+`len0` is how many bytes. Then the real call, `wasm.compile(ptr0,
+len0)`, is only two numbers in, and three numbers out: an address, an
+error slot and an "is it an error?" flag. If the flag is set, the glue
+throws; otherwise it wraps the address in a JavaScript `Output`. Step
+through one call:
+
+<BoundarySteps client:visible />
+
+The string is *copied* and re-encoded on the way in. A JavaScript
+string may hold an unpaired surrogate, which is not valid Unicode, and
+the encoder replaces it with U+FFFD, so Rust gets a slightly different
+string<Cite id="wasm-bindgen-guide" />. And an `Err` takes the other
+branch: wasm-bindgen turns an exported function's `Err` into a thrown
+JavaScript exception<Cite id="wasm-bindgen-guide" />. From Node, the
+published package's `compile("let = ;")` threw an `Error` whose
+message was `Unexpected token (1:6)`: the `<message> (line:column)`
+form that the Playground shows for a syntax error on either engine.
+
+<OtherLanguages title="One compile call, three views">
+
+```rust
+pub fn compile(source: &str)
+    -> Result<Output, JsError>
+```
+
+```ts
+export function compile(
+  source: string): Output; // or throws
+```
+
+```js
+// what WebAssembly itself is called with
+const ret = wasm.compile(ptr0, len0);
+// ret: [address, errorSlot, isError]
+```
+
+</OtherLanguages>
+
+Rust states the failure in the type, as *Option and Result* taught;
+the `.d.ts` promises an `Output` and the failure becomes a `throw`;
+and WebAssembly sees only numbers, which is why the glue exists.
+
+<Prompts ids={['str-copy', 'surrogate', 'result-throw']} />
+
+## Who frees the Output?
+
+The `Output` that `compile` returns lives in Rust's linear memory; the
+JavaScript object holds only its address, and reading `r.code` clones
+the Rust `String` and copies it out into a new JavaScript string, so
+every read copies. JavaScript's garbage collector cannot see inside linear memory,
+so it does not know the `Output` holds two big strings. The glue
+registers each wrapper with a `FinalizationRegistry`, which may free
+the Rust value some time after the wrapper is collected, but a caller
+who is done should say so: `r.free()` (or `using r = compile(src)`,
+which calls `[Symbol.dispose]`). The Playground's worker does exactly
+that, copying `code` and `explain` out and then calling `r.free()`.
+
+<Prompts ids={['output-handle', 'free']} />
+
+<Callout kind="engine" label="Under the hood">
+For this chapter I installed the published `@viscosity/wasm@0.0.1`
+from npm into an empty folder and compiled all 40 JavaScript programs
+in the TypeScript engine's corpus with it, from Node: the `code` and
+`explain` text matched the TypeScript CLI's output byte for byte for
+every one (the package's own `smoke.mjs` checks the Python corpus too).
+A quick look at speed, not a benchmark: `particles.js` compiled in a
+median of 208 µs (fastest 117) through WebAssembly, against 74 to 95
+µs fastest for the native build in engine/rust's committed results.
+Two details connect back to *WebAssembly as a target*. Before each
+copy the glue checks its `Uint8Array` view of memory and makes a
+new one if the view's `byteLength` is 0, because a `malloc` inside Rust
+may have grown the memory, which detaches the old
+buffer<Cite id="wasm-spec-jsapi" />. And a Rust panic in WebAssembly
+aborts the instance rather than unwinding<Cite id="wasm-pack-book" />,
+so when the Playground's worker sees a `WebAssembly.RuntimeError` it
+asks for a fresh worker.
+</Callout>
+
+<Prompts ids={['parity-wasm']} />
+
+## Your turn
+
+<Exercise id="options" />
+
+## What you learned
+
+- WebAssembly exports exchange numbers only; strings and structs cross
+  as addresses and lengths into **linear memory**.
+- **wasm-bindgen** is an attribute plus a tool; together they write
+  the glue and the TypeScript types.
+- A `&str` argument is copied in as UTF-8; a returned struct stays in
+  Rust's memory behind a JavaScript object holding its address; every
+  getter read copies, and `free()` drops it.
+- An `Err(JsError)` becomes a thrown JavaScript `Error`.
+- The same build ships as `@viscosity/wasm` on npm and runs this book's
+  Playground when you pick Rust.
+
+
+{/* ── merge: from old chapter 161, Compiling the engine to WebAssembly ── */}
+
+## Once by hand, then every time
+
+In the chapter *Rust and WebAssembly* you ran two commands, `cargo
+build` for the `wasm32-unknown-unknown` target and `wasm-bindgen
+--target nodejs`, and the Rust engine compiled JavaScript from inside
+Node. That was enough to check parity, but not enough to ship, for
+three reasons: a browser needs different glue from Node (the
+JavaScript that loads the module and converts strings in and out of
+it); the file should be as small as it can be, because readers
+download it; and the wasm-bindgen command-line tool must be exactly the
+version the crate was built with (the chapter *The Rust workspace*
+pinned it), or it refuses the file.
+
+The Rust world has a standard tool for all of this, **wasm-pack**.
+`wasm-pack build` "creates the files necessary for JavaScript
+interoperability and for publishing a package to npm": it compiles the
+crate, runs wasm-bindgen, and writes a `pkg` folder holding the
+`.wasm`, the JavaScript wrapper, your README and a
+`package.json`<Cite id="wasm-pack-book" />. For release builds it also
+runs wasm-opt, an optimiser from the Binaryen
+project<Cite id="wasm-pack-book" /><Cite id="binaryen-readme" />.
+
+<Analogy title="a flat-pack wardrobe">
+A flat-pack wardrobe comes with a kit: screws, a little key and a sheet
+of pictures, and most people use the kit. If your wall is unusual, you
+buy your own fixings, but you still do the same steps in the same
+order, because the steps are what make a wardrobe.
+<span slot="breaks">The kit's pictures never change; wasm-pack's steps
+do change between versions, which is one more reason a project with an
+unusual wall writes its steps down in its own script.</span>
+</Analogy>
+
+<Callout kind="definition">
+**wasm-pack** builds an npm package from a Rust crate. `wasm-pack build`
+compiles to WebAssembly, runs **wasm-bindgen** for one `--target`
+(`bundler` by default, or `nodejs`, `web`, `no-modules`, `deno`),
+optimises with **wasm-opt** in release builds, and writes `pkg/` with a
+generated `package.json`<Cite id="wasm-pack-book" />.
+</Callout>
+
+<Examples of="wasm-pack">
+
+```sh
+wasm-pack build
+```
+
+```sh
+wasm-pack build --target nodejs
+```
+
+```sh
+node packages/wasm/build.mjs
+```
+
+</Examples>
+
+The first is the whole tool in one word: a release build for the
+default `bundler` target, written to `pkg/`. The second changes only
+the glue, asking for CommonJS that Node can `require`; it is still one
+target per run, so getting both a Node and a browser build would mean
+running it twice into two folders and writing your own `package.json`
+to join them. The third is what Viscosity actually runs: its own
+script, which does both targets in one go.
+
+<Prompts ids={['wasm-pack-what', 'wasm-pack-target']} />
+
+## Why Viscosity builds by hand
+
+Viscosity's package is built by `engine/rust/packages/wasm/build.mjs`,
+140 lines of Node. The unusual wall is the one-target rule:
+`@viscosity/wasm` wants a `nodejs` build and a `web` build in a single
+package, and lets each environment pick its own (that is the chapter
+*The npm package*). The script also writes the licence texts and, with
+`--book`, copies the web build into this book. Its steps, as shell
+commands (the real code calls `execFileSync` for each):
+
+```sh
+# 1. cargo
+cargo build --release \
+  --target wasm32-unknown-unknown \
+  -p viscosity-wasm
+# 2. the locked wasm-bindgen, twice
+wasm-bindgen --target nodejs ...
+wasm-bindgen --target web ...
+# 3. if wasm-opt can be found
+wasm-opt -O3 <features> f -o f
+# 4. LICENSE, THIRD_PARTY_LICENSES.txt
+# 5. --book: copy dist/web into the book
+```
+
+Step 3 is optional: with no wasm-opt, the build carries on and says
+so, and the result works, only larger. Unless `$WASM_OPT` names one,
+the wasm-opt it looks for first is an npm devDependency, so `npm
+install` is all a contributor needs.
+
+<Prompts ids={['why-build-mjs']} />
+
+## What each step does to the file
+
+For this chapter I rebuilt the current tree from an empty target
+directory, with cargo 1.97, wasm-bindgen 0.2.106 and wasm-opt 132,
+running the script's commands one at a time. Cargo took 46 seconds on
+the shared machine and each wasm-opt run about 36; between steps I
+walked the section headers of the `.wasm` to see where the bytes were.
+
+<PipelineSteps client:visible />
+
+A WebAssembly file is a list of numbered **sections**: types,
+functions, exports, code, data, and **custom** sections that engines
+may ignore (the name section, which maps function numbers to names for
+stack traces, is one). Each section starts with its id, one byte, and
+its size, written as a variable-length number in a format called
+LEB128. The program below walks a 52-byte module the same way:
+
+<Run id="sections" />
+
+<Formal title="Reading a LEB128 number">
+
+```text
+bytes b₀ b₁ … bₙ, where bₙ < 128
+value = Σₖ (bₖ mod 128) · 128ᵏ
+```
+
+<span slot="read">Each byte carries seven bits of the number, lowest
+first; a byte of 128 or more (its top bit set) says another byte
+follows, and the first byte below 128 is the last. The value is the
+sum of each byte's low seven bits times 128 to the power of its
+position.</span>
+</Formal>
+
+It prints five lines, one per section: `type: 5 bytes`, `function:
+2 bytes`, `export: 5 bytes`, `code: 6 bytes` and `custom "name": 16
+bytes`. The module is one function, `f`, that returns 42, so the type
+section describes one signature (no parameters, one 32-bit result), the
+function section says function 0 has that type, the export section
+publishes it as `f`, and the code section holds its body, which is the
+instruction "push the constant 42" and an end marker. The last section
+is custom: it has a name of its own, `"name"`, and maps function 0 to
+the word `answer`, which is what a debugger would show. That is the
+same section wasm-opt removes from the engine, 257 KB of it.
+
+Inside the program, `main` checks the four "magic" bytes `\0asm`,
+skips the version, then loops: read the id byte, read the size with
+`leb`, and jump `i` to the end of the section, so it never needs to
+understand what is inside. The `leb` function is the formula above:
+`x & 0x7f` keeps the low seven bits, `<< s` multiplies by 128 to the
+power of the position (`s` grows by 7 each time), and `x & 0x80 == 0`
+stops at the last byte. For a custom section it also reads the name,
+which is a LEB128 length followed by that many bytes of UTF-8.
+
+The second step explains something the chapter *Rust and WebAssembly*
+left open: how does a command-line tool know that `compile` takes a
+string and returns an `Output`? The `#[wasm_bindgen]` macro cannot
+write that down as data, because it runs before the compiler has worked
+out the types, so it emits code instead, one `__wbindgen_describe_`
+function per export, which reports the types when run. The CLI contains
+"a tiny and incomplete Wasm interpreter" for exactly this: it runs every
+describe function, writes the glue, then deletes them
+all<Cite id="wasm-bindgen-cli-descriptors" />.
+
+<Prompts ids={['describe-fns', 'name-section']} />
+
+## Two kinds of glue
+
+The two wasm-bindgen runs produce the same `.wasm` (64 bytes apart) and
+different JavaScript:
+
+<Figure takeaway="One module, two loaders: Node reads the file and starts at once; a browser fetches it and waits." caption="The nodejs glue is CommonJS and reads the .wasm with readFileSync as soon as it is required. The web glue is an ES module whose init() fetches the .wasm; nothing works until that promise resolves.">
+  <TwoGlues />
+</Figure>
+
+<Analogy extra title="two editions of one book">
+A publisher prints one text as a hardback for libraries and a paperback
+for train stations; the words are identical, and only the binding
+differs, chosen for where the book will be read.
+<span slot="breaks">Two editions of a book are separate printed
+objects, but they are read the same way; the two glues are read
+differently (one at once, one after an `await`), and the package ships
+two copies of the module only because each glue looks for it next to
+itself.</span>
+</Analogy>
+
+The `nodejs` target writes CommonJS that can be `require`d like any
+Node module<Cite id="wasm-bindgen-guide" />. Near its end (rewrapped):
+
+```js
+const wasmBytes = require('fs')
+  .readFileSync(wasmPath);
+const wasmModule =
+  new WebAssembly.Module(wasmBytes);
+const wasm = exports.__wasm =
+  new WebAssembly.Instance(
+    wasmModule, imports).exports;
+```
+
+That is synchronous: `compile` works the moment `require` returns. A
+browser cannot read files, so the `web` target writes an ES module with
+an `init()` that you `await`; it fetches the `.wasm` (by default from
+next to the glue) and instantiates it, streaming if it
+can<Cite id="wasm-bindgen-guide" />:
+
+```js
+import init, { compile }
+  from '@viscosity/wasm/web';
+await init();
+const { code, explain } = compile(src);
+```
+
+<Prompts ids={['node-vs-web']} />
+
+## Checking the tools
+
+Step 2 begins with the check you will write below: it reads the
+`wasm-bindgen` version from `Cargo.lock`, asks the CLI for its own
+with `--version`, and stops with the exact `cargo install` command if
+they differ. One more check is worth having for a committed binary:
+my rebuild's web `.wasm` was byte-identical to the one in
+`book/public/wasm`, so the file this book serves really is the engine
+in this tree.
+
+<Prompts ids={['version-check', 'reproducible']} />
+
+<Callout kind="engine" label="Under the hood">
+The final module has 15 exports: `compile`, `compileWith`,
+`compileLanguage`, the getters, setters and `free` of `Output`, the
+memory, and wasm-bindgen's allocator, table and start functions. It
+imports three functions from JavaScript: one throws an error, one makes
+an `Error` object, and one sets up the table of JavaScript values.
+Everything else, oxc's parser included, is Rust compiled into the code
+section, 1,248,736 of its 1,373,422 bytes. `build.mjs` passes wasm-opt
+the WebAssembly features rustc enables by default for this
+target<Cite id="rustc-wasm32-unknown-unknown" />; I ran wasm-opt
+without them too, and the same bytes came out, because the module
+lists its features in its own `target_features` custom section.
+</Callout>
+
+## Your turn
+
+<Exercise id="pin" />
+
+## What you learned
+
+- **wasm-pack** compiles, binds, optimises and packages a crate for
+  npm, one target at a time; `build.mjs` does the same steps for two.
+- Cargo's file carries **describe functions** for the CLI, which runs
+  them, writes the glue and removes them; wasm-opt then drops the
+  **name section** and shrinks the code, 386 KB in all, but only about
+  6% once gzipped.
+- The **nodejs** glue loads synchronously; the **web** glue needs
+  `await init()`. The CLI must match `Cargo.lock` exactly.
+
+<Quiz />

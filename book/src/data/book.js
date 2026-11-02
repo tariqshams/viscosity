@@ -11,12 +11,26 @@ export const BOOK = {
 };
 
 export const PARTS = OUTLINE_PARTS.map((p) => ({
-  id: p.id, track: p.track, days: p.days, title: p.title, blurb: p.blurb,
+  id: p.id, section: p.section, track: p.section, days: p.days, title: p.title, blurb: p.blurb,
   planned: p.chapters.map((c) => c.title),
 }));
 
 export const CHAPTERS_PER_DAY = 4;
 
-/** Chapters in the whole curriculum (written and planned), and the days they take. */
+/**
+ * The book has three sections, read in this order: the Prelude (for readers
+ * new to programming), the Core (the 30-day path for experienced engineers)
+ * and the Deep dives. Days count within a section.
+ */
+export const SECTIONS = [
+  { id: 'prelude', label: 'Prelude', long: 'Prelude: new to programming? Start here' },
+  { id: 'core', label: 'Core', long: 'The core path: build it all in 30 days' },
+  { id: 'deep', label: 'Deep dives', long: 'Deep dives: the theory, and everything else' },
+];
+const chaptersIn = (section) => OUTLINE_PARTS.filter((p) => p.section === section).reduce((n, p) => n + p.chapters.length, 0);
+export const SECTION_DAYS = Object.fromEntries(SECTIONS.map((s) => [s.id, Math.ceil(chaptersIn(s.id) / CHAPTERS_PER_DAY)]));
+
+/** Chapters in the whole book, and the days of the core path. */
 export const TOTAL_CHAPTERS = OUTLINE_PARTS.reduce((n, p) => n + p.chapters.length, 0);
-export const TOTAL_DAYS = Math.ceil(TOTAL_CHAPTERS / CHAPTERS_PER_DAY);
+export const CORE_DAYS = SECTION_DAYS.core;
+export const TOTAL_DAYS = CORE_DAYS;

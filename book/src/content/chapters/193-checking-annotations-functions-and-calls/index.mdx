@@ -1,0 +1,207 @@
+---
+n: 193
+day: 7
+part: XI
+title: 'Checking annotations, functions and calls'
+tagline: 'An annotation is a promise written in the source; the checker has its own opinion, worked out from the code. This chapter makes the two meet: at every let, every call and every return.'
+objectives:
+  - Compare a declared type with a computed one, and report a mismatch in plain words.
+  - Use an annotation to give a type to something the checker cannot type alone, like an empty list.
+  - Check a call against a function's signature, argument by argument.
+  - Check a function's body against its declared result type, including that every path returns.
+introduces: [type-annotation-checking]
+uses: [typed-drip, type-checker, typing-judgment, inference-rule, type-environment, type-system, type-error, type-soundness-intro, static-vs-dynamic-typing, drip, ast, resolver, environment, callable, arity, return-unwinding, recursion, type-annotation, type-checking, map, function, parameter, argument, return, object, property, array, strings, numbers, if]
+sources: [pierce2002, ts-everyday-types]
+---
+import CallCheck from '../../../components/diagrams/ch193/CallCheck';
+import TwoOpinions from '../../../components/diagrams/ch193/TwoOpinions';
+
+## What the label says, and what is in the jar
+
+The last chapter's checker only *computed* types. Typed Drip also lets
+you *declare* them, and then there are two opinions about one thing:
+
+```
+let total: number = "3";
+```
+
+The annotation says `total` is a number; the checker, looking at the
+value, says it is a string. One of them is wrong, and the checker's job
+is to notice and say so before anything runs:
+
+```text
+line 1: 'total' is declared as number,
+but its value is a string
+```
+
+TypeScript checks annotations on variables in the same
+way<Cite id="ts-everyday-types" />, and reports this line, in its own
+words, as `Type 'string' is not assignable to type 'number'.`
+
+<Figure takeaway="An annotation is checked by computing the value's type and comparing the two." caption='let total: number = "3". The declared type comes from the annotation, the computed type from typeOf on the value; they meet in one comparison, and here they differ.'>
+  <TwoOpinions />
+</Figure>
+
+<Analogy title="a delivery note">
+A box arrives with a note saying "12 eggs". You do not trust the note,
+nor ignore it: you count the eggs and compare. If they match, the note
+is now something you can rely on; if not, you complain to the sender,
+quoting both numbers.
+<span slot="breaks">Counting eggs checks one box; the checker's
+computed type holds for every run of the program, so a matching
+annotation is a promise about every value the variable will ever
+hold.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Type annotation checking** compares each type the programmer
+declared (on a `let`, a parameter or a function's result) with the type
+the checker computes for the code it describes, and reports an error,
+naming both types, wherever they differ. Once checked, an annotation
+becomes a fact the rest of the checker can rely on.
+</Callout>
+
+## Annotated lets
+
+The rule for an annotated `let` is the Let rule with one change: the
+value must have exactly the declared type.
+
+<Formal title="An annotated let">
+
+```text
+          Γ ⊢ e : T
+──────────────────────────────── Let-T
+let x: T = e;  ok, then Γ, x : T
+```
+
+<span slot="read">If, in Γ, the value e has the declared type T, the
+declaration is fine, and the statements after it are checked with x of
+type T added to Γ. If e has some other type, no rule applies: that is
+the error.</span>
+</Formal>
+
+There is one case where the annotation does more than check: the empty
+list. On its own, `[]` has no type (chapter 192's List rule needs an
+element to look at); however, `let xs: [string] = [];` says which list
+it is, and the checker can *check* `[]` against `[string]`
+instead of computing a type for it. Chapter 200 makes this trick, of
+checking against an expected type rather than computing one, into a
+whole method.
+
+<Examples of="type-annotation-checking">
+
+```
+let n: number = 2 * 21;    # fine
+let total: number = "3";   # error
+```
+
+```
+let names: [string] = [];  # fine
+let ys = [];  # error: an empty list
+              # needs a type annotation
+```
+
+```
+let xs: [string] = [1];
+# 'xs' is declared as [string],
+# but its value is a [number]
+```
+
+</Examples>
+
+The first pair is the plain case: `2 * 21` computes to `number`, which
+matches, and `"3"` computes to `string`, which does not. The second
+shows the annotation giving `[]` its type, and what happens without one.
+The third shows that a list annotation is still checked when the list
+has elements: `[1]` is a `[number]`, and the message names the two
+whole types.
+
+<Prompts ids={['annot-what', 'annot-compare', 'annot-empty']} />
+
+## Calls: the signature is a contract
+
+A function's annotations form its **signature**, such as
+`fn(number, number) -> number` for `area`. A call is checked against it
+without looking inside the function at all:
+
+<Formal title="Calling a function">
+
+```text
+Γ ⊢ f : fn(P₁, …, Pₙ) -> R
+Γ ⊢ a₁ : P₁   …   Γ ⊢ aₙ : Pₙ
+───────────────────────────── Call
+     Γ ⊢ f(a₁, …, aₙ) : R
+```
+
+<span slot="read">If f is a function taking n parameters of types P₁ to
+Pₙ and returning R, and the call passes exactly n arguments, each with
+the type of its parameter, then the call has type R.</span>
+</Formal>
+
+<Analogy extra title="a job advert">
+An advert asks for "a driver with a licence, a forklift ticket and two
+references"; the employer checks each applicant against the list, one
+item at a time, without needing to know what the job involves day to
+day.
+<span slot="breaks">An employer may stretch a requirement for a good
+candidate; the checker never does, since a stretched type is exactly how
+a program gets stuck at run time.</span>
+</Analogy>
+
+Step through the check of `area(3, "4")`:
+
+<CallCheck client:visible />
+
+That is three separate checks, each with its own message: is the callee
+a function at all (`cannot call a number`), does the number of
+arguments match (`area() takes 2 arguments but got 1`, the same words
+Drip's runtime uses), and does each argument have its parameter's type
+(`argument 2 of area() must be a number, not a string`).
+
+<Prompts ids={['signature-what', 'call-three-checks']} />
+
+## Checking a function's body
+
+Checking the declaration `fn area(w: number, h: number): number { ... }`
+is the other side of the contract. The checker first adds the
+signature to Γ (before the body, so that the body may call the function
+itself, as a recursive function does), then checks the body in a copy of
+Γ that also holds the parameters, `w : number, h : number`. Each
+`return e;` must give the declared result type (a bare `return;` gives
+`none`), and a function whose result type is not `none` must return on
+**every path**: otherwise it could fall off the end and give back
+`none` where a number was promised, which would break soundness. Our
+rule for "every path" is simple and safe: the body's last statement must
+be a `return`, or an `if` with an `else` whose two blocks both end that
+way.
+
+<Run id="check-functions" />
+
+The runnable checker tries five functions. The first is fine; the
+second and third return a string and `none` where a number was
+promised; the fourth returns only when `n < 0`, so it can fall off the
+end; the fifth adds an `else`, and passes. (Real checkers follow every
+path with a small flow analysis, which accepts a few more programs, such
+as one that ends in a `while true` loop.)
+
+<Prompts ids={['sig-first', 'every-path', 'body-env']} />
+
+## Your turn
+
+<Exercise id="let-and-call" />
+
+## What you learned
+
+- **Type annotation checking** compares a declared type with the
+  computed one and names both when they differ.
+- An annotation can also supply a type the checker cannot compute, as
+  for `let xs: [string] = [];`.
+- A call is checked against the function's signature: a function, the
+  right number of arguments, each of the right type.
+- A function's body is checked with its parameters in Γ; every `return`
+  must match the result type, on every path.
+
+Next: what if the parameters had no annotations at all? The checker
+would have to solve for their types, and that is unification.
+
+<Quiz />

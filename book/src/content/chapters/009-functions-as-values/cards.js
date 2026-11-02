@@ -1,4 +1,5 @@
-// Chapter 9 cards. Keys are stable ids: never rename them.
+// Chapter 9 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'fn-is-value': {
@@ -65,8 +66,7 @@ console.log(pluck([1, 2], triple));`,
 export const exercises = {
   countIf: {
     title: 'Count the items that pass a test',
-    prompt:
-      'Write `countIf(xs, test)`. `test` is a callback that takes one item and returns `true` or `false`. Return **how many** items of `xs` make `test` return `true`. For example `countIf([1, 5, 8], (n) => n > 4)` is `2`.',
+    prompt: 'Write `countIf(xs, test)`. `test` is a callback that takes one item and returns `true` or `false`. Return **how many** items of `xs` make `test` return `true`. For example `countIf([1, 5, 8], (n) => n > 4)` is `2`.',
     starter: `function countIf(xs, test) {
   // your code here
 }
@@ -150,8 +150,7 @@ Notice that \`countIf\` does not know or care what the items are: the same funct
   applyN: {
     optional: true,
     title: 'Apply a function n times',
-    prompt:
-      'Write `applyN(f, n, x)` that calls `f` on `x`, then calls `f` on that result, and so on, `n` times in all, and returns the final value. So `applyN((v) => v * 2, 3, 1)` is `8` (1 → 2 → 4 → 8), and with `n` equal to 0 it returns `x` unchanged.',
+    prompt: 'Write `applyN(f, n, x)` that calls `f` on `x`, then calls `f` on that result, and so on, `n` times in all, and returns the final value. So `applyN((v) => v * 2, 3, 1)` is `8` (1 → 2 → 4 → 8), and with `n` equal to 0 it returns `x` unchanged.',
     starter: `function applyN(f, n, x) {
   // your code here
 }
@@ -232,28 +231,67 @@ const h = half;
 console.log(h(10));
 \`\`\``,
     options: [
-      { t: '`5`', correct: true, why: '`h` is another name for the same function, so `h(10)` runs `10 / 2`.' },
-      { t: '`10`', why: 'The function runs, so the number is halved.' },
-      { t: '`undefined`', why: 'An arrow function without braces returns its expression.' },
-      { t: 'An error, because `h` is not a function', why: '`const h = half` copies the function itself, so `h` is a function.' },
+      {
+        t: '`5`',
+        correct: true,
+        why: '`h` is another name for the same function, so `h(10)` runs `10 / 2`.',
+      },
+      {
+        t: '`10`',
+        why: 'The function runs, so the number is halved.',
+      },
+      {
+        t: '`undefined`',
+        why: 'An arrow function without braces returns its expression.',
+      },
+      {
+        t: 'An error, because `h` is not a function',
+        why: '`const h = half` copies the function itself, so `h` is a function.',
+      },
     ],
   },
   {
     q: '`run(f)` calls `f` three times. Which line hands it a **callback**?',
     options: [
-      { t: '`run(hello())`', why: 'This calls `hello` first and passes its result, not the function.' },
-      { t: '`run(\'hello\')`', why: 'That passes a string. You can’t call a string.' },
-      { t: '`run(hello)`', correct: true, why: 'No brackets after `hello`: the function itself is passed, for `run` to call.' },
-      { t: '`run()`', why: 'Nothing is passed at all, so `f` is `undefined`.' },
+      {
+        t: '`run(hello())`',
+        why: 'This calls `hello` first and passes its result, not the function.',
+      },
+      {
+        t: '`run(\'hello\')`',
+        why: 'That passes a string. You can’t call a string.',
+      },
+      {
+        t: '`run(hello)`',
+        correct: true,
+        why: 'No brackets after `hello`: the function itself is passed, for `run` to call.',
+      },
+      {
+        t: '`run()`',
+        why: 'Nothing is passed at all, so `f` is `undefined`.',
+      },
     ],
   },
   {
     q: 'What does `((n) => { n * 2 })(4)` give?',
     options: [
-      { t: '`8`', why: 'That would need `(n) => n * 2` without braces, or a `return`.' },
-      { t: '`4`', why: 'Nothing returns `n` either; the body only works out `n * 2` and throws it away.' },
-      { t: '`undefined`', correct: true, why: 'The braces make a statement body with no `return`, so the call returns `undefined`.' },
-      { t: 'An error', why: 'It is legal code; it just returns nothing.' },
+      {
+        t: '`8`',
+        why: 'That would need `(n) => n * 2` without braces, or a `return`.',
+      },
+      {
+        t: '`4`',
+        why: 'Nothing returns `n` either; the body only works out `n * 2` and throws it away.',
+      },
+      {
+        t: '`undefined`',
+        correct: true,
+        why: 'The braces make a statement body with no `return`, so the call returns `undefined`.',
+      },
+      {
+        t: 'An error',
+        why: 'It is legal code; it just returns nothing.',
+      },
     ],
   },
   {
@@ -265,19 +303,45 @@ function times(k) {
 console.log(times(2)(5));
 \`\`\``,
     options: [
-      { t: '`7`', why: 'The returned function multiplies; it does not add.' },
-      { t: 'A function', why: '`times(2)` is a function, but the `(5)` after it calls that function.' },
-      { t: '`10`', correct: true, why: '`times(2)` returns a function that doubles, and `(5)` calls it with 5.' },
-      { t: 'An error: you cannot call a call', why: 'A call that returns a function can be called straight away.' },
+      {
+        t: '`7`',
+        why: 'The returned function multiplies; it does not add.',
+      },
+      {
+        t: 'A function',
+        why: '`times(2)` is a function, but the `(5)` after it calls that function.',
+      },
+      {
+        t: '`10`',
+        correct: true,
+        why: '`times(2)` returns a function that doubles, and `(5)` calls it with 5.',
+      },
+      {
+        t: 'An error: you cannot call a call',
+        why: 'A call that returns a function can be called straight away.',
+      },
     ],
   },
   {
     q: 'Which of these is a higher-order function?',
     options: [
-      { t: '`(a, b) => a + b`', why: 'It takes numbers and returns a number. No functions involved.' },
-      { t: '`(f) => f(f(1))`', correct: true, why: 'It takes a function as an argument, which is what makes it higher-order.' },
-      { t: '`(p) => p.x`', why: 'It takes an object and returns a property. That makes a good callback, but it isn’t higher-order itself.' },
-      { t: '`(xs) => xs.length`', why: 'It takes an array and returns a number.' },
+      {
+        t: '`(a, b) => a + b`',
+        why: 'It takes numbers and returns a number. No functions involved.',
+      },
+      {
+        t: '`(f) => f(f(1))`',
+        correct: true,
+        why: 'It takes a function as an argument, which is what makes it higher-order.',
+      },
+      {
+        t: '`(p) => p.x`',
+        why: 'It takes an object and returns a property. That makes a good callback, but it isn’t higher-order itself.',
+      },
+      {
+        t: '`(xs) => xs.length`',
+        why: 'It takes an array and returns a number.',
+      },
     ],
   },
 ];

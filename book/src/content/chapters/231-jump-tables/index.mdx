@@ -1,0 +1,187 @@
+---
+n: 231
+day: 16
+part: XIII
+title: 'Jump tables'
+tagline: 'A switch with fifty cases could be fifty tests in a row. A compiler can usually do far better: one bounds check, one load from a table of addresses, and one jump, however many cases there are. This chapter takes that table apart instruction by instruction.'
+objectives:
+  - Lower a switch three ways (a chain of compares, a binary search, a jump table) and compare their costs.
+  - Read clang's jump table for a five-case switch, including the single unsigned bounds check.
+  - Decide when a table pays, from how densely the case values are packed.
+  - Build a jump table, with its default entries, from a list of cases.
+introduces: [jump-table]
+uses: [code-shape, array-address-arithmetic, machine-code, assembly-language, risc-v, load-store, addressing-mode, calling-convention, dispatch-loop, opcode, virtual-machine, cfg, basic-block, lowering, array, index, if, test]
+sources: [riscv-isa-unpriv, riscv-asm-manual]
+---
+import JumpSteps from '../../../components/diagrams/ch231/JumpSteps';
+import ChainVsTable from '../../../components/diagrams/ch231/ChainVsTable';
+
+## A switch, the slow way
+
+Drip has no `switch`, but the VM you built in Part IV is one big switch
+(chapter 74's dispatch loop picks among fifty-three opcodes), and
+nearly every language a back end compiles has one: a value `k`, a list
+of cases, each with its own code, and a default for every other value.
+The obvious shape is the last chapter's `if`, repeated: test `k == 0`,
+then `k == 1`, and so on. That is what clang emits for a switch with
+two cases, 3 and 7:
+
+```text
+two:     # switch (k) { case 3: case 7: }
+    li   a2, 7
+    beq  a0, a2, .Lcase7
+    li   a2, 3
+    bne  a0, a2, .Ldefault
+    ...case 3...
+```
+
+Fine for two cases; however, for the VM's opcodes the last case would
+wait behind fifty-two failed tests on every instruction.
+
+<Analogy title="hotel pigeonholes">
+At a hotel's front desk, the post for room 214 goes straight into
+pigeonhole 214; nobody walks along the rack asking each box "are you
+214?", because the room number *is* the position.
+<span slot="breaks">A rack has a box for every room, used or not, which
+is fine for a hotel; a jump table with values 1 and 10000 would need
+10000 entries for two cases, which is why compilers only use one when
+the values are close together.</span>
+</Analogy>
+
+<Analogy extra title="a TV remote's number keys">
+Pressing 7 on a remote takes you straight to channel 7; pressing
+"next" seven times gets you there too, but each press costs time, and
+the more channels there are the worse it gets.
+<span slot="breaks">A remote can show a channel that does not exist as
+a blank screen; a jump table must check the number first, because
+jumping through an entry outside the table would send the processor
+to whatever address happens to be in memory there.</span>
+</Analogy>
+
+## The table
+
+The fast shape treats the case values as indexes into an array whose
+elements are *addresses of code*. Here is clang's `-O2` output for a
+switch on `k` with cases 0 to 4, each calling a different function:
+
+<JumpSteps client:visible />
+
+<Callout kind="definition">
+A **jump table** is an array of code addresses, one per value in a
+range of case values, used to compile a switch into a bounds check, an
+indexed load and an indirect jump (`jr`, jump to the address in a
+register). Values inside the range that have no case get the default's
+address. Its cost does not depend on how many cases there are.
+</Callout>
+
+<Formal title="Dispatch through a table">
+
+```text
+lo ≤ k ≤ hi:  goto T[k − lo]
+otherwise:    goto default
+(k − lo) <ᵤ (hi − lo + 1)   one test
+```
+
+<span slot="read">If k lies between the smallest case value lo and the
+largest hi, jump to the address stored in entry k minus lo of table T;
+otherwise jump to the default. The last line is the trick that makes
+the range check a single test: subtract lo, and compare the result,
+read as an unsigned number (the u under the less-than sign), with the
+table's length. A k below lo gives a negative difference, which as an
+unsigned number is enormous, so it fails the same test as a k above
+hi.</span>
+</Formal>
+
+The RISC-V manual points out this same trick for array bounds: a
+signed index can be checked against a bound with one `bltu`, "since
+any negative index will compare greater than any non-negative
+bound"<Cite id="riscv-isa-unpriv" />. In the listing the cases start
+at 0, so there is nothing to subtract, and the table's entries are
+`.word`s, 4 bytes each (in the default code model the code lies
+within 2 GiB of address zero, so 32 bits are enough), which is why `k` is scaled by 4 and loaded with `lw`. The
+code blocks the entries point to may sit in any order; clang placed
+case 4 second.
+
+<Prompts ids={['jt-what', 'jt-bounds', 'jt-unsigned', 'jt-cost', 'jt-vm']} />
+
+## When a table pays
+
+A table costs memory, one entry for every value from the lowest case to
+the highest, so it pays only when the case values are **dense**,
+packed close together. For scattered values a compiler falls back to
+tests, but not necessarily a plain chain: it can sort the values and
+test the middle one first, a binary search, so that a thousand cases
+need about ten tests rather than a thousand.
+
+<Figure takeaway="Tests grow with the number of cases; a table does not, but it needs the values to be close together." caption="Three shapes for a switch over the cases 0 to 7, reaching case 4: a chain tests one value at a time, a binary search halves the range each time, and a jump table checks the range once and jumps.">
+  <ChainVsTable />
+</Figure>
+
+<Examples of="jump-table">
+
+```text
+.Ltable:            # the sw example's
+    .word .Lcase0   # table, 4 bytes
+    .word .Lcase1   # per entry
+    .word .Lcase2
+    .word .Lcase3
+    .word .Lcase4
+```
+
+```text
+sparse:  # cases 1, 100, 1000, 10000
+    li   a2, 999
+    blt  a2, a0, .Lbig   # k > 999?
+    li   a2, 1
+    beq  a0, a2, .Lcase1
+    li   a2, 100
+    bne  a0, a2, .Ldefault
+    ...
+```
+
+```text
+consts:  # cases 0..4 return 10, 20,
+    li   a1, 4           # 33, 47, 51
+    bltu a1, a0, .Ldefault
+    slli a0, a0, 3
+    lui  a1, %hi(.Lvalues)
+    addi a1, a1, %lo(.Lvalues)
+    add  a0, a1, a0
+    ld   a0, 0(a0)       # no jump at all
+    ret
+```
+
+</Examples>
+
+All three are clang's `-O2` output, with labels renamed. The first is
+the table itself from the stepped example: five addresses in a row,
+filled in by the assembler and linker. The second is the sparse case:
+the values 1, 100, 1000 and 10000 are far too scattered for a table
+(10000 entries for four cases), so clang does a small binary search,
+testing `k > 999` first and then comparing within each half. The third
+is a refinement worth knowing: when every case only *returns a
+constant*, there is no code to jump to, so LLVM builds a table of the
+*values* (`10, 20, 33, 47, 51`) and the switch becomes the last
+chapter's array load, `base + k × 8`. You can play the table by hand:
+
+<Run id="dispatch" />
+
+<Prompts ids={['jt-dense', 'jt-sparse', 'jt-values']} />
+
+## Your turn
+
+<Exercise id="build-table" />
+
+## What you learned
+
+- A switch can be lowered as a chain of compares, a binary search, or a
+  **jump table**: an array of code addresses indexed by the case value.
+- The table version is a single unsigned bounds check (`bltu`), a
+  scaled load and a `jr`, and costs the same for any number of cases.
+- Tables need dense case values; sparse ones get a binary search, and a
+  switch that only picks constants can become a table of values.
+
+Next: choosing machine instructions for whole IR trees, by tiling them
+with patterns.
+
+<Quiz />

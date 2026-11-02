@@ -1,0 +1,806 @@
+---
+n: 60
+day: 4
+part: III
+title: 'Lookahead, numbers, strings and names'
+tagline: 'Some characters cannot be decided on their own: a < might be the whole token or the start of <=. Every scanner settles this with two habits, glancing ahead before it commits, and always taking the biggest bite.'
+objectives:
+  - Use lookahead to tell one-character tokens from two-character ones.
+  - Say exactly what peek, match and advance each do to the scanner's position.
+  - Skip a comment without losing the line count.
+  - Apply maximal munch, and predict how a scanner cuts a run like !=== or a+++b.
+  - Scan a number literal, using two characters of lookahead to decide whether a dot belongs to it.
+  - Scan a string literal, and say what its lexeme and its literal value each hold.
+  - Explain how the scanner keeps line numbers right across a string that spans lines, and what it does with one that never ends.
+  - Scan identifiers, and say which characters may start and continue one.
+  - Pick out keywords with a reserved-word table, and explain why the table is consulted only after the whole word is read.
+  - Explain why a reserved word cannot be used as a name, and how JavaScript differs.
+introduces: [lookahead, maximal-munch, literal, identifier, keyword, reserved-word-table]
+uses: [scanner, token, lexeme, token-type, source-location, drip, function, arrow-function, closure, string-index, string-methods, array, push, while-loop, variables, strings, if, comparison, json, numbers, float64, typescript, union-type, throw, error-object, object, map]
+sources: [ecma262, mdn-number, ecma262-keywords]
+---
+import MunchSteps from '../../../components/diagrams/ch060/MunchSteps';
+import HelperTable from '../../../components/diagrams/ch060/HelperTable';
+import DotDecision from '../../../components/diagrams/ch060/DotDecision';
+import StringSteps from '../../../components/diagrams/ch060/StringSteps';
+import WordSteps from '../../../components/diagrams/ch060/WordSteps';
+import KeywordLookup from '../../../components/diagrams/ch060/KeywordLookup';
+
+{/* ── merge: from old chapter 60, Lookahead and maximal munch ── */}
+
+## One character is not always enough
+
+The last chapter's loop reads one character and lets a `switch` decide
+what it begins, and for `(` or `;` that is the whole story. A `<` is
+different: it might be the whole token, or the first half of `<=`, and
+the character alone does not say which. The scanner has to glance at the
+*next* character before it commits; however, it must glance without
+consuming, because if the next character is a space or a number, that
+belongs to the next token, not to this one.
+
+<Analogy title="for, or forest?">
+You are reading and reach the letters "for". Is that the word *for*, or
+the start of *forest*? You glance at the next letter before you decide,
+without moving your eyes on; glancing is free, and it tells you how to
+read what you already have.
+<span slot="breaks">You can glance as far ahead as you like, and back
+again. Drip's scanner looks at most two characters past `current`, and
+never back; the rest of the source stays unseen until it is reached.</span>
+</Analogy>
+
+<Analogy extra title="stepping stones">
+Crossing a stream on stepping stones, you look at the next stone first;
+if it is the one you want, you step onto it, and if it is not, you stay
+where you are and choose differently.
+<span slot="breaks">A wrong stone can still be stepped back from. The
+scanner's `match` decides once, and a character it has stepped onto is
+part of the token for good.</span>
+</Analogy>
+
+`peek`, from the last chapter, is the glance. The other helper is
+`match`, which glances and then consumes the character, but only if it
+is the one expected:
+
+```ts
+const match = (expected) => {
+  if (atEnd()) return false;
+  if (source[current] !== expected) {
+    return false;
+  }
+  current++;
+  return true;
+};
+```
+
+Line 2 gives up at the end of the source, where there is nothing to
+match. Lines 3 to 5 give up, changing nothing, when the next character
+is not the one wanted. Only when it is does line 6 move `current` past
+it, and line 7 report success. The figure lines up all three helpers on
+the same state:
+
+<Figure takeaway="peek looks; match looks and maybe moves; advance always moves." caption="Each call starts from the same place: the scanner has just read the < of <=, so current is 1. peek returns the = and leaves current alone. match('=') finds it, takes it and returns true. match('<') does not find a <, returns false and changes nothing. advance takes the = whatever it is.">
+  <HelperTable />
+</Figure>
+
+With `match`, each of `!`, `=`, `<`, `>`, `+`, `-` and `.` takes one
+line of the `switch` (`+` may become `+=`, and `.` may become `..`):
+
+```ts
+case '<':
+  add(match('=') ? '<=' : '<');
+  break;
+```
+
+If the next character is `=`, `match` takes it and the token is `<=`,
+two characters long; otherwise nothing moves and the token is `<`. The
+`? :` picks between the two types, and `add` slices whichever lexeme
+the pointers now surround.
+
+`&` and `|` use the same trick with a twist: Drip has `&&` and `||`
+but no lone `&` or `|`, so when `match` fails there is no short token
+to fall back on, and the scanner makes an error token instead:
+
+```ts
+case '&':
+  if (match('&')) add('&&');
+  else error(`unexpected character '&'`);
+  break;
+```
+
+Comments need only `peek`. A `#` always starts a comment (Drip chose a
+character that means nothing else, so no lookahead is needed to tell),
+and the comment runs to the end of the line:
+
+```ts
+case '#':
+  while (peek() !== '\n' && !atEnd()) {
+    advance();
+  }
+  break;
+```
+
+The `while` eats every character up to (not including) the newline,
+making no token. Notice that it uses `peek`, not `advance`, to test for
+`'\n'`. That leaves the newline unread, so the next round of the main
+loop handles it in the `'\n'` case, and `line` stays correct.
+
+<Callout kind="definition">
+**Lookahead** means examining characters after the current one without
+consuming them. `peek()` looks one character ahead; `match(c)` looks,
+and consumes only on a match. Drip also has `peekNext()`, which looks
+two ahead, for numbers like `1.5` (coming up in the chapter on numbers
+and strings); it is also what keeps `0..3` from being read as `0.`
+and `.3`.
+</Callout>
+
+<Formal title="The three helpers">
+
+```text
+peek()    = source[current]     (or \0)
+match(c)  = true, current + 1
+              if source[current] = c
+          = false, nothing moves
+              otherwise
+advance() = source[current], current + 1
+```
+
+<span slot="read">peek gives the character at current and changes
+nothing (at the end it gives the stand-in \0). match of c gives true and
+moves current on by one when the character at current is c, and
+otherwise gives false and moves nothing. advance always gives the
+character at current and always moves on.</span>
+</Formal>
+
+<Examples of="lookahead">
+
+```text
+"<"   →  <          "<="  →  <=
+"< =" →  <  =
+```
+
+```text
+"&&"        →  &&     "&"  →  error
+"# half\n2"  →  2   (on line 2)
+```
+
+<Run id="pocket-scanner" />
+
+</Examples>
+
+The first shows the decision itself: on its own a `<` is `<`; followed
+by `=` it becomes one token `<=`; but with a space between them,
+`match('=')` sees the space, fails, and the two come out as separate
+tokens. The second shows `match` with nothing to fall back on: two ampersands
+are one token, a lone one is an error; and a comment makes no token,
+and because the comment loop left the newline for the `'\n'` case, the
+`2` is correctly on line 2. The third is a pocket-sized
+scanner written for this page, with `peek` and `match` and the same
+habits; run it, then add inputs of your own at the bottom.
+
+<Prompts ids={['peek-vs-advance', 'match-what', 'comment-peek', 'peek-end']} />
+
+## Always the biggest bite
+
+When the scanner sees `<=`, it could make two tokens, `<` and `=`. It
+does not: `match` grabs the `=` whenever it can. The same rule runs all
+through the scanner. A run of digits is one number, not several; and
+`fortune` is one identifier, not the keyword `for` followed by `tune`.
+
+<MunchSteps client:visible />
+
+<Analogy extra title="a hungry guest at a buffet">
+A hungry guest at a buffet takes the biggest portion that still fits on
+the plate, every time. The scanner does the same: at each point, it
+takes the longest piece of text that still forms a valid token.
+<span slot="breaks">A guest can choose a smaller portion to leave room
+for pudding. The scanner never does, even when a smaller token would
+have suited the parser better; that is why `a+++b` (below) can surprise
+people.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Maximal munch** is the rule that a scanner always takes the longest
+sequence of characters that forms a valid token, even when a shorter
+token would also fit.
+</Callout>
+
+<Formal title="Maximal munch">
+
+```text
+next token = the longest prefix p
+             of source[current ..)
+             such that p is a token
+```
+
+<span slot="read">From the current position, look at every way the rest
+of the source could begin with a valid token (a prefix is a piece taken
+from the front). Of all those prefixes, the scanner takes the longest
+one as the next token. For !=== the valid prefixes are ! and !=, so it
+takes !=.</span>
+</Formal>
+
+<Examples of="maximal-munch">
+
+```text
+"!==="    →  !=  ==
+"<=<"     →  <=  <
+```
+
+```text
+"fortune"  →  identifier fortune
+"for tune" →  for  identifier tune
+```
+
+```js
+let a = 1, b = 2;
+a+++b; // a++ + b, so 3
+```
+
+</Examples>
+
+In the first, taking the longest token each time gives `!=` and then
+`==`, never `!` followed by `===` (Drip has no
+`===`); and `<=<` is `<=` then `<`, because after `<=` the next round
+starts fresh. The second shows the same rule on words: the scanner takes
+every letter it can, so `fortune` is one name (a line from one of
+Drip's test programs), and only a space makes the keyword `for`
+appear. The third is JavaScript, whose spec states the same
+rule in its own words: source text is scanned left to right,
+"repeatedly taking the longest possible sequence of code points as the
+next input element"<Cite id="ecma262" />. So `a+++b` is cut as `a`,
+`++`, `+`, `b`, which means `a++ + b`: `a++` gives 1 (and makes `a` 2),
+and 1 + 2 is 3, even though `a + ++b` would also have made sense.
+
+<Prompts ids={['munch-what', 'orchid', 'bang-eq', 'a-plus']} />
+
+<Callout kind="engine" label="Under the hood">
+Drip's scanner never needs to know what the parser is doing.
+JavaScript's cannot be so independent: a `/` might be division or the
+start of a regular expression like `/ab+/`, and no amount of lookahead
+at the characters says which. So the JavaScript spec defines several
+starting rules for its lexical grammar, and which one applies depends
+on where the parser is in the syntax<Cite id="ecma262" />. Drip's scanner
+never needs to look further than two characters past `current`
+(`peekNext` is as far as it goes), and never needs to ask the parser
+anything.
+</Callout>
+
+## Your turn
+
+The exercise is all about lookahead and maximal munch: a scanner for
+the comparison operators.
+
+<Exercise id="scan-ops" />
+
+## What you learned
+
+- **Lookahead** examines characters ahead without consuming them:
+  `peek` looks, and `match` consumes only when the next character is
+  the expected one.
+- `match` turns `<`, `>`, `=`, `!`, `+`, `-` and `.` into one- or
+  two-character tokens in one line each; a lone `&` or `|` is an error.
+- A `#` comment needs no lookahead to recognise.
+- The comment loop stops *before* the newline, so the newline case can
+  still count the line.
+- **Maximal munch**: always take the longest token that fits, so `<=`
+  is one token, `!===` is `!=` then `==`, and `fortune` is one
+  identifier.
+
+Next: the tokens with the most going on inside them, numbers and
+strings.
+
+
+{/* ── merge: from old chapter 60, Numbers and strings ── */}
+
+## Words with a value inside
+
+Here are two lines of Drip:
+
+```
+let total = 4.25;
+print "hello";
+```
+
+The scanner from the last two chapters handles `=` and `;` already, and
+`let` and `total` get a chapter of their own next. This chapter is
+about the other two tokens, `4.25` and `"hello"`, which are different
+from everything so far in two ways: each is longer than one or two
+characters, so it needs its own small loop; and each *carries a value*,
+which the scanner must work out and keep in the token's `literal`
+field. These loops are among the last pieces of Drip's scanner in
+`companion/ts/src/scanner.ts`; the excerpts are lightly simplified to
+fit a phone screen.
+
+<Analogy title="a banknote and an IOU">
+A banknote with "10" printed on it *is* ten pounds; you can spend it as
+it is. A note saying "see drawer 3" is worth whatever happens to be in
+drawer 3. A literal is the banknote: `4.25` is the number itself,
+written out in the source, while a variable name like `total` is the
+note pointing at a drawer.
+<span slot="breaks">A banknote's value was decided by a bank. A
+literal's value is decided by nothing but its own characters, read by
+fixed rules, so the same characters always mean the same value.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **literal** is a value written directly in the source code: a number
+such as `4.25` or a string such as `"hi"`. The scanner records both the
+lexeme (the characters) and the **literal value** they stand for, which
+is what the running program will use.
+</Callout>
+
+## Numbers
+
+A Drip number is one or more digits, optionally followed by a dot and
+more digits; so `7`, `007` and `4.25` are numbers. The scanner knows a
+number has started when the character it just read is a digit:
+
+```ts
+if (isDigit(c)) {
+  while (isDigit(peek())) advance();
+  if (peek() === '.' &&
+      isDigit(peekNext())) {
+    advance(); // the '.'
+    while (isDigit(peek())) advance();
+  }
+  const text = source.slice(start, current);
+  add('number', Number(text));
+}
+```
+
+Line 2 takes every further digit (maximal munch, from the last
+chapter). Lines 3 and 4 are the interesting test. When the scanner
+reaches a `.` after some digits, one character of lookahead is not
+enough to decide: in `4.25` the dot is part of the number, but in `4.`
+it is not, and in Drip a dot can also mean "get a property", as in
+`point.x`. So the scanner looks *two* characters ahead, with `peekNext`,
+and only takes the dot if a digit follows it. Lines 5 and 6 then take
+the dot and the digits after it. Line 8 cuts out the lexeme, and line 9
+hands it to `Number`, JavaScript's own converter, which turns `'4.25'`
+into a 64-bit float<Cite id="mdn-number" />: Drip gets its number format
+for free from its host language.
+
+<Figure takeaway="The dot joins the number only if a digit follows it." caption="Three sources that start the same way. After the 4, peek() is the dot in every case, so peekNext() decides: a digit (4.25) means the dot and the digits join the number; anything else (a semicolon, a letter) means the number is just 4, and the dot is left for the next round.">
+  <DotDecision />
+</Figure>
+
+<Formal title="The shape of a Drip number">
+
+```text
+number = digit digit* ( "." digit digit* )?
+digit  = "0" | "1" | … | "9"
+```
+
+<span slot="read">A number is a digit followed by any number of further
+digits (the star means "zero or more times"); then, optionally (the
+question mark means "zero times or once"), a dot followed by at least
+one digit. A digit is any one of the characters 0 to 9, where the
+upright bar means "or". This little notation is a language for
+describing words, and it gets its own chapters soon.</span>
+</Formal>
+
+<Examples of="literal">
+
+```text
+7      lexeme '7'      value 7
+007    lexeme '007'    value 7
+4.250  lexeme '4.250'  value 4.25
+```
+
+```text
+4.;    →  number 4, then .  ;
+p.x    →  identifier, ., identifier
+1.2.3  →  1.2, then .  3
+```
+
+<Run id="numbers" />
+
+</Examples>
+
+The first shows lexeme and value coming apart: three different
+spellings, and `Number` turns `007` into plain `7` and drops the
+trailing zero of `4.250`, so the lexeme keeps exactly what you wrote
+while the value is the number itself. The second shows the dot test at
+work: in `4.` no digit follows the dot, so the number stops at `4` and
+the dot becomes a token of its own; `p.x` starts with a letter, so no
+number is involved at all; and in `1.2.3` the fraction is taken once,
+so the number is `1.2` and the second dot is left over. The third runs
+some literals through the real interpreter: notice that `print 4.250;`
+shows `4.25`, because what `print` shows is the value, not the lexeme.
+
+<Prompts ids={['literal-what', 'dot-peeknext', 'lexeme-vs-value', 'number-host']} />
+
+## Strings
+
+A Drip string starts with `"` and runs to the next `"`, and it may run
+across several lines. Inside it, a backslash starts an **escape**, a
+two-character code for a character that would be awkward to type
+directly: `\n` is a newline, `\t` a tab, `\"` a quote mark that does
+*not* end the string, and `\\` one backslash. The scanner keeps them in
+a small table:
+
+```ts
+const ESCAPES = {
+  n: '\n', t: '\t', '"': '"', '\\': '\\',
+};
+```
+
+and the case in the `switch` builds the value one character at a time:
+
+```ts
+case '"': {
+  const startLine = line;
+  let value = '';
+  while (peek() !== '"' && !atEnd()) {
+    const ch = advance();
+    if (ch === '\n') line++;
+    if (ch === '\\' && !atEnd()) {
+      value += ESCAPES[advance()];
+    } else {
+      value += ch;
+    }
+  }
+  if (atEnd()) {
+    error('unterminated string', startLine);
+    break;
+  }
+  advance(); // the closing "
+  add('string', value, startLine);
+  break;
+}
+```
+
+<Analogy extra title="a quotation in a book">
+When a book quotes someone, the words between the quote marks are
+reproduced exactly as they were said, and the quote marks themselves
+only show where the quotation starts and stops; nobody said the quote
+marks.
+<span slot="breaks">A book shows a quote inside a quote with single
+marks inside double ones. Drip's trick is the escape `\"`, and it is
+the scanner's job, not the reader's, to see that this quote mark is
+part of the words.</span>
+</Analogy>
+
+Step through it on a string that spans two lines, and then on one that
+never ends:
+
+<StringSteps client:visible />
+
+Line 2 remembers the line the string starts on, where the token (or
+its error) will be reported. Line 4 takes characters until the next
+one is a quote mark or the source runs out. Line 6 matters even though
+it is short:
+because the loop counts the newlines it passes, every token after a long
+string still gets the right line number. Lines 7 and 8 handle an
+escape: after a backslash, the loop takes the *next* character at once
+and adds what the table says, so in `\"` the quote never reaches the
+loop's test on line 4. Every other
+character goes into the value as it is (line 10). Lines 13 to 16 deal
+with a string that never ends: if the file runs out before the closing
+quote, the scanner makes an error token, `unterminated string`, instead
+of quietly inventing a quote. Line 17 takes the closing quote, and line
+18 makes the token, whose lexeme (from `add`) is the whole slice, quotes
+and backslashes included, while the value is the string that was built. (The real code also checks that the character
+after a backslash is one of the four, and reports, say,
+`unknown escape '\q' in a string` if not.)
+
+<Examples of="literal">
+
+```text
+"hi"     lexeme "hi"   value hi
+""       lexeme ""     value (empty)
+"a⏎b"    one token, value a⏎b
+"a\tb"   lexeme 6 chars, value a⇥b
+```
+
+```
+print "say "hi"";
+# line 1: expected ';' after the
+# value, found 'hi'
+print "say \"hi\"";  # say "hi"
+```
+
+```
+print "hi;
+# line 1: unterminated string
+```
+
+</Examples>
+
+The first shows three strings: the plain one, the empty one (two
+characters of lexeme, a value with nothing in it), and one with a
+newline (⏎) inside, which is still one token; and one with an escape,
+whose six characters of lexeme become a value of three: `a`, a tab
+(⇥) and `b`. The second is a spot the
+difference: without a backslash, the second `"` *ends* the string, so
+the scanner makes the string `say `, then the name `hi`, then an empty
+string, and the parser stops at `hi`; written as `\"`, each inner quote
+is part of the value, and the line prints `say "hi"`. The third is the unterminated
+case from the step-through: the closing quote is missing, so the rest of
+the file becomes part of a string that never ends, and the scanner says
+so.
+
+<Prompts ids={['string-value', 'string-newline', 'unterminated', 'no-escapes']} />
+
+<Callout kind="engine" label="Under the hood">
+Drip's literals are deliberately plain. The JSON scanner you wrote in
+the checkpoint had to handle more: a leading minus, exponents such as
+`1e3`, and the escape `\u`. JavaScript has more again (hexadecimal `0xff`,
+`1_000`, template literals), and in a real engine the conversion from
+characters to a number is careful work of its own; Drip borrows
+JavaScript's `Number` for exactly that reason<Cite id="mdn-number" />.
+Drip's literals are kept this simple so that the whole scanner fits in
+a few chapters.
+</Callout>
+
+## Your turn
+
+The core exercise is the number loop as a function of its own; the extra
+one does the same for strings, errors included.
+
+<Exercise id="scanNumber" />
+
+<Exercise id="scanString" />
+
+## What you learned
+
+- A **literal** is a value written in the source. Its token keeps the
+  lexeme (`'4.25'`) and the **literal value** (`4.25`).
+- Numbers need **two characters of lookahead**: the dot is taken only
+  if a digit follows it. `Number` turns the lexeme into the value.
+- A string's value leaves out the quotes and turns the escapes `\n`,
+  `\t`, `\"` and `\\` into the characters they stand for; Drip strings
+  may span lines.
+- The string loop counts the newlines it passes, and a string that never
+  ends is reported as `unterminated string`.
+
+Next: the words that carry no value but a name, and how the scanner
+tells your names from the language's own.
+
+
+{/* ── merge: from old chapter 60, Names and keywords ── */}
+
+## Three words that look alike
+
+Here is a line of Drip:
+
+```
+let iffy = total;
+```
+
+Three of its tokens are words made of letters, and to the scanner's
+loop they look exactly alike; however, they are not the same kind of
+thing. `iffy` and `total` are names the programmer chose, and could have
+been anything; `let` belongs to the language, and means the same in
+every program ever written. Worse, `iffy` *starts* with `if`, which also
+belongs to the language. The scanner has to read these words, tell
+which are which, and never mistake the start of a name for a keyword.
+
+## Names
+
+<Analogy title="a label you write yourself">
+You can write any label you like on a storage box with a marker pen:
+"winter coats", "box 7", "misc_2". Drip does not care what your label
+says, only that it is written with the allowed characters.
+<span slot="breaks">On a box you may write anything at all, spaces and
+dashes included. An identifier may only use letters, digits and `_`,
+may not start with a digit, and may not be one of the language's own
+words.</span>
+</Analogy>
+
+An identifier starts with a letter or an underscore, and continues
+with letters, digits or underscores; so `total`, `_count2` and `x1` are
+identifiers, while `2x` is not one (the scanner sees the digit first,
+scans the number `2`, and then starts a fresh identifier `x`):
+
+```ts
+const isAlpha = (c: string) =>
+  (c >= 'a' && c <= 'z') ||
+  (c >= 'A' && c <= 'Z') || c === '_';
+
+// in the scanner's switch:
+} else if (isAlpha(c)) {
+  while (isAlpha(peek()) ||
+         isDigit(peek())) advance();
+  const text = source.slice(start, current);
+  add(KEYWORDS.get(text) ?? 'identifier');
+}
+```
+
+Lines 1 to 3 define what may *start* a word: a lowercase letter, an
+uppercase letter or `_` (comparing strings compares character codes, as
+in *Strings up close*, so `c >= 'a' && c <= 'z'` means "a lowercase
+letter"). In the `switch`, once the first character passes `isAlpha`,
+the `while` takes every further letter, digit or underscore (maximal
+munch again), `text` is the whole word, and the last line decides its
+type, which is the subject of the next section.
+
+<Callout kind="definition">
+An **identifier** is a name chosen by the programmer: a variable,
+function or class name. In Drip, it is a letter or `_` followed by any
+number of letters, digits and `_`.
+</Callout>
+
+<Formal title="The shape of an identifier">
+
+```text
+identifier = alpha ( alpha | digit )*
+alpha      = "a" … "z" | "A" … "Z" | "_"
+```
+
+<span slot="read">An identifier is one alpha character followed by any
+number (the star: zero or more) of characters that are each an alpha
+or a digit (the bar means "or"). An alpha is a lowercase letter, an
+uppercase letter or the underscore. The same notation described numbers
+in the last chapter.</span>
+</Formal>
+
+<Examples of="identifier">
+
+```text
+x   total   _count2   Particle
+```
+
+```text
+2x   →  number 2, identifier x
+x-y  →  identifier x, -, identifier y
+```
+
+<Run id="names" />
+
+</Examples>
+
+The first are four ordinary identifiers: one letter, a word, a name
+with an underscore and a digit, and a capitalised class name (case
+matters: `Total` and `total` are different names). The second shows
+the rule's edges: a digit can never start a name, so `2x` is two
+tokens, and `-` is not allowed inside one, so `x-y` is a subtraction.
+The third runs a few names through the real interpreter, including one
+that starts like a keyword.
+
+<Prompts ids={['identifier-rule', 'digit-first', 'case-matters']} />
+
+## Keywords
+
+Look at the last line of the scanner code again. `let`, `if` and `while`
+are spelled exactly like identifiers, so the scanner reads them with the
+same loop, and only then asks a table whether the word is special:
+
+```ts
+const KEYWORDS = new Map([
+  'break', 'class', 'continue', 'else',
+  'extends', 'false', 'fn', 'for', 'if',
+  'in', 'init', 'let', 'new', 'none',
+  'print', 'return', 'self', 'super',
+  'true', 'while',
+].map((k) => [k, k]));
+```
+
+Those are all twenty of Drip's keywords. The `.map` turns each word `k`
+into the pair `[k, k]`, because each keyword maps to its own token
+type, named after itself (from the chapter on tokens). One of them,
+`init`, is a keyword only so that the name of the constructor method
+can never be used for anything else. If the table has no entry for a word, `get` returns
+`undefined`, and `??` (which picks its right-hand side only when the
+left is `null` or `undefined`) falls back to `'identifier'`.
+
+<WordSteps client:visible />
+
+<Analogy extra title="reserved parking spaces">
+Some spaces in a car park are painted "staff only". They look exactly
+like the others, but you may not park in them, whatever your car.
+<span slot="breaks">A staff space can be lent to a visitor for the day.
+A Drip keyword can never be used as a name, by anyone, in any
+program.</span>
+</Analogy>
+
+<Analogy extra title="a guest list at the door">
+A doorman reads the whole name on your ticket, "Annabel", before
+checking the list; if he stopped at "Ann" and found an Ann on the list,
+he would let in the wrong person.
+<span slot="breaks">A guest list changes from night to night. Drip's
+table is fixed when the language is designed, and every program sees
+the same one.</span>
+</Analogy>
+
+The guest list is the point of the order. Why not spot `if` as soon as
+the scanner has seen an `i` and an `f`? Because of maximal munch: in
+`let iffy = 1;` a scanner that stopped at `if` would produce the keyword
+`if` and then a stray `fy`. Reading the whole word first, then looking
+it up once, gets `iffy` right:
+
+<Figure takeaway="Read the whole word, then ask the table once." caption="Each whole word is looked up exactly once. if and while are in the table, so they get their own keyword types; iffy, format and total are not (even though iffy starts with if and format with for), so they become identifiers.">
+  <KeywordLookup />
+</Figure>
+
+<Callout kind="definition">
+A **keyword** is a word with a fixed meaning in the language, such as
+`if`, `while` or `let`. In Drip, every keyword is **reserved**: it
+cannot be used as a name. The scanner finds keywords with a
+**reserved-word table**, a map from each keyword's spelling to its token
+type, consulted after a whole word has been scanned.
+</Callout>
+
+<Formal title="Choosing a word's type">
+
+```text
+type(w) = KEYWORDS(w)   if w is in KEYWORDS
+        = identifier    otherwise
+```
+
+<span slot="read">For a whole word w, the token type is whatever the
+keyword table gives for w when w is one of its keys, and identifier when
+it is not. The lookup is on the complete word, never on a piece of
+it.</span>
+</Formal>
+
+<Examples of="keyword reserved-word-table">
+
+```text
+if     →  'if'
+iffy   →  identifier
+```
+
+```text
+true   →  'true'   (a keyword)
+"true" →  string    (a literal)
+```
+
+```
+let if = 3;
+# line 1: expected a variable name
+# after 'let', found 'if'
+# line 1: expected an expression,
+# found '='
+let iff = 3;  # fine
+```
+
+</Examples>
+
+The first is the table at work: `if` is found and becomes the keyword
+type `'if'`, while `iffy`, read whole, is not found and becomes a name.
+The second shows that `true`, `false` and `none` are keywords to the
+scanner, not values; the parser, a few chapters on, turns the keyword
+`true` into the boolean value, while `"true"` in quotes is a string
+literal with four letters in it. The third is a spot the difference:
+because keywords are reserved, the scanner turns `if` into an `if`
+token, the parser needed a name after `let`, and Drip says what it
+found instead, `'if'` (the parser then starts afresh at that `if`, as if
+it began an `if` statement, so the `=` draws a second complaint); one
+more letter makes it an ordinary name.
+
+<Prompts ids={['keyword-what', 'whole-word-first', 'nullish-fallback', 'true-is-keyword', 'let-if']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript's keywords are less tidy. Its specification separates
+**keywords** (words with a job in the grammar) from **reserved words**
+(words you cannot use as names): `if` and `while` are both, but `async`
+is a keyword that is not reserved, so `let async = 1` is legal
+JavaScript<Cite id="ecma262-keywords" />. Whether a word like `async`
+acts as a keyword depends on where it appears, which a lookup table on
+its own cannot know. Drip keeps every keyword reserved, so one table is
+enough; and the scanner of Drip's VM in Part IV looks words up in this
+same `KEYWORDS` table.
+</Callout>
+
+## Your turn
+
+<Exercise id="scanWord" />
+
+## What you learned
+
+- An **identifier** is a letter or `_`, then letters, digits and `_`;
+  a digit always starts a number instead.
+- A **keyword** is scanned like an identifier, then found in a
+  **reserved-word table**; reading the whole word first is maximal
+  munch, which is why `iffy` is a name.
+- Every Drip keyword is reserved, so it can never be a name; JavaScript
+  has keywords, like `async`, that are not reserved.
+
+That finishes Drip's scanner. Along the way we kept describing words
+with little patterns ("a digit, then any number of digits", "a letter,
+then letters or digits"). Those patterns are a small language of their
+own, with a precise meaning and a theory behind them, and the next
+chapter, *Regular expressions as a language*, starts there.
+
+<Quiz />

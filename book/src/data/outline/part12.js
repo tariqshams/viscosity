@@ -1,33 +1,79 @@
 export default {
-  id: 'XII', track: 'B', days: '98–104', title: 'Drip in Rust',
-  blurb: 'Rebuild the Drip bytecode VM in Rust, with arenas and a garbage collector, and benchmark it against the TypeScript versions.',
+  id: 'XII', section: 'deep', days: '10–15', title: 'Deep dive: the middle end in depth',
+  blurb: 'Classic SSA construction, monotone frameworks, the classic dataflow problems, liveness and dead code, value numbering, LICM, strength reduction, PRE and lazy code motion, loop transforms, Datalog analyses, type inference, sea of nodes, and pass managers.',
   chapters: [
-    { n: 391, title: 'Planning drip-rs', introduces: { 'drip-rs': 'the Rust implementation of Drip' } },
-    { n: 392, title: 'Tokens as enums', introduces: { 'token-enum': 'token types as a Rust enum' } },
-    { n: 393, title: 'The scanner in Rust', introduces: { 'byte-scanning': 'scanning &[u8] instead of chars' } },
-    { n: 394, title: 'Bytecode and instructions in Rust', introduces: { 'opcode-enum': '#[repr(u8)] opcodes' } },
-    { n: 395, title: 'Values in Rust', introduces: { 'value-enum': 'a Value enum and its size' } },
-    { n: 396, title: 'The VM loop in Rust', introduces: { 'match-dispatch': 'a match-based dispatch loop' } },
-    { n: 397, title: 'A Pratt compiler in Rust, part 1', introduces: { 'parse-rule-table': 'a table of prefix/infix parse functions' } },
-    { n: 398, title: 'A Pratt compiler in Rust, part 2', introduces: { 'compiler-state': 'threading compiler state through &mut self' } },
-    { n: 399, title: 'Heap objects in an arena', introduces: { 'object-handle': 'a typed index standing for a heap object' } },
-    { n: 400, title: 'Lists in Rust’s VM', introduces: {
-      'rust-vm-list': 'a Drip list as a Vec<Value> behind an arena handle, traced by the collector',
+    { n: 204, title: 'Dominance frontiers and classic SSA construction', introduces: {
+      'ssa-construction': 'placing phi nodes at iterated dominance frontiers, then renaming (Cytron et al.)',
     } },
-    { n: 401, title: 'Strings and interning in Rust', introduces: { 'string-interner': 'a table mapping strings to ids' } },
-    { n: 402, title: 'Globals by name and locals by slot, in Rust', introduces: { 'rust-locals': 'compile-time locals in the Rust compiler' } },
-    { n: 403, title: 'Branches and loops in Rust', introduces: { 'patch-jump': 'backpatching jumps in Rust' } },
-    { n: 404, title: 'Functions and call frames in Rust', introduces: { 'frame-stack': 'a Vec of call frames' } },
-    { n: 405, title: 'Capturing variables in Rust', introduces: { 'upvalue-handle': 'upvalues as arena handles' } },
-    { n: 406, title: 'A garbage collector in Rust', introduces: { 'arena-gc': 'mark and sweep over an arena with a free list' } },
-    { n: 407, title: 'Objects in Rust', introduces: { 'rust-instances': 'instances and field tables in the Rust VM' } },
-    { n: 408, title: 'Method calls and init in Rust', introduces: { 'rust-bound-method': 'bound methods in the Rust VM' } },
-    { n: 409, title: 'extends and super in Rust', introduces: { 'method-copy-down': 'copying inherited methods into the subclass' } },
-    { n: 410, title: 'Errors and diagnostics in Rust', introduces: { 'runtime-stack-trace': 'reporting where a runtime error happened' } },
-    { n: 411, title: 'Testing against the shared corpus', introduces: { 'shared-corpus': 'one set of test programs for every implementation' } },
-    { n: 412, title: 'Profiling the Rust VM', introduces: { profiling: 'measuring where time goes', flamegraph: 'a picture of where time goes' } },
-    { n: 413, title: 'Optimizing the Rust VM', introduces: { 'unchecked-indexing': 'skipping bounds checks safely' } },
-    { n: 414, title: 'Benchmarks: three implementations', introduces: { 'implementation-comparison': 'the same programs on three implementations' } },
-    { n: 415, title: 'What Rust bought us', introduces: { 'rust-tradeoffs': 'what Rust gave and what it cost' } },
+    { n: 205, title: 'The classic dataflow problems', introduces: {
+      'gen-kill': 'describing a block by what it creates and destroys',
+      'reaching-definitions': 'which assignments may reach a point',
+    } },
+    { n: 206, title: 'Available and very busy expressions', introduces: {
+      'available-expressions': 'which computations are already done on every path',
+      'very-busy-expressions': 'which computations every path will do next',
+    } },
+    { n: 207, title: 'Lattices and monotone frameworks', introduces: {} },
+    { n: 208, title: 'Abstract interpretation and widening', introduces: {
+      'abstract-interpretation': 'running a program on abstract values to learn facts',
+      'abstract-domain': 'the set of abstract values and how they combine',
+      widening: 'jumping ahead so a loop analysis finishes',
+    } },
+    { n: 209, title: 'Dead code elimination', introduces: {
+      dce: 'removing code whose results are never used',
+    } },
+    { n: 210, title: 'Liveness', introduces: {
+      liveness: 'whether a value may still be used later',
+    } },
+    { n: 211, title: 'Value numbering and common subexpressions', introduces: {
+      'value-numbering': 'giving equal computations the same number',
+      cse: 'reusing a value instead of recomputing it',
+    } },
+    { n: 212, title: 'Global value numbering', introduces: {
+      gvn: 'value numbering across a whole function',
+    } },
+    { n: 213, title: 'Partial redundancy elimination', introduces: {
+      pre: 'removing computations that are redundant on some paths',
+      'anticipable-expressions': 'computations that will certainly happen later',
+      'critical-edge': 'an edge whose source has many successors and target many predecessors',
+    } },
+    { n: 214, title: 'Lazy code motion', introduces: {
+      'lazy-code-motion': 'placing computations as late as is still safe',
+    } },
+    { n: 215, title: 'Loop-invariant code motion', introduces: {
+      licm: 'hoisting loop-invariant work out of the loop',
+      'loop-preheader': 'a block added just before a loop',
+    } },
+    { n: 216, title: 'Strength reduction and induction variable elimination', introduces: {
+      'strength-reduction': 'replacing a multiply by a running add',
+      'induction-variable-elimination': 'removing counters that others can replace',
+    } },
+    { n: 217, title: 'Loop unrolling and vectorisation', introduces: {
+      'loop-unrolling': 'doing several iterations per trip',
+      'auto-vectorization': 'the compiler writing SIMD for you',
+    } },
+    { n: 218, title: 'Dependence analysis, interchange and fusion', introduces: {
+      'dependence-analysis': 'which iterations depend on which',
+      'loop-interchange-fusion': 'swapping nested loops and merging adjacent ones',
+    } },
+    { n: 219, title: 'Locality and tiling', introduces: {
+      'loop-tiling': 'cutting loops into cache-sized blocks',
+    } },
+    { n: 220, title: 'The polyhedral model', introduces: {
+      'affine-access': 'array indices that are linear in the loop counters',
+      'polyhedral-model': 'loop nests as points in a shape, transformed with matrices',
+    } },
+    { n: 221, title: 'Context sensitivity, and analyses in Datalog', introduces: {} },
+    { n: 222, title: 'Type and shape inference', introduces: {} },
+    { n: 223, title: 'Sea of nodes and other IR designs', introduces: {
+      'sea-of-nodes': 'an IR where only data and control dependencies order instructions',
+      'graph-ir': 'IRs as graphs instead of lists',
+      'mlir-dialects': 'many small IRs, lowered step by step',
+    } },
+    { n: 224, title: 'Pass managers', introduces: {
+      'compiler-pass': 'one analysis or transformation over the IR',
+      'pass-manager': 'the scheduler that runs passes and caches analyses',
+      'analysis-invalidation': 'throwing away cached facts after a change',
+    } },
   ],
 };

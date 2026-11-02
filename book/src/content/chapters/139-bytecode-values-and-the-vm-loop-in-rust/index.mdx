@@ -1,0 +1,829 @@
+---
+n: 139
+day: 23
+part: VIII
+title: 'Bytecode, values and the VM loop in Rust'
+tagline: 'Turning an opcode into a byte is free in Rust. Turning a byte back into an opcode is the interesting half, and drip-rs does it with a table, no unsafe code, and an Option that still fits in one byte.'
+objectives:
+  - Declare an opcode enum with #[repr(u8)] and encode opcodes with as u8.
+  - Decode a byte safely with a table of every opcode, and explain why b as OpCode doesn’t compile.
+  - Derive the disassembler’s names from Debug, and port Chunk to Vec<u8>.
+  - Read drip-rs’s disassembler and say what each difference from debug.ts is for.
+  - Read drip-rs’s Value enum and explain why it can be Copy.
+  - Measure a Value with size_of and explain where its 16 bytes go.
+  - Explain why printing a Value needs the heap.
+  - Make Rust print numbers the way JavaScript does.
+  - Read drip-rs’s dispatch loop and map each part to the TypeScript VM’s switch.
+  - Explain what an exhaustive match buys over a switch with a default case.
+  - Explain why the loop cannot keep a reference to the running chunk, and how the ip and Rc<Chunk> registers solve it.
+  - Write a small stack VM loop over an opcode enum, with tests.
+introduces: [opcode-enum, value-enum, match-dispatch]
+uses: [drip-rs, token-enum, byte-scanning, opcode, bytecode, chunk, constant-pool, disassembler, jump, upvalue, enum, match, pattern, repr, size-of, option, vec, struct, impl, trait, unsafe, scalar-types, slice, string-vs-str, byte, bit-ops, typescript, heap-object, alignment, padding, tagged-value, value-representation, nan-boxing, ieee754, interning, typed-index, arena, ownership, move, rc, lifetime, borrow, cargo-test, assert-macros, truthiness, virtual-machine, drip, dispatch-loop, instruction-pointer, stack-machine, call-frame, result, question-mark, shared-vs-mutable, borrow-checker, self-receiver, release-build, runtime-error]
+sources: [rustref-enum, rustref-type-layout, ecma262, rust-std-flt2dec, klabnik2026]
+---
+import DisasmSteps from '../../../components/diagrams/ch139/DisasmSteps';
+import ByteSpace from '../../../components/diagrams/ch139/ByteSpace';
+import ValueLayoutSteps from '../../../components/diagrams/ch139/ValueLayoutSteps';
+import HandlesShare from '../../../components/diagrams/ch139/HandlesShare';
+import DispatchSteps from '../../../components/diagrams/ch139/DispatchSteps';
+import Registers from '../../../components/diagrams/ch139/Registers';
+
+{/* ── merge: from old chapter 139, Bytecode and instructions in Rust ── */}
+
+## Fifty-three numbers
+
+The instruction set of *Bytecode as data* lives in
+`companion/ts/src/vm/chunk.ts` as an object of numbers (trimmed):
+
+```ts
+export const Op = {
+  Const: 0,  // k  push constant k
+  None: 1,   //    push none
+  True: 2,
+  // ... 48 more
+  Inherit: 51,
+  Method: 52, // k  class closure -> class
+} as const;
+```
+
+The compiler writes `Op.Add` (the number 20) into `code`, an array of
+JavaScript numbers, and the VM's `switch` compares each byte with
+`Op.Add`. A second table, `OP_NAMES`, is built from the keys for the
+disassembler, so `JumpUnlessKeep` prints as `jump.unless.keep`. That is
+fifty-three instructions, and three things to keep in step by hand: the
+numbers, the names, and every place that tests them.
+
+<Analogy title="a café menu with numbered dishes">
+The kitchen hears "number 20" and knows it means the toastie, because the
+menu says so. Rust lets you print the menu once, as a type, and the
+numbers come from where each dish sits on it: nobody types the 20.
+<span slot="breaks">A café can renumber its menu on Monday and the regulars
+adapt; renumbering the opcodes would make every chunk compiled before the
+change mean something different, which is why both VMs keep the same
+order.</span>
+</Analogy>
+
+<Analogy extra title="the buttons in a lift">
+A lift in a ten-storey building has a button for every floor, and pressing
+one is always safe. Ask the lift to go to "floor 54" by some other means,
+though, and it has to check: there is no such floor. Encoding an opcode is
+pressing a button; decoding a byte is the lift receiving a number it must
+check.
+<span slot="breaks">A lift with a bad request simply stays put; drip-rs
+gets an `Option` back and decides for itself what a bad byte means (the
+VM treats it as a bug and stops loudly).</span>
+</Analogy>
+
+## OpCode
+
+drip-rs's `chunk.rs` (trimmed):
+
+```rust
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpCode {
+    Const,
+    None,
+    True,
+    // ... 48 more
+    Inherit,
+    Method,
+}
+```
+
+Variants without an explicit value are numbered from 0 in the order they
+are written<Cite id="rustref-enum" />. The variants follow the TypeScript
+table, so `Const` is 0, `Add` 20 and `Method` 52, and both VMs write the
+same bytes for the same program (the file's own comment says so, and the
+disassembler comparison at the end of this chapter checks it).
+
+`#[repr(u8)]` pins the representation: an enum whose variants carry no
+data, given a primitive representation, has the size and alignment of
+that integer, and its discriminants are of that type<Cite id="rustref-type-layout" />.
+So an `OpCode` *is* its byte, and encoding is a cast, which the
+compiler's `emit_op` does in one line, `self.emit(op as u8);`.
+
+<Callout kind="definition">
+An **opcode enum** is an enum with one variant per instruction, none of
+them carrying data, marked **`#[repr(u8)]`** so each value is stored as,
+and casts with **`as u8`** to, the byte that encodes it. Variant order
+fixes the numbering. drip-rs's `OpCode` has 53 variants, numbered like
+the TypeScript `Op` table.
+</Callout>
+
+<Prompts ids={['repr-u8', 'implicit-numbers', 'encode-free']} />
+
+## Bytes back into opcodes
+
+The VM reads a `u8` and needs an `OpCode`, and the obvious cast does not
+exist; rustc 1.97 says `error[E0605]: non-primitive cast: u8 as OpCode`,
+because `as` only converts between primitive types. It could not work
+anyway, because most bytes are not opcodes:
+
+<Figure takeaway="Only 53 of a byte's 256 values are opcodes." caption="Each variant casts to its byte with as u8. Going back, from_byte gives Some for 0 to 52 and None for everything else, and Option<OpCode> is still one byte.">
+  <ByteSpace />
+</Figure>
+
+There are three ways out. Reinterpret the byte with `unsafe` code, which
+`#![forbid(unsafe_code)]` rules out (and which would be undefined
+behaviour for a bad byte); write a 53-arm `match`; or do what drip-rs
+does, and keep a table (from `chunk.rs`, rewrapped):
+
+```rust
+pub const ALL: [OpCode; 53] = {
+    use OpCode::*;
+    [
+        Const, None, True, False, Pop,
+        // ... 48 more, in encoding order
+    ]
+};
+
+/// Decode a byte, or `None` if no opcode
+/// has that encoding.
+pub fn from_byte(byte: u8)
+    -> Option<OpCode> {
+    OpCode::ALL.get(byte as usize).copied()
+}
+```
+
+`ALL[op as usize] == op` for every opcode, and a unit test in the same
+file checks exactly that, so a variant added to the enum but put in the
+wrong place in `ALL` fails `cargo test`. `get` returns `None` past the
+end, so a bad byte is an ordinary value rather than a crash; the VM,
+which trusts its own compiler, calls
+`OpCode::from_byte(byte).expect("the compiler emits valid opcodes")`.
+
+<Formal title="Encoding and decoding agree">
+
+```text
+encode : OpCode → u8
+decode : u8 → Option<OpCode>
+decode(encode(op)) = Some(op)
+decode(b) = None   if b ≥ 53
+```
+
+<span slot="read">Encoding turns an opcode into a byte, and decoding
+turns a byte into maybe an opcode. Decoding the byte of any opcode gives
+back that same opcode, and decoding any byte from 53 upwards gives
+nothing. The round-trip test in chunk.rs checks the first law for all
+53 opcodes, and the second for byte 53.</span>
+</Formal>
+
+<Examples of="opcode-enum">
+
+```rust
+OpCode::Add as u8      // 20
+OpCode::Method as u8   // 52
+```
+
+```rust
+OpCode::from_byte(20)  // Some(Add)
+OpCode::from_byte(53)  // None
+// does not compile (E0605):
+let op = byte as OpCode;
+```
+
+```rust
+OpCode::JumpUnlessKeep.name()
+// "jump.unless.keep"
+```
+
+</Examples>
+
+The first encodes, for free: `Add` is the twenty-first variant, so its
+byte is 20. The second decodes, once with a real opcode and once with a
+byte past the last one, and then shows the cast newcomers try first, next
+to the error it gives. The third is what the disassembler prints for the
+instruction that `&&` compiles to, which the next section builds.
+
+<Prompts ids={['no-cast', 'all-table', 'option-one-byte']} />
+
+## Names for free
+
+TypeScript built `OP_NAMES` from the keys of `Op` with a regular
+expression. drip-rs builds a name from the variant's `Debug` text,
+putting a dot before each later capital (from `chunk.rs`, rewrapped):
+
+```rust
+pub fn name(self) -> String {
+    let mut name = String::new();
+    for (i, c) in format!("{self:?}")
+        .chars().enumerate()
+    {
+        if c.is_ascii_uppercase() && i > 0 {
+            name.push('.');
+        }
+        name.push(c.to_ascii_lowercase());
+    }
+    name
+}
+```
+
+`format!("{self:?}")` is the derived `Debug` text, `"JumpUnlessKeep"`;
+`enumerate` numbers the characters, so `i > 0` skips the first capital;
+every letter is pushed in lower case. There is no second list to forget
+to update.
+
+<Prompts ids={['name-debug']} />
+
+## The chunk and the disassembler
+
+`Chunk` is the three arrays of *Bytecode as data*, typed: `code:
+Vec<u8>`, `lines: Vec<usize>` and `constants: Vec<Value>`, with
+`#[derive(Default)]` to start all three empty. `write` pushes a byte and its line; `add_constant` pushes a value and
+returns its index; both are line for line the TypeScript methods. The
+difference is in the types: `code` holds real bytes, so `chunk.write(300,
+1)` does not compile ("literal out of range for `u8`") rather than being a
+bug the disassembler finds later. A constant's index is two bytes, high
+byte first, so a function may have 65,536 constants. `debug.rs` prints
+the same text as `debug.ts`, column for column; step through it:
+
+<DisasmSteps client:visible />
+
+Its signature has one extra parameter, `heap: &Heap`, because a string
+constant in drip-rs is a handle into the heap (see the chapter *Planning
+drip-rs*), so printing `'hi'` means asking the heap for the text, where
+the TypeScript version reads it straight off the object. `padStart` and
+`padEnd` become format specs: `{offset:04}`, `{:>4}` and `{name:<16}`. An
+unknown byte is handled up front with `let ... else`, and a jump's target
+is worked out in one expression (rewrapped):
+
+```rust
+let target = if op == Loop {
+    offset + 3 - jump
+} else {
+    offset + 3 + jump
+};
+```
+
+An offset is a `usize`, which cannot be negative, so the backward jump
+subtracts; if that ever went below zero, a debug build would panic on
+the overflow rather than print a nonsense target.
+
+<Run id="opcodes" />
+
+<Prompts ids={['disasm-heap', 'jump-usize']} />
+
+<Callout kind="engine" label="Under the hood">
+Do the two disassemblers really agree? I wrote a short script that
+compiles each of the 344 corpus programs with the TypeScript compiler,
+calls `disassembleFunction` (the chunk, then every function nested in
+its constants), and compares the text with `drip-rs --disassemble`. 275
+programs compile, and all 275 listings are identical, byte for byte; the
+other 69 fail to compile in both, and drip-rs exits with 65 for each.
+</Callout>
+
+## Your turn
+
+<Exercise id="opcodeRoundTrip" />
+
+<Exercise id="jumpTarget" />
+
+## What you learned
+
+- An **opcode enum** is **`#[repr(u8)]`**, with no data in any variant.
+  Variant order fixes the numbers, which match the TypeScript `Op`
+  table, and `op as u8` encodes for free.
+- `u8 as OpCode` does not compile. drip-rs decodes with a table,
+  **`ALL.get(b as usize).copied()`**, giving an `Option<OpCode>`, which
+  is still 1 byte. No `unsafe` needed.
+- Names like `jump.unless.keep` come from the `Debug` name.
+- `Chunk` holds `Vec<u8>`, `Vec<usize>` and `Vec<Value>`, with two-byte
+  constant indexes.
+- The disassembler takes `&Heap` to print string constants, uses format
+  specs for padding, and subtracts for loops because `usize` cannot be
+  negative. Its output matched the TypeScript one on every corpus program
+  that compiles.
+
+
+{/* ── merge: from old chapter 139, Values in Rust ── */}
+
+## A type the engine kept for you
+
+In *Tagging values at run time*, the TypeScript VM's value type took one
+line of `companion/ts/src/vm/object.ts`:
+
+```ts
+export type Value =
+  null | boolean | number | Obj;
+```
+
+That works because JavaScript already tags every value: when the VM asks
+`typeof v === 'number'`, the engine answers from a tag it keeps behind
+the scenes. Rust keeps no hidden tags. If a Drip value can be one of
+several kinds, you have to say so in the type, and the type you need is an
+enum.
+
+<Analogy title="a row of identical lockers">
+Every locker in the row is the same size, so they line up neatly; a label
+on the door says what is inside: nothing, a yes-or-no card, a number, or a
+ticket for a parcel kept in the back room. Big things never go in a
+locker; only their tickets do.
+<span slot="breaks">A locker's label and its contents are separate, and
+you could put the wrong thing behind a label; in Rust the label (the tag)
+and the payload are written together, and the compiler never lets you
+read a number out of a locker labelled "ticket".</span>
+</Analogy>
+
+<Analogy extra title="a library card catalogue">
+Every card in the drawer is the same size. A short fact fits on the card
+itself; for the book, the card only says which shelf to look on.
+<span slot="breaks">A library has one card per book; a Drip program can
+have many values holding the same handle, all pointing at one object,
+and none of them owns it.</span>
+</Analogy>
+
+## The enum
+
+Here is `Value`, from `src/value.rs` (doc comment left out):
+
+```rust
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Value {
+    None,
+    Bool(bool),
+    Number(f64),
+    String(StrRef),
+    List(Gc<ObjList>),
+    Function(Gc<ObjFunction>),
+    Native(Gc<ObjNative>),
+    Closure(Gc<ObjClosure>),
+    Class(Gc<ObjClass>),
+    Instance(Gc<ObjInstance>),
+    BoundMethod(Gc<ObjBoundMethod>),
+}
+```
+
+Each variant is a tag, and all but `None` carry a payload. The objects themselves
+are not inside: a `Gc<T>` is the typed `u32` index of the chapter
+*Planning drip-rs*, saying which slot of the heap's arena holds the
+object, and a `StrRef` is a string's handle plus its hash. That choice is
+what ownership forced. Suppose the variant were `String(String)`; then a
+`Value` would *own* its text, and a string held in a global and copied
+onto the stack would need two owners:
+
+<Figure takeaway="Handles let many values share one object." caption="Left: two Values hold the same StrRef, so copying one copies 16 bytes and the text lives once in the heap. Right: if a Value owned its String, each copy would need its own clone of the text.">
+  <HandlesShare />
+</Figure>
+
+A handle owns nothing, so copying one is safe. Every payload here is
+`Copy`, so `Value` can derive `Copy` too, and `push`, `pop` and `peek`
+copy 16 bytes and nothing more.
+
+<Callout kind="definition">
+A **value enum** gives a dynamically typed language's values a Rust type:
+one variant per kind of value. Small values (none, booleans, numbers) are
+stored right in the variant, and heap objects as handles. If every
+payload is `Copy`, the enum can be `Copy`, so values move around the VM
+without being moved or cloned.
+</Callout>
+
+<Examples of="value-enum">
+
+```rust
+let a = Value::Number(3.0);
+let b = a; // a copy: `a` is still usable
+assert!(a == b);
+```
+
+```rust
+// does not compile:
+#[derive(Clone, Copy)]
+enum Value { None, Str(String) }
+// error[E0204]: the trait `Copy` cannot
+//   be implemented for this type
+```
+
+```rust
+match (self.peek(1), self.peek(0)) {
+    (Value::Number(a), Value::Number(b))
+        => { /* push a + b */ }
+    (Value::String(a), Value::String(b))
+        => { /* join the strings */ }
+    (a, b) => { /* "cannot add ..." */ }
+}
+```
+
+</Examples>
+
+The first is the simplest value there is, and the line `let b = a;`
+copies it rather than moving it, because `Value` is `Copy` (the chapter
+*Ownership* explains the difference). The second is the spot-the-difference
+the paragraph above warned about: a `String` payload is not `Copy`, so the
+derive fails. The third is the shape of the VM's `add` (trimmed from
+`vm.rs`): one `match` on a pair of values says "two numbers", "two
+strings" or "anything else", and the last arm is where `cannot add a
+number and a string` comes from.
+
+<Prompts ids={['ve-what', 've-copy', 've-handles']} />
+
+## Sixteen bytes
+
+The chapter *Memory layout in Rust* measured it: `size_of::<Value>()` is
+16, with alignment 8, and `Option<Value>` is 16 too (I re-measured all
+three on this enum with rustc 1.97). With the enum in front of you, you
+can see why. The largest payloads are 8 bytes, an `f64` or a `StrRef`;
+the tag needs at least one byte more, so 9; and an `f64` must sit at an
+address that is a multiple of 8, while a type's size is always a multiple
+of its alignment<Cite id="rustref-type-layout" />. Step through where
+rustc put each payload:
+
+<ValueLayoutSteps client:visible />
+
+<Formal title="The size of an enum">
+
+```text
+size = round_up(tag + largest payload,
+                largest alignment)
+     = round_up(1 + 8, 8) = 16
+```
+
+<span slot="read">An enum needs room for its tag and for its biggest
+payload, rounded up to a multiple of the strictest alignment among its
+payloads. For Value that is one byte of tag plus eight bytes of number,
+nine, rounded up to the next multiple of eight, which is sixteen. This
+is the layout rustc chose, read from its -Zprint-type-sizes report; the
+Rust Reference leaves enum layout to the compiler<Cite id="rustref-enum" />.</span>
+</Formal>
+
+The layout shows two more things. The hash inside `StrRef` lands in bytes
+8 to 11, which `Number` needs anyway, so it rides along for free; and
+`Option<Value>` adds no tag of its own, because `None` is stored as a tag
+value that no `Value` variant uses. The NaN-boxing of *NaN-boxing and
+generational collection* would halve this to 8 bytes; safe Rust could
+do it with `f64::to_bits`, however every read would then need masks and
+shifts rather than a `match`, so drip-rs keeps the plain enum, as a
+choice rather than a limit of the language.
+
+<Prompts ids={['ve-size', 've-option', 've-hash-free']} />
+
+<Run id="sizes" />
+
+## Equality comes free, printing does not
+
+`derive(PartialEq)` gives exactly Drip's `==`. Numbers compare as IEEE
+doubles, so `nan` is not equal to itself and `0` equals `-0`, just as
+with the TypeScript VM's `a === b`. Handles compare by index, so two
+objects are equal only if they are the same object, which is right for
+strings too, because strings are interned (*String interning*). Values
+of different kinds are never equal, so `none == false` is `false`.
+Truthiness is one line:
+
+```rust
+pub fn is_falsey(self) -> bool {
+    matches!(self, Value::None
+        | Value::Bool(false))
+}
+```
+
+Printing is where handles cost something. TypeScript's `formatValue(v)`
+reads `v.chars` straight off the object; a Rust `Value::String` holds only
+an index, and the text is in the heap, so printing needs the heap too:
+`value.format(&heap)` returns a `String`, and `describe(&heap, value)`
+gives the words error messages use, such as `a number` or
+`an Apple instance`.
+
+<Prompts ids={['ve-nan-eq', 've-format-heap']} />
+
+## Numbers that print like JavaScript
+
+Drip prints numbers the way the TypeScript VM's `formatNumber` does,
+which is JavaScript's `String(n)` with Drip's own names for the odd ones
+(`nan`, `inf`, `-inf`, and `-0` where `String(-0)` gives `0`). Rust's `{}`
+disagrees in places; here are both, run on this machine:
+
+```text
+value     Rust {}    Drip print
+0.1+0.2   0.30000000000000004 (same)
+1e21      1000000000000000000000
+                     1e+21
+1.5e-7    0.00000015 1.5e-7
+1/0       inf        inf
+0/0       NaN        nan
+-0        -0         -0
+```
+
+The *digits* always agree: Rust's float formatting uses the shortest
+digits that read back as the same double<Cite id="rust-std-flt2dec" />,
+and so does JavaScript<Cite id="ecma262" />. Only the layout differs:
+ECMAScript writes plain decimals from 0.000001 up to (but not including)
+1e21, and exponent notation, with an explicit sign, outside that range,
+which is why `1.5e-7` and even `1e-7` come out in exponent form. So `format_number`
+handles nan, the infinities and zero first (keeping the sign of `-0`),
+takes the digits and exponent from Rust's `{:e}`, and lays them out by
+JavaScript's rule (from `value.rs`, rewrapped):
+
+```rust
+let sci = format!("{:e}", n.abs());
+let (mantissa, exp) = sci.split_once('e')
+    .expect("{:e} always has an 'e'");
+let digits: String = mantissa.chars()
+    .filter(|&c| c != '.').collect();
+```
+
+For `1.5e-7`, `{:e}` gives `"1.5e-7"`, so `digits` is `"15"` and the
+exponent is -7; four cases (an integer, a decimal point inside the
+digits, `0.000ddd`, or `d.ddde±x`) then place the point.
+
+<Prompts ids={['ve-digits', 've-layout']} />
+
+<Callout kind="engine" label="Under the hood">
+How do you test a function like this? `value.rs` keeps a table of 42
+doubles and what the TypeScript VM printed for each under Node 22. Each
+double is written as its raw bits, such as `0x3fd3333333333334` for
+`0.1 + 0.2`, and turned back into a number with `f64::from_bits`. A
+decimal literal would first pass through Rust's own float parser, so the
+test would quietly depend on a second piece of conversion code; bits name
+the exact double Node was given.
+</Callout>
+
+## Your turn
+
+<Exercise id="value" />
+
+<Exercise id="jsNumber" />
+
+## What you learned
+
+- A **value enum** gives Drip's values a Rust type: one variant per kind,
+  eleven in all, with small values inline and heap objects as handles.
+- Handles own nothing, so `Value` is **Copy**, and the stack can copy
+  values freely.
+- `Value` is **16 bytes**: an 8-byte payload, a tag, and padding up to the
+  `f64`'s alignment. The hash in `StrRef` rides in space that was there
+  anyway.
+- Derived `PartialEq` is Drip's `==`. Printing needs the heap, because a
+  handle is only an index.
+- Rust and JavaScript print the same shortest digits, laid out
+  differently. `format_number` uses `{:e}` and applies JavaScript's
+  thresholds.
+
+
+{/* ── merge: from old chapter 139, The VM loop in Rust ── */}
+
+## The same loop, a different switch
+
+The dispatch loop of *The dispatch loop*, as it stands in
+`companion/ts/src/vm/vm.ts` (trimmed and rewrapped):
+
+```ts
+for (;;) {
+  const instruction = code[frame.ip++];
+  switch (instruction) {
+    case Op.None: this.push(null); break;
+    // ... 52 more cases
+    default:
+      throw new Error(
+        `unknown opcode ${instruction}`);
+  }
+}
+```
+
+And here is the top of drip-rs's, from `run` in `src/vm.rs` (rewrapped):
+
+```rust
+loop {
+    let byte = self.read_byte();
+    let op = OpCode::from_byte(byte).expect(
+        "the compiler emits valid opcodes");
+    match op {
+        // one arm per opcode: 53 in all
+    }
+}
+```
+
+The shape is the same: read a byte, decode it, run the code for that
+instruction, repeat. Two lines differ. `from_byte` (from the chapter
+*Bytecode and instructions in Rust*) turns the byte into an `OpCode`, and
+gives `None` for a byte no opcode has; and the `match` has no `default`.
+
+<Analogy title="a receptionist and an architect">
+A switch with a default case is a receptionist who says "not my
+department" to any visitor nobody expected. A match over an enum is a
+building whose doors the architect counted before it was built: if a
+door has no room behind it, the building does not open.
+<span slot="breaks">A building's plans can still be wrong in ways nobody
+counted; the compiler only checks that every opcode *has* an arm, not that
+the arm does the right thing, which is what the corpus tests are for.</span>
+</Analogy>
+
+<Analogy extra title="a seating plan">
+A wedding planner checks, the week before, that every guest has a seat;
+on the day, the only surprise left is someone who was never on the list,
+and they are stopped at the door. The exhaustive
+`match` is the seating plan, and `from_byte` is the door.
+<span slot="breaks">A planner can let a stranger in out of kindness;
+drip-rs treats a byte that is not an opcode as a bug in its own compiler,
+and `expect` stops the program loudly.</span>
+</Analogy>
+
+Step through the loop running `print 1 + 2 * 3;`, whose chunk is the real
+fourteen bytes drip-rs compiles it to:
+
+<DispatchSteps client:visible />
+
+## No default case
+
+The match is over `OpCode`, an enum with 53 variants, and a Rust match
+must be exhaustive<Cite id="klabnik2026" />: every possible value must be
+covered by some arm. Add a 54th opcode and forget its arm, and the VM no
+longer compiles. In TypeScript the same slip would surface only when a
+program ran the new instruction and fell into `default`.
+
+<Callout kind="definition">
+**Match-based dispatch**: the loop decodes each byte into an opcode enum
+and runs one `match` over it, with one arm per instruction. Because the
+match must be exhaustive, every opcode is guaranteed a handler at compile
+time, and the only unchecked step left is decoding the byte.
+</Callout>
+
+<Examples of="match-dispatch">
+
+```rust
+OpCode::None => self.push(Value::None),
+```
+
+```rust
+OpCode::Sub => {
+    let (a, b) = self.pop_numbers("-")?;
+    self.push(Value::Number(a - b));
+}
+```
+
+```rust
+OpCode::JumpUnless => {
+    let offset = self.read_short();
+    if self.pop().is_falsey() {
+        self.ip += offset;
+    }
+}
+```
+
+```text
+// with one arm left out (rustc 1.97):
+error[E0004]: non-exhaustive patterns:
+  `OpCode::False` not covered
+```
+
+</Examples>
+
+The first arm (de-indented from `vm.rs`, like the others) is the simplest
+there is: push `none`. The second can
+fail: `pop_numbers` checks that the top two values are numbers, and the
+`?` sends any error straight out of `run` (more on that next); otherwise
+it pushes the difference. The third is what an `if` compiles to: it reads
+a two-byte jump distance, pops the condition, and if the condition is
+falsey it moves the instruction pointer forward, so the next turn of the
+loop reads a different byte. The fourth is the spot-the-difference: delete
+the `False` arm and this is the error, naming the arm you forgot.
+
+<Formal title="Two arms as rules">
+
+```text
+code[ip] = True
+──────────────────────────────
+⟨ip, S⟩ → ⟨ip + 1, S · true⟩
+
+code[ip] = Sub   S = S′ · a · b
+      a, b numbers
+──────────────────────────────
+⟨ip, S⟩ → ⟨ip + 1, S′ · (a − b)⟩
+```
+
+<span slot="read">Read each rule from the top down. The first says: if
+the byte at ip is True, a machine whose instruction pointer is ip and whose
+stack is S steps to one whose instruction pointer is one further on and
+whose stack has true pushed on top. The second says: if the byte is Sub,
+and the stack is some S′ with a and then b on top, and both are numbers,
+then the machine steps to the next instruction with a and b replaced by
+a − b. Each arm of the match is one such rule; when no rule applies (b is
+a string, say), the VM reports a runtime error.</span>
+</Formal>
+
+<Prompts ids={['md-what', 'md-exhaustive', 'md-decode']} />
+
+## Errors are returned, not thrown
+
+The TypeScript VM's `runtimeError` throws, and `interpret` catches it.
+drip-rs returns errors as values instead: `run` returns `Run`, defined as
+`type Run<T = ()> = Result<T, RuntimeError>;`, and an arm that can fail
+uses `?`, so the error leaves `run` at once. The heart of `pop_numbers`
+(trimmed and rewrapped):
+
+```rust
+let (Value::Number(a), Value::Number(b)) =
+    (self.peek(1), self.peek(0))
+else {
+    // ... build the message, then:
+    return Err(self.runtime_error(message));
+};
+self.stack.truncate(self.stack.len() - 2);
+Ok((a, b))
+```
+
+That is a `let ... else`: if the pattern does not match, the `else` block
+runs, and it must leave the function. `RuntimeError` carries no data,
+because `runtime_error` has already written the message and the stack
+trace by the time it returns one; running `print "hi" - 1;` prints
+`runtime error: cannot use '-' on a string and a number` and
+`  at line 1 in script`, and exits with 70, exactly as the TypeScript VM
+does.
+
+<Prompts ids={['md-result']} />
+
+## The loop cannot hold the chunk
+
+The TypeScript loop starts by caching the running frame's code in local
+variables, `frame`, `code` and `constants`, and calls `reload()` after
+every call and return. Try that in Rust, on a toy VM:
+
+```rust
+fn run(&mut self) {
+    let code = &self.code;
+    for &b in code {
+        self.push(b as f64);
+    }
+}
+```
+
+rustc 1.97 refuses with `error[E0502]: cannot borrow *self as mutable
+because it is also borrowed as immutable`. `self.push` needs `&mut self`,
+all of the VM, `code` included, and a shared borrow of a field cannot
+overlap a mutable borrow of the whole (*Borrowing*). The borrow checker is
+right, too: in drip-rs the chunk belongs to an `ObjFunction` in the heap's
+arena, and allocating can grow that arena's `Vec` and move every object in
+it, so a reference into it could dangle.
+
+So drip-rs keeps no long-lived reference at all. It copies the running
+frame's state into fields of the `Vm`, which its comments compare to a
+CPU's **registers** (from `vm.rs`, comments left out):
+
+```rust
+pub struct Vm {
+    pub heap: Heap,
+    stack: Vec<Value>,
+    frames: Vec<CallFrame>,
+    ip: usize,
+    chunk: Rc<Chunk>,
+    slots: usize,
+    // ... globals, upvalues, output
+}
+
+fn read_byte(&mut self) -> u8 {
+    let byte = self.chunk.code[self.ip];
+    self.ip += 1;
+    byte
+}
+```
+
+<Figure takeaway="One frozen chunk, three owners, no borrow of the heap." caption="While a function runs, its chunk is shared by three Rc pointers: the function's own, the call frame's, and the Vm's chunk register. ip and slots live in the Vm; the frame's ip is written back only when it makes a call.">
+  <Registers />
+</Figure>
+
+Each read borrows `self` for one expression, and the borrow is over before
+`push` runs; try it on a toy VM built the same way:
+
+<Run id="registers" />
+
+ The chunk is behind an `Rc` (*Box, Rc and RefCell*) because
+several owners need it at once, and cloning an `Rc` only bumps a count;
+the compiler freezes each chunk when its function is done, so it never
+changes and needs no `RefCell`. `call` saves the caller's `ip` into its
+frame and loads the callee's `ip`, chunk and slots into the registers;
+`pop_frame` loads the caller's back. This matters more than it looks,
+because every instruction reads at least one byte, so the cost of reaching
+that byte (one field read here, rather than a walk from the frame through
+the heap) is paid on every turn of the loop.
+
+<Prompts ids={['md-borrow', 'md-rc', 'md-sync', 'md-measure']} />
+
+<Callout kind="engine" label="Under the hood">
+How fast is the loop overall? In the committed benchmark run
+(`results/drip-rs-bench-2026-11-02.md`, a shared cloud VM, so allow for
+noise), `fib.drip` took 406 ms in drip-rs against 1,906 ms in the
+TypeScript VM, about 4.7 times faster, and drip-rs was 3.7 to 4.9 times
+faster on every benchmark but `strings` (1.26 times), a program whose
+loop mostly builds, interns and compares new strings. The registers'
+price is bookkeeping: `call`, `pop_frame` and `runtime_error` must all
+read or write them explicitly.
+</Callout>
+
+## Your turn
+
+<Exercise id="tinyVm" />
+
+<Exercise id="checkedVm" />
+
+## What you learned
+
+- **Match-based dispatch**: decode the byte with `from_byte`, then one
+  exhaustive `match` with an arm per opcode. A forgotten opcode is a
+  compile error (E0004), not a `default` case.
+- Runtime errors are `Result` values: arms use `?`, and `let ... else`
+  handles operands of the wrong type.
+- The loop cannot keep `&self.chunk` across `self.push`: a shared and a
+  mutable borrow would overlap, and the arena could move.
+- **Registers**: `ip`, `chunk: Rc<Chunk>` and `slots` are fields of the
+  `Vm`, synced with the frame on calls and returns.
+
+<Quiz />

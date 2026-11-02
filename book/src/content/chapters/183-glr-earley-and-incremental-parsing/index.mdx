@@ -1,0 +1,246 @@
+---
+n: 183
+day: 4
+part: X
+title: 'GLR, Earley and incremental parsing'
+tagline: 'When the table has two answers, a parser can follow both; when the programmer types one character, a parser can keep almost all of the last tree. And yet the compilers you use every day parse with plain, hand-written recursive descent. This chapter explains all three.'
+objectives:
+  - Trace a GLR parser splitting at a conflict and merging again, and say when it reports an ambiguity.
+  - Say in a sentence what an Earley parser keeps for each position, and what grammars it accepts.
+  - Work out which subtrees an incremental parser can reuse after an edit, and where they move to.
+  - Give the reasons production compilers write their parsers by hand, with real examples.
+introduces: [glr, incremental-parsing]
+uses: [parser-generator, peg, lr-automaton, lr-conflict, lalr, lr0-item, shift-reduce, ambiguity, grammar, parser, recursive-descent, pratt-parser, binding-power, precedence, syntax-error, error-recovery, parse-tree, ast, source-location, array, object, function, map-filter-reduce, if, return]
+sources: [tomita1986, bison-manual, tree-sitter-docs, earley1970, wagnergraham1998, clang-features, v8-src-parser-base, typescript-src-parser, rustc-src-parser, oxc-src-parser]
+---
+import GlrSteps from '../../../components/diagrams/ch183/GlrSteps';
+import ReuseFigure from '../../../components/diagrams/ch183/ReuseFigure';
+
+## When one token is not enough
+
+Pascal lets you declare a range of values or a list of named values:
+
+```text
+type subrange = (a) .. b;
+type enum = (a);
+```
+
+The two lines are identical until the `..`, which may be any distance
+away, so a parser that must decide what `a` is when it reaches it, with
+one token of lookahead, cannot. Bison's manual uses exactly this example
+to introduce its answer<Cite id="bison-manual" />: when the table has
+two actions, do both.
+
+<Analogy title="a search party in a maze">
+At every fork the party splits, a group down each path. A group that
+reaches a dead end goes home; two groups that come out at the same
+junction carry on together as one.
+<span slot="breaks">Search parties walk at their own pace; GLR copies
+move in strict lockstep, every copy reading the same token before any
+reads the next, which is what lets them notice that they have become
+the same.</span>
+</Analogy>
+
+<GlrSteps client:visible />
+
+<Callout kind="definition">
+A **GLR** (*generalised LR*) parser runs an ordinary LR table, but where
+a cell holds several actions, it copies its stack and follows every
+action. The copies read each token together; a copy that meets an error
+disappears, and copies that reach the same state at the same point are
+merged. It can parse any context-free grammar, and on a grammar with no
+conflicts it behaves exactly like the LR parser it started from.
+</Callout>
+
+Masaru Tomita developed the method in the mid-1980s for natural
+language, where ambiguity is everywhere<Cite id="tomita1986" />; the
+trick that keeps it fast is that the copies share their common parts,
+so the "many stacks" are really one graph, a *graph-structured
+stack*. Bison switches to it
+with one line, `%glr-parser`, and records the actions of each copy
+instead of running them, until only one copy is left<Cite id="bison-manual" />.
+
+<Examples of="glr">
+
+```text
+type subrange = (a) .. b;
+split at a; the enum copy dies at ..
+```
+
+```text
+n + n + n  with  E → E + E | n
+two copies survive and merge:
+two trees, so Bison needs %dprec/%merge
+```
+
+```text
+tree-sitter: conflicts: $ => [
+  [$.array, $.array_pattern] ]
+```
+
+</Examples>
+
+The first is the Pascal case: the parser splits when it reaches `a`, and
+the enumeration copy fails at `..` (an enumeration cannot contain it), so
+the language had no ambiguity, only more lookahead than LR(1) allows.
+The second is the step-through: the grammar really is ambiguous, both
+copies succeed, and Bison asks the grammar's author to say which tree to
+keep, or to merge them. The third is from tree-sitter, which is built on
+GLR: in JavaScript `[x, y]` may be an array or a destructuring
+pattern (as in `let [x, y] = arr`), and a grammar can list such pairs as intended conflicts, so
+the parser explores both until the input decides<Cite id="tree-sitter-docs" />.
+
+<Prompts ids={['glr-what', 'glr-lockstep', 'glr-ambiguous']} />
+
+## Earley: every rule, every position
+
+Jay Earley's 1970 algorithm takes a different road to the same place: no
+table at all<Cite id="earley1970" />. For each position in the input it
+keeps a set of dotted rules, the items of "LR(0) items and the LR
+automaton", each also
+remembering where its rule began. Three steps fill the sets in: *predict*
+(a dot before a nonterminal adds that nonterminal's rules, starting
+here), *scan* (a dot before the next token moves over it into the next
+set), and *complete* (a finished rule moves on the dots that were
+waiting for it where it began). The input is accepted if the last set
+holds the start rule, finished, beginning at 0. It handles any
+context-free grammar, left-recursive and ambiguous ones included, in
+time that grows with the cube of the input length at worst, and with the
+square for unambiguous grammars. Run it:
+
+<Run id="earley" />
+
+<Prompts ids={['earley-sets']} />
+
+## Parsing as you type
+
+An editor that colours code, folds functions and shows errors parses the
+file again after every keystroke; parsing a large file from scratch each
+time wastes most of the work, because almost all of the
+file is the same as before.
+
+<Analogy extra title="a reprinted page">
+When a publisher fixes a typo on page 212, it reprints that page and
+leaves the rest of the book alone. If the fix makes the page longer,
+the pages after it keep their text and only their numbers change.
+<span slot="breaks">A page is a fixed unit; in a program the edit's
+effect is not always local, since typing one `"` can turn the rest of
+the file into a string, and then nothing after it can be reused.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Incremental parsing** builds the new tree after an edit by reusing
+every subtree of the old tree that the edit cannot have changed, moving
+the positions of those after the edit by the change in length, and
+parsing only the region around the edit again. The result is the same
+tree a full parse would build, for a fraction of the work.
+</Callout>
+
+<Figure takeaway="After an edit, untouched subtrees are reused; those after it only move." caption="Typing 00 after the 2 of the second statement: the first statement's subtree is reused as it is, the third's is reused with every position moved by +2, and only the second is parsed again.">
+  <ReuseFigure />
+</Figure>
+
+<Formal title="Which nodes survive an edit">
+
+```text
+edit: at p, remove r, add a
+δ = a − r
+
+node [s, e) with e < p:   keep
+node [s, e) with s > p + r:
+                 keep as [s + δ, e + δ)
+any other node:  parse again
+```
+
+<span slot="read">An edit at position p removes r characters and adds
+a, so everything after it moves by delta, a minus r. A node that ends
+before p is kept as it was. A node that starts after p plus r, the end
+of the removed text, is kept with both positions moved by delta. Every
+node that touches the edit, even at its edge, is parsed again.</span>
+</Formal>
+
+<Examples of="incremental-parsing">
+
+```text
+let a = 1; let b = 2; let c = 3;
+type 00 after the 2: keep a, move c
+```
+
+```text
+x = 1     then type 2 right after 1
+the node ends where the edit starts:
+parse it again (it became x = 12)
+```
+
+```text
+TSInputEdit: start_byte,
+  old_end_byte, new_end_byte
+ts_tree_edit, then parse with old tree
+```
+
+</Examples>
+
+The first is the figure. The second is why the rule above is strict at
+the edges: a node that merely touches the edit may change, because the
+new characters can join its last token. The third is tree-sitter's real
+interface: an edit is described by where it starts and where the old
+and new text end, the old tree is adjusted with `ts_tree_edit`, and the
+parser is called again with the old tree, which builds a new tree that
+"internally shares structure with the old tree"<Cite id="tree-sitter-docs" />.
+Its documentation names Tim Wagner and Susan Graham's work on
+incremental LR parsing among the research it builds on<Cite id="wagnergraham1998" />.
+
+<Prompts ids={['incr-what', 'incr-edge', 'incr-shift']} />
+
+## Why compilers parse by hand anyway
+
+After four chapters of tables and generators, here is an honest
+surprise: the parsers in the compilers you use every day are written by
+hand, as recursive descent, with precedence climbing (the binding
+powers of "Pratt parsing") for operators. V8's parser has functions like
+`ParseStatementListItem` and `ParseBinaryExpression(int prec)`<Cite id="v8-src-parser-base" />;
+TypeScript's has `parseStatement` and
+`parseBinaryExpressionOrHigher(precedence)`<Cite id="typescript-src-parser" />;
+rustc's has `parse_expr` and a function for "an associative expression
+with operators of at least `min_prec` precedence"<Cite id="rustc-src-parser" />;
+oxc, the Rust parser this book's engine uses, describes itself as a
+"Recursive Descent Parser for ECMAScript and TypeScript"<Cite id="oxc-src-parser" />.
+
+Clang's developers give the reasons most plainly: recursive descent is
+plain code that new developers can read, it "easily supports ad-hoc
+rules and other strange hacks required by C/C++", and it makes it
+straightforward to give "excellent diagnostics and error
+recovery"<Cite id="clang-features" />. Each point is something the
+earlier chapters showed: an error message is easiest to write where the
+code knows exactly which construct it is in ("Syntax errors and recovery"), real languages
+have corners that do not fit a clean grammar, and a hand-written parser
+needs no extra tool in the build. Generators keep their place where
+those matter less: in editors (tree-sitter), for grammars that change
+often, for languages with many dialects, and for every first version of
+a language, where a grammar file is the quickest thing to change.
+
+<Prompts ids={['why-hand']} />
+
+## Your turn
+
+<Exercise id="reuse" />
+
+## What you learned
+
+- **GLR** follows every action of a conflicting cell, in lockstep,
+  dropping copies that fail and merging copies that meet; it parses any
+  context-free grammar, and leaves real ambiguities for the grammar's
+  author to settle.
+- **Earley** parsing keeps, for each position, the dotted rules in
+  progress and where each began; it needs no table and accepts any
+  context-free grammar.
+- **Incremental parsing** reuses the subtrees an edit did not touch,
+  moving those after it by the change in length; tree-sitter does this
+  on every keystroke.
+- V8, Clang, rustc, TypeScript and oxc parse with **hand-written
+  recursive descent**, for its error messages, its flexibility and its
+  plainness.
+
+Next: the tree finally does something, as we start to evaluate it.
+
+<Quiz />

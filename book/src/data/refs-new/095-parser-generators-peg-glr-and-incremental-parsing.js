@@ -1,4 +1,4 @@
-// New references for chapter 97 (Parser generators, PEG, GLR and
+// New references for chapter 182 (Parser generators, PEG, GLR and
 // incremental parsing) and its staged second half (GLR, Earley and
 // incremental parsing).
 // Network note: only web search and raw.githubusercontent.com were
@@ -15,7 +15,7 @@ export default [
     url: 'https://www.cs.utexas.edu/users/novak/yaccpaper.htm',
     accessed: '2026-11-02',
     checkedAgainst: 'Search results: the Wikipedia article on Yacc (Johnson, Stephen C. (1975), Yacc: Yet Another Compiler-Compiler, technical report 32, AT&T Bell Laboratories, Murray Hill; Al Aho pointed Johnson to Knuth’s work on LR parsing; Yacc’s output is a shift-reduce parser in C that runs the C code attached to each rule when the rule is recognised), and copies of the paper itself (cs.utexas.edu/users/novak/yaccpaper.htm; the 4.4BSD PSD copy at people.freebsd.org), whose text says Yacc accepts LALR(1) grammars with disambiguating rules.',
-    shaped: 'Chapter 97: the first widely used LALR parser generator, and the shape (rules with actions in, a table-driven C parser out) that Bison kept.',
+    shaped: 'Chapter 182: the first widely used LALR parser generator, and the shape (rules with actions in, a table-driven C parser out) that Bison kept.',
   },
   {
     id: 'parr2014allstar',
@@ -27,7 +27,7 @@ export default [
     url: 'https://doi.org/10.1145/2660193.2660202',
     accessed: '2026-11-02',
     checkedAgainst: 'Search results: the SPLASH 2014 OOPSLA programme page for the paper (talk on 23 October 2014, Compilation Tools session, with its abstract) and the researchr.org BibTeX record (pages 579–598, DOI 10.1145/2660193.2660202). The abstract: ALL(*) is the parsing strategy of ANTLR 4; it combines the predictability of top-down LL(k) parsing with a GLR-like mechanism for making decisions, moves grammar analysis to parse time, accepts any non-left-recursive context-free grammar, is O(n⁴) in theory and linear on the grammars measured. It received the OOPSLA Most Influential Paper award (sigplan.org).',
-    shaped: 'Chapter 97: ANTLR as a top-down parser generator, and analysis done while parsing instead of ahead of time.',
+    shaped: 'Chapter 182: ANTLR as a top-down parser generator, and analysis done while parsing instead of ahead of time.',
   },
   {
     id: 'ford2002packrat',
@@ -39,7 +39,7 @@ export default [
     url: 'https://arxiv.org/abs/cs/0603077',
     accessed: '2026-11-02',
     checkedAgainst: 'Search results for the arXiv listing cs/0603077 (journal reference: International Conference on Functional Programming, ICFP ’02, October 2002, Pittsburgh, PA) and the author’s page pdos.csail.mit.edu/~baford/packrat/icfp02/. The ACM DOI for the proceedings version was seen only inside an aggregator’s URL, so the arXiv DOI is given instead. The paper adds memoisation to backtracking recursive descent so that each rule is tried at most once at each position, which gives linear time at the cost of memory.',
-    shaped: 'Chapter 97: packrat parsing, memoising a PEG parser by (rule, position).',
+    shaped: 'Chapter 182: packrat parsing, memoising a PEG parser by (rule, position).',
   },
   {
     id: 'ford2004peg',
@@ -51,7 +51,7 @@ export default [
     url: 'https://doi.org/10.1145/964001.964011',
     accessed: '2026-11-02',
     checkedAgainst: 'Search results: the dblp record conf/popl/Ford04 (POPL 2004: 111–122), a BibTeX entry giving DOI 10.1145/964001.964011, the author’s page pdos.csail.mit.edu/~baford/packrat/popl04/ with the abstract, and lecture notes quoting the operators. Read: PEGs are recognition-based rather than generative, which removes ambiguity; the choice e1 / e2 is prioritised (e2 is tried only if e1 fails); &e and !e are syntactic predicates that consume no input; a linear-time parser can be built for any PEG.',
-    shaped: 'Chapter 97: PEGs, ordered choice and predicates, and why a PEG is never ambiguous.',
+    shaped: 'Chapter 182: PEGs, ordered choice and predicates, and why a PEG is never ambiguous.',
   },
   {
     id: 'tomita1986',
@@ -63,7 +63,7 @@ export default [
     url: 'https://aclweb.org/anthology/J88-2012.pdf',
     accessed: '2026-11-02',
     checkedAgainst: 'Search results: a review of the book in Computational Linguistics (ACL Anthology J88-2012: Boston, Kluwer, 1986, ISBN 0-89838-202-5) and the Springer listing (copyright 1986, ISBN 978-0-89838-202-0). Springer’s page for Tomita’s later edited volume Generalized LR Parsing (1991) says the Generalized LR algorithm, “sometimes called Tomita’s algorithm”, was developed in 1985 as part of his PhD thesis at Carnegie Mellon, and that it extends the LR method (a table precompiled from the grammar, then shift-reduce parsing) to grammars whose tables have conflicts. Search results for Tomita’s 1987 Computational Linguistics paper (ACL Anthology J87-1004) and the Wikipedia GLR article: the parser splits into one process per table entry at a conflict, and the graph-structured stack shares the common parts of those stacks.',
-    shaped: 'Chapter 97’s second half: GLR parsing, following every action of a conflicting table entry at once.',
+    shaped: 'Chapter 182’s second half: GLR parsing, following every action of a conflicting table entry at once.',
   },
   {
     id: 'earley1970',
@@ -75,7 +75,7 @@ export default [
     url: 'https://doi.org/10.1145/362007.362035',
     accessed: '2026-11-02',
     checkedAgainst: 'Search results: the ACM abstract page on cacmb4.acm.org (the most efficient general context-free algorithm known; compared favourably with the top-down and bottom-up algorithms studied by Griffiths and Petrick), the Wikipedia article on the Earley parser (reference: CACM 13 (2): 94–102, doi:10.1145/362007.362035; cubic time in general, quadratic for unambiguous grammars), and a copy of the paper hosted at lara.epfl.ch (p94-earley.pdf).',
-    shaped: 'Chapter 97’s second half: Earley parsing, which handles any context-free grammar using sets of dotted rules.',
+    shaped: 'Chapter 182’s second half: Earley parsing, which handles any context-free grammar using sets of dotted rules.',
   },
   {
     id: 'wagnergraham1998',
@@ -87,7 +87,7 @@ export default [
     url: 'https://harmonia.cs.berkeley.edu/papers/twagner-parsing.pdf',
     accessed: '2026-11-02',
     checkedAgainst: 'Search results: the Harmonia/Ensemble project publication list at Berkeley (Tim A. Wagner and Susan L. Graham, Efficient and flexible incremental parsing, ACM TOPLAS 20(5):980–1013, September 1998), and a comp.compilers post quoting the abstract (incremental LR(k) parsing by parsing sentential forms, reusing unchanged subtrees). Tree-sitter’s documentation (docs/src/index.md, “Underlying Research”) lists this paper, linked at the URL above, as one that greatly influenced its design. No DOI was confirmed, so none is given.',
-    shaped: 'Chapter 97’s second half: incremental parsing, reusing the subtrees an edit did not touch.',
+    shaped: 'Chapter 182’s second half: incremental parsing, reusing the subtrees an edit did not touch.',
   },
   {
     id: 'tree-sitter-docs',
@@ -99,7 +99,7 @@ export default [
     url: 'https://tree-sitter.github.io/tree-sitter/',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from github.com/tree-sitter/tree-sitter, master: README.md and docs/src/index.md (“Tree-sitter is a parser generator tool and an incremental parsing library. It can build a concrete syntax tree for a source file and efficiently update the syntax tree as the source file is edited”; aims to be fast enough to parse on every keystroke and robust in the presence of syntax errors; runtime in pure C11; “Underlying Research” lists Wagner’s and Wagner & Graham’s incremental-parsing papers); docs/src/using-parsers/3-advanced-parsing.md (an edit is described by start_byte, old_end_byte, new_end_byte and points; ts_tree_edit adjusts the old tree, then ts_parser_parse is called with the old tree and the new tree “internally shares structure with the old tree”); docs/src/creating-parsers/2-the-grammar-dsl.md (rules are written in grammar.js, each as a JavaScript function of the `$` object); docs/src/creating-parsers/3-writing-the-grammar.md (the prec.left(2, seq($.expression, '*', $.expression)) and prec.left(1, …'+'…) example; “Tree-sitter is based on the GLR parsing algorithm … it can handle any context-free grammar, it works most efficiently with … LR(1) grammars”; “Unresolved conflict” errors fixed with prec, prec.left and prec.right; intentional ambiguity declared in `conflicts`, which makes the parser explore both possibilities); LICENSE (MIT, “Copyright (c) 2018 Max Brunsfeld”).',
-    shaped: 'Chapter 97 and its second half: tree-sitter as a GLR parser generator, its conflict errors and precedence, and how it reparses after an edit.',
+    shaped: 'Chapter 182 and its second half: tree-sitter as a GLR parser generator, its conflict errors and precedence, and how it reparses after an edit.',
   },
   {
     id: 'clang-features',
@@ -111,7 +111,7 @@ export default [
     url: 'https://clang.llvm.org/features.html',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/llvm/llvm-project/main/clang/www/features.html (read raw), section “A single unified parser for C, Objective C, C++, and Objective C++”: “We are convinced that the right parsing technology for this class of languages is a hand-built recursive-descent parser. Because it is plain C++ code, recursive descent makes it very easy for new developers to understand the code, it easily supports ad-hoc rules and other strange hacks required by C/C++, and makes it straight-forward to implement excellent diagnostics and error recovery.”',
-    shaped: 'Chapter 97’s second half: why production compilers write their parsers by hand.',
+    shaped: 'Chapter 182’s second half: why production compilers write their parsers by hand.',
   },
   {
     id: 'v8-src-parser-base',
@@ -123,7 +123,7 @@ export default [
     url: 'https://github.com/v8/v8/blob/main/src/parsing/parser-base.h',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/v8/v8/main/src/parsing/parser-base.h (read raw; “Copyright 2012 the V8 project authors”): the ParserBase class template declares one hand-written function per piece of the JavaScript grammar, for example ParseStatementListItem(), ParseConditionalExpression() and ParseBinaryExpression(int prec), the last taking an operator precedence.',
-    shaped: 'Chapter 97’s second half: V8’s parser is hand-written recursive descent, with precedence climbing for binary operators.',
+    shaped: 'Chapter 182’s second half: V8’s parser is hand-written recursive descent, with precedence climbing for binary operators.',
   },
   {
     id: 'typescript-src-parser',
@@ -135,7 +135,7 @@ export default [
     url: 'https://github.com/microsoft/TypeScript/blob/v5.9.3/src/compiler/parser.ts',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/microsoft/TypeScript/v5.9.3/src/compiler/parser.ts (read raw): hand-written functions such as parseStatement(), parseExpression() and parseBinaryExpressionOrHigher(precedence: OperatorPrecedence). The Go port, github.com/microsoft/typescript-go internal/parser/parser.go (main), has the same functions (parseStatement, parseExpression, parseBinaryExpressionOrHigher).',
-    shaped: 'Chapter 97’s second half: the TypeScript compiler’s parser is hand-written recursive descent.',
+    shaped: 'Chapter 182’s second half: the TypeScript compiler’s parser is hand-written recursive descent.',
   },
   {
     id: 'rustc-src-parser',
@@ -147,7 +147,7 @@ export default [
     url: 'https://github.com/rust-lang/rust/blob/master/compiler/rustc_parse/src/parser/expr.rs',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/rust-lang/rust/master/compiler/rustc_parse/src/parser/expr.rs (read raw: hand-written methods on Parser such as parse_expr and parse_expr_prefix, each parsing one form of expression and calling the others) and https://raw.githubusercontent.com/rust-lang/rustc-dev-guide/master/src/the-parser.md (lexing in rustc_lexer, which is hand-written, then parsing tokens into an AST in rustc_parse).',
-    shaped: 'Chapter 97’s second half: rustc’s parser is hand-written recursive descent.',
+    shaped: 'Chapter 182’s second half: rustc’s parser is hand-written recursive descent.',
   },
   {
     id: 'oxc-src-parser',
@@ -159,6 +159,6 @@ export default [
     url: 'https://github.com/oxc-project/oxc/blob/main/crates/oxc_parser/src/lib.rs',
     accessed: '2026-11-02',
     checkedAgainst: 'https://raw.githubusercontent.com/oxc-project/oxc/main/crates/oxc_parser/src/lib.rs (read raw): the doc comment on the Parser struct reads “Recursive Descent Parser for ECMAScript and TypeScript”; crates/oxc_parser/Cargo.toml gives version 0.156.0.',
-    shaped: 'Chapter 97’s second half: oxc’s parser, the one this book’s Rust engine uses, is hand-written recursive descent.',
+    shaped: 'Chapter 182’s second half: oxc’s parser, the one this book’s Rust engine uses, is hand-written recursive descent.',
   },
 ];

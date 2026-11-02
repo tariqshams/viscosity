@@ -1,0 +1,595 @@
+---
+n: 127
+day: 20
+part: VII
+title: 'Lifetimes'
+tagline: 'In TypeScript a reference keeps its object alive for as long as anyone holds it. In Rust nothing does that for you, so the compiler checks, before the program runs, that no reference is ever used after the value it points at is gone.'
+objectives:
+  - Say what a lifetime is, and why Rust needs them when TypeScript does not.
+  - Read E0597, E0515 and E0106 and point at the three places each one names.
+  - Fix a dangling reference by moving the owner, returning an owned value, or ending the borrow sooner.
+  - Explain why a borrow ends at its last use, not at the closing brace.
+  - "Write lifetime parameters on structs, impls and functions, such as Token<'src> and fn longer<'a>."
+  - Read an annotated signature aloud and say which input its result borrows from.
+  - Apply the three elision rules, and spot when the default they pick is the wrong one.
+  - Explain 'static, and read the lifetimes in drip-rs's scanner and compiler.
+introduces: [lifetime, lifetime-annotation]
+uses: [rust, rust-functions, let-mut, scalar-types, ownership, move, drop, borrow, shared-vs-mutable, borrow-checker, slice, string-vs-str, struct, impl, option, vec, token, lexeme, scanner, local-variable, block-scope, scope, pointer, stack-and-heap, garbage-collection, borrow-checking-algorithm, non-lexical-lifetimes, reference, environment-lifetime, self-receiver, rust-generics, single-pass-compiler, ast, lowering]
+sources: [klabnik2026, rust-book-lifetimes, rustref-lifetime-elision]
+---
+import LifetimeSteps from '../../../components/diagrams/ch127/LifetimeSteps';
+import LifeBars from '../../../components/diagrams/ch127/LifeBars';
+import ElisionSteps from '../../../components/diagrams/ch127/ElisionSteps';
+import LongerBars from '../../../components/diagrams/ch127/LongerBars';
+
+{/* ── merge: from old chapter 127, Lifetimes ── */}
+
+## A reference with nothing behind it
+
+In TypeScript you never ask how long an object will last: if `word`
+still points at a string, the garbage collector (from *Reclaiming
+memory: mark and sweep*) keeps that string alive. Rust has no garbage collector, so it
+cannot keep anything alive on your behalf; when an owner goes out of
+scope its value is dropped at once (as *Ownership* showed), and any
+reference still pointing at it would point at freed memory. Such a
+reference is called **dangling**, and reading through one is how C
+programs crash, or worse, quietly read somebody else's data.
+
+Rust's answer is to check, while compiling, that every reference is
+used only while its value is still there. Here is the smallest program
+that breaks the rule:
+
+```rust
+fn main() {
+    let r;
+    {
+        let text = String::from("let x");
+        r = &text[0..3];
+    }
+    println!("r is {r}");
+}
+```
+
+Line 2 declares `r` and fills it in later. Inside the inner block,
+`text` owns a string on the heap, and `r` becomes a slice of its first
+three characters (a borrow, as in *Slices and strings*). The block ends
+on line 6, so `text` is dropped and its memory freed; then line 7 reads
+`r`, which would point into memory that is gone. rustc 1.97 refuses:
+
+```text
+error[E0597]: `text` does not live long
+  enough
+4 | let text = String::from("let x");
+  |     ---- binding `text` declared here
+5 | r = &text[0..3];
+  |      ^^^^ borrowed value does not
+  |           live long enough
+6 | }
+  | - `text` dropped here while still
+  |   borrowed
+7 | println!("r is {r}");
+  |                 - borrow later used
+  |                   here
+```
+
+(Long lines are wrapped to fit a phone; the words are rustc's.) Read
+it as three places: where the borrow was **made** (line 5), where the owner **died**
+(line 6), and where the borrow was **still needed** (line 7). Every
+lifetime error you meet is some arrangement of those three.
+
+<Analogy title="a cloakroom ticket">
+You leave your coat at a theatre's cloakroom and get a numbered ticket.
+The ticket is small and you can carry it anywhere, but it is only worth
+something while the cloakroom is open; turn up after closing and there
+is no coat to collect. A reference is the ticket, the value is the coat,
+and the owner's scope is the opening hours. Rust checks every ticket
+against the opening hours before the show starts.
+<span slot="breaks">A real cloakroom might stay open late, or you might
+get lucky; Rust never guesses, so it rejects the program if there is
+any path on which the ticket could be used after closing.</span>
+</Analogy>
+
+<Analogy extra title="a library loan">
+A library book borrowed for three weeks has a due date stamped inside.
+You can read it, lend it on to a friend, or photocopy a page, but every
+one of those things has to happen before the due date, because after
+that the book is gone from your shelf. A lifetime is the stretch between
+the day you borrowed it and the last day you need it, and it has to end
+on or before the due date.
+<span slot="breaks">A library can renew a loan; Rust cannot stretch a
+value's life to suit a reference. If the reference needs longer, you
+must change the code so that the owner lives longer.</span>
+</Analogy>
+
+## Lifetimes as bars on a timeline
+
+The whole idea fits in one picture: draw how long the owner lives, and
+how long the borrow is needed, as two bars.
+
+<Figure takeaway="A borrow's bar must fit inside its owner's bar." caption="Top: the borrow is made after the owner exists and last used before it is dropped, so it compiles. Bottom: the owner is dropped while the borrow is still needed, which is E0597.">
+  <LifeBars />
+</Figure>
+
+<Callout kind="definition">
+A **lifetime** is the stretch of a program during which a reference
+must stay valid: from where the reference is made to the last place it
+is used. The **borrow checker** (the compiler pass from *Borrowing*)
+gives every reference a lifetime and checks that it fits inside the life
+of the value it points at, from that value's creation to its drop. A
+reference that could outlive its value would **dangle**; preventing that
+is the main job of lifetimes<Cite id="rust-book-lifetimes" />.
+</Callout>
+
+<Formal title="The outlives check">
+
+```text
+L(x)  = the code where x is alive
+'r    = the code where r is used
+r = &x  is accepted  ⟺  'r ⊆ L(x)
+```
+
+<span slot="read">L of x is the part of the program where the value x
+exists. Tick r (written 'r) is the part where the reference r is still
+needed. Borrowing x into r is allowed exactly when tick r is a subset
+of L of x: every place that uses r is a place where x is still
+alive.</span>
+</Formal>
+
+<Examples of="lifetime">
+
+```rust
+let r;
+{
+    let x = 5;
+    r = &x; // E0597: x dies first
+}
+println!("{r}");
+```
+
+```rust
+fn make() -> &String {
+    let s = String::from("hi");
+    &s // s is dropped right here
+}
+```
+
+<Run id="lifetime-play" />
+
+</Examples>
+
+The first is the smallest dangling reference: `x` lives only inside the
+braces, `r` is used after them, and the error is E0597. The second is
+the same mistake across a call: `s` is dropped when `make` returns, so
+the reference handed back would point at nothing. rustc stops at the signature with E0106,
+"missing lifetime specifier", and its help line says what you almost
+certainly want: "return an owned value", that is
+`fn make() -> String` with `s` as the last line. (If a function takes
+a reference and returns a borrow of a local, the error is E0515,
+"cannot return reference to local variable `s`".) The runnable one is
+the opening program fixed, with `text` outside the block; move it back
+inside and run it to see E0597 for yourself.
+
+<Prompts ids={['lt-what', 'lt-dangle', 'lt-e0597', 'lt-return-local']} />
+
+## Watching the borrow checker work
+
+Here is the same check on code shaped like drip-rs's scanner (the Rust
+version of *Writing a scanner*), where each token's `lexeme` is a slice
+of the source rather than a copy, so a token borrows the source text.
+The `'src` in the notes names "how long the source is borrowed"; the
+next chapter teaches you to write it:
+
+<LifetimeSteps client:visible />
+
+Notice what is *not* an error: `sc` is dropped at the same brace as
+`src`, but the token borrows the source, not the scanner. The fix in the
+last step is the most common one: declare the owner in an outer scope,
+so it outlives everything that borrows it.
+
+## A borrow ends at its last use
+
+Lifetimes are about *uses*, not braces. Recall the rule from
+*Borrowing*: many shared borrows or one mutable borrow, never both. Both of these programs borrow `v` and then push onto it; only one
+compiles.
+
+```rust
+let mut v = vec![1, 2, 3];
+let first = &v[0];
+v.push(4); // E0502
+println!("{first}");
+```
+
+```rust
+let mut v = vec![1, 2, 3];
+let first = &v[0];
+println!("{first}"); // last use
+v.push(4); // fine: the borrow is over
+```
+
+In the first, `first` is still needed on line 4, so its borrow is alive
+when `push` asks for a mutable one, and rustc reports E0502 ("cannot
+borrow `v` as mutable because it is also borrowed as immutable"; push
+may move the vector's contents to a bigger buffer, which would leave
+`first` dangling). In the second, `first` is never used after line 3,
+so its lifetime ends there, and `push` is fine, even though `first` is
+still in scope until the closing brace. This is the idea from
+*Non-lexical lifetimes and region inference*: a lifetime is the set of
+program points where the reference is still live, as in *A borrow
+checker in miniature*.
+
+<OtherLanguages title="Returning a reference to a local">
+
+```rust
+fn first_word(s: &str) -> &str {
+    s.split(' ').next().unwrap_or("")
+}
+fn greeting() -> String {
+    let g = String::from("hi");
+    g // move it out: no borrow
+}
+```
+
+```ts
+function firstWord(s: string): string {
+  return s.split(' ')[0] ?? '';
+}
+function greeting(): { text: string } {
+  const g = { text: 'hi' };
+  return g; // the GC keeps g alive
+}
+```
+
+```c
+const char *greeting(void) {
+    char g[] = "hi";
+    return g; /* dangling! g is on
+                 the stack, gone now */
+}
+```
+
+</OtherLanguages>
+
+TypeScript never thinks about lifetimes, because the collector keeps
+`g` alive for as long as the caller holds it. The C version compiles
+(most compilers only warn) and returns a pointer into a stack frame
+that no longer exists, the very bug Rust's check rules out. Rust gives you
+two honest choices: borrow from something the *caller* owns, as
+`first_word` does (its result is a slice of `s`, so it lives as long as
+`s` does), or hand back an owned value, as `greeting` does, moving the
+`String` out to the caller.
+
+<Prompts ids={['lt-last-use', 'lt-ts', 'lt-c']} />
+
+<Callout kind="engine" label="Under the hood">
+Lifetimes exist only while compiling. Once the borrow checker is
+satisfied they are thrown away, so a `&str` in the running program is
+still only an address and a length, exactly as *Slices and strings*
+drew it, with no counter and no check<Cite id="klabnik2026" />. That is
+why drip-rs can let every token and every local-variable name point
+straight into the source text: the TypeScript VM calls `slice` and
+makes a new string for each lexeme, while the Rust scanner allocates
+nothing at all, and the compiler has proved that no token outlives the
+source it points into.
+</Callout>
+
+<Prompts ids={['lt-cost']} />
+
+## Your turn
+
+The exercise needs no new syntax: with one reference going in and one
+coming out, Rust assumes the result borrows from the input (the next
+chapter names that rule and shows what to write when there are two).
+
+<Exercise id="longestLine" />
+
+## What you learned
+
+- A **lifetime** is the stretch of code where a reference must stay
+  valid, from where it is made to where it is last used.
+- The borrow checker makes every lifetime fit inside the life of the
+  value borrowed; otherwise you get E0597 ("does not live long
+  enough"), or E0106 and E0515 when a function would return a borrow of
+  its own local.
+- The fixes: make the owner live longer, return an owned value, or end
+  the borrow sooner, because a borrow ends at its **last use**, not at
+  the closing brace.
+- TypeScript's collector keeps values alive; C lets pointers dangle;
+  Rust proves they never do, at no run-time cost.
+
+Next: how to *name* a lifetime, so that a struct can hold a reference
+and a function can say which input its answer borrows from.
+
+
+{/* ── merge: from old chapter 127, Lifetime annotations ── */}
+
+## A struct that borrows
+
+Inside a function body the compiler works out every lifetime by itself
+(*Lifetimes*). It needs your help at the *edges*: a reference stored in
+a struct, or handed back from a function, travels where one body cannot
+show. Here is drip-rs's token:
+
+```rust
+pub struct Token<'src> {
+    pub kind: TokenKind,
+    pub lexeme: &'src str,
+    pub line: usize,
+}
+```
+
+A token's `lexeme` is a slice of the source text, not a copy. Delete
+the `'src` and write it the way you would write a TypeScript interface,
+and rustc 1.97 stops you:
+
+```text
+error[E0106]: missing lifetime specifier
+2 |     lexeme: &str,
+  |             ^ expected named lifetime
+  |               parameter
+help: consider introducing a named
+  lifetime parameter
+1 ~ struct Token<'a> {
+2 ~     lexeme: &'a str,
+```
+
+The question is fair: a `Token` points into somebody else's text, so
+whose, and for how long? `'src` (read it "tick src") answers it: a **lifetime parameter**, a name for "however long the
+borrowed source stays valid", declared in angle brackets after the
+struct's name, just like the type parameters of *Generics and trait
+bounds*. A `Token<'src>` can then never outlive the text it points into.
+
+<Analogy title="a guest pass with the host's name on it">
+An office visitor's pass says "guest of Priya", and it is valid only
+while Priya is in the building; the name says whose presence it
+depends on. `Token<'src>` is a pass with the
+source text's name on it.
+<span slot="breaks">A guard checks passes as people walk around; Rust
+checks every use of every token once, while compiling, and nothing is
+written on the token at run time.</span>
+</Analogy>
+
+The same name goes on the `impl`, so the methods can talk about it.
+Here is the shape of drip-rs's scanner (`scanner.rs`, trimmed):
+
+```rust
+pub struct Scanner<'src> {
+    source: &'src str,
+    current: usize,
+}
+impl<'src> Scanner<'src> {
+    pub fn scan_token(&mut self)
+        -> Token<'src> { /* ... */ }
+}
+```
+
+`impl<'src>` declares the name; `Scanner<'src>` uses it. Read
+`scan_token` aloud: "borrow the scanner mutably for a moment, and hand
+back a token valid for as long as the *source* is".
+
+<Prompts ids={['ann-what', 'ann-struct']} />
+
+## A function with two inputs
+
+Now a plain function, `longer`, which returns whichever string is
+longer. With no annotations rustc asks which input the answer borrows
+from:
+
+```text
+error[E0106]: missing lifetime specifier
+= help: this function's return type
+  contains a borrowed value, but the
+  signature does not say whether it is
+  borrowed from `a` or `b`
+```
+
+The answer could be either, so the honest signature uses one name for
+all three:
+
+```rust
+fn longer<'a>(a: &'a str, b: &'a str)
+    -> &'a str {
+    if a.len() >= b.len() { a } else { b }
+}
+```
+
+Read it as: "there is some stretch `'a` during which both `a` and `b`
+are valid; the result is valid for that stretch". In practice `'a` ends
+up being the *shorter* of the two inputs' lifetimes, because that is the
+longest stretch during which both are alive.
+
+<Figure takeaway="With one name for both inputs, the result lives only as long as the shorter-lived input." caption="a lives to the end of main and b only inside a block, so 'a is the overlap. Using the result after b's block ends is E0597, even if it happened to be a.">
+  <LongerBars />
+</Figure>
+
+<Analogy extra title="a joint library card">
+Two flatmates share one library card that is valid only while *both*
+memberships are. If one ends in May and the other in July, the card
+stops in May, whoever's name the loan was really under.
+<span slot="breaks">A library might know whose membership the loan was
+really on; Rust does not look at which branch `longer` took, only at the
+signature, so it always assumes the shorter one.</span>
+</Analogy>
+
+That rule catches a real mistake: with `a` alive to the end of `main`,
+`b` only inside a block, and `res = longer(&a, &b)` printed after the
+block, rustc reports ``E0597: `b` does not live long enough``, even
+though `longer` would in fact have returned `a`. The signature only
+promised "valid while both are", and the caller is held to that. Annotations never make a value live longer; they
+describe how lifetimes relate, so that callers can be checked against
+the description<Cite id="rust-book-lifetimes" />.
+
+<Callout kind="definition">
+A **lifetime annotation** names a lifetime with an apostrophe, such as
+`'a` or `'src`. It is declared as a parameter (`struct Token<'src>`,
+`impl<'src>`, `fn f<'a>`) and attached to references (`&'a str`,
+`&'a mut T`) or to types that hold them (`Token<'a>`). Giving several
+references the same name says they must all be valid over that stretch.
+Annotations change no lifetime; they let the compiler check each caller
+against the signature alone.
+</Callout>
+
+<Formal title="What one shared name promises">
+
+```text
+fn f<'a>(x: &'a T, y: &'a T) -> &'a T
+at a call:   'a ⊆ L(x) ∩ L(y)
+every use of the result lies in 'a
+```
+
+<span slot="read">For a function whose two inputs and output all carry
+tick a: at each call, the compiler picks tick a to be a stretch inside
+both the life of x and the life of y (the ∩ symbol reads "and also",
+the overlap of the two). The result may then be used only inside tick
+a.</span>
+</Formal>
+
+<Examples of="lifetime-annotation">
+
+```rust
+struct Word<'s> {
+    text: &'s str,
+}
+let w = Word { text: &src[0..3] };
+```
+
+```rust
+fn longer<'a>(a: &'a str, b: &'a str)
+    -> &'a str
+```
+
+```rust
+// tests/common/mod.rs in drip-rs
+fn after<'a>(line: &'a str,
+    marker: &str) -> Option<&'a str> {
+    Some(&line[line.find(marker)?
+        + marker.len()..])
+}
+```
+
+</Examples>
+
+A `Word<'s>` cannot outlive `src`; `longer` is the two-input case;
+the third is real, from drip-rs's corpus runner, which reads comments like
+`# expect: 1`: `after` returns the rest of `line` after `marker`, and
+only `line` carries `'a`, because the answer is a slice of `line` and
+never of `marker`. So a caller may drop `marker` at once and keep the answer.
+(`?` returns `None` early if `find` finds no marker, as in *Option and
+Result*.)
+
+<Prompts ids={['ann-longer', 'ann-no-extend']} />
+
+## The rules that let you leave them out
+
+*Slices and strings* had you write `fn first_word(s: &str) -> &str`
+with no ticks at all, and *Lifetimes* ended with a similar exercise.
+That works because of three **elision rules**, which fill in lifetimes
+when the answer is obvious<Cite id="rustref-lifetime-elision" />. Step
+through them on three signatures:
+
+<ElisionSteps client:visible />
+
+1. Each reference parameter gets its own lifetime.
+2. If there is exactly one input lifetime, every output gets it.
+3. In a method whose receiver is `&self` or `&mut self`, every output
+   gets *self's* lifetime.
+
+If an output is still unnamed after that, you get E0106, as `longer`
+did; the compiler never reads the body to decide.
+
+Rule 3 is where a scanner has to be explicit. Take a word splitter
+shaped like the scanner and write its method the short way,
+`fn next_word(&mut self) -> Option<&str>`. Rule 3 ties each word to
+the *borrow of the splitter*, so holding two words at once (which a
+compiler does all the time with its `previous` and `current` tokens) is
+refused with ``E0499: cannot borrow `w` as mutable more than once at
+a time``, pointing at the first call ("first mutable borrow occurs
+here"), the second, and the later use of `a`. While `a` is alive the splitter still counts as mutably borrowed.
+drip-rs's `-> Token<'src>` says the token borrows the *source* instead,
+so the scanner is free again the moment `scan_token` returns.
+
+## The longest lifetime: 'static
+
+One lifetime is built in. `'static` means "valid for the whole run of
+the program". String literals have it, because their text is stored in
+the program file itself, and a `&'static str` can be used wherever a
+shorter lifetime is wanted. drip-rs's compiler relies on that when it
+makes up tokens that appear nowhere in the source, such as the hidden
+`self` inside a method: `Token::synthetic("self", line)` puts a
+`&'static str` into a `Token<'src>`. If a help line suggests `'static`, the Rust book
+advises asking whether the reference really should live that long;
+usually the fix is an owner that lives longer<Cite id="rust-book-lifetimes" />.
+
+<Run id="tokens-outlive" />
+
+It scans tokens inside a block, drops the scanner at the brace, and
+prints the tokens afterwards, which is allowed because they borrow
+`src`, not the scanner; it also adds a made-up `self` token.
+
+<Prompts ids={['elide-rules', 'elide-rule3', 'static-what']} />
+
+<OtherLanguages title="A function that picks one of its inputs">
+
+```rust
+fn longer<'a>(a: &'a str, b: &'a str)
+    -> &'a str {
+    if a.len() >= b.len() { a } else { b }
+}
+```
+
+```ts
+function longer<T extends string>(
+  a: T, b: T,
+): T {
+  return a.length >= b.length ? a : b;
+}
+```
+
+</OtherLanguages>
+
+Both tie the inputs to the output with a parameter in angle brackets.
+TypeScript's `T` is a *type* parameter (the result has the inputs'
+type); Rust's `'a` is a *lifetime* parameter (the result is valid while
+the inputs are), which TypeScript never needs, since its collector
+keeps both strings alive.
+
+<Callout kind="engine" label="Under the hood">
+drip-rs's compiler is `struct Compiler<'src, 'a>`, with two lifetimes
+for two different loans: `'src` for the source text, and `'a` for the
+heap and GC roots it borrows from its caller. It keeps `current` and
+`previous` as `Token<'src>`, and each local variable's name is a
+`&'src str` into the source, so no name is ever copied. The hash
+table's `iter` returns `impl Iterator<...> + '_`, where `'_` is an
+elided lifetime written on purpose: "this iterator borrows the table".
+engine/rust meets lifetimes from a library: oxc builds the JavaScript
+syntax tree inside an `Allocator`, so its nodes have types such as
+`Program<'a>`. That allocator is a local variable of the JavaScript
+plugin's `lower`, so nothing that borrows the tree can be returned from
+it; the port records what it needs in a side table instead (its README:
+"No live AST after lowering").
+</Callout>
+
+<Prompts ids={['engine-two']} />
+
+## Your turn
+
+<Exercise id="words" />
+
+<Exercise id="spanText" />
+
+## What you learned
+
+- A **lifetime annotation** such as `'src` names a lifetime. Structs
+  that hold references declare one (`Token<'src>`), and so do their
+  `impl` blocks and any function whose result borrows from an input.
+- One shared name (`fn longer<'a>`) means "valid while all of these
+  are", which works out as the shortest of them. Annotations describe;
+  they never extend a life.
+- Three **elision rules** fill in the obvious cases; when they cannot,
+  E0106 asks you. Rule 3 ties a method's result to `self`, which is
+  wrong for a scanner, so drip-rs writes `Token<'src>`.
+- **`'static`** lasts the whole run; string literals have it.
+
+Next: closures, Rust's arrow functions, and how a closure carries the
+variables it uses.
+
+<Quiz />

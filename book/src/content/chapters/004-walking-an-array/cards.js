@@ -1,6 +1,5 @@
-// Cards for the second half of chapter 3 (split from 002-arrays).
-// Keys are stable ids: several moved here from chapter 3 unchanged, so
-// readers keep their review history.
+// Chapter 4 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'loop-start': {
@@ -57,8 +56,7 @@ console.log(sum([]));`,
 export const exercises = {
   max: {
     title: 'The largest value',
-    prompt:
-      'Write `max(arr)` that **returns** the largest number in a non-empty array. Don’t use any built-in helpers like `Math.max`: write the loop yourself.',
+    prompt: 'Write `max(arr)` that **returns** the largest number in a non-empty array. Don’t use any built-in helpers like `Math.max`: write the loop yourself.',
     starter: `function max(arr) {
   // your code here
 }
@@ -212,18 +210,41 @@ export const quiz = [
   {
     q: 'Which loop visits every slot of `arr` exactly once?',
     options: [
-      { t: '`for (let i = 1; i <= arr.length; i++)`', why: 'It skips slot 0 and reads one past the end.' },
-      { t: '`for (let i = 0; i <= arr.length; i++)`', why: 'The last pass reads `arr[arr.length]`, which is `undefined`.' },
-      { t: '`for (let i = 0; i < arr.length - 1; i++)`', why: 'It stops early and misses the last slot.' },
-      { t: '`for (let i = 0; i < arr.length; i++)`', correct: true, why: 'From 0 up to `length - 1`: every slot, once.' },
+      {
+        t: '`for (let i = 1; i <= arr.length; i++)`',
+        why: 'It skips slot 0 and reads one past the end.',
+      },
+      {
+        t: '`for (let i = 0; i <= arr.length; i++)`',
+        why: 'The last pass reads `arr[arr.length]`, which is `undefined`.',
+      },
+      {
+        t: '`for (let i = 0; i < arr.length - 1; i++)`',
+        why: 'It stops early and misses the last slot.',
+      },
+      {
+        t: '`for (let i = 0; i < arr.length; i++)`',
+        correct: true,
+        why: 'From 0 up to `length - 1`: every slot, once.',
+      },
     ],
   },
   {
     q: 'A summing loop runs over `[]`, the empty array. What does it return, if `total` starts at `0`?',
     options: [
-      { t: '`0`', correct: true, why: 'The test `0 < 0` fails at once, the body never runs, and `total` keeps its starting value.' },
-      { t: '`undefined`', why: 'Nothing is read from the array at all, so no `undefined` is ever added.' },
-      { t: 'An error', why: 'Looping zero times is perfectly fine.' },
+      {
+        t: '`0`',
+        correct: true,
+        why: 'The test `0 < 0` fails at once, the body never runs, and `total` keeps its starting value.',
+      },
+      {
+        t: '`undefined`',
+        why: 'Nothing is read from the array at all, so no `undefined` is ever added.',
+      },
+      {
+        t: 'An error',
+        why: 'Looping zero times is perfectly fine.',
+      },
     ],
   },
   {
@@ -236,9 +257,19 @@ for (let i = 0; i <= xs.length; i++) {
 }
 \`\`\``,
     options: [
-      { t: '`3`', why: 'That would be right with `<`. Here there is one extra pass.' },
-      { t: '`NaN`', correct: true, why: 'The last pass adds `xs[2]`, which is `undefined`, and `3 + undefined` is `NaN`.' },
-      { t: 'An error', why: 'Reading past the end gives `undefined` quietly; no error stops the loop.' },
+      {
+        t: '`3`',
+        why: 'That would be right with `<`. Here there is one extra pass.',
+      },
+      {
+        t: '`NaN`',
+        correct: true,
+        why: 'The last pass adds `xs[2]`, which is `undefined`, and `3 + undefined` is `NaN`.',
+      },
+      {
+        t: 'An error',
+        why: 'Reading past the end gives `undefined` quietly; no error stops the loop.',
+      },
     ],
   },
   {
@@ -253,17 +284,37 @@ function f(xs) {
 }
 \`\`\``,
     options: [
-      { t: '`18`', why: 'The function returns `xs.length`, not a total (and `t` restarts every pass anyway).' },
-      { t: '`7`', why: 'That is the last value; the function returns the length.' },
-      { t: '`3`', correct: true, why: 'It returns `xs.length`. The loop does nothing useful: `t` is made fresh inside each pass, so it never accumulates.' },
+      {
+        t: '`18`',
+        why: 'The function returns `xs.length`, not a total (and `t` restarts every pass anyway).',
+      },
+      {
+        t: '`7`',
+        why: 'That is the last value; the function returns the length.',
+      },
+      {
+        t: '`3`',
+        correct: true,
+        why: 'It returns `xs.length`. The loop does nothing useful: `t` is made fresh inside each pass, so it never accumulates.',
+      },
     ],
   },
   {
     q: 'In C, why does a function that sums an array usually take the length as a second parameter?',
     options: [
-      { t: 'A C array passed to a function does not carry its length with it', correct: true, why: 'Unlike JavaScript and Java, there is no `.length` to ask, so the caller must say how many slots there are.' },
-      { t: 'C loops must count down', why: 'C loops can count either way.' },
-      { t: 'To make the loop faster', why: 'It is about knowing where to stop, not speed.' },
+      {
+        t: 'A C array passed to a function does not carry its length with it',
+        correct: true,
+        why: 'Unlike JavaScript and Java, there is no `.length` to ask, so the caller must say how many slots there are.',
+      },
+      {
+        t: 'C loops must count down',
+        why: 'C loops can count either way.',
+      },
+      {
+        t: 'To make the loop faster',
+        why: 'It is about knowing where to stop, not speed.',
+      },
     ],
   },
 ];

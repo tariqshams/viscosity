@@ -1,0 +1,776 @@
+---
+n: 165
+day: 30
+part: IX
+title: 'Keeping it healthy: CI, gates and releases'
+tagline: 'Every test in this Part passed on a machine that already had everything installed. Continuous integration runs them on a machine that has nothing, on every push; here is the repository’s workflow, its caches, and what its real runs have said so far.'
+objectives:
+  - Say what continuous integration adds to tests that already pass on your machine.
+  - Read the workflow’s triggers, concurrency group, permissions and five jobs.
+  - Explain how a cache keyed by a lockfile hits and misses.
+  - Predict which runs a concurrency group cancels, and implement that rule in Rust.
+  - Name the gates of the engine-rust job, and what each protects.
+  - Read the cargo test summary of the workspace, and say what parity, differential, fuzz and multi-file each hold together.
+  - Name the book job’s gates, from check_chapters to the smoke test, and what they protect.
+  - Explain why committed fixtures need regenerating, and implement the fixture-set check.
+  - Find every version number a Viscosity release has to change, and apply Cargo’s caret rule to 0.y.z and 0.0.z versions.
+  - Say what a crate needs before it can be published, and what packaging the workspace first turned up.
+  - Read scripts/release.sh and say why it publishes in dependency order and skips what is already published.
+  - Describe the real 0.0.1 publication, including the crates.io rate limit and why a re-run was safe.
+introduces: [continuous-integration, release-process]
+uses: [viscosity-rs, cargo-test, cross-implementation-tests, engine-parity, coverage-guided-fuzzing, diagnostic, data-parallelism, test-corpus, npm-package, workspace, cargo, vec, string-vs-str, slice, rust-iterator, rust-closure, hashmap, clippy, semantic-versioning, crate, release-build, webassembly, wasm-bindgen, wasm-pack, native-vs-wasm, rust-explain, cli, argument-parsing, enum, match, pattern, differential-testing]
+sources: [npm-ci-docs, gha-concurrency, setup-node-readme, rust-cache-readme, rustfmt-readme, clippy-readme, semver2, cargo-semver-guide, cargo-specifying-deps, cargo-workspaces, cargo-publishing-guide, npm-publish-docs]
+---
+import CiSteps from '../../../components/diagrams/ch165/CiSteps';
+import CacheFigure from '../../../components/diagrams/ch165/CacheFigure';
+import GateSteps from '../../../components/diagrams/ch165/GateSteps';
+import GateMap from '../../../components/diagrams/ch165/GateMap';
+import ReleaseSteps from '../../../components/diagrams/ch165/ReleaseSteps';
+import CaretRanges from '../../../components/diagrams/ch165/CaretRanges';
+import PublishSteps from '../../../components/diagrams/ch165/PublishSteps';
+
+{/* ── merge: from old chapter 165, Keeping it healthy ── */}
+
+## It worked on my machine
+
+On 31 October 2026, the commit that added the fuzzer of *Fuzzing the
+Rust engine* was pushed to GitHub, and a fresh machine there ran the
+engine's Rust tests. One failed (from the job's log, trimmed and
+wrapped):
+
+```
+test a_fixed_seed_fuzz_run_finds_nothing
+  ... FAILED
+Error [ERR_MODULE_NOT_FOUND]: Cannot find
+  package 'acorn' imported from
+  .../frontend-js/src/index.ts
+```
+
+`fuzz.rs` runs `fuzz.mjs`, which loads the TypeScript engine as its
+reference, and the TypeScript engine imports acorn, its parser. On the
+machine where the test was written, `engine/ts/node_modules` was
+already full of installed packages, so the test passed every time. The
+fresh machine had only what the repository said to install, and the
+Rust job had never been told to install the TypeScript engine's
+packages. The same job was red, for the same reason, on the next three
+runs that were not cancelled; then the workflow gained one step, `npm
+ci` in `engine/ts` before `cargo test`, and that job has been green on
+every run since (37 of 37, when I read the record on 2 November).
+
+The same thing had happened to the TypeScript engine's own install a
+little earlier. I checked out `engine/ts` as it was just before commit
+`cff36bb` and ran the install command a CI machine runs, with npm
+10.9.9, and it refused (trimmed and wrapped):
+
+```
+$ npm ci
+npm error code EUSAGE
+npm error `npm ci` can only install
+  packages when your package.json and
+  package-lock.json ... are in sync.
+npm error Missing: @viscosity/cli@0.1.0
+  from lock file
+```
+
+A **lockfile** (`package-lock.json`) records the exact version of
+every package to install. Five workspace packages were missing from it,
+and nobody had noticed, because `npm install`, the everyday command,
+quietly updates the lockfile when it disagrees with `package.json`.
+`npm ci` is built for automated installs and does the opposite: if the
+two do not match, it "will exit with an error, instead of updating the
+package lock"<Cite id="npm-ci-docs" />. Both failures are the same
+lesson: a check that only ever runs where its inputs are already present
+cannot tell you that they are missing.
+
+<Analogy title="a recipe in someone else's kitchen">
+A recipe you have only ever cooked in your own kitchen hides what you
+never wrote down: the spice that is always in your cupboard, the oven
+that runs hot. Hand it to a new cook in an empty kitchen every morning,
+and the missing lines show up on the first day.
+<span slot="breaks">A new cook improvises when something is missing;
+a CI machine does exactly what the workflow says and stops at the first
+step that fails, which is what makes the gap visible rather than
+papered over.</span>
+</Analogy>
+
+<Analogy extra title="a new starter and the onboarding guide">
+A team's onboarding guide says "install the tools, then run the tests".
+The old hands never read it; the new starter follows it word for word,
+and is the first to discover that step 4 assumes a password nobody
+mentions.
+<span slot="breaks">A new starter arrives once; CI is a brand-new starter
+on every push, so the guide (the workflow) is checked again each time
+anything changes.</span>
+</Analogy>
+
+<Prompts ids={['ci-acorn', 'ci-lockfile', 'ci-npm-ci']} />
+
+## The workflow
+
+**Continuous integration** (CI) means that every change is built and
+checked, automatically, on a machine set up from scratch. This
+repository describes its CI in one file, `.github/workflows/ci.yml`,
+which GitHub Actions reads and runs on a fresh virtual machine, called
+a **runner**, for every job. Step through a push:
+
+<CiSteps client:visible />
+
+<Examples of="continuous-integration">
+
+```yaml
+on:
+  push:
+  pull_request:
+```
+
+```yaml
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+```yaml
+- name: Install the TypeScript engine
+  working-directory: engine/ts
+  run: npm ci
+```
+
+</Examples>
+
+The first is the trigger: the workflow runs on every push to any
+branch and on every pull request. The second (with the group folded onto its own line by `>-`, which
+YAML reads as the same one-line string) is the **concurrency group**: runs whose group string is the same (here the workflow's name
+and the branch, `github.ref`) never run side by side, and with
+`cancel-in-progress: true`, a newer run cancels the one still in
+progress<Cite id="gha-concurrency" />, since only the latest commit's
+result matters. That is not a rare event here: of the 62 runs GitHub
+lists for the repository (31 October 22:16 to 2 November 14:34, UTC),
+19 were cancelled by a newer push, one of them 17 seconds after it
+started. The third is the fix from the opening, the step of the
+`engine-rust` job that installs the TypeScript reference before the
+tests (the step's name is shortened here). The workflow also sets
+`permissions: contents: read`, so a job can read the repository but
+not change it, and gives each job a time limit.
+
+The five jobs run side by side on `ubuntu-latest`, none waiting for
+another, so one red job never hides the others:
+
+```
+job          what it runs
+engine-ts    npm ci, tsc --noEmit, vitest,
+             npm pack + install the CLI
+engine-rust  npm ci (TS reference), fmt,
+             cargo test, clippy -D warnings,
+             wasm32 build, cargo package
+drip         vitest; cargo test --release,
+             clippy (book/companion)
+book         check_chapters, vitest, build,
+             link check, Playwright smoke
+website      npm ci, build, link check
+```
+
+The next chapter, *The gates: what each check protects*, goes through what each of these checks
+protects.
+
+<Callout kind="definition">
+**Continuous integration** runs every check on every change, on a
+**fresh machine** that has only what the repository says to install. A
+change is healthy when every **gate** (every check that can fail the
+run) passes there. It catches what passes on your machine only because
+of something your machine has.
+</Callout>
+
+<Formal title="Healthy">
+
+```text
+healthy(c) ⟺ ∀ g ∈ Gates :
+               g(fresh(c)) = pass
+```
+
+<span slot="read">A change c is healthy exactly when, for every gate g
+in the set of gates, running g on a fresh machine set up from c alone
+passes. The word fresh is the whole point: the same gates run on your
+own machine check a different thing, c plus whatever your machine
+already had.</span>
+</Formal>
+
+<Prompts ids={['ci-def', 'ci-concurrency', 'ci-parallel-jobs']} />
+
+## Caches
+
+A fresh machine every time would mean downloading every package and
+compiling every Rust dependency (oxc among them) on every push. Two caches save that work, and both are keyed so that they can
+never serve something stale. `actions/setup-node` keeps npm's download
+cache under a key built from a hash of each `package-lock.json`
+<Cite id="setup-node-readme" />: the same lockfile always gives the same
+key and finds its cache, and any change to the lockfile gives a new key,
+a miss, and a fresh download.
+
+<Figure caption="The same lockfile gives the same key and a hit; a changed lockfile gives a new key, a miss, and a cache saved under the new key." takeaway="A key computed from the inputs can never return outputs of different inputs.">
+  <CacheFigure />
+</Figure>
+
+`Swatinem/rust-cache` keeps `~/.cargo` and the compiled
+*dependencies* in `target/`, under a key that includes the rustc
+version, and deliberately not the workspace's own crates
+<Cite id="rust-cache-readme" />: oxc comes from the cache, and
+Viscosity's six crates are compiled afresh on every run, which is what a
+test of Viscosity should do anyway. Here is the setup-node idea at toy
+size, with Rust's standard hasher standing in for the real one:
+
+<Run id="cache-key" />
+
+`key` feeds the lockfile's text to a `DefaultHasher` and returns the
+64-bit result. The loop plays four pushes: the first misses and saves
+its key in the set `saved`, the second has the same lockfile and hits,
+the third adds a package (`esbuild`) so its key is new and it misses,
+and the fourth hits again.
+
+<Prompts ids={['ci-cache', 'ci-rust-cache']} />
+
+<Callout kind="engine" label="Under the hood">
+GitHub keeps a record of every run, which is the honest answer to "has
+CI actually passed?". When I read it on 2 November (with `gh run
+list`), the 43 runs that were not cancelled had a green `engine-ts`,
+`drip` and `website` job every time, and a green `engine-rust` job
+every time except the four runs before its fix. The `book` job was red on 27 of them, for
+reasons the next chapter reads; the latest, on 2 November, because
+chapters cited references whose files existed on the machine where they
+were written but had not been committed. CI found that the same way it
+found acorn. (The next run, at 16:18 that day, after those files were
+committed, was green in every job.)
+</Callout>
+
+## Your turn
+
+<Exercise id="cancelledRuns" />
+
+## What you learned
+
+- **Continuous integration** runs every gate on every push, on a
+  **fresh runner** that has only what the repository installs.
+- A test that passes only where its inputs already exist proves
+  nothing about a fresh machine: acorn, and the lockfile `npm ci`
+  refused.
+- A **concurrency group** with `cancel-in-progress` lets only the
+  newest run of a branch finish; five jobs run side by side.
+- Caches are keyed by a **hash** of their inputs (lockfiles, the rustc
+  version), so a change misses rather than serving stale work.
+
+
+{/* ── merge: from old chapter 165, The gates: what each check protects ── */}
+
+## A red job, step by step
+
+*Keeping it healthy* ended with the book job red. Here is how GitHub
+showed that run of 2 November, step by step (from `gh run view`,
+trimmed):
+
+```
+X book in 2m30s
+  ✓ Install
+  X Check chapters
+  - Test
+  - Merge new references
+  - Build
+  - Check site links
+  - Smoke test
+```
+
+Steps in a job run in order, and the first that fails ends the job:
+the later ones are shown with a dash, skipped. Each step that can fail
+the job is a **gate**, and every gate exists because of a particular
+kind of mistake. This chapter goes through them, job by job, with what
+they actually print when they catch something. The same rule at toy
+size, so you can see the order of events:
+
+<Run id="ci-job" />
+
+`job` walks the steps with a flag `ok`. While `ok` is true, a passing
+step prints `✓` and a failing one prints `X` and clears the flag; once
+the flag is false, every later step is only listed with a dash. The
+book job here has one failing step, so it prints one tick, one cross,
+five dashes, and "the job is red".
+
+<Analogy title="security at an airport">
+Before a flight you pass several checks: a person compares your face
+with your passport, a scanner looks inside your bag, an arch looks for
+metal. Each catches things the others cannot, and you board only after
+all of them.
+<span slot="breaks">Security staff notice odd behaviour nobody wrote a
+rule for; a gate is a program that catches only what it was written to
+look for, so a mistake of a new kind walks through every one (the five
+fuzz bugs passed every test until a fuzzer was added).</span>
+</Analogy>
+
+<Analogy extra title="a car's yearly inspection">
+A garage tests a car's brakes, lights, tyres and exhaust against a
+printed list, and a pass certificate means those things were within
+limits on that day.
+<span slot="breaks">A car is inspected once a year; a repository is
+inspected on every push, so a gate that fails points at the one change
+just made rather than at a year of wear.</span>
+</Analogy>
+
+Step through seven mistakes and the gate that stops each:
+
+<GateSteps client:visible />
+
+<Prompts ids={['gt-skip', 'gt-new-kind']} />
+
+## The Rust engine's gates
+
+The `engine-rust` job installs a stable Rust toolchain with Clippy,
+rustfmt and the WebAssembly target (and Node, Python and the TypeScript
+reference, which the tests run), then runs five gates in
+`engine/rust`.
+
+**Format.** `cargo fmt --all --check` exits with 0 if rustfmt would
+change nothing and with 1 if it would change a file, printing the
+difference<Cite id="rustfmt-readme" />. It comes first because it is
+the fastest, so an unformatted file costs seconds, not minutes.
+
+**Test.** `cargo test --workspace` is most of the job, and most of this
+Part hangs off it. When I ran it here (rustc 1.97, debug build), it
+passed 77 tests in 14 test binaries:
+
+```
+binary        tests  what it holds
+parity          10   190 pairs, 14 frames,
+                     4 profiles, the CLI
+differential     2   node and python3
+early_errors     6   108 invalid programs,
+                     77 valid ones
+multi_file       8   several files, --jobs
+profile_cli      4   profiles, cleanup
+os_args          2   non-UTF-8 file names
+fuzz             1   200 programs, seed 1
+unit tests      44   SSA, CFG, plugins ...
+```
+
+Parity holds the two engines together (*TypeScript vs Rust: differential
+tests*): it printed `parity: 190/190 (54 Python)` for me, 95 programs in
+two bounds modes each, plus 14 code-frame fixtures, 4 profiles and the
+CLI itself. The differential test holds the compiled programs to the
+originals, running both under node and CPython. `early_errors` holds
+both engines to the same verdict on 108 programs JavaScript must reject
+and 77 it must accept. `multi_file` holds the parallel CLI of *Compiling
+in parallel* to its order, and `fuzz` runs the generator of *Shrinking a
+failing program*.
+
+**Clippy.** `cargo clippy --workspace --all-targets -- -D warnings`
+turns every lint warning into an error (it passed when I ran it). Here
+is what that looks like, on a small file I wrote to trip it (trimmed):
+
+```
+error: length comparison to zero
+ --> src/main.rs:3:8
+  |
+3 |     if v.len() == 0 {
+  |        ^^^^^^^^^^^^ help: using
+     `is_empty` is clearer and more
+     explicit: `v.is_empty()`
+  = note: `-D clippy::len-zero` implied
+    by `-D warnings`
+```
+
+It is a diagnostic in the full sense of *Diagnostics*: a level, a
+message, a file, line and column, the code, and a label. Clippy's
+README now prefers setting `CARGO_BUILD_WARNINGS=deny` (from Cargo 1.97),
+which "has the benefit of not invalidating build caches"<Cite id="clippy-readme" />,
+a good fit for a cached CI job; the workflow still uses `-D warnings`.
+
+**WebAssembly and packages.** `cargo build --target
+wasm32-unknown-unknown -p viscosity-wasm` proves the engine still
+compiles for the browser (*Compiling the engine to WebAssembly*), and
+`cargo package --workspace --no-verify --allow-dirty` proves every crate
+can still be packaged for crates.io, where all six were published at
+version 0.0.1 on 2 November (the comment above that step in `ci.yml`
+says so: "Published on crates.io (0.0.1), and kept publishable").
+
+<Examples of="continuous-integration">
+
+```
+Diff in .../a.rs:1:
+-fn main() { let x=1;
++fn main() {
++    let x = 1;
+```
+
+```
+run `node scripts/gen_expected.mjs`;
+missing [...], stale [...]
+```
+
+```
+- 331-checkpoint-a-concurrent-file-
+  indexer-in-rust: source
+  "rust-std-thread" is not in the
+  bibliography
+```
+
+</Examples>
+
+These are three gates speaking. The first is rustfmt 1.9.0 with
+`--check` on a small file I formatted badly on purpose (trimmed): the
+lines starting `-` are what the file has, the lines starting `+` what
+rustfmt wants, and the exit status is 1. The second is the message of
+the fixture-set check in `parity.rs`, the subject of the next section
+and of your exercise, with the two lists filled in when it fails. The
+third is the book job of 2 November, the run at the top of this chapter
+(wrapped): the chapter checker refused a chapter whose source was
+listed in a reference file that existed only on the writer's machine.
+
+<Prompts ids={['gt-fmt', 'gt-tests', 'gt-clippy']} />
+
+## Fixtures that keep up
+
+The parity fixtures in `tests/expected/` are the TypeScript engine's
+output, committed (402 files when I counted). That is why the Rust half
+of parity needs no TypeScript to run: it compares bytes with bytes. The
+price is a rule. After changing the reference engine, run `node
+scripts/gen_expected.mjs`, then `cargo test`, and commit both. Forget
+the first step, or delete a program without its fixtures, and
+`fixtures_match_the_programs_exactly` compares the folder with the
+program list and fails with the message above, naming the files that are
+missing and the files that are stale (left behind by a program that no
+longer exists). A stale file would otherwise sit there for ever, since
+no test reads it.
+
+<Prompts ids={['gt-fixtures']} />
+
+## The book's gates
+
+The `book` job protects the thing you are reading. **Check chapters**
+runs `scripts/check_chapters.mjs` over every chapter: the frontmatter
+and the order of concepts, every citation against the bibliography,
+code lines that fit a phone, the number of prompts and quiz questions,
+the 12 to 18 minute budget (it told me "estimated 19.8 minutes (want
+12–18)" while I was writing *Fuzzing the Rust engine*), the teaching
+rules, and every exercise, whose solution must pass its tests while its
+starter and wrong attempts must fail, in Node, in the Drip VM or with
+`rustc`. Then `vitest` runs the book's own unit tests, **Merge new
+references** folds the writers' new reference files into the
+bibliography, **Build** builds the site with Astro, **Check site links**
+follows every internal link and anchor, and the **Smoke test** opens the
+built site in Chromium at 440 by 956 pixels and uses it: the runner, a
+quiz, a stepper, the review deck, and the Playground on both engines,
+which must give identical code and decisions. On 1 November it caught
+two pages that did not fit a phone:
+
+```
+✗ /bibliography/: no horizontal overflow
+  at 440px
+✗ /chapters/090-ssa-and-phi-nodes-built-on-the-fly/:
+  no horizontal overflow at 440px
+2 smoke check(s) failed
+```
+
+The other jobs are smaller. `engine-ts` type-checks and tests the
+TypeScript engine, then packs `@viscosity/cli` the way npm publishes it,
+installs the tarball in an empty folder and runs it, so it tests what a
+user would download rather than what the repository holds. `drip` tests
+the book's companion interpreters, TypeScript and Rust, and `website`
+builds the documentation site and checks its links.
+
+<Figure caption="What each job checks directly (filled) and what it relies on (ring): parity reads the TypeScript engine’s output, and the book’s checker and smoke test run Drip and both engines." takeaway="No single job protects everything; together they cover every part.">
+  <GateMap />
+</Figure>
+
+<Callout kind="definition">
+A **gate** is a step in CI that fails the run when it finds a problem.
+A mistake reaches the main branch unnoticed only if **every** gate
+misses it, which is why gates check different things, fast ones run
+first, and a new kind of mistake gets a new gate.
+</Callout>
+
+<Formal title="How a mistake gets through">
+
+```text
+escapes(m) ⟺ ∀ g ∈ Gates : ¬ catches(g, m)
+```
+
+<span slot="read">A mistake m escapes exactly when, for every gate g,
+g does not catch m (the symbol ¬ reads "not"). Adding a gate can only
+shrink the set of mistakes that escape; it never lets one through that
+was caught before.</span>
+</Formal>
+
+<Prompts ids={['gt-book', 'gt-pack']} />
+
+## Your turn
+
+<Exercise id="fixtureCheck" />
+
+## What you learned
+
+- A job's steps run in order, and the first failing **gate** skips the
+  rest; the other jobs carry on.
+- `engine-rust`: **format**, **77 tests in 14 binaries** (parity,
+  differential, early errors, multi-file, fuzz, units), **Clippy** with
+  `-D warnings`, a **wasm** build and **cargo package**.
+- Committed **fixtures** must be regenerated with the reference, and a
+  check finds the **missing** and the **stale**.
+- `book`: the chapter checker, unit tests, references, the build, links
+  and a **smoke test** at phone size on both engines.
+
+
+{/* ── merge: from old chapter 165, Release engineering ── */}
+
+## From "it passes" to "a stranger can install it"
+
+Ask either CLI its version and it says `viscosity 0.0.1`. When this
+chapter was first written, that number was a promise nobody could check:
+nothing was on any registry, so as far as npm and crates.io knew,
+Viscosity did not exist. *Shipping Viscosity* had packed the TypeScript
+CLI for npm; Track B adds two more things to ship, the six Rust crates
+for crates.io and `@viscosity/wasm`, the Rust engine as an npm package
+(*The npm package*). This chapter is about the work between "it passes
+its tests" and "a stranger can install it", and about how that work
+went when it was done for real.
+
+<Analogy title="a ferry leaving">
+Up to the moment a ferry sails you can fix anything on board. Once it has
+sailed, whatever was on it is on the other shore for good, and the only
+remedy is the next ferry; so the crew walks the same checklist on the quay
+every time.
+<span slot="breaks">A ferry can turn back. A published version cannot:
+crates.io and npm both refuse to let a version number be used twice.</span>
+</Analogy>
+
+<Analogy extra title="a printed edition of a book">
+Once the first edition is printed and in the shops, a typo stays in
+every copy sold; the fix goes into the second edition, with a new number
+on the copyright page, and readers can tell which one they hold.
+<span slot="breaks">A reader chooses an edition once. A program that
+depends on a crate may be rebuilt every day, and the version rules decide
+whether it quietly picks up the next "edition" or not.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **release process** is the repeatable set of steps that turns one
+commit into published, versioned packages: choose the version number,
+record what changed (a **changelog**), build each package, check it as a
+user would get it, and then **publish** it to its registry. Publishing is
+the one step that cannot be undone: a crates.io version "can never be
+overwritten, and the code cannot be deleted"<Cite id="cargo-publishing-guide" />,
+and an npm name and version can never be used again, even after
+`npm unpublish`<Cite id="npm-publish-docs" />.
+</Callout>
+
+Step through the three things Viscosity ships, stage by stage:
+
+<ReleaseSteps client:visible />
+
+<Prompts ids={['release-what', 'publish-permanent']} />
+
+## Where the numbers live, and what they promise
+
+A release changes three version numbers by hand: `[workspace.package]
+version` in `engine/rust/Cargo.toml`, which all six crates inherit
+through `version.workspace = true`<Cite id="cargo-workspaces" /> (and
+which the Rust CLI's `--version` is compiled from); the `version` in
+`engine/ts/packages/cli/package.json`; and the one in
+`engine/rust/packages/wasm/package.json`. The two npm packages are the
+same compiler, promised byte-identical, so one number for all of them
+says so plainly.
+
+What the next number should be is Semantic Versioning's question: a
+major change for an incompatible change to the public API, minor for a
+compatible feature, patch for a compatible fix, and "anything MAY
+change" while the major number is 0<Cite id="semver2" />
+(*Semantic versioning* covers this in full). Cargo makes the 0 case
+precise. Its default requirement, the **caret**, accepts versions whose
+left-most non-zero part is the same, so `"0.1"` accepts 0.1.9 but not
+0.2.0, and for a 0.0.z version the left-most non-zero part is z itself:
+`"0.0.3"` means `>=0.0.3, <0.0.4`<Cite id="cargo-specifying-deps" />.
+
+<Figure caption="What three caret requirements accept. The range always ends where the left-most non-zero part would change; for 0.0.1 that leaves only 0.0.1 itself." takeaway="Under Cargo's caret rule, every 0.0.z release is incompatible with the last.">
+  <CaretRanges />
+</Figure>
+
+<Formal title="Cargo's caret rule">
+
+```text
+^x.y.z = [x.y.z, (x+1).0.0)   if x > 0
+^0.y.z = [0.y.z, 0.(y+1).0)   if y > 0
+^0.0.z = [0.0.z, 0.0.(z+1))
+```
+
+<span slot="read">A caret requirement is a range: the square bracket
+means "from this version, included" and the round one "up to this
+version, not included". From 1.0 on, the range runs to the next major
+version; for 0.y.z, to the next y; and for 0.0.z, to the next z, so it
+holds exactly one release.</span>
+</Formal>
+
+So for a 0.y.z crate a change in y counts as major and a change in z as
+minor, and every 0.0.z release is a major change<Cite id="cargo-semver-guide" />.
+That is why Viscosity's first version is 0.0.1 rather than 0.1.0: the
+number says "experimental", and someone who depends on `"0.0.1"` never
+gets 0.0.2 without asking for it. And the public API, for Viscosity, is
+more than its functions: every `explain` line (the parity fixtures
+already treat it as exact), the CLI's flags, messages and exit statuses,
+and the compiled code itself.
+
+<Examples of="release-process">
+
+```
+viscosity-core = "0.0.1"
+  accepts 0.0.1 only
+```
+
+```
+at 0.1.0:  fix 0.1.1, feature 0.1.1,
+           break 0.2.0
+at 1.4.2:  fix 1.4.3, feature 1.5.0,
+           break 2.0.0
+```
+
+```
+$ scripts/release.sh --dry-run
+release.sh: .../cli/package.json is
+  0.0.2 but the crates are 0.0.1
+```
+
+</Examples>
+
+The first is Viscosity's own dependency line as another crate would write
+it, and it matches exactly one version. The second is the arithmetic
+for each kind of change; notice that at 0.1.0 a feature and a fix get
+the same bump. The third is what the script's first check would print if the CLI's
+`package.json` said 0.0.2 (its `die` text, with the path shortened):
+when one number disagrees with the crates, nothing is built or uploaded.
+
+<Prompts ids={['three-numbers', 'zero-zero', 'api-surface']} />
+
+## Packaging the crates
+
+The workspace `Cargo.toml` holds the shared metadata (version, edition,
+`authors`, `license = "MIT"`, repository, homepage, readme, keywords and
+`rust-version`), and each crate adds its own `description`, categories
+and `documentation` link. That covers what the Cargo book asks for before
+publishing: a licence, a description, a homepage, a repository and a
+readme<Cite id="cargo-publishing-guide" />.
+
+`cargo package` is the real test, and the first time it ran here it found
+two problems, both fixed since. On `viscosity-core` it stopped at once:
+
+```
+error: failed to verify manifest at
+  `crates/core/Cargo.toml`
+
+Caused by:
+  all dependencies must have a version
+  requirement specified when packaging.
+  dependency `viscosity-vir` does not
+  specify a version
+```
+
+(cargo 1.97, wrapped.) The workspace referred to its own crates by path
+only, and crates.io does not accept dependencies on code outside
+crates.io; the fix the Cargo book gives is a version beside the path,
+which is used once the crate is published<Cite id="cargo-specifying-deps" />,
+and every internal entry now reads like `viscosity-vir = { path =
+"crates/vir", version = "0.0.1" }`. The second problem was quieter:
+`cargo package --list` for `viscosity-vir` showed no licence text,
+because `crates/vir` had no LICENSE file, and the MIT licence asks for
+its notice to be "included in all copies or substantial portions of the
+Software". Each crate folder has a LICENSE now. One catch remained
+before the first upload: `cargo package -p viscosity-core` on its own
+packed the crate but failed to verify it ("no matching package named
+`viscosity-vir` found"), because the verifying build looks for
+dependencies on crates.io; `--workspace` packs `viscosity-vir` first and
+verifies against that, which is why the script's dry run uses it.
+
+On the npm side, `@viscosity/cli` is one esbuild bundle with no runtime
+dependencies, plus `LICENSE` and the notices of the three packages bundled
+into it; `@viscosity/wasm` ships notices for the 71 crates linked into
+its `.wasm`. Both are scoped under `@viscosity`, which npm treats as
+private unless told otherwise<Cite id="npm-publish-docs" />, so both set
+`"publishConfig": { "access": "public" }`.
+
+<Prompts ids={['path-deps', 'crate-license']} />
+
+## The script, and the real run
+
+`scripts/release.sh` is the whole procedure in one file. It checks that
+the tokens are set (without printing them) and that the git tree is
+clean, checks that the three versions agree and that its list of crates
+is in dependency order (against `cargo metadata`), runs the TypeScript
+and Rust test suites, and only then publishes. The heart of it is this
+loop (rewrapped; `step` joins its arguments with spaces, so the message
+is unchanged):
+
+```bash
+for crate in "${CRATES[@]}"; do
+  if crate_published "$crate"; then
+    step "$crate $VERSION is already" \
+      "on crates.io; skipping"
+    continue
+  fi
+  step "cargo publish -p $crate"
+  (cd "$RUST" && cargo publish -p "$crate")
+  wait_for_index "$crate"
+done
+```
+
+`CRATES` lists the six crates with `viscosity-vir` first, because each
+crate needs the ones below it to be on crates.io already. `crate_published`
+asks the crates.io API for this exact version: HTTP 200 means it exists,
+so the loop skips it with `continue`. Otherwise `cargo publish -p`
+uploads it, and `wait_for_index` polls the sparse index (the files cargo
+reads to learn which versions exist) until the new version appears,
+because cargo's own wait gives up after 60 seconds and the next crate
+would then fail to find it. A step that can be repeated without harm,
+like this whole loop, is called **idempotent**. Here is how it went on
+2026-11-02:
+
+<PublishSteps client:visible />
+
+The 429 was not a bug in the script or the crate: crates.io limits how
+quickly one account can create *new* crate names, and a first release
+creates them all at once. Because the loop asks before it uploads, the
+fix was to wait and run the same command again, which skipped the five
+and published the sixth; `cargo install viscosity-cli` now gives a
+`viscosity` that prints `viscosity 0.0.1`.
+
+<Prompts ids={['skip-published', 'rate-limit']} />
+
+<Callout kind="engine" label="Under the hood">
+Publishing claims names as well as versions: crates.io names are first
+come, first served<Cite id="cargo-publishing-guide" />, and *Shipping
+Viscosity* found that the plain `viscosity` name on npm belongs to
+someone else, hence the `@viscosity` scope. So the tokens were Tariq's
+to add, and running the script his decision. One step still has no
+script: there is no changelog yet, so the commit history is the only
+record of what changed.
+</Callout>
+
+## Your turn
+
+Write Cargo's version arithmetic: the next version for a change, and
+whether a caret requirement accepts a version. The tests include
+Viscosity's own 0.0.1.
+
+<Exercise id="semver" />
+
+## What you learned
+
+- A **release process** is the same steps every time: version,
+  changelog, build, check as a user would, publish; publishing is
+  permanent on both crates.io and npm.
+- Viscosity's version lives in **three files**, and the release script
+  refuses to run if they disagree. It is **0.0.1**: under Cargo's
+  **caret rule**, every 0.0.z release is incompatible with the next.
+- Packaging found two problems, now fixed: **path dependencies** without
+  versions, and a crate without its licence text.
+- `scripts/release.sh` publishes the crates in **dependency order**,
+  waits for each to reach the index, and **skips** what is already
+  published, so it is safe to re-run.
+- On 2026-11-02 all eight packages went out at 0.0.1; crates.io's **rate
+  limit on new crates** stopped the sixth, and a re-run ten minutes later
+  finished the job.
+
+<Quiz />

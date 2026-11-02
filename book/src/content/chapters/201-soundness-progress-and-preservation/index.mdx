@@ -1,0 +1,254 @@
+---
+n: 201
+day: 9
+part: XI
+title: 'Soundness: progress and preservation'
+tagline: 'A type checker promises that well-typed programs do not go wrong. This chapter says exactly what that promise is, proves it for a small language in two short lemmas, and then looks honestly at the places where TypeScript decided not to make it.'
+objectives:
+  - State soundness for a small language precisely, as progress and preservation.
+  - Sketch the proof of each lemma by cases, using canonical forms.
+  - Explain why a sound type system must still reject some programs that would run.
+  - Show, with tsc and a run, where TypeScript is unsound by design (any, casts, index access, variance).
+introduces: [soundness, progress-preservation, unsound-by-design]
+uses: [operational-semantics, small-step-semantics, big-step-semantics, type-system, static-vs-dynamic-typing, type-error, type-soundness-intro, typing-judgment, inference-rule, type-checker, subtyping, variance, typescript, type-annotation, type-checking, type-erasure, strict-mode-ts, tsconfig, runtime-error, array, index, function, recursion, bidirectional-typing]
+sources: [wright-felleisen1994, pierce2002, ts-design-goals, ts-type-compatibility, ts-everyday-types, ts-strict-function-types, ts-option-nouncheckedindexedaccess, ts-option-strict]
+---
+import SoundSteps from '../../../components/diagrams/ch201/SoundSteps';
+import TwoLemmas from '../../../components/diagrams/ch201/TwoLemmas';
+
+## What exactly is promised?
+
+Chapter 190 gave the promise of a type system in one line, "well-typed
+programs do not go wrong", and chapter 188 gave us the words to make it
+exact: a program "goes wrong" when it gets **stuck**, a term that is not
+a value but that no rule can step, such as `true + 1`. So the precise
+promise is that a term with a type never reaches a stuck term, however
+many steps it runs. Here is the language of chapter 188 again, now with
+a type for each term:
+
+<Formal title="Typing rules for numbers, booleans, + and if">
+
+```text
+n : number   true : bool   false : bool
+
+e₁ : number    e₂ : number
+────────────────────────── (T-Add)
+     e₁ + e₂ : number
+
+e₁ : number    e₂ : number
+────────────────────────── (T-Lt)
+     e₁ < e₂ : bool
+
+c : bool    e₁ : T    e₂ : T
+──────────────────────────── (T-If)
+ if c then e₁ else e₂ : T
+```
+
+<span slot="read">Every numeral has type number, and true and false
+have type bool. A sum has type number if both sides do; a comparison
+has type bool if both sides are numbers. An if has type T if its
+condition is a bool and both branches have the same type T. (There is
+no environment, Γ, because this language has no variables.)</span>
+</Formal>
+
+<Callout kind="definition">
+A type system is **sound** (for a given semantics) when every term that
+has a type either runs forever or reaches a value: it never gets stuck.
+The standard way to prove it, from Wright and Felleisen, is as two
+lemmas about single steps, **progress** and
+**preservation**<Cite id="wright-felleisen1994" />.
+</Callout>
+
+<Formal title="Progress and preservation">
+
+```text
+Progress:     if ⊢ e : T, then e is a value,
+              or e → e′ for some e′.
+
+Preservation: if ⊢ e : T and e → e′,
+              then ⊢ e′ : T.
+```
+
+<span slot="read">Progress: if e has type T, then either e is already a
+value, or there is some e-prime that e steps to; a typed term is never
+stuck right now. Preservation: if e has type T and steps to e-prime,
+then e-prime also has type T; taking a step keeps the type.</span>
+</Formal>
+
+Together they give soundness by a simple argument: start from a typed
+term; progress says it is a value or can step; preservation says the
+term it steps to is typed again; so the same two facts apply to it, and
+to the next, for as many steps as the program runs.
+
+<Figure takeaway="Progress gives every typed term a next step; preservation keeps its type; so the chain never breaks." caption="Soundness as a chain of steps, each term labelled with the same type T, ending in a value of type T.">
+  <TwoLemmas />
+</Figure>
+
+<Analogy title="a railway's signals">
+A well-run railway gives two guarantees to a train on a cleared route:
+at every signal there is a next section it may enter (progress), and
+each section it enters is itself on a cleared route (preservation). So,
+signal by signal, the train never ends up stopped between stations.
+<span slot="breaks">Real railways add margins and human checks, and a
+train may still wait at a red signal; a stepping term never waits, and
+the guarantee is a proof, not a safety record.</span>
+</Analogy>
+
+<Analogy extra title="a marked hiking trail">
+On a well-marked trail, every waymark has a next waymark in sight, and
+following one always leads to another marked spot, never off into the
+woods; so a walker who starts on the trail reaches the end, or keeps
+walking, but is never lost.
+<span slot="breaks">A walker can still choose to leave the trail; a
+term has no choices at all (our rules are deterministic), so being
+typed decides everything that follows.</span>
+</Analogy>
+
+<SoundSteps client:visible />
+
+## Sketching the proofs
+
+Both lemmas are proved by looking at each rule in turn. Progress needs
+one small fact first, called **canonical forms**: a *value* of type
+`number` is a numeral, and a value of type `bool` is `true` or `false`.
+(That is true because the only values are numerals and booleans, and
+the typing rules give them exactly those types.)
+
+**Progress**, by cases on the last typing rule used for e:
+
+- Numerals, `true`, `false`: e is a value. Done.
+- T-Add, `e₁ + e₂`: if e₁ is not a value, it is typed, so by progress
+  for the smaller term it steps, and AddL applies. If e₁ is a value,
+  canonical forms says it is a numeral, and the same reasoning on e₂
+  gives AddR or, when both are numerals, Add. T-Lt is the same.
+- T-If: if the condition is not a value, it steps and If applies. If it
+  is a value of type `bool`, canonical forms says it is `true` or
+  `false`, so IfT or IfF applies.
+
+**Preservation**, by cases on the step taken:
+
+- Add: `n₁ + n₂ → n`, and n is a numeral, of type `number`, as was the
+  sum.
+- AddL: `e₁ + e₂ → e₁′ + e₂`; by preservation for the smaller step,
+  e₁′ still has type `number`, so T-Add types the new sum as `number`.
+  AddR, Lt and its two companions, and If are the same.
+- IfT: `if true then e₁ else e₂ → e₁`; T-If required e₁ to have the
+  if's type T, so the result has type T. IfF is the same with e₂.
+
+That is the whole proof; Pierce gives it in full for a language very
+like this one<Cite id="pierce2002" />; for a real language the cases are many
+more, but the shape is the same.
+
+<Examples of="soundness progress-preservation">
+
+```text
+if 1 < 2 then 3 else 4 : number
+→ if true then 3 else 4 : number
+→ 3                     : number
+```
+
+```text
+true + 1          no type, and stuck
+if 1 then 2 else 3   no type, and stuck
+```
+
+```text
+if true then 1 else false
+  no type (branches differ), but runs: 1
+```
+
+</Examples>
+
+The first is the two lemmas in action: every step has a rule, and every
+term along the way has the same type. The second shows what the type
+system is for: the stuck terms of chapter 188 have no type, so a checker
+rejects them before they run. The third is the price of soundness: this
+term never gets stuck (it steps to `1`), yet T-If refuses it, because
+its branches have different types. A sound type system is
+**conservative**: it rejects every program that could go wrong, and,
+since it cannot know which branch will run, some that would not.
+
+<Prompts ids={['sound-what', 'progress-what', 'preservation-what', 'canonical', 'conservative']} />
+
+## Where TypeScript chose not to promise it
+
+TypeScript's own design goals list, among its *non*-goals: "Apply a
+sound or 'provably correct' type system. Instead, strike a balance
+between correctness and productivity"<Cite id="ts-design-goals" />. Its
+handbook adds that the places where it allows unsound behaviour "were
+carefully considered"<Cite id="ts-type-compatibility" />. In the
+language of this chapter, each one is a place where preservation fails:
+a value's static type says one thing while the value is another, and
+the program then fails in a way the types said it could not. Every
+example below passes `tsc --strict` (version 5.9) and then throws.
+
+<Examples of="unsound-by-design">
+
+```ts
+const a: any = 5;
+a.toUpperCase();
+// TypeError: a.toUpperCase is not a
+//   function
+```
+
+```ts
+const s = 5 as unknown as string;
+s.toUpperCase();
+// TypeError: s.toUpperCase is not a
+//   function
+```
+
+```ts
+const xs: number[] = [1, 2, 3];
+const n: number = xs[5];
+n.toFixed(1);
+// TypeError: Cannot read properties of
+//   undefined (reading 'toFixed')
+```
+
+</Examples>
+
+The first is `any`, which turns checking off: a value of type `any` may
+be used as anything, so the checker says nothing about calling a string
+method on a number. The second is a **type assertion** (a cast): the
+handbook says assertions are removed at compile time and "there is no
+runtime checking associated with a type
+assertion"<Cite id="ts-everyday-types" />. A direct `5 as string` is
+refused (error TS2352, "Conversion of type 'number' to type 'string' may
+be a mistake"), but going through `unknown` is allowed, and the value
+is still the number 5. The third is index access: reading past the end
+of an array gives `undefined`, yet the element type says `number`; the
+option `noUncheckedIndexedAccess` adds `undefined` to such reads, but it
+is off by default, even under `strict`. The two variance choices of the chapter
+*Variance: functions, arrays and mutation* belong on the same list: mutable arrays are covariant, and
+method parameters are bivariant<Cite id="ts-strict-function-types" />.
+
+None of these is an accident, and each buys something real: `any` lets
+you type a large JavaScript program a piece at a time, casts let you
+tell the checker what you know and it cannot see, and unchecked indexing
+spares a check on every loop over an array. The lesson is not that
+TypeScript is careless, but that its promise is weaker than "well-typed
+programs do not go wrong", and that you now know exactly where the gaps
+are.
+
+<Prompts ids={['ts-non-goal', 'any-unsound', 'cast-unsound', 'index-unsound']} />
+
+## Your turn
+
+<Exercise id="sound" />
+
+## What you learned
+
+- **Soundness**: a typed term never gets stuck. It follows from
+  **progress** (a typed term is a value or can step) and
+  **preservation** (a step keeps the type).
+- Both are proved by cases on the rules, with **canonical forms** for
+  values; a sound system is conservative and rejects some safe programs.
+- TypeScript is **unsound by design**: `any`, casts, unchecked index
+  access, covariant arrays and bivariant methods all let a value's
+  static type disagree with the value.
+
+Next: a tour of the type systems beyond this part, where types take
+type parameters explicitly, mention values, or count uses.
+
+<Quiz />

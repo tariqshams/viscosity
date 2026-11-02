@@ -1,8 +1,5 @@
-// Chapter 42 cards. Keys are stable ids: never rename them.
-//
-// The book's runner strips TypeScript types without checking them, so the
-// exercises test behaviour; the type errors they mirror are explained in
-// the prompts and walkthroughs (each was checked with tsc 5.9.3 --strict).
+// Chapter 42 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'tsconfig-what': {
@@ -275,41 +272,96 @@ export const quiz = [
   {
     q: 'Your `tsconfig.json` has `"strict": true`. You run `npx tsc src/main.ts`. How is `main.ts` checked (TypeScript 5.9)?',
     options: [
-      { t: 'With default settings: naming a file makes tsc ignore `tsconfig.json`', correct: true, why: 'Settings come from tsconfig.json only when you run tsc with no file names. (TypeScript 6.0 refuses with TS5112 instead.)' },
-      { t: 'Strictly, using the `tsconfig.json` in the folder', why: 'That is what `npx tsc` alone would do. With a file name, the config is ignored.' },
-      { t: 'Not at all: tsc needs a config to run', why: 'tsc runs fine without one, using its defaults.' },
+      {
+        t: 'With default settings: naming a file makes tsc ignore `tsconfig.json`',
+        correct: true,
+        why: 'Settings come from tsconfig.json only when you run tsc with no file names. (TypeScript 6.0 refuses with TS5112 instead.)',
+      },
+      {
+        t: 'Strictly, using the `tsconfig.json` in the folder',
+        why: 'That is what `npx tsc` alone would do. With a file name, the config is ignored.',
+      },
+      {
+        t: 'Not at all: tsc needs a config to run',
+        why: 'tsc runs fine without one, using its defaults.',
+      },
     ],
   },
   {
     q: 'With `"module": "nodenext"`, which import of the file `scanner.ts` does tsc accept?',
     options: [
-      { t: "`import { scan } from './scanner';`", why: 'Error TS2835: relative imports need an explicit file extension under nodenext.' },
-      { t: "`import { scan } from './scanner.ts';`", why: 'Not by default: tsc wants the name the file will have when it runs, `scanner.js`. (A setting, allowImportingTsExtensions, allows `.ts` when tsc writes no files.)' },
-      { t: "`import { scan } from './scanner.js';`", correct: true, why: 'The import names the file Node will load after compiling; tsc finds `scanner.ts` behind it.' },
+      {
+        t: '`import { scan } from \'./scanner\';`',
+        why: 'Error TS2835: relative imports need an explicit file extension under nodenext.',
+      },
+      {
+        t: '`import { scan } from \'./scanner.ts\';`',
+        why: 'Not by default: tsc wants the name the file will have when it runs, `scanner.js`. (A setting, allowImportingTsExtensions, allows `.ts` when tsc writes no files.)',
+      },
+      {
+        t: '`import { scan } from \'./scanner.js\';`',
+        correct: true,
+        why: 'The import names the file Node will load after compiling; tsc finds `scanner.ts` behind it.',
+      },
     ],
   },
   {
-    q: "With strict mode on, what does tsc say about this?\n```\nconst xs = ['ada'];\nconst z = xs.find((s) => s === 'z');\nconsole.log(z.length);\n```",
+    q: `With strict mode on, what does tsc say about this?
+\`\`\`
+const xs = ['ada'];
+const z = xs.find((s) => s === 'z');
+console.log(z.length);
+\`\`\``,
     options: [
-      { t: 'Nothing: `z` is a string', why: '`find` may find nothing, so `z` is `string | undefined`.' },
-      { t: "error TS18048: 'z' is possibly 'undefined'", correct: true, why: 'strictNullChecks makes you rule out `undefined` (for example with an `if`) before using `z`.' },
-      { t: 'It crashes while checking', why: 'tsc never runs your code; it reports the problem and carries on.' },
+      {
+        t: 'Nothing: `z` is a string',
+        why: '`find` may find nothing, so `z` is `string | undefined`.',
+      },
+      {
+        t: 'error TS18048: \'z\' is possibly \'undefined\'',
+        correct: true,
+        why: 'strictNullChecks makes you rule out `undefined` (for example with an `if`) before using `z`.',
+      },
+      {
+        t: 'It crashes while checking',
+        why: 'tsc never runs your code; it reports the problem and carries on.',
+      },
     ],
   },
   {
     q: 'What does `{ "strict": true, "strictNullChecks": false }` give you?',
     options: [
-      { t: 'No strict checks at all', why: 'Only the one named check is turned off; the rest of the family stays on.' },
-      { t: 'An error: the two settings contradict each other', why: 'This is allowed, and is how you turn off one check at a time.' },
-      { t: 'Every strict check except the null checks', correct: true, why: 'strict turns on the family, and a check named on its own wins over strict.' },
+      {
+        t: 'No strict checks at all',
+        why: 'Only the one named check is turned off; the rest of the family stays on.',
+      },
+      {
+        t: 'An error: the two settings contradict each other',
+        why: 'This is allowed, and is how you turn off one check at a time.',
+      },
+      {
+        t: 'Every strict check except the null checks',
+        correct: true,
+        why: 'strict turns on the family, and a check named on its own wins over strict.',
+      },
     ],
   },
   {
     q: 'Which of these catches “this value may be missing” before the program runs?',
     options: [
-      { t: '`javac` with every warning on', why: 'javac does not track whether a reference may be null; the code fails at run time with a NullPointerException.' },
-      { t: 'TypeScript with strictNullChecks', correct: true, why: 'It gives `undefined` a type of its own, so `string | undefined` must be checked before use.' },
-      { t: '`gcc -Wall -Wextra`', why: 'gcc says nothing; reading through the NULL pointer crashes the program when it runs.' },
+      {
+        t: '`javac` with every warning on',
+        why: 'javac does not track whether a reference may be null; the code fails at run time with a NullPointerException.',
+      },
+      {
+        t: 'TypeScript with strictNullChecks',
+        correct: true,
+        why: 'It gives `undefined` a type of its own, so `string | undefined` must be checked before use.',
+      },
+      {
+        t: '`gcc -Wall -Wextra`',
+        why: 'gcc says nothing; reading through the NULL pointer crashes the program when it runs.',
+      },
     ],
   },
 ];
