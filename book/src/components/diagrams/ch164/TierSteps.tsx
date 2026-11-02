@@ -8,8 +8,8 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 type Tier = 'ignition' | 'sparkplug' | 'maglev' | 'turbofan';
 
 const TIERS: { id: Tier; name: string; what: string }[] = [
-  { id: 'turbofan', name: 'TurboFan', what: 'optimizing, slow to compile' },
-  { id: 'maglev', name: 'Maglev', what: 'optimizing, quick to compile' },
+  { id: 'turbofan', name: 'TurboFan', what: 'optimising, slow to compile' },
+  { id: 'maglev', name: 'Maglev', what: 'optimising, quick to compile' },
   { id: 'sparkplug', name: 'Sparkplug', what: 'bytecode → machine code' },
   { id: 'ignition', name: 'Ignition', what: 'interprets bytecode' },
 ];
@@ -27,12 +27,12 @@ type S = {
 const STATES: S[] = [
   { heat: 0, at: null, has: [], feedback: false, label: 'source text', note: 'The script arrives as text. Before add can run at all, V8 parses it and compiles it to bytecode, as Drip’s compiler did. There is no machine code yet.' },
   { heat: 0.05, at: 'ignition', has: ['ignition'], feedback: false, label: 'call 1', note: 'The first calls run in Ignition, the interpreter: a dispatch loop over bytecode, like the VM you built. Starting here is cheap, and most functions never need anything more.' },
-  { heat: 0.2, at: 'ignition', has: ['ignition'], feedback: true, label: 'a few calls', note: 'After eight calls (the default in Node 22) V8 gives add a feedback vector. From now on every run writes down what it saw: here, that a and b were small integers.' },
+  { heat: 0.2, at: 'ignition', has: ['ignition'], feedback: true, label: 'a few calls', note: 'After about eight calls’ worth of bytecode (Node 22’s default budget for this) V8 gives add a feedback vector. From now on every run writes down what it saw: here, that a and b were small integers.' },
   { heat: 0.45, at: 'sparkplug', has: ['ignition', 'sparkplug'], feedback: true, label: 'warm', note: 'add is warm. Sparkplug turns its bytecode into machine code in one quick pass. The work is the same; what disappears is the decode-and-dispatch cost of the loop.' },
-  { heat: 0.65, at: 'maglev', has: ['ignition', 'sparkplug', 'maglev'], feedback: true, label: 'hot', note: 'In desktop Chrome since M117, a hot function can next go to Maglev, which uses the feedback to make specialized code quickly. (In the Node 22 build used here, Maglev is off by default, so this run skips it.)' },
+  { heat: 0.65, at: 'maglev', has: ['ignition', 'sparkplug', 'maglev'], feedback: true, label: 'hot', note: 'In desktop Chrome since M117, a hot function can next go to Maglev, which uses the feedback to make specialised code quickly. (In the Node 22 build used here, Maglev is off by default, so this run skips it.)' },
   { heat: 0.9, at: 'turbofan', has: ['ignition', 'sparkplug', 'maglev', 'turbofan'], feedback: true, label: 'hot and stable', note: 'Very hot, with feedback that has stopped changing: TurboFan compiles its best code, assuming the integers it has always seen. V8’s trace calls this “hot and stable”.' },
-  { heat: 0.5, at: 'sparkplug', has: ['ignition', 'sparkplug'], feedback: true, label: 'guess fails', fall: true, note: 'The sum grows past the biggest Smi. TurboFan’s code assumed small integers, so V8 throws it away and add carries on in a lower tier. Nothing is lost but time. The chapter on deoptimization is about exactly this moment.' },
-  { heat: 0.9, at: 'turbofan', has: ['ignition', 'sparkplug', 'turbofan'], feedback: true, label: 'hot again', note: 'The feedback now says “numbers that can be big”, so the next optimized version is built on that. Tiering is not a ladder you climb once: code moves up and down as the program changes.' },
+  { heat: 0.5, at: 'sparkplug', has: ['ignition', 'sparkplug'], feedback: true, label: 'guess fails', fall: true, note: 'The sum grows past the biggest Smi. TurboFan’s code assumed small integers, so V8 throws it away and add carries on in a lower tier. Nothing is lost but time. The chapter on deoptimisation is about exactly this moment.' },
+  { heat: 0.9, at: 'turbofan', has: ['ignition', 'sparkplug', 'turbofan'], feedback: true, label: 'hot again', note: 'The feedback now says “numbers that can be big”, so the next optimised version is built on that. Tiering is not a ladder you climb once: code moves up and down as the program changes.' },
 ];
 
 export default function TierSteps() {

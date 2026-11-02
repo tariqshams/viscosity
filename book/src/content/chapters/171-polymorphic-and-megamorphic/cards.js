@@ -1,4 +1,4 @@
-// Chapter 170b cards (split from 121). Keys are stable ids: never rename them.
+// Chapter 171 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'poly-what': {
@@ -11,7 +11,7 @@ export const prompts = {
   },
   'log-letters': {
     q: 'In `--log-ic` output, what do `0`, `1`, `P` and `N` mean?',
-    a: 'Uninitialized, monomorphic, polymorphic and megamorphic.',
+    a: 'Uninitialised, monomorphic, polymorphic and megamorphic.',
   },
   'count-shapes': {
     q: 'A site sees shape A a thousand times, then shape B once. What state is it in?',
@@ -19,10 +19,10 @@ export const prompts = {
   },
   'eight-calls': {
     q: 'Why did the experiments call `getX` ten times per shape rather than five?',
-    a: 'In Node 22 a function gets its feedback vector only after eight calls; shapes seen before that are never recorded.',
+    a: 'In Node 22 a function gets its feedback vector only after about eight calls; shapes seen before that are never recorded.',
   },
   'stub-shared': {
-    q: 'Why does a megamorphic site give Maglev or TurboFan nothing to specialize on?',
+    q: 'Why does a megamorphic site give Maglev or TurboFan nothing to specialise on?',
     a: 'It keeps no shapes of its own; the stub cache is shared by every megamorphic load, so it says nothing about what this site sees.',
   },
   'mixin-mega': {
@@ -164,7 +164,7 @@ export const quiz = [
   {
     q: 'In the five-shape `--log-ic` run, which line shows the access becoming megamorphic?',
     options: [
-      { t: '`LoadIC 1:29 0 1 x`', why: 'That is the first shape: uninitialized to monomorphic.' },
+      { t: '`LoadIC 1:29 0 1 x`', why: 'That is the first shape: uninitialised to monomorphic.' },
       { t: '`LoadIC 1:29 1 P x`', why: 'That is the second shape: monomorphic to polymorphic.' },
       { t: '`LoadIC 1:29 P N x`', correct: true, why: 'The fifth shape exceeded the limit of four, so the state went from P to N.' },
       { t: '`LoadIC 1:29 P P x`', why: 'Still polymorphic: a third or fourth shape was added to the list.' },

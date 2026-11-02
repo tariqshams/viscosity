@@ -146,11 +146,10 @@ seen.delete('ada');
 
 The first is the spot-the-difference pair in one object: setting `p.z` to
 `undefined` changes a value and keeps the shape, while `delete p.z`
-removes the key and sends `p` into dictionary mode (in my tests on V8
-12.4, deleting the last-added property did the same, as did deleting the
-first). The second builds objects with 1, 2, 3, … computed keys and
+removes the key and sends `p` into dictionary mode (in my tests on V8 12.4 it happened whichever key went:
+`z` here is the last one added, and deleting the first, `x`, did the same). The second builds objects with 1, 2, 3, … computed keys and
 prints when the answer changes: at 20 properties added this way, the
-object turned into a dictionary in this version (do not memorize the
+object turned into a dictionary in this version (do not memorise the
 number; it is an engine detail). The third is the realistic answer for
 data whose keys really do change, such as a set of names seen so far: a
 `Map`, which is made for exactly that and has no shapes to lose.
@@ -167,11 +166,11 @@ whose keys change.
 <Run id="delete-vs-undefined" />
 
 <Callout kind="engine" label="Under the hood">
-You have met this cliff already: in the chapter on making the VM fast,
+You have met this cliff already: in the chapter "Measuring and speeding up the VM",
 the Drip VM's biggest measured speed-up came from making its debug-only
 "poisoning" of freed objects, which deleted their properties, really
 debug-only, because those deletes pushed objects into V8's dictionary
-mode. Dictionary objects also give an optimizing tier nothing to rely on:
+mode. Dictionary objects also give an optimising tier nothing to rely on:
 Maglev's fast `o.x` is a check of one shape plus a load at a fixed
 offset<Cite id="v8-maglev" />, and a dictionary has no fixed offsets.
 </Callout>

@@ -23,12 +23,12 @@ integers, and its int case is short: two checks and an add. However, it
 is still a node in a tree; to reach it, the interpreter calls
 `execute` on its parent, which calls `execute` on it, which calls
 `execute` on its two children, and each of those calls has to find out
-which kind of node it is talking to. The specialization made each node
+which kind of node it is talking to. The specialisation made each node
 cheaper, but the walking is still there.
 
 Truffle's answer is that the Graal compiler does not compile your
-JavaScript at all: it compiles the *interpreter*, specialized to your
-program, and that specialization is called partial
+JavaScript at all: it compiles the *interpreter*, specialised to your
+program, and that specialisation is called partial
 evaluation<Cite id="truffle-readme" />. It sounds like a trick; it
 turns out to be an old and precise idea, and this chapter builds it up
 from a two-line example.
@@ -80,11 +80,11 @@ takes one input and does no test at all. The known input is called
 **residual program**.
 
 <Callout kind="definition">
-**Partial evaluation** specializes a program for the inputs that are
+**Partial evaluation** specialises a program for the inputs that are
 known (static), producing a **residual program** that only takes the
 rest (dynamic): `Input -> Output` becomes `DynamicInput -> Output`.
 Partially evaluating an interpreter with respect to one guest program
-gives code specialized to that program, with the interpretation
+gives code specialised to that program, with the interpretation
 removed. This is the **first Futamura projection**<Cite id="truffle-pe" />.
 </Callout>
 
@@ -138,7 +138,7 @@ the interpreter would give when running the guest program on that
 input. The target is the guest program, compiled.</span>
 </Formal>
 
-<Figure takeaway="Specialize the interpreter to one program and the residual program is that program, compiled." caption="The first Futamura projection: the interpreter and the program are known now; only the input comes later.">
+<Figure takeaway="Specialise the interpreter to one program and the residual program is that program, compiled." caption="The first Futamura projection: the interpreter and the program are known now; only the input comes later.">
   <Futamura />
 </Figure>
 
@@ -170,7 +170,7 @@ switches on `n.op`. `spec(t)` walks the same tree only once and returns
 a function, `f`, built out of small closures; `f` never looks at `op`
 again. Both lines print the same answers, `27 27` and `21 21`, because
 they compute the same thing; `f` does none of the deciding.
-This is not what Truffle does (it specializes the interpreter's own
+This is not what Truffle does (it specialises the interpreter's own
 code inside its compiler), but it shows the same split: the work that
 depends on the program is done once, and the work that depends on the
 data is done every time.
@@ -187,33 +187,31 @@ record what it has seen, but once compilation starts they are folded
 like constants. Truffle counts calls and loop iterations, and compiles
 a root node (roughly, a function) once it is hot<Cite id="truffle-pe" />.
 
-That is how the previous chapter's specializations reach the compiled
+That is how the previous chapter's specialisations reach the compiled
 code. Truffle's documentation shows a node that records whether it has
 seen integers or strings in `@CompilationFinal` fields; while it has
 seen only integers, the partial evaluator reads that as a constant and
 keeps only the integer path, guarded, as the stepper's last step
 shows. If a recorded fact later turns out wrong, the node calls
 `transferToInterpreterAndInvalidate`: the compiled code is thrown away
-and execution continues in the interpreter, which re-specializes and
+and execution continues in the interpreter, which re-specialises and
 may be compiled again<Cite id="truffle-pe" />. If the state never
-settles, that becomes a **deoptimization cycle**, compiled and thrown
+settles, that becomes a **deoptimisation cycle**, compiled and thrown
 away over and over, which is why the previous chapter's one-way rule
 matters so much.
 
 <Prompts ids={['pe-constants', 'compilation-final', 'deopt-cycle']} />
 
 <Callout kind="engine" label="Under the hood">
-Truffle's documentation names the problem it avoids: a classic engine
-needs "semantics, profiling, and optimization knowledge to be
-represented in both interpreter and compiler". With Truffle, the
-optimized code is derived from the interpreter. The price is that the
-interpreter must be written carefully, so that partial evaluation can
+The previous chapter quoted the problem Truffle avoids: a language's
+meaning written twice, once in the interpreter and once in the
+compiler. Deriving the optimised code from the interpreter instead has a
+price: the interpreter must be written carefully, so that partial evaluation can
 see what is stable, and every speculation must eventually settle, or
 the code loops through compiling and invalidating<Cite id="truffle-pe" />.
-The GraalVM team describes the whole stack, interpreter and dynamic
-compiler, in "One VM to Rule Them All"<Cite id="wurthinger2013" />. It is
-also where the columnar-array research of the next chapter was
-built<Cite id="graal-publications" />.
+The same stack, which "One VM to Rule Them All" describes
+whole<Cite id="wurthinger2013" />, is also where the columnar-array
+research of the next chapter was built<Cite id="graal-publications" />.
 </Callout>
 
 ## Your turn
@@ -230,6 +228,6 @@ built<Cite id="graal-publications" />.
 - Truffle treats the root node, `static final` and `final` fields,
   `@Child` nodes and `@CompilationFinal` fields as constants, and
   **invalidates** compiled code when one of them must change.
-- A node state that never settles causes a **deoptimization cycle**.
+- A node state that never settles causes a **deoptimisation cycle**.
 
 <Quiz />

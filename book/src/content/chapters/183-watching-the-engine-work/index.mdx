@@ -3,11 +3,11 @@ n: 183
 day: 46
 part: V
 title: 'Watching the engine work'
-tagline: 'The last few chapters told you what V8 does. Now make it tell you itself: print its bytecode, watch it optimize and give up, and count its garbage collections, with real output from the Node this book used.'
+tagline: 'The last few chapters told you what V8 does. Now make it tell you itself: print its bytecode, watch it optimise and give up, and count its garbage collections, with real output from the Node this book used.'
 objectives:
   - Print a function’s Ignition bytecode and find its feedback slots.
   - Read --trace-opt and --trace-deopt output, and connect a deopt to the bytecode that caused it.
-  - Predict which of three small programs will deoptimize, and why.
+  - Predict which of three small programs will deoptimise, and why.
   - Read a --trace-gc line and tell a scavenge from a mark-compact.
 introduces: [engine-tracing]
 uses: [ignition, bytecode, tiering, jit-compiler, optimizing-tiers, type-feedback, speculation, deoptimization, inline-cache, scavenger, mark-compact, smi, heap-number, jit-warmup, benchmark-isolation, columnar-storage, string-methods]
@@ -19,7 +19,7 @@ import DeoptLineSteps from '../../../components/diagrams/ch183/DeoptLineSteps';
 ## Make the engine talk
 
 The chapters from *The V8 pipeline* to *Mark-compact and the write
-barrier* described V8's tiers, shapes, elements kinds, deoptimization
+barrier* described V8's tiers, shapes, elements kinds, deoptimisation
 and garbage collector. You do not have to take any of it on trust: V8
 has flags that print what it is doing, and Node passes them through.
 Every output in this chapter is real, from this book's machine, trimmed
@@ -62,8 +62,8 @@ run. Run `node --v8-options` to see what your own version offers.
 **Engine tracing** means running a program with an engine's diagnostic
 flags so that the engine reports its own decisions as it makes them.
 In V8 these include `--print-bytecode` (Ignition bytecode),
-`--trace-opt` (functions marked and compiled by the optimizing tiers),
-`--trace-deopt` (every deoptimization, with its kind, reason and
+`--trace-opt` (functions marked and compiled by the optimising tiers),
+`--trace-deopt` (every deoptimisation, with its kind, reason and
 bytecode offset), `--trace-generalization` (hidden-class fields
 becoming more general) and `--trace-gc` (one line per garbage
 collection)<Cite id="v8-flag-definitions" />. Their output is for
@@ -99,14 +99,14 @@ Register count 0
 `Ldar a1` loads the second argument into the accumulator. `Add a0, [0]`
 adds the first argument to it, and `[0]` is a **feedback slot**: where
 this `+` records the types it sees (*Speculation and
-deoptimization*)<Cite id="v8-ignition-handlers" />. `Return` hands back
+deoptimisation*)<Cite id="v8-ignition-handlers" />. `Return` hands back
 whatever is in the accumulator. The `@ 2` on the `Add` line is its
 offset, its position in bytes from the start of the bytecode; remember
 it.
 
 <Prompts ids={['flags-internal', 'bc-filter', 'feedback-slot']} />
 
-## Optimizing, and giving up
+## Optimising, and giving up
 
 This program makes `add` hot with integers, then hands it a double:
 
@@ -144,11 +144,11 @@ $ node --trace-opt --trace-deopt opt.js
 another thread. The nameless function is the top-level script; its
 loop is still running when it gets hot, so V8 uses **on-stack
 replacement** (OSR)<Cite id="v8-flag-definitions" />: it switches the
-loop over to optimized code in the middle of running it. You will not
+loop over to optimised code in the middle of running it. You will not
 see Maglev here: in this Node build, `--v8-options` lists it as off by
 default.
 
-Then two bailouts. The script's optimized code reaches the call
+Then two bailouts. The script's optimised code reaches the call
 `add(0.5, 1)`, which had never run, so it had no feedback to go on. And
 `add` itself fails its small-integer check at bytecode offset 2: the
 `Add` above. Here is that last line in full, read part by part:
@@ -211,7 +211,7 @@ for (let t = 0; t < 100; t++) step(0.5);
 </Examples>
 
 The first is the surprise: `sq` only ever sees integers, yet it
-deoptimizes. The reason is `overflow`. The optimized code guessed that
+deoptimises. The reason is `overflow`. The optimised code guessed that
 `x * x` stays a small integer, because every result so far had been
 one; on this build a Smi holds up to 2<sup>31</sup> − 1
 (`%DebugPrint(2 ** 31 - 1)`, from the next chapter, prints `Smi`), and 46341 × 46341 is the
@@ -224,7 +224,7 @@ naming, is a special value such as `undefined`, `null` or `true`:
 numbers at all. The third is the struct-of-arrays loop from Part II.
 With `--trace-opt` it shows `step` being compiled by TurboFan through
 OSR; with `--trace-deopt` it prints nothing, because two
-`Float64Array`s of doubles never surprise the optimized code. When you
+`Float64Array`s of doubles never surprise the optimised code. When you
 check your own hot loops, silence is the answer you want.
 
 <Prompts ids={['overflow-deopt']} />
@@ -290,7 +290,7 @@ The first exercise is the core one; the second is extra practice.
 - A deopt line gives the **kind** (eager or lazy), the **reason**, the
   function, the tier and the **bytecode offset**, which you can match to
   the `--print-bytecode` listing.
-- Even integer code can deoptimize, on **overflow**; a loop over typed
+- Even integer code can deoptimise, on **overflow**; a loop over typed
   arrays of doubles should print no bailouts at all.
 - All of it is **V8-internal** and version-specific: label your output
   with the version, and expect it to change.

@@ -223,7 +223,7 @@ export const quiz = [
       { t: 'megamorphic, because it ran so many times', why: 'The states count different shapes, not calls.' },
       { t: 'monomorphic', correct: true, why: 'One way of building the objects means one shape at that site.' },
       { t: 'polymorphic, because each object is different', why: 'The objects hold different values but share one shape.' },
-      { t: 'uninitialized', why: 'It has run, so it has seen at least one shape.' },
+      { t: 'uninitialised', why: 'It has run, so it has seen at least one shape.' },
     ],
   },
   {

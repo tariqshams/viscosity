@@ -6,7 +6,7 @@ title: 'JavaScriptCore and SpiderMonkey'
 tagline: 'Every benchmark in this book ran on V8. Safari and Firefox run the same JavaScript on different machinery: other tiers, other thresholds, even another way of putting a number into 64 bits. Here is what their own source code says, and why it should make you careful with any speed-up.'
 objectives:
   - Name the execution tiers of JavaScriptCore and SpiderMonkey, as their own sources name them.
-  - Say where each engine resumes when an optimized guess fails.
+  - Say where each engine resumes when an optimised guess fails.
   - Encode an integer and a double the way JavaScriptCore does, and compare it with V8 and SpiderMonkey.
   - Explain why a speed-up measured on one engine is only a hypothesis on another.
 introduces: [engine-diversity]
@@ -25,8 +25,10 @@ specification<Cite id="ecma262" />, so your program prints the same
 thing everywhere; however, nothing in that specification says *how
 fast* anything must be, or how a value must be laid out in memory.
 
-So is struct-of-arrays faster in Safari too? This book never measured
-it, and this chapter will not pretend to know. What it can do is show
+So is struct-of-arrays faster in Safari too? This book has not measured
+that yet (*Benchmarking Viscosity end to end*, much later, runs its
+programs on Bun, which uses JavaScriptCore), and this chapter will not
+pretend to know. What it can do is show
 you, from the engines' own source code, how differently they are
 built; after that, "it was four times faster on my machine" stops
 sounding like a law of nature and starts sounding like what it is, a
@@ -56,7 +58,7 @@ away and go back down the ladder, and where it lands is one of the
 ways the engines differ.</span>
 </Analogy>
 
-*The V8 pipeline* climbed V8's ladder: the Ignition interpreter, then
+*The V8 pipeline* and *Ignition and the tiers above it* climbed V8's ladder: the Ignition interpreter, then
 Sparkplug, Maglev and TurboFan<Cite id="v8-maglev" />. Step through all
 three engines side by side:
 
@@ -72,10 +74,10 @@ list shows that even this interpreter has inline caches for property
 accesses and calls. At the top, the FTL takes the DFG's view of a
 function and lowers it into a second **intermediate representation**
 (the compiler's private form of the program, which Part VI is all
-about), called B3, for heavier optimization<Cite id="jsc-ftl-b3" />.
+about), called B3, for heavier optimisation<Cite id="jsc-ftl-b3" />.
 
 **SpiderMonkey** has a C++ interpreter, a Baseline Interpreter, a
-Baseline JIT and an optimizing compiler, Ion. Its options file states
+Baseline JIT and an optimising compiler, Ion. Its options file states
 the default warm-up counts, each counting "invocations or loop
 iterations"<Cite id="sm-jitoptions" />:
 
@@ -103,15 +105,15 @@ machine code<Cite id="sm-cacheir" />.
 
 ## Where a failed guess lands
 
-All three engines speculate (*Speculation and deoptimization* showed
+All three engines speculate (*Speculation and deoptimisation* showed
 V8 doing it), and all three can be wrong. What differs is where they go
-back to. V8's deoptimizer rebuilds interpreter
+back to. V8's deoptimiser rebuilds interpreter
 frames<Cite id="v8-maglev" />. JavaScriptCore's DFG code describes "how
 to exit the speculative path by going into baseline
 code"<Cite id="jsc-osr-exit" />. In SpiderMonkey, a *bailout* recovers
 "a baseline interpreter frame" from Ion's frame, for example when a
 shape guard fails or an integer add overflows; because values in Ion's
-frame may be unboxed or optimized away, and inlined calls may have no
+frame may be unboxed or optimised away, and inlined calls may have no
 frame at all, small *snapshots* record how to rebuild each
 one<Cite id="sm-bailouts" />.
 
@@ -125,7 +127,7 @@ choice, where a small integer is a **Smi** kept in the value itself and
 a double held in an object's field usually lives in a separate
 **HeapNumber** (on this book's Node, `%DebugPrint` shows a field
 holding `1.5` as `<HeapNumber 1.5>` and a field holding `2` as plain
-`2`). *Making the VM fast* showed SpiderMonkey's: every value is
+`2`). *NaN-boxing and generational collection* showed SpiderMonkey's: every value is
 NaN-boxed, so a double is stored as its own bits, and everything else,
 small integers included, hides inside the bit patterns that would
 otherwise mean "not a number", with a tag next to the
@@ -224,7 +226,7 @@ Viscosity's output stores numeric fields in `Float64Array` columns. A
 typed array's elements are raw IEEE 754 values in an `ArrayBuffer`, in
 every engine<Cite id="mdn-typed-arrays" />, so that part of the layout
 does not depend on whether an engine uses Smis, NaN-boxing or
-JavaScriptCore's encoding. How fast each engine's optimizing tier turns
+JavaScriptCore's encoding. How fast each engine's optimising tier turns
 `xs[i] += vs[i]` into machine code is a different question. The honest
 position: this book's speed-ups are V8 numbers, and if you care about
 Safari or Firefox, measure there, with the same care as in

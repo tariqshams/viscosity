@@ -15,14 +15,14 @@ export const prompts = {
   },
   'amortize': {
     q: 'Converting an array to columns mid-run costs time. How can it still be a win?',
-    a: 'The cost is paid once and amortized over the many faster accesses that follow, so it only pays for arrays used enough.',
+    a: 'The cost is paid once and amortised over the many faster accesses that follow, so it only pays for arrays used enough.',
   },
   'duplication-why': {
     q: 'Why does a run-time columnar transformation need duplicated loops?',
-    a: 'Compiled code can’t assume the array is columnar, so a check picks a copy optimized for columns, with the original loop as the slow path.',
+    a: 'Compiled code can’t assume the array is columnar, so a check picks a copy optimised for columns, with the original loop as the slow path.',
   },
   'aot-safety': {
-    q: 'An engine can guess about an array and deoptimize if wrong. What must Viscosity do instead?',
+    q: 'An engine can guess about an array and deoptimise if wrong. What must Viscosity do instead?',
     a: 'Prove from the source that every use of the array can be rewritten; otherwise bail out and leave it alone.',
   },
   'no-deopt': {
@@ -300,7 +300,7 @@ test('other fields are untouched', () => {
 
 - \`if (a.cols) {\` is the single layout check, made before any element is touched.
 - \`const c = a.cols[k];\` fetches the one column the loop needs, outside the loop, so the loop body has nothing to look up.
-- \`for (let i = 0; i < a.n; i++) { c[i] *= f; }\` is the columns copy: a plain loop over one typed array, the easiest loop there is for an engine to optimize.
+- \`for (let i = 0; i < a.n; i++) { c[i] *= f; }\` is the columns copy: a plain loop over one typed array, the easiest loop there is for an engine to optimise.
 - \`} else {\` covers the rows layout.
 - \`const rs = a.rows;\` and \`for (let i = 0; i < a.n; i++) { rs[i][k] *= f; }\` is the rows copy: the original loop over objects.
 
@@ -340,7 +340,7 @@ export const quiz = [
     q: 'Why does the 2023 follow-up duplicate loops?',
     options: [
       { t: 'To unroll them for speed', why: 'Duplication here is about array layout, not unrolling.' },
-      { t: 'So a check can pick a copy optimized for columnar arrays, with the original loop as the slow path', correct: true, why: 'Compiled code can’t assume the array’s state, so each copy is specialized for one.' },
+      { t: 'So a check can pick a copy optimised for columnar arrays, with the original loop as the slow path', correct: true, why: 'Compiled code can’t assume the array’s state, so each copy is specialised for one.' },
       { t: 'To run them on two threads', why: 'Nothing here is parallel.' },
       { t: 'Because JavaScript requires two passes over every array', why: 'There is no such rule.' },
     ],
@@ -348,7 +348,7 @@ export const quiz = [
   {
     q: 'Viscosity can’t prove an array is safe to transform. What happens?',
     options: [
-      { t: 'It transforms it anyway and deoptimizes if something goes wrong', why: 'Viscosity has no deoptimization: its output is ordinary JavaScript.' },
+      { t: 'It transforms it anyway and deoptimises if something goes wrong', why: 'Viscosity has no deoptimisation: its output is ordinary JavaScript.' },
       { t: 'It inserts a run-time check and converts the array back if needed', why: 'It never converts back; there is nothing to convert.' },
       { t: 'The build fails', why: 'An unsafe array isn’t an error. It is simply left alone.' },
       { t: 'It bails out: that array stays an array of objects, and `explain` says why', correct: true, why: 'Anything it can’t prove is left unchanged.' },

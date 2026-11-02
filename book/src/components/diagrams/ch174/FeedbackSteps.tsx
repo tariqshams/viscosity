@@ -16,7 +16,7 @@ type S = { line: number | null; vec: boolean; level: number; note: string };
 
 const STATES: S[] = [
   { line: null, vec: false, level: 0, note: 'add has not run. It has bytecode (Ldar a1; Add a0, [0]; Return), but no feedback vector yet, so there is nowhere to write anything down.' },
-  { line: 0, vec: false, level: 0, note: 'The first eight calls run with no feedback vector at all: in Node 22, V8 only allocates one once a function has been called eight times. Most functions never get that far.' },
+  { line: 0, vec: false, level: 0, note: 'The first eight calls run with no feedback vector at all: in Node 22, V8 only allocates one after about eight calls’ worth of bytecode. Most functions never get that far.' },
   { line: 1, vec: true, level: 1, note: 'From then on, Add writes into slot 0 what it saw. Every call so far added two small integers: BinaryOp:SignedSmall.' },
   { line: 2, vec: true, level: 2, note: 'add(1.5, 1): 1.5 is not a small integer, but it is a number. The slot widens to BinaryOp:Number. It does not forget the integers; Number covers them too.' },
   { line: 3, vec: true, level: 3, note: "add('a', 'b'): strings. The slot widens to BinaryOp:Any, the widest state. Nothing later can narrow it again." },

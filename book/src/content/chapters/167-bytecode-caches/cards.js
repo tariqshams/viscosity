@@ -1,4 +1,4 @@
-// Chapter 166b cards (split from 119). Keys are stable ids: never rename them.
+// Chapter 167 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'cache-what': {

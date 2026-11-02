@@ -64,7 +64,7 @@ that kind of work.
 own contiguous array (a *column*), indexed by element number, instead
 of keeping each record's fields together. It is struct-of-arrays under
 a database name. Reading one field of many records touches only that
-field's column; rebuilding a whole record (materialization) needs one
+field's column; rebuilding a whole record (materialisation) needs one
 read from every column.
 </Callout>
 
@@ -104,13 +104,13 @@ and touches nothing else.
 
 Makor and colleagues transform arrays of JavaScript objects into
 columnar arrays automatically, *at run time*, inside the GraalJS
-engine; the transformation has a cost, which they amortize over the
-later accesses<Cite id="makor2022" /> (to **amortize** a cost is to pay
+engine; the transformation has a cost, which they amortise over the
+later accesses<Cite id="makor2022" /> (to **amortise** a cost is to pay
 it once and spread it over many later uses that each save a little).
 Running inside a speculating engine gives them two things a compiler
 reading source does not have: the real sizes and values of the arrays,
-and a way to recover from a wrong guess, deoptimization (from
-*Speculation and deoptimization*).
+and a way to recover from a wrong guess, deoptimisation (from
+*Speculation and deoptimisation*).
 
 <Analogy title="rearranging a shop during opening hours">
 A shop decides that its best sellers should sit together by the door,
@@ -205,7 +205,7 @@ two side by side:
 
 The differences follow from where each one stands:
 
-- **Safety.** The engine can guess and deoptimize. Viscosity cannot, so
+- **Safety.** The engine can guess and deoptimise. Viscosity cannot, so
   every use of the array must be one it can prove it rewrites
   correctly; if not, it bails out and the array stays as objects.
 - **Cost.** The run-time version pays for converting during the run.
@@ -252,8 +252,8 @@ has to decide, and with what information.
 
 <Callout kind="engine" label="Under the hood">
 Both approaches need the same three things: a guarantee nobody can
-observe the old layout, specialized loops, and a reason to believe it
-pays. The research gets the first from speculation and deoptimization,
+observe the old layout, specialised loops, and a reason to believe it
+pays. The research gets the first from speculation and deoptimisation,
 the second from the Graal compiler's control-flow duplication, and the
 third from run-time observation<Cite id="kloibhofer2023" />. Viscosity
 gets the first from static analysis with bail-outs, the second for free
@@ -276,14 +276,14 @@ The first exercise is the core one; the second is extra practice.
 - **Columnar storage** is struct-of-arrays by its database name: one
   contiguous column per field.
 - **Run-time transformation** (Makor et al.) converts arrays of objects
-  into columns inside GraalJS while the program runs, amortizing the
+  into columns inside GraalJS while the program runs, amortising the
   cost; the follow-up adds **control-flow duplication** and multi-level
   columns (for `Date`), and reports large speed-ups on particular TPC-H
   queries.
 - Converting pays only when enough later passes each save enough time.
 - Viscosity does the job **ahead of time**: safety by proof, a
   **bail-out** that leaves the array untouched, no guards and no
-  deoptimization.
+  deoptimisation.
 - Both pay off on large arrays and few fields, and struggle with small
   ones and whole-object use.
 

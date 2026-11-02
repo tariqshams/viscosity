@@ -3,27 +3,27 @@
 export const prompts = {
   'tf-what': {
     q: 'What is *type feedback*?',
-    a: 'What the unoptimized code observed while running, such as the shapes and types each operation saw, recorded for the optimizing compiler.',
+    a: 'What the unoptimised code observed while running, such as the shapes and types each operation saw, recorded for the optimising compiler.',
   },
   'tf-slots': {
     q: '`add(a, b)` is called with integers, then with `1.5`, then with strings. What does the feedback slot for `+` say after each stage (V8 12.4)?',
     a: '`BinaryOp:SignedSmall`, then `BinaryOp:Number`, then `BinaryOp:Any`. It only ever widens.',
   },
   'spec-what': {
-    q: 'What does it mean for an optimizing compiler to *speculate*?',
+    q: 'What does it mean for an optimising compiler to *speculate*?',
     a: 'It compiles code that is only correct if what it has seen so far stays true, and checks that assumption at run time.',
   },
   'spec-guard': {
     q: 'What does speculative code do before it relies on a guess, such as an object’s shape?',
-    a: 'It runs a check (a guard, such as `CheckMaps`) and deoptimizes if the check fails.',
+    a: 'It runs a check (a guard, such as `CheckMaps`) and deoptimises if the check fails.',
   },
   'spec-why': {
     q: 'Why is speculative code faster than Ignition’s generic `Add`?',
     a: 'Once the guards pass, it can skip every other case (strings, objects, conversions) and work on raw integers or doubles.',
   },
   'spec-deps': {
-    q: 'How can optimized code rely on a global that never changes without checking it each time?',
-    a: 'It registers a dependency. If the global is ever changed, V8 invalidates and deoptimizes that code.',
+    q: 'How can optimised code rely on a global that never changes without checking it each time?',
+    a: 'It registers a dependency. If the global is ever changed, V8 invalidates and deoptimises that code.',
   },
   'tf-kinds': {
     q: 'Name three kinds of thing V8’s feedback records, one for each kind of operation in the chapter.',
@@ -31,7 +31,7 @@ export const prompts = {
   },
   'tf-widen': {
     q: 'Why must a feedback slot never narrow again?',
-    a: 'If it narrowed after a few integer calls, the compiler would repeat a guess already shown to fail, and the code would keep deoptimizing.',
+    a: 'If it narrowed after a few integer calls, the compiler would repeat a guess already shown to fail, and the code would keep deoptimising.',
   },
 };
 
@@ -150,8 +150,8 @@ export const quiz = [
     q: 'Where does the type feedback that TurboFan and Maglev use come from?',
     options: [
       { t: 'From TypeScript type annotations', why: 'Types are erased before V8 runs anything. The engine learns by watching.' },
-      { t: 'From running the code unoptimized and recording what each operation sees', correct: true, why: 'While unoptimized code runs, V8 tracks shapes and types, and the optimizing compilers read that feedback.' },
-      { t: 'From a static analysis of the whole program before it starts', why: 'V8 compiles lazily and optimizes only hot functions, using what it observed.' },
+      { t: 'From running the code unoptimised and recording what each operation sees', correct: true, why: 'While unoptimised code runs, V8 tracks shapes and types, and the optimising compilers read that feedback.' },
+      { t: 'From a static analysis of the whole program before it starts', why: 'V8 compiles lazily and optimises only hot functions, using what it observed.' },
       { t: 'From the CPU’s branch predictor', why: 'The branch predictor is hardware that guesses jumps; V8 keeps its own records of what each operation saw.' },
     ],
   },
@@ -166,16 +166,16 @@ export const quiz = [
   {
     q: '`--trace-deopt` prints `reason: wrong map` for `getX`. Which guess failed?',
     options: [
-      { t: 'That `o` would always have the one shape (map) the feedback had seen', correct: true, why: 'The optimized load checked the map before loading at a fixed offset, and an object built in the other key order failed that check.' },
+      { t: 'That `o` would always have the one shape (map) the feedback had seen', correct: true, why: 'The optimised load checked the map before loading at a fixed offset, and an object built in the other key order failed that check.' },
       { t: 'That `o.x` would be a small integer', why: 'That guard fails with a different reason, such as `not a Smi`.' },
-      { t: 'That `getX` would not be called again', why: 'Optimized code is made because a function is called a lot.' },
+      { t: 'That `getX` would not be called again', why: 'Optimised code is made because a function is called a lot.' },
     ],
   },
   {
     q: 'How can Maglev rely on a global that never changes without checking it on every call?',
     options: [
       { t: 'It cannot; every assumption needs a run-time check', why: 'The Maglev post describes the alternative: a dependency.' },
-      { t: 'By copying the global into a constant and registering a dependency that invalidates the code if the global changes', correct: true, why: 'No check runs in the fast code; the runtime deoptimizes it if the global is ever written.' },
+      { t: 'By copying the global into a constant and registering a dependency that invalidates the code if the global changes', correct: true, why: 'No check runs in the fast code; the runtime deoptimises it if the global is ever written.' },
       { t: 'By making the global read-only', why: 'The program can still change it; V8 does not alter the program’s meaning.' },
     ],
   },

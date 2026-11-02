@@ -7,16 +7,16 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 // disassembler). The call is a later one, so add already has a feedback
 // vector (allocated after 8 calls by default in Node 22).
 const IGN = ['Ldar a1', 'Add a0, [0]', 'Return'];
-const DRIP = ['GET_LOCAL 1', 'GET_LOCAL 2', 'ADD', 'RETURN'];
+const DRIP = ['load.local 1', 'load.local 2', 'add', 'return'];
 
 type S = { ig: number; dr: number; acc: string; slot: string; stack: string[]; out?: string; outD?: string; note: string };
 
 const STATES: S[] = [
   { ig: -1, dr: -1, acc: '', slot: '', stack: [], note: 'add(2, 3) is about to run in both machines. Ignition keeps the parameters in registers a0 = 2 and a1 = 3; Drip keeps them in stack slots 1 and 2. Nothing has run yet.' },
-  { ig: 0, dr: 0, acc: '3', slot: '', stack: ['2'], note: 'Ignition: Ldar a1 ("load accumulator from register a1") copies 3 into the accumulator. Drip: GET_LOCAL 1 pushes a copy of a (2) onto its stack.' },
-  { ig: 1, dr: 1, acc: '5', slot: 'small ints', stack: ['2', '3'], note: 'Ignition: Add a0, [0] adds a0 to the accumulator, which now holds 5, and writes in feedback slot 0 what it saw: two small integers. Drip: GET_LOCAL 2 pushes b; it still has not added anything.' },
-  { ig: 2, dr: 2, acc: '5', slot: 'small ints', stack: ['5'], out: '5', note: 'Ignition: Return returns whatever is in the accumulator, 5, and is finished after three instructions. Drip: ADD pops both values and pushes their sum.' },
-  { ig: 3, dr: 3, acc: '5', slot: 'small ints', stack: [], out: '5', outD: '5', note: 'Drip: RETURN pops 5 and returns it, one instruction later. Same answer; but only Ignition left a note behind (the feedback slot) for the compilers above it to read.' },
+  { ig: 0, dr: 0, acc: '3', slot: '', stack: ['2'], note: 'Ignition: Ldar a1 ("load accumulator from register a1") copies 3 into the accumulator. Drip: load.local 1 pushes a copy of a (2) onto its stack.' },
+  { ig: 1, dr: 1, acc: '5', slot: 'small ints', stack: ['2', '3'], note: 'Ignition: Add a0, [0] adds a0 to the accumulator, which now holds 5, and writes in feedback slot 0 what it saw: two small integers. Drip: load.local 2 pushes b; it still has not added anything.' },
+  { ig: 2, dr: 2, acc: '5', slot: 'small ints', stack: ['5'], out: '5', note: 'Ignition: Return returns whatever is in the accumulator, 5, and is finished after three instructions. Drip: add pops both values and pushes their sum.' },
+  { ig: 3, dr: 3, acc: '5', slot: 'small ints', stack: [], out: '5', outD: '5', note: 'Drip: return pops 5 and returns it, one instruction later. Same answer; but only Ignition left a note behind (the feedback slot) for the compilers above it to read.' },
 ];
 
 function Code({ x, title, lines, at }: { x: number; title: string; lines: string[]; at: number }) {

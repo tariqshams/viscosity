@@ -9,7 +9,7 @@ type S = { src: string; cache: string; check: string; ok: boolean | null; fns: s
 
 const STATES: S[] = [
   { src: 'add, sub, add(1, 2)', cache: '(none)', check: '', ok: null, fns: 'add: lazy · sub: lazy', note: 'new vm.Script(src) parses and compiles the top level. add and sub are only preparsed: lazy, with no bytecode yet.' },
-  { src: 'add, sub, add(1, 2)', cache: '528 bytes', check: '', ok: null, fns: 'add: lazy · sub: lazy', note: 'createCachedData() serializes what has been compiled so far into bytes: the top level only, 528 bytes.' },
+  { src: 'add, sub, add(1, 2)', cache: '528 bytes', check: '', ok: null, fns: 'add: lazy · sub: lazy', note: 'createCachedData() serialises what has been compiled so far into bytes: the top level only, 528 bytes.' },
   { src: 'add, sub, add(1, 2)', cache: '672 bytes', check: '', ok: null, fns: 'add: bytecode · sub: lazy', note: 'Run the script: add(1, 2) compiles add. A second createCachedData() now includes add’s bytecode, 672 bytes. sub was never called, so it is still not in the cache.' },
   { src: 'same source', cache: '672 bytes', check: 'same length', ok: true, fns: 'nothing to compile', note: 'A new vm.Script for the same source, given the 672 bytes: cachedDataRejected is false. V8 rebuilds the compiled code from the bytes instead of parsing and compiling.' },
   { src: 'source + one space', cache: '672 bytes', check: 'length differs', ok: false, fns: 'compile from scratch', note: 'One extra space: cachedDataRejected is true. The cache does not match, so V8 ignores it and compiles the source the ordinary way.' },

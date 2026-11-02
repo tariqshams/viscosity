@@ -1,4 +1,4 @@
-// Chapter 177b: the three tasks of V8's Mark-Compact collector, as
+// Chapter 178: the three tasks of V8's Mark-Compact collector, as
 // "Trash talk" (2019) describes them: mark live objects from the roots;
 // sweep the gaps left by dead objects into free-lists; compact (evacuate)
 // only pages that a fragmentation heuristic picks, copying their

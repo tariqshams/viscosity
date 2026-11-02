@@ -8,7 +8,7 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 type S = { n: number | null; state: '0' | '1'; result: '' | 'miss' | 'hit'; entry: boolean; search: boolean; note: string };
 
 const STATES: S[] = [
-  { n: null, state: '0', result: '', entry: false, search: false, note: 'The load p.x has a feedback slot of its own, and nothing in it yet: state 0, uninitialized.' },
+  { n: null, state: '0', result: '', entry: false, search: false, note: 'The load p.x has a feedback slot of its own, and nothing in it yet: state 0, uninitialised.' },
   { n: 0, state: '0', result: 'miss', entry: false, search: true, note: 'ps[0] arrives, with map M. The cache is empty, so V8 does the slow lookup: it reads M’s descriptors to find that x is field 0.' },
   { n: 0, state: '1', result: 'miss', entry: true, search: false, note: 'It writes the answer down in the slot: "map M → load field 0". One map seen: the site is now monomorphic (state 1).' },
   { n: 1, state: '1', result: 'hit', entry: true, search: false, note: 'ps[1] arrives. One comparison (is its map M? yes) and one load from field 0. No descriptors, no search.' },

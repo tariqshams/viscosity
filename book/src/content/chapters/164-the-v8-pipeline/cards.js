@@ -15,7 +15,7 @@ export const prompts = {
   },
   'cold-never': {
     q: 'In the particles program, why did `--trace-opt` print nothing at all for `make`?',
-    a: 'It ran once, so it never used up its budget; V8 never spends effort optimizing code that is not hot.',
+    a: 'It ran once, so it never used up its budget; V8 never spends effort optimising code that is not hot.',
   },
   'jit-what': {
     q: 'What makes a compiler a **JIT** compiler?',
@@ -115,7 +115,7 @@ export const exercises = {
       'It needs a call counter and the compiled function (or `null` while there is none yet). Declare both with `let` inside `tierUp`, before the `return`, so the returned function keeps them (a closure).',
       'Inside the returned function: if `fast` is set, return `fast(x)` straight away. Otherwise add one to the counter, run `slow(x)` and keep its answer, and if the counter now equals `n`, set `fast = compile(slow)`. Return the answer you kept.',
     ],
-    walkthrough: `**How to think about it.** This is tiering in miniature. A real engine keeps, for each function, a little state that survives between calls (V8 keeps a budget and, once it has some, the optimized code); here the state is two variables, a counter and the compiled version, and the function \`tierUp\` returns is the only thing that can see them. Start by writing down what every call must do, in order: if there is already a fast version, use it and stop; otherwise run the slow version, count the call, and, if that was call number \`n\`, compile now so the *next* call is fast.
+    walkthrough: `**How to think about it.** This is tiering in miniature. A real engine keeps, for each function, a little state that survives between calls (V8 keeps a budget and, once it has some, the optimised code); here the state is two variables, a counter and the compiled version, and the function \`tierUp\` returns is the only thing that can see them. Start by writing down what every call must do, in order: if there is already a fast version, use it and stop; otherwise run the slow version, count the call, and, if that was call number \`n\`, compile now so the *next* call is fast.
 
 **The solution, line by line.**
 
@@ -257,7 +257,7 @@ export const quiz = [
     options: [
       { t: '`add`, because it is smaller and quicker to compile', why: 'Size of the code is not what makes a function hot. It took thousands of calls.' },
       { t: 'Both after the same number of calls, since V8 counts calls', why: 'V8 counts bytecode run, not calls; that is the point of the budget.' },
-      { t: '`total`, because each call runs far more bytecode and uses up the budget faster', correct: true, why: 'It reached TurboFan after 112 calls in that run, against thousands for `add`.' },
+      { t: '`total`, because each call runs far more bytecode and uses up the budget faster', correct: true, why: 'Its budget ran out during call 4, where `--trace-opt` marked it, against thousands of calls for `add`.' },
     ],
   },
   {

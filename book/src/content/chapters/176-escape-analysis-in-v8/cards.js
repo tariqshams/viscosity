@@ -23,7 +23,7 @@ export const prompts = {
   },
   'ea67-deopt': {
     q: 'A guard fails in a loop whose temporary object was removed. How does the interpreter get its object?',
-    a: 'The deopt frame state describes the object by its field values, and the deoptimizer builds (materializes) it then.',
+    a: 'The deopt frame state describes the object by its field values, and the deoptimiser builds (materialises) it then.',
   },
   'ea67-materialize': {
     q: 'Why can’t V8 remove the allocations in the `materialize` suite?',
@@ -31,7 +31,7 @@ export const prompts = {
   },
   'ea67-viscosity': {
     q: 'Why must Viscosity be stricter than V8 about escapes?',
-    a: 'It runs ahead of time, without deoptimization to fall back on, so it must prove safety on the code as written.',
+    a: 'It runs ahead of time, without deoptimisation to fall back on, so it must prove safety on the code as written.',
   },
 };
 
@@ -300,7 +300,7 @@ test('each deopt makes a fresh object', () => {
       'A string names a variable: look it up in `env`. Anything else is another description: call `materialize` on it.',
       'Inside the loop: `const v = desc.fields[k]; o[k] = typeof v === \'string\' ? env[v] : materialize(v, env);`, then `return o;` after it.',
     ],
-    walkthrough: `**How to think about it.** This is what the deoptimizer does with an \`ObjectState\`: the description says which variable holds each field's value, so building the object is "make an empty object, then fill in each field from its variable". The only twist is that a field can hold a *description* instead of a variable name, when an object that was removed held another removed object; that inner object has to be rebuilt first. A structure that can contain itself is a hint to use recursion.
+    walkthrough: `**How to think about it.** This is what the deoptimiser does with an \`ObjectState\`: the description says which variable holds each field's value, so building the object is "make an empty object, then fill in each field from its variable". The only twist is that a field can hold a *description* instead of a variable name, when an object that was removed held another removed object; that inner object has to be rebuilt first. A structure that can contain itself is a hint to use recursion.
 
 **The solution, line by line.**
 
@@ -351,18 +351,18 @@ export const quiz = [
     ],
   },
   {
-    q: 'A guard fails inside the optimized loop, after `p` was removed. What happens?',
+    q: 'A guard fails inside the optimised loop, after `p` was removed. What happens?',
     options: [
-      { t: 'The deoptimizer builds a real `p` from the field values recorded in the frame state', correct: true, why: 'TurboFan writes an `ObjectState` for each virtual object into the deopt information, and V8’s concurrent-marking post lists “materialization during deoptimization” among the operations that create objects.' },
+      { t: 'The deoptimiser builds a real `p` from the field values recorded in the frame state', correct: true, why: 'TurboFan writes an `ObjectState` for each virtual object into the deopt information, and V8’s concurrent-marking post lists “materialization during deoptimization” among the operations that create objects.' },
       { t: 'The program crashes, because the interpreter expects an object', why: 'Removing an object would be unsafe without a way to rebuild it; the frame state provides one.' },
-      { t: 'V8 re-runs the loop from the start with the object', why: 'Deoptimization continues from the same point; re-running would repeat side effects.' },
+      { t: 'V8 re-runs the loop from the start with the object', why: 'Deoptimisation continues from the same point; re-running would repeat side effects.' },
       { t: 'The interpreter continues without `p`', why: 'The interpreter’s code still says `p.x`, so it needs a real `p`.' },
     ],
   },
   {
     q: 'In this book’s run, `materialize` was about 20 to 35 times slower for SoA (at 100,000 and a million elements), while `get-objects` wasn’t slower at all. Why?',
     options: [
-      { t: 'V8 doesn’t optimize loops that write arrays', why: 'It optimizes them fine; the allocations are the problem.' },
+      { t: 'V8 doesn’t optimise loops that write arrays', why: 'It optimises them fine; the allocations are the problem.' },
       { t: '`materialize` stores every object into an array that outlives the loop, so they escape and must exist', correct: true, why: 'Something outside can now read `out[i]` and compare identities. No analysis can remove those allocations.' },
       { t: '`materialize` uses six fields and `get-objects` uses two', why: 'Both build objects with all six fields.' },
       { t: 'The `materialize` objects are too big for the young generation', why: 'They are small objects; the cost is that each one must really be allocated.' },
@@ -374,7 +374,7 @@ export const quiz = [
       { t: 'Viscosity’s analysis is less accurate by mistake', why: 'It is cautious on purpose: it has different tools.' },
       { t: 'Function calls are always slow in JavaScript', why: 'Calls are cheap once inlined; the issue is what the callee might do with the object.' },
       { t: 'V8 forbids libraries from changing data layout', why: 'Nothing forbids it; Viscosity rewrites source code before V8 sees it.' },
-      { t: 'It works ahead of time, with no inlining and no deoptimization, so it must prove the object never escapes in the code as written', correct: true, why: 'V8 can inline, speculate and bail out. Viscosity’s only safe answer to “might escape” is to keep the objects.' },
+      { t: 'It works ahead of time, with no inlining and no deoptimisation, so it must prove the object never escapes in the code as written', correct: true, why: 'V8 can inline, speculate and bail out. Viscosity’s only safe answer to “might escape” is to keep the objects.' },
     ],
   },
 ];

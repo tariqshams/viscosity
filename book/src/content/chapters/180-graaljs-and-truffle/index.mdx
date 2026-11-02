@@ -6,9 +6,9 @@ title: 'GraalJS and Truffle'
 tagline: 'What if you never wrote a JavaScript compiler at all? Truffle lets you write a tree-walking interpreter whose nodes watch the values passing through them and rewrite themselves to suit; GraalJS is a whole JavaScript engine built that way.'
 objectives:
   - Say what Truffle and GraalJS are, and how their approach differs from V8’s.
-  - Explain how a self-optimizing AST node specializes itself, and generalizes when a guess fails.
+  - Explain how a self-optimising AST node specialises itself, and generalises when a guess fails.
   - Read GraalJS’s real `+` node and say what `rewriteOn` does.
-  - Explain why specialization only ever moves from specific to general.
+  - Explain why specialisation only ever moves from specific to general.
 introduces: [self-optimizing-ast]
 uses: [tree-walking-interpreter, evaluate, ast, ast-node, interpreter-overhead, interpreter, compiler, runtime-value, dynamic-typing, class, method, closure, tiering, jit-compiler, ignition, optimizing-tiers, type-feedback, speculation, deoptimization, inline-cache, engine-diversity, smi, aos-vs-soa]
 sources: [truffle-readme, truffle-pe, truffle-node-replace, truffle-specialization, graaljs-add, graal-publications, wurthinger2012, wurthinger2013, v8-maglev]
@@ -35,7 +35,7 @@ code from that interpreter itself<Cite id="truffle-readme" />.
 **GraalJS**, "a JavaScript engine implemented in Java on top of
 GraalVM", is built this way<Cite id="graaljs-add" />.
 
-Two ideas make it work: nodes that specialize themselves, which this
+Two ideas make it work: nodes that specialise themselves, which this
 chapter is about, and *partial evaluation*, which turns such an
 interpreter into compiled code and is the next chapter's subject.
 
@@ -66,7 +66,7 @@ A `+` node starts with no idea what it will see. After its first
 execution it narrows itself to the case it saw, and it widens again
 when something else turns up:
 
-<Figure takeaway="Specialize on what you have seen; widen when it stops being true." caption="A self-specializing + node. Each arrow is a rewrite. Arrows only go one way, so a node cannot flip back and forth for ever.">
+<Figure takeaway="Specialise on what you have seen; widen when it stops being true." caption="A self-specialising + node. Each arrow is a rewrite. Arrows only go one way, so a node cannot flip back and forth for ever.">
 <NodeStates />
 </Figure>
 
@@ -77,16 +77,16 @@ state:
 <SpecializeSteps client:visible />
 
 <Callout kind="definition">
-A **self-optimizing AST** interpreter is a tree-walking interpreter
+A **self-optimising AST** interpreter is a tree-walking interpreter
 whose nodes record what they have seen and rewrite themselves (or swap
-in a replacement node) into a version specialized for those cases, with
-a check that falls back and generalizes when a case fails. The GraalVM
-team traces the design to a 2012 paper on self-optimizing,
-self-specializing interpreters applied to
+in a replacement node) into a version specialised for those cases, with
+a check that falls back and generalises when a case fails. The GraalVM
+team traces the design to a 2012 paper on self-optimising,
+self-specialising interpreters applied to
 JavaScript<Cite id="graal-publications" /><Cite id="wurthinger2012" />.
 </Callout>
 
-<Formal title="Specialization only moves up">
+<Formal title="Specialisation only moves up">
 
 ```text
 uninit ⊏ int ⊏ double ⊏ generic
@@ -94,7 +94,7 @@ state after a call ⊒ state before it
 ```
 
 <span slot="read">The states are ordered from most specific to most
-general: uninitialized below int, int below double, double below
+general: uninitialised below int, int below double, double below
 generic. After any call, the node's state is the same as before or
 higher in that order, never lower. With only four states, a node can
 change at most three times, so it is guaranteed to settle.</span>
@@ -171,20 +171,20 @@ The first changes twice and then settles, so code compiled for its
 `double` state stays valid. The second changes on every switch of
 input, and under Truffle each change would invalidate the compiled
 code, so it would be compiled and thrown away over and over: Truffle's
-documentation calls this a *deoptimization cycle*, and warns that
+documentation calls this a *deoptimisation cycle*, and warns that
 state which never settles causes one<Cite id="truffle-pe" />.
 
 <Callout kind="engine" label="Under the hood">
 Truffle's documentation names the problem it avoids: a classic engine
 needs "semantics, profiling, and optimization knowledge to be
 represented in both interpreter and compiler". With Truffle, the
-optimized code is derived from the interpreter, so a node's
-specializations do the job that type feedback does in V8 (the int state
+optimised code is derived from the interpreter, so a node's
+specialisations do the job that type feedback does in V8 (the int state
 of a `+` node records what the node has seen), and the language's
 meaning lives in one place<Cite id="truffle-pe" />. The GraalVM team describes
 the whole stack, interpreter and dynamic compiler, in "One VM to Rule
 Them All"<Cite id="wurthinger2013" />; the next chapter shows how the
-compiler turns a tree of specialized nodes into machine code.
+compiler turns a tree of specialised nodes into machine code.
 </Callout>
 
 <Prompts ids={['graaljs-what', 'two-copies']} />
@@ -197,13 +197,13 @@ compiler turns a tree of specialized nodes into machine code.
 
 - **Truffle** builds language engines as tree-walking interpreters;
   **GraalJS** is a JavaScript engine built with it, on GraalVM.
-- A **self-optimizing AST** node records the values it sees, rewrites
-  itself into a specialized version, and generalizes when a check
+- A **self-optimising AST** node records the values it sees, rewrites
+  itself into a specialised version, and generalises when a check
   fails.
 - GraalJS's `+` has an int case that rewrites on overflow
   (`rewriteOn`), a double case, and a generic case that replaces them.
 - States only move from specific to general, so every node settles;
-  a node that flipped back and forth would cause a deoptimization
+  a node that flipped back and forth would cause a deoptimisation
   cycle.
 
 <Quiz />

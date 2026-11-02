@@ -1,4 +1,4 @@
-// Chapter 164b cards (split from 118). Keys are stable ids: never rename them.
+// Chapter 165 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'ignition-why': {
@@ -14,7 +14,7 @@ export const prompts = {
     a: 'A feedback slot number: where the handler records what kinds of values this addition saw.',
   },
   'sparkplug-removes': {
-    q: 'Sparkplug does no optimizations. What does it remove, then?',
+    q: 'Sparkplug does no optimisations. What does it remove, then?',
     a: 'The interpreter’s overhead: decoding each instruction’s operands and dispatching to the next one.',
   },
   'speculate': {
@@ -134,7 +134,7 @@ Trace the first test: \`Ldar a1\` makes \`acc\` 3; \`Add a0, 0\` reads \`r = 2\`
 
 - Writing \`acc = acc + r\`: for numbers it gives the same answer, but for strings \`'b' + 'a'\` is \`'ba'\`, not \`'ab'\`; the order of \`+\` matters in JavaScript.
 - Forgetting \`Star\`: the last test stores 5 into \`r0\` first, then adds through it, so a machine that ignores \`Star\` reads \`undefined\` and returns \`NaN\`.
-- Recording feedback from the result instead of the operands: \`'a' + 'b'\` is a string either way, but \`1 + '1'\` shows why the operands, not the result, are what an optimizing compiler needs to know.`,
+- Recording feedback from the result instead of the operands: \`'a' + 'b'\` is a string either way, but \`1 + '1'\` shows why the operands, not the result, are what an optimising compiler needs to know.`,
     wrong: [
       {
         code: `function runAcc(code, regs, fb) {
@@ -157,7 +157,7 @@ Trace the first test: \`Ldar a1\` makes \`acc\` 3; \`Add a0, 0\` reads \`r = 2\`
 
 export const quiz = [
   {
-    q: 'Drip’s VM needs `GET_LOCAL, GET_LOCAL, ADD` where Ignition needs `Ldar, Add`. Why?',
+    q: 'Drip’s VM needs `load.local, load.local, add` where Ignition needs `Ldar, Add`. Why?',
     options: [
       { t: 'Ignition skips reading one of the parameters', why: 'Both are read: one by `Ldar`, one as `Add`’s register operand.' },
       { t: 'Ignition is a register machine whose accumulator is an implicit operand', correct: true, why: '`Add a0` adds a register to the accumulator directly, so nothing needs pushing first.' },
@@ -170,11 +170,11 @@ export const quiz = [
       { t: 'The constant 0 being added', why: 'The value added is in register `a0`. The bracketed operand is something else.' },
       { t: 'The address of the result', why: 'The result goes into the accumulator, implicitly.' },
       { t: 'The line number', why: 'Source positions are stored in a separate table, not as operands.' },
-      { t: 'A feedback slot where Ignition records what kinds of values it saw', correct: true, why: 'The optimizing tiers later read this feedback to decide what to specialize for.' },
+      { t: 'A feedback slot where Ignition records what kinds of values it saw', correct: true, why: 'The optimising tiers later read this feedback to decide what to specialise for.' },
     ],
   },
   {
-    q: 'What does Sparkplug remove, if it does no optimizations?',
+    q: 'What does Sparkplug remove, if it does no optimisations?',
     options: [
       { t: 'The cost of decoding bytecode and dispatching to the next instruction', correct: true, why: 'Its machine code does the same work as the interpreter, minus the dispatch loop.' },
       { t: 'The need for feedback', why: 'Sparkplug calls the same helpers as the interpreter and keeps the same frame layout; feedback is still collected.' },

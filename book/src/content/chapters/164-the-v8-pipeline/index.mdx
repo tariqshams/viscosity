@@ -7,7 +7,7 @@ tagline: 'Your Drip VM runs a function the same way on its first call and its mi
 objectives:
   - Explain why an engine starts every function in an interpreter and compiles only the code that turns out to be hot.
   - Say what makes a compiler a JIT compiler, and what it knows that an ahead-of-time compiler cannot.
-  - Predict which functions in a small program V8 will optimize, and check the guess with --trace-opt.
+  - Predict which functions in a small program V8 will optimise, and check the guess with --trace-opt.
   - Explain warm-up, and why timing only the first calls of a function measures the wrong thing.
 introduces: [tiering, jit-compiler]
 uses: [bytecode, opcode, virtual-machine, interpreter, compiler, compiler-pipeline, dispatch-loop, interpreter-overhead, stack-machine, disassembler, register, cpu, branch-prediction, smi, jit-warmup, single-pass-compiler, call-frame, drip, function, call, parameter, return, for-loop]
@@ -58,8 +58,8 @@ Node v22.23.4, V8 12.4.254.21
 ```
 
 The same one-line function ran in three different ways, and near call
-65,536 it went *back* before climbing again. (In my second run the
-TurboFan line moved, to 7,739, and the Sparkplug line stayed put.) By the
+65,536 it went *back* before climbing again. (Run it again and the lines move: in my second run TurboFan
+arrived at call 7,739.) By the
 end of the next chapter you will be able to explain every line.
 
 ## Start cheap, spend on what is hot
@@ -123,7 +123,7 @@ spent(f) ≥ budget(f)  ⇒  optimize f
 <span slot="read">The budget of f is its bytecode length times 3000.
 What f has spent is the sum (Σ, "add them all up") of the bytecode it has
 run. Once spent reaches budget, the arrow (⇒, "implies") says V8 marks f
-for optimization. The 3000 is a tuning knob of one version, not a
+for optimisation. The 3000 is a tuning knob of one version, not a
 law.</span>
 </Formal>
 
@@ -143,7 +143,7 @@ function total(n) {
   return s;
 }
 // called as total(1000):
-// 28 Sparkplug, 112 TurboFan
+// marked for TurboFan in call 4
 ```
 
 ```js
@@ -168,13 +168,14 @@ for (let t = 0; t < 100; t++)
 
 The first is `add` from the hook: each call runs six bytes of bytecode,
 so it takes thousands of calls to use up its budget. The second runs a
-thousand-step loop inside every call, and the same tier check shows it
-reaching Sparkplug after 28 calls and TurboFan after 112, exactly as the
-budget predicts. The third is a real program's shape: `make` builds a
+thousand-step loop inside every call (each trip back round it charges 21
+bytes), so its budget of 32 × 3000 bytes runs out during call 4, where
+`--trace-opt` marks it; the code itself arrives some calls later, built
+on another thread. The third is a real program's shape: `make` builds a
 thousand particles once, and the loop calls `step` a hundred thousand
 times. `--trace-opt` prints a line whenever V8 marks or compiles a
 function, and only two things appear: `step`, and the top-level loop,
-compiled "OSR" (**on-stack replacement**, optimized code swapped in while
+compiled "OSR" (**on-stack replacement**, optimised code swapped in while
 the loop is still running<Cite id="v8-sparkplug" />). `make` ran once, so
 V8 never spent a moment on it.
 
@@ -246,8 +247,7 @@ $ node --jitless jl.js
 </Examples>
 
 The first times ten million calls of `add`, normally and with
-`--jitless`, a flag that turns every compiler to machine code off (one run
-on my machine; yours will differ, but the gap will not go away).
+`--jitless`, a flag that turns every compiler to machine code off (one run on my machine; yours will differ).
 The second mixes the program's output with V8's: between `1 Ignition` and
 `7342 SP`, V8 decided `add` was "hot and stable" and began
 compiling it, and `ConcurrencyMode::kConcurrent` says that ran on another

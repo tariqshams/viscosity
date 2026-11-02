@@ -2,19 +2,19 @@
 
 export const prompts = {
   'self-opt-what': {
-    q: 'What does a node in a **self-optimizing AST** interpreter do?',
-    a: 'It records the values it sees and rewrites itself into a version specialized for them, generalizing when they stop holding.',
+    q: 'What does a node in a **self-optimising AST** interpreter do?',
+    a: 'It records the values it sees and rewrites itself into a version specialised for them, generalising when they stop holding.',
   },
   'rewrite-on': {
     q: 'In Truffle’s DSL, what does `rewriteOn = ArithmeticException.class` on an int `+` mean?',
     a: 'If the int case ever throws (on overflow), this node never uses it again and the next, more general case runs instead.',
   },
   'sa-uninit': {
-    q: 'Why does a self-specializing `+` node start in an *uninitialized* state?',
-    a: 'It has seen no values yet, so it has nothing to specialize on; its first execution decides which case to try.',
+    q: 'Why does a self-specialising `+` node start in an *uninitialised* state?',
+    a: 'It has seen no values yet, so it has nothing to specialise on; its first execution decides which case to try.',
   },
   'one-way': {
-    q: 'Why do specialization rewrites only go from specific to general?',
+    q: 'Why do specialisation rewrites only go from specific to general?',
     a: 'So a node settles: a node that could flip back and forth would keep invalidating and recompiling its code.',
   },
   'sa-overflow': {
@@ -27,7 +27,7 @@ export const prompts = {
   },
   'graaljs-what': {
     q: 'What is GraalJS?',
-    a: 'A JavaScript engine written in Java on top of GraalVM, built as a Truffle self-optimizing AST interpreter.',
+    a: 'A JavaScript engine written in Java on top of GraalVM, built as a Truffle self-optimising AST interpreter.',
   },
   'two-copies': {
     q: 'What duplication does Truffle avoid that a classic interpreter-plus-JIT engine has?',
@@ -48,9 +48,9 @@ const isNum = (x) =>
 
 export const exercises = {
   selfAdd: {
-    title: 'A + node that specializes itself',
+    title: 'A + node that specialises itself',
     prompt:
-      'Write `AddNode`, a self-specializing `+` node. Its children `l` and `r` have an `execute(env)` method. `state` starts as `\'uninit\'`. In `execute(env)`, evaluate both children, then: in `\'uninit\'` or `\'int\'`, if both values and their sum are int32 (`isInt`), set `\'int\'` and return the sum. Otherwise, unless the state is `\'generic\'`, if both are numbers set `\'double\'`. Otherwise set `\'generic\'`. Always return `a + b`. A node must **never** move back to a more specific state.',
+      'Write `AddNode`, a self-specialising `+` node. Its children `l` and `r` have an `execute(env)` method. `state` starts as `\'uninit\'`. In `execute(env)`, evaluate both children, then: in `\'uninit\'` or `\'int\'`, if both values and their sum are int32 (`isInt`), set `\'int\'` and return the sum. Otherwise, unless the state is `\'generic\'`, if both are numbers set `\'double\'`. Otherwise set `\'generic\'`. Always return `a + b`. A node must **never** move back to a more specific state.',
     starter: `${LEAVES}
 class AddNode {
   constructor(l, r) {
@@ -147,7 +147,7 @@ test('works with literals too', () => {
 - \`this.state = 'double'; return a + b;\` widens to \`double\` and returns the sum.
 - \`this.state = 'generic'; return a + b;\` Everything else (a string, an object) makes the node generic. It still returns \`a + b\`, with all of JavaScript's rules.
 
-Notice that every path returns the same thing, \`a + b\`: specialization only changes how much checking a compiled version would need, and it must never change the answer. In Truffle, the compiler would treat \`state\` as a constant, keep only the current case, and turn the fall-through into a deoptimization.
+Notice that every path returns the same thing, \`a + b\`: specialisation only changes how much checking a compiled version would need, and it must never change the answer. In Truffle, the compiler would treat \`state\` as a constant, keep only the current case, and turn the fall-through into a deoptimisation.
 
 **Common wrong attempts.**
 
@@ -216,8 +216,8 @@ export const quiz = [
   {
     q: 'What does a Truffle language implementer mainly write?',
     options: [
-      { t: 'A bytecode compiler and a separate optimizing JIT', why: 'That is the classic design Truffle avoids.' },
-      { t: 'An AST interpreter whose nodes specialize themselves', correct: true, why: 'Truffle derives compiled code from that interpreter by partial evaluation with the Graal compiler.' },
+      { t: 'A bytecode compiler and a separate optimising JIT', why: 'That is the classic design Truffle avoids.' },
+      { t: 'An AST interpreter whose nodes specialise themselves', correct: true, why: 'Truffle derives compiled code from that interpreter by partial evaluation with the Graal compiler.' },
       { t: 'Machine code for each processor', why: 'The Graal compiler produces the machine code.' },
       { t: 'A transpiler to Java source', why: 'Nothing is translated to Java source; the interpreter itself is Java.' },
     ],
@@ -228,14 +228,14 @@ export const quiz = [
       { t: 'Return a wrapped-around negative number', why: 'JavaScript’s `+` never wraps; the answer must be 2147483648.' },
       { t: 'Throw a TypeError', why: 'The addition is perfectly valid JavaScript.' },
       { t: 'Return the right sum, widen to a more general state, and never use the int case again', correct: true, why: 'That is `rewriteOn = ArithmeticException.class` with `Math.addExact`.' },
-      { t: 'Return the sum and stay in the int state', why: 'The result isn’t an int32, so the int specialization’s guess has failed.' },
+      { t: 'Return the sum and stay in the int state', why: 'The result isn’t an int32, so the int specialisation’s guess has failed.' },
     ],
   },
   {
-    q: 'After seeing ints, then one double, then ints again, which state is a self-specializing `+` node in?',
+    q: 'After seeing ints, then one double, then ints again, which state is a self-specialising `+` node in?',
     options: [
       { t: '`int`, because the latest values were ints', why: 'That would be moving back to a more specific state, which the one-way rule forbids.' },
-      { t: '`uninit`, because the double reset it', why: 'Nothing ever resets a node to uninitialized; it only widens.' },
+      { t: '`uninit`, because the double reset it', why: 'Nothing ever resets a node to uninitialised; it only widens.' },
       { t: '`generic`, because it has seen two kinds of number', why: 'Ints and doubles are both numbers, which the double case handles; only non-numbers need generic.' },
       { t: '`double`, and it stays there', correct: true, why: 'Once the int case has failed, the node keeps the more general case for good, so it settles.' },
     ],
@@ -243,7 +243,7 @@ export const quiz = [
   {
     q: 'What would go wrong if a node could move back to a more specific state?',
     options: [
-      { t: 'It could flip back and forth for ever, and each change would throw away its compiled code', correct: true, why: 'Truffle’s documentation calls this a deoptimization cycle: compile, invalidate, recompile, again and again.' },
+      { t: 'It could flip back and forth for ever, and each change would throw away its compiled code', correct: true, why: 'Truffle’s documentation calls this a deoptimisation cycle: compile, invalidate, recompile, again and again.' },
       { t: 'It would give wrong answers', why: 'Every state returns the correct result; the problem is wasted compilation, not wrong output.' },
       { t: 'It would run out of memory', why: 'States take no extra memory; the cost is time spent recompiling.' },
       { t: 'Nothing: moving back would always be faster', why: 'The fast case is useless if the node keeps leaving it and its compiled code keeps being thrown away.' },

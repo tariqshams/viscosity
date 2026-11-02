@@ -123,7 +123,7 @@ test('anything else is ELEMENTS, for good', () => {
     .toBe('PACKED_ELEMENTS');
 });`,
     hints: [
-      'The kind depends on every value ever written, not only the last one. What single number could summarize "the most general kind so far"?',
+      'The kind depends on every value ever written, not only the last one. What single number could summarise "the most general kind so far"?',
       'Give each value a level: 0 for a Smi, 1 for any other number, 2 for anything else. The array’s level is the largest level seen so far.',
       'Write `baseOf(v)` (test `isSmi` first, then `typeof v === \'number\'`), keep `base = Math.max(base, baseOf(v))` in a loop, and build the name from `[\'SMI_\', \'DOUBLE_\', \'\'][base]`.',
     ],
@@ -220,7 +220,7 @@ export const quiz = [
       { t: 'A column starts as SMI and moves to DOUBLE on the first fraction', why: 'That is how a plain array behaves. A typed array has its own fixed kind.' },
       { t: 'Columns become holey when the program deletes an element', why: 'A typed array can’t have holes: every index below its length holds a number.' },
       { t: 'A column has one fixed kind, `FLOAT64ELEMENTS`, and never transitions', correct: true, why: '`%DebugPrint` reports `FLOAT64ELEMENTS` for a `Float64Array`, and its elements are always raw doubles.' },
-      { t: 'Typed arrays always use the general ELEMENTS kind', why: 'They can only hold numbers of one type, so they get their own specialized kinds.' },
+      { t: 'Typed arrays always use the general ELEMENTS kind', why: 'They can only hold numbers of one type, so they get their own specialised kinds.' },
     ],
   },
 ];

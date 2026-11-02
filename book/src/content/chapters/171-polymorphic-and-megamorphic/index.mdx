@@ -7,7 +7,7 @@ tagline: 'An inline cache that sees one shape is one check and one load; one tha
 objectives:
   - Trace an inline cache from monomorphic to polymorphic to megamorphic, and say where V8 12.4 draws the line.
   - Read V8's real --log-ic output for a site that sees five shapes.
-  - Explain what the stub cache is, and why a megamorphic site gives the optimizing tiers nothing to build on.
+  - Explain what the stub cache is, and why a megamorphic site gives the optimising tiers nothing to build on.
   - Spot megamorphic sites in ordinary code, such as an interpreter reading node.type, and keep hot ones monomorphic.
 introduces: [polymorphic, megamorphic]
 uses: [inline-cache, monomorphic, shape, transition-tree, ignition, optimizing-tiers, bytecode, hash-table, property, dot-access, object, function, class, inheritance, super, array-of-objects, for-of, ast, tree-walking-interpreter]
@@ -57,7 +57,7 @@ go to the caretaker's cabinet, where every key hangs under a label for its
 door.
 <span slot="breaks">The cabinet is slow because you have to walk to it;
 the stub cache is a fast hash table, but every lookup still costs a hash
-and a compare, and it tells the optimizing compiler nothing about which
+and a compare, and it tells the optimising compiler nothing about which
 shapes to expect.</span>
 </Analogy>
 
@@ -133,8 +133,7 @@ All three are real `node --log-ic` runs (Node v22.23.4, V8 12.4, Node's
 own lines removed). The first is the smallest polymorphic site: two
 shapes, so `0 → 1` on the first and `1 → P` on the second. The second
 walks the whole ladder: the third and fourth shapes are added to the list
-(`P → P`), and the fifth sends the site to `N`. (Why ten calls each? A
-function only gets its feedback vector after eight calls in Node 22, and
+(`P → P`), and the fifth sends the site to `N`. (Why ten calls each? A function only gets its feedback vector after about eight calls in Node 22, and
 with five calls each, the first shape was never recorded and the site
 stopped at `P`.) The third is the interpreter case: one innocent-looking
 `n.type`, five classes, and the site is megamorphic, which is worth
@@ -142,13 +141,13 @@ knowing before you write a tree-walker in JavaScript for real.
 
 <Prompts ids={['poly-what', 'mega-what', 'log-letters', 'count-shapes', 'eight-calls']} />
 
-## Why the optimizing tiers care
+## Why the optimising tiers care
 
 A monomorphic site gives Maglev something precise to build on: check one
 shape, then load at a fixed offset<Cite id="v8-maglev" />. A polymorphic
 site still gives it a short list of cases, which is the observation
 Hölzle, Chambers and Ungar made for Self in 1991: the types a polymorphic
-inline cache records are information an optimizing compiler can
+inline cache records are information an optimising compiler can
 use<Cite id="holzle1991" />. A megamorphic site gives it nothing: the
 stub cache is shared, so it says nothing about which shapes *this* line
 sees.

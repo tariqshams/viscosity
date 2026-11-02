@@ -1,4 +1,4 @@
-// Chapter 177b: why concurrent marking needs a write barrier. Tri-colour
+// Chapter 178: why concurrent marking needs a write barrier. Tri-colour
 // marking (white: not yet found; grey: found, fields not scanned; black:
 // found and scanned) runs while JavaScript keeps changing pointers. If the
 // program stores a pointer to a white object into a black one and removes
@@ -33,10 +33,12 @@ const STATES: S[] = [
 
 const POS: Record<Id, { x: number; y: number }> = { A: { x: 150, y: 50 }, B: { x: 150, y: 140 }, C: { x: 300, y: 95 } };
 
+// White, grey and black are the algorithm's names, so they are drawn as
+// those colours in both themes.
 function fillOf(c: Colour) {
-  if (c === 'black') return tok('ink', 0.85);
-  if (c === 'grey') return tok('muted', 0.45);
-  return tok('panel');
+  if (c === 'black') return '#1c1917';
+  if (c === 'grey') return '#a8a29e';
+  return '#fafaf9';
 }
 
 export default function BarrierSteps() {
@@ -64,8 +66,8 @@ export default function BarrierSteps() {
           return (
             <g key={id}>
               <Box x={p.x - 24} y={p.y - 20} w={48} h={40} fill={gone ? 'transparent' : fillOf(c)} stroke={gone ? tok('danger') : tok('ink', 0.7)} dash={gone}>
-                <T x={p.x} y={p.y - 4} size={14} weight={700} anchor="middle" fill={gone ? tok('danger') : dark ? tok('paper') : tok('ink')}>{id}</T>
-                <T x={p.x} y={p.y + 11} size={11} anchor="middle" fill={gone ? tok('danger') : dark ? tok('paper') : tok('ink')}>{gone ? 'freed!' : c}</T>
+                <T x={p.x} y={p.y - 4} size={14} weight={700} anchor="middle" fill={gone ? tok('danger') : dark ? '#fafaf9' : '#1c1917'}>{id}</T>
+                <T x={p.x} y={p.y + 11} size={11} anchor="middle" fill={gone ? tok('danger') : dark ? '#fafaf9' : '#1c1917'}>{gone ? 'freed!' : c}</T>
               </Box>
             </g>
           );

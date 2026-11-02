@@ -8,7 +8,7 @@ objectives:
   - Explain why `get-objects` did not lose and `materialize` did, in this book’s benchmark run.
   - Say what it means for an object to escape, and predict it for small loops.
   - Describe how TurboFan removes a non-escaping object, from inlining to scalar replacement.
-  - Explain how a removed object is rebuilt if the code deoptimizes, and why Viscosity must be stricter.
+  - Explain how a removed object is rebuilt if the code deoptimises, and why Viscosity must be stricter.
 introduces: [allocation-sinking, scalar-replacement]
 uses: [materialization, aos-vs-soa, array-of-objects, object, property, reference, identity, function, call, argument, return, register, stack-and-heap, garbage-collection, generational-gc, typed-array, jit-compiler, optimizing-tiers, speculation, deoptimization, type-feedback, dead-code-elimination, median-p95]
 sources: [v8-src-escape-analysis, v8-src-late-escape-analysis, v8-concurrent-marking, v8-trash-talk, v8-leaving-sea-of-nodes]
@@ -85,7 +85,7 @@ touches the values inside.
 ## Step one: see every use
 
 In the loop as written, the object is passed to a call. To an
-optimizing compiler a call is a closed door, since whatever goes through
+optimising compiler a call is a closed door, since whatever goes through
 it might be stored anywhere; so the first move is to copy the small
 function's body into the loop, which is called **inlining** (the
 *Inlining* chapter builds it). After that, every use of the object is in
@@ -113,7 +113,7 @@ Inlining 0x… {0x… <SharedFunctionInfo len2>}
   into 0x… {0x… <SharedFunctionInfo run>}
 ```
 
-The line says that TurboFan, V8's top optimizing tier, copied `len2`
+The line says that TurboFan, V8's top optimising tier, copied `len2`
 into `run`; from here on, the object's only uses are two field reads.
 
 <Prompts ids={['ea67-puzzle', 'ea67-inline-first']} />
@@ -136,7 +136,7 @@ one extra line changes the verdict:
 fields as separate local values (a *scalar* is a single plain value,
 like one number): `p.x` becomes `p_x`. **Allocation sinking** moves an
 allocation to the only places that still need a real object; in V8,
-for a non-escaping temporary, that is the deoptimization path, so the
+for a non-escaping temporary, that is the deoptimisation path, so the
 fast code allocates nothing. In TurboFan's own words, an object has
 **escaped** if it "escaped to untracked memory or … is used in an
 operation that requires materialization"<Cite id="v8-src-escape-analysis" />.
@@ -236,8 +236,8 @@ however unlikely, keeps the object real.
 
 ## When a guard fails
 
-The optimized loop still has guards, the checks on its guesses from
-*Speculation and deoptimization*. If one fails halfway through, V8
+The optimised loop still has guards, the checks on its guesses from
+*Speculation and deoptimisation*. If one fails halfway through, V8
 falls back to the interpreter, whose bytecode still says `len2(p)` and
 needs a real `p`.
 
@@ -252,9 +252,9 @@ with.</span>
 </Analogy>
 
 So the object is not forgotten, only postponed. When TurboFan writes the
-deoptimization information, it describes each virtual object that is
+deoptimisation information, it describes each virtual object that is
 still live by its fields, as an `ObjectState`<Cite id="v8-src-escape-analysis" />,
-and the deoptimizer can then build the object for real; V8's post on
+and the deoptimiser can then build the object for real; V8's post on
 concurrent marking lists "materialization during deoptimization of a
 function" among the operations that create objects<Cite id="v8-concurrent-marking" />.
 That is the sunk allocation: it happens only on the path that needs it.
@@ -274,7 +274,7 @@ stores that fill them in<Cite id="v8-src-late-escape-analysis" />. Maglev
 has one too, but in V8 12.4 `node --v8-options` shows
 `--maglev-escape-analysis` (and Maglev itself) defaulting to off.
 Viscosity must answer the same question without any of these tools: it
-runs before the program, with no inlining and no deoptimizer, so
+runs before the program, with no inlining and no deoptimiser, so
 "might escape" has to mean "keep the objects". The *Escape analysis*
 chapter in Part VI builds that check, and `get-objects` is why it
 matters: an object that never escapes costs nothing, so only one that
@@ -301,9 +301,9 @@ The first exercise is the core one; the second is extra practice.
 - **Scalar replacement** turns a non-escaping object into one local
   value per field.
 - **Allocation sinking** moves the allocation to the deopt path: the
-  frame state describes the object by its fields, and the deoptimizer
+  frame state describes the object by its fields, and the deoptimiser
   builds it only if a guard fails.
-- Viscosity has no deoptimizer, so it must prove an object does not
+- Viscosity has no deoptimiser, so it must prove an object does not
   escape before it changes the layout.
 
 <Quiz />

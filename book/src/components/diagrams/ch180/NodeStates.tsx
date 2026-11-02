@@ -5,7 +5,7 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
 const NODES = [
-  { x: 6, label: 'uninitialized', sub: 'seen nothing', c: tok('muted') },
+  { x: 6, label: 'uninitialised', sub: 'seen nothing', c: tok('muted') },
   { x: 106, label: 'int', sub: 'int32 + int32', c: tok('f2') },
   { x: 206, label: 'double', sub: 'any numbers', c: tok('f3') },
   { x: 306, label: 'generic', sub: 'full JS +', c: tok('brand') },
@@ -13,7 +13,7 @@ const NODES = [
 
 export default function NodeStates() {
   return (
-    <Svg w={400} h={150} title="A plus node moves from uninitialized to int, double and generic, and never back">
+    <Svg w={400} h={150} title="A plus node moves from uninitialised to int, double and generic, and never back">
       {NODES.map((n) => (
         <Box key={n.label} x={n.x} y={40} w={88} h={46} stroke={n.c}>
           <T x={n.x + 44} y={56} size={12} weight={700} anchor="middle">{n.label}</T>

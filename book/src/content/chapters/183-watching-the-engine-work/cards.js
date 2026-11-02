@@ -11,23 +11,23 @@ export const prompts = {
   },
   'feedback-slot': {
     q: 'In `Add a0, [0]`, what is `[0]`?',
-    a: 'A feedback slot: where this `+` records the types it has seen, for the optimizing tiers.',
+    a: 'A feedback slot: where this `+` records the types it has seen, for the optimising tiers.',
   },
   'osr': {
-    q: 'Why is the top-level script optimized with “OSR”?',
-    a: 'Its loop never returns, so V8 uses on-stack replacement to switch the running loop to optimized code.',
+    q: 'Why is the top-level script optimised with “OSR”?',
+    a: 'Its loop never returns, so V8 uses on-stack replacement to switch the running loop to optimised code.',
   },
   'eager-lazy': {
     q: 'What is the difference between an eager and a lazy deopt in V8?',
-    a: 'Eager: a check failed inside the optimized code, which deoptimizes at once. Lazy: an assumption broke elsewhere, and the code deoptimizes next time it runs.',
+    a: 'Eager: a check failed inside the optimised code, which deoptimises at once. Lazy: an assumption broke elsewhere, and the code deoptimises next time it runs.',
   },
   'deopt-offset': {
     q: 'A deopt line says `bytecode offset 2`. How do you find out which operation failed?',
     a: 'Print the function’s bytecode with `--print-bytecode` and look at the instruction at `@ 2`.',
   },
   'overflow-deopt': {
-    q: 'Why did `function sq(x) { return x * x; }` deoptimize with reason `overflow` when it was only ever given integers?',
-    a: 'Its optimized code guessed the result would stay a small integer; once the squares grew past what a Smi holds (from 46341 on, on this build), the guess failed.',
+    q: 'Why did `function sq(x) { return x * x; }` deoptimise with reason `overflow` when it was only ever given integers?',
+    a: 'Its optimised code guessed the result would stay a small integer; once the squares grew past what a Smi holds (from 46341 on, on this build), the guess failed.',
   },
   'gc-line': {
     q: 'A scavenge line reads `166.9 (185.5) -> 166.9 (201.5) MB`. What does it tell you?',
@@ -319,34 +319,34 @@ export const quiz = [
   {
     q: 'Which flag shows a function’s Ignition bytecode?',
     options: [
-      { t: '`--trace-opt`', why: 'That traces optimized compilation: marking and compiling.' },
+      { t: '`--trace-opt`', why: 'That traces optimised compilation: marking and compiling.' },
       { t: '`--print-bytecode`, ideally with `--print-bytecode-filter`', correct: true, why: 'Without the filter, you also get the bytecode of every function Node itself runs.' },
-      { t: '`--trace-deopt`', why: 'That traces deoptimizations, though it does give a bytecode offset.' },
+      { t: '`--trace-deopt`', why: 'That traces deoptimisations, though it does give a bytecode offset.' },
       { t: '`%DebugPrint(fn)` without any flag', why: 'Natives need `--allow-natives-syntax`, and DebugPrint shows objects, not a bytecode listing.' },
     ],
   },
   {
-    q: '`add` was optimized for integers and then called with `0.5`. Which reason does `--trace-deopt` give?',
+    q: '`add` was optimised for integers and then called with `0.5`. Which reason does `--trace-deopt` give?',
     options: [
-      { t: '`hot and stable`', why: 'That is the reason `--trace-opt` gives for *marking* it for optimization.' },
+      { t: '`hot and stable`', why: 'That is the reason `--trace-opt` gives for *marking* it for optimisation.' },
       { t: '`Insufficient type feedback for call`', why: 'That one was the top-level script reaching a call that had never run.' },
-      { t: '`not a Smi`', correct: true, why: 'The optimized code checked that the argument was a small integer, and `0.5` isn’t one.' },
+      { t: '`not a Smi`', correct: true, why: 'The optimised code checked that the argument was a small integer, and `0.5` isn’t one.' },
       { t: '`overflow`', why: 'That appears when an integer result outgrows the Smi range, not for a double argument.' },
     ],
   },
   {
     q: 'What does `kind: deopt-eager` mean?',
     options: [
-      { t: 'A check failed in the optimized code itself, and it deoptimized immediately', correct: true, why: 'That is V8’s own definition of an eager deopt.' },
-      { t: 'V8 deoptimized before the function was ever optimized', why: 'Only optimized code can be deoptimized.' },
-      { t: 'The function will be re-optimized eagerly', why: 'The kind says how the deopt happened, not what comes next.' },
+      { t: 'A check failed in the optimised code itself, and it deoptimised immediately', correct: true, why: 'That is V8’s own definition of an eager deopt.' },
+      { t: 'V8 deoptimised before the function was ever optimised', why: 'Only optimised code can be deoptimised.' },
+      { t: 'The function will be re-optimised eagerly', why: 'The kind says how the deopt happened, not what comes next.' },
       { t: 'An assumption broke elsewhere and the code will deopt next time it runs', why: 'That describes a lazy deopt.' },
     ],
   },
   {
     q: 'In a `--trace-gc` line, what is the difference between Scavenge and Mark-Compact?',
     options: [
-      { t: 'Scavenge collects the young generation; Mark-Compact the old generation', correct: true, why: 'As V8’s garbage collector explained: a cheap, frequent young collection and a rarer full one.' },
+      { t: 'Scavenge collects the young generation; Mark-Compact the whole heap, old generation included', correct: true, why: 'As V8’s garbage collector explained: a cheap, frequent young collection and a rarer full one.' },
       { t: 'Scavenge frees memory; Mark-Compact only measures it', why: 'Both collect garbage.' },
       { t: 'They are two names for the same collector', why: 'They are different collectors, with different costs.' },
       { t: 'Mark-Compact runs only when the program ends', why: 'In the trace, one ran at 214 ms, while the program was still building its array.' },

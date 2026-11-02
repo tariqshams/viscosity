@@ -35,9 +35,9 @@ type S = { on: number[][]; exit?: [number, number][]; note: string };
 
 const STATES: S[] = [
   { on: [[0], [0], [0]], note: 'Cold code. All three engines start by interpreting bytecode. SpiderMonkey even has two interpreters: a C++ one, and a Baseline Interpreter that a function enters after 10 calls or loop iterations by default.' },
-  { on: [[1], [1], [1, 2]], note: 'Warm code. Each engine has a quick, non-optimizing step up. SpiderMonkey’s Baseline JIT takes over at 100 by default. These tiers turn bytecode into machine code quickly, without heavy optimization.' },
-  { on: [[2, 3], [2, 3], [3]], note: 'Hot code. V8 and JavaScriptCore each have two optimizing tiers, a quicker one and a stronger one. SpiderMonkey has one, Ion, whose front end Warp reads what the baseline inline caches saw.' },
-  { on: [[3], [2], [3]], exit: [[3, 0], [2, 1], [3, 1]], note: 'A guess fails. All three throw the optimized frame away and rebuild a slower one, but they land on different rungs: V8 in the interpreter, JSC’s DFG in baseline code, SpiderMonkey in the Baseline Interpreter.' },
+  { on: [[1], [1], [1, 2]], note: 'Warm code. Each engine has a quick, non-optimising step up. SpiderMonkey’s Baseline JIT takes over at 100 by default. These tiers turn bytecode into machine code quickly, without heavy optimisation.' },
+  { on: [[2, 3], [2, 3], [3]], note: 'Hot code. V8 and JavaScriptCore each have two optimising tiers, a quicker one and a stronger one. SpiderMonkey has one, Ion, whose front end Warp reads what the baseline inline caches saw.' },
+  { on: [[3], [2], [3]], exit: [[3, 0], [2, 1], [3, 1]], note: 'A guess fails. All three throw the optimised frame away and rebuild a slower one, but they land on different rungs: V8 in the interpreter, JSC’s DFG in baseline code, SpiderMonkey in the Baseline Interpreter.' },
 ];
 
 const fill = (k: Kind) => (k === 'interp' ? tok('f2') : k === 'base' ? tok('f3') : tok('brand'));
@@ -78,7 +78,7 @@ export default function TierSteps() {
         <rect x={102} y={216} width={10} height={10} fill={tok('f3')} />
         <T x={116} y={221} size={11}>baseline JIT</T>
         <rect x={200} y={216} width={10} height={10} fill={tok('brand')} />
-        <T x={214} y={221} size={11}>optimizing JIT</T>
+        <T x={214} y={221} size={11}>optimising JIT</T>
       </Svg>
     </StepFrame>
   );

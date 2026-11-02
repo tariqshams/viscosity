@@ -18,7 +18,8 @@ import TwoParses from '../../../components/diagrams/ch166/TwoParses';
 
 ## Most of the code is never called
 
-Drip's compiler, from the chapter on compiling expressions onwards, works
+Drip's compiler, from the chapter "One pass from source to bytecode"
+onwards, works
 on a whole program in one go: every function is parsed and turned into
 bytecode before anything runs, which is fine for a test script. A web page
 is different. It might ship a framework, a date library and the code for a

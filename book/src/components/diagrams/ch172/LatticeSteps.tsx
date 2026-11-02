@@ -22,7 +22,7 @@ const BASES: Base[] = ['SMI', 'DOUBLE', 'ELEMENTS'];
 const full = (n: string) => (n.endsWith('ELEMENTS') ? n : `${n}_ELEMENTS`);
 
 const STATES: S[] = [
-  { line: 0, kind: { base: 'SMI', holey: false }, slots: ['1', '2', '3'], store: 'FixedArray', seen: ['PACKED_SMI'], note: 'An array literal of small integers starts at the top: PACKED_SMI_ELEMENTS. Every slot holds a Smi, and V8 can optimize operations on the array for exactly that.' },
+  { line: 0, kind: { base: 'SMI', holey: false }, slots: ['1', '2', '3'], store: 'FixedArray', seen: ['PACKED_SMI'], note: 'An array literal of small integers starts at the top: PACKED_SMI_ELEMENTS. Every slot holds a Smi, and V8 can optimise operations on the array for exactly that.' },
   { line: 1, kind: { base: 'DOUBLE', holey: false }, slots: ['1', '2', '3', '4.56'], store: 'FixedDoubleArray', seen: ['PACKED_SMI', 'PACKED_DOUBLE'], note: '4.56 is not a Smi. The array moves down one level to PACKED_DOUBLE_ELEMENTS, and its backing store becomes a FixedDoubleArray: raw doubles, side by side.' },
   { line: 2, kind: { base: 'DOUBLE', holey: false }, slots: ['1', '2', '3', '4'], store: 'FixedDoubleArray', seen: ['PACKED_SMI', 'PACKED_DOUBLE'], note: 'Overwrite the double with the integer 4. Every element is an integer again, but the kind stays PACKED_DOUBLE_ELEMENTS. Transitions only go one way.' },
   { line: 3, kind: { base: 'ELEMENTS', holey: false }, slots: ['1', '2', '3', '4', "'x'"], store: 'FixedArray', seen: ['PACKED_SMI', 'PACKED_DOUBLE', 'PACKED_ELEMENTS'], note: "A string can't be stored as a double, so the array falls to PACKED_ELEMENTS: a FixedArray of tagged values, any JavaScript value at all." },

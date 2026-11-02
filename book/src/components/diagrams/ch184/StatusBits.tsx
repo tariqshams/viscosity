@@ -1,4 +1,4 @@
-// Chapter 183b: decoding %GetOptimizationStatus. The bit names come from
+// Chapter 184: decoding %GetOptimizationStatus. The bit names come from
 // enum class OptimizationStatus in src/runtime/runtime.h at V8 tag
 // 12.4.254.21; the two numbers were printed (as binary) on Node v22.23.4
 // for `add` before %OptimizeFunctionOnNextCall and after it.
@@ -14,7 +14,7 @@ export default function StatusBits() {
   const cw = 44;
   const x0 = 120;
   return (
-    <Svg w={400} h={210} title="Two optimization statuses decoded: before optimizing, bits 0 and 7 are set (a function, interpreted); after, bits 0, 4 and 6 (a function, optimized, by TurboFan).">
+    <Svg w={400} h={210} title="Two optimisation statuses decoded: before optimising, bits 0 and 7 are set (a function, interpreted); after, bits 0, 4 and 6 (a function, optimised, by TurboFan).">
       <T x={6} y={14} size={11} weight={700} fill={tok('muted')}>STATUS</T>
       <T x={x0 - 6} y={14} size={11} weight={700} anchor="end" fill={tok('muted')}>BIT</T>
       {BITS.map((b, k) => (
@@ -38,9 +38,9 @@ export default function StatusBits() {
         );
       })}
       <T x={6} y={138} size={11} fill={tok('muted')}>bit 7 interpreted · 6 TurboFanned · 5 Maglevved</T>
-      <T x={6} y={154} size={11} fill={tok('muted')}>bit 4 optimized · 3 maybe deopted · 0 is a function</T>
+      <T x={6} y={154} size={11} fill={tok('muted')}>bit 4 optimised · 3 maybe deopted · 0 is a function</T>
       <T x={6} y={180} size={12}>Before: a function, running in the interpreter.</T>
-      <T x={6} y={198} size={12}>After: a function, optimized by TurboFan.</T>
+      <T x={6} y={198} size={12}>After: a function, optimised by TurboFan.</T>
     </Svg>
   );
 }

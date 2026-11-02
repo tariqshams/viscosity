@@ -1,4 +1,4 @@
-// Chapter 168b cards (split from 120). Keys are stable ids: never rename them.
+// Chapter 169 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'slack': {
@@ -139,7 +139,7 @@ export const quiz = [
       { t: 'The garbage collector compacted the object', why: 'This is about the shape’s size, not about moving objects.' },
       { t: 'Slack tracking started with the expected properties plus eight spare slots, then shrank to what was used', correct: true, why: 'Two expected plus eight is ten; after a few constructions the map was trimmed to two.' },
       { t: 'The twelfth object had fewer properties', why: 'Both had exactly `x` and `y`.' },
-      { t: 'TurboFan optimized the constructor', why: 'The change comes from slack tracking, which happens without any optimizing tier.' },
+      { t: 'TurboFan optimised the constructor', why: 'The change comes from slack tracking, which happens without any optimising tier.' },
     ],
   },
   {

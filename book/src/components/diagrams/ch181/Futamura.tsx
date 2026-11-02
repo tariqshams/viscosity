@@ -1,4 +1,4 @@
-// Chapter 180b: the first Futamura projection, as Truffle's documentation
+// Chapter 181: the first Futamura projection, as Truffle's documentation
 // (truffle/docs/PartialEvaluation.md) states it: partially evaluating an
 // interpreter with respect to a guest program gives code specialized to
 // that program, which takes only the program's input. Running it gives

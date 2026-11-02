@@ -7,7 +7,7 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 // ones --trace-deopt printed in Node v22.23.4 for failing guards.
 export default function GuardFigure() {
   return (
-    <Svg w={400} h={236} title="A flowchart. Entry, then a guard: is a a Smi? then: is b a Smi? then an integer add that checks for overflow, then return. Each guard and the overflow check has a side exit labelled with the reason --trace-deopt prints: not a Smi, overflow. The side exits all lead to one box: deoptimize, continue in the interpreter.">
+    <Svg w={400} h={236} title="A flowchart. Entry, then a guard: is a a Smi? then: is b a Smi? then an integer add that checks for overflow, then return. Each guard and the overflow check has a side exit labelled with the reason --trace-deopt prints: not a Smi, overflow. The side exits all lead to one box: deoptimise, continue in the interpreter.">
       {[
         { y: 8, t: 'enter optimized add', kind: 'n' },
         { y: 52, t: 'guard: a is a Smi?', kind: 'g', why: 'not a Smi' },
@@ -29,10 +29,10 @@ export default function GuardFigure() {
         </g>
       ))}
       <Box x={264} y={92} w={128} h={52} fill={tok('danger', 0.1)} stroke={tok('danger')}>
-        <T x={328} y={110} size={12} weight={700} anchor="middle" fill={tok('danger')}>deoptimize</T>
+        <T x={328} y={110} size={12} weight={700} anchor="middle" fill={tok('danger')}>deoptimise</T>
         <T x={328} y={128} size={11} anchor="middle">continue in Ignition</T>
       </Box>
-      <T x={8} y={228} size={11} fill={tok('muted')}>green: the fast path; orange: a check on a guess</T>
+      <T x={8} y={228} size={11} fill={tok('muted')}>green: the fast path; amber: a check on a guess</T>
     </Svg>
   );
 }

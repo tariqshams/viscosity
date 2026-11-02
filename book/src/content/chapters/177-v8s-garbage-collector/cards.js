@@ -133,7 +133,7 @@ test('a long chain does not overflow', () => {
 - \`to.push({ name: o.name, refs: [...o.refs] });\` makes the copy. Its \`refs\` still hold *old* indices, and that is fine: nothing is followed yet, and they are fixed when the scan reaches this copy.
 - \`return fwd[i];\` returns the new index, whether the object was copied just now or long ago.
 - \`const newRoots = roots.map(copy);\` copies the roots first, in order, and gives their new indices.
-- \`for (let s = 0; s < to.length; s++) {\` is the scan. Everything between \`s\` and the end of \`to\` has been copied but not scanned yet (the grey objects of *Garbage collection: mark and sweep*). The loop condition reads \`to.length\` every time, so as copying appends new objects the loop keeps going until the scan catches up with the end.
+- \`for (let s = 0; s < to.length; s++) {\` is the scan. Everything between \`s\` and the end of \`to\` has been copied but not scanned yet (the grey objects of *Tracing and sweeping: white, grey and black*). The loop condition reads \`to.length\` every time, so as copying appends new objects the loop keeps going until the scan catches up with the end.
 - \`to[s].refs = to[s].refs.map(copy);\` fixes this copy's references: each old index is replaced by the new index of the referenced object, copying it first if needed.
 - \`return { to, roots: newRoots };\` gives back to-space and the new roots.
 

@@ -24,7 +24,7 @@ export const prompts = {
   },
   'prepare-opt': {
     q: 'What does `%OptimizeFunctionOnNextCall(f)` let a test do?',
-    a: 'Make V8 optimize `f` on its next call, rather than waiting for it to become hot, so the test can check the optimized code’s behaviour.',
+    a: 'Make V8 optimise `f` on its next call, rather than waiting for it to become hot, so the test can check the optimised code’s behaviour.',
   },
   'opt-status-bits': {
     q: 'In `%GetOptimizationStatus`, bit 6 is set and bit 7 is clear. What does that say about the function?',
@@ -32,7 +32,7 @@ export const prompts = {
   },
   'generalization': {
     q: 'What does `--trace-generalization` show for a class field declared as `x;` and then given doubles?',
-    a: 'The field generalizing from a heap-object field (it held `undefined`) to a generic tagged one, which boxes every double.',
+    a: 'The field generalising from a heap-object field (it held `undefined`) to a generic tagged one, which boxes every double.',
   },
 };
 
@@ -50,7 +50,7 @@ const BITS = `const BITS = [
 
 export const exercises = {
   decodeStatus: {
-    title: 'Decode an optimization status',
+    title: 'Decode an optimisation status',
     prompt:
       'V8 12.4’s `%GetOptimizationStatus(f)` returns a number whose bits each mean one fact; `BITS` lists six of them as `[bit, name]` pairs, in increasing bit order. Write `decodeStatus(s)`, which returns the names of the bits that are set in `s`, in the same order as `BITS`. Bits not in the table are ignored. For example, `decodeStatus(0b10000001)` is `[\'function\', \'interpreted\']`.',
     starter: `${BITS}
@@ -160,10 +160,10 @@ export const quiz = [
   {
     q: '`%GetOptimizationStatus(add).toString(2)` prints `1010001`. Which facts does it report, by V8 12.4’s bit names?',
     options: [
-      { t: 'A function, optimized, by TurboFan', correct: true, why: 'Bits 0, 4 and 6 are set: is a function, optimized, TurboFanned.' },
+      { t: 'A function, optimised, by TurboFan', correct: true, why: 'Bits 0, 4 and 6 are set: is a function, optimised, TurboFanned.' },
       { t: 'A function, interpreted', why: 'That is `10000001`: bits 0 and 7.' },
-      { t: 'Optimized by Maglev', why: 'Maglev is bit 5, which is clear here (and Maglev is off by default in Node 22).' },
-      { t: 'Marked for deoptimization', why: 'That is bit 14, far to the left of these digits.' },
+      { t: 'Optimised by Maglev', why: 'Maglev is bit 5, which is clear here (and Maglev is off by default in Node 22).' },
+      { t: 'Marked for deoptimisation', why: 'That is bit 14, far to the left of these digits.' },
     ],
   },
   {

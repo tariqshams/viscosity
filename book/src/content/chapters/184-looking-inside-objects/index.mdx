@@ -8,7 +8,7 @@ objectives:
   - Turn on natives syntax and say why it is not JavaScript.
   - Read a %DebugPrint of an object and of an array, and find its map, fields and elements kind.
   - Check shapes and dictionary mode with %HaveSameMap and %HasFastProperties.
-  - Force and decode a function’s optimization status, and watch a field generalize.
+  - Force and decode a function’s optimisation status, and watch a field generalise.
 introduces: [natives-syntax]
 uses: [engine-tracing, shape, transition-tree, dictionary-mode, elements-kind, inline-cache, smi, heap-number, field-representation, class, optimizing-tiers, deoptimization, bit-ops, function, object, property]
 sources: [v8-runtime-h, v8-flag-definitions]
@@ -19,7 +19,7 @@ import StatusBits from '../../../components/diagrams/ch184/StatusBits';
 ## A question the trace cannot answer
 
 The previous chapter's flags report decisions as V8 makes them: this
-function was optimized, that guess failed, the young generation was
+function was optimised, that guess failed, the young generation was
 collected. Sometimes, though, the question is about one object, right
 now: what shape does it have? Is it in dictionary mode? Are its numbers
 boxed? *Shapes in depth* and *Elements kinds* told you these things
@@ -43,7 +43,7 @@ tied to that version.</span>
 A doctor who wants to know how a bone has healed does not ask the
 patient how it feels; an X-ray shows the inside directly.
 <span slot="breaks">An X-ray only looks; some natives also act, for
-example by telling V8 to optimize a function on its next call, so they
+example by telling V8 to optimise a function on its next call, so they
 can change what the engine does, not only show it.</span>
 </Analogy>
 
@@ -149,28 +149,29 @@ add(5, 6);
 
 The first shows dictionary mode: a fresh object literal has fast
 properties, laid out by its map, and `delete` drops it into a
-dictionary (a hash table), as *Shapes in depth* described. The second
+dictionary (a hash table), as *Slack tracking and dictionary mode*
+described. The second
 checks shapes: two objects built the same way share a map, adding `z`
 to one moves it to a new map, and an object with the same fields in the
 other order has a different map too, because maps record the order in
-which properties were added. The third makes V8 optimize `add` on
+which properties were added. The third makes V8 optimise `add` on
 demand rather than waiting for it to get hot:
 `%PrepareFunctionForOptimization` readies the function (as its name
 says), two calls give it something to learn from, and
-`%OptimizeFunctionOnNextCall` makes the next call run optimized code,
+`%OptimizeFunctionOnNextCall` makes the next call run optimised code,
 which the status shows. Each
 output was printed by running the line on Node v22.23.4.
 
 <Prompts ids={['fast-props', 'same-map', 'prepare-opt']} />
 
-## Decoding an optimization status
+## Decoding an optimisation status
 
 `%GetOptimizationStatus` returns a number in which each bit means one
 fact about the function, and V8's `runtime.h` names every
 bit<Cite id="v8-runtime-h" />. Printed in binary with
 `.toString(2)`, `add`'s status was `10000001` before the forced
-optimization and `1010001` after it (and `10000001` again after
-`add(0.5, 1)` made it deoptimize):
+optimisation and `1010001` after it (and `10000001` again after
+`add(0.5, 1)` made it deoptimise):
 
 <Figure takeaway="Each bit of the status is one fact about the function." caption="Two statuses of add, decoded with the bit names from V8 12.4’s runtime.h.">
   <StatusBits />
@@ -219,7 +220,7 @@ $ node --trace-generalization gen.js \
 ```
 
 The field starts as a heap-object field (it holds `undefined` before
-the constructor runs), and storing a number generalizes it to a generic
+the constructor runs), and storing a number generalises it to a generic
 *tagged* field, so every double is boxed; the `const` from the
 `%DebugPrint` stepper becomes `mutable` at the same moment. Without the
 `x;` line, no such line appears for `x`.
@@ -253,7 +254,7 @@ V8 version.
 - `%HasFastProperties` and `%HaveSameMap` answer yes-or-no questions
   about dictionary mode and shapes.
 - `%GetOptimizationStatus` returns a bit set, named in `runtime.h`;
-  `%OptimizeFunctionOnNextCall` forces optimization for a test.
+  `%OptimizeFunctionOnNextCall` forces optimisation for a test.
 - All of them are V8 test functions, for one version: use them to check
   assumptions, never in shipped code.
 

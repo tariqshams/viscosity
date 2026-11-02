@@ -18,7 +18,7 @@ export const prompts = {
     a: '10, 100 and 1500.',
   },
   'warp-input': {
-    q: 'What does SpiderMonkey’s Warp read, besides the bytecode, when it builds optimized code?',
+    q: 'What does SpiderMonkey’s Warp read, besides the bytecode, when it builds optimised code?',
     a: 'A snapshot of what the Baseline inline caches saw (their CacheIR stubs).',
   },
   'sm-bailout': {
@@ -328,7 +328,7 @@ export const quiz = [
     q: 'Viscosity measured its speed-ups on Node. What is the honest claim for Firefox?',
     options: [
       { t: 'The same speed-ups, because the layout is the same', why: 'The layout is the same, but the compiler that runs it isn’t.' },
-      { t: 'A hypothesis to measure: typed-array storage is the same everywhere, but each engine compiles the loops differently', correct: true, why: 'Float64Array elements are raw doubles in every engine, but how fast each optimizing tier uses them is an engine-specific question.' },
+      { t: 'A hypothesis to measure: typed-array storage is the same everywhere, but each engine compiles the loops differently', correct: true, why: 'Float64Array elements are raw doubles in every engine, but how fast each optimising tier uses them is an engine-specific question.' },
       { t: 'No speed-up, because Firefox NaN-boxes values', why: 'NaN-boxing is about how single values are stored; it says nothing on its own about this loop’s speed.' },
       { t: 'A slowdown, because SpiderMonkey has fewer tiers', why: 'Fewer tiers doesn’t mean slower peak code. You can only find out by measuring.' },
     ],

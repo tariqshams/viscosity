@@ -29,9 +29,9 @@ const b = [1, 2, 3.5];
 V8 sees two different arrays. The chapter on how JavaScript stores
 numbers and objects showed that it keeps small integers as **Smis** and
 other numbers as doubles, and if V8 knows an array holds only Smis, it
-can optimize operations on it for exactly that case<Cite id="v8-elements-kinds" />.
+can optimise operations on it for exactly that case<Cite id="v8-elements-kinds" />.
 One stray `3.5` changes how the whole array is stored, and what the
-optimizing compiler may assume. V8 keeps **elements** (the values at
+optimising compiler may assume. V8 keeps **elements** (the values at
 integer indices) apart from an object's named
 properties<Cite id="v8-fast-properties" />, and for each array it tracks
 what kind of elements it holds<Cite id="v8-elements-kinds" />.
@@ -162,7 +162,7 @@ Which values fit in a Smi? Try a few:
 
 ## Kinds meet inline caches
 
-Elements kinds matter most to optimized code. An element load such as
+Elements kinds matter most to optimised code. An element load such as
 `xs[i]` has an inline cache like a property load, and what it remembers
 is the array's map, which includes its kind. The V8 post on elements
 kinds warns that a helper called with arrays of several kinds makes its
@@ -188,7 +188,7 @@ habit<Cite id="v8-elements-kinds" />.
 <Callout kind="engine" label="Under the hood">
 The 2017 post that explains the lattice counts 21 different elements
 kinds<Cite id="v8-elements-kinds" />; this chapter and the next cover the
-six common ones. Typed arrays have specialized kinds of their
+six common ones. Typed arrays have specialised kinds of their
 own<Cite id="v8-elements-kinds" />: `%DebugPrint` reports
 `FLOAT64ELEMENTS` for a `Float64Array`, which is one more reason
 Viscosity's struct-of-arrays columns are `Float64Array`s, since a

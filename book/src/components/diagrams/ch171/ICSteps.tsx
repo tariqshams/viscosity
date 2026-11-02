@@ -19,13 +19,13 @@ type S = {
 const STATE_NAME = { '0': 'uninitialized', '1': 'monomorphic', P: 'polymorphic', N: 'megamorphic' };
 
 const STATES: S[] = [
-  { incoming: null, result: null, state: '0', entries: [], note: 'getX’s bytecode has one property load, o.x, with its own feedback slot. Nothing has run yet, so its inline cache is empty: state 0, uninitialized.' },
+  { incoming: null, result: null, state: '0', entries: [], note: 'getX’s bytecode has one property load, o.x, with its own feedback slot. Nothing has run yet, so its inline cache is empty: state 0, uninitialised.' },
   { incoming: 'A', result: 'miss', state: '1', entries: ['A'], note: 'An object of shape A arrives. The cache has nothing, so V8 does the slow lookup: search A’s descriptors for x, find slot 0. Then it writes down “shape A: load slot 0”. One shape seen: monomorphic.' },
   { incoming: 'A', result: 'hit', state: '1', entries: ['A'], note: 'Another A. Now the access is one comparison (is the shape A?) and one load from slot 0. No search at all. This is the fast path every access hopes for.' },
   { incoming: 'B', result: 'miss', state: 'P', entries: ['A', 'B'], note: 'Shape B. The check fails, so V8 looks x up again and adds a second entry. Two shapes seen: polymorphic. Each access must now find which of its shapes it has.' },
   { incoming: 'D', result: 'miss', state: 'P', entries: ['A', 'B', 'C', 'D'], note: 'After C and D, the list holds four entries. In the V8 inside Node 22, four is the limit: the flag max_valid_polymorphic_map_count defaults to 4.' },
   { incoming: 'E', result: 'mega', state: 'N', entries: [], note: 'A fifth shape. The list is full, so V8 gives up on it: megamorphic. The site stops keeping its own entries and uses the stub cache, one table shared by all megamorphic loads.' },
-  { incoming: 'C', result: 'mega', state: 'N', entries: [], note: 'From now on every o.x here looks up (shape, name) in the shared table. This is the slow path, and it gives an optimizing compiler no single shape to build on.' },
+  { incoming: 'C', result: 'mega', state: 'N', entries: [], note: 'From now on every o.x here looks up (shape, name) in the shared table. This is the slow path, and it gives an optimising compiler no single shape to build on.' },
 ];
 
 export default function ICSteps() {

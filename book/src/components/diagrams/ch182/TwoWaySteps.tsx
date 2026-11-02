@@ -27,12 +27,12 @@ const STATES: S[] = [
   {
     left: { title: 'duplicate loops', lines: ['if columnar: fast copy', 'else: original loop'], hot: true },
     right: { title: 'one loop', lines: ['already columnar', 'nothing to check'] },
-    note: 'Compiled code can’t assume the array is columnar, so the 2023 paper duplicates the loop: a check picks a copy optimized for columns, and the original loop stays as the slow path. Viscosity’s loop has only one layout to handle.',
+    note: 'Compiled code can’t assume the array is columnar, so the 2023 paper duplicates the loop: a check picks a copy optimised for columns, and the original loop stays as the slow path. Viscosity’s loop has only one layout to handle.',
   },
   {
     left: { title: 'a surprise', lines: ['a guard fails:', 'deoptimize, adapt'], hot: true },
     right: { title: 'no surprises', lines: ['it was seen in source:', 'array left as objects'], hot: true },
-    note: 'On the left, speculation means a wrong guess costs a deoptimization, never a wrong answer. On the right, anything that could break the layout was found at build time, and that array simply wasn’t transformed: no guards, but also no second chance.',
+    note: 'On the left, speculation means a wrong guess costs a deoptimisation, never a wrong answer. On the right, anything that could break the layout was found at build time, and that array simply wasn’t transformed: no guards, but also no second chance.',
   },
 ];
 

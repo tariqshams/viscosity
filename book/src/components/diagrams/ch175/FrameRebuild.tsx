@@ -19,7 +19,7 @@ const FRAME = [
 
 export default function FrameRebuild() {
   return (
-    <Svg w={400} h={200} title="Left: the interpreter frame the deoptimizer built for add: a0 holds the string a, a1 holds b, the accumulator holds b, and the bytecode offset is 2. Right: add's three bytecodes, with Ldar a1 already done and Add a0, [0] at offset 2 highlighted as the place Ignition resumes.">
+    <Svg w={400} h={200} title="Left: the interpreter frame the deoptimiser built for add: a0 holds the string a, a1 holds b, the accumulator holds b, and the bytecode offset is 2. Right: add's three bytecodes, with Ldar a1 already done and Add a0, [0] at offset 2 highlighted as the place Ignition resumes.">
       <T x={8} y={12} size={11} weight={700} fill={tok('muted')}>REBUILT IGNITION FRAME</T>
       {FRAME.map((f, k) => (
         <g key={f.k}>

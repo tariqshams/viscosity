@@ -42,7 +42,7 @@ this chapter all four answers will be obvious.
 ## A shape is a shared description
 
 The problem shapes solve is the one your Drip VM never solved: where does
-`p.x` live? In the chapter on classes and methods in the VM, every Drip
+`p.x` live? In the chapter "Objects and method calls in the VM", every Drip
 instance kept its own hash table of fields, names and all, so ten
 thousand particles meant ten thousand tables, each storing `"x"` and
 `"vx"` again, and every `p.x` was a hash lookup.
@@ -223,7 +223,7 @@ Code can see the order too, which is why an engine must remember it:
 <Run id="order-visible" />
 
 <Callout kind="engine" label="Under the hood">
-Shapes are why V8's optimizing tiers can be fast. In 2023 the V8 team
+Shapes are why V8's optimising tiers can be fast. In 2023 the V8 team
 described Maglev reading `o.x`: if feedback says `o` always had one
 shape, it emits a check of that shape and then a plain load at a fixed
 offset<Cite id="v8-maglev" />. For Viscosity the lesson is the one the

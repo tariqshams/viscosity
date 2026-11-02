@@ -1,4 +1,4 @@
-// Chapter 180: partial evaluation folds an AST interpreter into the program.
+// Chapter 181: partial evaluation folds an AST interpreter into the program.
 // The steps follow the example in Truffle's own documentation
 // (truffle/docs/PartialEvaluation.md: AddNode over two LoadArgumentNodes
 // becomes args[1] + args[2]), rewritten in JavaScript. The last step follows
@@ -35,7 +35,7 @@ function run(args) {
   return prog.execute(args);
 }`,
     line: 3,
-    note: 'Now fix one input: the program’s tree. It won’t change while this code runs, so the specializer treats prog as a constant. Only args is still unknown.',
+    note: 'Now fix one input: the program’s tree. It won’t change while this code runs, so the specialiser treats prog as a constant. Only args is still unknown.',
   },
   {
     label: 'inline Add',

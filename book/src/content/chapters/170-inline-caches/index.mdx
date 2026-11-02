@@ -101,7 +101,7 @@ V8 can log every change of an IC's state with `--log-ic` (you may see
 `--trace-ic` mentioned online; this Node build refuses it, with `node:
 bad option: --trace-ic`). Each line gives the kind of access, its line
 and column, the old and new state, and the property name; the states are
-`0` (uninitialized) and `1` (monomorphic), and the next chapter meets the
+`0` (uninitialised) and `1` (monomorphic), and the next chapter meets the
 others<Cite id="v8-src-ic-12-4" />.
 
 <Examples of="inline-cache monomorphic">
@@ -130,8 +130,8 @@ StoreIC 4:24 0 1 x
 
 </Examples>
 
-The first is the simplest case (Node v22.23.4, V8 12.4, my run, lines for
-Node's own code removed): line 1, column 29 is the `x` in `o.x`; the
+The first is the simplest case (Node v22.23.4, V8 12.4, my run, keeping only the
+lines for `getX`): line 1, column 29 is the `x` in `o.x`; the
 first call moved it from `0` to `1`, and the other nine calls, all with
 the same shape, changed nothing, so there is nothing more to log. The
 second has *four* loads but only two lines, and the bytecode explains
@@ -153,7 +153,7 @@ string of their keys:
 
 <Run id="tiny-ic" />
 
-## Why the optimizing tiers care
+## Why the optimising tiers care
 
 The feedback is not only for Ignition: Sparkplug keeps the feedback
 vector in its stack frame, because most operations need
@@ -163,7 +163,7 @@ that shape, then a plain load at a fixed offset, and after that it knows
 the shape and does not check it again<Cite id="v8-maglev" />. The idea is
 old: Hölzle, Chambers and Ungar wrote about inline caches for Self in
 1991, and noted that the receiver types a cache records are information
-an optimizing compiler can use<Cite id="holzle1991" />.
+an optimising compiler can use<Cite id="holzle1991" />.
 
 The word *inline* is historical: V8's old baseline compiler patched the
 fast path into its machine code. Since Ignition (Chrome 59), the caches

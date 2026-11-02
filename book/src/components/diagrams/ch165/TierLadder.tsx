@@ -5,15 +5,15 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 // compile-speed steps); the last column is what `node --v8-options` and
 // %OptimizeMaglevOnNextCall reported in Node v22.23.4 (V8 12.4).
 const ROWS = [
-  { name: 'TurboFan', what: 'optimizing compiler: best code', speed: 'slowest to compile', node: 'on' },
-  { name: 'Maglev', what: 'quick optimizing compiler', speed: '~10× faster than TurboFan', node: 'off' },
+  { name: 'TurboFan', what: 'optimising compiler: best code', speed: 'slowest to compile', node: 'on' },
+  { name: 'Maglev', what: 'quick optimising compiler', speed: '~10× faster than TurboFan', node: 'off' },
   { name: 'Sparkplug', what: 'bytecode → machine code, one pass', speed: '~10× faster than Maglev', node: 'on' },
   { name: 'Ignition', what: 'interprets the bytecode', speed: 'no compile step', node: 'on' },
 ];
 
 export default function TierLadder() {
   return (
-    <Svg w={400} h={232} title="A ladder of four tiers. From the bottom: Ignition interprets bytecode; Sparkplug turns bytecode into machine code in one pass; Maglev is a quick optimizing compiler; TurboFan is the slow optimizing compiler that makes the best code. Arrows on the side say code gets faster going up, and compiling gets cheaper going down. In Node 22, Maglev is off.">
+    <Svg w={400} h={232} title="A ladder of four tiers. From the bottom: Ignition interprets bytecode; Sparkplug turns bytecode into machine code in one pass; Maglev is a quick optimising compiler; TurboFan is the slow optimising compiler that makes the best code. Arrows on the side say code gets faster going up, and compiling gets cheaper going down. In Node 22, Maglev is off.">
       <T x={60} y={12} size={11} weight={700} fill={tok('muted')}>TIER</T>
       <T x={372} y={12} size={11} weight={700} fill={tok('muted')} anchor="middle">NODE 22</T>
       {ROWS.map((r, k) => {

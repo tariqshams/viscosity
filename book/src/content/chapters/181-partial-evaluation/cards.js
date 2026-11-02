@@ -4,11 +4,11 @@
 export const prompts = {
   'pe-what': {
     q: 'What is **partial evaluation**?',
-    a: 'Specializing a program for the inputs that are already known, leaving a simpler program of the remaining inputs.',
+    a: 'Specialising a program for the inputs that are already known, leaving a simpler program of the remaining inputs.',
   },
   'pe-static-dynamic': {
     q: 'In partial evaluation, what is the difference between a **static** and a **dynamic** input?',
-    a: 'A static input is known now, at specialization time; a dynamic one only arrives when the residual program runs.',
+    a: 'A static input is known now, at specialisation time; a dynamic one only arrives when the residual program runs.',
   },
   'residual': {
     q: 'What is the **residual program**?',
@@ -32,7 +32,7 @@ export const prompts = {
   },
   'deopt-cycle': {
     q: 'What goes wrong if a node’s recorded state never stops changing?',
-    a: 'A deoptimization cycle: the code is compiled, invalidated, recompiled, and invalidated again.',
+    a: 'A deoptimisation cycle: the code is compiled, invalidated, recompiled, and invalidated again.',
   },
 };
 
@@ -145,25 +145,25 @@ test('the result really runs', () => {
       'A child "came out as a number" if its string converts to a number: `!isNaN(Number(s))`. `Number(\'args[1]\')` is `NaN`.',
       'Only when both are numbers, compute `x + y` or `x * y` and return `String(...)`. Otherwise glue the strings with parentheses.',
     ],
-    walkthrough: `**How to think about it.** This is a partial evaluator for a tiny language, where everything is known except \`args\`. Work through \`(1 + 2) * args[0]\` by hand. The leaf \`1\` becomes \`'1'\`, the leaf \`2\` becomes \`'2'\`; the \`+\` sees two numbers, so it can do the sum now and becomes \`'3'\`. The leaf \`args[0]\` stays as the text \`'args[0]'\`, because its value only arrives later. The \`*\` sees \`'3'\` and \`'args[0]'\`; one side is unknown, so it cannot compute anything and writes \`'(3 * args[0])'\`. So the plan is: specialize the children first, then decide, at each operator, whether both of *the results* are numbers.
+    walkthrough: `**How to think about it.** This is a partial evaluator for a tiny language, where everything is known except \`args\`. Work through \`(1 + 2) * args[0]\` by hand. The leaf \`1\` becomes \`'1'\`, the leaf \`2\` becomes \`'2'\`; the \`+\` sees two numbers, so it can do the sum now and becomes \`'3'\`. The leaf \`args[0]\` stays as the text \`'args[0]'\`, because its value only arrives later. The \`*\` sees \`'3'\` and \`'args[0]'\`; one side is unknown, so it cannot compute anything and writes \`'(3 * args[0])'\`. So the plan is: specialise the children first, then decide, at each operator, whether both of *the results* are numbers.
 
 **The solution, line by line.**
 
 - \`if (n.op === 'num') { return String(n.v); }\` A number is static: its residual code is just its digits.
 - \`if (n.op === 'arg') { return 'args[' + n.i + ']'; }\` An argument is dynamic: we cannot know its value, so we write the code that will fetch it later.
-- \`const l = pe(n.l);\` and \`const r = pe(n.r);\` specialize both children first (bottom-up), so anything foldable underneath has already been folded.
+- \`const l = pe(n.l);\` and \`const r = pe(n.r);\` specialise both children first (bottom-up), so anything foldable underneath has already been folded.
 - \`const lit = (s) => !isNaN(Number(s));\` A child "came out as a number" if its string converts to a number; \`Number('args[1]')\` is \`NaN\`, so code that mentions \`args\` never counts.
 - \`if (lit(l) && lit(r)) {\` Only when both sides are known numbers can the operator be done now.
 - \`const x = Number(l), y = Number(r);\` turns the two strings back into numbers.
 - \`return String(n.op === '+' ? x + y : x * y);\` computes the result and returns it as code: a known value folds into a literal.
 - \`return '(' + l + ' ' + n.op + ' ' + r + ')';\` Otherwise, glue the two pieces of residual code together with the operator, in parentheses so that the order of operations is kept.
 
-The string that comes out is the residual program; turning it into a function with \`new Function('args', 'return ' + code)\` is the "compile" step, and when that function runs, the tree and the \`switch\` no longer exist. Compared with Truffle, this specializer knows the language; Truffle's partial evaluator knows nothing about any guest language, and specializes the interpreter's *own* Java code, with the tree as the constant input.
+The string that comes out is the residual program; turning it into a function with \`new Function('args', 'return ' + code)\` is the "compile" step, and when that function runs, the tree and the \`switch\` no longer exist. Compared with Truffle, this specialiser knows the language; Truffle's partial evaluator knows nothing about any guest language, and specialises the interpreter's *own* Java code, with the tree as the constant input.
 
 **Common wrong attempts.**
 
 - Never folding (always gluing strings): the output is correct code, but \`2 + 3\` stays \`(2 + 3)\`; partial evaluation should compute everything that is already known.
-- Folding only when both children are literally \`num\` nodes (\`n.l.op === 'num'\`): \`(1 + 2) * args[0]\` works, but \`(1 + 2) * 4\` keeps \`(3 * 4)\`, because the left child was an operator node whose *result* was a number. Look at the specialized children, not the original ones.`,
+- Folding only when both children are literally \`num\` nodes (\`n.l.op === 'num'\`): \`(1 + 2) * args[0]\` works, but \`(1 + 2) * 4\` keeps \`(3 * 4)\`, because the left child was an operator node whose *result* was a number. Look at the specialised children, not the original ones.`,
     wrong: [
       {
         code: `function pe(n) {
@@ -198,7 +198,7 @@ The string that comes out is the residual program; turning it into a function wi
   return '(' + l + ' ' + n.op + ' ' +
     r + ')';
 }`,
-        why: 'It only folds when both children are literally `num` nodes, so `(1 + 2) * args[0]` keeps `(1 + 2)`. Look at the specialized children, not the original ones.',
+        why: 'It only folds when both children are literally `num` nodes, so `(1 + 2) * args[0]` keeps `(1 + 2)`. Look at the specialised children, not the original ones.',
       },
     ],
   },
@@ -224,7 +224,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the step-through, why can the specializer inline `prog.l.execute`?',
+    q: 'In the step-through, why can the specialiser inline `prog.l.execute`?',
     options: [
       { t: '`prog` is constant and `l` is a stable field, so `prog.l` is a known `Arg` node', correct: true, why: 'Stable fields of a constant are constants too, so the call has exactly one possible target.' },
       { t: 'Because JavaScript inlines every method call', why: 'Engines inline only when they can tell which function will be called.' },
@@ -237,8 +237,8 @@ export const quiz = [
     options: [
       { t: 'Nothing: compiled code reads the new value next time', why: 'Compiled code has folded the old value in as a constant.' },
       { t: 'Recompile immediately, before changing the field', why: 'First the old code must stop being used.' },
-      { t: 'Invalidate the compiled code (e.g. `transferToInterpreterAndInvalidate`) and continue in the interpreter', correct: true, why: 'Then the node re-specializes, and the code may be compiled again later.' },
-      { t: 'Restart the program', why: 'Deoptimization is invisible to the program.' },
+      { t: 'Invalidate the compiled code (e.g. `transferToInterpreterAndInvalidate`) and continue in the interpreter', correct: true, why: 'Then the node re-specialises, and the code may be compiled again later.' },
+      { t: 'Restart the program', why: 'Deoptimisation is invisible to the program.' },
     ],
   },
   {
@@ -246,8 +246,8 @@ export const quiz = [
     options: [
       { t: 'It can only run one language at a time', why: 'Truffle is designed for many languages; that isn’t its trade-off.' },
       { t: 'It has no interpreter, so start-up is slow', why: 'It is built around an interpreter.' },
-      { t: 'It cannot speculate', why: 'Speculation and deoptimization are central to it.' },
-      { t: 'The interpreter must be written so partial evaluation can see what is stable, and speculations must settle', correct: true, why: 'Truffle’s own documentation says interpreter code must be PE-friendly and warns about deoptimization cycles.' },
+      { t: 'It cannot speculate', why: 'Speculation and deoptimisation are central to it.' },
+      { t: 'The interpreter must be written so partial evaluation can see what is stable, and speculations must settle', correct: true, why: 'Truffle’s own documentation says interpreter code must be PE-friendly and warns about deoptimisation cycles.' },
     ],
   },
 ];

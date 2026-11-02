@@ -8,7 +8,7 @@ objectives:
   - Explain what type feedback is, and read three kinds of it (an add, a property load, a call) from real V8 output.
   - Explain why feedback only ever widens, and model it as a lattice.
   - Describe how speculative code guards its assumptions, with run-time checks and with dependencies.
-  - Name the guards behind real deoptimization reasons such as "not a Smi", "wrong map" and "overflow".
+  - Name the guards behind real deoptimisation reasons such as "not a Smi", "wrong map" and "overflow".
 introduces: [type-feedback, speculation]
 uses: [tiering, jit-compiler, ignition, optimizing-tiers, inline-cache, monomorphic, shape, smi, heap-number, bytecode, interpreter, register, dynamic-typing, type-erasure, typescript, branch-prediction, jit-warmup, function, call, strings, numbers, elements-kind]
 sources: [v8-maglev, v8-leaving-sea-of-nodes]
@@ -28,7 +28,7 @@ function add(a, b) {
 
 `+` adds numbers, joins strings, and calls `valueOf` on objects. When
 Ignition runs `add`, its bytecode has one generic `Add`, and every call
-has to work out which of those cases it is in; your Drip VM's `ADD` did a
+has to work out which of those cases it is in; your Drip VM's `add` did a
 smaller version of the same thing, checking for two strings or two
 numbers on every single add. However, in a real program `add` is almost
 always called the same way. If the engine could see that, it could
@@ -55,7 +55,7 @@ records which kinds were seen (small integers, numbers, anything), not
 how often each one came.</span>
 </Analogy>
 
-While unoptimized code runs, V8 keeps track of how the program behaves,
+While unoptimised code runs, V8 keeps track of how the program behaves,
 including the shapes and types each operation sees<Cite id="v8-maglev" />.
 It lives in the function's feedback vector, the one whose slot numbers
 you saw in Ignition's bytecode (`Add a0, [0]`). Step through slot 0 of
@@ -64,10 +64,10 @@ you saw in Ignition's bytecode (`Add a0, [0]`). Step through slot 0 of
 <FeedbackSteps client:visible />
 
 <Callout kind="definition">
-**Type feedback** is what unoptimized code records about the values it
+**Type feedback** is what unoptimised code records about the values it
 actually sees: the shapes at a property access, the kinds of operand at
-an `Add`, the functions called at a call site. The optimizing tiers read
-it to decide what to specialize for<Cite id="v8-maglev" />. In V8 it lives
+an `Add`, the functions called at a call site. The optimising tiers read
+it to decide what to specialise for<Cite id="v8-maglev" />. In V8 it lives
 in each function's **feedback vector**, one slot per operation that can
 see different kinds of value.
 </Callout>
@@ -84,7 +84,8 @@ after a call a + b :
 (⊑, "is at least as narrow as"). After each call, the slot becomes the
 join (⊔, "the wider of the two") of what it said before and what this
 call saw. Exactly like an array's elements kind, it can only move one
-way.</span>
+way. (V8 has a few more states, such as one for strings; four are enough
+here.)</span>
 </Formal>
 
 You can read the slots with `%DebugPrint(f)` (start Node with
@@ -134,7 +135,7 @@ is a fact about the past, and none is a promise about the future.
 The barista starts your usual as you come through the door, but she still
 glances up to check it is really you; if it is your twin, she puts that
 cup aside and takes the order properly.
-<span slot="breaks">The barista's glance happens once; optimized code
+<span slot="breaks">The barista's glance happens once; optimised code
 repeats its check on every single call, and it is so cheap (a compare or
 two) that it costs far less than the work it lets the code skip.</span>
 </Analogy>
@@ -148,13 +149,13 @@ leaving the fast code at once and finishing the same call, correctly, in
 the interpreter.</span>
 </Analogy>
 
-Once `add` is hot, the optimizing compiler builds code from the feedback.
+Once `add` is hot, the optimising compiler builds code from the feedback.
 It does not prove the feedback will stay true; it *speculates*, and puts a
 check in front of each guess. Maglev's post describes the pattern for
 `o.x`: if feedback says `o` always had one shape, it emits a node that
 checks the shape at run time, then a cheap load at a fixed
 offset<Cite id="v8-maglev" />. For arithmetic, TurboFan speculates that
-small integers stay small, using a checked add that deoptimizes if the
+small integers stay small, using a checked add that deoptimises if the
 result overflows<Cite id="v8-leaving-sea-of-nodes" />.
 
 <Figure caption="The shape of speculative code for a + b when feedback says SignedSmall. Each check on a guess has a side exit; the labels are the reasons --trace-deopt prints when one fails." takeaway="Past the guards, the code can ignore every other case.">
@@ -164,7 +165,7 @@ result overflows<Cite id="v8-leaving-sea-of-nodes" />.
 Some guesses need no check in the code at all. A global that has never
 changed can be built into Maglev's machine code as a constant; Maglev
 registers a **dependency** instead, and if the global is ever changed,
-the runtime invalidates and deoptimizes that code<Cite id="v8-maglev" />.
+the runtime invalidates and deoptimises that code<Cite id="v8-maglev" />.
 
 <Callout kind="definition">
 **Speculation** is compiling code that is only correct while what the
@@ -229,7 +230,7 @@ before V8 sees the code, so the engine learns only by watching.
 
 ## What you learned
 
-- **Type feedback** is what unoptimized code observed: operand kinds,
+- **Type feedback** is what unoptimised code observed: operand kinds,
   shapes, call targets, kept per operation in the feedback vector.
 - Feedback only widens; for `+` in V8 12.4 it went `SignedSmall` →
   `Number` → `Any`.

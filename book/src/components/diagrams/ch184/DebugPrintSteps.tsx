@@ -1,4 +1,4 @@
-// Chapter 183b: one real %DebugPrint output, read line by line. Produced by
+// Chapter 184: one real %DebugPrint output, read line by line. Produced by
 //   node --allow-natives-syntax b.js
 // with `%DebugPrint({ x: 1.5, y: 2 });` on Node v22.23.4
 // (V8 12.4.254.21-node.57); addresses shortened to 0x…, long lines split,
@@ -24,7 +24,7 @@ const STATES = [
   { line: 1, note: 'map is V8’s word for the object’s shape (hidden class). The 40 in Map[40] is the instance size printed again at the bottom; HOLEY_ELEMENTS is the elements kind of its (empty) indexed part.' },
   { line: 2, note: '[FastProperties]: the named properties are laid out by the map, not kept in a dictionary. This is what %HasFastProperties reports as true.' },
   { line: 5, note: 'x holds 1.5, which is not a small integer, so the field holds a pointer to a separate HeapNumber, as How JavaScript stores numbers and objects described.' },
-  { line: 6, note: 'const data field 0, in-object: x is field number 0, stored inside the object itself. The word const is V8’s own bookkeeping about the field; the --trace-generalization example in this chapter shows a field losing it.' },
+  { line: 6, note: 'const data field 0, in-object: x is field number 0, stored inside the object itself. The word const is V8’s own bookkeeping about the field; the --trace-generalisation example in this chapter shows a field losing it.' },
   { line: 7, note: 'y holds 2 directly: a Smi, kept in the field with no separate box. Two numbers in one object, two different representations.' },
   { line: 10, note: 'Then V8 prints the map itself. It lives in OldSpace, the old generation.' },
   { line: 11, note: 'instance size 40 and 2 in-object properties: room for exactly the two fields x and y inside the object, matching Map[40] above.' },

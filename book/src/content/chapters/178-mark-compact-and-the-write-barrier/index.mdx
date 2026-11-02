@@ -46,7 +46,7 @@ Mark-Compact does three things<Cite id="v8-trash-talk" />:
 
 1. **Mark.** Starting from the roots, find every object still in use,
    exactly as your Drip collector does, with the white, grey and black
-   colours of *Garbage collection: mark and sweep*.
+   colours of *Tracing and sweeping: white, grey and black*.
 2. **Sweep.** The gaps left by dead objects go onto **free-lists**,
    sorted by size, so that later allocations can reuse them.
 3. **Compact, but only some pages.** The heap is divided into pages,
@@ -217,7 +217,7 @@ unmarked<Cite id="v8-trash-talk" /><Cite id="v8-concurrent-marking" />.
 </Callout>
 
 Barriers cost time on every store, so compilers avoid them when they
-can prove they are not needed. Maglev, one of V8's optimizing tiers,
+can prove they are not needed. Maglev, one of V8's optimising tiers,
 skips the barrier entirely when storing into an object it has only
 just allocated, as long as no other allocation happened in
 between<Cite id="v8-maglev" />.

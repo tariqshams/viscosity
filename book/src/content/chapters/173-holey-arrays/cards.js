@@ -1,4 +1,4 @@
-// Chapter 172b cards (split from 122). Keys are stable ids: never rename them.
+// Chapter 173 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'holey-what': {

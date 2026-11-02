@@ -37,12 +37,12 @@ Bytecode length: 6
 
 ```
 == add ==            (Drip VM)
-0000    1 OP_GET_LOCAL        1
-0002    | OP_GET_LOCAL        2
-0004    | OP_ADD
-0005    | OP_RETURN
-0006    | OP_NIL
-0007    | OP_RETURN
+0000    1 load.local          1
+0002    | load.local          2
+0004    | add
+0005    | return
+0006    | none
+0007    | return
 ```
 
 Both are `function add(a, b) { return a + b; }`, in the shape you know:
@@ -53,8 +53,8 @@ how each machine holds its values.
 
 ## A register machine with an accumulator
 
-Drip's VM is a stack machine: `GET_LOCAL` pushes `a`, pushes `b`, and
-`ADD` pops both. Ignition is a **register machine**: values live in
+Drip's VM is a stack machine: `load.local` pushes `a`, pushes `b`, and
+`add` pops both. Ignition is a **register machine**: values live in
 numbered **registers** (here `a0` and `a1`, the parameters), and one
 special register, the **accumulator**, is read and written by most
 instructions without being named<Cite id="v8-ignition" />.
@@ -167,7 +167,7 @@ week you have a written list of turns: same roads, no map-reading
 (Sparkplug). After a month you take the side street that has always been
 empty at this hour, glancing at the corner first in case today is
 different (Maglev and TurboFan).
-<span slot="breaks">Your shortcut is a habit; an optimizing tier's guess
+<span slot="breaks">Your shortcut is a habit; an optimising tier's guess
 comes from feedback slots, and when the glance shows a blocked street, V8
 does not wait: it throws the shortcut away and goes back to the map.</span>
 </Analogy>
@@ -189,24 +189,24 @@ failing.</span>
 - **Sparkplug** (V8 9.1, 2021) compiles bytecode straight to machine code
   in one pass; its code calls the interpreter's own helpers and keeps the
   same frame layout, so V8 can switch between them almost for free. The
-  team calls it *non-optimizing*<Cite id="v8-sparkplug" />.
+  team calls it *non-optimising*<Cite id="v8-sparkplug" />.
 - **Maglev** (desktop Chrome M117, described in 2023) is a quick
-  optimizing compiler; in 2023 the team reported that it compiled about
+  optimising compiler; in 2023 the team reported that it compiled about
   10 times slower than Sparkplug and about 10 times faster than
   TurboFan<Cite id="v8-maglev" />.
 - **TurboFan** is the top tier, aimed at peak speed; since 2017 it
   compiles from Ignition's bytecode<Cite id="v8-launch-ignition-turbofan" />.
 
-The two optimizing tiers read the feedback and make **speculative** code:
+The two optimising tiers read the feedback and make **speculative** code:
 code that assumes what was seen will keep happening, plus a check that
 bails out if it does not<Cite id="v8-maglev" />.
 
 <Callout kind="definition">
-V8's **optimizing tiers** are the compilers above Ignition: **Sparkplug**
-(one fast pass, no optimizations; it removes the interpreter's decode and
-dispatch cost), **Maglev** (a quick optimizing compiler) and
+V8's **optimising tiers** are the compilers above Ignition: **Sparkplug**
+(one fast pass, no optimisations; it removes the interpreter's decode and
+dispatch cost), **Maglev** (a quick optimising compiler) and
 **TurboFan** (slow to compile, the best code). Maglev and TurboFan
-specialize the code using the recorded feedback.
+specialise the code using the recorded feedback.
 </Callout>
 
 <Examples of="optimizing-tiers">
@@ -240,8 +240,8 @@ add(5, 6);
 The first shows Sparkplug: functions are queued with an estimated size,
 and once the queue passes a threshold (4096 by default, says `node
 --v8-options`) the whole batch is compiled at once, on the main thread;
-nothing there depends on another thread's timing, which fits the
-Sparkplug line landing on the same call in every run. The second shows
+nothing there waits on another thread, which is why the Sparkplug line
+moves far less between runs than the TurboFan one. The second shows
 TurboFan marking `add` "hot and stable" and compiling it, in about a
 millisecond. The third asks for Maglev by hand, and this Node 22 build
 refuses, even with `--maglev`, which is why the run went straight from
@@ -255,7 +255,7 @@ Now the previous chapter's output reads line by line: `add` started in
 Ignition, was compiled by Sparkplug in a batch at call 6,256, and by
 TurboFan a few thousand calls later, at a call that varies because that
 compile runs on another thread. And near call 65,536? `--trace-deopt`,
-which prints a line whenever optimized code is abandoned, says why:
+which prints a line whenever optimised code is abandoned, says why:
 
 ```
 [bailout (kind: deopt-eager,
@@ -269,7 +269,7 @@ call 65,536. TurboFan's code had assumed small integers, because that was
 all feedback slot `[0]` had ever recorded; the guess failed, the code was
 dropped, and `add` carried on, correctly, in Sparkplug, until TurboFan
 compiled it again with the wider facts. Nothing was lost but time; the
-chapter on deoptimization takes that moment apart.
+chapter on deoptimisation takes that moment apart.
 
 <Prompts ids={['why-fall']} />
 
@@ -292,8 +292,8 @@ Turboshaft<Cite id="v8-leaving-sea-of-nodes" />.
   **accumulator** is an implicit operand, so `a + b` is three instructions.
 - Its instructions carry **feedback slots**, which record what each
   operation saw; Drip's VM keeps no such record.
-- The **optimizing tiers**: **Sparkplug** removes decode and dispatch,
-  **Maglev** optimizes quickly, **TurboFan** makes the best code; the last
+- The **optimising tiers**: **Sparkplug** removes decode and dispatch,
+  **Maglev** optimises quickly, **TurboFan** makes the best code; the last
   two speculate from feedback, and fall back when a guess fails.
 
 Next: before any of this can start, V8 has to parse the source, and it

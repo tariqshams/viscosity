@@ -17,10 +17,10 @@ const LINE = `[bailout (kind: deopt-eager,
  pc 0x7f12c0005d75]`;
 
 const STATES = [
-  { line: 0, note: 'kind: deopt-eager. In V8’s words, an eager deopt means a check failed in the optimized code and deoptimization happens immediately. (A lazy one is triggered later, when an assumption checked elsewhere breaks.)' },
-  { line: 1, note: 'reason: not a Smi. The optimized add assumed both arguments were small integers, because that is all its feedback had seen. Then add(0.5, 1) arrived.' },
-  { line: 3, note: '<JSFunction add …> names the function whose optimized code is being abandoned. The top-level script shows up as <JSFunction (sfi = …)>, with no name.' },
-  { line: 5, note: '<Code TURBOFAN> and opt id 0: the code being thrown away came from TurboFan, and opt id identifies that compile. In this run, add was the first function optimized.' },
+  { line: 0, note: 'kind: deopt-eager. In V8’s words, an eager deopt means a check failed in the optimised code and deoptimisation happens immediately. (A lazy one is triggered later, when an assumption checked elsewhere breaks.)' },
+  { line: 1, note: 'reason: not a Smi. The optimised add assumed both arguments were small integers, because that is all its feedback had seen. Then add(0.5, 1) arrived.' },
+  { line: 3, note: '<JSFunction add …> names the function whose optimised code is being abandoned. The top-level script shows up as <JSFunction (sfi = …)>, with no name.' },
+  { line: 5, note: '<Code TURBOFAN> and opt id 0: the code being thrown away came from TurboFan, and opt id identifies that compile. In this run, add was the first function optimised.' },
   { line: 7, note: 'bytecode offset 2: the bytecode at which the function carries on in the interpreter. In the --print-bytecode listing, offset 2 is Add a0, [0]: exactly the + whose guess failed.' },
   { line: 8, note: 'The rest is machine-level detail: which exit was taken, the frame’s size, stack and program-counter addresses. The addresses change on every run, so never compare them between runs.' },
 ];
