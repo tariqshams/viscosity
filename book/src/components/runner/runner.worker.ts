@@ -3,6 +3,14 @@
 import { formatArgs } from '../../lib/format.js';
 import { runWithTestsAsync } from '../../lib/minitest.js';
 
+// A rejected promise nobody handles: report it the way a browser console
+// does, rather than letting it vanish.
+self.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+  e.preventDefault();
+  const r = e.reason;
+  (self as unknown as Worker).postMessage({ type: 'log', level: 'error', text: `Uncaught (in promise) ${r instanceof Error ? `${r.name}: ${r.message}` : String(r)}` });
+});
+
 type Msg = { code: string; tests?: string; lang: 'js' | 'ts' | 'drip' | 'drip-vm' | 'rust' };
 
 self.onmessage = async (e: MessageEvent<Msg>) => {

@@ -40,6 +40,10 @@ const rustDir = mkdtempSync(join(tmpdir(), 'book-rust-'));
 process.on('exit', () => { try { rmSync(rustDir, { recursive: true, force: true }); } catch {} });
 // ...also when interrupted (Ctrl-C, a killed CI job), which skips 'exit'.
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(130));
+// A reader's program (or a deliberately wrong attempt) may leave a rejected
+// promise nobody handles; in the browser that is a console error, here it
+// must not crash the checker.
+process.on('unhandledRejection', () => {});
 let rustN = 0;
 function runRust(code, tests) {
   const n = rustN++;
