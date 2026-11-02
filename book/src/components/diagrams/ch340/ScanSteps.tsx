@@ -1,4 +1,4 @@
-// Chapter 339-b: the Rust Drip scanner cutting tokens out of its source.
+// Chapter 340: the Rust Drip scanner cutting tokens out of its source.
 // Two indices, start and current, walk the bytes; each finished token's
 // lexeme is &source[start..current], a (pointer, length) into the source
 // String, so scanning allocates nothing (companion/rust/src/scanner.rs).

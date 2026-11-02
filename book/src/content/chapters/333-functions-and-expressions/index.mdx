@@ -111,7 +111,7 @@ let c = area(3, 4);   // fixed
 error[E0061]: this function takes 2
   arguments but 1 argument was supplied
 error[E0308]: mismatched types
-5 |     let b = area(3, 2.5);
+6 |     let b = area(3, 2.5);
   |                     ^^^ expected
   |       `i32`, found floating-point number
 ```
@@ -149,8 +149,9 @@ fn area(w: i32, h: i32) -> i32 { // fixed
 ```text
 error[E0308]: mismatched types
 1 | fn area(w: i32, h: i32) {
-  |      - help: try adding a return type:
-  |              `-> i32`
+  |                        - help: try
+  |                          adding a return
+  |                          type: `-> i32`
 2 |     return w * h;
   |            ^^^^^ expected `()`,
   |                  found `i32`

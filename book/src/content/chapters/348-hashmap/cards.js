@@ -1,4 +1,4 @@
-// Chapter 347-b cards. Keys are stable ids: never rename them.
+// Chapter 348 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'map-import': {

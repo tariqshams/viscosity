@@ -266,7 +266,7 @@ left to check while it runs<Cite id="rust-error-codes" />.
 You have built this. *A borrow checker in miniature* kept a ledger of
 loans, checked every access against the live ones and reported the same
 five errors; rustc's real checker does that on its MIR, with liveness
-deciding when a loan ends<Cite id="rustc-dev-guide-borrowck" />. The rule also pays the optimizer. The Rust
+deciding when a loan ends<Cite id="rustc-dev-guide-borrowck" />. The rule also pays the optimiser. The Rust
 Reference lists breaking it as undefined behaviour: while a `&mut T` is
 live, no other pointer may read or write that memory, and memory behind
 a live `&T` must not change<Cite id="rustref-ub" />. Because a correct

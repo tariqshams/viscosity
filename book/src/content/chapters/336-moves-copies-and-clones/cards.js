@@ -1,4 +1,4 @@
-// Chapter 335-b cards (the second half of chapter 335): recall prompts,
+// Chapter 336 cards (continuing chapter 335): recall prompts,
 // examples, exercises and quiz. Keys are stable ids: renaming one would
 // orphan readers' review history.
 

@@ -1,4 +1,4 @@
-// Chapter 331-b: a u8 is eight bits, so it counts 0..=255 and then has
+// Chapter 332: a u8 is eight bits, so it counts 0..=255 and then has
 // nowhere to go. The reader steps a counter up to 255 and sees the four
 // things that can happen next: a panic (debug builds check), a wrap to 0
 // (rustc's release default), and the methods that say which you want.

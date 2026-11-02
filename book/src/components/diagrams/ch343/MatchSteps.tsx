@@ -52,7 +52,7 @@ function ValueBox({ x, y, v }: { x: number; y: number; v: V }) {
         <T x={x + 37} y={y + 17} size={13} mono weight={700} anchor="middle">{v.tag}</T>
       </Box>
       <Box x={x + 76} y={y} w={60} h={34} r={4} stroke={tok('ink', 0.5)}>
-        <T x={x + 106} y={y + 17} size={13} mono anchor="middle" fill={v.payload ? tok('ink') : tok('muted')}>{v.payload ?? '—'}</T>
+        <T x={x + 106} y={y + 17} size={13} mono anchor="middle" fill={v.payload ? tok('ink') : tok('muted')}>{v.payload ?? '·'}</T>
       </Box>
     </g>
   );

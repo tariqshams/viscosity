@@ -1,4 +1,4 @@
-// Chapter 341-b cards. Keys are stable ids: never rename them.
+// Chapter 342 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'impl-what': {
@@ -188,7 +188,7 @@ fn pop_then_push_reuses_the_slot() {
 - \`self.slots[self.top] = v;\` writes the new value into the first free box. Writing to a field through \`self\` is allowed because the method took \`&mut self\`.
 - \`self.top += 1;\` records that one more box is in use, which also moves "the first free box" along.
 - \`self.top -= 1;\` (in \`pop\`) moves \`top\` down first, so it now points at the last value pushed.
-- \`self.slots[self.top]\` reads that value. It is the last expression of the method, with no semicolon, so it is what \`pop\` returns (the chapter *Functions and expressions*). The old value stays in the array, but it is at or above \`top\`, so it no longer counts, and the next \`push\` overwrites it.
+- \`self.slots[self.top]\` reads that value. It is the last expression of the method, with no semicolon, so it is what \`pop\` returns (the chapter *Blocks, if and the tail expression*). The old value stays in the array, but it is at or above \`top\`, so it no longer counts, and the next \`push\` overwrites it.
 - \`self.slots[self.top - 1 - d]\` (in \`peek\`) starts at the top value, \`top - 1\`, and steps \`d\` boxes further down. It writes nothing, which is why \`&self\` suffices.
 
 **How the real VMs do it.** The TypeScript VM's \`push\`, \`pop\` and \`peek\` are these three lines with \`this.sp\` in place of \`self.top\`. The Rust VM's versions keep the same receivers, \`fn push(&mut self, value: Value)\`, \`fn pop(&mut self) -> Value\` and \`fn peek(&self, distance: usize) -> Value\`, but store the values in a growable \`Vec\` (a later chapter), so they have no fixed limit of eight.

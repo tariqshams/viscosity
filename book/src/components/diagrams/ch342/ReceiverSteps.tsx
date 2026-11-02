@@ -30,7 +30,7 @@ const STATES: S[] = [
   { line: 2, p: P1, call: 'step(&mut self, dt)', recv: 'mut', changed: ['x', 'y'], note: 'step takes &mut self, so it can write. It moves x and y along by the velocity. This is why p was declared let mut: without it, the call is rejected.' },
   { line: 3, p: P2, call: 'step(&mut self, dt)', recv: 'mut', changed: ['x', 'y'], note: 'Each call borrows p mutably just for that call. When step returns, the borrow is over, and p can be borrowed again.' },
   { line: 4, p: null, q: STOP, call: 'stopped(self)', recv: 'own', changed: ['vx', 'vy'], note: 'stopped takes self by value: the whole Particle moves into the method. It zeroes the velocity and hands the struct back out, and q now owns it.' },
-  { line: 5, p: null, q: STOP, bad: true, note: 'p was moved by the call, so using it again is the error from the chapter Ownership: borrow of moved value: `p`. A self method is a one-way door.' },
+  { line: 5, p: null, q: STOP, bad: true, note: 'p was moved by the call, so using it again is the error from the chapter Moves, copies and clones: borrow of moved value: `p`. A self method is a one-way door.' },
 ];
 
 const FIELDS: { k: keyof F; c: string }[] = [

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Tariq Shams"]
 license = "MIT"
-description = "Drip's bytecode VM in Rust: the port taught in Part X of the book Viscosity."
+description = "Drip's bytecode VM in Rust: the port taught in Part XII of the book Viscosity."
 publish = false
 
 [lib]

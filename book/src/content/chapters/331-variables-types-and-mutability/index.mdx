@@ -250,15 +250,15 @@ the Rust Drip compiler:
 const MAX_SLOTS: usize = 256;
 ```
 
-That is the limit you met in *Bytecode as data*: one byte can name only
-256 locals. Unlike `let`, a `const` may be declared outside every
+That is the limit you met in *Locals as stack slots*: one byte can name
+only 256 locals. Unlike `let`, a `const` may be declared outside every
 function, and it can never be `mut`.
 
 <Prompts ids={['vr-const']} />
 
 <Callout kind="engine" label="Under the hood">
 Immutability by default helps the reader more than the machine: an
-optimizing compiler can see for itself that a variable is never
+optimising compiler can see for itself that a variable is never
 assigned twice (that is what SSA form, from Part VI, makes plain).
 What `mut` buys is a promise in the source, so that a reader (and the
 borrow checker, a few chapters on) knows exactly which names can change

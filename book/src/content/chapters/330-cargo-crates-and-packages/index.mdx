@@ -39,7 +39,7 @@ the compiler, not cargo, is the one that checks your code.</span>
 ## Four commands
 
 Step through a whole first session, from an empty folder to an
-optimized program. The output is real (cargo 1.97, folder paths
+optimised program. The output is real (cargo 1.97, folder paths
 trimmed):
 
 <CargoSteps client:visible />
@@ -102,14 +102,14 @@ check the compiler has but skips making a program, so it is the fast
 one, like `tsc --noEmit`; here it caught a string where a number was
 promised. The second builds a **debug** program into `target/debug/`
 and runs it; the lines starting with capitals are cargo's, and `Hello,
-world!` is the program's own. The third turns the optimizer on and
+world!` is the program's own. The third turns the optimiser on and
 writes to `target/release/`<Cite id="rust-book-hello-cargo" />. (Two
 more you will meet soon: `cargo test` runs the `#[test]` functions, and
 `cargo fmt` lays your code out in the standard style.)
 
 <Callout kind="pitfall">
 Debug builds are for working and release builds are for measuring. The
-two differ in more than speed: the debug profile turns off optimization
+two differ in more than speed: the debug profile turns off optimisation
 and turns on checks such as integer overflow, which the release profile
 turns off<Cite id="cargo-profiles" />. Every drip-rs number in the
 previous chapter is a release number.
@@ -258,7 +258,7 @@ how `cargo test` works.
 
 - **Cargo** creates projects (`cargo new`), checks them quickly
   (`cargo check`), builds and runs them (`cargo build`, `cargo run`) and
-  makes optimized builds (`--release`) in `target/release/`.
+  makes optimised builds (`--release`) in `target/release/`.
 - `Cargo.toml` is the manifest; `[dependencies]` names libraries from
   crates.io, and `Cargo.lock` records their exact versions.
 - A **crate** is one compilation unit: a binary (with `main`) or a

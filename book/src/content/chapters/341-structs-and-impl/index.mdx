@@ -41,7 +41,7 @@ box of your own in the margin. The printed blank form is the **struct
 definition**; each filled-in copy is one **value** of the struct.
 <span slot="breaks">A paper form can be photocopied, so two people can
 hold the same answers; a Rust struct value has one owner, and handing it
-over moves it (as the chapter *Ownership* showed for strings) unless the
+over moves it (as *Moves, copies and clones* showed for strings) unless the
 type says it may be copied.</span>
 </Analogy>
 
@@ -72,7 +72,7 @@ struct Particle {
 
 `struct Particle` names a new type, and the braces list its **fields**,
 each with a name and a type (`f64` is the 64-bit floating-point number
-from *Variables, types and mutability*). This defines no value yet,
+from *Numbers, characters and booleans*). This defines no value yet,
 only the shape every `Particle` will have. Step through one particle's
 life:
 

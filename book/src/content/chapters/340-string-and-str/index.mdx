@@ -47,7 +47,7 @@ Rust's borrow checker makes sure a `&str` never outlives the text it
 points at.</span>
 </Analogy>
 
-<Figure takeaway="A String owns and can grow its bytes; a &str only points at bytes that live somewhere else." caption="own's heap buffer, a &str borrowing one byte of it, and a literal borrowing bytes stored in the program. The sizes are 24 bytes for a String and 16 for a &str, from std::mem::size_of with rustc 1.97.">
+<Figure takeaway="A String owns and can grow its bytes; a &str only points at bytes that live somewhere else." caption="A String s holding a line of Drip, a &str name borrowing one byte of it, and a literal lit borrowing bytes stored in the program. The sizes are 24 bytes for a String and 16 for a &str, from std::mem::size_of with rustc 1.97.">
   <StringLayout />
 </Figure>
 

@@ -1,4 +1,4 @@
-// Chapter 345-b cards. Keys are stable ids: never rename them.
+// Chapter 346 cards. Keys are stable ids: never rename them.
 
 const VALUE = `#[derive(Debug, PartialEq)]
 enum Value {

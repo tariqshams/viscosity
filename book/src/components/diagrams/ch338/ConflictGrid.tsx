@@ -1,4 +1,4 @@
-// Chapter 337-b: the borrowing rule as a table. Rows: a borrow that is
+// Chapter 338: the borrowing rule as a table. Rows: a borrow that is
 // still alive (it will be used again later). Columns: what the program
 // tries to do next. Only reading alongside readers is allowed; every other
 // overlap is a compile error, with the code rustc 1.97 reports.

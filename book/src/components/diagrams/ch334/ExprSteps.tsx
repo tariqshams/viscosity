@@ -1,4 +1,4 @@
-// Chapter 333-b: a function body as nested expressions. The reader steps
+// Chapter 334: a function body as nested expressions. The reader steps
 // through clamp(15, 0, 10): the conditions are tested, one branch block
 // produces a value, and that value flows outward through the if and the
 // function body to become the return value, with no `return` written.

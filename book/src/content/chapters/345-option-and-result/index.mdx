@@ -72,7 +72,9 @@ The `<T>` says "some type, to be filled in": `Option<usize>` is maybe a
 and trait bounds* is about those angle brackets; for now read them like
 TypeScript's `Array<T>`.) `Option`, `Some` and `None` are so common that
 every Rust file can use them without importing anything. Here is
-`indexOf` done honestly; step through two calls:
+`indexOf` done honestly (`for i in 0..xs.len()` counts `i` from 0 up to,
+but not including, the length, like Drip's `for i in a..b`; the chapter
+*Vec and HashMap* covers Rust's loops); step through two calls:
 
 <FindSteps client:visible />
 
@@ -162,7 +164,8 @@ the whole program with a message. Here is what `find(&xs, 9).unwrap()`
 prints when it runs:
 
 ```text
-thread 'main' panicked at f3.rs:11:30:
+thread 'main' (29246) panicked at
+f3.rs:11:30:
 called `Option::unwrap()` on a `None`
 value
 ```
@@ -177,8 +180,10 @@ program, such as a test, never for input a user could get wrong.
 ```rust
 fn first_fast(ps: &[f64])
     -> Option<f64> {
-    for &v in ps {
-        if v > 100.0 { return Some(v); }
+    for i in 0..ps.len() {
+        if ps[i] > 100.0 {
+            return Some(ps[i]);
+        }
     }
     None
 }

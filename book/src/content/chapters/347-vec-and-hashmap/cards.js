@@ -170,8 +170,8 @@ export const quiz = [
     q: 'What does the standard library promise about how much a `Vec` grows?',
     options: [
       { t: 'It always doubles', why: 'Doubling is what this machine showed, but the docs guarantee no particular strategy.' },
-      { t: 'No particular strategy, but `push` is amortized constant time', correct: true, why: 'Also promised: `with_capacity(n)` has room for at least n, and a Vec never shrinks by itself.' },
-      { t: 'It grows by one element each time', why: 'That would make n pushes cost n² work; the docs promise amortized constant time.' },
+      { t: 'No particular strategy, but `push` is amortised constant time', correct: true, why: 'Also promised: `with_capacity(n)` has room for at least n, and a Vec never shrinks by itself.' },
+      { t: 'It grows by one element each time', why: 'That would make n pushes cost n² work; the docs promise amortised constant time.' },
     ],
   },
   {

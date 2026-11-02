@@ -1,4 +1,4 @@
-// Chapter 329-b: one package, two crates. drip-rs's Cargo.toml (in
+// Chapter 330: one package, two crates. drip-rs's Cargo.toml (in
 // companion/rust) declares a library crate `drip` (src/lib.rs: scanner,
 // compiler, VM, collector) and a binary crate `drip-rs` (src/main.rs,
 // a short main). The binary uses the library; tests use it too.

@@ -109,8 +109,8 @@ pub enum ObjUpvalue {
 
 The first is the plainest enum: four variants and no data. The second
 gives each variant its own data: a circle needs a radius, a rectangle a
-width and a height (named, like a struct's fields). The
-third is real, and shows what enums are best at: making a wrong state
+width and a height (named, like a struct's fields). The third
+is real, and shows what enums are best at: making a wrong state
 impossible to build. A captured variable (an upvalue, from *Capturing
 variables: upvalues*) is either still on the stack, in slot `usize`, or
 closed, holding the value itself; a closed upvalue that still has a slot
@@ -163,8 +163,8 @@ arm. Step through two different values:
 
 Arms are tried top to bottom, and the first one that fits wins; there is
 no falling through to the next arm, so there is no `break` to forget.
-`match` is an expression, like `if` in *Functions and expressions*, so
-the whole `match` has a value, and every arm must produce the same type.
+`match` is an expression, like `if` in *Blocks, if and the tail
+expression*, so the whole `match` has a value, and every arm must produce the same type.
 (Give one arm a different type, say a `bool` where the others give
 `&str`, and rustc says E0308, "`match` arms have incompatible types".)
 Most important of all, a `match` must cover **every** possible value.
@@ -181,8 +181,8 @@ help: ensure that all possible cases are
 12 ~         Value::Bool(false) => todo!(),
 ```
 
-The `help` even writes the missing arm for you, with `todo!()` (a
-placeholder that stops the program) as its body.
+The `help` even writes the missing arm for you, with a `todo!()`
+body.
 
 <Callout kind="definition">
 A **`match`** expression compares a value with the patterns of its

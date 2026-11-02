@@ -110,7 +110,7 @@ fn a_long_bar() {
 - \`while s.len() < n {\` repeats while there are fewer than \`n\` signs. For \`n = 0\` the loop never runs.
 - \`s.push('#');\` adds one \`char\` to the end, growing the heap text (the \`String\` asks the heap for more room when it needs it).
 - \`}\` closes the loop.
-- \`return s;\` hands \`s\`, and with it ownership of the heap text, to the caller. That is why the text is *not* freed at the closing brace below: \`s\` no longer owns anything when the function ends. (The next chapter calls this a **move**; the chapter after the next shows how to write the last line without \`return\`.)
+- \`return s;\` hands \`s\`, and with it ownership of the heap text, to the caller. That is why the text is *not* freed at the closing brace below: \`s\` no longer owns anything when the function ends. (The next chapter calls this a **move**; and, as *Blocks, if and the tail expression* showed, the last line could just as well be the tail expression \`s\`, without \`return\`.)
 - \`}\` closes the function.
 
 **Common wrong attempts.**

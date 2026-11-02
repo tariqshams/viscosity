@@ -1,4 +1,4 @@
-// Chapter 333-b: one character decides a block's value. Left, a block
+// Chapter 334: one character decides a block's value. Left, a block
 // whose last line has no semicolon: that line is the block's value. Right,
 // the same block with a semicolon: every line is a statement, so the block
 // is worth (), the unit value.

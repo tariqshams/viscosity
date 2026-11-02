@@ -1,4 +1,4 @@
-// Chapter 329-b cards (the second half of chapter 329): recall prompts,
+// Chapter 330 cards (continuing chapter 329): recall prompts,
 // exercises and quiz. Keys are stable ids: renaming one would orphan
 // readers' review history.
 
@@ -13,7 +13,7 @@ export const prompts = {
   },
   'cargo-release': {
     q: 'Why should a Rust benchmark use `cargo build --release`?',
-    a: 'Only release builds turn on the optimizer. Debug builds are for development and can be much slower.',
+    a: 'Only release builds turn on the optimiser. Debug builds are for development and can be much slower.',
   },
   'cargo-lock': {
     q: 'What does `Cargo.lock` record?',
@@ -153,9 +153,9 @@ export const quiz = [
     q: 'Which cargo command would you run to measure how fast your program is?',
     options: [
       { t: '`cargo check`', why: '`check` does not even produce a program.' },
-      { t: '`cargo run`', why: 'Plain `cargo run` makes a debug build, without the optimizer.' },
+      { t: '`cargo run`', why: 'Plain `cargo run` makes a debug build, without the optimiser.' },
       { t: '`cargo new`', why: 'That creates a new project.' },
-      { t: '`cargo build --release`, then run the program', correct: true, why: 'Release builds turn on the optimizer, and land in `target/release/`.' },
+      { t: '`cargo build --release`, then run the program', correct: true, why: 'Release builds turn on the optimiser, and land in `target/release/`.' },
     ],
   },
   {
@@ -171,7 +171,7 @@ export const quiz = [
     q: 'You are fixing type errors and want the quickest feedback. Which command?',
     options: [
       { t: '`cargo check`', correct: true, why: 'It runs every check the compiler has and skips making a program, so it is the fastest way to see errors.' },
-      { t: '`cargo build --release`', why: 'That runs the optimizer too, which is the slowest build of all.' },
+      { t: '`cargo build --release`', why: 'That runs the optimiser too, which is the slowest build of all.' },
       { t: '`cargo run`', why: 'It builds a whole debug program and runs it; more work than you need to see errors.' },
       { t: '`cargo fmt`', why: '`fmt` only lays out your code; it reports no type errors.' },
     ],

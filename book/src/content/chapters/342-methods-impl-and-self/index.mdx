@@ -163,8 +163,8 @@ the value is yours again the moment the method returns.</span>
 <Callout kind="definition">
 The **self receiver** is a method's first parameter. **`&self`** (short
 for `self: &Self`) borrows the value shared, **`&mut self`** borrows it
-mutably, and **`self`** takes ownership of it. The borrowing rules of the
-chapter *Borrowing* then apply to every method call.
+mutably, and **`self`** takes ownership of it. The rules of the chapter
+*The borrowing rules* then apply to every method call.
 </Callout>
 
 <Examples of="self-receiver">
@@ -176,6 +176,7 @@ fn speed(&self) -> f64 { /* reads */ }
 ```rust
 fn step(&mut self, dt: f64) {
     self.x += self.vx * dt;
+    self.y += self.vy * dt;
 }
 ```
 

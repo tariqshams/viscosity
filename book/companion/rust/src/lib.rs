@@ -1,4 +1,4 @@
-//! Drip's bytecode virtual machine, in Rust: the port taught in Part X of
+//! Drip's bytecode virtual machine, in Rust: the port taught in Part XII of
 //! *Viscosity*. It behaves exactly like the TypeScript VM of Part IV.
 //!
 //! The pipeline is source → [`scanner`] → [`compiler`] → bytecode in a

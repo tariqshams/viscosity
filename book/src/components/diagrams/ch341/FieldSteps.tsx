@@ -23,7 +23,7 @@ const STATES: S[] = [
   { line: 0, p: P0, hot: ['x', 'y', 'vx', 'vy'], note: 'The struct expression fills in every field at once. Leave one out and rustc stops with E0063, missing field. p is one value of 32 bytes: four f64s side by side.' },
   { line: 3, p: P1, hot: ['x'], note: 'p.x += p.vx reads one field and writes another, with a dot, as in TypeScript. The write is allowed only because p was declared let mut; the mut covers the whole struct.' },
   { line: 4, p: P1, moved: true, q: P1, hot: ['x', 'y', 'vx', 'vy'], note: 'let q = p moves the whole struct to its new owner, q, exactly as a String moves. Nothing is shared: there is one particle, and now q owns it.' },
-  { line: 5, p: P1, moved: true, q: P1, bad: true, note: 'Reading p.x now is the error from the chapter Ownership: E0382, borrow of moved value: `p`. The help even suggests implementing Clone, which the chapter Traits explains.' },
+  { line: 5, p: P1, moved: true, q: P1, bad: true, note: 'Reading p.x now is the error from the chapter Moves, copies and clones: E0382, borrow of moved value: `p.x`, because `Particle` does not implement the `Copy` trait.' },
 ];
 
 const FIELDS: { k: keyof F; c: string }[] = [

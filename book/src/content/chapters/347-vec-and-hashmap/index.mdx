@@ -71,7 +71,7 @@ contiguous block<Cite id="rust-std-vec" />. Step through some pushes:
 The capacities in that diagram are real: on this machine, with Rust
 1.97, pushing nine `f64`s one at a time gave capacities 4, 4, 4, 4, 8,
 8, 8, 8, 16. Do not build on those numbers, however: the documentation
-promises no particular growth strategy, only that `push` takes amortized
+promises no particular growth strategy, only that `push` takes amortised
 constant time (the doubling argument of *Growing collections*). What it
 does promise is that `Vec::with_capacity(n)` makes room for at least `n`
 elements, and that a `Vec` never shrinks by itself<Cite id="rust-std-vec" />.
@@ -97,7 +97,7 @@ elements are in use, and how many fit; the length is never more than the
 capacity. v[i] is a real element exactly when i is at least 0 and below
 the length. Because the capacity grows by a factor each time, n pushes
 cost work proportional to n in total, so each push is constant time on
-average ("amortized").</span>
+average ("amortised").</span>
 </Formal>
 
 <Examples of="vec">
@@ -164,7 +164,7 @@ error[E0502]: cannot borrow `v` as mutable
   |              borrow later used here
 ```
 
-It is the shared-or-mutable rule from *Borrowing*, and the diagram's
+It is the shared-or-mutable rule from *The borrowing rules*, and the diagram's
 last steps showed why it matters here: if this `push` hit the capacity,
 the elements would move to a new buffer and `first` would point into
 freed memory. Print `first` *before* the push, and the borrow has ended
@@ -177,7 +177,8 @@ Reading past the end is the other mistake, and Rust stops the program
 rather than reading whatever memory is there:
 
 ```text
-thread 'main' panicked at h3.rs:12:22:
+thread 'main' (32218) panicked at
+h3.rs:12:22:
 index out of bounds: the len is 1 but
 the index is 5
 ```
@@ -247,7 +248,7 @@ indices* turns into a pattern.
 ## What you learned
 
 - A **`Vec<T>`** owns a contiguous heap buffer of `T`s, with a length and
-  a capacity; `push` grows it, and only amortized constant-time growth
+  a capacity; `push` grows it, and only amortised constant-time growth
   is promised.
 - `v[i]` panics when out of range; `v.get(i)` returns an `Option`.
 - You cannot `push` while a reference into the `Vec` is alive, because

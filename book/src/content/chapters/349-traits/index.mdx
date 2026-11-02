@@ -177,8 +177,10 @@ error[E0277]: the trait bound `Rb: Plugin`
   is not satisfied
 help: the trait `Plugin` is not
   implemented for `Rb`
-help: the trait `Plugin` is implemented
-  for `Js`
+help: the following other types
+  implement trait `Plugin`
+  ... `Py`
+  ... `Js`
 ```
 
 <Figure takeaway="Only an impl block makes a type a Plugin." caption="Js and Py wrote id and exts in impl Plugin blocks and inherit handles. Rb has methods with the same names in a plain impl block, so as far as Rust is concerned it has nothing to do with Plugin.">

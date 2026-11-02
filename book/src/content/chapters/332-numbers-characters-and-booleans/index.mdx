@@ -161,13 +161,14 @@ let b: f64 = 2.0;
 println!("{}", a as f64 / b); // 3.5
 println!("{}", a / 2);        // 3
 println!("{}", -7 / 2);       // -3
-println!("{}", 300 as u8);    // 44
+println!("{}", 300_i32 as u8); // 44
 ```
 
 The second line is a trap for TypeScript hands: **dividing two integers
 gives an integer**, cut toward zero, so `7 / 2` is `3` and `-7 / 2` is
 `-3`<Cite id="rust-book-data-types" />. The last shows what `as` can
-lose: `300` does not fit in a byte, so `as u8` keeps only the low eight
+lose: `300_i32` (the suffix makes it an `i32` first; a bare `300 as u8`
+is rejected as a literal out of range) does not fit in a byte, so `as u8` keeps only the low eight
 bits, which is 44; and a float becomes an integer by cutting off the
 fraction, so `3.9 as i32` is `3`<Cite id="rustref-operator-expr" />.
 

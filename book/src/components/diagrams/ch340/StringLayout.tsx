@@ -1,4 +1,4 @@
-// Chapter 339-b: String versus &str in memory. A String is (ptr, len,
+// Chapter 340: String versus &str in memory. A String is (ptr, len,
 // cap) and owns a heap buffer it can grow; a &str is (ptr, len) and
 // borrows bytes that live somewhere else: inside a String's buffer, or in
 // the program's own read-only data, where string literals are kept.

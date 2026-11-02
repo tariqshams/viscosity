@@ -14,7 +14,7 @@ const RS = ['main.rs', 'rustc: check', 'rustc: compile', 'CPU: runs binary'];
 const STATES: S[] = [
   { ts: ['on', 'off', 'off', 'off'], rs: ['on', 'off', 'off', 'off'], clock: 'before', note: 'Two versions of the same program. On top, TypeScript; below, Rust. Nothing has run yet. Watch WHEN each road does its work.' },
   { ts: ['done', 'on', 'off', 'off'], rs: ['done', 'on', 'off', 'off'], clock: 'before', note: 'Both roads check types first. TypeScript then throws its types away (type erasure). Rust keeps going: rustc also checks the ownership rules of the chapter Ownership. Any error stops the build here.' },
-  { ts: ['done', 'done', 'on', 'off'], rs: ['done', 'done', 'on', 'off'], clock: 'before', note: 'TypeScript hands plain JavaScript text to the engine. rustc turns the whole crate into machine code for your CPU, and writes it to a file: target/debug/hello.' },
+  { ts: ['done', 'done', 'on', 'off'], rs: ['done', 'done', 'on', 'off'], clock: 'before', note: 'TypeScript hands plain JavaScript text to the engine. rustc turns the whole program into machine code for your CPU, and writes it to a file of its own (an executable, called a binary).' },
   { ts: ['done', 'done', 'done', 'on'], rs: ['done', 'done', 'done', 'on'], clock: 'run', note: 'Now the program runs. V8 still has a lot to do while it runs: parse the text, interpret bytecode, watch for hot code to JIT-compile, and collect garbage. The Rust binary just runs: the compiling happened earlier.' },
   { ts: ['done', 'done', 'done', 'done'], rs: ['done', 'done', 'done', 'done'], clock: 'run', note: 'The trade: Rust makes you wait for the compiler, and makes you satisfy it, before anything runs. In return, the running program carries no parser, no JIT and no garbage collector.' },
 ];

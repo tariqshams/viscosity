@@ -1,4 +1,4 @@
-// Chapter 343-b cards. Keys are stable ids: never rename them.
+// Chapter 344 cards. Keys are stable ids: never rename them.
 
 const VAL = `#[derive(Clone, Copy)]
 enum Value {
@@ -225,7 +225,7 @@ println!("{n}");
     options: [
       { t: '`let Value::Number(n) = v;`', why: 'The pattern is refutable, so a plain `let` rejects it with E0005.' },
       { t: '`let (x, y) = (1, 2);`', correct: true, why: 'A tuple pattern of names always fits a pair: it is irrefutable.' },
-      { t: '`let Value::None | Value::Bool(_) = v;`', why: 'Still refutable (`v` might be a number), and or-patterns are not allowed at the top of a `let` anyway.' },
+      { t: '`let Value::None | Value::Bool(_) = v;`', why: 'Still refutable (`v` might be a number), and an or-pattern at the top of a `let` must be wrapped in brackets anyway.' },
     ],
   },
   {

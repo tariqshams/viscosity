@@ -1,4 +1,4 @@
-// Chapter 335-b: the three things `let x = y;` (or y.clone()) can do.
+// Chapter 336: the three things `let x = y;` (or y.clone()) can do.
 // A Copy type is duplicated bit for bit and both names stay usable; a
 // String is moved (its stack part is copied, the old name is dead, the
 // heap text has one owner still); clone makes a second heap copy with a

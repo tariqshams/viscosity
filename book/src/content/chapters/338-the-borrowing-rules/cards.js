@@ -1,4 +1,4 @@
-// Chapter 337-b cards (the second half of chapter 337). Keys are stable
+// Chapter 338 cards (continuing chapter 337). Keys are stable
 // ids: never rename them.
 
 export const prompts = {

@@ -1,4 +1,4 @@
-// Chapter 335-b: ownership made visible. Stack slots on the left, heap
+// Chapter 336: ownership made visible. Stack slots on the left, heap
 // boxes on the right. A String's slot holds (ptr, len, cap); the arrow
 // from a slot to a heap box is drawn only for the box's ONE owner, so
 // `let b = a;` visibly moves the arrow. clone makes a second heap box,

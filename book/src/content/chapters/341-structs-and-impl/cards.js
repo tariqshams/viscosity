@@ -158,7 +158,7 @@ fn join_keeps_its_arguments() {
 **The solution, line by line.**
 
 - \`fn make(start: usize, len: usize) -> Span {\` takes two whole numbers and returns a brand-new \`Span\`, which the caller will own.
-- \`Span { start, end: start + len }\` is a struct expression giving both fields. \`start\` alone is field init shorthand for \`start: start\`; \`end\` is worked out. There is no semicolon, so this expression is the function's return value (the chapter *Functions and expressions* showed why the last expression of a block is its value).
+- \`Span { start, end: start + len }\` is a struct expression giving both fields. \`start\` alone is field init shorthand for \`start: start\`; \`end\` is worked out. There is no semicolon, so this expression is the function's return value (the chapter *Blocks, if and the tail expression* showed why the last expression of a block is its value).
 - \`fn width(s: &Span) -> usize {\` borrows the span: it only reads two fields.
 - \`s.end - s.start\` is the number of bytes covered. The dot reads a field through the borrow without any extra symbol. For \`4..7\` that is \`3\`; for the empty span \`9..9\` it is \`0\`.
 - \`fn join(a: &Span, b: &Span) -> Span {\` borrows both inputs and builds a new span.
