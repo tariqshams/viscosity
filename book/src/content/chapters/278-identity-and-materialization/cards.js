@@ -306,7 +306,7 @@ export const quiz = [
     options: [
       { t: 'Generated cached handles for `ps`.', why: 'Viscosity has no handle mode.' },
       { t: 'Kept `ps` as an array of objects.', correct: true, why: 'An escaping element is a bailout; the explanation names the line.' },
-      { t: 'Materialized a copy for each comparison.', why: 'That would make `===` false, which changes the program.' },
+      { t: 'Materialised a copy for each comparison.', why: 'That would make `===` false, which changes the program.' },
       { t: 'Converted `===` into an index comparison.', why: 'That would be a handle-like trick that it doesn’t do for compared elements.' },
     ],
   },

@@ -176,8 +176,8 @@ function count(xs) {
 However, `n` is changed inside `bump`, and a call to `bump` could happen
 anywhere; a phi cannot describe "whatever the closure did", so `n` stays a
 binding, and the arrow's body really is `load n`, `binop +`, `store n`.
-The JavaScript plugin also makes a binding of any variable that holds an
-array, so the analyses see every read of a candidate collection as a
+The JavaScript plugin also makes a binding of any variable that starts
+out as an array, so the analyses see every read of a candidate collection as a
 `load` they can follow (the chapter *Lowering JavaScript to VIR* gives
 the full rule).
 
@@ -243,8 +243,8 @@ subject, is that its instructions are chosen for data layout.
   every instruction by id; each block ends in one **terminator**.
 - **VIR** is language-neutral SSA: each value is defined once, and a
   **phi** at a join takes the value from the edge control came in by.
-- Uncaptured locals are SSA values; captured, module-level and
-  array-holding variables are **bindings** with `load` and `store`.
+- Uncaptured locals are SSA values; captured variables, and variables
+  that start out as an array, are **bindings** with `load` and `store`.
 - Every instruction keeps a **source reference**, for emit and explain.
 
 Next: VIR's own instructions for records and collections, and its honest

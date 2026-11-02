@@ -5,7 +5,7 @@ part: VIII
 title: 'Identity and materialization'
 tagline: 'Once elements become slots in columns, an element that escapes needs an object again. Here is what it would take to fake one honestly, and why Viscosity says no instead.'
 objectives:
-  - Explain why materializing a fresh object per access breaks aliasing and identity.
+  - Explain why materialising a fresh object per access breaks aliasing and identity.
   - Design a handle that keeps aliasing correct, and a handle cache that keeps === correct.
   - List what a handle still gets wrong, and what each fix costs.
   - Explain why Viscosity refuses collections whose elements escape, using its real explanations and this book’s measurements.
@@ -47,7 +47,7 @@ it would cost to let it escape anyway.
 
 ## Copies break aliasing
 
-The easy answer is the **materialization** of *When SoA loses:
+The easy answer is the **materialisation** of *When SoA loses:
 materialization and AoSoA*: build a fresh object from the columns every
 time the program asks for `ps[i]`. Run both versions:
 
@@ -256,7 +256,7 @@ console.log(ps[3]);`} />
 
 <Callout kind="engine" label="Under the hood">
 V8 can afford to be optimistic. It compiles while the program runs, from
-what it has seen so far, and can deoptimize back to slower code if a
+what it has seen so far, and can deoptimise back to slower code if a
 guess turns out wrong<Cite id="v8-maglev" />; that is how its escape
 analysis removed the object in `get-objects`. Viscosity compiles before
 the program runs and has no slow path to fall back to, so a handle mode
@@ -273,7 +273,7 @@ line to change.
 
 ## What you learned
 
-- **Materializing** a fresh copy per access breaks both aliasing (writes
+- **Materialising** a fresh copy per access breaks both aliasing (writes
   hit the copy) and identity (`===` is false).
 - A **handle** holds the collection and an index, with accessors that use
   the columns; it keeps aliasing correct.

@@ -131,7 +131,7 @@ function, stays a binding with a real `store`: a closure may read it at
 any time, long after any SSA value was current. Two rules look odd at
 first. A variable assigned in a `try` is a binding, because the lowering
 does not model the edges an exception can take, so an SSA value in the
-`catch` could be the wrong one. And a variable initialized with an
+`catch` could be the wrong one. And a variable initialised with an
 array, such as `const ps = []`, is always a binding, so that every read
 of a candidate collection shows up as a `load` the analyses can follow.
 
@@ -272,7 +272,8 @@ extra practice, is the `mentioned` walk behind `opaque`.
 - Lowering **resolves scopes first**; `usedIn`, `assignedInTry` and
   `init` decide how each variable is represented.
 - Uncaptured locals become **SSA values**; captured ones, ones assigned
-  in `try`, and every array variable become **bindings**.
+  in `try`, and every variable initialised with an array become
+  **bindings**.
 - Compound assignments evaluate their target once (`readTarget`), and
   `for (const p of ps)` becomes an **index loop** with a phi.
 

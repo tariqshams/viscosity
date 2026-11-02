@@ -31,7 +31,7 @@ export const prompts = {
   },
   'op-sound': {
     q: 'Why does treating `opaque` as the worst case keep Viscosity correct?',
-    a: 'Uncertainty can only stop a rewrite, never cause a wrong one. A missed optimization is safe; a wrong layout change is not.',
+    a: 'Uncertainty can only stop a rewrite, never cause a wrong one. A missed optimisation is safe; a wrong layout change is not.',
   },
 };
 
@@ -274,7 +274,7 @@ export const quiz = [
       { t: 'Sometimes wrong output', why: 'Never: assuming the worst can only stop a rewrite.' },
       { t: 'Slower compilation', why: 'The rule is cheap; it is one check per argument.' },
       { t: 'Some collections that would have been safe to change are kept as they were', correct: true, why: 'That is the price of soundness: a missed speed-up, explained by name, instead of a broken program.' },
-      { t: 'Nothing at all', why: 'It does cost something: missed optimizations.' },
+      { t: 'Nothing at all', why: 'It does cost something: missed optimisations.' },
     ],
   },
 ];

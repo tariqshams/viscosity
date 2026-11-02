@@ -156,7 +156,7 @@ test('every value survives the grows', () => {
 - \`this.data[this.len] = v;\` writes the value into the first unused slot, which now certainly exists.
 - \`return ++this.len;\` adds one to the length and returns the new value (\`++\` before the name gives the value after adding), like \`Array.prototype.push\`.
 
-Why the totals stay small: starting at 4, the copies are 4, 8, 16, 32 and 64, each grow copying 4 more than all the earlier ones together, so after 100 pushes the total is 124, less than the final capacity of 128. That is the amortized argument in miniature.
+Why the totals stay small: starting at 4, the copies are 4, 8, 16, 32 and 64, each grow copying 4 more than all the earlier ones together, so after 100 pushes the total is 124, less than the final capacity of 128. That is the amortised argument in miniature.
 
 **Common wrong attempts.**
 
@@ -276,7 +276,7 @@ test('growing by half', () => {
 - \`cap = next(cap);\` applies the policy: \`c * 2\` doubles, \`c + 16\` adds a fixed amount.
 - \`return copies;\` after the loop.
 
-Try a few policies. Doubling stays under 2 copies per element. Growing by half (\`c + c / 2\`) also stays linear, copying a little more but leaving less spare memory after each grow. Adding a constant is quadratic. Any policy that multiplies the capacity by a factor above 1 is amortized constant; the factor trades copying against wasted space.
+Try a few policies. Doubling stays under 2 copies per element. Growing by half (\`c + c / 2\`) also stays linear, copying a little more but leaving less spare memory after each grow. Adding a constant is quadratic. Any policy that multiplies the capacity by a factor above 1 is amortised constant; the factor trades copying against wasted space.
 
 **Common wrong attempts.**
 
@@ -321,7 +321,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which statement about amortized growth is true?',
+    q: 'Which statement about amortised growth is true?',
     options: [
       { t: 'Every push is cheap.', why: 'A push that triggers a grow copies every element. It is the average that is cheap.' },
       { t: 'Growing by a constant is better because it wastes less memory.', why: 'It wastes less space, but its total copying grows with n², which is far worse for large n.' },
@@ -343,7 +343,7 @@ export const quiz = [
     options: [
       { t: 'Doubling is free.', why: 'The harness preallocates the right size, so no doubling happens in this run at all.' },
       { t: 'Filling columns with numbers is cheaper than allocating one object per element.', correct: true, why: 'That is what the suite measures: the same values, stored two ways, with known sizes.' },
-      { t: 'SoA is faster for every loop.', why: 'One suite says nothing about others; the chapter When SoA loses showed SoA losing badly at materialize.' },
+      { t: 'SoA is faster for every loop.', why: 'One suite says nothing about others; the chapter When SoA loses showed SoA losing badly at `materialize`.' },
       { t: 'Viscosity should always use AoSoA.', why: 'AoSoA was slower than SoA in this suite.' },
     ],
   },

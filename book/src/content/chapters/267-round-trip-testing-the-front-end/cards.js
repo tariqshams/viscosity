@@ -298,7 +298,7 @@ export const quiz = [
     q: 'The snippet has no array of objects. Does the collection analysis still run on it?',
     options: [
       { t: 'No, the compiler stops after parsing', why: 'compile always runs the whole pipeline.' },
-      { t: 'No, analysis only runs on loops', why: 'It looks at every array-initialized binding.' },
+      { t: 'No, analysis only runs on loops', why: 'It looks at every array-initialised binding.' },
       { t: 'Only in opt-in mode', why: 'The mode affects decisions, not whether analysis runs.' },
       { t: 'Yes: `a` is a candidate, and it is rejected because its elements are not object literals', correct: true, why: 'Then nothing is planned and the emitter returns the source.' },
     ],

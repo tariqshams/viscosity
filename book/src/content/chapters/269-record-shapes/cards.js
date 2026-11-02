@@ -296,7 +296,7 @@ export const quiz = [
       { t: 'The values are different', why: 'Values never need to match; only the field lists do.' },
       { t: 'Objects with two fields are too small', why: 'Size doesn’t matter for shape unification.' },
       { t: 'It compares field lists in order, and the rewritten `push` copies slot k into column k', correct: true, why: 'Accepting the second literal blindly would put 3 into the x column.' },
-      { t: 'V8 would deoptimize', why: 'This is Viscosity’s own rule about its own rewrite, not a V8 behaviour.' },
+      { t: 'V8 would deoptimise', why: 'This is Viscosity’s own rule about its own rewrite, not a V8 behaviour.' },
     ],
   },
 

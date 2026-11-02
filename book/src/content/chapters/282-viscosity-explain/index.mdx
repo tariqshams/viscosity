@@ -3,7 +3,7 @@ n: 282
 day: 71
 part: VIII
 title: 'viscosity explain'
-tagline: 'An optimizer that will not say what it did leaves you guessing. Viscosity writes down every decision and the evidence behind it, and because the planner writes the reasons while it decides, the explanation cannot drift from what actually happened.'
+tagline: 'An optimiser that will not say what it did leaves you guessing. Viscosity writes down every decision and the evidence behind it, and because the planner writes the reasons while it decides, the explanation cannot drift from what actually happened.'
 objectives:
   - Read every line of a `viscosity explain` report and say which part of the compiler produced it.
   - Explain why the report is built from the same data as the decision, not worked out afterwards.
@@ -17,11 +17,11 @@ import ExplainSteps from '../../../components/diagrams/ch282/ExplainSteps';
 import FrameAnatomy from '../../../components/diagrams/ch282/FrameAnatomy';
 import Playground from '../../../components/playground/Playground';
 
-## The silent optimizer
+## The silent optimiser
 
 You run Viscosity on your program, and it gets no faster. Was there
 nothing to do? Did it try and give up? Did it transform the wrong array?
-An optimizer that only hands back code leaves you reading generated
+An optimiser that only hands back code leaves you reading generated
 code to find out. So Viscosity has a second output; here is a corpus
 program, `escapes_log.js`, and what `viscosity explain` says about it:
 
@@ -140,7 +140,7 @@ copy wrongly.</span>
 </Analogy>
 
 <Callout kind="definition">
-An **optimization report** is a compiler output, alongside the code,
+An **optimisation report** is a compiler output, alongside the code,
 that explains every decision it made: what it changed, what it left
 alone, and the evidence for each. It is most trustworthy when the
 decision procedure records its own reasons as it runs.
@@ -268,7 +268,7 @@ the program runs, about every collection.
 
 ## What you learned
 
-- An **optimization report** explains every decision: what changed,
+- An **optimisation report** explains every decision: what changed,
   what was kept, and the evidence; `viscosity explain` prints a verdict
   line per collection, then one `·` line per reason (`--frames` adds the
   code).

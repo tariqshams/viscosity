@@ -6,7 +6,7 @@ export const prompts = {
     a: 'The estimate counts pushes in top-level loops with constant trip counts. A push inside a function depends on how often it is called, so the size is unknown.',
   },
   'pgo-what': {
-    q: 'What is profile-guided optimization (PGO)?',
+    q: 'What is profile-guided optimisation (PGO)?',
     a: 'Compiling with measurements from real runs of the program (a profile), not only with what the source reveals.',
   },
   'inst-what': {
@@ -35,7 +35,7 @@ export const prompts = {
   },
   'jit-pgo': {
     q: 'How does V8’s use of profiles differ from Viscosity’s?',
-    a: 'V8 profiles during the same run and speculates on the feedback, so it needs guards and deoptimization. Viscosity profiles ahead of time and only picks a size threshold.',
+    a: 'V8 profiles during the same run and speculates on the feedback, so it needs guards and deoptimisation. Viscosity profiles ahead of time and only picks a size threshold.',
   },
 };
 
@@ -427,12 +427,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does V8 need deoptimization while Viscosity’s PGO needs no guard?',
+    q: 'Why does V8 need deoptimisation while Viscosity’s PGO needs no guard?',
     options: [
       { t: 'V8’s profiles are less accurate', why: 'Accuracy isn’t the point: any profile can be wrong about the future.' },
       { t: 'Viscosity runs the program many times', why: 'It runs it once.' },
-      { t: 'V8 doesn’t use profiles', why: 'It does: shape and type feedback drives its optimizing compilers.' },
-      { t: 'V8 specializes code on feedback that affects correctness; Viscosity’s profile only picks between two proven-equivalent layouts', correct: true, why: 'A wrong guess in V8 would compute wrong results unless guarded. A wrong guess in Viscosity is just slower.' },
+      { t: 'V8 doesn’t use profiles', why: 'It does: shape and type feedback drives its optimising compilers.' },
+      { t: 'V8 specialises code on feedback that affects correctness; Viscosity’s profile only picks between two proven-equivalent layouts', correct: true, why: 'A wrong guess in V8 would compute wrong results unless guarded. A wrong guess in Viscosity is just slower.' },
     ],
   },
 ];

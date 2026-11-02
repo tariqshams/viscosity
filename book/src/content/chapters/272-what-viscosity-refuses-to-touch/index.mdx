@@ -8,7 +8,7 @@ objectives:
   - Define a bailout, and tell a safety bailout apart from a decision that a change would not pay off.
   - Explain, for each refusal in the differential corpus, what the program could observe if Viscosity went ahead.
   - Change a refused program so that Viscosity can prove it safe, without changing what it prints.
-  - Contrast Viscosity's compile-time bailouts with an engine's run-time deoptimization.
+  - Contrast Viscosity's compile-time bailouts with an engine's run-time deoptimisation.
 introduces: [bailout]
 uses: [array-of-objects, reference, aliasing, identity, mutation, closure, captured-environment, map-filter-reduce, method, console-log, bracket-access, import-export, aos-vs-soa, materialization, speculation, deoptimization, escape-analysis, escape-sites, differential-testing, record-shape, shape-stability, access-pattern, hot-loop, safety-analysis]
 sources: [mdn-equality, v8-maglev]
@@ -70,7 +70,7 @@ prove, before the program runs, that it is safe; otherwise it keeps
 it, and that refusal is the bailout. An engine such as V8 works the
 other way round: it assumes a fact P from what it has seen so far,
 runs fast code that relies on P, checks P as it goes, and if P ever
-turns out false, deoptimizes, throwing the fast code away. Viscosity
+turns out false, deoptimises, throwing the fast code away. Viscosity
 has no "check as it goes", which is why it must prove.</span>
 </Formal>
 
@@ -262,7 +262,7 @@ changing. Those are the cost model's decisions, in the next chapter.
 <Callout kind="engine" label="Under the hood">
 Engines bail out too, but later. V8's optimising tiers speculate from
 the feedback they have seen and, when a guess fails at run time,
-deoptimize: they throw the optimised code away and carry on in a
+deoptimise: they throw the optimised code away and carry on in a
 slower tier<Cite id="v8-maglev" />. A bailout there costs time at the
 moment it happens. Viscosity's bailouts happen before the program runs
 and cannot be undone, so they last for the whole run; in exchange, the
@@ -281,7 +281,7 @@ The first exercise is the core one; the second is extra practice.
 
 - A **bailout** leaves a collection unchanged because safety cannot be
   proved; explain prints each one after `unsafe:`. Viscosity proves
-  before it acts, where an engine guesses, checks and deoptimizes.
+  before it acts, where an engine guesses, checks and deoptimises.
 - **Identity**: a second name (another array, a variable, a closure)
   or `===` needs real element objects, which columns do not have;
   keeping an index instead of an element often fixes it.

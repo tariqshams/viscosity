@@ -27,7 +27,7 @@ export const prompts = {
   },
   'aot-cost': {
     q: 'Name one advantage a run-time transformation has over Viscosity, and one Viscosity has over it.',
-    a: 'Run time sees real values and can deoptimize if wrong. Viscosity’s output runs on any engine and can be read by a person.',
+    a: 'Run time sees real values and can deoptimise if wrong. Viscosity’s output runs on any engine and can be read by a person.',
   },
   'arch-conservative': {
     q: 'What does Viscosity do with a collection when it cannot prove a new layout is safe?',
@@ -202,7 +202,7 @@ In the first test, \`lower('a b c')\` gives \`{ module: ['a', 'b', 'c'], tag: 'L
 
 **Common wrong attempts.**
 
-- Passing \`low.module\` to \`emit\` loses the plugin's private data, so \`l.tag\` is \`undefined\` and the code reads \`'undefined:soa'\`. The real JavaScript plugin keeps its ESTree tree, its scope resolution and the JavaScript it analyzed in that object, and needs all three to rewrite the text.
+- Passing \`low.module\` to \`emit\` loses the plugin's private data, so \`l.tag\` is \`undefined\` and the code reads \`'undefined:soa'\`. The real JavaScript plugin keeps its ESTree tree, its scope resolution and the JavaScript it analysed in that object, and needs all three to rewrite the text.
 - Passing the whole \`low\` to \`analyze\` happens to work here, but it lets core code see plugin data, which is exactly the coupling the architecture forbids.`,
     wrong: [
       {
@@ -253,7 +253,7 @@ export const quiz = [
     q: 'Compared with a run-time columnar transformation inside the engine, what does Viscosity give up?',
     options: [
       { t: 'The ability to run in more than one engine', why: 'It is the other way round: Viscosity’s output runs on any engine.' },
-      { t: 'Seeing real values, and backing out with deoptimization if a guess is wrong', correct: true, why: 'Ahead of time, it has only the code. So it must prove every decision instead of guessing.' },
+      { t: 'Seeing real values, and backing out with deoptimisation if a guess is wrong', correct: true, why: 'Ahead of time, it has only the code. So it must prove every decision instead of guessing.' },
       { t: 'Readable output', why: 'Readable output is one of Viscosity’s advantages.' },
       { t: 'Typed arrays', why: 'Its output uses `Float64Array` columns.' },
     ],
@@ -262,7 +262,7 @@ export const quiz = [
     q: 'Viscosity can’t prove that a collection’s elements never escape. What happens?',
     options: [
       { t: 'It converts it anyway, and inserts a run-time check', why: 'There is no fallback for an escape at run time. Unsafe means unchanged.' },
-      { t: 'Compilation fails with an error', why: 'The program is fine; Viscosity only leaves it unoptimized.' },
+      { t: 'Compilation fails with an error', why: 'The program is fine; Viscosity only leaves it unoptimised.' },
       { t: 'The collection stays an array of objects, and explain says why', correct: true, why: 'Doing nothing is always correct. The reason is printed so you can change the code if you want the speed.' },
       { t: 'It asks the engine to decide', why: 'The engine never hears about Viscosity: it just runs the output.' },
     ],

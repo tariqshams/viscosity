@@ -243,7 +243,7 @@ Viscosity is not the first system to turn arrays of JavaScript objects
 into columns. As the chapter *Columnar arrays at run time: the research*
 described, Makor and colleagues did it *while the program runs*, inside a
 JavaScript engine built on Truffle and Graal<Cite id="makor2022" /><Cite id="wurthinger2013" />,
-and a follow-up generated specialized loop code for the converted
+and a follow-up generated specialised loop code for the converted
 arrays<Cite id="kloibhofer2023" />.
 
 <Figure caption="The same idea in two places. Viscosity changes the program before it runs; the run-time approach changes the engine." takeaway="Ahead of time works with any engine but must prove safety from the code alone.">
@@ -251,7 +251,7 @@ arrays<Cite id="kloibhofer2023" />.
 </Figure>
 
 The trade is real in both directions. A run-time transformation sees the
-actual values and can speculate, then back out with deoptimization if a
+actual values and can speculate, then back out with deoptimisation if a
 guess fails (as in the chapter *Speculation and deoptimization*);
 however, it only helps programs on that one engine. Viscosity's
 output runs anywhere, adds no work at start-up and can be read by a
@@ -303,7 +303,7 @@ wires the four steps together.
   survives exactly.
 - Viscosity is a **source-to-source compiler**: JavaScript in,
   JavaScript out, runnable on any engine.
-- Working ahead of time trades run-time values and deoptimization for
+- Working ahead of time trades run-time values and deoptimisation for
   portability and readable output, so every decision must be proved.
 
 Next: the interface between the core and a language, and how a second

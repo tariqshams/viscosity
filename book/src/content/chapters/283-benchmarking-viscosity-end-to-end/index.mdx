@@ -227,7 +227,7 @@ model's verdict differs, because measurement decided it.
 <Callout kind="engine" label="Under the hood">
 Each program times its hot section once per process, so the time
 includes the engine getting warm. V8 starts running code in its
-interpreter and moves hot functions up to optimizing compilers as it
+interpreter and moves hot functions up to optimising compilers as it
 gathers feedback<Cite id="v8-maglev" /> (*The V8 pipeline*). A
 microbenchmark harness waits for that to finish; an end-to-end benchmark
 keeps it in, because a user's program pays for it too.

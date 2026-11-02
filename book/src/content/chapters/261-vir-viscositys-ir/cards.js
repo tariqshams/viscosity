@@ -34,7 +34,7 @@ export const prompts = {
   },
   'binding-arrays': {
     q: 'Which variables does the JavaScript plugin always make bindings, besides captured ones?',
-    a: 'Module-level variables used by inner functions, variables assigned in `try` blocks, and every variable initialized with an array.',
+    a: 'Module-level variables used by inner functions, variables assigned in `try` blocks, and every variable initialised with an array.',
   },
   'phi-pick': {
     q: 'Block `b3` has preds `b1 b2` and starts with `%4 = phi %2, %3`. Control enters `b3` from `b2`. What is `%4`?',
@@ -242,7 +242,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the JavaScript plugin make every array-holding variable a binding?',
+    q: 'Why does the JavaScript plugin make every variable initialised with an array a binding?',
     options: [
       { t: 'Arrays are too big for SSA', why: 'SSA values are references; size doesn’t matter.' },
       { t: 'So the analyses can see every read and write of a candidate collection as a `load` or `store`', correct: true, why: 'Collection discovery and safety analysis follow the binding’s loads and check its stores.' },

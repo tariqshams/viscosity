@@ -99,7 +99,7 @@ JavaScript).
 There is no `parse` in the interface: parsing happens inside `lower`, and
 which parser to use is the plugin's own business. The JavaScript plugin
 uses acorn or a hand-written parser (the next chapters show both), and
-the Python plugin its own tokenizer and parser; the core only ever
+the Python plugin its own tokeniser and parser; the core only ever
 receives VIR.
 
 <Callout kind="definition">
@@ -204,7 +204,7 @@ Python syntax, but it does read one field of the module,
 loop took 26.7 ns per element over dataclass objects and 72.7 ns over
 `array('d')` columns, while memory went from 16.0 MB to 3.3 MB. CPython
 is an interpreter, and reading an `array('d')` element creates a new
-float object each time, while V8's optimizing compiler reads a
+float object each time, while V8's optimising compiler reads a
 `Float64Array` element as a raw double. So Python keeps objects by
 default and lets you opt in with `# @viscosity soa` (or
 `--python-auto`) when memory matters more.

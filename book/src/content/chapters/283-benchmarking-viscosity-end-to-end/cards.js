@@ -35,7 +35,7 @@ export const prompts = {
   },
   'e2e-fix': {
     q: 'Was the n-body slowdown fixed by removing bounds checks?',
-    a: 'No. The proof was generalized, so the checks became unnecessary: 12 of 12 accesses proven in bounds.',
+    a: 'No. The proof was generalised, so the checks became unnecessary: 12 of 12 accesses proven in bounds.',
   },
   'e2e-noise': {
     q: 'One committed run gave ledger 5.11×; the later matrix gave 3.75× (best). What should you claim?',

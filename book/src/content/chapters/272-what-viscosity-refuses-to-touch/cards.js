@@ -292,11 +292,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'How do Viscosity’s bailouts differ from V8’s deoptimizations?',
+    q: 'How do Viscosity’s bailouts differ from V8’s deoptimisations?',
     options: [
-      { t: 'They are the same thing', why: 'Both give up on an optimization, but at different times and with different costs.' },
+      { t: 'They are the same thing', why: 'Both give up on an optimisation, but at different times and with different costs.' },
       { t: 'Viscosity’s happen before the program runs and last the whole run; V8’s happen at run time when a speculation fails', correct: true, why: 'V8 can try again later; a source rewrite can’t.' },
-      { t: 'V8 never bails out', why: 'It deoptimizes whenever a speculation turns out wrong.' },
+      { t: 'V8 never bails out', why: 'It deoptimises whenever a speculation turns out wrong.' },
       { t: 'Viscosity’s bailouts make the program slower than before', why: 'A bailout leaves the code exactly as it was.' },
     ],
   },

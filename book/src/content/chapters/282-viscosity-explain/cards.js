@@ -2,7 +2,7 @@
 
 export const prompts = {
   'rep-why': {
-    q: 'Why does an optimizer need a second output besides the code?',
+    q: 'Why does an optimiser need a second output besides the code?',
     a: 'Without it you can’t tell whether it found nothing, gave up, or changed the wrong thing, short of reading the generated code.',
   },
   'rep-verdict': {
@@ -18,7 +18,7 @@ export const prompts = {
     a: 'The other 5 accesses get a bounds check, so they throw the same TypeError the original would.',
   },
   'rep-what': {
-    q: 'What is an optimization report?',
+    q: 'What is an optimisation report?',
     a: 'A compiler output that explains every decision it made, changed or kept, with the evidence for each.',
   },
   'rep-same-data': {
@@ -320,7 +320,7 @@ export const quiz = [
   {
     q: 'What does `explain()` in plan.ts compute?',
     options: [
-      { t: 'It re-runs the safety analysis to justify each decision', why: 'It analyzes nothing; that would be a second copy of the logic.' },
+      { t: 'It re-runs the safety analysis to justify each decision', why: 'It analyses nothing; that would be a second copy of the logic.' },
       { t: 'It only formats the reasons the planner already recorded', correct: true, why: 'Verdict line from the plan, then one `·` line per stored reason.' },
       { t: 'It compares the compiled code against the original', why: 'That is the differential test.' },
       { t: 'It measures each loop', why: 'Nothing is measured; profiling is a separate command.' },
@@ -367,7 +367,7 @@ export const quiz = [
     options: [
       { t: 'It isn’t: both are written before the program runs', why: 'V8’s trace is printed as transitions happen, during the run.' },
       { t: 'It is a debug-build event log for engine developers; Viscosity explains every collection once, before running', correct: true, why: 'One is a trace of runtime events, the other a report of compile-time decisions.' },
-      { t: 'V8’s trace explains why code was not optimized', why: 'It reports elements kind transitions, a much narrower event.' },
+      { t: 'V8’s trace explains why code was not optimised', why: 'It reports elements kind transitions, a much narrower event.' },
       { t: 'Viscosity’s report is only shown on errors', why: 'It is a normal output: `viscosity explain`, or `build --explain`.' },
     ],
   },

@@ -174,7 +174,7 @@ push.</span>
 </Analogy>
 
 <Callout kind="definition">
-**Amortized growth** spreads the cost of the rare, expensive grows over
+**Amortised growth** spreads the cost of the rare, expensive grows over
 all the cheap pushes. With doubling, n pushes copy fewer than 2n values
 in total, so one push costs a constant amount *on average*, even though
 an unlucky push copies everything. Growing by a constant amount instead
@@ -254,7 +254,7 @@ it separately.
   checks compare with length.
 - Viscosity's container grows by **doubling** `cap` and copying each
   typed column with `set`; plain array columns grow by themselves.
-- **Amortized growth**: with doubling, n pushes copy fewer than 2n values
+- **Amortised growth**: with doubling, n pushes copy fewer than 2n values
   in total, so a push is cheap on average; growing by a constant is
   quadratic.
 - The `construct` benchmark shows filling columns beats allocating

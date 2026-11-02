@@ -383,7 +383,7 @@ export const quiz = [
     q: 'What does `const p = ps[i]; p.x += p.vx;` become?',
     options: [
       { t: '`const p = ps.x[i]; p += ps.vx[i];`', why: 'Then p would be a copy of one number, and writing it wouldn’t change the column.' },
-      { t: '`const p = { x: ps.x[i], vx: ps.vx[i] }; p.x += p.vx;`', why: 'That rebuilds an object and loses the write. Viscosity never materializes here.' },
+      { t: '`const p = { x: ps.x[i], vx: ps.vx[i] }; p.x += p.vx;`', why: 'That rebuilds an object and loses the write. Viscosity never materialises here.' },
       { t: '`const p = ps[i]; p.x += p.vx;` (aliases are kept)', why: 'The container has no element objects to alias; every p.x must change.' },
       { t: '`const p = i; ps.x[p] += ps.vx[p];`', correct: true, why: 'Right: the variable now holds the index.' },
     ],

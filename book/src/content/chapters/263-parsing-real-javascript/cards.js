@@ -73,7 +73,7 @@ export const exercises = {
   parseLet: {
     title: 'Parse a declaration into ESTree',
     prompt:
-      'Write `parseLet(src)` by recursive descent for the statement `let NAME = EXPR;` (or `const`; the `;` is optional). `EXPR` is terms joined by `+` or `-`, left to right; a term is a whole number or a name. Return ESTree: a `VariableDeclaration` with `kind` and one `VariableDeclarator` (`id`, `init`). Numbers are `{ type: \'Literal\', value }`, names `{ type: \'Identifier\', name }`, and `a + b` is `{ type: \'BinaryExpression\', operator, left, right }`. Throw a `SyntaxError` if the input doesn’t fit: no `let`/`const`, a target that isn’t a name, a missing `=`, or tokens left over. The tokenizer and `peek`/`next` are written for you.',
+      'Write `parseLet(src)` by recursive descent for the statement `let NAME = EXPR;` (or `const`; the `;` is optional). `EXPR` is terms joined by `+` or `-`, left to right; a term is a whole number or a name. Return ESTree: a `VariableDeclaration` with `kind` and one `VariableDeclarator` (`id`, `init`). Numbers are `{ type: \'Literal\', value }`, names `{ type: \'Identifier\', name }`, and `a + b` is `{ type: \'BinaryExpression\', operator, left, right }`. Throw a `SyntaxError` if the input doesn’t fit: no `let`/`const`, a target that isn’t a name, a missing `=`, or tokens left over. The tokeniser and `peek`/`next` are written for you.',
     starter: HEAD + `  // your code here
 }
 

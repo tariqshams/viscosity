@@ -5,7 +5,7 @@ part: VIII
 title: 'Profile-guided optimization'
 tagline: 'Some questions a compiler cannot answer by reading the code, like “how many elements will this array hold?”. So Viscosity runs the program once, counts, and compiles with the answer, and it can do so calmly, because a wrong count can only ever cost speed.'
 objectives:
-  - Explain what profile-guided optimization is and which question it answers for Viscosity.
+  - Explain what profile-guided optimisation is and which question it answers for Viscosity.
   - Describe how `viscosity profile` instruments a program without changing what it does.
   - Read how a measured size replaces the static estimate in the planner, and where that happens.
   - Say why a profile can cost Viscosity speed but never correctness, and how that differs from a JIT.
@@ -74,7 +74,7 @@ the program above:
 <PgoSteps client:visible />
 
 <Callout kind="definition">
-**Profile-guided optimization (PGO)** is compiling with measurements
+**Profile-guided optimisation (PGO)** is compiling with measurements
 taken from real runs of the program, rather than only with what can be
 worked out from the source. The measurements are the **profile**. The
 usual loop is: instrument the program, run it on typical input, record,
@@ -268,11 +268,11 @@ counts that nothing records yet.
 <Prompts ids={['profile-safety', 'profile-input', 'profile-correct']} />
 
 <Callout kind="engine" label="Under the hood">
-A JIT does profile-guided optimization all the time, during the same
+A JIT does profile-guided optimisation all the time, during the same
 run. V8 records feedback about the shapes and types each operation sees,
-and its optimizing compilers use it to generate specialized code; if an
+and its optimising compilers use it to generate specialised code; if an
 assumption later breaks, the code is thrown away and execution
-deoptimizes<Cite id="v8-maglev" /> (*Speculation and deoptimization*).
+deoptimises<Cite id="v8-maglev" /> (*Speculation and deoptimization*).
 That is the price of a profile that affects correctness: every
 assumption needs a guard. Viscosity's profile is collected ahead of time
 and only picks a size threshold, so its output needs no guard at all.
@@ -288,7 +288,7 @@ and only picks a size threshold, so its output needs no guard at all.
 
 ## What you learned
 
-- **Profile-guided optimization** compiles with measurements from a real
+- **Profile-guided optimisation** compiles with measurements from a real
   run; Viscosity measures the one thing it cannot always compute, how big
   each collection gets.
 - **Instrumentation** wraps each collection's creation in `__vsc_track`,

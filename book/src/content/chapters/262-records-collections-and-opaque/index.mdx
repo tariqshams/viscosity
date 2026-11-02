@@ -90,16 +90,16 @@ const o = { x: 1, vx: 2 };
 ```
 const xs = [o];
 xs.push({ x: 3, vx: 4 });
-  %7 = array.new %2
-  %12 = record {x, vx} %10, %11
-  %13 = push %9, %12
+  %3 = array.new %2
+  %8 = record {x, vx} %6, %7
+  %9 = push %5, %8
 ```
 
 ```
 xs[0].vx = Math.sqrt(o.x * o.x);
-  %6 = Math.sqrt(%5)
-  %18 = index.get %16, %17
-  field.set %18, %6 .vx
+  %12 = index.get %10, %11
+  %16 = Math.sqrt(%15)
+  field.set %12, %16 .vx
 ```
 
 </Examples>
@@ -108,7 +108,7 @@ All three come from one real listing. In the first, the object literal
 becomes one `record` instruction that names its fields in order and
 takes their values, `%0` and `%1`, as arguments. In the second, the
 array literal is `array.new` with the record as its one element, and
-`push` takes the array (`%9`, loaded from the binding `xs`) and the new
+`push` takes the array (`%5`, loaded from the binding `xs`) and the new
 record. In the third, `Math.sqrt` is an `intrinsic` (printed as a call
 by name), `xs[0]` is an `index.get`, and the assignment is a
 `field.set` on that element with the field name `.vx` written last. One

@@ -98,7 +98,7 @@ It follows the rules every corpus file follows. **One idea:** this file
 asks a single question, whether an out-of-bounds write inside `try`
 throws the same error after compiling, and its name says so. **A
 header** gives the expected decision for every collection
-(`ps=soa`), so a compiler that quietly stops optimizing fails too.
+(`ps=soa`), so a compiler that quietly stops optimising fails too.
 **Observable:** it prints the error's class and message, and the sum,
 because a difference that is not printed cannot be caught. **Small and
 deterministic:** no timing and no randomness, so two correct runs always
@@ -127,7 +127,7 @@ print(cs[5].count, cs[5].weight,
 
 </Examples>
 
-The first is the start of `aosoa_bad_block.js`, eight lines in all: its
+The first is the start of `aosoa_bad_block.js`, seven lines in all: its
 header says the bad annotation must leave `ps` as objects, and the rest
 checks that the program still runs the same. The second is the Python
 trap `ints_stay_ints.py`: a careless `array('d')` column would turn the

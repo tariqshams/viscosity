@@ -15,7 +15,7 @@ export const prompts = {
   },
   'ssa-rule': {
     q: 'When does Viscosity lower a JavaScript variable to SSA values?',
-    a: 'When it is a const, let, var, parameter or catch variable that no other function uses, is never assigned inside try, and is not initialized with an array.',
+    a: 'When it is a const, let, var, parameter or catch variable that no other function uses, is never assigned inside try, and is not initialised with an array.',
   },
   'array-binding': {
     q: 'Why is `const ps = []` always a binding, never SSA?',
@@ -379,7 +379,7 @@ export const quiz = [
     options: [
       { t: '`let n = 0;` read by an arrow function', why: 'Captured by a closure: it must be a binding the closure can load at any time.' },
       { t: '`let s = 0;` updated only in a loop in the same function', correct: true, why: 'Local, uncaptured, not assigned in try, not an array: it becomes values and phis.' },
-      { t: '`const ps = [];` never reassigned', why: 'Array-initialized variables are always bindings, so the collection analysis sees every use.' },
+      { t: '`const ps = [];` never reassigned', why: 'Array-initialised variables are always bindings, so the collection analysis sees every use.' },
       { t: '`let t;` assigned inside a `try` block', why: 'Exception edges are not modelled, so it stays a binding.' },
     ],
   },

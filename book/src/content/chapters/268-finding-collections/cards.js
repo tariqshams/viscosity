@@ -7,7 +7,7 @@ export const prompts = {
   },
   'cd-vir': {
     q: 'Why can collection discovery find every use of `ps` just by scanning loads?',
-    a: 'The front-end lowers every array-initialized variable to a binding, so each read of it is an explicit loadBinding.',
+    a: 'The front-end lowers every array-initialised variable to a binding, so each read of it is an explicit loadBinding.',
   },
   'cd-var': {
     q: 'What happens to `var ps = []` filled with records?',

@@ -260,7 +260,7 @@ export const quiz = [
     options: [
       { t: '`for (let i = 0; i < ps.length; i++)`', why: '`ps.length` isn’t a constant in the code.' },
       { t: '`for (let i = 0; i < 64 * 64; i++)`', why: 'The bound is an expression; `tripCount` wants a constant.' },
-      { t: '`for (let i = 10; i > 0; i--)`', why: 'Only counting up from 0 by 1 with `<` or `<=` is recognized.' },
+      { t: '`for (let i = 10; i > 0; i--)`', why: 'Only counting up from 0 by 1 with `<` or `<=` is recognised.' },
       { t: '`for (let i = 0; i <= 9; i++)`', correct: true, why: 'Counting from 0 by 1 up to a constant with `<=`: 9 + 1 = 10 trips.' },
     ],
   },
@@ -276,7 +276,7 @@ export const quiz = [
   {
     q: 'Why does Viscosity use “inside a loop” rather than measured time to judge hotness?',
     options: [
-      { t: 'Measuring is impossible in JavaScript', why: 'It isn’t; V8 does it constantly, and the chapter Profile-guided optimization does it for Viscosity.' },
+      { t: 'Measuring is impossible in JavaScript', why: 'It isn’t; V8 does it constantly, and the chapter *Profile-guided optimization* does it for Viscosity.' },
       { t: 'Loops are always hot', why: 'They aren’t: a loop of ten trips is cheap. It is a weak sign, but one that can be checked statically.' },
       { t: 'It compiles before the program has run, so it can only read hotness off the code', correct: true, why: 'Unlike V8, which watches the running program.' },
       { t: 'Depth is the same as time', why: 'Depth is a hint, not a measurement. Viscosity records it but doesn’t yet weigh loops with it.' },
