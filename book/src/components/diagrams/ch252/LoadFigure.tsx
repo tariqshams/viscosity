@@ -1,4 +1,4 @@
-// Chapter 251-b (staged split of 238): how a loader maps the LOAD segments
+// Chapter 252: how a loader maps the LOAD segments
 // of the linked executable (with a 4 KiB .bss added) from the file into
 // memory, from llvm-readelf -l. The RW segment is longer in memory than in
 // the file: the extra bytes are zeros.

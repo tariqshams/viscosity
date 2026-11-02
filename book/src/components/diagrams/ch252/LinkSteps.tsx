@@ -1,4 +1,4 @@
-// Chapter 251-b (staged split of 238): ld.lld linking main.o and loop.o.
+// Chapter 252: ld.lld linking main.o and loop.o.
 // Resolution, layout, then each relocation patched. Every address and byte
 // is from the real link in this book's session (LLD 18.1.3).
 import { StepFrame, useSteps } from '../../viz/stepper';

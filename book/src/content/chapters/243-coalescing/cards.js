@@ -1,4 +1,4 @@
-// Chapter 242-b cards (staged split of chapter 242): recall prompts,
+// Chapter 243 cards (the second half of chapter 242): recall prompts,
 // examples, exercises and quiz. Keys are stable ids.
 // The LLVM listing is llc 18.1.3 -O2 -print-after=register-coalescer.
 

@@ -194,7 +194,9 @@ last chapter warned about. A loop with fewer trips than stages never
 reaches the kernel, so the compiler needs a guard and a plain copy of
 the loop for short lists. And a value that has to live longer than one
 pass of the kernel would be overwritten by the next trip before it is
-used; the next chapter shows the fix.
+used; the usual fix is to unroll the kernel, so that each trip in
+flight gets a register of its own (this is called *modulo variable
+expansion*).
 
 Real compilers do this. LLVM has a software pipeliner that runs just
 before register allocation, while the code is still in SSA form; if it

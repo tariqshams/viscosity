@@ -119,7 +119,7 @@ test('too big throws', () => {
 
 - Leaving off \`>>> 0\`: every test with a positive immediate passes, and \`addi(2, 2, -16)\` returns a negative number that \`toBe(0xff010113)\` rejects.
 - Swapping \`rs1\` and \`rd\` (\`rd << 15\`, \`rs1 << 7\`): \`addi a0, a0, 1\` still passes, because both are 10, which hides the bug until \`mv a0, t0\`.
-- Forgetting the range check: the word for 3000 silently becomes a different instruction (3000 does not fit, so its top bits are lost and the CPU would add -1096 instead).`,
+- Forgetting the range check: the word for 3000 silently becomes a different instruction (3000 needs 13 bits as a signed number, so the 12 that are kept read back as -1096, and the CPU would add -1096 instead).`,
     wrong: [
       {
         code: `function addi(rd, rs1, imm) {

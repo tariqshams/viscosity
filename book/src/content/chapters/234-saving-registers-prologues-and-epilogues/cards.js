@@ -1,4 +1,4 @@
-// Chapter 233-b cards (staged split of chapter 233): recall prompts,
+// Chapter 234 cards (the second half of chapter 233): recall prompts,
 // examples, exercises and quiz. Keys are stable ids.
 // Register roles from the RISC-V psABI (riscv-cc.adoc); frame layouts
 // match clang 18.1.3 -O2 --target=riscv64 -march=rv64im.

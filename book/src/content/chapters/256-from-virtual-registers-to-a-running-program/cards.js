@@ -1,4 +1,4 @@
-// Chapter 255-b cards: recall prompts, examples, exercises and quiz.
+// Chapter 256 cards (the second half of chapter 255): recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {

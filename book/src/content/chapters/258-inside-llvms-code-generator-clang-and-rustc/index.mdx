@@ -38,8 +38,8 @@ The middle form is **Machine IR** (MIR): RISC-V's own instructions,
 over virtual registers such as `%10:gpr` (a general-purpose register,
 not yet chosen), with physical ones such as `$x10` only where the ABI
 demands them. PHI elimination and the coalescer are chapters 239 and
-242, the machine scheduler is chapter 246, and the result is the same
-four-instruction loop clang gave us at the end of chapter 255.
+243, the machine scheduler is chapter 246, and the result is the same
+four-instruction loop clang gave us at the end of chapter 256.
 
 <Prompts ids={['codegen-stages', 'mir-what']} />
 
@@ -102,7 +102,7 @@ our loop. Here is its body under `-regalloc=fast`:
 ```
 
 Values that live across blocks go back to memory at every block's
-end, much as with our two-register example in chapter 255; greedy
+end, much as with our two-register example in chapter 256; greedy
 keeps everything in registers. (Two honest footnotes. The same
 documentation still shows `-regalloc=linearscan` in an example, but
 LLVM 18's `llc` answers "Cannot find option named 'linearscan'", so
@@ -147,7 +147,7 @@ and checked; then to **THIR**, fully typed and used for pattern
 checking; then to **MIR**, "basically a Control-Flow Graph", where
 borrow checking and many optimisations happen while the code is still
 generic; and only then to LLVM IR, which is where generic code is
-monomorphized (copied once per concrete type)<Cite id="rustc-dev-guide-overview" />.
+monomorphised (copied once per concrete type)<Cite id="rustc-dev-guide-overview" />.
 Here is part of the MIR for the same `sumsq` written in Rust
 (`rustc --emit=mir`, a debug build, wrapped to fit):
 

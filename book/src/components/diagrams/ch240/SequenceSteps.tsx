@@ -1,4 +1,4 @@
-// Chapter 239-b: sequentialising the parallel copy (a, b, c, d) := (b, c, a, a).
+// Chapter 240: sequentialising the parallel copy (a, b, c, d) := (b, c, a, a).
 // Arrows go from a source register to the register it is copied into.
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';

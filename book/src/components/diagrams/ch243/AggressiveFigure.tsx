@@ -1,4 +1,4 @@
-// Chapter 242-b: aggressive coalescing can hurt. With k = 2, the graph on
+// Chapter 243: aggressive coalescing can hurt. With k = 2, the graph on
 // the left colours; merging the copy pair a, b makes a triangle.
 import { Svg, T, tok } from '../../viz/svg';
 

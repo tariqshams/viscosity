@@ -1,4 +1,4 @@
-// Chapter 242-b: conservative coalescing of sumsq's four copies with k = 4,
+// Chapter 243: conservative coalescing of sumsq's four copies with k = 4,
 // using the Briggs test at each step. Dashed lines are copies still present.
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Svg, T, tok } from '../../viz/svg';

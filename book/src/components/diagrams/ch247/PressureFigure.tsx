@@ -1,4 +1,4 @@
-// Chapter 246-b (staged split of 235): the price of a faster schedule.
+// Chapter 247: the price of a faster schedule.
 // Lifetime bars of the two loaded values in the original order and in the
 // list schedule: the faster schedule keeps both alive at once.
 import { Box, Svg, T, tok } from '../../viz/svg';

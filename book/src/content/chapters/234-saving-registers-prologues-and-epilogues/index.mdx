@@ -198,9 +198,9 @@ sumsq:
 All three are clang's `-O2` output (bodies elided). The leaf `sq`
 needs no prologue or epilogue: it calls nothing, so `ra` survives, and
 it uses no `s` register. `use9` from the last chapter makes a call, so
-it must save `ra`; it needs only 8 bytes but claims 16, to keep `sp`
-aligned, and it also uses that frame for the ninth argument at
-`0(sp)`. `sumsq` saves `ra` and the three `s` registers, 32 bytes in
+it must save `ra`; its 16 bytes hold `ra` at `8(sp)` and the ninth
+argument at `0(sp)` (had it needed only the 8 for `ra`, it would still
+claim 16, to keep `sp` aligned). `sumsq` saves `ra` and the three `s` registers, 32 bytes in
 all. (Unoptimised code also sets `s0` to the old `sp` as a frame
 pointer, as the `-O0` `sumsq` did two chapters ago; the psABI makes a
 frame pointer optional and, when there is one, puts it in

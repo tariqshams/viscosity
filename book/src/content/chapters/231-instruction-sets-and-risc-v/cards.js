@@ -1,4 +1,4 @@
-// Chapter 230-b cards (staged split of chapter 230): recall prompts,
+// Chapter 231 cards (the second half of chapter 230): recall prompts,
 // examples, exercises and quiz. Keys are stable ids.
 // The lui/addi pairs were checked with llvm-mc 18.1.3 (-triple=riscv32).
 

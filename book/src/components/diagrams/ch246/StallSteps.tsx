@@ -30,7 +30,7 @@ const STATES: S[] = [
   { rows: PLAIN, shown: 4, label: 'as selected', note: 'addi a0 does not depend on the multiply at all, yet it waited behind it. It starts in cycle 7.' },
   { rows: PLAIN, shown: 5, label: 'as selected', note: 'The branch starts in cycle 8, so one trip round the loop takes 9 cycles, 4 of them stalls.' },
   { rows: CLANG, shown: 1, label: 'as clang ordered it', note: 'Now the order clang -O2 really produced for this loop. Same five instructions, same meaning; ld starts in cycle 0 as before.' },
-  { rows: CLANG, shown: 2, label: 'as clang ordered it', note: 'mul still has to wait for the load: cycles 1 and 2 are stalls. Nothing else is ready to fill them yet.' },
+  { rows: CLANG, shown: 2, label: 'as clang ordered it', note: 'mul still has to wait for the load: cycles 1 and 2 are stalls. (addi could have filled one of them instead; the trip would take just as long.)' },
   { rows: CLANG, shown: 3, label: 'as clang ordered it', note: 'Here is the move: addi a0 has been placed straight after mul, so it fills cycle 4, a cycle that was wasted before.' },
   { rows: CLANG, shown: 4, label: 'as clang ordered it', note: 'add starts in cycle 6, the first cycle the product exists; only cycle 5 is a stall now.' },
   { rows: CLANG, shown: 5, label: 'as clang ordered it', note: 'The branch starts in cycle 7: 8 cycles a trip instead of 9, with no change to what the loop computes. That is instruction scheduling.' },

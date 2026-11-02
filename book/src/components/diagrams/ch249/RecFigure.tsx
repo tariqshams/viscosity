@@ -1,4 +1,4 @@
-// Chapter 248-b (staged split of 236): two recurrences. A loop-carried
+// Chapter 249: two recurrences. A loop-carried
 // edge (drawn as a loop back) has a delay and a distance; a cycle of them
 // forces II >= total delay / total distance.
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';

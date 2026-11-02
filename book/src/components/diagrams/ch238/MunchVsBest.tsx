@@ -1,4 +1,4 @@
-// Chapter 237-b: the two covers of ADD(SHL(i, 3), 8) side by side, under the
+// Chapter 238: the two covers of ADD(SHL(i, 3), 8) side by side, under the
 // made-up costs of the chapter (sh3add = 3 cycles, the rest 1).
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 

@@ -1,4 +1,4 @@
-// Chapter 246-b (staged split of 235): list scheduling of two trips of the
+// Chapter 247: list scheduling of two trips of the
 // sum-of-squares loop, cycle by cycle, on the toy machine (one instruction
 // per cycle; ld and mul take 3 cycles, add 1). Priority is the height.
 import { StepFrame, useSteps } from '../../viz/stepper';

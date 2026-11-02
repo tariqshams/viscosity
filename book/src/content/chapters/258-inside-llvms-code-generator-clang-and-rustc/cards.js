@@ -1,4 +1,4 @@
-// Chapter 257-b cards: recall prompts, examples, exercises and quiz.
+// Chapter 258 cards (the second half of chapter 257): recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {

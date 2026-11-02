@@ -1,4 +1,4 @@
-// Chapter 235-b cards (staged split of chapter 235): recall prompts,
+// Chapter 236 cards (the second half of chapter 235): recall prompts,
 // examples, exercises and quiz. Keys are stable ids.
 // Listings are clang 18.1.3 -O2 --target=riscv64 -march=rv64im.
 

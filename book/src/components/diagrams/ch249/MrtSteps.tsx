@@ -1,4 +1,4 @@
-// Chapter 248-b (staged split of 236): modulo scheduling the sum-of-squares
+// Chapter 249: modulo scheduling the sum-of-squares
 // loop at II = 3 on the wider toy machine (one load, one multiply and one
 // ALU instruction may start per cycle). Each step places one instruction
 // in the modulo reservation table, at row t mod 3.

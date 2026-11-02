@@ -1,4 +1,4 @@
-// Chapter 253-b cards: recall prompts, examples, exercises and quiz.
+// Chapter 254 cards (the second half of chapter 253): recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -40,7 +40,7 @@ export const prompts = {
   },
   'guard-vs-deopt': {
     q: 'How does a speculating JIT’s check differ from this chapter’s guard?',
-    a: 'It checks inside the compiled code and can deoptimize halfway through; our guard only checks the arguments before the call.',
+    a: 'It checks inside the compiled code and can deoptimise halfway through; our guard only checks the arguments before the call.',
   },
 };
 
@@ -168,11 +168,19 @@ function interp([params, body], args) {
     if (k === 'num') return a;
     if (k === 'var') return env.get(a);
     const x = ev(a), y = ev(b);
+    if (k === '==') return x === y;
+    if (k === '!=') return x !== y;
+    const two = \`\${ty(x)} and \${ty(y)}\`;
+    const cmp = '<><=>='.includes(k);
+    const msg = k === '+'
+      ? \`cannot add \${two}\`
+      : cmp
+        ? \`cannot compare \${two}\` +
+          \` with '\${k}'\`
+        : \`cannot use '\${k}' on \${two}\`;
     if (ty(x) !== 'a number' ||
         ty(y) !== 'a number')
-      throw new Error(
-        \`cannot use '\${k}' on \` +
-        \`\${ty(x)} and \${ty(y)}\`);
+      throw new Error(msg);
     return {
       '+': x + y, '-': x - y,
       '*': x * y, '/': x / y,
@@ -570,7 +578,7 @@ export const quiz = [
     q: 'What does V8’s Liftoff do with the module our JIT hands it?',
     options: [
       { t: 'It interprets the bytes one at a time.', why: 'Liftoff is a compiler, not an interpreter; V8 found a WebAssembly interpreter far too slow except for debugging.' },
-      { t: 'It compiles each function to machine code in one quick pass, tracking where each stack value lives; TurboFan can recompile hot code later.', correct: true, why: 'Right: a baseline tier first, then an optimizing tier, as for JavaScript.' },
+      { t: 'It compiles each function to machine code in one quick pass, tracking where each stack value lives; TurboFan can recompile hot code later.', correct: true, why: 'Right: a baseline tier first, then an optimising tier, as for JavaScript.' },
       { t: 'It sends the bytes back to JavaScript for checking.', why: 'Checking (validation) is done by the engine itself.' },
     ],
   },
@@ -578,8 +586,8 @@ export const quiz = [
     q: 'Which is a real difference between this JIT and a speculating JIT such as V8’s TurboFan?',
     options: [
       { t: 'This JIT produces machine code and TurboFan does not.', why: 'Both end in machine code; ours goes through WebAssembly and the engine.' },
-      { t: 'This JIT checks the arguments before the call; a speculating JIT checks its guesses inside the compiled code and can deoptimize halfway through.', correct: true, why: 'Right: that is what lets a speculating JIT compile code whose types it can only guess.' },
-      { t: 'TurboFan never falls back to the interpreter.', why: 'It does: that is deoptimization (chapter 175).' },
+      { t: 'This JIT checks the arguments before the call; a speculating JIT checks its guesses inside the compiled code and can deoptimise halfway through.', correct: true, why: 'Right: that is what lets a speculating JIT compile code whose types it can only guess.' },
+      { t: 'TurboFan never falls back to the interpreter.', why: 'It does: that is deoptimisation (chapter 175).' },
     ],
   },
 ];

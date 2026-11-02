@@ -1,4 +1,4 @@
-// Chapter 237-b: optimal tiling by dynamic programming on ADD(SHL(i, 3), 8),
+// Chapter 238: optimal tiling by dynamic programming on ADD(SHL(i, 3), 8),
 // with made-up cycle costs (sh3add = 3, everything else 1). Label every node
 // bottom-up with its cheapest cover, then read the choices top-down.
 import { StepFrame, useSteps } from '../../viz/stepper';

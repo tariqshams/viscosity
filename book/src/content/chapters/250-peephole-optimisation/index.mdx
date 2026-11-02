@@ -149,7 +149,8 @@ instructions<Cite id="stoke2013" />.
 Here is the flavour of what such a search finds. The sign function,
 `sgn(x)`, is -1 for a negative number, 0 for zero and 1 for a positive
 one. The obvious code uses two branches; clang `-O2` instead emits three
-instructions with no branch at all:
+instructions with no branch at all (its own listing does the `snez`
+first, into `a1`; the order makes no difference):
 
 ```text
 srai a1, a0, 63    # -1 if x < 0, else 0

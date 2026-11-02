@@ -33,13 +33,13 @@ const STATES: S[] = [
   %13:gpr = nuw nsw ADD %10, %13
   %12:gpr = nuw nsw ADDI %12, 1
   BEQ %5, %12, %bb.3
-  PseudoBR %bb.4`, note: 'PHI elimination replaced each PHI with copies (chapter 239), and the register coalescer merged copies away (chapter 242): i is now %12 and s is %13 throughout, written in place. The code has left SSA.' },
+  PseudoBR %bb.4`, note: 'PHI elimination replaced each PHI with copies (chapter 239), and the register coalescer merged copies away (chapter 243): i is now %12 and s is %13 throughout, written in place. The code has left SSA.' },
   { k: 3, code: `bb.4.for.body:
   %10:gpr = nsw MUL %12, %12
   %12:gpr = nuw nsw ADDI %12, 1
   %13:gpr = nuw nsw ADD %10, %13
   BEQ %5, %12, %bb.3
-  PseudoBR %bb.4`, note: 'The machine scheduler (chapter 246) has moved the ADDI up, between the multiply and the add that uses its result. The ADDI and the add do not depend on each other, so either order is correct, and the scheduler picks the one its model of the processor prefers. (The real listing also marks registers renamable; that word is left out here.)' },
+  PseudoBR %bb.4`, note: 'The machine scheduler (chapter 246) has moved the ADDI up, between the multiply and the add that uses the product. The ADDI and the add do not depend on each other, so either order is correct, and the scheduler picks the one its model of the processor prefers. (The real listing also marks registers renamable; that word is left out here.)' },
   { k: 4, code: `bb.4.for.body:
   $x13 = nsw MUL $x12, $x12
   $x12 = nuw nsw ADDI killed $x12, 1
@@ -51,7 +51,7 @@ const STATES: S[] = [
   mul  a3, a2, a2
   addi a2, a2, 1
   add  a1, a3, a1
-  bne  a0, a2, .LBB0_2`, note: 'Finally, the control-flow optimizer turned "BEQ out, else branch back" into a single bne back to the top, and the assembly printer wrote ABI names. Four instructions per trip, against our compiler\'s five.' },
+  bne  a0, a2, .LBB0_2`, note: 'Finally, the control-flow optimiser turned "BEQ out, else branch back" into a single bne back to the top, and the assembly printer wrote ABI names. Four instructions per trip, against our compiler\'s five.' },
 ];
 
 export default function CodegenSteps() {

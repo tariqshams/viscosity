@@ -1,4 +1,4 @@
-// Chapter 237-b cards (staged split of chapter 237): recall prompts,
+// Chapter 238 cards (the second half of chapter 237): recall prompts,
 // examples, exercises and quiz. Keys are stable ids.
 // The sh3add cost of 3 is invented for the example and says so in the text.
 

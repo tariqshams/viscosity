@@ -28,9 +28,9 @@ print  sq  (  7  )  ;`, note: 'Stage 1, scanning (chapter 68): one regular expre
   mv   a0, v1      # result goes in a0
   j    .Lsq_ret`, note: 'Stage 3, instruction selection (chapter 237): each piece of the tree becomes RISC-V instructions, but over virtual registers v0, v1, ... of which there are as many as we like. The calling convention already shows: x arrives in a0 and the answer leaves in a0.' },
   { stage: 3, code: `v0  lives from line 0 to line 1
-v1  lives from line 1 to line 2`, note: 'Stage 4, live intervals (chapters 241 and 244): for each virtual register, the first and last line that mention it. (A value used inside a loop is stretched to cover the whole loop.)' },
+v1  lives from line 1 to line 2`, note: 'Stage 4, live intervals (chapters 241 and 245): for each virtual register, the first and last line that mention it. (A value used inside a loop is stretched to cover the whole loop.)' },
   { stage: 4, code: `v0 -> s1
-v1 -> s2`, note: 'Stage 5, linear scan (chapter 244): walk the intervals in order of their start and hand each one a free register. Ours only hands out s1 to s11, the callee-saved registers, so values survive calls without any extra work.' },
+v1 -> s2`, note: 'Stage 5, linear scan (chapter 245): walk the intervals in order of their start and hand each one a free register. Ours only hands out s1 to s11, the callee-saved registers, so values survive calls without any extra work.' },
   { stage: 5, code: `sq:
   addi sp, sp, -16
   sd   s1, 8(sp)
@@ -42,7 +42,7 @@ v1 -> s2`, note: 'Stage 5, linear scan (chapter 244): walk the intervals in orde
   ld   s1, 8(sp)
   ld   s2, 0(sp)
   addi sp, sp, 16
-  ret`, note: 'Stage 6, the frame (chapter 233): because sq uses s1 and s2, which belong to its caller, it saves them in a 16-byte frame and restores them before ret. A peephole pass (chapter 250) has deleted the jump to the very next line.' },
+  ret`, note: 'Stage 6, the frame (chapter 234): because sq uses s1 and s2, which belong to its caller, it saves them in a 16-byte frame and restores them before ret. A peephole pass (chapter 250) has deleted the jump to the very next line.' },
   { stage: 6, code: `13 01 01 ff   addi sp, sp, -16
 23 34 91 00   sd   s1, 8(sp)
 23 30 21 01   sd   s2, 0(sp)

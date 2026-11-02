@@ -131,8 +131,8 @@ where `n` is local 0 and `i` is local 2; `63` is `f64.lt`, and `40`
 after `block` and `loop` says they leave nothing on the stack. The
 third is the whole JIT, about two hundred short lines: the encoder from the last
 chapter, `compile`, a small tree-walking interpreter, and `jit`, the
-wrapper with the counter and the guard. It prints `14` three times as
-`interpreted` and then `compiled` from the third call on (the call
+wrapper with the counter and the guard. It prints `14` twice as
+`interpreted` and then as `compiled` from the third call on (the call
 that reaches the limit is the first to use the new code), then
 `332833500` and `5` from the compiled code, and finally the
 interpreter's error for `f('4')`.
@@ -177,7 +177,7 @@ compiler that makes machine code in a single pass over the
 function's bytes, keeping a "virtual stack" of where each operand
 lives, in a register or in the stack frame, instead of pushing values
 at run time; hot code is then compiled again by **TurboFan**, the
-optimizing compiler<Cite id="v8-liftoff" />. V8 itself first sent
+optimising compiler<Cite id="v8-liftoff" />. V8 itself first sent
 every function to TurboFan straight after Liftoff, and later tried
 **dynamic tiering**, which compiles with TurboFan "only those functions
 ... that actually get executed multiple times", our counter in a
@@ -188,7 +188,7 @@ IR<Cite id="v8-sparkplug" />, which is the same shape as our
 
 Two differences are worth keeping in mind. Our guard runs before the
 call; a speculating JIT (chapter 174) compiles for the types it has
-seen and checks inside the compiled code, deoptimizing halfway through
+seen and checks inside the compiled code, deoptimising halfway through
 if a guess fails, which lets it compile far more of the language. And
 our JIT only switches between calls: a single call that loops for a
 long time stays in the interpreter until it returns (in 2021, V8 did
@@ -216,7 +216,7 @@ executable memory at all<Cite id="v8-jitless" />.
 - Most of a safe JIT is refusing: `%`, truthiness, missing returns and
   non-number arguments all go back to the interpreter.
 - Real engines add tiers (Liftoff, TurboFan) and speculation with
-  deoptimization, but the shape is the same.
+  deoptimisation, but the shape is the same.
 
 Next: one complete compiler from Drip to RISC-V, putting every stage
 of this part together.

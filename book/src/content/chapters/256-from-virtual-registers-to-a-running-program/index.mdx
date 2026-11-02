@@ -27,7 +27,7 @@ turn the text into something that runs.
 
 ## Stages 4 and 5: intervals and linear scan
 
-We use the allocator from chapter 244, **linear scan**, because it is
+We use the allocator from chapter 245, **linear scan**, because it is
 short and needs only each value's **live interval**: the first and
 last line of the function that mention it. One subtlety comes from
 loops: a value used inside a loop is needed on every trip, so its
@@ -51,7 +51,7 @@ every single use, not once.</span>
 <ScanSteps client:visible />
 
 Our allocator only hands out `s1` to `s11`, the callee-saved
-registers (chapter 233). That is a deliberate simplification: values
+registers (chapter 234). That is a deliberate simplification: values
 in them survive every call without any extra code around the call, so
 `fib(n - 1) + fib(n - 2)` keeps the first result safe while the second
 call runs. The price is paid once per function instead, in the
@@ -137,7 +137,7 @@ $ llvm-objdump -d -r sumsq.o
 Each instruction is four bytes, little-endian. The loop's `bge` was
 resolved by the assembler (`63 da 99 00` already holds the distance to
 `0x34`), but the two `call`s became `auipc` and `jalr` with an
-`R_RISCV_CALL_PLT` relocation, a hole for the linker (chapter 251) to
+`R_RISCV_CALL_PLT` relocation, a hole for the linker (chapter 252) to
 fill with the distance to `sumsq` and to `print`<Cite id="riscv-psabi-relocations" />.
 (Assembling the same file with `clang --target=riscv64 -c` leaves
 even the local branches as relocations, `R_RISCV_BRANCH` and

@@ -142,7 +142,7 @@ instead of two.</span>
 Rotation is why clang's `sumsq` counts with `bne a0, a2` at the
 bottom. The cost is a second copy of the test, which is small, and the
 benefit is one fewer branch per trip, which adds up over millions of
-trips (and taken branches are what a pipeline has to predict, as
+trips (and every branch is one more guess a pipeline has to make, as
 chapter 55 showed).
 
 <Prompts ids={['shape-what', 'invert-test', 'andand-shape', 'rotate-why', 'tail-call']} />

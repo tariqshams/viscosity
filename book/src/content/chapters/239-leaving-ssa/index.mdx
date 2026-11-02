@@ -90,11 +90,12 @@ bb.2.body:
 ```
 
 `%4` is `n`, arriving in `$x10` (that is `a0`), and `%5` is the
-zero, copied (via `%6`) from `$x0`, the register that always reads 0; `%1` is
+zero, copied (via `%6`) from `$x0`; `%1` is
 `i` and `%0` is `s`. The copies into `%8` and `%9` at the ends of
 bb.0 and bb.2 are our copies, made into fresh names, which bb.1 then
 copies into `%1` and `%0`. That is a lot of copies for a three-line
-loop; coalescing, after graph colouring, removes every one of them.
+loop; coalescing (the chapter after graph colouring) removes every one
+of them.
 
 <Callout kind="definition">
 **SSA destruction** (leaving SSA) replaces every phi
@@ -237,8 +238,8 @@ The first is the bug: the copy sits in b1, so it also runs on the
 way out to b2. The second is the cure: the back edge runs through the
 new block b5, the only place the copy executes. The third runs the
 original loop and both translations as JavaScript and prints `2 3 2`;
-change the `3` in the tests to `5`, and the naive one is still one too
-high.
+change the `3` in all three loop conditions to `5`, and the naive one
+is still one too high.
 
 ## Correct first, tidy later
 

@@ -1,4 +1,4 @@
-// Chapter 239-b cards (staged split of chapter 239): recall prompts,
+// Chapter 240 cards (the second half of chapter 239): recall prompts,
 // examples, exercises and quiz. Keys are stable ids.
 
 export const prompts = {
@@ -264,7 +264,7 @@ function sequence(moves) {
   }
   return out;
 }`,
-        why: 'This asks whether the copy’s source is written by anyone, which is not what makes a copy safe; it gets stuck on simple chains and uses t when none is needed.',
+        why: 'This asks whether the copy’s source is written by anyone, which is not what makes a copy safe: on the chain `(a, b) := (b, c)` it does `b = c` first, destroying the b that `a = b` still needs.',
       },
     ],
   },

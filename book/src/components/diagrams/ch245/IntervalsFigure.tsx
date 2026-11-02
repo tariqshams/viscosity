@@ -1,4 +1,4 @@
-// Chapter 244-b: sumsq's live intervals over its numbered instructions. The
+// Chapter 245: sumsq's live intervals over its numbered instructions. The
 // loop (lines 4 to 8) is shaded: anything used inside it is stretched to its
 // end, because the jump back makes it live there too.
 import { Box, Svg, T, tok } from '../../viz/svg';

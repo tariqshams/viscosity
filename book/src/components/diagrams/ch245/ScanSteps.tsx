@@ -1,4 +1,4 @@
-// Chapter 244-b: Poletto and Sarkar's linear scan on sumsq with three
+// Chapter 245: Poletto and Sarkar's linear scan on sumsq with three
 // registers. Intervals are visited by start point; the active list is kept
 // in order of end point.
 import { StepFrame, useSteps } from '../../viz/stepper';

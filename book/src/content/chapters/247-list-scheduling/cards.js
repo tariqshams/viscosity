@@ -1,4 +1,4 @@
-// Chapter 246-b cards (staged split of 235): recall prompts, examples,
+// Chapter 247 cards (the second half of chapter 246): recall prompts, examples,
 // exercises and quiz. Keys are stable ids.
 
 export const prompts = {

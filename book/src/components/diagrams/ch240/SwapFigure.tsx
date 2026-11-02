@@ -1,4 +1,4 @@
-// Chapter 239-b: the swap problem. Two copies run one after the other lose a
+// Chapter 240: the swap problem. Two copies run one after the other lose a
 // value; a spare register keeps it.
 import { Box, Svg, T, tok } from '../../viz/svg';
 
