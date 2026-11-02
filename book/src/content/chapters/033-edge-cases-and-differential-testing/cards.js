@@ -283,7 +283,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`isTeen(age)` should be true for ages 13 to 19. By the boundary rule, which set of inputs is best?',
+    q: '`isTeen(age)` should be true for ages 13 to 19. Testing at the boundaries, which set of inputs is best?',
     options: [
       {
         t: '`15, 16, 17`',
@@ -337,7 +337,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'How does this book’s repository check that Viscosity’s rewritten programs are correct?',
+    q: 'A tool rewrites programs to make them faster. What is a practical way to check, on thousands of programs, that each rewrite is correct?',
     options: [
       {
         t: 'By reading the generated code carefully',
@@ -350,7 +350,7 @@ export const quiz = [
       {
         t: 'By running the original and the rewritten program and checking their output matches',
         correct: true,
-        why: 'That is differential testing, in `frontend-js/test/differential.test.ts`.',
+        why: 'That is differential testing: the original program is the reference, so no expected answers have to be written by hand.',
       },
     ],
   },

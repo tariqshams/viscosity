@@ -23,8 +23,8 @@ export const prompts = {
     a: 'No. Imported names are read-only links, like `const` (`TypeError: Assignment to constant variable.`), though an imported object can still be changed.',
   },
   'missing-export': {
-    q: 'What happens if a module imports a name the other file never exported?',
-    a: 'A `SyntaxError` (“does not provide an export named …”) before any code in the program runs.',
+    q: 'In an ES module, what happens when a static `import { x }` names something the other module never exported?',
+    a: 'A `SyntaxError` (“does not provide an export named x”) while the modules are being linked, before any module in that import graph runs.',
   },
   'module-pattern': {
     q: 'What is the **module pattern**?',
@@ -227,7 +227,7 @@ test('private names are skipped', () => {
     .toEqual(['scan', 'VERSION']);
 });`,
     hints: [
-      'Loop over the lines and skip every line that does not start with `\'export \'` (chapter 22’s `startsWith`).',
+      'Loop over the lines and skip every line that does not start with `\'export \'` (`startsWith`, from *Cutting and building strings*).',
       'Split an export line on spaces: `\'export function scan(src) {\'.split(\' \')` is `[\'export\', \'function\', \'scan(src)\', \'{\']`. Which index holds the name?',
       'Index 2 holds `\'scan(src)\'` or `\'VERSION\'`. Cutting it at `(` with `.split(\'(\')[0]` gives the bare name in both cases (a word with no `(` comes back whole).',
     ],
@@ -292,11 +292,11 @@ export const quiz = [
       {
         t: 'It fails with a SyntaxError, because `isDigit` is not exported',
         correct: true,
-        why: 'A module’s names are private unless it exports them, and the import is checked before anything runs.',
+        why: 'A module’s names are private unless it exports them, and static imports are checked before any of the modules involved runs.',
       },
       {
         t: 'It imports `undefined` silently',
-        why: 'Asking for a name a module doesn’t export is an error, not a silent `undefined`.',
+        why: 'In an ES module, asking for a name the other module doesn’t export is an error, not a silent `undefined`.',
       },
       {
         t: 'It copies the whole file into `parser.js`',

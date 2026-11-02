@@ -150,7 +150,8 @@ text is refused too: `'text' does not exist in type '{ kind:
 
 The third is real code from this book's engine, and an honest example of
 the *other* choice. `Layout` is `'aos' | 'soa' | 'aosoa'` (three ways to
-store a list of records, which Part II explains), and `blockSize` only
+store a list of records, which *AoS vs SoA, measured* and *When SoA
+loses: materialization and AoSoA* explain), and `blockSize` only
 means something for `'aosoa'`. Nothing stops `{ layout: 'soa',
 blockSize: 8 }`; in fact the planner builds exactly that for a list
 marked `@viscosity soa` (it copies the comment's block size, or 8,
@@ -160,7 +161,7 @@ writes columns reads `blockSize` for `'aosoa'` alone. A union with
 manages without because one function, `plan`, builds every plan. That is the real trade: a union costs a little more typing,
 and pays for itself once several places build or read the data.
 
-<Prompts ids={['flag-count', 'illegal-what', 'fields-multiply', 'engine-tradeoff']} />
+<Prompts ids={['flag-count', 'illegal-what', 'fields-multiply', 'plan-union']} />
 
 ## Types first, code second
 

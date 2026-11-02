@@ -15,19 +15,19 @@ export const prompts = {
     a: 'Only `{"a": 1}`. Trailing commas, single quotes and leading zeros are all refused.',
   },
   'json-unknown': {
-    q: 'Why does Viscosity type the result of `JSON.parse` as `unknown` rather than trusting it?',
-    a: 'The text came from outside, so it could hold anything; `unknown` forces the code to check its shape before using it.',
+    q: 'Why is it safer to type the result of `JSON.parse` as `unknown` than to leave it as the `any` it returns?',
+    a: 'The text comes from outside, so it could hold anything; `unknown` forces the code to check its shape before using it, while `any` switches checking off.',
   },
   'two-stages': {
-    q: 'What are the two stages of turning JSON text into a value?',
-    a: 'A scanner cuts the text into tokens; a parser builds the tree of values from the tokens.',
+    q: 'In a parser built in the classic way, what are the two stages of turning text such as JSON into a value?',
+    a: 'A scanner (lexer) cuts the text into tokens; a parser builds the tree of values from the tokens.',
   },
   'token-at': {
-    q: 'Why does every token remember `at`, the index where it started?',
+    q: 'Why does a scanner usually record, in each token, the position in the text where it started?',
     a: 'So that an error found later, by the parser, can say exactly where in the text the problem is.',
   },
   'end-token': {
-    q: 'What is the `\'end\'` token for?',
+    q: 'Why do many scanners finish the token list with a special end-of-input token?',
     a: 'It marks where the text ran out, so the parser can always look at the next token without reading past the end of the list.',
   },
   'index-signature': {
@@ -879,7 +879,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the scanner, what is the job of the `at` field on every token?',
+    q: 'A JSON scanner stores `at` on every token. If `at` is the index in the text where the token started, what is it for?',
     options: [
       {
         t: 'It says how long the token is',
@@ -888,16 +888,16 @@ export const quiz = [
       {
         t: 'It records where the token started, so later errors can point at the right place',
         correct: true,
-        why: 'The parser, next chapter, reports structural mistakes using the `at` of the token it did not expect.',
+        why: 'The parser reports structural mistakes using the `at` of the token it did not expect.',
       },
       {
         t: 'It is required by JSON',
-        why: 'JSON says nothing about tokens; this is our own design.',
+        why: 'JSON says nothing about tokens; this is a choice in the scanner’s design.',
       },
     ],
   },
   {
-    q: '`scanNumber(\'01\', 0)` should throw. Why is `Number(\'01\')` not enough to scan JSON numbers?',
+    q: 'Why is `Number(text)` not enough to check that `text` is a valid JSON number?',
     options: [
       {
         t: 'Because `Number(\'01\')` throws',
@@ -915,7 +915,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which string does `scanString(\'"a\\\\nb"\', 0).value` produce, where the text is the six characters `"a\\nb"`?',
+    q: 'A JSON scanner reads the string token `"a\\nb"` (six characters: a quote, `a`, a backslash, `n`, `b`, a quote). What string value does it produce?',
     options: [
       {
         t: 'The four characters `a\\nb`',

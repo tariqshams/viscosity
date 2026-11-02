@@ -11,8 +11,8 @@ export const prompts = {
     a: 'One check that must be true, like `expect(max([3, 7, 2])).toBe(7)`.',
   },
   'assertion-throws': {
-    q: 'How does a false assertion make its test fail?',
-    a: 'It throws an error. The test runner catches it and marks that test as failed.',
+    q: 'In test runners such as `node:test`, Jest or Vitest, how does a false assertion make its test fail?',
+    a: 'It throws an error. The runner catches it and marks that test as failed.',
   },
   'test-can-be-wrong': {
     q: 'A test fails with `expected 1, got 0`. Does that prove the function is wrong?',
@@ -27,7 +27,7 @@ export const prompts = {
     a: 'For computed decimals, which can be off by a tiny amount (`0.1 + 0.2` is not exactly `0.3`).',
   },
   'node-test': {
-    q: 'Outside the book, what command runs your test files with Node’s built-in runner?',
+    q: 'What command runs test files with Node’s built-in test runner?',
     a: '`node --test`.',
   },
   'keep-tests': {
@@ -291,7 +291,7 @@ export const quiz = [
     ],
   },
   {
-    q: `In this book's tiny runner, what is printed?
+    q: `\`test(name, fn)\` runs \`fn\` in a \`try\`, printing \`pass: NAME\`, or \`FAIL: NAME\` and the error’s message if it throws; \`expectBe(got, want)\` throws \`expected WANT, got GOT\` when they differ. What is printed?
 \`\`\`
 test('a', () => {
   expectBe(1, 1);
@@ -345,7 +345,7 @@ test('a', () => {
         why: 'C’s `assert` has no runner behind it.',
       },
       {
-        t: 'A false C `assert` stops the whole program at once, so later checks never run',
+        t: 'A false C `assert` stops the whole program at once (unless `NDEBUG` turns asserts off), so later checks never run',
         correct: true,
         why: 'A test runner catches each failure and carries on with the next test; C’s `assert` aborts.',
       },

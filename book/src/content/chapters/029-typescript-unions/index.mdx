@@ -315,7 +315,8 @@ narrowing alike, so `show(id: number | string)` becomes plain
 `show(id)`, and the `typeof` check you wrote is the only part that runs.
 The checker's line-by-line reasoning is called **control-flow
 analysis**<Cite id="ts-narrowing" />, and it is a small version of the
-dataflow analyses that Part VI builds for optimising compilers: work
+dataflow analyses that *Dataflow, fixpoints and constant propagation*
+builds for optimising compilers: work
 out, for every point in a program, what must be true there.
 </Callout>
 

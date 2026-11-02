@@ -39,8 +39,8 @@ export const prompts = {
     a: '`Pick<T, Exclude<keyof T, K>>`: keep every key of `T` except those in `K`.',
   },
   'util-written': {
-    q: 'Are utility types such as `Partial` built into the checker?',
-    a: 'No. They are ordinary mapped and conditional types written in TypeScript (in `lib.es5.d.ts`).',
+    q: 'Are utility types such as `Partial` and `Omit` built into the TypeScript checker?',
+    a: 'No. They are ordinary mapped and conditional types written in TypeScript (in `lib.es5.d.ts`). Only a few, such as `Uppercase` and `Capitalize`, are `intrinsic`, built into the checker.',
   },
 };
 
@@ -117,7 +117,7 @@ test('the original is unchanged', () => {
       'Copy with `{ ...o }`, then remove each listed key from the copy. JavaScript removes a property with the `delete` operator: `delete obj[k]`.',
       'Write `const out: any = { ...o };`, then `for (const k of ks) { delete out[k]; }`, then `return out;`.',
     ],
-    walkthrough: `**How to think about it.** At run time, \`omit\` is "copy, then remove". The copy matters because the tests check the original is unchanged (objects are shared by reference, so deleting from \`o\` itself would change the caller's object). The type \`Omit<T, K>\` describes the result precisely: every key of \`T\` except \`K\`. Inside the body the checker cannot follow \`delete\` changing a type step by step, so the object being built is labelled \`any\`; the signature is what callers rely on.
+    walkthrough: `**How to think about it.** At run time, \`omit\` is "copy, then remove". The copy matters because the tests check the original is unchanged (objects are shared by reference, so deleting from \`o\` itself would change the caller's object). The type \`Omit<T, K>\` describes the result precisely: every key of \`T\` except \`K\`. Inside the body the checker does not follow \`delete\` changing a type step by step (an unlabelled \`{ ...o }\` would keep the type \`T\` all the way through, which stops being true after the first \`delete\`), so the object being built is labelled \`any\`, saying plainly that the inside is unchecked; the signature is what callers rely on.
 
 **The solution, line by line.**
 
@@ -216,7 +216,7 @@ test('an empty object gives no getters', () => {
       'The new name is `\'get\'` plus the key with its first letter upper-cased: `k[0].toUpperCase() + k.slice(1)`.',
       'Store `() => o[k]`, not `o[k]` itself, so the value is read when the getter is called. The arrow function is a closure over `o` and `k`.',
     ],
-    walkthrough: `**How to think about it.** The type \`Getters<T>\` already spells out the plan: for each string key, a new name made with \`Capitalize\`, holding a function that returns \`T[K]\`. At run time you do the same thing with ordinary string methods, since types are erased: \`Capitalize<K>\` has a run-time twin in \`k[0].toUpperCase() + k.slice(1)\`. Each getter must read the property when *called*, so it has to be a function that closes over \`o\` and \`k\` (a closure, chapter 12), not a copy of the value.
+    walkthrough: `**How to think about it.** The type \`Getters<T>\` already spells out the plan: for each string key, a new name made with \`Capitalize\`, holding a function that returns \`T[K]\`. At run time you do the same thing with ordinary string methods, since types are erased: \`Capitalize<K>\` has a run-time twin in \`k[0].toUpperCase() + k.slice(1)\`. Each getter must read the property when *called*, so it has to be a function that closes over \`o\` and \`k\` (a closure), not a copy of the value.
 
 **The solution, line by line.**
 
@@ -336,20 +336,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the solution of `omit` label its working object `any`?',
+    q: '`makeGetters<T extends object>(o: T): Getters<T>`, where `Getters<T>` is a mapped type, starts with `const out = {}`, adds one property per key in a loop, then returns `out`. Why does `tsc` reject the `return`?',
     options: [
       {
-        t: 'Because `Omit` only works on `any`',
-        why: '`Omit<T, K>` works on any object type; the signature uses it precisely.',
+        t: 'Because a function may not return a mapped type',
+        why: 'Mapped types are ordinary types and can be returned like any other.',
       },
       {
-        t: 'Because `delete` is not allowed in TypeScript',
-        why: '`delete` is ordinary JavaScript and allowed; the issue is following a type through it.',
+        t: 'Because adding properties to an object is not allowed in TypeScript',
+        why: 'Adding properties is ordinary JavaScript; the issue is following a type through the loop.',
       },
       {
-        t: 'The checker cannot follow a type changing as properties are deleted, so the inside is left unchecked while the signature stays exact',
+        t: 'The checker types `out` as `{}` and does not follow the properties the loop adds, so `{}` is not assignable to `Getters<T>`',
         correct: true,
-        why: 'A small unchecked inside behind a precise signature is a common, honest pattern.',
+        why: 'The usual answer is to label the object being built `any` (or to assert its type), leaving the inside unchecked while the signature stays exact.',
       },
     ],
   },

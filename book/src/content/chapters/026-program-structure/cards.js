@@ -3,36 +3,36 @@
 
 export const prompts = {
   'run-once': {
-    q: 'Three files import `errors.js`. How many times does `errors.js` run?',
-    a: 'Once. A module runs only once, however many files import it.',
+    q: 'In one program, three modules import the same `errors.js`. How many times does the code at the top level of `errors.js` run?',
+    a: 'Once. A module is evaluated once and cached; every later import of the same resolved file gets that same instance.',
   },
   'load-order': {
-    q: '`main.js` imports `parser.js`, which imports `scanner.js`. In what order do they run?',
-    a: '`scanner.js`, then `parser.js`, then `main.js`: each runs after everything it imports.',
+    q: 'With static imports, `main.js` imports `parser.js`, which imports `scanner.js`. In what order do their bodies run?',
+    a: '`scanner.js`, then `parser.js`, then `main.js`: each module runs after everything it imports.',
   },
   'post-order': {
     q: 'Why is the module load order called a **post-order**?',
     a: 'Each module is listed (run) *after* the modules it imports, the way a node comes after its children.',
   },
   'cycle-error': {
-    q: 'In a cycle, `b.js` reads `a.js`’s `const x` before `a.js` has run. What happens?',
-    a: 'A `ReferenceError`: “Cannot access \'x\' before initialization”. The name exists but has no value yet.',
+    q: 'In an import cycle, `b.js` runs first and, at its top level, reads `a.js`’s exported `const x`. What happens?',
+    a: 'A `ReferenceError`: “Cannot access \'x\' before initialization”. The binding exists, but `a.js` has not yet run the line that gives it a value.',
   },
   'cycle-fix': {
     q: 'Modules A and B import each other, and it causes trouble. What is the usual fix?',
     a: 'Move the code they share into a third module that both import, so the cycle disappears.',
   },
   'one-job': {
-    q: 'What is the first rule of thumb for splitting a program into modules?',
-    a: 'Each module has one clear job that you can say in a sentence.',
+    q: 'What is a good first test of whether code belongs together in one module?',
+    a: 'Whether the module has one clear job that you can say in a sentence; code that serves a different job belongs elsewhere.',
   },
   'point-one-way': {
     q: 'Why should imports point one way, from high-level modules to low-level ones?',
     a: 'Then no module can depend on itself through others, so there are no cycles, and a change low down only affects what is above it.',
   },
   'bottom-layer': {
-    q: 'In the interpreter’s layers, why does `errors.js` sit at the bottom?',
-    a: 'Every other module uses it, and it imports nothing, so it can run first and never take part in a cycle.',
+    q: 'Why should a module that every other module uses (such as one that reports errors) import nothing from the rest of the program?',
+    a: 'Then it can run before everything that needs it and can never be part of an import cycle.',
   },
 };
 
@@ -186,7 +186,7 @@ test('a cycle does not loop forever', () => {
 - \`  return order;\` returns the run order.
 - \`}\` closes \`loadOrder\`.
 
-A module with no imports (\`errors\`) is the natural base case: its loop does nothing and it is pushed straight away. The same depth-first shape turns up whenever a compiler walks a graph, such as the control-flow graphs of Part VI.
+A module with no imports (\`errors\`) is the natural base case: its loop does nothing and it is pushed straight away. The same depth-first shape turns up whenever a compiler walks a graph, such as the control-flow graphs of the core\'s compiler chapters.
 
 **Common wrong attempts.**
 
@@ -400,7 +400,7 @@ export const quiz = [
       },
       {
         t: 'Nothing: cycles are always fine',
-        why: 'Cycles can fail with a ReferenceError when a name is read before its module has run.',
+        why: 'Cycles can fail with a ReferenceError when a `let`, `const` or `class` binding is read before its module has run.',
       },
     ],
   },

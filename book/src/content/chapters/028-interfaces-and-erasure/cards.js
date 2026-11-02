@@ -15,16 +15,16 @@ export const prompts = {
     a: 'No. Any object with the right properties, of the right types, fits; only the shape matters.',
   },
   'erasure-what': {
-    q: 'What is type erasure?',
-    a: 'Removing every type annotation and interface before the code runs, leaving plain JavaScript.',
+    q: 'What is type erasure, in TypeScript?',
+    a: 'Removing every type annotation and type declaration (such as an interface) when the code is compiled, so no type information is left when it runs.',
   },
   'emit-with-errors': {
     q: 'By default, if `tsc` finds a type error, does it still write the JavaScript file?',
     a: 'Yes. It reports the error and still emits JavaScript, unless you pass `--noEmitOnError`.',
   },
   'runtime-unchanged': {
-    q: 'Can adding a type annotation change what a program prints? Why?',
-    a: 'No. Annotations are erased before the program runs, so the engine runs the same JavaScript either way.',
+    q: 'Can adding a type annotation to a variable or parameter change what a program prints? Why?',
+    a: 'No. Annotations are erased, so the engine runs the same JavaScript either way. (The one exception is the `emitDecoratorMetadata` setting, which writes some types into the output for decorators.)',
   },
   'outside-data': {
     q: 'Why does a TypeScript program still need run-time checks on JSON it receives?',
@@ -322,7 +322,7 @@ export const quiz = [
       {
         t: '`let n = 3;`',
         correct: true,
-        why: 'The annotation is erased and nothing else changes. (With no settings at all, `tsc` would also turn `let` into `var` for old engines, a separate job.)',
+        why: 'The annotation is erased and nothing else changes. (An old target such as ES5 would also turn `let` into `var`, a separate job.)',
       },
     ],
   },

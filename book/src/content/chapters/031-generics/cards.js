@@ -27,7 +27,7 @@ export const prompts = {
     a: '`string`: the blank `T` is filled with `string`.',
   },
   'infer-callback': {
-    q: 'In `firstWhere([3, 8, 12], (n) => n > 5)`, why does `n` need no type label?',
+    q: 'With `firstWhere<T>(xs: T[], test: (x: T) => boolean)`, why does `n` in `firstWhere([3, 8, 12], (n) => n > 5)` need no type label?',
     a: 'The checker infers `T = number` from the list, and the callback’s parameter has type `T`, so `n` is a number.',
   },
   'generic-explicit': {
@@ -292,7 +292,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `firstWhere([\'ab\', \'cde\'], (s) => s.length === 3)`, what type does the checker give `s`?',
+    q: 'With `firstWhere<T>(xs: T[], test: (x: T) => boolean)`, what type does the checker give `s` in `firstWhere([\'ab\', \'cde\'], (s) => s.length === 3)`?',
     options: [
       {
         t: '`string`',

@@ -36,7 +36,7 @@ type A = IsStr<'hi'>; // 'yes'
 type B = IsStr<42>;   // 'no'
 ```
 
-This is the conditional operator `c ? x : y` (from chapter 36), moved to
+This is the conditional operator `c ? x : y` (from *TypeScript III: generics in depth*), moved to
 types. The question it may ask is always the same one: does the type on
 the left fit the type on the right (is it assignable to it, the same
 `extends` as in a constraint)? If so, the result is the first type;
@@ -116,7 +116,8 @@ add.</span>
 
 ## Template literal types: strings built from patterns
 
-Chapter 22's template literals build strings at run time:
+The template literals of *Cutting and building strings* build strings
+at run time:
 `` `get${name}` ``. The same backticks in a type build string *types*:
 
 ```ts

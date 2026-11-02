@@ -23,7 +23,7 @@ export const prompts = {
     a: '`A` is `number` (from the array), `B` is `string` (from the callback’s return), and the result is `string[]`.',
   },
   'infer-explicit': {
-    q: '`combine([1, 2], [\'a\'])` is an error. How do you tell the checker that mixing is intended?',
+    q: 'With `combine<T>(a: T[], b: T[]): T[]`, the call `combine([1, 2], [\'a\'])` is an error. How do you tell the checker that mixing is intended?',
     a: 'Write the type argument yourself: `combine<number | string>([1, 2], [\'a\'])`.',
   },
   'infer-empty': {
@@ -114,7 +114,7 @@ test('a later record with the same id wins', () => {
       'For each record `x`, the key is `x.id` and the value is the whole record `x`. `Map` has a method that stores a key and a value.',
       'Make `const m = new Map<number, T>();`, loop with `for (const x of xs) { m.set(x.id, x); }`, and `return m;` after the loop.',
     ],
-    walkthrough: `**How to think about it.** An index is a lookup table: give it an id, get the record. A \`Map\` (chapter 17) is exactly that, so the job is to make an empty map and put every record into it, keyed by its \`id\`. Because \`set\` on an existing key replaces the old value, "the later one wins" comes for free if you visit the records in order. The types describe the promise: every record must *have* a numeric \`id\` (the constraint), and the map gives back the records' full type \`T\`, not just \`{ id: number }\`.
+    walkthrough: `**How to think about it.** An index is a lookup table: give it an id, get the record. A \`Map\` (from *Map and Set*) is exactly that, so the job is to make an empty map and put every record into it, keyed by its \`id\`. Because \`set\` on an existing key replaces the old value, "the later one wins" comes for free if you visit the records in order. The types describe the promise: every record must *have* a numeric \`id\` (the constraint), and the map gives back the records' full type \`T\`, not just \`{ id: number }\`.
 
 **The solution, line by line.**
 
@@ -209,7 +209,7 @@ test('empty gives undefined', () => {
       'Start the best score at `-Infinity`, a number smaller than every other, so the first item always beats it. Use `>` rather than `>=`, so a tie keeps the earlier item.',
       'Inside `for (const x of xs)`, compute `const s = score(x);`; if `s > top`, set `best = x` and `top = s`. Return `best` after the loop: it is still `undefined` if the array was empty.',
     ],
-    walkthrough: `**How to think about it.** This is the "best so far" loop from chapter 4, with one change: instead of comparing the items themselves, you compare a number that the callback works out for each one. Two pieces of state are enough: the best item so far, and its score. The type is where inference shines: \`T\` appears in \`xs\` and in the callback's parameter, so once the checker reads \`xs\` it knows what the callback receives.
+    walkthrough: `**How to think about it.** This is the "best so far" loop from *Visiting every slot: the array loop*, with one change: instead of comparing the items themselves, you compare a number that the callback works out for each one. Two pieces of state are enough: the best item so far, and its score. The type is where inference shines: \`T\` appears in \`xs\` and in the callback's parameter, so once the checker reads \`xs\` it knows what the callback receives.
 
 **The solution, line by line.**
 

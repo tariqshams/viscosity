@@ -45,7 +45,7 @@ files import it<Cite id="mdn-modules" />. Step through it:
 
 <LoadOrderSteps client:visible />
 
-That is recursion again, from chapter 19: "get this module ready" means
+That is recursion again, from *Recursion and the call stack*: "get this module ready" means
 "get each of its imports ready, then run it", and a module with no
 imports, such as `errors.js`, is the base case. The order this walk
 produces (every module after everything it depends on) has a name you
@@ -234,8 +234,9 @@ tools can work out this whole order without running anything, and
 bundlers rely on it to find code that nothing imports and leave it
 out<Cite id="mdn-modules" />. The walk you just did, visiting what each
 node depends on first and listing the node afterwards, is a
-**depth-first post-order**, and it returns in Part VI, where a compiler
-walks the graph of a function's blocks in exactly this way.
+**depth-first post-order**, and it returns in the core (from *IR, three-address code and control-flow
+graphs* on), where a compiler walks the graph of a function's blocks in
+exactly this way.
 </Callout>
 
 ## Your turn

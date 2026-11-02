@@ -253,7 +253,8 @@ always different types; the price is that a `BlockId` really is a small
 object wrapping the number, not the number itself. C shows both sides:
 `typedef` only gives a new name, exactly like a TypeScript alias, while
 wrapping the number in a `struct` makes a genuinely different type, as
-Java does. (Rust, in Part XI, calls the wrapping trick a *newtype*.)
+Java does. (Rust, in *Arenas and typed indices*, calls the wrapping trick a
+*newtype*.)
 
 <Callout kind="engine" label="Under the hood">
 Viscosity's engine uses plain aliases for its four kinds of id

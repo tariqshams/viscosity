@@ -3,35 +3,35 @@
 
 export const prompts = {
   'shape-code': {
-    q: 'How does the shape of JSON decide the shape of the parser?',
-    a: 'One function per grammar rule; wherever a rule says “value”, the code calls `parseValue`.',
+    q: 'In a recursive-descent parser, how does the grammar decide the shape of the code?',
+    a: 'One function per grammar rule; wherever a rule mentions another rule (in JSON, “value”), the code calls that rule’s function.',
   },
   'base-case-json': {
-    q: 'What is the base case of the JSON parser’s recursion?',
+    q: 'In a recursive-descent JSON parser, what is the base case of the recursion?',
     a: 'A value that is a single token: a number, a string, `true`, `false` or `null`. It needs no further calls.',
   },
   'next-what': {
-    q: 'What does `next` in `{ value, next }` tell the caller?',
+    q: 'A parse function returns `{ value, next }`, where `next` is an index into the token list. What does `next` tell the caller?',
     a: 'The index of the first token after the value just read, so the caller knows where to carry on.',
   },
   'recursion-why': {
-    q: 'Why must `parseArray` call `parseValue`, rather than read each element as a single token?',
+    q: 'In a recursive-descent JSON parser, why must the function that parses an array call the function that parses any value, rather than read each element as a single token?',
     a: 'An element can be any value, including another array or an object, which takes many tokens.',
   },
   'differential-json': {
-    q: 'How do the final tests know the right answer for each input?',
-    a: 'They compare with `JSON.parse`, a trusted implementation: equal results for good input, both throwing for bad input.',
+    q: 'How can you test a hand-written JSON parser on many inputs without writing the expected answer for each one?',
+    a: 'Compare it with `JSON.parse`, a trusted implementation: equal results for good input, and both throwing for bad input.',
   },
   'proto-key': {
-    q: 'Why does `out[\'__proto__\'] = 1` not create a property called `__proto__`?',
-    a: 'Assigning to `__proto__` tries to change the object’s prototype instead; `Object.defineProperty` creates the property.',
+    q: 'Why does `out[\'__proto__\'] = 1`, on a plain object, not create a property called `__proto__`?',
+    a: 'The assignment goes to the inherited `__proto__` setter, which sets the prototype (and ignores a value that is not an object) instead; `Object.defineProperty` creates the property.',
   },
   'duplicate-keys': {
-    q: 'What do `JSON.parse` and our parser do with `{"a": 1, "a": 2}`?',
-    a: 'Both keep the last value, `{ a: 2 }`. RFC 8259 says keys should be unique and that parsers differ here.',
+    q: 'What does `JSON.parse` do with `{"a": 1, "a": 2}`?',
+    a: 'It keeps the last value, `{ a: 2 }`. RFC 8259 says names should be unique and warns that parsers differ on duplicates.',
   },
   'end-check': {
-    q: 'Why does `parse` check that the token after the value is the end token?',
+    q: 'Why must a JSON parser check that nothing but the end of the input follows the top-level value?',
     a: 'JSON text is exactly one value; without the check, `[1] 2` would be accepted and the `2` silently ignored.',
   },
 };
@@ -1077,7 +1077,7 @@ test('keys are quoted too', () => {
 
 export const quiz = [
   {
-    q: 'In `parseValue`, which tokens are base cases, needing no further calls?',
+    q: 'In a recursive-descent JSON parser, `parseValue` parses any value. Which tokens are its base cases, needing no further calls?',
     options: [
       {
         t: '`[` and `{`',
@@ -1099,7 +1099,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`parseValue(toks, 0)` on the tokens of `[1, [2]]` (that is `[`, `1`, `,`, `[`, `2`, `]`, `]`, end) returns which `next`?',
+    q: '`parseValue(toks, i)` returns `{ value, next }`, with `next` the index of the first token after the value. `parseValue(toks, 0)` on the tokens of `[1, [2]]` (that is `[`, `1`, `,`, `[`, `2`, `]`, `]`, end) returns which `next`?',
     options: [
       {
         t: '`1`',
@@ -1121,14 +1121,14 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does our `parse` do with `[1, 2,]`?',
+    q: 'A recursive-descent JSON parser calls `parseValue` after every comma in an array. What does it do with `[1, 2,]`?',
     options: [
       {
         t: 'Returns `[1, 2]`',
-        why: 'JSON has no trailing commas, and neither does our parser: a value must follow every comma.',
+        why: 'JSON has no trailing commas, so the parser must refuse them: a value must follow every comma.',
       },
       {
-        t: 'Throws a `JsonError` at the `]`',
+        t: 'Throws an error at the `]`',
         correct: true,
         why: 'After the comma it calls `parseValue`, which finds `]` where a value should start.',
       },
@@ -1139,14 +1139,14 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is `JSON.parse` a good reference for testing our parser?',
+    q: 'Why is `JSON.parse` a good reference for testing a hand-written JSON parser?',
     options: [
       {
         t: 'It is the fastest parser',
         why: 'Speed does not matter for a reference; being right does.',
       },
       {
-        t: 'It is trusted, widely used and follows the same standard, so any disagreement points at a bug (or a known corner) in ours',
+        t: 'It is trusted, widely used and follows the same standard, so any disagreement points at a bug (or a known corner) in the hand-written one',
         correct: true,
         why: 'That is differential testing: two implementations of one specification must agree.',
       },
@@ -1161,7 +1161,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Our parser stores members with `out[key] = value`. Which input does it handle differently from `JSON.parse`?',
+    q: 'A hand-written JSON parser stores members on a plain object with `out[key] = value`. Which input does it handle differently from `JSON.parse`?',
     options: [
       {
         t: '`{"a": 1, "a": 2}`',
@@ -1170,7 +1170,7 @@ export const quiz = [
       {
         t: '`{"__proto__": 1}`',
         correct: true,
-        why: 'Assigning to `__proto__` changes the prototype instead of creating a property, so ours gives `{}`; `Object.defineProperty` fixes it.',
+        why: 'Assigning to `__proto__` changes the prototype instead of creating a property, so the hand-written parser gives `{}`; `Object.defineProperty` fixes it.',
       },
       {
         t: '`{"": 1}`',

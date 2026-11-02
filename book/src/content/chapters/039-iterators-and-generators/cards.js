@@ -8,7 +8,7 @@ export const prompts = {
   },
   'iterable-vs-iterator': {
     q: 'What is the difference between an iterable and an iterator?',
-    a: 'An iterable has a `[Symbol.iterator]()` method that makes a fresh iterator; the iterator has `next()` and remembers its position.',
+    a: 'An iterable has a `[Symbol.iterator]()` method that returns an iterator; the iterator has `next()` and keeps track of its position. (Many iterators, such as generators, are iterable too, and return themselves.)',
   },
   'plain-object': {
     q: 'Why does `for (const k of { a: 1 })` throw “is not iterable”?',

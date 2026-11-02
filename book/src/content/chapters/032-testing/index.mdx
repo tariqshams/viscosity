@@ -138,7 +138,7 @@ test('isDigit', () => {
 
 The first is a single assertion: if `double(3)` returns `6` it does
 nothing at all, and otherwise it throws `expected 6, got …`. The second
-is a test holding two assertions about the `isDigit` from chapter 1
+is a test holding two assertions about the `isDigit` from *Functions: naming a piece of work*
 (the kind of function a scanner leans on), one for a digit and one for
 a letter; both must hold for the test to pass. The runnable one is the
 whole harness from above; its second test is wrong on purpose, so fix
@@ -192,7 +192,7 @@ expect(() => evaluate({ kind: 'pow' }))
 length and equal items in every slot, and two objects if they have the
 same properties with equal values. `toBeCloseTo` allows a tiny
 difference, because `0.1 + 0.2` is `0.30000000000000004` in JavaScript
-(chapter 35 shows why). `toThrow` checks the
+(*Floats and typed arrays: numbers as bytes* shows why). `toThrow` checks the
 opposite of normal: it is handed a *function*, calls it, and passes only
 if the call throws, which is how you test that bad input is rejected.
 

@@ -6,9 +6,9 @@ export const prompts = {
     q: 'With `type ValueId = number` and `type BlockId = number`, does the checker stop you passing a `ValueId` where a `BlockId` is wanted?',
     a: 'No. Aliases are only other names: both are exactly `number`.',
   },
-  structural: {
+  'structural': {
     q: 'What is structural typing?',
-    a: 'Comparing types by their structure (shape and members), not by their names; same structure means same type.',
+    a: 'Comparing types by their structure (their members and the types of those members), not by their names; two differently named types with the same structure are interchangeable.',
   },
   'intersection-what': {
     q: 'What does the intersection type `A & B` mean?',
@@ -22,12 +22,12 @@ export const prompts = {
     q: 'If `b` is a `BlockId`, what is the type of `b + 1`?',
     a: 'Plain `number`: arithmetic drops the brand, so you re-stamp through the checking function if you need one.',
   },
-  receipt: {
-    q: 'Why can a function that takes a `Port` skip checking the range?',
-    a: 'The only way to make a `Port` is the checking function, so holding one is a receipt that the check happened.',
+  'receipt': {
+    q: 'A branded `Port` type can be made only by a checking function, `toPort`, that tests the range. Why can a function that takes a `Port` skip checking the range?',
+    a: 'Holding a `Port` is a receipt that the check happened, because the checking function is the only way to make one.',
   },
   'as-one-place': {
-    q: 'Where should `as Port` appear in a program, and why?',
+    q: 'Where should `as Port` (for a branded `Port`) appear in a program, and why?',
     a: 'Only inside the one checking function: anywhere else it would forge a receipt without doing the check.',
   },
   'brand-erased-q': {
@@ -290,7 +290,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'With `type BlockId = number & { readonly __brand: \'BlockId\' }`, which line does the checker accept?',
+    q: 'With `type BlockId = number & { readonly __brand: \'BlockId\' }` and a checking function `blockId(n: number): BlockId`, which line does the checker accept?',
     options: [
       {
         t: '`const b: BlockId = 3;`',
@@ -360,7 +360,7 @@ export const quiz = [
       },
       {
         t: 'Python with `NewType`',
-        why: '`NewType` is checked by a separate tool and the value is a plain `int`, much like a TypeScript brand.',
+        why: 'A checker such as mypy treats two `NewType`s as different, but Python itself does not, and the value is a plain `int`: much like a TypeScript brand, not a separate type with fields.',
       },
       {
         t: 'Java, with two `record` classes',

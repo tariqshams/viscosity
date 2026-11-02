@@ -14,21 +14,21 @@ export const prompts = {
     q: 'Why does adding a field to an object type tend to add nonsense states, while adding a variant to a union does not?',
     a: 'Field counts multiply (every old state combines with every value of the new field); union variants add exactly one state each.',
   },
-  'engine-tradeoff': {
-    q: 'Viscosity’s `CollectionPlan` allows `{ layout: \'soa\', blockSize: 8 }`. Why does that do no harm there?',
-    a: 'One function builds every plan, and the code that writes columns only reads `blockSize` for `\'aosoa\'`. A union would make it impossible instead.',
+  'plan-union': {
+    q: '`{ layout: \'soa\' | \'aosoa\'; blockSize: number }` lets a `blockSize` sit on an `\'soa\'` value, where it means nothing. Which type allows `blockSize` only with `\'aosoa\'`?',
+    a: '`{ layout: \'soa\' } | { layout: \'aosoa\'; blockSize: number }`: a union with the field on one variant only.',
   },
   'types-first': {
     q: 'In type-driven design, what do you write before the function bodies?',
     a: 'The data types (allowing only sensible states), then the signatures: each function’s parameter and return types.',
   },
   'literal-not-boolean': {
-    q: 'Why is `mode: \'auto\' | \'opt-in\'` better than `optIn: boolean`?',
-    a: 'Call sites say what they mean (`\'opt-in\'` rather than a bare `true`), and a third mode can be added later.',
+    q: 'What does `mode: \'auto\' | \'opt-in\'` give you that `optIn: boolean` does not?',
+    a: 'Call sites say what they mean (`\'opt-in\'` rather than a bare `true`), and a third mode can be added later without changing the field’s type to something else.',
   },
   'change-type-first': {
-    q: 'A new requirement adds a fourth kind of light. What do you change first, and why?',
-    a: 'The type. The checker then points at every function (ending in `unreachable`) that has not caught up.',
+    q: 'A new requirement adds a fourth kind of light. In type-driven design, what do you change first, and why?',
+    a: 'The type. The checker then points at every function with an exhaustiveness check (such as a final `unreachable(l)` that takes `never`) that has not caught up.',
   },
   'signature-what': {
     q: 'What is a function’s signature?',
@@ -354,7 +354,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`type Light = \'red\' | \'amber\' | \'green\'` gains `\'flashing\'`, and `next(l)` ends with `return unreachable(l);`. What happens when you run `tsc`?',
+    q: '`type Light = \'red\' | \'amber\' | \'green\'` gains `\'flashing\'`, and `next(l)` ends with `return unreachable(l);`, where `unreachable(x: never)`. What happens when you run `tsc`?',
     options: [
       {
         t: 'Nothing: the program has to run to find out',
@@ -376,7 +376,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Viscosity’s printer writes `m.bindings[i.binding!]`. What does the `!` do?',
+    q: 'In `m.bindings[i.binding!]`, what does the `!` after `i.binding` do?',
     options: [
       {
         t: 'It tells the checker that `i.binding` is not `undefined`, without checking anything',

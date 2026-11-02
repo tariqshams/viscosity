@@ -351,13 +351,13 @@ try {
         why: 'The `try` block has finished long before the callback runs, so its `catch` is no longer on the call stack.',
       },
       {
-        t: 'The error is not caught, and Node stops the program with `Error: x`',
+        t: 'The error is not caught; in Node it stops the program with `Error: x`',
         correct: true,
         why: 'The callback throws in a later turn of the loop, where no `catch` is waiting.',
       },
       {
         t: 'Nothing: errors in callbacks are ignored',
-        why: 'They are not ignored; with no `catch` to stop it, the error ends the program.',
+        why: 'They are not ignored; with no `catch` to stop it, the error ends a Node program (a browser reports it in the console).',
       },
     ],
   },
@@ -404,12 +404,12 @@ Promise.resolve(2)
     ],
   },
   {
-    q: 'What is a real difference between the JavaScript and the Java versions of “run this later”?',
+    q: 'JavaScript’s `setTimeout` and Java’s `ScheduledExecutorService.schedule` both run a callback later. What is a real difference?',
     options: [
       {
         t: 'Java runs the callback on a second thread, which can run at the same time as other code',
         correct: true,
-        why: 'JavaScript runs one piece of code at a time on one thread; Java’s scheduler uses a thread of its own.',
+        why: 'JavaScript runs one piece of code at a time on one thread; a Java executor runs scheduled tasks on threads of its own.',
       },
       {
         t: 'Java cannot run anything later',

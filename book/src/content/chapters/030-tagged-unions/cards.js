@@ -15,19 +15,19 @@ export const prompts = {
     a: 'That `s` is the circle variant, so `s.r` is allowed.',
   },
   'expr-self': {
-    q: 'Why may the `Expr` type mention `Expr` inside its own definition?',
-    a: 'Because an `add` or `mul` node holds smaller expressions as its children: a tree is made of trees.',
+    q: 'Why does a TypeScript type for arithmetic expression trees, `type Expr = ...`, need to mention `Expr` in its own definition?',
+    a: 'Because an operator node, such as an addition, holds smaller expressions as its children, and those are expression trees too: a tree is made of trees.',
   },
   'never-what': {
-    q: 'What values does the type `never` have?',
-    a: 'None at all. It labels a place the program should never reach.',
+    q: 'What values does the TypeScript type `never` have?',
+    a: 'None at all. It labels a place no value can reach, such as code after every case has been ruled out, or the result of a function that never returns.',
   },
   'exhaustive-new-kind': {
-    q: 'You add a `\'tri\'` variant to `Shape` but forget it in `area`, which ends with `return unreachable(s)`. What does the checker do?',
-    a: 'It reports an error at `unreachable(s)`: `s` could still be a triangle, which is not assignable to `never`.',
+    q: '`area(s: Shape)` handles each variant with an `if` that returns, then ends with `return unreachable(s)`, where `unreachable(x: never)`. You add a `\'tri\'` variant to `Shape` but no `if` for it. What does the checker do?',
+    a: 'It reports an error at `unreachable(s)`: `s` could still be a triangle there, which is not assignable to `never`.',
   },
   'keep-throw': {
-    q: 'If the checker proves every case is handled, why keep the `throw` inside `unreachable`?',
+    q: 'A helper `unreachable(x: never): never` only type-checks where every case is handled. Why give it a body that throws?',
     a: 'Types are erased. Bad data can still arrive at run time, and the throw turns it into a clear error instead of a wrong answer.',
   },
   'never-accepts': {
@@ -375,7 +375,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A function ends with `return unreachable(s)`, where `unreachable(x: never)`. Every kind is handled above it. What is the type of `s` on that line?',
+    q: 'A function ends with `return unreachable(s)`, where `unreachable(x: never)`, and every variant of `s` is handled by an earlier `if` that returns. What is the type of `s` on that line?',
     options: [
       {
         t: '`Shape`',
@@ -393,7 +393,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is the `throw` inside `unreachable` still useful, if the checker proved it cannot be reached?',
+    q: '`unreachable(x: never)` throws an error. Why is that `throw` still useful, if the checker has proved the call cannot be reached?',
     options: [
       {
         t: 'It is not; you can always delete it',
@@ -411,7 +411,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'How many times is `evaluate` called, in total, to evaluate the tree for `(1 + 2) * 4`?',
+    q: 'A recursive `evaluate` makes one call per node of an expression tree. How many calls does it make, in total, for the tree of `(1 + 2) * 4`?',
     options: [
       {
         t: '1',

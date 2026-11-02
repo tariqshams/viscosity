@@ -72,8 +72,8 @@ get(p, 'vX');
 // 'keyof Particle'.
 ```
 
-That is chapter 28's typo, now caught even when the name arrives as a
-string. Notice `K extends keyof T`, a constraint (chapter 36) that uses
+That is the typo from *Interfaces, erasure and typeof*, now caught even when the name arrives as a
+string. Notice `K extends keyof T`, a constraint (from *TypeScript III: generics in depth*) that uses
 another blank: `K` must be one of `T`'s keys, whatever `T` turns out to be.
 
 <Callout kind="definition">
@@ -114,7 +114,7 @@ lists, which is why TypeScript gives `Object.keys` the plain type
 ## T[K]: the type behind one key
 
 The return type of `get` above was `T[K]`. Square brackets on a value
-read a property (chapter 5); on a type, they read the *type* of a
+read a property (*Objects: things with named parts*); on a type, they read the *type* of a
 property.
 
 <Analogy extra title="a catalogue">

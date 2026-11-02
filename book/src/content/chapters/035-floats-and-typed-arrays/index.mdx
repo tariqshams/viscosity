@@ -98,9 +98,12 @@ total; // 0.9999999999999999
 The first is the famous one: neither `0.1` nor `0.2` can be stored
 exactly, each is moved to the nearest mark, and the two tiny errors add
 up to one that shows. The second is the other surprise: whole numbers
-are exact only up to 2⁵³ − 1, which JavaScript names
-`Number.MAX_SAFE_INTEGER`<Cite id="mdn-number" />; past that the marks
-are 2 apart, so `2 ** 53 + 1` lands back on `2 ** 53`. The third is how
+are all exact only up to 2⁵³, and the largest one whose next number is
+exact too, 2⁵³ − 1, is what JavaScript names
+`Number.MAX_SAFE_INTEGER`<Cite id="mdn-number" />; past 2⁵³ the marks
+are 2 apart, so `2 ** 53 + 1` sits exactly halfway between two of them
+and lands back on `2 ** 53` (a tie goes to the mark whose last bit is
+even). The third is how
 it bites in real code: adding ten prices of 0.1 does not give exactly
 1, which is why programs that handle money usually count whole cents
 instead.
@@ -142,7 +145,7 @@ any size, and Java and C have separate integer types (`long`,
 a separate `BigInt` type for huge integers, written `123n`, which this
 book does not need.)
 
-<Prompts ids={['float64-what', 'why-point-one', 'safe-int', 'float-gaps']} />
+<Prompts ids={['float64-what', 'why-point-one', 'max-safe', 'float-gaps']} />
 
 ## Raw bytes, and views onto them
 

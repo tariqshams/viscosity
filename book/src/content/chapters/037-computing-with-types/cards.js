@@ -105,7 +105,7 @@ test('a new array each time', () => {
 });`,
     hints: [
       'The key is in a variable, `k`. Which kind of property access reads a property whose name is in a variable?',
-      'Bracket access (chapter 5): `x[k]` reads the property named by `k`. Make an empty array, and push `x[k]` for each record.',
+      'Bracket access (from *Objects: things with named parts*): `x[k]` reads the property named by `k`. Make an empty array, and push `x[k]` for each record.',
       'Write `const out: T[K][] = [];`, then `for (const x of xs) { out.push(x[k]); }`, then `return out;`.',
     ],
     walkthrough: `**How to think about it.** This is the step at the heart of the whole book: turning an array of records into one column. At run time it is a plain loop that reads the same property from every record. Because the property's name arrives in a variable, the read must use brackets, \`x[k]\`, not a dot (\`x.k\` would read a property literally called \`k\`). The types say the rest: \`K extends keyof T\` accepts only real field names, and \`T[K][]\` says the column holds values of that field's type.

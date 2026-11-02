@@ -3,20 +3,20 @@
 
 export const prompts = {
   'float64-what': {
-    q: 'How is every ordinary JavaScript number stored?',
-    a: 'As a float64: a 64-bit (8-byte) IEEE 754 double-precision floating-point number.',
+    q: 'What kind of value is every ordinary JavaScript `number`, by the language’s definition?',
+    a: 'A float64: a 64-bit (8-byte) IEEE 754 double-precision floating-point number. (Engines may store small integers more compactly inside, but they behave exactly like float64s.)',
   },
   'why-point-one': {
     q: 'Why is `0.1 + 0.2` not exactly `0.3` in JavaScript?',
     a: '0.1 goes on forever in binary (like 1/3 in decimal), so only the nearest 64-bit value is stored.',
   },
-  'safe-int': {
-    q: 'Up to what size are whole numbers stored exactly in a float64?',
-    a: '2⁵³ − 1, which is `Number.MAX_SAFE_INTEGER`.',
+  'max-safe': {
+    q: 'What is `Number.MAX_SAFE_INTEGER`, and what makes it “safe”?',
+    a: '2⁵³ − 1. It is the largest whole number n for which n and n + 1 are both stored exactly in a float64, so every whole number up to it is exact and distinct.',
   },
   'float-gaps': {
     q: 'Why is `2 ** 53 + 1 === 2 ** 53` true?',
-    a: 'Above 2⁵³ the float64 values are 2 apart, so 2⁵³ + 1 falls between two of them and is moved to the nearest, 2⁵³.',
+    a: 'From 2⁵³ to 2⁵⁴ the float64 values are 2 apart, so 2⁵³ + 1 falls exactly halfway between 2⁵³ and 2⁵³ + 2; the tie goes to the value whose last bit is even, 2⁵³.',
   },
   'buffer-what': {
     q: 'What is an `ArrayBuffer`, and how do you read it?',
@@ -28,7 +28,7 @@ export const prompts = {
   },
   'no-push': {
     q: 'Why doesn’t `Float64Array` have `push`?',
-    a: 'Its length is fixed: it is a view over a buffer of a set number of bytes.',
+    a: 'A typed array is a fixed view over the bytes of an `ArrayBuffer`; it cannot add elements of its own, and its length is set by that buffer.',
   },
   'typed-convert': {
     q: 'What does a `Uint8Array` store if you write `256` into it, and why?',
@@ -327,20 +327,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does Viscosity use one `Float64Array` per field, instead of an array of objects?',
+    q: 'Particles can be stored as one `Float64Array` per field (struct of arrays) instead of an array of objects. What is the main gain?',
     options: [
       {
         t: 'Typed arrays can be resized as needed',
-        why: 'The opposite: their length is fixed.',
+        why: 'The opposite: a typed array has no `push`, and its length is set by the buffer under it.',
       },
       {
         t: 'It is always faster, for every program',
-        why: 'Not always: this repository’s benchmark shows columns losing badly when every particle must become a real object.',
+        why: 'Not always: when code needs each particle back as a whole object, rebuilding objects from the columns can cost more than the layout saves.',
       },
       {
         t: 'Each field becomes one packed block of 8-byte numbers, which is fast for loops that touch a few fields of many particles',
         correct: true,
-        why: 'That is the struct-of-arrays layout. Whether it wins depends on how the program uses the data, which is what Viscosity analyses.',
+        why: 'That is the struct-of-arrays layout. Whether it wins depends on how the program uses the data.',
       },
     ],
   },

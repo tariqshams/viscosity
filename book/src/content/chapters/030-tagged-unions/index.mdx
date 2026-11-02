@@ -176,8 +176,8 @@ In Python and Java each variant is its own class, and the class plays
 the part of the tag (Java's `sealed` lists every variant, so a `switch`
 over them can complain when a case is missing). In C you build it by
 hand from an `enum` (named constants) for the tag and a `union` for the
-fields, and nothing stops you reading the wrong field. Rust, in Part XI,
-builds tagged unions in as its `enum`.
+fields, and nothing stops you reading the wrong field. Rust (in *Enums,
+match and patterns*) builds tagged unions in as its `enum`.
 
 <Prompts ids={['tag-why', 'literal-type', 'disc-narrow']} />
 
@@ -211,7 +211,7 @@ combines them:
 <EvalSteps client:visible />
 
 You will write that function again in this chapter's exercise, typed
-this time (chapter 20 wrote it untyped), and the interpreter in Part III
+this time (*Trees: recursion's natural home* wrote it untyped), and the interpreter in Part III
 is a bigger version of it.
 
 <Prompts ids={['expr-self']} />

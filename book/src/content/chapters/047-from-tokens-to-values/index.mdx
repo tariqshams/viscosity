@@ -101,9 +101,8 @@ This has a name: **recursive descent parsing**, one function per
 grammar rule, calling each other as the rules mention each other, and
 this is the gentle version. JSON is the friendliest grammar there is,
 because one token always says what comes next; programming languages are
-harder (operators, precedence, error recovery), and Part III's chapters
-on grammars, recursive descent parsing and Pratt parsing take that on
-properly.
+harder (operators, precedence, error recovery), and the core's *Grammars and parse trees*, *Recursive descent,
+precedence and associativity* and *Pratt parsing* take that on properly.
 
 <Prompts ids={['shape-code', 'base-case-json', 'next-what', 'recursion-why']} />
 
@@ -244,7 +243,8 @@ stand-in scanner; if you wrote your own `tokenize`, paste it in instead.
 - **Differential testing** against `JSON.parse` checks the whole program
   on good and bad input; it also finds corners such as `__proto__`.
 
-That completes Part I, and the JavaScript and TypeScript the rest of
-the book needs.
+That completes the Prelude, and the JavaScript and TypeScript the rest
+of the book needs. Next, the core begins, with *TypeScript for engine
+builders*.
 
 <Quiz />

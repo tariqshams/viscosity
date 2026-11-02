@@ -334,7 +334,7 @@ if (typeof x === 'number') {
       {
         t: 'It does not record which kind was stored, so you keep your own tag beside it',
         correct: true,
-        why: 'A C union is the same bytes read either way; nothing remembers which kind went in. The next chapter makes that tag official.',
+        why: 'A C union is the same bytes read either way; nothing remembers which kind went in. A tagged union stores that tag with the value.',
       },
       {
         t: 'It only exists at run time',

@@ -2,9 +2,9 @@
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
-  'pkg-what': {
-    q: 'What are the four kinds of thing a typical `package.json` says?',
-    a: 'Who the package is (`name`, `version`), how its `.js` files load (`type`), its commands (`scripts`), and what it needs (`dependencies`, `devDependencies`).',
+  'pkg-type': {
+    q: 'Which `package.json` field decides whether Node treats a package’s `.js` files as ES modules or as CommonJS?',
+    a: '`"type"`: `"module"` makes them ES modules; `"commonjs"`, or no `type` at all, makes them CommonJS (though recent Node versions run a typeless `.js` file that uses `import` or `export` as an ES module).',
   },
   'dev-deps': {
     q: 'Why is TypeScript usually a `devDependency`, not a `dependency`?',
@@ -19,8 +19,8 @@ export const prompts = {
     a: 'It records the exact version of every package npm installed, so teammates and test servers install the identical set.',
   },
   'local-tsc': {
-    q: 'TypeScript 6 is installed on your computer and 5.9.3 in the project. Which one does `npm run check` (`tsc --noEmit`) use?',
-    a: 'The project’s 5.9.3: while a script runs, npm puts `node_modules/.bin` on the path ahead of other tools. `npx tsc` does the same.',
+    q: 'TypeScript 6 is installed globally on your computer and 5.9.3 in the project’s `node_modules`. Which one does an npm script `"check": "tsc --noEmit"` run?',
+    a: 'The project’s 5.9.3: while a script runs, npm puts `node_modules/.bin` on the path ahead of other tools. `npx tsc` also prefers the project’s copy.',
   },
   'bundler-what': {
     q: 'In one sentence: what does a bundler do?',

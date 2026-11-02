@@ -7,12 +7,12 @@ export const prompts = {
     a: 'JavaScript plus syntax for types, and a checker (`tsc`) that reads your code before it runs.',
   },
   'tsc-what': {
-    q: 'When `tsc` finds a problem, what does each line of its report tell you?',
-    a: 'The file, the line and column, an error code and the reason, e.g. `rect.ts(4,11): error TS2345: Argument of type ...`.',
+    q: 'When `tsc` reports a type error, what does each report tell you?',
+    a: 'The file, the line and column, an error code (`TS` and a number) and the reason, e.g. `rect.ts(4,11): error TS2345: Argument of type ...` (the layout varies a little with `--pretty`).',
   },
-  'runner-checks': {
-    q: 'Does this book’s runnable box report TypeScript type errors?',
-    a: 'No. It removes the types and runs the rest. Only `tsc` checks types.',
+  'strip-no-check': {
+    q: 'A tool that only strips TypeScript’s types before running the code (such as Node’s type stripping, or esbuild) is given a file with a type error. Does it report the error?',
+    a: 'No. It removes the annotations without checking them and runs or writes the rest; only a type checker such as `tsc` reports type errors.',
   },
   'annotation-syntax': {
     q: 'In `function f(n: number): string`, what do the two annotations label?',
@@ -23,8 +23,8 @@ export const prompts = {
     a: '`xs` is an array, and every slot in it holds a number.',
   },
   'checker-when': {
-    q: 'Does the type checker find mistakes before the program runs, or while it runs?',
-    a: 'Before. It reads the whole program without running any of it.',
+    q: 'Does TypeScript’s type checker find mistakes before the program runs, or while it runs?',
+    a: 'Before. It reads the source code without running any of it.',
   },
   inference: {
     q: '`let n = 3;` then `n = \'three\';` with no annotation anywhere. Does TypeScript complain? Why?',
@@ -198,7 +198,7 @@ export const quiz = [
       {
         t: 'Straight away: it reads the whole file before anything runs',
         correct: true,
-        why: 'Type checking compares types line by line without running any code.',
+        why: 'Type checking reads the code and compares types without running any of it.',
       },
       {
         t: 'Never: only lines that run are checked',

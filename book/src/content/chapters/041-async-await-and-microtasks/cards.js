@@ -20,7 +20,7 @@ export const prompts = {
   },
   'micro-what': {
     q: 'Which callbacks wait in the **microtask** queue?',
-    a: 'Promise callbacks (`then`, `catch`, `finally`, and the rest of an async function after `await`), and functions passed to `queueMicrotask`.',
+    a: 'Promise callbacks (`then`, `catch`, `finally`, and the rest of an async function after `await`), functions passed to `queueMicrotask`, and, in browsers, `MutationObserver` callbacks.',
   },
   'micro-first': {
     q: 'A timer callback and a promise callback are both queued while the same code runs. Which runs first?',
