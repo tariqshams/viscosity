@@ -1,4 +1,4 @@
-// Chapter 325-b: a load through a read barrier while objects are being
+// Chapter 326: a load through a read barrier while objects are being
 // evacuated (the shape of Baker's barrier and of Shenandoah's
 // load-reference barrier in OpenJDK 21): a pointer into the region being
 // emptied is replaced by the object's to-space copy, which the loading

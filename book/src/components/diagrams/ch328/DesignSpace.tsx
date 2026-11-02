@@ -1,4 +1,4 @@
-// Chapter 327-b: five collectors placed in the design space, from their
+// Chapter 328: five collectors placed in the design space, from their
 // own sources: V8's "Trash talk" and "Concurrent marking" posts; OpenJDK
 // 21's G1 and ZGC barrier code; Go's runtime/mgc.go and mbarrier.go
 // (go1.24.7); .NET's garbage-collection.md (Book of the Runtime).

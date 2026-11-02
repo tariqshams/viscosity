@@ -2,7 +2,7 @@ import { StepFrame, useSteps } from '../../viz/stepper';
 import { Svg, T, tok } from '../../viz/svg';
 import { EDGES, Edge, NODES, Node } from './graph';
 
-// Chapter 307b: a depth-first walk of the module graph from main. A module
+// Chapter 308: a depth-first walk of the module graph from main. A module
 // is finished (and can be compiled) only after everything it imports is
 // finished, so the finishing order is a build order. The last step adds
 // an import from c back to a, and the walk finds the cycle.

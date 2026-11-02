@@ -189,8 +189,7 @@ modules that import `c`. `rebuild` then walks the flipped arrows from
 the changed module with a to-do list, adding each module it reaches to
 a set once; it prints `[ 'a', 'b', 'c', 'main' ]` for `c`,
 `[ 'b', 'd', 'main' ]` for `d`, and only `[ 'main' ]` for `main`,
-which nobody imports.
- (When
+which nobody imports. (When
 only a function's *body* changes and its interface does not, the
 importers' compiled code is still right; this is what separate
 compilation bought us in the last chapter, and why build tools try hard

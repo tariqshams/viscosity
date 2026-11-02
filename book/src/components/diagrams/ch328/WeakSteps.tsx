@@ -1,4 +1,4 @@
-// Chapter 327-b: a weak reference and a finaliser through one collection.
+// Chapter 328: a weak reference and a finaliser through one collection.
 // Marking does not follow the weak edge; afterwards the weak slot is
 // cleared because its target was not marked, and the target's
 // registration is queued; the callback runs later, if at all.

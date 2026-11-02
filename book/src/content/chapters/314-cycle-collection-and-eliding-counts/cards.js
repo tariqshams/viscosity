@@ -1,4 +1,4 @@
-// Chapter 313b cards. Keys are stable ids: never rename them.
+// Chapter 314 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'cy-leak': {
@@ -10,11 +10,11 @@ export const prompts = {
     a: 'It does not add to the count, so the object it points to can still reach zero and be freed (Rust’s `Weak`, Swift’s `weak`).',
   },
   'cy-gray': {
-    q: 'What does the "mark gray" step do to the counts?',
+    q: 'What does the "mark grey" step do to the counts?',
     a: 'It walks everything reachable from the candidates and subtracts one for each reference between those objects, as if the internal references were deleted.',
   },
   'cy-black': {
-    q: 'After mark gray, an object still has a count above zero. What does that mean, and what happens?',
+    q: 'After mark grey, an object still has a count above zero. What does that mean, and what happens?',
     a: 'Something outside the walked objects refers to it, so it is alive: scan black restores the counts of it and everything it reaches.',
   },
   'el-what': {
@@ -79,7 +79,7 @@ export const exercises = {
   'collect-cycles': {
     title: 'Trial deletion',
     prompt:
-      'The heap is an object mapping names to `{ rc, refs }`: `rc` is the reference count and `refs` the names this object points to. Write `collectCycles(heap, roots)`, which runs trial deletion from the candidate names `roots` and returns the sorted names of the garbage. Work on copies of the counts (the heap must not change). The steps: **mark gray** each candidate (colour it gray, and for every reference it holds, subtract one from the target’s count and mark the target gray, unless it already is); then **scan** each candidate (a gray object with count above 0 is **scanned black**: coloured black, and every reference it holds adds one back to its target, scanning the target black too unless it is already black; a gray object with count 0 turns white, and its targets are scanned); white objects are the garbage.',
+      'The heap is an object mapping names to `{ rc, refs }`: `rc` is the reference count and `refs` the names this object points to. Write `collectCycles(heap, roots)`, which runs trial deletion from the candidate names `roots` and returns the sorted names of the garbage. Work on copies of the counts (the heap must not change). The steps: **mark grey** each candidate (colour it grey, and for every reference it holds, subtract one from the target’s count and mark the target grey, unless it already is); then **scan** each candidate (a grey object with count above 0 is **scanned black**: coloured black, and every reference it holds adds one back to its target, scanning the target black too unless it is already black; a grey object with count 0 turns white, and its targets are scanned); white objects are the garbage.',
     starter: `function collectCycles(heap, roots) {
   return [];
 }`,
@@ -170,19 +170,19 @@ test('a live object that is no cycle', () => {
 });`,
     hints: [
       'Copy every count into your own object `rc`, and keep a `color` for every name, starting black. Then write the three walks as recursive functions: `markGray`, `scan` and `scanBlack`.',
-      '`markGray(n)`: stop if `n` is already gray; otherwise colour it gray and, for each `m` in its `refs`, do `rc[m]--` and `markGray(m)`. `scanBlack(n)`: colour it black and, for each `m`, do `rc[m]++` and `scanBlack(m)` unless `m` is black.',
-      '`scan(n)`: only for gray objects. If `rc[n] > 0` call `scanBlack(n)`; otherwise colour it white and `scan` each target. Run `markGray` on every root, then `scan` on every root, then return the white names, sorted.',
+      '`markGray(n)`: stop if `n` is already grey; otherwise colour it grey and, for each `m` in its `refs`, do `rc[m]--` and `markGray(m)`. `scanBlack(n)`: colour it black and, for each `m`, do `rc[m]++` and `scanBlack(m)` unless `m` is black.',
+      '`scan(n)`: only for grey objects. If `rc[n] > 0` call `scanBlack(n)`; otherwise colour it white and `scan` each target. Run `markGray` on every root, then `scan` on every root, then return the white names, sorted.',
     ],
-    walkthrough: `**How to think about it.** The question is "which of these objects are referenced only by each other?". A count mixes two kinds of reference, from inside the group and from outside, and we want to separate them. Subtracting every inside reference does exactly that: what remains of each count is the number of outside references. That is the gray walk. Then any object with an outside reference is alive, *and so is everything it reaches*, which means the inside references from it were real after all and must be put back; that is the black walk. Whatever is still at zero is garbage. Two phases, then, both over the same small part of the heap, and the colours stop each walk from visiting an object twice.
+    walkthrough: `**How to think about it.** The question is "which of these objects are referenced only by each other?". A count mixes two kinds of reference, from inside the group and from outside, and we want to separate them. Subtracting every inside reference does exactly that: what remains of each count is the number of outside references. That is the grey walk. Then any object with an outside reference is alive, *and so is everything it reaches*, which means the inside references from it were real after all and must be put back; that is the black walk. Whatever is still at zero is garbage. Two phases, then, both over the same small part of the heap, and the colours stop each walk from visiting an object twice.
 
 **The solution, line by line.**
 
 - \`const rc = {}; const color = {};\` hold the trial counts and the colours; copying the counts (the \`for ... in\` loop) leaves the real heap untouched, as the second test checks. Everything starts black (not under suspicion).
 - \`const refs = (n) => heap[n].refs;\` is a short name for an object's outgoing references.
-- \`function markGray(n) {\`: \`if (color[n] === 'gray') return;\` visits each object once, which also stops the walk going round a cycle forever. Then \`color[n] = 'gray';\` and, \`for (const m of refs(n)) { rc[m]--; markGray(m); }\`: each reference from a walked object is subtracted from its target. Note that the subtraction happens for *every reference*, even to an object already gray: \`B → A\` must lower \`A\`'s count although \`A\` was the starting point.
+- \`function markGray(n) {\`: \`if (color[n] === 'gray') return;\` visits each object once, which also stops the walk going round a cycle forever. Then \`color[n] = 'gray';\` and, \`for (const m of refs(n)) { rc[m]--; markGray(m); }\`: each reference from a walked object is subtracted from its target. Note that the subtraction happens for *every reference*, even to an object already grey: \`B → A\` must lower \`A\`'s count although \`A\` was the starting point.
 - \`function scanBlack(n) {\` marks \`n\` alive: \`color[n] = 'black';\` and, for each target, \`rc[m]++\` undoes the subtraction made for that reference, then continues to targets that are not black yet. In the live-cycle test this is what rescues \`D\`, which had already turned white before \`C\` was found to be alive.
-- \`function scan(n) {\`: \`if (color[n] !== 'gray') return;\` handles each gray object once. \`if (rc[n] > 0) { scanBlack(n); return; }\`: an outside reference exists, so it lives. Otherwise \`color[n] = 'white';\` (tentatively garbage) and \`for (const m of refs(n)) scan(m);\` continues to the objects it points to.
-- \`roots.forEach((n) => markGray(n)); roots.forEach((n) => scan(n));\` all gray marking happens before any scanning, so the counts are fully adjusted when scanning reads them.
+- \`function scan(n) {\`: \`if (color[n] !== 'gray') return;\` handles each grey object once. \`if (rc[n] > 0) { scanBlack(n); return; }\`: an outside reference exists, so it lives. Otherwise \`color[n] = 'white';\` (tentatively garbage) and \`for (const m of refs(n)) scan(m);\` continues to the objects it points to.
+- \`roots.forEach((n) => markGray(n)); roots.forEach((n) => scan(n));\` all grey marking happens before any scanning, so the counts are fully adjusted when scanning reads them.
 - \`return Object.keys(color).filter((n) => color[n] === 'white').sort();\` lists the garbage.
 
 On the chapter's example, \`A\` and \`B\` drop to 0 and turn white, \`C\` keeps 1 for the variable \`v\`, and scanning it black restores \`D\`: the answer is \`['A', 'B']\`, as in the diagram.
@@ -190,7 +190,7 @@ On the chapter's example, \`A\` and \`B\` drop to 0 and turn white, \`C\` keeps 
 **Common wrong attempts.**
 
 - Colouring a live object black without restoring the counts of what it reaches: in the live-cycle test, \`D\` was already white and stays white, so a live object is freed.
-- Marking gray without subtracting: no count ever reaches zero, and no cycle is ever found.
+- Marking grey without subtracting: no count ever reaches zero, and no cycle is ever found.
 - Subtracting only when first visiting an object: the reference that closes the cycle (\`B → A\`) is never subtracted, so \`A\` keeps a count of 1 and looks alive.`,
     wrong: [
       {
@@ -272,7 +272,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'After mark gray, object C has a trial count of 1 and D has 0, where C → D and D → C. What is the outcome?',
+    q: 'After mark grey, object C has a trial count of 1 and D has 0, where C → D and D → C. What is the outcome?',
     options: [
       { t: 'Both are freed, since D reached zero', why: 'D is reachable from C, which is alive.' },
       { t: 'Only D is freed', why: 'C keeps D alive; scan black restores D’s count.' },

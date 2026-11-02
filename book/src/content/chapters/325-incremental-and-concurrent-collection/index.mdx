@@ -134,7 +134,8 @@ path of white objects. Either is enough for "nothing grey left" to mean
 **Dijkstra's barrier** breaks the first condition. Edsger Dijkstra,
 Leslie Lamport and three colleagues described in 1978 a collector that
 runs on its own processor beside the program<Cite id="dijkstra1978" />;
-its barrier shades (makes grey) the object a store writes, so a black
+its barrier shades (makes grey) the object whose pointer a store
+writes into a field, so a black
 object can never come to point at a white one. This is the **strong**
 invariant, and it is V8's: its post calls its barrier "Dijkstra-style"
 and the invariant "the strong tri-color invariant"<Cite id="v8-concurrent-marking" />.

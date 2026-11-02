@@ -1,7 +1,7 @@
 import { Svg, T, tok } from '../../viz/svg';
 import { EDGES, Edge, NODES, Node } from './graph';
 
-// Chapter 307b: when c's interface changes, every module that can reach c
+// Chapter 308: when c's interface changes, every module that can reach c
 // along import arrows must be compiled again; d cannot, so it is reused.
 const REBUILD = ['c', 'a', 'b', 'main'];
 

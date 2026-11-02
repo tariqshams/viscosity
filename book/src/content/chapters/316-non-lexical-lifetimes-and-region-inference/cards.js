@@ -1,5 +1,4 @@
-// Chapter 315-b cards (staged second half of chapter 315). Keys are
-// stable ids: never rename them.
+// Chapter 316 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'nll-lexical': {

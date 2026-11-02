@@ -1,4 +1,4 @@
-// Chapter 325-b: the layout of a ZGC coloured pointer (zpointer) in
+// Chapter 326: the layout of a ZGC coloured pointer (zpointer) in
 // OpenJDK 21, from the comment in src/hotspot/share/gc/z/zAddress.hpp:
 // address bits, then two low-order metadata bytes laid out as
 // RRRRMMmmFFrr0000 (remapped, marked old, marked young, finalizable,

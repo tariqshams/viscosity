@@ -26,7 +26,7 @@ const STATES: S[] = [
   { line: 1, moved: [], loans: [], verdict: 'ok', note: 'let s = new: a second owner, s. The ledger is still empty.' },
   { line: 2, moved: [], loans: [L1], verdict: 'ok', note: 'let a = &v is a read of v. No loan of v is out, so it is legal, and the checker writes down a new shared loan: a borrows v.' },
   { line: 3, moved: [], loans: [L1, L2], verdict: 'ok', note: 'let b = &v is another read. The only loan of v is shared, and a read next to a shared loan is fine: any number of readers may share.' },
-  { line: 4, moved: [], loans: [L1, L2], verdict: 'E0502', bad: true, note: 'let m = &mut v wants to change v, but two shared loans of v are out. A writer next to a reader is the one thing the rules forbid: error E0502, and no loan is recorded.' },
+  { line: 4, moved: [], loans: [L1, L2], verdict: 'E0502', bad: true, note: 'let m = &mut v wants to change v, but two shared loans of v are out. A writer may not sit beside a reader: error E0502, and no loan is recorded.' },
   { line: 5, moved: ['s'], loans: [L1, L2], verdict: 'ok', note: 'let t = s moves the value: t is its owner now. Nothing borrows s, so the move is legal, and s goes into the moved set.' },
   { line: 6, moved: ['s'], loans: [L1, L2], verdict: 'E0382', bad: true, note: 'use s reads a name whose value has gone to t. Error E0382, "borrow of moved value".' },
   { line: 7, moved: [], loans: [L1, L2], verdict: 'ok', note: 's = new gives s a fresh value, so s leaves the moved set. Assigning would be E0506 if s were borrowed, but it is not.' },

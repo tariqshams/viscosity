@@ -1,6 +1,6 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 313b: the count updates of Rc::clone and drop in
+// Chapter 314: the count updates of Rc::clone and drop in
 // fn peek(r: &Rc<i32>) -> i32 { let c = Rc::clone(r); *c }, before and
 // after optimisation. With rustc 1.97 -O the increment and decrement are
 // gone; only the clone's overflow check (strong == usize::MAX) is left.

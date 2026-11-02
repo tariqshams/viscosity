@@ -87,7 +87,7 @@ happen at the next free address"
 
 The first is the whole algorithm: one add and one compare, and the
 failing case is where a collection starts (the `allocation failure`
-reason in V8's trace lines from chapter 323). The second is V8's own
+reason in V8's trace lines from the chapter "Copying collection"). The second is V8's own
 description of its young generation<Cite id="v8-trash-talk" />. The
 third is how .NET makes bump allocation safe with many threads: the
 collector hands each thread an **allocation context**, a small region
@@ -223,7 +223,7 @@ which costs only L but needs a second space.</span>
 
 ```text
 before: [A 2][dead 3][B 4][dead 1][C 2]
-after:  [A 2][B 4][C 2][  free 6  ]
+after:  [A 2][B 4][C 2][  free 4  ]
 B: 5 → 2,  C: 10 → 6
 ```
 
@@ -240,9 +240,9 @@ fragmented pages into other pages
 </Examples>
 
 The first works the formula: A stays at 0; B's new address is A's
-size, 2; C's is A plus B, 6; and 6 words come free in one piece.
+size, 2; C's is A plus B, 6; and the 4 dead words come free in one piece.
 Order is kept, so objects allocated together stay together, which is
-good for the cache (the chapter on spatial locality). The second is
+good for the cache (the chapter "Cache lines and locality"). The second is
 .NET, whose collection after marking has a plan phase that "simulates
 a compaction", a relocate phase that updates references and a compact
 phase that copies objects to the addresses the plan

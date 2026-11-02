@@ -1,6 +1,6 @@
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 321-b: the C++/Rust memory orderings from weakest to
+// Chapter 322: the C++/Rust memory orderings from weakest to
 // strongest, and what clang 18 emits for an atomic store and load of
 // each on x86-64 and AArch64 (-O2, real output).
 const ROWS = [

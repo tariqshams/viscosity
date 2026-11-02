@@ -1,5 +1,4 @@
-// Chapter 321-b cards (staged second half of chapter 321). Keys are
-// stable ids: never rename them.
+// Chapter 322 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'at-what': {

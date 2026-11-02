@@ -1,6 +1,6 @@
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 315-b: how long r's loan lasts, under the old lexical rule
+// Chapter 316: how long r's loan lasts, under the old lexical rule
 // (to the end of r's block) and under non-lexical lifetimes (to the
 // last use of r). Only the lexical bar overlaps the &mut on line 4.
 const LINES = ['let v = new', 'let r = &v', 'use r', 'let m = &mut v', 'use m', '} (end of block)'];

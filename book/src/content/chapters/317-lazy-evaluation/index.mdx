@@ -217,9 +217,9 @@ source says this "prevents reentrant accesses"), so a closure that reads its own
 with that message, as it did here. GHC reports the same situation as
 `<<loop>>`, the `NonTermination` exception, with the honest caveat that
 the runtime does not promise to notice every
-loop<Cite id="ghc-nontermination" />. JavaScript has call-by-need in
-one place: the right side of `a && b` (and `||`, `??`) is evaluated at
-most once, and only if needed.
+loop<Cite id="ghc-nontermination" />. JavaScript keeps one small
+piece of laziness: the right side of `a && b` (and `||`, `??`) is
+evaluated only if it is needed.
 
 <Prompts ids={['cbn-what', 'cbneed-what', 'cbneed-pure', 'cbneed-hole', 'cbneed-rust']} />
 

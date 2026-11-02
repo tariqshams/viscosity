@@ -1,6 +1,6 @@
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 319-b: where V8 keeps the local x, in a function without eval
+// Chapter 320: where V8 keeps the local x, in a function without eval
 // (a register, resolved before the program runs) and in one with a
 // direct eval (a heap context slot that eval's code can also reach).
 export default function EvalScope() {

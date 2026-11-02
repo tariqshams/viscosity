@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 321-b: building happens-before for message passing with a
+// Chapter 322: building happens-before for message passing with a
 // release store and an acquire load, with each event's vector clock.
 type Ev = { id: string; t: 0 | 1; k: number; label: string };
 const EVS: Ev[] = [

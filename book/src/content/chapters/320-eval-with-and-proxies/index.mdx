@@ -197,8 +197,10 @@ g.greet("Ada"); // intercepted greet
 
 ```python
 class Config:
+    debug = True
     def __getattr__(self, name):
         return f"<no {name}>"
+Config().debug   # True
 Config().colour  # '<no colour>'
 ```
 
@@ -208,7 +210,7 @@ The first traps `in` instead of reads, so `'apple' in p` is true for an
 empty object. The second is Java's `java.lang.reflect.Proxy`, which
 creates a class at run time implementing the interfaces you list and
 sends every method call to one `InvocationHandler`; run here with Java
-21 it printed `intercepted greet(Ada)` and the generated class's name,
+21 it printed `intercepted greet`, and the generated class was named
 `$Proxy0`<Cite id="openjdk-class-reflection" />. The third is Python's
 `__getattr__`, called only when ordinary attribute lookup fails, so
 `debug` (a real attribute) reads normally while `colour` comes from the

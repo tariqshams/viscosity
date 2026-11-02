@@ -1,5 +1,4 @@
-// Chapter 319-b cards (staged second half of chapter 319). Keys are
-// stable ids: never rename them.
+// Chapter 320 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'ev-what': {

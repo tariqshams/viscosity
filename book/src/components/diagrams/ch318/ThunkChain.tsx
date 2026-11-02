@@ -1,6 +1,6 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 317-b: what a lazy accumulator leaves on the heap. Each pass of
+// Chapter 318: what a lazy accumulator leaves on the heap. Each pass of
 // the loop wraps the previous thunk in a new one, so summing n numbers
 // keeps n thunks alive, and forcing the last one recurses n deep.
 const CELLS = ['() => prev() + 4', '() => prev() + 3', '() => prev() + 2', '() => prev() + 1', '() => 0'];

@@ -1,5 +1,4 @@
-// Chapter 317-b cards (staged second half of chapter 317). Keys are
-// stable ids: never rename them.
+// Chapter 318 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'sa-cost': {

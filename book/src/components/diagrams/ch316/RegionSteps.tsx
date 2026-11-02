@@ -1,7 +1,7 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 315-b: region inference as a fixpoint. Each reference's region
+// Chapter 316: region inference as a fixpoint. Each reference's region
 // starts as the points where it is live; each copy adds an outlives
 // constraint, and the sets grow until nothing changes.
 const CODE = `let x = new

@@ -92,9 +92,9 @@ m[0] = m[0] + 1;     m[0] = m[0] + 1;
 ```
 
 ```c
-int done; int data;
-// thread 1: data = 42; done = 1;
-// thread 2: while (!done) {} use(data);
+int flag; int data;
+// thread 1: data = 42; flag = 1;
+// thread 2: while (!flag) {} use(data);
 ```
 
 ```js
@@ -106,7 +106,7 @@ Atomics.add(m, 0, 1); // in both workers
 
 In the first, two workers increment the same `Int32Array` slot with
 ordinary reads and writes; both may read 0 and both write 1, losing an
-increment. The second is the classic flag: `done` and `data` are plain
+increment. The second is the classic flag: `flag` and `data` are plain
 variables written and read in different threads, so both are races, and
 the next section shows what gcc makes of it. The third is the fix for
 the first: `Atomics.add` reads, adds and writes as one indivisible
@@ -236,7 +236,7 @@ is no undefined behaviour"<Cite id="ecma262-memory-model" />. The
 second compares processors. The third is the bargain every one of these
 languages offers: write a program with no data races, and it behaves
 as if it were sequentially consistent, which C++, Go and JavaScript all
-state in these words<Cite id="cxx-draft-races" /><Cite id="go-memory-model" />.
+promise<Cite id="cxx-draft-races" /><Cite id="go-memory-model" /><Cite id="ecma262-memory-model" />.
 Keeping that bargain needs atomic operations and the ordering they
 create, the subject of the next chapter.
 

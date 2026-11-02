@@ -1,6 +1,6 @@
 import { Svg, T, tok } from '../../viz/svg';
 
-// Chapter 309b: rustc's own view of swap!(tmp, y), from
+// Chapter 310: rustc's own view of swap!(tmp, y), from
 // rustc -Zunpretty=expanded,hygiene (rustc 1.97). Every identifier carries
 // a syntax context after #: 0 for code the caller wrote, 7 for code the
 // macro wrote. A name only refers to a binding with the same name AND the

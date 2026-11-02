@@ -87,7 +87,7 @@ references and looking at what is left.</span>
 other but are unreachable. **Trial deletion** does it locally: starting
 from candidate objects (those whose count was decremented to a
 non-zero value), it subtracts every reference among the objects it can
-reach (*mark gray*); objects whose count is still above zero are held
+reach (*mark grey*); objects whose count is still above zero are held
 from outside, so they and everything they reach get their counts
 restored (*scan black*); the rest (*white*) are garbage and are freed.
 </Callout>
@@ -142,7 +142,7 @@ Rust tree with parent links (the `RefCell` lets the links be changed
 later): children are held by strong `Rc`s and the parent by a `Weak`,
 so a parent and child never keep each other alive. The third is a
 cycle collector in a real browser: Firefox's, whose source says it is
-"based on the paper" by Bacon and Rajan, using its purple, gray, white
+"based on the paper" by Bacon and Rajan, using its purple, grey, white
 and black colours<Cite id="firefox-cycle-collector" />; instead of
 subtracting, it counts each object's references from inside the graph
 (`mInternalRefs`) and compares them with its real count, the same test
@@ -230,7 +230,7 @@ retq
 ```text
 // int call(const shared_ptr<int>& p)
 //   { return peek(p); }, clang++ -O2:
-lock incl  8(%rbx)
+lock incl  8(%rax)
 ... call ...
 lock xaddl %ecx, 8(%rbx)
 // atomic updates: kept

@@ -241,7 +241,7 @@ once at a time`, because returning `v` forces the loan's region to
 cover the caller's `'r`, and region constraints say *that* a loan flows
 into `'r` but not *on which path*. Issues like this were deferred from
 NLL to **Polonius**, a new formulation of the borrow checker in terms
-of facts and rules, like chapter 221's Datalog, for which this example
+of facts and rules, like the Datalog of the chapter on function summaries, for which this example
 is the motivating case<Cite id="polonius-update-2023" />.
 
 <Prompts ids={['ri-pc3']} />

@@ -1,4 +1,4 @@
-// Chapter 309b cards. Keys are stable ids: never rename them.
+// Chapter 310 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'hy-capture': {

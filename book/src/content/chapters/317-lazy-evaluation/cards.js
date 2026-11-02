@@ -225,7 +225,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these is call-by-need built into everyday JavaScript?',
+    q: 'Which of these delays work the way a thunk does, in everyday JavaScript?',
     options: [
       { t: '`f(a(), b())`', why: 'Both arguments run before the call: call-by-value.' },
       { t: '`a() && b()`, where `b()` runs only if needed, at most once', correct: true, why: 'The right operand is evaluated only when the left is truthy, and at most once: it behaves like a thunk forced on demand.' },

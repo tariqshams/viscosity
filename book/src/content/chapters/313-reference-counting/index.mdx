@@ -114,7 +114,7 @@ println!("{}", Rc::strong_count(&a)); // 1
 // C++: int call(const shared_ptr<int>& p)
 //        { return peek(p); }  // copies p
 // clang++ 18 -O2, trimmed:
-lock incl  8(%rbx)    // count += 1
+lock incl  8(%rax)    // count += 1
 call ...
 lock xaddl %ecx, 8(%rbx)  // count -= 1
 ```
@@ -134,7 +134,8 @@ dropping a clone decrements it<Cite id="rust-std-rc" />. The third is
 the price: passing a C++ `shared_ptr` by value copies it, and clang's
 code for the copy is a `lock`-prefixed increment, and for the
 destruction a `lock`-prefixed exchange-and-add, because the count may
-be shared between threads. Locked instructions make every core agree on
+be shared between threads (libstdc++ checks a flag first, and uses
+plain instructions while the program has only one thread). Locked instructions make every core agree on
 the value, and they cost more than ordinary ones; Rust offers
 `Rc`, whose counts are plain, non-atomic, and `Arc` for sharing across
 threads, and makes the compiler refuse to send an `Rc` to another

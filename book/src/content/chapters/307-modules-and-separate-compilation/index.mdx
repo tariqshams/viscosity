@@ -37,6 +37,7 @@ Here is the smallest program that needs two files, in C:
 int sq(int x) { return x * x; }
 
 // main.c
+#include <stdio.h>
 int sq(int x);   // a declaration only
 int main(void) {
   printf("%d\n", sq(7));

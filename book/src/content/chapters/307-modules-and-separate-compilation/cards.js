@@ -223,7 +223,7 @@ export const quiz = [
     q: 'How does the JVM keep two overloads of `add` apart, without mangling?',
     options: [
       { t: 'It renames the second one `add2`', why: 'javap shows both methods are still called `add`.' },
-      { t: 'It does not: Java forbids overloading', why: 'Java allows overloading; `Calc` had two `add`s.' },
+      { t: 'It does not: Java forbids overloading', why: 'Java allows overloading, and the class file keeps every `add` under its own name.' },
       { t: 'The class file stores each method’s name next to a descriptor of its types, such as `(II)I`', correct: true, why: 'A call names both, `Method add:(II)I`, so the types are part of what is matched.' },
     ],
   },

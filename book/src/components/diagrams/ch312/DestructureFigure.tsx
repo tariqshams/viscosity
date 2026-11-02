@@ -1,6 +1,6 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 311b: the pattern const { x, y = 1, pos: { lat } } = o, and the
+// Chapter 312: the pattern const { x, y = 1, pos: { lat } } = o, and the
 // plain reads it stands for, one per name the pattern binds.
 const ROWS = [
   { pat: 'x', read: 'const x = o.x;', c: 'f1' },

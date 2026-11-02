@@ -14,7 +14,7 @@ const STATES: S[] = [
   { expr: '5 + V(1)', add: 'no', radd: 'idle', err: 'idle', note: 'Now 5 + V(1). int’s __add__ does not know what a V is, so it returns the special value NotImplemented: "not me, ask the other side".' },
   { expr: '5 + V(1)', add: 'no', radd: 'yes', err: 'idle', res: 'V(6)', note: 'So Python tries the right operand’s reflected method, V.__radd__(V(1), 5), which handles a number on its left: V(6).' },
   { expr: "V(1) + 'a'", add: 'no', radd: 'idle', err: 'idle', note: 'V(1) + \'a\': this time V.__add__ checks its argument, finds a string, and returns NotImplemented.' },
-  { expr: "V(1) + 'a'", add: 'no', radd: 'no', err: 'yes', note: 'str has no __radd__ that accepts a V, so both sides declined: TypeError: unsupported operand type(s) for +: \'V\' and \'str\'.' },
+  { expr: "V(1) + 'a'", add: 'no', radd: 'no', err: 'yes', note: 'str has no __radd__ at all, so both sides declined: TypeError: unsupported operand type(s) for +: \'V\' and \'str\'.' },
 ];
 
 export default function DispatchSteps() {

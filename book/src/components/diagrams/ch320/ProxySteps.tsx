@@ -1,7 +1,7 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 319-b: the steps of a Proxy's [[Get]] in the ECMAScript
+// Chapter 320: the steps of a Proxy's [[Get]] in the ECMAScript
 // specification, followed for one read that the trap tries to change.
 const CODE = `const t = { n: 5 };
 Object.defineProperty(t, 'id',

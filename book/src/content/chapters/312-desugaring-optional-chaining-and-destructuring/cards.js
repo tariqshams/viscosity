@@ -1,4 +1,4 @@
-// Chapter 311b cards. Keys are stable ids: never rename them.
+// Chapter 312 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'oc-what': {

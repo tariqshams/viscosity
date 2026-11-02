@@ -1,7 +1,7 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 309b: swap(tmp, y) expanded naively, then hygienically. The
+// Chapter 310: swap(tmp, y) expanded naively, then hygienically. The
 // naive expansion's own tmp captures the caller's tmp; renaming the
 // macro's variable to tmp_1 keeps them apart.
 const NAIVE = `let tmp = 1; let y = 2;

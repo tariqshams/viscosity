@@ -1,20 +1,20 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 313b: trial deletion, the synchronous cycle collection of Bacon
+// Chapter 314: trial deletion, the synchronous cycle collection of Bacon
 // and Rajan (2001). A and B form a garbage cycle; C and D form a cycle
 // that the variable v still reaches. Counts are trial copies.
-type C = 'black' | 'purple' | 'gray' | 'white' | 'freed';
+type C = 'black' | 'purple' | 'grey' | 'white' | 'freed';
 type S = { col: Record<string, C>; rc: Record<string, number>; note: string };
 
 const POS: Record<string, [number, number]> = { A: [70, 60], B: [70, 150], C: [270, 60], D: [270, 150] };
-const COLOUR: Record<C, string> = { black: 'ink', purple: 'f4', gray: 'muted', white: 'line', freed: 'line' };
+const COLOUR: Record<C, string> = { black: 'ink', purple: 'f4', grey: 'muted', white: 'line', freed: 'line' };
 
 const STATES: S[] = [
   { col: { A: 'purple', B: 'black', C: 'purple', D: 'black' }, rc: { A: 1, B: 1, C: 2, D: 1 }, note: 'Two cycles. Nothing points at A or B from outside, yet each has count 1, so counting alone never frees them. A and C were decremented to a non-zero count earlier, so they were remembered as candidates (purple).' },
-  { col: { A: 'gray', B: 'gray', C: 'purple', D: 'black' }, rc: { A: 0, B: 0, C: 2, D: 1 }, note: 'Mark gray from A: walk everything A reaches and subtract one for each reference met on the way, as if those internal references were deleted. A → B takes B to 0, B → A takes A to 0.' },
-  { col: { A: 'gray', B: 'gray', C: 'gray', D: 'gray' }, rc: { A: 0, B: 0, C: 1, D: 0 }, note: 'Mark gray from C the same way: D drops to 0, and C to 1. That remaining 1 is a reference from outside the walked objects: the variable v.' },
-  { col: { A: 'white', B: 'white', C: 'gray', D: 'gray' }, rc: { A: 0, B: 0, C: 1, D: 0 }, note: 'Scan: a gray object whose trial count is 0 is held only by the objects just walked. A and B are white: probable garbage.' },
+  { col: { A: 'grey', B: 'grey', C: 'purple', D: 'black' }, rc: { A: 0, B: 0, C: 2, D: 1 }, note: 'Mark grey from A: walk everything A reaches and subtract one for each reference met on the way, as if those internal references were deleted. A → B takes B to 0, B → A takes A to 0.' },
+  { col: { A: 'grey', B: 'grey', C: 'grey', D: 'grey' }, rc: { A: 0, B: 0, C: 1, D: 0 }, note: 'Mark grey from C the same way: D drops to 0, and C to 1. That remaining 1 is a reference from outside the walked objects: the variable v.' },
+  { col: { A: 'white', B: 'white', C: 'grey', D: 'grey' }, rc: { A: 0, B: 0, C: 1, D: 0 }, note: 'Scan: a grey object whose trial count is 0 is held only by the objects just walked. A and B are white: probable garbage.' },
   { col: { A: 'white', B: 'white', C: 'black', D: 'black' }, rc: { A: 0, B: 0, C: 2, D: 1 }, note: 'C still has a count above 0, so it is alive; scan black restores the counts of everything it reaches (D goes back to 1, C to 2) and colours them black, alive.' },
   { col: { A: 'freed', B: 'freed', C: 'black', D: 'black' }, rc: { A: 0, B: 0, C: 2, D: 1 }, note: 'Collect white: A and B are freed. The live cycle C ↔ D is untouched, with its true counts back in place.' },
 ];

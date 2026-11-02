@@ -1,7 +1,7 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 311b: the lowered form of a?.b?.c run twice, once with a whole
+// Chapter 312: the lowered form of a?.b?.c run twice, once with a whole
 // chain and once with b missing. Each ?. becomes one test of a temporary;
 // a nullish value ends the whole chain with undefined.
 const CODE = `// a?.b?.c, lowered:

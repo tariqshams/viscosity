@@ -1,4 +1,4 @@
-// Chapter 307b cards. Keys are stable ids: never rename them.
+// Chapter 308 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'mg-what': {

@@ -1,6 +1,6 @@
 import { Arrow, Box, T, tok } from '../../viz/svg';
 
-// The module graph shared by chapter 307b's diagrams: main imports a and
+// The module graph shared by chapter 308's diagrams: main imports a and
 // b, a imports c, b imports c and d. An arrow points from a module to a
 // module it imports.
 export const NODES: Record<string, [number, number]> = {
