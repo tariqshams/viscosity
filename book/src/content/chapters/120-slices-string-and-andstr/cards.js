@@ -1,12 +1,8 @@
-// Chapter 188 cards: recall prompts, examples, exercises and quiz.
+// Chapter 120 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 120, 120.
 
 export const prompts = {
-  'slice-what': {
-    q: 'What is a slice, in one line?',
-    a: 'A borrowed view of a run of elements in someone else’s array, `Vec` or string.',
-  },
   'slice-parts': {
     q: 'What two things does a slice hold?',
     a: 'A pointer to its first element and a length (16 bytes on a 64-bit machine).',
@@ -15,45 +11,21 @@ export const prompts = {
     q: 'Which elements does `&a[1..4]` cover? And `&a[1..=4]`?',
     a: '`1..4`: indices 1, 2 and 3 (the end is left out). `1..=4`: indices 1 to 4, end included.',
   },
-  'range-open': {
-    q: 'What do `&a[..2]`, `&a[3..]` and `&a[..]` mean?',
-    a: 'From the start to 2; from 3 to the end; the whole thing.',
-  },
   'slice-param': {
     q: 'Why write `fn sum(xs: &[i32])` rather than taking an array of a fixed size?',
     a: 'A `&[i32]` accepts a whole array, a `Vec`, or any part of either, of any length.',
-  },
-  'slice-mut': {
-    q: 'What does passing `&mut a[1..3]` to a function let it do?',
-    a: 'Change elements 1 and 2 of `a`, and nothing else.',
   },
   'slice-bounds': {
     q: 'What happens if a slice range runs past the end, like `&a[2..9]` on six elements?',
     a: 'The program panics while running: “range end index 9 out of range for slice of length 6”.',
   },
-  'slice-amp': {
-    q: 'Why does `let s = a[0..2];` (no `&`) not compile?',
-    a: 'A slice on its own has no size known at compile time, so it can only be reached through a reference: `&a[0..2]` (E0277).',
-  },
-  'slice-borrow': {
-    q: 'You hold `let part = &v[..2];` and call `v.push(9)`, then use `part`. What happens?',
-    a: 'It does not compile (E0502): `push` needs a mutable borrow of `v` while `part` still borrows it.',
-  },
   'string-owns': {
     q: 'Which owns its text and can grow: `String` or `&str`?',
     a: '`String`. A `&str` only borrows text that lives somewhere else.',
   },
-  'literal-type': {
-    q: 'What is the type of the literal `"print"`, and where do its bytes live?',
-    a: '`&str`: a slice of text stored in the compiled program, which is why it cannot be changed.',
-  },
   'str-param': {
     q: 'Why do Rust functions usually take `&str` rather than `&String`?',
     a: 'A `&str` parameter accepts literals, slices and (borrowed) `String`s alike.',
-  },
-  'to-owned': {
-    q: 'How do you turn a `&str` into a `String`, and what does it cost?',
-    a: '`String::from(x)` or `x.to_string()`. It copies the bytes into a new heap buffer.',
   },
   'return-string': {
     q: 'A function builds new text from its arguments. Why must it return a `String`, not a `&str`?',
@@ -62,14 +34,6 @@ export const prompts = {
   'byte-len': {
     q: 'What does `"héllo".len()` return, and why?',
     a: '6. `len` counts UTF-8 bytes, and `é` takes two.',
-  },
-  'no-index': {
-    q: 'Why does `s[0]` not compile when `s` is a `String`?',
-    a: 'Strings cannot be indexed by a single number: in UTF-8 a byte index would not reliably give a character (E0277).',
-  },
-  'lexeme-borrow': {
-    q: 'Why does the Rust Drip scanner make each lexeme a `&str` slice of the source?',
-    a: 'A slice is a pointer and a length into text that already exists, so scanning allocates nothing.',
   },
 };
 
@@ -127,6 +91,7 @@ fn main() {
 
 export const exercises = {
   sumColumn: {
+    optional: true,
     lang: 'rust',
     title: 'Sum part of a column',
     prompt: 'A struct-of-arrays layout keeps every particle’s `x` in one array. Write `sum_range(xs, from, to)`, which adds up the elements `from` (included) to `to` (left out) by **slicing first**, then summing the slice. An empty range sums to `0.0`.',
@@ -361,28 +326,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What is stored in a `&[i32]` slice value?',
-    options: [
-      {
-        t: 'A copy of every element in the range',
-        why: 'Slices never copy their elements.',
-      },
-      {
-        t: 'Only a pointer to the first element',
-        why: 'Without a length, nobody would know where the slice ends, or check accesses.',
-      },
-      {
-        t: 'A pointer to the first element and a length',
-        correct: true,
-        why: 'That is why a slice is 16 bytes, twice the size of a plain reference.',
-      },
-      {
-        t: 'The start and end indices, and the name of the array',
-        why: 'A slice does not know which variable it came from; it holds an address and a length.',
-      },
-    ],
-  },
-  {
     q: `Does this compile?
 \`\`\`rust
 let mut v = vec![1, 2, 3];
@@ -411,50 +354,6 @@ println!("{:?}", part);
     ],
   },
   {
-    q: 'What happens with `let a = [1, 2, 3]; let s = &a[1..5];`?',
-    options: [
-      {
-        t: '`s` is `[2, 3]`, silently trimmed',
-        why: 'Rust never trims a range for you.',
-      },
-      {
-        t: 'The program panics: range end index 5 out of range for slice of length 3',
-        correct: true,
-        why: 'Slicing is bounds-checked, and an index past the end stops the program.',
-      },
-      {
-        t: 'It reads whatever is in memory after the array',
-        why: 'That is what C might do. Rust checks.',
-      },
-      {
-        t: '`s` is empty',
-        why: 'An out-of-range slice is an error, not an empty slice.',
-      },
-    ],
-  },
-  {
-    q: '`fn zero(xs: &mut [i32])` sets every element of `xs` to 0. After `let mut a = [1, 2, 3, 4]; zero(&mut a[2..]);`, what is `a`?',
-    options: [
-      {
-        t: '`[0, 0, 0, 0]`',
-        why: 'Only the part that was lent can be changed.',
-      },
-      {
-        t: '`[1, 2, 3, 4]`',
-        why: 'The function changed the elements through the mutable slice.',
-      },
-      {
-        t: '`[0, 0, 3, 4]`',
-        why: '`2..` is from index 2 to the end, not the first two.',
-      },
-      {
-        t: '`[1, 2, 0, 0]`',
-        correct: true,
-        why: 'The mutable slice covers indices 2 and 3, so only those become 0.',
-      },
-    ],
-  },
-  {
     q: 'Which function signature accepts `"lit"`, `&my_string` and `&my_string[2..]` all three?',
     options: [
       {
@@ -477,28 +376,6 @@ println!("{:?}", part);
     ],
   },
   {
-    q: 'In `let lit = "print";`, where do the five bytes live?',
-    options: [
-      {
-        t: 'On the heap, owned by `lit`',
-        why: 'Only a `String` owns heap text. `lit` is a `&str`.',
-      },
-      {
-        t: 'In the compiled program itself; `lit` borrows them',
-        correct: true,
-        why: 'String literals are slices of text stored in the program, which is why they cannot be changed.',
-      },
-      {
-        t: 'They are copied into `lit` byte by byte',
-        why: '`lit` holds a pointer and a length, not the bytes.',
-      },
-      {
-        t: 'On the stack, inside `lit`',
-        why: 'A `&str` is only a pointer and a length; the bytes are elsewhere.',
-      },
-    ],
-  },
-  {
     q: '`fn name() -> String { "drip" }` does not compile. Which fix is right?',
     options: [
       {
@@ -517,28 +394,6 @@ println!("{:?}", part);
       {
         t: 'Add `mut` to the function',
         why: 'Mutability has nothing to do with it; the types differ.',
-      },
-    ],
-  },
-  {
-    q: 'What does `"héllo".len()` return?',
-    options: [
-      {
-        t: '5',
-        why: 'That is the number of characters (`chars().count()`). `len` counts bytes.',
-      },
-      {
-        t: '6',
-        correct: true,
-        why: '`é` takes two bytes in UTF-8, and `len` counts bytes.',
-      },
-      {
-        t: '10',
-        why: 'UTF-8 does not use two bytes for every character; ASCII letters take one.',
-      },
-      {
-        t: 'A compile error, because of the accent',
-        why: 'Rust strings are UTF-8, so any character is allowed.',
       },
     ],
   },

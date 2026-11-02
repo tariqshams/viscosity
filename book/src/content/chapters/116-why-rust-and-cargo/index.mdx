@@ -3,18 +3,15 @@ n: 116
 day: 18
 part: VII
 title: 'Why Rust, and cargo'
-tagline: 'You built a VM in TypeScript and a compiler that rearranges memory. Track B rebuilds them in a language where memory is yours to arrange, and where the compiler checks your work before anything runs.'
+tagline: 'You built a VM in TypeScript and a compiler that rearranges memory. This part rebuilds them in a language where memory is yours to arrange, and where the compiler checks your work before anything runs.'
 objectives:
   - Say what Rust gives a VM author that TypeScript cannot, and what it costs.
   - Say when a Rust program is checked and compiled, compared with TypeScript on V8.
   - Read the drip-rs benchmark honestly, including what it does not show.
-  - Write, read and fix a first Rust program with fn main and println!.
-  - Create, check, build and run a project with cargo, and name the files each command makes.
-  - Read a Cargo.toml, including a dependency’s version.
+  - Create, check, build and run a project with cargo, and choose between a debug and a release build.
   - Tell a binary crate from a library crate, and say what a package holds.
-  - Choose between a debug build and a release build.
 introduces: [rust, cargo, crate]
-uses: [typescript, type-checking, type-erasure, type-annotation, virtual-machine, bytecode, drip, garbage-collection, mark-sweep, jit-compiler, ignition, object-header, aos-vs-soa, viscosity-pipeline, npm-package, module, function, console-log, compiler, end-to-end-benchmark, benchmark-isolation, test]
+uses: [typescript, type-checking, type-erasure, virtual-machine, bytecode, drip, garbage-collection, mark-sweep, jit-compiler, ignition, object-header, aos-vs-soa, module, function, console-log, compiler, end-to-end-benchmark, benchmark-isolation, test]
 sources: [klabnik2026, rust-book-hello-cargo, v8-ignition, v8-trash-talk, rust-book-packages-crates, cargo-profiles, cargo-specifying-deps]
 ---
 import BuildSteps from '../../../components/diagrams/ch116/BuildSteps';
@@ -22,24 +19,15 @@ import DripRsBench from '../../../components/diagrams/ch116/DripRsBench';
 import CargoSteps from '../../../components/diagrams/ch116/CargoSteps';
 import CrateMap from '../../../components/diagrams/ch116/CrateMap';
 
-{/* ── merge: from old chapter 116, Why Rust? Hello, cargo ── */}
-
 ## Two garbage collectors deep
 
-Think back to the chapter *Reclaiming memory: mark and sweep*. Your Drip
-VM is a TypeScript program, so it runs on V8, and V8 already has a
-garbage collector<Cite id="v8-trash-talk" />; yet you still had to write
-a second one over the VM's own list of objects, because only the VM knows
-which Drip objects are still reachable (to V8, everything on that list
-looks alive). That is two collectors stacked on top of each other, and
-the bottom one is doing work you never asked for.
-
-Then think back to *How JavaScript stores numbers and objects*: every
-object carries a hidden header, and the engine decides how numbers are
-stored. Viscosity, the compiler you finished in Part IX, exists because
-JavaScript gives you no direct say over memory layout; it has to coax
-the engine into a struct of arrays by way of typed arrays. Track B starts
-again in a language where neither workaround is needed.
+In *Reclaiming memory: mark and sweep* you wrote a collector for the
+Drip VM, although V8 already has one<Cite id="v8-trash-talk" />, because
+only the VM knows which Drip objects are still reachable; two collectors
+ended up stacked on top of each other. Viscosity, likewise, exists
+because JavaScript gives you no say over memory layout (objects carry
+hidden headers, and the engine decides where fields live). This part
+starts again in a language where neither workaround is needed.
 
 <Analogy title="a hotel versus a house of your own">
 TypeScript is like staying in a hotel: the staff (the engine) clean your
@@ -55,33 +43,19 @@ checks rules about memory, not about walls.</span>
 
 ## What Rust is, and when it does its work
 
-**Rust** is a language that is compiled ahead of time to machine code,
-has no garbage collector, and still refuses to compile a program that
-could read freed memory (outside code marked `unsafe`, which a later
-chapter covers)<Cite id="klabnik2026" />. It manages that with a small
-set of *ownership* rules, checked by the compiler, which are the heart
-of this part of the book.
-
-The biggest change from TypeScript is *when* the work happens. Step
-through the same program going down both roads:
+**Rust** is compiled ahead of time to machine code, has no garbage
+collector, and still refuses to compile a program that could read freed
+memory (outside code marked `unsafe`, which *unsafe and raw pointers*
+covers)<Cite id="klabnik2026" />. It manages that with a small set of
+*ownership* rules, checked by the compiler, which are the heart of this
+part. The biggest change from TypeScript is *when* the work happens, so
+step through the same program going down both roads:
 
 <BuildSteps client:visible />
 
-V8 does a great deal while your program runs: it parses, interprets
-bytecode with Ignition, watches for hot code and compiles
-it<Cite id="v8-ignition" />. A Rust program did all of that before it
-started, so all that is left at run time is your own code on the CPU.
-
-<Analogy extra title="a banquet kitchen versus cooking to order">
-A restaurant that cooks to order starts each dish when the ticket
-arrives and gets faster at the popular ones as the night goes on; that is
-V8, learning which functions are hot. A banquet kitchen preps and checks
-every plate before the doors open, so service is only carrying plates
-out; that is a Rust program.
-<span slot="breaks">A banquet kitchen cannot change the menu once
-guests arrive, and neither can Rust adapt its machine code to how the
-program is used; V8 can, which is why a JIT sometimes wins.</span>
-</Analogy>
+V8 parses, interprets with Ignition and compiles hot code while your
+program runs<Cite id="v8-ignition" />; a Rust program did all of that
+before it started.
 
 <Callout kind="definition">
 **Rust** is a compiled systems language. Its compiler, `rustc`, checks
@@ -90,207 +64,60 @@ native machine code. The running program has no garbage collector and
 no JIT: memory is freed at points the compiler works out in advance.
 </Callout>
 
-The costs are real, and you should hear them now. The compiler rejects
-programs that TypeScript would happily run, and at first it will feel
-like arguing with it; you wait for a full compile before every run; and
-some designs that are easy with a collector (many objects all pointing
-at each other) take more thought.
+The costs are real: the compiler rejects programs TypeScript would run,
+you wait for a compile before every run, and designs that are easy with
+a collector (many objects pointing at each other) take more thought.
 
-<Prompts ids={['rs-no-gc', 'rs-when-compile', 'rs-cost']} />
+<Prompts ids={['rs-no-gc', 'rs-when-compile']} />
 
-## The same VM, measured
+Is it worth it? In *Core 7: Drip in Rust* you will port the Drip VM; the
+port, `drip-rs`, prints exactly what the TypeScript VM prints, byte for
+byte, and here it is on the Drip benchmark programs:
 
-Is it worth it? The companion code has an answer for one program you
-know well. In Part XII you will port the Drip VM to Rust; the port,
-`drip-rs`, prints exactly what the TypeScript VM prints, byte for byte,
-and here it is on the Drip benchmark programs:
-
-<Figure takeaway="A faithful Rust port of the same VM ran several times faster here, on most programs." caption="From the committed file companion/rust/results/drip-rs-bench-2026-11-02.md. Both columns include compiling the Drip program.">
+<Figure takeaway="A faithful Rust port of the same VM ran several times faster here, on most programs." caption="From the committed file companion/rust/results/drip-rs-bench-2026-11-02.md. Same shared cloud VM and day for both, each program in a fresh process, best of three, compile time included.">
   <DripRsBench />
 </Figure>
 
-Read it with the care of *Benchmarking honestly*:
-
-- **Both ran on the same shared cloud machine, on the same day,** each
-  program in a fresh process, best of three runs for both VMs, so expect
-  some noise.
-- **This is one port, not "Rust versus JavaScript".** Different code,
-  or a JIT that suits a program better, could change every bar.
-- **The gain is not uniform.** Most programs ran four to five times as
-  fast, but `strings` barely moved (1.26×), a reminder that a port speeds
-  up some kinds of work far more than others.
+Read it with the care of *Benchmarking honestly*: this is one port, not
+"Rust versus JavaScript", and the gain is not uniform (`strings` barely
+moved, at 1.26×).
 
 <Prompts ids={['rs-bench-fair']} />
 
 ## Hello, Rust
 
-Here is a complete Rust program:
-
-```rust
-fn main() {
-    println!("Hello, Drip!");
-}
-```
-
-Line 1 declares a function called `main` (`fn` is Rust's `function`),
-which is where every Rust program starts; there is no top-level code as
-in a JavaScript file. Line 2 prints a line of text, and plays the part of
-`console.log`; the `!` marks `println!` as a **macro**, which is code
-that writes code at compile time (a later chapter shows how), and every
-statement ends with a semicolon. Inside the string, `{}` marks a gap
-that `println!` fills with the next argument.
-
 <Examples of="rust">
-
-```rust
-println!("{}", 2 + 3); // 5
-```
-
-```rust
-let name = "drip";
-let n = 35;
-println!("{name}: fib({n})");
-// drip: fib(35)
-```
 
 <Run id="hello" />
 
 </Examples>
 
-The first fills one gap with `2 + 3`, which is worked out before
-printing, so it prints `5`. The second shows the other way to fill a
-gap: a variable's name written inside the braces, `{name}`, prints that
-variable (and `let` makes a variable, much like TypeScript's `const`,
-which *Variables, types and mutability* explains). The runnable one mixes both
-styles; change it and run it again.
+Every program starts in `fn main()` (`fn` is Rust's `function`); there is
+no top-level code as in a JavaScript file. `let` makes a variable, much
+like `const`. `println!` plays the part of `console.log`, and the `!`
+marks it as a **macro**, code that writes code at compile time; its `{}`
+is filled by the next argument and `{n}` by the variable `n`, so this
+prints `fib(35) is slow` and `35 again`. Forget the `!` and rustc 1.97
+stops with ``error[E0423]: expected function, found macro `println` ``,
+and its `help:` line holds the fix: ``use `!` to invoke the macro``.
 
-Forget the `!` and the compiler tells you exactly that. Here is the
-broken line and the fixed one, with rustc 1.97's real message (long
-lines in this book are wrapped to fit your screen):
+<Prompts ids={['rs-println-bang']} />
 
-```rust
-println("Hello, Drip!");  // broken
-println!("Hello, Drip!"); // fixed
-```
+## Cargo, the contractor
 
-```text
-error[E0423]: expected function, found
-  macro `println`
-2 |     println("Hello, Drip!");
-  |     ^^^^^^^ not a function
-help: use `!` to invoke the macro
-```
-
-Misspell `main` instead and the error says what is missing:
-``error[E0601]: `main` function not found in crate``. Rust's messages
-are long and specific, so read them to the end: the `help:` line often
-holds the fix.
-
-<OtherLanguages title="Hello, with a number in it">
-
-```rust
-fn main() {
-    let n = 3;
-    println!("n is {n}");
-}
-```
-
-```ts
-const n = 3;
-console.log(`n is ${n}`);
-```
-
-```c
-#include <stdio.h>
-int main(void) {
-    int n = 3;
-    printf("n is %d\n", n);
-    return 0;
-}
-```
-
-```python
-n = 3
-print(f"n is {n}")
-```
-
-</OtherLanguages>
-
-The real differences: TypeScript and Python run top-level code, while
-Rust and C start in `main`; C must be told how to print each value
-(`%d` for a whole number), while Rust's `{}` works it out from the type
-at compile time and refuses to compile if a gap has no value; and only
-Rust and C are compiled to machine code before they run.
-
-<Prompts ids={['rs-main', 'rs-println-bang', 'rs-gap', 'rs-help-line']} />
-
-<Callout kind="engine" label="Under the hood">
-Viscosity rearranged arrays of objects into typed-array columns because
-JavaScript hides layout. In Rust, a `Vec` of structs and a struct of
-`Vec`s are both ordinary code you write, with no object headers in the
-way, and the chapter *Struct of arrays in Rust by hand* builds one. The
-Rust Drip VM goes further: its `src/lib.rs` starts with
-`#![forbid(unsafe_code)]`, so the whole VM, collector included, is
-checked by the compiler with no exceptions.
-</Callout>
-
-## Your turn
-
-Rust exercises are compiled and run on the official Rust Playground, so
-they take a few seconds. The tests are `#[test]` functions (the chapter
-*Testing in Rust* covers them). In the starter, `i64` is a 64-bit whole
-number, `-> i64` means "returns one", and `todo!()` is a macro that stops
-the program with "not yet implemented", a handy placeholder.
-
-<Exercise id="seconds-in" />
-
-## What you learned
-
-- **Rust** compiles to machine code ahead of time, with no garbage
-  collector and no JIT, and the compiler checks memory safety before the
-  program runs. The price is a stricter compiler and slower builds.
-- In this book's run, the Rust port of the Drip VM was four to five
-  times as fast as the TypeScript VM on most programs: one run, one
-  port, one machine.
-- Every program starts in `fn main()`; `println!` is a **macro**, and
-  `{}` or `{name}` fills a gap in its text.
-
-Next: cargo, the tool that makes, builds and runs Rust projects.
-
-
-{/* ── merge: from old chapter 116, Cargo, crates and packages ── */}
-
-## One file is easy; a project is not
-
-You can compile a single Rust file by hand, with `rustc main.rs`, and
-get a program called `main` beside it. Nobody works that way for long,
-however: a real project has dozens of files, uses libraries other people
-wrote, has tests, and needs two kinds of build (a quick one while you
-work and a fast one to ship). In TypeScript you juggle `npm`, `tsc` and a
-test runner for that; in Rust one tool does all of it.
-
-<Analogy title="a general contractor">
-When you build an extension you do not phone the bricklayer, the
-plumber and the electrician yourself; you hire a contractor who knows
-which trade comes next and who orders the materials. **Cargo** is that
-contractor: you say "build", and it fetches the libraries you named,
-calls the compiler in the right order and puts the results in one place.
-<span slot="breaks">A contractor makes judgement calls on site; cargo
-does exactly what its manifest file says, the same way every time, and
-the compiler, not cargo, is the one that checks your code.</span>
-</Analogy>
-
-## Four commands
-
-Step through a whole first session, from an empty folder to an
-optimised program. The output is real (cargo 1.97, folder paths
-trimmed):
+A real project has many files, libraries, tests and two kinds of
+build; in TypeScript you juggle `npm`, `tsc` and a test runner for that,
+and in Rust one tool, **cargo**, does it all. Step through a first
+session, from an empty folder to an optimised program (real output from
+cargo 1.97, paths trimmed):
 
 <CargoSteps client:visible />
 
-`cargo new` made a manifest and one source file. The manifest,
-`Cargo.toml`, plays the part of `package.json`: a name, a version, an
-edition and a list of dependencies<Cite id="rust-book-hello-cargo" />.
+`cargo new` made a manifest, `Cargo.toml`, which plays the part of
+`package.json`<Cite id="rust-book-hello-cargo" />, and one source file,
+`src/main.rs`:
+
+<Examples of="cargo">
 
 ```toml
 [package]
@@ -301,19 +128,6 @@ edition = "2024"
 [dependencies]
 time = "0.1.12"
 ```
-
-The first section names the package; `edition` picks a version of the
-language's rules (cargo 1.97 writes 2024 for a new project, and this
-book's runnable examples use 2021; nothing in the next chapters differs
-between the two). The `[dependencies]` line asks for a library called
-`time` from **crates.io**, Rust's public registry (as npm packages come
-from the npm registry). The version `"0.1.12"` means "0.1.12 or any later
-0.1 release, but not 0.2", because cargo assumes a change in the left-most
-non-zero number may break your code<Cite id="cargo-specifying-deps" />.
-
-The everyday commands, in the order you will use them:
-
-<Examples of="cargo">
 
 ```text
 $ cargo check
@@ -326,37 +140,23 @@ error[E0308]: mismatched types
   |                    `i32`, found `&str`
 ```
 
-```text
-$ cargo run
-    Finished `dev` profile [...]
-     Running `target/debug/hello`
-Hello, world!
-```
-
-```text
-$ cargo build --release
-   Compiling hello v0.1.0
-    Finished `release` profile [optimized]
-```
-
 </Examples>
 
-The first is the command you will type most: `cargo check` runs every
-check the compiler has but skips making a program, so it is the fast
-one, like `tsc --noEmit`; here it caught a string where a number was
-promised. The second builds a **debug** program into `target/debug/`
-and runs it; the lines starting with capitals are cargo's, and `Hello,
-world!` is the program's own. The third turns the optimiser on and
-writes to `target/release/`<Cite id="rust-book-hello-cargo" />. (Two
-more you will meet soon: `cargo test` runs the `#[test]` functions, and
-`cargo fmt` lays your code out in the standard style.)
+`edition` picks a version of the language's rules (cargo 1.97 writes
+2024; the runnable examples here use 2021, and nothing in this part
+differs). The dependency asks for `time` from **crates.io**, Rust's
+registry; `"0.1.12"` means "0.1.12 or any later 0.1 release, but not
+0.2", since cargo assumes a change in the left-most non-zero number may
+break you<Cite id="cargo-specifying-deps" />. `cargo check` runs every
+check but makes no program (like `tsc --noEmit`), so it is the command
+you will type most; `cargo run` builds a **debug** program in
+`target/debug/` and runs it, and `cargo build --release` turns the
+optimiser on and writes to `target/release/`.
 
 <Callout kind="pitfall">
-Debug builds are for working and release builds are for measuring. The
-two differ in more than speed: the debug profile turns off optimisation
-and turns on checks such as integer overflow, which the release profile
-turns off<Cite id="cargo-profiles" />. Every drip-rs number in the
-previous chapter is a release number.
+Debug builds are for working, release builds for measuring: the debug
+profile turns off optimisation and turns on checks such as integer
+overflow, which release turns off<Cite id="cargo-profiles" />.
 </Callout>
 
 <Callout kind="definition">
@@ -367,30 +167,27 @@ builds under `target/`: `target/debug/` by default, `target/release/`
 with `--release`.
 </Callout>
 
-<Prompts ids={['cargo-files', 'cargo-check', 'cargo-release', 'cargo-lock', 'cargo-version']} />
+<Prompts ids={['cargo-check', 'cargo-release']} />
+
+<Analogy extra title="a general contractor">
+When you build an extension you do not phone the bricklayer, the
+plumber and the electrician yourself; you hire a contractor who knows
+which trade comes next and orders the materials. Cargo is that
+contractor: you say "build", and it fetches the libraries you named,
+calls the compiler in the right order and puts the results in one place.
+<span slot="breaks">A contractor makes judgement calls on site; cargo
+does exactly what its manifest says, the same way every time, and the
+compiler, not cargo, is the one that checks your code.</span>
+</Analogy>
 
 ## Crates: the pieces cargo builds
 
 The compiler never looks at your whole project at once; it compiles one
-**crate** at a time, starting from one file, the crate's **root**, and
+**crate** at a time, starting from the crate's **root** file and
 following it to every file it names<Cite id="rust-book-packages-crates" />.
-A crate comes in one of two kinds. A **binary crate** has a `main` and
-becomes a program you can run. A **library crate** has no `main` and
-becomes code that other crates use.
-
-<Analogy extra title="a novel and a cookbook">
-A novel is read from page one to the end, in order: it has a beginning,
-like a binary crate's `main`. A cookbook has no beginning; you open it
-at the recipe you need, the way other code calls the functions a library
-crate offers. A **package** is the box set the publisher ships, with one
-label on the box (one `Cargo.toml`).
-<span slot="breaks">A box set may hold any number of novels and
-cookbooks; a package may hold many binary crates but at most one library
-crate.</span>
-</Analogy>
-
-The Rust Drip VM is a good example. Its `Cargo.toml` declares both kinds
-in one package:
+A **binary crate** has a `main` and becomes a program; a **library
+crate** has no `main` and becomes code other crates use. drip-rs has
+both in one package:
 
 <Figure takeaway="One package can hold a library that does the work and a small program that uses it." caption="The drip-rs package in companion/rust. The binary crate is a short main that reads a file and calls the library; the integration tests are crates of their own that use the library too.">
   <CrateMap />
@@ -398,22 +195,8 @@ in one package:
 
 <Examples of="crate">
 
-```rust
-// src/main.rs: a binary crate
-fn main() {
-    println!("Hello, world!");
-}
-```
-
-```rust
-// src/lib.rs: a library crate
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-```
-
 ```toml
-# companion/rust/Cargo.toml
+# companion/rust/Cargo.toml (trimmed)
 [lib]
 name = "drip"
 path = "src/lib.rs"
@@ -425,60 +208,13 @@ path = "src/main.rs"
 
 </Examples>
 
-The first is the file `cargo new` writes: its root is `src/main.rs`, it
-has a `main`, so it is a binary crate. The second is what `cargo new
---lib` writes instead (trimmed): no `main`, and `pub` (short for
-*public*) lets other crates call `add`, like `export` in TypeScript. The
-third is real: drip-rs names its library crate `drip`, holding the
-scanner, compiler, VM and collector, and its binary crate `drip-rs`,
-whose `main` reads a Drip file and hands it to the library.
-
-Here is the mistake to expect, side by side with its fix:
-
-```text
-$ cargo new --lib mylib && cd mylib
-$ cargo run
-error: a bin target must be available
-for `cargo run`
-$ cargo test
-test tests::it_works ... ok
-```
-
-A library has nothing to run, so `cargo run` refuses (the message says
-there is no binary, which cargo calls a "bin target"); you exercise a
-library through its tests, or from a binary crate that uses it.
-
-<OtherLanguages title="Using a function from a library">
-
-```rust
-use drip::run;
-// run(source, options) from the
-// library crate `drip`
-```
-
-```ts
-import { run } from 'drip';
-// a function from an npm package
-```
-
-```python
-from drip import run
-# a function from a Python package
-```
-
-```c
-#include "drip.h"
-/* declares run(); the library is
-   linked in by the build */
-```
-
-</OtherLanguages>
-
-All four reach into a library by name. The genuine differences: in Rust
-and TypeScript the library says which names are public (`pub`,
-`export`), while Python lets you import almost anything; and in C the
-header only *declares* the function, so the build has to link the
-library's machine code in separately, which cargo does for you.
+The library crate `drip` holds the scanner, compiler, VM and collector
+(items marked `pub` are callable from other crates, like `export`); the
+binary crate `drip-rs` is a `main` that reads a file and calls it. A
+library has nothing to run, so after `cargo new --lib`, `cargo run`
+refuses with
+``error: a bin target must be available for `cargo run` ``; you exercise
+a library through its tests, with `cargo test`.
 
 <Callout kind="definition">
 A **crate** is the unit `rustc` compiles in one go, starting from its
@@ -488,28 +224,69 @@ A **package** is one `Cargo.toml` with the crates it holds: any number
 of binaries and at most one library<Cite id="rust-book-packages-crates" />.
 </Callout>
 
-<Prompts ids={['crate-kinds', 'crate-root', 'package-limit']} />
+<Prompts ids={['crate-kinds']} />
+
+<More title="More: hello in four languages, and a library crate">
+
+```rust
+// src/lib.rs, as `cargo new --lib`
+// writes it (trimmed)
+pub fn add(left: u64, right: u64) -> u64 {
+    left + right
+}
+```
+
+That is a whole library crate: no `main`, and one public function.
+Compare printing a number in four languages:
+
+```c
+#include <stdio.h>
+int main(void) {
+    int n = 3;
+    printf("n is %d\n", n);
+    return 0;
+}
+```
+
+TypeScript and Python run top-level code, while Rust and C start in
+`main`; C must be told how to print each value (`%d`), while Rust's `{}`
+works it out from the type at compile time and refuses to compile if a
+gap has no value. Misspell `main` and rustc says
+``error[E0601]: `main` function not found in crate``.
+
+</More>
+
+<Analogy extra title="a banquet kitchen versus cooking to order">
+A restaurant that cooks to order starts each dish when the ticket
+arrives and gets faster at the popular ones as the night goes on; that is
+V8, learning which functions are hot. A banquet kitchen preps and checks
+every plate before the doors open, so service is only carrying plates
+out; that is a Rust program.
+<span slot="breaks">A banquet kitchen cannot change the menu once
+guests arrive, and neither can Rust adapt its machine code to how the
+program is used; V8 can, which is why a JIT sometimes wins.</span>
+</Analogy>
 
 ## Your turn
 
-The exercise is library code, the kind you would put in `src/lib.rs`:
-there is no `main`, and the tests call your function directly, which is
-how `cargo test` works.
+Rust exercises are library code, the kind you would put in
+`src/lib.rs`: there is no `main`, and `#[test]` functions call yours
+(*Testing in Rust* covers them). `todo!()` is a placeholder macro that
+stops with "not yet implemented"; `if`, `return`, `==` and `&&` work as
+in TypeScript.
 
 <Exercise id="compatible" />
 
+<Exercise id="seconds-in" />
+
 ## What you learned
 
-- **Cargo** creates projects (`cargo new`), checks them quickly
-  (`cargo check`), builds and runs them (`cargo build`, `cargo run`) and
-  makes optimised builds (`--release`) in `target/release/`.
-- `Cargo.toml` is the manifest; `[dependencies]` names libraries from
-  crates.io, and `Cargo.lock` records their exact versions.
-- A **crate** is one compilation unit: a binary (with `main`) or a
-  library (without). A package holds at most one library and any number
-  of binaries.
+- **Rust** compiles ahead of time, with no collector and no JIT, and
+  checks memory safety before anything runs.
+- **Cargo** checks, builds and runs projects; a **crate** is one
+  compilation unit, a binary or a library.
 
-Next, variables: Rust's `let` is TypeScript's `const`, and changing a
-value has to be asked for.
+Next: *Rust basics: variables, numbers, functions and blocks*, where
+`let` turns out to be TypeScript's `const`.
 
 <Quiz />

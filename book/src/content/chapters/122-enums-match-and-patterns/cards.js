@@ -1,27 +1,11 @@
-// Chapter 190 cards: recall prompts, examples, exercises and quiz.
+// Chapter 122 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 122, 122.
 
 export const prompts = {
-  'enum-what': {
-    q: 'What is a Rust `enum`?',
-    a: 'A type whose values are each exactly one of a fixed list of variants.',
-  },
-  'variant-data': {
-    q: 'How do you make a `Value` that is the `Number` variant holding 2.5?',
-    a: '`Value::Number(2.5)`',
-  },
   'enum-vs-union': {
     q: 'Which TypeScript feature is a Rust enum with data closest to?',
     a: 'A discriminated union: the variant is the tag, and its data is the payload.',
-  },
-  'enum-sum': {
-    q: 'A struct multiplies the numbers of values of its fields. What does an enum do with its variants?',
-    a: 'It adds them: `enum V { A, B(bool) }` has 1 + 2 = 3 possible values.',
-  },
-  'match-arms': {
-    q: 'In what order does `match` try its arms, and which one runs?',
-    a: 'Top to bottom. The first arm whose pattern fits runs, and no other.',
   },
   'match-exhaustive': {
     q: 'What happens if a `match` doesn’t cover every possible value?',
@@ -31,26 +15,6 @@ export const prompts = {
     q: 'Can a `match` produce a value, like `let n = match v { ... };`, and what must be true of its arms?',
     a: 'Yes, it is an expression; every arm must produce the same type (or E0308).',
   },
-  discriminant: {
-    q: 'How does a running program know which variant an enum value holds?',
-    a: 'Each value carries a discriminant: an integer saying which variant it is, like a tag.',
-  },
-  'pattern-what': {
-    q: 'What is a pattern?',
-    a: 'A shape a value is compared with, which can also bind names to parts of the value.',
-  },
-  'pattern-range': {
-    q: 'Which bytes does the pattern `b\'0\'..=b\'9\'` fit?',
-    a: 'Every byte from `0` to `9`, both ends included.',
-  },
-  'pattern-or': {
-    q: 'What does the pattern `Value::None | Value::Bool(false)` fit?',
-    a: 'Either of the two: `none`, or the boolean `false`. It is Drip’s “falsey”.',
-  },
-  'pattern-tuple': {
-    q: 'How do you match on two values at once, such as both operands of `+`?',
-    a: 'Match on a tuple, `match (a, b)`, with tuple patterns like `(Value::Number(x), Value::Number(y))`.',
-  },
   'pattern-guard': {
     q: 'What does `if n < 0.0` add to the arm `Value::Number(n) if n < 0.0 => ...`?',
     a: 'A match guard: the arm runs only if the pattern fits *and* the condition is true.',
@@ -58,14 +22,6 @@ export const prompts = {
   refutable: {
     q: 'Why does `let Value::Number(n) = v;` fail to compile?',
     a: 'The pattern is refutable (`v` might be another variant), and a plain `let` needs an irrefutable one (E0005).',
-  },
-  'if-let': {
-    q: 'What is `if let Value::Number(n) = v { ... }`?',
-    a: 'A one-arm match: the block runs only when `v` fits the pattern, with `n` bound.',
-  },
-  'let-destructure': {
-    q: 'What does `let Particle { vx, vy, .. } = p;` do?',
-    a: 'Binds `vx` and `vy` to those fields of `p`; `..` ignores the other fields.',
   },
   'pattern-wild': {
     q: 'What does `_` match, and what does it cost you?',
@@ -367,6 +323,7 @@ fn eval(code: &[Op]) -> f64 {
     ],
   },
   valuesEqual: {
+    optional: true,
     lang: 'rust',
     title: 'Drip’s ==, variant first',
     prompt: 'Write `equal(a, b)` with Drip’s rules for `==`: values of different variants are never equal (`none == false` is false, and so is `0 == false`); two `none`s are equal; two booleans, or two numbers, are equal when their payloads are equal (`==` on the payloads). Match on the pair `(a, b)`.',
@@ -437,7 +394,7 @@ fn different_variants_are_never_equal() {
 - \`(Value::Number(x), Value::Number(y),) => x == y,\` does the same for numbers. The names \`x\` and \`y\` are new in each arm, so reusing them is fine. (Because \`==\` on \`f64\` follows IEEE floating point, \`NaN == NaN\` is false, which is also what Drip does.)
 - \`_ => false,\` catches the six mixed pairs. Here the wildcard is the honest choice, since every remaining case really has one answer.
 
-**Why not \`a == b\`?** \`Value\` does not implement \`PartialEq\` here (the chapter *Traits* explains what that means), so \`==\` on two \`Value\`s does not compile. The real companion VM derives it, and its comment says the derived \`==\` is Drip's \`==\`: exactly these rules.
+**Why not \`a == b\`?** \`Value\` does not implement \`PartialEq\` here (the chapter *Traits, trait objects and derive* explains what that means), so \`==\` on two \`Value\`s does not compile. The real companion VM derives it, and its comment says the derived \`==\` is Drip's \`==\`: exactly these rules.
 
 **Common wrong attempts.**
 
@@ -499,34 +456,6 @@ fn equal(a: Value, b: Value) -> bool {
 
 export const quiz = [
   {
-    q: `What does this print?
-\`\`\`
-let v = Value::Bool(false);
-let n = match v {
-    Value::Bool(true) => 1,
-    Value::Bool(false) => 2,
-    Value::None => 3,
-    Value::Number(_) => 4,
-};
-println!("{n}");
-\`\`\``,
-    options: [
-      {
-        t: '`1`',
-        why: 'The variant fits, but the payload `true` doesn’t match `false`.',
-      },
-      {
-        t: '`2`',
-        correct: true,
-        why: '`Bool(false)` is the first arm that fits, and only that arm runs.',
-      },
-      {
-        t: '`2` and then `3`',
-        why: 'Rust arms never fall through like a `switch` without `break`.',
-      },
-    ],
-  },
-  {
     q: 'Your `enum Op` gets a new variant, `Div`. What happens to a `match op` that lists every other variant and has no catch-all arm?',
     options: [
       {
@@ -581,51 +510,6 @@ println!("{n}");
     ],
   },
   {
-    q: 'The Rust VM has `enum ObjUpvalue { Open(usize), Closed(Value) }`. What does this rule out?',
-    options: [
-      {
-        t: 'An upvalue ever changing from open to closed',
-        why: 'The VM replaces an `Open` value with a `Closed` one when a frame returns.',
-      },
-      {
-        t: 'Upvalues that hold numbers',
-        why: '`Closed(Value)` can hold any Drip value, numbers included.',
-      },
-      {
-        t: 'An upvalue that is closed but still has a stack slot',
-        correct: true,
-        why: 'A value is exactly one variant, and only `Open` carries a slot. Bad combinations can’t be built.',
-      },
-    ],
-  },
-  {
-    q: `What does this print?
-\`\`\`
-let v = Value::Bool(false);
-let n = match v {
-    Value::Bool(true) => 1,
-    Value::Bool(_) => 2,
-    _ => 3,
-};
-println!("{n}");
-\`\`\``,
-    options: [
-      {
-        t: '`1`',
-        why: 'The variant fits, but the payload `true` doesn’t match `false`.',
-      },
-      {
-        t: '`2`',
-        correct: true,
-        why: '`Bool(_)` fits any boolean, and it is the first arm that fits.',
-      },
-      {
-        t: '`3`',
-        why: '`_` would fit, but an earlier arm already did; only the first match runs.',
-      },
-    ],
-  },
-  {
     q: `Which arm handles the byte \`b'_'\`?
 \`\`\`
 match c {
@@ -651,24 +535,6 @@ match c {
     ],
   },
   {
-    q: 'Why is a `match` ending in `_ => {}` riskier than one listing every variant?',
-    options: [
-      {
-        t: 'A new variant silently goes to `_`, so the compiler never points out the missing case',
-        correct: true,
-        why: 'Listing every variant turns “I forgot one” into a compile error.',
-      },
-      {
-        t: '`_` makes the match slower',
-        why: 'It isn’t about speed; it is about what the compiler can check for you.',
-      },
-      {
-        t: '`_` can only be used with numbers',
-        why: '`_` works with any type.',
-      },
-    ],
-  },
-  {
     q: 'Which line compiles?',
     options: [
       {
@@ -683,24 +549,6 @@ match c {
       {
         t: '`let Value::None | Value::Bool(_) = v;`',
         why: 'Still refutable (`v` might be a number), and an or-pattern at the top of a `let` must be wrapped in brackets anyway.',
-      },
-    ],
-  },
-  {
-    q: 'With `let limit = 3;` and `n = 7`, what does `match n { limit => "hit", _ => "miss" }` give?',
-    options: [
-      {
-        t: '`"miss"`, because 7 is not 3',
-        why: 'That would need a comparison. A name in a pattern binds instead.',
-      },
-      {
-        t: 'A compile error: `limit` is already defined',
-        why: 'It compiles, with a warning that the `_` arm is unreachable.',
-      },
-      {
-        t: '`"hit"`: the pattern `limit` is a new variable that fits anything',
-        correct: true,
-        why: 'Compare with a guard instead: `x if x == limit`.',
       },
     ],
   },

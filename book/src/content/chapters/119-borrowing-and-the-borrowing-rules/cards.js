@@ -1,4 +1,4 @@
-// Chapter 187 cards: recall prompts, examples, exercises and quiz.
+// Chapter 119 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 119, 119.
 
@@ -6,18 +6,6 @@ export const prompts = {
   'borrow-what': {
     q: 'What does `&name` create, and who owns the value afterwards?',
     a: 'A reference that borrows `name`. `name` still owns the value.',
-  },
-  'borrow-drop': {
-    q: 'When a reference goes out of scope, is the value it points at dropped?',
-    a: 'No. A reference does not own the value, so nothing is freed when it goes away.',
-  },
-  'amp-call': {
-    q: 'Why does `count(&name)` leave `name` usable afterwards, when `count(name)` does not?',
-    a: '`&name` lends the value; `name` moves it into the function.',
-  },
-  'deref-star': {
-    q: 'Inside `fn bump(n: &mut i32)`, how do you add 1 to the number `n` points at?',
-    a: '`*n += 1;` The `*` follows the reference to the value.',
   },
   'mut-callsite': {
     q: 'Three things must say `mut` before `bump(&mut hits)` compiles. What are they?',
@@ -27,45 +15,25 @@ export const prompts = {
     q: 'What happens if you try to change a value through a `&T` reference?',
     a: 'It does not compile (error E0594): a shared reference is read-only.',
   },
-  'ref-no-drop': {
-    q: 'Can a function that was lent a `&mut String` drop it or move it away?',
-    a: 'No. A mutable borrow may read and change the value, but only the owner can move or drop it.',
-  },
-  'ref-runtime': {
-    q: 'What is a Rust reference at run time?',
-    a: 'Just an address (eight bytes on a 64-bit machine), like a C pointer. All the checking happened at compile time.',
-  },
   rule: {
     q: 'State the borrowing rule for one value at one moment.',
     a: 'Either any number of shared `&T` borrows, or exactly one `&mut T`. Never both.',
   },
   'last-use': {
-    q: 'Where does a borrow end: at the closing brace, or somewhere else?',
+    q: 'In Rust 2018 and later, where does a borrow held in a plain reference end: at the closing brace of its scope, or somewhere else?',
     a: 'At its last use. After that, the value can be borrowed again in a different way.',
   },
   'grow-danger': {
     q: 'Why may you not `push` onto a `Vec` while holding `&xs[0]`?',
     a: 'Growing can move the elements to a new buffer and free the old one, leaving the reference pointing at freed memory. rustc rejects it (E0502).',
   },
-  'checker-when': {
-    q: 'When does the borrow checker run, and what does that cost the running program?',
-    a: 'At compile time, so there is nothing left to check while the program runs.',
-  },
   'e0502-fix': {
     q: 'E0502 says a value is borrowed as immutable while you borrow it as mutable. What is the usual fix?',
     a: 'Finish using the shared borrow before you make the mutable one, often by moving a line (or copy the value out instead of borrowing it).',
   },
-  'e0499-what': {
-    q: 'What does E0499 mean?',
-    a: 'A value was borrowed as mutable more than once at a time: two live writers.',
-  },
   'e0597-why': {
     q: 'What does E0597, “`s` does not live long enough”, protect against?',
     a: 'A reference that would outlive its value: `s` is dropped while something still borrows it, so the reference would dangle.',
-  },
-  noalias: {
-    q: 'Viscosity needed alias analysis to know nothing else points at an object. Why can a Rust compiler skip that for `&mut T`?',
-    a: 'The rules forbid any other live pointer to that memory, so the compiler may assume there is none.',
   },
 };
 
@@ -110,6 +78,7 @@ fn main() {
 
 export const exercises = {
   order: {
+    optional: true,
     lang: 'rust',
     title: 'Put two numbers in order, in place',
     prompt: 'Write `order(a, b)` so that afterwards `*a <= *b`. It takes two **mutable borrows** and changes the caller’s variables in place: if `a` holds the bigger number, swap them. It returns nothing.',
@@ -189,68 +158,6 @@ Notice that the caller had to write \`order(&mut x, &mut y)\`: you can see from 
     }
 }`,
         why: 'This swaps the function’s own copies. The caller’s variables never change, and the tests do not even compile: they pass `&mut x`, which is not an `i32`.',
-      },
-    ],
-  },
-  appendTwice: {
-    lang: 'rust',
-    optional: true,
-    title: 'One writer, one reader',
-    prompt: 'Write `append_twice(s, t)`, which adds `t` to the end of `s` twice. `s` is borrowed mutably and `t` is only read. `s.push_str(x)` appends `x` to a `String`.',
-    starter: `fn append_twice(
-    s: &mut String,
-    t: &String,
-) {
-    // your code here
-}`,
-    solution: `fn append_twice(
-    s: &mut String,
-    t: &String,
-) {
-    s.push_str(t);
-    s.push_str(t);
-}`,
-    tests: `#[test]
-fn adds_t_twice() {
-    let mut s = String::from("ab");
-    let t = String::from("c");
-    append_twice(&mut s, &t);
-    assert_eq!(s, "abcc");
-}
-#[test]
-fn t_is_unchanged_and_still_usable() {
-    let mut s = String::from("");
-    let t = String::from("tea");
-    append_twice(&mut s, &t);
-    assert_eq!(t, "tea");
-    assert_eq!(s, "teatea");
-}`,
-    hints: [
-      '`s` is already a `&mut String`, so you can call `s.push_str(...)` on it directly.',
-      'Pass `t` straight to `push_str`; it only needs to read it. Do it twice.',
-    ],
-    walkthrough: `**How to think about it.** One parameter may be changed and the other may only be read, and the types say which: \`s: &mut String\` and \`t: &String\`. Appending is a method on \`String\`, and method calls follow references for you.
-
-**The solution, line by line.**
-
-- \`fn append_twice(s: &mut String, t: &String) {\` (split over lines to fit) borrows the first string for changing and the second for reading.
-- \`s.push_str(t);\` follows \`s\` to the caller’s string and appends the text \`t\` points at. No \`*\` is needed: a method call follows the reference.
-- \`s.push_str(t);\` does it again.
-- \`}\` ends both borrows; the caller’s \`t\` is untouched and still usable.
-
-**Common wrong attempts.**
-
-- Appending once: the first test wants \`"abcc"\` and gets \`"abc"\`.
-- Trying \`append_twice(&mut s, &s)\` in a test of your own: one string would then have a writer and a reader at once, and the borrow checker refuses, as the next chapter explains.`,
-    wrong: [
-      {
-        code: `fn append_twice(
-    s: &mut String,
-    t: &String,
-) {
-    s.push_str(t);
-}`,
-        why: 'This appends `t` only once.',
       },
     ],
   },
@@ -370,72 +277,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Compared with TypeScript, what does `&mut` at a call site, like `order(&mut x, &mut y)`, tell you?',
-    options: [
-      {
-        t: 'Nothing new: in both languages any function may change what you pass',
-        why: 'In Rust a function can only change your value if you hand it a `&mut`.',
-      },
-      {
-        t: 'That `x` and `y` will be copied',
-        why: '`&mut` lends; it never copies the value.',
-      },
-      {
-        t: 'That the function may change `x` and `y`',
-        correct: true,
-        why: 'A `&mut` is permission to write, and you can see it at the call without reading the function.',
-      },
-      {
-        t: 'That `x` and `y` are moved into the function',
-        why: 'A move would be `order(x, y)`, and the caller would lose them.',
-      },
-    ],
-  },
-  {
-    q: '`fn bump(n: &i32) { *n += 1; }` What does rustc say?',
-    options: [
-      {
-        t: 'Nothing; it compiles and adds 1',
-        why: 'A `&i32` is read-only.',
-      },
-      {
-        t: 'E0594: cannot assign to `*n`, which is behind a `&` reference',
-        correct: true,
-        why: 'Writing needs a `&mut i32`, and the help line suggests exactly that.',
-      },
-      {
-        t: 'E0382: use of moved value',
-        why: 'Nothing was moved; the problem is writing through a shared reference.',
-      },
-      {
-        t: 'It compiles but panics when run',
-        why: 'This is caught at compile time.',
-      },
-    ],
-  },
-  {
-    q: '`let hits = 0; bump(&mut hits);` (with `bump(n: &mut i32)`). Why does it fail?',
-    options: [
-      {
-        t: '`bump` must be declared `mut`',
-        why: 'Functions are never `mut`; the owner is.',
-      },
-      {
-        t: 'Integers cannot be borrowed',
-        why: 'Any value can be borrowed.',
-      },
-      {
-        t: 'You cannot lend for changing something whose owner is not `mut` (E0596)',
-        correct: true,
-        why: 'Write `let mut hits = 0;`. The permission to change starts with the owner.',
-      },
-      {
-        t: 'The `&mut` should be `mut&`',
-        why: 'The syntax is `&mut hits`.',
-      },
-    ],
-  },
-  {
     q: 'Which of these can a function do with a value it was lent as `&mut String`?',
     options: [
       {
@@ -454,34 +295,6 @@ export const quiz = [
       {
         t: 'Keep it after the function returns',
         why: 'The borrow ends when the function does; the value goes back to its owner.',
-      },
-    ],
-  },
-  {
-    q: `Does this compile?
-\`\`\`rust
-let s = String::from("a");
-let r1 = &s;
-let r2 = &s;
-println!("{r1}{r2}");
-\`\`\``,
-    options: [
-      {
-        t: 'Yes',
-        correct: true,
-        why: 'Any number of shared borrows may exist at once. Readers cannot disturb each other.',
-      },
-      {
-        t: 'No: two references to one value',
-        why: 'That is only a problem when one of them is `&mut`.',
-      },
-      {
-        t: 'No: `s` was moved into `r1`',
-        why: '`&s` borrows; it does not move.',
-      },
-      {
-        t: 'No: `s` must be `mut` to be borrowed',
-        why: 'Only a mutable borrow needs a `mut` owner.',
       },
     ],
   },
@@ -539,28 +352,6 @@ w.push_str("pot");
       {
         t: 'Yes, but it prints `teapot`',
         why: 'It compiles, but `a` is printed before the push, so it prints `tea`.',
-      },
-    ],
-  },
-  {
-    q: 'What does the borrow checker do?',
-    options: [
-      {
-        t: 'It counts references while the program runs and stops it on a conflict',
-        why: 'No running check happens. The checker works on the program at compile time.',
-      },
-      {
-        t: 'It frees values when the last reference goes away',
-        why: 'Owners free values (drop), and references never do.',
-      },
-      {
-        t: 'It copies a value whenever two references would overlap',
-        why: 'It never adds copies. It rejects the program instead.',
-      },
-      {
-        t: 'It checks, at compile time, that no value is written, moved or dropped while another borrow of it is live',
-        correct: true,
-        why: 'That is its job, and the program it accepts needs no checks at run time.',
       },
     ],
   },

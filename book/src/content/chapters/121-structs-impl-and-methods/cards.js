@@ -1,12 +1,8 @@
-// Chapter 189 cards: recall prompts, examples, exercises and quiz.
+// Chapter 121 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 121, 121.
 
 export const prompts = {
-  'struct-what': {
-    q: 'What is a Rust `struct`, compared with a TypeScript interface?',
-    a: 'A named record type with typed fields. Unlike an interface, it is the real type: every value is built from it, and its shape never changes.',
-  },
   'struct-all-fields': {
     q: 'When you write `Particle { ... }`, which fields must you give?',
     a: 'Every one of them; leaving one out is error E0063, missing field.',
@@ -14,22 +10,6 @@ export const prompts = {
   'struct-mut': {
     q: 'Can you make just one field of a struct mutable?',
     a: 'No. Mutability belongs to the binding, so `let mut p` makes all of `p` changeable.',
-  },
-  'field-shorthand': {
-    q: 'What does `Point { x, y }` mean when `x` and `y` are variables?',
-    a: 'Field init shorthand: `x` means `x: x`, and `y` means `y: y`.',
-  },
-  'struct-move': {
-    q: 'After `let q = p;` where `p` is a struct (with no `derive`), can you still use `p`?',
-    a: 'No. The struct moved to `q`, like a `String` does; using `p` is error E0382.',
-  },
-  'tuple-struct': {
-    q: 'What is `struct Meters(f64);`, and how do you read its number?',
-    a: 'A tuple struct: fields with positions but no names. Read it with `m.0`.',
-  },
-  'struct-pass': {
-    q: 'A function only needs to read a struct. How should it take it, and why?',
-    a: 'By shared borrow, `p: &Particle`, so the caller keeps the struct and can use it afterwards.',
   },
   'struct-vs-interface': {
     q: 'What happens to a TypeScript interface when the program runs, and to a Rust struct?',
@@ -39,21 +19,9 @@ export const prompts = {
     q: 'In an array of `Particle` structs, where are the fields stored?',
     a: 'Inline, one struct after another: element n starts n × the struct’s size into the array, with no pointers.',
   },
-  'impl-what': {
-    q: 'What does an `impl Particle` block do?',
-    a: 'It attaches functions (associated functions, some of them methods) to the type `Particle`.',
-  },
   'assoc-fn': {
     q: 'How is `fn new(vx: f64, vy: f64) -> Self` called, and why not with a dot?',
     a: '`Particle::new(3.0, 4.0)`. It has no `self` parameter, so there is no value to call it on.',
-  },
-  'self-alias': {
-    q: 'Inside `impl Particle`, what does `Self` mean?',
-    a: 'The type the `impl` is for: `Particle`.',
-  },
-  'recv-ref': {
-    q: 'Which receiver does a method that only reads fields take?',
-    a: '`&self`, a shared borrow.',
   },
   'recv-mut': {
     q: 'Which receiver lets a method change fields, and what must the caller have?',
@@ -66,10 +34,6 @@ export const prompts = {
   'auto-ref': {
     q: 'What does `p.step(1.0)` really mean, if `step` takes `&mut self`?',
     a: '`Particle::step(&mut p, 1.0)`. Rust adds the borrow for you.',
-  },
-  'method-sugar': {
-    q: 'Why do the borrowing rules apply to method calls, although you never write `&` at the call?',
-    a: 'Because a method call is an ordinary call with the borrow added to match the receiver.',
   },
 };
 
@@ -158,6 +122,7 @@ fn main() {
 
 export const exercises = {
   span: {
+    optional: true,
     lang: 'rust',
     title: 'Source spans',
     prompt: 'A `Span` marks a range of bytes in a program’s source code, such as where a token is: `start` is the index of its first byte and `end` is one past its last byte (the same convention as `start..end` slices). Write three functions: `make(start, len)` builds a span `len` bytes long; `width(&s)` says how many bytes it covers; and `join(&a, &b)` returns the smallest span covering both, which is what a parser does to get the span of `1 + 2` from the spans of `1` and `2`. On `usize`, `x.min(y)` is the smaller of two numbers and `x.max(y)` the larger. Each `todo!()` stops the program if reached; replace them.',
@@ -238,7 +203,7 @@ fn join_keeps_its_arguments() {
 **The solution, line by line.**
 
 - \`fn make(start: usize, len: usize) -> Span {\` takes two whole numbers and returns a brand-new \`Span\`, which the caller will own.
-- \`Span { start, end: start + len }\` is a struct expression giving both fields. \`start\` alone is field init shorthand for \`start: start\`; \`end\` is worked out. There is no semicolon, so this expression is the function's return value (the chapter *Blocks, if and the tail expression* showed why the last expression of a block is its value).
+- \`Span { start, end: start + len }\` is a struct expression giving both fields. \`start\` alone is field init shorthand for \`start: start\`; \`end\` is worked out. There is no semicolon, so this expression is the function's return value (the chapter *Rust basics: variables, numbers, functions and blocks* showed why the last expression of a block is its value).
 - \`fn width(s: &Span) -> usize {\` borrows the span: it only reads two fields.
 - \`s.end - s.start\` is the number of bytes covered. The dot reads a field through the borrow without any extra symbol. For \`4..7\` that is \`3\`; for the empty span \`9..9\` it is \`0\`.
 - \`fn join(a: &Span, b: &Span) -> Span {\` borrows both inputs and builds a new span.
@@ -411,7 +376,7 @@ fn pop_then_push_reuses_the_slot() {
 - \`self.slots[self.top] = v;\` writes the new value into the first free box. Writing to a field through \`self\` is allowed because the method took \`&mut self\`.
 - \`self.top += 1;\` records that one more box is in use, which also moves "the first free box" along.
 - \`self.top -= 1;\` (in \`pop\`) moves \`top\` down first, so it now points at the last value pushed.
-- \`self.slots[self.top]\` reads that value. It is the last expression of the method, with no semicolon, so it is what \`pop\` returns (the chapter *Blocks, if and the tail expression*). The old value stays in the array, but it is at or above \`top\`, so it no longer counts, and the next \`push\` overwrites it.
+- \`self.slots[self.top]\` reads that value. It is the last expression of the method, with no semicolon, so it is what \`pop\` returns (the chapter *Rust basics: variables, numbers, functions and blocks*). The old value stays in the array, but it is at or above \`top\`, so it no longer counts, and the next \`push\` overwrites it.
 - \`self.slots[self.top - 1 - d]\` (in \`peek\`) starts at the top value, \`top - 1\`, and steps \`d\` boxes further down. It writes nothing, which is why \`&self\` suffices.
 
 **How the real VMs do it.** The TypeScript VM's \`push\`, \`pop\` and \`peek\` are these three lines with \`this.sp\` in place of \`self.top\`. The Rust VM's versions keep the same receivers, \`fn push(&mut self, value: Value)\`, \`fn pop(&mut self) -> Value\` and \`fn peek(&self, distance: usize) -> Value\`, but store the values in a growable \`Vec\` (a later chapter), so they have no fixed limit of eight.
@@ -495,122 +460,9 @@ impl Stack {
       },
     ],
   },
-  spanMethods: {
-    lang: 'rust',
-    optional: true,
-    title: 'Spans as methods',
-    prompt: 'Last chapter’s span functions, now as methods. Write `width(&self)`, the number of bytes the span covers, and `join(self, b: Span)`, which consumes both spans and returns the smallest span covering both. Consuming is a deliberate choice here: after joining, the caller has the combined span and no use for the pieces.',
-    starter: `struct Span {
-    start: usize,
-    end: usize,
-}
-
-impl Span {
-    fn width(&self) -> usize {
-        0
-    }
-
-    fn join(self, b: Span) -> Span {
-        self
-    }
-}`,
-    solution: `struct Span {
-    start: usize,
-    end: usize,
-}
-
-impl Span {
-    fn width(&self) -> usize {
-        self.end - self.start
-    }
-
-    fn join(self, b: Span) -> Span {
-        let s = self.start.min(b.start);
-        let e = self.end.max(b.end);
-        Span { start: s, end: e }
-    }
-}`,
-    tests: `#[test]
-fn width_is_end_minus_start() {
-    let s = Span { start: 4, end: 9 };
-    assert_eq!(s.width(), 5);
-}
-#[test]
-fn join_covers_both() {
-    let a = Span { start: 4, end: 6 };
-    let b = Span { start: 8, end: 10 };
-    let j = a.join(b);
-    assert_eq!((j.start, j.end), (4, 10));
-}
-#[test]
-fn join_works_in_either_order() {
-    let a = Span { start: 8, end: 10 };
-    let b = Span { start: 0, end: 3 };
-    let j = a.join(b);
-    assert_eq!((j.start, j.end), (0, 10));
-}`,
-    hints: [
-      '`width` only reads, so `&self` is right: `self.end - self.start`.',
-      'For `join`, build a new `Span` whose `start` is the smaller of the two starts and whose `end` is the larger of the two ends, with `min` and `max`.',
-    ],
-    walkthrough: `**How to think about it.** These are last chapter's \`width(&s)\` and \`join(&a, &b)\`, moved into an \`impl\` block, so the work is the same and only the receivers change.
-
-**The solution, line by line.**
-
-- \`fn width(&self) -> usize {\` borrows the span to read it; \`s.width()\` means \`Span::width(&s)\`.
-- \`self.end - self.start\` is the number of bytes covered.
-- \`fn join(self, b: Span) -> Span {\` takes \`self\` by value, and \`b\` too: after \`let j = a.join(b);\` neither \`a\` nor \`b\` can be used, which is fine, since the caller wanted the whole.
-- \`start: self.start.min(b.start),\` and \`end: self.end.max(b.end),\` cover both spans, whichever comes first in the source.
-
-**Common wrong attempt.** \`Span { start: self.start, end: b.end }\` assumes \`self\` is the earlier span; the third test, where it is the later one, fails.`,
-    wrong: [
-      {
-        code: `struct Span {
-    start: usize,
-    end: usize,
-}
-
-impl Span {
-    fn width(&self) -> usize {
-        self.end - self.start
-    }
-
-    fn join(self, b: Span) -> Span {
-        Span {
-            start: self.start,
-            end: b.end,
-        }
-    }
-}`,
-        why: 'This assumes `self` comes first in the source. When `b` is earlier, the result starts too late.',
-      },
-    ],
-  },
 };
 
 export const quiz = [
-  {
-    q: `Does this compile?
-\`\`\`
-let p = Point { x: 1.0 };
-\`\`\`
-(\`Point\` has fields \`x\` and \`y\`.)`,
-    options: [
-      {
-        t: 'Yes: `y` is set to 0.0',
-        why: 'Rust never fills in a field for you; there is no default.',
-      },
-      {
-        t: 'Yes: `y` is left undefined until it is first written',
-        why: 'Rust has no `undefined`, and a struct value always has every field.',
-      },
-      {
-        t: 'No: E0063, missing field `y`',
-        correct: true,
-        why: 'A struct expression must give every field (or take the rest from another value with `..other`).',
-      },
-    ],
-  },
   {
     q: `\`a\` is \`Point { x: 5.0, y: 6.0 }\`. What is \`b\`?
 \`\`\`
@@ -657,42 +509,6 @@ let q = p;           // C
     ],
   },
   {
-    q: 'How does a Rust struct differ from a TypeScript interface describing the same fields?',
-    options: [
-      {
-        t: 'It does not: both are erased before the program runs',
-        why: 'Only the interface is erased. The struct decides the size and layout of real values.',
-      },
-      {
-        t: 'The struct is the real type: values are built from it by name, with every field, and their shape can never change',
-        correct: true,
-        why: 'A TypeScript object only has to look right to the checker, and could gain fields later.',
-      },
-      {
-        t: 'A struct can hold only numbers',
-        why: 'A field can be of any type: strings, other structs, collections.',
-      },
-    ],
-  },
-  {
-    q: 'What does the default Rust layout promise about an array `[Particle; 1000]`?',
-    options: [
-      {
-        t: 'It holds 1000 pointers to particles stored elsewhere',
-        why: 'That is a JavaScript array of objects. Rust stores the structs themselves.',
-      },
-      {
-        t: 'The fields are stored in the order they were declared',
-        why: 'Only `#[repr(C)]` promises that; the default lets the compiler reorder fields inside a struct.',
-      },
-      {
-        t: 'Element n starts exactly n × size_of::<Particle>() bytes from the start',
-        correct: true,
-        why: 'The structs sit inline, back to back; on this machine that is 32 bytes each, 32,000 in all.',
-      },
-    ],
-  },
-  {
     q: `Does this compile?
 \`\`\`
 let p = Particle::new(3.0, 4.0);
@@ -715,24 +531,6 @@ p.step(1.0); // step(&mut self, ..)
     ],
   },
   {
-    q: 'A method only reads two fields and returns a number. Which receiver should it take?',
-    options: [
-      {
-        t: '`self`',
-        why: 'That would move the struct in, so the caller would lose it just to read a number.',
-      },
-      {
-        t: '`&mut self`',
-        why: 'It doesn’t need to write, and asking for `&mut` forces every caller to have a mutable binding.',
-      },
-      {
-        t: '`&self`',
-        correct: true,
-        why: 'A shared borrow is all a reader needs.',
-      },
-    ],
-  },
-  {
     q: '`let q = p.stopped();` where `stopped` takes `self`. Which is true afterwards?',
     options: [
       {
@@ -751,24 +549,6 @@ p.step(1.0); // step(&mut self, ..)
         t: '`q` owns the particle and `p` can’t be used again',
         correct: true,
         why: 'A `self` method takes ownership. Using `p` afterwards is E0382, with a note naming the method.',
-      },
-    ],
-  },
-  {
-    q: 'How do you call `fn origin() -> Self` from `impl Point`?',
-    options: [
-      {
-        t: '`Point::origin()`',
-        correct: true,
-        why: 'An associated function without `self` is called on the type with `::`.',
-      },
-      {
-        t: '`p.origin()`',
-        why: 'There is no `self` parameter, so there is no value to call it on: rustc says it is an associated function, not a method (E0599).',
-      },
-      {
-        t: '`new Point()`',
-        why: 'That is TypeScript. Rust has no `new` keyword and no constructors.',
       },
     ],
   },

@@ -7,14 +7,10 @@ tagline: 'Your TypeScript VM spelled “one of several things” three different
 objectives:
   - Define an enum whose variants carry data, and build values of it.
   - Use match to branch on an enum and take its data out, and explain why a match must be exhaustive.
-  - Use match as an expression, and read the errors when an arm is missing or has the wrong type.
-  - Read the opcode match at the heart of the Rust Drip VM.
-  - Write patterns with literals, ranges, bindings, the wildcard, | and tuples, and guards with if.
-  - Destructure structs and tuples with let, and test one pattern with if let and let ... else.
-  - Tell a refutable pattern from an irrefutable one, and say where each is allowed.
+  - Write patterns with ranges, bindings, the wildcard, | , tuples and guards, and use if let and let ... else.
   - Avoid the two classic traps, a catch-all that hides new variants and a name that binds instead of comparing.
 introduces: [enum, match, pattern]
-uses: [struct, impl, self-receiver, slice, borrow, ownership, move, let-mut, scalar-types, rust-functions, expression-oriented, union-type, discriminated-union, narrowing, exhaustiveness, typescript, tagged-value, value-representation, opcode, dispatch-loop, virtual-machine, stack-machine, upvalue, open-upvalue, closed-upvalue, tagged-union, exhaustiveness-checking, decision-tree, scanner, token, truthiness]
+uses: [struct, impl, self-receiver, slice, borrow, ownership, move, let-mut, scalar-types, rust-functions, expression-oriented, union-type, discriminated-union, narrowing, exhaustiveness, typescript, tagged-value, value-representation, opcode, dispatch-loop, virtual-machine, stack-machine, upvalue, scanner, token, truthiness]
 sources: [klabnik2026, rustref-match, rustref-enum, rust-book-enums, rust-book-match, rust-book-patterns, rust-book-if-let, rustref-patterns]
 ---
 import MatchSteps from '../../../components/diagrams/ch122/MatchSteps';
@@ -22,17 +18,14 @@ import EnumLayout from '../../../components/diagrams/ch122/EnumLayout';
 import ByteSteps from '../../../components/diagrams/ch122/ByteSteps';
 import PatternKinds from '../../../components/diagrams/ch122/PatternKinds';
 
-{/* ── merge: from old chapter 122, Enums and match ── */}
-
 ## One of several things
 
-Your TypeScript Drip VM needed "this is one of several things" in three
-places, and spelled it three ways. The dispatch loop switched on opcode
-numbers (`case Op.None: this.push(null); break;`); a Drip value was
-`null | boolean | number | Obj`, told apart with `typeof`; and a syntax
-tree node was a tagged union, an object with a `tag` field naming its
-kind (*Tagged unions: the shape of every syntax tree*). Rust has a
-single feature for all three, and the compiler checks every use of it.
+Your TypeScript Drip VM spelled "this is one of several things" three
+ways: the dispatch loop switched on opcode numbers, a Drip value was
+`null | boolean | number | Obj` told apart with `typeof`, and a syntax
+tree node was an object with a `tag` field (*Tagged unions: the shape of
+every syntax tree*). Rust has one feature for all three, and the
+compiler checks every use of it.
 
 <Analogy title="a parcel form with tick boxes">
 A courier's form has tick boxes: *letter*, *parcel*, *registered*. You
@@ -44,43 +37,43 @@ courier has to sort it out; a Rust value is always exactly one variant,
 and the compiler will not build one that is two or none.</span>
 </Analogy>
 
-<Analogy extra title="a traffic light">
-A traffic light is red, amber or green, never two at once, and every
-driver must know what to do for each colour. A driving test that only
-covered red and green would be refused, because amber happens.
-<span slot="breaks">A traffic light carries no extra information, while
-an enum's variants can carry data (a number, a string, a whole struct),
-different for each variant.</span>
-</Analogy>
-
 ## Enums
 
-```rust
-enum Op {
-    Const,
-    Add,
-    Neg,
-    Return,
-}
+<Examples of="enum">
 
+```rust
 enum Value {
     None,
     Bool(bool),
     Number(f64),
 }
-
-let op = Op::Add;
+enum Shape {
+    Circle(f64),
+    Rect { w: f64, h: f64 },
+}
 let v = Value::Number(2.5);
+let s = Shape::Rect { w: 2.0, h: 3.0 };
 ```
 
-These are cut down from the Rust Drip VM: its `OpCode` (in
-`companion/rust/src/chunk.rs`) has 53 variants, and its `Value` (in
-`value.rs`) adds variants for strings, lists, functions, classes and
-other heap objects. An `Op` is exactly one of four things. A `Value` is
-one of three, and two of those carry data: `Bool` holds a `bool`,
-`Number` holds an `f64`. You name a variant with the enum's name, two
-colons and the variant: `Value::Number(2.5)`. (`Value::None` is Drip's
-`none`, unrelated to Rust's own `None`, which comes two chapters on.)
+</Examples>
+
+`Value` is cut down from the Rust Drip VM's (`companion/rust/src/value.rs`
+adds strings, lists, functions and other heap objects). A `Value` is
+exactly one of three variants, and two carry data: `Bool` holds a
+`bool`, `Number` an `f64`. A variant's data may also be named fields, as
+`Rect` has. You name a variant with the enum, two colons and the variant
+(`Value::None` is Drip's `none`, unrelated to Rust's own `None`, which
+is the next chapter). In memory, a value is a tag saying which variant,
+then room for the largest payload, so every `Value` has one size:
+
+<Figure takeaway="An enum value is a tag plus room for the largest payload." caption="Drawn in the classic tag-and-payload layout. The default layout leaves the exact arrangement to the compiler, but rustc 1.97 reports 16 bytes for this Value: room for an 8-byte f64 and a tag.">
+  <EnumLayout />
+</Figure>
+
+Enums are best at making a wrong state impossible to build. The VM's
+`enum ObjUpvalue { Open(usize), Closed(Value) }` is a captured variable
+either still in a stack slot or closed over its value, and a closed
+upvalue that still has a slot cannot exist, because no variant has both.
 
 <Callout kind="definition">
 An **enum** is a type whose every value is exactly one of a fixed list of
@@ -90,107 +83,51 @@ enum with data is Rust's discriminated union: the variant is the tag and
 its data is the payload<Cite id="rust-book-enums" />.
 </Callout>
 
-<Examples of="enum">
-
-```rust
-enum Dir { North, East, South, West }
-let d = Dir::East;
-```
-
-```rust
-enum Shape {
-    Circle(f64),
-    Rect { w: f64, h: f64 },
-}
-let s = Shape::Rect { w: 2.0, h: 3.0 };
-```
-
-```rust
-// from companion/rust/src/object.rs
-pub enum ObjUpvalue {
-    Open(usize),
-    Closed(Value),
-}
-```
-
-</Examples>
-
-The first is the plainest enum: four variants and no data. The second
-gives each variant its own data: a circle needs a radius, a rectangle a
-width and a height (named, like a struct's fields). The third
-is real, and shows what enums are best at: making a wrong state
-impossible to build. A captured variable (an upvalue, from *Capturing
-variables: upvalues*) is either still on the stack, in slot `usize`, or
-closed, holding the value itself; a closed upvalue that still has a slot
-cannot exist, because no variant has both.
-
-In memory, an enum value is what the chapter *Sum types in memory* drew:
-a tag saying which variant, then room for the largest payload, so every
-`Value` is the same size whichever variant it holds.
-
-<Figure takeaway="An enum value is a tag plus room for the largest payload." caption="Drawn in the classic tag-and-payload layout. The default layout leaves the exact arrangement to the compiler, but rustc 1.97 reports 16 bytes for this Value: room for an 8-byte f64 and a tag.">
-  <EnumLayout />
-</Figure>
-
-<Formal title="An enum is a sum of its variants">
-
-```text
-enum V { A, B(bool), C(u8) }
-V  ≅  1 + bool + u8
-|V| = 1 + 2 + 256 = 259
-```
-
-<span slot="read">A value of V is an A, or a B holding a bool, or a C
-holding a u8, which mathematicians write as a sum, 1 + bool + u8 (A
-counts as 1, since it carries nothing). So V has 1 + 2 + 256 possible
-values. A struct multiplies the counts of its fields; an enum adds the
-counts of its variants.</span>
-</Formal>
-
-<Prompts ids={['enum-what', 'variant-data', 'enum-vs-union', 'enum-sum']} />
+<Prompts ids={['enum-vs-union']} />
 
 ## match
 
-To do anything with an enum value you ask which variant it is, and take
-its data out. That is `match`:
-
-```rust
-let n = match v {
-    Value::None => 0.0,
-    Value::Bool(true) => 1.0,
-    Value::Bool(false) => 0.0,
-    Value::Number(x) => x,
-};
-```
-
-Each line inside is an **arm**: a pattern, `=>`, and the code to run.
+To use an enum value you ask which variant it is and take its data out,
+with `match`. Each **arm** is a pattern, `=>` and the code to run;
 `Value::Number(x)` fits any `Number` and names its payload `x` for that
-arm. Step through two different values:
+arm. Step through two values:
 
 <MatchSteps client:visible />
 
-Arms are tried top to bottom, and the first one that fits wins; there is
-no falling through to the next arm, so there is no `break` to forget.
-`match` is an expression, like `if` in *Blocks, if and the tail
-expression*, so the whole `match` has a value, and every arm must produce the same type.
-(Give one arm a different type, say a `bool` where the others give
-`&str`, and rustc says E0308, "`match` arms have incompatible types".)
-Most important of all, a `match` must cover **every** possible value.
-Leave out `Value::Bool(false)` and rustc 1.97 says (trimmed):
+Arms are tried top to bottom and the first that fits wins, with no
+falling through, so no `break` to forget. A `match` is an expression,
+like `if`, so every arm must produce the same type (or E0308, "`match`
+arms have incompatible types"). Above all, it must cover **every**
+possible value; leave out `Value::Bool(false)` and rustc 1.97 says
+(trimmed):
 
 ```text
 error[E0004]: non-exhaustive patterns:
   `Value::Bool(false)` not covered
- 8 |     match v {
-   |           ^ pattern
-   |   `Value::Bool(false)` not covered
 help: ensure that all possible cases are
   being handled by adding a match arm ...
 12 ~         Value::Bool(false) => todo!(),
 ```
 
-The `help` even writes the missing arm for you, with a `todo!()`
-body.
+The `help` even writes the missing arm. In TypeScript, the check that
+every case of a union is handled is something you set up with a `never`
+default (*TypeScript II: unions and narrowing*); in Rust it is always a
+hard error<Cite id="rust-book-match" />. That is why the Rust Drip VM's
+dispatch loop, one `match op` with an arm per opcode and no catch-all,
+stops compiling the moment someone adds an opcode the VM does not yet
+handle.
+
+<Examples of="match">
+
+<Run id="values" />
+
+</Examples>
+
+`show` turns each variant into text, binding the payload as `b` or `n`;
+`truthy` is Drip's truthiness, with `Value::Number(_)` fitting any
+number without naming it. Both `match`es are the last expression of
+their function, so their value is returned. Delete an arm and read what
+rustc says.
 
 <Callout kind="definition">
 A **`match`** expression compares a value with the patterns of its
@@ -200,134 +137,93 @@ be **exhaustive**: every possible value has to fit some arm, or the
 program does not compile.
 </Callout>
 
-<Examples of="match">
+<Prompts ids={['match-exhaustive', 'match-expr']} />
+
+## Patterns
+
+The left of an arm can say far more than a variant name. A scanner asks
+whether a byte is a digit, a letter or a space; step a few bytes through
+one `match`:
+
+<ByteSteps client:visible />
+
+`b'0'..=b'9'` is a **range pattern** (both ends included), `p | q` an
+**or-pattern**, and `_` the **wildcard**, which fits anything and binds
+nothing. Patterns nest, so one can test a tuple of two variants at once:
+
+<Figure takeaway="A pattern says what must be there, and names the parts you want." caption="The kinds of pattern used in this book. Patterns nest: a tuple of variants, a variant holding a struct, and so on.">
+  <PatternKinds />
+</Figure>
+
+<Examples of="pattern">
 
 ```rust
-fn name(op: Op) -> &'static str {
-    match op {
-        Op::Const => "const",
-        Op::Add => "add",
-        Op::Neg => "neg",
-        Op::Return => "return",
-    }
+match (a, b) {
+    (Value::Number(x), Value::Number(y))
+        => Value::Number(x + y),
+    _ => Value::None, // the VM: an error
+}
+match v {
+    Value::None
+    | Value::Bool(false) => "falsey",
+    Value::Number(n) if n < 0.0 => "neg",
+    _ => "other",
 }
 ```
-
-```rust
-fn area(s: Shape) -> f64 {
-    match s {
-        Shape::Circle(r) => 3.14 * r * r,
-        Shape::Rect { w, h } => w * h,
-    }
-}
-```
-
-<Run id="values" />
 
 </Examples>
 
-The first turns each opcode into its name, one arm per variant
-(`&'static str` is the type of a string literal, text that lives for the
-whole program); the `match` is the last expression of the function, so
-its value is returned. The second takes the payload out: `r` is the
-circle's radius, and `Rect { w, h }` names the rectangle's two fields,
-so `area` of a 2 by 3 rectangle is `6`. The runnable one prints Drip
-values and adds two of them; change it, delete an arm, and read what
-rustc says.
+The first is Drip's `+`: matching the tuple `(a, b)` asks "are both
+numbers?" and binds both payloads in one arm, where TypeScript needs an
+`if` with two `typeof` checks. In the second, an or-pattern makes
+`none` and `false` one arm, and `if n < 0.0` is a **match guard**, a test
+the arm must also pass. `let` takes patterns too, as in
+`let (x, y) = (3.0, 4.0);`, but only **irrefutable** ones, which always
+fit; `let Value::Number(n) = v;` is **refutable**, so rustc refuses it
+(E0005) and suggests `let ... else`. To test one pattern, use
+`if let Value::Number(n) = v { ... }`, a one-arm `match`, or
+`let Value::Number(n) = v else { return ... };`, which binds `n` for the
+rest of the function<Cite id="rust-book-if-let" />.
 
-<OtherLanguages title="One of several shapes">
+Two traps. The wildcard covers every case you have not written,
+*including variants added later*, so prefer listing variants when each
+deserves a thought. And a plain name in a pattern always **binds** a new
+variable; it never compares<Cite id="rust-book-patterns" />. With
+`let limit = 3;`, the arm `limit => ...` fits anything (rustc warns
+"unreachable pattern" for the arms after it, with "there is a binding of
+the same name"); write `x if x == limit` instead.
 
-```rust
-enum Shape {
-    Circle(f64),
-    Rect { w: f64, h: f64 },
-}
-fn area(s: Shape) -> f64 {
-    match s {
-        Shape::Circle(r) => 3.14 * r * r,
-        Shape::Rect { w, h } => w * h,
-    }
-}
-```
-
-```ts
-type Shape =
-  | { kind: 'circle'; r: number }
-  | { kind: 'rect'; w: number; h: number };
-function area(s: Shape): number {
-  switch (s.kind) {
-    case 'circle': return 3.14 * s.r ** 2;
-    case 'rect': return s.w * s.h;
-  }
-}
-```
-
-</OtherLanguages>
-
-The TypeScript union needs a `kind` field that you write by hand, and
-the check that every case is handled is something you set up (with a
-`never` default, as in *TypeScript II: unions and narrowing*). In Rust
-the tag is the variant, and a missing case is always a hard
-error<Cite id="rust-book-match" />.
-
-<Prompts ids={['match-arms', 'match-exhaustive', 'match-expr']} />
-
-<Callout kind="engine" label="Under the hood">
-The heart of the Rust Drip VM is one `match` in `run`, in
-`companion/rust/src/vm.rs`, and it reads like your TypeScript `switch`:
-
-```rust
-match op {
-    OpCode::None => self.push(Value::None),
-    OpCode::Add => self.add()?,
-    OpCode::Sub => { /* pop two, push */ }
-    // ...one arm per opcode
-}
-```
-
-The real one lists all 53 opcodes and has no catch-all arm, so adding an
-opcode breaks the build until the VM handles it. `OpCode` is marked
-`#[repr(u8)]`, which makes each variant exactly the byte that encodes
-it, numbered as in the TypeScript VM. Underneath, every enum value has a
-**discriminant**, an integer that says which variant it holds; the
-compiler may store it in a smaller type, or tell variants apart some
-other way<Cite id="rustref-enum" />. How rustc turns arms into a tree of
-tests, and proves that nothing is missed, was the subject of *Compiling
-pattern matching*.
+<Callout kind="definition">
+A **pattern** describes a shape a value can have, and may **bind**
+names to parts of it<Cite id="rustref-patterns" />: literals, ranges
+`a..=b`, names (which fit anything and bind it), the wildcard `_`,
+alternatives `p | q`, tuples, enum variants and structs, nested inside
+one another. A **match guard**, `pattern if condition =>`, adds a test
+the arm must also pass.
 </Callout>
 
-<Prompts ids={['discriminant']} />
+<Prompts ids={['pattern-guard', 'refutable', 'pattern-wild', 'pattern-bind']} />
 
-## Your turn
+<More title="More: patterns in a runnable scanner, sums, and discriminants">
 
-<Exercise id="miniVm" />
+<Run id="patterns" />
 
-## What you learned
+An enum is a **sum** of its variants, as a struct is a product of its
+fields: `enum V { A, B(bool), C(u8) }` has 1 + 2 + 256 = 259 possible
+values. Underneath, every enum value has a **discriminant**, an integer
+saying which variant it holds, which the compiler may store in a smaller
+type or encode some other way<Cite id="rustref-enum" />; the VM's
+`OpCode` is marked `#[repr(u8)]`, so each variant is exactly the byte
+that encodes it. How rustc turns arms into a tree of tests and proves
+nothing is missed is the deep dive *Compiling pattern matching*, and the
+layouts are *Sum types in memory*. The VM's `pop_numbers` starts with
+`let (Value::Number(a), Value::Number(b)) = (self.peek(1),
+self.peek(0)) else { ... }`, which either hands it two numbers or
+reports Drip's runtime error.
 
-- An **enum** is exactly one of a fixed set of **variants**, which can
-  carry data: a discriminated union built into the language, and a sum
-  of its variants.
-- **`match`** tries its arms in order and runs the first that fits,
-  binding names to the payload. It is an expression, so every arm has
-  the same type, and it must be **exhaustive**.
-- The Rust VM's dispatch loop is one exhaustive `match` on `OpCode`.
+</More>
 
-Next: patterns, the shapes on the left of each arm, which can do far
-more than name a variant.
-
-
-{/* ── merge: from old chapter 122, Patterns: the shapes match can see ── */}
-
-## More than a variant name
-
-Every arm in the last chapter named one variant, perhaps with a payload.
-Real code wants more. A scanner asks "is this byte a digit, a letter or
-a space?", which is a question about ranges of numbers. Drip's `+` asks
-"are *both* operands numbers?", a question about two values at once.
-And Drip's truthiness asks "is this `none` *or* `false`?". All three are
-written on the left of an arm, as a **pattern**.
-
-<Analogy title="a coin-sorting tray">
+<Analogy extra title="a coin-sorting tray">
 A coin sorter is a tray of slots, each shaped for one coin. You drop a
 coin in at the top; it slides past the slots in order and falls through
 the first one it fits. The last slot is wide enough for anything, so no
@@ -337,237 +233,19 @@ value (the payload of a variant, the fields of a struct, both halves of
 a pair) and can also hand you the pieces it found, by name.</span>
 </Analogy>
 
-<Analogy extra title="a stencil">
-Lay a stencil with a cut-out shape over a sheet of paper, and you see
-only the parts that show through the holes. A pattern is a stencil laid
-over a value: the solid parts say what must be there (`Number`, the
-byte `b'('`), and the labelled holes (`x`, `n`) are the parts you get to
-use.
-<span slot="breaks">A stencil fits or it does not; a pattern may add a
-condition of its own (a guard, `if n < 0.0`), so it can refuse a value
-that matches its shape perfectly.</span>
-</Analogy>
-
-## The kinds of pattern
-
-Here is a scanner's question, answered with three kinds of pattern at
-once. Step a few bytes through it:
-
-<ByteSteps client:visible />
-
-`b'0'..=b'9'` is a **range pattern**: it fits any byte from `b'0'` to
-`b'9'`, both ends included (ranges work for numbers and characters).
-`p | q` is an **or-pattern**, which fits when any of its alternatives
-fits. And `_` is the **wildcard**, which fits anything and binds
-nothing. Here is the whole family:
-
-<Figure takeaway="A pattern says what must be there, and names the parts you want." caption="The kinds of pattern used in this book. Patterns nest: a tuple of variants, a variant holding a struct, and so on.">
-  <PatternKinds />
-</Figure>
-
-<Callout kind="definition">
-A **pattern** describes a shape a value can have, and may **bind**
-names to parts of it<Cite id="rustref-patterns" />: literals, ranges
-`a..=b`, names (which fit anything and bind it), the wildcard `_`,
-alternatives `p | q`, tuples, enum variants and structs, nested inside
-one another. A binding is a new variable that exists only in its arm. A
-**match guard**, `pattern if condition =>`, adds a test the arm must
-also pass.
-</Callout>
-
-<Examples of="pattern">
-
-```rust
-fn is_falsey(v: Value) -> bool {
-    match v {
-        Value::None
-        | Value::Bool(false) => true,
-        _ => false,
-    }
-}
-```
-
-```rust
-match (a, b) {
-    (Value::Number(x), Value::Number(y))
-        => Value::Number(x + y),
-    _ => Value::None, // the VM: an error
-}
-```
-
-```rust
-match v {
-    Value::Number(n) if n < 0.0 => "neg",
-    Value::Number(_) => "not neg",
-    _ => "not a number",
-}
-```
-
-</Examples>
-
-The first is Drip's truthiness: `none` and `false` are false, and the
-or-pattern says so in one arm, while `_` answers "everything else" (the
-companion writes the same thing with the `matches!` macro:
-`matches!(self, Value::None | Value::Bool(false))`). The second matches
-a **tuple**, `(a, b)`, two values grouped in brackets, so that one arm
-can ask "are both numbers?" and bind both payloads; any other pair falls
-to `_`. The third uses a guard: `Value::Number(n)` fits every number,
-and `if n < 0.0` then keeps only the negative ones, so `-1` gives
-`"neg"`, `2` falls to the second arm, and `true` to the third. Run
-them, and try a byte or a number of your own:
-
-<Run id="patterns" />
-
-<Prompts ids={['pattern-what', 'pattern-range', 'pattern-or', 'pattern-tuple', 'pattern-guard']} />
-
-## Patterns outside match
-
-Patterns are not only for `match`. Every `let` is a pattern, which is
-why you can take a struct or a tuple apart in one line:
-
-```rust
-let (x, y) = (3.0, 4.0);
-let Particle { vx, vy, .. } = p;
-```
-
-The first binds `x` and `y` at once. The second pulls the fields `vx`
-and `vy` out of `p` (field shorthand again), and `..` means "ignore the
-other fields". These patterns can never fail: every pair has two halves,
-and every `Particle` has a `vx`. Such patterns are called
-**irrefutable**; patterns that might not fit, like `Value::Number(n)`,
-are **refutable**, and a plain `let` refuses them:
-
-```text
-error[E0005]: refutable pattern in local
-  binding
-8 |     let Value::Number(n) = v;
-  |         ^^^^^^^^^^^^^^^^ patterns
-  |   `Value::None` and `Value::Bool(_)`
-  |   not covered
-help: you might want to use `let...else`
-8 |     let Value::Number(n) = v
-  |         else { todo!() };
-```
-
-The help names the fix. When you want one pattern and nothing else, use
-**`if let`**, a `match` with one arm, or **`let ... else`**, which binds
-the names for the rest of the function and must leave (with `return`)
-when the pattern does not fit<Cite id="rust-book-if-let" />:
-
-```rust
-if let Value::Number(n) = v {
-    println!("a number: {n}");
-}
-let Value::Number(n) = v else {
-    return Err(/* ... */);
-};
-```
-
-The Rust Drip VM's `pop_numbers` (in `companion/rust/src/vm.rs`) starts
-with exactly that second shape: `let (Value::Number(a), Value::Number(b))
-= (self.peek(1), self.peek(0)) else { ... }`, a tuple pattern that
-either hands it two numbers or reports Drip's runtime error, such as
-`cannot use '-' on a number and a string`.
-
-<Formal title="What a match does">
-
-```text
-match v { p₁ => e₁, …, pₙ => eₙ }
-  runs eᵢ for the smallest i with v ∈ ⟦pᵢ⟧
-exhaustive: ⟦p₁⟧ ∪ … ∪ ⟦pₙ⟧ = values(T)
-```
-
-<span slot="read">Write ⟦p⟧ for the set of values that pattern p fits.
-A match on v runs the arm whose pattern is the first to fit v. It is
-exhaustive when the sets of all its patterns, put together, include
-every value of v's type T, written values(T). A pattern is irrefutable when its set alone
-is every value of T.</span>
-</Formal>
-
-<Prompts ids={['refutable', 'if-let', 'let-destructure']} />
-
-## Two traps
-
-The first is the wildcard. `_` covers every case you have not written,
-*including ones added later*. Add a variant to `Op`, and a `match` that
-ends in `_ => {}` keeps compiling, quietly doing nothing for it; list the
-variants instead whenever each one deserves a thought, and keep `_` for
-when "everything else" really has one answer, as in `is_falsey`.
-
-The second catches everyone once. A plain name in a pattern always
-**binds**: it makes a new variable. It never compares with a variable
-of the same name<Cite id="rust-book-patterns" />:
-
-```rust
-let limit = 3;
-match n {
-    limit => println!("hit"),  // ✗
-    _ => println!("miss"),
-}
-match n {
-    x if x == limit => println!("hit"),
-    _ => println!("miss"),     // ✓
-}
-```
-
-With `n = 7` the first prints `hit`, because `limit` in the pattern is
-a brand-new name that fits anything. rustc warns you:
-
-```text
-warning: unreachable pattern
-5 |         limit => println!("hit"),
-  |         ----- matches any value
-6 |         _ => println!("miss"),
-  |         ^ no value can reach this
-note: there is a binding of the same name
-```
-
-The guard in the second `match` does the comparison you meant.
-
-<OtherLanguages title="Are both operands numbers?">
-
-```rust
-match (a, b) {
-    (Value::Number(x), Value::Number(y))
-        => Value::Number(x + y),
-    _ => Value::None,
-}
-```
-
-```ts
-if (typeof a === 'number' &&
-    typeof b === 'number') {
-  return a + b;
-}
-return null;
-```
-
-</OtherLanguages>
-
-TypeScript can take objects and arrays apart (`const { x, y } = p`), but
-it has no patterns that *test*: the question "are both numbers?" is an
-`if` with two checks, and narrowing (*TypeScript II: unions and
-narrowing*) works out the types inside it. In Rust the test, the
-narrowing and the naming of the payloads are one pattern, and the
-compiler can check the whole `match` for missing cases.
-
-<Prompts ids={['pattern-wild', 'pattern-bind']} />
-
 ## Your turn
+
+<Exercise id="miniVm" />
 
 <Exercise id="valuesEqual" />
 
 ## What you learned
 
-- A **pattern** is a shape: literals, ranges `a..=b`, names that bind,
-  the wildcard `_`, alternatives `p | q`, tuples, variants and structs,
-  nested freely, with an optional guard `if ...`.
-- `let` takes patterns too. Irrefutable ones (tuples, structs) always
-  fit; refutable ones need `match`, `if let` or `let ... else`.
-- `_` hides cases added later, and a plain name in a pattern binds a new
-  variable instead of comparing.
+- An **enum** is exactly one of its **variants**, which may carry data.
+- **`match`** runs the first arm that fits, is an expression, and must
+  be exhaustive; **patterns** test and bind in one go.
 
-Next: the two enums so useful that every Rust program uses them,
-`Option` and `Result`.
+Next: *Option, Result and the ? operator*, the two enums every Rust
+program uses.
 
 <Quiz />

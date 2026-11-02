@@ -1,43 +1,19 @@
-// Chapter 191 cards: recall prompts, examples, exercises and quiz.
+// Chapter 123 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 // Merged from old chapters 123, 123.
 
 export const prompts = {
-  'opt-what': {
-    q: 'What are the two variants of `Option<T>`?',
-    a: '`Some(value)`, holding a `T`, and `None`, holding nothing.',
-  },
   'opt-vs-undefined': {
     q: 'Why can’t you add 1 to an `Option<usize>`?',
     a: 'It is a different type from `usize` (E0369). You must first check whether it is `Some` and take the number out.',
-  },
-  'opt-minus-one': {
-    q: 'What is wrong with returning `-1` for “not found”, as `indexOf` does?',
-    a: '`-1` is still a number, so nothing stops the caller from using it as if it were a real answer.',
-  },
-  'opt-open': {
-    q: 'A `match` on an `Option` has a `Some(i)` arm only. What happens?',
-    a: 'It doesn’t compile: E0004, non-exhaustive patterns, `None` not covered.',
-  },
-  'opt-if-let': {
-    q: 'What does `if let Some(i) = find(&xs, 6) { ... }` do when `find` returns `None`?',
-    a: 'Nothing: the block is skipped. It runs only for `Some`, with `i` bound.',
   },
   'unwrap-panics': {
     q: 'What does `.unwrap()` do on `None`, and when is it acceptable?',
     a: 'It panics, stopping the program. Use it only where `None` would be a bug, as in a test.',
   },
-  'unwrap-or': {
-    q: 'What is `find(&xs, 9).unwrap_or(0)` when 9 is not in `xs`?',
-    a: '`0`: the default given to `unwrap_or`, since there was no value.',
-  },
   npo: {
     q: 'Why is `Option<&T>` the same size as `&T`, while `Option<i32>` is bigger than `i32`?',
     a: 'A reference is never null, so `None` can use the null pattern. Every `i32` pattern is a real number, so a tag is needed.',
-  },
-  'res-what': {
-    q: 'What are the two variants of `Result<T, E>`, and what does each carry?',
-    a: '`Ok(value)` carries the answer, a `T`; `Err(error)` carries an `E` describing what went wrong.',
   },
   'res-vs-option': {
     q: 'When should a function return `Result` rather than `Option`?',
@@ -55,17 +31,9 @@ export const prompts = {
     q: 'Why can’t you use `?` inside a function that returns `f64`?',
     a: 'On an error `?` returns early with an `Err` (or `None`), and an `f64` return type has nowhere to put it (E0277).',
   },
-  'q-option': {
-    q: 'What does `?` do after an `Option`?',
-    a: 'Unwraps `Some(v)` to `v`; on `None` it returns `None` from the function.',
-  },
-  'res-vs-throw': {
-    q: 'How does drip-rs report a runtime error differently from the TypeScript VM?',
-    a: 'It returns an `Err` up through each frame with `?`, instead of throwing an exception to a `catch`.',
-  },
-  'q-visible': {
-    q: 'Reading a Rust function, how can you see every place it might fail and return early?',
-    a: 'Each one is marked with a `?` (or an explicit `return Err`), and the signature says `Result`.',
+  'err-return-vs-throw': {
+    q: 'A recoverable error deep in a call chain: how does idiomatic Rust get it to the caller that handles it, compared with a TypeScript `throw`?',
+    a: 'Each function returns `Result`, and the `Err` is returned up through every caller (usually with `?`), instead of being thrown past them to a `catch`.',
   },
 };
 
@@ -144,6 +112,7 @@ fn main() {
 
 export const exercises = {
   resolve: {
+    optional: true,
     lang: 'rust',
     title: 'Which slot is that local in?',
     prompt: 'When Drip’s compiler meets a variable name inside a function, it looks for it among the locals declared so far: `locals[i]` is the name in stack slot `i`. A name can be declared twice (an inner block’s `let x` hides an outer `x`), and the **most recent** declaration wins, so search from the end. Write `resolve(locals, name)`, returning `Some(slot)` of the last local with that name, or `None` if there is none (then the name must be a global). This is `resolve_local` from `companion/rust/src/compiler.rs`, simplified. Use a `while` loop counting down.',
@@ -416,79 +385,9 @@ fn add_top(st: &[Value])
       },
     ],
   },
-  topTwo: {
-    lang: 'rust',
-    optional: true,
-    title: 'Peek at the top two, with ? on an Option',
-    prompt: 'Write `top_two(st)`, which returns `Some((below, top))` for the last two numbers of the slice, or `None` if there are fewer than two. Use `st.len().checked_sub(2)`, which gives `None` instead of going below zero, together with `?`.',
-    starter: `fn top_two(st: &[f64])
-    -> Option<(f64, f64)> {
-    todo!()
-}`,
-    solution: `fn top_two(st: &[f64])
-    -> Option<(f64, f64)> {
-    let i = st.len().checked_sub(2)?;
-    Some((st[i], st[i + 1]))
-}`,
-    tests: `#[test]
-fn two_values() {
-    let r = top_two(&[1.0, 2.0]);
-    assert_eq!(r, Some((1.0, 2.0)));
-}
-#[test]
-fn takes_the_last_two() {
-    let r = top_two(&[7.0, 1.0, 2.0]);
-    assert_eq!(r, Some((1.0, 2.0)));
-}
-#[test]
-fn too_short() {
-    assert_eq!(top_two(&[1.0]), None);
-    assert_eq!(top_two(&[]), None);
-}`,
-    hints: [
-      '`checked_sub(2)` returns `Some(len - 2)` when that is not below zero, and `None` otherwise.',
-      'Put `?` after it: `let i = st.len().checked_sub(2)?;`. On `None`, the function returns `None` right there. Then the answer is `Some((st[i], st[i + 1]))`.',
-    ],
-    walkthrough: `**How to think about it.** \`checked_sub\` is the standard library returning an \`Option\` instead of panicking: \`3usize.checked_sub(2)\` is \`Some(1)\`, and \`1usize.checked_sub(2)\` is \`None\`. Since \`top_two\` itself returns an \`Option\`, \`?\` may be used on it.
-
-**The solution, line by line.**
-
-- \`let i = st.len().checked_sub(2)?;\` is the index of the value below the top, or an early \`return None\` when there are fewer than two values.
-- \`Some((st[i], st[i + 1]))\` pairs the two values (the inner brackets make a tuple) and wraps the pair. After the \`?\` line both indexes are known to be in range, so neither read can panic.
-
-**Common wrong attempt.** \`let n = st.len(); Some((st[n - 2], st[n - 1]))\` works for long slices but panics on short ones, because \`n - 2\` underflows.`,
-    wrong: [
-      {
-        code: `fn top_two(st: &[f64])
-    -> Option<(f64, f64)> {
-    let n = st.len();
-    Some((st[n - 2], st[n - 1]))
-}`,
-        why: 'For a short slice `n - 2` underflows and the function panics instead of returning `None`.',
-      },
-    ],
-  },
 };
 
 export const quiz = [
-  {
-    q: 'What does `[4, 5, 6].get(9)` return?',
-    options: [
-      {
-        t: '`undefined`',
-        why: 'Rust has no `undefined`.',
-      },
-      {
-        t: '`None`',
-        correct: true,
-        why: '`get` asks politely and answers with an `Option`; there is no slot 9.',
-      },
-      {
-        t: 'It panics: index out of bounds',
-        why: 'That is what `xs[9]` does. `get` returns `None` instead.',
-      },
-    ],
-  },
   {
     q: `Does this compile?
 \`\`\`
@@ -513,24 +412,6 @@ match find(&xs, 5) {
     ],
   },
   {
-    q: 'Where is `.unwrap()` on an `Option` a reasonable choice?',
-    options: [
-      {
-        t: 'In a test, or where `None` would mean your own program has a bug',
-        correct: true,
-        why: 'A panic there points straight at the bug. For input that can really be missing, handle `None`.',
-      },
-      {
-        t: 'On user input, to keep the code short',
-        why: 'One bad input then stops the whole program.',
-      },
-      {
-        t: 'Nowhere: it does not compile on `None`',
-        why: 'It compiles; it panics at run time if the value is `None`.',
-      },
-    ],
-  },
-  {
     q: 'Which TypeScript type is closest to `Option<number>`?',
     options: [
       {
@@ -549,7 +430,7 @@ match find(&xs, 5) {
     ],
   },
   {
-    q: 'On this machine `&i32` is 8 bytes. How big is `Option<&i32>`?',
+    q: 'On a 64-bit machine `&i32` is 8 bytes. How big is `Option<&i32>`?',
     options: [
       {
         t: '16 bytes: the reference plus a tag',
@@ -589,60 +470,6 @@ fn sub(a: &Value, b: &Value)
       {
         t: 'It panics',
         why: '`?` never panics. It returns the error as an ordinary value.',
-      },
-    ],
-  },
-  {
-    q: 'You call `as_num(&t);` on a line of its own and ignore the answer. What happens?',
-    options: [
-      {
-        t: 'It does not compile',
-        why: 'It compiles, with a warning.',
-      },
-      {
-        t: 'rustc warns: unused `Result` that must be used',
-        correct: true,
-        why: 'An ignored `Result` might be an ignored `Err`, so the compiler points it out.',
-      },
-      {
-        t: 'The program panics if it was an `Err`',
-        why: 'Nothing happens to an ignored `Err` at run time; that is why the warning exists.',
-      },
-    ],
-  },
-  {
-    q: 'Where may you write `?` after a `Result`?',
-    options: [
-      {
-        t: 'Anywhere: it turns errors into panics',
-        why: 'That is `unwrap`. `?` returns the error to the caller.',
-      },
-      {
-        t: 'Only inside `main`',
-        why: '`main` is allowed if it returns a `Result`, but so is any function that does.',
-      },
-      {
-        t: 'In a function whose return type can hold the early return, such as a `Result`',
-        correct: true,
-        why: 'Elsewhere it is E0277: the `?` operator can only be used in a function that returns `Result` or `Option`.',
-      },
-    ],
-  },
-  {
-    q: 'What is the TypeScript Drip VM’s way of stopping on a runtime error, and drip-rs’s?',
-    options: [
-      {
-        t: 'Both throw an exception',
-        why: 'Rust has no exceptions for ordinary errors; drip-rs returns `Err`.',
-      },
-      {
-        t: 'TypeScript throws and `interpret` catches; drip-rs returns `Err` up every frame with `?`',
-        correct: true,
-        why: 'Same bookkeeping (message and trace), different way of getting back to `interpret`.',
-      },
-      {
-        t: 'Both return an error value',
-        why: 'The TypeScript VM’s `runtimeError` ends with `throw new VmRuntimeError(message)`.',
       },
     ],
   },
