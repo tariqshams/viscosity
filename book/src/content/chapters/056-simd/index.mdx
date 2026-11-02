@@ -6,7 +6,7 @@ title: 'SIMD: one instruction, many numbers'
 tagline: 'A CPU can add four numbers in the time it takes to add one, but only if the four numbers are sitting side by side in memory; that one condition is a large part of why the struct-of-arrays layout exists.'
 objectives:
   - Explain what SIMD is and what a lane is, and work out how many lanes a register has.
-  - Describe what a compiler does when it vectorizes a loop, and name two things that stop it.
+  - Describe what a compiler does when it vectorises a loop, and name two things that stop it.
   - Explain why SIMD wants a struct-of-arrays layout rather than an array of structs.
   - Say accurately where SIMD is available to JavaScript today, and where it is not.
 introduces: [simd, vectorization, lane]
@@ -80,11 +80,12 @@ lanes never mix.
 How many lanes you get depends on the width of the register and the size
 of each number. A 128-bit register has room for four 32-bit floats, or
 two 64-bit doubles; JavaScript numbers are 64-bit doubles, so at that
-width they get **two** lanes. WebAssembly's SIMD instructions spell the
-shape out in their names (`f64x2` means "two lanes of 64-bit
+width they get **two** lanes. WebAssembly (a low-level code format
+that browsers and Node run beside JavaScript) has SIMD instructions that
+spell the shape out in their names (`f64x2` means "two lanes of 64-bit
 floats")<Cite id="wasm-simd" />.
-Some CPUs have wider registers still; the guide to the ISPC compiler
-describes 256-bit registers (AVX2) and 512-bit ones (AVX-512) on x86
+Some CPUs have wider registers still; the guide to ISPC (Intel's
+compiler for a C-like language built around SIMD) describes 256-bit registers (AVX2) and 512-bit ones (AVX-512) on x86
 CPUs<Cite id="ispcdocs" />.
 
 <Formal title="A lane-wise add">
@@ -134,16 +135,16 @@ the *shape* SIMD hardware sees, with `W = 4` lanes per step. The first
 second `for` picks up the **tail**, the elements left over (here, 4 and
 5). It prints `[11, 22, 33, 44, 55, 66]`; it is no faster (underneath
 it is still one addition at a time), but it shows the chunks a
-vectorized loop works in. Try `W = 3`.
+vectorised loop works in. Try `W = 3`.
 
 <Prompts ids={['simd-what', 'lane-what', 'lanes-128']} />
 
-## Vectorization: letting the compiler do it
+## Vectorisation: letting the compiler do it
 
-You rarely write SIMD instructions by hand. Instead, an optimizing
+You rarely write SIMD instructions by hand. Instead, an optimising
 compiler looks at an ordinary loop and rewrites it to handle several
 turns of the loop per step; LLVM, the compiler toolkit behind the clang
-C compiler, has a loop vectorizer that does this, and it is on by
+C compiler, has a loop vectoriser that does this, and it is on by
 default<Cite id="llvm-vectorizers" />.
 
 <Analogy title="a manager batching the work">
@@ -171,7 +172,7 @@ reordering. Step through a four-lane sum to see the grouping change:
 <LaneSumSteps client:visible />
 
 <Callout kind="definition">
-**Vectorization** is rewriting a loop so that each step processes
+**Vectorisation** is rewriting a loop so that each step processes
 several elements with SIMD instructions, one element per lane, plus a
 tail for any leftovers. A compiler may only do it when it can show the
 result is unchanged, or when you have allowed it to change (as with a
@@ -230,7 +231,7 @@ them one at a time. The ISPC performance guide says exactly this:
 contiguous accesses can use efficient vector loads and stores, while an
 array-of-structs layout needs gathers and runs slower<Cite id="ispc-perfguide" />;
 and LLVM's own documentation notes that its cost model often judges
-strided gathers not worth vectorizing at all<Cite id="llvm-vectorizers" />.
+strided gathers not worth vectorising at all<Cite id="llvm-vectorizers" />.
 In a struct of arrays every column is already lined up under the
 stamp: it is the layout both cache lines and SIMD lanes want.
 
@@ -244,7 +245,7 @@ WebAssembly instead<Cite id="tc39-simdjs" />. WebAssembly has a
 fixed-width 128-bit SIMD type, `v128`, with instructions such as
 `f64x2.add`<Cite id="wasm-simd" />, and it is part of WebAssembly
 2.0<Cite id="wasm-finished-proposals" />. So JavaScript has no SIMD API
-of its own. Does V8 vectorize ordinary JavaScript loops behind your
+of its own. Does V8 vectorise ordinary JavaScript loops behind your
 back? None of the sources this book checked says so, so we will not
 assume it. For Viscosity, SIMD is a future payoff;
 its struct-of-arrays columns are `Float64Array`s<Cite id="mdn-typed-arrays" />,
@@ -256,10 +257,9 @@ native back end would need to use lanes.
 
 ## Your turn
 
-The core exercise is the skeleton of every vectorized sum, the one you
-stepped through above: one running total per lane, then a final step that
-adds the lanes together. The second is extra practice: the gather that an
-array of structs forces on SIMD code.
+The core exercise is the skeleton of every vectorised sum: one running
+total per lane, then a step that adds the lanes. The second is the gather
+that an array of structs forces on SIMD code.
 
 <Exercise id="sumLanes" />
 
@@ -272,7 +272,7 @@ array of structs forces on SIMD code.
 - Each slot of that register is a **lane**; lanes never mix, and the lane
   count is the register's width divided by the element size (two doubles
   in 128 bits).
-- **Vectorization** is a compiler rewriting a loop into SIMD steps plus a
+- **Vectorisation** is a compiler rewriting a loop into SIMD steps plus a
   tail. It must not change the answer, so possible overlap and
   floating-point reordering can stop it.
 - SIMD loads want **contiguous** values: an array of structs needs a

@@ -42,8 +42,8 @@ yet the time *per particle* was not:
   caption="The same loop costs several times more per element when there are a million particles. Compare the array-of-objects bars." />
 
 Nothing about the code changed; only the amount of data did. The last
-chapter gave the CPU one cache, and that is enough to guess the reason,
-however to measure it we need the real picture, which has several
+chapter gave the CPU one cache, and that is enough to guess the reason;
+however, to measure it we need the real picture, which has several
 caches and a price for each.
 
 ## A ladder of caches
@@ -205,8 +205,8 @@ both sizes, while the array-of-objects bars grow. With the objects, each
 uses, and the loop must also read a pointer to reach it. A
 `Float64Array` of masses packs nothing but masses, so far fewer bytes
 pass through the caches for the same answer, and far fewer reads miss.
-In this book's benchmark run, struct of arrays beat array of objects by
-more on this loop than on any other. The next chapter shows exactly how
+Of the loops in this book's benchmark that only read particles, this is
+the one where struct of arrays beat array of objects by the most. The next chapter shows exactly how
 the hardware moves those bytes, and why packing pays off so well; it is
 the first real argument for Viscosity.
 </Callout>

@@ -1,5 +1,5 @@
-// Chapter 61b cards (split from chapter 61). Keys are stable ids: never
-// rename them.
+// Cards for "Noisy numbers" (split from chapter 61). Keys are stable
+// ids: never rename them.
 
 export const prompts = {
   'median-why': {
@@ -32,7 +32,7 @@ export const prompts = {
   },
   'gap-noise': {
     q: 'The median is 2 ns and the p95 is 9 ns. What does that suggest?',
-    a: 'The run was noisy: many samples were much slower than typical, so rerun it before trusting it.',
+    a: 'The run was noisy: at least one sample in twenty was far slower than typical, so rerun it before trusting it.',
   },
 };
 
@@ -215,7 +215,7 @@ test('reports the median, not the mean', () => {
       'Then 9 samples: `const t0 = now(); sink += fn(); ts.push(now() - t0);`.',
       'Sort numerically with `ts.sort((a, b) => a - b)`. With 9 sorted samples, the median is `ts[4]`.',
     ],
-    walkthrough: `**How to think about it.** Each fix answers one trap from this chapter or the last, so take them in order: warm up, keep every result, take many samples, and summarize with the median. The test's fake clock makes the nine sample times 5, 1, 2, 9, 3, 4, 100, 3 and 2; the mean of those is about 14, while sorted they are 1, 2, 2, 3, 3, 4, 5, 9, 100, with 3 in the middle.
+    walkthrough: `**How to think about it.** Each fix answers one trap from this chapter or the last, so take them in order: warm up, keep every result, take many samples, and summarise with the median. The test's fake clock makes the nine sample times 5, 1, 2, 9, 3, 4, 100, 3 and 2; the mean of those is about 14, while sorted they are 1, 2, 2, 3, 3, 4, 5, 9, 100, with 3 in the middle.
 
 **The solution, line by line.**
 
@@ -233,7 +233,7 @@ test('reports the median, not the mean', () => {
 
 - Leaving out the warm-up: only 9 calls are made, and every sample includes cold code.
 - Averaging the samples: the one 100-unit outlier drags the answer to about 14.
-- Calling \`fn()\` without adding to the sink: the results are dead, so an optimizer may delete the work.`,
+- Calling \`fn()\` without adding to the sink: the results are dead, so an optimiser may delete the work.`,
     wrong: [
       {
         code: `function bench(fn, now) {

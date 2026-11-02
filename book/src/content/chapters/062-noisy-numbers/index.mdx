@@ -3,9 +3,9 @@ n: 62
 day: 16
 part: II
 title: 'Noisy numbers: the median, p95 and a fresh process'
-tagline: 'Warm code still never takes the same time twice, and one benchmark can quietly change the next one''s result. Two habits fix both: summarize many samples with the median and p95, and give every case a clean engine of its own.'
+tagline: 'Warm code still never takes the same time twice, and one benchmark can quietly change the next one''s result. Two habits fix both: summarise many samples with the median and p95, and give every case a clean engine of its own.'
 objectives:
-  - Summarize noisy timings with the median and p95 instead of a single run or the mean.
+  - Summarise noisy timings with the median and p95 instead of a single run or the mean.
   - Work out a quantile from sorted samples, interpolating between two slots.
   - Explain why each benchmark case runs in its own fresh process, and what would leak otherwise.
   - Read benchmark results as ratios, and use the median-to-p95 gap to spot a noisy run.
@@ -19,7 +19,7 @@ import IsolationPicture from '../../../components/diagrams/ch062/IsolationPictur
 ## Which number do you report?
 
 The last chapter fixed two traps: the benchmark now warms up, so it
-times optimized code, and it sinks every result, so the work cannot be
+times optimised code, and it sinks every result, so the work cannot be
 deleted. Suppose you run the warm loop seven times and get these
 times, in milliseconds:
 
@@ -131,11 +131,11 @@ would sort before `4`.
 ## One fresh process per case
 
 The last trap is the sneakiest, because each benchmark on its own is
-fine. V8's optimized code is specialized for the shapes and types it has
+fine. V8's optimised code is specialised for the shapes and types it has
 seen<Cite id="v8-maglev" />. Suppose the `get-objects` suite ran every
 layout in one process: the shared `consume(p)` function would see
 object literals, then instances of one class, then of another, three
-different shapes. Its feedback becomes mixed, so the code optimized for
+different shapes. Its feedback becomes mixed, so the code optimised for
 it is more general and slower, and each layout's time would depend on
 which layouts ran before it.
 
@@ -216,7 +216,7 @@ This harness is more than a teaching aid. The hand-written layouts it
 measures are the baselines that Viscosity's *generated* code will be
 compared against, and when the compiler claims "this program should be
 SoA", the claim is checked by exactly these rules: warm, sunk,
-summarized by median and p95, one process per case. An optimizer is
+summarised by median and p95, one process per case. An optimiser is
 only as honest as the benchmark that judges it.
 </Callout>
 
@@ -233,7 +233,7 @@ every habit from this chapter and the last together.
 
 ## What you learned
 
-- Summarize many samples with the **median** (a typical run) and the
+- Summarise many samples with the **median** (a typical run) and the
   **p95** (the slow end), not with one run or the mean.
 - A quantile comes from sorted samples, interpolating between the two
   slots either side of its position.

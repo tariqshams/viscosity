@@ -3,11 +3,11 @@
 export const prompts = {
   'warmup-why': {
     q: 'Why must a benchmark warm up before it starts recording times?',
-    a: 'Early runs measure the interpreter and the compilers; only after warm-up is the optimized code running.',
+    a: 'Early runs measure the interpreter and the compilers; only after warm-up is the optimised code running.',
   },
   'first-call': {
     q: 'A benchmark times only the first call of a function. What is it mostly measuring?',
-    a: 'Cold code: the bytecode interpreter, plus the cost of getting started, not the optimized steady state.',
+    a: 'Cold code: the bytecode interpreter, plus the cost of getting started, not the optimised steady state.',
   },
   tiers: {
     q: 'What does V8 do with a function before it becomes hot?',
@@ -15,11 +15,11 @@ export const prompts = {
   },
   feedback: {
     q: 'What is the **feedback** V8 records while a function runs, and who uses it?',
-    a: 'A record of the object shapes and value types seen at each place in the code; the optimizing tiers use it to specialize.',
+    a: 'A record of the object shapes and value types seen at each place in the code; the optimising tiers use it to specialise.',
   },
   deopt: {
-    q: 'What is **deoptimization**?',
-    a: 'Throwing away speculative optimized code when one of its guesses breaks, and falling back to slower code.',
+    q: 'What is **deoptimisation**?',
+    a: 'Throwing away speculative optimised code when one of its guesses breaks, and falling back to slower code.',
   },
   'dce-what': {
     q: 'What is **dead-code elimination**?',
@@ -153,7 +153,7 @@ Timing a batch rather than one call matters too: one call of a fast function can
   const t = now() - t0;
   return { perCall: t / 5, sink };
 }`,
-        why: 'The warm-up results are thrown away, so those calls are dead code an optimizer could delete. The sink comes out as 5, not 8.',
+        why: 'The warm-up results are thrown away, so those calls are dead code an optimiser could delete. The sink comes out as 5, not 8.',
       },
     ],
   },
@@ -163,8 +163,8 @@ export const quiz = [
   {
     q: 'A benchmark times the first call of a function and reports it. What is it mostly measuring?',
     options: [
-      { t: 'The steady-state speed of optimized code', why: 'The first call runs before V8 has optimized anything.' },
-      { t: 'Cold code: the interpreter, plus the cost of getting started', correct: true, why: 'V8 interprets bytecode first and optimizes only once a function is hot.' },
+      { t: 'The steady-state speed of optimised code', why: 'The first call runs before V8 has optimised anything.' },
+      { t: 'Cold code: the interpreter, plus the cost of getting started', correct: true, why: 'V8 interprets bytecode first and optimises only once a function is hot.' },
       { t: 'Exactly the same thing as the thousandth call', why: 'Calls get faster as the engine learns and recompiles.' },
     ],
   },
@@ -173,16 +173,16 @@ export const quiz = [
     options: [
       { t: 'Convert the strings to numbers', why: 'That would change what the program means; `+` joins strings.' },
       { t: 'Throw a type error', why: 'JavaScript allows strings with `+`; nothing is wrong with the program.' },
-      { t: 'Deoptimize: throw the number-specialized code away and fall back to slower code', correct: true, why: 'The optimized code was built on the guess "both are numbers", and the guess broke.' },
+      { t: 'Deoptimise: throw the number-specialised code away and fall back to slower code', correct: true, why: 'The optimised code was built on the guess "both are numbers", and the guess broke.' },
     ],
   },
   {
-    q: 'A benchmark computes `sum(xs)` a million times but never uses the result. What might an optimizing compiler do?',
+    q: 'A benchmark computes `sum(xs)` a million times but never uses the result. What might an optimising compiler do?',
     options: [
       { t: 'Run it faster by saving the answer in a file', why: 'Compilers do not keep results between runs like that.' },
       { t: 'Refuse to compile the function', why: 'Unused results do not stop compilation.' },
       { t: 'Delete the work as dead code, making the time meaningless', correct: true, why: 'If nothing observes the result, the computation can legally be removed. A sink prevents this.' },
-      { t: 'Nothing: compilers never remove code', why: 'Dead-code elimination is a standard optimization.' },
+      { t: 'Nothing: compilers never remove code', why: 'Dead-code elimination is a standard optimisation.' },
     ],
   },
   {
@@ -197,7 +197,7 @@ export const quiz = [
     q: 'Why does this book\'s harness warm up for at least 300 ms and five runs before recording?',
     options: [
       { t: 'To let the CPU cool down', why: 'Warm-up is about the engine\'s tiers, not temperature.' },
-      { t: 'So the measured runs use optimized code rather than the interpreter', correct: true, why: 'By then the hot kernel has climbed the tiers and the times have settled.' },
+      { t: 'So the measured runs use optimised code rather than the interpreter', correct: true, why: 'By then the hot kernel has climbed the tiers and the times have settled.' },
       { t: 'Because the timer does not work at first', why: 'The timer works from the start; the code being timed changes.' },
       { t: 'To fill the sink before measuring', why: 'The sink is filled during warm-up too, but that is not why warm-up exists.' },
     ],

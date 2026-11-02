@@ -1,5 +1,5 @@
-// Chapter 57b cards (split from chapter 57). Keys are stable ids: never
-// rename them.
+// Cards for "Field representations" (split from chapter 57). Keys are
+// stable ids: never rename them.
 
 export const prompts = {
   'rep-what': {

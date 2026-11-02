@@ -5,7 +5,7 @@ part: II
 title: 'When SoA loses: materialization and AoSoA'
 tagline: 'Struct of arrays has a weak spot: code that wants real objects back. Measured, rebuilding them can cost far more than SoA ever saved; and the blocked layout that sits between AoS and SoA has trade-offs of its own.'
 objectives:
-  - Explain materialization, and why it can make SoA much slower than an array of objects.
+  - Explain materialisation, and why it can make SoA much slower than an array of objects.
   - Tell an object that escapes from one that does not, and say why only the first one costs.
   - Lay out particles as AoSoA blocks, and work out where any field of any particle lives.
   - Read this book's benchmark results for AoSoA, and say when it pays and when it does not.
@@ -37,7 +37,7 @@ to make one. This chapter is about what that costs, when it costs
 nothing at all, and the blocked layout that sits between the two
 extremes.
 
-## Materialization
+## Materialisation
 
 <Analogy title="flat-pack furniture">
 A furniture warehouse stores chairs flat-packed, every leg with the
@@ -55,7 +55,7 @@ Ask the records office for your file and you get a photocopy. Writing
 on the copy changes nothing in the office's file, and if you ask twice
 you hold two separate sheets, even though they say the same thing.
 <span slot="breaks">Photocopies cost paper whether or not you read
-them; a materialized object only costs something if it is kept, or
+them; a materialised object only costs something if it is kept, or
 passed somewhere the engine cannot follow.</span>
 </Analogy>
 
@@ -66,9 +66,9 @@ from the chapter on references):
 <MaterializeSteps client:visible />
 
 <Callout kind="definition">
-**Materialization** is rebuilding a whole object from its columns. It
+**Materialisation** is rebuilding a whole object from its columns. It
 costs an allocation per object, and each new object has a new identity,
-so two materializations of the same element are never `===`, and
+so two materialisations of the same element are never `===`, and
 writing to one does not change the columns.
 </Callout>
 
@@ -92,12 +92,12 @@ for (let i = 0; i < n; i++) {
 
 </Examples>
 
-The first is the simplest materialization: read slot `i` of each column
+The first is the simplest materialisation: read slot `i` of each column
 and put the values in a fresh object literal; every call allocates. The
 second you can run: it is the code from the diagram, so it prints the two
 equal-looking objects, then `false` for `a === b`, then `1`, because
 `a.x = 99` changed only the copy. The third is the expensive pattern: it
-keeps every materialized object, so the program ends up holding an
+keeps every materialised object, so the program ends up holding an
 array of real objects, one allocation per element, which is exactly what
 the array of objects had for free.
 
@@ -113,7 +113,7 @@ it builds an array holding one real object per element.
 In this book's run SoA was about 20 to 35 times *slower* than the array
 of objects, at 100,000 and 1,000,000 elements. The array of objects only
 copies references to objects that already exist, while SoA allocates a
-new object for every element; materializing objects that are *kept* can
+new object for every element; materialising objects that are *kept* can
 wipe out every gain the columns made.
 
 The `get-objects` suite looks similar but is different in one way that
@@ -139,7 +139,7 @@ inlined `consume` (copied its body into the loop) and then saw that the
 temporary object was never stored anywhere, never returned and
 never compared, so it removed the object altogether and read the columns
 directly. An object that is only used inside the code that made it is
-said not to **escape**; whether materializing costs anything depends
+said not to **escape**; whether materialising costs anything depends
 entirely on whether the object escapes, which is the question
 Viscosity's escape analysis must answer. A TypeScript experiment by Zap
 found the same shape: SoA wins on reading a few fields, and loses when
@@ -173,7 +173,7 @@ box has no reason to care about.</span>
 **AoSoA** (array of structs of arrays) is the hybrid layout: the records
 are cut into fixed-size blocks, and inside each block the fields are
 stored as columns. With blocks of 8 doubles, each field's run inside a
-block is exactly one cache line.
+block is 64 bytes, one cache line's worth.
 </Callout>
 
 <Formal title="Finding a field in AoSoA">
@@ -244,8 +244,9 @@ objects, close to SoA's 3.3. In shuffled order it is a different story:
 There AoSoA was only about 1.8 times faster than objects, against
 SoA's 7.5; and with 1,000 particles it was slower than the array of
 objects even in order. Every random access must work out a block and a
-lane, and in plain JavaScript, without SIMD to pay that back, the
-arithmetic is pure cost.
+lane, and in plain JavaScript, without SIMD to pay that back, that extra
+work is the likeliest cause (the harness's notes say so, though this run
+alone does not prove it).
 
 <Prompts ids={['aosoa-random', 'aosoa-small']} />
 
@@ -253,19 +254,19 @@ arithmetic is pure cost.
 So no layout always wins: SoA for a few fields of many records,
 objects when real objects must be kept, and AoSoA when blocks match the
 hardware and the access is in order. Research on JavaScript engines
-makes this choice while the program runs: a JIT watches an array of
+makes this choice while the program runs: the engine watches an array of
 objects and switches it to columnar storage automatically<Cite id="makor2022" />,
-then generates specialized code paths for the transformed
+then generates specialised code paths for the transformed
 arrays<Cite id="kloibhofer2023" />. Viscosity makes the same decision
 ahead of time, as a compiler pass, and its escape analysis is what tells
-the cheap materializations (the object never escapes) from the
+the cheap materialisations (the object never escapes) from the
 expensive ones (it is kept).
 </Callout>
 
 ## Your turn
 
 The core exercise is the AoSoA index formula, written as code; the extra
-one materializes any set of fields.
+one materialises any set of fields.
 
 <Exercise id="aosoaAt" />
 
@@ -273,7 +274,7 @@ one materializes any set of fields.
 
 ## What you learned
 
-- **Materialization** rebuilds an object from columns: one allocation
+- **Materialisation** rebuilds an object from columns: one allocation
   each, a new identity each time, and writes that never reach the
   columns.
 - When the objects are *kept*, it can be far slower than an array of

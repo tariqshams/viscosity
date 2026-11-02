@@ -70,7 +70,7 @@ export default function MeasureSteps() {
           </g>
         )}
         {st.phase === 'sink' && <T x={392} y={30} size={12} mono anchor="end" fill={tok('safe')} weight={700}>sink += result ✓</T>}
-        <T x={10} y={150} size={10} fill={tok('muted')}>{showWarm ? 'interpreted → optimized' : ''}</T>
+        <T x={10} y={150} size={10} fill={tok('muted')}>{showWarm ? 'interpreted → optimised' : ''}</T>
         <T x={392} y={10} size={10} anchor="end" fill={tok('muted')}>heights illustrative</T>
       </Svg>
     </StepFrame>

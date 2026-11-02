@@ -8,14 +8,14 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 const TIERS = [
   { name: 'Ignition', sub: 'interprets bytecode; records feedback', c: 'muted' },
   { name: 'Sparkplug', sub: 'quick machine code, no guessing', c: 'f3' },
-  { name: 'Maglev', sub: 'optimizing: uses the feedback', c: 'f2' },
-  { name: 'TurboFan', sub: 'optimizing harder, for the hottest code', c: 'f1' },
+  { name: 'Maglev', sub: 'optimising: uses the feedback', c: 'f2' },
+  { name: 'TurboFan', sub: 'optimising harder, for the hottest code', c: 'f1' },
 ];
 
 export default function TierLadder() {
   const y = (k: number) => 196 - k * 56;
   return (
-    <Svg w={400} h={262} title="V8's tiers from bottom to top: Ignition, Sparkplug, Maglev, TurboFan. A function moves up as it gets hot. A dashed arrow from the optimizing tiers back down to Ignition shows deoptimization.">
+    <Svg w={400} h={262} title="V8's tiers from bottom to top: Ignition, Sparkplug, Maglev, TurboFan. A function moves up as it gets hot. A dashed arrow from the optimising tiers back down to Ignition shows deoptimisation.">
       {TIERS.map((t, k) => (
         <g key={t.name}>
           <Box x={20} y={y(k)} w={270} h={44} r={7} fill={tok(t.c, 0.13)} stroke={tok(t.c)}>

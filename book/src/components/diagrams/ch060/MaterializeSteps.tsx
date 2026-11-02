@@ -26,7 +26,7 @@ const STATES: S[] = [
   { line: 8, objs: [{ name: 'a', x: 1, y: 3 }, { name: 'b', x: 1, y: 3 }], hl: 'copy', note: 'Calling get(s, 0) again builds a second object with the same values. Every call pays for another allocation.' },
   { line: 9, objs: [{ name: 'a', x: 1, y: 3 }, { name: 'b', x: 1, y: 3 }], hl: 'ident', out: 'false', note: 'a === b compares identities, not contents: these are two different objects, so it prints false. With an array of objects, asking for particle 0 twice gives the same object both times.' },
   { line: 10, objs: [{ name: 'a', x: 99, y: 3 }, { name: 'b', x: 1, y: 3 }], hl: 'write', note: 'a.x = 99 changes the copy, and only the copy. Nothing links a back to the column, so s.x[0] is untouched.' },
-  { line: 11, objs: [{ name: 'a', x: 99, y: 3 }, { name: 'b', x: 1, y: 3 }], hl: 'write', out: '1', note: 'It prints 1. An optimizer that turns objects into columns must make sure no program can notice either difference: new identities, and writes that go nowhere.' },
+  { line: 11, objs: [{ name: 'a', x: 99, y: 3 }, { name: 'b', x: 1, y: 3 }], hl: 'write', out: '1', note: 'It prints 1. An optimiser that turns objects into columns must make sure no program can notice either difference: new identities, and writes that go nowhere.' },
 ];
 
 function Col({ y, name, vals, c }: { y: number; name: string; vals: number[]; c: string }) {

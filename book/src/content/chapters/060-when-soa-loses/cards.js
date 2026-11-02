@@ -1,9 +1,9 @@
-// Chapter 59b cards (split from chapter 59). Keys are stable ids: never
-// rename them.
+// Cards for "When SoA loses" (split from chapter 59). Keys are stable
+// ids: never rename them.
 
 export const prompts = {
   'materialize-what': {
-    q: 'What is **materialization**?',
+    q: 'What is **materialisation**?',
     a: 'Rebuilding a whole object from its SoA columns.',
   },
   'identity-lost': {
@@ -12,7 +12,7 @@ export const prompts = {
   },
   'copy-write': {
     q: '`const a = get(s, 0); a.x = 99;` Does `s.x[0]` change?',
-    a: 'No. The materialized object is a copy; nothing links it back to the column.',
+    a: 'No. The materialised object is a copy; nothing links it back to the column.',
   },
   'materialize-cost': {
     q: 'Why was SoA far slower than AoS in the `materialize` suite?',
@@ -42,7 +42,7 @@ export const prompts = {
 
 export const examples = {
   materialize: {
-    title: 'Materializing from columns',
+    title: 'Materialising from columns',
     code: `const s = {
   x: new Float64Array([1, 2]),
   y: new Float64Array([3, 4]),
@@ -106,7 +106,7 @@ test('the last slot of block 0', () => {
 
 Check the tests against the picture: \`aosoaAt(0, 1)\` is the first \`y\`, right after the 8 \`x\` values, at 8; \`aosoaAt(8, 0)\` is the first slot of block 1, at 48; \`aosoaAt(7, 5)\` is the last slot of block 0, at 47.
 
-That division and remainder on every random access is exactly the cost that made AoSoA slow in the \`random-x\` benchmark. A sequential loop avoids it by looping over blocks and lanes separately.
+That division and remainder on every random access is the likeliest reason AoSoA was slow in the \`random-x\` benchmark. A sequential loop avoids it by looping over blocks and lanes separately.
 
 **Common wrong attempts.**
 
@@ -130,9 +130,9 @@ That division and remainder on every random access is exactly the cost that made
   },
   getFields: {
     optional: true,
-    title: 'Materialize any fields',
+    title: 'Materialise any fields',
     prompt:
-      'Columns are stored as an object of `Float64Array`s, such as `{ x, y, vx }`. Write `getFields(s, i, fields)` that materializes element `i`: it returns a **new** object with one property per name in `fields`, taken from slot `i` of that column.',
+      'Columns are stored as an object of `Float64Array`s, such as `{ x, y, vx }`. Write `getFields(s, i, fields)` that materialises element `i`: it returns a **new** object with one property per name in `fields`, taken from slot `i` of that column.',
     starter: `function getFields(s, i, fields) {
   // your code here
 }
@@ -178,16 +178,16 @@ test('writes do not reach the columns', () => {
       'The field name is in a variable `f`, so you need bracket access twice: `s[f]` is the column, and `o[f]` is the new property.',
       'Inside a loop over `fields`: `o[f] = s[f][i];`. Return `o` at the end.',
     ],
-    walkthrough: `**How to think about it.** Materializing is the reverse of the split in the last chapter: there we went from \`p[k]\` (record first) to \`cols[k][i]\` (field first); here we go from \`s[f][i]\` back to \`o[f]\`. The names are only known when the function runs, so everything uses bracket access.
+    walkthrough: `**How to think about it.** Materialising is the reverse of the split in the last chapter: there we went from \`p[k]\` (record first) to \`cols[k][i]\` (field first); here we go from \`s[f][i]\` back to \`o[f]\`. The names are only known when the function runs, so everything uses bracket access.
 
 **The solution, line by line.**
 
-- \`const o = {};\` is the new object; this is the allocation that materialization always costs.
+- \`const o = {};\` is the new object; this is the allocation that materialisation always costs.
 - \`for (const f of fields) {\` visits each requested field name.
 - \`o[f] = s[f][i];\` reads slot \`i\` of column \`s[f]\` and stores it as property \`f\` of the new object. Because a number is copied, \`o\` has no link back to the column.
 - \`return o;\` hands back the new object.
 
-Because \`o\` is created inside the function, every call returns a different object (so \`a === b\` is \`false\`), and writing \`a.x = 99\` changes only that object, which are the two differences an optimizer must never let a program notice.
+Because \`o\` is created inside the function, every call returns a different object (so \`a === b\` is \`false\`), and writing \`a.x = 99\` changes only that object, which are the two differences an optimiser must never let a program notice.
 
 **Common wrong attempts.**
 
@@ -223,7 +223,7 @@ export const quiz = [
     q: 'Why was SoA 20 to 35 times slower than AoS in the `materialize` suite?',
     options: [
       { t: 'Typed arrays are slow to read', why: 'SoA reads were fast in every other suite.' },
-      { t: 'It had to allocate a new object for every element, while AoS copied references it already had', correct: true, why: 'That is materialization of objects that are kept.' },
+      { t: 'It had to allocate a new object for every element, while AoS copied references it already had', correct: true, why: 'That is materialisation of objects that are kept.' },
       { t: 'SoA used more memory', why: 'SoA used less; the cost was building objects.' },
     ],
   },
@@ -232,15 +232,15 @@ export const quiz = [
     options: [
       { t: '`99`, because `a` points into the column', why: 'A plain object cannot point into a typed array slot; the value was copied.' },
       { t: 'An error is thrown', why: 'Writing a property of a fresh object is fine.' },
-      { t: 'Unchanged: `a` is a separate new object', correct: true, why: 'The materialized object is a copy; writes to it do not flow back.' },
+      { t: 'Unchanged: `a` is a separate new object', correct: true, why: 'The materialised object is a copy; writes to it do not flow back.' },
     ],
   },
   {
-    q: 'In `get-objects`, each element is materialized and passed to `consume(p)`, which does not keep it. Why did SoA not lose?',
+    q: 'In `get-objects`, each element is materialised and passed to `consume(p)`, which does not keep it. Why did SoA not lose?',
     options: [
       { t: 'Most likely, the object did not escape, so V8 inlined `consume` and removed the temporary object', correct: true, why: 'That is the explanation in the harness’s own notes: with no object to allocate, the loop reads the columns directly.' },
       { t: 'V8 caches every object it has built before', why: 'There is no such cache; the object was removed, not reused.' },
-      { t: '`consume` was never called', why: 'It was called for every element; only the object was optimized away.' },
+      { t: '`consume` was never called', why: 'It was called for every element; only the object was optimised away.' },
       { t: 'Objects are free in V8', why: 'The `materialize` suite shows that kept objects are far from free.' },
     ],
   },

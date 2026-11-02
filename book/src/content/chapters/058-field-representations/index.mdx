@@ -221,8 +221,8 @@ number-crunching code<Cite id="v8-pointer-compression" />. That is why
 Viscosity's columns are `Float64Array`s: whatever the source declared, a
 column of doubles stays a column of doubles. It also means a
 TypeScript-aware Viscosity pass can fix the slow class for free, since
-the class's field declarations are erased types that the compiler can
-read before they reach the engine.
+the compiler reads the field's declared `number` type before any of it
+reaches the engine.
 </Callout>
 
 <Prompts ids={['float64array-rep']} />

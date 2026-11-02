@@ -14,15 +14,15 @@ export const prompts = {
     a: 'Two (128 ÷ 64). Four 32-bit floats would fit.',
   },
   'vectorize-what': {
-    q: 'What does a compiler do when it **vectorizes** a loop?',
+    q: 'What does a compiler do when it **vectorises** a loop?',
     a: 'Rewrites it so each step handles several iterations at once with SIMD instructions, one element per lane.',
   },
   'float-order': {
-    q: 'Why can’t a compiler freely vectorize a floating-point sum?',
+    q: 'Why can’t a compiler freely vectorise a floating-point sum?',
     a: 'Lane-wise summing regroups the additions, and floating-point addition isn’t associative, so the result could change.',
   },
   overlap: {
-    q: 'What happens if the arrays a vectorized loop reads and writes might overlap in memory?',
+    q: 'What happens if the arrays a vectorised loop reads and writes might overlap in memory?',
     a: 'The compiler must check for overlap (LLVM does it at run time) and use the plain loop when they overlap.',
   },
   gather: {
@@ -61,7 +61,7 @@ export const exercises = {
   sumLanes: {
     title: 'Sum the way SIMD does',
     prompt:
-      'Write `sumLanes(xs, W)` that sums `xs` using `W` lane accumulators, like a vectorized sum. Element `i` goes into lane `i % W`. Return `{ lanes, total }`: `lanes` is the array of `W` lane sums, and `total` is the lanes added together.',
+      'Write `sumLanes(xs, W)` that sums `xs` using `W` lane accumulators, like a vectorised sum. Element `i` goes into lane `i % W`. Return `{ lanes, total }`: `lanes` is the array of `W` lane sums, and `total` is the lanes added together.',
     starter: `function sumLanes(xs, W) {
   const lanes = [];
   // your code here
@@ -104,7 +104,7 @@ test('empty input gives zero lanes', () => {
       'Element `i` belongs to lane `i % W` (the remainder after dividing by `W`), so one plain loop over every element can do `lanes[i % W] += xs[i]`; that also handles the tail for free.',
       'After the loop, add the `W` lane totals together into `total`, and `return { lanes, total };`.',
     ],
-    walkthrough: `**How to think about it.** A vectorized sum keeps one running total per lane, like the four-lane register you stepped through in the chapter: lane 0 collects elements 0, 4, 8, ..., lane 1 collects 1, 5, 9, ..., and so on. So the question for each element is only "which lane is this?", and the remainder \`i % W\` answers it: 0, 1, 2, 3, 0, 1, 2, 3, ... as \`i\` counts up. Once every element is in its lane, the lanes are added together (compilers call this the *horizontal* step). Try it by hand first with \`[1, 2, 3, 4, 5]\` and \`W = 2\`: lane 0 gets 1 + 3 + 5 = 9, lane 1 gets 2 + 4 = 6, and the total is 15.
+    walkthrough: `**How to think about it.** A vectorised sum keeps one running total per lane, like the four-lane register you stepped through in the chapter: lane 0 collects elements 0, 4, 8, ..., lane 1 collects 1, 5, 9, ..., and so on. So the question for each element is only "which lane is this?", and the remainder \`i % W\` answers it: 0, 1, 2, 3, 0, 1, 2, 3, ... as \`i\` counts up. Once every element is in its lane, the lanes are added together (compilers call this the *horizontal* step). Try it by hand first with \`[1, 2, 3, 4, 5]\` and \`W = 2\`: lane 0 gets 1 + 3 + 5 = 9, lane 1 gets 2 + 4 = 6, and the total is 15.
 
 **The solution, line by line.**
 
@@ -122,7 +122,7 @@ Notice the additions now happen in a different *grouping* from a plain left-to-r
 
 **Common wrong attempts.**
 
-- Looping only over full chunks (\`i + W <= xs.length\`) forgets the tail: with five elements and \`W = 4\`, element 4 is silently dropped. Real vectorized loops always add a tail loop for this reason.
+- Looping only over full chunks (\`i + W <= xs.length\`) forgets the tail: with five elements and \`W = 4\`, element 4 is silently dropped. Real vectorised loops always add a tail loop for this reason.
 - Summing everything into one total gets the right \`total\` but not the lanes; the exercise is about spreading the work across \`W\` lanes.
 - Forgetting the starting zeros gives \`NaN\` in every lane.`,
     wrong: [
@@ -241,7 +241,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why might a compiler refuse to vectorize `s += xs[i]` over an array of floats, unless told it may?',
+    q: 'Why might a compiler refuse to vectorise `s += xs[i]` over an array of floats, unless told it may?',
     options: [
       { t: 'Lane-wise summing regroups the additions, and a different grouping can round differently', correct: true, why: '`(0.1 + 0.2) + 0.3` and `0.1 + (0.2 + 0.3)` differ, so the answer could change. LLVM only reorders when you allow it.' },
       { t: 'SIMD cannot add floating-point numbers', why: 'There are float SIMD instructions, such as `f64x2.add`.' },
@@ -261,7 +261,7 @@ export const quiz = [
     q: 'Which statement about SIMD and JavaScript is accurate?',
     options: [
       { t: 'Browsers ship the SIMD.js API', why: 'SIMD.js was removed from Stage 3, and browsers are not implementing it.' },
-      { t: 'V8 is documented to vectorize every loop', why: 'None of the sources checked for this book says that, so do not assume it.' },
+      { t: 'V8 is documented to vectorise every loop', why: 'None of the sources checked for this book says that, so do not assume it.' },
       { t: 'SIMD is impossible on the web', why: 'WebAssembly has 128-bit SIMD.' },
       { t: 'WebAssembly has fixed-width 128-bit SIMD; JavaScript has no SIMD API', correct: true, why: 'The `v128` type and instructions like `f64x2.add` are part of WebAssembly 2.0.' },
     ],
