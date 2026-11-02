@@ -9,10 +9,6 @@ export const prompts = {
     q: 'Why can collection discovery find every use of `ps` just by scanning loads?',
     a: 'The front-end lowers every array-initialized variable to a binding, so each read of it is an explicit loadBinding.',
   },
-  'cd-candidate': {
-    q: 'What makes a binding a candidate collection?',
-    a: 'It is a const or let, and at least one of its stores stores an array.empty or array.new.',
-  },
   'cd-var': {
     q: 'What happens to `var ps = []` filled with records?',
     a: 'Nothing: var bindings are skipped, so it is never a candidate, and explain reports no arrays of objects.',
@@ -20,6 +16,10 @@ export const prompts = {
   'cd-reassigned': {
     q: 'Why does a second store to `ps` cause a bailout?',
     a: 'Then ps may not always hold this array, so code using ps can’t be rewritten for one layout.',
+  },
+  'cd-dataflow': {
+    q: 'In what sense is collection discovery a dataflow problem?',
+    a: 'Each value either refers to the collection or not; the fact starts at the loads and flows forward along def-use edges (and into parameters of known functions), and a worklist computes the smallest set of values that refer to it.',
   },
   'cd-worklist': {
     q: 'Which uses of a collection’s load are accepted?',
@@ -40,10 +40,6 @@ export const prompts = {
   'cd-alias': {
     q: 'Why is a pushed record that is also used elsewhere a bailout?',
     a: 'After the change there is no object, only column slots; another reference to the record (like `r.x = 500` later) would no longer reach the element.',
-  },
-  'cd-empty': {
-    q: 'What does discovery say about an array that never receives a record?',
-    a: '“no records are ever added, so there is nothing to lay out”.',
   },
 };
 
@@ -138,15 +134,26 @@ test('only arrays are candidates', () => {
       'Group stores by name. A name is a candidate if one of its stored values is an `empty`; more than one store means reject.',
       'Walk the pushes for that name: the first record sets the fields, every later one must match `fields.join()` exactly, and a non-record rejects.',
     ],
-    walkthrough: `This is sections 1 and 2 of \`analysis.ts\`, with the worklist replaced by a plain scan.
+    walkthrough: `**How to think about it.** This is sections 1 and 2 of \`analysis.ts\` with the worklist replaced by a plain scan, because here every push names its array directly. Work in the same order Viscosity does: first find the *candidates* (names that are ever given a fresh \`[]\`), then, for each one, look at everything pushed into it and reject it at the first broken rule. Since stores and pushes refer to other instructions by \`id\`, the very first job is a way to look an instruction up by its id.
 
-- **Candidates come from stores.** Only a variable that is given a fresh array can be a collection; a variable stored an object literal (\`o\` in the last test) is not even considered.
-- **One store only.** A second store, even of another \`[]\`, means the variable may hold different arrays at different times. Viscosity rejects it rather than reason about which one a use sees.
-- **Fresh records only.** A push of anything but a \`record\` might add an object the program also uses elsewhere, or something that isn’t an object at all.
-- **Order is part of the shape.** Comparing \`fields.join()\` makes \`['x', 'y']\` and \`['y', 'x']\` different, as \`setShape\` does: the rewritten \`push(a, b)\` passes values by position.
-- **Nothing pushed, nothing to do.** With no record, there are no fields to make columns from.
+**The solution, line by line.**
 
-The real analysis also checks that each record has exactly one use, and follows loads through \`ps[i]\`, \`.length\` and function calls.`,
+- \`const byId = new Map(); for (const i of insts) { if (i.id === undefined) continue; byId.set(i.id, i); }\` indexes every instruction that has an id (stores and pushes have none, since they produce no value).
+- \`const op = (v) => byId.get(v)?.op;\` is a small helper: the kind of instruction that made value \`v\`. The \`?.\` makes it \`undefined\` instead of a crash if \`v\` is unknown.
+- \`const stores = {}; for (...) { if (i.op !== 'store') continue; (stores[i.name] ??= []).push(i); }\` groups the stores by variable name. \`??=\` creates the list the first time a name is seen.
+- \`for (const [name, st] of Object.entries(stores)) {\` visits each stored-to name with its list of stores.
+- \`const isArr = (s) => op(s.value) === 'empty'; if (!st.some(isArr)) continue;\` skips names that are never given a fresh array: in the last test, \`o\` is only stored a record, so it is not a candidate and does not appear in the answer.
+- \`let fields = null; let ok = st.length === 1;\` starts with no shape yet, and already rejects a name with a second store (the reassignment rule).
+- The inner \`for\` loop visits every \`push\` into this name. \`const r = byId.get(i.value);\` is the pushed value. If it is missing or not a \`record\`, \`ok = false\`. Otherwise, if \`fields\` is still \`null\`, this is the first record and it sets the shape; if not, \`fields.join() !== r.fields.join()\` compares the two field lists as strings, order included, and a difference rejects.
+- \`out[name] = ok && fields ? fields : null;\` records the shape only if nothing was rejected **and** at least one record was pushed; with no records, \`fields\` is still \`null\`, so the answer is \`null\` (the "no records are ever added" rule).
+
+**Common wrong attempts.**
+
+- Letting the first record win and never comparing the later ones: a later \`{y, x}\` is then accepted, and a second \`[]\` simply overwrites the name's entry instead of rejecting it.
+- Sorting the field lists before comparing them: that treats \`{x, y}\` and \`{y, x}\` as one shape, but the rewritten \`push(a, b)\` passes values by position, so the order must match.
+- Returning \`[]\` for a candidate with no records: an empty field list is not a shape, and the tests expect \`null\`, as Viscosity's bailout does.
+
+The real analysis also checks that each record has exactly one use (the extra exercise) and follows loads through \`ps[i]\`, \`.length\` and calls of known functions.`,
     wrong: [
       {
         code: `function findCollections(insts) {
@@ -271,11 +278,23 @@ test('used twice but never pushed', () => {
       'Remember which ids appear as the second argument of a `push`.',
       'Keep record ids that are pushed and counted more than once.',
     ],
-    walkthrough: `This is the second half of \`setShape\`: \`usesOf(r.id).length !== 1\` means the record is referenced by something besides its push.
+    walkthrough: `**How to think about it.** This is the second half of \`setShape\`: \`usesOf(r.id).length !== 1\` means a record is referenced by something besides its push. So two facts are needed for each record: how many times its id appears as an argument anywhere, and whether it is ever pushed. One pass over the instructions can collect both.
 
-- **Why count uses.** In SSA, \`const r = { x: i }; ps.push(r); r.x = 500;\` has one \`record.new\` used twice: once by \`push\`, once by \`field.set\`. After the layout change the element lives in columns, and the \`field.set\` would update an object nobody reads any more.
-- **Pushing twice is aliasing too.** Two elements that are the same object must stay the same object: change one, and the other changes. Two column slots can’t do that.
-- **Not pushed, not our business.** A record that never enters a collection can be used as often as it likes.`,
+**The solution, line by line.**
+
+- \`const uses = new Map(); const pushed = new Set();\` will hold the use count per id and the ids that are pushed.
+- \`for (const i of insts) { for (const a of i.args) { const n = uses.get(a) ?? 0; uses.set(a, n + 1); }\` counts every argument of every instruction: a use is an appearance in some \`args\` list, whatever the instruction is.
+- \`if (i.op === 'push') pushed.add(i.args[1]);\` remembers the value pushed (argument 0 is the array, argument 1 the pushed value).
+- \`return insts.filter((i) => i.op === 'record').map((i) => i.id)\` takes the ids of all records, in program order...
+- \`.filter((id) => pushed.has(id) && uses.get(id) > 1)\` keeps those that are pushed and used more than once...
+- \`.sort((a, b) => a - b);\` and sorts them as numbers (without the comparison function, \`sort\` would compare them as strings, putting \`10\` before \`9\`).
+
+**Why each case is aliasing.** \`const r = { x: i }; ps.push(r); r.x = 500;\` has one \`record.new\` used twice: by \`push\` and by \`field.set\`. After the layout change the element lives in columns, and the \`field.set\` would update an object nobody reads any more. Pushing the same record twice is aliasing as well: the two elements are one object, so changing one changes the other, which two column slots cannot do. A record that is never pushed is no business of the collection's, however often it is used.
+
+**Common wrong attempts.**
+
+- Counting only pushes: a record pushed once and then written through another use (\`r.x = 500\`) looks safe, which is exactly the case the corpus file \`record_shared.js\` tests.
+- Counting all uses but forgetting the "is pushed" condition: a record used twice that never enters a collection is reported, though Viscosity would not care about it.`,
     wrong: [
       {
         code: `function aliased(insts) {
@@ -332,20 +351,12 @@ export const quiz = [
       { t: '`ps.map((p) => p.x)`', correct: true, why: 'Only .length and .push are supported as fields of the array.' },
     ],
   },
-  {
-    q: 'Why does discovery depend on the front-end lowering array variables to bindings?',
-    options: [
-      { t: 'Bindings are faster', why: 'Speed is not the reason.' },
-      { t: 'Only bindings can be pushed to', why: 'push works on any value.' },
-      { t: 'Every use then appears as a load, so the worklist can find them all', correct: true, why: 'With SSA values it would have to chase phis and copies instead.' },
-      { t: 'The emitter needs bindings', why: 'The emitter works from source ranges.' },
-    ],
-  },
+
   {
     q: 'What does a successful discovery NOT establish?',
     options: [
       { t: 'The collection’s fields', why: 'It records them via setShape.' },
-      { t: 'That changing its layout is safe and worth it', correct: true, why: 'Safety (chapter 252) and the cost model (chapter 254) come later.' },
+      { t: 'That changing its layout is safe and worth it', correct: true, why: 'Safety (Proving it safe) and the cost model (The cost model) come later.' },
       { t: 'Where it is pushed to', why: 'It collects the pushes.' },
       { t: 'That it is stored only once', why: 'A second store is a bailout here.' },
     ],

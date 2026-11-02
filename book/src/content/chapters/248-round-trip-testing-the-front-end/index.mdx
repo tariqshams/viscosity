@@ -3,51 +3,95 @@ n: 248
 day: 62
 part: VIII
 title: 'Round-trip testing the front-end'
-tagline: 'The easiest program to compile is one where there is nothing to do. Viscosity must hand it back byte for byte, and running that one check over five hundred real files found a crash nobody had written a test for.'
+tagline: 'The easiest program to compile is one where there is nothing to do, and Viscosity must hand it back byte for byte; running that one check over five hundred files of other people’s code is how a crash nobody had written a test for was found.'
 objectives:
-  - Define an identity transform and explain why a splicing emitter makes it a byte-for-byte check.
-  - Say what the repository's round-trip, differential and parser-equivalence tests each catch.
-  - Explain why each run in the differential test gets a fresh vm context.
-  - Write a small differential tester that compares printed output and errors.
+  - Define an identity transform, and explain why a splicing emitter can promise the same bytes where a printer can only promise the same tree.
+  - Say what the front-end’s round-trip, differential and parser-equivalence tests each catch that the others cannot.
+  - Explain why each run in the differential test gets a fresh vm context, and why errors are part of a program’s outcome.
+  - Write a small differential tester that compares printed lines and uncaught errors.
 introduces: [identity-transform]
 uses: [round-trip-testing, differential-testing, test, assertion, edge-case, codegen, pretty-printing, ast-to-ir, viscosity-pipeline, source-to-source, parser-adapter, estree, parser, ast, vir, resolver, typescript, type-erasure, class, import-export, module, try-catch, error-object, throw, function, callback, array]
 sources: [node-vm, csmith]
 ---
 import FrontEndSteps from '../../../components/diagrams/ch248/FrontEndSteps';
+import PrintVsSplice from '../../../components/diagrams/ch248/PrintVsSplice';
 
 ## Nothing to do
 
-Most code in a real project has no arrays of same-shaped objects.
-Viscosity will run over all of it anyway, every time you build. For
-those files, the only correct output is your file, unchanged. Not
-reformatted, not with a comment moved, not with a stray blank line at
-the top.
+Most of the code in a real project has no arrays of same-shaped
+objects in it at all: it reads settings, formats strings, talks to the
+network. Viscosity will still run over every one of those files on
+every build, and for them the only correct output is the file itself,
+unchanged; not reformatted, not with a comment moved, and not with a
+stray blank line added at the top. A compiler that gets the hard files
+right and quietly smudges the easy ones is a compiler nobody will
+leave switched on.
 
-<Callout kind="intuition">
-A good proofreader handed a page with no mistakes hands it back
-untouched. If the page comes back with a comma moved, you stop
-trusting the proofreader, even on pages that did need fixing.
-</Callout>
+<Analogy title="a proofreader and a clean page">
+Hand a good proofreader a page with no mistakes on it, and it comes
+back untouched. If it came back with one comma moved, you would stop
+trusting them, even on the pages that really did need fixing, because
+you could no longer tell their corrections from their accidents.
+<span slot="breaks">A proofreader may fairly improve a clumsy sentence
+that has no mistake in it; Viscosity is not allowed to "improve"
+anything, not even the spacing, because its job is layout, not
+style.</span>
+</Analogy>
+
+<Analogy title="a removal crew sent to move nothing">
+Ask a removal crew to move only the piano, and then tell them the
+piano is staying after all. When they leave, the house should be
+exactly as it was, down to the book left open on the arm of the
+sofa.
+<span slot="breaks">In a house you only notice what you look at, so
+a cushion turned over might never be spotted; the test compares every
+single byte, so even an invisible change, such as a missing newline at
+the very end of the file, is caught.</span>
+</Analogy>
 
 <Callout kind="definition">
-An **identity transform** is a compile that must change nothing:
-for an input with nothing to transform, the output equals the
-input. For a source-to-source compiler that splices edits, "equals"
-can mean byte for byte. It is the simplest **round-trip** test: the
-input is its own expected output.
+An **identity transform** is a compile that must change nothing: for
+an input with nothing to transform, the output equals the input. For a
+source-to-source compiler that splices its edits into the original
+text, "equals" can mean **byte for byte**. It is the simplest
+round-trip test there is, because the input is its own expected
+output.
 </Callout>
 
-Chapter 225 showed the round trip for a printer: parse, print, parse
-again, compare trees. The trees can match while the text differs,
-because a printer chooses its own layout. Viscosity's emitter splices
-instead of printing (chapter 247), so it can promise more: the same
-bytes.
+The chapter *Testing compilers* showed the round trip for a printer:
+parse the text, print the tree back out, parse that, and compare the
+two trees. The trees may match while the text differs, because a
+printer builds its output from the tree and the tree does not keep
+everything (comments, blank lines, which quotes you used). Viscosity's
+emitter, as *Emitting JavaScript* showed, does not print; it splices a
+list of edits into your text, and with an empty list there is nothing
+to splice:
+
+<Figure takeaway="A printer can only promise the same tree; a splicer with no edits can promise the same bytes." caption="The same three lines through two round trips. The printer rebuilds the text from the tree, so the comment, the blank line and the single quotes are gone; Viscosity, with no edits, hands back its input.">
+  <PrintVsSplice />
+</Figure>
+
+<Formal title="Two round trips">
+
+```text
+printer:  parse(print(parse(s))) = parse(s)
+splicer:  plan(s) = ∅  ⇒  compile(s) = s
+```
+
+<span slot="read">For a printer, the promise is about trees: parsing
+the printed text gives back the tree you started from. For Viscosity it
+is about text: whenever the plan for s is empty (it decides to change
+nothing), compiling s gives exactly s, character for character. The
+second promise is stronger, since equal text always parses to equal
+trees, but equal trees can come from different text.</span>
+</Formal>
 
 <Prompts ids={['identity-what', 'bytes-not-trees']} />
 
 ## The test in the repository
 
-It sits at the end of `differential.test.ts`:
+The identity test sits at the end of
+`packages/frontend-js/test/differential.test.ts`:
 
 ```ts
 it('leaves programs with nothing to ' +
@@ -61,118 +105,157 @@ it('leaves programs with nothing to ' +
 });
 ```
 
-(The real test name is one string.) It looks almost too small to
-matter. But `compile` runs the whole pipeline: acorn parses, the
-resolver walks the scopes, the lowering builds VIR, the analyses look
-at `a` and reject it (its elements are numbers, not object literals),
-the planner decides nothing, and the emitter has no prelude, so it
-returns its input. A crash anywhere, or a single stray edit, fails
-the test.
+(The real test name is one string; it is split here to fit.) `src` is
+a 57-byte program, and `toBe` compares the compiled code with it as
+two strings, so every byte has to match. It looks almost too small to
+matter; however, `compile` runs the whole pipeline on it. Acorn parses
+it, the resolver works out what every name means, the lowering builds
+VIR, the analyses look at `a` and reject it (its elements are numbers,
+not object literals), the planner decides nothing, and the emitter,
+with no edits and no prelude, returns its input. A crash anywhere along
+that line, or a single stray edit, fails the test.
 
-The program was chosen with care. It has an array, so the collection
-analysis really runs; a comment, which a printer would lose; and a
-trailing newline, the classic thing to drop.
+The program was chosen with care, too: it has an array, so the
+collection analysis really runs; a comment, which a printer would lose;
+and a final newline, the classic thing to drop.
 
-TypeScript is the one exception: the plugin strips types first, so a
-`.ts` file with nothing to transform comes back as the same code
-without its types.
+<Examples of="identity-transform">
+
+```js
+const a = [1, 2, 3];
+// a comment
+console.log(a.length);
+```
+
+```ts
+const n: number = 3; // keep me
+console.log(n * 2);
+// compiled: const n = 3; // keep me
+//           console.log(n * 2);
+```
+
+```js
+// no_loops.js, whole file, unchanged
+const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i });
+console.log(ps.length);
+```
+
+</Examples>
+
+The first is the repository's snippet, which comes back as all 57 of
+its bytes. The second is the one exception: a TypeScript file goes
+through the plugin's type stripper before it is parsed, so with nothing
+to transform it comes back as the same code with its types removed (the
+`: number` is gone, the comment stays). The third is the realistic
+case, the shape of `no_loops.js` from the differential corpus: `ps`
+really is an array of records, so it gets analysed in full, but no loop
+ever touches its fields, so the planner keeps it as it is and the whole
+file round-trips. Running every corpus file for this chapter, 16 of the
+40 keep every collection as an array of objects, and all 16 come back
+byte-identical, although nothing in that suite checks it.
 
 <Prompts ids={['identity-pipeline', 'identity-snippet', 'identity-ts']} />
 
 ## Three checks, one front-end
 
-The front-end package has three kinds of test, and each catches
-something the others can't. Step through them:
+The front-end package has three kinds of test, and each one catches
+something the other two cannot. Step through them:
 
 <FrontEndSteps client:visible />
 
-The differential test runs each version in a brand-new `vm`
-context. Inside it, the global object is a fresh one with its own
-built-ins, and the outside globals stay unchanged<Cite id="node-vm" />,
-so neither run can see what the other left behind. (Node warns that
-`vm` is not a security mechanism; here it is only isolation for
-testing.)
+The differential test runs the original and the compiled program each
+in a brand-new `vm` context: inside it, the global object is a fresh
+one with its own built-ins, and the outside globals stay
+unchanged<Cite id="node-vm" />, so neither run can see what the other
+left behind. (Node's own documentation warns that `vm` is not a
+security mechanism; here it is only there to keep two runs apart.) The
+outcome it records is the list of printed lines **and** the uncaught
+error, if any, because a compiled program that prints the same lines
+but no longer throws has still changed what it does.
 
-Run for this chapter, the whole package:
+Here is the whole package, run for this chapter:
 
-```
+```text
 $ npx vitest run packages/frontend-js
- ✓ mini-parser.test.ts (43 tests)
- ✓ differential.test.ts (38 tests)
-      Tests  81 passed (81)
+ ✓ mini-parser.test.ts (47 tests)
+ ✓ differential.test.ts (42 tests)
+      Tests  89 passed (89)
 ```
 
-The 38 are the 36 corpus files plus two round-trip tests (the tiny
-program, and the `export default` cases you are about to meet).
-The 43 are those 36 files and 5 benchmark programs through both
-parsers, plus 2 tests of the mini parser itself. One more fact,
-measured for this chapter: 16 of the 36 corpus files keep every collection as an array of
-objects, and their compiled code is byte-identical to the source. The
-identity property holds inside the differential suite too, even
-though nothing there checks it.
+The 42 are the 40 corpus files plus two round-trip tests (the snippet
+above, and the `export default` cases you are about to meet). The 47
+are those 40 files and the 5 benchmark programs through both parsers,
+plus 2 tests of the hand-written parser on its own.
 
 <Prompts ids={['fresh-context', 'three-tests', 'header-aos']} />
 
-## Five hundred real files
+## Five hundred files of other people's code
 
 A test with one hand-written snippet only covers what its author
-thought of. The identity check needs no expected output, so it scales
-for free: any JavaScript file is a test case. For this chapter, it
-was run over the `.js` and `.mjs` files (minus CommonJS builds) in the engine's
-`node_modules` (514 files from 61 third-party packages):
+thought of. The identity check, however, needs no expected output, so
+it scales for nothing: any JavaScript file at all is a test case, and
+its own text is the answer. For this chapter it was run over every
+`.js` and `.mjs` file in the engine's `node_modules` folder, 515 files
+from 59 third-party packages, and all 515 came back byte-identical.
 
-```
-same: 497   changed: 0   failed: 17
-```
-
-No file was changed. That is the good news: the emitter never
-touched code it had no business touching. But 17 files crashed the
-compiler, every one with the same error, and every one containing
-`export default class`. The smallest program that crashes is one
-line:
+That clean result is the second run. The first time this experiment
+was done, 17 of those files crashed the compiler, every one with the
+same error and every one containing `export default class`; with the
+fix taken out again, the engine here still reproduces it exactly (498
+the same, 0 changed, 17 crashed). Here is the smallest program that
+crashed, next to one that worked:
 
 ```js
-export default class A {}
+export class A {}         // fine
+export default class A {} // crashed:
+// TypeError: Cannot read properties of
+// undefined (reading 'owner')
 ```
 
-```
-TypeError: Cannot read properties of
-undefined (reading 'owner')
+The resolver (the pass from *Lowering JavaScript to VIR* that finds
+out what each name refers to) declared the names in `export`
+declarations, but not in `export default` ones, so the lowering later
+asked for the binding of `A` and got `undefined`. The repository's
+corpus is about arrays and loops, and none of its files had a default
+export, so no existing test could see it. The fix was one condition in
+`resolve.ts`:
+
+```ts
+const d = (s.type ===
+    'ExportNamedDeclaration' ||
+  s.type === 'ExportDefaultDeclaration')
+  && s.declaration ? s.declaration : s;
 ```
 
-The resolver declares names from `export` declarations, but not from
-`export default class`, so the lowering asks for the binding of `A`
-and gets `undefined`. The repository's corpus is about arrays and
-loops; one file has an `export function`, none a default export, so
-no existing test could see it. The fix was one line: `resolve.ts`
-now declares names from `export default` declarations too, and a
-round-trip test for it joined the suite. (An anonymous
-`export default function () {}` crashed the resolver too. The Rust
-port's parity work found it later, and the same test covers it now.)
-Rerun on the same files:
+That is, look inside an `export default` statement for its declaration
+too, and a round-trip test for it joined the suite. (An anonymous
+`export default function () {}`, which has no name to declare at all,
+crashed the resolver as well; the Rust port's parity work found that
+one later, and the same round-trip test covers it now.)
 
-```
-same: 514   changed: 0   failed: 0
-```
-
-The fix was small; finding the bug took a test with no expected
-output and a pile of other people's code. This is the corpus idea of
-chapter 265, and the reason fuzzers like Csmith exist: inputs that no
-test author would have thought of<Cite id="csmith" />.
+The fix was small; finding the bug took a test with no expected output
+and a pile of code nobody on the project had written. That is the
+corpus idea that *Differential testing at scale* builds on, and the
+reason random program generators like Csmith exist: to produce inputs
+no test author would think of<Cite id="csmith" />.
 
 <Prompts ids={['scale-free', 'found-crash']} />
 
 <Callout kind="engine" label="Under the hood">
-Each test here guards a different promise. The round trip guards
-"don't touch what you don't change". The differential test guards
-"change it without changing what it does". Parser equivalence guards
-"the tree is the tree, whichever parser built it". A front-end that
-passes only one of them can still be badly wrong, and Viscosity
-needs all three because it is a source-to-source compiler: its
-output is somebody's code.
+Each test guards a different promise. The round trip guards "don't
+touch what you don't change". The differential test guards "change it
+without changing what it does". Parser equivalence guards "the tree is
+the tree, whichever parser built it". A front-end that passes only one
+of them can still be badly wrong, and Viscosity needs all three because
+it is a source-to-source compiler: its output is somebody's code, which
+they will read, debug and commit.
 </Callout>
 
 ## Your turn
+
+The first exercise is the core one; the second is extra practice.
 
 <Exercise id="diffRun" />
 
@@ -180,17 +263,18 @@ output is somebody's code.
 
 ## What you learned
 
-- An **identity transform** must change nothing. For Viscosity it is
-  checked byte for byte, because the emitter splices instead of
-  printing.
+- An **identity transform** must change nothing. Viscosity checks it
+  **byte for byte**, which only a splicing emitter can promise; a
+  printer can only promise the same tree.
 - The repository's round trip runs the **whole pipeline** on a tiny
-  program with an array, a comment and a trailing newline.
-- The front-end has **three checks**: the round trip, the
-  differential corpus (fresh `vm` contexts, output and errors), and
-  acorn against the mini parser. 75 tests pass.
+  program with an array, a comment and a final newline. TypeScript is
+  the one exception: its types are stripped.
+- The front-end has **three checks**: the round trip, the differential
+  corpus (fresh `vm` contexts, printed lines and errors), and acorn
+  against the hand-written parser. All 89 tests pass.
 - The identity check needs no expected output, so it **scales to any
-  code**. On 514 real files it found a crash on
-  `export default class`, since fixed: all 514 now come back
+  code**. On 515 files of third-party code it once found a crash on
+  `export default class`; with the one-line fix, all 515 come back
   byte-identical.
 
 <Quiz />

@@ -3,45 +3,66 @@ n: 249
 day: 63
 part: VIII
 title: 'Finding collections'
-tagline: 'Before Viscosity can store anything as columns, it has to find the arrays that are really tables: one variable, one array, and records that all have the same fields in the same order. Here is how it scans VIR for them, and every reason it says no.'
+tagline: 'Before Viscosity can store anything as columns, it has to find the arrays that are really tables: one variable, one array, and records that all have the same fields in the same order. Here is how it searches VIR for them, as a small dataflow problem, and every reason it gives for saying no.'
 objectives:
-  - Explain how candidate collections are found from stores of array.empty and array.new.
-  - Trace the worklist over a collection's loads, and name the uses it accepts.
-  - Explain the shape check, including why field order and aliased records cause a bailout.
-  - Read Viscosity's explain output for a rejected collection.
+  - Explain how candidate collections are found from stores of array.empty and array.new, and why var and reassigned names are left out.
+  - Describe collection discovery as a dataflow problem over def-use edges, and trace its worklist on real VIR.
+  - Name the uses of a collection that discovery accepts, including calls to known functions.
+  - Explain the shape check, including why field order and a record used twice cause a bailout.
 introduces: [collection-discovery]
 uses: [vir, record-collection-nodes, ast-to-ir, viscosity-pipeline, layout-strategy, aos-vs-soa, array-of-objects, shape, transition-tree, shape-inference, alias-analysis, aliasing, escape-analysis, escape-sites, worklist, static-analysis, ssa, push, array, object, property, map, set, variables]
 sources: [v8-fast-properties]
 ---
 import DiscoverySteps from '../../../components/diagrams/ch249/DiscoverySteps';
+import RefsFlow from '../../../components/diagrams/ch249/RefsFlow';
 import Playground from '../../../components/playground/Playground';
 
 ## Which arrays are tables?
 
 A program is full of arrays: lists of numbers, of strings, of
-callbacks, of arrays. Only some of them are what chapter 59 called an
-array of structs: a table where every element is a record with the
-same fields. Those are the ones a column layout can help, and the
-first job of the analyses is to find them.
+callbacks, of other arrays. Only some of them are what *AoS vs SoA,
+measured* called an array of structs, a table in which every element is
+a record with the same fields; those are the only ones a column layout
+can help, so the first job of Viscosity's analyses is to find them,
+and to say, for each array it passes over, why.
 
-<Callout kind="intuition">
-A librarian wants to move a shelf of encyclopaedias into a cabinet,
-one drawer per volume. First she checks that it really is one set:
-same series, same format, nothing borrowed out on a long loan, and
-nobody planning to swap the whole shelf for another one tomorrow.
-</Callout>
+<Analogy title="a librarian and a set of encyclopaedias">
+A librarian wants to move a shelf of encyclopaedias into a cabinet
+with one drawer per volume. First she checks that it really is one
+set: the same series and the same format all the way along, no volume
+out on a long loan, and nobody planning to swap the whole shelf for a
+different set tomorrow.
+<span slot="breaks">She can see the shelf and judge it at a glance;
+Viscosity cannot see the array at all, only the code that builds and
+uses it, so it has to reason from every line that touches the array
+instead of looking at it.</span>
+</Analogy>
+
+<Analogy title="tracking a parcel">
+To know everywhere a parcel has been, you follow its tracking history:
+each scan says where it went next, and you follow that scan in turn
+until the trail ends at the front door.
+<span slot="breaks">A parcel is in one place at a time, so its trail
+is a single line; a value in a program can be used in many places at
+once, so the trail branches, and Viscosity keeps a to-do list of every
+branch it has not followed yet.</span>
+</Analogy>
 
 <Callout kind="definition">
 **Collection discovery** finds the variables that hold an array of
-same-shaped records: created empty or from object literals, filled
-only with fresh object literals of one shape, and never replaced.
-Each one found becomes a **collection**; anything that breaks the
-rules adds a **bailout** reason, and the collection is left alone.
+same-shaped records: a `const` or `let` given a fresh array literal,
+filled only with fresh object literals of one shape, and never given a
+different value. Each one found becomes a **collection**; anything that
+breaks the rules adds a **bailout** reason to it, and a collection with
+any reason is left exactly as it is.
 </Callout>
 
-It all runs on VIR, in `core/src/analysis.ts`, so it works for
-Python too. The front-end made this easy on purpose: chapter 246 made
-every array variable a binding, so every use of it is a `load`.
+All of it runs on VIR, in `packages/core/src/analysis.ts`, so it works
+for the Python front-end too. *Lowering JavaScript to VIR* made this
+easy on purpose: a variable whose initial value is an array literal
+always becomes a binding, never an SSA value, so every place that
+reads it is an explicit `load` instruction, and a load is something an
+analysis can collect.
 
 <Prompts ids={['cd-what', 'cd-vir']} />
 
@@ -61,130 +82,169 @@ for (const binding of m.bindings) {
   if (arrayStores.length === 0) continue;
   const c = newCollection(binding,
     inst(arrayStores[0].args[0]));
-  if (st.length > 1)
-    c.bailouts.push(`"${binding.name}"` +
-      ` is reassigned (line …)`);
-  // array.new: every element must
-  // be a record.new
+  if (st.length > 1) bail(c, 'reassigned');
 }
 ```
 
-A candidate is a `const` or `let` that is, at least once, given a
-fresh array literal. Note what is *not* considered: a `var` is
-skipped outright, and `explain` reports "No arrays of objects found."
-for a file whose only table is declared with `var`.
+Line by line: a binding that is not a `const` or a `let` is skipped
+outright; `st` is every store into it; `arrayStores` keeps the stores
+whose value is an `array.empty` (`[]`) or an `array.new` (`[a, b]`);
+with none, this name never holds a fresh array, so it is skipped; with
+one, it becomes a candidate collection, made from that array; and if
+the name has **any** second store, it may not always hold this array,
+so the candidate gets a bailout at once. (The real message names the
+line of the last store.) For an `array.new`, each element must also be
+a `record.new`, an object literal.
 
-Any second store means the variable may not always hold this array.
-Real output for a corpus file that ends with `ps = [];`:
+<Examples of="collection-discovery">
 
+```text
+const ps = [];  … ps.push({ x: i });
+ps (line 1) {x} → kept as array of
+  objects
+  · no loop reads or writes its fields,
+    so a new layout cannot pay off
 ```
-ps (line 2) {x} → kept as array of objects
-  · unsafe: "ps" is reassigned (line 5),
-    so it may not always hold this array
+
+```text
+const xs = [1, 2, 3];
+xs (line 1) {} → kept as array of
+  objects
+  · unsafe: line 1: an element of the
+    array literal is not a plain object
+    literal
 ```
 
-(Lines of `explain` output are wrapped here to fit.) For
-`const ps = [{ x: 1, y: 2 }, …]`, the elements of the `array.new`
-must all be `record.new`; `[1, 2]` is a candidate that is rejected at
-once with "an element of the array literal is not a plain object
-literal".
+```text
+var ps = [];  … (the same program)
+No arrays of objects found.
+```
 
-<Prompts ids={['cd-candidate', 'cd-var', 'cd-reassigned']} />
+</Examples>
 
-## Step 2: follow every load
+(Here and below, the first line is the program and the rest is the
+real output of `viscosity explain`, wrapped to fit the page.) The
+first is a collection: a `const`, one store, records pushed in. It is
+not *transformed*, because nothing reads its fields in a loop, but that
+is the cost model's decision, a later chapter's business; discovery
+found it. The second is a candidate that fails at once, since `1` is
+not an object literal. The third is the surprise: the same table
+declared with `var` is never a candidate, so explain finds nothing to
+talk about. The rule is a plain `kind` check in the code above (a
+`var` can be declared twice and is visible before its own line, which
+makes "the one array this name holds" harder to pin down, and leaving
+it out keeps the analysis small).
 
-Next, every load of the collection goes on a worklist, and each use
-of each load is checked against a short list of things Viscosity
-knows how to rewrite:
+<Prompts ids={['cd-var', 'cd-reassigned']} />
+
+## Step 2: following the fact "refers to ps"
+
+A candidate's loads are not the end of the story: a load can be passed
+to a function, where the parameter becomes another name for the same
+array. So discovery is a small **dataflow problem**, in the sense of
+*Dataflow analysis*: each value in VIR either refers to the collection
+or does not (a lattice with two points), the fact starts at the loads,
+and it flows forward along **def-use edges** (from the instruction that
+makes a value to each instruction that uses it). It is a *sparse*
+problem, because VIR is in SSA form and every value already has its
+list of uses, so there is no need to walk blocks and carry sets
+between them. Here is the flow for a program in which `step(qs)` is
+called twice with `ps`:
+
+<Figure takeaway="The fact flows from the store, through every load, and across both calls into the parameter." caption="Real VIR value numbers. Every load of ps refers to it; both calls of step pass ps, so the parameter qs (%0) refers to it too, and its uses inside step are checked like any other.">
+  <RefsFlow />
+</Figure>
+
+<Formal title="The values that refer to a collection">
+
+```text
+Refs(c) is the smallest set where:
+  load c  ∈ Refs(c)
+  v ∈ Refs(c), f(…v at k…) a call,
+  f known, every call passes c at k
+      ⇒  param_k(f) ∈ Refs(c)
+```
+
+<span slot="read">Refs of c, the values that refer to collection c, is
+the smallest set with two properties: every load of c is in it; and
+whenever a value in it is passed as argument k to a known function
+(declared once, only ever called directly), and every call of that
+function passes c in position k, then that function's parameter k is
+in it as well. "Smallest" means nothing else gets in, which is exactly
+what a worklist computes, as in *Fixpoints and worklists*.</span>
+</Formal>
+
+The worklist starts with every load and pops one at a time; for each
+use of the popped value it asks whether the use is on a short list of
+things Viscosity knows how to rewrite:
 
 - `ps.length`: a `field.get` of `length`, fine.
 - `ps.push(r)`: exactly one argument, and `r` must be a fresh
-  `record.new`. Its fields are checked against the shape.
-- `ps[i]`: an `index.get`, giving an element whose own uses are
-  checked later (chapter 252).
-- passed to a function whose every call site passes this same
-  collection: followed into the parameter (also chapter 252).
+  `record.new`, whose fields are then checked against the shape.
+- `ps[i]`: an `index.get`, which hands out an element whose own uses
+  are checked later (in *Proving it safe*).
+- passed to a known function whose every call passes this same
+  collection: the parameter joins the worklist, as in the figure.
 
-Anything else is a bailout, with a reason. These are the real
-messages for three small cases:
-
-```
-pushes something that is not a fresh
-  object literal
-push with 2 arguments (only one record
-  at a time is supported)
-uses .map on the array (only .length
-  and .push are supported)
-```
-
-Step through the scan on a small program, with its real VIR:
+Anything else is a bailout, with a reason. Step through the scan on a
+smaller program, with its real VIR:
 
 <DiscoverySteps client:visible />
 
-The worklist pops from the end, so the *last* push in the program
-sets the shape. That is why the mismatch message reads
+Because the worklist pops from the end, the *last* push in the program
+is met first and sets the shape. That is why a mismatch reads
 `{x, y} vs {y, x}` and blames line 2: the record on line 3 came first.
+The verdict never depends on the order, only the wording does.
 
-<Prompts ids={['cd-worklist', 'cd-push-fresh', 'cd-other-use']} />
+<Prompts ids={['cd-dataflow', 'cd-worklist', 'cd-push-fresh', 'cd-other-use']} />
 
 ## The shape check
 
 Every record that enters the collection, from the literal or from a
-push, goes through `setShape`:
-
-```ts
-const setShape = (c, r, where) => {
-  if (c.fields.length === 0)
-    c.fields = [...r.fields];
-  else if (JSON.stringify(c.fields)
-      !== JSON.stringify(r.fields))
-    c.bailouts.push(`${where}: records ` +
-      `with different fields or ` +
-      `field order (…)`);
-  if (usesOf(r.id).length !== 1)
-    c.bailouts.push(`${where}: the new ` +
-      `record is also referenced ` +
-      `elsewhere, so it could be aliased`);
-};
-```
-
-Two rules. First, the **same fields in the same order**. The emitter
-turns `push({ x: a, y: b })` into `push(a, b)`, positional arguments
-in column order, so order is part of the shape. It is for V8 too:
-objects that get the same properties in a different order end up
-with different hidden classes<Cite id="v8-fast-properties" />.
-
-Second, the record must be **used exactly once**, by the push. A
-corpus file does this:
+push, goes through one small function, `setShape`, which applies two
+rules (*Record shapes* shows its code in full). First, the first record sets the field list, and every later one must
+match it exactly, order included. Order is part of the shape because the
+emitter turns `push({ x: a, y: b })` into `push(a, b)`, arguments in
+column order; it is part of V8's idea of shape too, where objects that
+get the same properties in a different order end up with different
+hidden classes<Cite id="v8-fast-properties" />. Second, the record must be **used exactly once**, by the push itself. Here it
+is as a spot the difference:
 
 ```js
+// accepted: r is used once, by push
+const r = { x: i };
+ps.push(r);
+
+// refused: r is also written later
 const r = { x: i };
 ps.push(r);
 if (i === 5) r.x = 500;
 ```
 
-After a layout change there is no object `r` any more, only a slot
-in a column, so the write `r.x = 500` would go nowhere. The `r` is an
-SSA value, so `push` and `field.set` use the same `record.new`, which
-now has two uses:
-
-```
-ps (line 2) {x} → kept as array of objects
-  · unsafe: line 6: the new record is also
-    referenced elsewhere, so it could be
-    aliased
+```text
+· unsafe: line 6: the new record is also
+  referenced elsewhere, so it could be
+  aliased
 ```
 
-Last, a candidate that never receives a single record, like a `[]`
-that is only read, gets "no records are ever added, so there is
-nothing to lay out".
+The first is fine, because `r` is an SSA value whose only use is the
+push, so it is the same as pushing the literal directly. In the second
+(trimmed from the corpus file `record_shared.js`), the `record.new`
+has two uses, the push and the `field.set`; after a layout change
+there would be no object `r` any more, only a slot in a column, so the
+write `r.x = 500` would go nowhere. In the language of *Alias
+analysis*, `r` and `ps[5]` must alias, and Viscosity refuses any
+record that has a second name. Last, a candidate that never receives a
+single record, such as a `[]` that is only measured, gets "no records
+are ever added, so there is nothing to lay out".
 
-<Prompts ids={['cd-order', 'cd-alias', 'cd-empty']} />
+<Prompts ids={['cd-order', 'cd-alias']} />
 
 ## Try it
 
-Swap the field order in one push, push the same object twice, or
-add `ps = [];` at the end, and read the reasons:
+Swap the field order in the push, push the same object twice, add a
+`ps.filter(...)` call, or add `ps = [];` at the end (after changing
+`const` to `let`), and read the reasons:
 
 <Playground client:visible title="Is it a collection?" initial={`const ps = [];
 for (let i = 0; i < 200; i++) {
@@ -197,17 +257,17 @@ for (let i = 0; i < ps.length; i++) {
 console.log(s);`} />
 
 <Callout kind="engine" label="Under the hood">
-Discovery is a cheap, syntactic first filter. It never proves that a
-collection is *safe* to change. That takes following every element
-(chapter 252) and an estimate of whether it pays (chapter 254). What
-it buys is the list of candidates, their shapes, and every place that
-creates, pushes, indexes or measures them: exactly the instructions
-the emitter in chapter 247 needs to rewrite. Notice how much depends
-on chapter 246's choices: without array variables as bindings, there
-would be no loads to put on the worklist.
+Discovery is a cheap first filter, and it never proves that a
+collection is *safe* to change; that takes following every element
+(*Proving it safe*) and an estimate of whether it pays (*The cost
+model*). What it buys is the list of candidates, their shapes, and
+every instruction that creates, pushes, indexes or measures them,
+which is exactly the list of places the emitter has to rewrite.
 </Callout>
 
 ## Your turn
+
+The first exercise is the core one; the second is extra practice.
 
 <Exercise id="findCollections" />
 
@@ -215,14 +275,16 @@ would be no loads to put on the worklist.
 
 ## What you learned
 
-- **Collection discovery** finds `const`/`let` variables given a fresh
-  array literal, and treats any second store as a reassignment
-  bailout. `var` is not considered.
-- A **worklist** of loads checks every use: `.length`, `push` of one
-  fresh record, `ps[i]`, and calls into known functions. Anything
-  else is a bailout with a reason.
+- **Collection discovery** starts from `const`/`let` names given a
+  fresh array literal; a second store is a reassignment bailout, and
+  `var` is never considered.
+- It is a sparse **dataflow problem**: the fact "refers to this
+  collection" flows from the loads along def-use edges, and into the
+  parameter of a **known function** when every call passes the same
+  collection. A worklist computes the smallest such set.
+- Each use must be `.length`, `push` of one fresh record, `ps[i]`, or
+  such a call; anything else is a bailout with a reason.
 - **setShape** requires the same fields in the same order, and a
-  record used only by its push, so nothing can alias it.
-- Every rejection is reported by `explain`, in words.
+  record used only by its push, so that nothing can alias it.
 
 <Quiz />

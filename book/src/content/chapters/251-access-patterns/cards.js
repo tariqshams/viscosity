@@ -109,12 +109,25 @@ test('no accesses, no rows', () => {
       'Turn `null` into `\'none\'` with `a.loop ?? \'none\'`, and create the row the first time you see a key.',
       'Pick the reads list or the writes list from `a.kind`, then push the field only if it isn’t there yet.',
     ],
-    walkthrough: `This is Viscosity’s \`byLoop\` map in miniature.
+    walkthrough: `**How to think about it.** This is Viscosity's \`byLoop\` map in miniature. The answer is a table with one row per loop, so the natural shape is an object keyed by loop name. Each access then needs three small decisions: which row (its loop, or \`none\`), which list in that row (reads or writes), and whether the field is already there.
 
-- **One row per loop.** The row is created lazily, the first time an access in that loop turns up. Using the innermost loop as the key means two accesses in the same loop always land in the same row, even if they are on different lines.
-- **Reads and writes are kept apart.** \`x += vx\` puts x in both lists. Keeping them separate matters later: a loop that only reads a column can’t invalidate anything, and a hot/cold split (chapter 261) cares which fields are used together.
-- **Sets, not counts.** Viscosity uses \`Set\`; arrays plus \`includes\` give the same result here with a predictable order for the tests. The row says *which* fields, not how often: \`ps[i].x\` twice on one line is still just x.
-- **Nothing is dropped yet.** Accesses outside every loop still get a \`none\` row. It is the planner that later ignores depth-0 rows.`,
+**The solution, line by line.**
+
+- \`const table = {};\` starts with no rows; rows appear only for loops that have accesses, so an empty input gives \`{}\`.
+- \`for (const a of accs) {\` visits the accesses in program order, which is what makes "the order first seen" come out right.
+- \`const key = a.loop ?? 'none';\` turns a \`null\` loop into the key \`'none'\`. \`??\` only replaces \`null\` and \`undefined\`, so a loop named \`'L0'\` would be kept as it is.
+- \`if (!table[key]) table[key] = { reads: [], writes: [] };\` creates the row the first time this loop turns up. Keying by the innermost loop means two accesses in the same loop always share a row, even on different lines.
+- \`const list = a.kind === 'read' ? table[key].reads : table[key].writes;\` picks the list this access belongs in. \`x += vx\` produces a read of \`x\` and a write of \`x\`, so \`x\` ends up in both lists, which is correct.
+- \`if (!list.includes(a.field)) list.push(a.field);\` adds the field only if it is new, so the list behaves like a set that remembers its order.
+- \`return table;\` hands back every row, including \`none\`.
+
+**Why keep reads and writes apart, and keep \`none\`?** A loop that only reads a column cannot change anything another loop sees, and *Hot/cold splitting* cares which fields are used together, so the two lists carry different information. The \`none\` row is kept because deciding that depth-0 accesses do not matter is the planner's job, not the analysis's: the analysis records facts, the planner judges them.
+
+**Common wrong attempts.**
+
+- Pushing the field every time it is seen: a field read twice then appears twice, but the row is a *set* of fields (Viscosity uses \`Set\`; arrays with \`includes\` give the same answer in a predictable order).
+- Skipping accesses whose loop is \`null\`: the table loses the \`none\` row the tests expect.
+- Using one list for reads and writes: \`x += 1\` and \`s += x\` would then look the same.`,
     wrong: [
       {
         code: `function loopTable(accs) {
@@ -191,7 +204,21 @@ test('depth 0 is not reported', () => {
       'A `Set` built from reads then writes keeps first-seen order and drops duplicates.',
       'Build the string from its parts; check depth 0 first.',
     ],
-    walkthrough: `This is the first line of \`describe\` in \`plan.ts\`: \`new Set([...l.reads, ...l.writes])\`, so a field that is read and written counts once. “Touches k of F” is the number the cost model cares about: the smaller the fraction, the fewer bytes a struct of arrays needs to stream through the cache for that loop. Depth-0 rows are filtered out before \`describe\` ever sees them.`,
+    walkthrough: `**How to think about it.** This is the first line of \`describe\` in \`plan.ts\`. The work is mostly building a string, but one detail decides the number in it: a field that is both read and written must be counted once. So build the list of touched fields first, without duplicates, and then assemble the sentence from its parts.
+
+**The solution, line by line.**
+
+- \`if (row.depth === 0) return null;\` drops rows outside every loop first, as the planner does before \`describe\` ever sees them.
+- \`const { reads, writes } = row;\` takes the two lists out of the row by name (destructuring).
+- \`const fs = [...new Set([...reads, ...writes])];\` joins reads then writes into one array, turns it into a \`Set\` (which drops repeats but keeps the order things were first added), and spreads it back into an array. For reads \`['vy', 'y']\` and writes \`['y', 'x']\` this gives \`['vy', 'y', 'x']\`.
+- The \`return\` builds \`'loop at line ' + row.line + ' in ' + row.func + '() touches ' + fs.length + ' of ' + F + ' fields (' + fs.join(', ') + ')'\`, where \`join(', ')\` puts a comma and a space between the field names.
+
+**Why it matters.** "Touches k of F" is the number the cost model cares about: the smaller the fraction, the fewer bytes a struct of arrays needs to stream through the cache for that loop.
+
+**Common wrong attempts.**
+
+- Concatenating the lists without removing repeats: \`x += 1\` then "touches 2 of 3 fields (x, x)".
+- Sorting the fields: the real output lists them in the order the analysis met them, so a sorted list would not match \`explain\`.`,
     wrong: [
       {
         code: `function describeLoop(row, F) {
@@ -249,19 +276,11 @@ export const quiz = [
   {
     q: 'Why does Viscosity use “inside a loop” rather than measured time to judge hotness?',
     options: [
-      { t: 'Measuring is impossible in JavaScript', why: 'It isn’t; V8 does it constantly, and chapter 262 does it for Viscosity.' },
+      { t: 'Measuring is impossible in JavaScript', why: 'It isn’t; V8 does it constantly, and the chapter Profile-guided optimization does it for Viscosity.' },
       { t: 'Loops are always hot', why: 'They aren’t: a loop of ten trips is cheap. It is a weak sign, but one that can be checked statically.' },
       { t: 'It compiles before the program has run, so it can only read hotness off the code', correct: true, why: 'Unlike V8, which watches the running program.' },
       { t: 'Depth is the same as time', why: 'Depth is a hint, not a measurement. Viscosity records it but doesn’t yet weigh loops with it.' },
     ],
   },
-  {
-    q: 'What does a known trip count change in Viscosity today?',
-    options: [
-      { t: 'It ranks loops by hotness', why: 'The planner doesn’t yet weigh loops against each other.' },
-      { t: 'It proves accesses in bounds', why: 'Bounds come from a separate check: `i < ps.length` guarding the access.' },
-      { t: 'Nothing: it is computed and discarded', why: 'It is used, for one thing.' },
-      { t: 'The size estimate, when a `push` runs inside loops with known trips', correct: true, why: 'For example 1000 pushes in `i < 1000` give “about 1000 elements”.' },
-    ],
-  },
+
 ];

@@ -9,10 +9,6 @@ export const prompts = {
     q: 'One field of a collection sometimes holds a string. Does Viscosity bail out?',
     a: 'No. That field gets a plain array column; the numeric fields still get typed ones.',
   },
-  'rs-first': {
-    q: 'Where does Viscosity get a collection’s field list from?',
-    a: 'From its object literals (`record.new` in VIR): the first one it meets sets the list, and every other one must match it.',
-  },
   'rs-order': {
     q: 'Why must `{ x, y }` and `{ y, x }` count as different shapes?',
     a: 'The rewritten `push` is positional: slot k of the literal goes into column k. (And JavaScript itself can observe property order.)',
@@ -36,10 +32,6 @@ export const prompts = {
   'ss-addprop': {
     q: 'The records are `{x, y}`. What does Viscosity say about `ps[i].z = 1`?',
     a: '“adds a new property .z to an element”: a bailout, because there is no column for z.',
-  },
-  'ss-v8': {
-    q: 'Why can V8 live with shapes that change, when Viscosity can’t?',
-    a: 'V8 decides while the program runs and can move objects to new hidden classes later. Viscosity fixes one layout before the program runs.',
   },
 };
 
@@ -136,14 +128,29 @@ test('no literals: no shape', () => {
       'Keep one flag per field, starting at `true`, that means “every value so far was a number”.',
       'For each literal: check the length, then each position’s name. Clear the flag when a value isn’t a number. Build `typed` at the end with `filter`.',
     ],
-    walkthrough: `This is \`setShape\` plus the column half of the numeric fixpoint, without the fixpoint.
+    walkthrough: `**How to think about it.** This is \`setShape\` plus the column half of the numeric fixpoint, without the fixpoint. Two separate questions are being asked of the same literals. The first is yes or no: do they all have the same fields in the same order? The second is per field: was every value in this field a number? So keep the shape from the first literal, keep one true/false flag per field, and walk every literal once, answering both.
 
-- **The first literal sets the shape.** Its field names, in order, are the candidate list. Every other literal must match it exactly, so you compare lengths first (an extra or missing field) and then the name at each position (a different field, or the same fields in another order).
-- **Types are per field and can only fall.** Each flag starts optimistic (“number”) and is cleared by the first value that isn’t one. One \`'far'\` is enough. Nothing ever sets a flag back to \`true\`. This is the two-level lattice from chapter 195 again.
-- **A string doesn’t break the shape.** The answer for \`[x: 5, y: 'far']\` is still a shape; \`y\` just isn’t in \`typed\`, so it would get a plain array column.
-- **Why \`null\` isn’t typed:** a \`Float64Array\` would store \`null\` as \`0\`, which is a different value.
+**The solution, line by line.**
 
-The real analysis has one more complication: a value can be a variable or an expression, not a constant, so “is it a number?” is itself a fact computed by the fixpoint. Here \`typeof\` stands in for that.`,
+- \`if (recs.length === 0) return null;\` handles "no literals, no shape" first, so \`recs[0]\` is safe below.
+- \`const fields = recs[0].map(p => p[0]);\` takes the field names of the first literal, in order: \`[['x', 1], ['y', 'a']]\` gives \`['x', 'y']\`.
+- \`const num = fields.map(() => true);\` makes one flag per field, all starting optimistic ("so far, always a number").
+- \`for (const r of recs) {\` visits every literal, including the first (whose values still need checking).
+- \`if (r.length !== fields.length) return null;\` rejects an extra or a missing field before looking at names; without it, a literal that is a prefix of the shape would pass.
+- \`for (let k = 0; k < r.length; k++) { const [f, v] = r[k];\` takes the name and value at position \`k\`.
+- \`if (f !== fields[k]) return null;\` rejects a different name at that position, which also catches the same fields in another order.
+- \`if (typeof v !== 'number') num[k] = false;\` lets the flag fall. Nothing ever sets it back to \`true\`: facts only fall, as in the two-level lattice of the chapter.
+- \`const typed = fields.filter((f, k) => num[k]);\` keeps, in field order, the fields whose flag survived, and \`return { fields, typed };\` reports the shape.
+
+**Why the tests come out as they do.** A string in \`y\` does not break the shape; \`y\` is simply missing from \`typed\`, so it would get a plain column. \`null\` is not typed because \`typeof null\` is \`'object'\`, and a \`Float64Array\` would store it as \`0\`, a different value.
+
+**Common wrong attempts.**
+
+- Sorting the names before comparing: \`{y, x}\` is then accepted as \`{x, y}\`, and the positional \`push\` would put values in the wrong columns.
+- Looping only over each literal's own slots, with no length check: a literal with a missing field passes.
+- Taking the types from the first literal only: a later \`'far'\` must make the field plain.
+
+The real analysis has one more complication: a value can be a variable or an expression, not a constant, so "is it a number?" is itself a fact computed by the fixpoint; here \`typeof\` stands in for it.`,
     wrong: [
       {
         code: `function unifyRecords(recs) {
@@ -233,9 +240,25 @@ test('the first problem wins', () => {
       'Check `delete` before anything else: removing a known field changes the shape too.',
       'For `get` and `set`, a field in `fields` is fine. Otherwise build the message from the op.',
     ],
-    walkthrough: `Viscosity’s rule for elements is an allow-list: a read of a known field and a write of a known field. Everything else either changes the shape (adding or deleting a property) or needs a column that doesn’t exist (reading a missing field).
+    walkthrough: `**How to think about it.** Viscosity's rule for elements is an allow-list: a read of a known field and a write of a known field. Everything else either changes the shape (adding or deleting a property) or needs a column that does not exist (reading a missing field). So walk the uses in order, return a message for the first one that is not on the list, and return \`null\` if you reach the end.
 
-The order of the checks matters for \`delete\`: deleting \`y\` names a field that *is* in the shape, so a solution that skips known fields first would let it through. In the real engine \`delete\` isn’t modelled at all; it becomes an \`opaque\` instruction, and every operand of an opaque instruction is assumed to escape.`,
+**The solution, line by line.**
+
+- \`for (const u of uses) {\` visits the uses in program order, so the first problem wins.
+- \`const at = 'line ' + u.line + ': ';\` builds the start of the message once.
+- \`const ok = fields.includes(u.field);\` asks whether the field is part of the shape.
+- \`if (u.op === 'delete') return at + 'deletes .' + u.field;\` comes **before** the known-field check: deleting \`y\` names a field that *is* in the shape, and it still changes the shape.
+- \`if (ok) continue;\` lets reads and writes of known fields through.
+- \`if (u.op === 'get') return at + 'reads .' + u.field;\` reports a read of a missing field.
+- \`return at + 'adds .' + u.field;\` is all that is left: a write of a missing field, which would add a property.
+- \`return null;\` after the loop means every use was allowed.
+
+**Common wrong attempts.**
+
+- Checking \`ok\` first and skipping known fields: \`delete ps[i].y\` is then let through, though it removes a column's worth of data from one element.
+- Treating a read of a missing field as harmless because it only reads: after the rewrite there is no column \`hp\` to read, and the original program's \`undefined\` would have to be produced some other way, so Viscosity refuses it.
+
+In the real engine \`delete\` is not modelled at all: it becomes an \`opaque\` instruction, and every operand of an opaque instruction is assumed to escape.`,
     wrong: [
       {
         code: `function stableUses(fields, uses) {
@@ -276,15 +299,7 @@ export const quiz = [
       { t: 'V8 would deoptimize', why: 'This is Viscosity’s own rule about its own rewrite, not a V8 behaviour.' },
     ],
   },
-  {
-    q: '`shape_mismatch.js` pushes `{x, y}` on line 4 and `{y, x}` on line 5. Why does explain say the shape is `{y, x}`?',
-    options: [
-      { t: 'It sorts fields in reverse', why: 'Fields are never sorted; order is part of the shape.' },
-      { t: 'Its worklist takes the last use of `ps` first, so it meets line 5’s literal first', correct: true, why: 'The verdict doesn’t depend on which literal comes first, only the wording of the message does.' },
-      { t: 'Line 5 runs more often', why: 'The analysis doesn’t count executions.' },
-      { t: 'The later literal always wins', why: 'No literal “wins”: any disagreement is a bailout.' },
-    ],
-  },
+
   {
     q: 'The numeric fixpoint is cut off after 1000 rounds without converging. What does Viscosity conclude?',
     options: [

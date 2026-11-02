@@ -26,9 +26,9 @@ const STATES: S[] = [
   { line: 0, rec: null, shape: [], types: [], verdict: 'none', note: 'ps starts empty, so it has no shape yet. Viscosity will learn the shape from the object literals that go into it.' },
   { line: 2, rec: [{ f: 'x', v: 'i' }, { f: 'y', v: '0' }], shape: ['x', 'y'], types: ['num', 'num'], verdict: 'ok', note: 'The first literal sets the shape: fields x then y. Both values are numbers (i counts, 0 is a constant), so both columns start out typed.' },
   { line: 3, rec: [{ f: 'x', v: '5' }, { f: 'y', v: "'far'", bad: true }], shape: ['x', 'y'], types: ['num', 'any'], verdict: 'ok', note: 'Same fields, same order: the shapes unify. But slot 1 holds a string, so y can no longer be a Float64Array. It falls to a plain array column. The shape survives; only y’s type changed.' },
-  { line: 4, rec: [{ f: 'y', v: '1', bad: true }, { f: 'x', v: '2', bad: true }], shape: ['x', 'y'], types: ['num', 'any'], verdict: 'bail', note: 'The same two fields, in the other order. Viscosity compares the lists as written ({y, x} vs {x, y}) and they differ, so this is a bailout: the collection stays an array of objects.' },
+  { line: 4, rec: [{ f: 'y', v: '1', bad: true }, { f: 'x', v: '2', bad: true }], shape: ['x', 'y'], types: ['num', 'any'], verdict: 'bail', note: 'The same two fields, in the other order. Viscosity compares the lists as written and they differ, so this is a bailout: the collection stays an array of objects. (The real message reads ({x, y} vs {y, x}), because the worklist meets the last push first.)' },
   { line: 4, rec: [{ f: 'y', v: '1', bad: true }, { f: 'x', v: '2', bad: true }], shape: ['x', 'y'], types: ['num', 'any'], verdict: 'bail', wrong: true, note: 'Why so strict? The rewrite copies slot k of each literal into column k. Done blindly here, the 1 meant for y would land in x. Accepting reordered literals would need a second, smarter path, and JavaScript can tell the two orders apart anyway.' },
-  { line: 3, rec: null, shape: ['x', 'y'], types: ['num', 'any'], verdict: 'soa', drop: true, note: 'Delete the last push and every literal agrees. The record shape is {x: number, y: anything}: a Float64Array for x and a plain array for y. explain says exactly that.' },
+  { line: 3, rec: null, shape: ['x', 'y'], types: ['num', 'any'], verdict: 'soa', drop: true, note: 'Delete the last push and every literal agrees: the record shape is {x: number, y: anything}, a Float64Array for x and a plain array for y. (This short program never reads the fields in a loop, so the cost model keeps it as it is; add a loop doing ps[i].x += 1 and explain reports exactly these two columns.)' },
 ];
 
 const COL = { x: tok('f1'), y: tok('f2') } as Record<string, string>;
@@ -69,9 +69,9 @@ export default function ShapeSteps() {
           </g>
         )}
         <T x={200} y={210} size={14} weight={700} anchor="middle" fill={st.verdict === 'bail' ? tok('danger') : st.verdict === 'soa' ? tok('safe') : tok('muted')}>
-          {st.verdict === 'bail' ? 'unsafe: different field order' : st.verdict === 'soa' ? 'ps → struct of arrays' : st.verdict === 'ok' ? 'shapes unify so far' : 'no verdict yet'}
+          {st.verdict === 'bail' ? 'unsafe: different field order' : st.verdict === 'soa' ? 'one shape: x typed, y plain' : st.verdict === 'ok' ? 'shapes unify so far' : 'no verdict yet'}
         </T>
-        {st.verdict === 'bail' && <T x={200} y={232} size={11} mono anchor="middle" fill={tok('muted')}>{'{y, x} vs {x, y}'}</T>}
+        {st.verdict === 'bail' && <T x={200} y={232} size={11} mono anchor="middle" fill={tok('muted')}>{'({x, y} vs {y, x})'}</T>}
       </Svg>
     </StepFrame>
   );

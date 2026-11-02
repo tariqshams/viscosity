@@ -30,16 +30,16 @@ export const prompts = {
     a: 'Round trip: untouched code stays byte-identical. Differential: compiled code behaves the same. Parser equivalence: acorn and mini give the same output.',
   },
   'header-aos': {
-    q: 'What did 16 of the 36 corpus files show about the identity property?',
-    a: 'Every collection in them stays an array of objects, and their compiled code is byte-identical to the source.',
+    q: 'Of the 40 differential-corpus files, 16 keep every collection as an array of objects. What does that show about the identity property?',
+    a: 'All 16 come back byte-identical, so the identity property holds inside the differential suite too, even though nothing there checks it.',
   },
   'scale-free': {
     q: 'Why does the identity check scale to any pile of real code?',
     a: 'It needs no expected output: for a file with nothing to transform, the file itself is the answer.',
   },
   'found-crash': {
-    q: 'What did the first round trip over 514 third-party files find?',
-    a: 'No file was changed, but 17 crashed the compiler, all on `export default class`, which the resolver didn’t declare. Since fixed, all 514 round-trip byte-identical.',
+    q: 'What did the first round trip over 515 third-party files find?',
+    a: 'No file was changed, but 17 crashed the compiler, all on `export default class`, which the resolver didn’t declare. Since fixed, all 515 round-trip byte-identical.',
   },
 };
 
@@ -122,12 +122,28 @@ test('a missing line is found', () => {
       'Two outcomes agree when the errors are `===` and the line lists have the same length and the same lines.',
       'Loop over the programs with their index, and return the first index where the outcomes disagree.',
     ],
-    walkthrough: `This is \`runIsolated\` and the \`toEqual\` comparison from Viscosity’s differential test, at toy size.
+    walkthrough: `**How to think about it.** This is Viscosity's \`runIsolated\` plus the \`toEqual\` comparison from its differential test, at toy size. Before writing anything, decide what "behaves the same" means. Two programs that print the same lines but where one throws and the other does not are *not* the same, so the outcome of a run has two parts: the list of lines printed, and the error it ended with (or \`null\`). Once \`outcome\` captures both, \`diffRun\` is a loop that compares two outcomes per program.
 
-- **Errors are part of the outcome.** A transform that turns a \`throw\` into a \`log\` might print the same first lines, but the program ends differently. So \`outcome\` catches the error and records its name and message, and keeps the lines printed before it.
-- **Compare everything.** Same number of lines, same lines in order, same error. Comparing only output misses the lost error; comparing only errors misses the changed sum.
-- **Return the index.** The failing program is what you need to debug, and it becomes a new corpus test.
-- **Isolation.** \`new Function\` gives each program its own local scope, but not its own globals: a program that wrote \`globalThis.x\` would leak into the next one. The real test uses a fresh \`vm\` context per run for exactly that reason.`,
+**The solution, line by line.**
+
+- \`function outcome(code) {\` takes the program text.
+- \`const out = [];\` is the list of printed lines; it is filled as the program runs, so lines printed *before* an error are kept.
+- \`const log = (...a) => out.push(a.join(' '));\` is the program's print function: \`...a\` gathers every argument into an array, and \`join(' ')\` turns \`log("a", 2)\` into the single line \`"a 2"\`.
+- \`try { new Function('log', code)(log); return { out, error: null }; }\` builds a function whose one parameter is called \`log\` and whose body is the program, calls it with our \`log\`, and, if it finishes, reports no error.
+- \`catch (e) { const error = e.name + ': ' + e.message; return { out, error }; }\` runs when the program throws. \`e.name\` is the error's kind (\`TypeError\`) and \`e.message\` its text (\`boom\`), so the error becomes \`"TypeError: boom"\`; \`out\` still holds the lines printed before the throw.
+- \`function same(a, b) {\` compares two outcomes: \`a.error === b.error\` checks the errors (two \`null\`s are equal), \`a.out.length === b.out.length\` checks that the same number of lines was printed, and \`a.out.every((l, i) => l === b.out[i])\` checks each line against the line at the same position.
+- \`function diffRun(ps, transform) {\` loops over the programs with their index \`i\`.
+- \`const a = outcome(p); const b = outcome(transform(p));\` runs the original and the transformed version.
+- \`if (!same(a, b)) return i;\` returns the first program that disagrees, and \`return -1;\` after the loop says that all of them agreed.
+
+**Why each test passes.** The identity transform \`(p) => p\` gives equal outcomes everywhere, so \`-1\`. Changing \`i < 4\` to \`i < 3\` makes program 1 print \`3\` instead of \`6\`. Changing \`throw\` to \`log\` makes program 2 finish with no error. Changing \`boom\` to \`bang\` keeps an error but changes its message. Dropping \`log(2)\` makes the line lists different lengths.
+
+**Common wrong attempts.**
+
+- Swallowing the error (\`catch (e) {}\`) and comparing only the printed lines: the original's \`TypeError\` and the transformed program's normal finish then look identical, so a transform that silently stops a program failing passes.
+- Recording every error as the same word, such as \`'error'\`: a different message, or a different kind of error, then passes. Viscosity's bounds checks exist precisely so that an out-of-range access throws the *same* error as before, so the message matters.
+- Comparing \`out.join()\` strings: \`["a,b"]\` and \`["a", "b"]\` both join to \`"a,b"\`, so two different outputs can look equal. Compare line by line instead.
+- Using \`new Function\` and believing the runs are isolated: each program gets its own local scope, but not its own globals, so a program that sets \`globalThis.x\` leaks into the next one. The real test uses a fresh \`vm\` context per run for exactly that reason.`,
     wrong: [
       {
         code: `function outcome(code) {
@@ -222,11 +238,24 @@ test('a prelude added at the top', () => {
       'Stop at the end of `a`: if `b` is longer, `b[i]` exists but `a[i]` doesn’t, so that is the difference.',
       'The line is one more than the number of newlines before the offset; the column is the distance from the last newline, plus one.',
     ],
-    walkthrough: `A byte-for-byte test should fail with a location, not just “expected … to be …”, especially when the difference is invisible, like a missing final newline.
+    walkthrough: `**How to think about it.** A byte-for-byte test should fail with a *place*, not only with "expected ... to be ...", especially when the difference cannot be seen, like a missing final newline. So there are two jobs: find the first offset where the strings differ, then turn that offset into a line and a column a person can look up.
 
-- **Scan.** The loop stops at the first index where the characters differ, or where \`a\` ends. Because \`a[i] === b[i]\` is false when \`b\` has ended (\`undefined\`), it also stops at the end of a shorter \`b\`.
-- **Offsets to lines.** Splitting the text before the offset on \`\\n\` gives one piece per line; the number of pieces is the line number, and the last piece’s length is how far into that line you are.
-- **What the tests model.** A dropped trailing newline (what a printer often does) and a prelude added where none was needed (an emitter that forgot to check \`prelude.length === 0\`) are exactly the bugs Viscosity’s round trip guards against.`,
+**The solution, line by line.**
+
+- \`if (a === b) return null;\` handles the passing case first.
+- \`let i = 0; const n = a.length;\` starts at the first character.
+- \`while (i < n && a[i] === b[i]) i++;\` walks forward while the characters match. It stops at the first difference, or at the end of \`a\`. If \`b\` is the shorter one, \`b[i]\` becomes \`undefined\` at its end, which is not equal to a character of \`a\`, so the loop stops there too.
+- \`const before = a.slice(0, i);\` is all the text before the difference.
+- \`const lines = before.split('\\n');\` cuts it at each newline: if there were two newlines before the difference, there are three pieces, and the difference is on line 3.
+- \`line: lines.length\` is therefore the line number, counting from 1.
+- \`col: lines.at(-1).length + 1\` is the length of the last piece (how far into the current line the difference is) plus one, because columns also count from 1.
+
+**What the tests model.** A dropped trailing newline (what a printer often does) and a prelude added where none was needed (an emitter that forgot to check that its prelude is empty) are exactly the bugs Viscosity's round trip guards against; here they are reported as line 1, column 3 and line 1, column 1.
+
+**Common wrong attempts.**
+
+- Counting the lines of the whole string, \`a.split('\\n').length\`, instead of the lines *before* the difference: a change on line 2 of a 10-line file would be reported on line 10.
+- Using the offset itself as the column: that is only right on line 1.`,
     wrong: [
       {
         code: `function firstDiff(a, b) {
@@ -284,11 +313,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'What did the first round trip over 514 third-party files show?',
+    q: 'What did the first round trip over 515 third-party files show?',
     options: [
       { t: 'Viscosity reformatted most of them', why: 'None was changed.' },
       { t: 'Every file passed', why: '17 crashed the compiler.' },
-      { t: 'No file changed, but 17 crashed on `export default class`', correct: true, why: 'The resolver didn’t declare that class’s name, so lowering found no binding. Since fixed, all 514 pass.' },
+      { t: 'No file changed, but 17 crashed on `export default class`', correct: true, why: 'The resolver didn’t declare that class’s name, so lowering found no binding. Since fixed, all 515 pass.' },
       { t: 'The mini parser rejected them', why: 'The experiment used acorn, the default parser.' },
     ],
   },

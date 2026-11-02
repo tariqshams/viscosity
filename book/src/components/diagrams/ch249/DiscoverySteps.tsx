@@ -51,22 +51,22 @@ export default function DiscoverySteps() {
           );
         })}
         <Box x={262} y={8} w={130} h={56} stroke={tok('ink', 0.4)}>
-          <T x={272} y={24} size={10} weight={700} fill={tok('muted')}>WORKLIST</T>
-          <T x={272} y={46} size={12} mono>{st.work || '—'}</T>
+          <T x={272} y={24} size={11} weight={700} fill={tok('muted')}>WORKLIST</T>
+          <T x={272} y={46} size={12} mono>{st.work || 'empty'}</T>
         </Box>
         <Box x={262} y={76} w={130} h={56} stroke={st.bad ? tok('danger') : tok('ink', 0.4)}>
-          <T x={272} y={92} size={10} weight={700} fill={tok('muted')}>SHAPE OF ps</T>
+          <T x={272} y={92} size={11} weight={700} fill={tok('muted')}>SHAPE OF ps</T>
           <T x={272} y={114} size={12} mono fill={st.bad ? tok('danger') : undefined}>{st.fields || '(none yet)'}</T>
         </Box>
         <Box x={262} y={144} w={130} h={56} stroke={tok('ink', 0.4)}>
-          <T x={272} y={160} size={10} weight={700} fill={tok('muted')}>VERDICT</T>
+          <T x={272} y={160} size={11} weight={700} fill={tok('muted')}>VERDICT</T>
           <T x={272} y={182} size={12} weight={700} fill={st.bad ? tok('danger') : st.hi.length === 3 && st.work === '%2' ? tok('safe') : tok('muted')}>
             {st.bad ? 'bailout' : st.work === '%2' ? 'collection' : '…'}
           </T>
         </Box>
-        <T x={14} y={208} size={10} fill={tok('muted')}>source</T>
-        <T x={14} y={224} size={10} mono fill={tok('muted')}>{"ps.push({ x: 1, y: 2 });"}</T>
-        <T x={14} y={240} size={10} mono fill={st.swapped ? tok('danger') : tok('muted')}>{st.swapped ? 'ps.push({ y: 3, x: 4 });' : 'ps.push({ x: 3, y: 4 });'}</T>
+        <T x={14} y={208} size={11} fill={tok('muted')}>source</T>
+        <T x={14} y={224} size={11} mono fill={tok('muted')}>{"ps.push({ x: 1, y: 2 });"}</T>
+        <T x={14} y={240} size={11} mono fill={st.swapped ? tok('danger') : tok('muted')}>{st.swapped ? 'ps.push({ y: 3, x: 4 });' : 'ps.push({ x: 3, y: 4 });'}</T>
       </Svg>
     </StepFrame>
   );

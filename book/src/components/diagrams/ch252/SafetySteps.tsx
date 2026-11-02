@@ -18,12 +18,12 @@ type S = { at: number; fail: number[]; example?: string; msg?: string; done?: 's
 const STATES: S[] = [
   { at: -1, fail: [], note: 'A candidate arrives from collection discovery: a const or let that is given an empty array or an array literal. Nothing about it is trusted yet.' },
   { at: 0, fail: [0], example: 'let ps = []; … ps = [];', msg: '"ps" is reassigned (line 5), so it may not always hold this array', note: 'If the name is assigned again, some later ps[i] may be reading a different array, one Viscosity never rewrote.' },
-  { at: 1, fail: [1], example: 'push({x, y}) … push({y, x})', msg: 'records with different fields or field order', note: 'The shape must unify and stay stable (chapter 250): same fields in the same order, and no literal that is also held by another name.' },
+  { at: 1, fail: [1], example: 'push({x, y}) … push({y, x})', msg: 'records with different fields or field order', note: 'The shape must unify and stay stable (see Record shapes): same fields in the same order, and no literal that is also held by another name.' },
   { at: 2, fail: [2], example: 'ps.reverse();', msg: 'uses .reverse on the array (only .length and .push are supported)', note: 'The array itself may only be used for .length, push of one fresh literal, ps[i], or as an argument to a known function. reverse() would expect real elements to move.' },
-  { at: 3, fail: [3], example: 'console.log(ps[3]);', msg: 'an element is passed to a method call', note: 'Each ps[i] hands out an element, whose uses are checked in turn. Only reading or writing a field of the shape is allowed (chapter 221).' },
+  { at: 3, fail: [3], example: 'console.log(ps[3]);', msg: 'an element is passed to a method call', note: 'Each ps[i] hands out an element, whose uses are checked in turn. Only reading or writing a field of the shape is allowed.' },
   { at: 4, fail: [4], example: 'const k = "3"; ps[k].x', msg: 'indexes the array with something that may not be a number', note: 'Last, the indexes. This uses the numeric fixpoint, so it runs after type inference. A string index might name a property instead of an element.' },
   { at: 4, fail: [2, 3], example: 'ps.reverse(); console.log(ps[3]);', msg: 'two reasons: .reverse, and an element passed to a call', note: 'A failure doesn’t stop the checks. Every reason is collected (and duplicates removed), so explain can list everything you would need to change.' },
-  { at: 5, fail: [], done: 'safe', note: 'No reasons at all: the bailout list is empty, so the collection is safe. That doesn’t mean it will be transformed. The cost model (chapter 254) still decides whether it pays off.' },
+  { at: 5, fail: [], done: 'safe', note: 'No reasons at all: the bailout list is empty, so the collection is safe. That doesn’t mean it will be transformed. The cost model still decides whether it pays off.' },
   { at: 5, fail: [3], done: 'unsafe', example: 'console.log(ps[3]);', msg: 'unsafe: line 10: an element is passed to a method call', note: 'Any reason at all: the planner keeps the array of objects and prefixes each reason with “unsafe:”. No cost question is ever asked.' },
 ];
 

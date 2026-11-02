@@ -25,10 +25,6 @@ export const prompts = {
     q: 'Why does `console.log(ps[3])` make Viscosity refuse?',
     a: 'The element is passed to code Viscosity can’t see into, which needs (and here prints) a real object.',
   },
-  'bo-map': {
-    q: 'Which two members of the array does Viscosity model?',
-    a: '`.length` and `.push`. Any other, like `.map`, is a bailout.',
-  },
   'bo-reassign': {
     q: 'Why is a reassigned `let ps` a bailout?',
     a: 'After `ps = ...`, the name may hold a different array that wasn’t rewritten, so every `ps[i]` would have to work on both.',
@@ -126,13 +122,23 @@ test('no bailouts: not a refusal', () => {
       'Build the header from its parts; `fields.join(\', \')` gives `x, y`.',
       '`[...new Set(list)]` removes duplicates and keeps the first-seen order.',
     ],
-    walkthrough: `This is the bailout branch of \`plan.ts\` together with \`explain\`.
+    walkthrough: `**How to think about it.** This is the bailout branch of \`plan.ts\` together with \`explain\`. Start from the question \`plan\` asks first: are there any bailouts? If not, this function has nothing to say (\`null\`), because a safe collection is not necessarily a transformed one; the cost model still has its say. If there are, the output is a header line followed by one line per *distinct* reason, in the order they were found.
 
-- **Bailouts first.** \`plan\` asks “are there any bailouts?” before anything else, and a yes ends the decision: \`keep(...c.bailouts.map((b) => \\\`unsafe: \${b}\\\`))\`. No cost is weighed.
-- **Every reason, once.** The analysis keeps checking after the first failure, so one cause can be reported more than once (two \`index.get\`s on the same line, say). \`analyze\` ends with \`c.bailouts = [...new Set(c.bailouts)]\`. A \`Set\` keeps insertion order, which is why the first-seen order survives.
-- **An empty field list is normal** for a collection that never received a fresh literal, like \`keep\` in \`aliasing_identity.js\`: \`keep (line 4) {}\`.
+**The solution, line by line.**
 
-Returning \`null\` for a safe collection matters: “safe” is not the same as “transformed”. The cost model still has its say.`,
+- \`if (c.bailouts.length === 0) return null;\` handles the safe case first.
+- \`const head = c.name + ' (line ' + c.line + ') {' + c.fields.join(', ') + '} → kept as array of objects';\` builds the header from its parts. \`join(', ')\` puts a comma **and a space** between field names, giving \`{x, y}\`; with no fields at all it gives an empty string, so \`{}\`, which is normal for a collection like \`keep\` in \`aliasing_identity.js\` that never received a fresh literal.
+- \`const rs = [...new Set(c.bailouts)];\` removes duplicate reasons. A \`Set\` keeps each value once, in the order it was first added, so the first-seen order survives; spreading it into \`[...]\` turns it back into an array.
+- \`const lines = rs.map((b) => '  · unsafe: ' + b);\` prefixes each reason exactly as \`explain\` prints it: two spaces, a middle dot, \`unsafe:\`.
+- \`return [head, ...lines];\` puts the header first and the reasons after it.
+
+**Why duplicates happen at all.** The analysis keeps checking after the first failure, so one cause can be reported more than once (two \`index.get\`s on the same line, say); \`analyze\` ends with \`c.bailouts = [...new Set(c.bailouts)]\` for exactly this reason.
+
+**Common wrong attempts.**
+
+- Mapping \`c.bailouts\` directly: a repeated reason is printed twice.
+- Writing \`'{' + c.fields + '}'\`: an array turned into a string joins with a bare comma, so you get \`{x,y}\` without the space.
+- Forgetting the \`null\` case: a safe collection is then reported as "kept as array of objects", which is not what Viscosity says about it.`,
     wrong: [
       {
         code: `function refusal(c) {
@@ -213,9 +219,21 @@ test('reassigned', () => {
       'A table of `[lesson, keywords]` pairs keeps this short.',
       'Check the lessons in the order given, and use `includes` for each keyword.',
     ],
-    walkthrough: `Sorting reasons by lesson is how you read explain output in practice: the wording names the *use*, and the lesson tells you what the use would have observed. Identity reasons need real objects; unknown-code reasons hand something to code Viscosity can’t see; shape reasons break the record shape or its stability; type reasons fail a numeric proof.
+    walkthrough: `**How to think about it.** Sorting reasons by lesson is how you read explain output in practice: the wording names the *use*, and the lesson tells you what that use would have observed. Identity reasons need real objects; unknown-code reasons hand something to code Viscosity cannot see; shape reasons break the record shape or its stability; type reasons fail a numeric proof. Because the checks must happen in a fixed order, a table of \`[lesson, keywords]\` pairs walked from the top is shorter and clearer than a chain of \`if\`s.
 
-The order matters for one real message: “indexes the array with something that may not be a number” contains “the array” but not “on the array”, so it falls through to type. A keyword like \`array\` alone would have sorted it wrongly.`,
+**The solution, line by line.**
+
+- \`const LESSONS = [ ['identity', ['"==="', 'stored in another variable']], ... ];\` lists the lessons in the order they must be tried, each with the phrases that identify it.
+- \`function lesson(reason) { for (const [name, keys] of LESSONS)\` walks the table from the top, taking each pair apart into \`name\` and \`keys\`.
+- \`if (keys.some((k) => reason.includes(k))) return name;\` returns the first lesson for which any keyword appears in the reason. \`some\` stops at the first match.
+- \`return 'other';\` covers everything else, such as a reassigned binding.
+
+**Why the exact keywords matter.** One real message is a trap: "indexes the array with something that may not be a number" contains "the array" but not "on the array", so it falls through to \`type\`, as it should. A looser keyword like \`array\` alone would sort it as unknown code.
+
+**Common wrong attempts.**
+
+- Loose single words (\`'array'\`, \`'field'\`, \`'number'\`): the string-index reason is sorted as unknown code, and "stored in another variable" is missed altogether.
+- Checking the lessons in a different order: the rules overlap only through those loose keywords, but the prompt fixes the order so that every reason has exactly one answer.`,
     wrong: [
       {
         code: `function lesson(reason) {
@@ -254,15 +272,7 @@ export const quiz = [
       { t: 'It isn’t: only `keep` bails out', why: 'Both do; `ps` reports “an element is used by push”.' },
     ],
   },
-  {
-    q: 'Which change lets Viscosity accept `closure_alias.js`, with the same output?',
-    options: [
-      { t: 'Change `const p` to `let p`', why: 'The element is still stored under another name.' },
-      { t: 'Keep the index: `const k = 3; const f = () => ps[k].x;`', correct: true, why: 'Now the closure reads through the collection, a field read Viscosity can rewrite.' },
-      { t: 'Copy the value: `const v = ps[3].x; const f = () => v;`', why: 'That is accepted, but it prints 3 instead of 4: it changes the program.' },
-      { t: 'Wrap the loop in a function', why: 'The problem is the second name `p`, not where the loop is.' },
-    ],
-  },
+
   {
     q: 'Why is `ps.map(f)` a bailout even if `f` only reads `p.x`?',
     options: [

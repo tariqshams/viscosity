@@ -37,10 +37,6 @@ export const prompts = {
     q: 'Why must every index into the collection be provably a number?',
     a: 'A string index asks for a property: `ps[\'length\']` isn’t an element. After the rewrite, such accesses would mean something else.',
   },
-  'sa-aot': {
-    q: 'Why must a source-to-source compiler prove safety, where a run-time system could check as it goes?',
-    a: 'Once its output runs, nothing of the compiler is left to notice a surprise and undo the change.',
-  },
 };
 
 export const examples = {
@@ -145,11 +141,29 @@ test('the first reason wins', () => {
       'Handle `on === \'array\'` and `on === \'element\'` separately. Each has a short list of safe ops; everything else falls through to a generic reason.',
       'The generic reasons use the op itself: `\'array used by \' + u.op`.',
     ],
-    walkthrough: `This is the shape of Viscosity’s check, with the worklist flattened into a list.
+    walkthrough: `**How to think about it.** This is the shape of Viscosity's check with the worklist flattened into a list. The key decision is to write an **allow-list**: for each kind of use, list the few cases that are safe, and let everything else fall through to a reason. Splitting the job in two keeps it readable: a helper that judges *one* use (returning a reason or \`null\`), and a loop that returns the first reason it gets.
 
-- **Allow-list, then a catch-all.** Each branch first returns \`null\` for the few uses that can be rewritten, then ends with a reason that names the op. Nothing new can slip through: an op nobody thought of (\`sort\`, \`===\`, \`for-in key\`) lands in the catch-all automatically.
-- **Some uses are safe only with a condition.** \`push\` must add a fresh literal (otherwise the record might have another name, chapter 250). \`index\` must use a number. \`get\`/\`set\` must name a field of the shape.
-- **Reasons, not just a verdict.** Returning the reason with its line is what lets \`viscosity explain\` say what to change. The real engine keeps *all* the reasons rather than the first; the first is enough to make the decision.`,
+**The solution, line by line.**
+
+- \`function firstBailout(fields, uses) { for (const u of uses) {\` walks the uses in order, so the first problem wins.
+- \`const r = reason(fields, u); if (r) return 'line ' + u.line + ': ' + r;\` asks the helper about this use and, if it found a problem, returns it with its line.
+- \`return null;\` after the loop: nothing was wrong, so the collection is safe.
+- \`function reason(fields, u) { if (u.on === 'array') {\` handles uses of the array itself first.
+- \`if (u.op === 'length') return null;\` reading the length is always rewritable.
+- \`if (u.op === 'push' && u.fresh) return null;\` a push is safe only with a fresh literal; a non-fresh push falls through to the catch-all below.
+- \`if (u.op === 'index') return u.num ? null : 'index may not be a number';\` an index is safe only if it is provably a number, and has its own reason when it is not.
+- \`return 'array used by ' + u.op;\` is the catch-all for the array: \`sort\`, \`map\`, a non-fresh \`push\`, anything at all.
+- \`if (u.op === 'get' || u.op === 'set') return fields.includes(u.field) ? null : 'unknown field .' + u.field;\` for an element, reading or writing a field of the shape is safe, and any other field gets a reason.
+- \`return 'element used by ' + u.op;\` is the element's catch-all: \`===\`, a call, a store into a variable.
+
+**Why an allow-list.** Nothing new can slip through: an operation nobody thought of (\`sort\`, \`===\`, a \`for-in\` over the keys) lands in the catch-all automatically, which is exactly the property a proof of safety needs.
+
+**Common wrong attempts.**
+
+- A block-list of known-bad operations (\`['sort', 'map', 'call']\`): it only catches the uses you thought of, so \`===\`, a string index, an unknown field and a non-fresh push all slip through and the collection is called safe.
+- The right list of operations, but without their conditions: a push of a shared record (which *Record shapes* refuses), a string index and a write to a new field are all accepted.
+
+The real engine keeps *all* the reasons rather than the first, so that \`explain\` can list everything to change; the first is enough to make the decision.`,
     wrong: [
       {
         code: `function firstBailout(fields, uses) {
@@ -232,9 +246,23 @@ test('a missing argument is not the collection', () => {
       'First decide whether the function is known at all: one store, and every ref a direct call.',
       'Then check position `k` of every call’s `args`.',
     ],
-    walkthrough: `These are the two steps of Viscosity’s interprocedural rule. **Known** means the call graph is complete for this function: one definition, and no reference that could hand the function to someone else, who could then call it with anything. **Follow** means the parameter has exactly one possible collection, so it can be treated as another name for it. The two failures give different explain messages: an unknown function is just an escape (“passed to a function call”), while a known function with mixed callers gets “which is also called with other values”.
+    walkthrough: `**How to think about it.** These are the two steps of Viscosity's interprocedural rule, and they answer two different questions. First, **is the function known?** That is, can we see every call of it? Only if its name gets one value and every reference to it is a direct call; any other reference could hand the function to someone who calls it with anything. Second, **does the parameter point to one collection?** Only if every one of those calls passes this collection in position \`k\`.
 
-One case in the real engine is subtler than this model: an alias like \`const go = step\` that the front-end keeps as an SSA value isn’t a separate reference at all, so \`go(ps)\` counts as a direct call. That is why the tests describe refs, not source text.`,
+**The solution, line by line.**
+
+- \`if (fn.stores !== 1) return 'unknown';\` a function name assigned twice might be a different function at some calls.
+- \`if (fn.refs.some((r) => !r.call)) return 'unknown';\` any reference that is not a direct call (stored, passed along, called as a method) means we cannot see every call.
+- \`const all = fn.refs.every((r) => r.args[k] === name);\` checks position \`k\` of every call. A call with no argument there gives \`undefined\`, which is not the collection, so it counts against.
+- \`return all ? 'follow' : 'mixed';\` follows the parameter if every call agrees, and reports mixed callers otherwise.
+
+**Why the two failures differ.** They give different \`explain\` messages: an unknown function is an ordinary escape ("the array is passed to a function call"), while a known function with mixed callers gets "passed to total(), which is also called with other values". The parameter would have to be two collections at once, and Viscosity does not copy functions to give each collection its own.
+
+**Common wrong attempts.**
+
+- Skipping references that are not calls instead of giving up: whoever receives the function could call it with any argument, so the "all calls pass ps" check would be checking only the calls we happen to see.
+- Checking only that *some* call passes the collection: \`total(a); total(b)\` would then be followed for \`a\`, and the loop inside \`total\` rewritten for \`a\`'s columns would break when called with \`b\`.
+
+One case in the real engine is subtler than this model: an alias like \`const go = step\` that the front-end keeps as an SSA value is not a separate reference at all, so \`go(ps)\` counts as a direct call (the engine here accepts it). That is why the tests describe references, not source text.`,
     wrong: [
       {
         code: `function followParam(fn, k, name) {
@@ -295,13 +323,5 @@ export const quiz = [
       { t: 'Only constants may be indexes', why: 'Any value proven to be a number is fine, including `i` and parameters of known functions.' },
     ],
   },
-  {
-    q: 'A collection has two bailout reasons. What is the first thing the planner does?',
-    options: [
-      { t: 'Keeps the array of objects and prints each reason after “unsafe:”', correct: true, why: 'The bailout check comes before every cost question in `plan.ts`.' },
-      { t: 'Checks whether it is big enough to be worth it', why: 'Cost is only considered for safe collections.' },
-      { t: 'Fixes the first reason and tries again', why: 'Viscosity never changes your program to make it safe; explain tells you what to change.' },
-      { t: 'Transforms it if an annotation asks', why: 'An annotation can’t override safety. Bailouts are checked first.' },
-    ],
-  },
+
 ];
