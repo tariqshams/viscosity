@@ -1,0 +1,211 @@
+---
+n: 53
+day: 14
+part: II
+title: 'Benchmarking honestly'
+tagline: 'A stopwatch around a loop feels like science, but it measures the wrong code, can be fooled by the compiler, and lies on a busy machine. Here is how this book’s harness avoids each trap, and why every number you saw deserves your trust.'
+objectives:
+  - Explain JIT warm-up and why a benchmark must discard its first runs.
+  - Explain dead-code elimination and how a sink prevents it.
+  - Summarize noisy timings with the median and p95 instead of the mean.
+  - Explain why each benchmark case runs in its own fresh process.
+introduces: [jit-warmup, dead-code-elimination, median-p95, benchmark-isolation]
+uses: [function, parameter, return, callback, first-class-function, while-loop, array, length, for-loop, numbers, object, typed-array, field-representation, aos-vs-soa, cpu-cache]
+sources: [v8-maglev, llvm-passes, mdn-performance-now]
+---
+import MeasureSteps from '../../../components/diagrams/ch053/MeasureSteps';
+import IsolationPicture from '../../../components/diagrams/ch053/IsolationPicture';
+
+## A stopwatch is not enough
+
+Here is the benchmark almost everyone writes first:
+
+```js
+const t0 = performance.now();
+sumAll(xs);
+const t1 = performance.now();
+console.log(t1 - t0, 'ms');
+```
+
+It looks reasonable. It is wrong in four separate ways. It times the
+function the very first time it runs, before the engine has optimized it.
+It throws the result away, so a clever compiler might skip the work. It
+trusts one measurement on a machine that is also doing a hundred other
+things. And it may run straight after some *other* benchmark that left
+the engine in a strange state.
+
+This chapter takes the four problems one at a time, using the real
+harness behind every chart in this part of the book.
+
+<Callout kind="intuition">
+Timing a runner on their first lap of the day, in the rain, while they’re
+still tying their shoes, tells you little about how fast they run. You
+let them warm up, time many laps, and report a typical lap, not the one
+where they tripped.
+</Callout>
+
+## Warm-up: time the code that really runs
+
+A JavaScript engine doesn’t run your function the same way every time.
+V8 first compiles all code to bytecode and interprets it. While it runs,
+V8 records how the program behaves, including object shapes and types.
+Functions that get hot are compiled by faster tiers (Sparkplug, then the
+optimizing compilers Maglev and TurboFan), which use that feedback to
+generate specialized machine code<Cite id="v8-maglev" />. That code is
+*speculative*: if an assumption breaks, V8 throws it away and falls back,
+which is called deoptimization<Cite id="v8-maglev" />.
+
+So the first calls of a function measure the interpreter and the compilers,
+not your loop. The harness runs the work for 300 ms first, and at least
+five times, before recording anything. Step through its core:
+
+<MeasureSteps client:visible />
+
+<Callout kind="definition">
+**JIT warm-up** is the period in which code gets faster as the engine
+observes it and compiles it with better tiers. A benchmark that wants
+steady-state speed must run the code until it is warm, and only then start
+measuring.
+</Callout>
+
+<Prompts ids={['warmup-why', 'tiers', 'deopt']} />
+
+## Dead code: make the result matter
+
+Compilers delete work whose result nobody uses. It’s a standard
+optimization called **dead-code elimination**; LLVM, for example, ships
+several passes that do it<Cite id="llvm-passes" />. A loop whose answer is
+thrown away is a perfect candidate, and an optimizing JIT that removes it
+would make your benchmark report a near-zero time for a loop that never
+ran.
+
+The harness’s defence is simple. Every kernel returns a number. Every
+returned number is added into a variable called `sink`, and at the end of
+each case the sink is printed. Now the work has an observable result, so
+it can’t be deleted:
+
+```js
+let sink = 0;
+function timeIt(run) {
+  const t0 = performance.now();
+  sink += run(); // keep the result
+  return performance.now() - t0;
+}
+// ...later: print sink
+```
+
+<Callout kind="definition">
+**Dead-code elimination** is a compiler deleting computations whose
+results are never used. A **sink** is a variable that collects every
+result and is used at the end, so the measured work stays observable.
+</Callout>
+
+<Prompts ids={['dce-what', 'sink-why']} />
+
+## Median and p95: summarize honestly
+
+Even warm code doesn’t take the same time twice. A garbage-collection
+pause, another program, or the operating system can make one sample much
+slower. Look what one bad sample does to the mean:
+
+<Run id="mean-vs-median" />
+
+The harness takes 30 samples, sorts them, and reports two numbers. The
+**median** (the 50% point) says what a typical run costs. The **p95**
+(95% of samples were at most this slow) says how bad the slow end gets.
+Each sample also lasts at least 10 ms, because one call of a fast loop
+is too short to time: browsers deliberately round `performance.now()` to
+100 microseconds, or 5 in specially isolated pages<Cite id="mdn-performance-now" />.
+
+<Callout kind="definition">
+The **median** of a set of timings is the middle one once sorted. The
+**p95** (95th percentile) is the value that 95% of timings are at or
+below. Both ignore a few wild outliers that would drag the **mean**
+around.
+</Callout>
+
+<Prompts ids={['median-why', 'p95-what', 'timer-coarse']} />
+
+## One fresh process per case
+
+The last trap is the sneakiest. V8’s optimized code is specialized for the
+shapes and types it has seen<Cite id="v8-maglev" />. Suppose the
+`get-objects` suite ran every layout in one process. The shared
+`consume(p)` function would see object literals, then instances of one
+class, then of another: three different shapes. Its feedback becomes
+mixed, so each layout’s time would depend on which layouts ran before
+it.
+
+<Figure takeaway="Isolation keeps one layout’s history out of another’s timing." caption="If every layout ran in one process (left), consume would see three shapes and the measurements would depend on the order. One fresh process per case (right) gives each layout a clean engine.">
+  <IsolationPicture />
+</Figure>
+
+So the harness never runs two cases in the same process. Its driver
+starts a brand-new Node process for every combination of suite, layout and
+size:
+
+```js
+for (const layout of LAYOUTS) {
+  const out = execFileSync(
+    process.execPath,
+    ['case.ts', suite, layout, n],
+  );
+  rows.push(JSON.parse(out));
+}
+```
+
+A fresh process also starts with a fresh heap, so garbage left by one
+layout can’t trigger a collection during the next. The in-browser
+`LiveBench` in chapter 52 does the same with a fresh Web Worker per
+layout.
+
+<Callout kind="definition">
+**Benchmark isolation** means running each measurement in a fresh
+process (or worker), so that type feedback, compiled code and heap state
+from one case can’t affect another.
+</Callout>
+
+<Prompts ids={['isolation-why']} />
+
+## Noise is normal
+
+This book’s results came from a shared cloud machine, and the results file
+says so: expect noise, and compare **ratios, not absolute times**. A ratio
+like “SoA was about 4× faster” survives a slower machine; “1.7 ns” does
+not. When a result surprises you, rerun it, and look at the p95 next to
+the median: a wide gap means the run was noisy.
+
+<Callout kind="engine" label="Under the hood">
+This harness is more than a teaching aid. The hand-written layouts it
+measures are the baselines that Viscosity’s *generated* code will be
+compared against. When the compiler claims “this program should be SoA”,
+the claim is checked with exactly these rules: warm, sunk, summarized by
+median and p95, one process per case. An optimizer is only as honest as
+the benchmark that judges it.
+</Callout>
+
+## Your turn
+
+The core exercise hands you the broken stopwatch from the start of the
+chapter. Fix it.
+
+<Exercise id="fixBench" />
+
+<Exercise id="p95" />
+
+## What you learned
+
+- **JIT warm-up:** V8 interprets first and optimizes hot code later, so
+  warm up before measuring.
+- **Dead-code elimination** can delete work whose result is unused; a
+  **sink** keeps the result observable.
+- Summarize many samples with the **median** (typical) and **p95** (slow
+  end), not one run or the mean.
+- **Benchmark isolation:** one fresh process per case, so feedback and
+  heap state don’t leak between layouts.
+- On shared machines, trust **ratios** and look at the spread.
+
+That’s the end of Part II. Next comes Part III: you’ll start building
+Drip, your own programming language, one piece at a time.
+
+<Quiz />

@@ -1,0 +1,67 @@
+// New references for “Packages and bundlers” (split from chapter 40).
+// docs.npmjs.com was read from its source markdown in the npm/cli
+// repository (latest branch), nodejs.org's API docs from the nodejs/node
+// repository (v22.x branch), and esbuild from its README; every command
+// was also run (npm 10.9.9, Node v22.23.4, esbuild 0.27.7).
+export default [
+  {
+    id: 'npm-scripts',
+    authors: ['npm, Inc. (GitHub) and the npm CLI contributors'],
+    title: 'scripts (npm CLI documentation)',
+    venue: 'docs.npmjs.com (source in the npm/cli repository on GitHub)',
+    year: null,
+    doi: null,
+    url: 'https://docs.npmjs.com/cli/using-npm/scripts',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/npm/cli/latest/docs/lib/content/using-npm/scripts.md: the scripts property holds built-in and arbitrary scripts, run with npm run <stage>; npm test runs the test script; executables of installed dependencies “will be added to the PATH for executing the scripts”. Checked by running npm 10.9.9: npm run used the project’s tsc 5.9.3 while tsc on the PATH was 6.0.2, and a misspelled name printed “npm error Missing script”.',
+    shaped: 'Chapter 40 (second half): npm run, and why scripts use the project’s own copy of a tool.',
+  },
+  {
+    id: 'npm-install',
+    authors: ['npm, Inc. (GitHub) and the npm CLI contributors'],
+    title: 'npm-install (npm CLI documentation)',
+    venue: 'docs.npmjs.com (source in the npm/cli repository on GitHub)',
+    year: null,
+    doi: null,
+    url: 'https://docs.npmjs.com/cli/commands/npm-install',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/npm/cli/latest/docs/lib/content/commands/npm-install.md: installs dependencies into the local node_modules folder, from the registry; -D, --save-dev makes the package appear in devDependencies; installs follow the ranges in package.json and package-lock.json. Checked by running npm install --save-dev typescript@5.9.3 with npm 10.9.9, which wrote "typescript": "^5.9.3".',
+    shaped: 'Chapter 40 (second half): what npm install does, and devDependencies.',
+  },
+  {
+    id: 'npm-package-lock',
+    authors: ['npm, Inc. (GitHub) and the npm CLI contributors'],
+    title: 'package-lock.json (npm CLI documentation)',
+    venue: 'docs.npmjs.com (source in the npm/cli repository on GitHub)',
+    year: null,
+    doi: null,
+    url: 'https://docs.npmjs.com/cli/configuring-npm/package-lock-json',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/npm/cli/latest/docs/lib/content/configuring-npm/package-lock-json.md: generated whenever npm modifies node_modules or package.json; “It describes the exact tree that was generated, such that subsequent installs are able to generate identical trees”; it is intended to be committed, so that teammates, deployments and continuous integration install exactly the same dependencies.',
+    shaped: 'Chapter 40 (second half): why package-lock.json exists and is committed.',
+  },
+  {
+    id: 'node-packages-type',
+    authors: ['The Node.js project contributors'],
+    title: 'Modules: Packages, the "type" field (Node.js v22 documentation)',
+    venue: 'nodejs.org documentation (source in the nodejs/node repository on GitHub)',
+    year: null,
+    doi: null,
+    url: 'https://nodejs.org/docs/latest-v22.x/api/packages.html#type',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/nodejs/node/v22.x/doc/api/packages.md, section "type": the field defines the module format for all .js files that have that package.json as their nearest parent; "module" makes them ES modules, and a missing field or "commonjs" makes them CommonJS.',
+    shaped: 'Chapter 40 (second half): "type": "module" in package.json.',
+  },
+  {
+    id: 'esbuild-readme',
+    authors: ['Evan Wallace and the esbuild contributors'],
+    title: 'esbuild: An extremely fast bundler for the web (README)',
+    venue: 'github.com/evanw/esbuild',
+    year: null,
+    doi: null,
+    url: 'https://github.com/evanw/esbuild',
+    accessed: '2026-11-02',
+    checkedAgainst: 'https://raw.githubusercontent.com/evanw/esbuild/main/README.md: major features include JavaScript, CSS, TypeScript and JSX built in, bundling ESM and CommonJS modules, “Tree shaking, minification, and source maps”. Checked by running esbuild 0.27.7 (the version in this repository): --bundle wrote the imported module first and left out an unused export, --minify renamed and squeezed the code, and a type error was bundled without any message.',
+    shaped: 'Chapter 40 (second half): what a bundler does, tree shaking and minifying, and that it does not check types.',
+  },
+];

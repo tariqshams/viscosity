@@ -1,0 +1,304 @@
+---
+n: 11
+day: 3
+part: I
+title: 'Scope: where a name can be seen'
+tagline: 'Every name in a program lives somewhere, and can be seen from some places and not others. Learn the rule once and a whole family of mysterious errors disappears, and the next chapter’s closures become easy.'
+objectives:
+  - Say where a name declared with let or const can be seen, and predict a ReferenceError.
+  - Follow how JavaScript looks a name up, from the innermost scope outward, and what shadowing does.
+  - 'Explain lexical scope: a function sees the names around where it was written, not where it is called.'
+  - Say where Python’s scope rules differ from those of JavaScript, Java and C.
+introduces: [scope, block-scope, lexical-scope, nested-function]
+uses: [function, parameter, return, call, local-variable, undefined, first-class-function, higher-order-function, arrow-function, callback, map-filter-reduce, array, push, array-loop, variables, numbers, strings, comparison, if, for-loop, console-log]
+sources: [mdn-closures]
+---
+import ScopeRooms from '../../../components/diagrams/ch011/ScopeRooms';
+import ScopeLookupSteps from '../../../components/diagrams/ch011/ScopeLookupSteps';
+
+## Where did my variable go?
+
+Here is a function meant to add up an array, with one line in the wrong
+place:
+
+```js
+function total(xs) {
+  for (let i = 0; i < xs.length; i++) {
+    let sum = 0;
+    sum = sum + xs[i];
+  }
+  return sum;
+}
+total([1, 2]);
+// ReferenceError: sum is not defined
+```
+
+`sum` was certainly declared, three lines above the `return`, so why
+does JavaScript say it does not exist? Because a name does not exist
+everywhere in a program: `sum` was declared inside the loop's braces,
+so it exists only inside them (and, as a second bug, a fresh `sum`
+starting at 0 is made on every pass). The fix is to declare `sum`
+before the loop; the lesson is that every name has a region of code
+where it can be seen, and this chapter is about exactly that region.
+
+## Scope: where a name is visible
+
+<Analogy title="rooms with one-way glass">
+Picture rooms inside rooms, with one-way glass: from inside a room you
+can see out into every room around it, but from outside you cannot see
+in. A name declared in a room belongs to that room.
+<span slot="breaks">Real rooms are built once; a new room is made every
+time a block or a call runs (chapter 2's fresh page), so the same
+written room can exist several times at once.</span>
+</Analogy>
+
+<Figure takeaway="Inner code sees outward, never inward." caption="The if block sits inside the function, which sits inside the program. Code in the block can use extra, n and rate. Code in the function can use n and rate, but not extra.">
+  <ScopeRooms />
+</Figure>
+
+```js
+function price(n) {
+  if (n > 9) {
+    const extra = 1;
+    console.log(n + extra); // fine
+  }
+  console.log(extra);
+  // ReferenceError: extra is not defined
+}
+```
+
+`extra` lives inside the `if` block's braces, so line 4 can use it
+together with `n` (seen through the glass); once the braces close, the
+name is gone, and line 6 stops the program with a ReferenceError. The
+same goes for the `i` in `for (let i = 0; ...)`: it only exists inside
+that loop.
+
+<Analogy title="house rules and national laws">
+A country's laws apply in every house in it, but a house rule ("shoes
+off") does not apply in the street. And if a house has its own rule
+about something the country also rules on, inside that house the house
+rule is the one that counts.
+<span slot="breaks">Laws can conflict and need judges; in JavaScript an
+inner name with the same spelling *hides* the outer one inside
+that block, completely, with nothing to decide.</span>
+</Analogy>
+
+<Callout kind="definition">
+The **scope** of a name is the region of code where it can be used.
+`let` and `const` have **block scope**: a name is visible from where it
+is declared to the end of the nearest enclosing `{ }`. Code can see the
+names of every scope around it, but not the names inside a scope it
+contains. If an inner scope declares the same name as an outer one, the
+inner one wins inside it (this is called **shadowing**).
+</Callout>
+
+<Examples of="scope block-scope">
+
+```js
+{ const a = 1; }
+a; // ReferenceError: a is not defined
+```
+
+```js
+const x = 1;
+if (true) {
+  const x = 2;
+  x; // 2: the inner x shadows
+}
+x; // 1
+```
+
+```js
+for (let i = 0; i < 3; i++) {}
+i; // ReferenceError: i is not defined
+```
+
+</Examples>
+
+The first is the smallest scope: a bare pair of braces is a block, and
+`a` does not outlive it. The second shows shadowing: inside the `if`, a
+second `x` hides the outer one, and after the block the outer `x` is
+visible again, untouched. The third is the one you will meet most: a
+loop's counter belongs to the loop, so code after it cannot read a
+leftover `i` by accident.
+
+<Prompts ids={['block-scope', 'see-outward', 'shadow']} />
+
+## Functions inside functions
+
+A function is a value, so you can create one inside another function,
+just as you would create a number there. It is then a local name of the
+outer function, and, being inside its room, it can see the outer
+function's names:
+
+```js
+function greetAll(names, hi) {
+  const greet = (name) => {
+    console.log(hi + ', ' + name);
+  };
+  for (let i = 0; i < names.length; i++) {
+    greet(names[i]);
+  }
+}
+greetAll(['Ada', 'Alan'], 'Hello');
+// Hello, Ada
+// Hello, Alan
+```
+
+`greet` never receives `hi` as an argument; it uses it anyway, because
+it was written inside the room where `hi` lives. The rule is about where
+code is *written*, not where it is called from, as the last of the
+examples below shows.
+
+<Callout kind="definition">
+A **nested function** is a function defined inside another function.
+JavaScript uses **lexical scope**: the names a function can see are
+decided by where it is written in the source code, not by where it is
+called<Cite id="mdn-closures" />. ("Lexical" means "to do with the text
+of the program".)
+</Callout>
+
+<Examples of="nested-function lexical-scope">
+
+```js
+function outer(a) {
+  const inner = (b) => a + b;
+  return inner(10);
+}
+outer(1); // 11
+```
+
+```js
+function centred(xs, mid) {
+  return xs.map((x) => x - mid);
+}
+centred([4, 6], 5); // [-1, 1]
+```
+
+```js
+const x = 'outer';
+function show() { console.log(x); }
+function run() {
+  const x = 'inner';
+  show();
+}
+run(); // outer
+```
+
+<Run id="scopes" />
+
+</Examples>
+
+The first is a nested function at its plainest: `inner` adds its own
+parameter `b` to its outer function's `a`. The second is realistic and
+common: the callback handed to `map` is a nested function too, so it
+can use `mid` without anyone passing it in, which is why callbacks are
+so pleasant to write. The third is the rule itself: `show` is called
+from inside `run`, but it was written at the top of the program, and the
+only `x` visible from *there* is `'outer'`; `run`'s `x` is in a room
+`show` was never written inside. The runnable one adds a nested `peek`
+written *inside* `run`, which therefore sees `'inner'`; remove the `//`
+on its last line to see a ReferenceError for yourself.
+
+Here is that search, one step at a time, on a function with all three
+kinds of scope:
+
+<ScopeLookupSteps client:visible />
+
+<Formal title="Looking a name up, room by room">
+
+```text
+lookup(x, E) =
+  E(x)                  if x ∈ E
+  lookup(x, parent(E))  otherwise
+```
+
+<span slot="read">To find the value of a name x in a scope E: if E
+declares x itself, use that; otherwise look it up the same way in E's
+parent, the scope written around it. If even the outermost scope has no
+x, it is a ReferenceError. The parent is fixed by where the code is
+written, which is what makes the scope lexical.</span>
+</Formal>
+
+<Prompts ids={['lookup-order', 'loop-var']} />
+
+<Prompts ids={['lexical-where', 'nested-sees']} />
+
+<OtherLanguages>
+
+```js
+if (true) {
+  let a = 1;
+}
+console.log(a);
+// ReferenceError: a is not defined
+```
+
+```python
+if True:
+    a = 1
+print(a)  # 1: no block scope
+```
+
+```java
+if (true) {
+    int a = 1;
+}
+System.out.println(a);
+// error: cannot find symbol
+```
+
+```c
+if (1) {
+    int a = 1;
+}
+printf("%d\n", a);
+/* error: 'a' undeclared */
+```
+
+</OtherLanguages>
+
+Java and C have block scope just like `let` and `const`, and they catch
+the mistake before the program runs (with the compiler errors shown).
+Python is the genuine difference: it has no block scope, so a name made
+inside an `if` or a `for` is visible in the rest of the function, and
+`print(a)` prints 1. Python's scopes are whole functions (and the
+module), which is also how JavaScript's older `var` behaves, a story the
+next chapter comes back to.
+
+<Prompts ids={['python-block']} />
+
+<Callout kind="engine" label="Under the hood">
+You will build exactly this. In chapter 75 your interpreter gets an
+*environment*: a table from names to values, plus an arrow to the
+environment written around it. That is the rooms picture made of data,
+and the `lookup` rule above becomes a few lines of code: check this
+table, then its parent, and so on outward, and report "not defined" if
+the outermost one has no such name. Because the parent arrow is fixed
+by where code is written, the interpreter gets lexical scope for free.
+</Callout>
+
+## Your turn
+
+The first exercise is the opening bug in a new form; the second is
+extra practice with a nested function.
+
+<Exercise id="lastBig" />
+
+<Exercise id="inRange" />
+
+## What you learned
+
+- The **scope** of a name is where it can be used. `let` and `const` are
+  **block-scoped**: they live from their declaration to the closing `}`.
+- A name is looked up from the innermost scope outward; inner code sees
+  outer names, never the reverse, and an inner name **shadows** an outer
+  one with the same spelling.
+- **Lexical scope**: what a function can see is decided by where it is
+  written, not where it is called; a **nested function** sees the names
+  of the function around it.
+
+Next: what happens when a nested function outlives the call that made
+it, and how that lets a function keep private memory between calls.
+
+<Quiz />

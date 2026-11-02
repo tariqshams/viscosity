@@ -1,0 +1,352 @@
+---
+n: 25
+day: 7
+part: I
+title: 'TypeScript I: types as labels'
+tagline: 'A string where a number should be can quietly turn 3 + 4 into 34. TypeScript lets you write down what each name should hold, then reads your whole program before it runs and points at every place that breaks the promise.'
+objectives:
+  - Say what TypeScript adds to JavaScript, and what tsc does with a .ts file.
+  - Add type annotations to variables, parameters and return values.
+  - Explain what the type checker catches, when it does its work, and when it infers a type for you.
+  - Compare types in JavaScript, TypeScript, Python, Java and C.
+introduces: [typescript, type-annotation, type-checking]
+uses: [function, parameter, argument, return, call, undefined, object, property, dot-access, array, for-of, variables, numbers, strings, booleans, comparison, if, console-log]
+sources: [ts-basics, ts-everyday-types]
+---
+import AnnotationParts from '../../../components/diagrams/ch025/AnnotationParts';
+import CheckSteps from '../../../components/diagrams/ch025/CheckSteps';
+
+## Three plus four is thirty-four
+
+Here are two small functions for a rectangle, and a width that came from
+a text box on a web page:
+
+```js
+function area(w, h) { return w * h; }
+function perimeter(w, h) {
+  return 2 * (w + h);
+}
+
+const w = '3'; // text from a form
+area(w, 4);      // 12
+perimeter(w, 4); // 68
+```
+
+`area` gives the right answer by luck: `*` only works on numbers, so
+JavaScript quietly turns the string `'3'` into the number 3. However,
+`+` also joins strings, so in `perimeter`, `'3' + 4` is the string
+`'34'`, and `2 * '34'` is `68`. There is no error message; the wrong
+number just flows on. JavaScript cannot complain, because it has no idea
+that `w` was *supposed* to be a number. You knew; you just never wrote
+it down, and so no program could check it for you.
+
+## TypeScript: JavaScript plus a checker
+
+**TypeScript** is JavaScript with one addition: a way to write down what
+kind of value (what **type**) each name should hold, together with a
+program, the **type checker**, that reads your code and tells you where
+those promises are broken<Cite id="ts-basics" />. A **type**, here, is a
+name for a kind of value: `number`, `string`, `boolean`, and the many
+kinds you can build from them.
+
+<Analogy title="labels on kitchen jars">
+Jars marked "sugar", "salt" and "flour" do not change what is inside
+them; however, a careful friend can read your recipe and the labels
+together before you start and say "step 4 puts salt in the sugar jar".
+The labels let someone catch the mistake *before* the cake is ruined.
+<span slot="breaks">Your friend can open a jar and taste; the checker
+never sees the values, only the labels and the code, so a jar that was
+filled wrongly from outside (data arriving while the program runs) gets
+past it, as the next chapter shows.</span>
+</Analogy>
+
+TypeScript files end in `.ts`, and the checker is a program called
+`tsc`, the TypeScript compiler. You run it on your file before running
+the program, and it prints one line per problem, with the file name, the
+line and column, and the reason:
+
+<Examples of="typescript">
+
+```ts
+console.log(2 + 2); // plain JavaScript
+// is already TypeScript
+```
+
+```ts
+function perimeter(w: number, h: number) {
+  return 2 * (w + h);
+}
+perimeter('3', 4);
+```
+
+```text
+$ npx tsc rect.ts
+rect.ts(4,11): error TS2345: Argument of
+  type 'string' is not assignable to
+  parameter of type 'number'.
+```
+
+</Examples>
+
+The first shows that a plain JavaScript line is already valid
+TypeScript, so you can add types to a program a little at a time. The
+second is `perimeter` with labels (read in a moment) and a call that
+breaks them. The third is what `tsc` prints for that file (`npx` runs a
+tool installed in your project): line 4, column 11 hands the string
+`'3'` to a parameter that must be a number. Nothing has run; the 68
+never happens.
+
+<Callout kind="pitfall">
+This book's runnable boxes accept TypeScript, but they only *remove*
+the type labels and run what is left; they never check them, so a type
+error in a box gets no warning (the next chapter explains why removing
+them is enough to run). To see the real checker, install the
+`typescript` package and run `tsc` on your file; in this chapter, the
+text tells you what `tsc` would say.
+</Callout>
+
+<Run id="unchecked" />
+
+<Prompts ids={['ts-what', 'tsc-what', 'runner-checks']} />
+
+## Labels on names
+
+The labels are called **type annotations**, and they all look the same:
+a colon and a type after a name.
+
+<Figure takeaway="A colon and a type after a name is a label." caption="In the function, a: number and b: number label the parameters, and the : number after the closing bracket labels what mul returns. A variable can be labelled the same way, or left without a label for TypeScript to work out.">
+  <AnnotationParts />
+</Figure>
+
+```ts
+let count: number = 0;
+let name: string = 'Ada';
+let ready: boolean = false;
+let xs: number[] = [1, 2, 3];
+
+function mul(a: number, b: number): number {
+  return a * b;
+}
+```
+
+The first three lines label variables with the three simple types; the
+fourth says `xs` is an array whose every slot holds a number (`[]` after
+a type means "array of"). In the function, `a: number` and `b: number`
+label the two parameters, and the `: number` after the closing bracket
+labels what `mul` returns. Every label is a promise: "this name will
+only ever hold this kind of value".
+
+<Callout kind="definition">
+A **type annotation** is a colon followed by a type, written after a
+variable's name, after a parameter, or after a function's parameter
+list (for its return value). It says what kinds of value that name may
+hold, or what the function may return<Cite id="ts-everyday-types" />.
+</Callout>
+
+<Examples of="type-annotation">
+
+```ts
+let n: number = 3;
+```
+
+```ts
+function greet(name: string): string {
+  return 'Hello, ' + name;
+}
+```
+
+```ts
+function isDigit(c: string): boolean {
+  return c >= '0' && c <= '9';
+}
+```
+
+</Examples>
+
+The first is the smallest annotation there is: `n` will hold numbers.
+The second labels both sides of a function: it takes a string and gives
+back a string. The third is the scanner helper from chapter 1, now
+labelled: it takes one character, as a string, and answers `true` or
+`false`. A mistake against a label looks like this:
+
+```ts
+let n: number = '3';
+// error: Type 'string' is not
+// assignable to type 'number'.
+```
+
+```ts
+let n: number = 3; // fine
+```
+
+`'3'` in quotes is a string, whatever it looks like, so it breaks the
+label `number`; without the quotes it is the number 3.
+
+<Prompts ids={['annotation-syntax', 'array-label']} />
+
+## The checker reads before anything runs
+
+<Analogy title="a spell-checker">
+A spell-checker underlines a misspelt word as you type, long before
+anyone reads your letter, and it does so by comparing your words against
+a list rather than by understanding what you meant.
+<span slot="breaks">A spell-checker guesses and is sometimes wrong; the
+type checker follows exact rules, the same way every time. And like a
+spell-checker, it cannot tell you the letter makes sense: correctly
+typed code can still compute the wrong thing.</span>
+</Analogy>
+
+Step through how the checker reads a small file, keeping a table of
+names and types as it goes:
+
+<CheckSteps client:visible />
+
+Two things stand out. First, the checker ran nothing; it only compared
+types, line by line, so it can check in a moment a program that would
+take an hour to run. Second, `total` never had a label, yet the checker
+knew it was a number: where you leave a label out and give a starting
+value, TypeScript works one out from that value. This is called
+**inference**, and it is why most TypeScript code has far fewer labels
+than you might expect<Cite id="ts-everyday-types" />.
+
+<Callout kind="definition">
+**Type checking** means reading the whole program, *before it runs*,
+working out the type of every expression, and reporting each place
+where a value could break a label. Where you leave a label out, the
+checker **infers** one from the value you start with.
+</Callout>
+
+<Formal title="The rule the checker used for a * b">
+
+```text
+Γ ⊢ a : number    Γ ⊢ b : number
+───────────────────────────────
+       Γ ⊢ a * b : number
+```
+
+<span slot="read">Γ (the Greek capital gamma) is the checker's table of
+names and their types; ⊢ reads "shows that". Above the line: if the
+table shows that a is a number, and shows that b is a number; below the
+line: then it shows that a * b is a number. The checker applies rules
+like this one to every piece of every line.</span>
+</Formal>
+
+<Examples of="type-checking">
+
+```ts
+let n = 3;      // inferred: number
+n = 'three';
+// error: Type 'string' is not
+// assignable to type 'number'.
+```
+
+```ts
+mul(3);
+// error: Expected 2 arguments,
+// but got 1.
+```
+
+```ts
+'hi'.toUppercase();
+// error: Property 'toUppercase' does
+// not exist on type 'string'. Did you
+// mean 'toUpperCase'?
+```
+
+</Examples>
+
+In the first, there is no label anywhere, but `3` made `n` a number, so
+a later string is refused. In the second, the checker counts the
+arguments against `mul`'s two parameters. The third is the kind of
+mistake that wastes an afternoon in plain JavaScript: a capital letter
+in the wrong place, which `tsc` not only catches but also suggests the
+fix for, because it knows every property a string has.
+
+<Prompts ids={['checker-when', 'inference', 'mismatch']} />
+
+<OtherLanguages>
+
+```js
+function mul(a, b) {
+  return a * b;
+}
+mul('3', 4); // 12: no complaint
+```
+
+```ts
+function mul(a: number, b: number) {
+  return a * b;
+}
+mul('3', 4); // tsc reports it
+```
+
+```python
+def mul(a: int, b: int) -> int:
+    return a * b
+
+mul('3', 4)  # runs: '3333'
+# only a separate checker (mypy)
+# would report it
+```
+
+```java
+static int mul(int a, int b) {
+    return a * b;
+}
+mul("3", 4);
+// error: incompatible types: String
+// cannot be converted to int
+```
+
+```c
+int mul(int a, int b) {
+    return a * b;
+}
+mul("3", 4);
+/* warning: passing argument 1 of
+   'mul' makes integer from pointer
+   without a cast */
+```
+
+</OtherLanguages>
+
+All five write `mul`, but they treat its types very differently. Plain
+JavaScript has no labels at all and quietly turns `'3'` into 3.
+TypeScript's labels are checked by `tsc` before the program runs.
+Python's labels (called *type hints*) look much the same, but Python
+itself ignores them: the call runs, and `'3' * 4` repeats the string to
+give `'3333'`; a separate tool such as mypy does the checking, much as
+`tsc` does. Java and C require a type on everything and check it as part
+of compiling, so Java refuses to compile the call, while C (with the
+GCC compiler) only warns, and the program then runs with a nonsense
+number.
+
+<Callout kind="engine" label="Under the hood">
+A type checker is itself a piece of a compiler: it reads the source,
+builds a tree of the program, and walks that tree with a table of names
+and types, just as the step-through showed. You will build every one of
+those parts for Drip in this book, and the table, Γ, is the same idea
+as the environment your interpreter will use to look up variables.
+</Callout>
+
+## Your turn
+
+<Exercise id="fixTotal" />
+
+## What you learned
+
+- **TypeScript** is JavaScript plus labels for types, and a checker,
+  `tsc`, that reads `.ts` files and reports broken promises with a file,
+  line, column and reason.
+- A **type annotation** is a colon and a type after a name, a
+  parameter, or a parameter list: `x: number`, `f(): string`,
+  `xs: number[]`.
+- **Type checking** happens *before* the program runs, and runs none of
+  it. Where you leave a label out, TypeScript **infers** one.
+- This book's runnable boxes remove types without checking them; `tsc`
+  is the checker.
+
+Next: describing the shape of whole objects, what happens to the types
+when the program runs, and checking values that arrive from outside.
+
+<Quiz />

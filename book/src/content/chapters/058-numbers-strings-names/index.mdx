@@ -1,0 +1,233 @@
+---
+n: 58
+day: 15
+part: III
+title: 'Numbers, strings, names and keywords'
+tagline: 'Your scanner can already cut out + and ==. Real programs are mostly made of longer words: 4.25, "hello", total, while. Here is how the scanner reads each one, and how it tells your names apart from the language’s own.'
+objectives:
+  - Scan a number literal, using two characters of lookahead to decide whether a dot belongs to it.
+  - Scan a string literal, and say what its lexeme and its literal value each hold.
+  - Scan identifiers, and pick out keywords with a reserved-word table.
+  - Explain why the scanner reads a whole word before deciding whether it is a keyword.
+introduces: [literal, identifier, keyword, reserved-word-table]
+uses: [scanner, token, lexeme, token-type, source-location, lookahead, maximal-munch, drip, map, string-methods, string-index, function, while-loop, if, comparison, numbers, strings, booleans, float64, typescript, union-type, error-object]
+sources: [nystrom2021, mdn-number, ecma262-keywords]
+---
+import WordSteps from '../../../components/diagrams/ch058/WordSteps';
+
+## The long tokens
+
+Here is one line of Drip:
+
+```
+let total = 4.25;
+```
+
+The scanner from the last chapter handles `=` and `;` already. But the
+other three tokens are longer than one or two characters, and each needs
+its own small loop: a number, a name chosen by the programmer, and the
+word `let`, which belongs to the language. This chapter writes those
+loops. They are the last pieces of Drip’s scanner, which lives in
+`companion/ts/src/scanner.ts`. The excerpts below are lightly simplified
+to fit a phone screen.
+
+## Numbers
+
+<Callout kind="intuition">
+A literal is a value written down as itself. `4.25` doesn’t point at a
+number somewhere else, the way a variable name does. It *is* the number,
+spelled out in the source, like a price printed on a tag.
+</Callout>
+
+A Drip number is one or more digits, optionally followed by a dot and
+more digits. So `7`, `007` and `4.25` are numbers. The scanner knows a
+number has started when it sees a digit:
+
+```ts
+if (isDigit(c)) {
+  while (isDigit(peek())) advance();
+  if (peek() === '.' &&
+      isDigit(peekNext())) {
+    advance(); // the '.'
+    while (isDigit(peek())) advance();
+  }
+  const text = source.slice(start, current);
+  add('number', Number(text));
+}
+```
+
+The interesting line is the dot test. When the scanner reaches a `.`
+after some digits, one character of lookahead isn’t enough to decide.
+`4.25` is one number, but in `4.` the dot is not part of the number.
+In Drip, a dot can also mean “get a property”, as in `point.x`. So the
+scanner peeks *two* characters ahead, and only takes the dot if a digit
+follows it.
+
+<WordSteps client:visible />
+
+The last line hands the text to `Number`, JavaScript’s own converter,
+which turns `'4.25'` into a 64-bit float<Cite id="mdn-number" />. Drip
+gets its number format for free from its host language. The token now
+carries two things: the lexeme `'4.25'`, exactly as written, and the
+value `4.25` in its `literal` field.
+
+<Callout kind="definition">
+A **literal** is a value written directly in the source code: a number
+such as `4.25` or a string such as `"hi"`. The scanner records both the
+lexeme (the characters) and the **literal value** they stand for, which
+is what the running program will use.
+</Callout>
+
+<Prompts ids={['literal-what', 'dot-peeknext', 'lexeme-vs-value']} />
+
+## Strings
+
+A Drip string starts with `"` and runs to the next `"`. Unlike
+JavaScript, Drip has no escape sequences like `\n`, and a string may run
+across several lines:
+
+```ts
+case '"': {
+  while (peek() !== '"' && !atEnd()) {
+    if (peek() === '\n') line++;
+    advance();
+  }
+  if (atEnd()) {
+    error(line, 'Unterminated string.');
+    break;
+  }
+  advance(); // the closing "
+  // the value leaves out both quotes
+  add('string',
+    source.slice(start + 1, current - 1));
+  break;
+}
+```
+
+Two details matter. The loop still counts newlines, so every token after
+a long string still gets the right line number. And if the file ends
+before the closing quote, the scanner reports `Unterminated string.`
+instead of quietly inventing a quote. For `"hi"`, the lexeme is the four
+characters `"hi"`, quotes included. The literal value is the two-letter
+string `hi`.
+
+<Prompts ids={['string-value', 'string-newline', 'unterminated']} />
+
+## Names
+
+<Callout kind="intuition">
+An identifier is a label you write on a box yourself. Drip doesn’t care
+what the label says, as long as it is spelled with the allowed letters.
+</Callout>
+
+An identifier starts with a letter or an underscore, and continues with
+letters, digits or underscores. So `total`, `_count2` and `x1` are
+identifiers. `2x` is not: the scanner sees the digit first, scans the
+number `2`, and then starts a fresh identifier `x`.
+
+```ts
+const isAlpha = (c: string) =>
+  (c >= 'a' && c <= 'z') ||
+  (c >= 'A' && c <= 'Z') || c === '_';
+
+// in the scanner's switch:
+} else if (isAlpha(c)) {
+  while (isAlpha(peek()) ||
+         isDigit(peek())) advance();
+  const text = source.slice(start, current);
+  add(KEYWORDS.get(text) ?? 'identifier');
+}
+```
+
+<Callout kind="definition">
+An **identifier** is a name chosen by the programmer: a variable,
+function or class name. In Drip, it is a letter or `_` followed by any
+number of letters, digits and `_`.
+</Callout>
+
+<Prompts ids={['identifier-rule', 'digit-first']} />
+
+## Keywords
+
+Look at the last line of that code again. `let`, `if` and `while` are
+spelled exactly like identifiers. The scanner reads them with the same
+loop, and only then asks a table whether the word is special:
+
+```ts
+const KEYWORDS = new Map([
+  ['and', 'and'], ['class', 'class'],
+  ['else', 'else'], ['false', 'false'],
+  ['fn', 'fn'], ['for', 'for'],
+  ['if', 'if'], ['nil', 'nil'],
+  ['or', 'or'], ['print', 'print'],
+  ['return', 'return'],
+  ['super', 'super'], ['this', 'this'],
+  ['true', 'true'], ['let', 'let'],
+  ['while', 'while'],
+]);
+```
+
+Each keyword gets its own token type, named after itself. If the table
+has no entry, `get` returns `undefined`, and `??` falls back to
+`'identifier'`.
+
+Why not spot `if` as soon as the scanner sees an `i` and an `f`? Because
+of maximal munch. In `let iffy = 1;`, a scanner that stopped at `if`
+would produce the keyword `if` and then a stray `fy`. Reading the whole
+word first, then looking it up, gets `iffy` right.
+
+<Callout kind="definition">
+A **keyword** is a word with a fixed meaning in the language, such as
+`if`, `while` or `let`. In Drip, every keyword is **reserved**: it can’t
+be used as a name. The scanner finds keywords with a **reserved-word
+table**, a map from each keyword’s spelling to its token type, consulted
+after a whole word has been scanned.
+</Callout>
+
+Because keywords are reserved, `let if = 3;` is an error. The parser gets
+the token `if` where it needs an identifier, and Drip reports
+`Error at 'if': Expect variable name.` Notice also that `true`, `false`
+and `nil` are keywords to the scanner. The parser, a few chapters on,
+turns them into literal values.
+
+<Run id="literals" />
+
+<Prompts ids={['keyword-what', 'whole-word-first', 'true-is-keyword', 'let-if']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript’s keywords are less tidy. Its specification separates
+**keywords** (words with a job in the grammar) from **reserved words**
+(words you can’t use as names). `if` and `while` are both, but `async`
+is a keyword that is not reserved, so `let async = 1` is legal
+JavaScript<Cite id="ecma262-keywords" />. Whether a word like `async`
+acts as a keyword depends on where it appears, which a lookup table on
+its own can’t know. Drip
+keeps every keyword reserved, so one table is enough. The companion’s
+bytecode VM (Part IV) has a second scanner, which hands out one token at a
+time as the compiler asks for it, but it looks words up in this same
+`KEYWORDS` table. Drip itself is a dialect of Lox, the language of
+*Crafting Interpreters*, with `fn` and `let` in place of Lox’s `fun`
+and `var`<Cite id="nystrom2021" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="scanNumber" />
+
+<Exercise id="scanWord" />
+
+## What you learned
+
+- A **literal** is a value written in the source. Its token keeps the
+  lexeme (`'4.25'`) and the **literal value** (`4.25`).
+- Numbers need **two characters of lookahead**: the dot is taken only if
+  a digit follows it.
+- A string’s value leaves out the quotes. The scanner counts newlines
+  inside it and reports a string that never ends.
+- An **identifier** is a letter or `_`, then letters, digits and `_`.
+- A **keyword** is scanned like an identifier, then found in a
+  **reserved-word table**. Reading the whole word first is maximal munch.
+
+The scanner is finished. Next: rules for which token sequences make sense.
+
+<Quiz />

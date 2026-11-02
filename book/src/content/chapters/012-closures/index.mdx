@@ -1,0 +1,279 @@
+---
+n: 12
+day: 3
+part: I
+title: 'Closures: functions that remember'
+tagline: 'A function carries the place where it was written along with it. That lets it keep private memory between calls, and it is exactly how the interpreter you build later will handle variables.'
+objectives:
+  - Explain why a variable captured by a function outlives the call that made it.
+  - Use a closure to give a function private state that survives between calls.
+  - Explain why two closures made by two calls do not share their variables, and why closures made in a let loop each get their own.
+  - Say how Python, Java and C handle (or do without) closures.
+introduces: [closure]
+uses: [scope, block-scope, lexical-scope, nested-function, function, parameter, return, call, local-variable, undefined, first-class-function, higher-order-function, arrow-function, callback, array, push, reference, aliasing, variables, numbers, strings, comparison, if, for-loop, console-log]
+sources: [mdn-closures]
+---
+import ClosureSteps from '../../../components/diagrams/ch011/ClosureSteps';
+import LoopClosures from '../../../components/diagrams/ch012/LoopClosures';
+
+## A counter anyone can break
+
+You want a function that hands out ticket numbers, 1, then 2, then 3,
+so it has to remember the last number between calls, and you keep it
+outside the function:
+
+```js
+let count = 0;
+function next() {
+  count = count + 1;
+  return count;
+}
+next();      // 1
+count = 500; // any code can do this
+next();      // 501
+```
+
+That has two problems: any line of the program can change `count` by
+accident, and there is only one counter, so a second ticket queue would
+need a second variable and a second function. A *local* variable would
+be private, but chapter 2 said it is thrown away when the call ends, so
+it cannot remember. We want both, private *and* remembered, and last
+chapter's scope rules turn out to give us exactly that.
+
+## Closures
+
+Now put the pieces together. Here is the counter again, with `count`
+moved *inside* a function, and a nested function returned:
+
+```js
+function makeCounter() {
+  let count = 0;
+  return () => {
+    count = count + 1;
+    return count;
+  };
+}
+const a = makeCounter();
+a(); // 1
+a(); // 2
+```
+
+By chapter 2's rule, `makeCounter`'s page should be thrown away when it
+returns, yet the arrow function it returns still uses `count`. Step
+through to see what really happens:
+
+<ClosureSteps client:visible />
+
+So chapter 2's rule needs one correction: a call's page is thrown away
+only once nothing points at it any more. A function made inside the
+call points at it, so as long as that function is alive, the page is
+too.
+
+<Analogy title="a backpack packed where you were born">
+A function leaves the place it was made carrying a backpack, and in the
+backpack is the room it was written in; wherever it is later called, it
+can reach into the backpack for `count`.
+<span slot="breaks">A backpack holds *copies* of things; a closure holds
+the variables themselves, so if the variable changes, the function sees
+the new value, and two functions made in the same call share one
+backpack.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **closure** is a function together with the variables from the place
+it was written. In JavaScript every function forms a closure when it is
+created<Cite id="mdn-closures" />. The captured variables live as long
+as the function does, and code outside can reach them only through it.
+Each call of `makeCounter` makes a new page, so each closure gets its
+own private `count`.
+</Callout>
+
+This also answers chapter 9's puzzle: `times(3)` returned a function that closed over the page where `k` is 3.
+
+<Prompts ids={['times-k']} />
+
+<Examples of="closure">
+
+```js
+let n = 1;
+const getN = () => n;
+n = 2;
+getN(); // 2: the variable, not a snapshot
+```
+
+```js
+function makeTicker() {
+  let count = 0;
+  return () => ++count;
+}
+const a = makeTicker();
+const b = a;
+a(); b(); // 1, then 2: one count
+```
+
+```js
+function makeNames(prefix) {
+  let n = 0;
+  return () => { n++; return prefix + n; };
+}
+const tmp = makeNames('t');
+tmp(); // 't1'
+tmp(); // 't2'
+```
+
+<Run id="counters" />
+
+</Examples>
+
+The first shows that a closure holds the *variable*: `getN` was made
+when `n` was 1, but it reads `n` when it runs, and by then `n` is 2. The
+second is chapter 7 again: `b = a` copies the arrow to the *function*,
+so `a` and `b` are one closure with one `count`, and calling either one
+moves it on (`++count` adds one to `count` and gives the new value).
+Only calling `makeTicker` again makes a second, separate count. The third is real: compilers keep
+inventing fresh names for temporary values, `t1`, `t2` and so on, and a
+closure is the tidy way to make a private name-maker. The runnable one
+makes two counters and shows they never share.
+
+<Formal title="A closure as a pair">
+
+```text
+times(3)  ⇒  ⟨ (n) => n * k ,  { k ↦ 3 } ⟩
+```
+
+<span slot="read">Calling times(3) produces (⇒) a pair, written in angle
+brackets: the code of the function, and the scope it was made in, where
+k maps to 3. Calling the closure runs that code, looking names up in
+that scope.</span>
+</Formal>
+
+<Prompts ids={['closure-what', 'page-survives', 'two-counters', 'live-not-copy', 'alias-closure']} />
+
+<Analogy title="a safe-deposit box with one key">
+A bank's safe-deposit box can be opened only with its key, and the bank
+staff never open it for anyone else. A closure's captured variables are
+the box: the only way in is through the function, which is why nothing
+else in the program can change `count`.
+<span slot="breaks">A bank refuses to copy your key; in JavaScript the
+function can be copied freely (`const b = a`), and every copy opens the
+same box, as the second example showed.</span>
+</Analogy>
+
+## Closures in a loop
+
+Block scope and closures meet in one situation you will run into
+sooner or later. Each pass of a `for (let i ...)` loop gets its own
+fresh `i`, so a function made during a pass closes over *that pass's*
+`i`:
+
+```js
+const fs = [];
+for (let i = 0; i < 3; i++) {
+  fs.push(() => i);
+}
+fs[0](); // 0
+fs[2](); // 2
+```
+
+<Figure takeaway="With let, each pass gets its own i; with var, every function shares one." caption="Each function made in a let loop keeps an arrow to its own pass's i. With var there is only one i for the whole loop, and by the time any function is called the loop has left it at 3.">
+  <LoopClosures />
+</Figure>
+
+Three functions, three different `i`s. Older JavaScript uses `var`
+instead of `let`, and a `var` is not block-scoped (it belongs to the
+whole function, as Python's variables do), so all three functions would
+close over one shared variable, and since the loop has finished by the
+time you call them, every call would give 3. That is one reason this
+book uses only `let` and `const`.
+
+<Prompts ids={['loop-let', 'private-why']} />
+
+
+<OtherLanguages>
+
+```js
+function makeCounter() {
+  let count = 0;
+  return () => {
+    count = count + 1;
+    return count;
+  };
+}
+```
+
+```python
+def make_counter():
+    count = 0
+    def next():
+        nonlocal count
+        count = count + 1
+        return count
+    return next
+```
+
+```java
+// import java.util.function.Supplier;
+static Supplier<Integer> makeCounter() {
+  int[] count = {0}; // a box to change
+  return () -> {
+    count[0] = count[0] + 1;
+    return count[0];
+  };
+}
+```
+
+```c
+/* no closures: keep the state in a
+   struct, and pass it in by pointer */
+struct Counter { int count; };
+int next(struct Counter *c) {
+  c->count = c->count + 1;
+  return c->count;
+}
+```
+
+</OtherLanguages>
+
+Python has closures, but a nested function that *changes* an outer
+variable must say so with `nonlocal count`; without it, Python treats
+`count` as a new local and the call fails with an `UnboundLocalError`. Java's lambdas may only read
+outer variables that never change, so the usual trick is to keep the
+number in a one-slot array and change the slot. C has no closures at
+all: there is nowhere for a function to carry its variables, so you keep
+them in a `struct` and pass a pointer to it on every call, which is
+exactly what a closure does for you behind the scenes.
+
+<Callout kind="engine" label="Under the hood">
+You will build all of this. In chapter 79, a function value in your
+interpreter will store the environment it was created in, which is
+exactly the closure arrow in the step-through above. In chapter 106, the
+virtual machine will have to *move* captured variables out of a call's
+short-lived storage when the call returns, because a closure still needs
+them. And Viscosity cares too: if a closure captures your particles
+array, every later call of that closure might read or change the
+particles, so before it changes their layout, Viscosity has to find
+every closure that can reach them.
+</Callout>
+
+## Your turn
+
+<Exercise id="makeTotal" />
+
+<Exercise id="once" />
+
+## What you learned
+
+- A **closure** is a function plus the variables from where it was
+  written; they outlive the call that made them, because a page is kept
+  as long as something points at it.
+- Captured variables are private (only the function can reach them) and
+  live (the function sees their current value, not a snapshot).
+- Each call of the outer function makes a new page, so each closure gets
+  its own variables; copying the function itself only makes an alias.
+- In a `for (let ...)` loop each pass has its own `i`, so closures made
+  in the loop each keep a different one.
+
+Next: classes, a built-in way to make many objects of the same shape and
+give them shared behaviour.
+
+<Quiz />

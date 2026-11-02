@@ -1,0 +1,336 @@
+---
+n: 22
+day: 6
+part: I
+title: 'Error objects and how errors travel'
+tagline: 'An error is not only a stop sign; it is an object that says what went wrong and where. Here is what is inside one, how to make your own kinds, and the path a thrown error takes back through the call stack.'
+objectives:
+  - Read an error's name and message, and tell JavaScript's built-in kinds of error apart.
+  - Make your own error class with extends Error, and handle only your kind in a catch.
+  - Trace a thrown error as it unwinds the call stack to the nearest catch, running finally blocks on the way.
+  - Compare custom errors in JavaScript, Python, Java and C.
+introduces: [error-object, error-propagation]
+uses: [throw, try-catch, function, parameter, return, call, undefined, object, property, dot-access, class, constructor, new, this, instanceof, call-stack, recursion, stack-overflow, string-index, char-code, template-literal, arrow-function, variables, numbers, strings, comparison, booleans, logical-operators, if, for-loop, console-log]
+sources: [mdn-control-flow, mdn-error]
+---
+import ErrorFamily from '../../../components/diagrams/ch022/ErrorFamily';
+import UnwindSteps from '../../../components/diagrams/ch022/UnwindSteps';
+
+## Two problems, one catch
+
+Here is a REPL loop like the one from the last chapter, with a bug
+hiding in it:
+
+```js
+try {
+  run(line);
+} catch (e) {
+  console.log('Bad number, try again');
+}
+```
+
+If `run` throws because the user typed `4x`, the message is right;
+however, if it throws because *we* made a mistake deep inside it, the
+user is blamed and our bug hides behind a polite message. To do better,
+the `catch` has to look inside `e` and ask "what kind of problem is
+this?"
+
+## What is inside an Error
+
+<Analogy title="an incident report">
+When something goes wrong at work, someone fills in a form with a box
+for the *category* (a slip, a fire, a theft), which decides who deals
+with it, and a box for the *description*. An Error object is that form:
+`name` is the category and `message` the description.
+<span slot="breaks">A report is written after the fact, by a person; an
+Error object is made at the moment of the problem, and for the built-in
+kinds JavaScript fills in the form itself.</span>
+</Analogy>
+
+An **Error object** is an ordinary object with two properties you will
+use constantly: `message`, the text it was made with, and `name`, the
+kind of error<Cite id="mdn-error" />:
+
+```js
+const e = new Error('bad digit at 1');
+e.name;    // 'Error'
+e.message; // 'bad digit at 1'
+String(e); // 'Error: bad digit at 1'
+```
+
+Line 1 makes the object without throwing it (`new Error` and `throw` are
+separate steps); line 2 reads its kind, plain `'Error'`; line 3 reads
+the text we gave it; and line 4 is the form you see when an error is
+printed. When JavaScript itself hits a problem, it throws more specific
+kinds, and you have met most of them already: a **TypeError** means a
+value was the wrong kind for what you did (`null.x`, since `null` has no
+properties); a **ReferenceError**, a name that does not exist; a
+**RangeError**, a number out of its allowed range (Node and Chrome use it
+for the too-deep recursion of chapter 17); and a **SyntaxError**, code
+that could not be read at all (`let 1x = 0;`), reported before anything
+runs<Cite id="mdn-error" />.
+
+<Figure takeaway="Every kind of error is an Error, with a name and a message." caption="The built-in kinds sit under Error, and so does a kind you make yourself with extends Error. One ParseError object holds name and message, like every Error, plus the extra pos you gave it.">
+  <ErrorFamily />
+</Figure>
+
+<Callout kind="definition">
+An **Error object** is the value that is conventionally thrown. It has a
+**`name`** (its kind, such as `'TypeError'`) and a **`message`** (the
+text describing this problem); `new Error(message)` makes one, and the
+built-in kinds are all kinds of `Error`<Cite id="mdn-error" />.
+</Callout>
+
+<Examples of="error-object">
+
+```js
+new Error('empty').message; // 'empty'
+```
+
+```js
+try { null.x; }
+catch (e) { console.log(e.name); }
+// TypeError
+```
+
+```js
+class ParseError extends Error {
+  constructor(message, pos) {
+    super(message);
+    this.name = 'ParseError';
+    this.pos = pos;
+  }
+}
+```
+
+</Examples>
+
+The first reads the message straight off a fresh Error. The second
+catches one JavaScript made, whose `name` is `'TypeError'` (its
+`message`, as Node and Chrome word it, is `Cannot read properties of
+null (reading 'x')`; other engines word it slightly differently). The
+third makes a kind of error of our own, the next section's subject.
+
+A common slip is to throw something that is not an Error:
+
+```js
+try { throw 'oops'; }
+catch (e) { console.log(e.message); }
+// undefined
+```
+
+```js
+try { throw new Error('oops'); }
+catch (e) { console.log(e.message); }
+// oops
+```
+
+Throwing any value is legal, but `e` is then the string itself, which
+has no `message`, so the first prints `undefined`.
+
+<Prompts ids={['error-props', 'builtin-kinds', 'throw-string']} />
+
+## Your own kinds of error
+
+A scanner wants to say *where* a problem is, and a `catch` wants to
+recognize the scanner's errors; both come from a class of our own.
+
+<Analogy title="a sorting office">
+Letters marked "abroad" go to the abroad desk, and anything a desk does
+not recognize goes back on the belt for the next desk. A `catch` with
+`instanceof` is a desk that takes only its own kind of error and puts
+the rest back on the belt.
+<span slot="breaks">A sorting office never loses a letter that no desk
+wants; an error that no `catch` takes reaches the bottom of the call
+stack and stops the program.</span>
+</Analogy>
+
+In the third example above, `class ParseError extends Error` makes a
+special kind of `Error`: it gets everything an Error has, and
+`instanceof Error` is true for it. `super(message)` runs Error's own
+constructor first, which stores the message (a class that `extends`
+another must call `super` before it touches `this`); then the
+constructor sets `this.name`, which would otherwise still read
+`'Error'`, and stores the extra `pos`. Now a `catch` can tell kinds
+apart:
+
+```js
+try {
+  throw new ParseError('bad digit', 1);
+} catch (e) {
+  if (!(e instanceof ParseError)) throw e;
+  console.log(`${e.message} at ${e.pos}`);
+}
+```
+
+The `try` throws a ParseError, so the `instanceof` test is true, the
+`throw e` is skipped, and the `catch` prints `bad digit at 1`. Had the
+error been a TypeError from a bug, line 4 would **rethrow** it, so it
+keeps travelling to code that can deal with it (or stops the program
+with an honest message); that is the fix for the REPL at the top.
+
+<Callout kind="definition">
+A **custom error class**, `class ParseError extends Error`, makes a new
+kind of Error: its constructor calls `super(message)`, sets `this.name`,
+and may add extra properties. In a `catch`, `e instanceof ParseError`
+picks out that kind, and **rethrowing** (`throw e`) passes any other
+kind on.
+</Callout>
+
+<Prompts ids={['custom-error', 'rethrow']} />
+
+## How an error travels
+
+When something throws, the error does not only go back to the caller:
+it goes down the call stack, frame by frame, until it finds a `try`.
+
+<Analogy title="a ball dropped through a bookcase">
+Drop a ball from the top of a bookcase whose shelves have holes in them,
+and it falls through every shelf until it lands on one with a tray.
+<span slot="breaks">A falling ball leaves each shelf as it was; a
+thrown error destroys each frame it passes through (its local variables
+are gone for good), and any `finally` block on the way still runs before
+the error falls further.</span>
+</Analogy>
+
+<UnwindSteps client:visible />
+
+<Callout kind="definition">
+**Error propagation**: a thrown error **unwinds** the call stack. Each
+frame that is not inside a `try` is popped at once, without returning
+and without finishing its line (any `finally` blocks on the way run as
+it passes). The first frame whose call sits inside a `try` catches it.
+If the error unwinds past the bottom of the stack, the program
+stops<Cite id="mdn-control-flow" />.
+</Callout>
+
+<Formal title="Propagation, one frame at a time">
+
+```text
+f calls g, and g throws v:
+  the call is inside a try in f
+    →  f's catch runs with e = v
+  otherwise  →  pop f; f's caller
+                now receives throw v
+```
+
+<span slot="read">When g throws a value v, look at the function f that
+called it. If that call sits inside a try in f, f's catch runs with e
+set to v. If not, f is popped too, and the same question is asked of
+whoever called f, and so on down the stack.</span>
+</Formal>
+
+<Examples of="error-propagation">
+
+```js
+function inner() { throw new Error('x'); }
+function outer() { return inner() + 1; }
+try { outer(); }
+catch (e) { console.log(e.message); }
+```
+
+```js
+function b() {
+  try { throw new Error('deep'); }
+  finally { console.log('b cleans up'); }
+}
+try { b(); }
+catch (e) { console.log('top', e.message); }
+```
+
+<Run id="unwind" />
+
+</Examples>
+
+In the first, `inner` throws, `outer` is popped before its `+ 1`
+happens, and the `try` at the top prints `x`. In the second, `b` has no
+`catch`, so the error keeps falling, but `b`'s `finally` prints its
+line on the way out, and then the top-level `catch` prints `top deep`. The runnable one is the realistic
+case: a recursive function reads a number one digit per call, throws a
+`ParseError` from several calls deep, and one `try` at the top catches
+it and reads its `pos`; try other inputs and predict each line.
+
+That is the point of exceptions: the function that *notices* a problem
+is often deep in the stack, the code that *knows* what to do is far
+below, and a throw connects the two with no checks in between.
+
+<Prompts ids={['unwind-what', 'propagate-why', 'finally-unwind']} />
+
+<OtherLanguages>
+
+```js
+class ParseError extends Error {
+  constructor(message, pos) {
+    super(message);
+    this.name = 'ParseError';
+    this.pos = pos;
+  }
+}
+```
+
+```python
+class ParseError(Exception):
+    def __init__(self, message, pos):
+        super().__init__(message)
+        self.pos = pos
+```
+
+```java
+class ParseError extends RuntimeException {
+    final int pos;
+    ParseError(String message, int pos) {
+        super(message);
+        this.pos = pos;
+    }
+}
+```
+
+```c
+enum Status { OK, BAD_DIGIT };
+/* fills *pos on failure */
+enum Status parse(const char *s,
+                  int *out, int *pos);
+```
+
+</OtherLanguages>
+
+Python and Java also make error kinds with classes, and both take the
+kind's name from the class, so neither needs the `this.name` line (Java
+extends `RuntimeException` so that callers are not forced to declare
+it). C has neither classes nor exceptions, so a C parser returns a
+status code from an `enum` (a list of named numbers) and writes details
+such as the position into variables the caller passed in; nothing
+unwinds by itself, and every caller checks and passes the status on by
+hand.
+
+<Callout kind="engine" label="Where this goes">
+Your Drip interpreter in Part III defines error classes like
+`ParseError`, carrying a line and column. Most engines also give Error
+objects a `stack` property listing the active calls (what browser
+consoles show), but it is not part of the language standard, so its
+contents differ between engines<Cite id="mdn-error" />. In Part IV your
+virtual machine keeps its own frames in an array, so it must do this
+unwinding by hand.
+</Callout>
+
+## Your turn
+
+<Exercise id="parseError" />
+
+<Exercise id="attempt" />
+
+## What you learned
+
+- An **Error object** has a `name` (its kind) and a `message`.
+  JavaScript throws built-in kinds itself: `TypeError`,
+  `ReferenceError`, `RangeError`, `SyntaxError`.
+- A **custom error class** `extends Error`, calls `super(message)`, sets
+  its `name` and carries extra details; `instanceof` picks it out in a
+  `catch`, and `throw e` **rethrows** anything else.
+- A thrown error **propagates**: it unwinds the call stack, popping
+  frames (and running `finally` blocks) until it reaches the nearest
+  `try`. Unhandled, it stops the program.
+
+Last chapter of the day: splitting a program across files.
+
+<Quiz />

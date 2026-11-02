@@ -1,0 +1,335 @@
+---
+n: 14
+day: 4
+part: I
+title: 'Methods and this'
+tagline: 'A class can carry its own functions, written once and shared by every instance. The small word this is how one shared function knows which object it is working on, and how it can lose track.'
+objectives:
+  - Give a class methods, and call them on its instances.
+  - Predict what this means inside a method, from how the method is called.
+  - Explain and fix a lost this when a method is passed as a callback.
+  - Check which class made an object with instanceof.
+introduces: [method, this, instanceof]
+uses: [class, constructor, instance, new, object, property, dot-access, reference, identity, mutation, function, parameter, return, call, undefined, first-class-function, callback, arrow-function, lexical-scope, array, length, push, array-loop, variables, numbers, strings, booleans, comparison, if, for-loop, console-log]
+sources: [mdn-classes, mdn-using-classes, mdn-this, mdn-instanceof]
+---
+import ThisSteps from '../../../components/diagrams/ch014/ThisSteps';
+import DotDecides from '../../../components/diagrams/ch014/DotDecides';
+
+## Code that lives with its data
+
+Last chapter's `Particle` class builds particles, but the code that moves
+them is still a loose function, `move(p)`, which anyone could hand an
+array, a number or a typo by mistake. It belongs with particles, so we
+put it inside the class:
+
+```js
+class Particle {
+  constructor(x, vx) {
+    this.x = x;
+    this.vx = vx;
+  }
+  move() {
+    this.x = this.x + this.vx;
+  }
+}
+
+const p = new Particle(0, 2);
+const q = new Particle(10, -1);
+p.move();
+q.move();
+console.log(p.x, q.x); // 2 9
+```
+
+Lines 6 to 8 are new: a function called `move`, written inside the class
+body after the constructor, with no `function` keyword. A function
+written there is a **method**, and every particle can use it with a dot,
+as in `p.move()`. Its body adds the particle's speed to its position;
+however, `move` takes no parameter, so how does it know *which* particle
+to change? It uses `this`, and in the call `p.move()`, `this` is `p`,
+while in `q.move()` it is `q`, so the last line prints `2 9`.
+
+<Analogy title="the word 'me'">
+"Pass me the salt" is the same sentence whoever says it, but the salt
+goes to whoever is speaking. A method is like that sentence: written
+once, and `this` is the "me", filled in by whoever is speaking, which in
+`p.move()` is `p`.
+<span slot="breaks">"Me" always means the speaker; `this` means whatever
+object the method was called on, and if it is called with no object at
+all, there is no "me" (as the next section shows).</span>
+</Analogy>
+
+<Analogy title="one instruction sheet in a launderette">
+A launderette pins one sheet of instructions to the wall rather than
+giving every customer a copy, and each customer follows the same sheet
+with their own washing. A method is stored once, with the class, and
+every instance follows it with its own properties.
+<span slot="breaks">A customer reads the sheet and chooses their own
+load; a method never chooses, it works on exactly the object in front of
+the dot.</span>
+</Analogy>
+
+<ThisSteps client:visible />
+
+<Callout kind="definition">
+A **method** is a function stored on an object or a class. Methods written
+in a class body are stored once, with the class, and shared by every
+instance<Cite id="mdn-using-classes" />. Inside a method, **`this`** is
+the object the method was called on: in `p.move()`, the object before the
+dot<Cite id="mdn-this" />. It is decided afresh by each call.
+</Callout>
+
+<Formal title="Where this comes from">
+
+```text
+obj.m(a, b)  ⟹  run m with this = obj
+f(a, b)      ⟹  run f with this = undefined
+                 (in class code)
+```
+
+<span slot="read">Calling a method through a dot, obj dot m, runs m with
+this standing for obj (the arrow ⟹ reads "means"). Calling a function
+with nothing before it runs it with this set to undefined, which is
+what class code always does.</span>
+</Formal>
+
+Compare that with chapter 11: what a function can *see* is decided by
+where it is **written**, but what `this` means is decided by how it is
+**called**.
+
+<Examples of="method this">
+
+```js
+class Counter {
+  constructor() { this.n = 0; }
+  inc() { this.n = this.n + 1; }
+}
+const c = new Counter();
+c.inc();
+c.inc();
+c.n; // 2
+```
+
+```js
+class Rect {
+  constructor(w, h) {
+    this.w = w;
+    this.h = h;
+  }
+  area() { return this.w * this.h; }
+  bigger(o) {
+    return this.area() > o.area();
+  }
+}
+new Rect(3, 4).bigger(new Rect(2, 2));
+// true: 12 > 4
+```
+
+```js
+class Reader {
+  constructor(items) {
+    this.items = items;
+    this.i = 0;
+  }
+  peek() { return this.items[this.i]; }
+  skip() { this.i = this.i + 1; }
+}
+const r = new Reader(['let', 'x']);
+r.skip();
+r.peek(); // 'x'
+```
+
+<Run id="particles-methods" />
+
+</Examples>
+
+The first is the smallest method there is: each `c.inc()` adds one to
+the counter's own `n`, so after two calls it is `2` (a short method may
+sit on one line). The second shows methods with parameters and return
+values, and a method calling another: inside `bigger`, `this.area()` is
+this rectangle's area (`12`) and `o.area()` is the other's (`4`), so the
+answer is `true`. The third is the shape of the parser you will write in
+Part III: an object that walks through a list of words, where `peek`
+reads the current word without moving and `skip` moves on by one, so
+after one `skip` the current word is `'x'`. The runnable example moves a
+whole array of particles and shows that they share one `move`.
+
+<Prompts ids={['method-what', 'method-shared', 'this-what', 'this-when']} />
+
+## Losing this
+
+Since `this` comes from the dot, a method called without one has no
+object to use. Compare the broken call with the working one:
+
+```js
+const m = p.move;
+m();
+// TypeError: Cannot read properties
+// of undefined (reading 'x')
+p.move(); // fine
+```
+
+`m` is the very same function, but `m()` has nothing before a dot, so
+inside it `this` is `undefined`, and `this.x` asks `undefined` for a
+property, which stops the program (that is Chrome's and Node's wording;
+other browsers phrase it differently). Class code always runs in
+JavaScript's *strict mode*, which is what makes `this` `undefined` here
+rather than something stranger<Cite id="mdn-classes" />.
+
+It bites most often with callbacks (chapter 9), because passing `p.move`
+passes only the function, not `p`:
+
+```js
+function twice(f) {
+  f();
+  f();
+}
+
+twice(p.move);         // TypeError
+twice(() => p.move()); // works
+```
+
+The arrow function keeps the dot: when `twice` calls it, it runs
+`p.move()` properly, with `p` in front.
+
+<Figure takeaway="The call decides this, not the function." caption="The same move method, called four ways. Only a call with p before the dot gives this = p; taking the method away from p, or passing it on its own, leaves this undefined.">
+  <DotDecides />
+</Figure>
+
+<Prompts ids={['lost-this', 'arrow-fix']} />
+
+<OtherLanguages>
+
+```js
+class Counter {
+  constructor() { this.n = 0; }
+  inc() { this.n = this.n + 1; }
+}
+const c = new Counter();
+const f = c.inc;
+f(); // TypeError: this is undefined
+```
+
+```python
+class Counter:
+    def __init__(self):
+        self.n = 0
+    def inc(self):
+        self.n = self.n + 1
+
+c = Counter()
+f = c.inc
+f()  # works: f remembers c
+```
+
+```java
+class Counter {
+    int n = 0;
+    void inc() {
+        n = n + 1; // means this.n
+    }
+}
+Counter c = new Counter();
+c.inc();
+```
+
+```c
+struct Counter { int n; };
+void inc(struct Counter *c) {
+    c->n = c->n + 1;
+}
+struct Counter c = { 0 };
+inc(&c); /* pass the object in */
+```
+
+</OtherLanguages>
+
+Here the languages genuinely differ. In Python, taking `c.inc` off the
+object gives a function that remembers `c`, so the "lost `this`" slip
+cannot happen. Java lets you leave out `this.` altogether (`n` inside a
+method means the object's `n`), and checks before the program runs that
+the method exists. C has no methods: you write an ordinary function and
+pass the object in yourself (as a pointer, an idea Part II explains),
+which is, underneath, exactly what JavaScript does for you with `this`.
+
+## Which class made it? instanceof
+
+<Analogy title="a maker's mark on pottery">
+Turn a mug over and you may find the maker's stamp; two mugs can look
+identical, but only one has the stamp of the pottery you are asking
+about. `instanceof` looks for that mark rather than at the shape.
+<span slot="breaks">A stamp is pressed in for ever; JavaScript lets
+determined code change which class an object is linked to, so
+`instanceof` is a reliable answer for ordinary code rather than a
+security check.</span>
+</Analogy>
+
+<Examples of="instanceof">
+
+```js
+p instanceof Particle; // true
+```
+
+```js
+const fake = { x: 0, vx: 2 };
+fake instanceof Particle; // false
+[] instanceof Array;      // true
+```
+
+```js
+function show(v) {
+  if (v instanceof Particle) {
+    return 'particle at ' + v.x;
+  }
+  return 'something else';
+}
+show(p); // 'particle at 2'
+```
+
+</Examples>
+
+The first asks whether `p` was made by `new Particle`, and it was. In the
+second, `fake` has exactly the same properties, but it was not made by
+`new Particle`, and `instanceof` can tell; arrays are instances of the
+built-in class `Array`. The third is how real code uses it: a function
+that is handed different kinds of value checks which kind it has before
+reading particle properties.
+
+<Callout kind="definition">
+**`a instanceof C`** is `true` when the object `a` was made by the class
+`C` (precisely: when the object holding `C`'s shared methods is in the
+chain of objects that `a` borrows methods from<Cite id="mdn-instanceof" />).
+It checks where an object came from, not what it contains.
+</Callout>
+
+<Prompts ids={['instanceof-what', 'instanceof-fake']} />
+
+<Callout kind="engine" label="Under the hood">
+"Stored once, with the class" is literal: every class has one hidden
+object holding its methods, and each instance keeps a link to it, so
+`p.move` is found by following that link<Cite id="mdn-using-classes" />.
+That link is also what `instanceof` follows. In chapter 81 you will build
+classes, instances, methods and `this` yourself, inside your own
+interpreter, and see that `this` is nothing more than one extra,
+hidden argument handed to every method call.
+</Callout>
+
+## Your turn
+
+<Exercise id="vec" />
+
+<Exercise id="stack" />
+
+## What you learned
+
+- A **method** is a function written in a class body; it is stored once
+  and shared by every instance.
+- Inside a method, **`this`** is the object before the dot in the call,
+  decided afresh by each call.
+- A method called without a dot loses its `this` (a `TypeError` in class
+  code); to pass one on, wrap it: `() => p.move()`.
+- **`instanceof`** checks which class made an object, not what it holds.
+
+Next: `Map` and `Set`, two built-in classes for looking things up fast.
+
+<Quiz />

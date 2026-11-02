@@ -1,0 +1,242 @@
+---
+n: 262
+day: 66
+part: XII
+title: 'Strings and interning in Rust'
+tagline: 'A drip-rs string handle carries its own hash. That one extra u32 means the hash table never has to look inside the heap, which is exactly what the borrow checker needs, since tables live inside heap objects.'
+objectives:
+  - Explain why StrRef carries the string’s hash, and what borrow it avoids.
+  - Read drip-rs’s interner and compare it with the TypeScript copyString.
+  - Map drip-rs’s struct-of-arrays hash table, with its tombstones, to the TypeScript table of chapters 100 to 102.
+  - Write an interner over an open-addressing table, with tests.
+introduces: [string-interner]
+uses: [drip-rs, object-handle, value-enum, arena, typed-index, heap-object, hash-function, hash-table, open-addressing, load-factor, interning, global-table, aos-vs-soa, rust-soa, string-vs-str, box, struct, impl, option, vec, match, pattern, borrow, shared-vs-mutable, borrow-checker, size-of, padding, garbage-collection, roots, typescript]
+sources: [lcn2-fnv, rust-std-string, nystrom2021]
+---
+import TableSteps from '../../../components/diagrams/ch262/TableSteps';
+
+## The same string twice
+
+In the TypeScript VM, `heap.copyString('hi')` returns the same object
+every time it sees `hi` (chapter 101). That is why `a === b` is a correct
+string comparison there. drip-rs keeps the idea and changes the
+handle. A string value is a `StrRef`, adapted from `src/object.rs`:
+
+```rust
+pub struct StrRef {
+    pub handle: Gc<ObjString>,
+    pub hash: u32,
+}
+
+pub struct ObjString {
+    pub chars: Box<str>,
+    pub hash: u32,
+}
+```
+
+The hash is stored twice: in the object, and in every handle to it.
+Chapter 257 showed that the handle's 4 extra bytes are free, because a
+`Value` is 16 bytes either way. This chapter is about what they buy.
+
+`chars` is a `Box<str>`, not a `String`. An interned string never grows,
+so it doesn't need a capacity field. On rustc 1.97 here, `Box<str>` is
+16 bytes and `String` is 24.
+
+<Callout kind="intuition">
+A library card with the shelf number printed on it. The librarian can
+file and find cards by that number without walking into the stacks. Only
+when two cards share a shelf number does anyone go and compare the
+books.
+</Callout>
+
+## A table that never sees the heap
+
+Look at the table's methods in `src/table.rs`:
+
+```rust
+pub fn get(&self, key: StrRef)
+    -> Option<Value>
+pub fn set(&mut self, key: StrRef,
+    value: Value) -> bool
+pub fn delete(&mut self, key: StrRef)
+    -> bool
+```
+
+None of them takes the heap. The hash comes from the key, and two keys
+are equal exactly when their handles are, because strings are interned.
+That matters because tables live *inside* heap objects: every instance
+has `fields: Table`, every class `methods: Table`. Suppose, as a design
+experiment, that `set` had to read the strings arena to hash a key:
+
+```rust
+let strings = &self.heap.strings;
+self.heap[instance].fields
+    .set(strings, name, value);
+```
+
+rustc 1.97 (trimmed):
+
+```
+error[E0502]: cannot borrow `self.heap`
+  as mutable because it is also
+  borrowed as immutable
+21 | let strings = &self.heap.strings;
+   |     ------------------ immutable
+   |                borrow occurs here
+22 | self.heap[instance].fields.set(...
+   | ^^^^^^^^^ mutable borrow occurs here
+```
+
+`heap[instance]` borrows the whole heap mutably (chapter 261), and the
+strings arena is part of it. Carrying the hash in the handle removes the
+need, so `SetProperty` is one line: `self.heap[instance].fields.set(name,
+value)`.
+
+<Prompts ids={['si-hash-twice', 'si-no-heap', 'si-box-str']} />
+
+## The interner
+
+Interning is the one place that has to compare characters. Adapted from
+`src/gc.rs`:
+
+```rust
+pub fn intern(&mut self, chars: &str)
+    -> StrRef {
+    let hash = hash_string(chars);
+    match self.interned.find_string(
+        &self.strings, chars, hash)
+    {
+        Some(s) => s,
+        None => self.add_string(
+            chars.into(), hash),
+    }
+}
+```
+
+`interned` is a `Table` whose keys are every live string. `find_string`
+probes it by hash, and only on a matching hash compares the text,
+reading it from the strings arena it was handed. Borrowing
+`self.interned` and `self.strings` at once is fine here. Inside the
+heap's own method, rustc can see they are different fields. `add_string`
+allocates the `ObjString` and adds it to the table with the value `Nil`,
+as TypeScript's `copyString` does with `null`. clox and the TypeScript
+heap protect the new string as a temporary root while they do this.
+drip-rs needn't, because the heap never collects on its own (chapter
+253).
+
+The VM also has `intern_owned(String)`. It takes a string it has just
+built, such as the result of `+`, and keeps that allocation:
+`into_boxed_str` only reallocates to drop spare capacity, and `concat`
+reserves exactly the joined length<Cite id="rust-std-string" />. `intern`
+has to copy, because it was only lent a `&str`.
+
+<Callout kind="definition">
+A **string interner** maps each distinct string to one id. Ask it for
+some characters and it either finds the id it gave out before, or stores
+the string and hands out a new one. In drip-rs the interner is the
+heap's `interned` table, the id is a `StrRef`, and equal strings then
+compare by handle. The table holds its strings weakly: the collector
+deletes entries for strings nothing else reaches (chapter 267).
+</Callout>
+
+<Prompts ids={['si-interner', 'si-disjoint', 'si-owned']} />
+
+The hash is FNV-1a<Cite id="lcn2-fnv" />, as in TypeScript:
+
+```rust
+pub fn hash_string(s: &str) -> u32 {
+    let mut hash: u32 = 2_166_136_261;
+    for byte in s.bytes() {
+        hash ^= u32::from(byte);
+        hash = hash
+            .wrapping_mul(16_777_619);
+    }
+    hash
+}
+```
+
+`wrapping_mul` is TypeScript's `Math.imul`: a multiply that keeps the
+low 32 bits. One difference: drip-rs hashes UTF-8 bytes and TypeScript
+UTF-16 code units, so they agree only on ASCII. Nothing a program can
+print depends on a hash.
+
+<Prompts ids={['si-fnv']} />
+
+## Two columns, with tombstones
+
+The table itself is the TypeScript one from chapters 100 to 102, struct of
+arrays and all:
+
+```rust
+pub struct Table {
+    count: usize, // live + tombstones
+    keys: Vec<Option<StrRef>>,
+    values: Vec<Value>,
+}
+const TOMBSTONE: Value = Value::Bool(true);
+```
+
+`None` replaces TypeScript's `null` key. An empty slot is `(None, Nil)`
+and a deleted one `(None, true)`, exactly the TypeScript encoding. The
+probe loop becomes a `match` with guards:
+
+```rust
+match keys[index] {
+    None if values[index] == Value::Nil => {
+        return tombstone.unwrap_or(index);
+    }
+    None => {
+        tombstone.get_or_insert(index);
+    }
+    Some(k) if k == key => return index,
+    Some(_) => {}
+}
+index = (index + 1) & mask;
+```
+
+`tombstone` is an `Option<usize>` where TypeScript used `-1`.
+`get_or_insert` keeps the *first* tombstone passed, so `set` reuses it.
+The keys below really do collide: by FNV-1a, `y`, `a`, `len` and `key`
+all have `hash & 7 == 4`.
+
+<TableSteps client:visible />
+
+Why keep two columns in Rust? TypeScript's reason was to avoid an
+allocation per entry, and a Rust `Vec` of pairs wouldn't allocate per
+entry anyway. But a pair would also pad. Measured with rustc 1.97 here,
+`Option<StrRef>` is 12 bytes and `Value` 16, while the pair
+`(Option<StrRef>, Value)` is 32. The two columns use 28 bytes a slot, and
+the probe loop mostly reads only the denser `keys`.
+
+<Prompts ids={['si-tombstone', 'si-first-tomb', 'si-columns']} />
+
+<Callout kind="engine" label="Under the hood">
+Interning moves work from comparing to creating. Every string the VM
+makes, every `+`, is hashed and looked up once. After that, `==`
+between strings, global lookups and field lookups compare handles,
+never characters. clox makes the same trade<Cite id="nystrom2021" />.
+One place it bites, in all three VMs: a program that builds many
+distinct strings spends time in the interner even if it never compares
+them.
+</Callout>
+
+## Your turn
+
+<Exercise id="interner" />
+
+<Exercise id="tableFind" />
+
+## What you learned
+
+- A **`StrRef`** is a string handle plus the string's hash, and costs
+  nothing extra inside a 16-byte `Value`.
+- Because keys carry their hash and are interned, the **table never
+  needs the heap**. That is what lets tables live inside heap objects
+  without borrow conflicts.
+- The **string interner** is the heap's `interned` table. `intern`
+  hashes, probes, compares characters only on a hash match, and
+  allocates only if the string is new.
+- drip-rs's table is the TypeScript one: two columns, `(None, Nil)`
+  empty, `(None, true)` a **tombstone**, linear probing by `& mask`.
+
+<Quiz />

@@ -1,0 +1,325 @@
+---
+n: 17
+day: 5
+part: I
+title: 'Recursion and the call stack'
+tagline: 'Some problems contain smaller copies of themselves. A function that calls itself can solve them in a few lines, and every parser in this book works this way.'
+objectives:
+  - Write a recursive function with a base case and a recursive case.
+  - Trace the call stack as recursive calls grow it and returns shrink it.
+  - Explain what causes a stack overflow, and how to avoid one.
+  - Compare recursion, and running out of stack, in JavaScript, Python, Java and C.
+introduces: [recursion, base-case, call-stack, stack-overflow]
+uses: [function, parameter, argument, return, call, local-variable, undefined, array, index, length, variables, numbers, strings, comparison, if, for-loop, console-log]
+sources: [mdn-recursion, mdn-call-stack, mdn-too-much-recursion]
+---
+import StackSteps from '../../../components/diagrams/ch017/StackSteps';
+import OverflowPicture from '../../../components/diagrams/ch017/OverflowPicture';
+
+## A problem inside a problem
+
+Add up the numbers from 1 to 3, and you get 6; you would write it with a
+loop, and that is fine. However, look at the sum another way: the sum up
+to 3 is 3 plus the sum up to 2, and the sum up to 2 is 2 plus the sum up
+to 1, and so on down to the sum up to 0, which is plainly 0. The problem
+contains a smaller copy of itself. For sums a loop is just as good, but
+some problems only come in this shape (folders inside folders, brackets
+inside brackets, as the next chapter shows), where no fixed number of
+nested loops can help. What can help is a function that **calls
+itself**.
+
+<Analogy title="asking the person ahead in a queue">
+You are in a long queue and want to know your place, but you cannot see
+the front. So you ask the person ahead, "what number are you?" They do
+not know either, so they ask the person ahead of them, and so on, until
+the person at the very front answers without asking: "I am number 1".
+The answers then travel back down the queue, each person adding one.
+<span slot="breaks">The people in a queue are all different people; a
+recursive function is one function, called again with a smaller
+question, and each call gets its own fresh copy of its variables.</span>
+</Analogy>
+
+## A function that calls itself
+
+```js
+function sumTo(n) {
+  if (n === 0) {
+    return 0;
+  }
+  return n + sumTo(n - 1);
+}
+
+console.log(sumTo(3)); // 6
+```
+
+Lines 2 to 4 are the front of the queue: when `n` is `0` the answer is known
+at once, with no further calls. Line 5 handles every other `n` by
+calling `sumTo` again on a **smaller** number, `n - 1`, and adding `n`
+to whatever comes back; so `sumTo(3)` is `3 + sumTo(2)`, which is
+`3 + 2 + sumTo(1)`, which is `3 + 2 + 1 + sumTo(0)`, which is
+`3 + 2 + 1 + 0`, which is `6`. Two things make it work: there is a case
+that answers directly, and every other call moves towards it.
+
+<Callout kind="definition">
+A function that calls itself is **recursive**, and the technique is
+**recursion**. Every recursive function needs a **base case**: an input
+it answers directly, without calling itself. Every other input takes the
+**recursive case**, which calls the function again on a smaller version
+of the problem<Cite id="mdn-recursion" />.
+</Callout>
+
+<Formal title="sumTo as two equations">
+
+```text
+sumTo(0) = 0
+sumTo(n) = n + sumTo(n − 1)   for n > 0
+```
+
+<span slot="read">The sum up to zero is zero (the base case). For any n
+bigger than zero, the sum up to n is n plus the sum up to n minus one
+(the recursive case). Mathematicians call a definition like this a
+recurrence: it defines a value in terms of a smaller one.</span>
+</Formal>
+
+<Examples of="recursion base-case">
+
+```js
+function countdown(n) {
+  if (n === 0) return;
+  console.log(n);
+  countdown(n - 1);
+}
+countdown(3); // 3, 2, 1
+```
+
+```js
+function power(b, e) {
+  if (e === 0) return 1;
+  return b * power(b, e - 1);
+}
+power(2, 3); // 2 * 2 * 2 * 1 = 8
+```
+
+```js
+function sumFrom(xs, i) {
+  if (i === xs.length) return 0;
+  return xs[i] + sumFrom(xs, i + 1);
+}
+sumFrom([4, 5, 6], 0); // 15
+```
+
+</Examples>
+
+The first prints `n` and hands the rest of the countdown to another
+call, until `n` is `0` and a bare `return` stops it. The second
+multiplies: `b` to the power `e` is `b` times `b` to the power `e - 1`,
+and anything to the power 0 is `1`, which is the base case. The third
+walks an array without a loop: the sum from index `i` is the value
+there plus the sum of everything after it, and when `i` reaches the
+length there is nothing left, so the answer is `0`; your interpreter
+will walk lists of statements in exactly this style.
+
+<Prompts ids={['rec-what', 'base-case', 'smaller']} />
+
+## The call stack
+
+In chapter 2 you saw that each call gets a fresh, private page for its
+parameters and local variables. Recursion is where that pays off:
+`sumTo(3)` and `sumTo(2)` are both running at the same time, each with
+its own `n`, so JavaScript keeps the pages in a pile, with the newest call
+on top and the calls waiting for it underneath.
+
+<Analogy title="a pile of interruptions">
+You are reading when the phone rings; you put a bookmark in and answer.
+During the call the doorbell goes, so you put the phone down and open
+the door. When the visitor leaves you go back to the phone, and when the
+call ends you go back to your book: the last thing you started is always
+the first you finish.
+<span slot="breaks">You can remember a few interruptions at most; a call
+stack holds thousands, each remembering exactly where it paused and what
+its variables held. It does have a limit, though, as the next section
+shows.</span>
+</Analogy>
+
+<StackSteps client:visible />
+
+<Callout kind="definition">
+The **call stack** is the pile of calls that have started but not yet
+finished. Each call's page is a **stack frame**. Calling a function
+**pushes** a new frame on top; returning **pops** it off, and the value
+goes back to the frame underneath, which carries on from where it
+paused<Cite id="mdn-call-stack" />. Only the top frame is running.
+</Callout>
+
+<Examples of="call-stack">
+
+<Run id="down-up" />
+
+```js
+function show(n) {
+  if (n === 0) return;
+  const twice = n * 2;
+  show(n - 1);
+  console.log(n, twice);
+}
+show(2); // 1 2, then 2 4
+```
+
+```js
+function a() { b(); }
+function b() { c(); }
+function c() { console.trace(); }
+a();
+// Trace
+//     at c ...
+//     at b ...
+//     at a ...
+```
+
+</Examples>
+
+Predict the runnable one before you run it: every `in` line prints on the
+way down, as frames are pushed, and every `out` line on the way back up,
+as they are popped, so the `out` lines come out in reverse. The second
+shows that each frame keeps its own local variables: the frame for
+`show(2)` makes `twice = 4`, then waits while `show(1)` makes its own
+`twice = 2` and prints first; when it pops, the older frame's `twice` is
+still `4`. The third is realistic: `console.trace()` prints the stack as
+it is right now, newest frame first (with file positions where the dots
+are); the same list, a **stack trace**, is printed whenever a program
+crashes.
+
+<Prompts ids={['frame-what', 'stack-order', 'paused']} />
+
+## When it never stops
+
+What if the base case is missing, or never reached?
+
+<Figure takeaway="No base case, no end, until the stack is full." caption="With no base case, every call pushes another frame and none ever returns. The stack has a fixed amount of room, and when the frames reach it, the engine stops the program.">
+  <OverflowPicture />
+</Figure>
+
+<Callout kind="definition">
+A **stack overflow** is what happens when the call stack runs out of
+room: too many calls have started and not finished, usually because a
+recursion never reaches its base case. Chrome and Safari report it as a
+`RangeError`, "Maximum call stack size exceeded"; Firefox calls it
+"too much recursion"<Cite id="mdn-too-much-recursion" />. The exact limit
+depends on the engine.
+</Callout>
+
+<Examples of="stack-overflow">
+
+```js
+function forever(n) {
+  return forever(n + 1);
+}
+forever(0);
+// RangeError: Maximum call stack
+// size exceeded
+```
+
+```js
+sumTo(-1);
+// -1, -2, -3, ... never reaches 0:
+// RangeError again
+```
+
+```js
+sumTo(100000);
+// RangeError in Node, even though
+// the base case is fine
+```
+
+</Examples>
+
+The first has no base case at all: every call makes another. The second
+has one, but `-1` walks *away* from `0`, so it is never reached. The
+third is the surprising one: the function is correct, and would reach `0`
+in the end, but a hundred thousand frames is more than Node's stack holds
+(try it in the runnable box above). As such, recursion suits problems
+whose depth stays modest, and a loop is the safer tool for counting to a
+million. Spot the difference in the base case:
+
+```js
+if (n === 0) return 0; // -1 overflows
+if (n <= 0) return 0;  // -1 gives 0
+```
+
+The second base case catches every number at or below zero, so no input
+can slip past it.
+
+<Prompts ids={['overflow-cause', 'never-reached']} />
+
+<OtherLanguages>
+
+```js
+function sumTo(n) {
+  if (n <= 0) return 0;
+  return n + sumTo(n - 1);
+}
+// too deep: RangeError
+```
+
+```python
+def sum_to(n):
+    if n <= 0:
+        return 0
+    return n + sum_to(n - 1)
+# too deep: RecursionError
+```
+
+```java
+static int sumTo(int n) {
+    if (n <= 0) return 0;
+    return n + sumTo(n - 1);
+}
+// too deep: StackOverflowError
+```
+
+```c
+int sum_to(int n) {
+    if (n <= 0) return 0;
+    return n + sum_to(n - 1);
+}
+/* too deep: usually a crash */
+```
+
+</OtherLanguages>
+
+Recursion looks the same in all four; they differ in what happens when
+the stack is full. Python counts the depth itself and stops much sooner
+than the others, on purpose, with a `RecursionError`; Java throws a
+`StackOverflowError`; C checks nothing, and the program usually crashes
+outright (often reported as a "segmentation fault") with no friendly
+message.
+
+<Callout kind="engine" label="Where this goes">
+Recursion is the backbone of Part III: your parser will have one
+function per kind of thing it reads, calling each other recursively, so a
+deeply nested program can overflow JavaScript's own stack. In Part IV you
+will build a virtual machine that keeps its **own** stack of frames in an
+array, and see exactly what a frame contains.
+</Callout>
+
+## Your turn
+
+<Exercise id="power" />
+
+<Exercise id="collatz" />
+
+## What you learned
+
+- **Recursion** is a function calling itself on a smaller problem. It
+  needs a **base case** that answers directly, and every input must
+  reach it.
+- The **call stack** holds one **frame** per unfinished call; calls push
+  frames, returns pop them, and the last call to start is the first to
+  finish.
+- A recursion that never reaches its base case, or simply goes too deep,
+  fills the stack: a **stack overflow**.
+
+Next: data that is shaped like recursion, trees, and the functions that
+walk them.
+
+<Quiz />

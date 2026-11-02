@@ -1,0 +1,327 @@
+---
+n: 39
+day: 10
+part: I
+title: 'async, await and the microtask queue'
+tagline: 'Promise chains work, but they read inside out. async and await let you write “read the file, then scan it, then parse it” in the order you think it, and a second, faster queue explains exactly when each line runs.'
+objectives:
+  - Write async functions, and say what they return and when their body runs.
+  - Use await to wait for a promise, and catch a rejection with try and catch.
+  - Explain the microtask queue, and predict the order of promise callbacks and timers.
+  - Compare async and await in JavaScript and Python with how Java and C wait.
+introduces: [async-await, microtask]
+uses: [promise, event-loop, callback, arrow-function, function, return, call, undefined, array, push, length, object, property, method, throw, try-catch, error-object, generator, yield, iterator-protocol, typescript, type-annotation, type-checking, module, import-export, while-loop, for-of, variables, numbers, strings, comparison, if, for-loop, console-log]
+sources: [mdn-async-function, mdn-await, mdn-microtask-guide, mdn-execution-model, mdn-using-promises]
+---
+import AwaitSteps from '../../../components/diagrams/ch039/AwaitSteps';
+import QueueSteps from '../../../components/diagrams/ch039/QueueSteps';
+
+## Steps that read inside out
+
+Here is the start of a Drip runner, with promises: read a file, then
+scan it, then parse it, then report any error.
+
+```js
+readFile(path, 'utf8')
+  .then((src) => scan(src))
+  .then((tokens) => parse(tokens))
+  .catch((e) => console.log(e.message));
+```
+
+It works, however each step is a callback, each value lives only inside
+its own little function, and a later step cannot easily use an earlier
+value (`parse` cannot see `src`). We think of this as three plain steps
+in a row; we would like to write it that way.
+
+## async and await
+
+<Analogy title="a cook with a kitchen timer">
+A cook puts pasta on to boil, sets a timer, and goes to chop onions
+rather than stare at the pot. When the timer rings, the cook comes back
+to the very same step of the pasta recipe and carries on from there.
+<span slot="breaks">A cook comes back the moment the timer rings. An
+async function only resumes once the code running at that moment has
+finished; it waits its turn in a queue, like everything else.</span>
+</Analogy>
+
+<Analogy title="putting a phone call on hold">
+You ring the bank, and they put you on hold; rather than sit frozen,
+you put the phone on speaker and do the washing up. When someone picks
+up, you take the phone and carry on the same conversation, with
+everything you already said still said.
+<span slot="breaks">The bank can pick up while your hands are in the
+sink, and you drop everything. An async function is never resumed in the
+middle of other code, only between one piece of code and the next.</span>
+</Analogy>
+
+An **async function** is written with `async` in front of `function`,
+and inside it, **`await p`** pauses the function until the promise `p`
+settles, then carries on with its value. Here is the runner again:
+
+```js
+async function runFile(p) {
+  try {
+    const src = await readFile(p, 'utf8');
+    const tokens = scan(src);
+    return parse(tokens);
+  } catch (e) {
+    console.log(e.message);
+  }
+}
+```
+
+It reads top to bottom: wait for the file, then scan, then parse.
+`src` and `tokens` are ordinary local variables, so every later line
+can see them, and an error from any step, including a rejected
+`readFile`, lands in the one `catch`, as if all of it were ordinary
+code. Step through what `await` really does:
+
+<AwaitSteps client:visible />
+
+<Callout kind="definition">
+An **async function** always returns a promise: `return v` fulfils it
+with `v`, and a `throw` rejects it. Its body runs straight away when it
+is called, up to the first `await`<Cite id="mdn-async-function" />.
+**`await p`** pauses the async function until `p` settles, letting
+other code run meanwhile; then it gives back `p`'s value, or, if `p` was
+rejected, throws the reason, which `try`/`catch` can catch. `await` is
+only allowed inside an async function or at the top level of a
+module<Cite id="mdn-await" />.
+</Callout>
+
+Run the stepper's code for real, with `wait` from the last chapter,
+and watch the numbers come out in order 1, 2, 3, 4; then move the
+`console.log('2 caller')` line above `load()` and predict the change:
+
+<Run id="await-real" />
+
+`load()` prints `1 start` and pauses at the `await`, handing back a
+pending promise; the caller prints `2 caller`; ten milliseconds later
+`load` resumes and prints `3 resumed`, and its `return 'tree'` fulfils
+the promise, so the `then` callback prints `4 tree`. (Pausing should
+look familiar: async functions behave much like a generator that a
+promise resumes<Cite id="mdn-async-function" />.)
+
+<Examples of="async-await">
+
+```js
+async function one() { return 1; }
+one().then((n) => console.log(n));
+// 1
+```
+
+```js
+async function check() {
+  try {
+    await Promise.reject(new Error('bad'));
+  } catch (e) {
+    console.log('caught', e.message);
+  }
+}
+check(); // caught bad
+```
+
+```js
+// drip.js, a module
+import { readFile } from 'node:fs/promises';
+const src = await readFile('a.drip',
+  'utf8');
+console.log(run(src));
+```
+
+</Examples>
+
+In the first, `one()` returns a promise fulfilled with `1`, not `1`
+itself, so the value is read with `then` (or with `await` in another
+async function). In the second, awaiting a rejected promise throws its
+reason right there, and the ordinary `catch` takes it. The third uses
+`await` at the top level of a module, with no async function around it;
+the book's own Drip command-line tool loads its virtual machine this
+way (`await import(...)`, in `book/companion/ts/src/cli.ts`).
+
+Two mistakes are common. Forgetting `await` gives you the promise, not
+the value:
+
+```js
+async function count() { return 41; }
+const n = count();
+console.log(n + 1);
+// [object Promise]1
+```
+
+`n` is a promise, and `+` turns it into the text `[object Promise]`.
+TypeScript catches this before it runs: `count()` has the type
+`Promise<number>`, so `const n: number = count();` fails with
+`Type 'Promise<number>' is not assignable to type 'number'`. The second
+mistake is `await` in a function that is not `async`: Node refuses the
+whole file before running a line, with `SyntaxError: Unexpected
+reserved word` in a module (and `tsc` says `'await' expressions are only
+allowed within async functions and at the top levels of modules`).
+
+<Prompts ids={['async-returns', 'body-runs', 'await-what', 'forgot-await']} />
+
+<OtherLanguages>
+
+```js
+async function main() {
+  await wait(100);
+  console.log('done');
+}
+main();
+```
+
+```python
+import asyncio
+
+async def main():
+    await asyncio.sleep(0.1)
+    print('done')
+
+asyncio.run(main())
+```
+
+```java
+// no await: block this thread instead
+// (main must declare
+//  throws InterruptedException)
+Thread.sleep(100);
+System.out.println("done");
+```
+
+```c
+/* no async or await in C: */
+sleep(1); /* the whole program waits */
+printf("done\n");
+```
+
+</OtherLanguages>
+
+Python's `async` and `await` are nearly the same, with one real
+difference: calling an async function in Python runs *none* of its body
+until something awaits it, while JavaScript runs the body at once, up to
+the first `await`. Java has no `await`; instead it blocks a whole thread
+while it waits, which is fine because a Java program can have many
+threads. C has neither.
+
+## The microtask queue
+
+Which prints first, the timer or the promise callback?
+
+```js
+setTimeout(() => console.log('timer'));
+Promise.resolve().then(() => {
+  console.log('promise');
+});
+console.log('sync');
+```
+
+Both are queued while `sync` runs, the timer first; yet the output is
+`sync`, `promise`, `timer`. That is because there are two queues.
+
+<Analogy title="a teacher and follow-up questions">
+A teacher sees students one at a time, from a queue at the door. After
+each student, before calling the next, the teacher answers every
+follow-up question on the board, including ones written up while
+answering.
+<span slot="breaks">A teacher would eventually say "enough". The loop
+never does: if each microtask queues another, the next task waits for
+ever, and timers and clicks are never handled.</span>
+</Analogy>
+
+<QueueSteps client:visible />
+
+<Callout kind="definition">
+A **microtask** is a callback waiting in the **microtask queue**.
+Promise callbacks (`then`, `catch`, `finally`, and the rest of an async
+function after an `await`) are microtasks, and `queueMicrotask(f)` adds
+one directly. Timers, clicks and file results are ordinary **tasks**.
+Each time a task finishes, the event loop runs every waiting microtask,
+including any added along the way, before it takes the next
+task<Cite id="mdn-microtask-guide" />; this is the "later turn" a `then`
+callback always waits for<Cite id="mdn-using-promises" />.
+</Callout>
+
+<Formal title="The loop with two queues">
+
+```text
+repeat forever:
+  run the oldest task
+  while microtasks is not empty:
+    run the oldest microtask
+```
+
+<span slot="read">For ever: take the oldest task and run it to its end.
+Then, as long as the microtask queue has anything in it, run its oldest
+entry; only when it is completely empty go round again for the next
+task. (Running the file itself is the very first
+task<Cite id="mdn-microtask-guide" />.)</span>
+</Formal>
+
+<Examples of="microtask">
+
+```js
+queueMicrotask(() => console.log('m'));
+console.log('s');
+// s, then m
+```
+
+```js
+async function a() {
+  console.log('a1'); await null;
+  console.log('a2');
+}
+async function b() {
+  console.log('b1'); await null;
+  console.log('b2');
+}
+a(); b(); console.log('end');
+// a1, b1, end, a2, b2
+```
+
+```js
+let n = 0;
+setTimeout(() => console.log('timer', n));
+function spin() {
+  n++;
+  if (n < 1000000) queueMicrotask(spin);
+}
+spin();
+// timer 1000000
+```
+
+</Examples>
+
+The first is the smallest case: the microtask waits for the current
+code, then runs before anything else. In the second, each function runs
+to its `await` (`await null` waits for an already-fulfilled promise),
+so `a1` and `b1` print at once and `end` follows; the rest of `a` and
+the rest of `b` are microtasks, run in the order they were queued. The
+third is realistic and a warning: each microtask queues the next, so the
+timer, though due at once, waits for all million of them; an endless
+chain would stop it for ever<Cite id="mdn-microtask-guide" />.
+
+<Prompts ids={['micro-what', 'micro-first', 'micro-drain', 'micro-starve']} />
+
+## Your turn
+
+The core exercise uses real promises and `await`; the extra one builds
+the two queues of the event loop by hand, to show how they work.
+
+<Exercise id="sizes" />
+
+<Exercise id="twoQueues" />
+
+## What you learned
+
+- An **async function** returns a promise; its body runs at once, up to
+  the first **`await`**, which pauses it until a promise settles and
+  then gives its value, or throws its reason.
+- Forgetting `await` gives you a promise, not a value; TypeScript's
+  `Promise<T>` type catches it.
+- Promise callbacks are **microtasks**: after every task, the loop
+  empties the microtask queue before taking the next task.
+
+Next: the tools around the code, from `tsconfig.json`, which tells
+`tsc` how to check a whole project, to npm.
+
+<Quiz />

@@ -1,0 +1,315 @@
+---
+n: 15
+day: 4
+part: I
+title: 'Map and Set'
+tagline: 'Looking something up in an array means searching it. A Map finds the answer by key, whatever the key is, and a Set answers "have I seen this before?" in one call.'
+objectives:
+  - Store and look up values by key with a Map, including object keys.
+  - Keep a collection of unique values with a Set.
+  - Loop over arrays, Maps and Sets with for...of.
+  - Count things with a Map, and compare Maps with Python's dict, Java's HashMap and C.
+introduces: [map, set, for-of]
+uses: [object, property, bracket-access, reference, identity, array, index, length, push, array-loop, function, parameter, return, undefined, arrow-function, callback, class, new, instance, method, variables, numbers, strings, booleans, comparison, if, for-loop, console-log]
+sources: [mdn-map, mdn-set, mdn-for-of]
+---
+import MapTable from '../../../components/diagrams/ch015/MapTable';
+import CountSteps from '../../../components/diagrams/ch015/CountSteps';
+
+## Remembering things about objects
+
+Say you want to note which particles have already been hit. An object
+seems a good place for notes, with bracket access from chapter 5:
+
+```js
+const hit = {};
+const a = { id: 1 };
+const b = { id: 2 };
+
+hit[a] = true;
+console.log(hit[b]); // true ?!
+```
+
+`b` was never hit, yet the answer is `true`. The reason is that a
+property name is always a string, so JavaScript first turns `a` into a
+string, and every plain object turns into the same one,
+`'[object Object]'`; as such, `hit[a]` and `hit[b]` are the same
+property. (Numbers suffer too: `hit[1]` and `hit['1']` are one property.)
+What we need is a lookup table whose keys can be *anything*, kept exactly
+as they are.
+
+<Analogy title="a cloakroom">
+You hand in your coat and get a ticket; later you hand the ticket back and
+get exactly your coat, without anyone searching the racks. The ticket is
+the **key**, the coat is the **value**, and the cloakroom is the Map.
+<span slot="breaks">A cloakroom only takes its own numbered tickets; a Map
+takes any value at all as a key (a string, a number, even an object), and
+the same key always finds the same value until you change it.</span>
+</Analogy>
+
+## Map
+
+<Figure takeaway="A Map: any key, one value each." caption="Each row pairs a key with a value. The keys keep their own type: the string 'ada', the number 7 and an object are all different kinds of key.">
+  <MapTable />
+</Figure>
+
+`Map` is a built-in class, so you make one with `new` and use its
+methods:
+
+```js
+const ages = new Map();
+ages.set('ada', 36);
+ages.set('alan', 41);
+
+console.log(ages.get('ada'));  // 36
+console.log(ages.get('bob'));  // undefined
+console.log(ages.has('alan')); // true
+console.log(ages.size);        // 2
+```
+
+Line 1 makes an empty Map. Lines 2 and 3 each add an **entry**, a key
+paired with a value. `get` looks up a key and gives its value, or
+`undefined` when there is no such key (`'bob'`); `has` only answers yes
+or no; `size` counts the entries (a property, so no brackets).
+
+<Callout kind="definition">
+A **Map** holds key → value entries<Cite id="mdn-map" />. `set(k, v)` adds
+an entry, or replaces the value if `k` is already there; `get(k)` returns
+the value, or `undefined`; `has(k)` asks whether `k` is there;
+`delete(k)` removes it; `size` counts the entries. Keys can be any value,
+and are compared like `===`, so an object key matches only that same
+object. Each key appears at most once.
+</Callout>
+
+<Formal title="A Map as a lookup">
+
+```text
+get(m, k) = v          if (k, v) ∈ m
+get(m, k) = undefined  otherwise
+```
+
+<span slot="read">Think of a Map m as a collection of pairs. Getting
+key k gives v when the pair (k, v) is in m (the symbol ∈ reads "is
+in"), and undefined when no pair has k as its key. Because each key
+appears at most once, there is never a choice between two values.</span>
+</Formal>
+
+<Examples of="map">
+
+```js
+const m = new Map();
+m.set('a', 1);
+m.set('a', 2);
+m.get('a'); // 2
+m.size;     // 1
+```
+
+```js
+const hit = new Map();
+hit.set(a, true);
+hit.has(a);         // true
+hit.has(b);         // false
+hit.has({ id: 1 }); // false
+```
+
+```js
+const cs = ['red', 'blue', 'red'];
+const counts = new Map();
+for (let i = 0; i < cs.length; i++) {
+  const c = cs[i];
+  if (counts.has(c)) {
+    counts.set(c, counts.get(c) + 1);
+  } else {
+    counts.set(c, 1);
+  }
+}
+// Map(2) { 'red' => 2, 'blue' => 1 }
+```
+
+</Examples>
+
+The first shows that setting a key again replaces its value rather than
+adding a second entry. The second fixes the hook: object keys are
+compared by identity (chapter 7), so `a` is found, `b` is not, and a
+lookalike `{ id: 1 }` is a different object and is not found either. The
+third is the most common Map job of all, counting: for each colour, if
+it has been seen, add one to its count, otherwise start it at `1`. Step
+through it:
+
+<CountSteps client:visible />
+
+A common slip is to use brackets on a Map, as if it were an object:
+
+```js
+const m = new Map();
+m['a'] = 1;   // a property, not an entry
+m.get('a');   // undefined
+m.set('a', 1);
+m.get('a');   // 1
+```
+
+The brackets quietly stick an ordinary property on the Map object, which
+`get` never looks at; only `set` adds an entry.
+
+<OtherLanguages>
+
+```js
+const ages = new Map();
+ages.set('ada', 36);
+console.log(ages.get('ada')); // 36
+console.log(ages.has('bob')); // false
+```
+
+```python
+ages = {}
+ages['ada'] = 36
+print(ages['ada'])    # 36
+print('bob' in ages)  # False
+```
+
+```java
+var ages = new HashMap<String, Integer>();
+ages.put("ada", 36);
+System.out.println(ages.get("ada"));
+System.out.println(
+    ages.containsKey("bob"));
+```
+
+```c
+/* C has no built-in map: you
+   write your own hash table, as
+   chapter 100 does, or use a
+   library. */
+```
+
+</OtherLanguages>
+
+Python's `dict` is the closest relative, written with brackets (and,
+unlike a JavaScript object, its keys keep their type); asking it for a
+missing key with `ages['bob']` raises a `KeyError` instead of giving
+`undefined`. Java's `HashMap` names its methods `put` and `containsKey`,
+and makes you say the types of keys and values. C has nothing built in at
+all, which is exactly why you will build one.
+
+<Prompts ids={['object-keys-strings', 'map-get-missing', 'map-set-again', 'map-object-key']} />
+
+## for...of
+
+Notice that the counting loop only uses `i` to fetch `cs[i]`. When you do
+not care about the index, there is a shorter loop.
+
+<Analogy title="dealing cards">
+A `for` loop with `i` is like saying "card number 0, card number 1, card
+number 2..." and fetching each; `for...of` is like dealing: the next card
+lands in your hand, and you never need to know its number.
+<span slot="breaks">Dealing uses the deck up; `for...of` leaves the
+collection exactly as it was, so you can loop over it again.</span>
+</Analogy>
+
+<Callout kind="definition">
+**`for (const x of things)`** runs the body once for each value in
+`things`, in order, with `x` holding that value<Cite id="mdn-for-of" />.
+It works on arrays, strings, Maps and Sets; it does not work on plain
+objects, and it does not give you the index (if you need `i`, use the
+classic `for` loop).
+</Callout>
+
+<Examples of="for-of">
+
+```js
+for (const c of ['red', 'blue']) {
+  console.log(c);
+} // red, then blue
+```
+
+```js
+for (const e of counts) {
+  console.log(e[0], e[1]);
+} // red 2, then blue 1
+```
+
+```js
+let total = 0;
+for (const hp of hpMap.values()) {
+  total = total + hp;
+}
+```
+
+</Examples>
+
+The first hands you each colour in turn, no index needed. The second
+loops over a Map, which gives each entry as a two-slot array
+`[key, value]`, in the order the keys were first added<Cite id="mdn-map" />,
+so `e[0]` is the key and `e[1]` the value (you will often see it written
+`for (const [k, v] of counts)`, a shorthand that unpacks the two slots
+into names). The third is a realistic use: a Map's `values()` method
+gives just the values, so the loop adds up every particle's health
+points, here kept in a Map called `hpMap`.
+
+<Prompts ids={['forof-what', 'forof-map']} />
+
+## Set
+
+Sometimes there is no value to store: you only want to know *whether*
+something is in the collection. That is a Set.
+
+<Analogy title="a guest list at the door">
+The doorman's list has each name once; ticking "Ada" twice does not make
+two Adas, and the only question it answers is "is this person on the
+list?"
+<span slot="breaks">A paper list is read top to bottom; a Set finds a name
+without reading the others, as the next chapter explains.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **Set** is a collection of unique values<Cite id="mdn-set" />. `add(v)`
+puts `v` in, and does nothing if it is already there; `has(v)` asks
+whether it is there; `delete(v)` removes it; `size` counts the values. It
+uses the same idea of "the same value" as Map keys.
+</Callout>
+
+<Examples of="set">
+
+```js
+const tags = new Set();
+tags.add('fast');
+tags.add('fast'); // already there
+tags.size; // 1
+```
+
+```js
+const ids = new Set([3, 1, 3, 3, 2]);
+// Set(3) { 3, 1, 2 }
+```
+
+<Run id="map-set-play" />
+
+</Examples>
+
+The first adds `'fast'` twice and still holds one value. The second
+builds a Set straight from an array, which is the quickest way to drop
+duplicates: one of each value is kept, in first-seen order. The runnable
+example puts Map, Set and `for...of` together; predict each line before
+you run it.
+
+<Prompts ids={['set-dup', 'set-from-array']} />
+
+## Your turn
+
+<Exercise id="countEach" />
+
+<Exercise id="firstRepeat" />
+
+## What you learned
+
+- Object property names are always strings, so objects make poor lookup
+  tables for non-string keys.
+- A **Map** stores key → value entries, with keys of any type, compared
+  like `===`: `set`, `get`, `has`, `delete` and `size`.
+- A **Set** stores unique values: `add`, `has`, `delete` and `size`.
+- **`for...of`** visits each value of an array, string, Map or Set, in
+  order; over a Map, each value is a `[key, value]` pair.
+Next: how a Map can find a key among a million without checking them
+one by one.
+
+<Quiz />

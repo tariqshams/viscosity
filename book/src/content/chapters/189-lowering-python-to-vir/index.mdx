@@ -1,0 +1,251 @@
+---
+n: 189
+day: 48
+part: IX
+title: 'Lowering Python to VIR'
+tagline: 'A Python loop and a JavaScript loop can look alike and mean different things. Lowering is where those differences have to be settled, because after it the analyses see only VIR and believe it completely.'
+objectives:
+  - Lower Python’s counting loops, element loops, dataclass calls and `append` to VIR.
+  - Explain why `for i in range(n)` needs a hidden counter, and what that buys the bounds proofs.
+  - Say why “numeric” means “provably a float” for Python, and how ints are tracked.
+  - Spot a lowering that copies the spelling of Python but not its meaning.
+introduces: [semantic-differences]
+uses: [python-subset, indentation-tokens, multi-language-ir, language-plugin, vir, record-collection-nodes, ast-to-ir, lowering, ir, ssa, phi-node, basic-block, cfg, induction-variable, natural-loop, scope, block-scope, global-variable, closure, type-inference, dataflow, fixpoint, collection-discovery, record-shape, safety-analysis, bailout, optimization-report, typed-array, float64, ieee754, for-loop, for-of, push, function, recursion, object, throw, error-object, differential-testing]
+sources: [python-expressions, python-dataclasses]
+---
+import LowerSteps from '../../../components/diagrams/ch189/LowerSteps';
+
+## Two loops that look alike
+
+Run these two programs:
+
+```js
+for (let i = 0; i < 3; i++) {
+  console.log(i);
+  i += 5;
+}
+```
+
+```py
+for i in range(3):
+    print(i)
+    i += 5
+```
+
+JavaScript prints `0` and stops: `i += 5` changed the loop variable, so
+the next test `i < 3` fails. Python prints `0`, `1`, `2`. Its `for`
+hands out the next value from `range(3)` each time, whatever the body
+did to `i`.
+
+Same shape, same words, different meaning. If the Python plugin lowered
+this `for` the way the JavaScript plugin lowers its `for`, every
+analysis after it would reason about a loop that Python doesn't run.
+The analyses can't catch that. They only ever see VIR.
+
+<Callout kind="intuition">
+Languages have false friends: words that look the same in two languages
+but mean different things. The Spanish *embarazada* means pregnant, not
+embarrassed. A translator who goes by spelling gets it wrong in a way
+nobody reading the translation can detect. Lowering is translation, and
+Python and JavaScript have plenty of false friends.
+</Callout>
+
+<Callout kind="definition">
+**Semantic differences** are the places where two languages give
+different meanings to code that looks the same: loops, numbers,
+indexing, comparisons, scope. A front-end for a multi-language IR must
+lower each construct by what it *means* in its own language, so that
+the shared analyses can trust the IR completely.
+</Callout>
+
+<Prompts ids={['sd-what', 'sd-range']} />
+
+## Line by line
+
+Here is the plugin at work on a program you have seen before. Step
+through it:
+
+<LowerSteps client:visible />
+
+Most of it is the JavaScript lowering again, which is the point of a
+multi-language IR: `append` is `push`, `len(ps)` is a length read,
+`p.x` is `field.get`. The interesting lines are the ones where the two
+plugins *had* to differ.
+
+## A hidden counter
+
+This is `counting()` from `lower.ts`, simplified. It handles
+`for i in range(a, b)`:
+
+```ts
+// before the loop: start and bound,
+// both evaluated exactly once
+const key = `range${s.start}`;
+writeVariable(key, start);
+// header: test the hidden counter
+const i = readVariable(key);
+condbr(binop('<', i, bound),
+  body, exit);
+// body: copy the counter into i
+write(target, readVariable(key));
+stmts(body);
+// continue: bump the hidden counter
+writeVariable(key,
+  binop('+', readVariable(key), 1));
+```
+
+The loop variable and the counter are two different variables. `key`
+is named after the loop's position in the file, so no Python name can
+clash with it. The body may do anything to `i`; the next pass copies a
+fresh value from the counter. That is exactly Python's meaning, and it
+is *better* for the analyses: the counter is a clean induction variable,
+so a bounds proof about it holds even if the body reassigns `i`. In
+this test program the body does `i += 50` and then indexes again:
+
+```py
+for i in range(len(ps)):
+    ps[i].x += 1.0
+    i += 50
+    if i < len(ps):
+        ps[i].x += 0.5
+```
+
+The report says `1 of 3 element accesses proven in bounds`: the first
+`ps[i]` is proven, the one after `i += 50` gets a check (as does a
+final `print(ps[60].x)`), and the
+compiled program prints exactly what the original does.
+
+`for p in ps` goes the other way. It reads the length in the loop
+header on every pass, because a Python list iterator notices elements
+appended during the loop. The corpus file `append_while_iterating.py`
+appends inside such a loop and checks both versions agree.
+
+<Prompts ids={['sd-counter', 'sd-proof', 'sd-forin']} />
+
+## An int is not a float
+
+In JavaScript, `1` and `1.0` are the same value. In Python they are two
+types: `1` is an `int`, `1.0` a `float`. Dividing two ints with `/`
+gives a float, but `//` keeps an int<Cite id="python-expressions" />.
+That matters to Viscosity because a typed column, `array('d')`, holds
+C doubles. Put an int in, and a float comes out: `1` would print as
+`1.0`.
+
+So the lowering keeps the difference (each `const` carries a note,
+`int` or `float`), and the numeric inference in the core asks the
+language. For Python it computes two facts per value, "is a float" (`n`)
+and "is an int" (`I`):
+
+```ts
+case 'const':
+  return i.note === 'float';
+case 'binop':
+  if (op === '/')    // int / int: float
+    return nOrI(a) && nOrI(b);
+  // ** may be complex: float ** int only
+  if (op === '**') return n(a) && I(b);
+  // + - * % //: float if a float
+  // meets a float or an int
+  return (n(a) && nOrI(b)) ||
+    (I(a) && n(b));
+```
+
+A field gets a typed column only if every value stored in it is
+provably a float. Here is `ints_stay_ints.py`, whose `count` field holds
+`i` and `weight` holds `i / 2`:
+
+```
+cs (line 9) {count, weight} → struct of
+  arrays
+  · typed array('d') columns for weight;
+    list columns for count (may hold
+    non-floats)
+```
+
+The int fact has a second use: an index must be an int. `ps[k]` with
+`k = 1.5` is a `TypeError` in Python, so the report says
+`indexes the array with something that may not be an int` and keeps
+the list.
+
+<Prompts ids={['sd-int', 'sd-div', 'sd-index']} />
+
+## Records are dataclass calls
+
+JavaScript has object literals. Python has classes, and the closest
+thing to a record is a dataclass: a class whose `@dataclass` decorator
+generates an `__init__` that stores each annotated field, in order
+<Cite id="python-dataclasses" />. So the plugin first collects the
+module-level dataclasses whose bodies are only annotated fields, then
+lowers `P(...)` to `record.new` with the fields in declaration order.
+
+Arguments are matched the way Python matches them: positionals first,
+then keywords, then defaults. In the corpus file
+`keywords_defaults.py`, `Body(i * 1.0, y=1.5)`, with `m` defaulting to
+`2.0`, becomes a record of `i * 1.0`, `1.5` and `2.0`. Keywords in a *different*
+order from the fields, like `P(y=1.0, x=v)`, are not lowered to a
+record at all. Python evaluates arguments left to right, and putting
+them into field order would change that order, so the plugin refuses
+rather than guess. The report then says the list holds something that
+isn't a record.
+
+<Callout kind="pitfall">
+Defaults are a false friend, and the plugin got them wrong at first
+(found while writing this chapter; since fixed). Python evaluates a
+field's default *once*, when the class is defined. The lowering copied
+the default's expression to every call site. With `y: float = K` and a
+later `K = 3.0`, Python's records got `2.0` but the compiled program
+stored `3.0`. The analysis agreed with the compiled code, so no check
+noticed. Now only literal defaults like `2.0` are modelled; a class
+with any other default isn't treated as a record. A second one: the
+numeric rule once said float `**` float is a float, but `(-1.0) ** 0.5`
+is a complex number in Python, which an `array('d')` refuses with a
+`TypeError`. Now `**` is a float only with an int exponent. Both are
+exactly the kind of bug a semantic difference produces: invisible to
+the shared core, caught only by comparing real runs. The corpus
+programs `nonliteral_default.py` and `power_complex.py` keep them
+fixed.
+</Callout>
+
+<Prompts ids={['sd-dataclass', 'sd-kwargs', 'sd-default']} />
+
+## Scope, briefly
+
+Python has no block scope: a name assigned anywhere in a function
+belongs to the whole function, and a loop variable is still there after
+the loop. So the plugin collects names per function, not per block. A
+name becomes a VIR binding (rather than an SSA value) if another
+function touches it, if a `global` statement names it, or if it is ever
+bound to a list. Everything else is SSA, built by the same shared
+builder as JavaScript's.
+
+<Callout kind="engine" label="Under the hood">
+Notice where the knowledge lives. The tokenizer and parser know Python's
+*spelling*. The lowering knows its *meaning*: the hidden counter, the
+dataclass argument rules, the int and float notes. The core knows almost
+nothing about Python, only the few facts it can't do without (what
+fits in a typed column, what counts as an index). Every one of the bugs
+above is in the meaning layer, which is why the plugin's differential
+test runs both programs with the real `python3` and compares their
+output and exceptions.
+</Callout>
+
+## Your turn
+
+<Exercise id="pyKind" />
+
+<Exercise id="pyIndex" />
+
+## What you learned
+
+- **Semantic differences** are where similar-looking code means
+  different things. Lowering must translate meaning, because the shared
+  analyses trust VIR completely.
+- `for i in range(...)` uses a hidden counter and a bound evaluated
+  once. `for p in xs` re-reads the length on every pass.
+- For Python, "numeric" means provably a **float**; ints are tracked
+  separately, and an index must be an int.
+- A dataclass call becomes `record.new` with fields in order; keywords
+  out of order are refused. Copying a default's expression is a
+  semantic bug.
+
+<Quiz />

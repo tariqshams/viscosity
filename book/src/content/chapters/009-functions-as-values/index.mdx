@@ -1,0 +1,370 @@
+---
+n: 9
+day: 3
+part: I
+title: 'Functions as values'
+tagline: 'A function is a value, just like 3 or a string: you can store it, hand it to another function, and get one back. That one fact turns a pile of nearly identical loops into one.'
+objectives:
+  - Store a function in a variable, an array or an object, and tell the function apart from a call of it.
+  - Pass a function to another function as a callback, and write functions that take or return functions.
+  - Write arrow functions, and say when they need braces and a return.
+  - Say how JavaScript, Python, Java and C each let you pass a function around.
+introduces: [first-class-function, callback, arrow-function, higher-order-function]
+uses: [function, parameter, argument, return, call, undefined, local-variable, array, index, length, push, array-loop, object, property, dot-access, bracket-access, array-of-objects, reference, aliasing, variables, numbers, strings, booleans, comparison, if, for-loop, console-log]
+sources: [mdn-first-class-function, mdn-callback-function, mdn-function-object, mdn-arrow-functions]
+---
+import FnArrows from '../../../components/diagrams/ch009/FnArrows';
+import CallbackSteps from '../../../components/diagrams/ch009/CallbackSteps';
+
+## Two loops, one shape
+
+Here are some particles and two jobs: collect every `x`, and collect
+every `vx`.
+
+```js
+const ps = [
+  { x: 1, vx: 2 },
+  { x: 4, vx: -1 },
+];
+
+const xs = [];
+for (let i = 0; i < ps.length; i++) {
+  xs.push(ps[i].x);
+}
+const vxs = [];
+for (let i = 0; i < ps.length; i++) {
+  xs.push(ps[i].vx);
+}
+```
+
+Apart from one line these are the same loop, and the copy even has a
+bug (the second loop pushes into `xs`, the kind of slip copying
+invites). Chapter 1 said that when work repeats, you name it; however,
+the part that *differs* here is itself a piece of work ("take the `x`",
+"take the `vx`"), so to write the loop once we need to hand a piece of
+work *to* a function.
+
+<Analogy title="a recipe card you can hand to a friend">
+So far a function has been a recipe card on a shelf. A card, however,
+is also a thing you can pass to someone: "do this to every potato in
+the bag". The friend runs the loop over the bag; you supply only the
+recipe for one potato.
+<span slot="breaks">A friend reads a recipe and adapts it; a function
+that receives your function runs it exactly, with whatever arguments it
+chooses, as many times as it chooses.</span>
+</Analogy>
+
+## A function is a value
+
+```js
+function double(n) { return n * 2; }
+
+const twice = double;
+console.log(twice(5));         // 10
+console.log(twice === double); // true
+```
+
+Line 3 has no brackets after `double`, so nothing runs: the function
+itself is stored under a second name. Line 4 calls it through that
+name, and line 5 shows that both names hold the very same function. In
+JavaScript every function is an object<Cite id="mdn-function-object" />,
+so chapter 7's rules apply: the variable holds an arrow, and copying
+it makes an alias.
+
+<Figure takeaway="Function names hold arrows, like any object." caption="double, twice and the array slot ops[0] all point at one function object. Calling any of them runs the same code.">
+  <FnArrows />
+</Figure>
+
+<Analogy title="a song file and playing it">
+A song file can be copied to a playlist, attached to a message or saved
+under a new name, and none of that plays it; pressing play does. The
+name `double` is the file, and `double(5)` is pressing play.
+<span slot="breaks">Copying a file makes a second file; copying a
+function's name makes a second arrow to the *same* function, as the
+figure shows.</span>
+</Analogy>
+
+<Callout kind="definition">
+JavaScript has **first-class functions**: a function is a value like any
+other, so it can be stored in a variable, an array or an object, passed
+as an argument, and returned from another function<Cite id="mdn-first-class-function" />.
+`double` *is* the function; `double(5)` *calls* it and is the result,
+`10`.
+</Callout>
+
+<Examples of="first-class-function">
+
+```js
+const ops = [double, double];
+ops[1](3); // 6
+```
+
+```js
+const tools = { dbl: double };
+tools.dbl(4); // 8
+```
+
+```js
+function add(a, b) { return a + b; }
+function sub(a, b) { return a - b; }
+const byOp = { '+': add, '-': sub };
+byOp['-'](7, 2); // 5
+```
+
+</Examples>
+
+The first stores the function in an array slot and calls it from
+there: `ops[1]` is the function, and `(3)` calls it. The second
+does the same with an object property. The third is how an interpreter
+can pick what to do with an operator: a table from the operator's text
+to the function that does the work, so `byOp['-']` (bracket access,
+since `-` is not a plain word) finds `sub`, which gives 5.
+
+Leaving the brackets off by accident is the common slip:
+
+```js
+console.log(double);
+// [Function: double]
+console.log(double());  // NaN
+console.log(double(4)); // 8
+```
+
+The first line prints the function itself (that is how Node shows a
+function value), because nothing called it. The next calls it with no
+argument, so `n` is `undefined` and `undefined * 2` is `NaN`; only the
+third does the job.
+
+<Prompts ids={['fn-is-value', 'name-vs-call', 'fn-in-table']} />
+
+## Handing work over: callbacks
+
+Now the loop can be written once, with the part that differs coming in
+as a parameter, `get`. Step through it:
+
+<CallbackSteps client:visible />
+
+<Callout kind="definition">
+A **callback** is a function passed to another function, which calls it
+when it needs to<Cite id="mdn-callback-function" />. A function that
+takes a function as an argument, or returns one, is a **higher-order
+function**. The receiving function decides when, how often and with
+which arguments the callback runs.
+</Callout>
+
+<Examples of="callback higher-order-function">
+
+```js
+function twice(f) { f(); f(); }
+function hi() { console.log('hi'); }
+twice(hi); // prints hi, then hi
+```
+
+```js
+function getVx(p) { return p.vx; }
+pluck(ps, getX);  // [1, 4]
+pluck(ps, getVx); // [2, -1]
+```
+
+```js
+function times(k) {
+  return function (n) { return n * k; };
+}
+const triple = times(3);
+triple(5); // 15
+```
+
+<Run id="callbacks" />
+
+</Examples>
+
+The first is the smallest higher-order function: it calls the function
+it is given two times. The second is the payoff
+from the opening: one `pluck`, two different callbacks, two different
+jobs, and no copied loop to get wrong. The third goes the other way:
+`times` *returns* a function, written with no name where a value goes,
+so `times(3)` is a brand-new function that multiplies by 3; the
+runnable one lets you try all three. (How does
+`triple` still know `k` once the call to `times` is over? The chapter
+on closures answers that.)
+
+Passing the result of a call instead of the function is the mistake to
+watch for:
+
+```js
+pluck(ps, getX(ps[0]));
+// TypeError: get is not a function
+pluck(ps, getX); // [1, 4]
+```
+
+`getX(ps[0])` runs at once and hands over its *result*, the number 1;
+`pluck` then tries `get(xs[i])` with `get` being 1, and you cannot call
+a number.
+
+<Prompts ids={['callback-what', 'pass-not-call', 'hof-what']} />
+
+## Arrow functions
+
+Small callbacks are so common that JavaScript has a short way to write
+them<Cite id="mdn-arrow-functions" />:
+
+```js
+const double = (n) => n * 2;
+const add = (a, b) => a + b;
+pluck(ps, (p) => p.x); // [1, 4]
+```
+
+Read `=>` as "becomes": "`n` becomes `n * 2`". The parameters go on
+the left, and the expression on the right is returned with no `return`
+keyword. The third line writes the callback right where it is passed,
+which is how most callbacks look in real code.
+
+<Analogy title="a sticky note instead of a recipe card">
+For a one-step job ("add salt") you would not write a full recipe card;
+you would scribble it on a sticky note and hand it over. An arrow
+function is the sticky note: the same kind of thing, written small.
+<span slot="breaks">A sticky note can only hold a little; an arrow
+function can have a full body in braces, as long as you then write the
+`return` yourself.</span>
+</Analogy>
+
+<Callout kind="definition">
+An **arrow function** is written `(params) => expression`, which returns
+the expression, or `(params) => { statements }`, which is a full body
+and needs a `return` like any other function. With exactly one
+parameter the brackets may be left off: `n => n * 2`.
+</Callout>
+
+<Examples of="arrow-function">
+
+```js
+const inc = (n) => n + 1;
+inc(4); // 5
+```
+
+```js
+const sq = (n) => { return n * n; };
+sq(3); // 9
+```
+
+```js
+const right = (p) => p.vx > 0;
+right({ vx: 2 }); // true
+```
+
+</Examples>
+
+The first is the plainest arrow: one parameter, one expression. The
+second uses braces, so it needs an explicit `return`. The
+third returns a `true` or `false`, which makes it a *test* you can hand
+to a function that keeps only the particles moving right (next chapter
+does exactly that).
+
+The braces are where people slip:
+
+```js
+const bad = (n) => { n * 2 };
+bad(4);  // undefined
+const good = (n) => n * 2;
+good(4); // 8
+```
+
+With braces, `n * 2` is a statement that works out a value and throws it
+away; nothing returns it, so the call gives `undefined` (chapter 2's
+rule). Drop the braces, or add `return`.
+
+<Formal title="Functions as values, in notation">
+
+```text
+double = λn. n × 2
+(λn. n × 2)(3)  =  3 × 2  =  6
+pluck : ([A], A → B) → [B]
+```
+
+<span slot="read">λ (the Greek letter lambda) reads "the function
+taking": the first line says double is the function taking n to n
+times 2, which is exactly an arrow function. The second applies it to 3
+by putting 3 wherever n appears. The third is pluck's type: it takes an
+array of A things and a function from A to B, and gives back an array
+of B things.</span>
+</Formal>
+
+<Prompts ids={['arrow-braces', 'arrow-short']} />
+
+<OtherLanguages>
+
+```js
+const dbl = (n) => n * 2;
+function apply(f, x) {
+  return f(x);
+}
+console.log(apply(dbl, 5)); // 10
+```
+
+```python
+dbl = lambda n: n * 2
+def apply(f, x):
+    return f(x)
+
+print(apply(dbl, 5))  # 10
+```
+
+```java
+// import java.util.function.Function;
+static int apply(
+    Function<Integer, Integer> f, int x) {
+  return f.apply(x);
+}
+// inside main:
+Function<Integer,Integer> dbl = n -> n * 2;
+System.out.println(apply(dbl, 5)); // 10
+```
+
+```c
+int dbl(int n) { return n * 2; }
+int apply(int (*f)(int), int x) {
+  return f(x);
+}
+/* inside main: */
+printf("%d\n", apply(dbl, 5)); /* 10 */
+```
+
+</OtherLanguages>
+
+Python is closest: functions are values, and `lambda` writes a small
+one-expression function. Java needs a *type* for a function
+value (`Function<Integer, Integer>`, "takes an Integer, gives an
+Integer") and calls it with `.apply(x)`; its arrows are written `->`.
+C can pass a **function pointer**, an arrow to a named function
+(`int (*f)(int)` reads "f points at a function from int to int"), but it
+has no way to write a new function inside another one; the chapter on
+closures shows why that limit matters.
+
+<Callout kind="engine" label="Under the hood">
+In the interpreter you write in Part III, a function value is literally
+a small object holding the parameter names and the body, which is why
+it can be passed around like any other value. For Viscosity, callbacks
+are a challenge: in `pluck(ps, (p) => p.x)` the field the loop touches
+is written inside the callback, so Viscosity has to see inside it.
+</Callout>
+
+## Your turn
+
+<Exercise id="countIf" />
+
+<Exercise id="applyN" />
+
+## What you learned
+
+- Functions are **first-class**: values you can store, pass and return.
+  `f` is the function; `f()` calls it.
+- A **callback** is a function you hand to another function to call; a
+  **higher-order function** takes or returns functions.
+- Pass `getX`, not `getX()`: the first hands over the function, the
+  second its result.
+- **Arrow functions**: `(x) => x * 2` returns its expression; with
+  braces, you need `return`.
+
+Next: the ready-made higher-order functions every array has (`map`,
+`filter` and `reduce`), and a loop that does not count.
+
+<Quiz />

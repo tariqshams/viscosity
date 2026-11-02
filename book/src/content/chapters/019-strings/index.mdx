@@ -1,0 +1,305 @@
+---
+n: 19
+day: 5
+part: I
+title: 'Strings up close'
+tagline: 'Until now a string has been a lump of text. Look closer and it is a row of numbered characters, and every character is secretly a number. That is all a scanner needs.'
+objectives:
+  - Read any character of a string by its index, and explain why strings cannot be changed in place.
+  - Convert between characters and their char codes with charCodeAt and String.fromCharCode.
+  - Use code ranges to test whether a character is a digit or a letter, and to get a digit's value.
+  - Compare characters and codes in JavaScript, Python, Java and C.
+introduces: [string-index, char-code]
+uses: [strings, array, index, length, function, parameter, return, call, undefined, variables, numbers, comparison, logical-operators, booleans, if, for-loop, console-log]
+sources: [mdn-string, mdn-charcodeat, mdn-primitive]
+---
+import CharCodes from '../../../components/diagrams/ch019/CharCodes';
+import ClassifySteps from '../../../components/diagrams/ch019/ClassifySteps';
+
+## Text, as a computer sees it
+
+Here is a line of a program, as a string:
+
+```js
+const src = 'width = 42;';
+```
+
+To you it plainly says "set width to 42"; to JavaScript it is eleven
+characters in a row. In Part III you will write a **scanner**, the first
+stage of an interpreter, whose whole job is to look at text like this and
+find the words in it: the name `width`, the `=`, the number `42`, the
+`;`. To do that, it has to get inside a string: read it one character at
+a time, and ask what kind of character each one is. That is this
+chapter; the next one cuts strings into pieces and glues them together.
+
+<Analogy title="letter tiles in a word game">
+A word laid out in letter tiles is a row of separate pieces, and you can
+point at any one: "the third tile". Turn a tile over and there is a
+number printed on the back; the computer keeps the number, and the letter
+is only how it is drawn on screen.
+<span slot="breaks">You can swap tiles around on the board; you cannot
+change a character inside a string at all, as we will see, only make a
+new string.</span>
+</Analogy>
+
+## A row of characters
+
+<Figure takeaway="Characters have indexes, and codes." caption="The string 'cat 42'. Each character has an index, counting from 0 just like an array slot. Underneath each one is its char code, the number the computer actually stores. Even the space is a character, with code 32.">
+  <CharCodes />
+</Figure>
+
+Strings are indexed exactly like arrays:
+
+```js
+const s = 'cat 42';
+
+console.log(s.length); // 6
+console.log(s[0]);     // c
+console.log(s[4]);     // 4  (a string!)
+console.log(s[99]);    // undefined
+```
+
+`s.length` counts the characters, and the space counts too, so there are
+six. `s[0]` is the first character, `'c'`. `s[4]` is the one-character
+*string* `'4'`, not the number 4 (JavaScript has no separate "character"
+type: a character is a string of length 1). Asking for an index past the
+end gives `undefined`, as with arrays.
+
+<Callout kind="definition">
+`str[i]` reads the character at **index** `i`, as a string of length 1,
+and `str.length` is the number of characters<Cite id="mdn-string" />, so
+the last one is `str[str.length - 1]`. Strings are **immutable**: once a
+string is made, it never changes<Cite id="mdn-primitive" />; every
+operation that seems to change one actually makes a new string.
+</Callout>
+
+<Examples of="string-index">
+
+```js
+'hello'[1];         // 'e'
+const w = 'width';
+w[w.length - 1];    // 'h'
+```
+
+```js
+const s = 'abc';
+for (let i = 0; i < s.length; i++) {
+  console.log(i, s[i]);
+} // 0 a, 1 b, 2 c
+```
+
+```js
+const src = 'x = 1';
+let i = 0;
+function peek() { return src[i]; }
+peek(); // 'x'
+i = 4;
+peek(); // '1'
+```
+
+</Examples>
+
+The first reads one character straight off a string written in quotes,
+then the last character of `w` using its length, exactly the
+`arr[arr.length - 1]` habit from chapter 3. The second is the loop every
+scanner is built on: the same `for` loop you use for arrays, visiting
+index 0, 1, 2 in turn. The third is realistic: a scanner keeps a finger
+`i` on the source text, and a tiny function `peek` reports the character
+under the finger; move the finger, and `peek` sees a different
+character.
+
+Here is the big difference from arrays. Spot the difference:
+
+```js
+let t = 'cat';
+t[0] = 'b';
+console.log(t); // cat (unchanged)
+t = 'bat';
+console.log(t); // bat
+```
+
+Writing to `t[0]` does nothing: quietly, or, in *strict mode* (which
+chapter 13 mentioned, for class code), with
+`TypeError: Cannot assign to read only property '0' of string 'cat'`.
+What does work is making `t` hold a **different** string, `'bat'`; the
+string `'cat'` itself is exactly as it was.
+
+<Prompts ids={['str-index', 'last-char', 'str-immutable']} />
+
+## Characters are numbers
+
+`charCodeAt(i)` turns the tile over and shows the number on the back, and
+`String.fromCharCode(n)` goes the other way:
+
+```js
+console.log('A'.charCodeAt(0)); // 65
+console.log('a'.charCodeAt(0)); // 97
+console.log('0'.charCodeAt(0)); // 48
+console.log(String.fromCharCode(104, 105));
+// hi
+```
+
+The first three ask for the code of the character at index 0 of a
+one-character string: capital `A` is 65, small `a` is 97, and the digit
+`0` is 48. The last builds a string from codes: 104 is `h` and 105 is
+`i`. The useful part is the *order*: the digits `'0'` to `'9'` have the
+codes 48 to 57, one after another; `'A'` to `'Z'` are 65 to 90, and `'a'`
+to `'z'` are 97 to 122.
+
+<Analogy title="house numbers along a street">
+Imagine every character lives in a house on one long street, and the ten
+digits were given neighbouring houses, 48 to 57. To ask "is this a
+digit?" you do not need a list of digits; you only check whether its
+house number is between 48 and 57.
+<span slot="breaks">Real house numbers are chosen by a town; char codes
+are fixed by a world-wide standard (Unicode), so `'A'` is 65 on every
+computer. And capital and small letters live in two separate stretches
+of the street, 32 houses apart.</span>
+</Analogy>
+
+That turns "what kind of character is this?" into number comparisons.
+Step through it on a line of code:
+
+<ClassifySteps client:visible />
+
+<Callout kind="definition">
+Every character is stored as a number, its **char code**.
+`str.charCodeAt(i)` returns the code of the character at index `i`, a
+whole number from 0 to 65535<Cite id="mdn-charcodeat" />, and
+`String.fromCharCode(n)` makes the character with code `n`. Digits and
+letters have consecutive codes, so a range test such as
+`c >= 48 && c <= 57` picks them out, and `c - 48` is a digit's value.
+</Callout>
+
+<Formal title="Digits, by their codes">
+
+```text
+isDigit(ch)  ⟺  48 ≤ code(ch) ≤ 57
+value(ch)    =  code(ch) − 48
+```
+
+<span slot="read">A character is a digit exactly when (⟺) its code is
+at least 48 and at most 57. A digit character's value is its code minus
+48, the code of zero: so '7', with code 55, has value 7.</span>
+</Formal>
+
+<Examples of="char-code">
+
+```js
+'B'.charCodeAt(0);       // 66
+String.fromCharCode(67); // 'C'
+```
+
+```js
+const d = 'q'.charCodeAt(0);  // 113
+String.fromCharCode(d - 32);  // 'Q'
+```
+
+```js
+function isDigit(c) {
+  return c >= 48 && c <= 57;
+}
+const c = '7'.charCodeAt(0); // 55
+isDigit(c); // true
+c - 48;     // 7, the digit's value
+```
+
+<Run id="char-codes" />
+
+</Examples>
+
+The first goes there and back: `'B'` is one after `'A'`, so 66, and 67
+is the letter after that. The second uses the "32 houses apart" fact: a
+small letter's code minus 32 is the code of the same capital letter. The
+third is the test your scanner will run on every character: `&&` means
+"and", so `isDigit` is `true` only when the code is in the digits'
+range, and subtracting 48 turns a digit character into the number it
+stands for. The runnable example prints every character of a line of
+code with its code; try your own name.
+
+That last step matters, because a digit character is not a number:
+
+```js
+'7' + 1;                    // '71'
+'7'.charCodeAt(0) - 48 + 1; // 8
+```
+
+`+` with a string on one side glues, so `'7' + 1` is the two-character
+string `'71'`; turning the character into its value first gives real
+arithmetic.
+
+<Prompts ids={['char-code-what', 'from-char-code', 'digit-range', 'digit-value', 'char-plus']} />
+
+<OtherLanguages>
+
+```js
+const s = 'cat';
+console.log(s[0]);             // c
+console.log(s.charCodeAt(0));  // 99
+console.log(String.fromCharCode(100));
+// d
+```
+
+```python
+s = 'cat'
+print(s[0])        # c
+print(ord(s[0]))   # 99
+print(chr(100))    # d
+```
+
+```java
+String s = "cat";
+char c = s.charAt(0);
+System.out.println(c);        // c
+System.out.println((int) c);  // 99
+System.out.println((char) 100); // d
+```
+
+```c
+const char *s = "cat";
+printf("%c\n", s[0]);  /* c */
+printf("%d\n", s[0]);  /* 99 */
+printf("%c\n", 100);   /* d */
+```
+
+</OtherLanguages>
+
+Python is closest: `s[0]` is a one-character string, and the functions
+`ord` and `chr` do the work of `charCodeAt` and `fromCharCode`. Java and
+C differ in a real way: they have a separate **char** type for a single
+character, written in single quotes (`'c'`), while strings use double
+quotes; a `char` *is* a small number, so `'a' + 1` in C is 98, and the
+code and the character are the same value printed two ways (`%d` as a
+number, `%c` as a character). C strings are not objects at all: they are
+arrays of `char` that end with a hidden code 0, which is how C finds the
+end without a length.
+
+<Callout kind="engine" label="Under the hood">
+A JavaScript string is a sequence of 16-bit **UTF-16 code units**, and
+`charCodeAt` returns one of them<Cite id="mdn-string" />. Most characters
+you will meet fit in one unit, but some, like many emoji, take two, so
+`'😀'.length` is `2`. Our scanner in Part III only cares about plain
+letters, digits and symbols, so one unit per character is all it needs.
+</Callout>
+
+## Your turn
+
+The core exercise is a piece of every scanner: turning the digit
+characters of a number into an actual number.
+
+<Exercise id="toNumber" />
+
+<Exercise id="countLetters" />
+
+## What you learned
+
+- A string is a row of characters: `str[i]` reads one by its **index**,
+  as a one-character string, and `str.length` counts them.
+- Strings are **immutable**: you can make a new string, never change one.
+- Every character has a **char code**: `charCodeAt` and `fromCharCode`
+  convert between them, and code ranges pick out digits and letters.
+- A digit character is not a number: `code - 48` is its value.
+
+Next: cutting strings into pieces, searching them, and building new ones.
+
+<Quiz />

@@ -1,0 +1,319 @@
+---
+n: 31
+day: 8
+part: I
+title: 'Edge cases and differential testing'
+tagline: 'A bug can pass every ordinary test and still be there, waiting at the empty list or the negative number. Learn where bugs hide, and how to test code when you do not even know the right answers: run two versions and see whether they agree.'
+objectives:
+  - Choose edge cases that are likely to expose bugs, and use the boundary rule for ranges.
+  - Explain why writing a test for an edge case forces you to decide what the answer should be.
+  - Use differential testing to check a fast implementation against a simple one on many random inputs.
+  - Say what agreement between two implementations does, and does not, prove.
+introduces: [edge-case, differential-testing-intro]
+uses: [test, assertion, function, parameter, argument, return, call, undefined, array, index, length, array-loop, callback, arrow-function, first-class-function, for-of, while-loop, throw, error-object, template-literal, variables, numbers, strings, booleans, comparison, if, for-loop, console-log]
+sources: [csmith, mdn-number]
+---
+import EdgeSteps from '../../../components/diagrams/ch031/EdgeSteps';
+import DiffFlow from '../../../components/diagrams/ch031/DiffFlow';
+
+## Three passing tests and a bug
+
+Here is a `max` that looks right, with three tests that pass:
+
+```js
+function max(xs) {
+  let best = 0;
+  for (const x of xs) {
+    if (x > best) best = x;
+  }
+  return best;
+}
+// max([3, 7, 2]) → 7    max([7]) → 7
+// max([5, 5])    → 5
+```
+
+`best` starts at `0`, the loop replaces it with any bigger value, and
+the answer comes back. All three tests pass, and many people would stop
+there. Step through two more tests and watch where it breaks:
+
+<EdgeSteps client:visible />
+
+The bug survived three tests because they were all *ordinary* inputs:
+lists of positive numbers, the kind everyone tries first. It only showed
+itself on a list of negative numbers, where every value is below the
+starting `0`, and on the empty list, where there is nothing to compare
+at all.
+
+<Analogy title="testing a lift">
+When engineers check a lift, they do not ride it from the second floor
+to the third twenty times; they test the top floor and the bottom floor,
+the heaviest load and an empty car, because that is where the cables,
+brakes and stops are actually tested.
+<span slot="breaks">A lift's limits are obvious, written on the panel;
+a function's edges are often surprising (who expects a list of negative
+numbers to be special?), so part of the work is finding where the edges
+even are.</span>
+</Analogy>
+
+<Analogy title="a recipe for any number of guests">
+A recipe that says “serves 4” is tried for four people. Scale it to one
+guest, or to zero, or to two hundred, and odd things happen: a third of
+an egg, an oven too small, a pan that is mostly empty.
+<span slot="breaks">A cook can improvise around the odd cases; code
+cannot, so each edge needs a decision made in advance and a test that
+holds the code to it.</span>
+</Analogy>
+
+<Callout kind="definition">
+An **edge case** is an unusual input at the boundary of what a function
+handles. Good ones to try: **empty** (`[]`, `''`), **one** item,
+**zero**, **negative** numbers, **huge** numbers, **duplicates**, and the
+answer sitting in the **first** or **last** position. When you fix a bug
+an edge case found, keep the test: it is what stops the bug coming
+back.
+</Callout>
+
+<Formal title="The boundary rule">
+
+```text
+for a range  lo ≤ x ≤ hi,  test x =
+  lo − 1,  lo,  lo + 1,
+  hi − 1,  hi,  hi + 1
+```
+
+<span slot="read">If a function treats the numbers from lo to hi
+specially, test just below, exactly at, and just above each end of the
+range: six inputs that sit on either side of every place where the
+behaviour changes.</span>
+</Formal>
+
+<Examples of="edge-case">
+
+```js
+function average(xs) {
+  let t = 0;
+  for (const x of xs) t = t + x;
+  return t / xs.length;
+}
+average([]); // NaN: 0 / 0
+```
+
+```js
+function isTeen(age) {
+  return age >= 13 && age < 19; // bug
+}
+isTeen(19); // false: the edge finds it
+```
+
+```js
+''.split(','); // [''], not []
+```
+
+</Examples>
+
+In the first, the empty list makes `average` divide `0` by a length of
+`0`, which in JavaScript is `NaN` (“not a number”) rather than an error,
+so the bug travels on quietly; writing the test forces you to decide
+what `average([])` *should* be (`0`? an error?). The second applies the
+boundary rule to the range 13 to 19: ordinary ages like `15` pass, but
+testing `19`, exactly on the upper edge, shows that `<` should have been
+`<=`. The third is the kind that
+trips up real parsers: splitting the empty string on commas gives a list
+holding one empty string, not an empty list, so a program reading a
+blank line of a spreadsheet file sees one empty field.
+
+The spot-the-difference for `max` is one word:
+
+```js
+let best = 0;         // max([-4, -2]) → 0
+let best = -Infinity; // max([-4, -2]) → -2
+```
+
+`-Infinity` is a number smaller than every other number, so the first
+value always beats it, and an empty list gives `-Infinity`, which is
+also what JavaScript's own `Math.max()` returns with no arguments.
+
+<OtherLanguages>
+
+```js
+Math.max(); // -Infinity
+```
+
+```python
+max([])
+# ValueError: max() iterable argument
+# is empty
+```
+
+```java
+Collections.max(new ArrayList<Integer>());
+// java.util.NoSuchElementException
+```
+
+```c
+/* no built-in max: you pick the empty
+   answer yourself, e.g. INT_MIN from
+   <limits.h>, or refuse empty input */
+```
+
+</OtherLanguages>
+
+The same edge gets three different answers. JavaScript returns a
+value, `-Infinity`, and carries on; Python and Java refuse, stopping
+with an error (so a test can check that it throws); C leaves the choice
+to you. None is wrong, however each is a decision, and a test is where
+you write your decision down.
+
+<Prompts ids={['edge-what', 'edge-why', 'edge-decide', 'keep-old-tests']} />
+
+## Two programs that should agree
+
+Every test so far needed you to know the right answer. What if you do
+not? What is the largest value in a random list of 500 numbers? Working
+it out by hand is the very thing you cannot do, and a list of five
+numbers chosen by you will only ever contain the cases you thought of.
+
+<Analogy title="two people checking a receipt">
+Two people add up the same long receipt separately. If they get
+different totals, at least one of them made a mistake, and neither had
+to know the right total in advance.
+<span slot="breaks">If both make the same slip (say, both skip the same
+blurred line), they agree and are both wrong; agreement is evidence, not
+proof.</span>
+</Analogy>
+
+<Analogy title="a ship's clocks">
+Sailors once found their position by keeping very accurate clocks. With
+one clock you cannot tell if it has drifted; with two, a difference
+tells you one has, though not which; that is why ships often carried
+three.
+<span slot="breaks">In testing we rarely need a third version, because
+one of the two is written to be obviously right, so when they disagree
+we usually know which to suspect first.</span>
+</Analogy>
+
+So we write a second version that is slow but *obviously* correct, then
+feed both the same inputs, thousands of them, made up by the computer:
+
+```js
+function maxSlow(xs) {
+  for (const x of xs) {
+    let beaten = false;
+    for (const y of xs) {
+      if (y > x) beaten = true;
+    }
+    if (!beaten) return x;
+  }
+  return -Infinity;
+}
+```
+
+`maxSlow` uses the definition of “largest” directly: for each value
+`x`, it checks every value `y` in the list, and if none is bigger, `x`
+is the largest and comes back. It compares every pair, so it is slow
+for long lists, but it is hard to get wrong, and an empty list skips the
+loop and returns `-Infinity`.
+
+<Figure takeaway="Same input, two versions, compare." caption="A random input goes to both versions. If they agree, try another; the first disagreement is reported along with the input that caused it.">
+  <DiffFlow />
+</Figure>
+
+Run it against the buggy `max`, with random lists of up to four numbers
+between −9 and 9:
+
+<Run id="diff" />
+
+<Callout kind="definition">
+**Differential testing** runs two implementations of the same thing on
+the same inputs and checks that they agree. It needs no expected
+answers, so the inputs can be random and endless; every disagreement is
+a bug in one of the two, and the input that caused it is the thing to
+report.
+</Callout>
+
+<Formal title="What agreement tells you">
+
+```text
+∃x. f(x) ≠ g(x)  ⟹  f or g has a bug
+∀x ∈ S. f(x) = g(x)  ⟹  no bug found in S
+```
+
+<span slot="read">If there is some input x (∃ reads “there exists”) on
+which f and g give different answers, then at least one of them is
+wrong. If they agree on every x in the set S of inputs we tried (∀ reads
+“for all”), we have found no bug there, which is not the same as there
+being none.</span>
+</Formal>
+
+<Examples of="differential-testing-intro">
+
+```js
+const f = (n) => n * 2;
+const g = (n) => n + n;
+// agree on 0, 1, 5, -3
+```
+
+```js
+function sumTo(n) {
+  return n * (n + 1) / 2;
+}
+function sumSlow(n) {
+  let t = 0;
+  for (let i = 1; i <= n; i++) t += i;
+  return t;
+}
+```
+
+```js
+// Viscosity's own test: run each program
+// before and after compiling it
+run(original) === run(compiled);
+```
+
+</Examples>
+
+The first is the smallest pair: two ways to double a number, which must
+agree on any input. The second is the classic use: a clever formula
+(`sumTo(4)` is `4 * 5 / 2`, which is `10`) checked against a plain loop
+that adds 1, 2, 3 and 4 (`t += i` is short for `t = t + i`); a slip such
+as `n * (n - 1) / 2` would disagree at once. The third is how Viscosity is
+tested: every program in its test collection is run before and after
+compiling, and the two outputs must match.
+
+<Prompts ids={['diff-what', 'diff-no-answers', 'diff-not-proof', 'diff-report-input']} />
+
+<Callout kind="engine" label="Under the hood">
+Differential testing is the main way this book tests itself. In this
+repository, the benchmark's test file
+(`engine/ts/packages/bench/test/layouts.test.ts`) runs every particle
+layout, from plain objects to struct of arrays, and checks they all
+compute the same result, and
+`engine/ts/packages/frontend-js/test/differential.test.ts` checks every
+program Viscosity rewrites against the original. Compiler testers do this at scale:
+Csmith generates random C programs and compiles each one with several
+compilers, and any disagreement in the output points at a compiler
+bug<Cite id="csmith" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="findMismatch" />
+
+<Exercise id="middle" />
+
+## What you learned
+
+- **Edge cases** (empty, one, zero, negative, huge, duplicates, first
+  and last) are where bugs hide; test on both sides of every boundary,
+  and keep every test that ever found a bug.
+- Writing an edge-case test forces you to **decide** what the answer
+  should be.
+- **Differential testing** checks that two implementations agree on
+  many inputs, with no expected answers needed; agreement is evidence,
+  not proof. It is how you will test the interpreters and compilers in
+  this book.
+
+Next: what a number is made of, all the way down to the bits, and why
+`0.1 + 0.2` is not exactly `0.3`.
+
+<Quiz />

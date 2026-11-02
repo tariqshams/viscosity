@@ -1,0 +1,211 @@
+---
+n: 122
+day: 31
+part: VI
+title: 'What an IR is for'
+tagline: 'Source code is written for people, and bytecode for a machine that runs it. A compiler that wants to reason about a program needs a third form, built for asking questions. That form is the IR.'
+objectives:
+  - Explain why an optimizer works on an intermediate representation instead of source text, syntax trees or bytecode.
+  - Describe lowering, and show how it turns many ways of writing the same thing into one.
+  - Read a short listing of VIR, Viscosity’s real IR.
+  - Write a small lowering pass in JavaScript.
+introduces: [ir, lowering]
+uses: [compiler-pipeline, front-end-back-end, compiler, ast, ast-node, desugaring, control-flow, bytecode, stack-machine, jump, tree-walking-interpreter, ignition, optimizing-tiers, aos-vs-soa, object, property, dot-access, array, function, parameter, for-of, discriminated-union, typescript, union-type, recursion, mutation]
+sources: [coopertorczon2022, makor2022, v8-sparkplug, v8-ignition]
+---
+import FourForms from '../../../components/diagrams/ch122/FourForms';
+
+## Too many ways to say one thing
+
+Viscosity wants to turn your arrays of objects into struct-of-arrays
+storage, the layout that won in Part II. Before it can, it has to answer
+questions about your program. Which fields of a particle are read? Is
+any particle passed to code we can't see? Is this loop hot?
+
+Try answering the first one by looking at JavaScript source. All of
+these add `vx` to `x`:
+
+```js
+p.x += p.vx;
+p.x = p.x + p.vx;
+p["x"] = p["x"] + p.vx;
+const { vx } = p; p.x += vx;
+```
+
+An analysis written over source text, or even over the syntax tree,
+needs a case for every one of them, and for the next spelling someone
+invents. Each new question would need all those cases again. Compilers
+don't do that. They translate the program, once, into a form with far
+fewer cases, and then ask every question there.
+
+## A form built for questions
+
+<Callout kind="intuition">
+A recipe written by a chatty cook: "pop the oven on, fairly hot, and
+while it warms you could chop the onions". A kitchen running fifty
+orders rewrites it as a card: *1. oven 200°C. 2. chop onions.* Every
+step does one thing, in the order it happens. Nobody eats the card, but
+it is the version the kitchen plans with.
+</Callout>
+
+Step through one small function in four forms. Watch what each form
+makes easy, and what it hides.
+
+<FourForms client:visible />
+
+The source is for people. The tree is for the parser and the
+tree-walker: it keeps the program's nesting. The IR listing and its
+graph are for the compiler. Each instruction does one small thing and
+gives its result a name, `%2` or `%3`. And the control flow, which in
+the tree was implied by what an `If` node *means*, is now written down
+as jumps between labelled blocks.
+
+<Callout kind="definition">
+An **intermediate representation** (**IR**) is the form a compiler
+keeps a program in while it analyses and transforms it. It sits between
+the source language and the target. A good IR is **explicit** (values
+have names, control flow is spelled out), **small** (few kinds of
+instruction, so each analysis has few cases), and independent of how
+the source happened to be written.
+</Callout>
+
+<Prompts ids={['ir-what', 'why-not-source', 'tree-hides']} />
+
+## Lowering
+
+Turning the tree into that listing is called lowering: the program is
+translated into a lower-level form, closer to the machine and further
+from the syntax. Here is what Viscosity's JavaScript front end makes of
+`p.x += p.vx`, inside `function m(p)`:
+
+```text
+func m(%0):
+  b0:
+    %0 = param
+    %1 = field.get %0 .x
+    %2 = field.get %0 .vx
+    %3 = binop + %1, %2
+    field.set %0, %3 .x
+    return
+```
+
+The compound `+=` is gone. It became a read, an add and a write, the
+same three steps that `p.x = p.x + p.vx` lowers to, instruction for
+instruction. Two spellings, one meaning, one form. (Not every spelling
+collapses this far: `p["x"]` becomes `index.get` with the constant
+`"x"`, and the destructuring line is `opaque`, which you'll meet below.)
+Try another pair: `x = x + 1` and `x += 1` lower to
+*identical* VIR, `%2 = binop + %0, %1`.
+
+But `x++` doesn't. It lowers with one extra instruction:
+
+```text
+%1 = unop + %0
+%2 = const 1
+%3 = binop + %1, %2
+```
+
+That `unop +` is not a mistake. `x++` converts `x` to a number first,
+and `x += 1` doesn't, so with a string they really do differ:
+
+<Run id="plus-plus" />
+
+This is what lowering is for. It erases differences that don't matter,
+and it makes the ones that *do* matter visible as instructions, so no
+analysis has to remember a corner of the language.
+
+<Callout kind="definition">
+**Lowering** is translating a program into a lower-level form: fewer
+kinds of construct, more explicit steps. Compound assignment, `++` and
+loops become reads, writes, arithmetic and jumps. Lowering can happen in
+several stages, each to a lower IR. Chapter 76's desugaring is lowering
+inside the tree; Viscosity's front end lowers the tree all the way to
+VIR.
+</Callout>
+
+<Prompts ids={['lowering-what', 'same-vir', 'plus-plus-why']} />
+
+## What VIR looks like inside
+
+VIR's instructions are a discriminated union, tagged by `op`. Here is a
+trimmed version of the list in `packages/core/src/vir.ts`:
+
+```ts
+type Op =
+  | 'const' | 'param' | 'phi'
+  | 'binop' | 'unop'
+  | 'field.get' | 'field.set'
+  | 'index.get' | 'index.set'
+  | 'record.new' | 'push' | 'length'
+  | 'call' | 'closure'
+  | 'opaque';
+```
+
+Notice what is there: records, fields, indexing and `push`. Viscosity
+cares about arrays of objects, so they are first-class instructions
+instead of patterns an analysis would have to recognise. Notice too
+what is *not* there: nothing says "JavaScript". The front end for a
+language does the lowering; every analysis after it only sees VIR. (A
+`phi` merges values where paths join. It gets a chapter of its own, 77.)
+
+And the last op is the honest one. Anything the lowering doesn't model,
+like `delete o.x`, becomes `opaque`, with every variable it mentions as
+an argument:
+
+```text
+%1 = opaque(delete) %0
+```
+
+Opaque means "might do anything with these". The analyses treat its
+arguments as lost to unknown code. That keeps them safe without
+understanding all of JavaScript: when in doubt, Viscosity leaves the
+program alone.
+
+<Callout kind="pitfall">
+An IR that is *too* low loses facts you need. Drip's bytecode is lower
+than VIR, but a stack machine's instructions don't say which earlier
+instruction produced the value on top of the stack. To ask "where does
+this value come from?" you would have to replay the stack in your head.
+An IR for analysis names every value.
+</Callout>
+
+<Prompts ids={['opaque-what', 'why-not-bytecode', 'neutral']} />
+
+<Callout kind="engine" label="Under the hood">
+Engines make the same trade. V8 first compiles each function to
+Ignition bytecode, a form built for running<Cite id="v8-ignition" />. Sparkplug,
+its quick baseline compiler, turns that bytecode into machine code in
+one pass, with no IR of its own, leaning on work the bytecode compiler
+already did<Cite id="v8-sparkplug" />. That is why it compiles fast,
+and also why it can't do much optimizing. The analyses and
+optimizations of a compiler's middle end, which the rest of Part VI
+builds, all run on an IR<Cite id="coopertorczon2022" />. Viscosity's
+whole idea, changing the layout of arrays of objects automatically,
+comes from research done inside an optimizing JIT<Cite id="makor2022" />;
+VIR is where Viscosity asks the same questions ahead of time.
+</Callout>
+
+<Prompts ids={['sparkplug-no-ir']} />
+
+## Your turn
+
+<Exercise id="lower-assign" />
+
+<Exercise id="lower-for" />
+
+## What you learned
+
+- An **IR** is the compiler's working form of a program, designed for
+  analysis: values are named, control flow is explicit, and there are
+  few kinds of instruction.
+- Source and trees are too varied, and stack bytecode hides where values
+  come from. An IR sits in between.
+- **Lowering** translates to a lower-level form. It erases spellings that
+  mean the same (`+=` and `= x +`) and makes real differences visible
+  (`x++` converts to a number first).
+- **VIR** is language-neutral, with records and arrays as first-class
+  instructions, and `opaque` for anything it doesn't model.
+
+Next: the shape of a single VIR instruction, three-address code.
+
+<Quiz />

@@ -1,0 +1,324 @@
+---
+n: 10
+day: 3
+part: I
+title: 'Other ways to loop: map, filter, reduce and while'
+tagline: 'Three loops make up most of the loops anyone writes, and every array has them built in. For the loops that do not count, there is while.'
+objectives:
+  - Transform, select and combine arrays with map, filter and reduce, and predict the length and contents of each result.
+  - Explain why reduce needs a starting value, and what happens on an empty array without one.
+  - Write a while loop, and stop or skip with break and continue without looping forever.
+  - Map these onto Python comprehensions, Java streams and plain C loops.
+introduces: [map-filter-reduce, while-loop]
+uses: [first-class-function, callback, arrow-function, higher-order-function, function, parameter, return, call, undefined, array, index, length, push, array-loop, object, property, dot-access, array-of-objects, reference, identity, variables, numbers, booleans, comparison, if, for-loop, console-log]
+sources: [mdn-callback-function, mdn-arrow-functions, mdn-array-reduce, mdn-while]
+---
+import PipelineSteps from '../../../components/diagrams/ch010/PipelineSteps';
+import WhileSteps from '../../../components/diagrams/ch010/WhileSteps';
+
+## Three loops you keep writing
+
+Look back over the loops in this book so far and almost all of them do
+one of three jobs:
+
+```js
+const xs = [];   // 1. change every item
+for (let i = 0; i < ps.length; i++) {
+  xs.push(ps[i].x);
+}
+const fast = []; // 2. keep some items
+for (let i = 0; i < ps.length; i++) {
+  if (ps[i].vx > 0) fast.push(ps[i]);
+}
+let total = 0;   // 3. combine them all
+for (let i = 0; i < ps.length; i++) {
+  total = total + ps[i].vx;
+}
+```
+
+The first builds a new array with one value per particle; the second
+builds a new array holding only the particles moving right; the third
+boils every particle down to a single number. Last chapter showed how
+to write a loop once and pass the part that differs as a callback, and
+arrays come with exactly these three loops already written, as
+higher-order methods called `map`, `filter` and `reduce`.
+
+<Analogy title="a factory line">
+**map** is a station that changes every item that passes (paints every
+toy red); **filter** is an inspector who lets only some items through;
+**reduce** is the packing box at the end that combines everything into
+one thing.
+<span slot="breaks">On a real line each toy flows through every station
+before the next toy starts; `xs.filter(f).map(g)` finishes the whole
+filter first, building a complete new array, and only then does `map`
+begin on it.</span>
+</Analogy>
+
+## map, filter and reduce
+
+Step through all three, and watch what each method does with the value
+your callback returns:
+
+<PipelineSteps client:visible />
+
+<Callout kind="definition">
+`arr.map(f)` returns a **new** array of the same length, holding
+`f(item)` for every item. `arr.filter(f)` returns a **new** array of the
+items for which `f` returned `true`, in their original order.
+`arr.reduce(f, start)` keeps a running value that begins as `start`; for
+each item it sets that value to `f(value, item)`, and at the end it
+returns it<Cite id="mdn-array-reduce" />. None of them changes `arr`.
+</Callout>
+
+<Analogy title="keeping score in a card game">
+Reduce is the score sheet: it starts at 0 (the starting value), and
+after every round (every item) you write down the old score plus that
+round's points, so the last number on the sheet is the answer.
+<span slot="breaks">A score is always a number; reduce's running value
+can be anything, an array or an object included, as long as your
+callback returns the next one.</span>
+</Analogy>
+
+<Examples of="map-filter-reduce">
+
+```js
+[1, 2, 3].map((n) => n * 10);
+// [10, 20, 30]
+```
+
+```js
+[5, -2, 7].filter((n) => n > 0); // [5, 7]
+[2, 3, 4].reduce((t, n) => t + n, 10);
+// 10 → 12 → 15 → 19, so 19
+```
+
+```js
+const speed = ps
+  .filter((p) => p.vx > 0)
+  .map((p) => p.vx)
+  .reduce((t, v) => t + v, 0);
+```
+
+<Run id="pipeline" />
+
+</Examples>
+
+The first changes every item: the callback gets each number and returns
+it times ten, and `map` collects the answers in a new array of the same
+length. The second line keeps the items whose callback returned `true`
+(5 and 7, in order); then `reduce` starts its running value at 10 and
+adds each item in turn, so the value goes 12, 15 and finally 19. The
+third is realistic, and is the three opening loops in one statement:
+keep the particles moving right, take their speeds, and add them up;
+each method returns a new array, so the next one can be called on it
+straight away (the line breaks before each dot are only for reading).
+The runnable one does the same on three particles; change the tests and
+watch the results.
+
+The same opening loops, then, shrink to three lines:
+
+```js
+const xs = ps.map((p) => p.x);
+const fast = ps.filter((p) => p.vx > 0);
+const total = ps.reduce(
+  (t, p) => t + p.vx, 0);
+```
+
+Two slips are worth seeing next to the working versions:
+
+```js
+[].reduce((t, n) => t + n);
+// TypeError: Reduce of empty array
+// with no initial value
+[].reduce((t, n) => t + n, 0); // 0
+[1, 2].map((n) => { n * 2 });
+// [undefined, undefined]
+```
+
+Without a starting value, `reduce` uses the first item as the start, and
+an empty array has no first item, so it throws; always pass one, and an
+empty array then gives the start back<Cite id="mdn-array-reduce" />. The
+last is last chapter's braces trap: each call returns `undefined`, and
+`map` still faithfully makes one slot per item.
+
+One more thing about `filter`: the new array is new, but the particles in
+it are not copies. `fast[0] === ps[0]` is `true` when the first particle
+moves right, because `filter` copies the *arrows*; changing `fast[0].x`
+changes the particle in `ps` too.
+
+<Formal title="What the three methods compute">
+
+```text
+map f [a, b, c]      = [f(a), f(b), f(c)]
+filter f [a, b, c]   = [those x with f(x)]
+reduce f s [a, b, c] = f(f(f(s, a), b), c)
+```
+
+<span slot="read">map applies f to every item and keeps the results in
+order. filter keeps, in order, the items x for which f(x) is true.
+reduce starts from s, combines it with a, combines that result with b,
+then with c: read the brackets from the inside out.</span>
+</Formal>
+
+<Prompts ids={['map-length', 'filter-returns', 'filter-same-objects', 'reduce-init', 'reduce-steps']} />
+
+<OtherLanguages>
+
+```js
+const xs = [1, 2, 3];
+const tens = xs.map((n) => n * 10);
+console.log(tens); // [ 10, 20, 30 ]
+```
+
+```python
+xs = [1, 2, 3]
+tens = [n * 10 for n in xs]
+print(tens)  # [10, 20, 30]
+```
+
+```java
+List<Integer> xs = List.of(1, 2, 3);
+List<Integer> tens = xs.stream()
+    .map(n -> n * 10)
+    .toList();
+System.out.println(tens); // [10, 20, 30]
+```
+
+```c
+int xs[3] = {1, 2, 3};
+int tens[3];
+for (int i = 0; i < 3; i++)
+    tens[i] = xs[i] * 10;
+```
+
+</OtherLanguages>
+
+Python has `map` and `filter` too, but most Python code uses a **list
+comprehension**, `[n * 10 for n in xs]`, which reads like the sentence
+"n times ten, for each n in xs" (add `if n > 0` at the end to filter).
+Java goes through a *stream*, which does no work until `toList()` asks
+for the result. C has none of these, so you write the loop (and must
+know the size of the result in advance).
+
+## Loops that do not count: while
+
+`for` is built for counting through slots. Sometimes, however, you do
+not know how many passes you need: keep doubling until a number reaches
+1000, keep reading until you find what you want. A `while` loop only
+asks "should I go round again?" before every pass, and you move things
+along yourself:
+
+```js
+let n = 1;
+let steps = 0;
+while (n < 1000) {
+  n = n * 2;
+  steps++;
+}
+console.log(steps); // 10
+```
+
+Lines 1 and 2 set up the state; line 3 checks the condition before every
+pass; lines 4 and 5 double `n` and count the pass. After ten passes `n`
+is 1024, the check `1024 < 1000` is false, and the loop ends.
+
+<Analogy title="stirring until it boils">
+A recipe says "stir until it boils", not "stir forty times": you check
+the pot, stir if it is not boiling, and check again; how many stirs
+that takes is not known in advance.
+<span slot="breaks">A pot boils in the end whatever you do; a while loop
+whose condition never becomes false runs forever, and nothing warns
+you.</span>
+</Analogy>
+
+Two keywords change the flow: `break` leaves a loop at once, and
+`continue` skips the rest of this pass and goes back to the check (both
+work in `for` loops too). Step through a loop that uses both:
+
+<WhileSteps client:visible />
+
+<Callout kind="definition">
+A **while loop**, `while (cond) { ... }`, checks `cond` before every
+pass and runs the body while it is true; if `cond` is false at the
+start, the body never runs<Cite id="mdn-while" />. **`break`** jumps out
+of the loop. **`continue`** jumps to the next check.
+</Callout>
+
+<Examples of="while-loop">
+
+```js
+let k = 10;
+while (k < 3) k++; // runs 0 times
+```
+
+```js
+let n = 100;
+while (n >= 1) n = n / 2;
+n; // 0.78125, after 7 halvings
+```
+
+```js
+let i = 0;
+while (i < ps.length && ps[i].x < 100) {
+  i++;
+}
+```
+
+</Examples>
+
+The first shows the check-first rule: `10 < 3` is false before the first
+pass, so the body never runs (a one-line body may leave out the braces,
+as with `if`). The second halves `n` until it drops below 1: 100, 50,
+25 and so on down to 0.78125. The third is a search you will write
+constantly: walk forward while there are particles left *and* the
+current one is still left of 100, so afterwards `i` is the first
+particle at or past 100, or `ps.length` if there is none (the `i <
+ps.length` part comes first, so `ps[i]` is never read past the end).
+
+The classic mistake is a loop that never moves on:
+
+```js
+let i = 0;
+while (i < 3) {
+  console.log(i);
+}
+// prints 0 forever: i never changes
+```
+
+There is no error message; the page simply stops responding. Every
+while loop needs a line in its body that moves towards making the
+condition false (here, `i++`), and with `continue`, that line must come
+*before* the `continue`, as it does in the step-through.
+
+<Prompts ids={['while-check', 'break-continue', 'while-forever']} />
+
+<Callout kind="engine" label="Under the hood">
+Look again at `ps.map((p) => p.x)`: it reads one field from every
+record, which is the access pattern a struct of arrays makes cheap,
+because every `x` is already side by side. To choose a layout,
+Viscosity has to see inside callbacks like this one and work out which
+fields a loop touches; a `while` loop that walks an array is the same
+problem with the counting written by hand.
+</Callout>
+
+## Your turn
+
+<Exercise id="sumBy" />
+
+<Exercise id="doublings" />
+
+## What you learned
+
+- `map` changes every item (same length), `filter` keeps some, and
+  `reduce` combines them into one value; all three build new values and
+  leave the array alone, though `filter` keeps the same objects.
+- Always give `reduce` a starting value; it is also the answer for an
+  empty array.
+- A **while loop** checks its condition before every pass; `break`
+  leaves, `continue` skips ahead, and something in the body must move
+  the loop towards its end.
+
+Next: exactly where each name in a program can be seen, which is the
+groundwork for functions that remember.
+
+<Quiz />

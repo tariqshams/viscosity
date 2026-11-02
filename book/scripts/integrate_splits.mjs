@@ -71,10 +71,10 @@ for (const folder of staged) {
   const orig = mod.default.chapters.find((c) => c.n === n);
   const moved = {};
   for (const id of fm.introduces) {
-    if (!(id in orig.introduces)) throw new Error(`${folder} introduces "${id}", which chapter ${n} does not`);
+    if (!Object.hasOwn(orig.introduces, id)) throw new Error(`${folder} introduces "${id}", which chapter ${n} does not`);
     moved[id] = orig.introduces[id];
   }
-  const kept = Object.fromEntries(Object.entries(orig.introduces).filter(([k]) => !(k in moved)));
+  const kept = Object.fromEntries(Object.entries(orig.introduces).filter(([k]) => !Object.hasOwn(moved, k)));
   const entry = (num, title, intro) => `    { n: ${num}, title: ${q(title)}, introduces: {\n${Object.entries(intro).map(([k, v]) => `      ${key(k)}: ${q(v)},`).join('\n')}\n    } },`;
   let s = readFileSync(p, 'utf8');
   const at = s.search(new RegExp(`\\{\\s*n:\\s*${n},`));

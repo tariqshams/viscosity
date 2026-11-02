@@ -1,78 +1,78 @@
 export default {
-  id: 'XI', track: 'B', days: '50–58', title: 'Rust for TypeScript developers',
+  id: 'XI', track: 'B', days: '55–63', title: 'Rust for TypeScript developers',
   blurb: 'Ownership and borrowing drawn as pictures, structs, enums and match, traits and generics, lifetimes, testing, smart pointers, arenas, memory layout and WebAssembly.',
   chapters: [
-    { n: 199, title: 'Why Rust? Hello, cargo', introduces: { rust: 'a fast, memory-safe systems language', cargo: 'Rust’s build tool and package manager', crate: 'a Rust package or compilation unit' } },
-    { n: 200, title: 'Variables, types and mutability', introduces: { 'let-mut': 'immutable by default, mut to allow change', 'scalar-types': 'i32, u8, f64, bool, char, usize' } },
-    { n: 201, title: 'Functions and expressions', introduces: { 'expression-oriented': 'blocks and if produce values', 'rust-functions': 'fn with typed parameters and return' } },
-    { n: 202, title: 'Ownership', introduces: { ownership: 'every value has exactly one owner', move: 'transferring ownership', drop: 'freeing a value when its owner goes away' } },
-    { n: 203, title: 'Borrowing', introduces: { borrow: 'a reference that doesn’t take ownership', 'shared-vs-mutable': 'many &T or one &mut T, never both', 'borrow-checker': 'the compiler pass enforcing borrowing rules' } },
-    { n: 204, title: 'Slices and strings', introduces: { slice: 'a view into part of a collection', 'string-vs-str': 'owned String vs borrowed &str' } },
-    { n: 205, title: 'Structs and impl', introduces: { struct: 'a named record type', impl: 'attaching methods to a type', 'self-receiver': '&self, &mut self and self' } },
-    { n: 206, title: 'Enums and match', introduces: { enum: 'a type that is one of several variants', match: 'exhaustive pattern matching', pattern: 'a shape a value is matched against' } },
-    { n: 207, title: 'Option and Result', introduces: { option: 'Some(value) or None', result: 'Ok(value) or Err(error)', 'question-mark': 'the ? operator for propagating errors' } },
-    { n: 208, title: 'Vec and HashMap', introduces: { vec: 'Rust’s growable array', hashmap: 'Rust’s hash table' } },
-    { n: 209, title: 'Traits', introduces: { trait: 'a set of methods types can implement', 'trait-object': 'dyn Trait for dynamic dispatch' } },
-    { n: 210, title: 'Generics and trait bounds', introduces: { 'rust-generics': 'type parameters in Rust', 'trait-bound': 'T: Trait constraints', monomorphization: 'generating a copy per concrete type' } },
-    { n: 211, title: 'Lifetimes', introduces: { lifetime: 'how long a reference is valid', 'lifetime-annotation': '\'a: naming lifetimes' } },
-    { n: 212, title: 'Iterators and closures in Rust', introduces: { 'rust-iterator': 'the Iterator trait and adapters', 'rust-closure': 'closures and the Fn traits' } },
-    { n: 213, title: 'Modules, crates and visibility', introduces: { 'rust-module': 'mod and use', visibility: 'pub and privacy', workspace: 'several crates built together' } },
-    { n: 214, title: 'Testing in Rust', introduces: { 'cargo-test': '#[test] functions and cargo test', 'assert-macros': 'assert!, assert_eq!' } },
-    { n: 215, title: 'Box, Rc and RefCell', introduces: { box: 'a heap allocation with one owner', rc: 'shared ownership by reference counting', refcell: 'borrow checking at run time' } },
-    { n: 216, title: 'Arenas and typed indices', introduces: { arena: 'one big Vec holding many objects', 'typed-index': 'a newtype index like NodeId(u32)' } },
-    { n: 217, title: 'Memory layout in Rust', introduces: { 'size-of': 'std::mem::size_of', alignment: 'addresses a type must start at', padding: 'unused bytes added for alignment', repr: '#[repr(C)] and friends' } },
-    { n: 218, title: 'Struct of arrays in Rust by hand', introduces: { 'rust-soa': 'SoA layouts with Vec<f64> columns' } },
-    { n: 219, title: 'Unsafe Rust', introduces: { unsafe: 'code where you uphold the rules the compiler cannot check', 'raw-pointer': '*const T and *mut T' } },
-    { n: 220, title: 'Measuring Rust performance', introduces: { 'release-build': 'compiling with optimizations', criterion: 'statistical benchmarking for Rust', 'black-box': 'preventing the optimizer from deleting benchmark work' } },
-    { n: 221, title: 'Rust and WebAssembly', introduces: { 'wasm-bindgen': 'generating JS bindings for Rust WebAssembly' } },
-    { n: 222, title: 'Error handling at scale', introduces: { 'error-enum': 'one enum describing every error a crate can return', 'from-trait': 'converting between error types' } },
-    { n: 223, title: 'Patterns in depth', introduces: {
+    { n: 219, title: 'Why Rust? Hello, cargo', introduces: { rust: 'a fast, memory-safe systems language', cargo: 'Rust’s build tool and package manager', crate: 'a Rust package or compilation unit' } },
+    { n: 220, title: 'Variables, types and mutability', introduces: { 'let-mut': 'immutable by default, mut to allow change', 'scalar-types': 'i32, u8, f64, bool, char, usize' } },
+    { n: 221, title: 'Functions and expressions', introduces: { 'expression-oriented': 'blocks and if produce values', 'rust-functions': 'fn with typed parameters and return' } },
+    { n: 222, title: 'Ownership', introduces: { ownership: 'every value has exactly one owner', move: 'transferring ownership', drop: 'freeing a value when its owner goes away' } },
+    { n: 223, title: 'Borrowing', introduces: { borrow: 'a reference that doesn’t take ownership', 'shared-vs-mutable': 'many &T or one &mut T, never both', 'borrow-checker': 'the compiler pass enforcing borrowing rules' } },
+    { n: 224, title: 'Slices and strings', introduces: { slice: 'a view into part of a collection', 'string-vs-str': 'owned String vs borrowed &str' } },
+    { n: 225, title: 'Structs and impl', introduces: { struct: 'a named record type', impl: 'attaching methods to a type', 'self-receiver': '&self, &mut self and self' } },
+    { n: 226, title: 'Enums and match', introduces: { enum: 'a type that is one of several variants', match: 'exhaustive pattern matching', pattern: 'a shape a value is matched against' } },
+    { n: 227, title: 'Option and Result', introduces: { option: 'Some(value) or None', result: 'Ok(value) or Err(error)', 'question-mark': 'the ? operator for propagating errors' } },
+    { n: 228, title: 'Vec and HashMap', introduces: { vec: 'Rust’s growable array', hashmap: 'Rust’s hash table' } },
+    { n: 229, title: 'Traits', introduces: { trait: 'a set of methods types can implement', 'trait-object': 'dyn Trait for dynamic dispatch' } },
+    { n: 230, title: 'Generics and trait bounds', introduces: { 'rust-generics': 'type parameters in Rust', 'trait-bound': 'T: Trait constraints', monomorphization: 'generating a copy per concrete type' } },
+    { n: 231, title: 'Lifetimes', introduces: { lifetime: 'how long a reference is valid', 'lifetime-annotation': '\'a: naming lifetimes' } },
+    { n: 232, title: 'Iterators and closures in Rust', introduces: { 'rust-iterator': 'the Iterator trait and adapters', 'rust-closure': 'closures and the Fn traits' } },
+    { n: 233, title: 'Modules, crates and visibility', introduces: { 'rust-module': 'mod and use', visibility: 'pub and privacy', workspace: 'several crates built together' } },
+    { n: 234, title: 'Testing in Rust', introduces: { 'cargo-test': '#[test] functions and cargo test', 'assert-macros': 'assert!, assert_eq!' } },
+    { n: 235, title: 'Box, Rc and RefCell', introduces: { box: 'a heap allocation with one owner', rc: 'shared ownership by reference counting', refcell: 'borrow checking at run time' } },
+    { n: 236, title: 'Arenas and typed indices', introduces: { arena: 'one big Vec holding many objects', 'typed-index': 'a newtype index like NodeId(u32)' } },
+    { n: 237, title: 'Memory layout in Rust', introduces: { 'size-of': 'std::mem::size_of', alignment: 'addresses a type must start at', padding: 'unused bytes added for alignment', repr: '#[repr(C)] and friends' } },
+    { n: 238, title: 'Struct of arrays in Rust by hand', introduces: { 'rust-soa': 'SoA layouts with Vec<f64> columns' } },
+    { n: 239, title: 'Unsafe Rust', introduces: { unsafe: 'code where you uphold the rules the compiler cannot check', 'raw-pointer': '*const T and *mut T' } },
+    { n: 240, title: 'Measuring Rust performance', introduces: { 'release-build': 'compiling with optimizations', criterion: 'statistical benchmarking for Rust', 'black-box': 'preventing the optimizer from deleting benchmark work' } },
+    { n: 241, title: 'Rust and WebAssembly', introduces: { 'wasm-bindgen': 'generating JS bindings for Rust WebAssembly' } },
+    { n: 242, title: 'Error handling at scale', introduces: { 'error-enum': 'one enum describing every error a crate can return', 'from-trait': 'converting between error types' } },
+    { n: 243, title: 'Patterns in depth', introduces: {
       'binding-modes': 'by value, by ref and by ref mut in patterns',
       'match-guard': 'an if on a match arm',
       'pattern-syntax': 'ranges, @ bindings, nested and slice patterns',
     } },
-    { n: 224, title: 'Trait objects and dispatch', introduces: {
+    { n: 244, title: 'Trait objects and dispatch', introduces: {
       'dyn-dispatch-cost': 'what a vtable call costs compared with a generic',
       'object-safety': 'which traits can be trait objects',
     } },
-    { n: 225, title: 'Associated types and the standard traits', introduces: {
+    { n: 245, title: 'Associated types and the standard traits', introduces: {
       'associated-type': 'a type a trait implementation chooses',
       'std-traits': 'Display, Debug, Default, Clone, From, Iterator and friends',
       'operator-traits': 'Add, Index and the other operator traits',
       derive: '#[derive] writing standard impls for you',
     } },
-    { n: 226, title: 'Threads, Send and Sync', introduces: {
+    { n: 246, title: 'Threads, Send and Sync', introduces: {
       'rust-thread': 'std::thread::spawn and scoped threads',
       'send-sync': 'the marker traits that make data races compile errors',
       'arc-mutex': 'shared ownership across threads, with locking',
       channel: 'sending values between threads',
     } },
-    { n: 227, title: 'Data parallelism with rayon', introduces: {
+    { n: 247, title: 'Data parallelism with rayon', introduces: {
       rayon: 'a crate that parallelises iterators',
       'work-stealing': 'idle threads taking work from busy ones',
     } },
-    { n: 228, title: 'Async Rust', introduces: {
+    { n: 248, title: 'Async Rust', introduces: {
       future: 'a value that can be polled until it is ready',
       'async-rust': 'async fn and .await in Rust',
       executor: 'the runtime that polls futures (Tokio)',
     } },
-    { n: 229, title: 'Macros: declarative and procedural', introduces: {
+    { n: 249, title: 'Macros: declarative and procedural', introduces: {
       'macro-rules': 'pattern-matching macros',
       'proc-macro': 'a Rust function that writes Rust code',
       'token-stream': 'what a procedural macro reads and writes',
     } },
-    { n: 230, title: 'FFI and unsafe boundaries', introduces: {
+    { n: 250, title: 'FFI and unsafe boundaries', introduces: {
       ffi: 'calling C from Rust and Rust from C',
       'extern-c': 'the C calling convention in Rust',
       'safety-invariant': 'what unsafe code must promise to its callers',
     } },
-    { n: 231, title: 'Designing Rust APIs and the Cargo workflow', introduces: {
+    { n: 251, title: 'Designing Rust APIs and the Cargo workflow', introduces: {
       'api-design': 'the Rust API guidelines in practice',
       'cargo-features': 'optional parts of a crate',
       rustdoc: 'documentation and doc tests',
       clippy: 'the Rust linter',
     } },
-    { n: 232, title: 'Checkpoint: a concurrent file indexer in Rust', introduces: {
+    { n: 252, title: 'Checkpoint: a concurrent file indexer in Rust', introduces: {
       'checkpoint-rust': 'a whole Rust program, written without the book’s scaffolding',
     } },
   ],

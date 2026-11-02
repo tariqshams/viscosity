@@ -1,0 +1,317 @@
+---
+n: 40
+day: 10
+part: I
+title: 'The toolchain: tsconfig and modules'
+tagline: 'Checking one file with tsc is a start; a real project has dozens of files and wants the same rules every time. tsconfig.json writes those rules down once, and strict mode makes them worth having.'
+objectives:
+  - Write a tsconfig.json, and say what target, module, outDir, noEmit and include do.
+  - Explain how tsc finds its settings, and why module "nodenext" wants .js in import paths.
+  - Turn on strict mode, and read and fix the errors it reports.
+  - Compare how JavaScript, Python, Java and C treat a value that may be missing.
+introduces: [tsconfig, strict-mode-ts]
+uses: [typescript, type-annotation, type-checking, type-erasure, interface, union-type, narrowing, generic, module, import-export, program-structure, try-catch, error-object, instanceof, function, parameter, return, call, undefined, array, object, property, map, callback, arrow-function, variables, numbers, strings, booleans, comparison, if, console-log]
+sources: [ts-basics, ts-tsconfig-json, ts-option-module, ts-modules-reference, ts-option-strict, ts-option-noimplicitany, ts-option-strictnullchecks, node-typescript-docs]
+---
+import TscSteps from '../../../components/diagrams/ch040/TscSteps';
+import StrictFamily from '../../../components/diagrams/ch040/StrictFamily';
+
+## The same settings, every time
+
+So far you have checked a file with `npx tsc rect.ts`. A real project
+has dozens of files and wants particular settings: which version of
+JavaScript to write, where to put the output, how strict to be. Typed as
+flags, that is a line like
+`npx tsc --strict --target es2022 --outDir dist src/main.ts ...`, which
+you will mistype, a teammate will type differently, and the test server
+will not type at all. Settings that everyone must share belong in a
+file, kept with the code.
+
+## tsconfig.json
+
+<Analogy title="a saved setting on a washing machine">
+You work out the right temperature, spin and rinse for your wool
+jumpers once, save them as "wool", and from then on press one button;
+everyone in the house gets the same wash.
+<span slot="breaks">A washing machine ignores a button it does not
+know. tsc refuses a setting it does not recognize, and says so, which
+is how typos in the file get caught.</span>
+</Analogy>
+
+<Analogy title="the front sheet of an exam">
+The front sheet says which questions are in this paper and how strictly
+the marker should mark; the marker reads it first, then marks every
+page by it.
+<span slot="breaks">A paper's front sheet lists its pages one by one. A
+tsconfig usually names a folder, so a file you add there later is
+included without anyone editing the config.</span>
+</Analogy>
+
+The file is called `tsconfig.json`, and it sits at the top of the
+project. It is written in JSON, a text format that looks like a
+JavaScript object with every key in double quotes (a later chapter
+writes a parser for it). Step through what happens when you type
+`npx tsc` with no file names:
+
+<TscSteps client:visible />
+
+The settings, one by one: **`target`** is the version of JavaScript to
+write (`es2022` keeps modern code as it is, while the default is a very
+old version that rewrites `let` as `var`<Cite id="ts-basics" />); **`module`** says which
+module rules to follow; **`strict`** turns on the strict checks, below;
+**`outDir`** is where the `.js` files go; and **`include`** lists the
+files or folders in the project. One more is common: **`noEmit`**, which
+means "check, but write no files".
+
+<Callout kind="definition">
+A **`tsconfig.json`** marks the root folder of a TypeScript project and
+holds its settings: `compilerOptions` (the options you could otherwise
+pass as flags) and which files belong to the project (`include`, or a
+list in `files`). Run with no file names, `tsc` looks for it in the
+current folder, then in each parent folder; run with file names, it
+ignores the file<Cite id="ts-tsconfig-json" />.
+</Callout>
+
+That last rule catches people out: `npx tsc main.ts` checks `main.ts`
+with *default* settings, however strict your `tsconfig.json` is.
+(TypeScript 5.9 ignores the file silently; TypeScript 6.0 refuses with
+error `TS5112` and tells you why.)
+
+The **`module`** setting is the "modules" part of the toolchain. With
+`"nodenext"`, the setting the documentation recommends for modern
+Node<Cite id="ts-option-module" />, tsc follows Node's rules exactly:
+it writes `import` and `export` if the nearest `package.json` says
+`"type": "module"`, and an older module form, `require`, if
+not<Cite id="ts-modules-reference" />; and every relative import must
+name the file it will load at run time:
+
+```ts
+import { scan } from './scanner';
+// error TS2835: Relative import paths
+// need explicit file extensions...
+// Did you mean './scanner.js'?
+import { scan } from './scanner.js'; // ok
+```
+
+You write `.js` although the file on disk is `scanner.ts`, because
+`.js` is the name the import will have after compiling; tsc finds the
+`.ts` file behind it.
+
+<Examples of="tsconfig">
+
+```json
+{
+  "compilerOptions": { "strict": true }
+}
+```
+
+```text
+$ npx tsc
+tsconfig.json(3,5): error TS5025:
+  Unknown compiler option 'stirct'.
+  Did you mean 'strict'?
+```
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "strict": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}
+```
+
+</Examples>
+
+The first is the smallest useful config: strict checking, and the
+defaults for everything else, including every `.ts` file in the folder.
+The second is what a typo in the file gets you: an error naming the
+line, the column and the setting you probably meant. The third is close
+to the real config of this book's Drip interpreter
+(`book/companion/ts/tsconfig.json`): `noEmit`, because Node 22 can run
+`.ts` files itself by erasing the types, without checking
+them<Cite id="node-typescript-docs" />, so tsc's only job there is to
+check. (`src/**/*.ts` means "every `.ts` file anywhere under `src`".)
+
+<Prompts ids={['tsconfig-what', 'tsc-finds', 'files-ignore', 'nodenext-js']} />
+
+## Strict mode
+
+Here is a function that tsc, with its settings at their defaults in
+TypeScript 5.9, accepts without a word:
+
+```ts
+function len(s) {
+  return s.length;
+}
+len(42); // no error; returns undefined
+```
+
+`s` has no label and nothing to guess it from, so tsc quietly gives it
+the type **`any`**, which switches checking off for that value; and
+anything worked out from it, such as `s.length`, is `any` too. Earlier
+chapters showed tsc refusing to do arithmetic on a `Map`'s
+`number | undefined`; that check, too, is only made in strict mode.
+
+<Analogy title="a recipe that assumes every jar is full">
+A loose recipe says "add the sugar" and never asks whether there is any
+left; a careful one says "check the sugar jar first", so you find out
+at the shop rather than halfway through the cake.
+<span slot="breaks">A jar can be half full. A TypeScript value is
+either there or it is `undefined` (or `null`), with nothing in between,
+so one `if` settles the question.</span>
+</Analogy>
+
+<Figure takeaway="One switch turns on nine checks." caption="In TypeScript 5.9, strict: true turns on nine separate checks. This chapter shows the three highlighted ones; each check can still be turned off on its own.">
+  <StrictFamily />
+</Figure>
+
+<Callout kind="definition">
+**Strict mode** is the option `"strict": true`, which turns on a family
+of stricter checks at once; any one of them can still be turned off by
+name (`"strictNullChecks": false`), and new versions of TypeScript may
+add checks to the family<Cite id="ts-option-strict" />. Two matter most.
+**`noImplicitAny`** reports every place where tsc would silently use
+`any`<Cite id="ts-option-noimplicitany" />. **`strictNullChecks`** gives
+`null` and `undefined` types of their own, so a value that may be
+missing must be checked before it is used; without it they are allowed
+everywhere<Cite id="ts-option-strictnullchecks" />. In TypeScript 5.9,
+the version this book's code uses, strict is off unless you turn it on;
+TypeScript 6.0 turns it on by default. Either way, write it in your
+config.
+</Callout>
+
+(Not to be confused with JavaScript's own *strict mode* from the modules
+chapter, the rules a module runs under; `alwaysStrict`, one of the
+family, is the only link between them.)
+
+<Formal title="One value, two settings">
+
+```text
+strictNullChecks off:
+  undefined : string            accepted
+strictNullChecks on:
+  undefined : string            refused
+  undefined : string | undefined accepted
+```
+
+<span slot="read">With strictNullChecks off, undefined counts as a
+string (and as every other type), so a missing value slips through
+anywhere. With it on, undefined has a type of its own: it is not a
+string, but it is a "string or undefined", so the type has to say so
+before such a value is allowed.</span>
+</Formal>
+
+<Examples of="strict-mode-ts">
+
+```text
+function len(s) { ... }
+error TS7006: Parameter 's' implicitly
+  has an 'any' type.
+```
+
+```ts
+const xs = ['ada', 'alan'];
+const z = xs.find((s) => s[0] === 'z');
+z.toUpperCase();
+// error TS18048: 'z' is possibly
+//   'undefined'.
+if (z !== undefined) z.toUpperCase();
+```
+
+```ts
+try { run(src); }
+catch (e) {
+  console.log(e.message);
+  // error TS18046: 'e' is of type
+  //   'unknown'.
+  if (e instanceof Error) {
+    console.log(e.message); // ok
+  }
+}
+```
+
+</Examples>
+
+The first is `noImplicitAny` refusing `len`; the fix is a label,
+`s: string`. In the second, `find` returns the first match or
+`undefined`, so its type is `string | undefined`, and strict mode will
+not let you call a method on it until an `if` has narrowed it to
+`string`. The third is realistic: anything can be thrown, not only
+errors, so in strict mode a caught `e` has the type **`unknown`** ("could
+be anything; prove it before use"), and `instanceof Error` is the proof.
+Run the fixed version of the second one, and change the letter `k`:
+
+<Run id="narrowed" />
+
+<Prompts ids={['implicit-any', 'any-spreads', 'strict-null', 'strict-default']} />
+
+<OtherLanguages>
+
+```js
+const names = ['ada', 'alan'];
+const n = names.find((s) => s[0] === 'z');
+console.log(n.toUpperCase());
+// TypeError: Cannot read properties
+//   of undefined (reading 'toUpperCase')
+```
+
+```python
+names = ['ada', 'alan']
+n = next((s for s in names
+          if s[0] == 'z'), None)
+print(n.upper())
+# AttributeError: 'NoneType' object
+#   has no attribute 'upper'
+```
+
+```java
+String n = names.stream()
+    .filter(s -> s.startsWith("z"))
+    .findFirst().orElse(null);
+System.out.println(n.toUpperCase());
+// NullPointerException, at run time
+```
+
+```c
+const char *n = find_z(names, 2);
+/* NULL: nothing starts with 'z' */
+printf("%c\n", toupper(n[0]));
+/* crash: Segmentation fault */
+```
+
+</OtherLanguages>
+
+All four compile or start happily and fail only when the line runs
+(`javac`, even with every warning on, and `gcc -Wall -Wextra` say
+nothing). Java and C at least know the types; neither tracks "may be
+missing", so Java throws at run time and C, reading through a `NULL`
+pointer, crashes the whole program. TypeScript in strict mode is the
+odd one out: the same code, written in TypeScript, is refused before it
+ever runs, as the second example above showed.
+
+## Your turn
+
+<Exercise id="resolveStrict" />
+
+<Exercise id="firstShout" />
+
+## What you learned
+
+- **`tsconfig.json`** holds a project's `compilerOptions` and its
+  files; `npx tsc` with no file names finds it, and naming files
+  ignores it.
+- `target` picks the JavaScript version, `outDir` the output folder,
+  `noEmit` means check only, and `module: "nodenext"` follows Node's
+  rules, including `.js` in import paths.
+- **Strict mode** turns on a family of checks; `noImplicitAny` and
+  `strictNullChecks` catch missing labels and missing values. Turn it
+  on in every project.
+
+Next: `package.json` and npm, which say what a project is and what it
+needs, and bundlers, which pack it up to ship.
+
+<Quiz />

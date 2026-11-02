@@ -1,0 +1,230 @@
+---
+n: 165
+day: 42
+part: VIII
+title: 'VIR: Viscosity’s IR'
+tagline: 'Every analysis in Viscosity reads one data structure. It is small enough to print on a phone, it speaks of records and collections instead of JavaScript, and it has an honest word for everything else.'
+objectives:
+  - Describe the parts of a VIR module (functions, blocks, instructions, terminators, bindings) and read a real listing.
+  - Explain why records, collections and field accesses are first-class instructions in VIR.
+  - Explain how opaque instructions keep the analyses sound without modelling all of JavaScript.
+  - Say which variables become SSA values and which become bindings, and why.
+introduces: [vir, record-collection-nodes]
+uses: [viscosity-pipeline, language-plugin, ir, lowering, three-address-code, temporary, basic-block, cfg, ssa, phi-node, ssa-construction, closure, captured-environment, global-variable, escape-analysis, escape-sites, alias-analysis, dataflow, static-analysis, discriminated-union, interface, array-of-objects, property, method, this]
+sources: [braun2013, coopertorczon2022]
+---
+import VirSteps from '../../../components/diagrams/ch165/VirSteps';
+
+## One data structure
+
+Chapter 122 showed you a VIR listing in passing. Every chapter from here
+to the end of Part VIII reads or writes this IR, so now it is time to
+know it properly. All of it is in one file, `packages/core/src/vir.ts`,
+176 lines long.
+
+<Callout kind="intuition">
+A warehouse inventory doesn't record the colour of a box's label or the
+handwriting on it. It records what matters to the warehouse: what kind
+of item, how many, which shelf, who took it out. VIR is Viscosity's
+inventory of your program. It writes down what matters for data layout
+(records, collections, fields, loops) and files everything else under
+"unknown".
+</Callout>
+
+## Modules, functions, blocks
+
+A `Module` holds a list of `Func`s (one per function, plus `<module>`
+for the top-level code), a list of `Binding`s, and every instruction by
+id. A `Func` is a control-flow graph: a list of `Block`s and an entry
+block. Each block has instructions, its predecessors, and exactly one
+**terminator** that says where control goes next.
+
+```ts
+type Terminator =
+  | { kind: 'br'; target: BlockId }
+  | { kind: 'condbr'; cond: ValueId;
+      then: BlockId; else: BlockId }
+  | { kind: 'return';
+      value: ValueId | null }
+  | { kind: 'throw'; value: ValueId }
+  | { kind: 'unreachable' };
+```
+
+An instruction is one record type for every op, a discriminated union in
+spirit, with optional fields that only some ops use:
+
+```ts
+interface Inst {
+  id: ValueId;      // %7
+  op: Op;           // 'field.get'
+  args: ValueId[];  // operands
+  block: BlockId;
+  field?: string;   // for field ops
+  fields?: string[]; // for record.new
+  operator?: string; // for binop
+  binding?: BindingId;
+  note?: string;    // for opaque
+  src?: SourceRef;  // where it came from
+  // … value, name, func, index
+}
+```
+
+`src` is the link back to your text: the plugin's own syntax node, its
+start and end offsets, and its line. Emit uses it to know what to
+replace; explain uses it to say "line 4".
+
+<Prompts ids={['vir-func', 'vir-term', 'vir-src']} />
+
+Now step through a real listing:
+
+<VirSteps client:visible />
+
+<Callout kind="definition">
+**VIR** is Viscosity's intermediate representation. It is
+language-neutral: every plugin lowers to it, and every analysis reads
+only it. Each function is a **CFG** of basic blocks in **SSA form**: local
+variables that no closure captures become values defined once and joined
+by `phi`s. Other variables become **bindings**, read and written with
+explicit `load` and `store` instructions.
+</Callout>
+
+<Prompts ids={['vir-what', 'vir-neutral']} />
+
+## Records and collections are first-class
+
+Most of VIR's 22 ops are what you would expect from three-address code:
+`const`, `binop`, `unop`, `phi`, `call`, `closure`. The unusual ones are
+about data:
+
+- `record.new` builds a record, with its field names in order:
+  `record {x, vx} %0, %1`.
+- `array.empty` and `array.new` build arrays; `push` appends.
+- `index.get` and `index.set` read and write an element.
+- `field.get` and `field.set` read and write a named field.
+- `intrinsic` is a known built-in numeric function, such as
+  `Math.sqrt`: it returns a number and keeps no reference to its
+  arguments.
+
+Why give these their own instructions? Because they are exactly the
+questions the layout analyses ask. "Which fields does this loop touch?"
+becomes: find each `index.get` on the collection, then collect the
+`field.get` and `field.set` instructions whose object is that element.
+A lower-level IR, with only "call a function" and "load from an
+address", would hide those facts behind patterns every analysis had to
+recognise again. First-class nodes also hide each language's spelling:
+Python's `P(1.0, 2.0)` for a dataclass and JavaScript's `{ x: 1, vx: 2 }`
+lower to the same `record.new`.
+
+<Callout kind="definition">
+VIR's **record and collection nodes** are its first-class data
+operations: `record.new` (a record with named fields), `array.empty`,
+`array.new` and `push` (building a collection), `index.get` and
+`index.set` (its elements), and `field.get` and `field.set` (a
+**field access** on a record).
+</Callout>
+
+<Prompts ids={['rc-why', 'rc-length']} />
+
+One detail: `ps.length` is lowered as `field.get .length`, in both
+plugins (Python's `len(ps)` included). The analyses recognise that
+field on a collection. The op list also has a `length` op, which
+neither plugin produces today.
+
+## Opaque: an honest unknown
+
+JavaScript is enormous: getters, proxies, `with`, tagged templates.
+Modelling all of it before shipping anything would take years. So the
+JavaScript plugin models the subset that matters for data layout, and
+turns everything else into `opaque`, with every variable it mentions as
+an argument. A template literal, for example:
+
+```js
+const s = `${ps[0]}`;
+```
+
+lowers to
+
+```
+%15 = index.get %13, %14
+%16 = opaque(template) %15
+```
+
+and `viscosity explain` says:
+
+```
+ps (line 1) {x, vx} → kept as array of
+  objects
+  · unsafe: line 4: an element is used
+    by code Viscosity doesn't model
+    (template)
+```
+
+Opaque means "might do anything with these arguments". Every analysis
+treats it the worst way: its arguments escape, and its result is
+unknown. That is **conservative soundness**: being unsure never leads to
+a wrong rewrite, only to a missed one. And because the reason is
+printed, a missed one can be fixed by changing the code.
+
+<Prompts ids={['op-what', 'op-sound']} />
+
+## SSA values and bindings
+
+Look again at the listing: `t` and `i` never appear by name. They are
+SSA values joined by phis. `ps` and `console` are bindings, with `store`
+and `load`. Here is why. This function has two counters:
+
+```js
+function count(xs) {
+  let n = 0;
+  let k = 0;
+  const bump = () => { n = n + 1; };
+  for (const x of xs) {
+    bump(); k = k + 1;
+  }
+  return n + k;
+}
+```
+
+`k` becomes phis, as always. But `n` is changed inside `bump`, and a
+call to `bump` may happen anywhere. A phi can't describe "whatever the
+closure did", so `n` stays a binding, and the arrow's body really
+contains `load n` and `store n, %6`. The JavaScript plugin also makes a
+binding of any variable that holds an array, so the analyses see every
+read and write of a candidate collection, as `load`s they can follow.
+
+<Prompts ids={['ssa-vs-binding', 'binding-arrays', 'ssa-cheap']} />
+
+<Callout kind="engine" label="Under the hood">
+Plugins don't build SSA by hand. `packages/core/src/builder.ts` provides
+`readVariable` and `writeVariable`, and builds SSA on the fly with the
+algorithm of Braun and colleagues<Cite id="braun2013" />: a read in a
+block with several predecessors creates a phi, loop headers get
+incomplete phis until they are sealed, and trivial phis are removed.
+That is why the phi ids are out of order: ids are handed out as
+instructions are created, and `t`'s phi, `%11`, was only created when the
+loop body first read `t`. Using one shared IR for many analyses is the
+standard middle-end design<Cite id="coopertorczon2022" />; VIR's twist is
+that its instructions are chosen for data layout.
+</Callout>
+
+## Your turn
+
+<Exercise id="printFunc" />
+
+<Exercise id="fieldsTouched" />
+
+## What you learned
+
+- A VIR **module** has functions (CFGs of blocks), bindings, and every
+  instruction by id. Each block ends in one **terminator**.
+- **VIR** is language-neutral SSA: uncaptured locals are values joined
+  by phis; captured, module-level and array-holding variables are
+  **bindings** with `load` and `store`.
+- **Record and collection nodes** (`record.new`, `push`, `index.get`,
+  `field.get`, `field.set`, …) make the layout questions direct, and
+  hide each language's spelling.
+- **opaque** stands for anything not modelled. Treating it as the worst
+  case keeps every analysis sound.
+- Every instruction keeps a **source reference**, for emit and explain.
+
+<Quiz />

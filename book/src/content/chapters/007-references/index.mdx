@@ -1,0 +1,336 @@
+---
+n: 7
+day: 2
+part: I
+title: 'References: two names, one object'
+tagline: 'A variable never holds an object; it holds an arrow to one. Once you see the arrows, half of JavaScript’s surprises disappear, and the hardest problem in this book comes into view.'
+objectives:
+  - Predict what happens when two variables refer to the same object and one of them changes it.
+  - Explain how a function can change an object its caller owns, but not the caller’s variable.
+  - Explain why === on objects compares identity, not contents.
+  - Say where Python, Java and C agree with JavaScript about this, and where C does not.
+introduces: [reference, aliasing, identity, mutation]
+uses: [object, property, dot-access, array, push, array-of-objects, function, parameter, return, call, local-variable, variables, numbers, comparison, console-log]
+sources: [mdn-objects, mdn-equality]
+---
+import RefSteps from '../../../components/diagrams/ch007/RefSteps';
+import PassArrowSteps from '../../../components/diagrams/ch007/PassArrowSteps';
+
+## A puzzle
+
+Predict what each half prints before you read on:
+
+```js
+let m = 1;
+let n = m;
+n = 99;
+console.log(m);
+
+const a = { x: 1 };
+const b = a;
+b.x = 99;
+console.log(a.x);
+```
+
+The first half prints `1`: `n = m` copied the number 1 into `n`, and
+changing `n` afterwards left `m` alone. The second half prints **`99`**:
+changing `b` *did* change `a`. The code looks the same, yet the results
+are opposite, and the reason is that a variable holding an object does
+not hold the object at all.
+
+<Analogy title="a house and its address">
+A number in a variable is like a number written on a sticky note: copy
+the note and you have two separate notes. An object is more like a
+**house**, and the variable holds only its **address** on a card.
+`const b = a` copies the address onto a second card, so two cards now
+lead to one house, and if you repaint the house using one card, the
+other card leads to a repainted house too.
+<span slot="breaks">You can walk past a house without its address; in
+JavaScript the arrows are the only way to reach an object, and once no
+arrow leads to it, it is gone for good.</span>
+</Analogy>
+
+<Analogy title="a link to a shared document">
+Emailing someone a file as an attachment gives them their own copy, and
+their edits never reach yours; sending them a *link* to a shared
+document means you are both looking at one document, and their edits
+appear on your screen. Numbers are sent as attachments; objects are
+sent as links.
+<span slot="breaks">A shared link can be switched off or limited to
+"view only"; a JavaScript arrow always lets you change the object it
+points at (unless the object itself is frozen, which this book rarely
+needs).</span>
+</Analogy>
+
+## The arrows
+
+Step through it. On the left are the variables; on the right, the
+objects living in memory.
+
+<RefSteps client:visible />
+
+<Callout kind="definition">
+A variable that holds an object holds a **reference** to it: an arrow
+pointing at the object, not a copy of it. Copying the variable copies
+the arrow, so afterwards both names point at the same object; two
+references to one object are called **aliases**, and the situation is
+**aliasing**. Numbers, strings and booleans are copied as values, so
+they never alias<Cite id="mdn-objects" />.
+</Callout>
+
+<Examples of="reference aliasing">
+
+```js
+const a = { x: 1 };
+const b = a;
+b.x = 2;
+a.x; // 2
+```
+
+```js
+const list = [1, 2, 3];
+const same = list;
+same.push(4);
+list.length; // 4
+```
+
+```js
+const ps = [{ x: 0 }, { x: 5 }];
+const cur = ps[1];
+cur.x = 7;
+ps[1].x; // 7
+```
+
+</Examples>
+
+The first is the puzzle in its smallest form: one object, two names,
+and a change through either name is seen through both. The second shows
+that arrays are objects too, so `same` and `list` are one array, and the
+`push` through `same` makes `list` longer. The third is the one that
+matters most for this book: a variable and an array slot can be aliases,
+so `cur` and `ps[1]` are two ways to reach the same particle.
+
+<Formal title="Names, arrows and memory">
+
+```text
+names:   a ↦ ℓ₁    b ↦ ℓ₁
+memory:  ℓ₁ ↦ { x: 2 }
+a.x  =  memory(ℓ₁).x  =  2
+```
+
+<span slot="read">Each name maps to a place in memory, written ℓ₁ ("ell
+one", a made-up label for an address). Here a and b map to the same
+place, ℓ₁, and memory holds one object there. Reading a.x means: find
+a's place, look in memory at that place, and read x. Since b leads to the
+same place, b.x is that same 2.</span>
+</Formal>
+
+<Prompts ids={['ref-what', 'alias-change']} />
+
+## Changing an object: mutation
+
+`b.x = 99` did not touch the variable `b`; it followed `b`'s arrow and
+changed the object at the end of it. Changing an object in place like
+this is called a mutation, and it explains a mystery from chapter 3: how
+can you `push` onto a `const` array?
+
+```js
+const p = { x: 1 };
+p.x = 2;   // fine: changes the object
+p = { x: 3 };
+// TypeError: Assignment to constant
+// variable.
+```
+
+`const` freezes the **arrow**, so the name `p` can never be pointed at
+a different object (line 3 is refused with exactly that message); it
+says nothing about the object at the end of the arrow, which can still
+be changed, as line 2 shows.
+
+The same is true when you pass an object to a function, because the
+parameter receives a copy of the *arrow*. Step through it:
+
+<PassArrowSteps client:visible />
+
+<Analogy title="a spare key to your flat">
+Giving a friend a spare key lets them in to rearrange your furniture,
+and you will find it rearranged when you get home; that is a function
+mutating your object. If they get their key re-cut to open a different
+flat, however, your own key still opens yours; that is a function
+re-assigning its parameter.
+<span slot="breaks">You might notice a stranger has been in your flat;
+nothing in JavaScript records that an object was changed through
+another name, which is exactly what makes aliasing bugs hard to find.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **mutation** changes an object in place: writing a property
+(`o.k = v`), writing a slot (`a[i] = v`), or calling a method that
+changes it, such as `push`. Every alias sees a mutation. Assigning a new
+value to a variable (`o = ...`) is not a mutation; it re-aims only that
+one variable's arrow.
+</Callout>
+
+<Examples of="mutation">
+
+```js
+const p = { x: 1 };
+p.x = 5; // mutation
+```
+
+```js
+const xs = [1, 2];
+xs[0] = 9;  // mutation
+xs.push(3); // mutation: [9, 2, 3]
+```
+
+```js
+function birthday(person) {
+  person.age = person.age + 1;
+}
+const ada = { name: 'Ada', age: 36 };
+birthday(ada);
+ada.age; // 37
+```
+
+</Examples>
+
+The first writes a property, the second writes a slot and then grows the
+array (both change the array itself, so anyone holding an arrow to it
+sees `[9, 2, 3]`). The third is how `step(ps)` in the last chapter moved
+the caller's particles without returning anything: `birthday` received
+an arrow to Ada's object and changed the object it leads to.
+
+<Prompts ids={['const-arrow', 'mutation-what', 'fn-mutates', 'fn-reassign']} />
+
+## Same object, or same contents?
+
+For numbers, `===` asks "are these equal?". For objects it asks
+something stricter: "are these two arrows pointing at the *same*
+object?"
+
+<Callout kind="definition">
+For objects (arrays included), `a === b` is `true` only when `a` and `b`
+are references to the very same object; this is called comparing by
+**identity**. Two separate objects with equal contents are never
+`===`<Cite id="mdn-equality" />.
+</Callout>
+
+<Examples of="identity">
+
+```js
+const a = { x: 1 };
+a === a; // true
+```
+
+```js
+const c = { x: 1 };
+a === c;     // false: two objects
+[1] === [1]; // false: two arrays
+a.x === c.x; // true: two equal numbers
+```
+
+```js
+function isSelected(p, selected) {
+  return p === selected;
+}
+```
+
+<Run id="refs-play" />
+
+</Examples>
+
+The first compares an arrow with itself, so it is `true`. The second
+makes a second object that *looks* identical; `===` says `false`,
+because each `{ }` or `[ ]` you write makes a brand-new object, and the
+last line shows how to compare contents instead, one field at a time.
+The third is real: in a drawing program, "is this particle the selected
+one?" means "the very same object", not "one that happens to sit at the
+same position". The runnable one puts the whole chapter together; before
+you press run, predict all four lines (the last one is the spare key
+from the diagram above).
+
+<Formal title="When two objects are ===">
+
+```text
+a === b  ⟺  place(a) = place(b)
+```
+
+<span slot="read">For two objects, a === b is true exactly when (⟺)
+the place in memory a leads to is the same place b leads to. Their
+contents do not come into it.</span>
+</Formal>
+
+<Prompts ids={['identity', 'same-contents']} />
+
+<OtherLanguages>
+
+```js
+const a = { x: 1 };
+const b = a;
+b.x = 99;
+console.log(a.x); // 99
+```
+
+```python
+a = {"x": 1}
+b = a
+b["x"] = 99
+print(a["x"])  # 99
+print(a is b)  # True: same object
+```
+
+```java
+class P { int x; }
+// inside main:
+P a = new P(); a.x = 1;
+P b = a;
+b.x = 99;
+System.out.println(a.x); // 99
+```
+
+```c
+struct P { int x; };
+/* inside main: */
+struct P a = { 1 };
+struct P b = a;   /* copies it! */
+b.x = 99;
+printf("%d\n", a.x); /* 1 */
+struct P *c = &a; /* an arrow */
+c->x = 99;
+printf("%d\n", a.x); /* 99 */
+```
+
+</OtherLanguages>
+
+Python and Java behave exactly like JavaScript: variables hold
+references, and `b = a` makes an alias (Python writes the identity test
+as `a is b`, and Java uses `==` for identity and `.equals` for
+contents). C is the genuine difference: assigning a `struct` copies the
+whole thing, so changing `b` leaves `a` alone, and to get an alias you
+must ask for an arrow explicitly, a **pointer** (`&a` is "the address of
+`a`", and `c->x` follows the arrow). JavaScript makes the opposite
+choice for you: objects are always reached through arrows.
+
+Arrows that can be copied anywhere are convenient, but they make one
+question very hard to answer: *who else might be looking at this
+object?* The next chapter shows how to make a real copy when you want
+one, and why that question is the hardest one Viscosity has to answer.
+
+## Your turn
+
+<Exercise id="indexOfSame" />
+
+<Exercise id="distinct" />
+
+## What you learned
+
+- A variable holding an object holds a **reference**: an arrow, not the
+  object.
+- Copying the variable copies the arrow; two arrows to one object are
+  **aliases**, and a **mutation** through either is seen by both.
+- `const` fixes the arrow, not the object; a function given an object
+  can mutate it, but re-assigning the parameter moves only its own arrow.
+- `===` on objects compares **identity**: same object, not same contents.
+
+<Quiz />

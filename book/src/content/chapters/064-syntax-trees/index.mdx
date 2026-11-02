@@ -1,0 +1,215 @@
+---
+n: 64
+day: 16
+part: III
+title: 'Syntax trees'
+tagline: 'Tokens come in a flat line, but a program’s meaning is nested: this operation inside that one, inside a statement. The parser’s job is to build that nesting as a tree. Here is the tree Drip uses, and a ten-line function that prints it so you can see it.'
+objectives:
+  - Explain what an abstract syntax tree keeps from the source, and what it leaves out.
+  - Read Drip’s Expr and Stmt types as discriminated unions of AST nodes.
+  - Tell an expression from a statement.
+  - Write a tree printer that turns an AST back into fully bracketed text.
+introduces: [ast, ast-node, expression-vs-statement, tree-printer]
+uses: [grammar, production-rule, terminal, nonterminal, token, lexeme, literal, identifier, keyword, drip, tree, recursion, base-case, discriminated-union, union-type, narrowing, exhaustiveness, interface, typescript, type-annotation, object, property, array, function, return, test, assertion, interpreter]
+sources: [estree, nystrom2021]
+---
+import ParseVsAst from '../../../components/diagrams/ch064/ParseVsAst';
+import PrintSteps from '../../../components/diagrams/ch064/PrintSteps';
+
+## A flat line of tokens
+
+The scanner turns `-2 * (3 + 4)` into a flat row of tokens:
+
+```
+-  2  *  (  3  +  4  )
+```
+
+But that is not how you read it. You see a multiplication, whose left
+side is “minus 2”, and whose right side is a whole addition. The meaning
+is nested, one operation inside another. Before Drip can run this, it
+needs that nesting written down somewhere. The natural shape is a tree,
+like the ones you walked in chapter 17.
+
+## Which tree?
+
+When you derived a sentence in chapter 62, every rule you used replaced
+one nonterminal with its parts. Draw each replacement as a node with
+children, and you get a tree of the whole derivation, called a *parse
+tree*. It is faithful but cluttered: it has a node for every rule and
+every token, including the `;`.
+
+<Callout kind="intuition">
+A recipe card says “whisk: eggs, sugar”. It doesn’t keep the chatty
+sentences, the commas or the page layout of the cookbook it came from.
+It keeps exactly what you need to cook. An abstract syntax tree is the
+recipe card of a program.
+</Callout>
+
+<Figure takeaway="The AST keeps the meaning and drops the scaffolding." caption="print 1 + 2; twice. Above, the parse tree from chapter 62’s grammar: a node for every rule (dashed) and every token. Below, the abstract syntax tree the Drip parser builds: four nodes. The semicolon, the helper rules and the word print as a token are gone; what is left says “print the sum of 1 and 2”.">
+  <ParseVsAst />
+</Figure>
+
+<Callout kind="definition">
+An **abstract syntax tree** (**AST**) is a program stored as nested
+nodes, keeping only what affects its meaning. Each **AST node** is one
+construct: a **kind** (such as binary, literal or print) plus its
+**children**, the smaller nodes and tokens it is made of.
+</Callout>
+
+<Prompts ids={['ast-what', 'ast-drops', 'node-what']} />
+
+## Nodes as a discriminated union
+
+You built a tree type like this in chapter 27. Drip’s is the same idea,
+with more kinds. Here are the first few, from
+`companion/ts/src/ast.ts`:
+
+```ts
+type Expr =
+  | { kind: 'literal';
+      value: number | string
+           | boolean | null }
+  | { kind: 'grouping'; expression: Expr }
+  | { kind: 'unary';
+      operator: Token; right: Expr }
+  | { kind: 'binary'; left: Expr;
+      operator: Token; right: Expr }
+  | { kind: 'variable'; name: Token };
+  // ...and seven more kinds
+```
+
+Every node is a plain object with a `kind` tag. Checking `e.kind`
+narrows `e` to one variant, so the checker knows a `binary` node has a
+`left`. Operators and names are kept as whole tokens, not just strings,
+so that a later error message can say which line they came from.
+
+A literal’s `value` is what the scanner put in the token’s `literal`
+field: a number or a string. The keywords `true`, `false` and `nil`
+become literals too, holding `true`, `false` and `null`.
+
+There is one kind that isn’t strictly needed: `grouping`, for brackets.
+The tree’s shape already says that `3 + 4` happens first. Drip keeps the
+node anyway, so a printed tree shows where the brackets were.
+
+<Run id="byHand" />
+
+<Prompts ids={['tag-narrows', 'token-kept', 'grouping-why']} />
+
+## Expressions and statements
+
+Drip has two families of node. An expression *produces a value*: `1 + 2`,
+`x`, `"hi"`. A statement *does something*: prints, declares a variable,
+loops. Statements get their own union:
+
+```ts
+type Stmt =
+  | { kind: 'expression'; expression: Expr }
+  | { kind: 'print'; expression: Expr }
+  | { kind: 'let'; name: Token;
+      initializer: Expr | null }
+  | { kind: 'block'; statements: Stmt[] }
+  | { kind: 'if'; condition: Expr;
+      then: Stmt; else: Stmt | null }
+  // ...while, function, return, class
+```
+
+Statements contain expressions (a `print` holds the expression to
+print), and some contain other statements (a `block` holds a list). A
+whole Drip program parses to an array of statements, `Stmt[]`.
+
+<Callout kind="definition">
+An **expression** is code that produces a value. A **statement** is code
+that is run for its effect, such as printing or declaring a variable.
+An **expression statement** is an expression followed by `;`, run for
+its effect with the value thrown away.
+</Callout>
+
+<Prompts ids={['expr-or-stmt', 'expression-statement']} />
+
+## Printing a tree
+
+A tree is hard to look at in the console. `JSON.stringify` works, but
+`1 + 2` alone is about 150 characters of braces. So Drip comes with a
+**tree printer** that writes each node as brackets, the operator first:
+
+```ts
+function printExpr(e: Expr): string {
+  switch (e.kind) {
+    case 'literal':
+      return e.value === null
+        ? 'nil' : String(e.value);
+    case 'grouping':
+      return '(group ' +
+        printExpr(e.expression) + ')';
+    case 'binary':
+      return '(' + e.operator.lexeme +
+        ' ' + printExpr(e.left) +
+        ' ' + printExpr(e.right) + ')';
+    // ...a case for every kind
+  }
+}
+```
+
+(A `switch` jumps to the `case` whose value equals `e.kind`.) The real
+`printExpr` in `ast.ts` has a case for all twelve kinds, and no
+`default`. Add a thirteenth kind without a case, and `tsc` reports that
+the function can end without returning a string: an exhaustiveness check
+for free.
+
+<PrintSteps client:visible />
+
+<Callout kind="definition">
+A **tree printer** turns a tree back into text so you can check it.
+Drip’s prints every node as `(operator children...)`: the brackets show
+the tree’s shape exactly, with no precedence rules to remember. So
+`-2 * (3 + 4)` prints as `(* (- 2) (group (+ 3 4)))`.
+</Callout>
+
+The printer isn’t meant to reproduce the source. `"hi" + name` prints
+as `(+ hi name)`, without quotes. Its job is to make a tree’s shape easy
+to compare with what you expected, which is exactly what a parser test
+needs:
+
+```ts
+test('* binds tighter than +', () => {
+  expect(show('1 + 2 * 3'))
+    .toBe('(+ 1 (* 2 3))');
+});
+```
+
+Here `show` would scan, parse and print. That test is one line of
+expected text instead of a nest of objects.
+
+<Prompts ids={['printer-why', 'printer-output', 'printer-order']} />
+
+<Callout kind="engine" label="Under the hood">
+Most language tools are built around an AST. ESTree, the tree format
+many JavaScript tools share, describes every node as an object with a
+string `type` field, the same tagging idea as Drip’s `kind`<Cite id="estree" />.
+In the companion, the AST is the meeting point of the whole interpreter:
+the parser builds `Expr` and `Stmt` nodes, the resolver (chapter 80)
+walks them to work out where each variable lives, and the interpreter
+walks them to run the program. Drip’s node kinds follow Lox’s, from
+*Crafting Interpreters*<Cite id="nystrom2021" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="printTree" />
+
+<Exercise id="evalTree" />
+
+## What you learned
+
+- An **AST** stores a program as nested nodes, keeping what affects its
+  meaning and dropping punctuation and helper rules.
+- Each **AST node** is a kind plus its children. Drip’s `Expr` and `Stmt`
+  are discriminated unions tagged by `kind`.
+- **Expressions** produce values; **statements** do things. A program is
+  an array of statements.
+- A **tree printer** writes each node as `(operator children...)`,
+  making a tree easy to check and to test.
+
+Next: the parser that builds these trees from tokens.
+
+<Quiz />

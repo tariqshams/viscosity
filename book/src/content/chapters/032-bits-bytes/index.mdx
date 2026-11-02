@@ -1,0 +1,305 @@
+---
+n: 32
+day: 8
+part: I
+title: 'Bits and bytes'
+tagline: 'Underneath every variable is a row of switches, each off or on. Learn to read them in base 2, and to flip them directly with the bitwise operators, and the storage that engines and compilers work with stops being a mystery.'
+objectives:
+  - Read and write small numbers in binary, and explain bits and bytes.
+  - Say why one byte holds a whole number from 0 to 255.
+  - Use the bitwise operators & | ^ << >> >>> on small integers, and pack yes-or-no flags into one number.
+  - Write binary in JavaScript, Python, Java and C, and say where they differ.
+introduces: [binary, bit, byte, bit-ops]
+uses: [char-code, array, index, length, function, parameter, return, while-loop, test, assertion, edge-case, variables, numbers, strings, booleans, comparison, if, for-loop, console-log]
+sources: [mdn-number, mdn-bitwise-and, mdn-math-imul]
+---
+import BitSteps from '../../../components/diagrams/ch032/BitSteps';
+import BitOpsGrid from '../../../components/diagrams/ch032/BitOpsGrid';
+
+## What is a number made of?
+
+A computer's memory is a vast panel of tiny switches, each either off
+or on, and everything you store (numbers, text, your particles) is a
+pattern of those switches. A switch has only two settings, so the
+question for this chapter is how a row of two-way switches can hold a
+number like `13`, and what you can do with the switches directly once
+you can read them. The next chapter uses the answer to explain why
+`0.1 + 0.2` is not exactly `0.3`.
+
+## Counting with two digits
+
+We count in tens: the places in `352` are worth 1, 10 and 100, each ten
+times the last, because we have ten digits, 0 to 9. With only the digits
+0 and 1, each place is worth **double** the place to its right: 1, 2, 4,
+8, 16, and so on. Step through it:
+
+<BitSteps client:visible />
+
+<Analogy title="a set of weights">
+A kitchen balance comes with weights of 1, 2, 4 and 8 grams. Each
+weight is either on the pan or off it, and by choosing which ones to use
+you can make every whole weight from 0 to 15 grams, each in exactly one
+way: 13 grams is 8 + 4 + 1.
+<span slot="breaks">You can put the weights on the pan in any order;
+in binary the position *is* the value, so `1101` and `1011` are
+different numbers (13 and 11) made of the same digits.</span>
+</Analogy>
+
+<Analogy title="a mileometer with two digits">
+Picture a car's mileometer whose wheels show only 0 and 1. Each time the
+rightmost wheel passes 1 it rolls back to 0 and nudges the next wheel
+on, so it counts 0, 1, 10, 11, 100, 101, …
+<span slot="breaks">A real mileometer has a fixed number of wheels and
+rolls over to all zeros at the end; JavaScript numbers are not stored
+this simply (the next chapter shows how they really are), though the
+bitwise operators below do work on a fixed row of 32 switches.</span>
+</Analogy>
+
+```js
+console.log((13).toString(2)); // '1101'
+console.log(parseInt('1101', 2)); // 13
+console.log(0b1101); // 13
+```
+
+`(13).toString(2)` writes 13 in base 2, giving the text `'1101'` (the
+brackets round `13` stop the dot being read as a decimal point).
+`parseInt('1101', 2)` goes the other way, reading text as base 2. And
+the `0b` prefix lets you type a binary number straight into your code,
+so `0b1101` is just another way to write `13`.
+
+<Callout kind="definition">
+**Binary** is writing numbers in base 2, with place values 1, 2, 4, 8, …
+from the right. Each binary digit is a **bit**: a single 0 or 1. Eight
+bits make a **byte**, which has 2 × 2 × … × 2 = 2⁸ = 256 possible
+patterns, so one byte can hold a whole number from 0 to 255.
+</Callout>
+
+<Formal title="What a row of bits is worth">
+
+```text
+bₖ…b₁b₀  =  bₖ·2ᵏ + … + b₁·2 + b₀·1
+1101  =  1·8 + 1·4 + 0·2 + 1·1  =  13
+n bits make 2ⁿ patterns: 0 … 2ⁿ − 1
+```
+
+<span slot="read">Number the bits from the right, starting at 0. Each
+bit is 0 or 1, and bit i is worth 2 to the power i, so the number is the
+sum of the places whose bit is 1. A row of n bits has 2 to the n
+different patterns, so it can count from 0 up to 2 to the n, minus
+one.</span>
+</Formal>
+
+<Examples of="binary bit byte">
+
+```js
+0b101; // 5: one 4, no 2, one 1
+```
+
+```js
+(255).toString(2); // '11111111'
+(256).toString(2); // '100000000'
+```
+
+```js
+'A'.charCodeAt(0); // 65
+(65).toString(2);  // '1000001'
+```
+
+</Examples>
+
+The first reads a three-bit number: the places are 4, 2 and 1, and the
+bits say one 4, no 2 and one 1, which is 5. The second shows the edge of
+a byte: 255 is eight 1 bits, every switch on, and 256 needs a ninth bit,
+so it no longer fits in one byte. The third is real: the letter `A` is
+stored as the number 65 (the character codes from the chapter on
+strings), which is `1000001` in binary, seven bits, so it fits in a
+byte with room to spare; this is how a scanner sees your source code,
+one small number per character.
+
+<OtherLanguages>
+
+```js
+console.log(0b1101);           // 13
+console.log((13).toString(2)); // 1101
+```
+
+```python
+print(0b1101)   # 13
+print(bin(13))  # 0b1101
+```
+
+```java
+System.out.println(0b1101); // 13
+System.out.println(
+    Integer.toBinaryString(13)); // 1101
+```
+
+```c
+/* 0b literals and printf's %b arrived
+   only in the C23 standard */
+printf("%d\n", 0b1101); /* 13 */
+printf("%b\n", 13);     /* 1101 */
+```
+
+</OtherLanguages>
+
+All four write a binary number the same way, with `0b`. Printing one
+is where they differ: Python's `bin` keeps the `0b` in front, Java needs
+a helper method, and C had no standard way at all until its 2023
+edition (older compilers may reject both lines, and C programmers
+traditionally wrote their own loop).
+
+<Prompts ids={['binary-what', 'bit-byte', 'byte-range']} />
+
+## Working on bits directly
+
+JavaScript has operators that work on a number's bits, one column at a
+time, with no carrying between columns:
+
+<Figure takeaway="& | ^ work column by column." caption="13 is 1101 and 6 is 0110. Each operator looks at one column at a time: & keeps a 1 only where both rows have one, | where either does, and ^ where exactly one does.">
+  <BitOpsGrid />
+</Figure>
+
+```js
+13 & 6   // 4    0100: on in both
+13 | 6   // 15   1111: on in either
+13 ^ 6   // 11   1011: on in exactly one
+1 << 3   // 8    1000: slid left 3
+13 >> 1  // 6    0110: slid right 1
+```
+
+The first three combine two numbers column by column, as the figure
+shows. `<<` slides every bit to the left, filling with zeros, so each bit
+lands in a place worth double: `1 << 3` moves the single 1 three places,
+to the 8s place. `>>` slides right, and the rightmost bit falls off the
+end, so `13 >> 1` is `110`, which is 6: half of 13, rounded down.
+
+<Analogy title="a stencil over a sheet">
+Lay a card with holes cut in it over a sheet covered in dots, and only
+the dots under the holes show through. That is `&` with a **mask** (a
+number whose 1 bits are the holes): `x & 0b0100` lets through only the
+4s bit of `x`, and hides the rest.
+<span slot="breaks">A stencil lets the dots through unchanged; `&`
+gives back a whole number, so the result of `x & 0b0100` is either `0`
+or `4`, never “yes” or “no”, which is why the code below compares it
+with `0`.</span>
+</Analogy>
+
+<Analogy title="a light with two switches">
+A staircase light has a switch at the top and one at the bottom, and
+flipping either one changes the light. That is `^` (xor): `x ^ 1` flips
+the last bit, and doing it twice flips it back.
+<span slot="breaks">A staircase has two switches for one light; `^`
+flips every bit where the other number has a 1, all 32 columns at
+once.</span>
+</Analogy>
+
+<Callout kind="definition">
+The **bitwise operators** are `&` (and: 1 where both bits are 1), `|`
+(or: 1 where either is), `^` (xor: 1 where exactly one is), `<<` (shift
+left), `>>` (shift right, keeping the sign) and `>>>` (shift right,
+filling with zeros). Before working, they convert numbers to **32-bit
+integers**, dropping any fraction and any higher bits, and negative
+numbers use a pattern called two's complement<Cite id="mdn-bitwise-and" />.
+That is why `3.7 | 0` is `3`, and `-1 >>> 0` is `4294967295`: all 32
+bits on, read as a number with no sign.
+</Callout>
+
+<Formal title="One column at a time">
+
+```text
+ a b │ a&b  a|b  a^b
+ 0 0 │  0    0    0
+ 0 1 │  0    1    1
+ 1 0 │  0    1    1
+ 1 1 │  1    1    0
+x << k  =  x × 2ᵏ   (while it fits)
+```
+
+<span slot="read">The table gives the answer for one column, for every
+pair of bits a and b: and is 1 only when both are, or when either is,
+xor when exactly one is. Shifting x left by k places multiplies it by 2
+to the k, as long as the result still fits in 32 bits.</span>
+</Formal>
+
+<Examples of="bit-ops">
+
+```js
+5 & 3; // 1   (101 & 011 = 001)
+5 | 3; // 7   (101 | 011 = 111)
+```
+
+```js
+3.7 | 0;    // 3: the fraction is dropped
+2 ** 32 | 0; // 0: bit 32 does not fit
+```
+
+```js
+const ALIVE = 1;   // 001
+const VISIBLE = 2; // 010
+let flags = ALIVE | VISIBLE; // 011
+(flags & VISIBLE) !== 0; // true
+flags = flags ^ VISIBLE;     // 001
+(flags & VISIBLE) !== 0; // false
+```
+
+</Examples>
+
+The first is the plainest pair: `5` and `3` share only the 1s bit, so
+`&` gives 1, and between them they cover every bit, so `|` gives 7. The
+second shows the 32-bit conversion at work: `| 0` changes nothing about
+the bits, but the conversion has already dropped the `.7`, and `2 ** 32`
+(2 to the power 32) needs a 33rd bit, so all that is left is zeros. The
+third is the realistic use: packing yes-or-no **flags** into one number,
+one bit each. `ALIVE | VISIBLE` turns both bits on; `flags & VISIBLE`
+masks out every bit except `VISIBLE`'s, so it is non-zero exactly when
+that flag is set; and `^ VISIBLE` flips that one bit off.
+
+Notice the brackets in `(flags & VISIBLE) !== 0`; leaving them out is a
+classic slip, because `!==` is worked out before `&`:
+
+```js
+flags = ALIVE; // 001: not visible
+flags & VISIBLE !== 0;   // 1, truthy!
+(flags & VISIBLE) !== 0; // false
+```
+
+Without brackets the line means `flags & (VISIBLE !== 0)`, which is
+`1 & true`; `true` is converted to `1`, and the answer is `1`, which an
+`if` treats as true, so an invisible particle is drawn. No error is
+reported, which is what makes this slip so hard to find.
+
+<Run id="bits" />
+
+<Prompts ids={['and-or', 'xor-flip', 'shift-left', 'ops-32bit', 'flags-brackets']} />
+
+<Callout kind="engine" label="Under the hood">
+Bit tricks are everywhere in engines. JavaScript even has
+`Math.imul(a, b)`, which multiplies two numbers as 32-bit integers, the
+way the processor's own integer instructions do<Cite id="mdn-math-imul" />.
+In Part IV your bytecode virtual machine stores a jump distance too big
+for one byte in two bytes, and puts it back together with exactly these
+operators: the companion VM reads it, simplified, as
+`(code[ip - 2] << 8) | code[ip - 1]`, the high byte slid left 8 places
+and the low byte or-ed in.
+</Callout>
+
+## Your turn
+
+<Exercise id="countBits" />
+
+<Exercise id="isPowerOfTwo" />
+
+## What you learned
+
+- **Binary** writes numbers with place values 1, 2, 4, 8, …; each digit
+  is a **bit**, and eight bits are a **byte**, holding 0 to 255.
+- The **bitwise operators** `& | ^ << >> >>>` work on 32-bit integer
+  patterns, column by column, with no carrying.
+- A **mask** with `&` picks out bits, `|` turns bits on, `^` flips them;
+  put brackets round `(x & mask)` before comparing it.
+
+Next: what an ordinary JavaScript number looks like as bits, and how to
+work with raw bytes directly.
+
+<Quiz />

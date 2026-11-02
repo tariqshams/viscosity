@@ -1,0 +1,327 @@
+---
+n: 42
+day: 11
+part: I
+title: 'Designing with types'
+tagline: 'A download that is still loading, finished and failed, all at once, is nonsense, and yet most code happily allows it. Choose your types first, so that nonsense cannot even be written down, and the code you write afterwards mostly follows from them.'
+objectives:
+  - Count the states a type allows, and spot the ones that make no sense.
+  - Replace a bag of flags and optional fields with a union that allows only the sensible states.
+  - Design the types and signatures before the bodies, and let the checker list everything a change affects.
+  - Read real types from Viscosity's engine, and say which rule out nonsense and which trust the code instead.
+introduces: [illegal-states-unrepresentable, type-driven-design]
+uses: [typescript, type-annotation, type-checking, interface, type-erasure, union-type, narrowing, discriminated-union, exhaustiveness, mapped-type, function, parameter, return, call, undefined, object, property, dot-access, array, for-of, throw, error-object, template-literal, string-methods, variables, numbers, strings, booleans, comparison, logical-operators, if, console-log]
+sources: [ts-everyday-types, ts-narrowing]
+---
+import StateCount from '../../../components/diagrams/ch042/StateCount';
+import DesignSteps from '../../../components/diagrams/ch042/DesignSteps';
+
+## Loading, loaded and failed, all at once
+
+A web page downloads a file, and while it does, it keeps track of how
+things are going in an object like this one:
+
+```ts
+interface Flags {
+  loading: boolean;
+  text?: string;  // set when it worked
+  error?: string; // set when it failed
+}
+```
+
+`loading` says whether the download is still running, and the `?` (from
+the chapter on computing with types) marks `text` and `error` as
+optional: each may be there or missing. That looks reasonable, however
+look at what the checker happily accepts:
+
+```ts
+const odd: Flags = {
+  loading: true, text: 'hi', error: 'oops',
+};
+```
+
+Still loading, finished *and* failed, all at once. No real download is
+ever in that state, yet every function that reads a `Flags` has to decide
+what to do with it (show the text? the error? a spinner?), and most never
+think about it, so the odd object becomes a bug far away. Count:
+`loading` can be one of two values, `text` can be there or missing, and
+so can `error`, which makes 2 × 2 × 2 = 8 states, of which only three
+make sense.
+
+<Figure takeaway="Count the states a type allows." caption="Top: the eight states Flags allows. Only three make sense (loading with nothing else, loaded with text, failed with an error); the other five are nonsense the checker will accept. Bottom: a union that allows exactly the three.">
+  <StateCount />
+</Figure>
+
+<Analogy title="a traffic light with three switches">
+Imagine a traffic light where each bulb has its own switch. Nothing stops
+red and green being on together, and every driver must guess. A light with one three-position dial has no way to show both.
+<span slot="breaks">A dial can stick between two positions; a union value
+is always exactly one variant, as long as data from outside was checked
+when it came in (types are erased, so nothing checks it later).</span>
+</Analogy>
+
+<Analogy title="tick boxes and a choose-one question">
+A paper form that asks for your status with three tick boxes lets you
+tick two of them, and whoever reads the form has to guess. The same
+question on a web page, as "choose one" buttons, cannot be answered
+twice.
+<span slot="breaks">The web page enforces "choose one" while you click;
+the type checker enforces it before the program runs, and only for code
+it can see.</span>
+</Analogy>
+
+## A type that only allows what makes sense
+
+The tagged unions chapter already gave us the tool: one variant per
+state that makes sense, each holding only the data that belongs to it.
+
+```ts
+type Status =
+  | { kind: 'loading' }
+  | { kind: 'loaded'; text: string }
+  | { kind: 'failed'; error: string };
+```
+
+A `loading` status has nothing else to say; a `loaded` one must have
+`text`, and a `failed` one an `error`. Nothing is optional any more, and
+"loaded and failed" cannot be written, because no variant has both.
+
+<Callout kind="definition">
+**Making illegal states unrepresentable** means choosing types so that
+nonsense data cannot be built at all: the checker refuses it, so no
+function has to handle it. In TypeScript the usual tool is a
+discriminated union with one variant per real state, in place of flags
+and optional fields<Cite id="ts-narrowing" />.
+</Callout>
+
+<Formal title="Counting the states of a type">
+
+```text
+states(boolean)    = 2
+states(T?)         = states(T) + 1
+states({ a; b })   = states(a) × states(b)
+states(A | B)      = states(A) + states(B)
+```
+
+<span slot="read">A boolean has two states. An optional field has every
+state of its type plus one more, "missing". An object with fields a and b
+has every state of a combined with every state of b, so the counts
+multiply; a union is one variant or the other, so the counts add. (Count
+a string as one state, "some text", and Flags gives 2 × 2 × 2 = 8, while
+Status gives 1 + 1 + 1 = 3.)</span>
+</Formal>
+
+<Examples of="illegal-states-unrepresentable">
+
+```ts
+function show(s: Status): string {
+  if (s.kind === 'loading') return '...';
+  if (s.kind === 'loaded') return s.text;
+  return 'Error: ' + s.error;
+}
+```
+
+```ts
+const a: Status = { kind: 'loaded' };
+// error: Property 'text' is missing in
+// type '{ kind: "loaded"; }' but required
+// in type '{ kind: "loaded"; text:
+// string; }'.
+```
+
+```ts
+// Viscosity's engine, core/src/plan.ts:
+export interface CollectionPlan {
+  collection: Collection;
+  layout: Layout;
+  blockSize: number;
+  reasons: string[];
+}
+```
+
+</Examples>
+
+The first reads a `Status`: one check per variant, and in each branch
+narrowing lets you use only the fields that branch has, so there is no
+"what if the text is missing?" anywhere. The second is `tsc` refusing a
+nonsense state, word for word: loaded, with no text. (Loading *with*
+text is refused too: `'text' does not exist in type '{ kind:
+"loading"; }'`.)
+
+The third is real code from this book's engine, and an honest example of
+the *other* choice. `Layout` is `'aos' | 'soa' | 'aosoa'` (three ways to
+store a list of records, which Part II explains), and `blockSize` only
+means something for `'aosoa'`. Nothing stops `{ layout: 'soa',
+blockSize: 8 }`; in fact the planner builds exactly that for a list
+marked `@viscosity soa` (it copies the comment's block size, or 8,
+whatever the layout), and it does no harm only because the code that
+writes columns reads `blockSize` for `'aosoa'` alone. A union with
+`blockSize` on the `'aosoa'` variant only would rule it out; the engine
+manages without because one function, `plan`, builds every plan. That is the real trade: a union costs a little more typing,
+and pays for itself once several places build or read the data.
+
+<Prompts ids={['flag-count', 'illegal-what', 'fields-multiply', 'engine-tradeoff']} />
+
+## Types first, code second
+
+Notice the order we just worked in: we fixed the *type*, and `show`
+almost wrote itself, one branch per variant. That order is worth
+choosing on purpose.
+
+<Analogy title="a floor plan before the bricks">
+An architect draws the floor plan before anyone lays a brick; the plan
+says how many rooms there are and which door leads where, and the
+builders follow it. A mistake on paper costs an eraser; in brick, a wall.
+<span slot="breaks">A building is hard to change once it stands; a type
+is cheap to change at any time, and when you change it, the checker
+walks through the whole building and points at every wall that no longer
+fits.</span>
+</Analogy>
+
+<Analogy title="headings before paragraphs">
+Many writers put down an essay's headings first, then the paragraphs;
+each heading says what its paragraph must cover, and a gap shows.
+<span slot="breaks">Nobody checks that a paragraph matches its heading;
+the checker checks every body against its types, exactly, every
+time.</span>
+</Analogy>
+
+Step through designing a tiny traffic light this way, watching what
+`tsc` says at each step (`unreachable` is the function from the tagged
+unions chapter whose parameter has the type `never`):
+
+<DesignSteps client:visible />
+
+<Callout kind="definition">
+**Type-driven design** means writing the types first: the data, as types
+that allow only sensible states; then the **signatures** (each function's
+parameter and return types, without a body); and only then the bodies,
+which follow the shape of the types, one branch per variant. When the
+requirements change, you change the types first, and the checker lists
+every place the change reaches.
+</Callout>
+
+<Formal title="A signature is a promise">
+
+```text
+next  : Light  → Light
+parse : string → Result
+```
+
+<span slot="read">next takes a Light and gives back a Light; parse takes
+a string and gives back a Result. The arrow reads "to". Read this way, a
+signature is a short promise you can check every call against, before a
+single body has been written.</span>
+</Formal>
+
+<Examples of="type-driven-design">
+
+```ts
+type Light = 'red' | 'amber' | 'green';
+function next(l: Light): Light {
+  // three colours, so three branches
+}
+```
+
+```ts
+plan(a, true, false); // which is which?
+// the engine's PlanOptions (plan.ts):
+mode: 'auto' | 'opt-in';
+bounds: 'check' | 'assume';
+```
+
+<Run id="result-type" />
+
+</Examples>
+
+The first is steps 1 and 2 of the stepper: data and signature, already
+enough to know the body needs three branches. The second compares two
+designs for options: a call with bare booleans says nothing about what
+`true` and `false` mean, while the engine's real `PlanOptions` uses
+literal types, so a call reads `{ mode: 'opt-in', bounds: 'check' }`, and a
+third mode can be added later. The runnable one is designed type first:
+`Result` (the `ok` union from the tagged unions chapter) says, before any
+code, that parsing can fail. `seconds` checks the last character is `s`,
+turns the rest into a number with `Number` (which gives `NaN` for text
+such as `'ab'`), and returns a variant; the loop prints `90s 90`,
+`90 no s` and `abs bad`. Try a fourth input.
+
+<Prompts ids={['types-first', 'literal-not-boolean', 'change-type-first', 'signature-what']} />
+
+<OtherLanguages>
+
+```js
+// no checker: any string gets in
+const opts = { mode: 'opt-in' };
+const typo = { mode: 'optin' }; // runs
+```
+
+```python
+from typing import Literal
+Mode = Literal['auto', 'opt-in']
+mode: Mode = 'optin'
+# Python runs it; mypy reports it
+```
+
+```java
+enum Mode { AUTO, OPT_IN }
+Mode mode = Mode.OPT_IN;
+// Mode.OPTIN: cannot find symbol
+```
+
+```c
+enum mode { AUTO, OPT_IN };
+enum mode m = OPT_IN;
+m = 7; /* accepted: an enum is an int */
+```
+
+</OtherLanguages>
+
+All four can name a fixed set of choices, with very different
+strength. Plain JavaScript has only strings, so a misspelt mode runs and
+misbehaves later. Python's `Literal` reads like TypeScript's union, but,
+like all Python hints, only a separate tool such as mypy checks it. Java's
+`enum` is a real type, and a misspelt constant does not compile. C's
+`enum` names the choices, but underneath it is a plain integer, so any
+number fits: exactly the kind of nonsense state this chapter is
+about.
+
+<Callout kind="engine" label="Under the hood">
+Viscosity's intermediate code shows both choices side by side, in
+`engine/ts/packages/core/src/vir.ts`. A block's last step is a
+`Terminator`, a tagged union in which a `'br'` (jump) must have a
+`target`, so a jump to nowhere cannot exist. An instruction, however, is
+one flat `Inst` interface: an `op` field plus ten optional fields
+(`value?`, `binding?`, `field?` and more), each meaningful for a few ops.
+That keeps the analyses that walk every instruction short; the price
+shows up in the printer, which writes
+`i.binding!`, where the `!` tells the checker "trust me, this is not
+undefined" and checks nothing at all<Cite id="ts-everyday-types" />.
+</Callout>
+
+## Your turn
+
+The core exercise is the border every union needs: turn old flags into a
+`Status` once, refusing the five nonsense states loudly.
+
+<Exercise id="fromFlags" />
+
+<Exercise id="verdict" />
+
+## What you learned
+
+- **Count the states** a type allows: fields multiply, unions add, and
+  `?` adds one ("missing"). A bag of flags allows far more states than
+  make sense.
+- **Making illegal states unrepresentable**: one union variant per real
+  state, each with only its own data, so nonsense cannot be built.
+- **Type-driven design**: data types first, then signatures, then bodies,
+  which follow the types; change the type first and let the checker list
+  what to fix.
+- Real code chooses: the engine's `Terminator` rules out nonsense, while
+  `Inst` and `CollectionPlan` trust the code that builds them.
+
+Next: two values with exactly the same type that must never be mixed up,
+and how to make the checker tell them apart.
+
+<Quiz />

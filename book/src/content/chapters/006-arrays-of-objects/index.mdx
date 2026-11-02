@@ -1,0 +1,266 @@
+---
+n: 6
+day: 2
+part: I
+title: 'Arrays of objects: records in a row'
+tagline: 'Put objects inside an array and you have a table of records: the shape almost every program works on, and the shape at the heart of this whole book.'
+objectives:
+  - Store records in an array of objects, and reach any field of any record.
+  - Loop over an array of objects, reading and changing each record in turn.
+  - Explain the difference between an array of structs (AoS) and a struct of arrays (SoA).
+  - Say where JavaScript, Python, Java and C actually put the records in memory.
+introduces: [array-of-objects]
+uses: [object, property, dot-access, bracket-access, array, index, length, push, array-loop, function, parameter, return, undefined, variables, numbers, strings, for-loop, console-log]
+sources: [mdn-objects, makor2022, bynensmeurer2018]
+---
+import AosPicture from '../../../components/diagrams/ch005/AosPicture';
+import { SoaTeaser } from '../../../components/diagrams/ch005/AosPicture';
+import RecordLoopSteps from '../../../components/diagrams/ch006/RecordLoopSteps';
+
+## One particle is easy; a thousand is not
+
+Last chapter gave a particle a tidy home, `{ x: 0, vx: 1 }`. A game,
+however, has thousands of them, and naming each one (`p0`, `p1`, `p2`,
+and so on) is the problem chapter 3 already solved for numbers: one
+variable per value means the code grows with the data, and no loop can
+visit "every particle". The answer is the same as before: put them in an
+array. The only new thing is that each slot now holds a whole object.
+
+```js
+const ps = [
+  { x: 0, y: 0, vx: 1, vy: 2 },
+  { x: 5, y: 5, vx: -1, vy: 0 },
+  { x: 9, y: 1, vx: 0, vy: 3 },
+];
+console.log(ps.length); // 3
+console.log(ps[1].x);   // 5
+```
+
+Lines 1 to 5 make an array with three slots, each holding one particle
+object (the trailing comma after the last one is allowed, and makes
+adding a fourth line easier). Line 6 asks the array for its length,
+which counts particles, not numbers. Line 7 is the new move: read
+`ps[1].x` from left to right, as "slot 1 of `ps`, and then *its* `x`",
+so it is the second particle's x position, 5.
+
+<Analogy title="a box of index cards">
+A card box at a dentist's holds one card per patient, and every card
+has the same labelled lines: name, phone, last visit. To find Ada's
+phone number you first pick her card out of the box, then read the
+"phone" line on it; that is `ps[i]` first, then `.phone`.
+<span slot="breaks">Cards in a box sit physically side by side; in a
+JavaScript array, the slots usually hold arrows to objects that live
+elsewhere in memory, a difference chapter 7 explains and Part II
+measures.</span>
+</Analogy>
+
+<Figure takeaway="Each slot holds a whole record." caption="An array of three particles. Each particle's x, y, vx and vy travel together as one object.">
+  <AosPicture />
+</Figure>
+
+<Callout kind="definition">
+An **array of objects** is an array whose slots each hold an object,
+usually all with the same properties: one **record** per slot.
+`arr[i].key` reads property `key` of record `i`, and `arr[i].key = v`
+writes it. Because each slot keeps a whole record together, this shape
+is also called an **array of structs**, or **AoS** ("struct" is C's word
+for a record with named fields).
+</Callout>
+
+<Prompts ids={['particles-i-x', 'aos-what']} />
+
+## Visiting every record
+
+The loop from chapter 4 works unchanged; inside it, `ps[i]` is a whole
+record rather than a number. Step through a loop that moves every
+particle by its speed:
+
+<RecordLoopSteps client:visible />
+
+The line to notice is `const p = ps[i];`. It gives the current record a
+short name for one pass of the loop, which saves writing `ps[i]` three
+times; and because `p` reaches the very object in the slot (not a
+copy), `p.x = ...` changes the particle inside the array. Chapter 7
+explains exactly why that is so.
+
+<Examples of="array-of-objects">
+
+```js
+ps[2].vy; // 3
+```
+
+```js
+ps.push({ x: 4, y: 4, vx: 1, vy: 1 });
+ps.length;    // 4
+ps[3]['vx'];  // 1
+```
+
+```js
+const toks = [
+  { type: 'number', text: '1' },
+  { type: 'plus', text: '+' },
+  { type: 'number', text: '2' },
+];
+toks[1].type; // 'plus'
+```
+
+<Run id="records" />
+
+</Examples>
+
+The first is the plainest read: slot 2, then its `vy`. The second adds a
+whole new record at the end with `push`, so the length becomes 4 and the
+new particle sits at index 3; brackets work on the record exactly as on
+any object. The third is real: it is what the scanner in Part III hands
+to the rest of an interpreter for the text `1 + 2`, one small object per
+token. The runnable one loops over particles, finds the fastest, and
+counts how many move right; change the numbers and watch the answers.
+
+Two slips are worth seeing side by side:
+
+```js
+ps.x;    // undefined: arrays have no x
+ps[0].x; // 0
+ps[9].x;
+// TypeError: Cannot read properties
+// of undefined (reading 'x')
+```
+
+`ps.x` asks the *array* for a property called `x`, and the array has
+none, so you get a quiet `undefined`; you have to pick a slot first.
+`ps[9]` is past the end, so it is `undefined`, and asking `undefined`
+for a property stops the program with that exact message.
+
+<Formal title="Reading a field of a record">
+
+```text
+ps = [ r₀, r₁, …, rₙ₋₁ ]
+ps[i].x  =  (ps[i]).x  =  rᵢ.x
+           where 0 ≤ i ≤ n − 1
+```
+
+<span slot="read">An array of n records is written r-zero up to r-n-minus-one.
+To read ps[i].x you first take slot i, which is the record r-i, and
+then read that record's x. The brackets show the order: the slot is
+picked before the field, and i must be a real index.</span>
+</Formal>
+
+<Prompts ids={['ps-dot-x', 'loop-p-name', 'past-end-record']} />
+
+<OtherLanguages>
+
+```js
+const ps = [
+  { x: 0, vx: 1 },
+  { x: 5, vx: -1 },
+];
+console.log(ps[1].x); // 5
+```
+
+```python
+ps = [
+    {"x": 0, "vx": 1},
+    {"x": 5, "vx": -1},
+]
+print(ps[1]["x"])  # 5
+```
+
+```java
+class P { int x; int vx;
+  P(int x, int vx) {
+    this.x = x; this.vx = vx; } }
+// inside main:
+P[] ps = { new P(0, 1), new P(5, -1) };
+System.out.println(ps[1].x); // 5
+```
+
+```c
+struct P { int x; int vx; };
+/* inside main: */
+struct P ps[2] = { {0, 1}, {5, -1} };
+printf("%d\n", ps[1].x); /* 5 */
+```
+
+</OtherLanguages>
+
+All four read the same way: pick the slot, then the field. The
+difference is where the records live. In C, `struct P ps[2]` really is
+the records packed one after another in memory, with no arrows at all;
+in Java, Python and (usually) JavaScript, the array holds arrows to
+records that each live somewhere else. That difference is exactly what
+Part II measures, and what Viscosity changes.
+
+## Turning the table sideways
+
+Here is the question this book is built around. The loop above only
+reads `x` and `vx`; suppose each particle *also* had a `mass`, a `color`
+and a `name` that the loop never touches. Turn the picture sideways and
+keep **one array per property** instead: all the `x` values together,
+then all the `vx` values. That is a **struct of arrays**, or **SoA**:
+
+```js
+const soa = {
+  x: [0, 5, 9],
+  vx: [1, -1, 0],
+};
+soa.x[1]; // 5, particle 1's x
+```
+
+Now the steps swap order: `soa.x[1]` reads the property `x` first (a
+whole array of x values) and then slot 1 of it, where `ps[1].x` picked
+the record first. Both reach particle 1's x, 5.
+
+<Figure takeaway="SoA: each property gets its own array." caption="The same three particles stored as a struct of arrays. The colours (properties) are now grouped, instead of the particles.">
+  <SoaTeaser />
+</Figure>
+
+<Analogy title="a spreadsheet, by rows or by columns">
+Picture the particles as a spreadsheet with one row per particle and one
+column per field. AoS stores it row by row, like reading each line
+across; SoA stores it column by column, like reading down. A loop that
+only wants the x column reads it in one sweep, without stepping over
+every mass and colour on the way.
+<span slot="breaks">A spreadsheet looks the same however it is stored;
+in a program the choice changes the code (`ps[i].x` against
+`soa.x[i]`), which is why doing it by hand is tedious, and why
+Viscosity does it for you.</span>
+</Analogy>
+
+Same data, different arrangement. Researchers have built JavaScript
+runtimes that switch an array of objects to columns while the program
+runs<Cite id="makor2022" />, and Viscosity's job is to make that choice
+safely, at compile time, so you can keep writing the natural `ps[i].x`.
+
+<Callout kind="engine" label="Under the hood">
+When every record has the same properties, created in the same order,
+the engine gives them one shared shape<Cite id="bynensmeurer2018" />, so
+a loop over the array finds `x` in the same place in every object. Mix
+records with different properties (one with `vX` by mistake, say) and
+that loop gets slower; chapter 13 shows how classes keep records alike.
+</Callout>
+
+<Prompts ids={['soa-what', 'soa-read', 'record-push']} />
+
+## Your turn
+
+<Exercise id="centerX" />
+
+<Exercise id="step" />
+
+<Exercise id="toSoA" />
+
+## What you learned
+
+- An **array of objects** keeps one record per slot; `ps[i].x` picks
+  the slot first, then the field.
+- The chapter 4 loop visits every record, and `const p = ps[i]` names
+  the current one without copying it.
+- `ps.x` is `undefined` (arrays have no `x`), and `ps[i].x` past the end
+  is a TypeError.
+- **AoS** groups each record's fields together; **SoA** keeps one array
+  per field, so `soa.x[i]` picks the field first.
+
+Next: what a variable *really* holds when it holds an object, which turns
+out to be the key to the hardest problem Viscosity has to solve.
+
+<Quiz />

@@ -1,0 +1,324 @@
+---
+n: 13
+day: 4
+part: I
+title: 'Classes: a blueprint for objects'
+tagline: 'A class is a blueprint: you write down once what every object of one kind looks like, and the language builds as many as you need, every one of them the same way.'
+objectives:
+  - Write a class with a constructor, and make instances of it with new.
+  - Say, step by step, what new does, and what this means inside a constructor.
+  - Recognise the two classic slips (a missing new, a missing this.) from what they do.
+  - Explain why objects made by one class tend to share one shape, and compare classes in JavaScript, Python, Java and C.
+introduces: [class, constructor, instance, new]
+uses: [object, property, dot-access, array-of-objects, reference, identity, mutation, function, parameter, return, call, undefined, array, length, push, array-loop, variables, numbers, strings, booleans, comparison, for-loop, console-log]
+sources: [mdn-classes, mdn-using-classes, mdn-this, bynensmeurer2018]
+---
+import ClassFactory from '../../../components/diagrams/ch013/ClassFactory';
+import NewSteps from '../../../components/diagrams/ch013/NewSteps';
+
+## Spot the bug
+
+Here are two particles, written by hand as objects (chapter 5), and the
+function that moves one:
+
+```js
+const a = { x: 0, vx: 2 };
+const c = { x: 2, vX: 3 };
+
+function move(p) {
+  p.x = p.x + p.vx;
+}
+move(c);
+console.log(c.x); // NaN
+```
+
+The second object was typed with a capital `X`, so `c` has a property
+called `vX` and none called `vx`; reading `c.vx` gives `undefined`, and
+`2 + undefined` is `NaN` (JavaScript's "not a number" value), which then
+spreads into every sum it touches. Nothing warned you, and with a
+thousand particles made in different places, a slip like this is only a
+matter of time. What we want is to write down **once** what a particle looks
+like and how one is set up, and then have the language build every
+particle from that one description, so that no two can differ by a typo.
+
+<Analogy title="a cookie cutter">
+You press one cutter into the dough again and again, and every cookie
+comes out with the same outline, though each can have its own icing. The
+cutter is the class, each cookie is an object made from it, and the icing
+is the values: the same properties, holding different numbers.
+<span slot="breaks">Once a cookie is cut its outline is fixed, but an
+object made from a class can still have properties added later
+(`a.colour = 'red'` works), so a class is a strong habit rather than a
+cage.</span>
+</Analogy>
+
+<Analogy title="a builder's plans">
+An architect draws one set of plans for a street of matching houses. You
+cannot live in the plans; they only say how to build a house. Each house
+built from them is a separate house at its own address, so painting
+number 3's door blue leaves number 5's door alone.
+<span slot="breaks">A builder may change things on site, and building a
+house takes months; JavaScript follows the plans exactly, every time,
+in a fraction of a moment.</span>
+</Analogy>
+
+## class, constructor and new
+
+Here is the particle written as a class:
+
+```js
+class Particle {
+  constructor(x, vx) {
+    this.x = x;
+    this.vx = vx;
+  }
+}
+
+const p = new Particle(3, 1);
+console.log(p.x, p.vx); // 3 1
+console.log(p);
+// Particle { x: 3, vx: 1 }
+```
+
+Line 1 starts a **class** called `Particle` (class names start with a
+capital letter by custom). Line 2 is its **constructor**, a special function with the
+fixed name `constructor`, whose job is to set up each new particle; it
+takes the starting values as parameters. Lines 3 and 4 store those values
+on the new object: `this` means "the object being built right now", so
+`this.x = x` gives the new object a property `x` holding the argument
+`x` (the next chapter has much more to say about `this`). Lines 5 and 6
+close the constructor and the class, and so far nothing has been built.
+The line `new Particle(3, 1)` is what builds one: it makes a fresh
+object, runs the constructor on it with `x = 3` and `vx = 1`, and hands
+the finished object back, which we keep in `p`. `console.log` even prints the class's name in front of the object. Step
+through it:
+
+<NewSteps client:visible />
+
+<Callout kind="definition">
+A **class** is a blueprint for objects of one kind<Cite id="mdn-classes" />.
+Its **constructor** is the function, written inside the class, that sets
+up each new object. The expression **`new C(args)`** makes a fresh empty
+object, runs `C`'s constructor with `this` meaning that object and the
+arguments in its parameters<Cite id="mdn-this" />, and gives back the
+object. That object is an **instance** of the class: "one object made
+from the blueprint".
+</Callout>
+
+<Formal title="What new does">
+
+```text
+new C(a₁, …, aₙ):
+  o ← a fresh, empty object
+  run C's constructor with this = o
+    and its parameters = a₁ … aₙ
+  the value of the expression is o
+```
+
+<span slot="read">To work out new C with some arguments: make a brand-new
+empty object and call it o (the arrow ← reads "becomes"); run the
+constructor of C, with this standing for o and the arguments filling the
+parameters in order; then the whole new expression is replaced by o, the
+object that was filled in.</span>
+</Formal>
+
+<Prompts ids={['class-what', 'new-steps', 'constructor-this']} />
+
+## Every new makes a separate instance
+
+One class can make as many instances as you like, and each `new` builds a
+new object of its own:
+
+<Figure takeaway="One blueprint, many separate objects." caption="The class is written once. Each new Particle(...) builds another object with the same two properties, x then vx, each holding its own values.">
+  <ClassFactory />
+</Figure>
+
+```js
+const p = new Particle(0, 2);
+const q = new Particle(0, 2);
+console.log(p === q); // false
+p.x = 9;
+console.log(q.x);     // 0
+```
+
+`p` and `q` were built from the same arguments, however `===` on objects
+asks "is this the very same object?" (chapter 7), and they are two
+objects, so it gives `false`; changing `p.x` leaves `q.x` at `0`.
+
+<Examples of="class constructor new instance">
+
+```js
+class Point {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+}
+const o = new Point(0, 0);
+o.y; // 0
+```
+
+```js
+class Rect {
+  constructor(w, h) {
+    this.area = w * h;
+  }
+}
+new Rect(3, 4).area; // 12
+
+class Empty {}
+new Empty(); // Empty {}
+```
+
+```js
+class Token {
+  constructor(kind, text, line) {
+    this.kind = kind;
+    this.text = text;
+    this.line = line;
+  }
+}
+const t = new Token('number', '42', 1);
+t.kind; // 'number'
+```
+
+<Run id="particles-class" />
+
+</Examples>
+
+The first is the smallest useful class: a point with two properties, and
+one instance of it at `(0, 0)`, so `o.y` is `0`. The second shows that a
+constructor is an ordinary function body: it can work things out, so
+every `Rect` gets an `area` computed from its width and height; and a
+class with no constructor at all still works, making empty instances.
+The third is real: in Part III your scanner will chop source code into
+**tokens** (the words of a program, such as `42`), and each token is an
+instance of a small class like this one, recording its kind, its text
+and its line. The runnable example
+builds an array of particles in a loop; change it and see what prints.
+
+<Prompts ids={['instances-separate', 'define-makes-none']} />
+
+## Two classic slips
+
+The first is leaving out `new`. A class can only be used with it:
+
+```js
+const p = Particle(3, 1);
+// TypeError: Class constructor Particle
+// cannot be invoked without 'new'
+const q = new Particle(3, 1); // fine
+```
+
+Without `new` nobody makes the fresh object, so JavaScript refuses at
+once (that is the exact message in Chrome and Node; other browsers word
+it differently).
+
+The second is leaving out `this.` in the constructor:
+
+```js
+class Bad {
+  constructor(x) {
+    x = x;
+  }
+}
+new Bad(3).x; // undefined
+```
+
+Here `x = x` only copies the parameter `x` into itself, so nothing is
+stored on the new object and reading `x` gives `undefined`; no error
+appears, which makes this slip harder to find than the first.
+
+<Prompts ids={['forgot-new', 'forgot-this']} />
+
+<OtherLanguages>
+
+```js
+class Particle {
+  constructor(x, vx) {
+    this.x = x;
+    this.vx = vx;
+  }
+}
+const p = new Particle(3, 1);
+```
+
+```python
+class Particle:
+    def __init__(self, x, vx):
+        self.x = x
+        self.vx = vx
+
+p = Particle(3, 1)  # no new
+```
+
+```java
+class Particle {
+    double x, vx;
+    Particle(double x, double vx) {
+        this.x = x;
+        this.vx = vx;
+    }
+}
+Particle p = new Particle(3, 1);
+```
+
+```c
+struct Particle {
+    double x, vx;
+};
+/* no classes and no constructors:
+   a struct is a list of fields */
+struct Particle p = { 3, 1 };
+```
+
+</OtherLanguages>
+
+The idea is the same in all four; the details differ. Python calls its constructor `__init__`, names the new
+object `self` rather than `this` (written as the first parameter, in
+plain sight) and makes instances without `new`. Java names the
+constructor after the class and makes you **declare** the fields, with
+their types, so a typo like `vX` is caught before the program runs. C has
+no classes: a `struct` groups fields, but there is no constructor, so you
+fill the fields in yourself.
+
+<Callout kind="engine" label="Under the hood">
+Every `new Particle(...)` adds `x` and then `vx`, in the same order,
+through the same constructor. Remember shapes from chapter 5: engines give
+objects that have the same properties, added in the same order, one shared
+hidden shape, and then they know where `x` sits in every one of them
+without searching<Cite id="bynensmeurer2018" />. A class is the simplest
+way to make thousands of objects that share a shape.
+
+It is good news for Viscosity too: an array whose elements all came from
+`new Particle(...)` is an ideal candidate for a struct of arrays. It is a
+hint rather than a promise (code can still write `p.colour = 'red'` on one
+particle), so chapter 171 checks whether a shape can change later.
+</Callout>
+
+<Prompts ids={['class-shape']} />
+
+## Your turn
+
+<Exercise id="token" />
+
+<Exercise id="row" />
+
+## What you learned
+
+- A **class** is a blueprint for objects of one kind; defining it builds
+  nothing.
+- Its **constructor** sets up each new object, storing values on it with
+  `this.name = value`.
+- **`new C(args)`** makes a fresh object, runs the constructor on it, and
+  gives it back: an **instance** of `C`. Every `new` makes a separate
+  instance.
+- Leaving out `new` is a `TypeError`; leaving out `this.` quietly stores
+  nothing.
+- Objects from one constructor tend to share one shape, which helps
+  engines and Viscosity alike.
+
+Next: giving a class its own functions (methods), and finding out what
+`this` really means.
+
+<Quiz />

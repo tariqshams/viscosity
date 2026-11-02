@@ -1,0 +1,251 @@
+---
+n: 181
+day: 46
+part: VIII
+title: 'AoSoA code generation'
+tagline: 'One annotation turns a collection into blocks of 8. Here is the index arithmetic Viscosity writes for it, why the block size must be a power of two, and why, measured in V8, plain SoA usually won anyway.'
+objectives:
+  - Choose AoSoA with an annotation, and say when Viscosity refuses it.
+  - Compute the slot of any field of any element from the block size, using shifts and masks.
+  - Read the AoSoA container and rewritten accesses that Viscosity generates, including the helper for complicated indexes.
+  - Explain, from this book’s measurements, why AoSoA rarely beat SoA in V8.
+introduces: [block-size]
+uses: [aosoa, aos-vs-soa, typed-array, float64, bit-ops, contiguous, cache-line, spatial-locality, simd, lane, annotation, soa-container, column-storage, access-rewriting, capacity, amortized-growth, bailout, cost-model]
+sources: [ispcdocs, pharrmark2012, ispc-perfguide, mdn-bitwise-and]
+---
+import AosoaIndexSteps from '../../../components/diagrams/ch181/AosoaIndexSteps';
+import BenchBars from '../../../components/bench/BenchBars';
+import Playground from '../../../components/playground/Playground';
+
+## One comment, a different layout
+
+Viscosity never picks AoSoA on its own. You ask for it, with chapter 176’s
+annotation on the line before the array. This is the corpus program
+`aosoa.js`:
+
+```js
+// @viscosity aosoa(8)
+const ps = [];
+for (let i = 0; i < 1003; i++)
+  ps.push({ x: i, y: -i, z: i / 2 });
+for (let r = 0; r < 2; r++) {
+  for (let i = 0; i < ps.length; i++) {
+    const p = ps[i];
+    p.x += p.z;
+    p.y -= 1;
+  }
+}
+```
+
+(Long lines are wrapped here, and the final printing loop is left out.)
+`viscosity explain` agrees (the two loop lines and the bounds line are
+left out):
+
+```
+ps (line 3) {x, y, z} → AoSoA, blocks of 8
+  · annotated @viscosity aosoa(8) at line 2
+  · typed Float64Array columns for all 3
+    fields
+  · about 1003 elements
+```
+
+<Callout kind="intuition">
+An egg carton holds 12 eggs in a fixed grid. A crate of cartons is easy to
+count: carton number 3, row 2, cup 4. AoSoA stores elements the same way:
+fixed-size blocks, and inside each block a small column per field.
+</Callout>
+
+## Blocks and lanes
+
+Every field of every element goes into one `Float64Array` called `data`.
+Here is how the compiler finds a slot in it:
+
+<AosoaIndexSteps client:visible />
+
+<Callout kind="definition">
+The **block size** B is how many elements one AoSoA block holds. With F
+fields, a block is F × B slots: B values of field 0, then B of field 1,
+and so on. Field k of element i is at
+`(i >> s) * F*B + k*B + (i & (B-1))`, where `s = log2(B)`. Viscosity
+requires B to be a power of two, so that the block number and the lane are
+a shift and a mask instead of a division and a remainder.
+</Callout>
+
+`i >> 3` and `i & 7` are chapter 32’s bitwise operators. They work on
+32-bit integers<Cite id="mdn-bitwise-and" />, which is plenty for an array
+index. For a power of two, dropping the low bits *is* dividing and
+rounding down, and keeping them *is* the remainder.
+
+<Prompts ids={['ao-block-size', 'ao-slot', 'ao-pow2', 'ao-lane-mask']} />
+
+## The generated container
+
+Here is what Viscosity writes for `aosoa.js`, reformatted to fit the
+screen, with the `static of` method left out:
+
+```js
+class __Vsc_ps {
+  constructor(cap = 16) {
+    this.length = 0;
+    this.cap = Math.ceil(cap / 8) * 8;
+    this.data =
+      new Float64Array(this.cap * 3);
+  }
+  push(v0, v1, v2) {
+    const n = this.length;
+    if (n === this.cap) this.grow();
+    const b = (n >> 3) * 24 + (n & 7);
+    this.data[b + 0] = v0;
+    this.data[b + 8] = v1;
+    this.data[b + 16] = v2;
+    return (this.length = n + 1);
+  }
+  grow() {
+    const d = new Float64Array(
+      this.cap * 2 * 3);
+    d.set(this.data);
+    this.data = d;
+    this.cap *= 2;
+  }
+}
+```
+
+Three things to notice. The capacity is rounded up to whole blocks, and
+doubling keeps it that way. `push` works out the slot of field 0 once,
+then adds `k * 8` for the others. And `grow()` is simpler than SoA’s:
+blocks never move inside the array, so a bigger array is just the old
+blocks followed by new empty ones, and one `set` copies everything.
+
+<Prompts ids={['ao-cap-blocks', 'ao-one-copy']} />
+
+## The rewritten accesses
+
+The inner loop becomes this (each statement is one line in the real
+output; it is wrapped here):
+
+```js
+for (let i = 0; i < ps.length; i++) {
+  const p = i;
+  ps.data[((p) >> 3) * 24 + 0
+    + ((p) & 7)] +=
+      ps.data[((p) >> 3) * 24 + 16
+        + ((p) & 7)];
+  ps.data[((p) >> 3) * 24 + 8
+    + ((p) & 7)] -= 1;
+}
+```
+
+`const p = ps[i]` became `const p = i`, as in chapter 178, and each
+field access became the formula with `F*B = 24` and `k*B` filled in. The
+formula mentions the index twice. That is fine for a name like `p`, but
+the last line of `aosoa.js` reads `ps[1002].z`, which isn’t proven in
+bounds, so its index is wrapped in the bounds check. Evaluating that twice
+would be wasteful, so the emitter calls a helper that takes the index
+once:
+
+```js
+ps.data[__vsc_aosoa(
+  __vsc_bc(ps, 1002, 'z', false),
+  3, 24, 16, 7)]
+
+function __vsc_aosoa(i, sh, stride,
+    off, mask) {
+  return (i >> sh) * stride + off
+    + (i & mask);
+}
+```
+
+Both versions of `aosoa.js` print `1505503 501 14 -10`.
+
+<Prompts ids={['ao-helper', 'ao-numeric']} />
+
+## Only numbers
+
+Because everything sits in one `Float64Array`, every field must be a
+proven number. Add a string field and Viscosity refuses:
+
+```
+ps (line 2) {x, name} → kept as array of
+  objects
+  · annotated aosoa, but fields name may
+    hold non-numbers
+```
+
+A block size that isn’t a power of two is refused the same way. Put
+`aosoa(6)` on the playground program below, and the planner keeps the
+objects, so the compiled code is the source unchanged:
+
+```
+ps (line 2) {x, y, vx} → kept as array
+  of objects
+  · annotated aosoa(6), but the block
+    size must be a power of two (2, 4,
+    8, 16, ...)
+```
+
+The emitter still checks `log2(B)` and throws if it is not a whole
+number, but the planner never hands it such a block size now. Try the
+annotation yourself. Change 8 to 4, delete the
+annotation (Viscosity picks plain SoA), or add `id: 'a'` to the record:
+
+<Playground client:visible title="Blocks of 8" initial={`// @viscosity aosoa(8)
+const ps = [];
+for (let i = 0; i < 1000; i++)
+  ps.push({ x: i, y: 0, vx: 1 });
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += ps[i].vx;
+console.log(ps[9].x);`} />
+
+## Is it worth it?
+
+ISPC builds this layout into the language: `soa<8> Point pts[...]` stores
+8 `x` values, then 8 `y`, and `pts[10].x` still works: the compiler
+reads the third `x` of the second block, exactly our formula<Cite id="ispcdocs" /><Cite id="pharrmark2012" />.
+There, a block of 8 lines up with the SIMD lanes the program runs on, and
+ISPC’s guide recommends these layouts because contiguous data allows
+vector loads and stores<Cite id="ispc-perfguide" />. Plain JavaScript gets no such
+lanes, and the index arithmetic remains.
+
+<BenchBars suite="update-xy" n={100000} title="Moving 100,000 particles" highlight={['aosoa8']} layouts={['aos', 'soa', 'aosoa8']} caption="AoSoA beats objects here, but not plain SoA." />
+
+<BenchBars suite="update-xy" n={1000} title="Moving 1,000 particles" highlight={['aosoa8']} layouts={['aos', 'soa', 'aosoa8']} caption="At small sizes AoSoA was slower even than the array of objects." />
+
+<BenchBars suite="random-x" n={100000} title="Reading x and vx in shuffled order" highlight={['aosoa8']} layouts={['aos', 'soa', 'aosoa8']} caption="Random access pays for the block and lane on every read." />
+
+This book’s findings put it plainly: AoSoA with blocks of 8 was rarely
+better than SoA in V8, and at 1,000 elements it was often slower than
+plain objects. That is why the cost model never chooses it, and why it
+exists only behind an annotation.
+
+<Prompts ids={['ao-why-not-auto', 'ao-ispc']} />
+
+<Callout kind="engine" label="Under the hood">
+AoSoA earns its keep where the block matches the hardware: B values of a
+field fill a SIMD register in one load, while one element’s fields stay
+close together for code that needs a whole record. JavaScript has no
+SIMD API (chapter 50), so in Viscosity’s JavaScript output only the cost
+is certain: a shift, a mask and a multiply on every access. Keeping AoSoA
+as an opt-in strategy is the honest compromise: it’s there for
+experiments, and for a future back end that can use the lanes.
+</Callout>
+
+## Your turn
+
+<Exercise id="aosoaSlot" />
+
+<Exercise id="blockSum" />
+
+## What you learned
+
+- `// @viscosity aosoa(8)` asks for AoSoA. Every field must be a proven
+  number, and the block size must be a power of two.
+- The **block size** B sets the layout: field k of element i is at
+  `(i >> s) * F*B + k*B + (i & (B-1))`.
+- The container keeps one `Float64Array`, with capacity in whole blocks;
+  growing is a single copy.
+- Complicated indexes go through `__vsc_aosoa`, so they are evaluated
+  once.
+- In V8, AoSoA rarely beat SoA and lost at small sizes, so the cost model
+  never picks it.
+
+<Quiz />

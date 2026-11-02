@@ -1,0 +1,262 @@
+---
+n: 263
+day: 66
+part: XII
+title: 'Globals and locals in Rust'
+tagline: 'Globals in drip-rs are a hash table and three short match arms. Locals are the interesting half: the compiler tracks them in a Vec, and the TypeScript habit of holding on to the current function while emitting code is exactly what the borrow checker refuses.'
+objectives:
+  - Follow a global variable from identifier_constant to the VM’s DefineGlobal, GetGlobal and SetGlobal arms.
+  - Read drip-rs’s Local struct and explain each change from the TypeScript one.
+  - Explain why end_scope and declare_variable read what they need before they emit or report.
+  - Write end_scope for a small compiler, with tests.
+introduces: [rust-locals]
+uses: [drip-rs, compiler-state, string-interner, object-handle, value-enum, match-dispatch, global-table, stack-slot, compile-time-scope, scope-depth, constant-pool, upvalue, disassembler, lifetime, option, question-mark, rust-iterator, rust-closure, borrow, shared-vs-mutable, borrow-checker, self-receiver, struct, vec, match, pattern, runtime-error, roots, shadowing, drip]
+sources: [nystrom2021, rust-std-option]
+---
+import LocalsSteps from '../../../components/diagrams/ch263/LocalsSteps';
+
+## Two kinds of variable
+
+Here is what drip-rs's disassembler prints for a global, `let n = 1;
+n = n + 1; print n;`:
+
+```
+0000    1 OP_CONSTANT         1 '1'
+0002    | OP_DEFINE_GLOBAL    0 'n'
+0004    2 OP_GET_GLOBAL       3 'n'
+0006    | OP_CONSTANT         4 '1'
+0008    | OP_ADD
+0009    | OP_SET_GLOBAL       2 'n'
+0011    | OP_POP
+0012    3 OP_GET_GLOBAL       5 'n'
+0014    | OP_PRINT
+```
+
+And for two locals in blocks, `{ let a = 1; { let b = a + 2; print b; }
+}`:
+
+```
+0000    2 OP_CONSTANT         0 '1'
+0002    4 OP_GET_LOCAL        1
+0004    | OP_CONSTANT         1 '2'
+0006    | OP_ADD
+0007    5 OP_GET_LOCAL        2
+0009    | OP_PRINT
+0010    6 OP_POP
+0011    7 OP_POP
+```
+
+(Each program's closing `OP_NIL`, `OP_RETURN` is left off.) I ran the
+TypeScript VM's `disassembleChunk` on the same programs, and its output
+was byte for byte the same (chapters 102 and 103). The Rust is where the two
+differ.
+
+## Globals: names in a table
+
+A global's name goes into the constant pool as an interned string.
+`identifier_constant` is two lines: `self.intern(name)`, then
+`make_constant(Value::String(s))`. It doesn't look for an earlier copy,
+so the first listing has four constants that are all `'n'`, as in clox
+and TypeScript. That is why the 256-constant limit can bite a long script
+(chapter 253).
+
+The VM keeps globals in `globals: Table`, a field of the `Vm`. Adapted
+from `src/vm.rs`:
+
+```rust
+OpCode::DefineGlobal => {
+    let name = self.read_string();
+    self.globals.set(name, self.peek(0));
+    self.pop();
+}
+OpCode::GetGlobal => {
+    let name = self.read_string();
+    let Some(v) = self.globals.get(name)
+    else {
+        let n = self.heap.str(name);
+        let msg = format!(
+            "Undefined variable '{n}'.");
+        return Err(self.runtime_error(msg));
+    };
+    self.push(v);
+}
+```
+
+`SetGlobal` uses `set`'s return value. `true` means the name was new,
+which for an assignment is an error, so it deletes the entry again and
+reports `Undefined variable 'm'.`. `get` returns an `Option`, where
+TypeScript returned `undefined`. And the globals table is one of the
+VM's GC roots, beside the stack (chapter 267).
+
+<Prompts ids={['rl-ident-const', 'rl-set-new', 'rl-globals-root']} />
+
+## Locals: a Vec the compiler keeps
+
+Locals never reach a table. The compiler works out each one's stack
+slot while it compiles, so at run time a local is just an index. Here is
+what it tracks for each local, TypeScript first:
+
+```ts
+interface Local {
+  name: VmToken; depth: number;
+  isCaptured: boolean;
+}
+```
+
+```rust
+struct Local<'src> {
+    name: &'src str,
+    depth: Option<usize>,
+    is_captured: bool,
+}
+```
+
+Two changes. `name` is a slice of the source text (chapter 260), not a
+whole token. And `depth` is `None` while the variable is declared but its
+initializer is still being compiled, where TypeScript used `-1`. The
+compiler can't forget to check for `-1`, because there is no number to
+compare until the `Option` is opened<Cite id="rust-std-option" />.
+Resolving a name reads the locals from the end, so the innermost
+shadowing variable wins:
+
+```rust
+fn resolve_local(
+    &mut self, level: usize, name: &str,
+) -> Option<usize> {
+    let fs = &self.functions[level];
+    let (slot, local) = fs.locals.iter()
+        .enumerate().rev()
+        .find(|(_, l)| l.name == name)?;
+    if local.depth.is_none() {
+        self.error("Can't read local \
+            variable in its own \
+            initializer.");
+    }
+    Some(slot)
+}
+```
+
+The `?` returns `None` when no local has the name, and `named_variable`
+then tries an upvalue, and finally a global. `self.error` is allowed
+because `local` is not used after `is_none()`, so the borrow of
+`self.functions` has already ended.
+
+<LocalsSteps client:visible />
+
+<Callout kind="definition">
+**Compile-time locals in drip-rs** are a `Vec<Local>` in each
+`FunctionState`. A local's index in that `Vec` is its stack slot, slot
+0 being reserved (for the function, or `this` in a method). Each `Local` holds its name as
+a `&str` into the source, its scope depth as `Option<usize>` (`None`
+until initialized), and whether a closure captures it. Declaring a local
+emits nothing: its initializer's value is already in the right slot.
+</Callout>
+
+<Prompts ids={['rl-local', 'rl-option-depth', 'rl-rev', 'rl-no-emit']} />
+
+## Hold the function, lose the compiler
+
+The TypeScript `endScope` keeps the current function in a local, `c`,
+and emits while it loops. Written that way in Rust:
+
+```rust
+fn end_scope(&mut self) {
+    let st = self.state();
+    st.scope_depth -= 1;
+    let depth = st.scope_depth;
+    while let Some(l) = st.locals.last() {
+        let deeper = l.depth
+            .is_some_and(|d| d > depth);
+        if !deeper {
+            break;
+        }
+        self.emit_op(if l.is_captured {
+            OpCode::CloseUpvalue
+        } else {
+            OpCode::Pop
+        });
+        st.locals.pop();
+    }
+}
+```
+
+rustc 1.97 (trimmed):
+
+```
+error[E0499]: cannot borrow `*self` as
+  mutable more than once at a time
+10 | let st = self.state();
+   |          ---- first mutable borrow
+...
+19 | self.emit_op(if l.is_captured {
+   | ^^^^ second mutable borrow
+...
+24 | st.locals.pop();
+   | --------- first borrow later used
+```
+
+`st` is a `&mut` into `self.functions`, and `emit_op` needs all of
+`self`. drip-rs reads the one fact it needs, pops, and lets `state` go
+before it emits:
+
+```rust
+loop {
+    let state = self.state();
+    let depth = state.scope_depth;
+    let captured = match state.locals.last()
+    {
+        Some(l) if l.depth
+            .is_some_and(|d| d > depth)
+            => l.is_captured,
+        _ => break,
+    };
+    state.locals.pop();
+    // state is not used again: emit freely
+    self.emit_op(if captured {
+        OpCode::CloseUpvalue
+    } else {
+        OpCode::Pop
+    });
+}
+```
+
+`declare_variable` follows the same habit. TypeScript reports a
+duplicate name from inside its loop. drip-rs first computes
+`let duplicate = state.locals.iter().rev().take_while(..).any(..);`, a
+plain `bool`, and only then calls `self.error`.
+
+<Prompts ids={['rl-end-scope', 'rl-declare']} />
+
+<Callout kind="engine" label="Under the hood">
+At run time nothing of this is left. `GetLocal` adds the frame's base,
+`self.slots`, to its operand and reads `self.stack` there: one addition
+and one indexed read. `GetGlobal` hashes nothing, but it still probes a
+table.
+clox makes locals cheap for the same reason, by resolving them before
+the program runs<Cite id="nystrom2021" />. In drip-rs that work lives
+entirely in the compiler's `Vec<Local>`, which is dropped with the
+`FunctionState` when the function is finished. The names never reach
+the heap.
+</Callout>
+
+## Your turn
+
+<Exercise id="endScope" />
+
+<Exercise id="resolveLocal" />
+
+## What you learned
+
+- A **global** is an interned name in the constant pool and an entry in
+  the VM's `globals` table. `SetGlobal` on a new name deletes it again
+  and reports an error.
+- **Compile-time locals** are a `Vec<Local<'src>>`. The index is the
+  stack slot, the name borrows the source, and `depth: Option<usize>`
+  replaces TypeScript's `-1`.
+- `resolve_local` searches from the end and uses `?` to fall through to
+  upvalues and globals.
+- Don't hold `self.state()` across a call that needs `&mut self`: read
+  what you need into a local, finish with the borrow, then **emit or
+  report**.
+
+<Quiz />

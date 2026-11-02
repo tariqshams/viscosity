@@ -5,168 +5,199 @@ export const prompts = {
     q: 'What is an object made of?',
     a: 'Properties: each one is a key (a name) paired with a value.',
   },
+  'key-is-string': {
+    q: 'In `{ x: 3 }`, what kind of value is the key `x`, and can the value be another object?',
+    a: 'The key is always a string (`\'x\'`); the value can be anything, another object included.',
+  },
   'missing-prop': {
     q: 'What does reading a property that doesn’t exist give you?',
-    a: '`undefined`.',
+    a: '`undefined`, with no error.',
   },
   'add-prop': {
     q: '`const p = { x: 1 };` How do you add a property `y` with the value `2`?',
     a: '`p.y = 2;` (assigning to a new key adds it).',
   },
+  'typo-nan': {
+    q: '`p` has `x: 3` and `vx: 1`. Why is `p.x + p.vX` equal to `NaN` rather than an error?',
+    a: '`vX` is a different key, so `p.vX` is `undefined`, and `3 + undefined` is `NaN`. A missing property is never an error.',
+  },
   'dot-vs-bracket': {
     q: 'When do you need `obj[expr]` instead of `obj.name`?',
-    a: 'When the key is computed at run time, for example held in a variable.',
+    a: 'When the key is worked out while the program runs (for example, held in a variable), or is not a plain word.',
   },
   'p-dot-key': {
     q: '`const key = \'y\';` What is the difference between `p.key` and `p[key]`?',
     a: '`p.key` reads the property literally named “key”. `p[key]` reads the property named by the variable’s value, “y”.',
   },
-  'aos-what': {
-    q: 'What does AoS (array of structs) mean?',
-    a: 'An array whose slots each hold a whole record (an object with all its fields together).',
-  },
-  'soa-what': {
-    q: 'What does SoA (struct of arrays) mean?',
-    a: 'One array per property: all the `x` values together, all the `y` values together, and so on.',
-  },
-  'particles-i-x': {
-    q: 'In an array of particle objects, how do you read the `x` of particle number 4?',
-    a: '`particles[4].x`',
+  'bracket-space': {
+    q: 'How do you read the property whose key is `\'first name\'` (with a space)?',
+    a: '`o[\'first name\']`. No dot can spell a key with a space, so brackets are the only way.',
   },
 };
 
 export const examples = {
   'objects-basics': {
-    title: 'Dots and brackets',
-    code: `const p = { x: 3, y: 4 };
-p.x = 10;
-p.color = 'red';
-console.log(p);
+    title: 'Pick a field by name',
+    code: `function get(p, field) {
+  return p[field];
+}
 
-const key = 'y';
-console.log(p[key]);
-console.log(p.key);
-console.log(p.size);`,
+const p = { x: 3, y: 4 };
+console.log(get(p, 'x'));
+console.log(get(p, 'y'));
+
+p.color = 'red';
+console.log(get(p, 'color'));
+console.log(get(p, 'size'));
+
+const field = 'y';
+console.log(p.field);
+console.log(p[field]);`,
   },
 };
 
 export const exercises = {
-  centerX: {
-    title: 'The average x position',
+  sumFields: {
+    title: 'Add up the named fields',
     prompt:
-      'Write `centerX(ps)` that returns the **average** of the `x` properties of all the particle objects in the array `ps`. You can assume the array is not empty.',
-    starter: `function centerX(ps) {
+      'Write `sumFields(p, ks)`. `p` is an object whose values are numbers, and `ks` is an array of key names (the *k*eys) (strings). Return the **total** of the properties those ks name. For example `sumFields({ a: 1, b: 2, c: 3 }, [\'a\', \'c\'])` is `4`. An empty `ks` array gives `0`.',
+    starter: `function sumFields(p, ks) {
   // your code here
 }
 
-const ps = [
-  { x: 2 },
-  { x: 4 },
-  { x: 9 },
-];
-console.log(centerX(ps));`,
-    solution: `function centerX(ps) {
+const p = { a: 1, b: 2, c: 3 };
+console.log(sumFields(p, ['a', 'c']));`,
+    solution: `function sumFields(p, ks) {
   let total = 0;
-  for (let i = 0; i < ps.length; i++) {
-    total = total + ps[i].x;
+  for (let i = 0; i < ks.length; i++) {
+    total = total + p[ks[i]];
   }
-  return total / ps.length;
+  return total;
 }`,
-    tests: `test('three particles', () => {
-  const ps = [{ x: 2 }, { x: 4 }, { x: 9 }];
-  expect(centerX(ps)).toBe(5);
+    tests: `test('two of three fields', () => {
+  const p = { a: 1, b: 2, c: 3 };
+  expect(sumFields(p, ['a', 'c'])).toBe(4);
 });
-test('ignores other properties', () => {
-  const ps = [{ x: 1, y: 100 }, { x: 3, y: -7 }];
-  expect(centerX(ps)).toBe(2);
+test('every field', () => {
+  const p = { x: 3, y: 4, vx: 1 };
+  expect(sumFields(p, ['x', 'y', 'vx'])).toBe(8);
 });
-test('a single particle', () => {
-  expect(centerX([{ x: -4 }])).toBe(-4);
+test('no ks gives 0', () => {
+  expect(sumFields({ a: 5 }, [])).toBe(0);
+});
+test('a key with a space', () => {
+  const p = { 'unit cost': 7, qty: 2 };
+  expect(sumFields(p, ['unit cost'])).toBe(7);
 });`,
     hints: [
-      'It’s the `sum` loop from chapter 3, but each slot is an object.',
-      'Add up `ps[i].x`, not `ps[i]`.',
-      'Divide the total by how many particles there are: `ps.length`.',
+      'You do not know the key names when you write the code; they arrive in an array. Which kind of access works with a name held in a variable?',
+      'Loop over `ks` with the loop from chapter 4, keeping a `total` that starts at 0. In each pass, `ks[i]` is one key name, a string.',
+      'Inside the loop, read the property with brackets: `p[ks[i]]`, and add it to the total. Return the total after the loop.',
     ],
-    walkthrough: `Two ideas from two chapters, combined:
+    walkthrough: `**How to think about it.** Work one example by hand: for \`p = { a: 1, b: 2, c: 3 }\` and \`ks = ['a', 'c']\`, you look up \`'a'\` (1), then \`'c'\` (3), and add them to get 4. So the job is "for each key in the array, read that property and add it to a total": a chapter 4 accumulator loop, over \`ks\` rather than over \`p\`. The one decision is *how* to read the property. You cannot write \`p.a\`, because the names are not known until the function is called; they are strings sitting in an array, which is exactly the case brackets are for.
 
-- **The accumulator loop** from chapter 3: \`let total = 0\`, visit every slot, add.
-- **Dot access** from this chapter: each slot holds an object, so the number we want is \`ps[i].x\`.
+**The solution, line by line.**
 
-Then divide by \`ps.length\` *after* the loop. Notice the loop only reads one property out of every object, even though each object may carry many more. Keep that in mind: it’s exactly the kind of loop SoA makes faster.`,
+- \`function sumFields(p, ks) {\` takes the object and the array of key names.
+- \`  let total = 0;\` starts the running total at nothing. It is also the answer if \`ks\` is empty, because the loop will not run at all.
+- \`  for (let i = 0; i < ks.length; i++) {\` visits every key name once.
+- \`    total = total + p[ks[i]];\` is read from the inside out: \`ks[i]\` is the key name in slot \`i\` (the string \`'a'\` on the first pass), then \`p[...]\` looks up the property with that name (1), and that value is added to the total. On the example the total goes 1, then 4.
+- \`  }\` ends the loop.
+- \`  return total;\` hands back the finished total.
+- \`}\` closes the body.
+
+The last test uses the key \`'unit cost'\`, with a space in it. Brackets do not care, since they look up whatever string they are given.
+
+**Common wrong attempts.**
+
+- \`const k = ks[i]; total = total + p.k;\` is this chapter's classic bug: \`p.k\` asks for a property literally named \`k\`, there is none, so it gives \`undefined\` and the total becomes \`NaN\`. Write \`p[k]\`.
+- \`total = total + ks[i];\` adds the key *names*, not the values, and since they are strings, \`+\` glues them together: \`0 + 'a'\` is \`'0a'\`.
+- \`p.ks[i]\` asks \`p\` for a property called \`ks\`, which is \`undefined\`, and then asks \`undefined\` for slot \`i\`, which stops the program with a TypeError.`,
     wrong: [
       {
-        code: `function centerX(ps) {
+        code: `function sumFields(p, ks) {
   let total = 0;
-  for (let i = 0; i < ps.length; i++) {
-    total = total + ps[i];
+  for (let i = 0; i < ks.length; i++) {
+    const k = ks[i];
+    total = total + p.k;
   }
-  return total / ps.length;
+  return total;
 }`,
-        why: '`ps[i]` is a whole object, not a number. Adding an object to a number gives a string like `"0[object Object]"`, and the result is `NaN`. Read the property: `ps[i].x`.',
+        why: '`p.k` reads the property literally named “k”, which is `undefined`, so the total becomes `NaN`. Use `p[k]` to look up the name the variable holds.',
+      },
+      {
+        code: `function sumFields(p, ks) {
+  let total = 0;
+  for (let i = 0; i < ks.length; i++) {
+    total = total + ks[i];
+  }
+  return total;
+}`,
+        why: 'This adds the key names, not the values they name, and `0 + \'a\'` glues them into the string `\'0a\'`. Read the property: `p[ks[i]]`.',
       },
     ],
   },
-  step: {
+  pick: {
     optional: true,
-    title: 'Move every particle',
+    title: 'Keep only some properties',
     prompt:
-      'Write `step(ps)` that moves every particle by its velocity: `x` grows by `vx`, and `y` grows by `vy`. Change the objects themselves; the function doesn’t need to return anything.',
-    starter: `function step(ps) {
+      'Write `pick(p, ks)` that returns a **new** object holding only the properties of `p` named in the array `ks`, with the same values. For example `pick({ x: 3, y: 4, vx: 1 }, [\'x\', \'vx\'])` returns `{ x: 3, vx: 1 }`.',
+    starter: `function pick(p, ks) {
   // your code here
 }
 
-const ps = [
-  { x: 0, y: 0, vx: 1, vy: 2 },
-];
-step(ps);
-console.log(ps[0]);`,
-    solution: `function step(ps) {
-  for (let i = 0; i < ps.length; i++) {
-    const p = ps[i];
-    p.x = p.x + p.vx;
-    p.y = p.y + p.vy;
+const p = { x: 3, y: 4, vx: 1 };
+console.log(pick(p, ['x', 'vx']));`,
+    solution: `function pick(p, ks) {
+  const out = {};
+  for (let i = 0; i < ks.length; i++) {
+    const k = ks[i];
+    out[k] = p[k];
   }
+  return out;
 }`,
-    tests: `test('moves one particle', () => {
-  const ps = [{ x: 0, y: 0, vx: 1, vy: 2 }];
-  step(ps);
-  expect(ps[0]).toEqual({ x: 1, y: 2, vx: 1, vy: 2 });
+    tests: `test('keeps two of three', () => {
+  const p = { x: 3, y: 4, vx: 1 };
+  expect(pick(p, ['x', 'vx'])).toEqual({ x: 3, vx: 1 });
 });
-test('moves every particle', () => {
-  const ps = [
-    { x: 5, y: 5, vx: -1, vy: 0 },
-    { x: 9, y: 1, vx: 0, vy: 3 },
-  ];
-  step(ps);
-  expect(ps[0].x).toBe(4);
-  expect(ps[1].y).toBe(4);
+test('no ks gives an empty object', () => {
+  expect(pick({ x: 3 }, [])).toEqual({});
 });
-test('velocity is unchanged', () => {
-  const ps = [{ x: 0, y: 0, vx: 7, vy: 7 }];
-  step(ps);
-  step(ps);
-  expect(ps[0].vx).toBe(7);
-  expect(ps[0].x).toBe(14);
+test('works for any names', () => {
+  const t = { type: 'num', text: '42', line: 3 };
+  expect(pick(t, ['text'])).toEqual({ text: '42' });
 });`,
     hints: [
-      'Loop over every slot; each slot is a particle object.',
-      'For each particle `p`, set `p.x = p.x + p.vx` and do the same for `y`.',
+      'Start with an empty object, `{}`, and add one property to it per key.',
+      'Adding a property is writing to it. When the name is in a variable, write with brackets: `out[k] = ...`.',
+      'In the loop: `const k = ks[i]; out[k] = p[k];`. Return `out` after the loop.',
     ],
-    walkthrough: `This is the hot loop of every particle system, and the running example of this whole book.
+    walkthrough: `**How to think about it.** You are building an object whose property names you do not know in advance, so you cannot write it out with curly braces. Instead, start empty and add properties one at a time, the way chapter 3 built an array with \`push\`. Writing to a property that does not exist adds it, and brackets let the name come from a variable, on the left of \`=\` as well as on the right.
 
-- \`const p = ps[i];\` gives the current particle a short name.
-- \`p.x = p.x + p.vx;\` reads two properties and writes one.
-- No \`return\` is needed: we changed the objects that the caller’s array holds. Exactly *why* changing \`p\` changes the caller’s data is the subject of the next chapter.`,
+**The solution, line by line.**
+
+- \`function pick(p, ks) {\` takes the original object and the names to keep.
+- \`  const out = {};\` makes the new, empty object we will fill.
+- \`  for (let i = 0; i < ks.length; i++) {\` visits each name.
+- \`    const k = ks[i];\` gives the current name a short label, say \`'x'\`.
+- \`    out[k] = p[k];\` reads property \`k\` of \`p\` (3) and writes it into property \`k\` of \`out\`, which adds it. Both sides use brackets, because both names are held in \`k\`.
+- \`  }\` ends the loop, and \`  return out;\` hands back the new object.
+
+**Common wrong attempts.**
+
+- \`out.k = p[k];\` writes a property literally called \`k\` every time, so the result is \`{ k: 1 }\` (the last value) instead of \`{ x: 3, vx: 1 }\`.
+- Deleting the unwanted properties from \`p\` itself changes the caller's object; the exercise asks for a new one, and chapter 7 shows why changing the original can surprise whoever else is using it.`,
     wrong: [
       {
-        code: `function step(ps) {
-  for (let i = 0; i < ps.length; i++) {
-    let x = ps[i].x;
-    x = x + ps[i].vx;
+        code: `function pick(p, ks) {
+  const out = {};
+  for (let i = 0; i < ks.length; i++) {
+    const k = ks[i];
+    out.k = p[k];
   }
+  return out;
 }`,
-        why: '`x` is a copy of the number. Changing that local variable doesn’t touch the object. Write to the property: `ps[i].x = ...`. (The `y` update is missing too.)',
+        why: '`out.k` writes a property literally named “k” on every pass, so the result is `{ k: ... }`. Use `out[k]` so the name comes from the variable.',
       },
     ],
   },
@@ -176,7 +207,7 @@ export const quiz = [
   {
     q: '`const p = { x: 1, y: 2 };` What is `p.z`?',
     options: [
-      { t: 'An error', why: 'Reading a missing property is not an error in JavaScript.' },
+      { t: 'An error', why: 'Reading a missing property is not an error in JavaScript (Python’s dictionaries would stop with a `KeyError`).' },
       { t: '`0`', why: 'Missing properties are not zero.' },
       { t: '`undefined`', correct: true, why: 'There is no property `z`, so you get `undefined`.' },
       { t: '`null`', why: 'JavaScript gives `undefined`, not `null`, for missing properties.' },
@@ -206,21 +237,27 @@ console.log(p[k]);
     ],
   },
   {
-    q: 'In an array of particle objects, which expression is the `vy` of the first particle?',
+    q: `What does this print?
+\`\`\`
+const p = { x: 1 };
+p.x = 5;
+p.y = p.x + 1;
+console.log(p);
+\`\`\``,
     options: [
-      { t: '`particles.vy[0]`', why: 'That would be SoA-style, a `vy` array. Here each slot holds an object.' },
-      { t: '`particles[1].vy`', why: 'Index 1 is the second particle.' },
-      { t: '`particles.vy`', why: 'The array itself has no `vy` property.' },
-      { t: '`particles[0].vy`', correct: true, why: 'Slot 0 holds the first particle object; `.vy` reads its property.' },
+      { t: '`{ x: 1 }`', why: 'Line 2 changed `x` and line 3 added `y`; an object can change after it is made, even under `const`.' },
+      { t: '`{ x: 5, y: 6 }`', correct: true, why: '`x` was changed to 5, then a new property `y` was added holding `5 + 1`.' },
+      { t: '`{ x: 5 }`', why: 'Assigning to a key that is not there adds it, so `y` now exists.' },
+      { t: 'An error, because `y` does not exist yet', why: 'Writing to a missing property creates it; only reading a property of `undefined` is an error.' },
     ],
   },
   {
-    q: 'What is the difference between AoS and SoA?',
+    q: '`const p = { x: 3, vx: 1 };` What is `p.x + p.vX` (capital X)?',
     options: [
-      { t: 'AoS keeps each record’s fields together; SoA keeps each field’s values together', correct: true, why: 'Same data, two arrangements: by record, or by field.' },
-      { t: 'AoS is for numbers and SoA is for strings', why: 'Both can hold any kind of field.' },
-      { t: 'SoA stores fewer values', why: 'Both store exactly the same values, just arranged differently.' },
-      { t: 'They are two names for the same layout', why: 'They are different layouts: one groups by record, the other by field.' },
+      { t: '`4`', why: 'Keys are exact strings: `vX` and `vx` are different keys, so `p.vX` is not 1.' },
+      { t: 'A TypeError', why: 'Reading a missing property of an object is not an error; only reading a property of `undefined` itself is.' },
+      { t: '`3`', why: '`p.vX` is `undefined`, and adding `undefined` to a number does not leave the number alone.' },
+      { t: '`NaN`', correct: true, why: '`p.vX` is `undefined`, and `3 + undefined` is `NaN` (“not a number”), with no warning.' },
     ],
   },
   {

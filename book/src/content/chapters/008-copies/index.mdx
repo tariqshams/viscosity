@@ -1,0 +1,268 @@
+---
+n: 8
+day: 2
+part: I
+title: 'Copies: an object of your own'
+tagline: 'Sometimes you want a second object, not a second arrow. Spread syntax makes one in a single line, as long as you know exactly how deep the copy goes.'
+objectives:
+  - Make a new object or array from an old one with spread syntax, changing some properties on the way.
+  - Explain what a shallow copy shares with the original, and copy one level deeper when you need to.
+  - Tell a copy from an alias, using === and by predicting what a change affects.
+  - Explain why aliasing makes changing a program's data layout hard, and why that is Viscosity's central problem.
+introduces: [copy-spread]
+uses: [reference, aliasing, identity, mutation, object, property, dot-access, array, push, array-of-objects, function, parameter, return, variables, numbers, comparison, console-log]
+sources: [mdn-objects, mdn-equality, makor2022]
+---
+import SpreadSteps from '../../../components/diagrams/ch008/SpreadSteps';
+import AliasLayout from '../../../components/diagrams/ch008/AliasLayout';
+
+## A change that should stay private
+
+Say a function is handed a particle and must give back a version of it
+moved to `x = 50`, without disturbing anyone else who holds the
+original. Last chapter showed why the obvious attempt fails:
+
+```js
+const p = { x: 1, y: 2 };
+const q = p;
+q.x = 50;
+console.log(p.x); // 50: p changed too
+```
+
+`q = p` copies the arrow, so `q` is an alias, and the change lands on
+the one shared object. What we need is a second **object**: a new one,
+with the same properties, that we are free to change.
+
+<Analogy title="a photocopy of a form">
+Photocopy a filled-in form and you have two sheets of paper; scribble on
+the copy and the original is untouched. You can even photocopy it with
+one line covered up and write a new answer there instead.
+<span slot="breaks">A photocopy also copies the pictures printed on the
+page; a JavaScript copy does not copy objects that the original's
+properties point at, as the rest of this chapter shows.</span>
+</Analogy>
+
+## Spread: a new object, filled from an old one
+
+Three dots in front of an object, inside new curly braces, copy its
+properties into the new object:
+
+```js
+const p = { x: 1, y: 2 };
+const q = { ...p, x: 50 };
+console.log(p.x, q.x); // 1 50
+console.log(p === q);  // false
+```
+
+Line 2 reads as "a new object; put every property of `p` into it; then
+set `x` to 50". The new object first gets `x: 1` and `y: 2` from `p`,
+then `x: 50` replaces the copied `x`, because later properties win.
+Line 3 shows that `p` kept its own `x`, and line 4 confirms, by identity,
+that `q` is a different object, not an alias.
+
+<Callout kind="definition">
+**Spread syntax** `{ ...obj }` makes a **new** object and copies each of
+`obj`'s own properties into it, in order; properties written after it
+override the copied ones, and properties written before it are
+overridden by them. `[...arr]` does the same for an array, making a new
+array with the same values in the same slots<Cite id="mdn-objects" />.
+</Callout>
+
+<Examples of="copy-spread">
+
+```js
+const p = { x: 1, y: 2 };
+const c = { ...p }; // { x: 1, y: 2 }
+c === p; // false
+```
+
+```js
+({ ...p, x: 9 }); // { x: 9, y: 2 }
+({ x: 9, ...p }); // { x: 1, y: 2 }
+const xs = [1, 2];
+const ys = [...xs, 3]; // [1, 2, 3]
+```
+
+```js
+const tok = { type: 'name', line: 3 };
+const next = { ...tok, line: 4 };
+```
+
+<Run id="copies" />
+
+</Examples>
+
+The first is the plainest copy: same contents, different object, so
+`===` says `false`. The second shows that order decides who wins: with
+`x: 9` after the spread, the 9 replaces the copied 1; written before it,
+the copied `x: 1` replaces the 9 (the round brackets only stop
+JavaScript reading a line that starts with `{` as a block). The array
+version copies `xs` into a new array and adds `3` at the end, leaving
+`xs` as `[1, 2]`. The third is real: an interpreter that wants "the same
+token, one line further down" builds a new token rather than changing a
+token that other code may still be holding. The runnable one compares a
+copy with an alias side by side.
+
+<Formal title="What spread builds">
+
+```text
+{ ...p, x: v }  =  p with x ↦ v
+q = { ...p }:  q.k = p.k  for every key k
+               q ≠ p  (a new object)
+```
+
+<span slot="read">Spreading p and then writing x: v gives an object
+like p, except that x maps to v. If q is a spread copy of p, then for
+every key k, q's value at k is p's value at k, yet q and p are
+different objects (≠ reads "is not the same as").</span>
+</Formal>
+
+<Prompts ids={['spread-copy', 'spread-order', 'copy-identity', 'copy-vs-alias']} />
+
+## How deep does the copy go?
+
+That second line of the definition says `q.k = p.k`: the *value* of
+each property is copied. When the value is a number, that is a real
+copy; when the value is an object, the value is an *arrow*, so the arrow
+is copied and both objects end up pointing at one inner object. Step
+through it:
+
+<SpreadSteps client:visible />
+
+<Analogy title="copying an address book">
+Copy your address book and you have two books: cross out a name in the
+copy and the original keeps it. The addresses in both books, however,
+still lead to the same houses, and if one house is repainted, both books
+lead you to a repainted house.
+<span slot="breaks">An address book holds only addresses; a JavaScript
+object mixes plain values (really copied) with arrows (shared), so a
+copy is partly separate and partly shared, depending on each
+property.</span>
+</Analogy>
+
+<Callout kind="pitfall">
+Spread is **shallow**: it copies one level. If a property holds an
+object (or array), only the arrow is copied, so the copy and the
+original share that inner object, and mutating it through either one
+is seen by both.
+</Callout>
+
+To copy one level deeper, spread the inner object as well:
+
+```js
+const a = { id: 1, pos: { x: 0 } };
+const c = { ...a };
+c.pos.x = 9;          // a.pos.x is 9 too
+const d = { ...a, pos: { ...a.pos } };
+d.pos.x = 5;          // a.pos.x is still 9
+```
+
+Line 2 is a shallow copy, so line 3 changes the shared inner object.
+Line 4 copies the outer object *and* replaces its `pos` with a spread
+copy of `a.pos`, so `d` has its own inner object, and line 5 leaves `a`
+alone. (Modern JavaScript also has a built-in that copies every level,
+`structuredClone(a)`, which is handy for plain data; this book rarely
+needs it.)
+
+<Prompts ids={['shallow', 'deep-one-level']} />
+
+<OtherLanguages>
+
+```js
+const p = { x: 1, y: 2 };
+const q = { ...p, x: 50 };
+console.log(p.x, q.x); // 1 50
+```
+
+```python
+p = {"x": 1, "y": 2}
+q = {**p, "x": 50}
+print(p["x"], q["x"])  # 1 50
+# also shallow; copy.deepcopy(p)
+# copies every level
+```
+
+```java
+class P { int x; int y;
+  P(int x, int y) {
+    this.x = x; this.y = y; } }
+// inside main:
+P p = new P(1, 2);
+P q = new P(50, p.y); // by hand
+System.out.println(p.x + " " + q.x);
+```
+
+```c
+struct P { int x; int y; };
+/* inside main: */
+struct P p = { 1, 2 };
+struct P q = p;  /* a copy */
+q.x = 50;
+printf("%d %d\n", p.x, q.x); /* 1 50 */
+```
+
+</OtherLanguages>
+
+Python has the closest syntax (`**p` spreads a dictionary), and its
+copies are shallow too. Java has no general one-line copy for your own
+classes, so you build the new object by hand (or write a method that
+does). C copies a whole `struct` on every plain assignment, which is the
+default there; however, it is shallow in exactly the same way, because a
+pointer inside the struct is copied as an address, so both copies point
+at the same thing.
+
+## Why this is Viscosity's hardest problem
+
+Remember the particle loop. Suppose Viscosity decides your particles
+would be faster as a struct of arrays, one array of all the `x` values,
+one of all the `y` values. Now look at this ordinary code:
+
+```js
+const first = ps[0];
+first.x = 100;
+console.log(ps[0].x); // must be 100
+```
+
+`first` and `ps[0]` are aliases, and the program *relies* on that. If
+Viscosity had quietly moved every `x` into a separate array, `first.x =
+100` would have to update that array, or the program would print the
+wrong answer; and an optimizer that changes answers is worse than no
+optimizer at all.
+
+<Figure takeaway="An alias outside the array must keep working after the layout changes." caption="Before, first and ps[0] are two arrows to one object. After moving every x into its own array there is no object for first to point at, so every use of first must be rewritten too.">
+  <AliasLayout />
+</Figure>
+
+So before it changes how data is laid out, Viscosity has to answer
+*where can arrows to these objects end up, and who else might be
+looking at them?* Compilers call the answers **alias analysis** and
+**escape analysis**, and research systems that switch JavaScript arrays
+to columns automatically face exactly this requirement<Cite id="makor2022" />.
+Copies help here, for a reason this chapter has made clear: a fresh
+`{ ...p }` is a new identity that nothing else has an arrow to yet. You
+will build these analyses yourself in Parts VI and VIII; for now, you can
+see the problem, and that is the first step to solving it.
+
+<Prompts ids={['alias-problem', 'copy-is-fresh']} />
+
+## Your turn
+
+<Exercise id="withX" />
+
+<Exercise id="withPosX" />
+
+## What you learned
+
+- **Spread** `{ ...obj }` (and `[...arr]`) builds a new object and copies
+  the properties in; later properties override earlier ones.
+- A copy is a new identity: `{ ...p } === p` is `false`, unlike an alias.
+- Spread is **shallow**: inner objects are shared, so copy them too
+  (`{ ...a, pos: { ...a.pos } }`) when you need them separate.
+- Aliasing is why changing data layout automatically is hard: every
+  arrow to the old objects must keep working. It is the problem at the
+  core of Viscosity.
+
+That is the end of the arrows. Next: functions themselves turn out to be
+values you can store and pass around, just like objects.
+
+<Quiz />

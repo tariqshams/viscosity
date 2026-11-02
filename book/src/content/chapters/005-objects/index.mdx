@@ -3,178 +3,312 @@ n: 5
 day: 2
 part: I
 title: 'Objects: things with named parts'
-tagline: 'Arrays number their values; objects name them. Put objects inside an array and you have the shape at the heart of this whole book.'
+tagline: 'Arrays number their values; objects name them. A particle, a token, a user: almost everything a program works on is a thing with named parts.'
 objectives:
-  - Create an object, and read, change and add properties with dot and bracket access.
-  - Explain when you need brackets (a computed key) instead of a dot.
-  - Store records in an array of objects and loop over them.
-  - Describe the array-of-structs (AoS) layout and how a struct of arrays (SoA) differs.
-introduces: [object, property, dot-access, bracket-access, array-of-objects]
-uses: [array, index, length, push, array-loop, function, parameter, return, undefined, variables, strings, numbers, for-loop, console-log]
-sources: [mdn-objects, bynensmeurer2018, makor2022]
+  - Create an object, and read, change and add its properties with a dot.
+  - Predict what a missing or misspelt property gives you, and when it becomes an error.
+  - Use brackets when the name of the property is only known while the program runs.
+  - Say how JavaScript objects differ from Python dictionaries, Java classes and C structs.
+introduces: [object, property, dot-access, bracket-access]
+uses: [array, index, length, push, array-loop, function, parameter, return, undefined, variables, strings, numbers, booleans, for-loop, console-log]
+sources: [mdn-objects, bynensmeurer2018]
 ---
 import ObjectCard from '../../../components/diagrams/ch005/ObjectCard';
-import AosPicture, { SoaTeaser } from '../../../components/diagrams/ch005/AosPicture';
+import LookupSteps from '../../../components/diagrams/ch005/LookupSteps';
 
-## Values that belong together
+## Numbers that belong together
 
-A particle in a game has a position and a velocity: four numbers. You
-*could* keep them in an array, `[3, 4, 1, 2]`, but then you have to
-remember that slot 2 means "horizontal speed". Six months later, nobody
-remembers.
+A particle in a game has a position and a speed, which is four numbers,
+and with what you know so far you would keep them in an array:
 
-<Callout kind="intuition">
-An object is a filled-in form. Each line of the form has a **label** ("x",
-"y", "speed") and a **value** written next to it. You look things up by
-label, not by position, so the meaning is right there in the code.
-</Callout>
+```js
+const p = [3, 4, 1, 2];
+```
+
+That works, however nothing in the code says what slot 2 *means*; you
+have to remember that it is "the speed to the right", and in six months
+nobody will. What we want is to keep the
+four numbers together under one name, as an array does, but to reach
+each one by a **name** rather than by a position.
+
+<Analogy title="a filled-in form">
+A form at the doctor's has a line for each thing they need, with a label
+printed at the start ("name", "date of birth") and your answer written
+next to it. Nobody reads it as "the third line"; they look for the label
+they want. An object is that form: each line is a label and a value.
+<span slot="breaks">A paper form has a fixed set of lines; you can add a
+new labelled line to an object at any time, and asking for a label that
+is not there gives `undefined` rather than a blank.</span>
+</Analogy>
+
+<Analogy title="labelled jars in a kitchen">
+You do not ask for "the fourth jar from the left"; you reach for the one
+labelled *sugar*, and if someone moves the jars around the shelf, your
+request still finds it.
+<span slot="breaks">Two jars can carry the same label by mistake; an
+object never has two properties with the same name, and writing to a
+name that is already there replaces its value.</span>
+</Analogy>
+
+## An object: names and values
 
 <Figure takeaway="An object maps names to values." caption="The object p has four properties. Each property is a key (its name) and a value. These four colours are the book's permanent colour code: x is always orange, y blue, vx teal, vy violet.">
   <ObjectCard />
 </Figure>
 
+In code, curly braces make an object, and inside them each property is
+written as `key: value`, with commas between:
+
 ```js
 const p = { x: 3, y: 4, vx: 1, vy: 2 };
-
-console.log(p.x);   // 3
-console.log(p.vx);  // 1
+console.log(p.x);  // 3
+console.log(p.vx); // 1
 ```
 
-Curly braces with `key: value` pairs *make* an object. A dot followed by a
-name *reads* one property.
+Line 1 makes one object with four parts and names it `p`; `x: 3` means
+"a part called `x`, holding 3". Lines 2 and 3 put a dot after the name to
+read one part: `p.x` is 3 and `p.vx` (the speed along x) is 1.
 
 <Callout kind="definition">
-An **object** is a collection of **properties**. Each property is a
-**key** (a name, which is a string) paired with a **value**. `obj.key`
-reads or writes the property called `key`. This is **dot access**.
+An **object** is a single value made of named parts. Each part is a
+**property**: a **key** (its name, which is always a string) paired with
+a **value**, which can be any value at all: a number, a string, an
+array, or another object<Cite id="mdn-objects" />.
 </Callout>
 
-## Change it, grow it
+<Examples of="object property">
 
-Properties can be changed and added at any time:
+```js
+const empty = {};
+```
+
+```js
+const ada = { name: 'Ada', admin: true };
+```
+
+```js
+const tok = { type: 'number', text: '42',
+  line: 3 };
+```
+
+</Examples>
+
+The first is the **empty object**, with no properties at all. The
+second holds two different kinds of value, a string and `true`. The
+third is real: the scanner you write in Part III turns `42` in a program
+into exactly this record, a *token*, saying what kind of thing it found,
+the text, and the line it was on.
+
+<Prompts ids={['object-what', 'key-is-string']} />
+
+## Reading and writing with a dot
+
+`p.x` reads a property; put it on the left of `=` and it writes one,
+either changing a property that is there or adding one that is not:
 
 ```js
 const p = { x: 3, y: 4 };
-p.x = 10;           // change
-p.color = 'red';    // add a new one
-
+p.x = 10;        // change
+p.color = 'red'; // add
 console.log(p);
 // { x: 10, y: 4, color: 'red' }
 console.log(p.size); // undefined
 ```
 
-Reading a property that doesn’t exist gives `undefined`, just like reading
-past the end of an array.
+Line 2 replaces the 3 in `x` with 10; line 3 adds a third property,
+`color`, that did not exist a moment ago; line 4 prints the whole object
+(shown on line 5). Line 6 reads a property that was never made, and rather than stopping,
+JavaScript gives `undefined`, the "nothing here" value from chapter 2.
 
-<Prompts ids={['object-what', 'missing-prop', 'add-prop']} />
+<Callout kind="definition">
+**Dot access**, `obj.name`, reads the property whose key is exactly
+`name`, giving `undefined` if there is none. `obj.name = v` sets that
+property to `v`, adding it if it was not there.
+</Callout>
+
+<Examples of="dot-access">
+
+```js
+const p = { x: 3, vx: 1 };
+p.x + p.vx; // 4
+```
+
+```js
+p.x = p.x + p.vx; // p.x is now 4
+```
+
+```js
+tok.line = tok.line + 1;
+```
+
+</Examples>
+
+The first reads two properties and adds them; the second does the same
+and stores the answer back into `x`, which is how a particle moves. The
+third, on the token from before, moves it down a line.
+
+Because a missing property is not an error, a typo stays quiet:
+
+```js
+const p = { x: 3, vx: 1 };
+p.x + p.vX; // NaN (vX is undefined)
+const ps = [p];
+ps[1].x;
+// TypeError: Cannot read properties
+// of undefined (reading 'x')
+```
+
+`vX` (capital X) is a different key, so `p.vX` is `undefined`, and
+`3 + undefined` is `NaN` ("not a number"). The second slip does stop the
+program: `ps[1]` is past the end of the array, so it is `undefined`, and
+asking `undefined` for a property is an error.
+
+<Prompts ids={['missing-prop', 'add-prop', 'typo-nan']} />
 
 ## Brackets: when the name is in a variable
 
-Sometimes you don’t know which property you want until the program runs.
-Maybe the user picks "x" or "y". Dot access needs the name written
-literally in the code, so there’s a second way:
+Sometimes you do not know which property you want until the program runs:
+the user picks `'x'` or `'y'` from a menu, say, and the choice arrives in
+a variable. A dot cannot help, because the word after a dot is taken
+literally, so there is a second way, with square brackets. Step through
+the difference:
+
+<LookupSteps client:visible />
+
+<Analogy title="a request slip at the library desk">
+`p.x` is walking straight to the shelf marked *x*. `p[key]` is handing
+the librarian a slip with a title written on it: they read the slip
+first, then fetch whatever it names. Writing "key" on the slip itself
+(`p.key`) asks for a book called *key*.
+<span slot="breaks">A librarian can guess what you meant from a messy
+slip; JavaScript fetches the exact string, so `'X'` and `'x'` are two
+different keys.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Bracket access**, `obj[expr]`, works out `expr` first and uses the
+result as the key. `obj['name']` means exactly the same as `obj.name`;
+brackets are needed when the key is computed while the program runs, or
+is not a plain word (such as `'first name'`).
+</Callout>
+
+<Examples of="bracket-access">
 
 ```js
 const p = { x: 3, y: 4 };
-const key = 'y';
-
-console.log(p['x']);  // 3
-console.log(p[key]);  // 4  (looks up 'y')
-console.log(p.key);   // undefined!
+p['y']; // 4
 ```
 
-That last line is a classic bug. `p.key` means "the property literally
-named `key`", and there isn’t one. `p[key]` means "evaluate the variable
-`key` first, then look up whatever string it holds".
-
-<Callout kind="definition">
-**Bracket access** `obj[expr]` works out `expr` first and uses the result
-as the key. Use it when the key is computed at run time. `obj.name` and
-`obj['name']` mean the same thing.
-</Callout>
+```js
+const o = { 'first name': 'Ada' };
+o['first name']; // 'Ada'
+```
 
 <Run id="objects-basics" />
 
-<Prompts ids={['dot-vs-bracket', 'p-dot-key']} />
+</Examples>
 
-## Arrays of objects
+The first writes the key out as a string, the same lookup as `p.y`. The
+second has a key with a space in it, which no dot can spell, so brackets
+are the only way in. The runnable one is the realistic case: a function
+`get(p, field)` reads whichever property its caller names, the way a
+chart might draw whichever field the user picked. Try changing the field.
 
-Now combine this chapter with the last one. A game doesn’t have one
-particle, it has thousands. So you put them in an array:
+<Formal title="An object as a table of keys">
 
-```js
-const particles = [
-  { x: 0, y: 0, vx: 1, vy: 2 },
-  { x: 5, y: 5, vx: -1, vy: 0 },
-  { x: 9, y: 1, vx: 0, vy: 3 },
-];
-
-for (let i = 0; i < particles.length; i++) {
-  const p = particles[i];
-  p.x = p.x + p.vx;
-  p.y = p.y + p.vy;
-}
+```text
+p = { x ↦ 3, y ↦ 4 }
+p.x  =  p['x']  =  3
+p[k] =  value of k,  if k ∈ keys(p)
+        undefined,   otherwise
 ```
 
-`particles[i]` is an object, so `particles[i].x` (or `p.x` after
-`const p = particles[i]`) reaches inside it. This is the most natural way
-to write it, and it has a name you’ll see all through this book: an **array
-of structs**, or **AoS**. ("Struct" is the old C word for a record with
-named fields.)
+<span slot="read">An object is a table that maps each key to a value
+(the arrow ↦ reads "maps to"). A dot and brackets with the same string
+are the same lookup. For any key k, if k is one of p's keys (∈ reads "is
+in"), p[k] is its value; otherwise it is undefined.</span>
+</Formal>
 
-<Figure takeaway="AoS: each slot holds a whole record." caption="An array of three particles. Each particle's x, y, vx and vy travel together as one object.">
-  <AosPicture />
-</Figure>
+<Prompts ids={['dot-vs-bracket', 'p-dot-key', 'bracket-space']} />
 
-Here’s the question this book is built around. The loop above only
-touches `x`, `y`, `vx` and `vy`. What if each particle *also* had a
-`mass`, a `color`, a `name` and a `health`, none of which the loop needs?
-Is it a problem that they’re all packed in alongside?
+<OtherLanguages>
 
-Turn the picture sideways. Instead of one object per particle, keep **one
-array per property**: all the `x` values together, then all the `y`
-values, and so on. That is a **struct of arrays**, or **SoA**:
+```js
+const p = { x: 3, y: 4 };
+p.x = 10;
+console.log(p.x); // 10
+console.log(p.z); // undefined
+```
 
-<Figure takeaway="SoA: each property gets its own array." caption="The same three particles stored as a struct of arrays. The colours (properties) are now grouped, instead of the particles.">
-  <SoaTeaser />
-</Figure>
+```python
+p = {"x": 3, "y": 4}
+p["x"] = 10
+print(p["x"])  # 10
+print(p["z"])  # KeyError: 'z'
+```
 
-Same data, different arrangement. In Part II you’ll learn why the
-arrangement can make a loop several times faster or slower, and you’ll
-measure it yourself. Researchers have even built JavaScript runtimes that
-switch an array of objects to columns automatically while the program
-runs<Cite id="makor2022" />. Viscosity’s job will be to make that choice,
-safely, for you.
+```java
+class P { int x; int y; }
+// inside main:
+P p = new P();
+p.x = 3; p.y = 4;
+p.x = 10;
+System.out.println(p.x); // 10
+// p.z: error: cannot find symbol
+```
+
+```c
+struct P { int x; int y; };
+/* inside main: */
+struct P p = { 3, 4 };
+p.x = 10;
+printf("%d\n", p.x); /* 10 */
+/* p.z: error: 'struct P' has
+   no member named 'z' */
+```
+
+</OtherLanguages>
+
+A Python dictionary is the closest relative, though a missing key stops
+the program with a `KeyError` where JavaScript quietly gives
+`undefined`. Java and C fix every field before the program runs (in a
+`class` or a `struct`), so a misspelt field is caught by the compiler,
+but you can never add a field later or pick one by a name held in a
+variable. JavaScript allows both, which is flexible for you and more work
+for the engine, as the box below explains.
 
 <Callout kind="engine" label="Under the hood">
-Engines notice when many objects have the same properties, added in the
+Because any object can gain a property at any moment, a naive engine
+would have to search an object's keys by name on every `p.x`. Real
+engines notice when many objects have the same properties, added in the
 same order, and give them a shared hidden description called a **shape**
-(V8 calls it a *map*, or *hidden class*). Then reading `p.x` doesn’t have to
-search for "x" every time: the engine already knows where `x` lives in
-every object of that shape<Cite id="bynensmeurer2018" />. Part V opens this
-up properly.
+(V8 calls it a *map*, or *hidden class*); reading `p.x` then needs no
+search, because the engine already knows where `x` sits in every object
+of that shape<Cite id="bynensmeurer2018" />. Part V opens this up
+properly, and Viscosity leans on it.
 </Callout>
-
-<Prompts ids={['aos-what', 'soa-what', 'particles-i-x']} />
 
 ## Your turn
 
-<Exercise id="centerX" />
+The first exercise puts brackets to work in a loop; the second, extra
+practice, builds a new object with them.
 
-<Exercise id="step" />
+<Exercise id="sumFields" />
+
+<Exercise id="pick" />
 
 ## What you learned
 
-- An **object** stores **properties**: named keys with values.
-- `obj.key` is **dot access**. `obj[expr]` is **bracket access**, which
-  computes the key at run time.
-- Missing properties read as `undefined`. New ones can be added at any
-  time.
-- An **array of objects** is the *array of structs* (AoS) layout: each slot
-  holds a whole record. A *struct of arrays* (SoA) keeps one array per
-  property instead.
+- An **object** is one value made of named parts; each **property** is a
+  key (always a string) and a value (anything).
+- **Dot access**, `obj.key`, reads or writes a property by its written
+  name; writing to a new name adds it, and reading a missing one gives
+  `undefined` (asking `undefined` for a property is the error).
+- **Bracket access**, `obj[expr]`, works the key out first, for names
+  held in variables or not spelled as plain words; `obj.key` and
+  `obj[key]` are different lookups.
 
-Next comes the chapter that explains what a variable *really* holds when it
-holds an object. It’s the key to the hardest problem Viscosity has to solve.
+Next: putting many objects in one array, the shape this whole book is
+about.
 
 <Quiz />

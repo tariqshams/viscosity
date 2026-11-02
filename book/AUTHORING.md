@@ -1,7 +1,7 @@
 # Writing a chapter of *Viscosity*
 
 This guide is for anyone (human or AI) adding chapters. Read chapters
-1–6 first: they are the reference template. Copy their structure, voice
+1–7 first: they are the reference template. Copy their structure, voice
 and density.
 
 ## Files
@@ -68,7 +68,7 @@ components are imported at the top of the MDX file:
 - Build them with `src/components/viz/svg.tsx` (`Svg`, `Box`, `T`, `Arrow`,
   `tok`) and `src/components/viz/stepper.tsx` (`useSteps`, `StepFrame`,
   `CodeTrace`). See `diagrams/ch001/CallSteps.tsx` and
-  `diagrams/ch006/RefSteps.tsx`.
+  `diagrams/ch007/RefSteps.tsx`.
 - Use a 400-unit-wide viewBox, designed for a phone held upright.
 - Colours always come from tokens (`tok('brand')`). Field colours are
   permanent: x = `f1`, y = `f2`, vx = `f3`, vy = `f4`, mass = `f5`,
