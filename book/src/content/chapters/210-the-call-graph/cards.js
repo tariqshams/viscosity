@@ -25,7 +25,7 @@ export const prompts = {
   },
   'bottom-up-why': {
     q: 'Why do inliners visit the call graph from the leaves up?',
-    a: 'So each callee is already as optimized (and as big) as it will get when its callers decide whether to inline it.',
+    a: 'So each callee is already as optimised (and as big) as it will get when its callers decide whether to inline it.',
   },
   'called-once': {
     q: 'Why is a function called from exactly one place (and not visible outside the program) almost always inlined?',
@@ -271,17 +271,17 @@ export const quiz = [
     ],
   },
   {
-    q: 'How does an optimizing JIT inline a call whose target it cannot prove?',
+    q: 'How does an optimising JIT inline a call whose target it cannot prove?',
     options: [
       { t: 'It never does', why: 'JITs inline guesses routinely; it is one of their main advantages.' },
       { t: 'It inlines every function the call could possibly reach', why: 'That could be every function in the program.' },
-      { t: 'It inlines the function type feedback says was called, behind a check, and deoptimizes if the check fails', correct: true, why: 'Speculation plus a guard, with deoptimization as the way back.' },
+      { t: 'It inlines the function type feedback says was called, behind a check, and deoptimises if the check fails', correct: true, why: 'Speculation plus a guard, with deoptimisation as the way back.' },
     ],
   },
   {
     q: 'Why do inliners work bottom-up, leaves first?',
     options: [
-      { t: 'So each callee is already optimized, and its final size known, when its callers decide', correct: true, why: 'Top-down, a caller would inline an unoptimized callee and copy all of its calls along with it.' },
+      { t: 'So each callee is already optimised, and its final size known, when its callers decide', correct: true, why: 'Top-down, a caller would inline an unoptimised callee and copy all of its calls along with it.' },
       { t: 'Because leaves are the hottest functions', why: 'Leaves are not necessarily hot; the order is about having callees finished first.' },
       { t: 'Because the call graph has no edges going up', why: 'Edges go from callers to callees; the order follows them in reverse.' },
     ],

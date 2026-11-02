@@ -70,7 +70,7 @@ function run(e, x) {
   return a * b;
 }
 
-// The "optimizer": algebraic rules.
+// The "optimiser": algebraic rules.
 function fold(e) {
   if (!Array.isArray(e)) return e;
   const op = e[0];

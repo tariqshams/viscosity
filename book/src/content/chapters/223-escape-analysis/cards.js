@@ -215,7 +215,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which optimization needs only that an object does not escape its thread, rather than its method?',
+    q: 'Which optimisation needs only that an object does not escape its thread, rather than its method?',
     options: [
       { t: 'Stack allocation', why: 'The stack frame dies when the method returns, so the object must not outlive the method.' },
       { t: 'Removing the locks taken on it', correct: true, why: 'No other thread can ever see it, so locking it protects nothing.' },

@@ -238,7 +238,7 @@ g (line 1) {x, y, m} → struct of arrays
 
 Line 6 is the `k` loop: the read of `g[i].x` sits in `b6`, which is in
 both loops, and the smaller, inner one wins. LLVM's loop information pass computes the same nesting
-for its own optimizations<Cite id="llvm-passes" />.
+for its own optimisations<Cite id="llvm-passes" />.
 
 <Prompts ids={['loop-depth', 'innermost']} />
 

@@ -171,7 +171,7 @@ starts at the worst answer and adds only what it can prove, so on a cycle
 it never gets started: each value waits for the other.
 </Callout>
 
-This is the lattice and fixpoint machinery of chapters 195 and 196. A
+This is the lattice and fixpoint machinery of chapters 195, 196 and 199. A
 fact can only fall, and there are finitely many facts, so the rounds
 must end; as a guard, the real code stops after 1000 rounds and, if it
 has not settled, throws away every guess (it **fails closed**):
@@ -269,7 +269,7 @@ the two apart:
 <Callout kind="engine" label="Under the hood">
 V8 learns the same two facts by watching rather than proving: its type
 feedback records which shapes and number representations each operation
-has seen, its optimizing tiers specialize on that, and deoptimization is
+has seen, its optimising tiers specialise on that, and deoptimisation is
 the way back when a guess turns out wrong<Cite id="v8-maglev" />.
 Viscosity runs before the program and has no way back, so a guess has
 to become a proof, which is why one string or one reordered literal is

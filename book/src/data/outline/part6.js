@@ -109,7 +109,7 @@ export default {
       'dependence-analysis': 'which iterations depend on which',
       'loop-interchange-fusion': 'swapping nested loops and merging adjacent ones',
     } },
-    { n: 217, title: 'Locality, tiling and the polyhedral model', introduces: {
+    { n: 217, title: 'Locality and tiling', introduces: {
       'loop-tiling': 'cutting loops into cache-sized blocks',
     } },
     { n: 218, title: 'The polyhedral model', introduces: {

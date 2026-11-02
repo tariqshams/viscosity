@@ -54,14 +54,14 @@ random choices come from a generator started at a known number, so the
 same seed always gives the same program, and a failure found at 3 a.m.
 can be made again at 9. The second is harder: the programs must be
 **valid**, with exactly one right behaviour. A program that reads
-uninitialized memory in C may legitimately do different things under two
+uninitialised memory in C may legitimately do different things under two
 correct compilers, so a disagreement on it proves nothing. Csmith, the
 best-known C program generator, finds compiler bugs with differential
 testing as its oracle, and its authors note that generating programs
 free of undefined behaviour is "not trivial"<Cite id="csmith" /><Cite id="yang2011" />.
 YARPGen, a later generator, avoids undefined behaviour without dynamic
 checks and uses **generation policies** to steer its programs towards
-the optimizations it wants to stress; its authors found more than 220
+the optimisations it wants to stress; its authors found more than 220
 bugs in GCC, LLVM and the Intel C++ compiler<Cite id="livinskii2020" />.
 
 <FuzzLoop client:visible />
@@ -111,7 +111,7 @@ transformed, 174 may go out of bounds,
 </Examples>
 
 The first is the toy fuzzer below: random expression trees, an
-"optimizer" with algebraic rules, and the slow evaluator as the oracle.
+"optimiser" with algebraic rules, and the slow evaluator as the oracle.
 The second is the Drip companion's fuzzer, `test/fuzz.mjs`, which
 mangles corpus programs and checks that the two front ends reject them
 in exactly the same words; 2,000 mangled programs gave 0 disagreements
@@ -182,7 +182,7 @@ validation** turns the question round: instead of proving the compiler
 correct for every program, check, each time it runs, that the program it
 produced is equivalent to the one it was given. Necula built such a
 checker for the GNU C compiler, comparing the program before and after
-the optimizer, and reported that it took about the effort of writing one
+the optimiser, and reported that it took about the effort of writing one
 compiler pass, with the compiler supplying hints that make the check
 possible<Cite id="necula2000" />. Viscosity has none; its differential
 tests are the sampled version of the same question.

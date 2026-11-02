@@ -103,9 +103,9 @@ The first is the easy case: a declared function, called by name. The
 second shows two ways the callee becomes a value: chosen at run time,
 or handed to another function (a callback), which calls it from code
 the caller never sees. The third is a method call, whose target depends
-on the object's prototype chain. An optimizing JIT copes by *watching*:
+on the object's prototype chain. An optimising JIT copes by *watching*:
 type feedback tells it which function a call site has actually called
-so far, so it can inline that one, guarded by a check, and deoptimize
+so far, so it can inline that one, guarded by a check, and deoptimise
 if the guess is ever wrong. A tool that compiles ahead of time, like
 Viscosity, has to *prove* it instead.
 
@@ -163,7 +163,7 @@ With the map drawn, an inliner needs rules. The common ones:
 
 And the order matters. Inliners work **bottom-up**, leaves first: inline
 `clamp` into `move` before deciding about `move`, so that every function
-is already as optimized as it will get when its callers look at it.
+is already as optimised as it will get when its callers look at it.
 Step through it with a toy budget:
 
 <BottomUpSteps client:visible />
@@ -181,7 +181,7 @@ separately:
 <Callout kind="engine" label="Under the hood">
 GCC's inliner, `ipa-inline.cc`, describes exactly these heuristics: an
 early pass that runs over the call graph in topological order, so that
-callees have already been optimized when they are inlined, and allows
+callees have already been optimised when they are inlined, and allows
 small growth for leaf functions; then a whole-program pass that inlines
 small functions greedily, ordered by an estimate of "badness", while
 the limits allow, uses a special recursive inliner for recursive calls
@@ -207,6 +207,6 @@ use<Cite id="v8-retiring-octane" />.
   and guards the guess, while Viscosity proves a small exact part (known
   functions and all their call sites).
 - Inliners use budgets, prefer small, once-called and hot callees, never
-  chase cycles, and work bottom-up so callees are optimized first.
+  chase cycles, and work bottom-up so callees are optimised first.
 
 <Quiz />

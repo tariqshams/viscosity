@@ -324,7 +324,7 @@ export const quiz = [
       { t: 'From TypeScript annotations', why: 'Types are erased before the engine ever sees the code.' },
       { t: 'By asking the programmer', why: 'Neither asks; both deduce.' },
       { t: 'It doesn’t: V8 treats every field as untyped', why: 'V8 tracks field representations and shapes, as Part V showed.' },
-      { t: 'By watching type feedback and speculating, with deoptimization as a way back; Viscosity has no way back, so it must prove', correct: true, why: 'A guess is fine if you can undo it. Ahead-of-time output must be right on every run.' },
+      { t: 'By watching type feedback and speculating, with deoptimisation as a way back; Viscosity has no way back, so it must prove', correct: true, why: 'A guess is fine if you can undo it. Ahead-of-time output must be right on every run.' },
     ],
   },
 ];

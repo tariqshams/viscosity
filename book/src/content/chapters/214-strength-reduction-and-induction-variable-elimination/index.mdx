@@ -60,7 +60,7 @@ we will see; with whole numbers they do not.</span>
 
 ## Turning the multiply into an add
 
-The last chapter's induction variables come in **families**: a derived
+The induction variables of two chapters ago come in **families**: a derived
 variable `j = c × i + d` belongs to the family of the basic variable
 `i`, with multiplier `c` and offset `d`, where `c` and `d` do not change
 in the loop. Since `i` steps by `s`, `j` steps by `c × s`; so we can
@@ -143,7 +143,8 @@ a;         // 0.9999999999999999
 
 Ten additions of `0.1` round ten times, and the small errors pile up;
 the multiply rounds once. With whole numbers there is nothing to round
-(a float64, chapter 57, holds every whole number up to 2⁵³ exactly), so
+(a float64 holds every whole number up to 2⁵³ exactly, as the chapter on
+floats and typed arrays showed), so
 compilers reduce integer induction variables, and leave floating-point
 ones alone unless you have allowed them to change your answers.
 

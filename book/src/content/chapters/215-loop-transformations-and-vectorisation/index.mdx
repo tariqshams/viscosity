@@ -123,7 +123,7 @@ general form: the main loop runs while a whole group of four still
 fits (`i + 4 <= n`), and the second loop picks up whatever is left, from
 zero to three elements; forgetting it is the classic mistake, and with
 `n = 10` it silently leaves out `a[8]` and `a[9]`. The third is what
-the LLVM vectorizer's documentation describes for exactly this kind of
+the LLVM vectoriser's documentation describes for exactly this kind of
 sum: two (or more) separate running totals, so that the processor can
 work on both additions at once instead of each waiting for the last
 one<Cite id="llvm-vectorizers" />. For whole numbers that is exact; for

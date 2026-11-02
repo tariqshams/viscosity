@@ -6,12 +6,12 @@ export const prompts = {
     a: 'Whether two references must, may, or can never refer to the same object.',
   },
   'must-may-no': {
-    q: 'Which alias answers can an optimizer act on?',
+    q: 'Which alias answers can an optimiser act on?',
     a: '“Must” and “no”. “May” means both possibilities have to be kept.',
   },
   'wrong-no': {
     q: 'What happens if an alias analysis wrongly says “no alias”, and what if it wrongly says “may alias”?',
-    a: 'A wrong “no” lets the compiler change what the program computes; a wrong “may” only costs an optimization (speed).',
+    a: 'A wrong “no” lets the compiler change what the program computes; a wrong “may” only costs an optimisation (speed).',
   },
   'tbaa-what': {
     q: 'What does type-based alias analysis use to answer “no alias”?',
@@ -233,7 +233,7 @@ export const quiz = [
     options: [
       { t: '“No”, because most pairs do not alias', why: 'A wrong “no” lets the compiler break the program. Guessing is not allowed in that direction.' },
       { t: '“Must”, to be on the safe side', why: '“Must” is a strong claim too: acting on it (say, reusing a value read through `p` for `q`) would be wrong if they differ.' },
-      { t: '“May”', correct: true, why: '“May” keeps both possibilities, so the compiler stays correct; it only gives up an optimization.' },
+      { t: '“May”', correct: true, why: '“May” keeps both possibilities, so the compiler stays correct; it only gives up an optimisation.' },
     ],
   },
   {
@@ -259,7 +259,7 @@ export const quiz = [
     options: [
       { t: 'Nothing: alias answers only affect speed', why: 'They affect correctness. A wrong “no” licenses a change that breaks the program.' },
       { t: 'The program would print a different answer: the 7 written through `keep[0]` would go to a copy, not to `ps`’s column', correct: true, why: 'That is the last step of the diagram. Alias analysis must be sound.' },
-      { t: 'V8 would detect the alias and deoptimize', why: 'V8 runs the code Viscosity emitted. The rewritten program is simply a different program.' },
+      { t: 'V8 would detect the alias and deoptimise', why: 'V8 runs the code Viscosity emitted. The rewritten program is simply a different program.' },
     ],
   },
 ];

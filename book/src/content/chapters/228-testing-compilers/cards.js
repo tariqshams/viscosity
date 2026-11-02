@@ -19,7 +19,7 @@ export const prompts = {
   },
   'dt-header': {
     q: 'Why does each corpus file also state the layout Viscosity should choose?',
-    a: 'A compiler that never transforms anything passes every behaviour check; the header catches a lost optimization.',
+    a: 'A compiler that never transforms anything passes every behaviour check; the header catches a lost optimisation.',
   },
   'meta-what': {
     q: 'What does a metamorphic test change, and what does it check?',
@@ -214,7 +214,7 @@ export const quiz = [
   {
     q: 'A change makes Viscosity keep every collection as an array of objects. Which tests fail?',
     options: [
-      { t: 'The header checks, because the decisions no longer match', correct: true, why: 'Behaviour is unchanged, so only the expected decisions reveal the lost optimization.' },
+      { t: 'The header checks, because the decisions no longer match', correct: true, why: 'Behaviour is unchanged, so only the expected decisions reveal the lost optimisation.' },
       { t: 'The behaviour comparisons', why: 'Leaving code alone never changes behaviour.' },
       { t: 'The round-trip identity test', why: 'A program with nothing to transform still comes back unchanged.' },
       { t: 'None', why: 'That is why the corpus pins down decisions as well as behaviour.' },

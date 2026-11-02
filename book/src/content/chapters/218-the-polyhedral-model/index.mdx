@@ -85,7 +85,7 @@ a[i * i];   a[idx[i]];  // not affine
 </Examples>
 
 The first line is all affine: the identity, the "every other element"
-access from chapter 213, and a neighbour one step back. The second is
+access from the strength reduction chapter, and a neighbour one step back. The second is
 the `heat` benchmark's flattened grid: with the width a known constant,
 `512 · y + x` is affine in `(y, x)`, but if the width is a value `n`
 the program reads at run time, `y * n` multiplies a counter by an
@@ -202,7 +202,7 @@ In polyhedral terms, Viscosity's bounds proof is a one-dimensional
 question: the loop's domain is `0 ≤ i < ps.length` (from the counting
 phi and the header test), the access is the identity map, and "in
 bounds" means the access maps the whole domain inside the array. It
-answers that question with the pattern match you saw two chapters ago,
+answers that question with the pattern match from the induction variable chapter,
 not with inequalities. Reasoning with the inequalities would also prove
 `ps[i - 1]` when `i` starts at 1 (from `1 ≤ i` it follows that
 `0 ≤ i - 1`), at the price of a bigger and slower analysis.

@@ -11,8 +11,8 @@ type S = { v: View; note: string };
 
 const STATES: S[] = [
   { v: 'list', note: 'As a list (three-address code in blocks), y = x * c sits in the entry block, before the branch, because that is where the source wrote it. Yet only the else path uses y.' },
-  { v: 'data', note: 'As a sea of nodes, each instruction is a node of its own. Blue arrows are data edges: they show which value feeds which. x * c needs x and c; return y needs the product; the if needs b.' },
-  { v: 'control', note: 'Orange arrows are control edges. They order the nodes that must happen in order: start, then the if, then one of its two arms, then that arm’s return.' },
+  { v: 'data', note: 'As a sea of nodes, each instruction is a node of its own. Orange arrows are data edges: they show which value feeds which. x * c needs x and c; return y needs the product; the if needs b.' },
+  { v: 'control', note: 'Blue arrows are control edges. They order the nodes that must happen in order: start, then the if, then one of its two arms, then that arm’s return.' },
   { v: 'float', note: 'x * c has data edges but no control edge. Nothing ties it to a block: it floats. Only its inputs and its users limit where it may go.' },
   { v: 'early', note: 'Schedule early: the first place it could run is the first block where all its inputs exist. x and c are parameters, available from the start, so early is the entry block.' },
   { v: 'late', note: 'Schedule late: the last place it could run is the nearest block that dominates all its uses. Its only use is return y, in the else arm, so late is the else block.' },

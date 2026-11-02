@@ -14,7 +14,7 @@ const STATES: S[] = [
   { size: { main: 5, step: 10, move: 6, clamp: 4 }, hot: 'clamp', inlined: [], kept: [], note: 'clamp calls nothing. It is finished as it is: size 4.' },
   { size: { main: 5, step: 10, move: 9, clamp: 4 }, hot: 'move', inlined: ['move>clamp'], kept: [], note: 'move calls clamp, size 4 ≤ 8: inline it. move grows to 6 + 4 − 1 = 9 (the body comes in, the call goes away).' },
   { size: { main: 5, step: 13, move: 9, clamp: 4 }, hot: 'step', inlined: ['move>clamp', 'step>clamp'], kept: ['step>move'], note: 'step calls move, which is now 9: over budget, so that call stays. It also calls clamp, size 4: inline it. step is now 13.' },
-  { size: { main: 5, step: 13, move: 9, clamp: 4 }, hot: 'main', inlined: ['move>clamp', 'step>clamp'], kept: ['step>move', 'main>step'], note: 'main calls step, size 13: keep the call. Had we gone top-down, main would have inlined the small, unoptimized step first and copied its calls along with it.' },
+  { size: { main: 5, step: 13, move: 9, clamp: 4 }, hot: 'main', inlined: ['move>clamp', 'step>clamp'], kept: ['step>move', 'main>step'], note: 'main calls step, size 13: keep the call. Had we gone top-down, main would have judged step by its old size, 10, before step had taken in clamp; a top-down inliner decides with sizes that are about to change.' },
   { size: { main: 5, step: 13, move: 9, clamp: 4 }, hot: null, inlined: ['move>clamp', 'step>clamp'], kept: ['step>move', 'main>step'], note: 'Done. clamp is now called from nowhere, so its original can be deleted. A recursive pair like even and odd would be a cycle, with no leaf to start from; inliners treat it separately, inlining at most a few levels.' },
 ];
 

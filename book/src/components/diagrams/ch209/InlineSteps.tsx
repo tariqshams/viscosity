@@ -39,7 +39,7 @@ const STATES: S[] = [
   {
     caller: ['const r = 11;', 'console.log(r);'],
     hl: [0], calleeHl: [], map: 's = 2 · s1 = 10 · r = 11',
-    note: 'The payoff: now the optimizer can see through the call. Constant propagation finds s1 = 10 and r = 11, and DCE deletes s and s1, which nobody needs any more.',
+    note: 'The payoff: now the optimiser can see through the call. Constant propagation finds s1 = 10 and r = 11, and DCE deletes s and s1, which nobody needs any more.',
   },
 ];
 

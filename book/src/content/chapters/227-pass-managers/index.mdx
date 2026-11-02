@@ -3,7 +3,7 @@ n: 227
 day: 57
 part: VI
 title: 'Pass managers'
-tagline: 'A real optimizer is dozens of small passes, each wanting the same dominator trees and def-use lists; a pass manager runs them in order, computes each analysis once, and throws it away the moment a change makes it wrong.'
+tagline: 'A real optimiser is dozens of small passes, each wanting the same dominator trees and def-use lists; a pass manager runs them in order, computes each analysis once, and throws it away the moment a change makes it wrong.'
 objectives:
   - Tell analysis passes from transformation passes, and explain why the order of passes changes the result.
   - Explain how a pass manager caches analyses, and why a transformation must report what it preserved.
@@ -18,7 +18,7 @@ import ViscosityPipeline from '../../../components/diagrams/ch227/ViscosityPipel
 
 ## Many passes, one program
 
-Every optimization in this part needs something worked out first:
+Every optimisation in this part needs something worked out first:
 constant propagation wants def-use lists, dead code elimination wants
 liveness, loop-invariant code motion wants dominators and loops. Put a
 dozen of them in a row and two problems appear at once. If each one
@@ -255,7 +255,7 @@ because nothing changes the IR, with its order written by hand.
 
 ## What you learned
 
-- A **compiler pass** is one analysis or transformation; optimizers are
+- A **compiler pass** is one analysis or transformation; optimisers are
   many small ones, and their **order** changes the result.
 - A **pass manager** runs passes and caches the analyses they ask for,
   computing each at most once while it stays valid.

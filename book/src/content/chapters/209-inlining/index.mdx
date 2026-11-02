@@ -143,7 +143,7 @@ jumped to from the first half; each `return v` becomes a jump to the
 second half; and the call's result becomes a phi of the returned
 values, one per return:
 
-<Figure takeaway="Split at the call, copy the body, join the returns with a phi." caption="Left: block b4 calls abs. Right: b4 is cut at the call; abs's three blocks are copied in with new names (c0, c1, c2); each return jumps to the second half, b4', where a phi picks whichever value was returned.">
+<Figure takeaway="Split at the call, copy the body, join the returns with a phi." caption="Left: block b4 calls abs. Right: b4 is cut at the call; abs's three blocks are copied in with new names (c0′, c1′, c2′); each return jumps to the second half, b4', where a phi picks whichever value was returned.">
   <InlineCfg />
 </Figure>
 
@@ -187,7 +187,7 @@ an inlined function often computes things this caller never uses, and
 DCE now sees that they are unused here. Value numbering gains too, since
 a value computed in the caller and again in the callee is now in one
 function. The third is the chapter's opening example, where what
-inlining unlocks is an analysis rather than an optimization.
+inlining unlocks is an analysis rather than an optimisation.
 
 The price is size: every inlined call copies the whole body, so
 inlining a 50-line function at 20 call sites compiles 1,000 lines, and
@@ -198,17 +198,17 @@ it.
 <Prompts ids={['inline-enables', 'inline-then-fold']} />
 
 <Callout kind="engine" label="Under the hood">
-V8's optimizing compiler inlines. Its release notes for V8 6.1 say
+V8's optimising compiler inlines. Its release notes for V8 6.1 say
 TurboFan began inlining `Array.prototype.forEach`<Cite id="v8-release-61" />,
 and when V8's team rewrote `Array.prototype.sort`, they noted that the
-old version, written in JavaScript, had let the optimizing compiler
+old version, written in JavaScript, had let the optimising compiler
 inline the comparison function you passed in<Cite id="v8-array-sort" />.
 This book's own benchmark findings show the effect: in the
 `get-objects` case, which hands each SoA element to a small function
 that wants an object, SoA did not lose, because V8 inlined the function
 and then removed the temporary object altogether. Textbooks list
 inlining among the transformations whose value lies mostly in the
-optimizations it enables afterwards<Cite id="coopertorczon2022" />.
+optimisations it enables afterwards<Cite id="coopertorczon2022" />.
 
 Viscosity itself does **not** inline: it is a source-to-source tool,
 and pasting function bodies all over your program would rewrite far

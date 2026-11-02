@@ -135,7 +135,7 @@ true (the hook-shaped sign, "not") that they may.</span>
 </Formal>
 
 Here is the asymmetry that shapes this part of the book.
-A wrong "may" (when the truth is "no") only skips an optimization. A
+A wrong "may" (when the truth is "no") only skips an optimisation. A
 wrong "no" makes `f` return `1` when the program should return `2`: a
 wrong answer, the one thing a compiler must never give. So a **sound** alias analysis (one that
 is never wrong in the dangerous direction) says "may" whenever it is
@@ -170,7 +170,7 @@ two objects, or the same one twice; a TypeScript annotation like
 by design (chapter 133), so a compiler that trusted it could be lied to.
 Closures, callbacks and `o[k]` (any property at all) add more ways for
 an arrow to travel unseen. A JIT copes by checking its guesses at run time and
-deoptimizing when one fails; a tool that compiles ahead of time, like
+deoptimising when one fails; a tool that compiles ahead of time, like
 Viscosity, has no such safety net, so it has to prove its answers.
 
 <Prompts ids={['tbaa-what', 'js-no-tbaa']} />

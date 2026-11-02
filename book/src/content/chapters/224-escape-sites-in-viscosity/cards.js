@@ -31,7 +31,7 @@ export const prompts = {
   },
   'ea-v8': {
     q: 'Why can V8 remove a temporary element object that Viscosity must keep as a real object?',
-    a: 'V8 inlines the callee first and can deoptimize if a guess fails; Viscosity does neither, so it must prove safety on the code as written.',
+    a: 'V8 inlines the callee first and can deoptimise if a guess fails; Viscosity does neither, so it must prove safety on the code as written.',
   },
 };
 
@@ -293,7 +293,7 @@ export const quiz = [
   {
     q: 'Viscosity is stricter than V8: `move(ps[i])` keeps the array of objects. Why can’t it do what V8 does?',
     options: [
-      { t: 'It runs ahead of time, doesn’t inline, and can’t deoptimize, so it must prove safety on the code as written', correct: true, why: 'V8 can speculate and back out. A source-to-source compiler’s output must be right for every run.' },
+      { t: 'It runs ahead of time, doesn’t inline, and can’t deoptimise, so it must prove safety on the code as written', correct: true, why: 'V8 can speculate and back out. A source-to-source compiler’s output must be right for every run.' },
       { t: 'JavaScript forbids it', why: 'Nothing in the language forbids it; it is a question of proof.' },
       { t: 'V8 doesn’t do escape analysis', why: 'It does: that is how the temporary object in `get-objects` disappeared.' },
       { t: 'SoA columns can’t be passed to functions', why: '`step(ps)` shows the collection itself can be followed into a function.' },

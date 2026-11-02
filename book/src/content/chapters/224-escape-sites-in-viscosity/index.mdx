@@ -212,12 +212,12 @@ console.log(ps[3].x);`} />
 
 <Callout kind="engine" label="Under the hood">
 V8 and Viscosity ask the same question at different times. V8 compiles
-optimized code while the program runs, specialised for what it has
-seen, and can deoptimize if a guess turns out wrong<Cite id="v8-maglev" />.
+optimised code while the program runs, specialised for what it has
+seen, and can deoptimise if a guess turns out wrong<Cite id="v8-maglev" />.
 In chapter 176's `get-objects` benchmark, it inlined `consume(p)`,
 after which `p` was used only by field reads, and the temporary object
 was removed. Viscosity runs before the program does, has no
-deoptimization to fall back on, and does not inline, so it must prove
+deoptimisation to fall back on, and does not inline, so it must prove
 safety on the code as written, which makes it stricter than V8:
 `move(ps[i])` keeps the array of objects.
 </Callout>
@@ -242,7 +242,7 @@ The first exercise is the core one; the second is extra practice.
   being *stored* escapes.
 - A known function whose every call passes the same collection is
   followed into, not counted as an escape.
-- V8 can escape less because it inlines and can deoptimize; Viscosity
+- V8 can escape less because it inlines and can deoptimise; Viscosity
   proves safety ahead of time, so it is more conservative.
 
 <Quiz />

@@ -263,7 +263,7 @@ export const quiz = [
     q: 'What is the main reason compilers inline small functions?',
     options: [
       { t: 'Calls are very slow on modern hardware', why: 'A call costs a few instructions; that is rarely the main gain.' },
-      { t: 'Other optimizations can then work across the old call boundary', correct: true, why: 'Constants meet operations, dead results become visible, and analyses see every use.' },
+      { t: 'Other optimisations can then work across the old call boundary', correct: true, why: 'Constants meet operations, dead results become visible, and analyses see every use.' },
       { t: 'It makes the program smaller', why: 'It usually makes it bigger, which is its main cost.' },
     ],
   },

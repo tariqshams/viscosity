@@ -315,7 +315,7 @@ export const quiz = [
     options: [
       { t: 'It cannot represent loops', why: 'It can; the post’s complaint is that loops are hard to find in it, not impossible.' },
       { t: 'It was invented for Java and is illegal to use elsewhere', why: 'Nothing like that is said.' },
-      { t: 'Graph IRs cannot be optimized', why: 'TurboFan optimized code with one for a decade.' },
+      { t: 'Graph IRs cannot be optimised', why: 'TurboFan optimised code with one for a decade.' },
       { t: 'In JavaScript most nodes end up on the effect or control chain anyway, so little floats, while the graphs are harder to read and slower to compile', correct: true, why: 'Their summary: too complex, too limited, too slow; compile time halved with the CFG IR.' },
     ],
   },

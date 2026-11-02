@@ -16,7 +16,7 @@ const B_BAD = { out: ['4950', '7', '0'], err: 'null' };
 const STATES: S[] = [
   { hi: 'src', shown: 0, bad: false, note: 'One corpus file, out_of_bounds.js. Its first line is a header saying what Viscosity should decide: // viscosity: ps=soa. Its last line reads ps[100].a, one past the end.' },
   { hi: 'compile', shown: 1, bad: false, note: 'Compile it. Viscosity produces new source, plus a plan: one layout per collection.' },
-  { hi: 'header', shown: 2, bad: false, note: 'First check: the plan must match the header. ps should be soa, and it is. This catches a compiler that quietly stops optimizing, which behaviour checks alone never would.' },
+  { hi: 'header', shown: 2, bad: false, note: 'First check: the plan must match the header. ps should be soa, and it is. This catches a compiler that quietly stops optimising, which behaviour checks alone never would.' },
   { hi: 'runA', shown: 3, bad: false, note: 'Run the original in a fresh, isolated VM context, recording every console.log line and the uncaught error, if any. It prints 4950 and 7, then throws a TypeError at ps[100].a.' },
   { hi: 'runB', shown: 4, bad: false, note: 'Run the compiled code in another fresh context. Its bounds check throws the same TypeError, with the same message.' },
   { hi: 'cmp', shown: 5, bad: false, note: 'Compare the two outcomes as a whole: output lines and error. Equal: pass. Nobody wrote down the expected output; the original program is the oracle.' },
