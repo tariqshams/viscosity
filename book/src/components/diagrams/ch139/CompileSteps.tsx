@@ -1,30 +1,31 @@
 // Chapter 139: the single-pass compiler on  print 1 + 2 * 3 - 4;
 // The Pratt parser's calls are shown as a stack of frames, and the
-// instructions appear the moment the compiler emits them. The output is
-// the real disassembly from companion/ts/src/vm/compiler.ts.
+// instructions appear the moment the compiler emits them. The calls are
+// those of companion/ts/src/vm/compiler.ts (parsePrecedence,
+// continueExpression's loop, infix); the output is its real disassembly.
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
 const TOKENS = ['1', '+', '2', '*', '3', '-', '4', ';'];
-const EMIT = ['CONSTANT 0 (1)', 'CONSTANT 1 (2)', 'CONSTANT 2 (3)', 'MULTIPLY', 'ADD', 'CONSTANT 3 (4)', 'SUBTRACT', 'PRINT'];
+const EMIT = ["const 0 '1'", "const 1 '2'", "const 2 '3'", 'mul', 'add', "const 3 '4'", 'sub', 'print'];
 const F0 = 'parsePrecedence(ASSIGNMENT)';
-const fr = (op: string, p: string) => `binary ${op}: parsePrecedence(${p})`;
+const fr = (op: string, p: string) => `infix ${op}: parsePrecedence(${p})`;
 
 type S = { prev: number; cur: number; frames: string[]; emitted: number; note: string };
 
 const STATES: S[] = [
-  { prev: -1, cur: 0, frames: [F0], emitted: 0, note: 'The print statement has consumed print and calls expression(), which is parsePrecedence(ASSIGNMENT): “compile any expression at least this tight”, which means any expression at all.' },
-  { prev: 0, cur: 1, frames: [F0], emitted: 1, note: 'advance() makes 1 the previous token. Its prefix rule is number(), which emits CONSTANT straight away. No node is built: the bytes are the only record.' },
-  { prev: 1, cur: 2, frames: [F0, fr('+', 'FACTOR')], emitted: 1, note: 'The current token, +, is TERM: tight enough, so the loop takes it and calls its infix rule, binary(). binary remembers the + and compiles the right operand one level tighter, at FACTOR. Nothing is emitted for + yet.' },
-  { prev: 2, cur: 3, frames: [F0, fr('+', 'FACTOR')], emitted: 2, note: '2 is a number: emit CONSTANT 1.' },
-  { prev: 3, cur: 4, frames: [F0, fr('+', 'FACTOR'), fr('*', 'UNARY')], emitted: 2, note: '* is FACTOR, which is at least FACTOR, so the inner loop takes it. Another binary() call, now asking for UNARY or tighter.' },
-  { prev: 4, cur: 5, frames: [F0, fr('+', 'FACTOR'), fr('*', 'UNARY')], emitted: 3, note: '3: emit CONSTANT 2. Three constants are out, and both operators are still waiting on the call stack.' },
-  { prev: 4, cur: 5, frames: [F0, fr('+', 'FACTOR')], emitted: 4, note: 'The current token, -, is only TERM: weaker than UNARY, so that loop stops. Control returns into binary for *, which now emits MULTIPLY: its operands are already in the code.' },
-  { prev: 4, cur: 5, frames: [F0], emitted: 5, note: '- is weaker than FACTOR too, so binary for + gets control back and emits ADD. The operator written first is emitted after the tighter one, exactly the order the VM needs.' },
-  { prev: 5, cur: 6, frames: [F0, fr('-', 'FACTOR')], emitted: 5, note: 'Back in the outermost loop, - is tighter than ASSIGNMENT, so it is taken: binary for -, right operand at FACTOR.' },
-  { prev: 6, cur: 7, frames: [F0, fr('-', 'FACTOR')], emitted: 6, note: '4: emit CONSTANT 3.' },
-  { prev: 6, cur: 7, frames: [F0], emitted: 7, note: '; has no infix rule, so its precedence is NONE, weaker than everything. The loop stops and binary for - emits SUBTRACT.' },
-  { prev: 7, cur: 8, frames: [], emitted: 8, note: 'The outer loop stops at ; as well. The print statement consumes it and emits PRINT. One pass over the tokens, and the code is finished: the same bytes as the disassembly in the text.' },
+  { prev: -1, cur: 0, frames: [F0], emitted: 0, note: 'The print statement has consumed print and calls expression(), which is parsePrecedence(ASSIGNMENT): “compile an expression whose operators are at least this tight”, which means any expression at all.' },
+  { prev: 0, cur: 1, frames: [F0], emitted: 1, note: 'advance() makes 1 the previous token. Its prefix rule emits const at once, with the 1 put in the pool as constant 0. No node is built: the bytes are the only record.' },
+  { prev: 1, cur: 2, frames: [F0, fr('+', 'FACTOR')], emitted: 1, note: 'continueExpression’s loop looks at the current token, +. It is TERM, tight enough, so the loop takes it and calls infix. infix compiles the right operand one level tighter (TERM + 1 is FACTOR). Nothing is emitted for + yet.' },
+  { prev: 2, cur: 3, frames: [F0, fr('+', 'FACTOR')], emitted: 2, note: '2 is a number: emit const 1.' },
+  { prev: 3, cur: 4, frames: [F0, fr('+', 'FACTOR'), fr('*', 'UNARY')], emitted: 2, note: '* is FACTOR, which is at least FACTOR, so the inner loop takes it. Another infix call, now asking for UNARY or tighter.' },
+  { prev: 4, cur: 5, frames: [F0, fr('+', 'FACTOR'), fr('*', 'UNARY')], emitted: 3, note: '3: emit const 2. Three constants are out, and both operators are still waiting, on the compiler’s own call stack.' },
+  { prev: 4, cur: 5, frames: [F0, fr('+', 'FACTOR')], emitted: 4, note: 'The current token, -, is only TERM: weaker than UNARY, so that loop stops. Control returns into infix for *, which now emits mul: its operands are already in the code.' },
+  { prev: 4, cur: 5, frames: [F0], emitted: 5, note: '- is weaker than FACTOR too, so infix for + gets control back and emits add. The operator written first is emitted after the tighter one: exactly the order the VM needs.' },
+  { prev: 5, cur: 6, frames: [F0, fr('-', 'FACTOR')], emitted: 5, note: 'Back in the outermost loop, - is at least ASSIGNMENT, so it is taken: infix for -, right operand at FACTOR.' },
+  { prev: 6, cur: 7, frames: [F0, fr('-', 'FACTOR')], emitted: 6, note: '4: emit const 3.' },
+  { prev: 6, cur: 7, frames: [F0], emitted: 7, note: '; is not an operator, so its precedence counts as NONE, weaker than everything. The loop stops and infix for - emits sub.' },
+  { prev: 7, cur: 8, frames: [], emitted: 8, note: 'The outer loop stops at ; as well. The print statement consumes it and emits print. One pass over the tokens, and the code is finished: the same bytes as the real disassembly.' },
 ];
 
 export default function CompileSteps() {
@@ -33,9 +34,9 @@ export default function CompileSteps() {
   const tw = 40;
   return (
     <StepFrame title="Compiling print 1 + 2 * 3 - 4;" steps={s} note={st.note}>
-      <Svg w={400} h={318} title="The single-pass compiler reads 1 + 2 * 3 - 4 one token at a time. Calls to parsePrecedence and binary pile up on a stack, and it emits CONSTANT 1, CONSTANT 2, CONSTANT 3, MULTIPLY, ADD, CONSTANT 4, SUBTRACT, PRINT.">
+      <Svg w={400} h={318} title="The single-pass compiler reads 1 + 2 * 3 - 4 one token at a time. Calls to parsePrecedence and infix pile up on a stack, and it emits const 1, const 2, const 3, mul, add, const 4, sub, print.">
         <T x={8} y={10} size={11} weight={700} fill={tok('muted')}>tokens</T>
-        <T x={392} y={10} size={10} anchor="end" fill={tok('muted')}>solid: previous · dashed: current</T>
+        <T x={392} y={10} size={11} anchor="end" fill={tok('muted')}>solid: previous · dashed: current</T>
         {TOKENS.map((t, k) => {
           const prev = k === st.prev;
           const cur = k === st.cur;

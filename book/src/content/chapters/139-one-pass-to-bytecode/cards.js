@@ -7,43 +7,31 @@ export const prompts = {
   },
   'two-tokens': {
     q: 'Which tokens does the compiler hold at any moment?',
-    a: 'Two: `previous` (just consumed) and `current` (the lookahead). The scanner makes each one on demand.',
+    a: 'Two: `previous` (just consumed) and `current` (the lookahead). The scanner makes each one when it is asked.',
   },
   'what-lost': {
-    q: 'What does a single-pass compiler give up compared with one that builds a tree first?',
-    a: 'It can only use what it has already read; it can’t look over the whole program before deciding what to emit.',
+    q: 'Name one thing a single-pass compiler gives up compared with one that builds a tree first.',
+    a: 'It can only use what it has read so far, so it cannot look over a whole expression first; for example, Drip’s does not fold `1 + 2` into `3`.',
   },
   'emit-what': {
     q: 'What does it mean to **emit** an instruction?',
-    a: 'To append its bytes to the end of the chunk being compiled.',
+    a: 'To append its bytes to the end of the chunk being compiled, each tagged with a source line.',
   },
-  'emit-line': {
-    q: 'Which source line does `emit` tag each byte with?',
-    a: 'The line of `previous`, the token most recently consumed.',
+  'emit-at-op': {
+    q: 'Why is the `add` for `2 +` (line 2) followed by `-"a"` (line 3) tagged with line 2?',
+    a: 'The binary-operator rule uses `emitAt(op.line, ...)`, the line of the `+` token, so an error in the addition points at the `+`.',
   },
   'emit-after': {
-    q: 'Why does `binary` emit its opcode *after* calling `parsePrecedence`?',
+    q: 'Why does the rule for a binary operator emit its opcode *after* calling `parsePrecedence`?',
     a: 'The right operand’s code must come first, so both values are on the stack when the operator runs.',
   },
-  'grouping-emits': {
-    q: 'What bytes does the `grouping` rule emit for `(...)` itself?',
-    a: 'None. Parentheses only change the order in which the inside is compiled.',
-  },
   'prec-plus-one': {
-    q: 'Why does `binary` compile its right operand at `getRule(op).prec + 1`?',
-    a: 'So an operator of the same precedence on the right is not absorbed, which makes operators group to the left.',
+    q: 'Why does the binary rule compile its right operand at `INFIX_PREC[op.type]! + 1`?',
+    a: 'So an operator of the same precedence on the right is not taken by the inner call, which makes operators group to the left.',
   },
-  'ge-two-ops': {
-    q: 'What does the compiler emit for `a >= b`?',
-    a: 'The operands, then `OP_LESS` and `OP_NOT`: “not (a < b)”.',
-  },
-  'nan-catch': {
-    q: 'What does Drip’s VM print for `print 0 / 0 >= 1;`, and why is that a problem?',
-    a: '`true`, because `NaN < 1` is false and `NOT` flips it. Every comparison with NaN should be false, and the tree-walker prints `false`.',
-  },
-  'expr-stmt-pop': {
-    q: 'Why does an expression statement like `1 + 2;` end with `OP_POP`?',
-    a: 'Its value is never used, so it is popped to keep the stack from growing.',
+  'ge-own-op': {
+    q: 'Why does Drip’s VM have a `ge` instruction rather than compiling `a >= b` as “not `a < b`”?',
+    a: 'With `NaN`, `NaN < 1` is false, so “not less” would be true, but `NaN >= 1` must be false.',
   },
 };
 
@@ -54,27 +42,30 @@ export const examples = {
     code: `print 1 + 2 * 3 - 4;
 print -(1 + 2) * 3;
 print !(2 >= 3);
+print 0 / 0 >= 1;
 print "a" + "b" == "ab";
 1 + 2; # compiled, then popped`,
   },
 };
 
-const head = `const OP = {
-  CONST: 0, ADD: 1, SUB: 2, MUL: 3,
-};
+const head = `// Drip's real opcode numbers
+const CONST = 0, ADD = 20;
+const SUB = 21, MUL = 22;
 const PREC = { '+': 1, '-': 1, '*': 2 };
 const OPCODE = {
-  '+': OP.ADD, '-': OP.SUB, '*': OP.MUL,
+  '+': ADD, '-': SUB, '*': MUL,
 };
 
 function compile(tokens) {
   const code = [];
   const consts = [];
   let i = 0;
-  const emit = (b) => code.push(...b);
+  const emit = (...bytes) =>
+    code.push(...bytes);
   function parse(min) {
     consts.push(tokens[i++]);
-    emit([OP.CONST, consts.length - 1]);
+    const k = consts.length - 1;
+    emit(CONST, k >> 8, k & 255);
     while (PREC[tokens[i]] >= min) {
       const op = tokens[i++];`;
 
@@ -88,13 +79,13 @@ export const exercises = {
   'mini-compile': {
     title: 'A single-pass compiler in miniature',
     prompt:
-      '`compile(tokens)` takes tokens like `[1, "+", 2, "*", 3]` and emits bytecode straight away, Pratt-style, with no tree. Numbers are done: each becomes `OP.CONST` plus its index in `consts`. Here `emit` takes an array of bytes. Finish the loop body: after taking an operator, compile its right operand, then emit the operator’s opcode. `*` binds tighter than `+` and `-`, and all three group to the left.',
+      '`compile(tokens)` takes tokens such as `[1, "+", 2, "*", 3]` and emits bytecode straight away, Pratt-style, with no tree, using Drip’s real opcode numbers. Numbers are done: each becomes `CONST` and its two-byte index in `consts`. Finish the loop body: after taking an operator, compile its right operand, then emit the operator’s opcode. `*` binds tighter than `+` and `-`, and all three group to the left.',
     starter: `${head}
       // right operand, then the opcode
 ${foot}`,
     solution: `${head}
       parse(PREC[op] + 1);
-      emit([OPCODE[op]]);
+      emit(OPCODE[op]);
 ${foot}`,
     tests: `function run({ code, consts }) {
   const st = [];
@@ -102,32 +93,33 @@ ${foot}`,
   while (ip < code.length) {
     const op = code[ip++];
     if (op === 0) {
-      st.push(consts[code[ip++]]);
+      st.push(consts[code[ip] * 256 + code[ip + 1]]);
+      ip += 2;
       continue;
     }
     const b = st.pop(), a = st.pop();
-    st.push(op === 1 ? a + b
-      : op === 2 ? a - b : a * b);
+    st.push(op === 20 ? a + b
+      : op === 21 ? a - b : a * b);
   }
   return st.pop();
 }
 test('a lone number', () => {
   const r = compile([5]);
-  expect(r.code).toEqual([0, 0]);
+  expect(r.code).toEqual([0, 0, 0]);
   expect(r.consts).toEqual([5]);
 });
 test('1 + 2 * 3: tighter operator first', () => {
   expect(compile([1, '+', 2, '*', 3]).code)
-    .toEqual([0, 0, 0, 1, 0, 2, 3, 1]);
+    .toEqual([0, 0, 0, 0, 0, 1, 0, 0, 2, 22, 20]);
 });
 test('2 * 3 + 1', () => {
   expect(compile([2, '*', 3, '+', 1]).code)
-    .toEqual([0, 0, 0, 1, 3, 0, 2, 1]);
+    .toEqual([0, 0, 0, 0, 0, 1, 22, 0, 0, 2, 20]);
 });
 test('8 - 3 - 1 groups to the left', () => {
   const r = compile([8, '-', 3, '-', 1]);
   expect(r.code)
-    .toEqual([0, 0, 0, 1, 2, 0, 2, 2]);
+    .toEqual([0, 0, 0, 0, 0, 1, 21, 0, 0, 2, 21]);
   expect(run(r)).toBe(4);
 });
 test('the bytes compute the answer', () => {
@@ -135,24 +127,29 @@ test('the bytes compute the answer', () => {
   expect(run(compile(t))).toBe(3);
 });`,
     hints: [
-      'The right operand of an operator is itself an expression: compile it with a recursive `parse` call.',
-      'Pass `PREC[op] + 1` so that an operator of the same strength on the right is left for this loop to take next. That gives left grouping.',
-      'Two lines: `parse(PREC[op] + 1);` then `emit([OPCODE[op]]);`.',
+      'The right operand of an operator is itself an expression, perhaps with tighter operators inside it. Which function already compiles an expression?',
+      'Compile it with a recursive `parse` call. Pass `PREC[op] + 1`, so that an operator of the same strength on the right is left for this loop to take next: that gives left grouping.',
+      'Two lines: `parse(PREC[op] + 1);` then `emit(OPCODE[op]);`.',
     ],
-    walkthrough: `The loop body is the same two lines as Drip’s \`binary\`:
+    walkthrough: `**How to think about it.** This is the chapter’s binary-operator rule in miniature. The loop has just taken an operator (\`+\`, say), and the left operand’s bytes are already in \`code\`. Two things are left: the bytes for the right operand, and the operator’s own byte. Emission order is execution order, so the right operand must come first, and the right operand is itself an expression, so compile it with \`parse\`. The only question is how much of what follows belongs to the right operand: everything tighter than this operator, and nothing as loose as it.
 
-\`\`\`js
-parse(PREC[op] + 1);
-emit([OPCODE[op]]);
-\`\`\`
+**The solution, line by line.**
 
-- **Operand, then opcode.** \`emit\` only appends, so whatever is emitted first runs first. Compiling the right operand before emitting the operator means both values are on the stack when the operator runs. That’s why \`1 + 2 * 3\` produces \`MUL\` before \`ADD\`, even though \`+\` was read first.
-- **\`+ 1\` for left grouping.** In \`8 - 3 - 1\`, the first \`-\` compiles its right operand with \`min\` = 2. The second \`-\` has precedence 1, so that inner call stops after \`3\`, and the outer loop takes the second \`-\`: \`(8 - 3) - 1 = 4\`. Passing \`PREC[op]\` instead would let the inner call grab it, giving \`8 - (3 - 1) = 6\`.
-- **No tree.** At no point is there an object for “the \`+\` node”. The call stack holds the half-finished operators for exactly as long as they’re needed, then they’re emitted and gone.`,
+- \`parse(PREC[op] + 1);\` compiles the right operand. The argument is the weakest operator the inner call may take: one more than our own precedence, so it takes \`*\` after a \`+\` (precedence 2 is at least 2) but leaves a second \`+\` or \`-\` (precedence 1 is less than 2) for our loop.
+- \`emit(OPCODE[op]);\` appends the operator’s opcode, now that both operands come earlier in \`code\`.
+
+**Following the tests.** For \`1 + 2 * 3\`: \`parse(1)\` emits \`CONST 0\` for 1, takes \`+\`, and calls \`parse(2)\`, which emits \`CONST 1\` for 2, takes \`*\` (2 is at least 2), and calls \`parse(3)\`, which emits \`CONST 2\` for 3 and stops (no operator). Back in \`parse(2)\`, \`MUL\` (22) is emitted; back in \`parse(1)\`, \`ADD\` (20). So \`MUL\` comes before \`ADD\`, although \`+\` was read first. For \`8 - 3 - 1\`: the first \`-\` calls \`parse(2)\`, which compiles only \`3\`, because the second \`-\` has precedence 1, less than 2; the outer loop then takes the second \`-\`, giving \`(8 - 3) - 1\`, which is 4.
+
+**Common wrong attempts.**
+
+- Emitting the opcode before calling \`parse\` puts \`ADD\` where only one value has been pushed, so the machine runs out of values.
+- Passing \`PREC[op]\` without \`+ 1\` lets the inner call take the next operator of the same strength, so \`8 - 3 - 1\` becomes \`8 - (3 - 1)\`, which is 6.
+
+There is no object for “the \`+\` node” anywhere: the half-finished operators wait on JavaScript’s call stack, as calls to \`parse\`, for exactly as long as they are needed, and then they are emitted and gone.`,
     wrong: [
       {
         code: `${head}
-      emit([OPCODE[op]]);
+      emit(OPCODE[op]);
       parse(PREC[op] + 1);
 ${foot}`,
         why: 'This emits the operator before its right operand, so the VM would reach `ADD` with only one value on the stack. Emit after compiling the operand.',
@@ -160,7 +157,7 @@ ${foot}`,
       {
         code: `${head}
       parse(PREC[op]);
-      emit([OPCODE[op]]);
+      emit(OPCODE[op]);
 ${foot}`,
         why: 'With `PREC[op]` the inner call also takes the next operator of the same strength, so `8 - 3 - 1` becomes `8 - (3 - 1)`. Use `PREC[op] + 1` for left grouping.',
       },
@@ -170,57 +167,48 @@ ${foot}`,
 
 export const quiz = [
   {
-    q: 'What does the compiler emit for `print 2 * 3 + 1;`, in order (ignoring the final NIL and RETURN)?',
+    q: 'What does the compiler emit for `print 2 * 3 + 1;`, in order (leaving out the final `none` and `return`)?',
     options: [
-      { t: 'CONSTANT 2, CONSTANT 3, MULTIPLY, CONSTANT 1, ADD, PRINT', correct: true, why: '`*` is compiled as the left operand of `+`, so its code comes first, and each opcode follows its operands.' },
-      { t: 'CONSTANT 2, CONSTANT 3, CONSTANT 1, ADD, MULTIPLY, PRINT', why: 'That computes `2 * (3 + 1)`. `*` is tighter, so it finishes before the `+` is read.' },
-      { t: 'MULTIPLY, ADD, CONSTANT 2, CONSTANT 3, CONSTANT 1, PRINT', why: 'Opcodes are emitted after their operands, never before.' },
-      { t: 'PRINT, CONSTANT 2, CONSTANT 3, MULTIPLY, CONSTANT 1, ADD', why: '`OP_PRINT` is emitted after the expression has been compiled.' },
+      { t: '`const 2`, `const 3`, `mul`, `const 1`, `add`, `print`', correct: true, why: '`*` is the left operand of `+`, so its code comes first, and each opcode follows its operands.' },
+      { t: '`const 2`, `const 3`, `const 1`, `add`, `mul`, `print`', why: 'That computes `2 * (3 + 1)`. `*` is tighter, so it is finished before the `+` is read.' },
+      { t: '`mul`, `add`, `const 2`, `const 3`, `const 1`, `print`', why: 'Opcodes are emitted after their operands, never before.' },
+      { t: '`print`, `const 2`, `const 3`, `mul`, `const 1`, `add`', why: '`print` is emitted after its expression has been compiled.' },
     ],
   },
   {
     q: 'What does “single-pass” mean for Drip’s bytecode compiler?',
     options: [
       { t: 'It can compile only one statement', why: 'It compiles whole programs; “pass” is about how many times it reads the source.' },
-      { t: 'Each instruction runs only once', why: 'That’s about running, not compiling. Loops will run instructions many times.' },
-      { t: 'It reads the source once and emits code as it parses, with no tree', correct: true, why: 'Parsing and code generation happen in the same read.' },
-      { t: 'It scans all tokens in one pass before parsing', why: 'It does the opposite: the scanner produces tokens one at a time, on demand.' },
+      { t: 'Each instruction runs only once', why: 'That is about running, not compiling. Loops run instructions many times.' },
+      { t: 'It scans all tokens in one go before parsing', why: 'It does the opposite: the scanner produces tokens one at a time, when asked.' },
+      { t: 'It reads the source once and emits code as it parses, with no tree', correct: true, why: 'Parsing and code generation happen in the same reading.' },
     ],
   },
   {
-    q: 'In `binary`, what goes wrong if you swap the two lines, emitting the opcode before calling `parsePrecedence`?',
+    q: 'In the binary-operator rule, what goes wrong if you swap the two lines, emitting the opcode before calling `parsePrecedence`?',
     options: [
       { t: 'Nothing: the VM reorders instructions', why: 'The VM runs bytes exactly in the order they were emitted.' },
+      { t: 'The operator runs before its right operand is on the stack', correct: true, why: 'Emission order is execution order, so the opcode must follow both operands.' },
       { t: 'Operators would group to the right', why: 'Grouping is decided by the precedence passed, not by when the opcode is emitted.' },
-      { t: 'The compiler would report a syntax error', why: 'Parsing is unchanged; only the bytes come out in the wrong order.' },
-      { t: 'The operator would run before its right operand is on the stack', correct: true, why: 'Emission order is execution order, so the opcode must follow both operands.' },
+      { t: 'The compiler reports a syntax error', why: 'Parsing is unchanged; only the bytes come out in the wrong order.' },
     ],
   },
   {
-    q: 'Which line does the compiler tag a byte with?',
+    q: '`print 1 +;` has a syntax error on line 1, and line 2 is `print 2;`. What happens?',
     options: [
-      { t: 'The line of `previous`, the token just consumed', correct: true, why: '`emit` passes `previous.line` to `chunk.write`.' },
-      { t: 'The line of `current`, the lookahead', why: 'The lookahead may already be on the next line. The byte belongs to what was just read.' },
-      { t: 'The line where the statement started', why: 'A statement can span several lines, and each byte gets the line it came from.' },
-      { t: 'Always line 1 for expressions', why: 'Chapter 137’s error on line 3 shows otherwise.' },
+      { t: '`2` is printed, then the error', why: 'With any compile error, no code runs at all.' },
+      { t: 'The error `line 1: expected an expression, found \';\'` is reported and nothing runs', correct: true, why: 'Bytes were already emitted for `print 1 +`, but the compiler throws the chunk away when there are errors.' },
+      { t: 'The VM stops with a runtime error when it reaches the `+`', why: 'The problem is found while compiling, before anything runs.' },
+      { t: 'The compiler silently skips the broken statement', why: 'It reports every error it finds, with the same wording as the tree-walker.' },
     ],
   },
   {
-    q: 'Why does `print 0 / 0 >= 1;` print `true` on Drip’s VM?',
+    q: 'Why does `print 0 / 0 >= 1;` print `false` on Drip’s VM?',
     options: [
-      { t: '`0 / 0` is a runtime error that the VM ignores', why: 'Dividing zero by zero gives `NaN`, a perfectly good number value, with no error.' },
-      { t: '`>=` compiles to LESS then NOT, and `NaN < 1` is false, so NOT makes it true', correct: true, why: 'Under IEEE 754 every comparison with NaN is false, so “not less” isn’t the same as “greater or equal”.' },
-      { t: 'The VM compares the values as strings', why: 'Both operands are numbers, and `OP_LESS` compares numbers.' },
-      { t: 'Precedence makes it `0 / (0 >= 1)`', why: '`/` is tighter than `>=`, so it’s `(0 / 0) >= 1`.' },
-    ],
-  },
-  {
-    q: 'Why is `1 + 2;` compiled with an `OP_POP` at the end?',
-    options: [
-      { t: 'To print the value', why: 'Only `print` prints. An expression statement’s value is thrown away.' },
-      { t: 'To undo the addition', why: 'The addition has happened; POP only discards its result.' },
-      { t: 'The value is never used, and leaving it would make the stack grow', correct: true, why: 'Every statement should leave the stack as it found it.' },
-      { t: 'POP marks the end of a statement for the disassembler', why: 'The disassembler doesn’t know about statements at all.' },
+      { t: '`0 / 0` is a runtime error that the VM ignores', why: 'Dividing zero by zero gives `NaN`, an ordinary number value, with no error.' },
+      { t: 'Precedence makes it `0 / (0 >= 1)`', why: '`/` is tighter than `>=`, so it is `(0 / 0) >= 1`.' },
+      { t: '`>=` has its own instruction, `ge`, and every `>=` with `NaN` is false', correct: true, why: 'If `>=` were compiled as “not `<`”, it would wrongly print `true`, because `NaN < 1` is false.' },
+      { t: 'The VM compares the values as strings', why: 'Both are numbers, and `ge` compares numbers.' },
     ],
   },
 ];
