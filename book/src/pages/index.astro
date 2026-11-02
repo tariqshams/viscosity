@@ -58,7 +58,7 @@ const written = entries.filter((e) => e.href);
             <span class="ml-auto shrink-0 text-xs text-muted">Days {p.days}</span>
           </div>
           {p.id === 'I' && <div class="text-xs font-semibold uppercase tracking-[0.06em] text-brand">Track A · TypeScript</div>}
-          {p.id === 'IX' && <div class="text-xs font-semibold uppercase tracking-[0.06em] text-brand">Track B · Rust</div>}
+          {p.id === PARTS.find((x) => x.track === 'B')?.id && <div class="text-xs font-semibold uppercase tracking-[0.06em] text-brand">Track B · Rust</div>}
           <p class="mt-1 text-[0.95rem] text-ink/80">{p.blurb}</p>
           <ul class="mt-2 list-none p-0 text-[0.95rem]">
             {entries.filter((e) => e.part === p.id && e.href).map((e) => (

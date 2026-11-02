@@ -1,0 +1,36 @@
+---
+// The same idea written in several languages, so a reader who learned to
+// program in Python, Java, C or anything else can map what they already
+// know onto JavaScript (or Rust). Each code block becomes one tab, named
+// after its language; without JavaScript the blocks are simply stacked.
+const { title } = Astro.props as { title?: string };
+---
+<section class="otherlangs" data-otherlangs>
+  <div class="otherlangs-label">{title ?? 'The same idea in other languages'}</div>
+  <div class="otherlangs-tabs" role="tablist" hidden></div>
+  <div class="otherlangs-body"><slot /></div>
+</section>
+<script>
+  const NAMES: Record<string, string> = { js: 'JavaScript', javascript: 'JavaScript', ts: 'TypeScript', typescript: 'TypeScript', py: 'Python', python: 'Python', java: 'Java', c: 'C', cpp: 'C++', rust: 'Rust', rs: 'Rust', go: 'Go', cs: 'C#', csharp: 'C#' };
+  for (const box of document.querySelectorAll<HTMLElement>('[data-otherlangs]')) {
+    const tabs = box.querySelector<HTMLElement>('.otherlangs-tabs')!;
+    const blocks = [...box.querySelectorAll<HTMLElement>('.otherlangs-body pre')];
+    if (blocks.length < 2) continue;
+    const show = (i: number) => blocks.forEach((b, j) => {
+      b.hidden = i !== j;
+      tabs.children[j].setAttribute('aria-selected', String(i === j));
+    });
+    blocks.forEach((b, i) => {
+      const lang = b.dataset.language ?? '';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.role = 'tab';
+      btn.textContent = NAMES[lang] ?? lang;
+      btn.addEventListener('click', () => show(i));
+      tabs.append(btn);
+    });
+    tabs.hidden = false;
+    box.classList.add('otherlangs-js');
+    show(0);
+  }
+</script>

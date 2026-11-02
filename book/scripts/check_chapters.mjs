@@ -11,6 +11,11 @@
 //     starter code does NOT (so the exercise actually asks for something).
 //  7. Citations: every <Cite> and source is a verified bibliography entry.
 //  8. The 15-minute budget: estimated time between 12 and 18 minutes.
+// 10. Teaching rules (src/data/pedagogy.js, PEDAGOGY.md): analogies that say
+//     where they break, at least two diagrams (one steppable), several
+//     examples of every concept introduced, other-language comparisons in
+//     Part I. Errors in parts listed in STRICT_PARTS, warnings elsewhere.
+// 11. No banned words and no em dashes in prose, anywhere.
 //  9. Internal links in MDX (chapters and front matter) start with the base
 //     path /book/, where the book is served (https://viscosity.dev/book/).
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
@@ -73,7 +78,9 @@ import { transform as sucrase } from 'sucrase';
 
 // TypeScript cards are stripped of types exactly as the browser runner does.
 const stripTs = (code) => sucrase(code, { transforms: ['typescript'], disableESTransforms: true }).code;
-import { estimateMinutesExact, proseWords } from '../src/lib/minutes.js';
+import { estimateMinutesExact, proseWords, hardWordShare } from '../src/lib/minutes.js';
+import { COVERAGE } from '../src/data/coverage.js';
+import { STRICT_PARTS, MIN_ANALOGIES, MIN_DIAGRAMS, MIN_EXAMPLES, OTHER_LANGUAGE_PARTS, BANNED } from '../src/data/pedagogy.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dir = join(root, 'src/content/chapters');
@@ -111,9 +118,18 @@ function checkLinks(where, body) {
     if (!link.startsWith('//') && !link.startsWith(LINK_BASE)) err(where, `link ${link} is outside the base path: write ${LINK_BASE}${link.replace(/^\/+/, '')}`);
   }
 }
-for (const f of readdirSync(join(root, 'src/content/front')).filter((f) => f.endsWith('.mdx'))) {
-  checkLinks(`front/${f}`, readFileSync(join(root, 'src/content/front', f), 'utf8'));
+// 11. Words the book never uses, and no em dashes outside code.
+const proseOnly = (text) => text.replace(/^(```|~~~)[\s\S]*?^\1/gm, '').replace(/`[^`\n]*`/g, '');
+function checkWords(where, text) {
+  for (const re of BANNED) if (re.test(text)) err(where, `uses the banned word or phrase ${re}`);
+  if (proseOnly(text).includes('\u2014')) err(where, 'has an em dash in prose: use a comma, semicolon, colon or brackets instead');
 }
+for (const f of readdirSync(join(root, 'src/content/front')).filter((f) => f.endsWith('.mdx'))) {
+  const text = readFileSync(join(root, 'src/content/front', f), 'utf8');
+  checkLinks(`front/${f}`, text);
+  checkWords(`front/${f}`, text);
+}
+const diagramsDir = join(root, 'src/components/diagrams');
 
 const silent = { log() {}, info() {}, warn() {}, error() {}, table() {} };
 
@@ -289,10 +305,60 @@ for (const folder of folders) {
   }
   if (!/<Figure|client:visible/.test(body)) err(folder, 'no diagram');
 
+  // 10. teaching rules
+  {
+    const strict = STRICT_PARTS.has(fm.part);
+    const teach = (msg) => (strict ? err(folder, msg) : warn.push(`${folder}: ${msg}`));
+    const analogies = [...body.matchAll(/<Analogy\b[^>]*>([\s\S]*?)<\/Analogy>/g)];
+    const honest = analogies.filter((a) => /<span slot="breaks">\s*\S[\s\S]*?<\/span>/.test(a[1]));
+    if (honest.length < analogies.length) err(folder, `${analogies.length - honest.length} <Analogy> block(s) without a non-empty <span slot="breaks">`);
+    if (honest.length < MIN_ANALOGIES) teach(`${honest.length} analogies (want at least ${MIN_ANALOGIES}, each saying where it breaks)`);
+    const diagrams = [...body.matchAll(/^import\s+\w+\s+from\s+'[^']*components\/diagrams\/([^']+)'/gm)].map((m) => m[1]);
+    if (diagrams.length < MIN_DIAGRAMS) teach(`${diagrams.length} diagram(s) (want at least ${MIN_DIAGRAMS})`);
+    const steppable = diagrams.some((d) => {
+      const f = [join(diagramsDir, `${d}.tsx`), join(diagramsDir, `${d}.ts`), join(diagramsDir, d)].find((x) => existsSync(x) && x.match(/\.tsx?$/));
+      return f && /viz\/stepper|useStepper|<Stepper/.test(readFileSync(f, 'utf8'));
+    });
+    if (!steppable) teach('no steppable diagram (one diagram should use components/viz/stepper)');
+    const blocks = [...body.matchAll(/<Examples\s+of="([^"]+)"[^>]*>([\s\S]*?)<\/Examples>/g)];
+    const covered = new Set();
+    for (const [, of, inner] of blocks) {
+      const n = (inner.match(/^```/gm) ?? []).length / 2 + (inner.match(/<Run\s/g) ?? []).length;
+      if (n < MIN_EXAMPLES) teach(`<Examples of="${of}"> has ${n} example(s) (want at least ${MIN_EXAMPLES})`);
+      for (const c of of.split(/\s+/)) {
+        if (!(fm.introduces ?? []).includes(c) && !(c in CONCEPTS) && !(c in ASSUMED)) err(folder, `<Examples of="${of}"> names unknown concept "${c}"`);
+        covered.add(c);
+      }
+    }
+    const uncovered = (fm.introduces ?? []).filter((c) => !covered.has(c));
+    if (uncovered.length) teach(`no <Examples> for: ${uncovered.join(', ')}`);
+    if (OTHER_LANGUAGE_PARTS.has(fm.part) && !/<OtherLanguages\b/.test(body)) teach('no <OtherLanguages> comparison');
+    for (const m of body.matchAll(/<Formal\b[^>]*>([\s\S]*?)<\/Formal>/g)) {
+      if (!/<span slot="read">\s*\S/.test(m[1])) err(folder, '<Formal> without a plain-words <span slot="read">');
+    }
+  }
+  checkWords(folder, body);
+  for (const t of [...Object.values(cards.prompts).flatMap((p) => [p.q, p.a]), ...cards.quiz.flatMap((q) => [q.q, ...q.options.flatMap((o) => [o.t, o.why])])]) {
+    for (const re of BANNED) if (re.test(t)) err(folder, `a card uses the banned word or phrase ${re}`);
+  }
+
   // 8. time budget
   const minutes = estimateMinutesExact(mdx, cards);
   if (minutes < 12 || minutes > 18) err(folder, `estimated ${minutes.toFixed(1)} minutes (want 12–18)`);
-  summary.push(`${folder.padEnd(28)} ${minutes.toFixed(1).padStart(5)} min · ${proseWords(mdx)} words · ${promptKeys.length} prompts · ${quiz.length} quiz · ${exKeys.length} exercises`);
+  summary.push(`${folder.padEnd(28)} ${minutes.toFixed(1).padStart(5)} min · ${proseWords(mdx)} words · ${(hardWordShare(mdx) * 100).toFixed(1).padStart(4)}% hard words · ${promptKeys.length} prompts · ${quiz.length} quiz · ${exKeys.length} exercises`);
+}
+
+// 12. Coverage: every concept the textbook map (src/data/coverage.js) names
+// must be taught by some chapter of the outline.
+{
+  const written = new Set(folders.map((f) => Number(f.slice(0, 3))));
+  let done = 0;
+  for (const [book, ch, title, concepts] of COVERAGE) {
+    const missing = concepts.filter((c) => !(c in CONCEPTS));
+    if (missing.length) err(`coverage ${book} ${ch}`, `"${title}" names concepts no chapter introduces: ${missing.join(', ')}`);
+    else if (concepts.every((c) => written.has(CONCEPTS[c].n))) done++;
+  }
+  summary.push(`\nCoverage: ${done} of ${COVERAGE.length} textbook chapters are fully taught by chapters already written.`);
 }
 
 console.log(summary.join('\n'));

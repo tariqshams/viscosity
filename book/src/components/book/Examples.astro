@@ -1,0 +1,10 @@
+---
+// Several examples of one idea, from the simplest case to a realistic one.
+// Each code block inside is numbered "Example 1", "Example 2", ... by CSS.
+//   <Examples of="parameter argument"> ```js ...``` ```js ...``` ```js ...``` </Examples>
+const { of, title } = Astro.props as { of: string; title?: string };
+---
+<section class="examples" data-of={of}>
+  <div class="examples-label">{title ?? 'Examples'}</div>
+  <div class="examples-body"><slot /></div>
+</section>

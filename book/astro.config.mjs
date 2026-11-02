@@ -1,6 +1,7 @@
 import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import react from '@astrojs/react';
+import { REDIRECTS } from './src/data/redirects.js';
 
 // The book is MDX chapters (src/content/chapters/NNN-slug/index.mdx) with
 // React islands for the interactive parts: review prompts, quizzes, the code
@@ -11,6 +12,9 @@ export default defineConfig({
   site: 'https://viscosity.dev',
   base: '/book',
   integrations: [react(), mdx()],
+  // Chapters that moved when new ones were inserted (scripts/renumber.mjs).
+  // Static redirect pages, so they work on any host.
+  redirects: REDIRECTS,
   build: { format: 'directory' },
   trailingSlash: 'ignore',
   markdown: {

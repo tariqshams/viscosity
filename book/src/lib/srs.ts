@@ -19,6 +19,8 @@ import {
   type Grade,
 } from 'ts-fsrs';
 
+import { RENUMBER_COUNT, currentNumber } from './renumber';
+
 export const STORAGE_KEY = 'viscosity:srs:v1';
 
 export interface StoredCard {
@@ -41,6 +43,21 @@ export interface StoredCard {
 export interface Deck {
   version: 1;
   cards: Record<string, StoredCard>;
+  /** How many chapter renumberings (src/data/renumbering.js) this deck has been migrated through. */
+  renumbered?: number;
+}
+
+/** Card ids are "<chapter>.<key>": move them to the current chapter numbers. */
+export function migrateDeck(d: Deck): Deck {
+  const from = d.renumbered ?? 0;
+  if (from >= RENUMBER_COUNT) return d;
+  const cards: Record<string, StoredCard> = {};
+  for (const [id, c] of Object.entries(d.cards)) {
+    const ch = currentNumber(c.ch, from);
+    const key = id.slice(id.indexOf('.') + 1);
+    cards[`${ch}.${key}`] = { ...c, ch };
+  }
+  return { ...d, cards, renumbered: RENUMBER_COUNT };
 }
 
 // Long-term scheduling only (no same-day "learning steps"). This matches the
@@ -61,16 +78,21 @@ function storage(): StorageLike | null {
 }
 
 export function loadDeck(s: StorageLike | null = storage()): Deck {
-  if (!s) return { version: 1, cards: {} };
+  const empty = (): Deck => ({ version: 1, cards: {}, renumbered: RENUMBER_COUNT });
+  if (!s) return empty();
   try {
     const raw = s.getItem(STORAGE_KEY);
-    if (!raw) return { version: 1, cards: {} };
+    if (!raw) return empty();
     const d = JSON.parse(raw);
-    if (d && d.version === 1 && typeof d.cards === 'object') return d as Deck;
+    if (d && d.version === 1 && typeof d.cards === 'object') {
+      const m = migrateDeck(d as Deck);
+      if (m !== d) s.setItem(STORAGE_KEY, JSON.stringify(m));
+      return m;
+    }
   } catch {
     /* corrupted: start fresh rather than break the page */
   }
-  return { version: 1, cards: {} };
+  return empty();
 }
 
 export function saveDeck(deck: Deck, s: StorageLike | null = storage()): void {

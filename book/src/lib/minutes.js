@@ -16,8 +16,38 @@ export function proseWords(mdx) {
   return text.split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
 }
 
+// An <OtherLanguages> box shows the same snippet in several languages as
+// tabs; a reader reads one of them, so only its first block is counted.
+function oneTabPerLanguageBox(mdx) {
+  return mdx.replace(/(<OtherLanguages\b[^>]*>)([\s\S]*?)(<\/OtherLanguages>)/g, (_, open, inner, close) => {
+    const first = inner.match(/```[\s\S]*?```/);
+    return open + (first ? first[0] : '') + inner.replace(/```[\s\S]*?```/g, '') + close;
+  });
+}
+
 export function codeLines(mdx) {
-  return (mdx.match(/```[\s\S]*?```/g) ?? []).reduce((n, b) => n + b.split('\n').length - 2, 0);
+  return (oneTabPerLanguageBox(mdx).match(/```[\s\S]*?```/g) ?? []).reduce((n, b) => n + b.split('\n').length - 2, 0);
+}
+
+// Rough syllable count, good enough to spot long, rare words.
+const syllables = (w) => (w.toLowerCase().replace(/e$/, '').match(/[aeiouy]+/g) ?? []).length;
+
+/**
+ * Share of prose words with four or more syllables: a vocabulary measure,
+ * not a sentence-length one, so long, flowing sentences are not penalised
+ * while long, rare words are. Reported by scripts/check_chapters.mjs.
+ */
+export function hardWordShare(mdx) {
+  const words = mdx
+    .replace(/^---[\s\S]*?---/, '')
+    .replace(/^import .*$/gm, '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ')
+    .replace(/<\/?[A-Za-z][^>]*>/g, ' ')
+    .split(/[^A-Za-z]+/)
+    .filter((w) => w.length > 1 && !/[A-Z].*[A-Z]/.test(w));
+  if (!words.length) return 0;
+  return words.filter((w) => syllables(w) >= 4).length / words.length;
 }
 
 export function estimateMinutesExact(mdx, cards) {

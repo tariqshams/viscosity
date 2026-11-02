@@ -42,7 +42,7 @@ const back = [
             <summary class="flex items-start gap-2 py-1 text-muted hover:text-ink">
               <svg class="chev mt-[0.4rem] h-2.5 w-2.5 shrink-0" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.5 L7 5 L3 8.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
               <span class="text-[0.85rem] font-semibold uppercase tracking-[0.06em]">
-                {part.id === 'IX' && <span class="block text-[0.7rem] text-brand">Track B · Rust</span>}
+                {part.id === PARTS.find((x) => x.track === 'B')?.id && <span class="block text-[0.7rem] text-brand">Track B · Rust</span>}
                 {part.id === 'I' && <span class="block text-[0.7rem] text-brand">Track A · TypeScript</span>}
                 Part {part.id} · {part.title}
               </span>

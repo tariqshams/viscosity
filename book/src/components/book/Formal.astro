@@ -1,0 +1,16 @@
+---
+// Precise notation (a grammar, an inference rule, a set equation, a
+// lattice) shown with a plain-words reading of it, so the symbols are
+// never left for the reader to decode alone.
+//   <Formal title="The typing rule for +">
+//   ```text ... ```
+//   <span slot="read">...how to say it out loud...</span>
+//   </Formal>
+const { title } = Astro.props as { title?: string };
+if (!Astro.slots.has('read')) throw new Error(`<Formal${title ? ` title="${title}"` : ''}> needs a <span slot="read"> that reads the notation in plain words`);
+---
+<section class="formal">
+  <div class="formal-label">{title ?? 'Written precisely'}</div>
+  <div class="formal-body"><slot /></div>
+  <div class="formal-read"><span class="formal-read-label">In plain words:</span> <slot name="read" /></div>
+</section>

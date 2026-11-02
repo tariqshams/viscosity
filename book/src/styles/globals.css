@@ -171,6 +171,35 @@ body {
 .callout-engine { border-color: rgb(var(--safe)); }
 .callout-engine .callout-label { color: rgb(var(--safe)); }
 
+/* Analogy: an everyday picture, and where it stops being true. */
+.analogy { margin: 1.6rem 0; border: 1px solid rgb(var(--line)); border-left: 3px solid rgb(var(--brand)); border-radius: 0.4rem; padding: 0.7rem 1rem; background: rgb(var(--brand) / 0.04); }
+.analogy-label, .examples-label, .otherlangs-label, .formal-label { font-family: var(--font-sans); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.3rem; color: rgb(var(--muted)); }
+.analogy-label { color: rgb(var(--brand)); text-transform: none; letter-spacing: 0.02em; font-size: 0.9rem; }
+.analogy-body > :first-child, .formal-body > :first-child, .examples-body > :first-child { margin-top: 0; }
+.analogy-body > :last-child, .formal-body > :last-child, .examples-body > :last-child { margin-bottom: 0; }
+.analogy-breaks { margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px dashed rgb(var(--line)); font-size: 0.95em; }
+.analogy-breaks-label, .formal-read-label { font-family: var(--font-sans); font-weight: 700; font-size: 0.85em; color: rgb(var(--danger)); }
+.formal-read-label { color: rgb(var(--accent)); }
+
+/* Examples: numbered, from the simplest case to a realistic one. */
+.examples { margin: 1.6rem 0; counter-reset: example; }
+.examples-body pre { counter-increment: example; position: relative; padding-top: 1.7rem !important; }
+.examples-body pre::before { content: 'Example ' counter(example); position: absolute; top: 0.35rem; left: 0.8rem; font-family: var(--font-sans); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: rgb(var(--muted)); }
+
+/* The same idea in other languages: tabs once the script runs. */
+.otherlangs { margin: 1.6rem 0; }
+.otherlangs-body pre { position: relative; padding-top: 1.7rem !important; }
+.otherlangs-body pre::before { content: attr(data-language); position: absolute; top: 0.35rem; left: 0.8rem; font-family: var(--font-sans); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: rgb(var(--muted)); }
+.otherlangs-js .otherlangs-body pre { padding-top: 1rem !important; }
+.otherlangs-js .otherlangs-body pre::before { content: none; }
+.otherlangs-tabs { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.4rem; }
+.otherlangs-tabs button { font-family: var(--font-sans); font-size: 0.8rem; padding: 0.2rem 0.6rem; border: 1px solid rgb(var(--line)); border-radius: 999px; color: rgb(var(--muted)); }
+.otherlangs-tabs button[aria-selected='true'] { color: rgb(var(--ink)); border-color: rgb(var(--brand)); background: rgb(var(--brand) / 0.08); }
+
+/* Formal notation with a plain-words reading. */
+.formal { margin: 1.6rem 0; border-left: 3px solid rgb(var(--accent)); padding: 0.1rem 0 0.1rem 1rem; }
+.formal-read { margin-top: 0.5rem; font-size: 0.97em; }
+
 /* Figures (static SVG diagrams) */
 .figure { margin: 2rem 0; font-family: var(--font-sans); }
 .figure .fig-card { border: 1px solid rgb(var(--line)); background: rgb(var(--panel)); padding: 0.9rem; overflow-x: auto; touch-action: pan-x pan-y pinch-zoom; }
