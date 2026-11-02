@@ -36,7 +36,7 @@ export default function DripAtAGlance() {
           </g>
         );
       })}
-      <T x={200} y={316} size={11} anchor="middle" fill={tok('muted')}>blue: spelled differently in Drip · grey: the same</T>
+      <T x={200} y={316} size={11} anchor="middle" fill={tok('muted')}>orange: spelled differently in Drip · red: not in Drip · grey: the same</T>
     </Svg>
   );
 }

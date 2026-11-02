@@ -1,6 +1,7 @@
 // Loads the chapters and their companion cards.js modules.
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { PARTS, CHAPTERS_PER_DAY } from '../data/book.js';
+import { OUTLINE } from '../data/outline/index.js';
 import { href } from './url';
 
 export type Chapter = CollectionEntry<'chapters'>;
@@ -74,24 +75,15 @@ export async function neighbours(key: string): Promise<{ prev: ReadingLink | nul
 
 /** The whole curriculum, written or planned, grouped into days. */
 export async function curriculum() {
+  // Every chapter, written or planned, in outline order. Parts no longer
+  // start on day boundaries (chapters are inserted and split), so the part
+  // of each chapter comes from the outline itself, not from day ranges.
   const written = await allChapters();
   const byN = new Map(written.map((c) => [c.data.n, c]));
-  const entries: { n: number; title: string; part: string; href: string | null }[] = [];
-  let n = 1;
-  for (const part of PARTS) {
-    const [d0, d1] = part.days.split('–').map(Number);
-    const count = ((d1 ?? d0) - d0 + 1) * CHAPTERS_PER_DAY;
-    for (let k = 0; k < count; k++, n++) {
-      const w = byN.get(n);
-      const planned = part.planned?.[k];
-      entries.push({
-        n,
-        part: part.id,
-        title: w ? w.data.title : planned ?? `Part ${part.id}, chapter ${k + 1}`,
-        href: w ? chapterHref(w) : null,
-      });
-    }
-  }
+  const entries: { n: number; title: string; part: string; href: string | null }[] = OUTLINE.map((c) => {
+    const w = byN.get(c.n);
+    return { n: c.n, part: c.part, title: w ? w.data.title : c.title, href: w ? chapterHref(w) : null };
+  });
   const days: { day: number; part: string; chapters: typeof entries }[] = [];
   for (let i = 0; i < entries.length; i += CHAPTERS_PER_DAY) {
     const chunk = entries.slice(i, i + CHAPTERS_PER_DAY);

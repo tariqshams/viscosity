@@ -47,7 +47,7 @@ export default function RefsFlow() {
       <N x={18} y={242} top=".length" sub="%4, line 5" kind="use" />
       <N x={158} y={242} top="index.get" sub="%6, qs[i]" kind="use" />
       <N x={298} y={242} top="index.get" sub="%8, qs[i]" kind="use" />
-      <T x={200} y={292} size={11} anchor="middle" fill={tok('muted')}>blue: refers to ps · green: a use it can rewrite</T>
+      <T x={200} y={292} size={11} anchor="middle" fill={tok('muted')}>orange: refers to ps · green: a use it can rewrite</T>
     </Svg>
   );
 }
