@@ -25,7 +25,7 @@ const STATES: S[] = [
   { stop: 2, prog: 'l1.js --mode opt-in', verdict: 'kept', reason: ['opt-in mode: not annotated'], note: 'In opt-in mode, only annotated collections are touched, so an unannotated one stops here, however good it looks.' },
   { stop: 4, prog: 'r2.js: { name: "p" + i }', verdict: 'kept', reason: ['no field is provably numeric,', 'so there are no typed', 'columns to gain'], note: 'The first cost rung. A record of strings would get only plain-array columns, so the planner says no. (The Python rung above it only fires for .py files.)' },
   { stop: 5, prog: 'r3.js: one read, no loop', verdict: 'kept', reason: ['no loop reads or writes its', 'fields, so a new layout', 'cannot pay off'], note: 'ps[3].x outside any loop: its table has depth 0. Without a loop of depth at least 1 touching a field, nothing would get faster.' },
-  { stop: 7, prog: 'l1.js (defaults)', verdict: 'struct of arrays', reason: ['loop at line 4 in <module>()', 'touches 1 of 1 fields (x)'], soa: true, note: 'At most 100 elements is not below 64, so no rung fires and plan_one reaches its last expression: a CollectionPlan with Layout::Soa, whose reasons come from describe(). The size rung is the next chapter’s.' },
+  { stop: 7, prog: 'l1.js (defaults)', verdict: 'struct of arrays', reason: ['loop at line 4 in <module>()', 'touches 1 of 1 fields (x)'], soa: true, note: 'At most 100 elements is not below 64, so no rung fires and plan_one reaches its last expression: a CollectionPlan with Layout::Soa, whose reasons come from describe(). The size rung comes after it.' },
 ];
 
 export default function LadderSteps() {

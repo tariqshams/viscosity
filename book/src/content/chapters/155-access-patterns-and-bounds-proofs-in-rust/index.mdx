@@ -3,15 +3,12 @@ n: 155
 day: 27
 part: IX
 title: 'Access patterns and bounds proofs in Rust'
-tagline: 'Before the planner can decide anything, the analysis writes down two facts about each collection: which fields every loop touches, and how many elements there will be. In Rust that is an IndexMap keyed by a tuple, a stable sort, and a size that is honest about being a guess.'
+tagline: 'Before the planner can decide anything, the analysis writes down which fields every loop touches, how many elements there will be, and which element reads can never go out of bounds. In Rust that is an IndexMap keyed by a tuple, a size that is honest about being a guess, and a proof that goes round a phi’s cycle exactly once.'
 objectives:
   - Read the per-loop access table the port builds, and say why its key is a tuple and its sets keep order.
-  - Explain why explain lists fields in visit order, and why both engines agree on it.
-  - Work out a collection’s size estimate, and say when it is “about”, “at most” or unknown.
-  - Implement the size estimate in Rust, with tests.
+  - Say when a collection’s size is “about”, “at most” or unknown.
   - Ask the four questions the bounds proof asks of each element read, and predict its verdict on a loop.
-  - Explain how is_counting_phi finds the start and the step, and why it tries both orders.
-  - Explain how non_neg_int uses a shared seen set to handle the cycle through a phi.
+  - Explain how is_counting_phi finds the start and the step, and how non_neg_int uses a shared seen set to handle the cycle through a phi.
   - Implement the counting-phi test over a small arena of values, with tests.
 introduces: [rust-access-pass]
 uses: [viscosity-rs, ir-arena, rust-ssa, rust-collections-pass, rust-escape-pass, access-pattern, hot-loop, natural-loop, induction-variable, dominator, ssa, basic-block, cfg, optimization-report, cross-implementation-tests, hashmap, vec, option, enum, match, struct, borrow-checker, rust-iterator, rust-closure, typed-index, cargo-test, access-rewriting, phi-node, pattern, shared-vs-mutable, recursion]
@@ -22,16 +19,11 @@ import SizeVerdicts from '../../../components/diagrams/ch155/SizeVerdicts';
 import BoundsSteps from '../../../components/diagrams/ch155/BoundsSteps';
 import SeenSteps from '../../../components/diagrams/ch155/SeenSteps';
 
-{/* ── merge: from old chapter 155, Access patterns in Rust ── */}
-
 ## What the planner needs to know
 
-By now the Rust engine has found the collections, learned their shapes
-and proved that nothing can see their layout change (*Escape and alias
-analysis in Rust*). One question is left: would a new layout pay off?
-For that the planner needs facts about how the program *uses* each
-collection, which *Access patterns* collected in the TypeScript engine.
-Here is a small program:
+The Rust engine has found the collections and proved that nothing can
+see their layout change. Would a new layout pay off? The planner needs
+the facts of *Access patterns* and *Proving it safe*:
 
 ```js
 const ps = [];
@@ -47,9 +39,9 @@ for (let i = 1; i < ps.length; i++)
 console.log(s, ps[0].y);
 ```
 
-and the middle of what the Rust CLI says about it (I ran
-`viscosity explain` here, on a release build with rustc 1.97; lines
-wrapped to fit):
+and the end of what `viscosity explain` says about it (Rust CLI,
+release build, rustc 1.97; the TypeScript CLI printed the same; lines
+wrapped):
 
 ```
   · loop at line 4 in <module>() touches 4
@@ -57,64 +49,34 @@ wrapped to fit):
   · loop at line 9 in <module>() touches 1
     of 4 fields (x)
   · about 500 elements
+  · 4 of 6 element accesses proven in
+    bounds
 ```
 
-The first two lines say which fields each loop touches; the third says
-how many elements `ps` will hold. Both come from one function in
-`crates/core/src/analysis.rs`, `bounds_loops_and_sizes`, which also
-proves element reads in bounds (the next chapter, *Proving an index in
-bounds in Rust*, takes that part). This chapter reads the other two, and
-explains why the fields come out as `vy, y, vx, x`.
-
-<Analogy title="a library's room bookings">
-A library keeps a sheet per reading group listing the rooms it used,
-in the order it first booked them, each room written once. The
-librarian files every booking on its group's sheet, starting a sheet
-the first time a group appears, and at the end sorts the sheets by
-meeting time.
-<span slot="breaks">A librarian files bookings in the order they
-arrive; the analysis files accesses in the order an earlier pass
-happened to find them, which is not the order they appear in the
-program.</span>
-</Analogy>
-
-<Analogy extra title="a caterer's head count">
-A caterer asks how many guests are coming. "Exactly 200" lets them cook
-for 200; "up to 202, if everyone who was invited turns up" lets them
-cook for the worst case; "no idea, it depends who hears about it" means
-they have to plan without a number at all.
-<span slot="breaks">A caterer can phone the host and ask; the analysis
-has only the program text, and never runs it (the chapter *PGO in
-Rust* is where a real run supplies the number).</span>
-</Analogy>
+All three facts come from one function in `analysis.rs`,
+`bounds_loops_and_sizes`.
 
 ## One table per loop
 
 Each field read or write on an element is filed under the loop it
-happens in, in a plain struct (from `analysis.rs`, with two of its doc
-comments left out):
+happens in, in a plain struct (from `analysis.rs`, doc comments left
+out):
 
 ```rust
 pub struct LoopAccess {
     pub func: String,
     pub line: u32,
     pub depth: u32,
-    /// Fields read, in first-access order.
     pub reads: IndexSet<String>,
     pub writes: IndexSet<String>,
     pub trips: Option<f64>,
 }
 ```
 
-`depth` is 1 for an outermost loop (0 outside loops), and `trips` is
-how many times the loop runs, if that is a constant. An **`IndexSet`** is a set that remembers the order
-things were first added, the way a JavaScript `Set` does, where std's
-`HashSet` iterates in an order that depends on hashing<Cite id="indexmap-docs" />.
-That order reaches the explain text, so it has to be the reference's.
-
-The tables are grouped in an `IndexMap` (a map that keeps insertion
-order), and the heart of the filing loop is this (rewrapped, with the
-body of the closure left out):
+`depth` is 1 for an outermost loop (0 outside loops), and `trips` is the
+loop's constant trip count, if any. An **`IndexSet`** remembers the order
+things were first added, as a JavaScript `Set` does<Cite id="indexmap-docs" />.
+The heart of the filing loop (rewrapped):
 
 ```rust
 let l = loop_of(loops, ai.block);
@@ -123,80 +85,36 @@ let la = by_loop
     .or_insert_with(|| { /* new table */ });
 match a.kind {
     AccessKind::Read => la
-        .reads
-        .insert(a.field.clone()),
+        .reads.insert(a.field.clone()),
     AccessKind::Write => la
-        .writes
-        .insert(a.field.clone()),
+        .writes.insert(a.field.clone()),
 };
 ```
 
-`loop_of` (in `cfg.rs`) returns the innermost natural loop containing
-the access's block, or `None` outside every loop. The key is a tuple,
-`(FuncId, Option<BlockId>)`: the function, and the header block of that
-loop. `entry` looks the key up, and `or_insert_with` runs its closure
-only the first time a key is seen, building a table with the loop's
-line, depth and trip count and two empty sets; either way it hands back
-`&mut LoopAccess`, so the `match` can add the field to the right set.
-Then the tables are sorted by line with `sort_by_key`, which is stable,
-like JavaScript's `Array.prototype.sort`, so two tables on one line keep
-their order<Cite id="rust-std-slice-sort-by-key" />.
-
-The TypeScript reference builds its key as a string,
-`` `${f.id}:${l.header}` `` (or `` `${f.id}:none` ``), because a
-JavaScript `Map` compares object keys by identity; Rust's tuple
-compares by value, and `None` is a real key rather than a spelling.
-
-Step through the filing on the program above:
+`loop_of` returns the innermost natural loop around the access, or
+`None`. The key is a tuple, `(FuncId, Option<BlockId>)`, where the
+TypeScript builds a string such as `` `${f.id}:${l.header}` ``, because a
+JavaScript `Map` compares object keys by identity; Rust's tuple compares
+by value, and `None` is a real key. `or_insert_with` runs its closure
+only the first time a key is seen, and either way `entry` hands back
+`&mut LoopAccess` for the `match` to fill. The tables are then sorted by
+line with the stable `sort_by_key`<Cite id="rust-std-slice-sort-by-key" />.
 
 <TableSteps client:visible />
 
-Now the odd order. "First-access order" means the order the pass
-*visits* accesses, which is the order an earlier step found the element
-reads: it keeps a worklist of the places `ps` is loaded and takes them
-with `work.pop()`, last first. So line 11 comes before line 10, and line
-6 before line 5, and explain lists reads before writes. The reference
-pops its worklist too, so both engines print `(vy, y, vx, x)`. Here is
-the same filing as a program you can change:
+Why `(vy, y, vx, x)`? Fields keep the order the pass *visits* them,
+which is the order the collection pass's worklist found the element
+reads, last load first, in both engines.
 
-<Run id="table-play" />
+<More title="More: the size estimate, and three programs">
 
-<Prompts ids={['acc-what', 'acc-key', 'acc-none', 'acc-order']} />
-
-## How many elements?
-
-The second fact is a size. The analysis counts the elements written in
-the array literal, and then, for each `push`, multiplies the trip counts
-of every loop around it; a loop's trip count is known only for the
-shape `for (let i = 0; i < N; i++)` with a constant `N` (or `<=`, which
-gives `N + 1`).
-
-<Formal title="The size estimate">
-
-```text
-size = literals + Σ   Π  trips(l)
-                 p   l ∋ p
-
-known  ⇔ every trips(l) is a constant
-         and every push p is in main
-at most ⇔ known and some p may skip
-```
-
-<span slot="read">The size is the number of literal elements plus, for
-each push p, the product of the trip counts of the loops l that contain
-p. It is known only when every one of those trip counts is a constant
-and every push is in the top-level code. It is only a maximum when it
-is known and some push may not run on every trip.</span>
-</Formal>
-
-The "may skip" test, `push_runs_on_every_path`, uses dominators (a
-block **dominates** another when every path to the second passes
-through the first). For each region, from the function down to the
-innermost loop, the next thing in (an inner loop's header, or the push)
-must dominate every way out: the `return` and `throw` blocks of the
-function, or the **latches** (blocks that jump back to the header) of a
-loop. If one test fails, the push may be skipped. Two lines store the
-result:
+The analysis counts the elements of the array literal and, for each
+`push`, multiplies the trip counts of every loop around it; a trip count
+is known only for `for (let i = 0; i < N; i++)` with a constant `N`. A
+push that may not run on every trip (one inside an `if`, which does not
+dominate every way out of its loop) makes the size only a maximum, and
+a push inside a function other than the top-level code makes it
+unknown. Two lines store the result:
 
 ```rust
 c.size_estimate = known.then_some(size);
@@ -204,22 +122,11 @@ c.size_is_upper_bound = known && upper;
 ```
 
 `bool::then_some` gives `Some(size)` when `known` is true and `None`
-when it isn't, so an unknown size cannot be mistaken for zero; and the
-`known &&` means a size that is unknown is never also called a maximum.
+otherwise, so an unknown size cannot be mistaken for zero.
 
-<Figure caption="Three programs from this chapter and the size the Rust analysis records for each." takeaway="A size is about N, at most N, or unknown, and the analysis says which.">
+<Figure caption="Three programs and the size the Rust analysis records for each: nested constant loops, a push on each side of an if, and a push inside a function." takeaway="A size is about N, at most N, or unknown, and the analysis says which.">
   <SizeVerdicts />
 </Figure>
-
-<Examples of="rust-access-pass">
-
-```js
-const ps = [];
-for (let i = 0; i < 40; i++)
-  for (let j = 0; j < 5; j++)
-    ps.push({ x: j });
-// explain: about 200 elements
-```
 
 ```js
 const ps = [{ x: 1 }, { x: 2 }];
@@ -230,90 +137,22 @@ for (let i = 0; i < 100; i++) {
 // explain: at most 202 elements
 ```
 
-```js
-const ps = [];
-function add(v) { ps.push({ x: v }); }
-for (let i = 0; i < 50; i++) add(i);
-// explain: size unknown statically
-```
+The literal holds two elements and each branch counts once per trip, `2
++ 100 + 100`; neither push dominates the loop's latch, so 202 is marked
+as a maximum (the program holds 102: cautious, but never wrong in the
+dangerous direction). Here is the filing as a program you can change:
 
-</Examples>
+<Run id="table-play" />
 
-Each program also has a loop over `ps` (left out), and the comments are
-what the Rust CLI printed. In the first, both loops are constant and
-every trip runs the push, so the size is `0 + 40 × 5`, a plain
-estimate. In the second, the literal holds two elements and each branch
-counts once per trip, `2 + 100 + 100`; neither push dominates the
-latch, so 202 is marked as a maximum (the program holds 102: cautious,
-but never wrong in the dangerous direction). In the third, the push is
-inside `add`, and `if f != m.main { known = false; }` makes the size
-unknown, although the loop around the call is constant.
+</More>
 
-<Callout kind="definition">
-The **access-pattern pass in Rust** is the part of
-`bounds_loops_and_sizes` in `analysis.rs` that files each field access
-into **one `LoopAccess` per loop**, keyed by `(FuncId,
-Option<BlockId>)` in an `IndexMap`, with fields in **visit order**; and
-that estimates the collection's **size** as an `Option<f64>`, flagged
-when it is only a **maximum**.
-</Callout>
+<Prompts ids={['acc-key', 'acc-order']} />
 
-<Prompts ids={['acc-tuple-key', 'acc-product', 'acc-at-most', 'acc-fn-unknown']} />
+## Four questions
 
-<Callout kind="engine" label="Under the hood">
-`crates/core/tests/core.rs` mirrors the reference's unit tests: nested
-constant loops of 40 and 5 must give `Some(200.0)` with no flag, and an
-`if`/`else` with a push on each side `Some(200.0)` with the flag set.
-That second test pins a cautious answer on purpose; the port must match
-the reference even where the reference could be cleverer.
-</Callout>
-
-## Your turn
-
-<Exercise id="sizeEstimate" />
-
-## What you learned
-
-- The pass files every field access into **one `LoopAccess` per loop**,
-  keyed by **`(FuncId, Option<BlockId>)`** in an **`IndexMap`**, where
-  the reference uses a string key in a JavaScript `Map`.
-- `entry(...).or_insert_with(...)` builds a table the **first time** a
-  key is seen; **`IndexSet`** keeps each field once, in **visit order**,
-  which both engines share because both pop their worklist.
-- The size is **literals plus, per push, the product of trip counts**;
-  it is **about** N, **at most** N (a push may be skipped) or
-  **unknown** (a non-constant loop, or a push inside a function).
-
-
-{/* ── merge: from old chapter 155, Proving an index in bounds in Rust ── */}
-
-## A check in the hottest loop
-
-*Rewriting field accesses* showed what happens to an element read that
-nobody proved safe: `ps[i].x` becomes `ps.x[__vsc_bc(ps, i, 'x',
-false)]`, a call that checks `i` and throws the original's `TypeError`
-if it is out of range. That keeps the compiled program honest, but it
-costs a call and two comparisons on every access, in exactly the loops
-Viscosity is trying to speed up. Here are two loops that differ by one
-character, and the line the Rust CLI emits for each (I ran
-`viscosity build` here):
-
-```js
-for (let i = 0; i < ps.length; i++)
-  ps[i].x += 1;
-// → ps.x[i] += 1;
-for (let i = 0; i <= ps.length; i++)
-  ps[i].x += 1;
-// → ps.x[__vsc_bc(ps, i, 'x', false)]
-//     += 1;
-```
-
-The first is proven, so it gets a bare index. The second is not, and
-rightly: on its last trip `i` equals `ps.length`, and both the original
-and the compiled program stop with `TypeError: Cannot read properties of
-undefined (reading 'x')`. This chapter reads how `bounds_loops_and_sizes`
-in `analysis.rs` tells the two apart (*Access patterns in Rust* read the
-rest of that function).
+An unproven element read becomes `ps.x[__vsc_bc(ps, i, 'x', false)]`, a
+check on every access (*Rewriting field accesses and growing
+collections*), in exactly the loops Viscosity wants to speed up.
 
 <Analogy title="climbing a ladder in the dark">
 You can climb a ladder you cannot see without ever grabbing air, if you
@@ -326,20 +165,8 @@ can grow during the loop. That is fine, because the guard rereads
 only use `.length` and `.push`, so it never gets shorter.</span>
 </Analogy>
 
-<Analogy extra title="an usher with a numbered row">
-An usher seats a queue along a row: the first person in seat 0, each
-next person one seat along, and before seating anyone the usher checks
-the seat number is less than the number of seats in the row. However
-long the queue, nobody is ever sent to a seat that isn't there.
-<span slot="breaks">The usher looks at real seats on one evening; the
-analysis never sees a number at all, only the shape of the code, and
-its answer has to hold for every run of the program at once.</span>
-</Analogy>
-
-## Four questions
-
-The proof asks four questions of each element read (each `index.get`
-in VIR), and an access is proven only if all four say yes:
+The proof asks four questions of each element read (each `index.get` in
+VIR), and an access is proven only if all four say yes:
 
 1. Is the index the phi at the header of some loop that contains the
    access? (Any enclosing loop counts, not only the innermost.)
@@ -350,43 +177,19 @@ in VIR), and an access is proven only if all four say yes:
 4. Does the true edge of that test **dominate** the access, so that the
    access can only be reached after the test said yes?
 
-Step through them on a program with four element reads:
-
 <BoundsSteps client:visible />
 
 <Callout kind="definition">
-An element read `c[i]` is **proven in bounds** when `i` is a **counting
-phi** of a loop around the read (a phi with a **non-negative integer
-start** and a **`+ 1` step**), the loop's header tests **`i <
-c.length`**, and the **true edge** of that test **dominates** the read.
-The Rust port records the answer in `IndexGet::bounds_proven`, and the
-emitter leaves the check out wherever it is `true`.
+The **access-pattern pass in Rust** is `bounds_loops_and_sizes` in
+`analysis.rs`. It files each field access into **one `LoopAccess` per
+loop**, keyed by `(FuncId, Option<BlockId>)` in an `IndexMap`; estimates
+the **size** as an `Option<f64>`; and marks an
+element read `c[i]` **proven in bounds** when `i` is a **counting phi**
+of a loop around it, that loop's header tests **`i < c.length`**, and
+the test's **true edge dominates** the read.
 </Callout>
 
-<Formal title="The bounds rule">
-
-```text
-i = φ(s, i + 1)    s ∈ ℕ
-header: if (i < c.length) goto t
-t dominates the block of c[i]
-─────────────────────────────────
-     0 ≤ i < c.length  at  c[i]
-```
-
-<span slot="read">If i is a phi whose operands are a start s and i plus
-one, and s is a natural number (a whole number from zero up); and the
-loop's header jumps to t when i is less than c's length; and t
-dominates the block holding the read c of i; then, at that read, i is at
-least zero and less than c's length.</span>
-</Formal>
-
 <Examples of="rust-access-pass">
-
-```js
-for (let i = 0; i < ps.length; i++)
-  ps[i].x += 1;
-// 1 of 1 element accesses proven
-```
 
 ```js
 for (let i = 0; i < ps.length; i++)
@@ -396,42 +199,27 @@ for (let i = 0; i < ps.length; i++)
 // 2 of 2 element accesses proven
 ```
 
-```js
-function step(arr, dt) {
-  for (let i = 0; i < arr.length; i++) {
-    const p = arr[i];
-    p.x += p.vx * dt;
-  }
-}
-// particles.js: 2 of 2 proven
-```
-
 </Examples>
 
-Each `ps` holds 100 pushed records (left out), and the comments are the
-Rust CLI's verdicts. The first is the plain case. In the second, `ps[j]` is proven although `j` starts at
-`i + 1`, because the start only has to be a non-negative integer, and
-the guard `j < i + 8 && j < ps.length` is split into its conjuncts and
-one of them is the right test; `ps[i]` is proven through the *outer*
-loop, whose header defines `i`. The third is the hot loop of the
-benchmark `particles.js` (trimmed): every call of `step` passes `ps`, so
-the analysis follows it into `arr`, and `viscosity build` writes
-`arr.x[p]` with no check.
+`ps` holds 100 pushed records (left out), and the comment is the Rust
+CLI's verdict. `ps[j]` is proven although `j` starts at `i + 1`, because
+question 2 only asks for a non-negative integer start, which `i + 1` is;
+the guard is split into its conjuncts, and `j < ps.length` is the test
+question 3 wants; and the body is reached only through its true edge.
+`ps[i]` is proven through the *outer* loop, since any enclosing loop
+counts. In the opening program, by contrast, `ps[i - 1]` (a subtraction, not the
+phi) and `ps[0]` (outside every loop) are not proven: 4 of 6.
 
-## The counting phi
+<Prompts ids={['bp-four', 'bp-le']} />
 
-In SSA (*SSA form*), a loop variable becomes a **phi** at the loop
-header: `i = φ(0, i + 1)` means "0 when we arrive from before the loop,
-`i + 1` when we come back round". The test for question 2 is
-`is_counting_phi` (rewrapped, with the step test shortened to a
-comment):
+## The counting phi, and its cycle
+
+In SSA, a loop variable becomes a phi at the loop header: `i = φ(0, i +
+1)` means "0 when we arrive from before the loop, `i + 1` when we come
+back round". The test for question 2, `is_counting_phi`, rewrapped, with
+the step test shortened to a comment:
 
 ```rust
-if !matches!(phi.op, Op::Phi)
-    || phi.args.len() != 2
-{
-    return false;
-}
 for (s0, s1) in [(0, 1), (1, 0)] {
     let start = self.inst(phi.args[s0]);
     let step = self.inst(phi.args[s1]);
@@ -443,29 +231,17 @@ for (s0, s1) in [(0, 1), (1, 0)] {
         self.non_neg_int(start,
             &mut HashSet::default())
     };
-    if start_ok {
-        return true;
-    }
+    if start_ok { return true; }
 }
-false
 ```
 
 A phi's operands are listed in the order of the header's predecessor
 blocks, which says nothing about which one is the start, so the loop
-tries both orders: `[(0, 1), (1, 0)]` is an array of two tuples, and
-each turn takes one operand as the start and the other as the step. The
-step must be a `+` whose left side is the phi itself (perhaps under a
-unary `+`) and whose right side is the constant `1`. The `zero_start`
-flag serves two callers: trip counts (in *Access patterns in Rust*)
-need a start of exactly `0`, while bounds only need a start that is a
-non-negative integer, which is the job of `non_neg_int`.
-
-## Going round a cycle once
-
-`non_neg_int` accepts finite whole constants from `0` up, `+` and `*`
-of such values, unary `+`, and phis whose operands all pass. Its first
-three lines are the interesting part (rewrapped; the `+`, `*` and unary
-`+` arms are left out):
+tries both orders: `[(0, 1), (1, 0)]` is an array of two tuples. The
+`zero_start` flag serves two callers: trip counts need a start of
+exactly `0`, while bounds only need a non-negative integer, which is the
+job of `non_neg_int`. Its first lines (rewrapped; the `+`, `*` and unary
+`+` arms left out):
 
 ```rust
 if !seen.insert(v.id) {
@@ -484,79 +260,57 @@ match &v.op {
 ```
 
 `HashSet::insert` returns `false` when the value was already in the
-set<Cite id="rust-std-hashset-insert" />, so the one call both records
-the visit and asks "have I been here?". That matters because a start
-like `j = i + 1` leads to `i`, which is `φ(0, i + 1)`, which leads to
-`i` again; without the set the walk would never end. Answering `true`
-on the second visit is an optimistic assumption ("suppose `i` is fine"),
-which the rest of the cycle then has to earn: here `0` and `1`.
-Answering `false` instead would end the walk too, but then no start that
-mentions a loop variable could ever pass. The `x.is_finite()` matters
-as well: `f64::INFINITY.trunc()` is infinity, so without it an infinite
-start would pass as a whole number. Step through the walk:
+set<Cite id="rust-std-hashset-insert" />, so one call both records the
+visit and asks "have I been here?". A start like `j = i + 1` leads to
+`i`, which is `φ(0, i + 1)`, which leads to `i` again. Answering `true`
+on the second visit is an optimistic assumption ("suppose `i` is fine")
+that the rest of the cycle must earn, here with `0` and `1`; `false`
+would also end the walk, but then no start mentioning a loop variable
+could pass.
 
 <SeenSteps client:visible />
 
-<Prompts ids={['bp-four', 'acc-both-orders', 'acc-seen', 'bp-finite']} />
+<More title="More: the guard, and two phases for the borrow checker">
 
-## The guard, and two phases
+`conjuncts` flattens `a && b && c` into a list, and one conjunct must be
+a `<` whose left side is the index and whose right side is a `.length`
+read of a load of this same collection. Each answer is pushed into a
+local `Vec<bool>` (`proven.push(guarded && idom.dominates(then,
+gi.block))`), and only after the loop over all reads are the answers
+stored, with `iter_mut().zip(proven)`. The first loop calls `&self`
+methods such as `is_counting_phi`, which borrow all of `self`, so it
+can't also hold a mutable borrow of a collection's element reads: read
+everything, then write. The TypeScript sets `ig.boundsProven = true`
+inside its loop, which JavaScript allows.
 
-Questions 3 and 4 are a few lines more. `conjuncts` flattens `a && b &&
-c` into a list, and one conjunct must be a `<` whose left side is the
-index and whose right side is a `.length` read of a load of this same
-collection. The answer for each read is then pushed into a local
-vector:
+The proof is cautious, and the port keeps every caution: `i <= ps.length`
+is not proven (rightly: on the last trip the read throws), `i < 100` is
+not proven even when `ps` holds 100 elements, because the test must read
+`ps.length`, and `i += 2` is not, because the step must be `+ 1`.
 
-```rust
-proven.push(guarded
-    && idom.dominates(then, gi.block));
-```
+</More>
 
-and only after the loop over all reads are the answers stored:
-
-```rust
-for (ig, p) in self.collections[ci]
-    .index_gets
-    .iter_mut()
-    .zip(proven)
-{
-    ig.bounds_proven |= p;
-}
-```
-
-The reason is the borrow checker (*Borrowing*). The first loop calls
-`&self` methods such as `is_counting_phi`, which borrow all of `self`,
-so it can't also hold a mutable borrow of an element: read everything,
-then write. The TypeScript reference sets `ig.boundsProven = true`
-inside its loop, which JavaScript allows; the parity fixtures check the
-verdicts agree through every explain's `proven in bounds` line.
-
-The proof is cautious, and the port keeps every caution. `i < 100`
-with a constant `100` is not proven, even when `ps` holds 100 elements,
-because the test must read `ps.length`; `i += 2` is not proven, because
-the step must be `+ 1`; and `ps[k + 1]` is not proven, because the index
-is an addition, not the phi (on the last trip it really is out of
-range).
-
-<Prompts ids={['bp-le', 'acc-k-plus-1', 'bp-const-bound', 'acc-two-phases']} />
+<Prompts ids={['acc-both-orders', 'acc-seen']} />
 
 ## Your turn
 
 <Exercise id="countingPhi" />
 
+The extra practice computes the size estimate.
+
+<Exercise id="sizeEstimate" />
+
 ## What you learned
 
+- Field accesses go into **one `LoopAccess` per loop**, keyed by a
+  **tuple** in an **`IndexMap`**, fields in **visit order**.
 - An element read is **proven in bounds** when its index is a
   **counting phi** of a loop around it, the header tests **`index <
   c.length`**, and that test's true edge **dominates** the read.
-- `is_counting_phi` tries the phi's operands in **both orders**;
-  `zero_start` serves trip counts (start exactly 0) and bounds (any
-  **non-negative integer**).
-- `non_neg_int` shares one **`seen`** set across the query, and answers
-  `true` for a value met twice, which carries the walk round a phi's
-  cycle exactly once.
-- Proofs go into a `Vec<bool>` and are stored afterwards, in **two
-  phases**, because the borrow checker won't allow `&self` calls while a
-  collection is borrowed mutably.
+- `is_counting_phi` tries **both orders**; `non_neg_int`'s **`seen`**
+  set carries the walk round a phi's cycle exactly once.
+
+Next: *The cost model and thresholds in Rust*, where these facts become
+a decision.
 
 <Quiz />

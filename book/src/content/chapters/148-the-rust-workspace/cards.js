@@ -1,10 +1,10 @@
-// Chapter 79 cards: recall prompts, examples, exercises and quiz.
+// Chapter 148 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'vrs-what': {
     q: 'What is viscosity-rs, and what must it match?',
-    a: 'The Rust port of Viscosity in `engine/rust`, published at 0.0.1. For every test program it must produce the same code and `explain` text as the TypeScript engine, byte for byte.',
+    a: 'The Rust port of Viscosity in `engine/rust`, a cargo workspace of six crates. For every test program it must produce the same code and `explain` text as the TypeScript engine, byte for byte.',
   },
   'vrs-crates': {
     q: 'Name the six crates of the Rust workspace.',
@@ -25,14 +25,6 @@ export const prompts = {
   'vrs-order': {
     q: 'Why can’t the port use std’s `HashMap` wherever the TypeScript engine used a `Map`?',
     a: 'A JS `Map` iterates in insertion order and that order shows up in `explain`. `HashMap` iterates in an arbitrary, randomly seeded order. `IndexMap` keeps insertion order.',
-  },
-  'vrs-fx': {
-    q: 'What does `FxHashMap` from rustc-hash give up, and why is that fine in a compiler?',
-    a: 'Resistance to hash-flooding (denial-of-service) attacks, in exchange for a faster hash. A compiler doesn’t face that threat.',
-  },
-  'vrs-fixtures': {
-    q: 'Who writes the files in `engine/rust/tests/expected`?',
-    a: 'The TypeScript engine, run by `scripts/gen_expected.mjs`: its code and `explain` output for every program, with default options and with `--bounds assume`.',
   },
   'vrs-regen': {
     q: 'You change the TypeScript engine. What do you run before `cargo test`?',
@@ -231,7 +223,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The crates are published at 0.0.1. A project depends on `viscosity-core = "0.0.1"`. Will `cargo update` move it to 0.0.2 when that is released?',
+    q: 'A project depends on `viscosity-core = "0.0.1"`. Will `cargo update` move it to 0.0.2 once 0.0.2 is on crates.io?',
     options: [
       {
         t: 'Yes: any 0.x version is compatible',
@@ -245,24 +237,6 @@ export const quiz = [
       {
         t: 'Yes, because only the patch number changed',
         why: 'That holds from 1.0 on; for 0.0.z the patch number is the one that must stay the same.',
-      },
-    ],
-  },
-  {
-    q: 'You run `cargo build --manifest-path engine/rust/Cargo.toml` from the repository root. Is `engine/rust/.cargo/config.toml` read?',
-    options: [
-      {
-        t: 'Yes, cargo always reads the config next to the manifest',
-        why: 'The Cargo book says config files are probed in the current directory and its parents.',
-      },
-      {
-        t: 'No: cargo looks in the directory it runs in and that directory’s parents, and `engine/rust` is neither',
-        correct: true,
-        why: 'Run cargo from inside `engine/rust` to get `debug = 0`.',
-      },
-      {
-        t: 'Only for release builds',
-        why: 'Where cargo looks for config doesn’t depend on the profile.',
       },
     ],
   },

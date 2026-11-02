@@ -1,24 +1,7 @@
-// Chapter 83 cards: recall prompts, examples, exercises and quiz.
+// Chapter 157 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 157, 157.
 
 export const prompts = {
-  'cg-edits': {
-    q: 'What is an edit, in `emit.rs`?',
-    a: 'A byte range of the original source and the text that replaces it (an insertion when the range is empty).',
-  },
-  'cg-back-to-front': {
-    q: 'Why are the edits applied in order of start, largest first?',
-    a: 'An edit changes the length of the text after it. Applied from the end, no edit still waiting has moved, so no offset needs fixing.',
-  },
-  'cg-copy-through': {
-    q: 'Why does the compiled program keep the programmer’s comments and spacing?',
-    a: 'The emitter only replaces the byte ranges it must; everything else is copied through from the original text.',
-  },
-  'cg-push-args': {
-    q: 'What does `ps.push({ x: i, vx: 1 })` become, and why in that order?',
-    a: '`ps.push(i, 1)`: the object literal is removed and its values become arguments in field order, which is the order of the container’s `push(v0, v1)`.',
-  },
   'cg-numbered': {
     q: 'Two collections called `ps` in different functions are both transformed. What are their container classes called?',
     a: '`__Vsc_ps` and `__Vsc_ps_2`. The emitter keeps a set of class names and counts up from 2 until the name is free.',
@@ -31,10 +14,6 @@ export const prompts = {
     q: 'Fields `length` and `f0_`: what are the columns, and why?',
     a: '`f0__` and `f0_`. `length` is renamed to `f0_`, which the kept field `f0_` already uses, so `_` is appended until it is free.',
   },
-  'cg-bc-shift': {
-    q: 'In `__vsc_bc`, what does `i >>> 0 === i` check?',
-    a: 'That `i` is a whole number from 0 to 2³² − 1: `>>> 0` converts to an unsigned 32-bit integer, which changes anything else (`-1`, `1.5`, `"3"`).',
-  },
   'cg-spec-order': {
     q: 'In what order does JavaScript evaluate `ps[i].x = rhs`?',
     a: 'The left-hand side to a reference (base `ps[i]`, name `x`), then `rhs`, then the store (`PutValue`), which is what throws on an `undefined` base.',
@@ -43,29 +22,9 @@ export const prompts = {
     q: 'Why could `ps.x[3] = (more(), 77)` lose the write when `more()` pushes?',
     a: 'Evaluating the left-hand side fetches the column first. If the push grows the container, `grow()` replaces `this.x`, and the store goes into the old column.',
   },
-  'cg-rust-borrow': {
-    q: 'What does rustc say about holding `&mut ps.x`, calling `ps.push(...)`, then storing through the first reference?',
-    a: 'Error E0499: cannot borrow `ps` as mutable more than once at a time.',
-  },
-  'cg-ord-derive': {
-    q: 'What does `#[derive(PartialOrd, Ord)]` on `RhsEffect` give the analysis?',
-    a: 'An order that follows the variants as written, `Inert < MayThrow < Effects`, so the worst of several effects is `max`.',
-  },
   'cg-rhs-effect': {
     q: 'What are the three values of `RhsEffect`, and what decides between them?',
     a: '`Inert`, `MayThrow` and `Effects`: the worst thing any instruction evaluated within the assignment (besides the element itself, and the old value of a compound write) can do.',
-  },
-  'cg-bk-nan': {
-    q: 'Why does `__vsc_bk` return `NaN` out of bounds instead of throwing?',
-    a: 'So the check is decided before the right-hand side but the error comes after it: `__vsc_set` throws when it sees `i !== i`, as the original’s store would.',
-  },
-  'cg-plain-cheap': {
-    q: 'A proven write to a plain (non-typed) column has a right side that calls a function. Is it stored late?',
-    a: 'No. A plain column is an ordinary array that is never replaced, and a proven index can’t fail, so the order can’t be observed.',
-  },
-  'cg-k-scratch': {
-    q: 'In the late form of `ps[4].x += rhs`, why is the checked index saved in `__vsc_k`?',
-    a: 'The old value is read with that index first and the late store needs the same index after the right side, so it is computed once and kept.',
   },
 };
 
@@ -461,6 +420,7 @@ fn column_names(
     ],
   },
   storeLate: {
+    optional: true,
     lang: 'rust',
     title: 'When to store late',
     prompt: 'Write the two pieces of the late-store decision. `worst(xs)` returns the worst `Effect` in `xs` (`Inert` for an empty slice), using the derived order `Inert < MayThrow < Effects`. `store_late(op, ok, typed, rhs)` returns `true` exactly when the emitter must store late: either `op` is `"="`, the index is not `ok`, and `rhs` is not `Inert`; or the column is `typed` and `rhs` is `Effects`.',
@@ -736,24 +696,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the emitter apply its edits from the end of the source towards the start?',
-    options: [
-      {
-        t: 'So that no edit moves the offsets of the edits still to come',
-        correct: true,
-        why: 'Each replacement only changes the text after it, and everything after it is already done.',
-      },
-      {
-        t: 'Because Rust strings can only be changed at the end',
-        why: '`replace_range` changes any range.',
-      },
-      {
-        t: 'So that the prelude ends up at the top',
-        why: 'The prelude is added separately, after all the edits.',
-      },
-    ],
-  },
-  {
     q: '`const p = ps[i]; p.x += 1;` is in a proven loop. What does the emitter write?',
     options: [
       {
@@ -768,42 +710,6 @@ export const quiz = [
         t: '`const p = i; ps.x[p] += 1;`',
         correct: true,
         why: 'The variable now holds the element’s index, and every field access through it indexes a column.',
-      },
-    ],
-  },
-  {
-    q: 'Which accesses get `__vsc_bc` around their index?',
-    options: [
-      {
-        t: 'Every access to a transformed collection',
-        why: 'Proven accesses get a bare index, like `ps.x[i]`.',
-      },
-      {
-        t: 'Accesses not proven in bounds, unless compiled with `--bounds assume`',
-        correct: true,
-        why: '`--bounds assume` trusts the program, so no check is added at all.',
-      },
-      {
-        t: 'Only writes',
-        why: 'Reads get it too, as `ps[99].x` does; the flag `w` picks the wording.',
-      },
-    ],
-  },
-  {
-    q: 'Out of range, what does `__vsc_bc(ps, 99, \'x\', false)` do?',
-    options: [
-      {
-        t: 'Returns `undefined`',
-        why: 'It never returns out of range; it throws.',
-      },
-      {
-        t: 'Returns 0, so the read is harmless',
-        why: 'That would change what the program prints.',
-      },
-      {
-        t: 'Throws `TypeError: Cannot read properties of undefined (reading \'x\')`, the original’s error',
-        correct: true,
-        why: 'The compiled program must fail exactly where and how the original fails.',
       },
     ],
   },
@@ -826,24 +732,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why did the old output `ps.x[__vsc_bc(ps, 100, \'x\', true)] = (t = 5)` print `t` as 0?',
-    options: [
-      {
-        t: 'The left-hand side, including the check, is evaluated before the right-hand side',
-        correct: true,
-        why: 'So `__vsc_bc` threw before `t = 5` ran.',
-      },
-      {
-        t: '`__vsc_bc` resets `t`',
-        why: 'It doesn’t touch anything but its arguments.',
-      },
-      {
-        t: 'The typed column stored 5 as 0',
-        why: 'Nothing was stored at all.',
-      },
-    ],
-  },
-  {
     q: 'A right-hand side calls a function that pushes onto `ps`. Why can the cheap `ps.x[i] = rhs` lose the write?',
     options: [
       {
@@ -858,42 +746,6 @@ export const quiz = [
       {
         t: 'Float64Array is read-only while a push runs',
         why: 'Typed arrays can always be written.',
-      },
-    ],
-  },
-  {
-    q: 'A write to a **plain** (non-typed) column, with a proven index and a right-hand side that calls a function. Which form does the emitter use?',
-    options: [
-      {
-        t: '`__vsc_set`, because the right side runs code',
-        why: 'Only typed columns are replaced by `grow()`, and a proven index can’t fail.',
-      },
-      {
-        t: '`__vsc_bk` and `__vsc_set`, for safety',
-        why: 'The order can’t be observed here, so the cheap form is kept.',
-      },
-      {
-        t: 'The cheap `ps.col[i] = rhs`',
-        correct: true,
-        why: 'A plain column is an ordinary array that is never replaced, so fetching it early is fine.',
-      },
-    ],
-  },
-  {
-    q: 'In `__vsc_set(c, col, i, v, f)`, what does the test `i !== i` check?',
-    options: [
-      {
-        t: 'Whether `__vsc_bk` returned `NaN`, i.e. the index was out of bounds',
-        correct: true,
-        why: '`NaN` is the only value not equal to itself. The throw then happens after the right-hand side ran, as in the original.',
-      },
-      {
-        t: 'Whether `i` is a string',
-        why: 'A string equals itself.',
-      },
-      {
-        t: 'Nothing: it is always false',
-        why: 'It is true for `NaN`.',
       },
     ],
   },

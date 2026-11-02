@@ -3,14 +3,14 @@ n: 148
 day: 26
 part: IX
 title: 'The Rust workspace'
-tagline: 'Part VIII’s compiler, rebuilt in Rust, lives by one rule: for every test program it must print exactly what the TypeScript engine prints, byte for byte. Here is the workspace that holds the port, what each crate pulls in, and the test that keeps the two engines honest.'
+tagline: 'The Viscosity you built in TypeScript, rebuilt in Rust, lives by one rule: for every test program it must print exactly what the TypeScript engine prints, byte for byte. Here is the workspace that holds the port, what each crate pulls in, and the test that keeps the two engines honest.'
 objectives:
   - Map each package of the TypeScript engine to its crate in engine/rust, and say what each crate depends on.
-  - Read the workspace’s Cargo.toml and .cargo/config.toml, including inherited keys, version requirements and profiles.
+  - Read the workspace’s Cargo.toml, including inherited keys, version requirements and profiles.
   - Explain why the port uses indexmap and rustc-hash instead of only std’s HashMap.
   - Describe the parity fixtures, and write the helper that reports where two outputs first differ.
 introduces: [viscosity-rs]
-uses: [rust, cargo, crate, workspace, rust-module, cargo-test, assert-macros, release-build, semantic-versioning, wasm-bindgen, hashmap, vec, option, rust-iterator, string-vs-str, rust-functions, viscosity-pipeline, language-plugin, vir, source-to-source, optimization-report, differential-testing, test-corpus, drip-rs, shared-corpus, typescript, webassembly]
+uses: [rust, cargo, crate, workspace, rust-module, cargo-test, assert-macros, release-build, hashmap, vec, option, rust-iterator, string-vs-str, rust-functions, viscosity-pipeline, language-plugin, vir, source-to-source, optimization-report, differential-testing, test-corpus, drip-rs, shared-corpus, typescript]
 sources: [cargo-workspaces, cargo-specifying-deps, wasm-bindgen-schema, cargo-profiles, cargo-profiles-debug-lto, cargo-config, rust-std-hashmap, indexmap-docs, rustc-hash-readme]
 ---
 import WorkspaceSteps from '../../../components/diagrams/ch148/WorkspaceSteps';
@@ -18,14 +18,14 @@ import ParityLoop from '../../../components/diagrams/ch148/ParityLoop';
 
 ## The same compiler, twice
 
-In Part VIII (*Building Viscosity*) you built Viscosity in TypeScript,
-in `engine/ts/packages`: it reads a program, lowers it to VIR, decides
-which arrays of objects to turn into columns, and rewrites the source.
-Part XIII walks through `engine/rust`, the same compiler written again
-in Rust, the way Part XII walked through drip-rs. Two copies of one
-compiler raise an obvious worry, however: how would you ever know they
-still agree? The port answers with one rule above all the others. Run
-both engines on the same program with the same options, and the
+In *Core 5: building Viscosity* you built the compiler in TypeScript, in
+`engine/ts/packages`: it reads a program, lowers it to VIR, decides which
+arrays of objects to turn into columns, and rewrites the source. This
+part walks through `engine/rust`, the same compiler written again in
+Rust, the way the part before it walked through drip-rs. Two copies of
+one compiler raise an obvious worry, however: how would you ever know
+they still agree? The port answers with one rule above all the others.
+Run both engines on the same program with the same options, and the
 rewritten code and the `explain` text must be **equal, byte for byte**;
 not "equivalent", not "the same decisions in other words", but equal.
 
@@ -57,24 +57,26 @@ engines.
 ## Six crates
 
 A **crate** is Rust's unit of compiling (a library or a program), and a
-**workspace** is a set of crates built together, as *Modules, crates and
-visibility* showed. Step through the TypeScript packages next to the
-crates that port them:
+**workspace** is a set of crates built together, as *Modules,
+visibility and workspaces* showed. Step through the TypeScript packages
+next to the crates that port them:
 
 <WorkspaceSteps client:visible />
 
 Each Rust module ports one TypeScript file: `vir.ts` becomes the `vir`
 crate, `plan.ts` becomes `core::plan`, `lower.ts` becomes
 `frontend_js::lower`, so every later chapter can hold its Rust up
-against a file from Part VIII.
+against a file you already know. (The `frontend-python` crate ports the
+Python plugin, which the deep dive *The Python plugin in Rust* covers;
+the core chapters stay with JavaScript.)
 
 <Callout kind="definition">
 **viscosity-rs** is the Rust implementation of Viscosity, in
 `engine/rust`: a cargo workspace of six crates (`vir`, `core`,
-`frontend-js`, `frontend-python`, `cli` and `wasm`), published at
-version 0.0.1, that ports the TypeScript engine module by module. Its
-contract is **parity**: for every test program, the same code and the
-same `explain` text as the TypeScript engine.
+`frontend-js`, `frontend-python`, `cli` and `wasm`) that ports the
+TypeScript engine module by module. Its contract is **parity**: for
+every test program, the same code and the same `explain` text as the
+TypeScript engine.
 </Callout>
 
 <Examples of="viscosity-rs">
@@ -85,7 +87,25 @@ $ cargo run --release \
 ps (line 1) {x, vx} → struct of arrays
   · loop at line 3 in <module>()
     touches 2 of 2 fields (vx, x)
+  · typed Float64Array columns for all
+    2 fields
+  · about 100 elements
+  · 2 of 2 element accesses proven in
+    bounds
 ```
+
+</Examples>
+
+This runs the `viscosity` binary, from the `cli` crate, on a three-line
+program that pushes 100 records `{ x, vx }` and then adds `vx` to `x` in
+a loop. `-p viscosity-cli` picks the crate, `--release` builds with
+optimisations, and everything after `--` goes to the program, not to
+cargo. I ran it here with cargo 1.97 (the lines are rewrapped to fit),
+and the TypeScript CLI printed the same five lines: the same collection,
+the same loop with the fields in the same odd order, the same columns,
+size and bounds proofs.
+
+<More title="More: the port as a library">
 
 ```rust
 use viscosity_core::{compile,
@@ -97,24 +117,12 @@ let r = compile(src, &JsPlugin,
 println!("{}", r.explain);
 ```
 
-```
-$ cargo test -p viscosity-cli \
-    --test parity -- --nocapture
-parity: 190/190 (54 Python)
-```
+`compile` from `core`, handed the JavaScript plugin from `frontend-js`,
+returns a result whose `explain` field holds the same text, and the `?`
+passes a `CompileError` up to the caller. *VIR and the plugin trait in
+Rust* reads this function.
 
-</Examples>
-
-The first runs the `viscosity` binary, from the `cli` crate, on a
-three-line program that pushes 100 records `{ x, vx }` and then adds
-`vx` to `x` in a loop (I ran it here, and the output is trimmed to its
-first two lines and rewrapped); `--release` builds with optimisations,
-and everything after `--` goes to the program, not to cargo. The second
-uses the port as a library: `compile` from `core`, handed the JavaScript
-plugin from `frontend-js`, returns a result whose `explain` field is the
-same text, and the `?` passes a `CompileError` up to the caller. The
-third is the check that keeps the port honest, run here with cargo 1.97;
-it compares 190 pairs of outputs, 54 of them from Python programs.
+</More>
 
 <Prompts ids={['vrs-what', 'vrs-crates']} />
 
@@ -124,18 +132,14 @@ The root `Cargo.toml` holds no code, only settings the members share.
 Trimmed, with long lines rewrapped:
 
 ```toml
-[workspace]
-members = ["crates/vir", "crates/core",
-    ...]
-
 [workspace.package]
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 rust-version = "1.97"
 
 [workspace.dependencies]
 viscosity-vir = { path = "crates/vir",
-    version = "0.0.1" }
+    version = "0.0.2" }
 oxc_parser = "0.156"
 wasm-bindgen = "=0.2.106"
 indexmap = "2"
@@ -151,32 +155,34 @@ root's value<Cite id="cargo-workspaces" />. Inheritance is never
 automatic, which is why every member also writes
 `rust-version.workspace = true` (oxc 0.156 itself needs Rust 1.97). The
 `viscosity-vir` entry carries a `path` and a `version`: cargo uses the
-path inside the workspace and the version once the crate is published,
-which *Release engineering* relies on<Cite id="cargo-specifying-deps" />.
+path inside the workspace and the version once the crate is published
+(the crates on crates.io are at 0.0.1; the workspace has moved on to
+0.0.2)<Cite id="cargo-specifying-deps" />.
+
+A plain requirement such as `"0.156"` accepts later releases only while
+the leftmost number that is not zero stays the same, so it means 0.156.x
+and nothing newer; that matters because oxc's syntax tree changes
+between such releases. The `=` in `"=0.2.106"` accepts one version and
+nothing else: the `wasm-bindgen` command-line tool refuses a `.wasm`
+file built with a library whose "schema version" differs from its
+own<Cite id="wasm-bindgen-schema" />, so the library is pinned to the
+tool it is built with.
 
 <Formal title="What a version requirement accepts">
 
 ```text
 "2"         ≡  ≥ 2.0.0,   < 3.0.0
 "0.156"     ≡  ≥ 0.156.0, < 0.157.0
-"0.0.1"     ≡  ≥ 0.0.1,   < 0.0.2
+"0.0.2"     ≡  ≥ 0.0.2,   < 0.0.3
 "=0.2.106"  ≡  exactly 0.2.106
 ```
 
 <span slot="read">A plain requirement is a caret requirement: any later
 version is accepted as long as the leftmost number that is not zero
 stays the same. So "2" takes any 2.x, "0.156" takes only 0.156.x, and
-"0.0.1" takes only 0.0.1 itself. An equals sign accepts one version and
+"0.0.2" takes only 0.0.2 itself. An equals sign accepts one version and
 nothing else.</span>
 </Formal>
-
-These are the rules of *Shipping Viscosity*'s semantic versioning, in
-cargo's form<Cite id="cargo-specifying-deps" />. They matter here
-because oxc's syntax tree changes between minor releases, so `"0.156"`
-keeps the port on one release; and the `wasm-bindgen` command-line tool
-refuses a `.wasm` file built with a library whose "schema version"
-differs from its own<Cite id="wasm-bindgen-schema" />, so the library is
-pinned with `=` to the tool it is built with.
 
 Profiles live only in the root manifest; cargo ignores them in
 members<Cite id="cargo-workspaces" />. The release profile asks for
@@ -185,9 +191,7 @@ much faster than the full kind<Cite id="cargo-profiles-debug-lto" />,
 and for one codegen unit, since splitting a crate into more units may
 produce slower code<Cite id="cargo-profiles" />.
 
-<Prompts ids={['vrs-inherit', 'vrs-caret', 'vrs-exact']} />
-
-## .cargo/config.toml
+<More title="More: .cargo/config.toml">
 
 One more file changes how the workspace builds, quoted whole:
 
@@ -208,7 +212,12 @@ override the manifest's. `debug = 0` means no debug information, where
 the dev profile's default is full debug
 information<Cite id="cargo-profiles-debug-lto" />, which keeps
 `target/` several times smaller (the price: backtraces lose file and
-line).
+line). Run cargo from outside `engine/rust`, with `--manifest-path`,
+and this file is not read at all.
+
+</More>
+
+<Prompts ids={['vrs-inherit', 'vrs-caret', 'vrs-exact']} />
 
 ## What the crates pull in
 
@@ -217,14 +226,11 @@ JavaScript `Map` visits its keys in the order they were inserted, the
 analyses loop over maps and sets, and that order decides the order of
 the lines in `viscosity explain`. Rust's `HashMap` visits keys "in
 arbitrary order"<Cite id="rust-std-hashmap" />, and it is seeded
-randomly, so the order can change from one run to the next:
-
-<Run id="map-order" />
-
-So wherever order can be seen, the port uses `IndexMap` and `IndexSet`,
-which keep insertion order as `Map` does<Cite id="indexmap-docs" />.
-Where it cannot be seen, the port wants speed: `rustc-hash` is the hash
-that `rustc` itself uses, faster because it gives up std's resistance to
+randomly, so the order can change from one run to the next. So wherever
+order can be seen, the port uses `IndexMap` and `IndexSet`, which keep
+insertion order as `Map` does<Cite id="indexmap-docs" />. Where it
+cannot be seen, the port wants speed: `rustc-hash` is the hash that
+`rustc` itself uses, faster because it gives up std's resistance to
 denial-of-service attacks, which a compiler does not
 face<Cite id="rustc-hash-readme" />. Files import it under std's names,
 so the code reads as if it were std's (from `lower.rs`, rewrapped):
@@ -234,7 +240,15 @@ use rustc_hash::{FxHashMap as HashMap,
     FxHashSet as HashSet};
 ```
 
-<Prompts ids={['vrs-order', 'vrs-fx']} />
+<More title="More: watch HashMap's order change">
+
+Run this a few times: the first line never changes, the second does.
+
+<Run id="map-order" />
+
+</More>
+
+<Prompts ids={['vrs-order']} />
 
 ## The parity test
 
@@ -244,32 +258,18 @@ Here is how "byte for byte" is checked:
   <ParityLoop />
 </Figure>
 
-The programs are the Part VIII corpus, the end-to-end benchmarks, the
-Python corpus and programs written for the port in `tests/extra`, 95 in
-all (68 JavaScript and 27 Python). Each is compiled with the default
-options and with `--bounds assume`, and each result is two files, the
-code and the explain text, so `basic_soa.js` from the corpus gives
+Each test program is compiled with the default options and with
+`--bounds assume`, and each result is two files, the code and the
+explain text, so `basic_soa.js` from the corpus gives
 `corpus_basic_soa.js`, `corpus_basic_soa.explain.txt` and the same two
-with `.assume` in the name. Across the whole workspace, `cargo test
---workspace` ran 77 tests here, all passing.
+with `.assume` in the name. Nobody writes those files by hand: the
+TypeScript engine *is* the expectation, so after every change to it you
+run `node scripts/gen_expected.mjs`, then `cargo test`, and the parity
+test shows where the port must follow. *Emitting JavaScript from Rust,
+and round trips* reads the test itself; on my run here it printed
+`parity: 190/190 (54 Python)`.
 
-<Prompts ids={['vrs-fixtures', 'vrs-regen']} />
-
-<Callout kind="engine" label="Under the hood">
-This is *Testing against the shared corpus* with one change: drip-rs
-compared itself with expectations written inside each program, while
-here nobody writes the expected output by hand, because the TypeScript
-engine *is* the expectation. That makes the test cheap to grow (write a
-program, regenerate) and strict, since every word of every `explain`
-line counts; it also means a change to the TypeScript engine shows up as
-a parity failure until the port follows it, which is why the README says
-to run `node scripts/gen_expected.mjs`, then `cargo test`, after every
-change to the reference. One more workspace detail: `core`'s tests need
-the JavaScript plugin, which itself depends on `core`, so `core` lists
-`frontend-js` as a dev-dependency with a `path` and no `version`, and
-cargo drops such a dependency when it packages the crate, which breaks
-the cycle on crates.io.
-</Callout>
+<Prompts ids={['vrs-regen']} />
 
 ## Your turn
 
@@ -283,14 +283,15 @@ line at which the two outputs differ. Write that helper.
 - **viscosity-rs** is `engine/rust`: six crates that port the
   TypeScript engine module by module, held to byte-for-byte **parity**.
 - The root `Cargo.toml` shares settings with `key.workspace = true`, key
-  by key. `"0.156"` means 0.156.x only, `"0.0.1"` means 0.0.1 only, and
-  `"=0.2.106"` means exactly that version.
-- `.cargo/config.toml` is read from the directory you run cargo in and
-  its parents, and can override profiles.
+  by key. `"0.156"` means 0.156.x only, and `"=0.2.106"` means exactly
+  that version.
 - Order is visible in `explain`, so the port uses insertion-ordered
   **IndexMap** where TypeScript used `Map`, and fast **FxHashMap**
   elsewhere.
 - The fixtures are the TypeScript engine's own output; `parity.rs`
   compares, and reports the first differing line.
+
+Next: *VIR and the plugin trait in Rust*, where the IR moves into
+arenas and the plugin interface becomes a trait.
 
 <Quiz />

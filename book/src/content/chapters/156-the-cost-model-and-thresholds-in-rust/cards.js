@@ -1,15 +1,10 @@
-// Chapter 83 cards: recall prompts, examples, exercises and quiz.
+// Chapter 156 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 156, 156.
 
 export const prompts = {
   'cm-rs-return': {
     q: 'The TypeScript `plan()` refuses with `out.push(keep(...)); continue;`. What does the Rust port do instead?',
     a: 'It moves the loop body into `plan_one`, called once per collection, and each refusal is an early `return keep(...)`.',
-  },
-  'cm-rs-keep': {
-    q: 'What is `keep` in `plan_one`?',
-    a: 'A closure that borrows the collection and builds a `CollectionPlan` with layout `Aos`, block size 0 and the reasons it is given.',
   },
   'cm-rs-clone': {
     q: 'The TypeScript plan holds `collection: c`; the Rust plan holds `c.clone()`. Why the copy?',
@@ -19,25 +14,9 @@ export const prompts = {
     q: 'Why does a collection with bailouts get exactly one reason per bailout?',
     a: '`explain --frames` pairs the k-th reason with the k-th bailout’s source position, to print a code frame under it.',
   },
-  'cm-rs-order': {
-    q: 'Why is the bailout test the first rung of `plan_one`?',
-    a: 'If the rewrite could change what the program does, nothing else matters: no annotation, size or loop can make an unsafe rewrite worth doing.',
-  },
   'cm-rs-annot-skip': {
     q: 'A safe collection is annotated `// @viscosity soa` and has only 5 elements. Is it transformed?',
     a: 'Yes. The annotation returns before the cost rungs, size included: overruling the cost model is what an annotation is for.',
-  },
-  'cm-rs-depth': {
-    q: 'A collection’s only loop table has depth 0. Which reason does `plan_one` give?',
-    a: '“no loop reads or writes its fields, so a new layout cannot pay off”: depth 0 means the accesses are outside every loop.',
-  },
-  'cm-rs-opt-in': {
-    q: 'In `--mode opt-in`, what happens to a safe, numeric, unannotated collection with a hot loop?',
-    a: 'It is kept, with “opt-in mode: not annotated”. That rung comes before every cost rung.',
-  },
-  'cm-rs-measured': {
-    q: 'What is `measured` in the size rung when there is a profile but it has no entry for this collection?',
-    a: '`None`: `and_then(|p| p.get(&c.name))` finds nothing, so the estimate is used.',
   },
   'cm-rs-or': {
     q: 'What does `measured.or(c.size_estimate)` give when a profile has the collection?',
@@ -50,22 +29,6 @@ export const prompts = {
   'cm-rs-max': {
     q: 'A collection is “at most 100 elements” and really holds 25. With the default threshold of 64, what happens, and why?',
     a: 'It becomes SoA: the maximum is compared as if it were the size. Only a profile (measured 25) makes the planner keep it.',
-  },
-  'cm-rs-nan': {
-    q: 'Why would a `min_size` of `NaN` turn the threshold off, in both engines?',
-    a: '`size < NaN` is always false, so nothing is refused for its size. That is why both CLIs now refuse `--min-size abc`.',
-  },
-  'cm-rs-blank': {
-    q: 'Why does the Rust CLI check for a blank `--min-size` value separately from `NaN`?',
-    a: 'JavaScript’s `Number("")` is `0`, not `NaN`, so a blank value would silently mean “no threshold”. Both CLIs refuse it.',
-  },
-  'cm-rs-bug': {
-    q: 'Why did the 186 parity fixtures miss that the two engines once worded the “measured” threshold message differently?',
-    a: 'They compiled with default options and with `--bounds assume`, never with `--profile`, and the fuzzer passed no profile either.',
-  },
-  'cm-rs-about': {
-    q: 'An estimate that is a maximum says “at most”. Why does a measured size always say “about”?',
-    a: '`size_is_upper_bound` describes the estimate; a measurement from a real run is not a maximum of anything.',
   },
 };
 
@@ -523,6 +486,7 @@ fn plan_one(
     ],
   },
   planBottom: {
+    optional: true,
     lang: 'rust',
     title: 'The bottom of the ladder',
     prompt: 'Write `plan`, a cut-down `plan_one`, in this order. Bailouts: `Aos`, with one reason `unsafe: {b}` per bailout. No numeric field: `Aos`, `"no numeric field"`. No loop: `Aos`, `"no loop"`. Then the size is the measured one if there is one, else the estimate. The word is `"at most"` only when nothing was measured and the estimate is an upper bound, else `"about"`. If the size is known and below `min_size`: `Aos`, `"{word} {s} elements: below {min}"`, with ` (measured)` right after `elements` when measured (the reference’s order). Otherwise `Soa`, with one reason: `"size unknown"`, or `"{word} {s} elements"`, plus ` (measured by profiling)` when measured.',
@@ -1106,64 +1070,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which line is the Rust shape of the reference’s `out.push(keep(...)); continue;`?',
-    options: [
-      {
-        t: '`return keep(...);` inside `plan_one`',
-        correct: true,
-        why: 'The loop body became a function, so ending one collection’s turn is a return.',
-      },
-      {
-        t: '`break keep(...);`',
-        why: '`break` would leave the loop over all collections, not just this one.',
-      },
-      {
-        t: '`out.push(keep(...)); continue;`, unchanged',
-        why: 'That works in Rust too, but the port moved the body into `plan_one` and returns instead.',
-      },
-    ],
-  },
-  {
-    q: 'A collection’s fields are all strings, it has a hot loop, and there are no bailouts. Which reason does explain give?',
-    options: [
-      {
-        t: '“no loop reads or writes its fields, so a new layout cannot pay off”',
-        why: 'There is a loop; the numeric rung comes first and refuses.',
-      },
-      {
-        t: '“opt-in mode: not annotated”',
-        why: 'Only in `--mode opt-in`.',
-      },
-      {
-        t: '“unsafe: …”',
-        why: 'There are no bailouts.',
-      },
-      {
-        t: '“no field is provably numeric, so there are no typed columns to gain”',
-        correct: true,
-        why: 'Every column would be a plain array, so there is nothing to gain.',
-      },
-    ],
-  },
-  {
-    q: 'Why does a Rust `CollectionPlan` hold `c.clone()` rather than a reference to the analysis’s collection?',
-    options: [
-      {
-        t: 'Because closures can’t capture references',
-        why: 'They can: `keep` borrows `c` to clone it.',
-      },
-      {
-        t: 'So the plan can live on its own, without a lifetime tying it to the `Analysis`',
-        correct: true,
-        why: 'A borrowing plan would need a lifetime parameter; a copy avoids it, at the cost of one copy per collection.',
-      },
-      {
-        t: 'Because the planner changes the collection',
-        why: 'It doesn’t; it only reads it.',
-      },
-    ],
-  },
-  {
     q: 'A collection’s size is unknown statically, and there is no profile. Which is true?',
     options: [
       {
@@ -1196,64 +1102,6 @@ export const quiz = [
       {
         t: 'SoA, because profiles only raise sizes',
         why: 'A profile replaces the size, in either direction.',
-      },
-    ],
-  },
-  {
-    q: 'The estimate is “at most 40” with the default threshold of 64. Why is refusing it safe?',
-    options: [
-      {
-        t: 'It isn’t: the collection might be larger',
-        why: '“At most” is a real bound: the program can never hold more than 40.',
-      },
-      {
-        t: 'Because the real size can only be smaller than the maximum, so it is below 64 too',
-        correct: true,
-        why: 'Only the low side of a maximum is uncertain.',
-      },
-      {
-        t: 'Because maximums are always refused',
-        why: 'A maximum above the threshold passes, as “at most 100” does.',
-      },
-    ],
-  },
-  {
-    q: 'What does `--min-size abc` do today?',
-    options: [
-      {
-        t: 'It becomes `NaN`, so no collection is refused for its size',
-        why: 'That is what both CLIs once did, parsing it like `Number("abc")`; now they check first.',
-      },
-      {
-        t: 'The CLI rejects it as a usage error: “--min-size must be a non-negative number”',
-        correct: true,
-        why: 'Both CLIs check it now, because a `NaN` threshold would make `size < min_size` never true.',
-      },
-      {
-        t: 'It falls back to 64',
-        why: 'There is no fallback.',
-      },
-    ],
-  },
-  {
-    q: 'The Rust and TypeScript engines once worded the measured threshold message differently. Why did 186/186 fixtures still pass?',
-    options: [
-      {
-        t: 'The parity test ignores explain text',
-        why: 'It compares explain byte for byte.',
-      },
-      {
-        t: 'The difference was only in whitespace',
-        why: 'Words were in a different order.',
-      },
-      {
-        t: 'The fixtures were generated by the Rust engine',
-        why: 'They are generated by the TypeScript reference.',
-      },
-      {
-        t: 'The fixtures never used `--profile`, so that message never appeared in them',
-        correct: true,
-        why: 'Parity was checked for default options and `--bounds assume` only; profile fixtures came with the fix.',
       },
     ],
   },

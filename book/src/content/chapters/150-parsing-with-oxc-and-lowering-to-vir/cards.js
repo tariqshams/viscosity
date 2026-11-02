@@ -1,31 +1,14 @@
-// Chapter 80 cards: recall prompts, examples, exercises and quiz.
+// Chapter 150 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 150, 150.
 
 export const prompts = {
   'oxc-what': {
     q: 'What is oxc?',
     a: 'The Oxidation Compiler: a set of JavaScript and TypeScript tools written in Rust (parser, linter, formatter, transformer, minifier). The port uses its parser and AST.',
   },
-  'oxc-inputs': {
-    q: 'What three things does oxc’s `Parser::new` take?',
-    a: 'An `Allocator` (the memory arena), the source text, and a `SourceType` (the port uses `SourceType::mjs()`, acorn’s `sourceType: \'module\'`).',
-  },
-  'oxc-errors': {
-    q: 'How does oxc report a syntax error, compared with acorn?',
-    a: 'As data: `ret.diagnostics` lists the errors and parsing still returns. acorn throws. The port turns the first error into a `CompileError`.',
-  },
   'oxc-arena': {
     q: 'Where do oxc’s AST nodes live, and what is the `Box` in `Box<\'a, BinaryExpression<\'a>>`?',
     a: 'In the `Allocator`, a bump arena. That `Box` is oxc’s arena box: a pointer into the arena, not std’s heap `Box`.',
-  },
-  'oxc-nodrop': {
-    q: 'What happens to individual nodes when an oxc allocator is dropped?',
-    a: 'Nothing: they are never dropped one by one. The arena’s memory is released in bulk, which is why types that implement `Drop` are refused at compile time.',
-  },
-  'oxc-lifetime': {
-    q: 'Why can’t the port store oxc’s `Program<\'a>` in the VIR `Module`?',
-    a: '`\'a` borrows the allocator, a local of `lower`, so the tree can’t outlive `lower`. The port keeps spans and a side table of node facts instead.',
   },
   'oxc-units': {
     q: 'What do acorn’s offsets count, and what do oxc’s spans count?',
@@ -34,10 +17,6 @@ export const prompts = {
   'oxc-same-cut': {
     q: 'acorn says 266 and oxc says 286 for the same statement. Why do both engines still splice at the same characters?',
     a: 'Each slices its own string in its own unit: the TS emitter a JavaScript string by code units, the Rust emitter a `String` by bytes.',
-  },
-  'oxc-lines': {
-    q: 'oxc reports no line numbers. Which line breaks does the port count, and why those?',
-    a: '`\\n`, `\\r\\n`, a lone `\\r`, U+2028 and U+2029: the ECMAScript line breaks that acorn counts, so `explain` names the same lines.',
   },
   'oxc-semantic': {
     q: 'oxc’s parser alone accepts `let a = 1; let a = 2;`. What makes the Rust engine reject it, as acorn does?',
@@ -51,29 +30,9 @@ export const prompts = {
     q: 'You override `visit_arrow_function_expression` and never call the walk function. What happens?',
     a: 'Nothing inside arrow functions is visited: overriding replaces the default walk for that node.',
   },
-  fnkey: {
-    q: 'The TS resolver keys bindings’ owners by the function node object. What does the Rust port use?',
-    a: '`FnKey::Func(Span)`: a function’s span, which is unique, or `FnKey::Program`.',
-  },
-  'ssa-or-binding': {
-    q: 'Which JS variables does lowering turn into SSA values?',
-    a: 'Simple kinds (const, let, var, param, catch) that no other function uses, that aren’t assigned in a `try`, and that aren’t initialised with an array.',
-  },
-  'mem-replace': {
-    q: 'Why does `lower_function` call `std::mem::replace(&mut self.f, state)`?',
-    a: 'To put the nested function’s builder state in place and get the outer one back, so it can be restored when the nested function is done.',
-  },
   'side-table': {
     q: 'What does `SourceRef.node` hold in the Rust port, where the TS engine keeps an ESTree node?',
     a: 'A `NodeRef` index into a side table of `JsNode` facts: just what the emitter needs (spans of the object and index of `a[i]`, and so on).',
-  },
-  'direct-flag': {
-    q: 'How does the port know that `a[i]` in `a[i].x` is the object of a member expression, with no parent pointers?',
-    a: 'Lowering sets a `direct` flag just before it lowers a member expression’s object, and records it in the `JsNode::Member` facts.',
-  },
-  directives: {
-    q: 'Why does the port lower a `"use strict"` directive to a string constant nothing uses?',
-    a: 'ESTree keeps directives as expression statements, so the TS engine lowers them. Doing the same keeps value numbering identical.',
   },
 };
 
@@ -184,6 +143,7 @@ fn main() {
 
 export const exercises = {
   byteOffset: {
+    optional: true,
     lang: 'rust',
     title: 'From acorn offsets to Rust offsets',
     prompt: 'A JavaScript tool hands you offsets in UTF-16 code units, as acorn reports them. Write `byte_offset`, which turns one into the UTF-8 byte offset of the same character in a Rust `&str`, so that `&src[byte_offset(src, off)..]` starts where JavaScript’s `src.slice(off)` does. `c.len_utf16()` tells you how many code units a `char` takes (1 or 2), and `src.char_indices()` gives each character with its byte offset.',
@@ -661,24 +621,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What happens if the Rust emitter slices its `String` with acorn’s offsets 266..280?',
-    options: [
-      {
-        t: 'It gets the same text, because Rust converts offsets automatically',
-        why: 'Rust indexes `str` by bytes and never converts.',
-      },
-      {
-        t: 'It gets `"9, and a line "`, the wrong text, and an offset inside a character would panic',
-        correct: true,
-        why: 'Byte 266 is twenty bytes before the statement. A slice must start and end on a character boundary.',
-      },
-      {
-        t: 'It fails to compile',
-        why: 'The offsets are run-time numbers; the compiler can’t check them.',
-      },
-    ],
-  },
-  {
     q: 'Why does the Rust port keep no oxc AST after `lower` returns?',
     options: [
       {
@@ -693,46 +635,6 @@ export const quiz = [
       {
         t: 'The emitter re-parses the source',
         why: 'It doesn’t need to: it splices byte ranges it already has.',
-      },
-    ],
-  },
-  {
-    q: 'What does oxc’s `Allocator` do when it is dropped?',
-    options: [
-      {
-        t: 'Runs `Drop` for every node, in reverse order',
-        why: 'Nodes in the arena are never dropped individually.',
-      },
-      {
-        t: 'Moves the nodes to the normal heap',
-        why: 'Nothing is moved; the memory is returned.',
-      },
-      {
-        t: 'Nothing until the program exits',
-        why: 'Its chunks are returned when it is dropped.',
-      },
-      {
-        t: 'Releases its memory in bulk without dropping individual nodes',
-        correct: true,
-        why: 'That is why it refuses `Drop` types at compile time: their own allocations would leak.',
-      },
-    ],
-  },
-  {
-    q: 'oxc reports no line numbers. How does `explain` still say "loop at line 6"?',
-    options: [
-      {
-        t: 'It counts `\\n` characters only',
-        why: 'acorn also counts `\\r`, `\\r\\n`, U+2028 and U+2029, and the port must match it.',
-      },
-      {
-        t: 'The plugin counts them with `LineIndex`, at every ECMAScript line break, as acorn does',
-        correct: true,
-        why: '`LineIndex` records where each line starts and maps a byte offset to its line.',
-      },
-      {
-        t: 'It calls acorn through Node to get them',
-        why: 'The Rust engine doesn’t run JavaScript to compile.',
       },
     ],
   },
@@ -755,28 +657,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'The TS lowering finds “every child” of an ESTree node with `Object.keys`. What does the Rust port use instead?',
-    options: [
-      {
-        t: 'Reflection over the struct’s fields at run time',
-        why: 'Rust has no run-time reflection over struct fields.',
-      },
-      {
-        t: 'oxc’s `Visit` trait: generated walk functions that visit children in source order, with overrides for the kinds that matter',
-        correct: true,
-        why: 'The README calls this out: the default traversal visits children in source order, as `children()` does.',
-      },
-      {
-        t: 'A hand-written `match` on every one of oxc’s node types',
-        why: 'That is what the generated `walk_*` functions already are; the port only overrides a few.',
-      },
-      {
-        t: 'It converts oxc’s AST to ESTree JSON first',
-        why: 'It walks oxc’s AST directly and maps each case back to the ESTree shape in comments.',
-      },
-    ],
-  },
-  {
     q: 'A visitor overrides `visit_function` and does not call `walk::walk_function`. What does it see of a function’s body?',
     options: [
       {
@@ -791,68 +671,6 @@ export const quiz = [
         t: 'Nothing',
         correct: true,
         why: 'That is how `HoistCollector` in `resolve.rs` stops at nested functions on purpose.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the port use `FnKey::Func(Span)` where the TS code uses the function node object as a `Map` key?',
-    options: [
-      {
-        t: 'Spans are faster to hash than objects',
-        why: 'Speed isn’t the reason; TypeScript compares objects by identity cheaply too.',
-      },
-      {
-        t: 'Rust can’t compare references at all',
-        why: 'It can (`std::ptr::eq`), but holding AST references would tie every table to the parse’s lifetime.',
-      },
-      {
-        t: 'A plain value key works without keeping references into the AST, and each function’s span is unique',
-        correct: true,
-        why: 'The resolver’s comment says spans of function nodes are unique. The same idea gives `refs: HashMap<Span, JsBindingId>`.',
-      },
-      {
-        t: 'oxc requires it',
-        why: 'oxc doesn’t care how you key your own tables.',
-      },
-    ],
-  },
-  {
-    q: 'Which variable stays an SSA value?',
-    options: [
-      {
-        t: '`let n = 0;` read and written by a nested function',
-        why: 'Used in another function: it becomes a binding with load/store.',
-      },
-      {
-        t: '`const ps = [];` used only in its own function',
-        why: 'Array-initialised variables always become bindings, so the analyses see every read and write.',
-      },
-      {
-        t: '`let s = 0;` assigned inside a `try` block',
-        why: 'Assigned in a `try`: SSA would be unsound across exception edges.',
-      },
-      {
-        t: '`let i = 0;` used only in its own loop',
-        correct: true,
-        why: 'A simple kind, used only in its owner, not in a `try`, not an array.',
-      },
-    ],
-  },
-  {
-    q: 'What replaces the TS emitter’s `res.parent.get(n)` check (“is this `a[i]` the object of a member expression?”)?',
-    options: [
-      {
-        t: 'A `direct` flag recorded in `JsNode::Member` while lowering',
-        correct: true,
-        why: '`expr_object` sets it just before lowering a member expression’s object.',
-      },
-      {
-        t: 'A parent map built by a second visitor',
-        why: 'The port needs no parent pointers at all.',
-      },
-      {
-        t: 'Re-parsing the source in the emitter',
-        why: 'The emitter never re-parses; it works from spans and facts.',
       },
     ],
   },

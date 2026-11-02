@@ -3,18 +3,15 @@ n: 152
 day: 27
 part: IX
 title: 'Dominators, SSA and dataflow in Rust'
-tagline: 'Cooper, Harvey and Kennedy’s dominators, natural loops and Braun et al.’s SSA construction, ported line for line. The algorithms do not change; the containers do, the borrow checker has opinions, and one missing case in phi removal turned out to be a soundness bug in the TypeScript engine.'
+tagline: 'Cooper, Harvey and Kennedy’s dominators and Braun et al.’s SSA construction, ported line for line: the algorithms do not change, the containers do, and the borrow checker has opinions. Then a dataflow framework designed as Rust traits, held up against the one honest fixpoint the engine really has.'
 objectives:
   - Map cfg.ts and builder.ts onto cfg.rs and builder.rs, and explain each change of representation.
   - Say why intersect takes idom as a parameter, and read the E0502 you get otherwise.
-  - Trace how a variable read inside a loop gets a phi, and how a trivial phi is removed.
-  - Explain the throw-operand bug the port found, and implement the dominator pass.
-  - Say what engine/rust really has for dataflow, and why it has no framework.
-  - Design a lattice and a problem as Rust traits, with the fact type as an associated type.
-  - Write a worklist solver generic over the lattice, and say why it must stop.
+  - Explain how a trivial phi is removed, and the throw-operand bug the port found.
+  - Design a lattice and a problem as Rust traits, with the fact type as an associated type, and write a worklist solver generic over them.
   - Map Viscosity’s numeric fixpoint onto the design, including its round cap and how it fails closed.
 introduces: [rust-ssa, generic-dataflow]
-uses: [viscosity-rs, ir-arena, plugin-trait, visitor-pattern, cross-implementation-tests, cfg, basic-block, dominator, dominator-tree, ssa, phi-node, ssa-construction, natural-loop, fixpoint, escape-analysis, vir, arena, typed-index, vec, hashmap, option, match, pattern, exhaustiveness, enum, struct, impl, rust-generics, trait-bound, rust-closure, borrow, shared-vs-mutable, borrow-checker, recursion, call-stack, throw, typescript, dataflow, lattice, worklist, constant-propagation, trait, trait-object, monomorphization, python-array-module, semantic-differences, typed-array]
+uses: [viscosity-rs, ir-arena, plugin-trait, cross-implementation-tests, cfg, basic-block, dominator, dominator-tree, ssa, phi-node, natural-loop, fixpoint, escape-analysis, vir, arena, typed-index, vec, hashmap, option, match, pattern, exhaustiveness, enum, struct, impl, rust-generics, trait-bound, rust-closure, borrow, shared-vs-mutable, borrow-checker, throw, typescript, dataflow, lattice, worklist, constant-propagation, trait, monomorphization]
 sources: [braun2013, coopertorczon2022, klabnik2026]
 ---
 import DomSteps from '../../../components/diagrams/ch152/DomSteps';
@@ -22,41 +19,35 @@ import PhiSteps from '../../../components/diagrams/ch152/PhiSteps';
 import SolverSteps from '../../../components/diagrams/ch152/SolverSteps';
 import LatticeHasse from '../../../components/diagrams/ch152/LatticeHasse';
 
-{/* ── merge: from old chapter 152, Dominators and SSA in Rust ── */}
-
 ## Same algorithms, new containers
 
-The chapters *Dominators*, *Loops* and *SSA on the fly* taught these
-ideas, and the TypeScript engine has them in `cfg.ts` and `builder.ts`.
-`engine/rust/crates/core/src/cfg.rs` and `builder.rs` port them almost
-line for line: Cooper, Harvey and Kennedy's dominance algorithm, and Braun
-et al.'s SSA construction during lowering<Cite id="braun2013" />. What
-changes is *where things live*. The
-TypeScript keeps `Map`s keyed by block numbers; in Rust, blocks and values
-sit in the module's arenas (see *VIR in Rust*), so a map from blocks
-becomes a `Vec` indexed by `BlockId`, and "no entry" becomes `None`.
+*Dominators and natural loops* and *SSA and phi nodes, built on the
+fly* taught these ideas; `crates/core/src/cfg.rs` and `builder.rs` port
+`cfg.ts` and `builder.ts` almost line for line, Cooper, Harvey and
+Kennedy's dominance algorithm and Braun et al.'s SSA
+construction<Cite id="braun2013" /> included. What changes is *where
+things live*.
+The TypeScript keeps `Map`s keyed by block numbers; in Rust, blocks and
+values sit in the module's arenas (*VIR and the plugin trait in Rust*),
+so a map from blocks becomes a `Vec` indexed by `BlockId`, and "no
+entry" becomes `None`.
 
-<Analogy title="numbered lockers at a pool">
+<Analogy extra title="numbered lockers at a pool">
 At a swimming pool, the desk does not write down where each locker
 stands, only its number; a list of who has locker 7 is a row of slots,
-one per locker, and a free locker is a slot marked "nobody". Blocks and
-values are lockers, and ids are the numbers on the keys.
+one per locker, and a free locker is a slot marked "nobody".
 <span slot="breaks">A pool reuses a locker for the next swimmer; the
 arena never does, so a removed value keeps its slot, and an old key
 still opens it: the id still "works", and quietly hands you the wrong
 thing.</span>
 </Analogy>
 
-## Reverse postorder and dominators
+## Dominators, and a closure that borrows
 
-A block **dominates** another if every path from the entry to the second
-passes through the first, and its **immediate dominator** (idom) is the
-closest such block. `cfg.rs` first lists the blocks in **reverse
-postorder** (a depth-first walk, reversed, so a block comes before the
-blocks it leads to, apart from back edges); where the TypeScript recurses,
-the port keeps an explicit stack, which visits successors in the same
-order and cannot overflow on a long chain of blocks. Then the dominator
-loop, adapted:
+`cfg.rs` first lists the blocks in reverse postorder (where the
+TypeScript recurses, the port keeps an explicit stack, which visits
+successors in the same order and cannot overflow on a long chain of
+blocks), and then runs the dominator loop, adapted:
 
 ```rust
 let intersect =
@@ -75,59 +66,46 @@ if idom[b.index()] != Some(d) {
 ```
 
 `idom` is a `Vec<Option<BlockId>>`, with only the entry filled in at
-first. For each block, `first` and `rest` are its predecessors that
-already have an idom (the others are skipped this pass), and `intersect`
-climbs from two blocks towards the entry until they meet; the meeting
-point is a common dominator. If the answer changed, `changed` asks for
-another pass, and the loop stops when a pass changes nothing.
-
-Why does the closure take `idom` as a parameter rather than using the
-variable directly? A closure that *captures* a variable borrows it for as
-long as the closure is in use, and the loop assigns to `idom` between
-calls. rustc 1.97 on a small copy of the loop (rewrapped):
-
-```
-error[E0502]: cannot borrow `idom` as
-  mutable because it is also borrowed
-  as immutable
-```
-
-It underlines the closure as the "immutable borrow" and `idom[b] =
-Some(d)` as the "mutable borrow".
-
-Passing `&idom` at each call makes each borrow last one call.
+first; `first` and `rest` are the block's predecessors that already have
+one, and `intersect` climbs from two blocks towards the entry until they
+meet. Why does the closure take `idom` as a parameter? A closure that
+*captures* a variable borrows it for as long as the closure is in use,
+and the loop assigns to `idom` between calls: rustc 1.97 on a small copy
+says `error[E0502]: cannot borrow `idom` as mutable because it is also
+borrowed as immutable`. Passing `&idom` at each call makes each borrow
+last one call.
 
 <DomSteps client:visible />
 
-<Prompts ids={['idom-vec', 'intersect-param', 'chk-skip']} />
+<More title="More: natural loops in an IndexMap">
 
-## Natural loops
-
-`natural_loops` finds each **back edge** `t → h` (an edge to a block `h`
-that dominates `t`) and walks predecessors from `t` until it reaches `h`;
-everything it meets is the loop body. Loops are kept in an
-`IndexMap<BlockId, BTreeSet<BlockId>>`: the `IndexMap` lists headers in
-the order they were first found, as the TypeScript `Map` does (that order
-reaches `explain`), and the `BTreeSet` keeps each body sorted. Run the same
-two steps on the six blocks of the diagram above:
+`natural_loops` finds each back edge `t → h` (an edge to a block `h`
+that dominates `t`) and walks predecessors from `t` until it reaches
+`h`. Loops are kept in an `IndexMap<BlockId, BTreeSet<BlockId>>`: the
+`IndexMap` lists headers in the order they were first found, as the
+TypeScript `Map` does (that order reaches `explain`), and the
+`BTreeSet` keeps each body sorted. Run the same two steps on the six
+blocks of the diagram: it prints the one back edge, `5 -> 1`, with the
+body `{1, 2, 5}`.
 
 <Run id="loops-play" />
 
-It prints the one back edge, `5 -> 1`, with the body `{1, 2, 5}`, and
-that block 2 dominates block 3: the throw block is reached only through
-the body, yet is not in the loop, since nothing leads back from it.
+</More>
 
-<Prompts ids={['loop-order']} />
+<Prompts ids={['intersect-param']} />
 
 ## The SSA builder
 
 `FunctionBuilder<K>` is generic over `K`, the front-end's name for a
-variable (the JavaScript plugin uses a resolved binding, or the hidden
-index of a `for...of`). It does not own the `Module`: every method takes
-`&mut Module`, because lowering a nested function keeps two builders
-alive (outer and inner) writing into one module, and two builders each
-holding a `&mut Module` would be rejected by the borrow checker. Reading a variable that the current block does not
-define, trimmed from `read_variable_recursive`:
+variable. It does not own the `Module`: every method takes `&mut
+Module`, because lowering a nested function keeps two builders alive
+(outer and inner) writing into one module, and two builders each
+holding a `&mut Module` would be rejected by the borrow checker.
+
+<More title="More: reading a variable across blocks">
+
+Reading a variable that the current block does not define, trimmed from
+`read_variable_recursive`:
 
 ```rust
 let val = if !self.sealed.contains(&block) {
@@ -151,39 +129,11 @@ is not, until its back edge exists). So the first branch makes an
 *incomplete* phi, filled in at sealing time, in the order of the
 `IndexMap` called `incomplete`, which decides the value numbers. The
 second asks the one predecessor. The third records a new phi as the
-variable's value *first* (so a loop leading back here finds it rather than
-asking forever), then reads each predecessor. (A fourth case, with no
-predecessors, makes an `undefined` constant.)
+variable's value *first* (so a loop leading back here finds it rather
+than asking forever), then reads each predecessor. (A fourth case, with
+no predecessors, makes an `undefined` constant.)
 
-<Examples of="rust-ssa">
-
-```
-b2:  ; preds b0 b1
-  %3 = phi %0, %2
-```
-
-```
-b1:  ; preds b0 b3
-  %5 = phi %0, %6
-  %2 = phi %1, %9
-```
-
-```
-b9:  ; preds b6
-  throw %14
-```
-
-</Examples>
-
-The first is printed from the builder's own unit test for an `if`/`else`
-join, `x = 1; if (c) x = 2; return x;`: the join block `b2` merges `%0`
-(the 1) and `%2` (the 2), with operands in predecessor order (the entry's
-edge was added first). The second is
-from `let s = 0; for (let i = 0; i < 4; i++) s = s + i;`: the header's
-phi for `i` (`%2`) was made when the header was lowered, the one for `s`
-(`%5`) later, from the body, and `new_phi` inserts at the *front*, so the
-newer sits above. The third, from the corpus program `throw_from_loop.js`,
-is the next section's subject.
+</More>
 
 <Callout kind="definition">
 **SSA construction over arena IR** builds SSA by editing the module's
@@ -191,26 +141,16 @@ arenas through typed ids: values are `ValueId`s into `module.values`,
 blocks list their instructions as `Vec<ValueId>`, and replacing a value
 means rewriting every place that holds its id (instruction operands,
 terminators, and the builder's own tables). Nothing points at anything,
-so nothing can dangle; but an id that is missed still names the old value.
+so nothing can dangle; but an id that is missed still names the old
+value.
 </Callout>
-
-<Prompts ids={['builder-no-module', 'phi-front']} />
-
-## Trivial phis and the throw bug
-
-<Analogy extra title="moving house">
-When you move, every friend, bank and shop that has your old address must
-be told the new one; miss the dentist and their letters go to a house
-where you no longer live, and nobody tells you.
-<span slot="breaks">The post office forwards mail for a while; the arena
-forwards nothing. A removed phi becomes an empty opaque value, and any
-operand still naming it quietly reads nothing useful.</span>
-</Analogy>
 
 A phi is **trivial** if, ignoring itself, it merges only one value; then
 `try_remove_trivial_phi` replaces it with that value. For instructions
-that is a loop over operands. Terminators (the last thing in a block, such
-as a branch or a `return`) need their own `match` (`T` is `Terminator`):
+that is a loop over operands; terminators need their own `match` (`T`
+is `Terminator`):
+
+<Examples of="rust-ssa">
 
 ```rust
 match &mut blocks[bi].term {
@@ -224,12 +164,28 @@ match &mut blocks[bi].term {
 }
 ```
 
-The TypeScript version had only the first two; the third went into
-`builder.ts` in commit 16c7767. In `throw_from_loop.js`, `const e = ps[0]` is thrown from
-inside a loop, so reading `e` in the unsealed loop header made the phi
-`%31`; at sealing, it merged `%14` (the element) with itself, so it was
-trivial. Here is the spot the difference, from a copy of the repo with the
-`Throw` line deleted, on the left, and as committed, on the right:
+</Examples>
+
+`&mut blocks[bi].term` borrows the block's terminator mutably, so each
+arm can write through the binding it matches: a branch condition, a
+returned value or a thrown value that is the removed phi now names
+`same`, its replacement, and `_ => {}` leaves the rest alone. The
+TypeScript version had only the first two arms. In `throw_from_loop.js`,
+an element `e` is thrown from inside a loop, so the loop header got a
+phi for `e` that, once sealed, merged the element with itself: trivial.
+Without the `Throw` arm the throw still names the removed phi, the
+escape analysis never sees the element leave, and the compiled program
+throws a number where the original throws the object.
+
+<PhiSteps client:visible />
+
+(An **exhaustive** `match` naming every terminator kind, with no `_`,
+would have forced a decision about `Throw`.)
+
+<More title="More: the listing, before and after the fix">
+
+From a copy of the repository with the `Throw` arm deleted (left), and
+as committed (right):
 
 ```
 b9:  ; preds b6       b9:  ; preds b6
@@ -239,74 +195,24 @@ ps (line 3) {x}       ps (line 3) {x}
                         of objects
 ```
 
-On the left the throw names the removed phi, so the escape analysis never
-sees the element leave and the compiled program throws a number; on the
-right, `explain` says "line 5: an element is returned or branched on in
-`<module>()`".
+On the right, `explain` says "line 5: an element is returned or branched
+on in `<module>()`".
 
-<PhiSteps client:visible />
+</More>
 
-Could Rust's **exhaustive** `match` have caught it? Not as written,
-since `_ => {}` covers whatever is not listed; a match naming every
-terminator kind would have forced a decision about `Throw`.
-
-<Formal title="Trivial phi removal">
-
-```text
-v = φ(x₁, …, xₙ)
-S = {x₁, …, xₙ} ∖ {v}
-|S| = 1, S = {w}  ⟹  replace v by w
-|S| = 0           ⟹  v := undefined
-```
-
-<span slot="read">A phi v merges the values x one to x n. Take the set of
-those values with v itself removed. If exactly one value w is left, every
-use of v becomes w; if none is left, v becomes undefined; if two or more
-are left, the phi stays.</span>
-</Formal>
-
-<Prompts ids={['trivial-phi', 'throw-bug']} />
-
-## Your turn
-
-<Exercise id="chk" />
-
-## What you learned
-
-- `cfg.rs` and `builder.rs` are the TypeScript algorithms with Rust
-  containers: `Vec<Option<BlockId>>` for idoms, an explicit stack for
-  the depth-first walk, `IndexMap` wherever order is visible.
-- A closure that **captures** a variable borrows it; `intersect` takes
-  `&idom` per call so that the loop can update `idom` (E0502 otherwise).
-- `FunctionBuilder<K>` takes `&mut Module` in every method, so nested
-  functions' builders share one module. **SSA over arena IR** means
-  rewriting ids in place.
-- A **trivial phi** is replaced everywhere, terminators included; missing
-  `throw` there was a soundness bug in the reference, found by the port.
-
-
-{/* ── merge: from old chapter 152, A generic dataflow framework ── */}
+<Prompts ids={['builder-no-module', 'trivial-phi', 'throw-bug']} />
 
 ## The framework that is not there
 
-The chapters *Dataflow analysis*, *Fixpoints and worklists* and *Lattices
-and monotone frameworks* ended with a promise: facts arranged in a
-lattice, a rule per instruction, a way to merge two facts, and a worklist
-are the machinery under most of an optimising compiler, one framework
-with many instances<Cite id="coopertorczon2022" />. So you might expect
-the Rust port to have a `trait Lattice` somewhere; however, search
-`engine/rust/crates` for `trait` and you find exactly one, `LanguagePlugin`
-(see *The plugin trait*). What the port has instead is one fixpoint,
-written directly over its own state: `numeric_inference` in
-`crates/core/src/analysis.rs`, a port of the same loop in `analysis.ts`.
-The file's other analyses are single passes over use lists, and one
-instance does not pay for a framework. So this chapter **designs** one, in Rust (everything in
-the next two sections is this book's design, not code in the repository),
-and then lines the design up against the real loop.
-
-<Prompts ids={['gd-no-framework']} />
-
-## A lattice is a trait
+*Dataflow, fixpoints and constant propagation* described one framework
+with many instances: a lattice of facts, a rule per instruction, a meet
+and a worklist<Cite id="coopertorczon2022" />. Search
+`engine/rust/crates` for `trait`, however, and you find exactly one,
+`LanguagePlugin`; the port has one fixpoint, `numeric_inference` in
+`analysis.rs`, written directly over its own state, because one instance
+does not pay for a framework. So this half **designs** one (this book's
+design, not code in the repository) and lines it up against the real
+loop.
 
 <Analogy title="a tax form">
 A tax form works for every household because it never asks what a
@@ -317,10 +223,11 @@ for the most hopeful fact, the safe one, and how two facts merge.
 again and again, until a whole pass changes nothing.</span>
 </Analogy>
 
-A **lattice** here is a set of facts ordered from hopeful to safe, with a
-top (the optimistic start), a bottom (claims nothing, so always true) and
-a **meet** (the best fact that is no more hopeful than either of two). As
-a Rust trait:
+A lattice here is a set of facts ordered from hopeful to safe, with a
+top (the optimistic start), a bottom (claims nothing) and a **meet**
+(the best fact no more hopeful than either of two). A **problem** says
+how many nodes there are, which nodes each one reads, and its rule, the
+**transfer function**:
 
 ```rust
 pub trait Lattice: Clone + PartialEq {
@@ -328,14 +235,6 @@ pub trait Lattice: Clone + PartialEq {
     fn bottom() -> Self;
     fn meet(&self, o: &Self) -> Self;
 }
-```
-
-`Clone + PartialEq` says every fact can be copied and compared, which the
-solver needs to notice "nothing changed". A **problem** says how many
-nodes there are (values, say), which nodes each one reads, and its rule,
-called the **transfer function**:
-
-```rust
 pub trait Problem {
     type Fact: Lattice;
     fn len(&self) -> usize;
@@ -346,10 +245,9 @@ pub trait Problem {
 }
 ```
 
-`type Fact: Lattice` is an **associated type** (see *Associated types and
-the standard traits*): each problem has exactly one kind of fact, as each
-plugin has exactly one `Extra`. Nodes are plain `usize`s, like the typed
-ids of *VIR in Rust* without the wrapper.
+`Clone + PartialEq` lets the solver copy facts and notice "nothing
+changed". `type Fact: Lattice` is an **associated type**: each problem
+has exactly one kind of fact, as each plugin has exactly one `Extra`.
 
 <Examples of="generic-dataflow">
 
@@ -363,108 +261,54 @@ impl Lattice for bool {
 }
 ```
 
-```rust
-// Top, then K(n) (one constant),
-// then Varies: K(1) meet K(2) is
-// Varies, Top meet K(1) is K(1).
-enum C { Top, K(i64), Varies }
-```
-
-<Run id="rounds-play" />
-
 </Examples>
 
-The first is the simplest lattice there is, the one Viscosity uses for
-JavaScript: `true` means "provably a number", `false` claims nothing, and
-the meet of two facts is `&&`, since a value built from two others is
-known to be a number only if both are. The second is the constant
-lattice of *Sparse conditional constant propagation*, three levels deep; the
-exercise's tests run the same solver on both. The third is runnable: the
-real strategy (whole rounds, a budget, failing closed) on a four-value
-loop, which the last section explains.
+This is the lattice Viscosity uses for JavaScript: `top` is `true`,
+"provably a number", the hopeful start; `bottom` is `false`, which
+claims nothing and so is always safe; and the meet is `&&`, since a
+value built from two others is a number only if both are. (Implementing
+our trait for std's `bool` is allowed, because the trait is ours.)
 
 <Figure caption="The facts Viscosity's numeric fixpoint uses, drawn from hopeful (top) to safe (bottom)." takeaway="Meet only ever moves down.">
   <LatticeHasse />
 </Figure>
 
 <Callout kind="definition">
-A **generic dataflow framework** is a solver written once and generic over
-the lattice: any analysis that supplies a fact type with `top`, `bottom`
-and `meet`, and a **transfer function** per node, gets a fixpoint from the
-same code. In Rust the lattice and the problem are traits, the fact is an
-associated type, and the solver is a generic function bounded by
-`P: Problem`.
+A **generic dataflow framework** is a solver written once and generic
+over the lattice: any analysis that supplies a fact type with `top`,
+`bottom` and `meet`, and a **transfer function** per node, gets a
+fixpoint from the same code. In Rust the lattice and the problem are
+traits, the fact is an associated type, and the solver is a generic
+function bounded by `P: Problem`.
 </Callout>
 
-<Prompts ids={['gd-what', 'gd-assoc']} />
+The design's solver starts every fact at top and every node on a stack;
+it pops a node, runs its rule, **meets the result with the old fact**
+(so a fact can only move down), and if it changed, pushes the node's
+users. With a lattice of finite height the stack must empty. It is
+generic, `solve<P: Problem>`, so each problem gets its own monomorphized
+copy with direct calls<Cite id="klabnik2026" />.
 
-## The solver
-
-The design's worklist solver, with the middle of its loop left for the
-exercise:
-
-```rust
-pub fn solve<P: Problem>(p: &P)
-    -> Vec<P::Fact>
-{
-    let us = users(p); // who reads whom
-    let n = p.len();
-    let mut f = vec![P::Fact::top(); n];
-    let mut work: Vec<usize> =
-        (0..n).rev().collect();
-    while let Some(v) = work.pop() {
-        let new = p.transfer(v, &f)
-            .meet(&f[v]);
-        // if new != f[v]: store it, and
-        // push v's users not yet queued
-    }
-    f
-}
-```
-
-`users` turns "whom does each node read" into "who reads each node", so
-a change can wake the right nodes. Every fact starts at
-top, and every node starts on the stack `work`. The loop pops a node, runs
-its rule, and **meets the result with the old fact**, which clamps it: a
-fact can only move down.
-
-<Analogy extra title="doubt spreading through a village">
-Everyone in a village starts out trusting a story; one person hears it is
-false and tells their neighbours, who tell theirs, and doubt spreads
-until everyone who could hear it has. Nobody, once doubtful, goes back to
-trusting, so the spreading must stop.
-<span slot="breaks">Real villagers can change their minds back; the
-clamp forbids that, and it is exactly that ban which guarantees the end.
-Viscosity's real loop does not clamp everything, which is why it needs a
-cap instead.</span>
-</Analogy>
-
-<Formal title="Why a clamped worklist stops">
-
-```text
-f'ᵥ = transferᵥ(f) ⊓ fᵥ   so  f'ᵥ ⊑ fᵥ
-changes ≤ n × h
-```
-
-<span slot="read">The new fact for node v is its rule's answer met with
-its old fact, so the new fact is never above the old one. Each node can
-only step down the lattice, at most h times for a lattice of height h, so
-with n nodes there are at most n times h changes, and each change pushes
-finitely many users: the stack must empty.</span>
-</Formal>
-
-The solver is generic, not `&dyn Problem` (see *Trait objects and
-dispatch*): it builds a `Vec<P::Fact>`, which needs the concrete type, and
-**monomorphization** gives each problem its own copy, so every `transfer`
-and `meet` is a direct call rustc can inline<Cite id="klabnik2026" />.
-
-<Prompts ids={['gd-clamp', 'gd-mono']} />
+<Prompts ids={['gd-no-framework', 'gd-clamp']} />
 
 ## Viscosity’s loop, as an instance
 
-The real loop, trimmed from `numeric_inference` and rewrapped (the
-Python int fact, computed the same way just before `compute`, is left
-out, and the comment stands for three more loops):
+The real `numeric_inference` has values, bindings and fields as nodes,
+`bool` facts and rules such as `compute`, but a different strategy:
+whole rounds, every value in id order, each new fact written in place,
+until a round changes nothing. Value facts are recomputed from their rules every round, not
+clamped, so the loop cannot lean on the height argument to stop; it caps
+the rounds at `MAX_ROUNDS` (1000) instead. And if the last round still
+changed something, it **fails closed**: every fact is reset to `false`,
+so no column is typed and no index is trusted. Step through the same
+small problem both ways:
+
+<SolverSteps client:visible />
+
+<More title="More: the real loop, and the three outcomes">
+
+Trimmed from `numeric_inference` and rewrapped (the comment stands for
+three more loops):
 
 ```rust
 let mut converged = false;
@@ -482,76 +326,46 @@ for _round in 0..self.max_rounds {
 }
 ```
 
-Every value, in id order, is recomputed by its rule `compute`, and the
-new fact is written in place, so later values in the same round already
-see it. A round that changes nothing ends the loop. Read against the
-design, the nodes are values, bindings and collection fields; the fact is
-a `bool` (for Python, a pair: "is a float" and "is an int", the product
-lattice on the right of the figure); `top` and `bottom` are `true` and
-`false`; the transfer functions are `compute`, `compute_int`, the stores
-to each binding, and `field_stays_numeric`; and the strategy is whole
-rounds, at most `MAX_ROUNDS` (1000) of them. Step through the same small
-problem both ways:
+A unit test in `analysis.rs` pins failing closed with a budget of zero
+rounds: with no rounds, no quiet round is ever seen, so even `1 + 2` is
+not proven a number. The runnable example has the same three outcomes:
+a budget of 1000 is quiet in round 3; a budget of 2 reaches the right
+facts but never sees a quiet round, so it fails closed; and a budget of
+0 proves nothing. (For Python the fact is a pair, "is a float" and "is
+an int", the product lattice on the right of the figure; the deep dive
+*The Python plugin in Rust* explains why.)
 
-<SolverSteps client:visible />
+<Run id="rounds-play" />
 
-<Prompts ids={['gd-rounds', 'gd-python']} />
-
-## Two differences that matter
-
-**No clamp on values.** Binding and field facts are computed as
-`old && ...`, so once false they stay false: that part clamps. Value
-facts, however, are recomputed from their rules every round, and the first
-pass reads values not yet computed as `false` (the code says so), so a
-value's fact can rise. The loop therefore cannot lean on the height
-argument to stop; it caps the rounds instead.
-
-**It fails closed.** If round 1000 still changes something, nothing is
-proven: every value, int and field fact is reset to `false`, so no column
-is typed and no index is trusted. A unit test in `analysis.rs` pins this
-with a budget of zero rounds:
-
-```rust
-let (m, s) = sum_module(); // 1 + 2
-let a = Analyzer::new(&m, 0).run();
-assert!(!a.is_number(s));
-```
-
-With no rounds, no quiet round is ever seen, so even `1 + 2` is not
-proven a number. The runnable example has the same three outcomes: a
-budget of 1000 is quiet in round 3, a budget of 2 reaches the right facts
-but never sees a quiet round, so it fails closed, and a budget of 0 proves
-nothing.
+</More>
 
 <Prompts ids={['gd-fail-closed']} />
 
-<Callout kind="engine" label="Under the hood">
-Could the port swap its rounds for the design's worklist? For rules that
-only move facts down, any fair order reaches the same fixpoint; however,
-Viscosity's start is not quite like that, its facts decide typed columns
-and index checks, and the parity fixtures compare every message, so the
-port keeps the reference's rounds and order exactly. A framework would
-earn its place when a second analysis needs a lattice; until then, one
-honest loop with a cap is less code to keep identical in two languages.
-</Callout>
-
 ## Your turn
 
+Fill in the middle of the design's worklist solver; the tests run it on
+the `bool` lattice and on a three-level constant lattice.
+
 <Exercise id="solver" />
+
+For extra practice, implement the dominator pass, or a product lattice.
+
+<Exercise id="chk" />
 
 <Exercise id="product" />
 
 ## What you learned
 
-- engine/rust has **no generic dataflow framework**: one fixpoint,
-  `numeric_inference`, and one trait in the whole engine.
-- The design: `Lattice` (`top`, `bottom`, `meet`) and `Problem` (an
-  associated `Fact`, `deps`, `transfer`) as traits, and a solver generic
-  over `P: Problem`, monomorphized per problem.
-- A **clamped** worklist only moves facts down, so it stops on a lattice
-  of finite height.
-- The real loop is an instance: values, bindings and fields as nodes,
-  `bool` facts (a pair for Python), rounds in id order capped at 1000,
-  and it **fails closed**.
+- `cfg.rs` and `builder.rs` are the TypeScript algorithms with Rust
+  containers; `intersect` takes `&idom` per call, because a closure that
+  captures a variable borrows it (E0502).
+- **SSA over arena IR** means rewriting ids in place, terminators
+  included; missing `throw` there was a soundness bug.
+- The **generic dataflow** design: `Lattice` and `Problem` traits, an
+  associated `Fact`, and a clamped worklist solver generic over `P:
+  Problem`. engine/rust has none: one fixpoint in rounds, capped at
+  1000, that **fails closed**.
+
+Next: *Collections and shapes in Rust*, where the analyses begin.
 
 <Quiz />

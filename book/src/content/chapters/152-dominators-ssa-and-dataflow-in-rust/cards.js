@@ -1,31 +1,14 @@
-// Chapter 81 cards: recall prompts, examples, exercises and quiz.
+// Chapter 152 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 152, 152.
 
 export const prompts = {
-  'idom-vec': {
-    q: 'The TS `dominators` returns a `Map<BlockId, BlockId>`. What does the Rust one store?',
-    a: 'A `Vec<Option<BlockId>>` indexed by block, with `None` for an unreachable block.',
-  },
   'intersect-param': {
     q: 'Why does `intersect` in `cfg.rs` take `idom` as a parameter instead of capturing it?',
     a: 'The loop mutates `idom` while the closure is alive. A closure that captured it would hold a shared borrow, and the mutation would be error E0502.',
   },
-  'chk-skip': {
-    q: 'In a pass of Cooper–Harvey–Kennedy, which predecessors of a block are used?',
-    a: 'Only those that already have an idom. The rest are skipped this pass.',
-  },
-  'loop-order': {
-    q: 'Why is `natural_loops` keyed by an `IndexMap` and not a `HashMap`?',
-    a: 'Loops must be listed in the order their headers are first found, as with the TS `Map`, and that order reaches the explain output.',
-  },
   'builder-no-module': {
     q: 'Why doesn’t `FunctionBuilder` own the `Module`?',
     a: 'Every method takes `&mut Module`, so a front-end can keep one module and switch between builders for nested functions.',
-  },
-  'phi-front': {
-    q: 'Why can a phi with a larger number appear above a smaller one in a listing?',
-    a: '`new_phi` inserts at the front of the block (`insts.insert(0, id)`), so later phis go above earlier ones.',
   },
   'trivial-phi': {
     q: 'When is a phi trivial?',
@@ -35,37 +18,17 @@ export const prompts = {
     q: 'What went wrong when trivial-phi removal didn’t rewrite `throw` operands?',
     a: 'A thrown element still named the removed phi, so the escape analysis missed it. The compiled program threw an index instead of the object.',
   },
-  'gd-what': {
-    q: 'What is a **generic dataflow framework**?',
-    a: 'One solver, written once, that works for any analysis supplying a lattice of facts and a transfer function per node.',
-  },
   'gd-no-framework': {
     q: 'Does engine/rust have a generic dataflow framework?',
     a: 'No. It has one fixpoint, the numeric-kind analysis in `analysis.rs`, written directly over its own state.',
-  },
-  'gd-assoc': {
-    q: 'Why is the fact type an associated type (`type Fact`) of `Problem` rather than a type parameter?',
-    a: 'Each problem has exactly one fact type, so the solver can name it as `P::Fact` without a second parameter.',
-  },
-  'gd-mono': {
-    q: 'What does `solve::<G>` cost compared with a hand-written solver for `G`?',
-    a: 'Nothing extra at run time: it is monomorphized, so `transfer` and `meet` are direct calls rustc can inline.',
   },
   'gd-clamp': {
     q: 'Why does the design solver store `transfer(..).meet(&old)` instead of the transfer’s result?',
     a: 'So each fact can only move down. With a lattice of finite height, the worklist must then empty, whatever the transfer does.',
   },
-  'gd-rounds': {
-    q: 'How does Viscosity’s real fixpoint visit values?',
-    a: 'In whole rounds, every value in id order, updating facts in place (Gauss–Seidel), then bindings, then collection fields.',
-  },
   'gd-fail-closed': {
     q: 'What happens if the numeric fixpoint has not converged after `MAX_ROUNDS` (1000) rounds?',
     a: 'It fails closed: every value, int and field fact is reset to false, so nothing is proven numeric.',
-  },
-  'gd-python': {
-    q: 'For Python, what lattice does the real fixpoint use per value?',
-    a: 'A pair of booleans, “is a float” and “is an int”: two two-point lattices side by side (a product).',
   },
 };
 
@@ -275,6 +238,7 @@ fn main() {
 
 export const exercises = {
   chk: {
+    optional: true,
     lang: 'rust',
     title: 'Cooper–Harvey–Kennedy',
     prompt: 'Finish the dominator algorithm of `cfg.rs`. `intersect(a, b)`: while `a != b`, move whichever is later in reverse postorder (the larger `ix`) up to its idom. `pass`: for each block of `rpo` after the entry, intersect all predecessors that already have an idom (skip the others), and store the result if it differs. Return whether anything changed. `idoms` runs `pass` until it returns false.',
@@ -1306,24 +1270,6 @@ impl<A: Lattice, B: Lattice> Lattice
 
 export const quiz = [
   {
-    q: 'Which representation does `cfg.rs` use for immediate dominators?',
-    options: [
-      {
-        t: 'A `HashMap<BlockId, BlockId>`, like the TS `Map`',
-        why: 'The port uses a dense `Vec`, since block ids are small indices.',
-      },
-      {
-        t: '`Vec<Option<BlockId>>` indexed by block id, where `None` means unreachable',
-        correct: true,
-        why: '`Dominators { idom }`, and `idom(b)` reads `self.idom.get(b.index())`.',
-      },
-      {
-        t: 'A tree of `Box`ed nodes',
-        why: 'Nothing is boxed; ids index into vectors.',
-      },
-    ],
-  },
-  {
     q: 'A closure that captures `idom` is called inside a loop that also assigns `idom[b] = Some(d)`. What does rustc 1.97 say?',
     options: [
       {
@@ -1331,57 +1277,17 @@ export const quiz = [
         why: 'A non-`move` closure borrows `idom`.',
       },
       {
+        t: 'E0382: use of moved value',
+        why: 'Nothing is moved; it is borrowed.',
+      },
+      {
         t: 'E0502: cannot borrow `idom` as mutable because it is also borrowed as immutable',
         correct: true,
         why: 'The closure holds a shared borrow for as long as it is used. `cfg.rs` passes `idom` as a parameter instead.',
       },
       {
-        t: 'E0382: use of moved value',
-        why: 'Nothing is moved; it is borrowed.',
-      },
-      {
         t: 'A runtime panic',
         why: 'The borrow checker rejects it at compile time.',
-      },
-    ],
-  },
-  {
-    q: 'In the first pass, a loop header’s predecessors are the block before the loop and the latch. Why is the latch ignored?',
-    options: [
-      {
-        t: 'Back edges never count for dominance',
-        why: 'They count: the next pass intersects the latch too.',
-      },
-      {
-        t: 'The latch is unreachable',
-        why: 'It is reachable; it just hasn’t been processed yet.',
-      },
-      {
-        t: 'The latch comes later in reverse postorder, so it has no idom yet',
-        correct: true,
-        why: 'The pass skips predecessors without an idom.',
-      },
-    ],
-  },
-  {
-    q: 'A sealed loop header’s phi for `e` gets the operands `%14` (from the entry side) and itself (from the latch). What happens?',
-    options: [
-      {
-        t: 'It stays: it has two operands',
-        why: 'Operands equal to the phi itself are ignored.',
-      },
-      {
-        t: 'It becomes `undefined`',
-        why: 'That is only for a phi with no operand other than itself.',
-      },
-      {
-        t: 'It is trivial: every use of it becomes `%14`, and it turns into an empty opaque',
-        correct: true,
-        why: '`try_remove_trivial_phi` then retries the phis that used it.',
-      },
-      {
-        t: 'Lowering fails',
-        why: 'This is the normal case for a variable the loop doesn’t change.',
       },
     ],
   },
@@ -1422,78 +1328,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'The fixpoint runs out of rounds without a quiet round. What does it report?',
-    options: [
-      {
-        t: 'Whatever facts it had after the last round',
-        why: 'Those may still be wrong: a fact might have been about to drop.',
-      },
-      {
-        t: 'A compile error',
-        why: 'It does not fail the compile. It just proves nothing.',
-      },
-      {
-        t: 'Nothing is numeric: all value, int and field facts are reset to false',
-        correct: true,
-        why: 'Failing closed. A unit test runs it with a budget of 0 rounds and checks that no value is a number.',
-      },
-    ],
-  },
-  {
-    q: 'In the design, why is `solve` generic (`solve<P: Problem>`) rather than taking `&dyn Problem`?',
-    options: [
-      {
-        t: '`Problem` has an associated type, and the solver needs to make a `Vec<P::Fact>`',
-        correct: true,
-        why: 'With a generic the fact type is known statically, and monomorphization makes calls to `transfer` and `meet` direct.',
-      },
-      {
-        t: 'Trait objects can’t have methods',
-        why: 'They can; they are called through a vtable.',
-      },
-      {
-        t: 'Generics are checked at run time',
-        why: 'They are compiled away: one copy per concrete type.',
-      },
-    ],
-  },
-  {
     q: 'Your design solver clamps: it stores `transfer(..).meet(&old)`. What does that guarantee?',
     options: [
-      {
-        t: 'The most precise answer for any transfer function',
-        why: 'Clamping guarantees an end, not precision.',
-      },
       {
         t: 'Each fact only moves down, so with a lattice of finite height the worklist empties',
         correct: true,
         why: 'Each node can only step down, at most h times on a lattice of height h, and each change adds a bounded number of users.',
       },
       {
+        t: 'The most precise answer for any transfer function',
+        why: 'Clamping guarantees an end, not precision.',
+      },
+      {
         t: 'Nodes are visited in id order',
         why: 'Order is decided by the worklist, not by the clamp.',
-      },
-    ],
-  },
-  {
-    q: 'With a budget of 2 rounds, the example’s rounds solver has the right facts after round 2, yet fails closed. Why?',
-    options: [
-      {
-        t: 'Round 2 still changed a fact, so convergence was never confirmed',
-        correct: true,
-        why: 'Only a round with no change proves a fixpoint. The real loop works the same way.',
-      },
-      {
-        t: 'Two rounds are below some minimum',
-        why: 'There is no minimum; a problem with no cycles is stable in round 1.',
-      },
-      {
-        t: 'The phi needs three operands',
-        why: 'It has two.',
-      },
-      {
-        t: 'Rounds solvers can’t handle loops',
-        why: 'They can. With a budget of 1000 the same problem is stable in round 3.',
       },
     ],
   },

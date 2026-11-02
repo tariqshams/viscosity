@@ -3,18 +3,15 @@ n: 150
 day: 26
 part: IX
 title: 'Parsing with oxc and lowering to VIR'
-tagline: 'acorn says the collection starts at offset 266; oxc says 286. Both are right, because one counts UTF-16 code units and the other counts bytes. Meet the Rust parser behind the port, its arena-allocated tree, and the rule that keeps every splice cutting at the same characters.'
+tagline: 'acorn says the collection starts at offset 266; oxc says 286. Both are right, because one counts UTF-16 code units and the other counts bytes. Meet the Rust parser behind the port, its arena-allocated tree, the visitor that walks it, and the side table that replaces the tree once lowering is done.'
 objectives:
   - Call oxc’s parser the way engine/rust does, and relate its options to acorn’s.
   - Explain oxc’s arena-allocated AST, its 'a lifetime, and why the port keeps no AST after lowering.
-  - Explain why UTF-8 byte offsets in Rust and UTF-16 offsets in JavaScript cut the source at the same characters, and convert between them.
-  - Say which syntax errors oxc’s parser leaves to a later pass, and what that means for the port.
+  - Explain why UTF-8 byte offsets in Rust and UTF-16 offsets in JavaScript cut the source at the same characters.
   - Explain the visitor pattern, and how oxc’s Visit trait walks children in source order.
-  - Map resolve.ts and lower.ts to resolve.rs and lower.rs, and name the design differences.
   - Say why the port keys tables by spans and records JsNode facts instead of keeping AST nodes.
-  - Write a small visitor that overrides two methods and lets the defaults walk the rest.
 introduces: [oxc, visitor-pattern]
-uses: [viscosity-rs, ir-arena, plugin-trait, language-plugin, parser, parser-adapter, estree, ast-node, source-location, arena, lifetime, lifetime-annotation, drop, ownership, borrow, slice, string-vs-str, byte-scanning, enum, struct, box, result, option, size-of, rust-iterator, typescript, access-rewriting, source-to-source, ast, ast-to-ir, lowering, resolver, scope, closure, nested-function, arrow-function, try-catch, ssa, phi-node, vir, trait, match, pattern, impl, self-receiver, rust-generics, trait-bound, vec, hashmap, question-mark, typed-index]
+uses: [viscosity-rs, ir-arena, plugin-trait, language-plugin, parser, parser-adapter, estree, ast-node, source-location, arena, lifetime, ownership, borrow, slice, string-vs-str, enum, struct, box, result, option, typescript, source-to-source, ast, ast-to-ir, lowering, resolver, scope, closure, nested-function, ssa, vir, trait, match, pattern, impl, rust-generics, trait-bound, vec, hashmap, question-mark, typed-index]
 sources: [oxc-project, oxc-parser-docs, oxc-allocator-docs, acorn, rust-std-str, oxc-ast-visit]
 ---
 import OxcSteps from '../../../components/diagrams/ch150/OxcSteps';
@@ -22,63 +19,36 @@ import TwoRulers from '../../../components/diagrams/ch150/TwoRulers';
 import VisitSteps from '../../../components/diagrams/ch150/VisitSteps';
 import SideTable from '../../../components/diagrams/ch150/SideTable';
 
-{/* ── merge: from old chapter 150, Parsing with oxc ── */}
-
 ## Two right answers
 
 One of the programs written for the port,
-`tests/extra/unicode_offsets.js`, starts like this (trimmed; in `sep`
-each `…` stands for U+2028 or U+2029, invisible line-break characters):
-
-```js
-// Ünïcödé before the collection: …
-/* U+2028 and U+2029 are line breaks … */
-const label = 'héllo wörld 😀 𝒳';
-const sep = 'a…b…c'; // …
-const ps = [];
-```
-
-I parsed it with both parsers here. acorn, the TypeScript engine's
-parser, says the statement `const ps = [];` runs from offset 266 to 280;
-oxc, the Rust engine's, says 286 to 300. They are twenty apart and both
-correct, and the parity test checks that both engines rewrite this file
-identically. This chapter is about how both can be true, and about the
-parser that gives the second answer.
+`tests/extra/unicode_offsets.js`, starts with comments and strings full
+of accented letters, emoji, and the invisible line-break characters
+U+2028 and U+2029, and only then declares `const ps = [];`. I parsed it
+with both parsers here. acorn, the TypeScript engine's parser, says that
+statement runs from offset 266 to 280; oxc, the Rust engine's, says 286
+to 300. They are twenty apart and both correct, and the parity test
+checks that both engines rewrite this file identically. This chapter is
+about the parser that gives the second answer, and how the port walks
+its tree.
 
 ## oxc
 
 oxc, the Oxidation Compiler, is "a collection of high-performance tools
 for JavaScript and TypeScript written in Rust": a parser, a linter, a
 formatter, a transformer and a minifier<Cite id="oxc-project" />. The
-port uses its parser and syntax-tree crates, version 0.156. The parser
-has "three inputs (a memory arena, a source string, and a SourceType)
-and one return struct"<Cite id="oxc-parser-docs" />.
+port uses its parser and syntax-tree crates, version 0.156.
 
 <Callout kind="definition">
 **oxc** (the Oxidation Compiler) is a JavaScript and TypeScript
-toolchain written in Rust. Its parser takes an `Allocator`, the source
-and a `SourceType`, and returns a `ParserReturn` holding the `Program`
-(with its comments) and a list of syntax errors. The tree is a set of
-Rust types, allocated in the arena, with spans in UTF-8 byte
-offsets<Cite id="oxc-parser-docs" />.
+toolchain written in Rust. Its parser takes an `Allocator` (a memory
+arena), the source and a `SourceType`, and returns a `ParserReturn`
+holding the `Program` (with its comments) and a list of syntax errors.
+The tree is a set of Rust types, allocated in the arena, with spans in
+UTF-8 byte offsets<Cite id="oxc-parser-docs" />.
 </Callout>
 
 <Examples of="oxc">
-
-```rust
-let a = Allocator::default();
-let ret = Parser::new(&a, "let x = 1;",
-    SourceType::mjs()).parse();
-// ret.program.body.len() == 1
-```
-
-```rust
-let ret = Parser::new(&a,
-    "const ps = [;",
-    SourceType::mjs()).parse();
-let e = ret.diagnostics.errors().next();
-// its message: "Unexpected token"
-```
 
 ```rust
 let options = ParseOptions {
@@ -98,45 +68,46 @@ if let Some(e) =
 
 </Examples>
 
-The first is the smallest parse: make an arena, hand it the text and
-`SourceType::mjs()` (a JavaScript module, acorn's `sourceType:
-'module'`), and the tree comes back with one statement in its body. The
-second shows how errors arrive: as data in the return value, not as an
-exception, so parsing `const ps = [;` still returns, and its first error
-says `Unexpected token`. The third is the real call in
-`crates/frontend-js/src/lib.rs` (rewrapped); I ran all three here with
-oxc 0.156. Line it up with the acorn adapter of *Parsing real
-JavaScript*: `preserve_parens: false` matches acorn's default of not
-keeping parentheses as nodes, `parse_regular_expression` checks regular
-expression literals as acorn does, and the plugin turns the first error
-into a `CompileError` written as `message (line:column)`, the shape of
-acorn's messages, so both CLIs print `Unexpected token (1:12)` for that
-second program.
+This is the real call in `crates/frontend-js/src/lib.rs` (rewrapped).
+`SourceType::mjs()` is acorn's `sourceType: 'module'`; `preserve_parens:
+false` matches acorn's default of not keeping parentheses as nodes;
+`parse_regular_expression` checks regular expression literals, as acorn
+does; and `..ParseOptions::default()` fills in the rest. Errors arrive as data in the
+return value, not as an exception, so parsing `const ps = [;` still
+returns, and the plugin turns its first error into a `CompileError`
+written as `message (line:column)`, the shape of acorn's messages: both
+CLIs print `viscosity: Unexpected token (1:12)` for that program.
 
-<Prompts ids={['oxc-what', 'oxc-inputs', 'oxc-errors']} />
+The parser's list of errors "is not comprehensive", however: more
+expensive checks are left to oxc's semantic
+analyser<Cite id="oxc-parser-docs" />, so the port once compiled `let a
+= 1; let a = 2;`, which acorn rejects. Now `SemanticBuilder::new()
+.with_check_syntax_error(true)` runs right after parsing, and
+`early_errors.rs` checks that both CLIs reject 108 invalid programs.
+
+<Prompts ids={['oxc-what', 'oxc-semantic']} />
 
 ## A tree in an arena
 
 ESTree is plain objects with a `type` string. oxc's tree is Rust types:
 a `Statement` enum, an `Expression` enum with dozens of variants, and a
-struct per node kind. One variant, from `oxc_ast`:
+struct per node kind, such as `BinaryExpression(Box<'a,
+BinaryExpression<'a>>)`. That `Box` is not std's: it is a pointer into
+the `Allocator`, a **bump arena** that hands out memory in order and
+frees it all at once. `'a` is the lifetime of *Lifetimes*, and here it
+names the arena: every node borrows the allocator, so no node can
+outlive it. Step through what that means for the plugin:
 
-```rust
-pub enum Expression<'a> {
-    // ...
-    BinaryExpression(
-        Box<'a, BinaryExpression<'a>>),
-    // ...
-}
-```
+<OxcSteps client:visible />
 
-That `Box` is not std's: it is oxc's **arena** box, a pointer to a node
-in the `Allocator`, and here an `Expression` is 16 bytes, a tag and that
-pointer. (The kinds are split finer than ESTree's too: `ps[i].x` is a
-`StaticMemberExpression` whose object is a `ComputedMemberExpression`,
-where ESTree has one `MemberExpression` with a `computed` flag.)
+Objects in the arena "are never Dropped", and memory is "released in
+bulk when the allocator is dropped"<Cite id="oxc-allocator-docs" />.
+The TypeScript engine keeps ESTree nodes alive inside the VIR, in
+`SourceRef.node`; the Rust tree dies when `lower` returns, so the VIR
+keeps spans instead (an oxc `Span` is two `u32`s, with no lifetime) and
+a side table of facts, at the end of this chapter.
 
-<Analogy title="a notepad">
+<Analogy extra title="a notepad">
 A bump arena is a notepad: each new node is written on the next free
 line, nothing is ever rubbed out on its own, and when you are done you
 throw the whole pad away.
@@ -145,25 +116,7 @@ arena never gives back a single node, so a tree with one dead branch
 still holds its memory until the whole arena goes.</span>
 </Analogy>
 
-`'a` is the **lifetime** of *Lifetimes*, and here it names the arena:
-every node borrows the allocator, so no node can outlive it. Step
-through what that means for the plugin:
-
-<OxcSteps client:visible />
-
-oxc's documentation spells out the deal: objects in the arena "are
-never Dropped", and memory is "released in bulk when the allocator is
-dropped". To keep that from leaking, the arena refuses, at compile time,
-any type that implements `Drop`, such as std's `Vec`, which is why oxc
-ships arena versions of `Box`, `Vec`, `String` and
-`HashMap`<Cite id="oxc-allocator-docs" />. For the port this settles a
-design question. The TypeScript engine keeps ESTree nodes alive inside
-the VIR, in `SourceRef.node`; the Rust tree dies when `lower` returns,
-so the VIR keeps a `NodeRef` index into a side table of facts instead
-(*Lowering oxc's AST to VIR*). Spans survive, because an oxc `Span` is
-two `u32`s with no lifetime.
-
-<Prompts ids={['oxc-arena', 'oxc-nodrop', 'oxc-lifetime']} />
+<Prompts ids={['oxc-arena']} />
 
 ## Bytes and code units
 
@@ -176,106 +129,35 @@ and oxc's spans count bytes:
   <TwoRulers />
 </Figure>
 
-<Analogy extra title="a road measured in metres and in paces">
-A lamp-post can be "120 metres" or "160 paces" from the corner; the
-numbers differ, and both send you to the same post, as long as you
-pace with the unit you were told.
-<span slot="breaks">Paces vary from person to person; bytes and code
-units are exact, so a mixed-up offset never lands "about" right, it
-lands somewhere else entirely.</span>
-</Analogy>
+Each engine splices its own string with its own offsets: the TypeScript
+emitter writes `out.slice(0, e.start) + e.text + out.slice(e.end)`, and
+the Rust one calls `out.replace_range(start..end, &e.text)`. `slice`
+counts code units and `replace_range` counts bytes, so both cut at the
+same characters, and the port never converts. The danger is mixing the
+two: hand acorn's `266..280` to the Rust string and you get `"9, and a
+line "`, from the comment above the statement; land inside a character
+and Rust panics, because a string slice must start and end on a
+character boundary<Cite id="rust-std-str" />. oxc reports no line
+numbers, so the plugin counts them itself (`lines::LineIndex`) at the
+breaks acorn counts: `\n`, `\r\n`, a lone `\r`, U+2028 and U+2029.
 
-Before `const ps`, the test file has accented letters (one unit, two
-bytes each), 😀 and 𝒳 (two units, four bytes each), and U+2028 and
-U+2029 (one unit, three bytes each), which is where the twenty comes
-from. Each engine splices its own string with its own offsets: the
-TypeScript emitter writes `out.slice(0, e.start) + e.text +
-out.slice(e.end)`, and the Rust one calls `out.replace_range(start..end,
-&e.text)`. `slice` counts code units and `replace_range` counts bytes,
-so both cut at the same characters, and the fixture shows identical
-output from both engines.
-
-The danger is mixing the two. Hand acorn's `266..280` to the Rust string
-and you get `"9, and a line "`, from the comment on the line above; land inside
-a character and Rust panics, because a string slice must start and end
-on a character boundary<Cite id="rust-std-str" />. When the port does
-need a JavaScript-style offset, `lines::utf16_offset` converts.
+<More title="More: three lengths of one string">
 
 <Run id="three-lengths" />
 
-Line numbers need care too, because oxc reports none. The plugin counts
-them itself, with a `LineIndex` (in `lines.rs`) that records where each line starts, at the same breaks acorn counts: `\n`,
-`\r\n`, a lone `\r`, U+2028 and U+2029.
+</More>
 
-<Prompts ids={['oxc-units', 'oxc-same-cut', 'oxc-lines']} />
+<Prompts ids={['oxc-units', 'oxc-same-cut']} />
 
-<Callout kind="pitfall">
-oxc's parser does not report every syntax error: its documentation says
-the list "is not comprehensive", and more expensive checks are left to
-its semantic analyser<Cite id="oxc-parser-docs" />. When this chapter
-was first written the port ran only the parser, so `let a = 1; let a =
-2;` compiled in Rust while acorn rejected it, and no parity fixture
-caught it, because every parity program is valid JavaScript. The fix is
-a second pass right after parsing, `SemanticBuilder::new()
-.with_check_syntax_error(true).build(&program)`, whose first error is
-reported the same way; and `early_errors.rs` now runs 108 invalid
-programs through both CLIs, which must both reject them. Each still
-words an error its own way, and not always at the same token: for that
-program Rust says ``Identifier `a` has already been declared (1:4)``
-and acorn `Identifier 'a' has already been declared (1:15)`.
-</Callout>
+## Walking every child
 
-<Prompts ids={['oxc-semantic']} />
-
-## Your turn
-
-<Exercise id="byteOffset" />
-
-## What you learned
-
-- **oxc** is a Rust toolchain for JavaScript. Its parser takes an
-  arena, the source and a `SourceType`, and returns the tree with its
-  errors as data.
-- The tree lives in a bump **arena**: `'a` ties every node to the
-  `Allocator`, nodes are never dropped one by one, and the whole arena is
-  freed at once. So the port keeps spans and facts, not the tree.
-- oxc spans count **UTF-8 bytes**, acorn's offsets **UTF-16 code
-  units**. Each engine slices its own string with its own offsets, so
-  both cut at the same characters.
-- Line numbers are counted by the plugin at every ECMAScript line
-  break.
-- oxc's parser leaves some early errors to a semantic pass, so the
-  port runs that pass's syntax checks too.
-
-
-{/* ── merge: from old chapter 150, Lowering oxc’s AST to VIR ── */}
-
-## All the children
-
-In *Lowering JavaScript to VIR*, `lower.ts` turned anything it did not
-model into an `opaque` instruction taking every variable the subtree
-mentions. It found them with one small function from `estree.ts`
-(simplified):
-
-```ts
-function children(n: Node): Node[] {
-  const out: Node[] = [];
-  for (const key of Object.keys(n)) {
-    const v = n[key];
-    if (v && typeof v.type === 'string')
-      out.push(v);
-    // (and arrays of nodes)
-  }
-  return out.sort(byStart);
-}
-```
-
-An ESTree node is an ordinary object, so you can ask it for its keys,
-keep the values that are nodes, and sort them by where they start. oxc's
-tree (*Parsing with oxc*), however, is a set of Rust types, and a struct
-has no `Object.keys`; yet the port walks "all the children" in several
-places, and a `match` over hundreds of node kinds in each would be a lot
-of code. oxc solves this once for everyone.
+`lower.ts` turned anything it did not model into an `opaque` instruction
+taking every variable the subtree mentions, and it found them with a
+small `children(n)` that loops over `Object.keys(n)`, keeps the values
+that are nodes, and sorts them by where they start. A Rust struct has no
+`Object.keys`, and a `match` over hundreds of node kinds in every place
+that needs "all the children" would be a lot of code. oxc solves this
+once for everyone.
 
 <Analogy title="a tour guide with a short list">
 A tour guide walks every room of a building in the same order. You
@@ -285,18 +167,6 @@ cellar"), and every other room gets the standard walk-through.
 the stairs; a visitor that overrides a node and does not walk it sees
 nothing at all below that node.</span>
 </Analogy>
-
-<Analogy extra title="a shop's checkout scanner">
-A checkout scans every item the same way, and the shop adds special
-rules for a few products: weigh the apples, ask for proof of age for
-the wine.
-<span slot="breaks">If the rule for a multipack forgot to scan the
-items inside it, they would go through unscanned; an override replaces
-the default walk, so it must walk the children itself if it still wants
-them.</span>
-</Analogy>
-
-## One method per node kind
 
 Here is the idea in a toy, shaped like oxc's `Visit` trait from the
 `oxc_ast_visit` crate:
@@ -316,10 +186,9 @@ trait Visit: Sized {
 Every method has a default body, and `walk_expr` is the standard
 walk-through: a `match` on the node that calls `visit_*` on each child,
 left to right. (`: Sized` lets the defaults pass `self` to a generic
-function like `walk_expr`.) The real trait has 263 visit methods in oxc 0.156, all generated, and each
-default calls the matching `walk_*` function, which visits that node's
-children<Cite id="oxc-ast-visit" />. That walk goes in source order,
-as `children()` did with its sort, which matters because the order in
+function like `walk_expr`.) The real trait has 263 generated visit
+methods in oxc 0.156<Cite id="oxc-ast-visit" />, and its walk goes in
+source order, as `children()` did, which matters because the order in
 which variables are found decides an opaque instruction's arguments.
 
 <Callout kind="definition">
@@ -330,29 +199,7 @@ calls a **walk** function that visits the node's children; a visitor
 default, so it must call the walk itself if it still wants the children.
 </Callout>
 
-<Formal title="The default walk">
-
-```text
-visit_K(v, n) = walk_K(v, n)
-walk_K(v, n)  = visit c₁; …; visit cₖ
-```
-
-<span slot="read">For every node kind K, visiting a node n of that kind,
-unless you override it, means walking it; and walking it means visiting
-each of its children c₁ to cₖ in turn, first to last as they appear
-in the source. An override changes the first line for one kind and leaves the
-second alone.</span>
-</Formal>
-
 <Examples of="visitor-pattern">
-
-```rust
-impl Visit for Names {
-    fn visit_name(&mut self, n: &str) {
-        self.0.push(n.into());
-    }
-}
-```
 
 ```rust
 impl Visit for Outer {
@@ -363,75 +210,53 @@ impl Visit for Outer {
 }
 ```
 
-```rust
-impl<'a> Visit<'a> for Mentions {
-    fn visit_identifier_reference(
-        &mut self,
-        it: &IdentifierReference<'a>,
-    ) {
-        self.found
-            .push((it.span, self.inner));
-    }
-    // visit_binding_identifier: the same
-    fn visit_arrow_function_expression(
-        &mut self,
-        it: &ArrowFunctionExpression<'a>,
-    ) {
-        let saved = std::mem::replace(
-            &mut self.inner, true);
-        walk_arrow_fn(self, it);
-        self.inner = saved;
-    }
-    // visit_function: the same
-}
-```
-
 </Examples>
 
-The first overrides one method: `Names` records every name and the
-defaults walk the rest, so on `a + (() => b + 1)` it collects `a` and
-`b`. The second
-also overrides `visit_func` with an empty body; that replaces the walk
-of function bodies, so it collects only `a`, which is exactly how
-`HoistCollector` in `resolve.rs` stops at nested functions on purpose.
-The third is the real `Mentions` from `lower.rs` (rewrapped;
-`walk_arrow_fn` stands for oxc's `walk::walk_arrow_function_expression`):
-it records each identifier's span and whether it is inside a nested
-function, and four overrides cover all of JavaScript. `std::mem::replace` stores
-`true` in `self.inner` and hands back the old value, so leaving the
-arrow restores it. Run the first two, then try your own:
-
-<Run id="visit-play" />
+`Outer` holds a `Vec<String>` and overrides two methods: `visit_name`
+pushes every name it is shown, and `visit_func`, with an empty body,
+*replaces* the default walk of function bodies. So on `a + (() => b + 1)` it collects only `a`, where a
+visitor that overrode `visit_name` alone would collect `a` and `b`; and
+that is exactly how `HoistCollector` in `resolve.rs` stops at nested
+functions on purpose. Step through both walks:
 
 <VisitSteps client:visible />
 
+<More title="More: run both visitors, and the real Mentions">
+
+<Run id="visit-play" />
+
+The real `Mentions` in `lower.rs` overrides four methods: identifier
+references and binding identifiers record their span and whether they
+are inside a nested function, and arrows and functions set that flag
+with `std::mem::replace(&mut self.inner, true)`, call oxc's walk, and
+put the old value back.
+
+</More>
+
 <Prompts ids={['visitor-what', 'skip-walk']} />
 
-## Two passes, two files each
+## Names without a tree
 
-As in TypeScript, the plugin makes two passes. `resolve.rs` pairs every
-identifier with its binding (*Finding every name before running: the
-resolver*), then `lower.rs` builds VIR. The resolver implements `Visit`
-and overrides the node kinds that `resolve.ts` handles in its own
-`switch`, such as functions, blocks, loops, `try` and declarations.
+As in TypeScript, `resolve.rs` pairs every identifier with its binding
+(it implements `Visit`), and then `lower.rs` builds VIR. `resolve.ts`
+keys its maps by node objects, compared by identity; the port keys them
+by plain values, such as `FnKey::Func(Span)` for a function ("spans of
+function nodes are unique") and a `HashMap<Span, JsBindingId>` for
+references, so no table needs the tree's lifetime.
 
-The bigger change is how things are *named*. `resolve.ts` keys its maps
-by node objects, which JavaScript compares by identity for free. The
-port keys everything by plain values instead. An
-owner is `FnKey::Program` or `FnKey::Func(Span)` (in the words of
-`resolve.rs`, "spans of function nodes are unique"), `refs` is a
-`HashMap<Span, JsBindingId>`, and bindings live in a `Vec`, named by a
-typed index (*VIR in Rust*). No table holds a reference into the tree,
-so none needs the tree's lifetime.
+The emitter used to ask ESTree nodes questions, such as (through a
+parent map) "is this `a[i]` the object of a member expression?". In the
+port, `SourceRef.node` is a `NodeRef`, an index into a side table of
+`JsNode` facts recorded during lowering:
 
-<Prompts ids={['fnkey']} />
+<Figure takeaway="The emitter's questions are answered ahead of time, in a table." caption="Lowering ps[i].x += ps[i].vx: instruction %19, the first ps[i], points at entry 4 of the side table, which records the byte spans of ps and i and that ps[i] is the object of a member expression (direct).">
+  <SideTable />
+</Figure>
 
-## Lowering, function by function
+`direct` answers the parent question: lowering sets a flag just before
+it lowers a member expression's object.
 
-`lower.rs` uses the same rule as `lower.ts`: a variable stays an SSA
-value only if it is a simple kind (`const`, `let`, `var`, a parameter
-or a `catch` variable), used in no other function, never assigned in a
-`try`, and not initialised with an array; anything else is a binding.
+<More title="More: one Lowerer instead of closures">
 
 In TypeScript, `lowerFunction` holds its helpers (`read`, `write`,
 `expr` and the rest) as closures sharing the function builder `fb`.
@@ -439,88 +264,36 @@ Rust closures cannot share mutable state that freely, so the port has
 one `Lowerer` struct with the per-function state in one field, `f`. A
 nested function builds an `FnState` of its own, swaps it in with `let
 outer = std::mem::replace(&mut self.f, state);`, lowers its body, and
-puts the outer state back with `self.f = outer;` before it even looks
-at whether lowering succeeded. Lowering this with
-`JsPlugin.lower` and `print_func` gave the listing below for `add` (the
-TypeScript engine printed the same):
+puts the outer state back with `self.f = outer;`. `lower.rs` also names,
+in comments, the ESTree case each oxc case mirrors, and lowers a `"use
+strict"` directive to a string constant nothing uses, as the reference
+does, so that every later value keeps its `%n`.
 
-```js
-let n = 0;
-const ps = [];
-function add(v) {
-  ps.push({ x: v });
-  n++;
-}
-```
+</More>
 
-```
-  b0:
-    %0 = param
-    %1 = load ps
-    %2 = record {x} %0
-    %3 = push %1, %2
-    %4 = load n
-    %5 = unop + %4
-    %6 = const 1
-    %7 = binop + %5, %6
-    store n, %7
-    return
-```
-
-`v` stays an SSA value (`%0`), while `ps` is array-initialised and `n`
-is used inside `add`, so both are bindings. In `n++`, `unop +` turns the
-old value into a number, as JavaScript does, before `1` is added.
-
-<Prompts ids={['ssa-or-binding', 'mem-replace']} />
-
-## No AST after lowering
-
-The TypeScript engine keeps ESTree nodes in `SourceRef.node`, and its
-emitter asks them questions, such as (through a parent map) "is this
-`a[i]` the object of a member expression?". oxc's tree lives in the
-parse's arena, so keeping it would put a lifetime on the whole `Module`;
-instead `node` is a `NodeRef`, an index into a side table of `JsNode`
-facts:
-
-<Figure takeaway="The emitter's questions are answered ahead of time, in a table." caption="Lowering ps[i].x += ps[i].vx: instruction %19, the first ps[i], points at entry 4 of the side table, which records the byte spans of ps and i and that ps[i] is the object of a member expression (direct).">
-  <SideTable />
-</Figure>
-
-`direct` answers the parent question: lowering sets a flag just before
-it lowers a member expression's object. The other kinds of fact record
-what *Emitting JavaScript from Rust* needs.
-
-<Prompts ids={['side-table', 'direct-flag']} />
-
-<Callout kind="engine" label="Under the hood">
-`lower.rs` names, in comments, the ESTree case each oxc case mirrors.
-oxc keeps `"use strict"` in a separate `directives` list, where ESTree
-has an expression statement that the TypeScript engine lowers to a
-string constant; the port lowers it too, because nothing uses it but
-every later value keeps its `%n`. And one mismatch is kept on purpose,
-marked `NOTE`: as in the reference, assigning to the private `p.#x` is
-treated as the field `x`.
-</Callout>
-
-<Prompts ids={['directives']} />
+<Prompts ids={['side-table']} />
 
 ## Your turn
 
 <Exercise id="mentions" />
 
+The extra practice converts a byte offset to a UTF-16 one.
+
+<Exercise id="byteOffset" />
+
 ## What you learned
 
-- The **visitor pattern**: a trait with one method per node kind, whose
-  defaults **walk** the children. You override only what you need;
-  overriding replaces the walk, so call it yourself if you want the
-  children.
-- oxc's `Visit` walks in source order, like `children()`, so value
-  numbers match the reference.
-- `resolve.rs` and `lower.rs` port their TypeScript files case by case.
-  Node identity becomes spans and typed ids (`FnKey`, `HashMap<Span,
-  _>`), and closures sharing `fb` become one `Lowerer` whose `FnState`
-  is swapped with `std::mem::replace`.
-- Instructions point into a **side table** of `JsNode` facts, not into
-  a live tree.
+- **oxc** is a Rust toolchain for JavaScript. Its parser takes an
+  arena, the source and a `SourceType`, returns errors as data, and
+  leaves some early errors to a semantic pass, which the port also runs.
+- Its tree lives in a bump **arena** tied to `'a`, so the port keeps
+  spans and a side table of facts, not the tree.
+- oxc spans count **UTF-8 bytes**, acorn's offsets **UTF-16 code
+  units**; each engine slices its own string with its own offsets.
+- The **visitor pattern**: one method per node kind, defaults that walk
+  the children in source order, and overrides that replace the walk.
+
+Next: *Emitting JavaScript from Rust, and round trips*, where those
+spans become edits.
 
 <Quiz />

@@ -18,9 +18,10 @@ import AllowedUses from '../../../components/diagrams/ch154/AllowedUses';
 
 ## A refusal, pointed at
 
-A value **escapes** (in the sense of *Escape analysis*) when it reaches a
-place the compiler cannot follow, and two names are **aliases** when they
-reach the same object (see *Alias analysis*); either way, rewriting the
+A value **escapes** (in the sense of *Escape analysis across functions*)
+when it reaches a place the compiler cannot follow, and two names are
+**aliases** when they reach the same object (*Alias analysis and
+points-to*); either way, rewriting the
 array into columns would break whoever holds the other name. Here is a
 program that does three such things with elements of `ps`:
 
@@ -51,11 +52,7 @@ Lines 6 and 8 are both the same VIR instruction, `index.set` (store into
 `a[i]`), and yet one reason says "written with an index store" and the
 other "used as an index". The difference is *which operand* the element
 is: in `ps[2][0] = 5` it is the thing being indexed, and in `t[ps[3]] = 1`
-it is the index. (With `explain --frames`, an option in both engines'
-CLIs, each refusal also shows its source line with carets under the code;
-there is one below.)
-
-<Prompts ids={['esr-frames']} />
+it is the index.
 
 ## describe_use asks "which operand?" first
 
@@ -96,20 +93,18 @@ match &i.op {
 ```
 
 A **use** is either an instruction that takes the value as an operand, or
-a block's **terminator** (its last step: a branch, a `return` or a
-`throw`). For a terminator there is one sentence, "returned or branched on
-in f()". For an instruction, the guards (`if i.args[0] == v`) pick the
-operand-specific case: `args[0]` is the object or array, `args[1]` the
-index. Only if none matches does the second `match` describe the
-instruction in general: a `field.set` where the value is not the object
-is "stored into an object property", a store to a variable is "stored in
-another variable (e)", and so on, down to "used by code Viscosity doesn't
-model (...)" for anything opaque. (The TypeScript version takes `v` as
-optional; in Rust it is always given.)
+a block's **terminator** (a branch, a `return` or a `throw`), which gets
+one sentence, "returned or branched on in f()". For an instruction, the
+guards (`if i.args[0] == v`) pick the operand-specific case: `args[0]` is
+the object or array, `args[1]` the index. Only if none matches does the
+second `match` describe the instruction in general: a `field.set` where
+the value is not the object is "stored into an object property", a store
+to a variable is "stored in another variable (e)", and so on, down to
+"used by code Viscosity doesn't model (...)".
 
 <OperandSteps client:visible />
 
-<Prompts ids={['esr-operand', 'esr-index-set', 'esr-term']} />
+<Prompts ids={['esr-operand', 'esr-index-set']} />
 
 ## What may be done, and nothing else
 
@@ -132,10 +127,9 @@ let why = [" at line ", " near line "]
     .unwrap_or(&why);
 ```
 
-`find_map` tries each ending in turn and returns the first `strip_suffix`
-that succeeds (`Some` text without it); if neither ends the sentence with
-*this* line, `unwrap_or` keeps the sentence whole. The reference does it
-with a regular expression, `/ (?:at|near) line N$/`; two `strip_suffix`
+`find_map` returns the first `strip_suffix` that succeeds, and
+`unwrap_or` keeps the sentence whole if neither does; the reference uses
+the regular expression `/ (?:at|near) line N$/`, and two `strip_suffix`
 calls match the same strings without a regex crate.
 
 <Callout kind="definition">
@@ -171,7 +165,7 @@ value ends up.</span>
 ## Into known functions, and not elements
 
 The collection pass follows the array into a **known function**'s
-parameter (see *Collection discovery in Rust*), and the uses inside are
+parameter (*Collections and shapes in Rust*), and the uses inside are
 then checked like any others, so an element that leaves the function is
 caught there; however, an *element* passed to a function is never
 followed.
@@ -197,19 +191,17 @@ followed.
 
 </Examples>
 
-All three are real Rust CLI output, wrapped. The first is
-`function bump(e) { e.x += 1; }` called as `bump(ps[0])`: following an
-element would mean proving the callee only touches its fields, and
-nothing in the pass does that, so the call itself is the escape. The
-second is `const e = ps[0]; const f = () => e;`: a closure that captures
-`e` turns it into a variable stored in memory (a binding with `load` and
-`store`), a second home for the element. The third is a known function
-`step(qs)` that updates `qs[i].y` in a loop and then `return qs[0]`,
-shown with `--frames`: the array is followed into `step`, so the return
-inside is caught, with carets under the element. Delete the `return` and
-`ps` becomes a struct of arrays; add a second call `step([])`, and the
-function is no longer called only with `ps`, so `ps` is refused with
-"passed to step(), which is also called with other values".
+All three are real Rust CLI output, wrapped (the TypeScript CLI printed
+the same). The first is `function bump(e) { e.x += 1; }` called as
+`bump(ps[0])`: following an element would mean proving the callee only
+touches its fields, and nothing does that, so the call is the escape.
+The second is `const e = ps[0]; const f = () => e;`: a closure that
+captures `e` turns it into a variable stored in memory, a second home
+for the element. The third is a known function `step(qs)` that updates
+`qs[i].y` in a loop and then does `return qs[0]`, shown with `--frames`
+(an option that prints the source line under each refusal, with carets
+under the code): the array is followed into `step`, so the return inside
+is caught. Delete the `return` and `ps` becomes a struct of arrays.
 
 <Prompts ids={['esr-follow', 'esr-element-call']} />
 
@@ -226,12 +218,11 @@ fine.</span>
 </Analogy>
 
 Viscosity keeps no **points-to sets** (lists of which objects each name
-may reach, as the chapter *Alias analysis* describes). It needs none,
-because SSA already says when two names are one value: in
-`const e = ps[0]; e.x += 1;` the name `e` *is* the `index.get`, so its
-field access is fine. Anything else that gives an element a second name
-is refused, and a **phi** is the other way to get one. Here, after the
-same three lines that build `ps`:
+may reach). It needs none, because SSA already says when two names are
+one value: in `const e = ps[0]; e.x += 1;` the name `e` *is* the
+`index.get`. Anything else that gives an element a second name is
+refused, and a **phi** is the other way to get one. After the same three
+lines that build `ps`:
 
 ```js
 let p = ps[0];
@@ -251,13 +242,13 @@ the pass cannot see through, so both are refused (wrapped):
 ```
 
 A phi has no source position of its own, so `line_of` gives it the latest
-line among the values it merges, here 5. For the element read on line 5
-that repeat is cut; for the one on line 4 it is new information, so
-"near line 5" stays.
+line among the values it merges, here 5; for the element read on line 5
+that repeat is cut, and for the one on line 4 "near line 5" stays.
 
 <Prompts ids={['esr-phi']} />
 
-<Callout kind="engine" label="Under the hood">
+<More title="More: where a refusal points">
+
 Each bailout records its site the first time its message is seen: the
 escaping value's own span when it is a load of the array's name,
 otherwise the using instruction's span, and element messages point at
@@ -266,7 +257,8 @@ points), so the UTF-8 byte offsets of Rust and the UTF-16 offsets of
 TypeScript put the carets in the same place. Fourteen `.frames.txt`
 fixtures, and the fuzzer's comparison of both engines' `--frames` text,
 keep it that way.
-</Callout>
+
+</More>
 
 ## Your turn
 
@@ -282,5 +274,8 @@ keep it that way.
 - Arrays are followed into **known functions**; elements never are.
 - There are no points-to sets: SSA gives one value one name, and **phis**
   and stores into other places are refused.
+
+Next: *Access patterns and bounds proofs in Rust*, the facts the
+planner weighs once a rewrite is known to be safe.
 
 <Quiz />

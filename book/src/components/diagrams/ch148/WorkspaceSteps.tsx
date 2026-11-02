@@ -20,11 +20,11 @@ const ROWS = [
 type S = { hi: number[]; tag?: string; parity?: boolean; note: string };
 
 const STATES: S[] = [
-  { hi: [], note: 'Left: the packages of the TypeScript engine you built in Part VIII (Building Viscosity). Right: the crates of engine/rust, one Cargo.toml each, built together as one workspace. Most rows are one-to-one, and inside them each Rust module ports one TypeScript file.' },
+  { hi: [], note: 'Left: the packages of the TypeScript engine you built in Core 5 (building Viscosity). Right: the crates of engine/rust, one Cargo.toml each, built together as one workspace. Most rows are one-to-one, and inside them each Rust module ports one TypeScript file.' },
   { hi: [0, 1], tag: 'vir: 1 package · core: 6', note: 'The TypeScript core package holds the IR in vir.ts. The port gives the IR a crate of its own that depends on nothing at all. core adds the SSA builder, the CFG, the analyses, the planner and the plugin trait, and pulls in only indexmap and rustc-hash.' },
   { hi: [2], tag: 'frontend-js: 86 packages', note: 'The JavaScript plugin swaps acorn for oxc 0.156. That one choice is most of the dependency tree: cargo tree lists 86 packages for this crate, almost all of them oxc and what oxc needs.' },
   { hi: [3], tag: 'frontend-python: 7 packages', note: 'The Python plugin has its own tokenizer and parser, as the TypeScript one does, so it needs nothing beyond vir, core and indexmap.' },
-  { hi: [4, 5], tag: 'cli: + serde_json · wasm: + wasm-bindgen', note: 'Two thin front doors. cli builds the viscosity binary (cli.ts and profile.ts) and reads profiles with serde_json. wasm wraps compile for the browser with wasm-bindgen (the chapter Compiling the engine to WebAssembly).' },
+  { hi: [4, 5], tag: 'cli: + serde_json · wasm: + wasm-bindgen', note: 'Two thin front doors. cli builds the viscosity binary (cli.ts and profile.ts) and reads profiles with serde_json. wasm wraps compile for the browser with wasm-bindgen (the chapter WebAssembly: the target, and the engine compiled to it).' },
   { hi: [6], tag: 'programs, not code', note: 'Some of the TypeScript tree is not ported at all but reused: the corpus programs and the end-to-end benchmarks are inputs to the Rust tests, next to programs written for the port in tests/extra.' },
   { hi: [0, 1, 2, 3, 4, 5, 6], parity: true, note: 'And the TypeScript engine itself is the test oracle. scripts/gen_expected.mjs runs it on every program and writes tests/expected; crates/cli/tests/parity.rs runs the Rust engine on the same programs and compares the bytes.' },
 ];

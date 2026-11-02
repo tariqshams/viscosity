@@ -3,18 +3,15 @@ n: 151
 day: 26
 part: IX
 title: 'Emitting JavaScript from Rust, and round trips'
-tagline: 'Viscosity doesn’t print your program back out. It edits it: a list of byte ranges to replace, applied back to front, so every comment and blank line survives. In Rust that means byte offsets, a stable sort, and building text with format! and fmt::Write.'
+tagline: 'Viscosity doesn’t print your program back out. It edits it: a list of byte ranges to replace, applied back to front, so every comment and blank line survives. In Rust that means byte offsets, a stable sort and fmt::Write; and a test that holds every byte of the result against the TypeScript engine’s.'
 objectives:
   - Explain why emit.rs applies its range edits back to front, and how it detects overlaps.
-  - Say why UTF-8 byte offsets in Rust and UTF-16 offsets in TypeScript cut at the same characters.
   - Write text into a String with fmt::Write, write! and writeln!, and fix the missing-import error.
-  - Implement the edit-applying loop of the emitter, with tests.
   - Describe the parity loop, from gen_expected.mjs and its fixture files to parity.rs.
-  - Explain why equal bytes need a behaviour test beside them, and what differential.rs runs.
-  - Say what parity forces on the port (insertion-ordered maps, stable sorts, js_number) and why.
-  - Write the helper that reports where two outputs first differ.
+  - Explain why equal bytes need a behaviour test beside them.
+  - Implement the edit-applying loop of the emitter, with tests.
 introduces: [rust-codegen, cross-implementation-tests]
-uses: [viscosity-rs, ir-arena, plugin-trait, oxc, visitor-pattern, codegen, pretty-printing, source-to-source, access-rewriting, soa-container, column-storage, identity-transform, string-vs-str, slice, vec, struct, trait, enum, option, result, rust-iterator, rust-closure, string-building, template-literal, byte, typescript, differential-testing, test-corpus, shared-corpus, round-trip-testing, fuzzing, optimization-report, cargo-test, assert-macros, cargo, python-subset, webassembly, wasm-bindgen, npm-package, hashmap, ieee754]
+uses: [viscosity-rs, ir-arena, plugin-trait, oxc, visitor-pattern, codegen, source-to-source, access-rewriting, soa-container, string-vs-str, slice, vec, struct, trait, enum, option, result, rust-iterator, rust-closure, string-building, template-literal, typescript, differential-testing, test-corpus, shared-corpus, round-trip-testing, fuzzing, optimization-report, cargo-test, assert-macros, cargo, hashmap]
 sources: [rust-std-fmt-write, rust-std-string-replace-range, rust-std-slice-sort-by-key, ecma262-sort-stable, cargo-targets]
 ---
 import EditSteps from '../../../components/diagrams/ch151/EditSteps';
@@ -22,15 +19,13 @@ import TwoWrites from '../../../components/diagrams/ch151/TwoWrites';
 import ParitySteps from '../../../components/diagrams/ch151/ParitySteps';
 import FixtureFan from '../../../components/diagrams/ch151/FixtureFan';
 
-{/* ── merge: from old chapter 151, Emitting JavaScript from Rust ── */}
-
 ## Change only what you must
 
-*Emitting JavaScript* faced a choice: print the whole program again
-from the IR, or edit the original text. Viscosity edits. Here is the
-corpus program `sequence_value.js` before and after, as the Rust CLI
-built it here (the container class above it is left out, and the loop
-header is wrapped to fit):
+*Emitting JavaScript, and round-trip testing* faced a choice: print the
+whole program again from the IR, or edit the original text. Viscosity
+edits. Here is the corpus program `sequence_value.js` before and after,
+as the Rust CLI built it here (the container class above it is left out,
+and the loop header is wrapped to fit):
 
 ```js
 const ps = [];
@@ -44,31 +39,19 @@ for (let i = 0; i < 100; i++)
   ps.push(i, (i, i + 1));
 ```
 
-The array became a container of columns, and the pushed object became
-its values; everything not rewritten is copied byte for byte, comments,
-spacing and odd formatting included. That makes the output easy to read
-and review, and it is what lets a test demand byte-identical output from
-two engines (*Round-trip tests across engines*).
+The array became a container of columns and the pushed object its
+values; everything else is copied byte for byte, comments and odd
+formatting included, which is what lets a test demand byte-identical
+output from two engines, the second half of this chapter.
 
 ## A list of edits
 
-`emit.rs` walks the plan as `emit.ts` does (first each collection's
-creation, then each `push`, then element reads, then field accesses),
-and each step records an **edit** without changing anything yet (from
-`emit.rs`, comments shortened):
-
-```rust
-// Replace start..end with text
-// (an insertion when they are equal).
-struct Edit {
-    start: u32,
-    end: u32,
-    text: String,
-    rank: u32, // orders insertions
-}
-```
-
-Then it applies them all, and the order is the whole trick:
+`emit.rs` walks the plan as `emit.ts` does, and each step records an
+**edit** without changing anything yet: a `struct Edit` holding a byte
+range `start..end` of the original source (an insertion when the two are
+equal), the `text` to put there, and a `rank` that orders insertions at
+one position. Then it applies them all, and the order is the whole
+trick:
 
 <EditSteps client:visible />
 
@@ -105,14 +88,15 @@ for e in &edits {
 
 The sort puts the largest `start` first (`Reverse` flips the order);
 `last_start` remembers where the previously applied edit began, starting
-from the largest `u32`; an edit that ends past that point would cut
-into text already replaced, so it is an error; otherwise
-`replace_range` swaps the bytes in place, moving only the text after
-them. The rest of the sort key matters because the real emitter does
-not replace `{ x: i, y: ... }` in one piece: it deletes the text
-*around* each value, so a value that itself needs rewriting gets its own
-edit, and edits meet at the same byte. At one position the longer
-replacement goes first, and insertions go by `rank`.
+from the largest `u32`; an edit that ends past that point would cut into
+text already replaced, so it is an error; otherwise `replace_range`
+swaps the bytes in place, moving only the text after them. The sort is
+**stable**, so edits with equal keys keep the order they were added in,
+as `Array.prototype.sort` does in the TypeScript
+engine<Cite id="rust-std-slice-sort-by-key" /><Cite id="ecma262-sort-stable" />;
+and a bad byte offset cannot quietly corrupt the text, because
+`replace_range` panics off a character
+boundary<Cite id="rust-std-string-replace-range" />.
 
 <Formal title="Why back to front is safe">
 
@@ -129,46 +113,15 @@ lies wholly before that start, still finds the original text at the
 offsets it was given.</span>
 </Formal>
 
-The TypeScript version sorts on the same three keys and rebuilds the
-string for each edit, `out = out.slice(0, e.start) + e.text +
-out.slice(e.end)`. Both sorts are **stable**, so edits with equal keys
-keep the order they were added in: Rust documents that for
-`sort_by_key`<Cite id="rust-std-slice-sort-by-key" />, and ECMAScript
-has required it of `Array.prototype.sort` since
-2019<Cite id="ecma262-sort-stable" />. That matters, because both
-engines must apply ties in the same order.
-
-The offsets are oxc's UTF-8 byte offsets, sliced against a Rust
-`String`, while the TypeScript engine slices its UTF-16 string with
-acorn's offsets; as *Parsing with oxc* showed, each engine uses its own
-unit on its own string, so both cut at the same characters and the port
-never converts. A wrong offset cannot quietly corrupt the text either:
-`replace_range` panics if a range does not fall on character
-boundaries<Cite id="rust-std-string-replace-range" />, and replacing
-`1..2` of `"é"` stops with `start of range should be a character
-boundary`.
-
-<Prompts ids={['only-what-must', 'back-to-front', 'overlap', 'stable-sort', 'char-boundary']} />
+<Prompts ids={['back-to-front', 'overlap']} />
 
 ## Writing text
 
-The edits' texts, and the container classes that go above the code, are
-built with `format!` and `join`, line for line like the TypeScript
-template literals and `join('\n')`. `format!` is itself a writer: the
-standard library makes a `String` with a capacity estimate and calls
-`write_fmt` on it<Cite id="rust-std-fmt-write" />, and you can call
-that machinery yourself to append to one growing `String`, through the
-trait `std::fmt::Write` and the macros `write!` and `writeln!`.
-
-<Analogy extra title="a guest book">
-`format!` hands each guest a fresh card and collects the cards
-afterwards; `write!` passes round one guest book, and everyone writes
-on the next free line of the same book.
-<span slot="breaks">A guest book can run out of pages; a `String`
-grows, which is why writing into one never fails, although `write!`
-still returns a result, because other writers (a file, a full disk)
-can.</span>
-</Analogy>
+The edits' texts and the container classes are built with `format!` and
+`join`, like the TypeScript template literals. `format!` is itself a
+writer: it makes a `String` and calls `write_fmt` on
+it<Cite id="rust-std-fmt-write" />, and `write!` and `writeln!` call
+that machinery on a `String` of your own.
 
 <Callout kind="definition">
 **`std::fmt::Write`** is the trait for anything that accepts formatted
@@ -181,17 +134,7 @@ std::fmt::Write;`). Byte streams such as files use the different trait
 `std::io::Write`.
 </Callout>
 
-<Figure takeaway="One macro, two traits: text or bytes." caption="write! calls the writer's write_fmt. For a String that method comes from std::fmt::Write; for a file or stdout it comes from std::io::Write. The CLI prints with writeln!(stdout, ...) and use std::io::Write.">
-  <TwoWrites />
-</Figure>
-
 <Examples of="rust-codegen">
-
-```rust
-let c = "x";
-let s = format!("this.{c} = []");
-// "this.x = []"
-```
 
 ```rust
 let mut s = String::new();
@@ -202,159 +145,76 @@ writeln!(s, "class {cls} {{").unwrap();
 use std::fmt::Write; // the fix
 ```
 
-```rust
-let params = (0..f)
-    .map(|i| format!("v{i}"))
-    .collect::<Vec<_>>()
-    .join(", ");
-// f = 2: "v0, v1"
-```
-
 </Examples>
 
-The first is the simplest piece of code generation: `{c}` takes the
-variable `c` straight into the text. The second is the spot the
-difference: `writeln!` into a `String` fails with E0599 until the
-trait is imported (rustc 1.97's message, trimmed), and then `{{` writes
-a literal `{`, since braces are doubled to escape them. `.unwrap()` is
-safe here, because `String`'s implementation calls `push_str` and
-returns `Ok(())`<Cite id="rust-std-fmt-write" />. The third is real,
-from `container_class` in `emit.rs` (rewrapped): it builds the
-parameter list of the container's `push` method, one `v0`, `v1`, ... per
-field, joined with commas, exactly as the TypeScript template does.
+`writeln!` into a `String` fails with E0599 (rustc 1.97's message,
+trimmed) until the trait is imported, because `write_fmt` is a trait
+method, and a trait's methods can only be called while the trait is in
+scope. With the `use` in place, `{cls}` takes the variable `cls` into
+the text, `{{` writes a literal `{` (braces are doubled to escape them),
+and `writeln!` adds the line break. The `.unwrap()` is safe, because
+`String`'s implementation calls `push_str` and returns
+`Ok(())`<Cite id="rust-std-fmt-write" />; `write!` still returns a
+`Result` because other writers, such as a file on a full disk, can fail.
+
+<Figure takeaway="One macro, two traits: text or bytes." caption="write! calls the writer's write_fmt. For a String that method comes from std::fmt::Write; for a file or stdout it comes from std::io::Write. The CLI prints with writeln!(stdout, ...) and use std::io::Write.">
+  <TwoWrites />
+</Figure>
+
+<More title="More: try it, and the real parameter list">
 
 <Run id="write-play" />
 
-<Prompts ids={['fmt-write', 'write-needs-use', 'format-is-write', 'string-never-fails']} />
+`container_class` in `emit.rs` builds the parameter list of a
+container's `push` with `(0..f).map(|i| format!("v{i}")).collect::<Vec<_>>().join(", ")`,
+which for two fields is `"v0, v1"`, exactly as the TypeScript template
+does. The classes go after any shebang line and leading `"use strict"`;
+the TypeScript engine finds that point with a regular expression, and
+the port, which has no regex crate, matches the same pattern by hand in
+`prelude_position`.
 
-<Callout kind="engine" label="Under the hood">
-The container classes go after any shebang line and leading `"use
-strict"`. The TypeScript engine finds that point with a regular
-expression; the port has no regex crate, so `prelude_position` matches
-the same pattern by hand, with `is_js_space` listing exactly the
-characters JavaScript's `\s` matches, and its unit tests pin the tricky
-cases, such as `'use strict'; x` on one line, where the pattern matches
-nothing. The parity work also found a splicing bug in the reference: in
-`push({ y: (a, b) })` the value was copied without its parentheses (a
-sequence expression's span excludes them), so the comma split the
-arguments and `y` received `a`. Both engines now put the parentheses
-back, which is the program at the top of this chapter.
-</Callout>
+</More>
 
-<Prompts ids={['prelude-position']} />
-
-## Your turn
-
-<Exercise id="splice" />
-
-## What you learned
-
-- Viscosity emits by **range edits** on the original source; everything
-  outside them is copied byte for byte.
-- Edits are **sorted by start, last first**, and applied with
-  `replace_range`, so earlier offsets stay valid. An edit that ends past
-  the previous start overlaps, and is an internal error.
-- The sort is **stable** in both engines, so ties apply in the same
-  order, and a bad byte offset panics instead of corrupting text.
-- **`fmt::Write`** (`write!`, `writeln!`) appends formatted text to a
-  `String`; `format!` is the same machinery. Remember `use
-  std::fmt::Write;`.
-
-
-{/* ── merge: from old chapter 151, Round-trip tests across engines ── */}
-
-## Two engines, one answer
-
-The book's Playground can compile your program with the TypeScript engine
-or with the Rust engine (built to WebAssembly), and the command line has
-both as well; so imagine you paste a program in, switch engines, and the
-explain text changes from "struct of arrays" to "kept as array of
-objects". Which do you believe? Two compilers that *mostly* agree are
-worse than one, because nobody can tell which answer is real. As such the Rust port makes
-a very strong promise, which is that for every test program it produces
-**the same bytes** as the TypeScript engine (the same JavaScript or Python,
-and the same `explain` text, down to the last space), and this chapter is
-about how that promise is checked.
-
-<Analogy title="tracing paper over a master drawing">
-An art student copies a drawing by laying tracing paper over it; to check
-the copy, you put it back over the original and hold both up to a window,
-and any line that does not sit exactly on its twin shows at once. The
-TypeScript engine's output is the original drawing, and the Rust output is
-the copy.
-<span slot="breaks">Lining up perfectly says nothing about whether the
-original was a good drawing; two compilers can agree on a wrong answer,
-which is why a second test (below) runs the programs. And here the
-original sometimes turns out to have the mistake.</span>
-</Analogy>
-
-<Analogy extra title="an answer key">
-A teacher writes the answer key once and marks every new student's paper
-against it, without solving each question again. The answers the
-TypeScript engine gives are written down once, as files, and the Rust
-engine's answers are marked against those files on every test run.
-<span slot="breaks">In school, the key is always right. Here, when a
-student's answer disagrees, someone checks by hand, and ten times the key
-itself was wrong and was corrected.</span>
-</Analogy>
+<Prompts ids={['fmt-write', 'write-needs-use']} />
 
 ## Writing the answer key
 
-The script `engine/rust/scripts/gen_expected.mjs` imports the TypeScript
-compiler (with Node, which can run TypeScript files directly) and runs it
-over six groups of programs: the reference's JavaScript test programs, the
-end-to-end benchmarks, extra programs written for the port, and the same
-three for Python. Each program is compiled twice; here is the JavaScript
-loop, trimmed (two lines that write the extra files below are left out)
-and rewrapped to fit:
-
-```js
-for (const [suffix, extra] of [['', {}],
-    ['.assume', { bounds: 'assume' }]]) {
-  const r = compile(src, jsPlugin(), {
-    ...(optIn ? { mode: 'opt-in' } : {}),
-    ...extra });
-  writeFileSync(join(out,
-    `${base}${suffix}.js`), r.code);
-  writeFileSync(join(out,
-    `${base}${suffix}.explain.txt`),
-    r.explain);
-}
-```
-
-The first two lines loop over two **variants**: no suffix and no extra
-options, then the suffix `.assume` with `bounds: 'assume'`, which tells
-the code generator to skip bounds checks (a path the default never
-reaches, so it needs its own test). The next three lines compile the
-source `src`, switching to opt-in mode when the program's first comment
-asks for it. The last two calls write the compiled code and the explain
-text into `tests/expected`, under the program's name plus the suffix.
-Those files are called **fixtures** (stored, expected outputs), and they
-are committed to the repository.
+Now the promise those byte-for-byte edits make possible: for every test
+program, the Rust port produces **the same bytes** as the TypeScript
+engine, code and `explain` text alike. `scripts/gen_expected.mjs` runs
+the TypeScript compiler (with Node) over every test program, once with
+the default options and once with `bounds: 'assume'` (no bounds checks,
+a path the default never reaches), and writes the code and explain text
+of each run into `tests/expected`; those **fixtures** (stored, expected
+outputs) are committed.
 
 <Figure caption="What gen_expected.mjs writes for one program, and the totals in tests/expected." takeaway="One program, two variants, two files each.">
   <FixtureFan />
 </Figure>
 
-Counting the folder today: 68 JavaScript programs and 27 Python ones, 95
-in all, so 190 **fixture pairs** (a code file plus an explain file), plus
-14 files for `explain --frames` and 8 for programs compiled with a
-profile, 402 files altogether. When the TypeScript engine changes on
-purpose, someone runs the script again and reads the diff before
-committing it, so every change to the expected output is seen by a person.
+When the TypeScript engine changes on purpose, someone runs the script
+again and reads the diff before committing it, so every change to the
+expected output is seen by a person.
 
-<Prompts ids={['who-writes-fixtures', 'why-fixtures']} />
+<Analogy extra title="tracing paper over a master drawing">
+An art student copies a drawing by laying tracing paper over it; to
+check the copy, you put it back over the original and hold both up to a
+window, and any line that does not sit exactly on its twin shows at
+once.
+<span slot="breaks">Lining up perfectly says nothing about whether the
+original was a good drawing; two compilers can agree on a wrong answer,
+which is why a second test runs the programs.</span>
+</Analogy>
 
 ## Marking the Rust engine
 
-`crates/cli/tests/parity.rs` is a Cargo **integration test** (a test file
-in `tests/` that uses the crates from outside, as a user would). Its main
-test is the same loop in Rust, trimmed and rewrapped:
+`crates/cli/tests/parity.rs` is a Cargo **integration test** (a file in
+`tests/` that uses the crates from outside, as a user would). Its main
+test, trimmed and rewrapped:
 
 ```rust
 for p in programs() {
     for (suffix, bounds) in VARIANTS {
-        total += 1;
         let name =
             format!("{}{suffix}", p.name);
         let (want_code, want_explain) =
@@ -370,26 +230,16 @@ for p in programs() {
 }
 ```
 
-`programs()` lists the same six groups, and `VARIANTS` is the pair
-`("", Bounds::Check)` and `(".assume", Bounds::Assume)`. For each program
-and variant, `expected` reads the two fixture files, `p.compile` runs the
-Rust engine, and each `!=` compares two `String`s byte for byte. A
-mismatch is not a panic straight away: it is pushed onto `failures` with a
-note of where the texts first differ (your exercise), so that one run
-lists every difference. After the loops, one `assert!` fails if the list
-is not empty. On my run here (rustc 1.97, `cargo test --workspace
---release`, all 77 tests passing), the test printed:
-
-```
-parity: 190/190 (54 Python)
-```
-
-The same file has nine more tests: `fixtures_match_the_programs_exactly`
-checks that the fixture folder
-matches the programs exactly (none missing, and none left over from a
-deleted program, which nobody would check), others cover the `--frames`
-and `--profile` fixtures, and one runs the built `viscosity` binary (Cargo tells a test where the binary is through the
-variable `CARGO_BIN_EXE_viscosity`<Cite id="cargo-targets" />).
+For each program and bounds variant, `expected` reads the two fixture
+files, `p.compile` runs the Rust engine, and each `!=` compares two
+`String`s byte for byte. A mismatch is pushed onto `failures` with the
+first line that differs (*The Rust workspace* wrote that helper), so one
+run lists every difference, and one `assert!` after the loops fails if
+the list is not empty. Other tests in the file check that no fixture is
+missing or left over, and run the built binary, which Cargo locates
+through `CARGO_BIN_EXE_viscosity`<Cite id="cargo-targets" />. Here, with
+rustc 1.97, all ten passed, and the main one printed `parity: 190/190
+(54 Python)`.
 
 <ParitySteps client:visible />
 
@@ -402,33 +252,17 @@ byte**, for every program and every option variant, with a check that no
 fixture is missing or stale.
 </Callout>
 
-<Formal title="What parity promises">
-
-```text
-∀ p ∈ Programs, ∀ v ∈ {check, assume}:
-  rust(p, v) = fixture(p, v) = ts(p, v)
-```
-
-<span slot="read">For every program p and both bounds variants v, the Rust
-engine's output for p under v equals the stored fixture, which is the
-TypeScript engine's output; "equals" means the same bytes, both for the
-code and for the explain text.</span>
-</Formal>
-
-<Prompts ids={['cross-what', 'stale']} />
+<Prompts ids={['who-writes-fixtures', 'cross-what']} />
 
 ## Equal bytes, wrong together
 
 Two engines can agree on a wrong answer, so `differential.rs` checks
-behaviour: it runs each original and compiled JavaScript program with
-`node` (in an isolated context, using a copy of the TypeScript test
-runner) and compares everything printed and thrown, and it runs the Python
-ones with `python3`. *Differential testing at scale* built this
-test for the TypeScript engine; here it ran 68 of 68 JavaScript and 27 of
-27 Python programs identically. To see both tests catch a real mistake, I
-deleted one line from a copy of `crates/core/src/builder.rs` (the line
-that rewrites a `throw` when a phi is removed, which the chapter
-*Dominators and SSA in Rust* explains):
+behaviour too: it runs each original and compiled JavaScript program
+with `node`, in an isolated context, and compares everything printed and
+thrown. To see both tests catch a real mistake, I deleted one line from
+a copy of `crates/core/src/builder.rs` (the line that rewrites a `throw`
+when a trivial phi is removed, which *Dominators, SSA and dataflow in
+Rust* explains):
 
 <Examples of="cross-implementation-tests">
 
@@ -442,86 +276,55 @@ corpus_throw_from_loop.explain.txt:
         arrays
 ```
 
-```
-1 of 68 programs behave differently:
-corpus_throw_from_loop:
-  original: {"out":["object 1"],…}
-  compiled: {"out":["number undefined"],…}
-```
+</Examples>
+
+This is parity's report, trimmed and wrapped: four files differ, all
+from `throw_from_loop.js` (code and explain, both variants), and the
+entry names the fixture, the first differing line and both versions of
+it. The reference keeps `ps` as objects, because an element is thrown
+out of the loop; the broken port makes columns. The differential test
+says why that matters: the original prints `object 1`, the compiled
+program `number undefined`, since it throws an index.
+
+<More title="More: what parity forces, and a cross-implementation test to run">
+
+Matching decisions is not enough, because `explain` lists reasons in
+the order the analyses find them. So the port copies the reference's
+*order* as well: `IndexMap` where TypeScript uses a `Map`, stable sorts,
+use lists with duplicates, and `vir::js_number` for numbers in text.
+This runnable example is a tiny cross-implementation test: five numbers,
+how JavaScript's `String(x)` writes them (captured once, like fixtures),
+and how Rust's `{}` writes them.
 
 <Run id="numbers-play" />
 
-</Examples>
+The WebAssembly build wraps the same `compile`, so it is held to the
+same fixtures, and `scripts/fuzz.mjs` writes random programs and checks
+both engines on them (*TypeScript against Rust: differential tests,
+fuzzing and shrinking* reads it).
 
-The first is parity, trimmed and wrapped (the other three entries are the
-same program's code file and its `.assume` pair): one program changed,
-and the line says how. The second is the differential test, which
-says why it matters, since the original program throws an object (and
-prints `object 1`) while the compiled one throws a number. The third is a
-small cross-implementation test you can run: five numbers, how
-JavaScript's `String(x)` writes them (captured once, like fixtures), and
-how Rust's `{}` writes them; only two match, which leads to the next
-section.
+</More>
 
 <Prompts ids={['agree-not-right']} />
 
-## What parity forces
-
-Matching decisions is not enough, because `explain` lists reasons in the
-order the analyses find them, and the code generator applies its edits in
-the order the plan is walked. So the port copies the reference's *order*
-as well: a JavaScript `Map` iterates in insertion order, so where the
-TypeScript uses one, the port uses `IndexMap` (a Rust map that remembers
-insertion order; a plain `HashMap` gives an arbitrary one); sorts are
-stable (equal items keep their order); and numbers in text go through
-`vir::js_number`, which follows JavaScript's own algorithm, so `1e21` is
-written `1e+21` rather than Rust's twenty-two digits.
-
-<Prompts ids={['order-matters', 'js-number']} />
-
-## When the key was wrong
-
-When two engines disagree, the obvious suspect is the newcomer; however,
-the port's README lists ten bugs it turned up in the TypeScript engine,
-each fixed in both engines and pinned by a test program. Three were
-**miscompiles** (the compiled program behaved differently), including the
-`throw` above; others were crashes, or quieter slips such as shapes
-compared by joined names (see *Shape inference in Rust*). One shows well
-what a second implementation catches: past the end of a string,
-JavaScript's `src[i]` is `undefined`, and a regular-expression test turns
-that into the text `"undefined"`, which contains an `e`, so a `1` at the
-very end of a Python file looked like a float; Rust's `s.get(k)` gives no
-character at all, and the two engines disagreed.
-
-<Prompts ids={['found-bugs']} />
-
-<Callout kind="engine" label="Under the hood">
-The WebAssembly crate wraps the same `compile`, so its output can be held
-to the same fixtures: I loaded the package's Node build
-(`packages/wasm/dist/node`) and compiled all six groups through
-`compileLanguage`, and 190 of 190 pairs matched.
-Fixtures only cover programs someone wrote, so `scripts/fuzz.mjs` writes
-random ones and checks both ways; its fixed-seed run, part of `cargo
-test`, printed `fuzz: seed 1, 200 programs (85 transformed, 114 may go
-out of bounds, 13 with an early error), 0 failing` here.
-</Callout>
-
 ## Your turn
 
-<Exercise id="firstDiff" />
+<Exercise id="splice" />
 
 ## What you learned
 
-- A **cross-implementation test** holds a new engine to a reference: the
-  same inputs, byte-identical outputs.
-- `gen_expected.mjs` writes the reference's **fixtures** (two variants
-  per program, 190 pairs today); `parity.rs` compares the Rust engine with
-  them on every `cargo test`, and checks for missing or stale files.
-- Equal bytes can be wrong together, so a **differential test** runs
-  both programs with `node` and `python3`.
-- Byte parity forces the reference's **order**: `IndexMap`, stable sorts,
-  and JavaScript's number formatting.
-- The disagreements found **ten bugs in the reference**, fixed in both
-  engines.
+- Viscosity emits by **range edits** on the original source, sorted by
+  start, last first, with a **stable** sort, and applied with
+  `replace_range`; an edit that ends past the previous start is an
+  internal error.
+- **`fmt::Write`** (`write!`, `writeln!`) appends formatted text to a
+  `String`; `format!` is the same machinery. Remember `use
+  std::fmt::Write;`.
+- A **cross-implementation test** holds the Rust engine to fixtures the
+  TypeScript engine wrote, byte for byte, 190 pairs today; a
+  **differential test** beside it checks that the programs still behave
+  the same.
+
+Next: *Dominators, SSA and dataflow in Rust*, the first of the analyses.
 
 <Quiz />

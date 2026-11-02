@@ -1,4 +1,4 @@
-// Chapter 82 cards: recall prompts, examples, exercises and quiz.
+// Chapter 154 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -9,10 +9,6 @@ export const prompts = {
   'esr-index-set': {
     q: 'Name the three messages an `index.set` can give for an element `e`, by operand.',
     a: '`e[0] = 5`: “written with an index store”. `t[e] = 1`: “used as an index”. `t[0] = e`: “stored into an array”.',
-  },
-  'esr-term': {
-    q: 'What does `describe_use` say for a use in a terminator?',
-    a: '“returned or branched on in f()”, naming the function: `return`, `throw` and `condbr` operands all count.',
   },
   'esr-allowed': {
     q: 'Which uses of an element are allowed?',
@@ -33,10 +29,6 @@ export const prompts = {
   'esr-phi': {
     q: 'Why is an element flowing into a phi an escape?',
     a: 'A phi merges it with other values, so later code may see either. The analysis doesn’t track where a merged value came from, so it refuses.',
-  },
-  'esr-frames': {
-    q: 'What does `viscosity explain --frames` add?',
-    a: 'Under each refusal, the source line it is about, with carets under the code (the bailout’s recorded site).',
   },
 };
 
@@ -543,7 +535,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'For the phi above, why does the line-4 message end in “near line 5”, but the line-5 message has no line at the end?',
+    q: 'Viscosity refuses `p` after `let p = ps[0];` (line 4) and `if (ps.length > 9) p = ps[9];` (line 5), giving one message per element. Why does the line-4 message end in “near line 5”, while the line-5 message names no second line?',
     options: [
       {
         t: 'The phi’s line is the latest of its operands’ lines, 5, and a repeat of the element’s own line is stripped',

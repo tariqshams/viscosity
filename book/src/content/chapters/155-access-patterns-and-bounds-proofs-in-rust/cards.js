@@ -1,43 +1,22 @@
-// Chapter 82 cards: recall prompts, examples, exercises and quiz.
+// Chapter 155 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 155, 155.
 
 export const prompts = {
-  'acc-what': {
-    q: 'Besides bounds proofs, which two facts does `bounds_loops_and_sizes` record for each collection?',
-    a: 'A `LoopAccess` table per loop (which fields it reads and writes), and a size estimate with a flag saying whether it is only a maximum.',
-  },
   'acc-key': {
     q: 'What is the key of the `IndexMap` that groups a collection’s field accesses into loop tables?',
     a: '`(FuncId, Option<BlockId>)`: the function, and the header of the innermost loop around the access.',
-  },
-  'acc-none': {
-    q: 'In that key, what does `None` mean, and does explain print that table?',
-    a: 'The access is outside every loop. It gets its own table, with depth 0 and `trips: Some(1.0)`, which explain doesn’t print.',
   },
   'acc-order': {
     q: 'Why does explain list the fields of `ps[i].x += ps[i].vx; ps[i].y += ps[i].vy;` as `(vy, y, vx, x)`?',
     a: 'Fields are kept in visit order, and the uses pass pops the loads of `ps` from a worklist, last one first; reads are listed before writes. The reference does the same, so both engines agree.',
   },
-  'acc-tuple-key': {
-    q: 'The TypeScript reference keys its loop tables by a string like `` `${f.id}:${l.header}` ``. Why can the Rust port use a tuple instead?',
-    a: 'A JavaScript `Map` compares object keys by identity, so two equal arrays would be different keys; a Rust tuple is hashed and compared by value.',
-  },
-  'acc-product': {
-    q: 'A push sits inside `for (i = 0; i < 40; i++)` and, inside that, `for (j = 0; j < 5; j++)`. What does it add to the size estimate?',
-    a: '200: the product of the trip counts of the loops around it, 40 × 5.',
-  },
-  'acc-at-most': {
-    q: 'When does explain say “at most N elements” instead of “about N”?',
-    a: 'When some push may not run on every trip (one inside an `if`, say): it doesn’t dominate every exit of its region, so counting it every time gives a maximum.',
-  },
-  'acc-fn-unknown': {
-    q: 'A push is inside a function `add`, which is called from a constant loop of 50. What size does the analysis record, and why?',
-    a: '`None` (“size unknown statically”): how often a function runs depends on its calls, which the analysis doesn’t count, so `f != m.main` makes the size unknown.',
-  },
   'bp-four': {
     q: 'Which four questions does the Rust bounds proof ask of an element read `c[i]`?',
     a: 'Is `i` the phi of a loop header around the read? Is it a counting phi (non-negative integer start, `+ 1` step)? Does that header test `i < c.length`? Does the test’s true edge dominate the read?',
+  },
+    'bp-le': {
+    q: 'Why is `ps[i]` in `for (let i = 0; i <= ps.length; i++)` not proven in bounds?',
+    a: 'The guard must be `<`, and here it is `<=`. Rightly so: on the last trip `i` is `ps.length`, and the read throws.',
   },
   'acc-both-orders': {
     q: 'Why does `is_counting_phi` try the phi’s operands in both orders?',
@@ -46,26 +25,6 @@ export const prompts = {
   'acc-seen': {
     q: 'In `non_neg_int`, what happens when a value is reached a second time?',
     a: '`seen.insert` returns `false`, and the function answers `true`: the value is assumed fine, which ends the cycle through the phi.',
-  },
-  'bp-finite': {
-    q: 'Why does `non_neg_int` check `x.is_finite()` before `x.trunc() == *x`?',
-    a: 'Because `f64::INFINITY.trunc()` is infinity, so an infinite constant would otherwise pass as a whole number.',
-  },
-  'bp-le': {
-    q: 'Why is `ps[i]` in `for (let i = 0; i <= ps.length; i++)` not proven in bounds?',
-    a: 'The guard must be `<`, and here it is `<=`. Rightly so: on the last trip `i` is `ps.length`, and the read throws.',
-  },
-  'acc-k-plus-1': {
-    q: 'Why is `ps[k + 1]` in `for (let k = -1; k < ps.length; k++)` not proven in bounds?',
-    a: 'The index is an addition, not the loop’s phi. It is also really out of bounds on the last trip, where `k + 1` is `ps.length`.',
-  },
-  'bp-const-bound': {
-    q: '`ps` holds exactly 100 elements. Is `ps[i]` in `for (let i = 0; i < 100; i++)` proven in bounds?',
-    a: 'No. The guard must read `ps.length`; the analysis doesn’t compare 100 with a size it only estimates.',
-  },
-  'acc-two-phases': {
-    q: 'Why are bounds proofs collected into a `Vec<bool>` before being stored in `index_gets`?',
-    a: 'The proving loop calls `&self` methods, which borrow all of `self`, so it can’t hold a mutable borrow of the collection at the same time.',
   },
 };
 
@@ -157,6 +116,7 @@ fn main() {
 
 export const exercises = {
   sizeEstimate: {
+    optional: true,
     lang: 'rust',
     title: 'The size estimate',
     prompt: 'Write `estimate(literals, pushes)`, which returns `(size, is_max)` the way `bounds_loops_and_sizes` does. Start the size at the number of literal elements. For each push, add the **product** of its `trips`; if any trip count is `None`, the size is unknown. A push that is not `in_main` also makes the size unknown. If any push is not `every_path`, the size is a maximum, but only a **known** size can be a maximum. Return `(Some(size), is_max)` when the size is known, and `(None, false)` when it isn’t.',
@@ -850,86 +810,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the port use `IndexMap` and `IndexSet` here rather than std’s `HashMap` and `HashSet`?',
-    options: [
-      {
-        t: 'They are faster',
-        why: 'Speed isn’t the reason; order is.',
-      },
-      {
-        t: 'Their order is insertion order, which reaches explain and must match the TypeScript `Map` and `Set`',
-        correct: true,
-        why: 'A `HashMap` iterates in an order that depends on hashing, so the explain text would differ from the reference’s.',
-      },
-      {
-        t: 'They allow duplicate keys',
-        why: 'They don’t: a set keeps each field once, which is what explain wants.',
-      },
-    ],
-  },
-  {
-    q: 'A push sits in `for (let i = 0; i < 10; i++)` inside `for (let j = 0; j < 3; j++)`, and the array literal has 2 elements. What size is recorded?',
-    options: [
-      {
-        t: '`Some(15.0)`',
-        why: 'That adds the trip counts. Nested loops multiply.',
-      },
-      {
-        t: '`None`',
-        why: 'Both loops have constant bounds and the push is in the top-level code, so the size is known.',
-      },
-      {
-        t: '`Some(30.0)`',
-        why: 'Close: that is the push’s 10 × 3, but the 2 literal elements count too.',
-      },
-      {
-        t: '`Some(32.0)`',
-        correct: true,
-        why: '2 literal elements plus 10 × 3 = 30 pushes.',
-      },
-    ],
-  },
-  {
-    q: '`for (let i = 0; i < 100; i++) if (i % 3 === 0) ps.push({ x: i });` What does explain say about the size?',
-    options: [
-      {
-        t: '`about 34 elements`',
-        why: 'The analysis doesn’t evaluate `i % 3`. It only knows the push may be skipped.',
-      },
-      {
-        t: '`size unknown statically`',
-        why: 'The loop has a constant bound and the push is in the top-level code, so the size is known, as a maximum.',
-      },
-      {
-        t: '`at most 100 elements`',
-        correct: true,
-        why: 'The push doesn’t dominate the loop’s latch, so `size_is_upper_bound` is set.',
-      },
-      {
-        t: '`about 100 elements`',
-        why: 'That would claim the push runs on every trip.',
-      },
-    ],
-  },
-  {
-    q: 'Pushes happen in a function `add`, called in a constant loop of 50. What size does the analysis record?',
-    options: [
-      {
-        t: '`None`: a push inside a function depends on how often it is called',
-        correct: true,
-        why: '`if f != m.main { known = false; }`, and explain says “size unknown statically”.',
-      },
-      {
-        t: '`Some(50.0)`',
-        why: 'The analysis doesn’t count calls, so it can’t know that `add` runs 50 times.',
-      },
-      {
-        t: '`Some(1.0)`, one push',
-        why: 'A push in a function makes the size unknown instead of counting it once.',
-      },
-    ],
-  },
-  {
     q: '`for (let j = i + 1; j < ps.length; j++) ps[j].x = 0;` sits inside a counting loop over `i`. Is `ps[j]` proven?',
     options: [
       {
@@ -984,42 +864,6 @@ export const quiz = [
         t: '`for (let i = 0; i < ps.length; i++) ps[i].x++`',
         correct: true,
         why: 'A counting phi from 0, guarded by `i < ps.length`, whose true edge dominates the body.',
-      },
-    ],
-  },
-  {
-    q: 'Why does question 4 (the true edge dominates the read) matter?',
-    options: [
-      {
-        t: 'It makes sure the read can only run after the guard said yes',
-        correct: true,
-        why: 'A read reachable without passing the true edge (after the loop, say) could see `i === ps.length`.',
-      },
-      {
-        t: 'It makes the proof faster',
-        why: 'It makes the proof correct; without it, a read after the loop would be wrongly trusted.',
-      },
-      {
-        t: 'It is needed only for nested loops',
-        why: 'It is needed for every read: the index must be checked on every path to it.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the port store its proofs in a second loop, `iter_mut().zip(proven)`, instead of setting `bounds_proven` in the first?',
-    options: [
-      {
-        t: 'To keep the order of the reasons in explain',
-        why: 'Order isn’t affected: the same reads get the same answers either way.',
-      },
-      {
-        t: 'The first loop calls `&self` methods, so it can’t also hold a mutable borrow of the collection',
-        correct: true,
-        why: 'Read everything, then write: two phases keep the shared and mutable borrows apart.',
-      },
-      {
-        t: 'Because `Vec<bool>` is faster than a field',
-        why: 'Speed isn’t the reason; the borrow checker is.',
       },
     ],
   },

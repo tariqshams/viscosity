@@ -1,6 +1,5 @@
-// Chapter 81 cards: recall prompts, examples, exercises and quiz.
+// Chapter 153 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 153, 153.
 
 export const prompts = {
   'cdr-struct': {
@@ -15,25 +14,9 @@ export const prompts = {
     q: 'TS maps loads to `Collection` objects. What does `collection_of_load` map them to in Rust?',
     a: 'A `usize`: the collection’s index in `self.collections`.',
   },
-  'cdr-why-index': {
-    q: 'Why an index rather than a `&mut Collection` in the map?',
-    a: 'A reference into the `Vec` would borrow it for as long as the map lives, so nothing else could push to or change the collections.',
-  },
-  'cdr-letelse': {
-    q: 'How does `find_collections` skip a binding that is never given an array?',
-    a: 'With `let Some(&first) = st.iter().find(...) else { continue; };`, where TS filters every store and tests the length.',
-  },
   'cdr-clone': {
     q: 'Why does `uses_of` return a cloned `Vec<Use>`?',
     a: 'The loop body calls `&mut self` methods. Iterating `self.uses.of(l)` directly would keep `self` borrowed, which is error E0502.',
-  },
-  'cdr-follow': {
-    q: 'How does a value get added to the worklist besides the binding’s loads?',
-    a: '`use_of_collection` returns `Some(param)` when the collection is passed to a known function, and the caller pushes it.',
-  },
-  'cdr-lifo': {
-    q: 'The worklist is a `Vec` used as a stack. Why not a queue?',
-    a: 'The reference pops from the end of its array, and the visit order decides the order of the explain messages. Parity needs the same order.',
   },
   'shr-exact': {
     q: 'How does `set_shape` in `analysis.rs` compare two field lists?',
@@ -43,29 +26,9 @@ export const prompts = {
     q: 'What did comparing joined names get wrong in the reference?',
     a: 'A record with one field named `a,b` matched a record with fields `a` and `b`, since both join to `"a,b"`.',
   },
-  'shr-alias': {
-    q: 'Why does `set_shape` bail out when the new record has more than one use?',
-    a: 'Another use (say `r.x = 500`) would still expect an object `r`, and after the rewrite there is only a slot in a column.',
-  },
   'shr-tick-m': {
     q: 'Why can `set_shape` read the record’s fields and then take `&mut self.collections[ci]`?',
     a: 'The fields come from `inst`, which returns `&\'m Inst`, borrowed from the module, not from `self`.',
-  },
-  'shr-numeric-fields': {
-    q: 'What decides whether a field gets a typed column?',
-    a: 'Its fixpoint fact: every record added and every write to the field must put a provable number (in Python, a float) there.',
-  },
-  'shr-py-float': {
-    q: 'In Python, why must a typed column’s field be provably a **float**, not just a number?',
-    a: 'An `array(\'d\')` column stores doubles: an int goes in and a float comes out, so a program that printed `1` would print `1.0`.',
-  },
-  'shr-div': {
-    q: 'In Python, when is `a / b` provably a float?',
-    a: 'Whenever both operands are numbers of either kind: `/` always gives a float (`6 / 2` is `3.0`).',
-  },
-  'shr-pow': {
-    q: 'When is `a ** b` provably a float in Python?',
-    a: 'Only when `a` is a float and `b` an int. A float exponent can give a complex number, and an int base with a negative int exponent gives a float, so int `**` int is neither.',
   },
 };
 
@@ -580,210 +543,6 @@ pub fn discover(
       },
     ],
   },
-  kinds: {
-    lang: 'rust',
-    title: 'Python’s int and float rules',
-    prompt: 'Write `py_binop`, the Python half of `compute` and `compute_int` in `analysis.rs` for a binary operator. The result is an **int** when the operator is `+ - * % //` and both sides are ints. It is a **float** when: the operator is `/` and both sides are numbers of either kind; or it is `**`, the base is a float and the exponent an int; or it is one of `+ - * % //` and one side is a float while the other is a number. Anything else (comparisons, say) is neither.',
-    starter: `// What the fixpoint knows about a
-// Python value: provably a float,
-// provably an int, or neither.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct K {
-    pub float: bool,
-    pub int: bool,
-}
-
-// Is it a number of either kind?
-fn num(k: K) -> bool {
-    k.float || k.int
-}
-
-pub fn py_binop(
-    op: &str,
-    a: K,
-    b: K,
-) -> K {
-    todo!()
-}`,
-    solution: `// What the fixpoint knows about a
-// Python value: provably a float,
-// provably an int, or neither.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct K {
-    pub float: bool,
-    pub int: bool,
-}
-
-// Is it a number of either kind?
-fn num(k: K) -> bool {
-    k.float || k.int
-}
-
-pub fn py_binop(
-    op: &str,
-    a: K,
-    b: K,
-) -> K {
-    let arith =
-        ["+", "-", "*", "%", "//"];
-    let ar = arith.contains(&op);
-    let int = ar && a.int && b.int;
-    let float = match op {
-        "/" => num(a) && num(b),
-        "**" => a.float && b.int,
-        _ if ar => {
-            (a.float && num(b))
-                || (a.int && b.float)
-        }
-        _ => false,
-    };
-    K { float, int }
-}`,
-    tests: `const I: K =
-    K { float: false, int: true };
-const F: K =
-    K { float: true, int: false };
-const N: K =
-    K { float: false, int: false };
-
-#[test]
-fn ints_stay_ints() {
-    assert_eq!(py_binop("+", I, I), I);
-    assert_eq!(py_binop("//", I, I), I);
-}
-
-#[test]
-fn true_division_is_a_float() {
-    // 6 / 2 is 3.0
-    assert_eq!(py_binop("/", I, I), F);
-    assert_eq!(py_binop("/", F, I), F);
-}
-
-#[test]
-fn a_float_spreads() {
-    assert_eq!(py_binop("*", I, F), F);
-    assert_eq!(py_binop("-", F, F), F);
-    assert_eq!(py_binop("+", F, N), N);
-}
-
-#[test]
-fn powers_are_careful() {
-    // 2.0 ** 3 is 8.0
-    assert_eq!(py_binop("**", F, I), F);
-    // (-1.0) ** 0.5 is complex
-    assert_eq!(py_binop("**", F, F), N);
-    // 2 ** -1 is 0.5
-    assert_eq!(py_binop("**", I, I), N);
-}
-
-#[test]
-fn comparisons_are_neither() {
-    assert_eq!(py_binop("<", F, F), N);
-}`,
-    hints: [
-      'Compute the two halves separately and build `K { float, int }` at the end. The int half is one line: the operator is in the list and `a.int && b.int`.',
-      'For the float half, `match op` with arms for `"/"` and `"**"`, then a guarded arm `_ if arith.contains(&op) => ...`, then `_ => false`.',
-      'For `+ - * % //`: `(a.float && num(b)) || (a.int && b.float)`. For `**`: `a.float && b.int`.',
-    ],
-    walkthrough: `**How to think about it.** Work out the two facts separately, because they answer different questions: "is the result provably an int?" and "is the result provably a float?". The int question is easy, since only \`+ - * % //\` of two ints give an int. The float question has three cases, one for \`/\`, one for \`**\`, and one for the other arithmetic operators, and everything else (comparisons, say) is neither. Before writing, check each rule against Python itself: \`6 / 2\` is \`3.0\`, \`2 * 1.5\` is \`3.0\`, \`2.0 ** 3\` is \`8.0\`, \`2 ** -1\` is \`0.5\`, and \`(-1.0) ** 0.5\` is a complex number. This is the \`Op::Binop\` arm of \`compute\` and of \`compute_int\` in \`analysis.rs\`, merged into one function; in the real code, \`self.n(v)\` is \`k.float\` and \`self.i(v)\` is \`k.int\`.
-
-**The solution, line by line.**
-
-- \`let arith = ["+", "-", "*", "%", "//"];\` lists the operators that keep an int an int. \`/\` and \`**\` are deliberately not in it.
-- \`let ar = arith.contains(&op);\` asks once whether \`op\` is one of them; \`contains\` takes a reference to the item, hence \`&op\`.
-- \`let int = ar && a.int && b.int;\` is the whole int rule: one of those operators, and both sides provably ints.
-- \`let float = match op {\` starts the float rule, one arm per case.
-- \`"/" => num(a) && num(b),\` says true division gives a float whenever both sides are numbers of either kind (\`num\` is "float or int").
-- \`"**" => a.float && b.int,\` is the careful one: a float base with an int exponent is a float; an int base can give an int or a float, and a float exponent can give a complex number, so nothing else is proven.
-- \`_ if ar => (a.float && num(b)) || (a.int && b.float),\` covers \`+ - * % //\`: the result is a float if one side is a float and the other a number. The two halves of the \`||\` are the two ways round (float first, or int first and float second).
-- \`_ => false,\` makes everything else neither.
-- \`K { float, int }\` builds the answer with field shorthand (\`float: float\`).
-
-Check it on \`ints_stay_ints.py\`: \`i / 2\` is int / int, so float; \`count + 1\`, once \`count\` is no longer provably a float, is neither; \`weight * 2\` is float * int, so float.
-
-**Common wrong attempts.**
-
-- Putting \`/\` in the int list. Then \`6 / 2\` comes out an int, but in Python it is \`3.0\`, and a column built on that fact would print the wrong thing.
-- Treating \`**\` like \`*\`. Then a float to a float power counts as a float, though \`(-1.0) ** 0.5\` is complex, and \`2 ** -1\` counts as an int, though it is \`0.5\`.
-- Writing the float rule for \`+\` as \`num(a) && num(b)\`. That makes int + int a float, so \`count\` would get an \`array('d')\` column and \`print\` would show \`2.0\` where the original showed \`2\`.
-
-None of this exists for JavaScript, where every number is a double: there, \`compute\` only asks that both sides of an arithmetic operator be numbers.`,
-    wrong: [
-      {
-        code: `// What the fixpoint knows about a
-// Python value: provably a float,
-// provably an int, or neither.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct K {
-    pub float: bool,
-    pub int: bool,
-}
-
-// Is it a number of either kind?
-fn num(k: K) -> bool {
-    k.float || k.int
-}
-
-pub fn py_binop(
-    op: &str,
-    a: K,
-    b: K,
-) -> K {
-    let arith =
-        ["+", "-", "*", "%", "//", "/"];
-    let ar = arith.contains(&op);
-    let int = ar && a.int && b.int;
-    let float = match op {
-        "**" => a.float && b.int,
-        _ if ar => {
-            (a.float && num(b))
-                || (a.int && b.float)
-        }
-        _ => false,
-    };
-    K { float, int }
-}`,
-        why: 'It treats `/` like the other operators, so `6 / 2` comes out an int. In Python it is `3.0`.',
-      },
-      {
-        code: `// What the fixpoint knows about a
-// Python value: provably a float,
-// provably an int, or neither.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct K {
-    pub float: bool,
-    pub int: bool,
-}
-
-// Is it a number of either kind?
-fn num(k: K) -> bool {
-    k.float || k.int
-}
-
-pub fn py_binop(
-    op: &str,
-    a: K,
-    b: K,
-) -> K {
-    let arith = ["+", "-", "*", "%"];
-    let ar = arith.contains(&op)
-        || op == "//"
-        || op == "**";
-    let int = ar && a.int && b.int;
-    let float = match op {
-        "/" => num(a) && num(b),
-        _ if ar => {
-            (a.float && num(b))
-                || (a.int && b.float)
-        }
-        _ => false,
-    };
-    K { float, int }
-}`,
-        why: 'It treats `**` like `*`. Then a float to a float power counts as a float, though `(-1.0) ** 0.5` is complex, and `2 ** -1` counts as an int, though it is `0.5`.',
-      },
-    ],
-  },
   shape: {
     lang: 'rust',
     optional: true,
@@ -1001,60 +760,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `explain` for a program with two pushes of different shapes, the message reads `({x, y} vs {y, x})`, the later push’s shape second. Why?',
-    options: [
-      {
-        t: 'The worklist pops the last load first, so the later push sets the shape',
-        correct: true,
-        why: 'Both engines pop from the end, as the chapter “Finding collections” traced in TypeScript.',
-      },
-      {
-        t: 'Shapes are sorted alphabetically',
-        why: 'Field order is part of the shape and is never sorted.',
-      },
-      {
-        t: 'The pushes are visited in source order',
-        why: 'Then the earlier push would set the shape.',
-      },
-    ],
-  },
-  {
-    q: 'When does `use_of_collection` follow a collection into a function’s parameter?',
-    options: [
-      {
-        t: 'Whenever the collection is an argument of any call',
-        why: 'Only known functions, whose call sites are all visible.',
-      },
-      {
-        t: 'For a direct call of a known function, when every call site passes this collection at that position, and the parameter is an SSA value (not captured)',
-        correct: true,
-        why: 'Then it records the parameter in `collection_of_load` and returns it to be pushed.',
-      },
-      {
-        t: 'Only for method calls',
-        why: 'Method calls (`note == "method"`) are never followed.',
-      },
-    ],
-  },
-  {
-    q: 'A binding is stored twice: first `[]`, later another value. What does the collection pass do?',
-    options: [
-      {
-        t: 'It skips the binding',
-        why: 'It is still a candidate, because one store is an array.',
-      },
-      {
-        t: 'It makes it a candidate and bails: “is reassigned (line N), so it may not always hold this array”',
-        correct: true,
-        why: 'With the site of the last store, for `--frames`.',
-      },
-      {
-        t: 'It makes two collections',
-        why: 'There is one collection per binding.',
-      },
-    ],
-  },
-  {
     q: 'Two pushes into `ps`: `{ \'a,b\': i }` and `{ a: i, b: 2 }`. What does the fixed engine decide?',
     options: [
       {
@@ -1087,64 +792,6 @@ export const quiz = [
       {
         t: 'rustc allows two mutable borrows inside one method',
         why: 'It never does.',
-      },
-    ],
-  },
-  {
-    q: 'In Python, `cs.append(Cell(i, i / 2))` with `i` from `range(300)`, and later `cs[i].count += 1`. Which columns does Viscosity choose?',
-    options: [
-      {
-        t: 'Both `array(\'d\')`, since both fields hold numbers',
-        why: 'An int stored in an `array(\'d\')` comes back as a float.',
-      },
-      {
-        t: 'Both plain lists',
-        why: '`i / 2` is provably a float, so `weight` can be typed.',
-      },
-      {
-        t: '`array(\'d\')` for `weight`, a list for `count`',
-        correct: true,
-        why: 'Real output: “typed array(\'d\') columns for weight; list columns for count (may hold non-floats)”.',
-      },
-    ],
-  },
-  {
-    q: 'Why is `x ** 0.5` (with `x` a float) not provably a float in Python?',
-    options: [
-      {
-        t: 'A negative base with a fractional exponent gives a complex number',
-        correct: true,
-        why: '`(-1.0) ** 0.5` is about `6e-17+1j`. The corpus program `power_complex.py` keeps such a field out of a typed column.',
-      },
-      {
-        t: '`**` always gives an int',
-        why: '`2.0 ** 3` is `8.0`.',
-      },
-      {
-        t: 'Python has no `**` operator',
-        why: 'It does; JavaScript has one too.',
-      },
-    ],
-  },
-  {
-    q: 'A record is pushed and then also changed through its variable: `const r = { x: i }; ps.push(r); r.x = 5;`. What does the shape pass report?',
-    options: [
-      {
-        t: 'Nothing: the shape matches',
-        why: 'The shape is fine, but the record has two uses.',
-      },
-      {
-        t: 'A different shape',
-        why: 'The fields are the same.',
-      },
-      {
-        t: 'That the array is used by an unknown function',
-        why: 'The array itself is only pushed to.',
-      },
-      {
-        t: 'That the new record is also referenced elsewhere, so it could be aliased',
-        correct: true,
-        why: '`self.uses.of(r).len() != 1`.',
       },
     ],
   },

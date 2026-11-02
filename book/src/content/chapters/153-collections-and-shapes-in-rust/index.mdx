@@ -3,39 +3,31 @@ n: 153
 day: 27
 part: IX
 title: 'Collections and shapes in Rust'
-tagline: 'The collection pass of “Finding collections”, as analysis.rs has it: the closures become a struct, the maps keyed by objects become maps to numbers, a worklist pops in the reference’s order, and the borrow checker decides where a use list gets copied.'
+tagline: 'The collection and shape passes as analysis.rs has them: the closures become a struct, the maps keyed by objects become maps to numbers, a worklist pops in the reference’s order, the borrow checker decides where a use list gets copied, and field lists are compared as lists, which fixed a bug in the reference.'
 objectives:
   - Map the state of analysis.ts’s collection pass onto the Analyzer struct.
   - Explain why collections are referred to by index, and why use lists are copied before the loop.
-  - Trace the worklist over real VIR, into a known function’s parameter.
   - Implement the worklist, keeping the reference’s order.
   - Read set_shape in analysis.rs and explain the exact field-list comparison and the comma bug it replaced.
   - Explain why set_shape can hold the record’s fields while changing the collection.
-  - Say how a field earns a typed column, in JavaScript and in Python.
-  - Apply Python’s int and float rules for `/`, `**` and mixed arithmetic.
 introduces: [rust-collections-pass, rust-shape-pass]
-uses: [collection-discovery, record-shape, safety-analysis, bailout, worklist, generic-dataflow, viscosity-rs, ir-arena, rust-ssa, vir, ssa, typed-index, arena, struct, impl, self-receiver, lifetime, lifetime-annotation, borrow, shared-vs-mutable, borrow-checker, hashmap, vec, option, match, enum, pattern, cross-implementation-tests, shape-stability, shape-inference, type-inference, fixpoint, lattice, column-storage, typed-array, float64, python-array-module, semantic-differences, python-subset, multi-language-ir, fuzzing, string-vs-str, slice]
-sources: [rustc-hash-readme, indexmap-docs, python-array, python-expressions]
+uses: [collection-discovery, record-shape, safety-analysis, bailout, worklist, generic-dataflow, viscosity-rs, ir-arena, rust-ssa, vir, ssa, typed-index, arena, struct, impl, self-receiver, lifetime, borrow, shared-vs-mutable, borrow-checker, hashmap, vec, option, match, enum, pattern, cross-implementation-tests, shape-inference, fixpoint, column-storage, typed-array, string-vs-str, slice]
+sources: [rustc-hash-readme, indexmap-docs]
 ---
 import FollowSteps from '../../../components/diagrams/ch153/FollowSteps';
 import ByIndex from '../../../components/diagrams/ch153/ByIndex';
-import KindSteps from '../../../components/diagrams/ch153/KindSteps';
 import JoinVsList from '../../../components/diagrams/ch153/JoinVsList';
-
-{/* ── merge: from old chapter 153, Collection discovery in Rust ── */}
 
 ## Same pass, new home
 
-The chapter *Finding collections* read the first two steps of
-`analysis.ts`: find the **candidate** bindings (variables first given an
-empty array or an array literal), then follow every load of each one
-through its uses, accepting the few uses Viscosity can rewrite and
-recording a **bailout** (a reason to leave the array alone) for anything
-else. The TypeScript keeps all of this in local variables of one big
-`analyze` function, and the steps are closures that share them. The Rust
-port, `analysis.rs`, produces the same collections, the same bailouts and
-the same messages in the same order; what changes is where the state
-lives, and how one thing refers to another.
+*Finding collections, and inferring shapes* read the first steps of
+`analysis.ts`: find the **candidate** bindings, then follow every load
+of each through its uses, recording a **bailout** for any use Viscosity
+cannot rewrite, all as closures sharing the locals of one big
+`analyze`. The Rust
+port, `analysis.rs`, produces the same collections and messages in the
+same order; what changes is where the state lives, and how one thing
+refers to another.
 
 ## The Analyzer struct
 
@@ -45,29 +37,20 @@ The TypeScript closures become methods of one struct, trimmed:
 struct Analyzer<'m> {
     m: &'m Module,
     uses: Uses,
-    stores: HashMap<BindingId,
-        Vec<ValueId>>,
     loads: HashMap<BindingId,
-        Vec<ValueId>>,
-    call_sites: HashMap<FuncId,
         Vec<ValueId>>,
     collections: Vec<Collection>,
     collection_of_load:
         HashMap<ValueId, usize>,
-    element_of: HashMap<ValueId, usize>,
-    // ...numeric facts, a cfg cache
+    // ...stores, call sites, facts
 }
 ```
 
 `m` borrows the module for the lifetime `'m` (the analyser reads VIR and
-never changes it); `uses` lists every use of every value; `stores` and
-`loads` file each store and load by binding; `call_sites` lists the call
-instructions of each **known function** (declared once and only ever
-called directly, so every caller is visible); and the last three are the
-collections and two maps into them. `HashMap` here is `FxHashMap` from the
-`rustc-hash` crate, renamed on import: a faster hasher for small
-keys<Cite id="rustc-hash-readme" />. Its iteration order is arbitrary,
-which is fine, because the analyser only *looks things up* in these maps;
+never changes it); `uses` lists every use of every value; `loads` files
+each load by binding. `HashMap` is `FxHashMap`, renamed on
+import<Cite id="rustc-hash-readme" />; its order is arbitrary, which is
+fine, because the analyser only *looks things up* in these maps, and
 anything whose order reaches `explain` is a `Vec` or an
 `IndexMap`<Cite id="indexmap-docs" />. One more detail matters later:
 
@@ -77,10 +60,8 @@ fn inst(&self, v: ValueId) -> &'m Inst {
 }
 ```
 
-The instruction lives in the module, so the reference handed out lasts
-for `'m`, not for the borrow of `self`; you can hold an instruction and
-still change `self.collections` (the next chapter shows the error you get
-without this).
+The instruction lives in the module, so the reference lasts for `'m`,
+not for the borrow of `self`.
 
 <Prompts ids={['cdr-struct', 'cdr-lifetime']} />
 
@@ -97,39 +78,17 @@ ever adds collections to the end and never removes one, so the numbers
 stay right.</span>
 </Analogy>
 
-In TypeScript, `collectionOfLoad` maps a value to the `Collection`
-*object*. Rust's `collection_of_load` maps a value to a `usize`: the
-collection's position in `self.collections`. A `&mut Collection` kept in
-the map would keep the whole `Vec` borrowed for as long as the map exists,
-and the pass pushes to that `Vec` and changes its entries all the time; a
-number borrows nothing.
+TypeScript's `collectionOfLoad` maps a value to the `Collection`
+*object*; Rust's maps it to a `usize`, the collection's position in
+`self.collections`. A `&mut Collection` in the map would keep the whole
+`Vec` borrowed for as long as the map exists, while the pass keeps
+changing it; a number borrows nothing.
 
-<Figure caption="Values refer to collection 0 by number. The values are the loads of ps, step's parameter and one element, from the real VIR below." takeaway="An index borrows nothing.">
+<Figure caption="Values refer to collection 0 by number. The values are the loads of ps, step's parameter and one element, from the real VIR of a program that passes ps to a function step." takeaway="An index borrows nothing.">
   <ByIndex />
 </Figure>
 
-Finding candidates is otherwise a line-for-line port. Where the
-TypeScript filters every store and checks the length, Rust stops at the
-first store of an array, with `let`-`else` (rewrapped):
-
-```rust
-let st = self.stores_of(binding.id);
-let Some(&first_array_store) =
-    st.iter().find(|&&x| matches!(
-        self.inst(self.inst(x).args[0]).op,
-        Op::ArrayEmpty | Op::ArrayNew))
-else {
-    continue;
-};
-```
-
-`stores_of` gives the binding's stores; `find` walks them and stops at the
-first whose stored value (`args[0]`) is `array.empty` or `array.new`; and
-if there is none, the `else` branch skips this binding. Every bailout then
-goes through one helper, `Collection::bail`, which also remembers the
-*first* source position seen for each message, for `explain --frames`.
-
-<Prompts ids={['cdr-index', 'cdr-why-index', 'cdr-letelse']} />
+<Prompts ids={['cdr-index']} />
 
 ## The worklist and the borrow checker
 
@@ -151,48 +110,24 @@ while let Some(l) = work.pop() {
 }
 ```
 
-`work` starts as a copy of every load of collection `ci`'s binding (or
-empty, if it has none). Each `pop` takes a value off the end; each of its
+`work` starts as a copy of the loads of collection `ci`'s binding. Each
+`pop` takes a value off the end; each of its
 uses goes to `use_of_collection`, which accepts it (`.length`, a `push` of
-a fresh record, an index), records a bailout, or, for a call to a known
-function that every caller passes this collection to, returns that
-function's parameter, which goes on the stack so that the uses *inside*
-the function are checked too.
+a fresh record, an index), records a bailout, or, for a call to a
+**known function** (declared once, only ever called directly) that
+every caller passes this collection to, returns that function's
+parameter, which goes on the stack so that the uses *inside* are checked
+too. (The TypeScript closure pushes it itself; the method *returns* it,
+because the stack is a local of its caller.)
 
-Two things differ from the TypeScript. The TypeScript closure pushes the
-parameter itself, while `use_of_collection` *returns* it, because it takes
-`&mut self` and the stack is a local variable of its caller. And
-`uses_of(l)` returns a *copy* of the use list. Write `self.uses.of(l)` in
-the `for` instead, and the loop holds a shared borrow of `self` while its
-body calls a `&mut self` method; rustc 1.97, on a small copy:
-
-```
-error[E0502]: cannot borrow `*self` as
-  mutable because it is also borrowed
-  as immutable
-```
-
-The copy costs a few words per use, and it is the simplest thing that lets
-the method change `self` freely. Try both versions:
-
-<Run id="uses-play" />
-
-<Prompts ids={['cdr-clone', 'cdr-follow']} />
-
-## Order is output
-
-<Analogy extra title="a pile of letters">
-Letters arrive and you drop each on a pile; when you sit down to answer
-them, you take the top one, which is the last to arrive. The order of your
-replies is the reverse of the order the letters came in.
-<span slot="breaks">With letters the order of replies rarely matters.
-Here it is printed: it decides the order of the explain messages and even
-which record's fields come first.</span>
-</Analogy>
-
-`work.pop()` takes the *last* load first, as `work.pop()` does in the
-TypeScript. Step through it on real VIR, printed from the port, for a
-program that pushes into `ps` and passes it to a function `step`:
+And `uses_of(l)` returns a *copy* of the use list. Write
+`self.uses.of(l)` in the `for` instead, and the loop holds a shared
+borrow of `self` while its body calls a `&mut self` method; rustc 1.97,
+on a small copy, says `error[E0502]: cannot borrow `*self` as mutable
+because it is also borrowed as immutable`. The copy costs a few words
+per use. `work.pop()` takes the *last* load first, as the TypeScript
+does, and that order decides the order of the explain messages; step
+through it on real VIR:
 
 <FollowSteps client:visible />
 
@@ -206,6 +141,48 @@ stack-ordered worklist over each collection's loads, accepting `.length`,
 parameter), and records a bailout, with its source site, for anything
 else.
 </Callout>
+
+<Examples of="rust-collections-pass">
+
+```
+ps (line 1) {x} → kept as array of
+  objects
+  · unsafe: line 3: uses .sort on the
+    array (only .length and .push are
+    supported)
+  · unsafe: the array is passed to a
+    method call at line 3
+```
+
+</Examples>
+
+This is real Rust CLI output, wrapped (the TypeScript CLI printed the
+same), for `const ps = []`, a loop of `ps.push({ x: i })`, then
+`ps.sort()` on line 3 and a loop over the `x`s. The one call gives two
+bailouts, because the pass checks *every* use of every load: reading the
+property `.sort` is one, and handing the array to the method call as its
+receiver is another.
+
+<More title="More: finding candidates with let-else, and the Formal rule">
+
+Finding candidates is otherwise a line-for-line port. Where the
+TypeScript filters every store and checks the length, Rust stops at the
+first store of an array, with `let`-`else` (rewrapped):
+
+```rust
+let st = self.stores_of(binding.id);
+let Some(&first_array_store) =
+    st.iter().find(|&&x| matches!(
+        self.inst(self.inst(x).args[0]).op,
+        Op::ArrayEmpty | Op::ArrayNew))
+else {
+    continue;
+};
+```
+
+A function that passes its parameter on to itself, `walk(qs, k + 1)`, is
+not followed, and both engines report "passed to walk(), which is also
+called with other values": safe, only less precise than it could be.
 
 <Formal title="What the pass computes">
 
@@ -225,129 +202,32 @@ push of a fresh record, an index, or such a known call; any other use is
 a bailout.</span>
 </Formal>
 
-<Examples of="rust-collections-pass">
+</More>
 
-```
-ps (line 1) {x} → kept as array of
-  objects
-  · no loop reads or writes its fields,
-    so a new layout cannot pay off
-```
+<More title="More: run the borrow-checker version">
 
-```
-  · unsafe: line 3: uses .sort on the
-    array (only .length and .push are
-    supported)
-  · unsafe: the array is passed to a
-    method call at line 3
-```
+<Run id="uses-play" />
 
-```
-ps (line 1) {x, y} → struct of arrays
-  · loop at line 4 in step() touches
-    2 of 2 fields (y, x)
-```
+</More>
 
-</Examples>
-
-All three are real Rust CLI output, wrapped. The first is the simplest:
-`const ps = []` and a loop of `ps.push({ x: i })`, nothing else; the pass
-accepts every use and the collection is found, and only the cost model,
-later, says no. The second adds `ps.sort()`, and one line gives two
-bailouts, because the pass checks *every* use: the read of `.sort` is one,
-and passing the array to the method call (as its receiver) is another.
-The third is the `step` program of the diagram, trimmed: `ps` is followed
-into `step`'s parameter, and the loop there is what pays off.
-
-<Prompts ids={['cdr-lifo']} />
-
-<Callout kind="engine" label="Under the hood">
-Why a stack, when a queue would find the same collections and the same
-bailouts? Because the parity test compares the order too: 190 of 190
-fixture pairs match byte for byte, and the fuzzer compares both engines'
-`explain` and `explain --frames` text on random programs. `seen_param`
-stops a parameter being followed twice when two call sites pass the
-collection; however, a function that passes its parameter on to itself,
-`walk(qs, k + 1)`, is not followed, and both engines report "passed to
-walk(), which is also called with other values". That refusal is safe,
-only less precise than it could be.
-</Callout>
-
-## Your turn
-
-<Exercise id="discover" />
-
-## What you learned
-
-- **The collection pass in Rust** keeps the TypeScript closures' state in
-  `Analyzer<'m>`, with `inst` returning `&'m Inst`, so instructions do
-  not borrow the analyser.
-- Collections are referred to by **index** (`usize`), never by reference,
-  so the `Vec` of collections can keep changing.
-- `uses_of` copies the use list so that the loop body can call `&mut self`
-  methods (E0502 otherwise).
-- The worklist is a stack, as in the reference: the last load first.
-  Known functions are followed by returning the parameter.
-
-
-{/* ── merge: from old chapter 153, Shape inference in Rust ── */}
+<Prompts ids={['cdr-clone']} />
 
 ## One field or two?
 
-A **shape**, in the chapter *Record shapes*, is the list of a record's
-field names, in order, plus what each field may hold; struct of arrays
-only works when every record in a collection has the same shape, because
-each field becomes one column. Here is `comma_field_name.js`, a program in
-the reference's corpus (rewrapped; the real file has the loop on one
-line):
-
-```js
-const ps = [];
-for (let i = 0; i < 100; i++) {
-  ps.push({ 'a,b': i });
-  ps.push({ a: i, b: 2 });
-}
-```
-
-The first record has *one* field, whose name is `a,b` (quotes let a name
-hold a comma); the second has two, `a` and `b`. They are different shapes,
-so `ps` must stay an array of objects, and both engines now say so (the
-real Rust CLI output, wrapped):
-
-```
-ps (line 3) {a, b} → kept as array of
-  objects
-  · unsafe: line 4: records with
-    different fields or field order
-    ({a,b} vs {a, b})
-```
-
-The collection's fields are `{a, b}`, from the *second* push, because
-the worklist pops the last load first (see *Collection discovery in
-Rust*); and the message prints the one field `a,b` without quotes,
-exactly as the reference does. The reference used to
-get the decision wrong: it compared shapes by joining the names into one
-string, and `["a,b"]` and `["a", "b"]` both join to `a,b`. That is bug 3
-in the port's README, found while porting, fixed in both engines, and
-pinned by this program.
-
-<Analogy title="two shopping lists read aloud">
-Read "apple pie, cream" and "apple, pie cream" aloud without pausing, and
-they sound the same; on paper, as lists with one item per line, they are
-plainly different. Joining names into one string reads the list aloud
-without pauses; comparing the lists keeps the lines.
-<span slot="breaks">People hear pauses and can ask; a string has no
-pauses at all unless you add them, which is why the fixed TypeScript
-quotes every name (with `JSON.stringify`) before comparing.</span>
-</Analogy>
+A **shape** is the list of a record's field names, in order, plus what
+each field may hold. The corpus program `comma_field_name.js` pushes `{
+'a,b': i }` and then `{ a: i, b: 2 }`: one field whose name holds a
+comma, then two fields, so two shapes, and both engines now refuse it
+(`records with different fields or field order ({a,b} vs {a, b})`). The
+reference used to compare shapes by joining the names into one string,
+and `["a,b"]` and `["a", "b"]` both join to `a,b`; the port found it.
 
 <Figure caption="The same two records, compared the old way and the way set_shape does it." takeaway="Compare lists, not joined text.">
   <JoinVsList />
 </Figure>
 
-## set_shape
-
-The Rust version, trimmed (the two messages are shortened to comments):
+Here is the Rust version, trimmed (the two messages are shortened to
+comments):
 
 ```rust
 fn set_shape(&mut self, ci: usize,
@@ -357,7 +237,6 @@ fn set_shape(&mut self, ci: usize,
     else { unreachable!() };
     let aliased =
         self.uses.of(r).len() != 1;
-    let at = self.inst(r).src;
     let c = &mut self.collections[ci];
     if c.fields.is_empty() {
         c.fields = fields.clone();
@@ -371,54 +250,6 @@ fn set_shape(&mut self, ci: usize,
 }
 ```
 
-Line by line: the `let`-`else` takes the field list out of the record
-instruction `r` (anything else would be a caller's bug). `aliased` is true if the new record has more than one
-use, that is, anything besides the push. Then `c` borrows collection number `ci` mutably.
-The first record a collection receives fixes its fields; every later one
-is compared with `!=`, which for two `Vec<String>`s means the same length
-and then the same name at each position. Nothing is joined, so no name can
-run into another. Last, a record with a second use, such as `r.x = 500`
-after the push, would still expect an object `r` after the rewrite, so it
-is refused as possibly **aliased** (reachable under two names).
-
-Notice that `fields` is borrowed from an instruction while `c` borrows
-`self.collections` mutably, two lines later. That only compiles because
-`inst` returns `&'m Inst`, a borrow of the module, which `self` merely
-points at (see the previous chapter). Give the accessor the default
-lifetime, tied to `&self`, and rustc 1.97 says, on a small copy:
-
-```
-error[E0502]: cannot borrow `self.cols`
-  as mutable because it is also
-  borrowed as immutable
-```
-
-The runnable copy has the `'m` in place; delete it and see, and it also
-prints what joining does to the two lists:
-
-<Run id="shape-play" />
-
-<Prompts ids={['shr-exact', 'shr-comma', 'shr-alias', 'shr-tick-m']} />
-
-## What a field may hold
-
-<Analogy extra title="an egg box">
-An egg box is only useful if nothing but eggs goes in; put in one cupcake
-and the box is just a box again. A typed column is the egg box: one value
-that is not a number, anywhere, and the field gets a plain column instead.
-<span slot="breaks">You can see a cupcake. The analysis has to *prove*
-that only numbers ever go in, so a field it cannot prove numeric gets the
-plain column even if every value in practice is a number.</span>
-</Analogy>
-
-The second half of a shape comes from the fixpoint of *A generic dataflow
-framework*. Each field of each collection is a node, starting optimistic;
-`field_stays_numeric` keeps it only if every record added puts a provable
-number in that position *and* every `field.set` on an element writes one.
-Survivors go into `numeric_fields` and get `Float64Array` columns, the
-rest plain arrays. In JavaScript every number is a double, so arithmetic
-is a number if both sides are.
-
 <Examples of="rust-shape-pass">
 
 ```
@@ -428,134 +259,62 @@ ps (line 1) {x, tag} → struct of arrays
     hold non-numbers)
 ```
 
-```
-ps (line 1) {y, x} → kept as array of
-  objects
-  · unsafe: line 3: records with
-    different fields or field order
-    ({x, y} vs {y, x})
-```
-
-```
-cs (line 9) {count, weight} → struct
-  of arrays
-  · typed array('d') columns for
-    weight; list columns for count
-    (may hold non-floats)
-```
-
 </Examples>
 
-All three are real Rust CLI output, trimmed and wrapped. The first pushes
-`{ x: i, tag: 'a' }`: one shape, so struct of arrays, with `x` typed and
-`tag` (a string) in a plain array. The second pushes `{ x: i, y: 0 }` and
-`{ y: 1, x: i }`: the same names in a different order are a different
-shape, as engines' hidden classes are (see *Shapes in depth*).
-The third is the Python program `ints_stay_ints.py`, whose `count` holds
-ints: the next section.
+The `let`-`else` takes the field list out of the record instruction
+`r`; `aliased` is true if the record has a use besides the push; `c`
+borrows collection `ci` mutably. The first record fixes the fields, and
+every later one is compared with `!=`, which for two `Vec<String>`s
+means the same name at each position, so no name can run into
+another. A record with a
+second use, such as `r.x = 500` after the push, is refused as possibly
+**aliased**. The output is for a program that pushes `{ x: i, tag: 'a'
+}` and updates `x` in a loop (real Rust CLI output, trimmed): one shape,
+so struct of arrays; `x` is typed because the numeric fixpoint proved
+every value stored there a number, while `tag` gets a plain array.
+
+`fields` stays borrowed from an instruction while `c` borrows
+`self.collections` mutably; that compiles only because `inst` returns
+`&'m Inst` (with the default lifetime, rustc 1.97 says E0502 again).
 
 <Callout kind="definition">
 **The shape pass in Rust** is `set_shape` plus the numeric facts. The
 first record a collection receives fixes its field list; every later
 record must have exactly the same `Vec<String>` and exactly one use. Each
-field is then typed by the fixpoint: in JavaScript, numeric if every value
-stored there is a number; in Python, if every value stored is a `float`,
-with ints tracked as a separate fact.
+field is then typed by the fixpoint: numeric (a `Float64Array` column) if
+every value stored there is provably a number.
 </Callout>
 
-<Prompts ids={['shr-numeric-fields']} />
+<More title="More: the shape pass, runnable">
 
-## Python: ints are not floats
+The runnable copy has the `'m` in place; delete it and see the error.
+It also prints what joining does to the two lists.
 
-A Python column becomes `array('d')`, an array of C doubles, which only
-holds floats<Cite id="python-array" />: an int goes in, but a float comes
-out. With Python 3.13.18, here (`array` imported from the `array`
-module):
+<Run id="shape-play" />
 
-```python
-a = array('d', [0.0])
-a[0] = 1
-print(a[0], type(a[0]).__name__)
-print(7 / 2, 6 / 2, 2 ** -1)
-```
+</More>
 
-```
-1.0 float
-3.5 3.0 0.5
-```
-
-So in Python "numeric" must mean "provably a float", or a program that
-printed `1` would print `1.0`. Ints get their own fact (`compute_int`),
-because they still matter: an int times a float is a float. True division
-`/` always gives a float<Cite id="python-expressions" />, and `**` needs
-care: an int to an int power can be an int (`2 ** 3`) or a float
-(`2 ** -1`), and a float to a float power can be complex
-(`(-1.0) ** 0.5`). The float rule for a binary operator, trimmed from
-`compute`:
-
-```rust
-match operator.as_str() {
-    "/" => n_or_i(a) && n_or_i(b),
-    "**" => n(a) && self.i(b),
-    "+" | "-" | "*" | "%" | "//" =>
-        (n(a) && n_or_i(b))
-            || (self.i(a) && n(b)),
-    _ => false,
-}
-```
-
-`n` is "a float", `i` is "an int", and `n_or_i` is either; the analyser
-picks these rules once, from `m.language == "python"`. Watch them type `ints_stay_ints.py`:
-
-<KindSteps client:visible />
-
-<Formal title="Python's float rules">
-
-```text
-num(a)  num(b)       float(a)  int(b)
-──────────────       ───────────────
- float(a / b)         float(a ** b)
-
-float(a)  num(b)      ⊕ ∈ {+ - * % //}
-───────────────────────────────────
- float(a ⊕ b)   (and so for b ⊕ a)
-```
-
-<span slot="read">If a and b are both numbers of either kind, a divided by
-b is a float. If a is a float and b an int, a to the power b is a float.
-If one side of plus, minus, times, remainder or floor division is a float
-and the other is a number, the result is a float. Nothing else is proven a
-float.</span>
-</Formal>
-
-<Prompts ids={['shr-py-float', 'shr-div', 'shr-pow']} />
-
-<Callout kind="engine" label="Under the hood">
-The README says the Rust core once lagged the reference on two Python
-rules, now ported, one being that `**` gives a float only with an int
-exponent. The corpus program `power_complex.py` pins it: its only field is
-written with `p.x ** 0.5`, so no field is provably numeric and the
-collection is kept ("no field is provably numeric, so there are no typed
-columns to gain"). The fuzzer writes only JavaScript, so for Python the
-corpus and the `python3` differential runs carry the weight.
-</Callout>
+<Prompts ids={['shr-exact', 'shr-comma', 'shr-tick-m']} />
 
 ## Your turn
 
-<Exercise id="kinds" />
+<Exercise id="discover" />
+
+The extra practice writes `set_shape`'s comparison.
 
 <Exercise id="shape" />
 
 ## What you learned
 
-- **The shape pass in Rust**: `set_shape` compares field lists as
-  `Vec<String>`s, exactly; comparing joined names let `{'a,b'}` pass for
-  `{a, b}`, and the port found it.
-- A record must have exactly one use, or it could be **aliased**.
-- `inst` returns `&'m Inst`, so `set_shape` can hold the fields while it
-  changes `self.collections` (E0502 otherwise).
-- A field is typed if every value stored in it is provably a number; in
-  Python that means a **float**: `/` always gives one, `**` only for a
-  float base and an int exponent.
+- **The collection pass in Rust** keeps the TypeScript closures' state in
+  `Analyzer<'m>`, with `inst` returning `&'m Inst`, so instructions do
+  not borrow the analyser.
+- Collections are referred to by **index**, and `uses_of` copies the
+  use list so that the loop body can call `&mut self` methods.
+- **The shape pass in Rust** compares field lists as `Vec<String>`s,
+  exactly; comparing joined names let `{'a,b'}` pass for `{a, b}`.
+
+Next: *Escape and alias analysis in Rust*, which reads the uses the
+collection pass refuses.
 
 <Quiz />

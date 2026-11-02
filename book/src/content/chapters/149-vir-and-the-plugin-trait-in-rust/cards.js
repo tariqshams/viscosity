@@ -1,15 +1,10 @@
-// Chapter 79 cards: recall prompts, examples, exercises and quiz.
+// Chapter 149 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 149, 149.
 
 export const prompts = {
   'ira-what': {
     q: 'In engine/rust’s VIR, which value owns the instructions?',
     a: 'The `Module`, in its `values: Vec<Inst>` arena. An instruction’s id is its index there.',
-  },
-  'ira-block': {
-    q: 'A TypeScript block’s `insts` is an `Inst[]`. What is a Rust block’s `insts`, and why?',
-    a: 'A `Vec<ValueId>`. An `Inst` can have only one owner, and the module already owns it in `values`.',
   },
   'ira-dead': {
     q: 'What happens to a trivial phi’s slot in `values` when the SSA builder removes it?',
@@ -19,57 +14,17 @@ export const prompts = {
     q: 'TypeScript has `type ValueId = number` and `type BlockId = number`. Can a `BlockId` be passed where a `ValueId` is expected?',
     a: 'Yes, silently: both are just `number`. In Rust they are different newtypes, and it is error E0308.',
   },
-  'ira-copy': {
-    q: 'How big is a `ValueId`, and why can you pass it around freely?',
-    a: '4 bytes, a `u32` in a newtype. It derives `Copy`, so passing it copies the number and borrows nothing.',
-  },
-  'ira-op': {
-    q: 'What replaces the TypeScript `Inst`’s optional fields like `field?` and `binding?`?',
-    a: 'The `Op` enum: each variant carries its own data, such as `Op::FieldGet { field }`, so a `match` gets it without a `!` assertion.',
-  },
-  'ira-use': {
-    q: 'What is a `Use` in the Rust VIR?',
-    a: '`Use::Inst(ValueId)` for an instruction, or `Use::Term { func, block }` for a terminator: ids, where TypeScript stored object references.',
-  },
-  'ira-number': {
-    q: 'Why does the port format numbers with `js_number` instead of `{}`?',
-    a: 'The output must match JavaScript’s `String(x)` byte for byte, and `{}` differs for large and tiny numbers (`1e+21` vs `1000000000000000000000`).',
-  },
-  'ira-borrow': {
-    q: 'Why does the SSA builder take `&mut Module` in each method instead of owning the module?',
-    a: 'So a front-end can keep one module and switch between several function builders, one per nested function.',
-  },
   'pt-extra': {
     q: 'What is `type Extra;` in the `LanguagePlugin` trait?',
     a: 'An associated type: each plugin chooses it, for the data its `lower` passes to its `emit`.',
-  },
-  'pt-lowered': {
-    q: 'What does `LoweredModule<X>` hold?',
-    a: 'The VIR `module`, the `annotations` found in the source, and `extra: X`, the plugin’s private data.',
   },
   'pt-mixup': {
     q: 'You pass the Python plugin’s lowered module to `JsPlugin.emit`. What happens in TypeScript, and in Rust?',
     a: 'TypeScript accepts it (the cast `as JsLowered` isn’t checked) and it returned `undefined`. Rust rejects it: E0308, expected `LoweredModule<JsExtra>`, found `LoweredModule<PyExtra>`.',
   },
-  'pt-two': {
-    q: 'Which two types implement `LanguagePlugin`, and what are their `Extra`s?',
-    a: '`JsPlugin` with `JsExtra` (node facts, binding map) and `PyPlugin` with `PyExtra` (the lowered Python, or the reason it is unsupported).',
-  },
-  'pt-mono': {
-    q: 'How many copies of `compile<P: LanguagePlugin>` end up in the `viscosity` binary, and which?',
-    a: 'One per plugin it is called with: `compile::<JsPlugin>` and `compile::<PyPlugin>`.',
-  },
-  'pt-result': {
-    q: 'Why can `compile` return the same `CompileResult` type for every plugin?',
-    a: '`CompileResult` (code, plan, analysis, explain) doesn’t mention `Extra`: the plugin’s data is used and dropped inside `compile`.',
-  },
   'pt-e0191': {
     q: 'What does E0191 say about `Vec<&dyn LanguagePlugin>`?',
     a: 'The value of the associated type `Extra` must be specified: a trait object has to name every associated type.',
-  },
-  'pt-dyncompat': {
-    q: 'Is `LanguagePlugin` dyn compatible? Then why can’t one `Vec` hold both plugins as trait objects?',
-    a: 'Yes: `&dyn LanguagePlugin<Extra = JsExtra>` compiles. But each `Extra` gives a different trait-object type, so `PyPlugin` doesn’t fit (E0271).',
   },
   'pt-branch': {
     q: 'How do the CLI and the wasm crate choose a plugin at run time without trait objects?',
@@ -208,6 +163,7 @@ fn main() {
 
 export const exercises = {
   useLists: {
+    optional: true,
     lang: 'rust',
     title: 'Use lists over an arena',
     prompt: 'Write `uses`, a small `build_uses`. The result has one list per value in `m.values` (dead ones included), and `uses(m)[v]` lists every instruction that has `v` among its `args`, in program order: block by block, instruction by instruction. An instruction that uses `v` twice appears twice, as in the real VIR. Instructions that are in no block are dead and use nothing.',
@@ -637,7 +593,7 @@ fn unknown_files_get_none() {
 - Using \`contains\` instead of \`ends_with\` matches an extension anywhere in the name, so \`notes.json\` (which contains \`.js\`) goes to the JavaScript plugin.
 - Falling back to JavaScript for every other file is what the TypeScript CLI does, but this \`pick\` must return \`None\` for \`c.rb\`.
 
-The cost of the erased version is one indirect call per method, through the trait object's table of functions (*Trait objects and dispatch*); for a compiler that makes one such call per file, that is nothing.`,
+The cost of the erased version is one indirect call per method, through the trait object's table of functions (*Traits, trait objects and derive*); for a compiler that makes one such call per file, that is nothing.`,
     wrong: [
       {
         code: `trait Plugin {
@@ -838,86 +794,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `m.inst(BlockId(1))` do in engine/rust?',
-    options: [
-      {
-        t: 'Returns the instruction at index 1',
-        why: 'That would need a `ValueId`. The types differ, so it doesn’t compile.',
-      },
-      {
-        t: 'Panics at run time',
-        why: 'It never runs: it is a type error.',
-      },
-      {
-        t: 'Fails to compile with E0308, mismatched types',
-        correct: true,
-        why: '`BlockId` and `ValueId` are different newtypes around `u32`.',
-      },
-      {
-        t: 'Converts the block id to a value id automatically',
-        why: 'Rust doesn’t convert between newtypes on its own.',
-      },
-    ],
-  },
-  {
-    q: 'A TypeScript `Inst` for `loadBinding` keeps its binding in the optional field `binding?`. Where is it in Rust?',
-    options: [
-      {
-        t: 'In `Op::LoadBinding { binding }`, the variant itself',
-        correct: true,
-        why: 'Each `Op` variant carries the data that op needs, so a `match` hands it to you.',
-      },
-      {
-        t: 'In an `Option<BindingId>` field on every `Inst`',
-        why: 'That would copy the TypeScript design. The port puts it in the variant instead.',
-      },
-      {
-        t: 'In a separate `HashMap` from instruction to binding',
-        why: 'No such map exists; the data lives in the `Op`.',
-      },
-    ],
-  },
-  {
-    q: 'Why is `js_number(-0.0)` `"0"` while drip-rs’s `format_number(-0.0)` is `"-0"`?',
-    options: [
-      {
-        t: 'Viscosity has no negative numbers',
-        why: 'It does; `-1.5` prints as `-1.5`.',
-      },
-      {
-        t: 'One of them has a bug',
-        why: 'Both match what their own reference prints.',
-      },
-      {
-        t: 'Rust can’t represent negative zero',
-        why: '`-0.0` is a real `f64`; both functions test for it.',
-      },
-      {
-        t: 'Each matches its own TypeScript reference: Viscosity uses JavaScript’s `String(x)`, which prints `0`, and Drip’s VM prints `-0`',
-        correct: true,
-        why: 'Parity means matching the reference, quirks included.',
-      },
-    ],
-  },
-  {
-    q: 'What does a `Use` hold in the Rust VIR?',
-    options: [
-      {
-        t: 'A reference `&Inst` to the using instruction',
-        why: 'That would borrow the module for as long as the use list lives.',
-      },
-      {
-        t: 'Ids: `Use::Inst(ValueId)` or `Use::Term { func, block }`',
-        correct: true,
-        why: 'Ids keep the use lists independent of the module’s borrows.',
-      },
-      {
-        t: 'A copy of the using instruction',
-        why: 'Copies would go stale as soon as the module changed.',
-      },
-    ],
-  },
-  {
     q: 'What does the associated type `Extra` replace in the TypeScript plugin design?',
     options: [
       {
@@ -940,24 +816,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `compile` return the same type, `Result<CompileResult, CompileError>`, for every plugin?',
-    options: [
-      {
-        t: 'Because `compile` takes `&dyn LanguagePlugin`',
-        why: 'It takes a generic `&P`; `&dyn LanguagePlugin` doesn’t even compile.',
-      },
-      {
-        t: 'Because `CompileResult` stores `Extra` as `Box<dyn Any>`',
-        why: 'It doesn’t store `Extra` at all.',
-      },
-      {
-        t: 'Because nothing in `CompileResult` mentions `Extra`: it is used and dropped inside `compile`',
-        correct: true,
-        why: 'So the branch in the CLI has one type, whichever plugin ran.',
-      },
-    ],
-  },
-  {
     q: 'What does rustc say about `let ps: Vec<&dyn LanguagePlugin> = vec![&JsPlugin, &PyPlugin];`?',
     options: [
       {
@@ -976,42 +834,6 @@ export const quiz = [
       {
         t: 'E0277: `JsPlugin` doesn’t implement `LanguagePlugin`',
         why: 'It does; the problem is the trait-object type.',
-      },
-    ],
-  },
-  {
-    q: 'You write `Vec<&dyn LanguagePlugin<Extra = JsExtra>>` and put `&JsPlugin` and `&PyPlugin` in it. Which part fails?',
-    options: [
-      {
-        t: 'Both, with E0191',
-        why: 'Naming `Extra` fixes E0191.',
-      },
-      {
-        t: 'Only `&PyPlugin`: its `Extra` is `PyExtra`, not `JsExtra` (E0271)',
-        correct: true,
-        why: 'Each choice of `Extra` is a different trait-object type.',
-      },
-      {
-        t: 'Only `&JsPlugin`',
-        why: '`JsPlugin`’s `Extra` is `JsExtra`, so it fits.',
-      },
-    ],
-  },
-  {
-    q: 'In the exercise, why is `AnyPlugin` usable as `&dyn AnyPlugin` when `Plugin` isn’t?',
-    options: [
-      {
-        t: 'Its methods mention no associated type: `compile` returns a `String` for every plugin',
-        correct: true,
-        why: 'The `Extra` stays inside the blanket impl’s copy for each plugin.',
-      },
-      {
-        t: 'Because it has fewer methods',
-        why: 'The number of methods doesn’t matter.',
-      },
-      {
-        t: 'Because blanket impls make any trait dyn compatible',
-        why: 'The blanket impl connects the traits; it is `AnyPlugin`’s own signatures that make it a usable trait object.',
       },
     ],
   },
