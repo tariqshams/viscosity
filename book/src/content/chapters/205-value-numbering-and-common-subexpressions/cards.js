@@ -383,7 +383,7 @@ export const quiz = [
   {
     q: 'Viscosity prints both `%2 = binop * %0, %1` and `%3 = binop * %0, %1` for `f`. Why?',
     options: [
-      { t: 'It has no value numbering pass: it leaves arithmetic to the JavaScript engine', correct: true, why: 'It rewrites only the code around collections, and the engine running the output does its own optimizing.' },
+      { t: 'It has no value numbering pass: it leaves arithmetic to the JavaScript engine', correct: true, why: 'It rewrites only the code around collections, and the engine running the output does its own optimising.' },
       { t: 'The two products might differ', why: 'They cannot: same operation, same SSA operands.' },
       { t: 'Its value numbering ran but found nothing', why: 'There is no value numbering pass in Viscosity’s core.' },
     ],

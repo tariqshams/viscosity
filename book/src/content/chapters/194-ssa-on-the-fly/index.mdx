@@ -22,7 +22,8 @@ Building SSA put a finished CFG into SSA in two passes: place the phis
 using dominance frontiers, then rename everything by walking the
 dominator tree. A compiler that works that way needs the whole CFG, its
 dominator tree and its frontiers first. VIR's builder has none of
-those: like the single-pass compiler of Compiling expressions, it emits
+those: like the single-pass compiler of One pass from source to bytecode, it
+emits
 instructions while it walks the syntax tree, and the IR comes out in
 SSA form directly, with no version that has ordinary, reassignable
 variables. The trick, from Braun and colleagues<Cite id="braun2013" />,

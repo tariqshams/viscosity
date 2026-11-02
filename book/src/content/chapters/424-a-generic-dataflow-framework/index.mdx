@@ -107,7 +107,7 @@ The first is the simplest lattice there is, the one Viscosity uses for
 JavaScript: `true` means "provably a number", `false` claims nothing, and
 the meet of two facts is `&&`, since a value built from two others is
 known to be a number only if both are. The second is the constant
-lattice of "Constant folding and propagation", three levels deep; the
+lattice of "Sparse conditional constant propagation", three levels deep; the
 exercise's tests run the same solver on both. The third is runnable: the
 real strategy (whole rounds, a budget, failing closed) on a four-value
 loop, which the last section explains.

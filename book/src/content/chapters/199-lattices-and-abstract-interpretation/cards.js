@@ -149,7 +149,7 @@ For the "if empty, add a" rule, the pair \`x = []\`, \`y = ['a']\` has \`x ⊑ y
 **Common wrong attempts.**
 
 - Checking \`leq(f(y), f(x))\`, the conclusion turned round: that tests whether \`f\` turns the order upside down, which swapping does, so swapping would wrongly pass.
-- Checking only \`leq(f(x), x)\` ("the rule never goes up"): a rule can go up and still be monotone (the constant rule "always number" goes up from \`'maybe'\`), and a rule can never go up and still not be monotone (swapping's result for \`'number'\` goes down, yet it fails).
+- Checking only \`leq(f(x), x)\` ("the rule never goes up"): a rule can go up and still be monotone (the constant rule "always number" goes up from \`'maybe'\`), and a rule can never go up and still not be monotone (on sets, a rule that turns \`['a', 'b']\` into \`['b']\` and leaves every other set alone never goes up, yet \`['a'] ⊑ ['a', 'b']\` while the outputs are \`['a']\` and \`['b']\`).
 - Returning \`true\` as soon as one pair passes: monotone needs *every* ordered pair to pass.`,
     wrong: [
       {

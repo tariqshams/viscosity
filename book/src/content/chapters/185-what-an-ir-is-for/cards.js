@@ -6,7 +6,7 @@ export const prompts = {
     a: 'The form a compiler keeps a program in while it analyses and transforms it, between the source and the target.',
   },
   'why-not-source': {
-    q: 'Why don’t optimizers analyse JavaScript source text directly?',
+    q: 'Why don’t optimisers analyse JavaScript source text directly?',
     a: 'There are too many ways to write the same thing. Every analysis would need a case for every spelling.',
   },
   'lowering-what': {
@@ -31,7 +31,7 @@ export const prompts = {
   },
   'sparkplug-no-ir': {
     q: 'Sparkplug compiles bytecode to machine code with no IR of its own. What does it gain, and what does it give up?',
-    a: 'It compiles very fast, but without an IR it can’t do the analyses an optimizing compiler does.',
+    a: 'It compiles very fast, but without an IR it can’t do the analyses an optimising compiler does.',
   },
 };
 
@@ -250,7 +250,7 @@ function lower(n) {
 - Putting the update *first* in the body: the first pass would then see \`i\` already stepped.
 - Passing \`f.test\` through unchanged: \`for (;;)\` would give a \`while\` whose test is \`null\`.
 
-This lowering has a famous catch, which the tests leave out on purpose: a \`continue\` inside the body would now skip the update. Real lowerings, Viscosity's included, avoid it by going one level lower, to blocks and jumps, where \`continue\` jumps to a block that holds the update; the Basic blocks chapter shows that block.`,
+This lowering has a famous catch, which the tests leave out on purpose: a \`continue\` inside the body would now skip the update. Real lowerings, Viscosity's included, avoid it by going one level lower, to blocks and jumps, where \`continue\` jumps to a block that holds the update, so the update still runs; Backpatching: if, for, break and continue did the same with bytecode jumps.`,
     wrong: [
       {
         code: `function lowerFor(f) {
@@ -267,7 +267,7 @@ This lowering has a famous catch, which the tests leave out on purpose: a \`cont
 
 export const quiz = [
   {
-    q: 'Why does an optimizing compiler translate the program into an IR before analysing it?',
+    q: 'Why does an optimising compiler translate the program into an IR before analysing it?',
     options: [
       { t: 'Because the IR runs faster than the source', why: 'An IR is for analysis; it may never be run at all. Viscosity turns VIR back into JavaScript.' },
       { t: 'So that each analysis handles a few explicit instruction kinds instead of every way of writing the code', correct: true, why: 'Lowering collapses spellings and spells out control flow once, and every analysis benefits.' },

@@ -23,7 +23,7 @@ const ORIG: S['b'] = [
 ];
 
 const STATES: S[] = [
-  { b: ORIG, ver: '—', note: 'The program as a CFG. One name, x, is assigned in three places. At the bottom, y = x + 3 could be reading any of them, depending on the path taken.' },
+  { b: ORIG, ver: '–', note: 'The program as a CFG. One name, x, is assigned in three places. At the bottom, y = x + 3 could be reading any of them, depending on the path taken.' },
   { b: [['x1 = a0 + 1', 'if (x > 5)'], ORIG[1], ORIG[2], ORIG[3]], hot: [0, 0], ver: 'x1', note: 'Walk the blocks in order. The first assignment to x gets a new name, x1. The a was never assigned here (it is an input), so it gets version 0.' },
   { b: [['x1 = a0 + 1', 'if (x1 > 5)'], ORIG[1], ORIG[2], ORIG[3]], hot: [0, 1], ver: 'x1', note: 'A use takes the latest version on its path. The test reads x1. Nothing ambiguous yet: straight-line code only ever has one latest version.' },
   { b: [['x1 = a0 + 1', 'if (x1 > 5)'], ['x2 = x1 * 2'], ORIG[2], ORIG[3]], hot: [1, 0], ver: 'x2 (left)', note: 'In the left block, read before you write: the right-hand side uses x1, then the assignment makes a brand-new x2. x1 is never overwritten.' },

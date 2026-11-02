@@ -1,4 +1,4 @@
-// Chapter 160b cards (split from chapter 160). Keys are stable ids.
+// Chapter 161 cards (the second half of a split chapter). Keys are stable ids: never rename them.
 
 export const prompts = {
   'invoke-why': {

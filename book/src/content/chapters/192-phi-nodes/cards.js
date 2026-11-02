@@ -113,7 +113,7 @@ test('env is not changed', () => {
 - \`out[d] = env[ops[k]];\` picks the \`k\`-th operand's *name*, looks its value up in the **old** \`env\`, and writes it into the **new** \`out\`. Because every read goes to \`env\` and every write to \`out\`, no phi can see another's new value.
 - \`return out;\` hands back the state after the edge has been crossed.
 
-This is exactly "all phis take their values at the same moment". It is also the classic "lost copy" when phis are turned into plain copies in the wrong order, which a compiler leaving SSA has to avoid.
+This is exactly "all phis take their values at the same moment". Getting it wrong when phis are turned into plain copies is the classic *swap problem*, which a compiler leaving SSA has to avoid (Parallel copies and the swap problem comes back to it).
 
 **Common wrong attempts.**
 

@@ -167,7 +167,7 @@ The last test shows why the loop is needed. With \`succ = [[2], [3], [1], []]\` 
 
 - Doing one pass only: it works on graphs where every block comes after its predecessors in number order, and fails the last test.
 - Taking the *union* of the predecessors' sets: that gives the blocks on *some* path into \`b\`, not on every path, so in a diamond both branches would wrongly dominate the join.
-- Starting every set empty: the intersections then stay empty, and every block ends up dominated by nothing but itself.`,
+- Starting every set empty: round a loop, the header is computed while its back-edge predecessor is still empty, so the intersection is empty and the entry drops out of its set; in the while-loop test, block 1 ends up as \`[1]\` instead of \`[0, 1]\`.`,
     wrong: [
       {
         code: body(`  let changed = true;

@@ -1,4 +1,4 @@
-// Chapter 136b: the tiny JavaScript VM from the chapter (cards.js example
+// Chapter 137: the tiny JavaScript VM from the chapter (cards.js example
 // 'tiny-vm') running  PUSH 1, PUSH 2, PUSH 3, MUL, ADD  one loop turn at a
 // time. The code array, ip, the value stack st and the line of the loop
 // being run are all shown; every state is what the real program does.

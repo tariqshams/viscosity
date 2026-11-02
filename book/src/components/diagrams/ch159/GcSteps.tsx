@@ -1,4 +1,4 @@
-// Chapter 158b: tri-colour marking spreads from the roots over a small object
+// Chapter 159: tri-colour marking spreads from the roots over a small object
 // graph, then sweep unlinks the objects left white. Follows Heap.collect in
 // companion/ts/src/vm/heap.ts: markRoots, a grey stack, blacken, the weak
 // string table, then sweep over the object list.
@@ -47,8 +47,10 @@ const STATES: S[] = [
 export default function GcSteps() {
   const s = useSteps(STATES);
   const st = s.state;
-  const fill = (c: Colour) => (c === 'black' ? tok('ink') : c === 'grey' ? tok('muted', 0.45) : tok('panel'));
-  const text = (c: Colour) => (c === 'black' ? tok('paper') : tok('ink'));
+  // White, grey and black are the algorithm's names, so they are drawn as
+  // those colours in both themes (a freed object keeps the panel colour).
+  const fill = (c: Colour) => (c === 'black' ? '#1c1917' : c === 'grey' ? '#a8a29e' : c === 'white' ? '#fafaf9' : tok('panel'));
+  const text = (c: Colour) => (c === 'black' ? '#fafaf9' : c === 'freed' ? tok('ink') : '#1c1917');
   const R = 20;
   const live = ORDER.filter((id) => st.c[id] !== 'freed');
   return (

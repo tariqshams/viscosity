@@ -1,4 +1,4 @@
-// Chapter 160b: copy-down inheritance. `inherit` copies the superclass's
+// Chapter 161: copy-down inheritance. `inherit` copies the superclass's
 // method table into the new class (Table.addAll), and the subclass's own
 // `method` instructions then add to it, overwriting any inherited entry
 // with the same name. Follows the Inherit and Method cases in

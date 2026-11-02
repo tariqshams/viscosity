@@ -231,7 +231,7 @@ export const quiz = [
   {
     q: 'In `OUT = gen ∪ (IN − kill)`, why is kill removed before gen is added?',
     options: [
-      { t: 'It isn’t; the order makes no difference.', why: 'It does: kill contains other definitions of x, and if gen came first a careless kill could remove the block’s own.' },
+      { t: 'It isn’t; the order makes no difference.', why: 'It does once kill is computed the easy way, as every definition of the variables the block assigns: that kill holds the block’s own definitions too, and adding gen first would lose them.' },
       { t: 'Because gen is always empty in loops.', why: 'Loop bodies generate definitions like any other block.' },
       { t: 'So the block’s own definitions are not removed by the kill of their own variable.', correct: true, why: 'The block’s new definitions must leave the block; only the older ones are wiped out.' },
     ],

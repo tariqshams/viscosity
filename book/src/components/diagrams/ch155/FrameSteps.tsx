@@ -1,4 +1,4 @@
-// Chapter 154-b: every call of fib sees the one shared stack through its
+// Chapter 155: every call of fib sees the one shared stack through its
 // own window, starting at its frame's slots.
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';

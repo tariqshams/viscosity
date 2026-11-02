@@ -385,7 +385,7 @@ export const quiz = [
     q: 'How does PRE remove that partial redundancy?',
     options: [
       { t: 'Deletes the computation in b3', why: 'The path through b2 needs it; deleting it would leave that path without a value.' },
-      { t: 'Moves the computation from b1 into b0', why: 'That would add it to the path through b2 before it was needed, and is not what PRE does here.' },
+      { t: 'Moves the computation from b1 into b0', why: 'That is legal too (the next chapter calls it busy code motion), but it is not this chapter’s method, which inserts only in the predecessor where the value is missing.' },
       { t: 'Inserts `a + b` at the end of b2, then replaces b3’s computation with a phi of the two copies', correct: true, why: 'Now it is available on every path, so b3’s computation is fully redundant.' },
     ],
   },

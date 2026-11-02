@@ -39,7 +39,7 @@ export default function StraightSteps() {
           <g key={n}>
             <T x={268} y={36 + k * 32} size={13} mono>{n}</T>
             <Box x={290} y={23 + k * 32} w={70} h={26} fill={tok('accent', st.ver[n] ? 0.14 : 0.04)} stroke={tok('accent')}>
-              <T x={325} y={36 + k * 32} size={13} mono anchor="middle">{st.ver[n] ?? '—'}</T>
+              <T x={325} y={36 + k * 32} size={13} mono anchor="middle">{st.ver[n] ?? '–'}</T>
             </Box>
           </g>
         ))}

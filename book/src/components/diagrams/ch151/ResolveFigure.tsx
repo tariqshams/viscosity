@@ -1,4 +1,4 @@
-// Chapter 150-b: resolveLocal scanning the compiler's locals array from the
+// Chapter 151: resolveLocal scanning the compiler's locals array from the
 // end, for `print x` in
 //   { let x = 1; { let y = 2; let x = 3; print x; } }
 // The inner x (index 3) is found first, so the outer x (index 1) is

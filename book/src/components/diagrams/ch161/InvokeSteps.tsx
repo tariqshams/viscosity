@@ -1,4 +1,4 @@
-// Chapter 160b: a method call with `invoke` leaves the receiver where it
+// Chapter 161: a method call with `invoke` leaves the receiver where it
 // already is, in the slot that becomes the method's slot 0 (`self`), and
 // allocates nothing. Reading the method first (`get.prop`) allocates a
 // bound method, which `call` then unpacks. Follows invoke, callValue and

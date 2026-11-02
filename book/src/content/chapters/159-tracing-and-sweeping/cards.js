@@ -1,4 +1,4 @@
-// Chapter 158b cards (split from chapter 158). Keys are stable ids.
+// Chapter 159 cards (the second half of a split chapter). Keys are stable ids: never rename them.
 
 export const prompts = {
   'grey-meaning': {

@@ -2,7 +2,7 @@
 n: 201
 day: 51
 part: VI
-title: 'Constant folding and propagation'
+title: 'Constant folding'
 tagline: 'Some of the arithmetic in a program has the same answer every time it runs; a compiler can work it out once, while compiling, as long as it gets exactly the answer the machine would have got, odd corners included.'
 objectives:
   - Fold an instruction whose operands are all constants, and say why the result must match the run-time answer exactly.
@@ -47,7 +47,7 @@ Every time round the loop, `%6` multiplies 2 by 50 and gets 100; the
 answer never changes, because neither operand can. A compiler can do
 that multiplication once, while it compiles, and write `const 100` in
 its place. That small act has a name, **constant folding**, and it is
-the first optimization of this part, because it is the simplest one
+the first optimisation of this part, because it is the simplest one
 that changes the program, and so the first place we have to be careful.
 
 <Analogy title="adding up the bill before you go out">
@@ -215,13 +215,13 @@ inference does) may use some of them; one that has not must leave them.
 <Prompts ids={['fold-never', 'plus-object', 'algebra-trap']} />
 
 <Callout kind="engine" label="Under the hood">
-V8's optimizing compiler, TurboFan, has a `ConstantFoldingReducer`.
+V8's optimising compiler, TurboFan, has a `ConstantFoldingReducer`.
 TurboFan's typer works out a type for each node of its graph, and when
 that type allows only a single value (`null`, `undefined`, `NaN`, `-0`,
 one particular object, or one plain number) and the node can be
 removed safely, the reducer replaces it with that
 constant<Cite id="v8-constant-folding-reducer" />. Textbooks treat
-folding as the first and simplest of the scalar optimizations that the
+folding as the first and simplest of the scalar optimisations that the
 rest of this part builds on<Cite id="coopertorczon2022" />.
 
 Viscosity, by contrast, has **no** folding pass: it rewrites only the

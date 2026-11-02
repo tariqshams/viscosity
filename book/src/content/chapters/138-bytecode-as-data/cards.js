@@ -136,7 +136,7 @@ test('index 65535 is fine, 65536 throws', () => {
 **Common wrong attempts.**
 
 - Checking the limit first and the reuse second gives the wrong answer for a full pool: a value that is already there should still get its index back, not an error.
-- Adding the limit but no reuse (the second wrong attempt below) still grows the pool on every repeat, so a name used a thousand times takes a thousand entries.`,
+- Adding the limit but no reuse (the first wrong attempt below) still grows the pool on every repeat, so a name used a thousand times takes a thousand entries.`,
     wrong: [
       {
         code: `function addConstant(chunk, v) {

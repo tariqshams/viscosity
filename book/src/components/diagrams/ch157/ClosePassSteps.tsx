@@ -1,4 +1,4 @@
-// Chapter 156b: a for loop gives every pass a fresh loop variable in the
+// Chapter 157: a for loop gives every pass a fresh loop variable in the
 // same stack slot, and closes its upvalue at the end of each pass, so each
 // closure keeps its own value. Follows forStatement and endScope in
 // companion/ts/src/vm/compiler.ts, and closeUpvalues in vm.ts.

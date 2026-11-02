@@ -263,7 +263,7 @@ Track B: Rust has no `typeof`, so the tag is written out as an **enum**,
 a type whose values are exactly one of the listed variants, each with
 its own payload (the `Formal` box above, as code).
 
-One small trap hides in printing: `String(-0)` gives `"0"`, however Drip
+One small trap hides in printing: `String(-0)` gives `"0"`, but Drip
 prints negative zero as `-0` (and NaN as `nan`), so the shared
 `formatNumber` in `runtime.ts` checks for those before handing the rest
 to JavaScript.
@@ -279,8 +279,8 @@ pointer<Cite id="v8-react-cliff" />. So the companion VM's values are
 tagged twice over, once by meaning (its `Value` type) and once by the
 engine underneath. (The disassembler hides tags too:
 `print 1 == "1";` lists as `const 0 '1'` and `const 1 '1'`, which look
-identical, though the VM never mixes them up.) The chapter "Measuring
-and speeding up the VM" squeezes tag and payload into one 64-bit double.
+identical, though the VM never mixes them up.) The chapter "NaN-boxing
+and generational collection" squeezes tag and payload into one 64-bit double.
 </Callout>
 
 ## Your turn

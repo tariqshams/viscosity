@@ -1,4 +1,4 @@
-// Chapter 136b: tree-walker time next to VM time for each benchmark program,
+// Chapter 137: tree-walker time next to VM time for each benchmark program,
 // read from the committed results file
 // companion/ts/results/drip-bench-2026-11-02.json (also .md beside it).
 // The chapter "Measuring the tree-walker" showed the ratio; this shows the

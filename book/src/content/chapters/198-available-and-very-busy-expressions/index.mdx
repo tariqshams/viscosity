@@ -25,6 +25,7 @@ the two branches join):
 b0: x = a + b
     if c goto b1 else b2
 b1: y = a * b
+    goto b3
 b2: a = 0
     y = a * b
 b3: z = a + b
@@ -123,6 +124,7 @@ compute `a + b` before anything changes `a` or `b`:
 b0: if c goto b1 else b2
 b1: x = a + b
     y = a * 2
+    goto b3
 b2: y = a + b
     a = 0
 b3: z = a * 2
@@ -219,8 +221,8 @@ Every classic problem is a choice of direction and a choice of meet:
 | very busy expressions | backward | ∩ | computed on every path ahead |
 | live variables | backward | ∪ | may be read later |
 
-The fourth, **live variables**, is the one the Dead code elimination
-chapter introduces properly, to find assignments nobody reads. And the
+The fourth, **live variables**, is the one the Liveness chapter
+introduces properly, to find assignments nobody reads. And the
 later chapter on partial redundancy elimination combines a backward
 "will be computed" question with a forward "has been computed" one to
 move computations to the best place<Cite id="coopertorczon2022" />.
@@ -229,7 +231,7 @@ move computations to the best place<Cite id="coopertorczon2022" />.
 
 <Callout kind="engine" label="Under the hood">
 Kildall's 1973 framework was built to drive exactly this kind of
-optimization: common subexpression elimination across blocks is the
+optimisation: common subexpression elimination across blocks is the
 use of available expressions<Cite id="kildall1973" />. The standard
 textbook treats available expressions alongside reaching definitions
 and live variables, with the same gen and kill sets you have used

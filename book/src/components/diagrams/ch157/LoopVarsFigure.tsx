@@ -1,4 +1,4 @@
-// Chapter 156b: the same three closures made by a while loop over one
+// Chapter 157: the same three closures made by a while loop over one
 // local, and by a for loop with its fresh loop variable per pass. The
 // while loop's closures share one upvalue; the for loop's get one each.
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';

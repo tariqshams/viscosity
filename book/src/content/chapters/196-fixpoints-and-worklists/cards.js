@@ -377,7 +377,7 @@ export const quiz = [
     options: [
       { t: 'Keeps the facts from the last round.', why: 'An unsettled answer might still contain a wrong optimistic guess.' },
       { t: 'Runs another 1000 rounds.', why: 'It stops at the cap.' },
-      { t: 'Marks every fact as not proven, so nothing is transformed on its strength.', correct: true, why: 'It fails closed: a missed optimization is slow, a wrong one is a bug.' },
+      { t: 'Marks every fact as not proven, so nothing is transformed on its strength.', correct: true, why: 'It fails closed: a missed optimisation is slow, a wrong one is a bug.' },
     ],
   },
 ];

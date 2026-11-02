@@ -1,4 +1,4 @@
-// Chapter 150-b: the compiler's locals array beside the VM's stack.
+// Chapter 151: the compiler's locals array beside the VM's stack.
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 

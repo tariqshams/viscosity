@@ -1,4 +1,4 @@
-// Chapter 162b: NaN-boxing, bit by bit. Shows the high 32-bit word of a
+// Chapter 163: NaN-boxing, bit by bit. Shows the high 32-bit word of a
 // 64-bit double for several values, with the IEEE 754 fields marked, and
 // the low word in hex. The boxing scheme is the chapter's own teaching
 // example (quiet NaN plus one "boxed" bit, a 16-bit tag and a 32-bit

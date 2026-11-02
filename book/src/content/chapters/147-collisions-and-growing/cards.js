@@ -1,4 +1,4 @@
-// Chapter 146 (second half) cards: prompts, examples, exercises and quiz.
+// Chapter 147 cards (the second half of a split chapter). Keys are stable ids: never rename them.
 
 export const prompts = {
   'linear-probe': {

@@ -1,4 +1,4 @@
-// Chapter 138b: the operand shapes of Drip's instructions, as listed in
+// Chapter 139: the operand shapes of Drip's instructions, as listed in
 // the comments of companion/ts/src/vm/chunk.ts (k, s, j) and decoded by
 // disassembleInstruction in companion/ts/src/vm/debug.ts.
 import { Box, Svg, T, tok } from '../../viz/svg';

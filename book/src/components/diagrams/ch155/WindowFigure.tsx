@@ -1,4 +1,4 @@
-// Chapter 154-b: the same instruction, load.local 1, reads a different
+// Chapter 155: the same instruction, load.local 1, reads a different
 // stack cell in each call of fib, because each frame's slots (its frame
 // pointer) is different. The stack is the real one inside fib(2) -> fib(1).
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';

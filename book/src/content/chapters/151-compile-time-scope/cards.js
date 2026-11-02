@@ -1,4 +1,4 @@
-// Chapter 150-b cards (split from 146). Keys are stable ids.
+// Chapter 151 cards (the second half of a split chapter). Keys are stable ids: never rename them.
 
 export const prompts = {
   'index-is-slot': {

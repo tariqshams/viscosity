@@ -3,12 +3,12 @@ n: 191
 day: 48
 part: VI
 title: 'SSA form'
-tagline: 'A variable that is assigned five times is really five values wearing one name. Give each of them its own name, and half of the optimizer’s questions answer themselves.'
+tagline: 'A variable that is assigned five times is really five values wearing one name. Give each of them its own name, and half of the optimiser’s questions answer themselves.'
 objectives:
   - Rename straight-line code so that every variable is assigned exactly once.
   - State the single-assignment property, and say what “static” means in static single assignment.
   - Read VIR as SSA, where a value is the instruction that defines it.
-  - Say what SSA makes cheap for an optimizer, and which variables VIR keeps out of SSA.
+  - Say what SSA makes cheap for an optimiser, and which variables VIR keeps out of SSA.
 introduces: [ssa]
 uses: [ir, lowering, three-address-code, temporary, basic-block, cfg, dominator, dominator-tree, static-analysis, compiler, closure, captured-environment, upvalue, register, local-variable, variables, if, for-loop]
 sources: [braun2013]
@@ -27,7 +27,7 @@ y = x + 3;
 x = 0;
 ```
 
-Suppose an optimizer wants to know something about the `x` in line 3:
+Suppose an optimiser wants to know something about the `x` in line 3:
 is it a number, is it a constant, is it still needed later? Before it
 can answer, it has to work out *which* assignment to `x` it is looking
 at. Here it is line 2, but finding that out meant scanning backwards
@@ -173,7 +173,7 @@ look-ups:
 
 Not every variable fits. A local that a closure captures can be changed
 by another function, at a moment this function's CFG cannot see (as in
-Closures and upvalues); VIR keeps those as **bindings**, read and
+Capturing variables: upvalues); VIR keeps those as **bindings**, read and
 written with `load` and `store`. Every other plain local becomes SSA
 values. VIR builds all of this while it lowers, with the algorithm of
 Braun and colleagues<Cite id="braun2013" />, which a later chapter,

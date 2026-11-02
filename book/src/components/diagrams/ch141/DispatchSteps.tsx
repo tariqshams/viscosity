@@ -1,4 +1,4 @@
-// Chapter 140b: one opcode, sub, dispatched twice: in  print 10 - 4;
+// Chapter 141: one opcode, sub, dispatched twice: in  print 10 - 4;
 // (the check passes, b is popped and a's slot is overwritten in place)
 // and in  print 10 - "a";  (the check fails before anything is popped).
 // Both chunks are the real ones (bytes 0 0 0 0 0 1 21 33 1 49, checked

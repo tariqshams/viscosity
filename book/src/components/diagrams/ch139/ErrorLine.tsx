@@ -1,4 +1,4 @@
-// Chapter 138b: how a runtime error finds its source line. The bytes and
+// Chapter 139: how a runtime error finds its source line. The bytes and
 // lines are the real ones the companion compiler makes for
 //   print 1;
 //   print 2 +

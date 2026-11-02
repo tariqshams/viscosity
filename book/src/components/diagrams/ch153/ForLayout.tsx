@@ -1,4 +1,4 @@
-// Chapter 152-b: the shape of a compiled for-range loop, from the
+// Chapter 153: the shape of a compiled for-range loop, from the
 // companion's real disassembly of
 //   for i in 0..3 { print i; }
 // with its two hidden locals, its jumps, and where break and continue land.

@@ -24,7 +24,7 @@ const b1b: B = { lines: [inc('%4', 'n'), inc('%3', 'i'), '%5 = < %3, %4'], defs:
 const b1c: B = { lines: [inc('%6', 's'), inc('%4', 'n'), inc('%3', 'i'), '%5 = < %3, %4'], defs: 'i=%3 n=%4 s=%6', sealed: false };
 const b2a: B = { lines: [], defs: 's=%6', sealed: true };
 const b2b: B = { lines: ['%7 = + %6, %3'], defs: 's=%7 i=%3', sealed: true };
-const b3a: B = { lines: ['%8 = unop + %3', '%10 = + %8, 1'], defs: 'i=%10', sealed: true };
+const b3a: B = { lines: ['%8 = unop + %3', '%9 = const 1', '%10 = + %8, %9'], defs: 'i=%10', sealed: true };
 const b1d: B = { ...b1c, lines: [inc('%6', 's'), inc('%4', 'n'), '%3 = φ(%2, %10)', '%5 = < %3, %4'], sealed: true };
 const b1e: B = { ...b1d, lines: [inc('%6', 's'), '%3 = φ(%2, %10)', '%5 = < %3, %0'], defs: 'i=%3 n=%0 s=%6' };
 const b1f: B = { ...b1e, lines: ['%6 = φ(%1, %7)', '%3 = φ(%2, %10)', '%5 = < %3, %0'] };

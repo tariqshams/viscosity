@@ -204,7 +204,7 @@ export const quiz = [
     options: [
       { t: 'Two, `x1` and `x2`', why: 'Fields are not renamed: another variable could hold the same object, so VIR keeps two `field.set` instructions.' },
       { t: 'None: SSA renames plain local variables, and these stay two `field.set` instructions', correct: true, why: 'Only locals get versions; memory such as object fields is read and written with instructions.' },
-      { t: 'One, because the first write is dead', why: 'Deleting the first write is a later optimization, not part of SSA.' },
+      { t: 'One, because the first write is dead', why: 'Deleting the first write is a later optimisation, not part of SSA.' },
     ],
   },
   {

@@ -159,7 +159,7 @@ export const exercises = {
 **The solution, line by line.**
 
 - \`function frontiers(preds, idom) {\` takes the predecessors and the tree.
-- \`const df = preds.map(() => new Set());\` makes an empty set per block; a \`Set\` because one block can be reached by two climbs (as b1 is, from b0's side and b3's side in bigger graphs) and should appear once.
+- \`const df = preds.map(() => new Set());\` makes an empty set per block; a \`Set\` because two climbs towards the same join can pass the same block (when the join has three or more predecessors, say), and it should appear once.
 - \`preds.forEach((ps, y) => {\` visits each block \`y\` with its predecessor list \`ps\`.
 - \`if (ps.length < 2) return;\` skips blocks with fewer than two predecessors. (This is only a shortcut: with one predecessor \`p\`, \`idom[y]\` is \`p\` itself, so the climb would stop at once anyway.)
 - \`for (const p of ps) {\` tries each way into \`y\`.

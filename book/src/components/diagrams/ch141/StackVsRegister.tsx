@@ -1,4 +1,4 @@
-// Chapter 140b: a + b inside a function, two ways. Left: Drip's real
+// Chapter 141: a + b inside a function, two ways. Left: Drip's real
 // bytecode (load.local 1, load.local 2, add; checked with
 // disassembleFunction). Right: a sketch of a register machine with an
 // accumulator, the style of V8's Ignition as its team describes it

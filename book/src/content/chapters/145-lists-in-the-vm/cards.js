@@ -295,7 +295,7 @@ test('unreachable lists stay unmarked', () => {
 - \`v.isMarked = true;\` marks the list. It is set *before* visiting the items, so that if one of the items is this very list, the line above stops the visit.
 - \`for (const x of v.items) {\` and \`markValue(x);\` follow every reference out of the list.
 
-The companion VM does the same work without recursion: \`markObject\` sets \`isMarked\` and puts the object on a "grey" worklist, and a loop takes objects off it and calls \`blacken\`, whose \`'list'\` case marks each item. The chapter "Reclaiming memory: mark and sweep" explains why a worklist is the safer choice for very deep structures.
+The companion VM does the same work without recursion: \`markObject\` sets \`isMarked\` and puts the object on a "grey" worklist, and a loop takes objects off it and calls \`blacken\`, whose \`'list'\` case marks each item. The chapter "Tracing and sweeping: white, grey and black" explains why a worklist is the safer choice for very deep structures.
 
 **Common wrong attempts.**
 

@@ -1,4 +1,4 @@
-// Chapter 154-b: how much faster the VM ran each benchmark program than the
+// Chapter 155: how much faster the VM ran each benchmark program than the
 // tree-walker, read from the committed results file
 // companion/ts/results/drip-bench-2026-11-02.json (and .md beside it).
 // A bar right of the 1× line means the VM was faster; left means slower.

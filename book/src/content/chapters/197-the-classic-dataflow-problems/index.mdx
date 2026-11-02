@@ -39,7 +39,7 @@ Stand at `print x` and ask: which of these assignments could have given
 (`x = 0`); if it ran at least once, it was `d4`. A compiler wants this
 answer all the time: if only one definition can reach a use, and that
 definition is a constant, the use can be replaced by the constant (the
-Constant folding and propagation chapter does exactly that); and if two
+Sparse conditional constant propagation chapter does exactly that); and if two
 can, they meet somewhere, which is where SSA puts a phi. This question
 is called **reaching definitions**, and to answer it we first need a
 compact way to describe what each block does to the answer.
@@ -99,9 +99,11 @@ its start, remove (− reads "minus", "without") everything in B's kill
 set, and then add (∪, "union") everything in its gen set.</span>
 </Formal>
 
-The order inside the brackets matters: kill first, then gen. In b2,
-`d4: x = x + y` kills `d2` (the other definition of `x`) but is itself
-in gen, and since gen is added after kill, `d4` survives.
+Keep the order inside the brackets: kill first, then gen. With kill
+exactly as defined (the *other* definitions) the order would not
+matter; however, the easy way to compute kill is "every definition of
+a variable B assigns", and in b2 that includes `d4: x = x + y` itself.
+Since gen is added after kill is taken away, `d4` survives either way.
 
 <Examples of="gen-kill">
 

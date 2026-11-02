@@ -28,7 +28,7 @@ type View = 'src' | 'ast' | 'vir' | 'cfg';
 type S = { view: View; line?: number | null; hot?: string; note: string };
 
 const STATES: S[] = [
-  { view: 'src', line: null, note: 'The source: text, as you typed it. Spaces, brackets and keywords all matter to the parser, and none of them matter to an optimizer.' },
+  { view: 'src', line: null, note: 'The source: text, as you typed it. Spaces, brackets and keywords all matter to the parser, and none of them matter to an optimiser.' },
   { view: 'ast', note: 'The syntax tree, as the parser builds it. The punctuation is gone, but the shape still follows the grammar: an If node holding a Return holding a subtraction. To find every subtraction you must walk the whole tree.' },
   { view: 'ast', hot: 'ret', note: 'Notice how much the tree hides. Is the second return always reached? Only if the test is false. That fact is not written anywhere in the tree; you have to know what an If means.' },
   { view: 'vir', line: 4, note: 'Lowered to VIR, Viscosity’s IR. Each line does one thing and names its result: %2 is the comparison. Parameters a and b became %0 and %1.' },

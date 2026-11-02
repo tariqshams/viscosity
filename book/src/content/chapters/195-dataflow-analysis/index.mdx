@@ -152,7 +152,7 @@ part of the meet.
 Our question looked **back** in time ("has this happened already?"),
 so facts flowed the same way as the edges: from a block to its
 successors. Other questions look **forward** ("will this value be read
-later?", which the Dead code elimination chapter needs); for those,
+later?", which the Liveness chapter answers); for those,
 facts flow against the edges, from a block's successors back to it, and
 the transfer function turns `OUT[B]` into `IN[B]`. The second choice is
 the meet. Our question was a **must** question ("on every path"), so
@@ -251,7 +251,8 @@ the constant 4 ⊓ the constant 5  =  varies
 The first shows sets: a set below another, and two sets side by side
 whose meet is empty. The second is the two-point lattice: if either
 side might not be a number, the merge might not be one either. The
-third is the lattice of the Constant folding and propagation chapter,
+third is the lattice of the Sparse conditional constant propagation
+chapter,
 where two different constants merge to "varies". Different questions,
 different lattices, the same machinery.
 
@@ -262,7 +263,7 @@ This framework (a fact per node of the control graph, a function per
 node, and a meet where information from different nodes comes
 together) was set out by Gary Kildall in 1973, who showed that
 constant propagation, common subexpression elimination and several
-other optimizations are all instances of one algorithm<Cite id="kildall1973" />.
+other optimisations are all instances of one algorithm<Cite id="kildall1973" />.
 Today's textbooks still teach the middle of a compiler this
 way<Cite id="aho2006" /><Cite id="coopertorczon2022" />.
 </Callout>

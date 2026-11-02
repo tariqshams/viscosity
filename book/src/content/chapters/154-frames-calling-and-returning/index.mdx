@@ -21,7 +21,7 @@ import FramesFigure from '../../../components/diagrams/ch154/FramesFigure';
 In the tree-walker, a Drip call was a chain of TypeScript calls, so
 *where to go back to* and *what each caller was in the middle of*
 lived in TypeScript's own frames, on the host's call stack (the
-chapter "Borrowing the host" is about exactly this).
+chapter "Borrowing the host's call stack" is about exactly this).
 
 The VM is one `for (;;)` loop reading bytes. When `f` calls `sq`, the
 loop must remember where it was in `f`, read `sq`'s bytecode instead,
@@ -56,7 +56,7 @@ enclosing compiler, where the finished function becomes a *constant*,
 pushed at run time by `closure` (the chapter on upvalues explains the
 name). A real one:
 
-```js
+```drip
 fn add(a, b) {
   return a + b;
 }

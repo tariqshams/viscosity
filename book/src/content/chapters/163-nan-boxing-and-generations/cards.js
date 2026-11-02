@@ -1,4 +1,4 @@
-// Chapter 162b cards (split from chapter 162). Keys are stable ids.
+// Chapter 163 cards (the second half of a split chapter). Keys are stable ids: never rename them.
 
 export const prompts = {
   'nan-room': {

@@ -1,4 +1,4 @@
-// Chapter 140b cards (staged split of chapter 140). Keys are stable ids.
+// Chapter 141 cards (the second half of a split chapter). Keys are stable ids: never rename them.
 
 export const prompts = {
   'dispatch-what': {

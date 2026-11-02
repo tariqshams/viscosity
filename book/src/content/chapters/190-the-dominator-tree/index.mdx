@@ -3,7 +3,7 @@ n: 190
 day: 48
 part: VI
 title: 'The dominator tree'
-tagline: 'Dominator sets nest inside each other like addresses, so a compiler never needs to store them: one parent per block, a tree, says it all. And the edge of each block’s territory, its dominance frontier, is where the next chapters put their phis.'
+tagline: 'Dominator sets nest inside each other like addresses, so a compiler never needs to store them: one parent per block, a tree, says it all. And the edge of each block’s territory, its dominance frontier, is where Building SSA will put its phis.'
 objectives:
   - Find immediate dominators and draw the dominator tree.
   - Read Viscosity’s dominators function, which stores only the tree, and trace its two-finger intersect.
@@ -186,8 +186,8 @@ passed, and h is a loop header. For the Collatz loop it finds b3 → b1.
 
 ## Where a block's territory ends
 
-The blocks a block dominates form its subtree, its territory. The
-next two chapters need to know where that territory *ends*: the first
+The blocks a block dominates form its subtree, its territory. Building
+SSA will need to know where that territory *ends*: the first
 blocks you can step into from inside it that it does not own outright.
 
 <Figure takeaway="DF(B) is where B’s territory meets the rest of the graph." caption="b2 dominates the shaded blocks. The edge b3 → b1 leaves the region, landing on a block b2 does not strictly dominate, so DF(b2) = {b1}.">
@@ -238,8 +238,8 @@ tree<Cite id="cytron1991" />, but both give the same sets.
 The dominator tree is the standard way compilers store dominance, and
 dominance frontiers are how the classic SSA construction decides where
 values from different paths must be merged<Cite id="coopertorczon2022" />.
-That is the job of Building SSA, two chapters on, which places its phis
-exactly at these frontiers.
+That is the job of Building SSA, three chapters on, which places its
+phis exactly at these frontiers.
 </Callout>
 
 ## Your turn

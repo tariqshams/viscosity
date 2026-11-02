@@ -35,8 +35,8 @@ to. The VM has no environments: `n` is a
 **stack slot** (the chapter "Locals as stack slots"), and `return` cuts
 the stack back to the frame's start, so the very next call writes over
 it (the chapter "Frames: calling and returning in the VM"). So `count`
-cannot remember "slot 2": by the time `a()` runs, it is someone
-else's.
+cannot remember `n`'s slot: by the time `a()` runs, that slot is
+someone else's.
 
 <Prompts ids={['slot-dies']} />
 

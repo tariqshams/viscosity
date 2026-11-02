@@ -29,7 +29,8 @@ function h(a) {
 }
 ```
 
-And here is the real VIR that Viscosity prints for it:
+And here is the real VIR that Viscosity prints for it (in the same file
+as `g` from the last chapter, which is why the numbers start at 11):
 
 ```text
 func h(%11):
@@ -60,8 +61,8 @@ matter even though no other instruction reads their result:
   that some other code may read later;
 - a branch (`condbr`) decides which of those things happen.
 
-These are the **roots**, the same word as in the garbage-collection
-chapter, and for the same reason: everything that matters can be
+These are the **roots**, the same word as in Reclaiming memory: mark
+and sweep, and for the same reason: everything that matters can be
 reached from them.
 
 <Analogy title="clearing up after a dinner party">

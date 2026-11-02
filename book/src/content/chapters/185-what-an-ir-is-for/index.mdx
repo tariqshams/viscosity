@@ -5,7 +5,7 @@ part: VI
 title: 'What an IR is for'
 tagline: 'Source code is written for people, and bytecode for a machine that runs it. A compiler that wants to reason about a program needs a third form, built for asking questions; that form is the IR.'
 objectives:
-  - Explain why an optimizer works on an intermediate representation rather than on source text, syntax trees or stack bytecode.
+  - Explain why an optimiser works on an intermediate representation rather than on source text, syntax trees or stack bytecode.
   - Describe lowering, and show how it turns many spellings of one idea into one form while keeping real differences visible.
   - Read a short listing of VIR, Viscosity’s real IR, and say what each line does.
   - Write a small lowering pass in JavaScript.
@@ -158,8 +158,9 @@ writes the result back. After this, no later pass ever sees `+=`.
 **Lowering** is translating a program into a lower-level form, with
 fewer kinds of construct and more explicit steps: compound assignment,
 `++` and loops become reads, writes, arithmetic and jumps. It can
-happen in several stages, each to a lower IR; the desugaring of `for`
-into `while` in the Control flow chapter was lowering inside the tree,
+happen in several stages, each to a lower IR; desugaring `else if`
+into an `if` inside an `else`, in Choosing and repeating: if, while
+and for, was lowering inside the tree,
 while Viscosity's front end lowers the tree all the way to VIR.
 </Callout>
 
@@ -182,8 +183,8 @@ analyses short.</span>
 <Examples of="lowering">
 
 ```text
-x = x + 1   →  %1 = const 1
-x += 1      →  %2 = binop + %0, %1
+x = x + 1  ┐  %1 = const 1
+x += 1     ┘  %2 = binop + %0, %1
 ```
 
 ```text
@@ -265,11 +266,11 @@ Ignition bytecode, a form built for running<Cite id="v8-ignition" />.
 Sparkplug, its quick baseline compiler, turns that bytecode into machine
 code in one pass with no IR of its own, leaning on work the bytecode
 compiler already did<Cite id="v8-sparkplug" />; that is why it compiles
-fast, and also why it cannot do much optimizing. The analyses and
-optimizations of a compiler's middle end, which the rest of Part VI
+fast, and also why it cannot do much optimising. The analyses and
+optimisations of a compiler's middle end, which the rest of Part VI
 builds, run on an IR<Cite id="coopertorczon2022" />. Viscosity's whole
 idea, changing the layout of arrays of objects automatically, comes from
-research done inside an optimizing JIT<Cite id="makor2022" />, and VIR
+research done inside an optimising JIT<Cite id="makor2022" />, and VIR
 is where Viscosity asks the same questions ahead of time.
 </Callout>
 

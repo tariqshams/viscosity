@@ -1,4 +1,4 @@
-// Chapter 138b: the disassembler decoding the real chunk for
+// Chapter 139: the disassembler decoding the real chunk for
 //   {
 //     let a = 2;
 //     print a + 1;

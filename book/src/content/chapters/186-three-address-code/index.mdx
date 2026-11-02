@@ -3,7 +3,7 @@ n: 186
 day: 47
 part: VI
 title: 'Three-address code'
-tagline: 'Drip’s VM never names the result of 2 * 3; it leaves it on the stack for one instruction and moves on. An optimizer needs to point at that result and ask questions about it, so every intermediate value gets a name.'
+tagline: 'Drip’s VM never names the result of 2 * 3; it leaves it on the stack for one instruction and moves on. An optimiser needs to point at that result and ask questions about it, so every intermediate value gets a name.'
 objectives:
   - Turn an expression tree into three-address code, children first.
   - Explain what a temporary is and why a compiler makes so many of them.
@@ -18,10 +18,10 @@ import StackVsNames from '../../../components/diagrams/ch186/StackVsNames';
 
 ## Where did 2 * 3 go?
 
-In A stack-based VM, Drip ran `1 + 2 * 3` as five instructions:
+In A machine with a stack, Drip ran `1 + 2 * 3` as five instructions:
 push 1, push 2, push 3, multiply, add. The `6` that the multiply
 produced never had a name; it sat on the stack for one instruction and
-was gone, which is perfect for *running* code. Now imagine an optimizer
+was gone, which is perfect for *running* code. Now imagine an optimiser
 looking at it. It wants to say "the product is a constant, 6", or
 "nobody uses this result, delete it", or "this is the same product as
 three lines ago, reuse it", and every one of those sentences needs to
@@ -172,8 +172,8 @@ three `const` lines that name 1, 2 and 3 as `%0`, `%1` and `%2`), and
 it has the same two lines as our hand-made version, with `%3` and `%4`
 in place of `t1` and `t2`. The second is part of `s.x * s.x`: VIR reads
 the field twice, into `%1` and `%2`, and because both reads have names
-a later pass can notice that they are the same value and keep one (Part
-VI's chapter on value numbering does exactly that). The third is a
+a later pass can notice that they are the same value and keep one (the
+Value numbering and common subexpressions chapter does exactly that). The third is a
 whole function, and its variables have disappeared. `let t = a`
 produced no instruction at all, because the front end only remembers
 that `t` now means `%0`; when the code reads `t`, it gets `%0`. The
@@ -210,7 +210,7 @@ interface Inst {
 ```
 
 The listing is `printFunc` turning these records into text. And because
-inputs are names, the question an optimizer asks most ("who uses this
+inputs are names, the question an optimiser asks most ("who uses this
 value?") is easy: walk every instruction once and file it under each of
 its inputs. That is what `buildUses` does:
 
@@ -243,7 +243,7 @@ and an implicit accumulator holds the running result, so instructions
 stay short<Cite id="v8-ignition" />. A stack machine names nothing,
 three-address code names everything, and an accumulator machine names
 all but one. For analysis, compilers want the fully named form, and
-compiler textbooks build their optimizations on IRs of this
+compiler textbooks build their optimisations on IRs of this
 kind<Cite id="coopertorczon2022" />.
 </Callout>
 

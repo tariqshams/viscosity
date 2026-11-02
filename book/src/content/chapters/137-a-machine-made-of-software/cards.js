@@ -1,4 +1,4 @@
-// Chapter 136b cards (staged split of chapter 136). Keys are stable ids.
+// Chapter 137 cards (the second half of a split chapter). Keys are stable ids: never rename them.
 
 export const prompts = {
   'no-recursion': {
@@ -167,7 +167,7 @@ For \`[0, 0, 20, 0, 0, 22, 22]\`: at 0 we find CONST and jump to 3; at 3, CONST 
 - Counting the non-zero bytes, or the zeros, fails at once, because an operand can be any value.
 - Jumping by 2 after a CONST is the old one-byte layout: it lands on the second operand byte and reads it as an opcode.
 
-Drip’s real VM never needs to count like this, because it decodes as it runs; however, a disassembler (the chapter after next) has exactly this problem, and solves it the same way.`,
+Drip’s real VM never needs to count like this, because it decodes as it runs; however, a disassembler (the chapter *Reading bytecode back*) has exactly this problem, and solves it the same way.`,
     wrong: [
       {
         code: `function countInstrs(code) {

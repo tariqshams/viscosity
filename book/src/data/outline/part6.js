@@ -53,7 +53,7 @@ export default {
       'abstract-domain': 'the set of abstract values and how they combine',
       widening: 'jumping ahead so a loop analysis finishes',
     } },
-    { n: 201, title: 'Constant folding and propagation', introduces: {
+    { n: 201, title: 'Constant folding', introduces: {
       'constant-folding': 'computing constant expressions at compile time',
     } },
     { n: 202, title: 'Sparse conditional constant propagation', introduces: {

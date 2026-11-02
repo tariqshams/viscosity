@@ -1,4 +1,4 @@
-// Chapter 152-b: backpatching the two jumps of an if with an else,
+// Chapter 153: backpatching the two jumps of an if with an else,
 // over the real bytes the companion compiler emits.
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';

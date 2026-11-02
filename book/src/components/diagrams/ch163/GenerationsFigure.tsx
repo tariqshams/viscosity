@@ -1,4 +1,4 @@
-// Chapter 162b: a generational heap (a sketch; the companion VM's heap has
+// Chapter 163: a generational heap (a sketch; the companion VM's heap has
 // one generation). New objects start young; a minor collection traces only
 // the young generation, from the roots plus the remembered set, which the
 // write barrier fills with old objects that point at young ones.

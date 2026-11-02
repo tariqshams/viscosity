@@ -1,4 +1,4 @@
-// Chapter 138b cards (staged split of chapter 138). Keys are stable ids.
+// Chapter 139 cards (the second half of a split chapter). Keys are stable ids: never rename them.
 
 export const prompts = {
   'offset-what': {
@@ -249,7 +249,7 @@ test('lineAt finds every byte', () => {
       'Look at the last run in your output: if its line equals the current one, add 1 to its count; otherwise push `[line, 1]`.',
       'For `lineAt`, go through the runs in order, subtracting each count from `offset` until `offset` is smaller than the current run’s count.',
     ],
-    walkthrough: `**How to think about it.** In the chapter’s error example, \`lines\` is \`1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 2, 3, 3, 3\`: fifteen numbers, but only five changes. Writing each stretch once, with how long it lasts, is called *run-length encoding*. Note that a line can come back (the \`2\` for the \`add\`), so a run is “this line, for this many bytes”, not “everything on this line”.
+    walkthrough: `**How to think about it.** In the chapter’s error example, \`lines\` is \`1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 2, 3, 3, 3\`: fifteen numbers, but only five stretches of one repeated line. Writing each stretch once, with how long it lasts, is called *run-length encoding*. Note that a line can come back (the \`2\` for the \`add\`), so a run is “this line, for this many bytes”, not “everything on this line”.
 
 **\`compress\`, line by line.**
 

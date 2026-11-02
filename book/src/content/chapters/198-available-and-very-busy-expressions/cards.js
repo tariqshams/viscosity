@@ -231,7 +231,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Both branches of an `if` start with `x = a + b`, but the `else` branch is `a = 0; y = a + b`. Can `a + b` be hoisted above the `if`?',
+    q: 'The `then` branch of an `if` is `x = a + b`, and the `else` branch is `a = 0; y = a + b`. Can `a + b` be hoisted above the `if`?',
     options: [
       { t: 'Yes: both branches compute a + b.', why: 'The else branch computes it with a new a, so a value from before the if would be wrong there.' },
       { t: 'No: on the else path, a changes before a + b is computed, so it is not very busy at the if.', correct: true, why: 'Very busy needs every path to compute it before any operand changes.' },

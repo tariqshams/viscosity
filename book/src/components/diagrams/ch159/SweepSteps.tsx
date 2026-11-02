@@ -1,4 +1,4 @@
-// Chapter 158b: sweep walks the object list once, keeping marked objects
+// Chapter 159: sweep walks the object list once, keeping marked objects
 // (and resetting them to white) and unlinking unmarked ones, with `prev`
 // trailing one step behind `o`. Follows step 4 of Heap.collect in
 // companion/ts/src/vm/heap.ts.
@@ -27,7 +27,7 @@ const MARKED = new Set(['F', 'C', 'B', 'A']);
 type S = { line: number | null; o: number; prev: number | null; done: number; freed: string[]; note: string };
 
 const STATES: S[] = [
-  { line: null, o: 0, prev: null, done: 0, freed: [], note: 'Marking is over: F, C, B and A are marked (black, shown dark); D and E are not. o starts at the head of the object list, prev at null.' },
+  { line: null, o: 0, prev: null, done: 0, freed: [], note: 'Marking is over: F, C, B and A are marked (black, drawn with a solid fill); D and E are not. o starts at the head of the object list, prev at null.' },
   { line: 4, o: 1, prev: 0, done: 1, freed: [], note: 'F is marked: reset it to white for the next collection, and move on. prev now trails at F.' },
   { line: 8, o: 2, prev: 0, done: 2, freed: ['D'], note: 'D is not marked: step o past it, then make prev (F) point at what comes after D. D is no longer on the list.' },
   { line: 4, o: 3, prev: 2, done: 3, freed: ['D'], note: 'C is marked: reset and keep it; prev moves to C.' },
@@ -70,7 +70,7 @@ export default function SweepSteps() {
           <T x={392} y={Y - 26} size={12} mono anchor="end" fill={tok('brand')} weight={700}>o = null</T>
         )}
         {st.prev !== null && <T x={bx(st.prev) + BW / 2} y={Y + 26} size={12} mono anchor="middle" fill={tok('muted')} weight={700}>prev</T>}
-        <T x={8} y={140} size={11} fill={tok('muted')}>dark = still marked; dashed = unlinked (freed)</T>
+        <T x={8} y={140} size={11} fill={tok('muted')}>solid fill = still marked; dashed = unlinked (freed)</T>
       </Svg>
     </StepFrame>
   );
