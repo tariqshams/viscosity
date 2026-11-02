@@ -89,3 +89,12 @@ describe('parseTestOutput', () => {
     ]);
   });
 });
+
+describe('parseTestOutput on an aborted run', () => {
+  it('fails a run that started but never printed its summary', async () => {
+    const { parseTestOutput } = await import('./rust.js');
+    const out = 'running 2 tests\ntest tests::a_inside ... ok\nthread panicked: unsafe precondition(s) violated\n';
+    const r = parseTestOutput(out);
+    expect(r.some((t: { ok: boolean }) => !t.ok)).toBe(true);
+  });
+});

@@ -27,6 +27,12 @@ export function parseTestOutput(text) {
     const r = results.find((x) => x.name === f[1].replace(/_/g, ' '));
     if (r) r.message = f[2].replace(/thread '[^']*'(?: \(\d+\))? panicked at [^\n]*\n/, '').trim().split('\n')[0];
   }
+  // A test binary that aborts (a panic that cannot unwind, such as a
+  // violated unsafe precondition) dies before printing its summary, and the
+  // tests it never reached would otherwise be silently missing.
+  if (/^running \d+ tests?$/m.test(text) && !/^test result:/m.test(text)) {
+    results.push({ name: 'the test run finished', ok: false, message: 'the tests stopped early: the program aborted' });
+  }
   return results;
 }
 
