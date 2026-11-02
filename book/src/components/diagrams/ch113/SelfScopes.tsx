@@ -1,4 +1,4 @@
-// Chapter 112 (second half): self is an ordinary variable. The resolver
+// Chapter 113: self is an ordinary variable. The resolver
 // wraps a class's methods in one scope declaring self; at run time, bind
 // makes the matching environment, so the recorded distance (1) lands on it.
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';

@@ -18,8 +18,8 @@ import InferTree from '../../../components/diagrams/ch129/InferTree';
 
 ## From pieces to a whole
 
-We now have every piece: unification with the occurs check (chapter
-126), and schemes with generalisation at `let` and instantiation at
+We now have every piece: unification with the occurs check (the
+chapters *Unification* and *Inferring types, and the occurs check*), and schemes with generalisation at `let` and instantiation at
 each use (the last chapter). What is missing is the order to use them
 in. Given any term of our small language, with not one annotation in
 it, we want a single function that either returns its type or says
@@ -96,8 +96,9 @@ result and unifies. **let** is the only place that makes a scheme, and
 
 ## Running it by hand
 
-The term `λf. λx. f (f x)` is "twice", chapter 126's
-`fn (f, x) { return f(f(x)); }` taking one argument at a time.
+The term `λf. λx. f (f x)` is "twice", the
+`fn (f, x) { return f(f(x)); }` of the chapter *Inferring types, and
+the occurs check*, taking one argument at a time.
 Nothing in it says what `f` or `x` are, so let us watch W find out:
 
 <WSteps client:visible />

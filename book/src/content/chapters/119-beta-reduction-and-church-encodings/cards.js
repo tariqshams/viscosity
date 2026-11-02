@@ -307,7 +307,7 @@ export const quiz = [
     options: [
       { t: '`λf. λx. f (f (f x))`, the numeral 3', correct: true, why: 'plus applies f once (from 1) on top of twice (from 2).' },
       { t: '`λf. λx. f (f x)`, the numeral 2', why: 'That forgets the 1: plus applies f m times on top of n times.' },
-      { t: 'It has no normal form', why: 'Every step uses up a redex, and the numerals are normal forms; it finishes.' },
+      { t: 'It has no normal form', why: 'Unlike Ω, it finishes: a few beta steps reach the numeral 3, which has no redex left.' },
     ],
   },
 ];

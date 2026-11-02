@@ -252,7 +252,7 @@ test('the substitution passed in is not changed', () => {
 
 - Forgetting \`resolve\`: \`'a\` is bound to \`number\` by the first parameter, then bound a second time, to \`string\` by the result, so \`fn('a) -> 'a\` and \`fn(number) -> string\` wrongly unify.
 - Writing \`unify(a.params[i], b.params[i], s);\` without \`s =\`: each step starts from the old substitution and its bindings are thrown away.
-- Changing \`s\` in place (\`s[a.tv] = b\`): it seems to work, but a caller that tried one unification and then wanted the old substitution back would find it changed. Chapter 128 relies on substitutions being values that never change.
+- Changing \`s\` in place (\`s[a.tv] = b\`): it seems to work, but a caller that tried one unification and then wanted the old substitution back would find it changed. The inference of the next chapters keeps substitutions as values that never change, so this one would break it.
 
 (One case is still missing. Try \`unify({ tv: 'a' }, { list: { tv: 'a' } }, {})\` and then \`apply\` the result: the next chapter explains what goes wrong, and the one line that fixes it.)`,
     wrong: [

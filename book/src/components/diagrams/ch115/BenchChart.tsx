@@ -1,4 +1,4 @@
-// Chapter 114 (second half): how much faster the bytecode VM is than the
+// Chapter 115: how much faster the bytecode VM is than the
 // tree-walker on each benchmark program. The numbers are read from the
 // committed results file companion/ts/results/drip-bench-2026-11-02.json
 // (also as .md next to it), produced by the companion's benchmark harness.
@@ -61,7 +61,7 @@ export default function BenchChart() {
                 <tr key={r.program}>
                   <td className="py-0.5 font-mono">{r.program}</td>
                   <td className="text-right font-mono">{r.tree}</td>
-                  <td className="text-right font-mono">{r.vm ?? '—'}</td>
+                  <td className="text-right font-mono">{r.vm ?? 'n/a'}</td>
                   <td className="text-right font-mono">{r.speedup === null ? 'VM error' : `${r.speedup}×`}</td>
                 </tr>
               ))}

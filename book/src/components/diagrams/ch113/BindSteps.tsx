@@ -1,4 +1,4 @@
-// Chapter 112: reading a method off an instance binds it: a new environment
+// Chapter 113: reading a method off an instance binds it: a new environment
 // holding only `self`, wrapped around the method's captured environment.
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';

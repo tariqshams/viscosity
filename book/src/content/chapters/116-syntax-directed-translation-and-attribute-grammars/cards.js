@@ -1,4 +1,4 @@
-// Chapter 116 cards (syntax-directed translation, synthesized attributes).
+// Chapter 116 cards (syntax-directed translation, synthesised attributes).
 // Keys are stable ids.
 
 export const prompts = {
@@ -19,15 +19,15 @@ export const prompts = {
     a: 'Each parse function builds its node from what the functions it called returned: the attribute is “the tree for this part”.',
   },
   'synth-what': {
-    q: 'What makes an attribute **synthesized**?',
+    q: 'What makes an attribute **synthesised**?',
     a: 'Its value at a node is computed only from attributes of that node’s children (and of the node itself).',
   },
   'synth-order': {
-    q: 'In what order must the nodes be visited to compute a synthesized attribute?',
+    q: 'In what order must the nodes be visited to compute a synthesised attribute?',
     a: 'Children before parents, for example a post-order walk.',
   },
   'reduce-time': {
-    q: 'When does an LR parser run a production’s semantic rule for a synthesized attribute?',
+    q: 'When does an LR parser run a production’s semantic rule for a synthesised attribute?',
     a: 'At the reduce by that production: the children’s values are on top of its value stack, and the result is pushed in their place.',
   },
   'plus-no-val': {
@@ -184,7 +184,7 @@ const isConst = {
       'Look the rule up first, `const rule = rules[n.rule]`, and throw `new Error(\'no rule for \' + n.rule)` if it is missing. Then work out the children’s values with `n.kids.map(...)`, calling `annotate` on each, and store the result of the rule as `n[attr]` before returning it.',
       'For `isConst`: a number is constant (`() => true`), a name is not (`() => false`), a sum or a product is constant when both parts are (`([a, b]) => a && b`), and every copy production passes its one child’s value up unchanged (`([a]) => a`).',
     ],
-    walkthrough: `**How to think about it.** A synthesized attribute only ever needs the children’s values, so the evaluator is a post-order walk: ask each child for its value (which, recursively, asks its children), then run this node’s rule on the answers. The evaluator knows nothing about arithmetic, or constants, or code: everything about *meaning* lives in the rule table, which is why the same function can compute \`val\`, postfix code or constness. The two new requirements are bookkeeping: the value must be written onto the node (that is what makes an *annotated* tree, which later passes can read), and a missing rule must be reported clearly instead of crashing deep inside with a vague \`TypeError\`.
+    walkthrough: `**How to think about it.** A synthesised attribute only ever needs the children’s values, so the evaluator is a post-order walk: ask each child for its value (which, recursively, asks its children), then run this node’s rule on the answers. The evaluator knows nothing about arithmetic, or constants, or code: everything about *meaning* lives in the rule table, which is why the same function can compute \`val\`, postfix code or constness. The two new requirements are bookkeeping: the value must be written onto the node (that is what makes an *annotated* tree, which later passes can read), and a missing rule must be reported clearly instead of crashing deep inside with a vague \`TypeError\`.
 
 **The solution, line by line.**
 
@@ -287,10 +287,10 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these is a synthesized attribute?',
+    q: 'Which of these is a synthesised attribute?',
     options: [
       { t: 'The type a declaration gives to the names listed after it', why: 'That information comes from a sibling and the parent, flowing down the list: the next chapter calls that inherited.' },
-      { t: 'The number of statements inside a block, counted from its children', correct: true, why: 'It is computed from the children only, so it is synthesized.' },
+      { t: 'The number of statements inside a block, counted from its children', correct: true, why: 'It is computed from the children only, so it is synthesised.' },
       { t: 'How deep a node sits below the root', why: 'Depth comes from the parent (one more than the parent’s), so it flows down, not up.' },
     ],
   },
@@ -303,7 +303,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'An LR parser computes a synthesized `val` while it parses. When does it run the rule for `E → E₁ + T`?',
+    q: 'An LR parser computes a synthesised `val` while it parses. When does it run the rule for `E → E₁ + T`?',
     options: [
       { t: 'When it shifts the `+`', why: 'At that point the right operand has not been read yet, so its value is not known.' },
       { t: 'When it reduces by `E → E₁ + T`', correct: true, why: 'Then the values of E₁ and T are on top of the value stack; the rule replaces them with E’s value.' },

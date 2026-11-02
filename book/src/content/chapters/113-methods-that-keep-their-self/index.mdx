@@ -78,7 +78,7 @@ scope, which is why `self` in an ordinary function is the compile error
 
 ## Binding a method
 
-The last chapter's rule (one resolver scope for every runtime
+The resolver's rule (one resolver scope for every runtime
 environment) now demands that, when `taste`'s body runs, there is an
 environment one step out holding `self`. It is made by `bind`, every
 time a method is read off an instance (you saw `get` call it):

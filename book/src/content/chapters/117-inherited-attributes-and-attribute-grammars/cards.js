@@ -7,12 +7,12 @@ export const prompts = {
     a: 'Its value at a node is defined by the parent’s rule, from attributes of the parent and of the node’s siblings: it flows down (or across).',
   },
   'decl-stuck': {
-    q: 'In `int a, b, c;`, why can the type of `c` not be a synthesized attribute of c’s leaf?',
+    q: 'In `int a, b, c;`, why can the type of `c` not be a synthesised attribute of c’s leaf?',
     a: 'A leaf has no children to compute it from; the type is written elsewhere in the tree (at the front), so it has to be passed down.',
   },
   'param-return': {
-    q: 'In a recursive-descent parser that computes attributes, what do inherited and synthesized attributes become?',
-    a: 'Inherited attributes become parameters of the parse function; synthesized attributes become its return value.',
+    q: 'In a recursive-descent parser that computes attributes, what do inherited and synthesised attributes become?',
+    a: 'Inherited attributes become parameters of the parse function; synthesised attributes become its return value.',
   },
   'binary-scale': {
     q: 'In Knuth’s binary-numeral example, which attribute of a digit is inherited, and why?',
@@ -20,7 +20,7 @@ export const prompts = {
   },
   'ag-what': {
     q: 'What is an attribute grammar?',
-    a: 'A context-free grammar whose symbols have synthesized and inherited attributes, with semantic rules on each production defining them from other attributes in that production.',
+    a: 'A context-free grammar whose symbols have synthesised and inherited attributes, with semantic rules on each production defining them from other attributes in that production.',
   },
   'circular': {
     q: 'When can an attribute grammar’s values not be computed in any order?',
@@ -45,7 +45,7 @@ export const examples = {
     title: 'Knuth’s binary numerals: scale down, value up',
     code: `// L gets its scale from above (an
 // inherited attribute, a parameter)
-// and returns its value (synthesized).
+// and returns its value (synthesised).
 function L(bits, scale) {
   if (bits.length === 0) return 0;
   const last = bits[bits.length - 1];
@@ -77,7 +77,7 @@ export const exercises = {
   'array-width': {
     title: 'The type and width of an array declaration',
     prompt:
-      'Write the attribute grammar for `T → B C` (from the chapter) as two functions. `arrayType(c, b, bw)` gets a C chain `c` (either `null`, for `C → ε`, or `{ n, rest }`, for `C → [ n ] rest`) and the inherited base type `b` and base width `bw`; it returns the synthesized `{ t, w }`, where `t` is a string such as `\'array(2, array(3, int))\'` and `w` is the width in bytes. `declType(base, c)` looks up the base width in `WIDTH` and returns the same `{ t, w }` for the whole declaration. `dims(2, 3)` builds the chain for `[2][3]`.',
+      'Write the attribute grammar for `T → B C` (from the chapter) as two functions. `arrayType(c, b, bw)` gets a C chain `c` (either `null`, for `C → ε`, or `{ n, rest }`, for `C → [ n ] rest`) and the inherited base type `b` and base width `bw`; it returns the synthesised `{ t, w }`, where `t` is a string such as `\'array(2, array(3, int))\'` and `w` is the width in bytes. `declType(base, c)` looks up the base width in `WIDTH` and returns the same `{ t, w }` for the whole declaration. `dims(2, 3)` builds the chain for `[2][3]`.',
     starter: `${GIVEN}
 
 function arrayType(c, b, bw) {
@@ -128,17 +128,17 @@ test('arrayType passes the base down', () => {
       'For `{ n, rest }`: call `arrayType(c.rest, b, bw)` with the same inherited `b` and `bw` (that is `C₁.b = C.b`), then wrap its result: the type becomes `array(n, inner type)` and the width `n × inner width`.',
       'Build the type with a template literal: `` `array(${c.n}, ${inner.t})` ``. `declType` is one line: `return arrayType(c, base, WIDTH[base]);`.',
     ],
-    walkthrough: `**How to think about it.** Translate the rules, one production at a time, keeping the two directions straight. The inherited attributes \`b\` and \`bw\` come *in*, so they are parameters; the synthesized \`t\` and \`w\` go *out*, so they are the return value. The production \`C → [ n ] C₁\` says three things: \`C₁\` inherits the same base (so the recursive call gets the same \`b\` and \`bw\`), and \`C\`’s own type and width are built from \`C₁\`’s (so they can only be computed after the call returns). That is the “down, then up” of the stepper, written as a recursive function.
+    walkthrough: `**How to think about it.** Translate the rules, one production at a time, keeping the two directions straight. The inherited attributes \`b\` and \`bw\` come *in*, so they are parameters; the synthesised \`t\` and \`w\` go *out*, so they are the return value. The production \`C → [ n ] C₁\` says three things: \`C₁\` inherits the same base (so the recursive call gets the same \`b\` and \`bw\`), and \`C\`’s own type and width are built from \`C₁\`’s (so they can only be computed after the call returns). That is the “down, then up” of the stepper, written as a recursive function.
 
 **The solution, line by line.**
 
 - \`function arrayType(c, b, bw) {\` takes the chain and the two inherited values.
 - \`  if (c === null) {\` / \`return { t: b, w: bw };\` is \`C → ε\`: no brackets left, so the type is the base type and the width is the base width (\`C.t = C.b; C.w = C.bw\`).
-- \`  const inner =\` / \`arrayType(c.rest, b, bw);\` is \`C₁.b = C.b; C₁.bw = C.bw\` (pass the inherited values down unchanged) followed by evaluating \`C₁\`’s synthesized attributes.
-- \`  return {\` builds this node’s synthesized attributes from the child’s.
+- \`  const inner =\` / \`arrayType(c.rest, b, bw);\` is \`C₁.b = C.b; C₁.bw = C.bw\` (pass the inherited values down unchanged) followed by evaluating \`C₁\`’s synthesised attributes.
+- \`  return {\` builds this node’s synthesised attributes from the child’s.
 - \`    t: \\\`array(\${c.n}, \${inner.t})\\\`,\` is \`C.t = array(num, C₁.t)\`: this pair of brackets wraps whatever the rest of the chain produced.
 - \`    w: c.n * inner.w,\` is \`C.w = num × C₁.w\`: n copies of the inner thing.
-- \`function declType(base, c) {\` is \`T → B C\`: \`B\` synthesizes the base type and width (the name and \`WIDTH[base]\`), and the rule hands them across to \`C\` as its inherited values; \`T\` copies \`C\`’s results, so the call’s result is returned as it is.
+- \`function declType(base, c) {\` is \`T → B C\`: \`B\` synthesises the base type and width (the name and \`WIDTH[base]\`), and the rule hands them across to \`C\` as its inherited values; \`T\` copies \`C\`’s results, so the call’s result is returned as it is.
 
 For \`int[2][3]\`: the call for \`[2]\` calls the one for \`[3]\`, which calls the one for \`null\`, which returns \`{ t: 'int', w: 4 }\`; the \`[3]\` call returns \`array(3, int)\` and 12; the \`[2]\` call returns \`array(2, array(3, int))\` and 24.
 
@@ -195,8 +195,8 @@ export const quiz = [
   {
     q: 'Which of these is naturally an **inherited** attribute?',
     options: [
-      { t: 'The value of `2 + 3`', why: 'That is computed from the children’s values: synthesized.' },
-      { t: 'The number of nodes below a node', why: 'Counted from the children: synthesized.' },
+      { t: 'The value of `2 + 3`', why: 'That is computed from the children’s values: synthesised.' },
+      { t: 'The number of nodes below a node', why: 'Counted from the children: synthesised.' },
       { t: 'The scope a name is looked up in', correct: true, why: 'The scope comes from the enclosing blocks, above the name, and is passed down to it.' },
     ],
   },
@@ -220,8 +220,8 @@ export const quiz = [
     q: 'In recursive descent, how is an L-attributed definition usually computed?',
     options: [
       { t: 'In a separate pass after parsing, right to left', why: 'L-attributed definitions are designed for one left-to-right pass, which is the order recursive descent already works in.' },
-      { t: 'Inherited attributes as parameters, synthesized ones as return values, during the parse', correct: true, why: 'A parse function receives what comes down and returns what goes up.' },
-      { t: 'Only synthesized attributes can be computed', why: 'Inherited attributes become parameters, so they are computed too.' },
+      { t: 'Inherited attributes as parameters, synthesised ones as return values, during the parse', correct: true, why: 'A parse function receives what comes down and returns what goes up.' },
+      { t: 'Only synthesised attributes can be computed', why: 'Inherited attributes become parameters, so they are computed too.' },
     ],
   },
   {

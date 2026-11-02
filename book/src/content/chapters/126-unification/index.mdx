@@ -210,11 +210,11 @@ fn('a, 'b) -> 'a with fn('b, bool) -> 'c
 
 </Examples>
 
-The first two are single steps: a variable meets a type, and lists match
-by their element types. The second shows why each step must see the
+The first block's two lines are single steps: a variable meets a type,
+and lists match by their element types. The second block shows why each step must see the
 earlier bindings: after `'a ↦ number`, the result `'a` *is* `number`,
 which cannot equal `string`, so this pair has no solution (a function
-that returns its argument cannot turn a number into a string). The third
+that returns its argument cannot turn a number into a string). The third block
 chains variables: `'a` is bound to `'b`, which is then bound to `bool`,
 so when the results are unified, `'a` resolves to `bool` and `'c` gets
 `bool` too.

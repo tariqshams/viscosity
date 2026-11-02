@@ -182,7 +182,7 @@ export default {
     { n: 113, title: 'Methods that keep their self', introduces: {
       'bound-method': 'a method remembering its this',
     } },
-    { n: 114, title: 'Inheritance, and measuring the tree-walker', introduces: {
+    { n: 114, title: 'Inheritance: extends and super', introduces: {
       inheritance: 'a class reusing another class’s methods',
       super: 'calling the parent class’s method',
     } },

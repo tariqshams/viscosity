@@ -49,8 +49,8 @@ calls it.
 ## Classes and instances
 
 The `class` statement makes a value, the way `fn` does. Here is its case
-in `execute`, without the part about superclasses (that is the next
-chapter but one):
+in `execute`, without the part about superclasses (that comes in the
+chapter *Inheritance: extends and super*):
 
 ```ts
 const methods = new Map();
@@ -151,7 +151,7 @@ get(name: Token): Value {
 ```
 
 Line 2 looks in the instance's own fields; if the name is there, that
-value is the answer. Otherwise lines 4 and 5 ask the class for a method
+value is the answer. Otherwise lines 4 to 6 ask the class for a method
 of that name and hand it back bound to this instance; and if neither has
 it, the program stops with `Cake has no property 'size'`. Because fields
 come first, a field can hide a method with the same name. Writing is

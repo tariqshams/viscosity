@@ -291,7 +291,7 @@ test('type errors are reported', () => {
 **Common wrong attempts.**
 
 - Returning \`s.type\` for a variable instead of \`instantiate(s)\`: every use of \`id\` shares one copy again, so \`id true\` and \`id 1\` clash.
-- Binding a let’s name to \`{ vars: [], type: t1 }\`: that is the inference of chapter 126, with no polymorphism at all, and the same test fails.
+- Binding a let’s name to \`{ vars: [], type: t1 }\`: that is the inference of the chapter *Inferring types, and the occurs check*, with no polymorphism at all, and the same test fails.
 - Generalising a λ’s parameter (\`generalize(env, a)\` instead of \`mono\`): then \`λf. if f true then f 1 else 2\` is accepted, though \`f\` cannot be both.
 - Forgetting to unify the two branches of an if: \`if true then 1 else false\` would be accepted.`,
     wrong: [
@@ -301,7 +301,7 @@ test('type errors are reported', () => {
       },
       {
         code: swap('inner.set(e.x, generalize(env, t1));', "inner.set(e.x,\n      { vars: [], type: t1 });"),
-        why: 'The let never generalises, which is chapter 126’s inference: no name can be used at two types.',
+        why: 'The let never generalises, which is the inference of the chapter *Inferring types, and the occurs check*: no name can be used at two types.',
       },
       {
         code: swap('inner.set(e.x, mono);', 'inner.set(e.x, generalize(env, a));'),

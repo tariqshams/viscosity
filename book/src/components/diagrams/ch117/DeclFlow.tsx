@@ -1,4 +1,4 @@
-// int a, b, c : the type is computed at T (synthesized), handed across to
+// int a, b, c : the type is computed at T (synthesised), handed across to
 // L (inherited), and passed down the list to every name.
 import { Arrow, Svg, T, tok } from '../../viz/svg';
 import { type N, drawTree, layout } from './atree';
@@ -33,7 +33,7 @@ export default function DeclFlow() {
       {ids.map((p) => (
         <T key={p.node.id} x={p.x} y={p.y + 22} size={11} anchor="middle" fill={tok('brand')} weight={700}>{p.node.id}: int</T>
       ))}
-      <T x={8} y={222} size={11} weight={700} fill={tok('safe')}>solid: T.type (synthesized) is handed across to L.in</T>
+      <T x={8} y={222} size={11} weight={700} fill={tok('safe')}>solid: T.type (synthesised) is handed across to L.in</T>
       <T x={8} y={238} size={11} weight={700} fill={tok('accent')}>dashed: L.in is passed down, L₁.in = L.in (inherited)</T>
     </Svg>
   );

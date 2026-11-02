@@ -219,8 +219,8 @@ be a mistake"), but going through `unknown` is allowed, and the value
 is still the number 5. The third is index access: reading past the end
 of an array gives `undefined`, yet the element type says `number`; the
 option `noUncheckedIndexedAccess` adds `undefined` to such reads, but it
-is off by default, even under `strict`. The last chapter's two variance
-choices belong on the same list: mutable arrays are covariant, and
+is off by default, even under `strict`. The two variance choices of the chapter
+*Variance: functions, arrays and mutation* belong on the same list: mutable arrays are covariant, and
 method parameters are bivariant<Cite id="ts-strict-function-types" />.
 
 None of these is an accident, and each buys something real: `any` lets

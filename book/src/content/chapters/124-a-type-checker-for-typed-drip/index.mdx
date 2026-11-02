@@ -119,8 +119,8 @@ Typed Drip is also a little stricter than Drip in three places, because
 each is usually a mistake: an `if` or `while` condition must be a
 `bool` (no truthiness: `if count` is an error, write `if count > 0`);
 `&&` and `||` take two bools; and `==` compares two values of the same
-type. Parameters must be annotated for now; chapters 126 and 128 show
-how a checker can work their types out by itself.
+type. Parameters must be annotated for now; the chapters from
+*Unification* onwards show how a checker can work their types out by itself.
 
 <Prompts ids={['typed-drip-what', 'erase-runs-same', 'strict-cond']} />
 

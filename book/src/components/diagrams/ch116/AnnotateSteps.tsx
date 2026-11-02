@@ -1,5 +1,5 @@
 // The parse tree of 3 * (4 + 5) under the grammar E → E + T | T,
-// T → T * F | F, F → ( E ) | num, with the synthesized attribute val
+// T → T * F | F, F → ( E ) | num, with the synthesised attribute val
 // filled in one node at a time, children before parents.
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Svg, T, tok } from '../../viz/svg';

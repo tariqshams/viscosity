@@ -1,5 +1,5 @@
 // int[2][3]: the base type goes down the chain of C nodes (inherited),
-// then the array type and its width come back up (synthesized).
+// then the array type and its width come back up (synthesised).
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 import { type N, drawTree, layout } from './atree';
@@ -30,14 +30,14 @@ const push = (hi: string | undefined, dir: S['dir'], change: Record<string, Row>
   STATES.push({ hi, dir, rows, note });
 };
 push(undefined, undefined, {}, 'The tree for int[2][3]. B is the base type, and each C adds one pair of brackets. No attribute is known yet.');
-push('B', 'up', { B: { t: 'int', w: '4' } }, 'B → int: B.t = int and B.w = 4 (an int takes 4 bytes here). Both are synthesized: they come from B’s own child.');
+push('B', 'up', { B: { t: 'int', w: '4' } }, 'B → int: B.t = int and B.w = 4 (an int takes 4 bytes here). Both are synthesised: they come from B’s own child.');
 push('C', 'down', { C: { b: 'int, 4' } }, 'T → B C hands B’s results across to its other child: C.b = B.t and C.bw = B.w. For C these are inherited: they come from its parent’s rule, not from C’s own children.');
 push('C1', 'down', { C1: { b: 'int, 4' } }, 'C → [ 2 ] C₁ passes the base type straight down: C₁.b = C.b, C₁.bw = C.bw.');
 push('C2', 'down', { C2: { b: 'int, 4' } }, 'And again: C₂ inherits int and 4. The information has reached the bottom of the chain.');
 push('C2', 'up', { C2: { t: 'int', w: '4' } }, 'C → ε has no brackets left, so its type is the base type: C₂.t = C₂.b = int, C₂.w = 4. Now the values turn round and flow up.');
 push('C1', 'up', { C1: { t: 'array(3, int)', w: '12' } }, 'C₁ → [ 3 ] C₂: C₁.t = array(3, C₂.t) = array(3, int), and C₁.w = 3 × 4 = 12.');
 push('C', 'up', { C: { t: 'array(2, array(3, int))', w: '24' } }, 'C → [ 2 ] C₁: an array of 2 of those, so C.t = array(2, array(3, int)) and C.w = 2 × 12 = 24.');
-push('T', 'up', { T: { t: 'array(2, array(3, int))', w: '24' } }, 'T copies C’s results: int[2][3] is an array of 2 arrays of 3 ints, 24 bytes. Down first (inherited), then up (synthesized).');
+push('T', 'up', { T: { t: 'array(2, array(3, int))', w: '24' } }, 'T copies C’s results: int[2][3] is an array of 2 arrays of 3 ints, 24 bytes. Down first (inherited), then up (synthesised).');
 
 export default function WidthSteps() {
   const s = useSteps(STATES);

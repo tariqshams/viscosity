@@ -6,7 +6,7 @@ title: 'Syntax-directed translation and attribute grammars'
 tagline: 'A grammar says which programs are well formed; with one small rule attached to each production, it can also say what they mean, and the meaning of the whole is built from the meanings of its parts.'
 objectives:
   - Attach a semantic rule to each production of a grammar, and say what the rules compute.
-  - Fill in a synthesized attribute on a parse tree by hand, children before parents.
+  - Fill in a synthesised attribute on a parse tree by hand, children before parents.
   - Write two different translations (a value and postfix code) for the same grammar.
   - Write a small attribute evaluator in JavaScript that runs one rule per node.
 introduces: [syntax-directed-translation, synthesized-attribute]
@@ -18,8 +18,8 @@ import AnnotateSteps from '../../../components/diagrams/ch116/AnnotateSteps';
 
 ## Meaning, one rule at a time
 
-For the last eleven chapters our interpreter has worked out what Drip
-programs mean by walking their trees, with one `case` for each kind of
+Since the chapter *Running expressions: a tree that computes*, our
+interpreter has worked out what Drip programs mean by walking their trees, with one `case` for each kind of
 node; that works, however it hides a pattern worth pulling into the
 light. The grammar has a small number of productions, every node of a
 parse tree is there because of exactly one of them, and the meaning of
@@ -44,7 +44,7 @@ pattern.</span>
 
 ## Rules attached to productions
 
-Here is a small expression grammar, layered (as in chapter 84) so
+Here is a small expression grammar, layered (as in the chapter *Precedence and associativity*) so
 that `*` binds tighter than `+`, with a **semantic rule** beside each production
 saying how to compute a value called `val`:
 
@@ -61,7 +61,7 @@ Read the first line as "an E can be an E, a plus and a T; when it is,
 its `val` is the left part's `val` plus the right part's". The small
 `₁` only tells the two `E`s apart (they are the same nonterminal in
 different places), and `num.lexval` is the number the scanner read
-(chapter 70's literal). The `+` and the brackets carry no value: they
+(the literal of the chapter *Numbers and strings*). The `+` and the brackets carry no value: they
 only decided which production was used.
 
 <Figure takeaway="A semantic rule computes a parent's value from its children's values." caption="The production E → E₁ + T as one piece of a parse tree. The rule beside it says where E.val comes from: the two arrows.">
@@ -103,7 +103,8 @@ function parseNumber() {
 The first changes the rules and keeps the grammar: `code` is a string,
 `++` joins strings, and the translation of a sum is the left part's
 code, then the right part's, then `+`. On `3 * (4 + 5)` it produces
-`3 4 5 + *` (try it below). The second is chapter 97's yacc rule,
+`3 4 5 + *` (try it below). The second is the yacc rule from the chapter *Parser generators and
+PEGs*,
 which is the same idea in a parser generator's notation: `$$` is the
 attribute of the whole and `$1`, `$3` are the parts'. The third is the
 realistic one, and you have already written it: in a recursive-descent
@@ -114,7 +115,7 @@ attribute.
 
 <Prompts ids={['sdt-what', 'semantic-rule', 'subscript-one', 'parser-is-sdt']} />
 
-## Synthesized attributes
+## Synthesised attributes
 
 Every rule so far has the same shape: a parent's attribute is made from
 its children's. To work them out, a node must wait until all its children
@@ -141,14 +142,14 @@ A parse tree with the attributes written on it is called an
 **annotated parse tree**.
 
 <Callout kind="definition">
-A **synthesized attribute** is one whose value at a node is computed
+A **synthesised attribute** is one whose value at a node is computed
 only from attribute values at that node's children (and at the node
-itself). A definition that uses only synthesized attributes can be
+itself). A definition that uses only synthesised attributes can be
 evaluated in any order that visits children before parents, such as a
 post-order walk, or during bottom-up parsing, at each reduce<Cite id="knuth1968" />.
 </Callout>
 
-<Formal title="The shape of a synthesized attribute">
+<Formal title="The shape of a synthesised attribute">
 
 ```text
 production   A → X₁ X₂ … Xₙ
@@ -219,7 +220,7 @@ Donald Knuth's 1968 paper gave these ideas their names: attributes
 attached to the nodes of a parse tree, with functions tied to each
 production, and the split between values that come up from the children
 and values that come down from above<Cite id="knuth1968" />. Bottom-up
-parsers use the synthesized half at full speed: an LR parser keeps a
+parsers use the synthesised half at full speed: an LR parser keeps a
 stack of values beside its stack of states, and at each reduce it runs
 the production's rule on the top values and pushes the result, which is
 what yacc's `$$` is.
@@ -235,7 +236,7 @@ what yacc's `$$` is.
   production, so a node's result is built from its parts' results.
 - The same grammar can carry many translations: a value, postfix code,
   a syntax tree.
-- A **synthesized attribute** is computed from the children; evaluate
+- A **synthesised attribute** is computed from the children; evaluate
   children first, as a post-order walk or an LR parser's reduces do.
 
 Next: values that flow *down* the tree, from parents and left siblings,

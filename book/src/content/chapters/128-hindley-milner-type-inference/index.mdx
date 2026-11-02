@@ -25,8 +25,8 @@ Here is a Drip program that nobody would call wrong:
 Line 1 makes a function that hands back whatever it is given; line 2
 calls it with a number and prints `1`; line 3 calls it with a boolean
 and prints `true`. Drip checks nothing before running, so it runs.
-However, try it with the inference of chapter 126, where each name gets
-one type and unification fills in its type variables:
+However, try it with the inference of the chapter *Inferring types,
+and the occurs check*, where each name gets one type and unification fills in its type variables:
 
 ```text
 id : α → α
@@ -35,7 +35,8 @@ id(1)     α = number
 id(true)  number = bool?  type error
 ```
 
-(This is chapter 126's `fn('a) -> 'a`, with `α` for `'a`.) The first
+(This is the `fn('a) -> 'a` of the chapter *Unification*, with `α`
+for `'a`.) The first
 call settles `α` as `number` for good, so by the second call `id` takes
 only numbers, and `true` does not fit. The program is
 fine; the type checker is too strict. What we want is for `id` to have a
@@ -46,7 +47,7 @@ same type back", and for each use to pick its own.
 An office keeps a blank master copy of a form, and whenever someone
 needs one, they photocopy the master and fill in the copy; Sam writes
 "bicycle" on his copy and Priya writes "laptop" on hers, and neither
-answer ever reaches the master. Chapter 126's inference had no
+answer ever reaches the master. Our inference so far had no
 photocopier: the first person to need the form wrote on the master
 itself, and everyone after was stuck with "bicycle".
 <span slot="breaks">A photocopy of a form can be filled in with
@@ -139,7 +140,7 @@ of *let*-polymorphism: only `let` makes schemes.
 ## Generalisation: which blanks to make
 
 When inference reaches `let x = e₁ in e₂`, it first infers e₁ exactly
-as in chapter 126, getting a type τ that may contain type variables.
+as before, getting a type τ that may contain type variables.
 Then it **generalises**: it puts ∀ in front of the variables of τ that
 are truly free to vary. The catch is the word *truly*. Look at this:
 

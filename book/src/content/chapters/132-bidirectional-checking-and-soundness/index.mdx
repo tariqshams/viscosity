@@ -39,7 +39,7 @@ const g: (x: number) => number =
 
 Line 1 is rejected: nothing says what `x` is. Yet line 5 has exactly
 the same unannotated arrow, and it is fine, because the declared type
-of `g` says what the arrow must be, so `x` must be a `number`. Line 7
+of `g` says what the arrow must be, so `x` must be a `number`. Line 6
 too: `map` on an array of numbers will call its argument with numbers,
 so `x` is a `number` and `x.toFixed(1)` checks. TypeScript calls this
 **contextual typing**: "the type of an expression is implied by its

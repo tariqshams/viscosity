@@ -1,4 +1,4 @@
-// Chapter 114 (second half): everything the tree-walker does to evaluate
+// Chapter 115: everything the tree-walker does to evaluate
 // the expression n - 2 (inside fib), counted. One subtraction is the real
 // work; the rest is the interpreter's overhead.
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';

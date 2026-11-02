@@ -36,7 +36,7 @@ const STATES: S[] = [
   { line: 10, classes: 3, superEnv: true, inst: true, find: 'B', note: 'new C().m(): the instance has no field m. findMethod asks C (no m), then C’s superclass B: found. Inheritance is just this walk up the superclass links.' },
   { line: 10, classes: 3, superEnv: true, inst: true, thisEnv: true, call: true, out: 'B.m', note: 'B.m is bound to the C instance as usual: a self environment whose parent is B.m’s closure, the super environment. The call prints B.m.' },
   { line: 6, classes: 3, superEnv: true, inst: true, thisEnv: true, call: true, hop: true, out: 'B.m', note: 'super.m(): the resolver recorded distance 2. Two hops from the call: the self environment, then the super environment. super = A. And self is one hop less: distance 1.' },
-  { line: 6, classes: 3, superEnv: true, inst: true, thisEnv: true, call: true, hop: true, find: 'A', out: 'B.m, A.m', note: 'A.findMethod(m) finds A.m, which is bound to the same C instance and called. Prints A.m. Had super meant “the superclass of self’s class”, it would have been B, and B.m would call itself forever.' },
+  { line: 6, classes: 3, superEnv: true, inst: true, thisEnv: true, call: true, hop: true, find: 'A', out: 'B.m, A.m', note: 'A.findMethod(m) finds A.m, which is bound to the same C instance and called. Prints A.m. Had super meant “the superclass of self’s class”, it would have been B, and B.m would call itself for ever.' },
 ];
 
 export default function SuperSteps() {

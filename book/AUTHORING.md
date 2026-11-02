@@ -188,7 +188,7 @@ import LiveBench from '../../../components/bench/LiveBench';
 bytecode VM). For a Drip exercise, `tests` is the exact expected output
 (one line per `print`), and the checker runs it.
 
-- Drip is Lox with `fn` and `let`. Its source is in `companion/ts/src`
+- Drip is the book's own language; DRIP.md is its specification. Its source is in `companion/ts/src`
   (tree-walker) and `companion/ts/src/vm` (VM).
 - Chapters that build the interpreter should show and explain the real
   companion code, simplified where needed to fit the 44-character width.
