@@ -8,7 +8,7 @@
   "license": "SEE LICENSE IN ../LICENSE",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build && pagefind --site dist",
+    "build": "NODE_OPTIONS=--max-old-space-size=6144 astro build && pagefind --site dist",
     "preview": "astro preview",
     "test": "vitest run",
     "check": "node scripts/check_chapters.mjs && node scripts/check_site.mjs",
