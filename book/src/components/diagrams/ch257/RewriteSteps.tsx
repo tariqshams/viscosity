@@ -4,7 +4,9 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 // emit.ts in engine/ts/packages/frontend-js: every change is an edit
 // {start, end, text} on the ORIGINAL source; edits are applied back to
 // front so earlier offsets stay valid. Offsets and replacement texts are
-// the real ones for this program (viscosity build).
+// the real ones for this program (viscosity build). The real emitter splits
+// each rewrite into smaller edits around the index and the pushed values
+// (ten edits in all); the diagram shows one edit per rewrite.
 const SRC = `const ps = [];
 for (let i = 0; i < 1000; i++)
   ps.push({ x: i, vx: 1 });
@@ -32,7 +34,7 @@ function applied(k: number) {
 type S = { done: number; cur: number; line: number | null; prelude: boolean; listed: boolean; note: string };
 const STATES: S[] = [
   { done: 0, cur: -1, line: null, prelude: false, listed: false, note: 'The plan says ps is soa. The emitter will not reprint the program from a tree. It records edits, each a range of the original text and a replacement, and copies everything else through unchanged.' },
-  { done: 0, cur: -1, line: 4, prelude: false, listed: true, note: 'Five edits: creation, the push argument, and three field accesses. ps[i].x in x += … is both read and written, but it is one range of text, so it gets exactly one edit.' },
+  { done: 0, cur: -1, line: 4, prelude: false, listed: true, note: 'Five rewrites: creation, the push argument, and three field accesses. (The real emitter records them as ten smaller edits, around the text it keeps in place, the index and each pushed value; here each rewrite is shown as one.) ps[i].x in x += … is both read and written, but it is one range of text, so it is rewritten once.' },
   { done: 1, cur: 0, line: 5, prelude: false, listed: true, note: 'Apply them from the end of the file backwards. First 145–152: ps[7] was not proven in bounds, so the index goes through the bounds check __vsc_bc.' },
   { done: 2, cur: 1, line: 4, prelude: false, listed: true, note: '123–131: ps[i].vx becomes ps.vx[i]. The edit we just made, further on, is longer than what it replaced, but that can’t disturb this one: everything before offset 145 is where it was.' },
   { done: 3, cur: 2, line: 4, prelude: false, listed: true, note: '112–119: ps[i].x becomes ps.x[i]. The += stays exactly as written: the column element is a normal assignment target. No bounds check, because the loop condition i < ps.length proves i is in range.' },
@@ -50,9 +52,9 @@ export default function RewriteSteps() {
     <StepFrame title="Rewriting, edit by edit" steps={s} note={st.note}>
       <CodeTrace code={code} line={line} />
       <Svg w={400} h={st.listed ? 186 : 40} title="The list of edits, applied from the last offset to the first">
-        <T x={8} y={12} size={10} weight={700} fill={tok('muted')}>RANGE</T>
-        <T x={72} y={12} size={10} weight={700} fill={tok('muted')}>ORIGINAL</T>
-        <T x={232} y={12} size={10} weight={700} fill={tok('muted')}>REPLACEMENT</T>
+        <T x={8} y={12} size={11} weight={700} fill={tok('muted')}>RANGE</T>
+        <T x={72} y={12} size={11} weight={700} fill={tok('muted')}>ORIGINAL</T>
+        <T x={232} y={12} size={11} weight={700} fill={tok('muted')}>REPLACEMENT</T>
         {!st.listed && <T x={8} y={32} size={11} fill={tok('muted')}>(no edits recorded yet)</T>}
         {st.listed && EDITS.map((e, k) => {
           const y = 22 + k * 32;
@@ -62,7 +64,7 @@ export default function RewriteSteps() {
             <Box key={k} x={4} y={y} w={392} h={28}
               fill={isCur ? tok('brand', 0.14) : 'transparent'}
               stroke={isCur ? tok('brand') : isDone ? tok('safe') : tok('line')}>
-              <T x={10} y={y + 14} size={10} mono>{e.start}–{e.end}</T>
+              <T x={10} y={y + 14} size={11} mono>{e.start}–{e.end}</T>
               <T x={72} y={y + 14} size={11} mono>{e.old}</T>
               <T x={232} y={y + 14} size={11} mono fill={isDone ? tok('safe') : tok('muted')}>{e.short}</T>
               {isDone && <T x={388} y={y + 14} size={11} anchor="end" fill={tok('safe')}>✓</T>}

@@ -42,9 +42,9 @@ function Column({ y, name, color, cap, len, vals, hi }: { y: number; name: strin
           stroke={hi ? tok('brand') : tok('line')} strokeWidth={1} />
       ))}
       {Array.from({ length: Math.min(len, cap) }, (_, k) => (k % 4 === 0 || k === len - 1) && (
-        <T key={k} x={X0 + k * CELL + 5} y={y + 30} size={8} mono anchor="middle" fill={tok('muted')}>{vals(k)}</T>
+        <T key={k} x={X0 + k * CELL + 5} y={y + 30} size={11} mono anchor="middle" fill={tok('muted')}>{vals(k)}</T>
       ))}
-      <T x={X0 + cap * CELL + 4} y={y + 9} size={9} fill={tok('muted')}>{cap}</T>
+      <T x={X0 + cap * CELL + 4} y={y + 9} size={11} fill={tok('muted')}>{cap}</T>
     </g>
   );
 }

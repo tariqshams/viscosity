@@ -21,10 +21,6 @@ export const prompts = {
     q: 'Why does `grow()` not copy the plain array columns?',
     a: 'Writing at index `length` appends to a plain array, and the engine grows it by itself.',
   },
-  'gc-return': {
-    q: 'Why does the generated `push` return the new length?',
-    a: 'Because `Array.prototype.push` does, and the program might use that value.',
-  },
   'gc-amortized': {
     q: 'With doubling, about how many values do n pushes copy in total?',
     a: 'Fewer than 2n, so a constant amount per push on average.',
@@ -40,10 +36,6 @@ export const prompts = {
   'gc-bench': {
     q: 'Why doesn’t the `construct` benchmark measure the cost of doubling?',
     a: 'Its harness knows n in advance and creates the columns at the right size, so they never grow.',
-  },
-  'gc-bounds': {
-    q: 'After the rewrite, why must a bounds check compare an index with `length` rather than the column’s size?',
-    a: 'The column has spare slots past `length`; reading one returns 0 instead of the original TypeError.',
   },
 };
 
@@ -151,12 +143,26 @@ test('every value survives the grows', () => {
       'To grow: `const t = new Float64Array(this.cap * 2); t.set(this.data);` then replace `this.data` and double `this.cap`.',
       'Count the copy before you forget it: `this.copies += this.len`. Then write `this.data[this.len] = v` and return `++this.len`.',
     ],
-    walkthrough: `This is the generated \`push\` and \`grow\` from chapter 256’s container, folded into one method.
+    walkthrough: `**How to think about it.** This is the generated \`push\` and \`grow\` from *Generating SoA storage*, folded into one method for one column. Before writing, decide the order of the three things a push does: make room if needed, write the value, update the length. Making room has to come first, because a write past the end of a typed array is silently ignored, so writing first would lose the value with no error. Making room means what Viscosity's \`grow()\` does: a new array twice the size, the old values copied in, and the new array swapped in.
 
-- **Check first.** The test \`len === cap\` runs before the write. If the column is full, the write at index \`len\` would land past the end of the typed array, where it is silently ignored. That is a lost value, not an error, so the order matters.
-- **Grow by doubling.** A typed array can’t get longer, so make a new one twice the size and copy with \`set\`. The copy moves exactly \`len\` values (the column is full, so \`len === cap\`).
-- **Why the totals stay small.** Starting at 4, the copies are 4, 8, 16, 32, 64: each grow copies 4 more than all earlier grows together. So after 100 pushes the total is 124, less than the final capacity of 128. That is the amortized argument: fewer than 2 copies per push, on average.
-- **Return the length**, like \`Array.prototype.push\`.`,
+**The solution, line by line.**
+
+- \`push(v) {\` is a method on the object, so \`this\` is the column object.
+- \`if (this.len === this.cap) {\` asks whether every slot is in use.
+- \`const t = new Float64Array(this.cap * 2);\` makes a new, zero-filled column twice as big.
+- \`t.set(this.data);\` copies every old value into the start of \`t\`.
+- \`this.copies += this.len;\` counts the copy: the column was full, so exactly \`len\` values moved.
+- \`this.data = t;\` swaps the new column in (the old one is now garbage), and \`this.cap *= 2;\` records the new size.
+- \`this.data[this.len] = v;\` writes the value into the first unused slot, which now certainly exists.
+- \`return ++this.len;\` adds one to the length and returns the new value (\`++\` before the name gives the value after adding), like \`Array.prototype.push\`.
+
+Why the totals stay small: starting at 4, the copies are 4, 8, 16, 32 and 64, each grow copying 4 more than all the earlier ones together, so after 100 pushes the total is 124, less than the final capacity of 128. That is the amortized argument in miniature.
+
+**Common wrong attempts.**
+
+- Growing by a constant (\`this.cap + 4\`): it works, but after 100 pushes it has copied 1,200 values instead of 124, and the gap grows with the square of the length.
+- Making the new array without \`set\`: every grow throws the earlier values away, and they read back as zeros.
+- Writing before checking: when the column is full, \`data[len]\` is past the end, and the write is silently dropped.`,
     wrong: [
       {
         code: `function makeCol() {
@@ -259,9 +265,23 @@ test('growing by half', () => {
       'Loop `len` from 0 to `n - 1`; each iteration is one push.',
       'Before the push, `if (len === cap)`: add `len` to the count and set `cap = next(cap)`.',
     ],
-    walkthrough: `The loop simulates pushes without storing anything: only the capacity, the length and the copy count matter.
+    walkthrough: `**How to think about it.** You do not need any real storage to count copies: only the capacity, the length and the running total matter. So simulate the pushes with a loop, and at each one ask the container's question, "is it full?". Passing the growth rule in as a function, \`next\`, lets one simulator compare every policy.
 
-Try a few policies. Doubling stays below 2 copies per element. Growing by half (\`c + c / 2\`) also stays linear, with a bit more copying but less spare memory right after a grow. Adding a constant is quadratic. Any policy that multiplies the capacity by a factor larger than 1 is amortized constant; the factor trades copying against wasted space.`,
+**The solution, line by line.**
+
+- \`let cap = 16, copies = 0;\` starts like Viscosity's container: room for 16, nothing copied.
+- \`for (let len = 0; len < n; len++) {\` is one round per push; \`len\` is the length before this push.
+- \`if (len === cap) {\` is the full check.
+- \`copies += len;\` counts the old elements moved into the bigger storage (the new, empty slots are allocated, not copied).
+- \`cap = next(cap);\` applies the policy: \`c * 2\` doubles, \`c + 16\` adds a fixed amount.
+- \`return copies;\` after the loop.
+
+Try a few policies. Doubling stays under 2 copies per element. Growing by half (\`c + c / 2\`) also stays linear, copying a little more but leaving less spare memory after each grow. Adding a constant is quadratic. Any policy that multiplies the capacity by a factor above 1 is amortized constant; the factor trades copying against wasted space.
+
+**Common wrong attempts.**
+
+- Counting the new capacity as copied: a grow copies the old elements only.
+- Checking \`len > cap\` instead of \`===\`: the push that fills the last slot is fine, but the next one must grow; with \`>\`, it writes one past the end first.`,
     wrong: [
       {
         code: `function copiesFor(n, next) {
@@ -289,15 +309,6 @@ export const quiz = [
       { t: 'It writes slot 20 and the length becomes 21.', correct: true, why: 'The common, cheap case: no allocation and no copying.' },
       { t: 'It writes slot 32.', why: 'Slots 20 to 31 are spare; the next element goes at index `length`, which is 20.' },
       { t: 'It grows by one slot.', why: 'Viscosity’s container never grows by one; it doubles, and only when full.' },
-    ],
-  },
-  {
-    q: 'Why does Viscosity’s `grow()` call `set` on typed columns but do nothing for plain array columns?',
-    options: [
-      { t: 'Plain columns never hold more than 16 elements.', why: 'They hold as many elements as the collection.' },
-      { t: 'Plain columns are rebuilt from the typed ones.', why: 'They hold values (strings, objects) that the typed columns can’t store.' },
-      { t: 'It’s a bug: plain columns lose their values.', why: 'They keep them. Writing `this.name[n] = v` appends to the same array.' },
-      { t: 'A typed array has a fixed length; a plain array grows by itself when you write at its end.', correct: true, why: 'So only the typed columns need a bigger replacement and a copy.' },
     ],
   },
   {
@@ -332,7 +343,7 @@ export const quiz = [
     options: [
       { t: 'Doubling is free.', why: 'The harness preallocates the right size, so no doubling happens in this run at all.' },
       { t: 'Filling columns with numbers is cheaper than allocating one object per element.', correct: true, why: 'That is what the suite measures: the same values, stored two ways, with known sizes.' },
-      { t: 'SoA is faster for every loop.', why: 'One suite says nothing about others; chapter 59 showed SoA losing at materialize.' },
+      { t: 'SoA is faster for every loop.', why: 'One suite says nothing about others; the chapter When SoA loses showed SoA losing badly at materialize.' },
       { t: 'Viscosity should always use AoSoA.', why: 'AoSoA was slower than SoA in this suite.' },
     ],
   },

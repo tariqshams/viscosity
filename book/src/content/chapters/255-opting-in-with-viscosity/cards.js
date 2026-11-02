@@ -13,10 +13,6 @@ export const prompts = {
     q: 'Why does the annotation pattern have `\\b` after the layout name?',
     a: 'So a longer word, like `@viscosity soap`, is not read as `soa`.',
   },
-  'ann-comment-why': {
-    q: 'Why is a Viscosity annotation a comment rather than new syntax?',
-    a: 'The program stays ordinary JavaScript, and runs the same with or without Viscosity.',
-  },
   'ann-where': {
     q: 'Which declarations does a matching `@viscosity` comment apply to?',
     a: 'Alone on its line: every declaration on the next line. After code on a line (trailing): only declarations on that same line.',
@@ -25,17 +21,13 @@ export const prompts = {
     q: 'What does Viscosity do with `// @viscosity SoA`?',
     a: 'Nothing: the pattern is case-sensitive, so it is an ordinary comment, with no warning.',
   },
-  'ann-aos': {
-    q: 'How do you stop Viscosity from transforming one collection?',
-    a: 'Put `// @viscosity aos` on the line above its declaration (or at the end of that line).',
-  },
   'ann-soa-skips': {
     q: 'Which planner rules does `@viscosity soa` skip?',
     a: 'All the cost rules: numeric fields, a loop touching fields, and the size threshold.',
   },
   'ann-aosoa': {
     q: 'What does `@viscosity aosoa(N)` require?',
-    a: 'Every field provably numeric, and N a power of two, at most 65536 (8 if omitted).',
+    a: 'N a power of two, at most 65536 (8 if omitted), and every field provably numeric.',
   },
   'ann-unsafe': {
     q: 'Can an annotation make Viscosity transform a collection with a bailout?',
@@ -156,11 +148,29 @@ test('an indented comment is alone', () => {
       'The comment is alone on its line when `line.slice(0, at).trim()` is empty. Then look at line `i + 1`; otherwise at line `i`.',
       'For `aosoa`, `m[2]` is `undefined` when there is no size: use `m[2] ?? 8`.',
     ],
-    walkthrough: `The real plugin gets comments and declarations from the parser, so it never confuses \`//\` inside a string with a comment. With plain lines, \`indexOf('//')\` is a good-enough stand-in.
+    walkthrough: `**How to think about it.** There are two separate jobs: deciding whether a line holds an annotation at all, and deciding which line it is about. Do them in that order. For the first, find the comment and run the pattern on it. For the second, the only question is whether anything but spaces comes before the \`//\`: if not, the comment is alone and the target is the next line; if so, it trails code and the target is its own line. Then a second pattern pulls the declared name out of the target line. The real plugin gets comments and declarations from the parser (so it never mistakes \`//\` inside a string for a comment); with plain lines, \`indexOf('//')\` is a good-enough stand-in.
 
-The core is the rule from \`frontend-js/src/index.ts\`: a comment alone on its line annotates the next line, and a trailing comment annotates only its own line. Whether anything but spaces comes before the \`//\` decides which single line to look at, so a trailing comment on line 1 never reaches a declaration on line 2. (An older version of the plugin checked both lines for every comment, and so did reach it: a corpus test now guards the stricter rule.)
+**The solution, line by line.**
 
-Everything else falls out of the pattern. It is case-sensitive, so \`SoA\` doesn't match. The \`\\b\` rejects \`soap\`. And a blank line means the declaration is two lines away, out of reach. In every case the result is simply no annotation, and no error, which is why the chapter tells you to check with \`viscosity explain\`.`,
+- \`const ANN = new RegExp(...)\` builds the annotation pattern from the chapter, with \`(\\d+)\` in the brackets so only digits are captured. It is written as a string, so every backslash is doubled.
+- \`const DECL = new RegExp(...)\` matches a declaration: optional spaces, \`const\`, \`let\` or \`var\`, at least one space, and a name, captured as group 1.
+- \`const lines = src.split('\\n');\` cuts the source into lines; index \`i\` holds line \`i + 1\`.
+- \`const out = {};\` is the result, name to layout.
+- \`lines.forEach((line, i) => {\` visits each line with its index.
+- \`const at = line.indexOf('//');\` finds the comment; \`if (at < 0) return;\` skips lines with none (inside \`forEach\`, \`return\` moves on to the next line).
+- \`const m = ANN.exec(line.slice(at));\` runs the pattern on the comment only; \`if (!m) return;\` skips comments that do not match, which is where \`SoA\` and \`soap\` fall out, silently.
+- \`let lay = m[1];\` is the layout word, and \`if (lay === 'aosoa') lay += '(' + (m[2] ?? 8) + ')';\` adds the block size, using 8 when \`m[2]\` is \`undefined\`.
+- \`const own = line.slice(0, at).trim() === '';\` is true when only spaces come before the comment.
+- \`const j = own ? i + 1 : i;\` picks the one line to look at: the next, or this one.
+- \`const d = DECL.exec(lines[j] ?? '');\` reads that line (\`?? ''\` covers a comment on the last line, where \`lines[j]\` does not exist), and \`if (d) out[d[1]] = lay;\` records the name.
+
+A blank line between comment and declaration needs no code: line \`j\` is blank, \`DECL\` fails, and nothing is recorded, exactly as in the real plugin.
+
+**Common wrong attempts.**
+
+- Adding the \`i\` flag to the pattern makes it case-insensitive, so \`@viscosity SoA\` is accepted (with the layout \`SoA\`, which is not one); the real pattern is case-sensitive.
+- Always looking at the next line misses a trailing comment's own declaration and annotates the line below instead.
+- Looking at both lines for every comment lets a trailing comment on line 1 reach line 2 as well; an older version of the plugin did exactly this, and a corpus test (\`trailing_annotation.js\`) now pins the stricter rule.`,
     wrong: [
       {
         code: `const ANN = new RegExp(
@@ -226,7 +236,7 @@ function findAnnotations(src) {
     optional: true,
     title: 'Refuse a bad AoSoA annotation',
     prompt:
-      'Write `checkAnn(ann, fields, num)`. `ann` is `{ layout, block }` (block may be `undefined`), `fields` lists the field names, and `num` is a `Set` of the provably numeric ones. Return `null` if the annotation is usable. For `aosoa`, return `\'fields id, tag may hold non-numbers\'` (the non-numeric fields in order, joined by `, `) if any field isn’t numeric, or else `\'block size must be a power of two\'` if the block (default 8) isn’t one.',
+      'Write `checkAnn(ann, fields, num)`. `ann` is `{ layout, block }` (block may be `undefined`), `fields` lists the field names, and `num` is a `Set` of the provably numeric ones. Return `null` if the annotation is usable. For `aosoa`, check in the planner’s order: first return `\'block size must be a power of two\'` if the block (default 8) isn’t one; then return `\'fields id, tag may hold non-numbers\'` (the non-numeric fields in order, joined by `, `) if any field isn’t numeric.',
     starter: `function checkAnn(ann, fields, num) {
   return null;
 }`,
@@ -234,16 +244,18 @@ function findAnnotations(src) {
   if (ann.layout !== 'aosoa') {
     return null;
   }
+  const b = ann.block ?? 8;
+  const pow2 = b >= 2
+    && Number.isInteger(Math.log2(b));
+  if (!pow2) {
+    return 'block size must be a '
+      + 'power of two';
+  }
   const bad = fields.filter(
     (f) => !num.has(f));
   if (bad.length > 0) {
     return 'fields ' + bad.join(', ')
       + ' may hold non-numbers';
-  }
-  const b = ann.block ?? 8;
-  if (!Number.isInteger(Math.log2(b))) {
-    return 'block size must be a '
-      + 'power of two';
   }
   return null;
 }`,
@@ -277,22 +289,37 @@ test('the default block is 8', () => {
       'Only `aosoa` has conditions; return `null` at once for anything else.',
       '`Math.log2(b)` is a whole number exactly when `b` is a power of two.',
     ],
-    walkthrough: `These are the two conditions from the chapter. The numeric check mirrors the planner in \`core/src/plan.ts\`, which refuses an AoSoA annotation with “annotated aosoa, but fields … may hold non-numbers”: an AoSoA block is a single \`Float64Array\`, so a string has nowhere to go. The power-of-two check is needed because the generated index arithmetic uses shifts and masks, as chapter 260 shows. The planner makes it too (before the numeric one), and keeps the collection with “annotated aosoa(6), but the block size must be a power of two (2, 4, 8, 16, ...)”, just as this function returns a message instead of failing.`,
+    walkthrough: `**How to think about it.** Only \`aosoa\` has conditions, so deal with everything else first and get it out of the way. Then follow the planner's own order in \`core/src/plan.ts\`: the block size is judged before the fields (the real planner also checks that N is at most 65536 first; this exercise leaves that rung out). Each check returns its message at once, so the first failure is the one reported.
+
+**The solution, line by line.**
+
+- \`if (ann.layout !== 'aosoa') { return null; }\` accepts \`aos\` and \`soa\` straight away: \`soa\` can always give a non-number a plain-array column.
+- \`const b = ann.block ?? 8;\` uses 8 when no size was written, as the planner does.
+- \`const pow2 = b >= 2 && Number.isInteger(Math.log2(b));\` is the planner's power-of-two test: \`Math.log2(8)\` is \`3\`, a whole number, while \`Math.log2(6)\` is about \`2.585\`; and \`b >= 2\` rules out 1 (whose \`log2\` is \`0\`, a whole number, but a block of one element is no block at all).
+- \`if (!pow2)\` returns the message at once.
+- \`const bad = fields.filter((f) => !num.has(f));\` keeps, in order, the fields that are not provably numeric.
+- \`if (bad.length > 0)\` returns \`'fields ' + bad.join(', ') + ' may hold non-numbers'\`, the same wording as the real reason "annotated aosoa, but fields id may hold non-numbers"; an AoSoA block is one \`Float64Array\`, so a string has nowhere to go.
+- \`return null;\` means the annotation is usable.
+
+**Common wrong attempts.**
+
+- Testing \`ann.block % 2 !== 0\`: even is not the same as a power of two, so 6 passes; and a missing block gives \`undefined % 2\`, which is \`NaN\`, so the default 8 is wrongly refused.
+- Leaving out \`b >= 2\` accepts a block of 1, since \`Math.log2(1)\` is \`0\`; the planner asks for at least 2.`,
     wrong: [
       {
         code: `function checkAnn(ann, fields, num) {
   if (ann.layout !== 'aosoa') {
     return null;
   }
+  if (ann.block % 2 !== 0) {
+    return 'block size must be a '
+      + 'power of two';
+  }
   const bad = fields.filter(
     (f) => !num.has(f));
   if (bad.length > 0) {
     return 'fields ' + bad.join(', ')
       + ' may hold non-numbers';
-  }
-  if (ann.block % 2 !== 0) {
-    return 'block size must be a '
-      + 'power of two';
   }
   return null;
 }`,
@@ -316,16 +343,8 @@ export const quiz = [
     q: 'A collection is passed to `console.log` and annotated `// @viscosity soa`. What does explain say?',
     options: [
       { t: '“annotated @viscosity soa at line N”, and it becomes SoA.', why: 'Annotations come after the safety rung. They can’t make an observable change safe.' },
-      { t: 'An error: annotations can’t be used on logged arrays.', why: 'There is no error. The collection is simply kept, with a reason.' },
+      { t: 'An error: annotations can’t be used on logged arrays.', why: 'There is no error. The collection is kept, with a reason.' },
       { t: '“unsafe: the array is passed to a method call…”, and it is kept.', correct: true, why: 'Yes. Safety is checked first, and nothing overrides it.' },
-    ],
-  },
-  {
-    q: 'What does `// @viscosity SoA` do?',
-    options: [
-      { t: 'Nothing: it doesn’t match, and there is no warning.', correct: true, why: 'The pattern is case-sensitive. Check with viscosity explain that annotations landed.' },
-      { t: 'The same as `// @viscosity soa`.', why: 'The layout names are matched exactly, in lower case.' },
-      { t: 'A compile error naming the bad layout.', why: 'Viscosity never sees it as an annotation, so there is nothing to report.' },
     ],
   },
   {

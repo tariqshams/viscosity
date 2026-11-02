@@ -22,7 +22,7 @@ type S = { cur: number; passed: number; stop: number | null; note: string };
 const STATES: S[] = [
   { cur: -1, passed: 0, stop: null, note: 'Every collection that discovery found walks down this ladder. Each rung asks one question. The first “yes” decides the layout and records a reason; a collection that answers “no” to every rung becomes struct of arrays.' },
   { cur: 0, passed: 0, stop: null, note: 'Safety comes first, and nothing overrides it. If the safety analysis left any bailout, the collection stays an array of objects: “unsafe: the array is passed to a method call at line 5”.' },
-  { cur: 1, passed: 0, stop: null, note: 'Next, the programmer’s word. A // @viscosity comment above the declaration picks the layout directly: aos keeps it, soa or aosoa(N) transforms it, and the rungs below are skipped (chapter 255).' },
+  { cur: 1, passed: 0, stop: null, note: 'Next, the programmer’s word. A // @viscosity comment above the declaration picks the layout directly: aos keeps it, soa or aosoa(N) transforms it, and the rungs below are skipped (see the chapter Opting in with @viscosity).' },
   { cur: 2, passed: 0, stop: null, note: 'With --mode opt-in, only annotated collections are touched. Anything that got this far without an annotation is kept: “opt-in mode: not annotated”.' },
   { cur: 3, passed: 0, stop: null, note: 'Python collections are kept unless you pass --python-auto, because in CPython the columns measured slower per element. The same ladder serves both languages; only this verdict differs.' },
   { cur: 4, passed: 0, stop: null, note: 'Now the cost model proper. If no field is provably a number, there would be no Float64Array columns at all: “no field is provably numeric, so there are no typed columns to gain”.' },
@@ -58,12 +58,12 @@ export default function PlanLadder() {
               </Box>
               {k < st.passed && <T x={258} y={y + 14} size={11} anchor="end" fill={tok('safe')}>no</T>}
               <Arrow x1={268} y1={y + 14} x2={318} y2={y + 14} color={k < st.passed ? tok('ink', 0.3) : color(k)} width={st.cur === k || st.stop === k ? 2.5 : 1.5} />
-              <T x={290} y={y + 6} size={9} anchor="middle" fill={tok('muted')}>yes</T>
+              <T x={290} y={y + 6} size={11} anchor="middle" fill={tok('muted')}>yes</T>
               <Box x={320} y={y + 2} w={74} h={24} stroke={k < st.passed ? tok('ink', 0.3) : color(k)} fill={fill(k)}>
                 <T x={357} y={y + 14} size={11} mono anchor="middle">{r.out}</T>
               </Box>
               {k < RUNGS.length - 1 && <Arrow x1={60} y1={y + 28} x2={60} y2={y + H} color={tok('ink', 0.4)} width={1.5} />}
-              {k < RUNGS.length - 1 && <T x={68} y={y + 32} size={9} fill={tok('muted')}>no</T>}
+              {k < RUNGS.length - 1 && <T x={68} y={y + 32} size={11} fill={tok('muted')}>no</T>}
             </g>
           );
         })}

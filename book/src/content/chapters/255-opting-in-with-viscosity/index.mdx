@@ -3,38 +3,56 @@ n: 255
 day: 64
 part: VIII
 title: 'Opting in with @viscosity'
-tagline: 'Sometimes you know what the compiler can only guess. One comment above a declaration tells Viscosity to leave a collection alone, or to transform it whatever the cost model says, and the program stays plain JavaScript either way.'
+tagline: 'Sometimes you know what the compiler can only guess. One comment above a declaration tells Viscosity to leave a collection alone, or to change it whatever the cost model says, and the program stays plain JavaScript either way.'
 objectives:
-  - Write the three `@viscosity` annotations and say exactly which declarations each one reaches.
-  - Predict what an annotation can override (the cost model) and what it can’t (safety).
+  - Write the three `@viscosity` annotations and say exactly which declaration each one reaches.
+  - Predict what an annotation can overrule (the cost model) and what it cannot (safety).
   - Use opt-in mode to transform only the collections you mark.
-  - 'Avoid the silent mistakes: wrong case, a blank line, a trailing comment above the declaration.'
+  - 'Avoid the silent mistakes: wrong case, a blank line, a comment on the wrong line.'
 introduces: [annotation]
 uses: [cost-model, safety-analysis, bailout, collection-discovery, viscosity-pipeline, language-plugin, parser-adapter, aosoa, aos-vs-soa, typed-array, source-location, string-methods, map, object, array]
 sources: [llvm-vectorizers, ispcdocs]
 ---
 import AnnotationSteps from '../../../components/diagrams/ch255/AnnotationSteps';
+import WhereItSits from '../../../components/diagrams/ch255/WhereItSits';
 import Playground from '../../../components/playground/Playground';
 
-## You know something it doesn’t
+## You know something it doesn't
 
-The cost model guesses. Sometimes you know better. The test data has 10
-particles, but in production there are two million. Or you’re chasing a
-bug and want `ps` to stay exactly as you wrote it. Or the collection is
-built in a function, so the size is unknown, and you know it is tiny.
-
-In each case the fix is one comment:
+The cost model from the last chapter guesses from what the code looks
+like, and sometimes you know better: the test data has 10 particles but
+production has two million; or you are chasing a bug and want `ps` left
+exactly as you wrote it; or the array is filled inside a function, so
+the size is "unknown" (which passes), and you know it is tiny. In each
+case the fix is one comment on the line above the declaration:
 
 ```js
 // @viscosity aos
 const ps = [];
 ```
 
-<Callout kind="intuition">
-A sticker on a moving box: “fragile”, or “open first”. The movers still
-decide how to load the van, but for this box they follow the sticker.
-And if you never hire movers, the sticker does no harm.
-</Callout>
+<Analogy title="a sticker on a removal box">
+The removal crew decides how to load the van, but a box marked "fragile"
+or "open first" gets handled the way the sticker says; and if you never
+hire a crew, the sticker does no harm at all.
+<span slot="breaks">A crew reads a sticker wherever it is on the box;
+Viscosity reads an annotation only in one exact place (the line above,
+or the end of the same line), and a sticker in the wrong place is
+ignored without a word.</span>
+</Analogy>
+
+<Analogy title="a do-not-disturb sign">
+Housekeeping has its own plan for which rooms to clean, and the sign on
+your door overrules that plan for your room; however, it does not stop
+the fire alarm, which goes into every room whatever the sign says.
+<span slot="breaks">A hotel guest can hang a sign for any reason;
+Viscosity accepts only three words, and an `aosoa` sign it cannot honour
+(a bad block size, a field that is not a number) is turned down, with a
+reason, rather than followed.</span>
+</Analogy>
+
+The fire alarm in that picture is safety, and the plan is the cost
+model: an annotation overrules the guess, never the proof.
 
 ## Three words
 
@@ -46,90 +64,147 @@ There are three annotations, one per layout:
 // @viscosity aosoa(8)  AoSoA, blocks of 8
 ```
 
-The JavaScript plugin finds them with one regular expression, in
-`frontend-js/src/index.ts` (one line in the source, split here):
+The JavaScript plugin finds them with one regular expression, `ANN`
+in `frontend-js/src/index.ts` (one line in the source, split here):
 
 ```js
 /@viscosity\s+(aosoa|soa|aos)\b
   (?:\(([^)]*)\))?/
 ```
 
-That is: the word `@viscosity`, some space, one of the three layout
-names, a word boundary, and optionally whatever is in parentheses, the
-block size. The planner checks that it is a number later. The
-`\b` stops `@viscosity soap` from being read as `soa`. Try the pattern
-on a few comments:
+Read it left to right: the word `@viscosity`; one or more spaces (`\s+`);
+one of the three layout names, captured as `m[1]` (`aosoa` is listed
+first, so it is tried before its shorter prefix `aos`); a word boundary
+(`\b`), so that `@viscosity soap` is not read as `soa`; and, optionally,
+whatever sits in parentheses, captured as `m[2]`. The plugin accepts any
+text there and lets the planner judge it later. Try it on a few comments:
 
 <Run id="pattern" />
 
 <Callout kind="definition">
 An **annotation** is a comment (or other marker) that gives the compiler
-extra instructions without changing what the program means. Viscosity’s
-annotations name a layout for one collection. A program with
+extra instructions without changing what the program means. A
+Viscosity annotation names a layout for one collection; a program with
 annotations is still ordinary JavaScript, and runs the same with or
 without Viscosity.
 </Callout>
 
-<Prompts ids={['ann-what', 'ann-forms', 'ann-b', 'ann-comment-why']} />
+<Formal title="The annotation, as a grammar">
+
+```text
+annotation ::= "@viscosity" space+ layout
+               [ "(" text ")" ]
+layout     ::= "aosoa" | "soa" | "aos"
+```
+
+<span slot="read">An annotation is the word @viscosity, then one or
+more spaces, then a layout, then optionally some text in brackets
+(square brackets in the rule mean "optional", and + means "one or
+more"); a layout is one of the three words, spelled exactly in lower
+case.</span>
+</Formal>
+
+<Prompts ids={['ann-what', 'ann-forms', 'ann-b']} />
 
 ## Which declaration?
 
 A comment has no idea which variable it is about. While parsing, acorn
-reports every comment with the line it ends on. The plugin then looks
-at that line of the source. If the comment is alone on its line, it
-applies to every declaration on the next line. If code comes before
-it (a trailing comment), it applies only to declarations on its own
-line (simplified):
+reports every comment with the line it ends on, and the plugin decides
+from the line itself (trimmed slightly):
 
 ```ts
 for (const cm of comments) {
   const m = ANN.exec(cm.value);
   if (!m) continue;
-  // nothing but the comment on its line?
   const own = /^\s*(\/\/|\/\*|\*)/
-    .test(srcLines[cm.line - 1]);
+    .test(srcLines[cm.line - 1] ?? '');
   for (const [jb, id] of bindingOf) {
     const line = jb.decl?.loc?.start.line;
     if (own ? line === cm.line + 1
             : line === cm.line)
       annotations.set(id, {
-        layout: m[1],
-        blockSize: m[2] ? Number(m[2])
-          : undefined,
-        line: cm.line });
+        layout: m[1], blockText: m[2],
+        line: cm.line, blockSize: … });
   }
 }
 ```
 
-Step through a file with four comments, three of which look like
-annotations. (The full program also fills each array with 100 points
-and loops over them.)
+Lines 2 and 3 skip any comment that does not match. Lines 4 and 5 ask
+whether the comment is **alone on its line**: does the line start, after
+spaces, with `//`, `/*` or `*`? Line 6 walks every declared name, and
+line 8 picks the target: a comment alone on its line annotates
+declarations on the *next* line, and a trailing comment (code before it)
+annotates only its *own* line. The record keeps the layout, the text in
+brackets, the comment's line for explain, and `blockSize`, which is the
+number when the text is all digits and `undefined` otherwise. Step
+through a file with four comments that look like annotations:
 
 <AnnotationSteps client:visible />
 
-<Callout kind="pitfall">
-Annotations fail silently. `@viscosity SoA` is just a comment, and so is
-an annotation with a blank line before its declaration. Neither gives a
-warning. The placement rule is strict in the other direction too. A
-comment at the end of line 3 annotates line 3 and nothing else, so
-`const qs = []; // @viscosity aos` keeps `qs` but says nothing about a
-declaration on line 4. To annotate line 4, the comment must sit alone
-on line 3. (Earlier versions let a trailing comment reach the next
-line as well; a corpus test now pins the rule down.) Run
-`viscosity explain` and look for “annotated @viscosity … at line N” to
-check that an annotation landed where you meant.
-</Callout>
+<Examples of="annotation">
+
+```js
+// @viscosity aos
+const ps = [];
+// → ps: annotated @viscosity aos
+//   at line 1 (kept as objects)
+```
+
+```js
+const ps = []; // @viscosity aos
+const qs = [];
+// → ps kept as told; qs is not
+//   annotated, and becomes soa
+```
+
+```js
+// @viscosity soa
+const pts = [{ x: 1, y: 2 },
+  { x: 3, y: 4 }, { x: 5, y: 6 }];
+// → struct of arrays, "about 3
+//   elements": the size rule is skipped
+```
+
+</Examples>
+
+The first is the plain case: alone on line 1, it reaches `ps` on line 2,
+which (filled with 1,000 particles and looped over) would otherwise have
+become SoA. In the second the comment trails `ps` on line 1, so it
+reaches only `ps`; `qs` on the next line goes down the ladder on its own
+and is transformed. The third is the case the cost model would refuse,
+three points, and the annotation wins (both programs also fill and loop
+over their arrays; the verdicts are the real explain output).
+
+The common mistake is a comment that looks right and does nothing:
+
+```js
+// @viscosity SoA
+const ps = [{ x: 1 }, { x: 2 }];
+// → kept: about 2 elements: below
+//   the 64-element threshold
+```
+
+With `soa` in lower case the same program is annotated and transformed;
+with `SoA` the pattern does not match, the comment is only a comment,
+and the size rule keeps the array. There is no warning, and a blank line
+between the comment and the declaration fails the same way. So check:
+`viscosity explain` names every annotation that landed ("annotated
+@viscosity … at line N").
 
 <Prompts ids={['ann-where', 'ann-case']} />
 
-## What an annotation can and can’t do
+## What an annotation can and can't do
 
-Look back at the planner’s ladder from chapter 254. The annotation is
-the second rung: below safety, above every cost rule.
+On the planner's ladder from *The cost model*, an annotation sits on the
+second rung: below safety, above every cost rule.
+
+<Figure caption="An annotation skips the cost rules beneath it, and can never reach past safety above it." takeaway="Annotations overrule guesses, not proofs.">
+  <WhereItSits />
+</Figure>
 
 **`aos` stops a transform.** This program becomes SoA. Add
-`// @viscosity aos` on the line above `const ps`, and watch the
-explanation and the compiled code change. Then run both:
+`// @viscosity aos` on the line above `const ps`, then watch the
+explanation and the compiled code change, and run both:
 
 <Playground client:visible title="Stop the transform" initial={`const ps = [];
 for (let i = 0; i < 1000; i++)
@@ -138,72 +213,39 @@ for (let i = 0; i < ps.length; i++)
   ps[i].x += ps[i].vx;
 console.log(ps[7].x);`} />
 
-**`soa` skips the cost rules.** The corpus file `literal_init.js` has
-three points. The cost model would keep them, but the annotation wins,
-and the size is only reported:
+**`soa` skips the cost rules**, all three: the size (as in the third
+example), the loop rule and even the numeric rule, so an annotated
+collection with only a string field gets a plain-array column for it.
 
-```
-pts (line 3) {x, y} → struct of arrays
-  · annotated @viscosity soa at line 2
-  · loop at line 5 in <module>()
-    touches 1 of 2 fields (x)
-  · typed Float64Array columns for
-    all 2 fields
-  · about 3 elements
-  · 1 of 3 element accesses proven
-    in bounds
-```
-
-It even skips the numeric rule. An annotated collection with only a
-string field gets a plain-array column for it.
-
-**`aosoa(N)` has two conditions.** Every field must be provably numeric,
-because the whole block is one `Float64Array`. Otherwise the annotation
-is refused with a reason:
-
-```
-es (line 2) {x, id} → kept as array of
-  objects
-  · annotated aosoa, but fields id may
-    hold non-numbers
-```
-
-And N must be a power of two, at most 65536 (the default is 8). The
-planner checks this too, and keeps the collection with a reason rather
+**`aosoa(N)` has conditions**, checked in this order, because the whole
+block is one `Float64Array` indexed with shifts (as *AoSoA code
+generation* shows). N must be at most 65536; it must be a power of two
+(2, 4, 8, …), and a missing `(N)` means 8; and every field must be
+provably numeric. Each failure keeps the collection with a reason rather
 than stopping the compile:
 
+```text
+annotated aosoa(6), but the block size
+  must be a power of two (2, 4, 8, 16, ...)
+annotated aosoa, but fields id may
+  hold non-numbers
 ```
-ps (line 2) {x, y} → kept as array of
-  objects
-  · annotated aosoa(6), but the block
-    size must be a power of two (2, 4,
-    8, 16, ...)
-```
 
-Chapter 260 explains why.
+**Nothing overrides safety.** Annotate `ps` with `soa` and then write
+`console.log(ps)`, and explain still says "unsafe: the array is passed
+to a method call at line 7". An annotation tells the cost model what to
+think; it cannot make an observable change invisible.
 
-**Nothing overrides safety.** Annotate a collection and then pass it to
-`console.log`, and you still get “unsafe: the array is passed to a
-method call”. The annotation tells the cost model what to think. It
-can’t make an observable change invisible.
-
-<Prompts ids={['ann-aos', 'ann-soa-skips', 'ann-aosoa', 'ann-unsafe']} />
+<Prompts ids={['ann-soa-skips', 'ann-aosoa', 'ann-unsafe']} />
 
 ## Opt-in mode
 
 By default Viscosity decides everything, and annotations adjust it. With
-`--mode opt-in` it flips: only annotated collections are transformed.
-The corpus file `opt_in_mode.js` has two identical arrays, one marked:
+`--mode opt-in` it flips: only annotated collections are transformed. The
+corpus file `opt_in_mode.js` has two identical arrays of 300 records, and
+marks only the first with `// @viscosity soa`:
 
-```js
-// @viscosity soa
-const marked = [];
-const unmarked = [];
-```
-
-```
-$ viscosity explain opt_in_mode.js \
-    --mode opt-in
+```text
 marked (line 3) {v} → struct of arrays
   · annotated @viscosity soa at line 2
   …
@@ -212,24 +254,24 @@ unmarked (line 4) {v} → kept as array
   · opt-in mode: not annotated
 ```
 
-Opt-in mode suits adopting Viscosity a little at a time, or a team that
-wants every layout change to be visible in the source and in code
-review. Python’s default is close to opt-in already: there the planner
-keeps lists unless you annotate them, for the reasons in chapter 254.
+That suits adopting Viscosity a little at a time, or a team that wants
+every layout change to show in the source and in code review. Python is
+already close to opt-in: its planner keeps lists unless you annotate
+them, for the reason *The cost model* gave.
 
 <Prompts ids={['ann-optin']} />
 
 <Callout kind="engine" label="Under the hood">
 Compilers have long taken hints this way. Clang accepts
 `#pragma clang loop vectorize(enable)` before a loop, and can be told a
-vector width, overriding its vectorizer’s cost model for that one
-loop<Cite id="llvm-vectorizers" />. Intel’s ISPC goes further and puts
-the layout in the type: `soa<8> Point pts[...]` declares an array stored
-eight elements at a time, field by field, while code still writes
-`pts[10].x`<Cite id="ispcdocs" />. Viscosity sits between the two. Its
-hint names a layout, like ISPC’s, and sits on one declaration, like a
-pragma on one loop. But it lives in a comment, so every JavaScript
-engine and tool reads the program exactly as before.
+vector width, overruling its vectorizer's cost model for that one
+loop<Cite id="llvm-vectorizers" />. Intel's ISPC puts the layout in the
+type: `soa<8> Point pts[...]` stores an array eight elements at a time,
+field by field, while code still writes `pts[10].x`<Cite id="ispcdocs" />.
+Viscosity sits between the two: its hint names a layout, like ISPC's,
+and sits on one declaration, like a pragma on one loop; but it lives in
+a comment, so every JavaScript engine and tool reads the program as
+before.
 </Callout>
 
 ## Your turn
@@ -240,18 +282,15 @@ engine and tool reads the program exactly as before.
 
 ## What you learned
 
-- An **annotation** is a comment with instructions for the compiler.
-  Viscosity has three: `@viscosity aos`, `soa` and `aosoa(N)`.
-- A matching comment alone on its line applies to the next line; a
-  trailing comment applies only to its own line. Wrong case or a blank
-  line, and it silently does nothing.
-- Annotations sit below safety and above the cost model: `aos` stops a
+- An **annotation** is a comment with instructions for the compiler:
+  `@viscosity aos`, `soa` and `aosoa(N)`.
+- Alone on its line, it reaches the next line; trailing, only its own
+  line. Wrong case or a blank line, and it silently does nothing, so
+  check with `viscosity explain`.
+- It sits below safety and above the cost model: `aos` stops a
   transform, `soa` skips the cost rules, and nothing forces an unsafe
   change.
-- `aosoa(N)` needs every field numeric, and N a power of two up to
-  65536.
+- `aosoa(N)` needs N a power of two up to 65536, and every field numeric.
 - `--mode opt-in` transforms only annotated collections.
-- Check with `viscosity explain`: every annotation that landed is named
-  in the reasons.
 
 <Quiz />

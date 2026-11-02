@@ -56,7 +56,7 @@ function Column({ y, cap, len, label, faded, peek }: { y: number; cap: number; l
               fill={used ? tok('f1', 0.85) : hit ? tok('danger', 0.15) : 'transparent'}
               stroke={hit ? tok('danger') : used ? tok('f1') : tok('line')} strokeWidth={1.2}
               strokeDasharray={used ? undefined : '3 3'} />
-            <T x={X0 + k * SW + SW / 2 - 1} y={y + 13} size={9} mono anchor="middle" fill={used ? tok('paper') : tok('muted')}>{used ? VAL(k) : 0}</T>
+            <T x={X0 + k * SW + SW / 2 - 1} y={y + 13} size={11} mono anchor="middle" fill={used ? tok('paper') : tok('muted')}>{used ? VAL(k) : 0}</T>
           </g>
         );
       })}

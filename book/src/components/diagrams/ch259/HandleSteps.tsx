@@ -60,7 +60,7 @@ export default function HandleSteps() {
         </Box>
         {st.keep && (
           <Box x={8} y={92} w={84} h={40} fill={tok('panel')}>
-            <T x={16} y={104} size={10} mono fill={tok('muted')}>keep</T>
+            <T x={16} y={104} size={11} mono fill={tok('muted')}>keep</T>
             <T x={16} y={122} size={12} mono>[ ● ]</T>
           </Box>
         )}

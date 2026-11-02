@@ -26,10 +26,6 @@ export const prompts = {
     q: 'Why should a handle hold the container rather than the column `c.x`?',
     a: '`grow()` replaces columns with bigger ones; a saved column would go stale.',
   },
-  'im-accessor': {
-    q: 'What runs when code assigns `h.x = 5` and `H` has `set x(v)`?',
-    a: 'The setter, with `v` = 5. Here it writes `this.c.x[this.i]`.',
-  },
   'im-identity': {
     q: 'What does a handle design need so that `ps[0] === ps[0]` stays true?',
     a: 'A cache that hands out the same handle for the same index every time.',
@@ -37,10 +33,6 @@ export const prompts = {
   'im-cache-cost': {
     q: 'Why does a handle cache eat into SoA’s gains?',
     a: 'It brings back one object per element handed out, and every field access becomes an accessor call.',
-  },
-  'im-printing': {
-    q: 'Give one way a cached handle still differs from the original object.',
-    a: '`Object.keys` gives `c`, `i` instead of `x` (also JSON, spreading, printing and the prototype differ).',
   },
   'im-index-handle': {
     q: 'What does Viscosity compile `const p = ps[i]` into when `p` is only used for field access?',
@@ -151,13 +143,26 @@ test('still right after the column grows', () => {
       'Otherwise make `new H(c, i)`, store it in `c.hs[i]`, and return it.',
       'Keep the cache on the container, not in a variable outside: two containers both have an element 0.',
     ],
-    walkthrough: `The handle class already keeps **aliasing** right: its accessors read and write \`c.x[i]\`, so the value lives only in the column. What it can’t do alone is keep **identity** right, because \`new H(c, 0)\` twice makes two objects.
+    walkthrough: `**How to think about it.** The handle class already keeps **aliasing** right: its accessors read and write \`c.x[i]\`, so the value lives only in the column. What it cannot do alone is keep **identity** right, because calling \`new H(c, 0)\` twice makes two different objects, and \`===\` compares objects by reference. So the job is "make a handle only the first time; every later time, give back the one you made". That is a cache, and the questions are where to keep it and what to key it by. Key it by the index, and keep it on the container, because element 0 of one container and element 0 of another are different elements.
 
-- **Cache per container.** \`c.hs[i]\` is the one handle for element \`i\` of \`c\`. Look there first; only make a new handle when the slot is empty.
-- **Why not one global cache?** Index 0 of one container and index 0 of another are different elements. A shared cache would hand out a handle to the wrong container.
-- **Why it survives growth.** The handle holds \`c\`, not \`c.x\`, so when the column is replaced by a bigger one the accessors find the new column.
+**The solution, line by line.**
 
-Notice the price: after a loop that hands out every element, \`c.hs\` holds one object per element. That is the array of objects we set out to remove, plus an accessor call on every field access. That trade is why Viscosity refuses instead.`,
+- \`function at(c, i) {\` takes the container and the index.
+- \`let h = c.hs[i];\` looks in this container's cache; for an index never asked for, the slot is empty and \`h\` is \`undefined\`.
+- \`if (!h) {\` runs only the first time element \`i\` is asked for.
+- \`h = new H(c, i);\` makes the handle: it holds the container and the index, and nothing else.
+- \`c.hs[i] = h;\` remembers it, so every later call finds it.
+- \`return h;\` gives back the one handle for element \`i\`, new or cached.
+
+Why it survives growth: the handle holds \`c\`, not \`c.x\`, so when the column is replaced by a bigger one (the last test does exactly that), the accessors look up \`this.c.x\` again and find the new column.
+
+Notice the price: after a loop that hands out every element, \`c.hs\` holds one object per element. That is the array of objects we set out to remove, plus an accessor call on every field access, and that trade is why Viscosity refuses instead.
+
+**Common wrong attempts.**
+
+- One cache for every container (a \`hs\` array outside the function): element 0 of the second container gets the handle made for the first, which reads the wrong column.
+- Caching a snapshot, \`{ x: c.x[i] }\`: \`===\` now works, but a write changes the copy, not \`c.x[i]\`, so aliasing is broken.
+- No cache at all (the starter): aliasing works, but \`at(c, 0) === at(c, 0)\` is \`false\`.`,
     wrong: [
       {
         code: `${H}
@@ -236,7 +241,21 @@ test('writes reach the column', () => {
       '`c.hs.get(i)` returns `undefined` when there is no handle yet.',
       'Only when you create a handle: `c.hs.set(i, h)` and `c.made++`.',
     ],
-    walkthrough: `A Map only holds the indexes that were asked for, so a million-element collection that hands out two elements stores two handles, not a million slots. The counter shows the real cost of identity preservation: one allocation per *distinct* element handed out. A loop that touches every element as an object still pays for all of them.`,
+    walkthrough: `**How to think about it.** An array cache with one slot per index is fine for a small collection, but most elements of a big one may never be handed out as objects. A \`Map\` holds only the keys that were set, so it costs nothing for untouched indexes. Counting the handles you create shows the real price of identity preservation: one allocation per *distinct* element handed out.
+
+**The solution, line by line.**
+
+- \`let h = c.hs.get(i);\` asks the map; \`get\` returns \`undefined\` for a key never set.
+- \`if (!h) {\` runs the first time only.
+- \`h = new H(c, i);\` makes the handle, \`c.hs.set(i, h);\` stores it under its index, and \`c.made++;\` counts one allocation.
+- \`return h;\` returns the cached or new handle.
+
+A million-element collection that hands out two elements stores two handles, not a million slots; but a loop that touches every element as an object still pays for all of them.
+
+**Common wrong attempts.**
+
+- Incrementing \`c.made\` on every call counts requests, not handles; the count must sit inside the branch that creates one.
+- Using an object \`{}\` as the cache works for indexes, but a \`Map\` says what it is for and has \`get\`, \`set\` and \`size\`.`,
     wrong: [
       {
         code: `${H}
@@ -280,15 +299,6 @@ export const quiz = [
       { t: 'Nothing; it is just faster.', why: 'It is faster until the first grow, then silently wrong.' },
       { t: 'It breaks `===`.', why: 'Identity is about the handle objects, not what they store.' },
       { t: 'It uses more memory than holding the container.', why: 'Both are one reference. The problem is correctness after growth.' },
-    ],
-  },
-  {
-    q: 'What does a handle cache cost?',
-    options: [
-      { t: 'Nothing: handles are tiny.', why: 'Each is still an object with a header, allocated once per element handed out.' },
-      { t: 'One extra column.', why: 'The cache holds objects, not values.' },
-      { t: 'One object per element handed out, plus an accessor call per field access.', correct: true, why: 'Which brings back much of what SoA was meant to remove.' },
-      { t: 'A copy of every column.', why: 'Handles refer to the columns; they don’t copy them.' },
     ],
   },
   {

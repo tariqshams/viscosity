@@ -5,10 +5,6 @@ export const prompts = {
     q: 'What does a compiler’s cost model estimate?',
     a: 'Whether a (safe) transformation will pay off, so the compiler only makes the profitable ones.',
   },
-  'cm-safe-vs-pay': {
-    q: 'Why doesn’t Viscosity transform every collection it can prove safe?',
-    a: 'A change has costs (generated code, rewritten accesses, harder debugging), and for small or rarely used collections nothing pays them back.',
-  },
   'cm-order': {
     q: 'Which rule does `plan()` check first, and what can override it?',
     a: 'Safety: any bailout keeps the collection as objects. Nothing overrides it, not even an annotation.',
@@ -20,14 +16,6 @@ export const prompts = {
   'cm-loop': {
     q: 'Why does Viscosity keep a collection whose fields no loop reads or writes?',
     a: 'Only repeated work can repay the cost of changing the layout.',
-  },
-  'cm-threshold': {
-    q: 'What is the planner’s default minimum size, and which flag changes it?',
-    a: '64 elements; `--min-size`.',
-  },
-  'cm-small': {
-    q: 'In this book’s benchmark run, why did SoA gain less at 1,000 elements than at 100,000?',
-    a: 'At 1,000 elements the data already fits in cache, so the array of objects wastes less time per element.',
   },
   'cm-estimate': {
     q: 'How does the analysis estimate a collection’s size statically?',
@@ -137,13 +125,24 @@ test('a measured size wins', () => {
       'For the size, prefer the measured value: `c.measured ?? c.size`.',
       'In JavaScript, `null < 64` is `true`, because `null` becomes `0`. Check for `null` before comparing.',
     ],
-    walkthrough: `The ladder is a chain of early returns, and the order is the whole design.
+    walkthrough: `**How to think about it.** The planner is a list of questions asked in a fixed order, where the first "yes" ends the conversation. In code, that shape is a chain of \`if\` statements, each one returning straight away; the only real decision is the order, so before writing anything, write the order down: unsafe, annotated, opt-in, no numeric field, no loop, too small, and otherwise soa. Then ask, for each rung, what data in \`c\` or \`opts\` answers it.
 
-Bailouts come first because safety is not negotiable: an annotation saying soa on an unsafe collection would change what the program does. The annotation comes next because it is the programmer overruling the model, so none of the cost rules may see an annotated collection. That is why an annotated three-element collection is still soa.
+**The solution, line by line.**
 
-Opt-in mode only lets annotated collections through, and they have already returned, so anything reaching that line is kept.
+- \`if (c.bailouts.length > 0) {\` asks the safety question first. Any bailout at all means the layout change could be noticed, so \`return ['aos', 'unsafe'];\` keeps the objects. Nothing later can undo this, which is the point of putting it first.
+- \`if (c.ann) {\` comes second: \`null\` is falsy, so this is true only when there is an annotation. \`return [c.ann, 'annotated'];\` uses the annotated layout as it is, \`'aos'\` or \`'soa'\`, and skips every cost rule below. That is why the test with \`ann: 'soa', size: 3\` must come out as soa.
+- \`if (opts.mode === 'opt-in') {\` keeps everything that reached this line, because every annotated collection has already returned; \`return ['aos', 'opt-in'];\`.
+- \`if (c.numeric === 0) {\` is the first cost rule: no typed columns to gain, so \`return ['aos', 'no-numeric'];\`.
+- \`if (c.loops === 0) {\` is the second: no repeated work to win back the cost, so \`return ['aos', 'no-loops'];\`.
+- \`const size = c.measured ?? c.size;\` picks the size to judge by. \`??\` gives its left side unless that is \`null\` or \`undefined\`, so a measured size always wins when there is one, bigger or smaller than the estimate.
+- \`if (size !== null && size < opts.minSize) {\` is the size rule, with a guard: an unknown size is \`null\` and must pass. \`return ['aos', 'small'];\` otherwise.
+- \`return ['soa', 'soa'];\` is the bottom of the ladder: every answer was "no".
 
-Then the three cost rules. The size rule has two traps. First, \`c.measured ?? c.size\` prefers a profiled size whenever there is one, even if it is larger than the estimate: a measurement beats a guess both ways. Second, an unknown size is \`null\`, and \`null < 64\` is \`true\` in JavaScript, because the comparison turns \`null\` into \`0\`. The real planner writes \`size !== null && size < opts.minSize\` for exactly this reason: an unknown size must pass, not count as zero.`,
+**Common wrong attempts.**
+
+- Leaving out \`size !== null\`. In JavaScript \`null < 64\` is \`true\`, because the comparison turns \`null\` into \`0\`, so every collection of unknown size would be called tiny; the real planner has the same guard for the same reason.
+- Checking the size before the annotation. Then \`// @viscosity soa\` on a small collection is ignored, which defeats the purpose of an annotation: overruling the cost model.
+- Writing \`c.size ?? c.measured\`. That uses the measurement only when there is no estimate, so a profile that says 10 cannot overrule an estimate of 1000; a measurement must beat a guess both ways.`,
     wrong: [
       {
         code: `function planFor(c, opts) {
@@ -275,9 +274,26 @@ test('a push in a function', () => {
       'A push with no loops around it has an empty `trips` list: its product is 1.',
       'Return `null` as soon as anything is unknown.',
     ],
-    walkthrough: `This is the same rule as the size estimate in \`core/src/analysis.ts\`: a push contributes one element per iteration of every loop around it, so nested trip counts multiply, and a push with no loop contributes exactly one.
+    walkthrough: `**How to think about it.** Picture each push and ask "how many times does this line run?". Outside any loop, once. Inside one loop of 1000 trips, 1000 times. Inside a loop of 20 trips holding a loop of 30, \`20 × 30\` times, because the inner loop runs all 30 trips on each outer trip. So each push contributes the *product* of its loops' trip counts, and the size is the literals plus the sum of those products. The two \`null\` cases are where you cannot answer the question: a loop bound that is not a constant, and a push inside a function (which runs once per call, and nobody has counted the calls).
 
-The two \`null\` cases are where the estimate gives up. A loop bound that is not a constant could be anything. A push inside a function runs once per call, and the analysis doesn't count calls. The planner treats \`null\` as “may be large”, which is the optimistic choice described in the chapter, and the reason a profile helps.`,
+**The solution, line by line.**
+
+- \`let size = lits;\` starts from the elements written in the array literal.
+- \`for (const p of pushes) {\` visits each push.
+- \`if (p.inFunc) return null;\` gives up at once for a push in a function: the whole estimate is unknown, not just this push's share.
+- \`let mult = 1;\` starts the product at 1, the value that changes nothing when you multiply by it; a push with no loops keeps it, and counts once.
+- \`for (const t of p.trips) {\` goes through the loops around the push.
+- \`if (t === null) return null;\` gives up on a loop whose bound is not a constant.
+- \`mult *= t;\` multiplies in this loop's trips.
+- \`size += mult;\` adds this push's share, and after the loop \`return size;\` hands back the total.
+
+This is the rule in section 5 of \`core/src/analysis.ts\`, which also uses \`known = false\` for the same two cases; the planner then treats \`null\` as "may be large", which is why a profile helps.
+
+**Common wrong attempts.**
+
+- Multiplying without the \`null\` check. \`1 * null\` is \`0\`, so an unknown loop quietly counts as no pushes at all, and a collection that might hold a million elements is estimated at zero.
+- Adding the trip counts instead of multiplying them: \`10 + 20\` for nested loops gives 30, when the push really runs 200 times.
+- Starting \`mult\` at 0, which makes every product 0.`,
     wrong: [
       {
         code: `function estimate(lits, pushes) {
@@ -313,14 +329,6 @@ export const quiz = [
       { t: 'It is kept, with an “unsafe: …” reason.', correct: true, why: 'Safety is the first rung, checked before annotations, so even an explicit request cannot make an unsafe change.' },
       { t: 'It becomes SoA, because the programmer asked.', why: 'An annotation overrides the cost model, not the safety analysis. Transforming it could change what the program does.' },
       { t: 'It becomes SoA with extra bounds checks.', why: 'Bounds checks protect proven-safe transforms from out-of-range indexes. They don’t make an unsafe use safe.' },
-    ],
-  },
-  {
-    q: 'Why does a collection with only string fields stay an array of objects?',
-    options: [
-      { t: 'Strings cannot be stored in arrays.', why: 'They can: Viscosity does use plain-array columns for non-numeric fields when it transforms.' },
-      { t: 'The safety analysis forbids strings.', why: 'Strings are safe. The reason is the cost rule, “no field is provably numeric”.' },
-      { t: 'There would be no typed Float64Array columns, which give much of the measured win.', correct: true, why: 'Yes. With plain-array columns only, the planner expects too little gain: “no typed columns to gain”.' },
     ],
   },
   {

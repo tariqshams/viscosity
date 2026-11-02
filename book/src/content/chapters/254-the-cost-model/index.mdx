@@ -3,27 +3,26 @@ n: 254
 day: 64
 part: VIII
 title: 'The cost model'
-tagline: 'Proving a layout change safe only says Viscosity may make it. Whether it should is a separate question, and Viscosity answers it with three simple rules, measured where possible and honest about what they leave out.'
+tagline: 'Proving a layout change safe only says Viscosity may make it; whether it should is a separate question, and Viscosity answers it with a short ladder of plain rules, grounded in measurements where it can be and honest about what it leaves out.'
 objectives:
   - Explain why a safe layout change can still be a bad one, and what a cost model is for.
   - Walk a collection down the planner’s rules in order and predict the reason `viscosity explain` will print.
-  - Connect each rule to this book’s benchmark results, and say what the model does not consider.
-  - Describe how a profile replaces the static size estimate.
+  - Work out the static size estimate for a program, and say when it is a guess, a maximum or unknown.
+  - Connect each rule to this book’s benchmark results, and name what the model does not consider.
 introduces: [cost-model]
 uses: [viscosity-pipeline, collection-discovery, record-shape, access-pattern, hot-loop, safety-analysis, bailout, aos-vs-soa, aosoa, typed-array, float64, cpu-cache, cache-line, materialization, jit-warmup, natural-loop, push, array-of-objects, function]
 sources: [llvm-vectorizers, makor2022]
 ---
 import PlanLadder from '../../../components/diagrams/ch254/PlanLadder';
+import SizeSteps from '../../../components/diagrams/ch254/SizeSteps';
 import BenchBars from '../../../components/bench/BenchBars';
 import Playground from '../../../components/playground/Playground';
 
 ## Safe is not the same as worth it
 
-Here is one of the test programs in Viscosity’s corpus,
-`small_auto.js`:
+Here is a small program that sums the `x` of two points:
 
 ```js
-// viscosity: pts=aos
 const pts = [{ x: 1, y: 2 },
   { x: 3, y: 4 }];
 let sx = 0;
@@ -32,193 +31,236 @@ for (let i = 0; i < pts.length; i++)
 console.log(sx);
 ```
 
-The first line is the corpus header from chapter 225: the test expects
-`pts` to stay an array of objects. Yet every check from the last four
-chapters passes. The records have one
-stable shape, both fields are numbers, the loop reads `x`, and nothing
-can observe the layout. Viscosity could turn `pts` into two
-`Float64Array` columns. It doesn’t:
+Every check from *Proving it safe* passes: the records have one stable
+shape, both fields are numbers, the loop only reads `x`, and nothing can
+observe the layout. Viscosity could turn `pts` into two `Float64Array`
+columns; however, this is what it says instead (wrapped to fit the page,
+as all explain output in this chapter is):
 
-```
-$ viscosity explain small_auto.js
-pts (line 2) {x, y} → kept as array
+```text
+pts (line 1) {x, y} → kept as array
   of objects
   · about 2 elements: below the
     64-element threshold, where the
     benefit is too small
 ```
 
-(Explain output is wrapped to fit the page throughout this chapter.)
+A layout change is not free: it adds a generated class, rewrites every
+access and is harder to follow in a debugger, and for two points nothing
+would ever pay that back.
 
-A layout change has costs: a generated class, rewritten accesses, and a
-program that is harder to read in a debugger. For two points the loop
-takes nanoseconds either way, so nothing pays those costs back.
+<Analogy title="reorganising a kitchen">
+Moving the spices next to the cooker is worth it for the jar you reach
+for twenty times a day, and not worth it for the box of birthday candles
+you open once a year. Before you move anything, you make a rough guess
+of how often you will use it, and that guess is all a cost model is.
+<span slot="breaks">You know your own habits; Viscosity never watches the
+program run (unless you give it a profile), so it guesses from what the
+code looks like: how big the array seems to be and whether a loop
+touches it.</span>
+</Analogy>
 
-<Callout kind="intuition">
-Reorganizing a kitchen is worth it for the drawer you open twenty times a
-day, not for the box of party decorations you open once a year. Before
-you move anything, you guess how often you will reach for it. That guess
-is all a cost model is.
-</Callout>
+<Analogy title="a sat nav choosing a route">
+A sat nav picks the motorway over the back roads from things it can see
+on the map (distance, road type, speed limits), it is sometimes wrong
+because of traffic it could not know about, and you can always tell it
+"avoid motorways" and it will obey.
+<span slot="breaks">A sat nav adds up minutes along every route and
+compares the totals; Viscosity's model adds nothing up, it asks a few
+yes-or-no questions in a fixed order and stops at the first "yes".</span>
+</Analogy>
 
 <Callout kind="definition">
 A **cost model** is the part of a compiler that estimates whether a
-transformation will pay off, so that it only makes the safe changes that
-are also profitable. It works from facts the compiler can see (sizes,
-loops, types) or has measured, and its estimates can be wrong.
+transformation will pay off, so that it makes only the changes that are
+safe *and* worth it. It works from facts the compiler can see in the
+code (sizes, loops, types) or has measured, and its estimates can be
+wrong.
 </Callout>
 
-<Prompts ids={['cm-what', 'cm-safe-vs-pay']} />
+You have met cost models before. *The call graph* showed inliners
+working to a growth budget, because copying a body is a cost, and
+*Loop unrolling and vectorisation* weighed what unrolling saves against
+what it costs in code size and registers. Viscosity's is the same idea
+applied to data layout.
+
+<Prompts ids={['cm-what']} />
 
 ## The ladder
 
-The planner in `core/src/plan.ts` decides one collection at a time. It
-asks a fixed series of questions, and the first one answered “yes”
-decides. Some of the questions are about permission, and the rest are
-the cost model. Step through them in order:
+The planner, `plan()` in `core/src/plan.ts`, decides one collection at
+a time. It asks a fixed series of questions, and the first one answered
+"yes" decides; the first few are about permission, and the rest are the
+cost model proper. Step through them:
 
 <PlanLadder client:visible />
 
-Here is the same ladder as code, simplified from `plan()` (the reason
-strings are shortened here):
+Here it is as code, `plan()` rewritten as one chain of `if`s (`keep`
+records `aos` with a reason, and `size` is the profiled length if there
+is one, else the estimate):
 
 ```ts
-if (c.bailouts.length)
-  return keep('unsafe: …');
-if (ann) return ann.layout;
-if (opts.mode === 'opt-in')
-  return keep('opt-in mode: …');
-if (python && !opts.pythonAuto)
-  return keep('CPython: …');
-if (c.numericFields.size === 0)
-  return keep('no field is …');
-if (!c.loops.some((l) => l.depth > 0))
-  return keep('no loop reads …');
-const measured =
-  opts.profile?.[c.name]?.maxLength;
-const size = measured ?? c.sizeEstimate;
-const about = measured === undefined
-  && c.sizeIsUpperBound
-  ? 'at most' : 'about';
-if (size !== null && size < opts.minSize)
-  return keep(`${about} ${size} …`);
-return 'soa';
+if (c.bailouts.length) keep('unsafe: …');
+else if (ann) use(ann.layout);
+else if (opts.mode === 'opt-in')
+  keep('opt-in mode: not annotated');
+else if (python && !opts.pythonAuto)
+  keep('CPython: …');
+else if (c.numericFields.size === 0)
+  keep('no field is provably numeric…');
+else if (!c.loops.some((l) => l.depth > 0))
+  keep('no loop reads or writes…');
+else if (size !== null
+         && size < opts.minSize)
+  keep(`about ${size} elements: …`);
+else use('soa');
 ```
 
-The order matters. Safety comes before everything, so not even an
-annotation can force an unsafe change. An annotation comes before the
-cost rules, because it is the programmer overruling the guess.
+Line 1 is safety: any bailout from *What Viscosity refuses to touch*
+keeps the collection, and nothing below can change that. Line 2 is an
+annotation (the next chapter, *Opting in with @viscosity*), which skips
+every rule after it. Lines 3 to 6 are choices of the user and the
+language; lines 7 to 13 are the three cost rules; the last line is what
+is left.
+
+<Formal title="The planner as a function">
+
+```text
+plan(c) =
+  aos     if bailouts(c) ≠ ∅
+  ann(c)  else if c is annotated
+  aos     else if numeric(c) = ∅
+  aos     else if loops(c) = ∅
+  aos     else if size(c) < minSize
+  soa     otherwise
+```
+
+<span slot="read">The plan for c is aos if its set of bailouts is not
+empty (≠ ∅ reads "is not the empty set"); else the annotation, if there
+is one; else aos if no field is numeric, no loop touches a field, or c
+is smaller than minSize; else soa. Rows are tried from the top, and the
+first true one wins (the opt-in and Python rows are left out).</span>
+</Formal>
 
 <Prompts ids={['cm-order']} />
 
 ## Three rules, and where they came from
 
-Once permission is settled, the cost model is just three questions.
+**Is any field provably numeric?** If not, every column would be a
+plain JavaScript array. Part of SoA's measured advantage comes from
+typed storage: in this book's benchmark run, a packed `Float64Array`
+that keeps each record's fields together was already 2.1× faster than
+objects on the particle loop at 100,000 elements (`FINDINGS.md`,
+section 5). Plain-array columns get none of that, so the rule says no.
 
-**Is any field provably numeric?** If not, every column would be a plain
-JavaScript array of values. Part of SoA’s measured advantage comes from
-typed storage: in this book’s benchmark run, a packed `Float64Array` that
-keeps the records together already captures a large share of the win
-(see `FINDINGS.md`, section 5). Plain-array columns get none of that, so
-the rule says no.
-
-**Does a loop read or write a field?** A layout only pays off through
+**Does a loop read or write a field?** A layout pays off only through
 work that is repeated. A collection whose fields are touched once, or
 never, is kept.
 
-**Is it big enough?** Here is the measured basis. The same `x += vx`
-loop, at two sizes:
+**Is it big enough?** Here is the measured basis: the same `x += vx`
+loop from *AoS vs SoA, measured*, at two sizes.
 
 <BenchBars suite="update-xy" n={1000} title="Moving particles, 1,000 elements"
   highlight={['soa']} layouts={['aos', 'soa']}
-  caption="At 1,000 elements the data already fits in cache, and SoA’s lead is modest." />
+  caption="At 1,000 elements the data already fits in cache, and SoA's lead is modest." />
 
 <BenchBars suite="update-xy" n={100000} title="The same loop, 100,000 elements"
   highlight={['soa']} layouts={['aos', 'soa']}
   caption="At 100,000 elements the array of objects slows down per element; SoA barely changes." />
 
-In this run SoA was about 1.7× faster at 1,000 elements and 3.8× faster
-at 100,000 (`results/baseline-node-2026-10-31.md`). The win grows with
-size because the cache stops hiding the waste in each object.
+In this run SoA was 1.7× faster at 1,000 elements and 3.8× at 100,000
+(`results/baseline-node-2026-10-31.md`): the win grows with size, as
+the cache stops hiding the waste in each object. The benchmark never
+measured below 1,000 elements, however, so the default threshold of 64
+is not read off a chart; it is a cautious judgment (64 records of two
+doubles are sixteen 64-byte cache lines), and `--min-size` changes it.
 
-Be clear about what that does and doesn’t prove. The benchmark never
-measured fewer than 1,000 elements, so the default threshold of 64 is
-not read off a chart. It is a conservative judgment. Sixty-four records
-of two doubles are 1 KB, sixteen 64-byte cache lines, and a loop over them
-is over too quickly for any layout to matter. You can change it with
-`--min-size`.
+Each rule stops a different program; here are three, each with the
+reason the real `viscosity explain` prints.
 
-<Prompts ids={['cm-numeric', 'cm-loop', 'cm-threshold', 'cm-small']} />
+<Examples of="cost-model">
 
-## Guessing the size
+```js
+const ws = [];
+for (let i = 0; i < 500; i++)
+  ws.push({ w: 'w' + i });
+// kept: no field is provably numeric
+```
 
-The planner needs a size before the program runs. The analysis counts
-the literal elements, then adds each `push`, multiplied by the trip
-count of every loop around it, when the loop is a simple
-`for (let i = 0; i < 1000; i++)` with a constant bound. A `push` under
-an `if` may not run every time, so the count is a maximum, and explain
-says “at most 40 elements” rather than “about”. A `push` inside
-a function makes the size unknown, because the analysis doesn’t know
-how often the function is called. Call this program `spawn.js`:
+```js
+const ws = [];
+for (let i = 0; i < 500; i++)
+  ws.push({ n: i });
+console.log(ws[9].n);
+// kept: no loop reads or writes its fields
+```
 
 ```js
 const ps = [];
-function spawn(k) {
-  for (let i = 0; i < k; i++)
-    ps.push({ x: i, v: 1 });
-}
-spawn(10);
-for (let i = 0; i < ps.length; i++)
-  ps[i].x += ps[i].v;
-console.log(ps[3].x);
+for (let i = 0; i < 40; i++)
+  if (i % 2) ps.push({ x: i });
+// (and a loop summing ps[i].x)
+// kept: at most 40 elements: below …
 ```
 
-```
-ps (line 1) {x, v} → struct of arrays
-  · loop at line 7 in <module>()
-    touches 2 of 2 fields (v, x)
-  · typed Float64Array columns for
-    all 2 fields
-  · size unknown statically
-  · 2 of 3 element accesses proven
-    in bounds
+</Examples>
+
+In the first, the only field is a string, so the numeric rule stops it
+(even with a loop reading `w` 500 times). In the second, `n` is a
+number, but its only read, `ws[9].n`, is outside any loop. The third
+reaches the size rule, and says "at most" because its `push` sits under
+an `if`; the next section explains that 40.
+
+<Prompts ids={['cm-numeric', 'cm-loop']} />
+
+## Guessing the size
+
+The planner needs a size before the program has run. The analysis
+counts the literal elements, then adds each `push`, multiplied by the
+**trip count** (how many times a loop's body runs) of every loop around
+it, when that loop is a plain counting loop with a constant bound like
+`i < 1000`. A push inside nested loops of 20 and 30 trips counts 600.
+
+<Formal title="The static size estimate">
+
+```text
+size = L + Σ   ∏   trips(ℓ)
+          p∈P ℓ∋p
 ```
 
-An unknown size passes the threshold. The planner is optimistic: when it
-can’t tell, it assumes the collection may be large. Here it is wrong,
-because `ps` holds ten points.
+<span slot="read">The size is the number of literal elements L, plus,
+for each push p in the set of pushes P, the product (∏) of the trip
+counts of every loop ℓ that contains p (ℓ ∋ p reads "ℓ contains p"). A
+push in no loop multiplies nothing, so it counts once.</span>
+</Formal>
 
-Measuring fixes that. `viscosity profile` runs the original program with
-a little tracking added, and writes down how long each collection was
-at the end. Chapter 262 builds it. Fed back in, the measured size
-replaces the estimate:
+Three things can bend that number. A `push` under an `if` might not run
+every time, so the count is only a maximum, and explain says "at most".
+A loop whose bound is not a constant makes the size unknown. And a
+`push` inside a function makes it unknown too, because the analysis
+does not count how often the function is called. Step through four
+programs:
 
-```
-$ viscosity profile spawn.js \
-    -o prof.json
-$ cat prof.json
-{
-  "ps": {
-    "maxLength": 10
-  }
-}
-$ viscosity explain spawn.js \
-    --profile prof.json
-ps (line 1) {x, v} → kept as array
-  of objects
-  · about 10 elements (measured):
-    below the 64-element threshold,
-    where the benefit is too small
-```
+<SizeSteps client:visible />
+
+An unknown size *passes* the size rule. The planner is optimistic: when
+it cannot tell, it assumes the collection may be large. In the last
+program of the stepper (`spawn(10)` pushing ten points) that guess is
+wrong, and measuring fixes it. `viscosity profile` runs the original
+program with a little counting added, and writes down how long each
+collection grew; *Profile-guided optimization* builds it. Fed back in,
+the measured length replaces the estimate. After `viscosity profile
+spawn.js -o prof.json`, the command `viscosity explain spawn.js --profile
+prof.json` keeps `ps`, with the reason "about 10 elements (measured):
+below the 64-element threshold".
 
 <Prompts ids={['cm-estimate', 'cm-unknown', 'cm-pgo']} />
 
 ## Try it
 
-This program transforms `ws`. Then try two changes, one at a time. Make
-`n` a string (`n: 'x' + i`), so that no field is numeric. Or delete the
-second loop, and print `ws[9].w` instead. Each change stops the
-transform at a different rung, with its own reason.
+This program transforms `ws`. Try two changes, one at a time: make `n`
+a string (`n: 'x' + i`), or delete the second loop and print `ws[9].n`.
+Each stops the transform at a different rung.
 
 <Playground client:visible title="Which rung stops it?" initial={`const ws = [];
 for (let i = 0; i < 500; i++)
@@ -230,44 +272,45 @@ console.log(total, ws[9].w);`} />
 
 ## What the model leaves out
 
-It’s worth being blunt: this is a simple model. It doesn’t look at:
+This is a simple model, and it does not look at
 
-- **How hot a loop is.** Any loop counts, even one that runs once, or
-  lives in a function nobody calls. The analysis records trip counts,
-  but the planner doesn’t use them.
-- **How many fields a loop touches.** Explain prints “touches 1 of 2
-  fields”. SoA gains most when a loop uses few of many fields, but the
-  planner doesn’t weigh that.
-- **Costs SoA adds.** Bounds checks, the generated code, and
-  rebuilding objects (materialization) don’t enter the model. Today
-  the safety analysis refuses any collection whose elements would need
-  rebuilding, so that last cost never arises.
-- **AoSoA.** The planner never chooses it alone; only an annotation can.
-- **The engine.** The thresholds come from one run of Node on one
-  machine.
+- **how hot a loop is**: any loop counts, even one that runs once, or
+  lives in a function nobody calls (the analysis records trip counts,
+  but the planner does not use them);
+- **how many fields a loop touches**: explain prints "touches 1 of 2
+  fields", and SoA gains most when a loop uses few of many fields, but
+  the planner does not weigh it;
+- **the costs SoA adds**: bounds checks and the generated code do not
+  enter the model;
+- **AoSoA**: the planner never chooses it on its own, only an annotation
+  can;
+- **the engine**: the thresholds come from Node on one machine.
 
-The end-to-end results show why that matters. All five benchmark
-programs were transformed, and in this book’s run each got faster, by
-anything from 1.09× (`nbody`) to 5.11× (`ledger`)
-(`results/e2e-node-2026-10-31.md`). The model had no way to predict
-which would gain 9% and which fivefold.
+The end-to-end results show why that matters. In the benchmark
+matrix (`results/matrix-2026-10-31.md`) all five programs were
+transformed and all got faster on Node, from 1.2× (`nbody`) to 4.37×
+(`particles`); on Bun, `heat` gained 1.02× and `nbody` came out at
+0.97×, within the noise the matrix warns about. Nothing in the model could have
+told a gain of a fifth from a fourfold one, or seen that the engine
+matters.
 
 <Prompts ids={['cm-ignores']} />
 
 <Callout kind="engine" label="Under the hood">
-Optimizing compilers are full of cost models. LLVM’s loop vectorizer uses
-one to choose how many iterations to combine into SIMD instructions and
-how far to unroll, and its documentation shows flags and pragmas that
-let a programmer override the choice<Cite id="llvm-vectorizers" />. That
-is the same split as Viscosity’s ladder: a model that guesses, and a way
-for a person who knows better to overrule it. The research system
-Viscosity is modelled on made the columnar transformation at run time,
-inside the engine<Cite id="makor2022" />. There, the
-array’s real size and use can be observed directly. A source-to-source
-compiler has to guess, or be told by a profile.
+LLVM's loop vectorizer chooses a vector width and an unroll count with
+a cost model, and offers flags and pragmas to overrule
+it<Cite id="llvm-vectorizers" />: the same split as Viscosity's ladder,
+a model that guesses and a way for a person to overrule it. The research system Viscosity is modelled
+on made the columnar change at run time, inside the engine, where the
+array's real size and use can be seen directly<Cite id="makor2022" />. A
+compiler that runs before the program has to guess, or be told by a
+profile.
 </Callout>
 
 ## Your turn
+
+The first exercise is the ladder itself; the second, extra practice, is
+the size estimate.
 
 <Exercise id="planFor" />
 
@@ -275,18 +318,14 @@ compiler has to guess, or be told by a profile.
 
 ## What you learned
 
-- A **cost model** estimates whether a safe change will pay off. Safe
-  and profitable are separate questions.
-- Viscosity’s planner checks rules in order, and the first “yes”
-  decides: unsafe, annotated, opt-in, Python, no numeric field, no loop,
-  too small. Otherwise it chooses **soa**.
-- The size rule rests on this book’s benchmark results: SoA’s lead grows
-  with size. The threshold of 64 is a conservative judgment, not a
-  measured crossover.
-- The static size estimate counts literals and pushes in loops with
-  constant bounds. An unknown size is treated as large, and a **profile**
-  replaces the guess with a measurement.
-- The model ignores how hot a loop is, how many fields it uses, and the
-  costs SoA adds. Simple, and explainable, on purpose.
+- A **cost model** estimates whether a safe change will pay off.
+- The planner's rules run in order, first "yes" wins: unsafe, annotated,
+  opt-in, Python, no numeric field, no loop, too small; else **soa**.
+- SoA's measured lead grows with size; the threshold of 64 is a
+  cautious judgment, changed with `--min-size`.
+- The **size estimate** is literals plus pushes times constant trip
+  counts; it can be a maximum or unknown, and a **profile** replaces it.
+- The model ignores how hot a loop is, how many fields it uses and what
+  SoA adds: simple, and explainable, on purpose.
 
 <Quiz />

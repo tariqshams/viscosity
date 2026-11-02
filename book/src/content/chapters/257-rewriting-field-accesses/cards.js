@@ -5,17 +5,9 @@ export const prompts = {
     q: 'What does access rewriting turn `ps[i].x` into?',
     a: '`ps.x[i]`: element i of the `x` column.',
   },
-  'rw-edits': {
-    q: 'How does Viscosity’s emitter change the program text?',
-    a: 'It collects edits (a range of the original source and a replacement) and copies everything else through unchanged.',
-  },
   'rw-back': {
     q: 'Why are the edits applied from the end of the file backwards?',
     a: 'Each edit only shifts text after it, which is already done, so the offsets of the remaining edits stay valid.',
-  },
-  'rw-compound': {
-    q: 'In `ps[i].x += 1`, the member is read and written. How many edits does it get?',
-    a: 'One: edits are keyed by source range, and `ps.x[i] += 1` is a valid assignment as it stands.',
   },
   'rw-push': {
     q: 'What does `ps.push({ x: a, vx: b })` become?',
@@ -37,17 +29,9 @@ export const prompts = {
     q: 'When does Viscosity skip the bounds check on an access?',
     a: 'When it proved the index in range: the index is the loop counter and the loop condition is `i < ps.length`.',
   },
-  'rw-shift': {
-    q: 'What does `i >>> 0 === i` check in `__vsc_bc`?',
-    a: 'That i is a whole number from 0 up (below 2³²), which rules out -1, 1.5 and NaN.',
-  },
   'rw-bc': {
     q: 'What does `__vsc_bc(c, i, f, w)` do?',
     a: 'Returns i if it is a valid index below `c.length`; otherwise throws the TypeError the original access would have thrown.',
-  },
-  'rw-msg': {
-    q: 'Whose error messages does `__vsc_bc` copy, and why can they differ elsewhere?',
-    a: 'V8’s. The specification leaves each error’s message implementation-defined, so other engines may word it differently.',
   },
 };
 
@@ -199,13 +183,29 @@ test('strings are not code', () => {
       'To find the matching `]`, count depth: `[` adds one, `]` subtracts one, and stop when depth returns to 0.',
       'Call `rewrite` on the index text itself, so `ps[ps[0].k].x` works.',
     ],
-    walkthrough: `This is a tiny scanner, in the spirit of the one you wrote for Drip. The main loop looks at one character and decides which kind of token starts there.
+    walkthrough: `**How to think about it.** A search-and-replace for \`ps[\` fails in two ways: it finds \`ps[\` inside \`ops[\`, and it finds it inside a string like \`'ps[i].x'\`, which is data, not code. The cure is the idea behind every scanner from the Drip chapters: walk the text from left to right, and at each position decide what kind of *token* (word, string, symbol) starts there, then consume the whole token before looking again. Once you can see whole words, an access is a word equal to \`name\`, then \`[\`, then an index up to the *matching* \`]\`, then \`.\` and a field name. Viscosity itself never scans like this, because it has the real syntax tree with exact offsets for every node; but the shape of the output is the same: copy everything, and replace exactly the ranges that are accesses.
 
-A quote starts a string literal, which is copied whole: text inside a string is data, not code, and must never be rewritten. An identifier character starts a word, which is read to its end before anything is compared. That is what keeps \`ops[i].x\` safe when the name is \`ps\`: a search for the characters \`ps[\` would find it inside \`ops[\`.
+**The solution, line by line.**
 
-For a match, the index is everything between \`[\` and its matching \`]\`. Counting depth handles nested brackets like \`ps[a[j]]\`; stopping at the first \`]\` would cut the index in half. Only if the bracket is followed by \`.\` and a field name is it an access to rewrite; \`ps[i]\` on its own is left alone (in Viscosity, that use either is an element variable, handled separately, or causes a bailout).
+- \`function isId(c)\` says whether a character can be part of a name: a letter, a digit, \`_\` or \`$\`.
+- \`let out = ''; let i = 0;\` start an empty result and a position at the start of \`src\`.
+- \`while (i < src.length) {\` looks at one position per round, and \`const c = src[i];\` is the character there.
+- \`if (c === "'" || c === '"') {\` starts a string. \`let j = i + 1;\` and the inner \`while\` move \`j\` to the matching closing quote; \`out += src.slice(i, j + 1);\` copies the whole string, quotes included, untouched; \`i = j + 1;\` and \`continue\` move past it.
+- \`if (!isId(c)) { out += c; i++; continue; }\` copies any other symbol (spaces, \`+\`, \`(\`) as it is.
+- Otherwise a word starts here: the \`while\` moves \`j\` to its end, \`const word = src.slice(i, j);\` is the whole word, and \`i = j;\` moves past it. Because the word is read whole, \`ops\` is never mistaken for \`ps\`.
+- \`const open = src[j] === '[';\` checks for a bracket right after the word, and \`if (word !== name || !open) { out += word; continue; }\` copies every word that is not the start of an access.
+- \`let k = j; let depth = 0; for (; k < src.length; k++) { … }\` finds the matching \`]\`: \`[\` adds one to \`depth\`, \`]\` takes one away, and the loop stops when \`depth\` is back to 0. That is what keeps \`ps[a[j]].x\` whole; stopping at the first \`]\` would cut the index in half.
+- \`let m = k + 2; while (… isId(src[m])) m++;\` reads the field name that should follow \`].\`.
+- \`const dot = src[k + 1] === '.';\` and \`if (!dot || m === k + 2) { out += word; continue; }\` give up when there is no \`.\` or no field name: \`ps[i]\` alone is not an access (in Viscosity it is an element variable or a bailout). Only the word is copied, and the scan continues at the \`[\`.
+- \`const idx = src.slice(j + 1, k);\` is the index text and \`const f = src.slice(k + 2, m);\` the field.
+- \`out += name + '.' + f + '[' + rewrite(idx, name) + ']';\` writes the column access. Calling \`rewrite\` on the index handles an access inside an index: \`ps[ps[0].k].x\` becomes \`ps.x[ps.k[0]]\`.
+- \`i = m;\` continues after the field name, and at the end \`return out;\`.
 
-The recursion on the index makes \`ps[ps[0].k].x\` come out as \`ps.x[ps.k[0]]\`. Viscosity doesn't need any of this scanning, because it has the real syntax tree with exact start and end offsets for every node. But the shape of the output is the same: copy everything, and replace exactly the ranges that are accesses.`,
+**Common wrong attempts.**
+
+- Searching for \`name + '['\` with \`indexOf\`: it matches inside \`ops[\` and inside string literals.
+- Stopping at the first \`]\`: \`ps[a[j]].x\` is cut into \`ps[a[j]\` and \`].x\`.
+- Forgetting to rewrite the index: \`ps[ps[0].k].x\` comes out as \`ps.x[ps[0].k]\`, with an inner access left in the old layout.`,
     wrong: [
       {
         code: `function rewrite(src, name) {
@@ -337,9 +337,20 @@ test('-1, 1.5 and NaN are not indexes', () => {
       '`i >>> 0 === i` is true only for whole numbers from 0 up (below 2³²).',
       'Use a template literal to put the field name in the message.',
     ],
-    walkthrough: `The starter has the two mistakes the real helper avoids. \`i < c.length\` alone accepts \`-1\` and \`1.5\`, which in the original program would have read \`undefined\` and thrown. And a plain \`Error\` with a different message is a different outcome: a program that catches the error and checks \`e instanceof TypeError\`, or prints \`e.message\`, would behave differently, and Viscosity’s differential tests compare errors exactly.
+    walkthrough: `**How to think about it.** The helper must say "yes" for exactly the indexes at which the original array held an element, and for every other index it must fail the way the original failed. In the original, \`ps[i]\` is an element only when \`i\` is a whole number from 0 up to \`length - 1\`; \`ps[-1]\`, \`ps[1.5]\`, \`ps[NaN]\` and \`ps[length]\` are all \`undefined\`, and reading or setting a field of \`undefined\` throws a \`TypeError\` with V8's wording. So two tests, and one carefully worded error.
 
-\`i >>> 0\` converts \`i\` to an unsigned 32-bit integer. If that conversion changes the value, \`i\` was negative, fractional, too large, or \`NaN\`, so it is not a valid array index.`,
+**The solution, line by line.**
+
+- \`if (i >>> 0 === i && i < c.length) {\` is the whole test. \`i >>> 0\` turns \`i\` into an unsigned 32-bit integer; if that changes the value, \`i\` was negative, fractional, too large or \`NaN\` (which equals nothing, not even itself). Then \`i < c.length\` compares with the number of elements in use, not with the capacity.
+- \`return i;\` hands the index back, so the helper can sit inside the brackets: \`ps.x[bc(ps, 7, 'x', false)]\`.
+- \`const what = w ? … : …;\` builds the message: \`w\` is true for a write (\`setting\`) and false for a read (\`reading\`), and the template literals put the field name between quotes.
+- \`throw new TypeError('Cannot ' + what);\` throws the same kind of error, with the same message, as V8 throws for the original.
+
+**Common wrong attempts.**
+
+- \`i < c.length\` alone (the starter) accepts \`-1\` and \`1.5\`, which read \`undefined\` in the original and threw.
+- \`i >= 0 && i < c.length\` still accepts \`1.5\`; the index must also be a whole number.
+- Throwing a plain \`Error\`, or a different message: a program that checks \`e instanceof TypeError\` or prints \`e.message\` would behave differently, and Viscosity's differential tests compare errors exactly.`,
     wrong: [
       {
         code: `function bc(c, i, f, w) {
@@ -363,17 +374,9 @@ export const quiz = [
   {
     q: 'Why does Viscosity edit source ranges instead of printing the program again from its syntax tree?',
     options: [
-      { t: 'Printing from a tree is impossible for JavaScript.', why: 'It is quite possible, and many tools do it. It just loses the original formatting and comments.' },
+      { t: 'Printing from a tree is impossible for JavaScript.', why: 'It is quite possible, and many tools do it. It loses the original formatting and comments, though.' },
       { t: 'Everything it doesn’t rewrite stays byte for byte as written, comments and formatting included.', correct: true, why: 'Right. The output stays readable and diffable, and an untouched program comes back identical.' },
       { t: 'Edits run faster than the parser.', why: 'The edits still need the parsed tree for their offsets; speed isn’t the reason.' },
-    ],
-  },
-  {
-    q: 'Two edits are at offsets 11–13 and 112–119. Which is applied first, and why?',
-    options: [
-      { t: '11–13, because the file is read from the top.', why: 'Then the first edit would shift 112–119 by however much its text grew.' },
-      { t: 'Either: edits don’t affect each other.', why: 'They do when replacements have different lengths from the text they replace.' },
-      { t: '112–119, so the earlier offsets are still correct when 11–13 is applied.', correct: true, why: 'Yes: back to front, each edit only moves text that is already done.' },
     ],
   },
   {
@@ -399,7 +402,7 @@ export const quiz = [
       { t: 'It throws a RangeError.', why: 'Typed arrays don’t throw on out-of-range reads.' },
       { t: '`undefined`', why: 'Only past the end of the Float64Array (index 128 and up). Slot 100 exists; it is a spare.' },
       { t: '`0`, a spare, zero-filled slot', correct: true, why: 'Right, and that is the danger: a plausible wrong number where the original threw a TypeError.' },
-      { t: 'The value of element 99.', why: 'Nothing wraps around; slot 100 is just an unused slot.' },
+      { t: 'The value of element 99.', why: 'Nothing wraps around; slot 100 is an unused slot.' },
     ],
   },
   {

@@ -3,7 +3,7 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 
 // How frontend-js/src/index.ts attaches `@viscosity` comments to
 // declarations: each comment (with the line it ends on) is matched against
-// /@viscosity\s+(aosoa|soa|aos)\b(?:\((\d+)\))?/, and a match applies to
+// /@viscosity\s+(aosoa|soa|aos)\b(?:\(([^)]*)\))?/, and a match applies to
 // the next line's declaration if the comment is alone on its line, or
 // its own line's declaration if it trails code. The outcome below is the
 // real `viscosity explain` result for this program (plus loops using it).
@@ -49,10 +49,10 @@ export default function AnnotationSteps() {
     <StepFrame title="Attaching annotations to declarations" steps={s} note={st.note}>
       <CodeTrace code={CODE} line={st.line} />
       <Svg w={400} h={st.final ? 250 : 150} title="Each comment, whether it matches, and which declaration it attaches to">
-        <T x={8} y={12} size={10} weight={700} fill={tok('muted')}>LINE</T>
-        <T x={48} y={12} size={10} weight={700} fill={tok('muted')}>COMMENT</T>
-        <T x={218} y={12} size={10} weight={700} fill={tok('muted')}>MATCH</T>
-        <T x={318} y={12} size={10} weight={700} fill={tok('muted')}>APPLIES TO</T>
+        <T x={8} y={12} size={11} weight={700} fill={tok('muted')}>LINE</T>
+        <T x={48} y={12} size={11} weight={700} fill={tok('muted')}>COMMENT</T>
+        <T x={218} y={12} size={11} weight={700} fill={tok('muted')}>MATCH</T>
+        <T x={318} y={12} size={11} weight={700} fill={tok('muted')}>APPLIES TO</T>
         {ROWS.map((r, k) => {
           const y = 24 + k * 30;
           const shown = k < st.rows;
@@ -70,9 +70,9 @@ export default function AnnotationSteps() {
         })}
         {st.final > 0 && (
           <g>
-            <T x={8} y={160} size={10} weight={700} fill={tok('muted')}>BINDING</T>
-            <T x={110} y={160} size={10} weight={700} fill={tok('muted')}>ANNOTATION</T>
-            <T x={240} y={160} size={10} weight={700} fill={tok('muted')}>{st.final === 1 ? 'PLAN (AUTO)' : 'PLAN (OPT-IN)'}</T>
+            <T x={8} y={160} size={11} weight={700} fill={tok('muted')}>BINDING</T>
+            <T x={110} y={160} size={11} weight={700} fill={tok('muted')}>ANNOTATION</T>
+            <T x={240} y={160} size={11} weight={700} fill={tok('muted')}>{st.final === 1 ? 'PLAN (AUTO)' : 'PLAN (OPT-IN)'}</T>
             {FINAL.map((f, k) => {
               const y = 172 + k * 19;
               const lay = st.final === 1 ? f.auto : f.opt;

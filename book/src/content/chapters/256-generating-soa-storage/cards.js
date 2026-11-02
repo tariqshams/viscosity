@@ -21,10 +21,6 @@ export const prompts = {
     q: 'In the container, what is the difference between `length` and `cap`?',
     a: '`length` counts the elements in use; `cap` is how many slots each column has.',
   },
-  'ctr-grow': {
-    q: 'What does the generated `grow()` do?',
-    a: 'Doubles `cap`, and for each typed column makes a bigger Float64Array, copies the old values with `set`, and swaps it in.',
-  },
   'col-typed-why': {
     q: 'Why can only provably numeric fields get a Float64Array column?',
     a: 'A Float64Array converts whatever is stored to a number: a string like `\'a\'` would come back as NaN.',
@@ -155,11 +151,28 @@ test('columns stay typed after growing', () => {
       '`return (this.length = n + 1)` updates the length and returns it in one go.',
       'In `grow`, `t.set(this.x)` copies every old value into the start of the new array `t`.',
     ],
-    walkthrough: `This is the class Viscosity generates, minus \`of\`, with a smaller starting size so the tests can see it grow.
+    walkthrough: `**How to think about it.** You are writing, by hand, a small version of the class Viscosity generates (without \`of\`, and starting with room for 2 rather than 16, so that the tests can watch it grow). Start from what must stay true at every moment: \`length\` is how many elements are in use, \`cap\` is how many slots *every* column has, and element \`k\` is slot \`k\` of both columns. Each method has to keep those three facts true. The starter already makes the columns and writes into slot \`length\`; what it lacks is a way to make room, and the return value.
 
-The starter fails in two ways. Without the \`n === this.cap\` check, \`push\` writes past the end of a \`Float64Array\`, and a typed array silently ignores those writes, so the values just vanish: nothing throws. That is worth remembering, because a plain array would have grown and hidden the bug. And without a \`return\`, \`push\` gives \`undefined\`, which breaks any program that used the result of \`Array.prototype.push\`.
+**The solution, line by line.**
 
-\`grow\` must replace every typed column, not only one, because all columns share one \`cap\`. And it must build a new \`Float64Array\`: a typed array’s length is fixed when it is made, so there is no way to lengthen the old one in place. \`set\` copies the old contents to the front of the new one, and the rest stays zero until pushes fill it.`,
+- \`constructor(cap = 2) {\` gives \`cap\` a default of 2 when \`new Ps()\` is called with nothing.
+- \`this.length = 0;\` and \`this.cap = cap;\` set the two counters: nothing in use, \`cap\` slots available.
+- \`this.x = new Float64Array(cap);\` and \`this.vx = new Float64Array(cap);\` make the two columns, each \`cap\` zeros.
+- \`push(x, vx) {\` takes one value per field, in field order, as the generated \`push(v0, v1)\` does.
+- \`const n = this.length;\` is the slot the new element will go in.
+- \`if (n === this.cap) this.grow();\` makes room first when every slot is used.
+- \`this.x[n] = x;\` and \`this.vx[n] = vx;\` write the element into the same slot of each column.
+- \`return (this.length = n + 1);\` updates the length and returns the new value in one expression, just as \`Array.prototype.push\` returns the new length.
+- \`grow() {\` starts with \`const cap = (this.cap *= 2);\`, which doubles \`this.cap\` and keeps the new value in \`cap\`.
+- \`let t = new Float64Array(cap);\` makes a bigger, zero-filled column; \`t.set(this.x);\` copies the old values into its start; \`this.x = t;\` swaps it in. The old, smaller array is no longer referenced and the garbage collector will free it.
+- The same three lines for \`vx\`: every typed column grows together, so all of them always have \`cap\` slots.
+
+**Common wrong attempts.**
+
+- Leaving out the \`n === this.cap\` check: a typed array silently ignores writes past its end, so values vanish, with no error. (A plain array would have grown and hidden the bug.)
+- Growing only \`x\`: \`vx\` keeps its old size, so later writes into it are dropped and reading \`vx[9]\` gives \`undefined\`.
+- Making new columns without \`set\`: they are bigger but empty, so every element pushed so far is reset to 0.
+- Forgetting \`return\`: \`push\` then returns \`undefined\`, which breaks any program that used the result of \`push\`.`,
     wrong: [
       {
         code: `class Ps {
@@ -284,9 +297,23 @@ test('a big literal gets room for all', () => {
       'Make the container with `new Ps(Math.max(16, v.length / 2))`.',
       'Walk `v` two at a time and call `push(v[i], v[i + 1])`.',
     ],
-    walkthrough: `\`of\` is what Viscosity puts in place of an array literal of records: \`[{ x: 1, vx: 2 }, { x: 3, vx: 4 }]\` becomes \`__Vsc_ps.of(1, 2, 3, 4)\`. Flattening keeps the call simple, and the values are still evaluated in the order the programmer wrote them, which matters if one of them has a side effect.
+    walkthrough: `**How to think about it.** \`of\` is what Viscosity puts in place of an array literal of records: \`[{ x: 1, vx: 2 }, { x: 3, vx: 4 }]\` becomes \`__Vsc_ps.of(1, 2, 3, 4)\`. The values arrive flattened, so the job is to cut them back into records of two and push each one. Flattening keeps the call simple, and the values are still evaluated left to right, in the order the programmer wrote them, which matters if one of them calls a function with a side effect.
 
-Making the container with exactly as many slots as needed (but at least 16) means the pushes never trigger \`grow\`. Going through \`push\` rather than writing the columns directly keeps one code path for adding an element.`,
+**The solution, line by line.**
+
+- \`static of(...v) {\` is a method on the class itself (called as \`Ps.of(...)\`, not on an object), and \`...v\` gathers every argument into one array \`v\`.
+- \`const n = v.length / 2;\` is the number of records: two values each.
+- \`const c = new Ps(Math.max(16, n));\` makes a container with room for every record, but never less than 16, the same rule as the generated code; with exactly enough room, the pushes below never need to grow.
+- \`for (let i = 0; i < n; i++) {\` counts records, not values.
+- \`c.push(v[2 * i], v[2 * i + 1]);\` reads record \`i\`'s two values (positions \`2i\` and \`2i + 1\`) and pushes them, so there is one code path for adding an element.
+- \`return c;\` hands back the filled container.
+
+\`-0\` and \`NaN\` need no special care: a \`Float64Array\` stores both exactly.
+
+**Common wrong attempts.**
+
+- Stepping through \`v\` one value at a time and pushing \`v[i], v[i + 1]\`: every value starts a record, so four values make four records (and the last reads \`v[4]\`, which is \`undefined\`).
+- Always making \`new Ps(16)\`: correct, but a 40-value literal then grows on the way; the test checks that \`cap\` is exactly 20.`,
     wrong: [
       {
         code: `class Ps {
@@ -342,14 +369,6 @@ export const quiz = [
       { t: 'the container, so calls can be chained.', why: '`Array.prototype.push` doesn’t return the array, so neither does this.' },
       { t: 'the index of the new element.', why: 'Close: that would be the old length. It returns the new length.' },
       { t: 'the new length, like `Array.prototype.push`.', correct: true, why: 'Yes: `return (this.length = n + 1)`.' },
-    ],
-  },
-  {
-    q: 'A container has `cap` 16 and `length` 16. What does the next `push` do first?',
-    options: [
-      { t: 'Calls `grow()`, which doubles every typed column to 32 and copies the values.', correct: true, why: 'Right: `n === this.cap`, so it grows, then writes slot 16.' },
-      { t: 'Writes slot 16, and the Float64Array lengthens.', why: 'A typed array’s length is fixed. A write past the end is silently ignored, which is why grow must come first.' },
-      { t: 'Throws a RangeError.', why: 'Nothing throws: the container grows.' },
     ],
   },
   {
