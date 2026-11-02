@@ -17,17 +17,9 @@ export const prompts = {
     q: 'Does Viscosity’s emit print the program back out of VIR?',
     a: 'No. It edits the original source text, replacing only the ranges the plan requires, and copies the rest through unchanged.',
   },
-  'arch-srcref': {
-    q: 'What lets emit know which source text a VIR instruction came from?',
-    a: 'Each instruction can carry a source reference: the syntax node and its start and end offsets (and line).',
-  },
   's2s-what': {
     q: 'What is a source-to-source compiler?',
     a: 'A compiler whose output is source code in a high-level language, often the same language it reads.',
-  },
-  's2s-check': {
-    q: 'What does the Playground’s “Run both” check?',
-    a: 'That the original program and the compiled program print the same thing.',
   },
   'aot-vs-rt': {
     q: 'Where did the columnar-array research of Makor and colleagues do its transformation?',
@@ -110,14 +102,28 @@ test('unlisted and longer fields are untouched', () => {
       'Capture the index with `([^\\]]*)` and the whole field name with `(\\w+)`. Capturing the whole word is what keeps `xs` from matching `x`.',
       'Start the pattern with `\\b` so `aps[0]` doesn’t match `ps[0]`. In the replacement function, return the match unchanged when the field isn’t listed.',
     ],
-    walkthrough: `This is emit in miniature: find the text that the plan says must change, and replace exactly that range.
+    walkthrough: `**How to think about it.** This is emit in miniature: find exactly the text the plan says must change, and replace exactly that range, leaving every other character alone. Before writing code, list what a match looks like: the array's name, then \`[\`, then an index (any text without a \`]\`), then \`]\`, then a dot and a field name. You need the index and the field back, so you can write them in the other order, which is a job for a regular expression with two *capture groups* (the parts in round brackets, which the replacement can read back). The name is in a variable, so the pattern must be built with \`new RegExp(...)\` rather than written as \`/.../\`.
 
-- **Capture the parts.** The pattern is \`\\bps\\[([^\\]]*)\\]\\.(\\w+)\`. Group 1 is the index text, group 2 is the field name. A replacement *function* gets both, so it can rebuild the access the other way round: \`ps.x[i]\`.
-- **Capture the whole field name.** If the pattern ended in \`\\.x\`, then \`ps[i].xs\` would become \`ps.x[i]s\`. Capturing \`\\w+\` and then checking \`fields.includes(f)\` compares whole names.
-- **Mind the left edge.** Without \`\\b\`, \`aps[0].x\` contains \`ps[0].x\` and would be rewritten. \`\\b\` demands a word boundary just before the name.
-- **Unchanged means unchanged.** Returning \`m\` for an unlisted field leaves the original text exactly as it was.
+**The solution, line by line.**
 
-Viscosity’s real emitter doesn’t use regular expressions, and this exercise shows why it shouldn’t: this one would also rewrite \`ps[i].x\` inside a string or a comment, and can’t handle \`ps[a[0]].x\`. The real one finds the ranges from syntax-tree nodes that VIR instructions point back to, so it only touches real code, and only the accesses the analyses approved.`,
+- \`function rewrite(src, name, fields) {\` takes the source text, the collection's name and the list of fields the plan approved.
+- \`  const re = new RegExp('\\\\b' + name +\` starts the pattern with \`\\b\`, a *word boundary*: the name must not be the tail of a longer word, so \`aps[0]\` is not mistaken for \`ps[0]\`. (In a string, the backslash itself must be doubled, which is why the code says \`'\\\\b'\`.)
+- \`    '\\\\[([^\\\\]]*)\\\\]\\\\.(\\\\w+)', 'g');\` adds a literal \`[\`, then group 1, \`([^\\]]*)\`, "any run of characters that are not \`]\`" (the index), then a literal \`]\` and \`.\`, then group 2, \`(\\w+)\`, the *whole* field name. The \`'g'\` flag means "every match, not only the first".
+- \`  return src.replace(re, (m, i, f) =>\` hands every match to a function: \`m\` is the whole matched text, \`i\` the index and \`f\` the field.
+- \`    fields.includes(f)\` asks whether the plan approved this field.
+- \`      ? name + '.' + f + '[' + i + ']'\` rebuilds the access as a column read, so \`ps[i + 1].x\` becomes \`ps.x[i + 1]\`.
+- \`      : m);\` returns the match untouched otherwise, so unlisted fields come through byte for byte.
+- \`}\` closes the function.
+
+Trace the first test: \`ps[i].x += ps[i].vx;\` has two matches. The first gives \`i = 'i'\`, \`f = 'x'\`, listed, so it becomes \`ps.x[i]\`; the second gives \`f = 'vx'\`, also listed, so it becomes \`ps.vx[i]\`; the \` += \` and \`;\` between and after are never touched.
+
+**Common wrong attempts.**
+
+- Rewriting every match without checking \`fields\` turns \`ps[i].name\` into \`ps.name[i]\`, a column that does not exist.
+- Matching a prefix (\`'.' + f\` with \`replaceAll\`) turns \`ps[i].xs\` into \`ps.x[i]s\`; capturing \`\\w+\` and comparing whole names avoids it.
+- Leaving out \`\\b\` rewrites \`aps[0].x\`, which belongs to a different array.
+
+Viscosity's real emitter does not use regular expressions, and this exercise shows why it should not: this one would also rewrite \`ps[i].x\` inside a string or a comment, and it cannot handle \`ps[a[0]].x\`. The real one finds its ranges from syntax-tree nodes that VIR instructions point back to, so it only touches real code, and only the accesses the analyses approved.`,
     wrong: [
       {
         code: `function rewrite(src, name, fields) {
@@ -180,9 +186,24 @@ test('analyze gets the module', () => {
       'Call the four functions in pipeline order: lower, analyze, plan, emit.',
       '`analyze` takes `lowered.module`, but `emit` takes the whole `lowered` object (the plugin may have stored its own things in it, such as its syntax tree).',
     ],
-    walkthrough: `The order is fixed: you can’t analyze before lowering, or plan before analyzing.
+    walkthrough: `**How to think about it.** The order is forced by what each step needs: you cannot analyze before there is VIR, plan before there are facts, or emit before there is a plan. The one thing to get right is *what* each step receives, and the rule is that core steps get core data while plugin steps get the plugin's own object back.
 
-The one detail worth noticing is what each step receives. \`analyze\` is core code, so it gets only the language-neutral \`module\`. \`emit\` is plugin code, so it gets the whole \`lowered\` object back, including anything the plugin put there for itself. The real JavaScript plugin keeps its ESTree tree, its scope resolution and the JavaScript it actually analyzed in that object, and needs all three to rewrite the text. The core passes them along without looking inside.`,
+**The solution, line by line.**
+
+- \`function compile(src, plugin, core) {\` takes the source and the two halves of the compiler.
+- \`  const low = plugin.lower(src);\` lowers the source. \`low\` is the plugin's object: it has a \`module\`, and possibly private things the plugin put there for itself (in the tests, \`tag\`).
+- \`  const a = core.analyze(low.module);\` gives the core only the language-neutral \`module\`, exactly as \`analyze(lowered.module)\` does in the real \`compile\`.
+- \`  const p = core.plan(a);\` turns the facts into a plan.
+- \`  const code = plugin.emit(src, low, p);\` hands the plugin its whole \`low\` object back, together with the original source and the plan.
+- \`  const explain = core.explain(p);\` makes the readable explanation from the plan alone.
+- \`  return { code, explain };\` returns both.
+
+In the first test, \`lower('a b c')\` gives \`{ module: ['a', 'b', 'c'], tag: 'L' }\`; analyze counts 3; plan gives \`['soa']\`; emit writes \`'L:soa'\`, using the \`tag\` it stored itself.
+
+**Common wrong attempts.**
+
+- Passing \`low.module\` to \`emit\` loses the plugin's private data, so \`l.tag\` is \`undefined\` and the code reads \`'undefined:soa'\`. The real JavaScript plugin keeps its ESTree tree, its scope resolution and the JavaScript it analyzed in that object, and needs all three to rewrite the text.
+- Passing the whole \`low\` to \`analyze\` happens to work here, but it lets core code see plugin data, which is exactly the coupling the architecture forbids.`,
     wrong: [
       {
         code: `function compile(src, plugin, core) {
@@ -211,21 +232,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'A new language plugin is added. Which parts must it provide?',
-    options: [
-      { t: 'Its own analyses and planner', why: 'Those are shared. They work on VIR, whatever language it came from.' },
-      { t: 'Only a parser', why: 'A parser alone produces a syntax tree, not VIR, and can’t write the output.' },
-      { t: 'A way to lower its source to VIR, and a way to emit its source from a plan', correct: true, why: 'That is exactly the plugin’s half of the pipeline: `lower` and `emit`.' },
-      { t: 'A new VIR', why: 'Every plugin lowers to the same VIR; that is what lets the core be shared.' },
-    ],
-  },
-  {
     q: 'Why does Viscosity’s output keep your comments and formatting?',
     options: [
       { t: 'Emit replaces only the source ranges the plan requires and copies the rest unchanged', correct: true, why: 'It edits the original text; it doesn’t regenerate the program from VIR.' },
       { t: 'VIR stores every comment', why: 'VIR has no comments. Instructions point back to source ranges instead.' },
       { t: 'A pretty-printer reformats the output to match', why: 'There is no reformatting: untouched text is copied byte for byte.' },
-      { t: 'It doesn’t: comments are removed', why: 'They survive, which chapter 248’s identity test checks.' },
+      { t: 'It doesn’t: comments are removed', why: 'They survive, which the identity test in the next chapters checks.' },
     ],
   },
   {
@@ -250,7 +262,7 @@ export const quiz = [
     q: 'Viscosity can’t prove that a collection’s elements never escape. What happens?',
     options: [
       { t: 'It converts it anyway, and inserts a run-time check', why: 'There is no fallback for an escape at run time. Unsafe means unchanged.' },
-      { t: 'Compilation fails with an error', why: 'The program is fine; Viscosity simply doesn’t optimize it.' },
+      { t: 'Compilation fails with an error', why: 'The program is fine; Viscosity only leaves it unoptimized.' },
       { t: 'The collection stays an array of objects, and explain says why', correct: true, why: 'Doing nothing is always correct. The reason is printed so you can change the code if you want the speed.' },
       { t: 'It asks the engine to decide', why: 'The engine never hears about Viscosity: it just runs the output.' },
     ],

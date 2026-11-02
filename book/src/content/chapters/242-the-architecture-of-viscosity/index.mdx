@@ -3,10 +3,10 @@ n: 242
 day: 61
 part: VIII
 title: 'The architecture of Viscosity'
-tagline: 'Part VIII builds the real thing. Before any single piece, here is the whole machine: what goes in, what comes out, which parts know about JavaScript, and why the output is just another JavaScript file.'
+tagline: 'Part VIII builds the real thing. Before any single piece, here is the whole machine: what goes in, what comes out, which parts know about JavaScript, and why the output is one more JavaScript file.'
 objectives:
-  - Name the four steps of Viscosity’s compile function and say what each one consumes and produces.
-  - Say which steps belong to a language plugin and which belong to the core, and why.
+  - Name the four steps of Viscosity’s compile function and say what each one takes in and gives back.
+  - Say which steps belong to a language plugin and which belong to the core, and why the line falls there.
   - Explain what a source-to-source compiler is, and contrast it with changing layouts inside a running engine.
   - Run the real compiler on a small particle program and read its decisions.
 introduces: [viscosity-pipeline, source-to-source]
@@ -17,16 +17,47 @@ import PipelineSteps from '../../../components/diagrams/ch242/PipelineSteps';
 import WhenItHappens from '../../../components/diagrams/ch242/WhenItHappens';
 import Playground from '../../../components/playground/Playground';
 
-## Twenty-five lines
+## One file in, one file out
 
-You have spent six parts collecting pieces: arrays of objects and why
-they are slow to scan, parsers, IRs, SSA, dominators, escape analysis,
-differential tests. Part VIII puts them together into Viscosity, the
-compiler in this repository's `engine/ts` folder.
+Seven parts have handed you the pieces: arrays of objects, parsers,
+IRs, SSA form, dataflow, alias and escape analysis, a native back end
+and differential tests. Part VIII puts them together into
+**Viscosity**, the compiler in this repository's `engine/ts` folder, and
+the first question to ask of any machine is what goes in and what comes
+out. In goes a plain particle program:
 
-The surprise is how small the top of it is. The file
-`packages/core/src/index.ts` is 25 lines long, and this is the part that
-matters:
+```js
+const ps = [];
+for (let i = 0; i < 1000; i++)
+  ps.push({ x: i, vx: 1 });
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += ps[i].vx;
+console.log(ps[3].x);
+```
+
+and what comes out, a new JavaScript file whose last lines are these (a
+generated class `__Vsc_ps` with one `Float64Array` per field sits above
+them, along with a small bounds-check helper):
+
+```js
+const ps = new __Vsc_ps();
+for (let i = 0; i < 1000; i++)
+  ps.push(i, 1);
+for (let i = 0; i < ps.length; i++)
+  ps.x[i] += ps.vx[i];
+console.log(ps.x[__vsc_bc(ps, 3, 'x',
+  false)]);
+```
+
+(The last line is split here to fit.) Every `ps[i].x` became a column
+access `ps.x[i]`, the struct-of-arrays change from the chapter *AoS vs
+SoA, measured*; this chapter is about what happened in between.
+
+## Four steps, two owners
+
+The top of the compiler is surprisingly small. The function `compile`,
+in `packages/core/src/index.ts`, is the whole pipeline, and this is the
+part that matters:
 
 ```ts
 function compile(source, plugin, opts) {
@@ -41,93 +72,176 @@ function compile(source, plugin, opts) {
 }
 ```
 
-(Trimmed: the real one merges `opts` with defaults and passes along the
-`@viscosity` annotations the plugin found.) Every chapter from here to
-112 lives inside one of those four calls.
+(Trimmed: the real one also fills in default options.) Line 2 hands
+the text to a
+**plugin**, the part that knows one language, which parses it and
+**lowers** it to VIR, Viscosity's IR. Line 3 runs the **analyses** on
+that VIR, and line 5 turns their facts into a **plan**: one layout per
+collection. Line 6 gives the plan back to the same plugin, which
+**emits** new source text; the last line returns that text, the plan,
+the analysis and a readable explanation of every decision.
 
-<Callout kind="intuition">
-Think of a removal company re-packing a kitchen. A local crew reads the
-labels on your boxes, in whatever language you wrote them. Head office
-never opens a box: it only gets a list ("12 plates, 40 forks, all the
-same size") and decides how to pack them. Then the local crew re-packs
-your kitchen to that plan, leaving everything it wasn’t told about
-exactly where it was.
-</Callout>
+<Analogy title="a hospital laboratory">
+On each ward, a nurse who speaks the patient's language takes a blood
+sample and labels the tube in the hospital's standard form. The central
+laboratory never meets a patient: it reads the tubes, runs the same tests
+for every ward and sends back a result sheet. Then the ward nurse, who
+knows the patient, acts on the sheet. The wards are the plugins, the
+labelled tube is VIR, and the laboratory is the core.
+<span slot="breaks">A laboratory can send back a result that nobody acts
+on; Viscosity's plan is always carried out, and when the core is unsure it
+plans to change nothing at all.</span>
+</Analogy>
 
-## Four steps, two owners
+<Analogy title="a removal company re-packing a kitchen">
+A local crew reads the labels on your boxes, in whatever language you
+wrote them, and phones head office with a list ("40 forks, all the same
+size"). Head office decides how they should be packed without ever seeing
+your kitchen, and the crew re-packs to that plan, leaving everything it
+was not told about exactly where it was.
+<span slot="breaks">Real removers move everything; Viscosity's crew
+touches only the few characters the plan names, and the rest of your
+file is copied through byte for byte.</span>
+</Analogy>
 
-Step through one program. Watch the label above each stage: some steps
-belong to the language **plugin**, the rest to the **core**.
+Step through one program, and watch the label above each stage: two of
+the steps belong to the language plugin, and the rest to the core.
 
 <PipelineSteps client:visible />
 
-The steps, with what each consumes and produces:
-
-- **lower** (plugin): source text → a VIR module. For JavaScript that
-  means parsing with acorn into an ESTree tree, resolving scopes, then
-  lowering the tree to VIR.
-- **analyze** (core): VIR → facts. Which bindings are collections, which
-  fields are numbers, which loops touch which fields, and the reasons it
-  isn't safe, if any.
-- **plan** (core): facts → a layout per collection, with reasons.
-- **emit** (plugin): the original source, plus the plan → new source.
-
 <Callout kind="definition">
 The **Viscosity pipeline** is `lower → analyze → plan → emit`. A
-language front-end lowers source code to **VIR**, Viscosity's IR. The
-analyses and the **layout planner** work on VIR only, and choose a
-layout for each collection (`aos`, `soa` or `aosoa`). The same front-end
+language plugin **lowers** source code to **VIR**, Viscosity's IR. The
+analyses and the **layout planner** work on VIR alone and choose a
+layout for each collection (`aos`, `soa` or `aosoa`). The same plugin
 then **emits** new source code by applying the plan. Only lowering and
 emitting know the language.
 </Callout>
 
+This is the front-end and back-end split from the chapter *From source
+text to a running program*, with a twist: the plugin does both ends, and
+the middle (the SSA, dataflow and escape analysis of Part VI) is
+shared.
+
+<Formal title="The pipeline as function composition">
+
+```text
+lower   : Source → Lowered
+analyze : VIR → Analysis
+plan    : Analysis → Plan
+emit    : Source × Lowered × Plan → Source
+
+compile(s) = emit(s, L,
+                  plan(analyze(L.module)))
+  where L = lower(s)
+```
+
+<span slot="read">Each step is a function from one kind of thing to
+another (× means "together with"): emit takes the source, the lowered
+module and the plan, and gives back source. To compile s, lower it once
+and call the result L; feed L's module to analyze, the facts to plan,
+and everything to emit. The output has the same type as the input:
+source.</span>
+</Formal>
+
 <Prompts ids={['arch-four', 'arch-owners', 'arch-why-split']} />
 
-Notice what emit does *not* do. It doesn't print the program from VIR.
-It takes your original text and replaces only the ranges the plan
-requires, such as `ps[i].x` becoming `ps.x[i]`. VIR instructions keep a
-pointer back to the source range they came from, which is what makes
-that possible. Your comments, formatting and every unrelated line come
-through exactly as you wrote them.
+Notice that emit does *not* print the program back out of VIR: it
+replaces only the ranges of your text that the plan requires, using the
+pointer back to the source that each VIR instruction keeps, so your
+comments, formatting and unrelated lines come through as you wrote
+them.
 
-<Prompts ids={['arch-emit-text', 'arch-srcref']} />
+<Prompts ids={['arch-emit-text']} />
+
+Every program goes through all four steps, whatever the verdict; here
+is what `viscosity explain` prints for three of them (wrapped to fit).
+
+<Examples of="viscosity-pipeline">
+
+```js
+let total = 0;
+for (let i = 0; i < 10; i++) total += i;
+// explain: No arrays of objects found.
+```
+
+```js
+const ps = [];
+for (let i = 0; i < 10; i++)
+  ps.push({ x: i, vx: 1 });
+for (const p of ps) p.x += p.vx;
+// ps (line 1) {x, vx} → kept as array
+//   of objects
+//   · about 10 elements: below the
+//     64-element threshold, where the
+//     benefit is too small
+```
+
+```js
+// the particle program, as above
+// ps (line 1) {x, vx} → struct of arrays
+//   · loop at line 4 … touches 2 of 2
+//   · about 1000 elements
+//   · 2 of 3 element accesses proven
+//     in bounds
+```
+
+</Examples>
+
+In the first, lowering finds no array of records, so the plan is empty
+and emit returns your file unchanged. In the second, the analyses find a
+collection, `ps`, but the planner's cost rule (at least 64 elements by
+default) says a new layout cannot pay for itself. In the third, every
+check passes and the plan says struct of arrays; "2 of 3" is because
+`ps[3]` is not proven in bounds, which is why the output wraps it in the
+`__vsc_bc` check.
 
 ## Output that is source code
 
-Here are the last lines that `viscosity build` really wrote for the
-program in the diagram. A class `__Vsc_ps` with one `Float64Array` per
-field is generated above them (chapter 256 builds it), along with a
-bounds-check helper:
-
-```js
-const ps = new __Vsc_ps();
-for (let i = 0; i < 1000; i++)
-  ps.push(i, 1);
-for (let i = 0; i < ps.length; i++)
-  ps.x[i] += ps.vx[i];
-console.log(ps.x[__vsc_bc(ps, 3, 'x',
-  false)]);
-```
-
-The input was JavaScript, and so is the output. You can read it, diff
-it, ship it, and run it on any engine.
+The input was JavaScript, and so is the output: you can read it, diff it,
+commit it, and run it on any engine.
 
 <Callout kind="definition">
 A **source-to-source compiler** (sometimes called a *transpiler*) is a
 compiler whose output is source code in a high-level language, often the
-same language it reads. The output is then compiled or run by an ordinary
-tool. Viscosity reads JavaScript (or Python) and writes JavaScript (or
-Python).
+same language it reads. That output is then run or compiled by an
+ordinary tool. Viscosity reads JavaScript, TypeScript or Python and
+writes JavaScript or Python.
 </Callout>
+
+<Examples of="source-to-source">
+
+```ts
+interface P { x: number; vx: number }
+const ps: P[] = [];
+// out (the interface line is now blank):
+const ps = new __Vsc_ps();
+```
+
+```py
+# @viscosity soa
+ps = []
+# out: ps = _Vsc_ps()
+```
 
 <Run id="before-after" />
 
-<Prompts ids={['s2s-what', 's2s-check']} />
+</Examples>
+
+The first is real output for a TypeScript file: the plugin strips the
+types first (as in the chapter *Interfaces, erasure and typeof*), so the
+output is plain JavaScript. The second is the Python plugin, writing
+Python with a generated `_Vsc_ps` class. The runnable one does the
+change by hand and prints the same answer twice; change the numbers and
+check that both halves still agree.
+
+<Prompts ids={['s2s-what']} />
 
 ## Ahead of time, or inside the engine
 
 Viscosity is not the first system to turn arrays of JavaScript objects
-into columns. Makor and colleagues did it *at run time*, inside a
+into columns. As the chapter *Columnar arrays at run time: the research*
+described, Makor and colleagues did it *while the program runs*, inside a
 JavaScript engine built on Truffle and Graal<Cite id="makor2022" /><Cite id="wurthinger2013" />,
 and a follow-up generated specialized loop code for the converted
 arrays<Cite id="kloibhofer2023" />.
@@ -136,22 +250,22 @@ arrays<Cite id="kloibhofer2023" />.
   <WhenItHappens />
 </Figure>
 
-The trade is real in both directions. A run-time transformation sees
-the actual values and can speculate, then back out with deoptimization
-if a guess fails. But it only helps programs run on that engine.
-Viscosity's output runs anywhere, adds no compile work at start-up, and can be
-read by a person. In exchange it gets one look at the code, with no
-values and no way to back out. Every decision must be proved from the
-text alone, and when the proof fails the collection stays as it was.
+The trade is real in both directions. A run-time transformation sees the
+actual values and can speculate, then back out with deoptimization if a
+guess fails (as in the chapter *Speculation and deoptimization*);
+however, it only helps programs on that one engine. Viscosity's
+output runs anywhere, adds no work at start-up and can be read by a
+person; in exchange it gets one look at the code, with no values and no
+way to back out. As such, every decision must be *proved* from the text
+alone, and when a proof fails the collection stays exactly as it was.
 
 <Prompts ids={['aot-vs-rt', 'aot-cost', 'arch-conservative']} />
 
 ## Try it
 
-This is the real compiler, running in your browser. Change the program
-and press the buttons: see the decision, the compiled code, and "Run
-both", which checks the two versions print the same thing. Then try
-`console.log(ps[3])` on the last line, and see what changes.
+This is the real compiler, in your browser; "Run both" checks that the
+two versions print the same thing. Change the last line to
+`console.log(ps[3])` and see what the explanation says now.
 
 <Playground client:visible title="Particles" initial={`const ps = [];
 for (let i = 0; i < 1000; i++)
@@ -161,18 +275,19 @@ for (let i = 0; i < ps.length; i++)
 console.log(ps[3].x);`} />
 
 <Callout kind="engine" label="Under the hood">
-The repository's packages follow the pipeline. `packages/core` holds
-VIR, its builder (SSA construction from chapter 193), the CFG utilities,
-the analyses and the planner. `packages/frontend-js` and
-`packages/frontend-python` are the two plugins. `packages/cli` wraps
-`compile` as `viscosity build` and `viscosity explain`, and
-`packages/playground` bundles core plus the JavaScript plugin for this
-page. Because every step is a plain function of its input, each can be
-tested alone, and the whole can be tested differentially, as chapter 225
-showed.
+The packages follow the pipeline: `packages/core` holds VIR, its
+builder (SSA on the fly, as in the chapter *SSA on the fly*), the
+control-flow graph utilities, the analyses and the planner;
+`frontend-js` and `frontend-python` are the two plugins; and `cli` wraps
+`compile` as `viscosity build` and `viscosity explain`. Because every
+step is a plain function of its input, each can be tested alone, and the
+whole differentially, as in the chapter *Testing compilers*.
 </Callout>
 
 ## Your turn
+
+The first exercise is emit in miniature; the second, extra practice,
+wires the four steps together.
 
 <Exercise id="rewriteAccess" />
 
@@ -180,16 +295,18 @@ showed.
 
 ## What you learned
 
-- The **Viscosity pipeline** is `lower → analyze → plan → emit`, in a
-  25-line `compile` function.
+- The **Viscosity pipeline** is `lower → analyze → plan → emit`, in one
+  short `compile` function.
 - **Lower** and **emit** belong to a language plugin; **analyze** and
-  **plan** belong to the core and only see VIR.
-- Emit rewrites the *original text* range by range, so untouched code
+  **plan** belong to the core and see only VIR.
+- Emit edits the *original text* range by range, so untouched code
   survives exactly.
 - Viscosity is a **source-to-source compiler**: JavaScript in,
   JavaScript out, runnable on any engine.
-- Doing the change ahead of time trades run-time knowledge and
-  deoptimization for portability and readable output, so every decision
-  must be proved from the code.
+- Working ahead of time trades run-time values and deoptimization for
+  portability and readable output, so every decision must be proved.
+
+Next: the interface between the core and a language, and how a second
+language joined without changing a line of the analyses.
 
 <Quiz />

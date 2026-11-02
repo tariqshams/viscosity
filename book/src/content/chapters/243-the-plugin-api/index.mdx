@@ -6,18 +6,20 @@ title: 'The plugin API'
 tagline: 'Viscosity reads JavaScript and Python with one set of analyses. The trick is a small interface: two functions per language, and a core that never sees a line of either language’s syntax.'
 objectives:
   - Read the LanguagePlugin interface and say what lower and emit each receive and return.
-  - Explain why parsing, lowering and emitting are per-language while analysis and planning are shared.
-  - Describe what a layout strategy is, and how far Viscosity's strategies are pluggable today.
+  - Explain why parsing, lowering and emitting are per language while analysis and planning are shared.
+  - Describe what a layout strategy is, write the address of a field under each of the three, and say how far they are pluggable today.
   - Write a tiny plugin, with lower and emit, for a toy language.
 introduces: [language-plugin, layout-strategy]
 uses: [viscosity-pipeline, source-to-source, interface, object, method, function, module, ir, lowering, parser, ast, compiler-pass, constant-folding, aos-vs-soa, aosoa, typed-array, float64, interpreter, heap-number, jit-compiler, map, emit]
 sources: [braun2013]
 ---
 import TwoPlugins from '../../../components/diagrams/ch243/TwoPlugins';
+import PrivateParcel from '../../../components/diagrams/ch243/PrivateParcel';
 
 ## The same loop, twice
 
-Here is a loop you have seen many times, written in Python:
+Here is a familiar loop in Python (`P` is a dataclass, Python's short
+way to declare a record type, with fields `x` and `vx`):
 
 ```py
 ps = []
@@ -27,8 +29,8 @@ for p in ps:
     p.x += p.vx
 ```
 
-`P` is a dataclass with fields `x` and `vx`. Run `viscosity explain` on
-it and the answer is the opposite of the JavaScript version's:
+`viscosity explain` gives the opposite verdict to the JavaScript
+version's (wrapped to fit):
 
 ```
 ps (line 8) {x, vx} → kept as array of
@@ -36,25 +38,37 @@ ps (line 8) {x, vx} → kept as array of
   · CPython: column access measured
     slower per element than objects
     (the win is about 5x less memory);
-    add "# @viscosity soa" above the
-    list to opt in
+    add "# @viscosity soa" … to opt in
 ```
 
-Same program, same analyses, different verdict. To see how one compiler
-handles two languages, and why it can answer differently for each, you
-need the interface between the core and a language.
+Same program, same analyses, different answer; to see why, you need
+the boundary between the core and a language.
 
-<Callout kind="intuition">
-A wall socket doesn't care what you plug into it. A lamp, a kettle and a
-phone charger all have the same two prongs, and each one handles its own
-insides. Adding a new appliance never means rewiring the house. A
-language plugin is the plug: two prongs, `lower` and `emit`, and the
-core is the wiring behind the wall.
-</Callout>
+<Analogy title="a wall socket">
+A wall socket does not care what you plug into it: a lamp, a kettle and a
+phone charger all have the same prongs, and each handles its own insides.
+Adding a new appliance never means rewiring the house. A language plugin
+is the plug, with two prongs, `lower` and `emit`, and the core is the
+wiring behind the wall.
+<span slot="breaks">Electricity flows one way, into the appliance; a
+plugin both hands the core something (VIR) and gets something back (a
+plan) that it must act on.</span>
+</Analogy>
+
+<Analogy title="order tickets in a restaurant">
+A waiter takes your order in whatever words you use ("the usual, no
+onions") and writes it on the kitchen's standard ticket. The cooks read
+only tickets, never customers, and the same waiter brings the plate back
+to your table.
+<span slot="breaks">A ticket is all the kitchen gets; Viscosity's plugin
+also keeps private notes about your table (its syntax tree) that travel
+with the ticket, unread, and come back to it with the plate.</span>
+</Analogy>
 
 ## Two functions
 
-This is the whole interface, from `packages/core/src/plugin.ts`:
+This is the whole interface, from `packages/core/src/plugin.ts`
+(comments shortened):
 
 ```ts
 interface LoweredModule {
@@ -73,97 +87,146 @@ interface LanguagePlugin {
 }
 ```
 
-`lower` turns source text into a VIR `Module`, plus any `@viscosity`
-annotations it found in comments (each language writes comments
-differently, so finding them is the plugin's job). `emit` gets the
-source back, the same `lowered` object, and the plan, and returns new
-source.
+Read it as a contract. `lower` takes source text and gives back a VIR
+`Module` and any `@viscosity` annotations it found in comments (each
+language writes comments differently, so that is the plugin's job).
+`emit` gets the source, the same `lowered` object and the plan, and
+returns new source. `id` names the language,
+and `extensions` lists the file endings it handles (the command line
+itself picks by ending: `.py` goes to Python, everything else to
+JavaScript).
 
-There is no `parse` in the interface. Parsing happens inside `lower`,
-and the parser is the plugin's own business: the JavaScript plugin uses
-acorn or a hand-written parser (chapter 245), the Python plugin its own
-tokenizer and parser. The core only ever receives VIR.
+There is no `parse` in the interface: parsing happens inside `lower`, and
+which parser to use is the plugin's own business. The JavaScript plugin
+uses acorn or a hand-written parser (the next chapters show both), and
+the Python plugin its own tokenizer and parser; the core only ever
+receives VIR.
 
 <Callout kind="definition">
-A **language plugin** is the object a language front-end provides to
+A **language plugin** is the object a language front end gives
 Viscosity: an `id`, the file `extensions` it handles, and two functions.
 **`lower`** parses source and lowers it to VIR. **`emit`** rewrites that
 source according to a layout plan. Everything between them (analysis,
-planning, explain) is shared by all languages.
+planning, explain) is shared by every language.
 </Callout>
 
-<Prompts ids={['lp-what', 'lp-no-parse', 'lp-annotations']} />
+<Examples of="language-plugin">
+
+```js
+// the smallest correct plugin
+const none = { id: 'none', extensions: [],
+  lower: (s) => ({ module: EMPTY,
+    annotations: new Map() }),
+  emit: (s) => s };
+```
+
+```js
+jsPlugin().id;          // 'javascript'
+jsPlugin().extensions;
+// ['.js', '.mjs', '.ts', '.mts']
+```
+
+```js
+pythonPlugin().id;      // 'python'
+// syntax outside its subset: lower
+// returns an empty module, and emit
+// returns the source unchanged
+```
+
+</Examples>
+
+The first plugin understands nothing (`EMPTY` stands for a module with
+one empty function), so the plan is empty and `emit` hands the text
+back: useless, but *correct*, the floor every real plugin stands on. The
+second is the real JavaScript plugin, which handles four file endings,
+TypeScript included. The third is the Python plugin's real safety net:
+on syntax it does not support, `lower` falls back to exactly that empty
+module, so the file comes out as it went in.
+
+<Prompts ids={['lp-what', 'lp-no-parse']} />
+
+## The private parcel
 
 Look again at `emit`'s arguments. It gets `lowered` back, typed as a
-plain `LoweredModule`, but a plugin may return a bigger object from
-`lower`. The JavaScript plugin adds its ESTree tree, its scope
+plain `LoweredModule`; however, a plugin may return a *bigger* object from
+`lower`. The JavaScript plugin adds its ESTree syntax tree, its scope
 resolution, and the JavaScript text it actually analysed (TypeScript is
-stripped first). The core passes that object along without looking
-inside, and `emit` takes out what it needs. Each plugin keeps private
-state across the core this way, without the core knowing its type.
+stripped first), and the core passes the whole object along without
+looking inside:
+
+<Figure caption="lower returns one object. The core reads only its LoweredModule part; emit gets all of it back." takeaway="A plugin keeps private state across the core without the core knowing its type.">
+  <PrivateParcel />
+</Figure>
+
+(An interface promises *at least* these fields, as in the chapter
+*Interfaces, erasure and typeof*, so an object with more still fits.)
 
 <Prompts ids={['lp-private']} />
 
-## Why this split
+## Why the line falls there
 
-Step through both programs:
+Step through both programs, and watch which box lights up:
 
 <TwoPlugins client:visible />
 
-Some work can only be done by someone who knows the language. Parsing,
-obviously. Lowering too: only the Python plugin knows that `P(...)`
-builds a record, because it saw the `@dataclass`; only the JavaScript
-plugin knows that `{ x: i }` does. And emit must write correct syntax,
-with Python's indentation or JavaScript's braces.
+Parsing, lowering and emitting need someone who knows the language:
+only the Python plugin knows that `P(...)` builds a record (it saw the
+`@dataclass`), and only emit can write Python's indentation or
+JavaScript's braces. The rest is about data, not spelling: "which fields
+does this loop touch?" has the same answer however the loop was written,
+so the escape checks of the chapter *Escape analysis* and the bounds
+proofs are written once, on VIR, and a fix there fixes every
+language.
 
-The rest is about data, not syntax. "Which fields does this loop touch?"
-has the same answer however the loop was spelled. Writing that analysis
-once, on VIR, means the escape checks, the numeric inference and the
-bounds proofs from earlier chapters serve every language, and a bug
-fixed there is fixed for all of them.
+<Formal title="What every plugin promises">
 
-<Prompts ids={['lp-why-split', 'lp-dataclass']} />
+```text
+lower(s).module is valid VIR
+emit(s, lower(s), keepAll) = s
+  for a JavaScript file s
+```
+
+<span slot="read">Lowering any source s must produce well-formed VIR,
+and for a JavaScript file, emitting with a plan that keeps every
+collection as it is (call that plan keepAll) must give back s exactly,
+character for character. (A TypeScript file comes back with its types
+stripped, since that is the text the plugin analysed.)</span>
+</Formal>
+
+<Prompts ids={['lp-why-split']} />
 
 ## A language is also a fact
 
 So why did the Python program keep its objects? The core never sees
 Python syntax, but it does read one field of the module,
-`module.language`, in two places. The numeric analysis needs it because
-"a number" differs: any JavaScript number fits a `Float64Array`, but in
-Python only a float may go into an `array('d')` column (an int would
-come back as `1.0`). And the planner needs it here, because the
-repository's measurements say so.
-In this book's benchmark run on CPython 3.13 with 100,000 elements
-(`packages/bench/FINDINGS.md`, section 6), the update loop took 26.7 ns
-per element over dataclass objects and 72.7 ns over `array('d')`
-columns. Memory went from 16.0 MB to 3.3 MB.
-
-CPython is an interpreter. Reading an element of `array('d')` creates a
-new float object each time, so the cache-friendlier layout loses on
-time. V8's optimizing compiler reads a `Float64Array` element as a raw
-double, which is why JavaScript wins. So Python keeps objects by
-default, explains why, and lets you opt in with `# @viscosity soa` (or
+`module.language`. In this book's benchmark run on CPython 3.13 with
+100,000 elements (`packages/bench/FINDINGS.md`, section 6), the update
+loop took 26.7 ns per element over dataclass objects and 72.7 ns over
+`array('d')` columns, while memory went from 16.0 MB to 3.3 MB. CPython
+is an interpreter, and reading an `array('d')` element creates a new
+float object each time, while V8's optimizing compiler reads a
+`Float64Array` element as a raw double. So Python keeps objects by
+default and lets you opt in with `# @viscosity soa` (or
 `--python-auto`) when memory matters more.
 
 <Prompts ids={['lp-python-default', 'lp-python-why']} />
 
 ## Layout strategies
 
-The other axis of extension is *how* a collection is stored. The same
-file declares it:
+The other way to extend Viscosity is *how* a collection is stored, and
+the same file declares that list too: `STRATEGIES`, three entries named
+`aos`, `soa` and `aosoa`, each with a one-line description.
 
-```ts
-interface LayoutStrategy {
-  id: string;
-  describe: string;
-}
-
-const STRATEGIES: LayoutStrategy[] = [
-  { id: 'aos', describe: '…' },
-  { id: 'soa', describe: '…' },
-  { id: 'aosoa', describe: '…' },
-];
-```
+<Analogy title="shelving in a warehouse">
+A warehouse can shelve each customer's order in its own box (everything
+for one customer together), or keep all the screws on one shelf and all
+the hinges on another (everything of one kind together), or pack pallets
+of eight orders with the screws for those eight in one tray. Which is
+best depends on whether pickers fetch whole orders or sweep along one
+kind of part.
+<span slot="breaks">A warehouse can re-shelve while open; Viscosity
+picks once, before the program runs, and never changes its mind.</span>
+</Analogy>
 
 <Callout kind="definition">
 A **layout strategy** is one way of storing a collection: `aos` leaves
@@ -172,27 +235,71 @@ blocks of N elements, field-major inside each block. The planner chooses
 a strategy per collection; each plugin's `emit` knows how to write it.
 </Callout>
 
-Be honest about where this stands. The comment says "strategies are
-plugins too", but today the list is a registry of names and
-descriptions. The planner's `Layout` type names the same three, and each
-emitter implements each one: the JavaScript emitter writes all three,
-while the Python emitter supports `aos` and `soa` and throws on `aosoa`.
-Adding a fourth strategy, say hot/cold splitting, means a planner rule
-plus emitter code in each plugin. The strategies are cleanly separated,
-but not yet loaded like language plugins.
+<Examples of="layout-strategy">
+
+```js
+ps[i].x    // aos: left as it was
+```
+
+```js
+ps.x[i]    // soa: column x, slot i
+```
+
+```js
+// aosoa(8), fields x and vx:
+ps.data[((i) >> 3) * 16 + 0
+  + ((i) & 7)]
+```
+
+<Run id="addresses" />
+
+</Examples>
+
+These are the real accesses Viscosity writes for `ps[i].x` under each
+strategy. Under `aos` nothing changes. Under `soa`, field `x` has its
+own `Float64Array`, and element `i` is slot `i` of it. Under `aosoa(8)`
+everything lives in one `Float64Array` called `data`: `i >> 3` is the
+block number (`i` divided by 8, rounded down), each block holds 16
+numbers (8 `x`s, then 8 `vx`s), `+ 0` picks the `x` part, and `i & 7` is
+the position inside the block (`i` modulo 8). The runnable one
+computes those positions for a few elements; try `B = 4`.
+
+<Formal title="Where field k of element i lives">
+
+```text
+aos:    ps[i].f_k
+soa:    col_k[i]
+aosoa:  data[⌊i / B⌋·F·B + k·B + (i mod B)]
+```
+
+<span slot="read">With F fields numbered from 0 and blocks of B
+elements: under aos it is a property of the i-th object; under soa it is
+slot i of column k; under aosoa, element i is in block ⌊i / B⌋ (i
+divided by B, rounded down), each block holds F·B numbers, field k's
+run starts k·B into the block, and the element sits i mod B along that
+run.</span>
+</Formal>
+
+To be honest about where this stands: the comment says "strategies
+are plugins too", but today the list is only names and descriptions: the planner's `Layout` type names the same three, and each
+emitter implements each one, the JavaScript emitter all three and the
+Python emitter `aos` and `soa` (it throws on `aosoa`). Adding a fourth,
+say hot/cold splitting, means a planner rule plus emitter code in each
+plugin.
 
 <Prompts ids={['ls-what', 'ls-today']} />
 
 <Callout kind="engine" label="Under the hood">
-The Python plugin shows the other duty of a plugin: staying safe at its
-edges. If its parser meets syntax outside the supported subset, `lower`
-catches the error and returns an empty module, and `emit` returns the
-source unchanged. Nothing in the core needs to know. The plugin builds
-its VIR with the same `ModuleBuilder` as JavaScript, so both get SSA
-construction from the one shared implementation<Cite id="braun2013" />.
+Both plugins build VIR with the same `ModuleBuilder`
+(`packages/core/src/builder.ts`), so both get SSA construction from one
+implementation, the algorithm of the chapter *SSA on the
+fly*<Cite id="braun2013" />: a plugin never writes a phi by hand.
 </Callout>
 
 ## Your turn
+
+The first exercise builds both halves of a plugin for a toy language;
+the second, extra practice, adds a second language to the same core.
 
 <Exercise id="eqPlugin" />
 
@@ -200,16 +307,15 @@ construction from the one shared implementation<Cite id="braun2013" />.
 
 ## What you learned
 
-- A **language plugin** provides `id`, `extensions`, `lower` and `emit`.
-  Parsing lives inside `lower`.
-- `lower` returns VIR and annotations; the plugin can add private data
-  to that object, and `emit` gets it back.
-- Syntax work (parse, lower, emit) is per-language; work on data
-  (analysis, planning) is shared, on VIR.
-- The core reads `module.language` as a fact, in numeric inference and
-  in the planner. CPython measured slower with columns, so Python keeps
-  objects unless you opt in.
+- A **language plugin** provides `id`, `extensions`, `lower` and `emit`;
+  parsing lives inside `lower`.
+- `lower` returns VIR and annotations, and may add private data that the
+  core passes, unread, back to `emit`.
+- Syntax work is per language; work on data (analysis, planning) is
+  shared, on VIR. The core reads `module.language` as a fact.
 - A **layout strategy** is a way of storing a collection: `aos`, `soa`,
-  `aosoa`. Today they are a fixed list implemented by each emitter.
+  `aosoa`. Today they are a fixed list that each emitter implements.
+
+Next: the IR in the middle, VIR itself.
 
 <Quiz />

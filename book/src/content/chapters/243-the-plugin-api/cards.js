@@ -25,10 +25,6 @@ export const prompts = {
     q: 'Why is there no `parse` function in the plugin interface?',
     a: 'Parsing happens inside `lower`. Which parser a language uses is the plugin’s business; the core only receives VIR.',
   },
-  'lp-annotations': {
-    q: 'Why does `lower` return the `@viscosity` annotations, rather than the core finding them?',
-    a: 'They live in comments, and each language writes comments differently. Only the plugin can read them.',
-  },
   'lp-private': {
     q: 'How does the JavaScript plugin get its ESTree tree back in `emit`?',
     a: 'It returns a bigger object from `lower` (tree, scopes, JS text). The core passes it unread to `emit`.',
@@ -36,10 +32,6 @@ export const prompts = {
   'lp-why-split': {
     q: 'Why is analysis written once, on VIR, instead of once per language?',
     a: 'Its questions are about data (fields, loops, escapes), not spelling. One implementation serves every language, and one fix fixes all.',
-  },
-  'lp-dataclass': {
-    q: 'How does the Python plugin know that `P(x, 1.0)` creates a record?',
-    a: 'It saw `@dataclass class P` with fields x and vx, so it lowers the call to `record.new`.',
   },
   'lp-python-default': {
     q: 'By default, what does Viscosity do with a Python list of dataclass objects?',
@@ -56,6 +48,23 @@ export const prompts = {
   'ls-today': {
     q: 'What would adding a fourth layout strategy take today?',
     a: 'A planner rule plus emitter code in each plugin. `STRATEGIES` is a registry of names, not a loader.',
+  },
+};
+
+export const examples = {
+  addresses: {
+    title: 'Where an AoSoA field lives',
+    code: `const F = 2; // fields: x, vx
+const B = 8; // elements per block
+function at(i, k) {
+  const block = Math.floor(i / B);
+  return block * F * B + k * B
+    + (i % B);
+}
+console.log(at(0, 0)); // x of 0
+console.log(at(0, 1)); // vx of 0
+console.log(at(9, 0)); // x of 9
+console.log(at(9, 1)); // vx of 9`,
   },
 };
 
@@ -123,12 +132,28 @@ test('lower marks unknown lines opaque', () => {
       'Lines that don’t match must still produce an instruction, `{ op: \'opaque\', line }`, so the core knows they exist and leaves them alone.',
       '`emit`: map over the source lines again. If `plan.has(k)`, write the name (from `low.module.insts[k]`) and the planned value; otherwise return the original line untouched.',
     ],
-    walkthrough: `You have just written both halves of a language plugin, and nothing in \`fold\` or \`compile\` had to change for it.
+    walkthrough: `**How to think about it.** Split the job the way Viscosity does. The core (\`fold\` and \`compile\`) is finished and knows nothing about equals signs; it reads instructions with \`op\`, \`a\`, \`b\` and \`line\`, and writes a plan, a \`Map\` from line number to sum. Your plugin must do the two language-facing jobs: \`lower\` turns each line of text into one such instruction, and \`emit\` turns the plan back into text. Before writing anything, decide what happens to a line you do not understand: it must still get an instruction (an \`opaque\` one), so that instruction \`k\` always belongs to line \`k\`.
 
-- **lower knows the syntax.** Only \`lower\` knows that \`=\` and \`+\` mean an addition. It turns each line into a language-neutral instruction. The core’s \`fold\` reads \`op\`, \`a\` and \`b\`; it never sees an equals sign.
-- **Opaque keeps it sound.** A line the plugin doesn’t understand becomes \`opaque\`, which the core never touches. That is Viscosity’s rule too: what isn’t modelled is left alone.
-- **emit edits text.** It rewrites only the lines the plan names, and copies every other line byte for byte (\`print  x\` keeps its two spaces). Viscosity’s emitters work the same way, with source ranges instead of whole lines.
-- **Private data travels through.** \`emit\` reads the name from \`low.module.insts\`, data it produced itself in \`lower\`. The real JavaScript plugin carries its ESTree tree through the core the same way.`,
+**The solution, line by line.**
+
+- \`const RE = /^(\\w+) = (\\d+) \\+ (\\d+)$/;\` recognises a whole line of the form \`NAME = A + B\`: \`^\` and \`$\` pin it to the start and end, \`(\\w+)\` captures the name, and the two \`(\\d+)\` capture the whole numbers (\`\\+\` is a literal plus).
+- \`function inst(l, line) {\` turns one line \`l\` with number \`line\` into an instruction.
+- \`  const m = RE.exec(l);\` tries the pattern; \`m\` is \`null\` if the line is not an addition.
+- \`  if (!m) return { op: 'opaque', line };\` keeps a place for lines the plugin does not model, so the core leaves them alone.
+- \`  return { op: 'add', name: m[1],\` and \`    a: +m[2], b: +m[3], line };\` build the addition; the \`+\` in front of \`m[2]\` turns the text \`'1'\` into the number \`1\`.
+- \`  lower(src) {\` / \`    const insts = src.split('\\n')\` / \`      .map(inst);\` split the source into lines and map each one (\`map\` passes the line and its index, which become \`l\` and \`line\`).
+- \`    return { module: { insts } };\` returns the shape the core expects.
+- \`  emit(src, low, plan) {\` gets the source, its own \`low\` object back, and the plan.
+- \`    const is = low.module.insts;\` reads the instructions it made itself.
+- \`    const out = (l, k) => plan.has(k)\` asks, for line \`k\`, whether the plan changed it; if so, \`? is[k].name + ' = ' + plan.get(k)\` writes the name and the sum, and otherwise \`: l\` returns the line untouched.
+- \`    return src.split('\\n').map(out)\` / \`      .join('\\n');\` rebuilds the text with the same line breaks.
+
+Trace the second test: lines 0 and 2 are additions, line 1 (\`print  x\`) is opaque. The core plans \`{0 → 3, 2 → 15}\`; emit rewrites lines 0 and 2 and copies \`print  x\`, with its two spaces, exactly.
+
+**Common wrong attempts.**
+
+- Skipping unknown lines in \`lower\` makes \`insts[k]\` stop lining up with line \`k\`, so emit looks up the wrong name.
+- Treating every line as an addition turns \`print x\` and \`x = a + 2\` into additions of \`NaN\`, and emit then rewrites lines it never understood. Unknown syntax must be opaque, and opaque lines must be copied unchanged: that is Viscosity's own rule.`,
     wrong: [
       {
         code: CORE + `
@@ -238,9 +263,21 @@ test('names stay opaque', () => {
       'Copy the shape of your `eq` plugin. Only the regular expression in `lower` and the text built in `emit` change.',
       'Parentheses and `+` are special in regular expressions, so escape them: `\\(`, `\\)`, `\\+`.',
     ],
-    walkthrough: `Only the two syntax-facing pieces changed: the pattern that recognises an addition, and the text emit writes back. \`fold\` and \`compile\` are untouched, and they produce the same plan for \`(set x (+ 1 2))\` as for \`x = 1 + 2\`, because after lowering the two programs are the same instruction.
+    walkthrough: `**How to think about it.** Copy your \`eq\` plugin and ask which parts of it knew the language. Only two did: the pattern that recognises an addition, and the text \`emit\` writes back. Everything else (one instruction per line, opaque for the rest, look up the plan by line) carries over unchanged, and so do \`fold\` and \`compile\`.
 
-That is the claim of Viscosity’s architecture in small: the Python plugin was added in the same way, and every analysis it uses was already written for JavaScript.`,
+**The solution, line by line.**
+
+- \`const RE =\` / \`  /^\\(set (\\w+) \\(\\+ (\\d+) (\\d+)\\)\\)$/;\` matches \`(set NAME (+ A B))\`. Round brackets and \`+\` are special in regular expressions, so the literal ones are written \`\\(\`, \`\\)\` and \`\\+\`; the unescaped \`(\\w+)\` and \`(\\d+)\` are the capture groups.
+- \`function inst(l, line) {\` … is the same as in \`eq\`: \`opaque\` for no match, otherwise \`{ op: 'add', name, a, b, line }\`.
+- \`  lower(src) {\` is unchanged.
+- \`    const out = (l, k) => plan.has(k)\` / \`      ? '(set ' + is[k].name + ' '\` / \`        + plan.get(k) + ')'\` writes the folded line back in Lisp syntax, \`(set x 3)\`; \`: l\` copies every other line.
+
+After lowering, \`(set x (+ 1 2))\` and \`x = 1 + 2\` are the *same* instruction, so the core produces the same plan for both. That is the claim of Viscosity's architecture in small: the Python plugin was added the same way, and every analysis it uses was already written for JavaScript.
+
+**Common wrong attempts.**
+
+- Marking every line opaque is safe but folds nothing: a plugin must lower what it can.
+- Forgetting to escape the brackets makes \`(+\` a group followed by a bare \`+\`, which is not even a valid pattern.`,
     wrong: [
       {
         code: CORE + `
@@ -270,15 +307,6 @@ export const quiz = [
       { t: '`analyze(module)`', why: 'Analysis belongs to the core and is shared by every language.' },
       { t: '`emit(source, lowered, plan)`', correct: true, why: 'Along with `lower`, `id` and `extensions`, it is the whole interface.' },
       { t: '`run(code)`', why: 'Viscosity never runs the program; it writes a new source file.' },
-    ],
-  },
-  {
-    q: 'Why must emit be written separately for each language?',
-    options: [
-      { t: 'It has to write correct syntax for that language, from that language’s source', correct: true, why: 'Python needs indentation and `append`; JavaScript needs braces and `push`. Only the plugin knows them.' },
-      { t: 'Because VIR differs per language', why: 'All plugins lower to the same VIR.' },
-      { t: 'Because the plan differs per language', why: 'The plan has the same shape for every language: a layout per collection.' },
-      { t: 'It doesn’t: one emitter serves all languages', why: 'Each plugin has its own: `emit.ts` in `frontend-js` and in `frontend-python`.' },
     ],
   },
   {

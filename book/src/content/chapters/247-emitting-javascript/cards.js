@@ -17,10 +17,6 @@ export const prompts = {
     q: 'How does the emitter find the source text for a VIR instruction?',
     a: 'Each instruction’s `src` holds its ESTree node with `start` and `end` offsets, recorded during lowering.',
   },
-  'push-flatten': {
-    q: 'What does `ps.push({ x: a, vx: b })` become for an SoA collection?',
-    a: '`ps.push(a, b)`: the field values in column order, which the generated push writes into the columns.',
-  },
   'forof-rewrite': {
     q: 'After `for (const p of ps)` is rewritten, what does `p` hold, and what does `p.x` become?',
     a: 'An index: the header becomes `let p = 0; p < ps.length; p++`, and `p.x` becomes `ps.x[p]`.',
@@ -41,13 +37,28 @@ export const prompts = {
     q: 'Why is the prelude inserted after a `"use strict"` line, not at offset 0?',
     a: 'A directive only takes effect at the very start of a script. Code above it would turn strict mode off.',
   },
-  'nothing-to-do': {
-    q: 'What does `emitJs` return when no collection is transformed?',
-    a: 'The original source, unchanged: with no prelude, it returns before applying any edits.',
-  },
 };
 
-export const examples = {};
+export const examples = {
+  splice: {
+    title: 'Three edits, back to front',
+    code: `const src = 'ps.push({ x: i, vx: 1 });';
+// the push's three real edits
+const edits = [
+  { start: 8, end: 13, text: '' },
+  { start: 14, end: 20, text: ', ' },
+  { start: 21, end: 23, text: '' },
+];
+const back = [...edits].sort(
+  (a, b) => b.start - a.start);
+let out = src;
+for (const e of back) {
+  out = out.slice(0, e.start)
+    + e.text + out.slice(e.end);
+  console.log(out);
+}`,
+  },
+};
 
 export const exercises = {
   applyEdits: {
@@ -122,12 +133,27 @@ test('the input array is untouched', () => {
       'Remember the `start` of the edit you just applied. The next edit (further left) must end at or before it.',
       'Use `[...edits].sort(...)` so the caller’s array keeps its order.',
     ],
-    walkthrough: `This is the loop at the end of Viscosity’s \`emitJs\`.
+    walkthrough: `**How to think about it.** Try the naive way on paper first. Replace \`[0, 2)\` of \`'abcdef'\` with \`'XYZW'\` (two characters become four), and the text is now two characters longer, so an edit that was meant for \`[4, 6)\` of the *original* now lands on the wrong characters. The fix is to apply edits from the end of the text towards the start: an edit only ever shifts text to its right, and everything to its right has already been done. Overlap is the other case to think about: if two edits claim the same characters, no order can be right, so the function must refuse.
 
-- **Why backwards.** The starter applies the first edit, \`a\` → \`xs\`, which makes the string one character longer. The second edit’s offsets (8–10) now point one character too early. Sorting by \`start\`, descending, means each edit only shifts text you have already finished with.
-- **Overlap detection is one comparison.** After sorting, the edits you’ve applied all start at or after \`last\`. A new edit overlaps one of them exactly when its \`end\` is past \`last\`. Touching (\`end === last\`) is fine: the two ranges share no character.
-- **Identical ranges overlap too.** Two edits for \`p.x\` (one from a read, one from a write) are the case the field-edit dedupe exists to prevent.
-- **Copy before sorting.** \`sort\` works in place; sorting the caller’s array would be a surprising side effect.`,
+**The solution, line by line.**
+
+- \`function applyEdits(src, edits) {\` takes the original text and the edits, in any order.
+- \`  const es = [...edits].sort(\` / \`    (a, b) => b.start - a.start);\` copies the list (\`[...edits]\`, so the caller's array is not reordered) and sorts it by \`start\`, largest first: \`b.start - a.start\` is positive when \`b\` starts later, which puts \`b\` first.
+- \`  let out = src;\` starts from the original text.
+- \`  let last = Infinity;\` remembers the \`start\` of the edit applied last; nothing has been applied yet, so any first edit is fine.
+- \`  for (const e of es) {\` walks the edits from right to left.
+- \`    if (e.end > last) {\` / \`      throw new Error('overlap');\` checks that this edit (further left) ends at or before the start of the one just applied. Edits that only touch, like \`[2, 4)\` and \`[4, 6)\`, pass, because \`4 > 4\` is false.
+- \`    out = out.slice(0, e.start)\` / \`      + e.text + out.slice(e.end);\` keeps everything before the range, puts the new text in, and keeps everything after. The offsets \`e.start\` and \`e.end\` are still right, because every change so far happened to their right.
+- \`    last = e.start;\` records where this edit began.
+- \`  return out;\` returns the finished text.
+
+**Common wrong attempts.**
+
+- Applying the edits in the order given (or sorted front to back) works only while every replacement has the same length as what it replaces; the first longer one shifts all later offsets.
+- Sorting \`edits\` in place (\`edits.sort(...)\`) gives the right answer but reorders the caller's array, which the last test checks.
+- Checking overlap with \`e.end >= last\` rejects edits that merely touch, which are perfectly fine.
+
+This is the loop at the end of Viscosity's \`emitJs\`; the real sort also orders edits that start at the same place, so that an insertion and a replacement there come out in the right order.`,
     wrong: [
       {
         code: `function applyEdits(src, edits) {
@@ -204,12 +230,25 @@ test('order of first appearance', () => {
       'Replace the stored edit only if there is none yet, or the old one writes and the new one doesn’t.',
       'A `Map` keeps keys in insertion order, and `set` on an existing key keeps its position.',
     ],
-    walkthrough: `This is \`fieldEdit\` from \`emit.ts\`.
+    walkthrough: `**How to think about it.** Ask why two edits could share a range at all: in \`p.x += 1\`, lowering made a \`field.get\` and a \`field.set\`, and both point at the characters \`p.x\`, so each produces an edit there. Two edits on one range are an overlap, and the edit loop would (rightly) throw, so one must go. Which one? They differ only in the flag they pass to the bounds check, which chooses the error message, and JavaScript evaluates \`p.x += 1\` by reading \`p.x\` first; so out of bounds the message must be the read's, "Cannot read properties of undefined (reading 'x')". Hence: keep one edit per range, and let a read replace a write.
 
-- **Why ranges collide.** In \`p.x += 1\`, lowering emits a \`field.get\` and a \`field.set\` whose source ranges both cover \`p.x\`. Each produces an edit to the same characters.
-- **Why one must go.** Two edits on one range are an overlap, and \`applyEdits\` would (rightly) throw.
-- **Which one to keep.** Both rewrite \`p.x\` to the same column slot, so either works when the access is proven in bounds. They differ only in the bounds-check call, where the flag picks the error message. Viscosity keeps the read’s, because JavaScript evaluates \`p.x += 1\` by reading \`p.x\` first: out of bounds, V8 says “Cannot read properties of undefined (reading 'x')”, and so must the compiled code. (An earlier version kept the write’s and said “Cannot set”; a corpus test caught it.)
-- **Order.** Re-setting an existing \`Map\` key keeps its original position, so the output follows first appearance. The emitter then sorts everything anyway.`,
+**The solution, line by line.**
+
+- \`function dedupe(edits) {\` takes the field edits, each with a \`write\` flag.
+- \`  const m = new Map();\` maps a range to the edit kept for it.
+- \`  for (const e of edits) {\` visits the edits in order.
+- \`    const k = e.start + ':' + e.end;\` makes one key per range, such as \`'93:96'\`.
+- \`    const prev = m.get(k);\` looks up the edit already kept for this range, if any.
+- \`    if (!prev\` / \`      || (!e.write && prev.write)) {\` keeps \`e\` when the range is new, or when \`e\` is a read and the kept one is a write.
+- \`      m.set(k, e);\` stores it. Setting a key that already exists keeps the key's original position in the map, so ranges stay in the order they first appeared.
+- \`  return [...m.values()];\` returns one edit per range.
+
+**Common wrong attempts.**
+
+- Keeping the last edit for each range lets a write replace a read, and the compiled code would then say "Cannot set properties of undefined" where the original says "Cannot read".
+- Deleting and re-adding the key (to replace an edit) moves the range to the end of the map and breaks the order test.
+
+The real \`fieldEdit\` in \`emit.ts\` ranks three kinds, write 0, read 1 and late 2, and keeps the highest; a late store (for an assignment whose right side may run code) covers the read as well.`,
     wrong: [
       {
         code: `function dedupe(edits) {
@@ -236,12 +275,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'Edits at offsets 11–13 (2 chars → 14 chars) and 55–70. In which order are they applied, and why?',
+    q: 'Edits at offsets 11–13 (2 chars → 14 chars) and 55–60. In which order are they applied, and why?',
     options: [
-      { t: '11–13 first, because it comes first in the file', why: 'That would shift 55–70 by 12 characters, breaking its offsets.' },
+      { t: '11–13 first, because it comes first in the file', why: 'That would shift 55–60 by 12 characters, breaking its offsets.' },
       { t: 'In any order: offsets are recomputed after each edit', why: 'They are not recomputed; that is why the order matters.' },
       { t: 'Both at once, with a regular expression', why: 'Each is a separate slice-and-join.' },
-      { t: '55–70 first: applying later edits first leaves earlier offsets valid', correct: true, why: 'Sorted by start, descending.' },
+      { t: '55–60 first: applying later edits first leaves earlier offsets valid', correct: true, why: 'Sorted by start, descending.' },
     ],
   },
   {
@@ -251,15 +290,6 @@ export const quiz = [
       { t: 'Write `ps.x[p]` twice, as `ps.x[p]ps.x[p]`', why: 'The overlap check stops before anything is applied twice.' },
       { t: 'Nothing different', why: 'Two edits for one range is exactly what the check catches.' },
       { t: 'Leave `p.x` unchanged', why: 'Both edits would try to change it.' },
-    ],
-  },
-  {
-    q: 'A file starts with `#!/usr/bin/env node` and then `\'use strict\';`. Where does the generated class go?',
-    options: [
-      { t: 'At offset 0, before the shebang', why: 'A shebang must be the first line, and the directive must come before other code.' },
-      { t: 'After both lines', correct: true, why: 'The emitter matches an optional shebang and directive and inserts the prelude after them.' },
-      { t: 'At the end of the file', why: 'Class declarations are not hoisted like functions; the class must come before its uses.' },
-      { t: 'Between the shebang and the directive', why: 'Then the directive would no longer be first and strict mode would be off.' },
     ],
   },
   {

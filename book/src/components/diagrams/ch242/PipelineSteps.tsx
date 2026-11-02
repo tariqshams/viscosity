@@ -71,7 +71,7 @@ export default function PipelineSteps() {
               <Box x={x} y={22} w={60} h={40} fill={on ? tok(c, 0.18) : 'transparent'} stroke={on || done ? tok(c) : tok('line')} dash={!on && !done}>
                 <T x={x + 30} y={42} size={11} weight={on ? 700 : 400} anchor="middle">{g.label}</T>
               </Box>
-              <T x={x + 30} y={10} size={9} anchor="middle" fill={tok(plug ? 'f3' : 'muted')}>{g.who}</T>
+              <T x={x + 30} y={10} size={11} anchor="middle" fill={tok(plug ? 'f3' : 'muted')}>{g.who}</T>
               {k < STAGES.length - 1 && <Arrow x1={x + 60} y1={42} x2={x + 66} y2={42} width={1.5} />}
             </g>
           );

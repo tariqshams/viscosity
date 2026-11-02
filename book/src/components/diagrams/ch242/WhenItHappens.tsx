@@ -21,8 +21,8 @@ export default function WhenItHappens() {
       <Arrow x1={92} y1={164} x2={118} y2={164} />
       <Box x={118} y={144} w={276} h={72} fill={tok('f3', 0.12)} stroke={tok('f3')}>
         <T x={256} y={162} size={11} anchor="middle">a modified engine</T>
-        <T x={256} y={182} size={10} anchor="middle" fill={tok('muted')}>watches the running program,</T>
-        <T x={256} y={198} size={10} anchor="middle" fill={tok('muted')}>converts arrays it sees are suitable</T>
+        <T x={256} y={182} size={11} anchor="middle" fill={tok('muted')}>watches the running program,</T>
+        <T x={256} y={198} size={11} anchor="middle" fill={tok('muted')}>converts arrays it sees are suitable</T>
       </Box>
       <T x={8} y={236} size={11} fill={tok('muted')}>Sees real values, but only that engine benefits.</T>
     </Svg>

@@ -21,10 +21,6 @@ export const prompts = {
     q: 'Why is `const ps = []` always a binding, never SSA?',
     a: 'So every read of ps is a visible load and the collection analysis can find all its uses by scanning loads and stores.',
   },
-  'try-binding': {
-    q: 'Why are variables assigned inside `try` never SSA?',
-    a: 'The lowering doesn’t model exception edges, so SSA values could be wrong in the catch block. Explicit loads and stores stay correct.',
-  },
   readtarget: {
     q: 'In `p.x += 1`, why does `readTarget` lower `p` once and share it between get and set?',
     a: 'JavaScript evaluates the target object once; lowering it twice could repeat side effects and would hide that read and write touch the same object.',
@@ -33,21 +29,9 @@ export const prompts = {
     q: 'Why does `x++` lower to `unop +` before the add?',
     a: 'That is ToNumber: postfix ++ returns the old value converted to a number, even if x held a string.',
   },
-  'math-intrinsic': {
-    q: 'When is `Math.sqrt(x)` lowered to an intrinsic instead of a call?',
-    a: 'Only when `Math` resolves to the global binding; a local variable named Math could be anything.',
-  },
   'forof-index': {
     q: 'What does `for (const p of ps)` become in VIR when `ps` is an identifier?',
     a: 'An index loop: a phi for a hidden index in the head, a `< length` test, and `index.get ps, i` for p in the body.',
-  },
-  hoist: {
-    q: 'How does lowering make `sq(3)` work when `function sq` is declared below the call?',
-    a: 'Function declarations are hoisted: each is lowered first, and a closure is stored in its binding at the top of the scope.',
-  },
-  'opaque-what': {
-    q: 'What is an `opaque` instruction?',
-    a: 'A stand-in for code VIR doesn’t model. Its arguments are the variables that code mentions; its result is unknown.',
   },
   'opaque-mentioned': {
     q: 'What would go wrong if an opaque instruction dropped the variables its code mentions?',
@@ -55,7 +39,30 @@ export const prompts = {
   },
 };
 
-export const examples = {};
+export const examples = {
+  'lower-expr': {
+    title: 'Lowering an expression tree',
+    code: `const out = ['%0 = param a'];
+const env = { a: 0 };
+let next = 1;
+function expr(e) {
+  if (typeof e === 'number') {
+    out.push(\`%\${next} = const \${e}\`);
+    return next++;
+  }
+  if (typeof e === 'string')
+    return env[e];
+  const a = expr(e[1]);
+  const b = expr(e[2]);
+  out.push(\`%\${next} = binop \${e[0]}\`
+    + \` %\${a}, %\${b}\`);
+  return next++;
+}
+const r = expr(['+', ['*', 'a', 2], 1]);
+out.push('return %' + r);
+console.log(out.join('\\n'));`,
+  },
+};
 
 export const exercises = {
   lowerStmts: {
@@ -139,14 +146,29 @@ test('unknown names throw', () => {
       'Write a recursive `expr(e)` that returns a value number: a number emits a `const`, a name looks itself up, an array lowers both sides and emits a `binop`.',
       'For `set`, check that the name exists first, then lower the right side and update the map. Lowering `a + 2` must read the *old* `a`.',
     ],
-    walkthrough: `This is the core of \`lower.ts\` at toy size: \`expr\` returns a value, statements only add instructions, and SSA variables are a map, not memory.
+    walkthrough: `**How to think about it.** This is the core of \`lower.ts\` at toy size, so copy its two rules. An expression *returns* the id of the value that holds its result; a statement returns nothing and only *adds* instructions. Variables are SSA, so they are not memory at all: a \`Map\` from name to "the value it holds right now" plays the part of \`writeVariable\` and \`readVariable\`. There are no branches here, so there is never a phi: the current value of a name is simply the last one written.
 
-- **Names are a map.** \`env\` plays the role of \`writeVariable\`/\`readVariable\`. There are no branches here, so there is never a phi: the current value of a name is simply the last one written.
-- **Reads emit nothing.** In \`x * x\`, both operands are \`%0\`. If variables were bindings, you would emit two loads instead, and the analyses would have to work out that they read the same thing.
-- **Order matters.** Lowering \`a\` before \`b\` matches JavaScript’s left-to-right evaluation, and fixes the numbering.
-- **\`set\` reads before it writes.** \`env.set(name, expr(...))\` lowers the right side first, so \`a + 2\` sees the old \`a\`, exactly like \`a = a + 2\`.
+**The solution, line by line.**
 
-The real lowering adds blocks, phis at joins, bindings for captured variables, and \`opaque\` for everything it doesn’t model.`,
+- \`  const out = [];\` collects instruction strings; \`  const env = new Map();\` maps each name to its current value id; \`  let next = 0;\` is the next free id.
+- \`  const get = (name) => {\` reads a variable: \`    if (!env.has(name)) {\` / \`      throw new Error('no ' + name);\` refuses a name never declared, and \`    return env.get(name);\` returns its current value.
+- \`  function expr(e) {\` lowers one expression and returns its id.
+- \`    if (typeof e === 'number') {\` / \`\` out.push(\`%\${next} = const \${e}\`); \`\` / \`      return next++;\` emits a constant and returns its id (\`next++\` gives the old value, then adds one).
+- \`    if (typeof e === 'string') {\` / \`      return get(e);\` emits **nothing** for a name: it is just the value it holds.
+- \`    const a = expr(e[1]);\` / \`    const b = expr(e[2]);\` lowers the left operand, then the right (JavaScript's left-to-right order, which also fixes the numbering).
+- \`\` const t = \`\${e[0]} %\${a}, %\${b}\`; \`\` / \`\` out.push(\`%\${next} = binop \${t}\`); \`\` / \`    return next++;\` emits the operation and returns its id.
+- \`  for (const s of stmts) {\` visits each statement.
+- \`    if (s[0] === 'log') {\` / \`      out.push('log %' + expr(s[1]));\` lowers the value and logs its id.
+- \`      if (s[0] === 'set') get(s[1]);\` makes \`set\` on an undeclared name an error.
+- \`      env.set(s[1], expr(s[2]));\` lowers the right side *first* and then records that the name now holds it, so \`['set', 'a', ['+', 'a', 2]]\` sees the old \`a\`, exactly like \`a = a + 2\`.
+- \`  return out;\` returns the instructions.
+
+**Common wrong attempts.**
+
+- Emitting a load for every variable read (\`%3 = load x\`) treats variables as memory; then \`x * x\` has two loads, and the analyses would have to work out that they read the same thing. In SSA both operands are simply \`%0\`.
+- Recording the name *before* lowering the right side (\`env.set(name, next)\` first) makes \`a = a + 2\` read its own result.
+
+The real lowering adds blocks, phis at joins, bindings for captured variables, and \`opaque\` for everything it does not model.`,
     wrong: [
       {
         code: `function lower(stmts) {
@@ -294,11 +316,27 @@ test('each name once, in order', () => {
       'Special-case `MemberExpression` and `Property` when `computed` is false: visit only the object, or only the value.',
       'Use `out.includes` to keep each name once.',
     ],
-    walkthrough: `This is \`mentioned\` from \`lower.ts\`, minus the bindings. The real one also skips globals (it asks the resolver), and reads nested functions’ variables as captured bindings.
+    walkthrough: `**How to think about it.** Every name you return becomes an argument of an \`opaque\` instruction, which the analyses treat as escaping, so the rule is: report every *variable* the code could touch, and nothing that is only a *label*. Most nodes are plain containers, so a generic walk over every field finds every \`Identifier\`. Only two places hold an \`Identifier\` that is a field's name rather than a variable: the property in \`p.x\`, and the key in \`{ x: v }\`, and only when they are not computed.
 
-- **Generic walk, two exceptions.** Most nodes are just containers, so visiting every field finds every identifier. Only two places hold an \`Identifier\` that is a *name* rather than a variable: \`p.x\` and \`{ x: v }\`.
-- **Computed means it is an expression.** In \`p[i]\` and \`{ [k]: v }\`, the brackets hold real code, so \`i\` and \`k\` are variables and must be reported.
-- **Why it matters.** Every name you return becomes an argument of an \`opaque\` instruction, which the analyses treat as an escape. Returning too many names (\`x\` in \`p.x\`) only makes Viscosity a little more cautious. Returning too few could let it change a layout the opaque code depends on.`,
+**The solution, line by line.**
+
+- \`  const out = [];\` collects names in the order first seen.
+- \`  function visit(n) {\` visits any value at all.
+- \`    if (!n) return;\` / \`    if (typeof n !== 'object') return;\` skip \`null\`, strings, numbers and booleans: they are field values, not nodes.
+- \`    if (Array.isArray(n)) {\` / \`      n.forEach(visit);\` / \`      return;\` visits each element of a list of nodes (such as \`arguments\`).
+- \`    if (n.type === 'Identifier') {\` / \`      if (!out.includes(n.name)) {\` / \`        out.push(n.name);\` records a variable once; \`return\` stops, since an \`Identifier\` has no children.
+- \`    const plain = !n.computed;\` notes whether brackets were used.
+- \`    if (n.type === 'MemberExpression'\` / \`      && plain) {\` / \`      visit(n.object);\` / \`      return;\` visits only the object of \`p.x\`, skipping the name \`x\`.
+- \`    if (n.type === 'Property'\` / \`      && plain) {\` / \`      visit(n.value);\` / \`      return;\` visits only the value of \`{ x: v }\`, skipping the key.
+- \`    for (const k in n) visit(n[k]);\` visits every other field of every other node, computed ones included, so \`p[i]\` reports \`i\` and \`{ [k]: v }\` reports \`k\`.
+- \`  visit(node);\` / \`  return out;\` starts the walk and returns the names.
+
+**Common wrong attempts.**
+
+- Visiting every field of every node reports \`x\` for \`p.x\`. That is only over-cautious (a missed speed-up), but it is wrong.
+- Skipping the property of *every* \`MemberExpression\` misses \`i\` in \`p[i]\`; returning too few names could let Viscosity change a layout the opaque code depends on, which is the one mistake it must never make.
+
+The real \`mentioned\` in \`lower.ts\` also skips globals (it asks the resolver) and reads variables inside nested functions as captured bindings.`,
     wrong: [
       {
         code: `function mentioned(node) {
@@ -381,13 +419,5 @@ export const quiz = [
       { t: 'A single `field.inc` instruction', why: 'VIR has no such instruction.' },
     ],
   },
-  {
-    q: 'When is `Math.max(a, b)` NOT lowered to an intrinsic?',
-    options: [
-      { t: 'When a and b are numbers', why: 'Argument types don’t matter to this choice.' },
-      { t: 'When it is inside a loop', why: 'Position doesn’t matter.' },
-      { t: 'When `Math` is a local variable, not the global', correct: true, why: 'A local Math could have any max method, so it lowers to a field.get and a call.' },
-      { t: 'Never: max is always an intrinsic', why: 'Only for the global Math, and only for the listed pure functions.' },
-    ],
-  },
+
 ];
