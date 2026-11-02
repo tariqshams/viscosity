@@ -1,4 +1,4 @@
-// Chapter 99 cards: recall prompts, examples, exercises and quiz.
+// Partial evaluation: compiling by specializing an interpreter: cards.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -19,8 +19,8 @@ export const prompts = {
     a: 'Partially evaluating an interpreter with respect to one program, which gives a compiled version of that program.',
   },
   'pe-closure': {
-    q: 'In the closure example, why does `f` run without ever looking at a node’s `op`?',
-    a: 'Because `spec` looked at each `op` once, while building the closures; `f` is made of closures that only do the arithmetic.',
+    q: 'An expression tree is turned into nested closures by a function that switches on each node’s `op` once, while building them. Why does running the result never look at an `op`?',
+    a: 'Every `op` was decided at build time (it was static); the closures that remain only do the arithmetic on the dynamic inputs.',
   },
   'pe-constants': {
     q: 'Name two things Truffle’s partial evaluator treats as constants.',
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'It can still be changed (so a node can record what it has seen), but compiled code treats its current value as a constant.',
   },
   'deopt-cycle': {
-    q: 'What goes wrong if a node’s recorded state never stops changing?',
+    q: 'In Truffle, what goes wrong if a node’s recorded state never stops changing?',
     a: 'A deoptimisation cycle: the code is compiled, invalidated, recompiled, and invalidated again.',
   },
 };
@@ -249,7 +249,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the step-through, why can the specialiser inline `prog.l.execute`?',
+    q: 'A partial evaluator compiles `prog.execute(args)` where `prog` is a constant `Add` node whose stable field `l` holds an `Arg` node. Why can it inline `prog.l.execute`?',
     options: [
       {
         t: '`prog` is constant and `l` is a stable field, so `prog.l` is a known `Arg` node',

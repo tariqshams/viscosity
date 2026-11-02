@@ -1,9 +1,9 @@
-// Chapter 252 cards: recall prompts, examples, exercises and quiz.
+// Slack tracking and dictionary mode: cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   slack: {
-    q: 'What does **slack tracking** do for objects made by a constructor?',
+    q: 'In V8, what does **slack tracking** do for objects made by a constructor?',
     a: 'Gives them extra in-object space at first, then, after a few constructions, shrinks the shape to the space actually used.',
   },
   'slack-why': {
@@ -11,15 +11,15 @@ export const prompts = {
     a: 'It cannot know in advance how many properties the objects will get; room to spare avoids moving properties out of the object, and trimming later avoids wasting it.',
   },
   'dict-what': {
-    q: 'What is **dictionary mode**?',
+    q: 'In V8, what is **dictionary mode**?',
     a: 'An object storing its named properties in its own hash table instead of using a shared shape.',
   },
   'delete-cost': {
-    q: 'What happened when the chapter’s run did `delete p.z`?',
-    a: '`p` went into dictionary mode: `%HasFastProperties(p)` became false.',
+    q: 'In V8 12.4, what does `delete p.z` do to `p = { x: 1, y: 2, z: 3 }`?',
+    a: 'It sends `p` into dictionary mode: `%HasFastProperties(p)` becomes false.',
   },
   'undefined-not-delete': {
-    q: 'You want to “clear” a field on many objects of one kind. What keeps their shape?',
+    q: 'In V8, you want to “clear” a field on many objects of one kind. What keeps their shape?',
     a: 'Setting the field to `undefined` (or a flag) instead of using `delete`.',
   },
   'dict-20': {
@@ -27,7 +27,7 @@ export const prompts = {
     a: 'At 20; and no, it is an engine detail that can change between versions.',
   },
   'dict-read': {
-    q: 'Why is reading `p.x` slower once `p` is a dictionary?',
+    q: 'In V8, why is reading `p.x` slower once `p` is in dictionary mode?',
     a: 'The name has to be hashed and searched for in the object’s own table, instead of loading a value at an offset the shared shape fixes.',
   },
   'map-for-churn': {
@@ -134,7 +134,7 @@ test('the original is not changed', () => {
 
 export const quiz = [
   {
-    q: 'In the chapter’s run, the first `new P(1, 2)` had 10 in-object slots and the twelfth had 2. Why?',
+    q: 'In V8 12.4, with `function P(x, y) { this.x = x; this.y = y; }`, the first `new P(1, 2)` has 10 in-object slots and the twelfth has 2. Why?',
     options: [
       {
         t: 'The garbage collector compacted the object',
@@ -156,7 +156,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What is dictionary mode?',
+    q: 'What is dictionary mode, in V8?',
     options: [
       {
         t: 'Using a `Map` instead of an object',
@@ -169,7 +169,7 @@ export const quiz = [
       {
         t: 'An object storing named properties in its own hash table instead of a shared shape',
         correct: true,
-        why: 'Adding and removing is cheap; reading is slower, and inline caches do not apply.',
+        why: 'Adding and removing is cheap; reading is slower, since there is no fixed offset for an inline cache to use.',
       },
     ],
   },
@@ -192,11 +192,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'You have 100,000 particle objects and want to mark some as dead. Which keeps them fast?',
+    q: 'In V8, you have 100,000 particle objects and want to mark some as dead. Which keeps them fast?',
     options: [
       {
         t: '`delete p.health`',
-        why: 'In the chapter’s run, `delete` put the object into dictionary mode.',
+        why: 'In V8 12.4, `delete` puts the object into dictionary mode.',
       },
       {
         t: 'Adding a `dead` property only to dead particles',

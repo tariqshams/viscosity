@@ -65,8 +65,7 @@ interpreter otherwise.
 
 ## Compiling the tree
 
-The interpreter already holds each function as a tree (chapter 62's
-AST, here written compactly as arrays, so `i * i` is
+The interpreter already holds each function as a tree (the AST of *Syntax trees and a tree printer*, here written compactly as arrays, so `i * i` is
 `['*', ['var', 'i'], ['var', 'i']]`). WebAssembly runs on an operand
 stack, so an expression compiles **children first**: code for the left
 operand, code for the right, then the operator, which pops both and
@@ -137,7 +136,7 @@ that reaches the limit is the first to use the new code), then
 `332833500` and `5` from the compiled code, and finally the
 interpreter's error for `f('4')`.
 
-<Prompts ids={['children-first', 'while-shape', 'locals-order']} />
+<Prompts ids={['children-first', 'while-shape', 'wasm-locals-order']} />
 
 ## Keeping Drip's meaning
 
@@ -187,7 +186,7 @@ IR<Cite id="v8-sparkplug" />, which is the same shape as our
 `compile`.
 
 Two differences are worth keeping in mind. Our guard runs before the
-call; a speculating JIT (chapter 88) compiles for the types it has
+call; a speculating JIT (*Tiers, speculation and deoptimisation*) compiles for the types it has
 seen and checks inside the compiled code, deoptimising halfway through
 if a guess fails, which lets it compile far more of the language. And
 our JIT only switches between calls: a single call that loops for a
@@ -218,7 +217,7 @@ executable memory at all<Cite id="v8-jitless" />.
 - Real engines add tiers (Liftoff, TurboFan) and speculation with
   deoptimisation, but the shape is the same.
 
-Next: one complete compiler from Drip to RISC-V, putting every stage
-of this part together.
+Next: *Drip to RISC-V, end to end*, one complete compiler from Drip to
+RISC-V, putting every stage of this part together.
 
 <Quiz />

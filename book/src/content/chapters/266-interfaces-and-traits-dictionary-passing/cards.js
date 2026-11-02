@@ -1,4 +1,4 @@
-// Chapter 102 cards: recall prompts, examples, exercises and quiz.
+// Interfaces and traits: dictionary passing: cards.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -19,11 +19,11 @@ export const prompts = {
     a: 'The address of the data and the address of the table of operations (vtable) for its type.',
   },
   'fat-why': {
-    q: 'What does putting the table in the pointer, not the object, make possible?',
+    q: 'What does putting the method table in a fat pointer, not in the object, make possible?',
     a: 'The object needs no vptr, so any value can be viewed through any interface or trait it implements.',
   },
   'go-24': {
-    q: 'In Go’s itab, what comes before `Fun[0]`, putting it 24 bytes in?',
+    q: 'In Go 1.24’s itab on a 64-bit machine, what comes before `Fun[0]`, putting it 24 bytes in?',
     a: 'The interface type, the concrete type and a hash.',
   },
   'itable-what': {
@@ -203,7 +203,7 @@ export const quiz = [
       },
       {
         t: 'A copy of `max` written for lists',
-        why: 'That is specialisation, the other strategy (chapter 267); dictionary passing keeps one `max`.',
+        why: 'That is specialisation, the other strategy; dictionary passing keeps one `max`.',
       },
     ],
   },

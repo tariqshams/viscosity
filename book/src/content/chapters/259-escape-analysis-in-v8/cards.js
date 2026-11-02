@@ -1,337 +1,162 @@
-// Chapter 98 cards: recall prompts, examples, exercises and quiz.
+// Escape analysis in V8: cards.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
-  'ea67-puzzle': {
-    q: 'In this book’s benchmark run, why didn’t struct of arrays lose on `get-objects`, even though it builds an object per element?',
-    a: 'V8 inlined the small consumer function and then removed the temporary object, so no allocation was left.',
+  'ea-fixed-name': {
+    q: 'In V8 12.4, a hot loop builds `{ x: xs[i], y: ys[i] }` and only reads `p.x` and `p.y`, or destructures it with `const { x, y } = …`. Does TurboFan allocate the object?',
+    a: 'No: both forms read fields by fixed names, so escape analysis replaces the object with two values (about 6 scavenges for 50 million iterations, against 1710 with escape analysis off).',
   },
-  'ea67-inline-first': {
-    q: 'Why does V8 usually need to inline `consume(p)` before it can remove `p`?',
-    a: 'Before inlining, `p` is passed to a call the compiler can’t see into, so as far as it knows, `p` escapes.',
+  'ea-computed-key': {
+    q: 'Why does reading `p[c ? "x" : "y"]` keep a temporary object real in TurboFan (V8 12.4), when `p["x"]` does not?',
+    a: 'The key is not known at compile time, so the load cannot be replaced by one field’s variable; the object must exist to be searched.',
   },
-  'scalar-what': {
-    q: 'What is *scalar replacement*?',
-    a: 'Replacing an object that doesn’t escape with its fields as separate local values, so field reads become plain values.',
+  'ea-phi': {
+    q: 'In V8 12.4, `const p = c ? { x: a, y: b } : { x: b, y: a }; t += p.x + p.y;` in a hot loop. Is the object removed?',
+    a: 'No: the two allocations meet at a phi, and a variable that may hold either of two allocations makes both real, even with the same shape.',
   },
-  'sink-what': {
-    q: 'What is *allocation sinking*?',
-    a: 'Moving an allocation to the only places that need a real object, such as a deopt exit, and removing it from the fast path.',
+  'ea-inline-budget': {
+    q: 'In Node 22 (V8 12.4), why can passing a temporary object to a function with 554 bytes of bytecode make every object real?',
+    a: 'The function is over the default `--max-inlined-bytecode-size` of 460, so it is not inlined, and the object escapes into the call.',
   },
-  'ea67-escaped': {
-    q: 'According to V8’s source, an object counts as escaped when what happens to it?',
-    a: 'It reaches memory the analysis doesn’t track, or it is used by an operation that needs it to really exist.',
+  'ea-arrays': {
+    q: 'In V8 12.4, rank these by how many temporary arrays a hot loop allocates: `p = [a, b]` read at constant indices, `const [x, y] = [a, b]`, and `for (const v of [a, b])`.',
+    a: 'Constant indices fewest (about 7% of the no-escape-analysis count), destructuring next (about 15%), `for...of` nearly all (about 94%).',
   },
-  'ea67-deopt': {
-    q: 'A guard fails in a loop whose temporary object was removed. How does the interpreter get its object?',
-    a: 'The deopt frame state describes the object by its field values, and the deoptimiser builds (materialises) it then.',
+  'ea-closure': {
+    q: 'In V8 12.4, does TurboFan remove an arrow function created on every iteration of a hot loop and called at once?',
+    a: 'No: in a measured run every closure (and its context) was allocated, more scavenges even than objects with escape analysis off.',
   },
-  'ea67-materialize': {
-    q: 'Why can’t V8 remove the allocations in the `materialize` suite?',
-    a: 'Each object is stored into an array that outlives the loop: it escapes, and its identity can be observed.',
+  'ea-captured': {
+    q: 'In a V8 `--trace-deopt-verbose` listing, what is a **captured object**?',
+    a: 'An object the optimised code never allocated, described in the frame state by its map and field values so the deoptimiser can allocate it.',
   },
-  'ea67-viscosity': {
-    q: 'Why must Viscosity be stricter than V8 about escapes?',
-    a: 'It runs ahead of time, without deoptimisation to fall back on, so it must prove safety on the code as written.',
+  'ea-duplicated': {
+    q: 'Why does V8’s frame state say “duplicated object #0” instead of describing the same removed object twice?',
+    a: 'One object reached through two names must be rebuilt once, so that identity (`p === q`) still holds in the interpreter.',
+  },
+  'ea-heapnumber': {
+    q: 'When V8 rebuilds a removed object whose fields were doubles, why are the fields themselves captured HeapNumbers read from `xmm` registers?',
+    a: 'After scalar replacement the fields lived only as raw doubles in registers; the rebuilt object needs heap values, so each is boxed as it is rebuilt.',
   },
 };
 
 export const examples = {};
 
 export const exercises = {
-  scalarReplace: {
-    title: 'Scalar-replace a small object',
-    prompt: `A tiny IR is a list of instructions:
-
-- \`{ op: 'new', dst, fields }\`: \`dst = { ... }\`, where \`fields\` maps each name to a variable
-- \`{ op: 'get', dst, obj, key }\`: \`dst = obj.key\`
-- \`{ op: 'set', obj, key, src }\`: \`obj.key = src\`
-- \`{ op: 'add', dst, a, b }\`, \`{ op: 'mov', dst, src }\`, \`{ op: 'call', fn, args }\`, \`{ op: 'ret', src }\`
-
-Write \`scalarReplace(code)\`. An object made by \`new\` **escapes** if its variable is ever used as a *value*: a field value in a \`new\`, the \`src\` of a \`set\` or \`mov\`, an argument, an \`add\` operand, or returned. Being the \`obj\` of a \`get\` or \`set\` is fine. For each \`new\` that doesn’t escape, replace it with one \`mov\` per field into \`dst_key\` (in field order), turn its \`get\`s into \`mov\`s from \`obj_key\`, and its \`set\`s into \`mov\`s to \`obj_key\`. Leave everything else as it is, and don’t change the input.`,
-    starter: `function scalarReplace(code) {
-  // 1. find objects that never escape
-  // 2. rewrite new / get / set on them
-  return code;
+  rebuildFrame: {
+    title: 'Rebuild objects from a frame state',
+    prompt: 'Write `rebuild(inputs)`, a tiny deoptimiser. `inputs` is an array, and each entry is one of: `{ value: v }`, a plain value; `{ captured: id, fields: { name: entry, ... } }`, an object that was never allocated, whose fields are themselves entries; or `{ duplicated: id }`, the same object as the captured object with that `id`. Return an array of the rebuilt values, in order. Each captured object must be built exactly once, and every `duplicated` entry must give the very same object (so `===` holds), even when it appears inside the object’s own fields.',
+    starter: `function rebuild(inputs) {
+  // plain values as they are;
+  // captured objects built once;
+  // duplicated: the same object
+  return inputs.map((e) => e.value);
 }`,
-    solution: `function valueUses(i) {
-  switch (i.op) {
-    case 'new':
-      return Object.values(i.fields);
-    case 'set': case 'mov': case 'ret':
-      return [i.src];
-    case 'add': return [i.a, i.b];
-    case 'call': return i.args;
-    default: return [];
+    solution: `function rebuild(inputs) {
+  const made = new Map();
+  function one(e) {
+    if ('value' in e) return e.value;
+    if ('duplicated' in e)
+      return made.get(e.duplicated);
+    const o = {};
+    made.set(e.captured, o);
+    for (const [k, f] of
+      Object.entries(e.fields))
+      o[k] = one(f);
+    return o;
   }
-}
-
-function scalarReplace(code) {
-  const escapes = (v) => code.some(
-    (i) => valueUses(i).includes(v));
-  const virt = new Set();
-  for (const i of code) {
-    const n = i.op === 'new';
-    if (n && !escapes(i.dst)) {
-      virt.add(i.dst);
-    }
-  }
-  const out = [];
-  for (const i of code) {
-    const f = (o, k) => o + '_' + k;
-    if (i.op === 'new' &&
-        virt.has(i.dst)) {
-      for (const k in i.fields) {
-        out.push({ op: 'mov',
-          dst: f(i.dst, k),
-          src: i.fields[k] });
-      }
-    } else if (i.op === 'get' &&
-        virt.has(i.obj)) {
-      out.push({ op: 'mov', dst: i.dst,
-        src: f(i.obj, i.key) });
-    } else if (i.op === 'set' &&
-        virt.has(i.obj)) {
-      out.push({ op: 'mov',
-        dst: f(i.obj, i.key),
-        src: i.src });
-    } else {
-      out.push(i);
-    }
-  }
-  return out;
+  return inputs.map(one);
 }`,
-    tests: `const N = (dst, fields) =>
-  ({ op: 'new', dst, fields });
-const G = (dst, obj, key) =>
-  ({ op: 'get', dst, obj, key });
-const S = (obj, key, src) =>
-  ({ op: 'set', obj, key, src });
-const M = (dst, src) =>
-  ({ op: 'mov', dst, src });
-const R = (src) => ({ op: 'ret', src });
-test('a non-escaping object vanishes', () => {
-  const code = [
-    N('p', { x: 'a', y: 'b' }),
-    G('t', 'p', 'x'), G('u', 'p', 'y'),
-    { op: 'add', dst: 's', a: 't', b: 'u' },
-    R('s'),
-  ];
-  expect(scalarReplace(code)).toEqual([
-    M('p_x', 'a'), M('p_y', 'b'),
-    M('t', 'p_x'), M('u', 'p_y'),
-    { op: 'add', dst: 's', a: 't', b: 'u' },
-    R('s'),
-  ]);
+    tests: `test('plain values pass through', () => {
+  expect(rebuild([{ value: 1 }, { value: 'a' }]))
+    .toEqual([1, 'a']);
 });
-test('writes become moves too', () => {
-  const code = [N('p', { x: 'a' }),
-    S('p', 'x', 'b'), G('t', 'p', 'x'),
-    R('t')];
-  expect(scalarReplace(code)).toEqual([
-    M('p_x', 'a'), M('p_x', 'b'),
-    M('t', 'p_x'), R('t')]);
+test('a captured object gets its fields', () => {
+  const [i, p] = rebuild([{ value: 1 },
+    { captured: 0, fields: { x: { value: 1 }, y: { value: 2 } } }]);
+  expect(i).toBe(1);
+  expect(p).toEqual({ x: 1, y: 2 });
 });
-test('passing it to a call escapes', () => {
-  const code = [N('p', { x: 'a' }),
-    { op: 'call', fn: 'f', args: ['p'] },
-    G('t', 'p', 'x'), R('t')];
-  expect(scalarReplace(code)).toEqual(code);
+test('a duplicated object is the same object', () => {
+  const r = rebuild([
+    { captured: 0, fields: { x: { value: 1 } } },
+    { duplicated: 0 }]);
+  expect(r[0] === r[1]).toBe(true);
 });
-test('returning it escapes', () => {
-  const code = [N('p', { x: 'a' }), R('p')];
-  expect(scalarReplace(code)).toEqual(code);
+test('nested captured objects', () => {
+  const [a] = rebuild([{ captured: 0, fields: {
+    pos: { captured: 1, fields: { x: { value: 3 } } },
+    w: { value: 2 } } }]);
+  expect(a.pos.x).toBe(3);
+  expect(a.w).toBe(2);
 });
-test('storing it somewhere escapes', () => {
-  const code = [N('p', { x: 'a' }),
-    S('out', 'last', 'p'), R('a')];
-  expect(scalarReplace(code)).toEqual(code);
-  const nested = [N('p', { x: 'a' }),
-    N('q', { inner: 'p' }),
-    G('t', 'q', 'inner'), R('t')];
-  const r = scalarReplace(nested);
-  expect(r[0]).toEqual(N('p', { x: 'a' }));
-});
-test('each object is judged alone', () => {
-  const code = [N('p', { x: 'a' }),
-    N('q', { x: 'b' }),
-    G('t', 'p', 'x'), R('q')];
-  expect(scalarReplace(code)).toEqual([
-    M('p_x', 'a'), N('q', { x: 'b' }),
-    M('t', 'p_x'), R('q')]);
-});
-test('the input is left alone', () => {
-  const code = [N('p', { x: 'a' }),
-    G('t', 'p', 'x'), R('t')];
-  const copy = JSON.stringify(code);
-  scalarReplace(code);
-  expect(JSON.stringify(code)).toBe(copy);
+test('an object that refers to itself', () => {
+  const [o] = rebuild([{ captured: 0,
+    fields: { self: { duplicated: 0 } } }]);
+  expect(o.self === o).toBe(true);
 });`,
     hints: [
-      'Write `valueUses(i)`: the variables instruction `i` reads *as values*. For `get` that is nothing (its `obj` is fine); for `set` it is only `src`.',
-      'An object escapes if any instruction lists it in `valueUses`. Put the `dst` of every `new` that doesn’t escape into a set.',
-      'Then build a new array: a virtual `new` becomes one `mov` per field, a `get` or `set` on a virtual object becomes a `mov` from or to `obj + \'_\' + key`, and everything else is copied across.',
+      'Handle one entry at a time with a helper, `one(e)`, that returns its value; the answer is `inputs.map(one)`.',
+      'Keep a `Map` from captured ids to the objects you have made. A `duplicated` entry is then just a lookup.',
+      'Make the empty object and record it in the map *before* filling in its fields, then fill each field with `one(field)`. That order is what lets a field refer back to the object itself.',
     ],
-    walkthrough: `**How to think about it.** This is the same two-step move TurboFan makes, on a toy IR (a list of simple instructions, like the ones a compiler keeps internally): first *decide* which objects escape, then *rewrite* the ones that do not. Do the deciding by hand on the first test before writing any code. \`p\` is made by \`new\`, then used by two \`get\`s; a \`get\` only reads a field, so \`p\` never leaves, and it can be replaced. In the "passing it to a call" test, \`p\` is an argument to \`f\`, and \`f\` could keep it, so it must stay. The rule to code up is: an object escapes if its variable is ever used *as a value*, and being the \`obj\` of a \`get\` or \`set\` is not using it as a value.
+    walkthrough: `**How to think about it.** Each entry describes one value the interpreter needs. Plain values are easy; a captured object is a recipe (its fields), and the recipe may contain more recipes, so a recursive helper fits. The one rule that makes it correct is identity: the deoptimiser must not make two objects where the program had one, so every object you build is remembered by its id, and a duplicated entry hands back the remembered object. The subtle case is an object whose own field refers back to it: if you only record the object after filling its fields, the lookup inside happens too early and finds nothing.
 
 **The solution, line by line.**
 
-- \`function valueUses(i) {\` starts a helper that answers one question: which variables does instruction \`i\` read *as values*?
-- \`case 'new': return Object.values(i.fields);\` A \`new\` reads its field values; if one of them is another object, that object is now stored inside this one, which is an escape.
-- \`case 'set': case 'mov': case 'ret': return [i.src];\` A \`set\` reads only its \`src\` (its \`obj\` is the target, which is fine); a \`mov\` copies \`src\` somewhere else; a \`ret\` hands \`src\` to the caller. All three make \`src\` reachable from somewhere new.
-- \`case 'add': return [i.a, i.b];\` and \`case 'call': return i.args;\` An operand or an argument is a value use too.
-- \`default: return [];\` covers \`get\`, which uses nothing as a value.
-- \`const escapes = (v) => code.some((i) => valueUses(i).includes(v));\` An object escapes if *any* instruction uses it as a value.
-- The first \`for\` loop puts the \`dst\` of every \`new\` that does not escape into the set \`virt\`: these are the virtual objects. Each allocation gets its own verdict, so \`p\` and \`q\` in the same code can be judged differently.
-- \`const out = [];\` We build a new array rather than editing \`code\`, so the input is left alone (the last test checks this; a real compiler pass must not damage the IR it reads either).
-- \`const f = (o, k) => o + '_' + k;\` names the variable that will hold field \`k\` of object \`o\`: \`p_x\`.
-- A virtual \`new\` becomes one \`mov\` per field, in field order: \`p_x = a\`, \`p_y = b\`. This is scalar replacement: the object turns into separate local values.
-- A \`get\` on a virtual object becomes \`mov dst, p_x\`: reading the field is now copying the variable.
-- A \`set\` on a virtual object becomes \`mov p_x, src\`: writing the field is now assigning the variable.
-- Everything else is pushed unchanged, and \`return out;\` hands back the rewritten list. After the rewrite nothing mentions \`p\` at all, so the allocation is gone.
+- \`const made = new Map();\` remembers each captured object by its id.
+- \`function one(e) {\` rebuilds one entry.
+- \`if ('value' in e) return e.value;\` passes a plain value through. (\`in\` is used rather than \`e.value !== undefined\`, so a plain \`undefined\` value still works.)
+- \`if ('duplicated' in e) return made.get(e.duplicated);\` returns the object already built, the same one, so \`===\` holds.
+- \`const o = {};\` allocates the object for real, the step the optimised code skipped.
+- \`made.set(e.captured, o);\` records it *before* its fields, so a field can refer back to it.
+- \`for (const [k, f] of Object.entries(e.fields)) o[k] = one(f);\` fills each field by rebuilding its entry, which may itself be a captured object.
+- \`return o;\` hands back the new object.
+- \`return inputs.map(one);\` rebuilds every input, in order.
+
+Trace the self-reference test: \`one\` makes \`o\`, records it under 0, then rebuilds the field \`self\`, a duplicated entry for 0, which finds \`o\` in the map; so \`o.self === o\`.
 
 **Common wrong attempts.**
 
-- Replacing *every* \`new\`, without the escape check: if \`p\` is passed to \`f\` or returned, the caller now receives a variable that never held an object, and the program's behaviour changes. The escape check is the whole point.
-- Treating only calls as escapes: returning the object, storing it into another object or copying it with \`mov\` also lets someone else hold the reference, so the "returning it escapes" and "storing it somewhere escapes" tests fail.
-- Counting the \`obj\` of a \`get\` or \`set\` as a value use: then no object is ever replaced, because every object is used by its own field accesses, and the first test fails.`,
+- Building a fresh object for each duplicated entry (for example by keeping the captured description and rebuilding it): the values look the same, but \`r[0] === r[1]\` is false, which is exactly the identity the program could notice.
+- Recording the object after filling its fields: everything works except the self-reference, where the lookup returns \`undefined\`.`,
     wrong: [
       {
-        code: `function scalarReplace(code) {
-  const virt = new Set(code
-    .filter((i) => i.op === 'new')
-    .map((i) => i.dst));
-  const f = (o, k) => o + '_' + k;
-  return code.flatMap((i) => {
-    if (i.op === 'new') {
-      return Object.keys(i.fields).map(
-        (k) => ({ op: 'mov',
-          dst: f(i.dst, k),
-          src: i.fields[k] }));
-    }
-    if (i.op === 'get' &&
-        virt.has(i.obj)) {
-      return [{ op: 'mov', dst: i.dst,
-        src: f(i.obj, i.key) }];
-    }
-    if (i.op === 'set' &&
-        virt.has(i.obj)) {
-      return [{ op: 'mov',
-        dst: f(i.obj, i.key),
-        src: i.src }];
-    }
-    return [i];
-  });
+        code: `function rebuild(inputs) {
+  const recipes = new Map();
+  function one(e) {
+    if ('value' in e) return e.value;
+    if ('duplicated' in e)
+      return one(
+        recipes.get(e.duplicated));
+    recipes.set(e.captured, e);
+    const o = {};
+    for (const [k, f] of
+      Object.entries(e.fields))
+      o[k] = one(f);
+    return o;
+  }
+  return inputs.map(one);
 }`,
-        why: 'This replaces every object, escaping or not. If `p` is passed to `f` or returned, the caller gets a variable that no longer holds an object: the program’s behaviour changes. The escape check is the whole point.',
+        why: 'A duplicated entry rebuilds the object again from its description, so it is a second object: `r[0] === r[1]` is false (and a self-reference recurses for ever).',
       },
       {
-        code: `function scalarReplace(code) {
-  const escapes = (v) => code.some(
-    (i) => i.op === 'call' &&
-      i.args.includes(v));
-  const virt = new Set();
-  for (const i of code) {
-    if (i.op === 'new' &&
-        !escapes(i.dst)) {
-      virt.add(i.dst);
-    }
+        code: `function rebuild(inputs) {
+  const made = new Map();
+  function one(e) {
+    if ('value' in e) return e.value;
+    if ('duplicated' in e)
+      return made.get(e.duplicated);
+    const o = {};
+    for (const [k, f] of
+      Object.entries(e.fields))
+      o[k] = one(f);
+    made.set(e.captured, o);
+    return o;
   }
-  const f = (o, k) => o + '_' + k;
-  return code.flatMap((i) => {
-    if (i.op === 'new' &&
-        virt.has(i.dst)) {
-      return Object.keys(i.fields).map(
-        (k) => ({ op: 'mov',
-          dst: f(i.dst, k),
-          src: i.fields[k] }));
-    }
-    if (i.op === 'get' &&
-        virt.has(i.obj)) {
-      return [{ op: 'mov', dst: i.dst,
-        src: f(i.obj, i.key) }];
-    }
-    if (i.op === 'set' &&
-        virt.has(i.obj)) {
-      return [{ op: 'mov',
-        dst: f(i.obj, i.key),
-        src: i.src }];
-    }
-    return [i];
-  });
+  return inputs.map(one);
 }`,
-        why: 'Calls are only one escape site. Returning the object, or storing it into another object, also lets someone else hold the reference.',
-      },
-    ],
-  },
-  rematerialize: {
-    optional: true,
-    title: 'Rebuild the object on deopt',
-    prompt: 'After scalar replacement, a deopt frame state describes a removed object as `{ fields: { x: \'p_x\', ... } }`: each field names the variable holding its value. A field may also hold another description (an object that was inside it). Write `materialize(desc, env)`, which builds a real object from the description, reading variables from `env`.',
-    starter: `function materialize(desc, env) {
-  return {};
-}`,
-    solution: `function materialize(desc, env) {
-  const o = {};
-  for (const k in desc.fields) {
-    const v = desc.fields[k];
-    o[k] = typeof v === 'string'
-      ? env[v]
-      : materialize(v, env);
-  }
-  return o;
-}`,
-    tests: `test('fields come from the variables', () => {
-  const d = { fields: { x: 'p_x', y: 'p_y' } };
-  expect(materialize(d, { p_x: 1, p_y: 2 }))
-    .toEqual({ x: 1, y: 2 });
-});
-test('nested objects are rebuilt too', () => {
-  const d = { fields: {
-    pos: { fields: { x: 'a' } },
-    m: 'b',
-  } };
-  expect(materialize(d, { a: 3, b: 4 }))
-    .toEqual({ pos: { x: 3 }, m: 4 });
-});
-test('each deopt makes a fresh object', () => {
-  const d = { fields: { x: 'p_x' } };
-  const env = { p_x: 1 };
-  const a = materialize(d, env);
-  const b = materialize(d, env);
-  expect(a === b).toBe(false);
-});`,
-    hints: [
-      'Make an empty object and loop over the field names in `desc.fields`.',
-      'A string names a variable: look it up in `env`. Anything else is another description: call `materialize` on it.',
-      'Inside the loop: `const v = desc.fields[k]; o[k] = typeof v === \'string\' ? env[v] : materialize(v, env);`, then `return o;` after it.',
-    ],
-    walkthrough: `**How to think about it.** This is what the deoptimiser does with an \`ObjectState\`: the description says which variable holds each field's value, so building the object is "make an empty object, then fill in each field from its variable". The only twist is that a field can hold a *description* instead of a variable name, when an object that was removed held another removed object; that inner object has to be rebuilt first. A structure that can contain itself is a hint to use recursion.
-
-**The solution, line by line.**
-
-- \`const o = {};\` makes the fresh object we are going to fill in.
-- \`for (const k in desc.fields) {\` visits each field name, \`x\`, \`y\` and so on, in order.
-- \`const v = desc.fields[k];\` is what the description says about field \`k\`: a variable name, or another description.
-- \`o[k] = typeof v === 'string' ? env[v] : materialize(v, env);\` A string names a variable, so its value is looked up in \`env\`; anything else is a nested description, so we rebuild that object first (by calling ourselves) and store it in the field.
-- \`return o;\` hands back the rebuilt object.
-
-The third test checks that two calls give two *different* objects. That is right: the rebuilt object did not exist before the deopt, so it is a new allocation, and that is only safe because the original never escaped, so nothing outside could have kept its identity to compare.
-
-**Common wrong attempts.**
-
-- \`o[k] = env[desc.fields[k]];\` for every field: a nested description is not a variable name, so the lookup gives \`undefined\` and the inner object is lost.
-- Caching the result and returning the same object every time: the third test fails, and in a real engine two deopts would wrongly share one object.`,
-    wrong: [
-      {
-        code: `function materialize(desc, env) {
-  const o = {};
-  for (const k in desc.fields) {
-    o[k] = env[desc.fields[k]];
-  }
-  return o;
-}`,
-        why: 'A nested description isn’t a variable name, so `env[...]` gives `undefined` and the inner object is lost.',
+        why: 'The object is recorded only after its fields are filled, so a field that refers back to it finds nothing: `o.self` is `undefined`.',
       },
     ],
   },
@@ -339,112 +164,96 @@ The third test checks that two calls give two *different* objects. That is right
 
 export const quiz = [
   {
-    q: 'Which order of steps lets TurboFan remove the object in `t += len2({ x: xs[i], y: ys[i] })`?',
+    q: 'In V8 12.4, which hot-loop body lets TurboFan remove the temporary object?',
     options: [
       {
-        t: 'Remove the allocation, then inline `len2`',
-        why: 'Before inlining, the object is passed to a call, so the analysis must assume it escapes.',
-      },
-      {
-        t: 'Inline `len2`, see that `p` is only used by field reads, then replace those reads with the stored values',
+        t: '`const { x, y } = { x: xs[i], y: ys[i] }; t += x + y;`',
         correct: true,
-        why: 'On this book’s machine, `--trace-turbo-inlining` shows len2 being inlined, and turning off either inlining or escape analysis brings the allocations back.',
+        why: 'Right: destructuring an object literal is two field reads by fixed names, so the object is replaced by its two values.',
       },
       {
-        t: 'Convert the loop to struct of arrays',
-        why: 'That is Viscosity’s move, ahead of time. V8 doesn’t change the layout of your data.',
+        t: '`const p = { x: xs[i], y: ys[i] }; t += p[i & 1 ? "x" : "y"];`',
+        why: 'The key is computed at run time, so the object must exist to be searched.',
       },
       {
-        t: 'Let the garbage collector free each object right after the call',
-        why: 'That still allocates every object; the collector only cleans up afterwards.',
+        t: '`for (const v of [xs[i], ys[i]]) t += v;`',
+        why: 'In a measured run nearly every array was still allocated: `for...of` goes through the iteration protocol.',
+      },
+      {
+        t: '`const f = () => xs[i] + ys[i]; t += f();`',
+        why: 'The closure (and its context) was allocated on every iteration.',
       },
     ],
   },
   {
-    q: 'After scalar replacement, where do `p.x` and `p.y` live?',
+    q: 'A loop body is `const p = (i & 1) ? { x: a, y: b } : { x: b, y: a }; t += p.x + p.y;`. Why does V8 12.4 allocate every object?',
     options: [
       {
-        t: 'In a hidden object on the heap',
-        why: 'There is no object left; that is what was removed.',
+        t: 'The two objects have different shapes',
+        why: 'They have the same keys in the same order, so the same shape; the problem is elsewhere.',
       },
       {
-        t: 'In the feedback vector',
-        why: 'Feedback describes what operations saw, not the program’s values.',
-      },
-      {
-        t: 'In a `Float64Array` that V8 creates',
-        why: 'V8 doesn’t create columns; scalar replacement works on single values.',
-      },
-      {
-        t: 'As separate local values, like `p_x` and `p_y`, which can sit in registers',
+        t: 'The two allocations meet at a phi, and a variable that may hold either of two allocations makes both real',
         correct: true,
-        why: 'Each field becomes its own value, and reads of the field become uses of that value.',
+        why: 'Right: when each object is read inside its own branch instead, the objects vanish again.',
+      },
+      {
+        t: 'Conditional expressions are never optimised',
+        why: 'They are optimised like any other branch; this one merges two allocations into one variable.',
       },
     ],
   },
   {
-    q: 'A guard fails inside the optimised loop, after `p` was removed. What happens?',
+    q: 'A temporary object is passed to a consumer with 554 bytes of bytecode, and every object is allocated. Which Node 22 flag made the objects vanish again in a test?',
     options: [
       {
-        t: 'The deoptimiser builds a real `p` from the field values recorded in the frame state',
+        t: '`--max-inlined-bytecode-size=1000`',
         correct: true,
-        why: 'TurboFan writes an `ObjectState` for each virtual object into the deopt information, and V8’s concurrent-marking post lists “materialization during deoptimization” among the operations that create objects.',
+        why: 'Right: the default of 460 kept the consumer from being inlined; above its size, it was inlined and the object removed.',
       },
       {
-        t: 'The program crashes, because the interpreter expects an object',
-        why: 'Removing an object would be unsafe without a way to rebuild it; the frame state provides one.',
+        t: '`--no-turbo-escape`',
+        why: 'That turns escape analysis off, which makes every temporary object real.',
       },
       {
-        t: 'V8 re-runs the loop from the start with the object',
-        why: 'Deoptimisation continues from the same point; re-running would repeat side effects.',
-      },
-      {
-        t: 'The interpreter continues without `p`',
-        why: 'The interpreter’s code still says `p.x`, so it needs a real `p`.',
+        t: '`--turbo-inlining`',
+        why: 'Inlining is already on by default; the consumer was over the size limit.',
       },
     ],
   },
   {
-    q: 'In this book’s run, `materialize` was about 20 to 35 times slower for SoA (at 100,000 and a million elements), while `get-objects` wasn’t slower at all. Why?',
+    q: 'In a V8 `--trace-deopt-verbose` listing, input 7 reads `duplicated object #0`. What does the deoptimiser do for it?',
     options: [
       {
-        t: 'V8 doesn’t optimise loops that write arrays',
-        why: 'It optimises them fine; the allocations are the problem.',
+        t: 'It allocates a second object with the same fields as captured object #0',
+        why: 'That would make two objects where the program had one, so `p === q` would become false.',
       },
       {
-        t: '`materialize` stores every object into an array that outlives the loop, so they escape and must exist',
+        t: 'It writes the address of the object it built for captured object #0',
         correct: true,
-        why: 'Something outside can now read `out[i]` and compare identities. No analysis can remove those allocations.',
+        why: 'Right: the trace’s two Materialization lines give both slots the same address.',
       },
       {
-        t: '`materialize` uses six fields and `get-objects` uses two',
-        why: 'Both build objects with all six fields.',
-      },
-      {
-        t: 'The `materialize` objects are too big for the young generation',
-        why: 'They are small objects; the cost is that each one must really be allocated.',
+        t: 'It leaves the slot empty, because the value was optimised out',
+        why: 'Optimised-out values are printed as `(optimized out)`; a duplicated object is still needed.',
       },
     ],
   },
   {
-    q: 'Viscosity, unlike V8, refuses to change the layout when an element is passed to `move(ps[i])`. Why is that the right choice for it?',
+    q: 'Why is a captured object’s field shown as a captured HeapNumber, read from an `xmm` register, in a V8 deopt trace?',
     options: [
       {
-        t: 'Viscosity’s analysis is less accurate by mistake',
-        why: 'It is cautious on purpose: it has different tools.',
+        t: 'The field was stored in the heap all along',
+        why: 'Then it would be read from memory as an existing object; it is described as one still to be made.',
       },
       {
-        t: 'Function calls are always slow in JavaScript',
-        why: 'Calls are cheap once inlined; the issue is what the callee might do with the object.',
+        t: 'The deoptimiser converts every number to a string first',
+        why: 'Numbers stay numbers; the HeapNumber is a boxed double.',
       },
       {
-        t: 'V8 forbids libraries from changing data layout',
-        why: 'Nothing forbids it; Viscosity rewrites source code before V8 sees it.',
-      },
-      {
-        t: 'It works ahead of time, with no inlining and no deoptimisation, so it must prove the object never escapes in the code as written',
+        t: 'After scalar replacement the field was only a raw double in a register, and the rebuilt object needs a heap value',
         correct: true,
-        why: 'V8 can inline, speculate and bail out. Viscosity’s only safe answer to “might escape” is to keep the objects.',
+        why: 'Right: the deoptimiser boxes each such double as it rebuilds the object.',
       },
     ],
   },

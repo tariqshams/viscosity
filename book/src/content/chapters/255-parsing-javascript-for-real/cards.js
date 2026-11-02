@@ -1,4 +1,4 @@
-// Chapter 250 cards: recall prompts, examples, exercises and quiz.
+// Parsing JavaScript for real: cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,11 +7,11 @@ export const prompts = {
     a: 'Skimming a function body with a preparser instead of parsing it fully, and fully parsing and compiling it only when it is first called.',
   },
   'lazy-why': {
-    q: 'Why do browsers parse lazily?',
+    q: 'Why do browsers parse JavaScript function bodies lazily?',
     a: 'Much of a page’s code isn’t needed at startup, and compiling it eagerly would cost CPU time, memory for bytecode, and cache space.',
   },
   'first-call': {
-    q: 'What happens the first time a preparsed function is called?',
+    q: 'In V8, what happens the first time a preparsed function is called?',
     a: 'V8 parses it fully, compiles it to bytecode, and then runs it.',
   },
   'no-brace-count': {
@@ -19,16 +19,16 @@ export const prompts = {
     a: 'Braces also appear inside strings, comments, regular expressions and template literals, so finding the real end needs the syntax.',
   },
   'track-vars': {
-    q: 'Why must the preparser track the variables a skipped function uses?',
+    q: 'Why must V8’s preparser track the variables a skipped function declares and refers to?',
     a: 'Variables captured by inner functions must live in a heap-allocated context instead of on the stack, and the enclosing function needs to know which ones those are.',
   },
   'early-error': {
-    q: 'A function that is never called contains `return 1 +;`. What happens when the script loads?',
+    q: 'A function in a script is never called, but contains `return 1 +;`. What happens when the script loads?',
     a: 'The whole script fails with a SyntaxError: the preparser still checks the syntax of every body.',
   },
   'double-parse': {
-    q: 'What does lazy parsing cost when the function *is* called?',
-    a: 'It is parsed twice: skimmed by the preparser, then fully parsed when called.',
+    q: 'In V8, what does lazy parsing cost for a function that *is* called?',
+    a: 'It is parsed twice: skimmed by the preparser, then fully parsed when first called (since V8 6.3, at most twice however deeply it is nested).',
   },
   pife: {
     q: 'Why does V8 parse `(function () {…})` eagerly?',
@@ -331,7 +331,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In lazy.js, the function in parentheses was fully parsed and compiled at once, but never called. What does that show?',
+    q: 'V8 fully parses and compiles `const f = (function () { return 3; });` at once, and `f` is never called. What does that show?',
     options: [
       {
         t: 'That V8 runs every function in parentheses',

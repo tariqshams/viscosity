@@ -1,4 +1,4 @@
-// Chapter 243 cards: recall prompts, examples, exercises and quiz.
+// A tiny JIT: cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,12 +15,12 @@ export const prompts = {
     a: 'A page being writable and executable at the same moment; so that bytes an attacker manages to write can never then be run.',
   },
   'wx-order': {
-    q: 'In what order does a native JIT use its memory?',
+    q: 'A native JIT on Linux follows W^X with a single mapping. In what order does it prepare a page of new code?',
     a: 'Map it read+write, write the machine code, mprotect it to read+execute, flush the instruction cache, then call it.',
   },
   'fence-i': {
-    q: 'Why does a RISC-V JIT need `fence.i` (or `__clear_cache`) after writing code?',
-    a: 'Instruction fetches may not yet see the stores that wrote the code; fence.i is the standard way to make them visible.',
+    q: 'Why does a RISC-V JIT need `fence.i` (or `__builtin___clear_cache`) after writing code?',
+    a: 'Instruction fetches may not yet see the stores that wrote the code; fence.i is the standard way to make them visible to the same hart.',
   },
   'wasm-why': {
     q: 'Why does a JIT written in JavaScript emit WebAssembly rather than machine code?',
@@ -351,7 +351,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the module for `sq`, the code section is `0a 09 01 07 00 20 00 20 00 a2 0b`. What does the `09` say?',
+    q: 'A WebAssembly code section reads `0a 09 01 07 00 20 00 20 00 a2 0b`. What does the `09` say?',
     options: [
       {
         t: 'There are nine instructions.',

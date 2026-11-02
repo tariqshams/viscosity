@@ -3,35 +3,31 @@ n: 264
 day: 25
 part: XIV
 title: 'Watching the engine work'
-tagline: 'The last few chapters told you what V8 does. Now make it tell you itself: print its bytecode, watch it optimise and give up, and count its garbage collections, with real output from the Node this book used.'
+tagline: 'The chapters of this part told you what V8 does; this one hands you the rest of the toolkit to make it tell you itself: the garbage collector''s own log, and the %-functions that answer questions about one object or one function, with real output from Node 22.'
 objectives:
-  - Print a function’s Ignition bytecode and find its feedback slots.
-  - Read --trace-opt and --trace-deopt output, and connect a deopt to the bytecode that caused it.
-  - Predict which of three small programs will deoptimise, and why.
-  - Read a --trace-gc line and tell a scavenge from a mark-compact.
+  - Find the V8 flag that answers a given question about the engine.
+  - Read a --trace-gc line, and tell a young-generation collection from a whole-heap one.
   - Turn on natives syntax and say why it is not JavaScript.
   - Read a %DebugPrint of an object and of an array, and find its map, fields and elements kind.
   - Check shapes and dictionary mode with %HaveSameMap and %HasFastProperties.
   - Force and decode a function’s optimisation status, and watch a field generalise.
 introduces: [natives-syntax]
-uses: [ignition, bytecode, tiering, jit-compiler, optimizing-tiers, type-feedback, speculation, deoptimization, inline-cache, scavenger, mark-compact, smi, heap-number, jit-warmup, benchmark-isolation, columnar-storage, string-methods, engine-tracing, shape, transition-tree, dictionary-mode, elements-kind, field-representation, class, bit-ops, function, object, property]
-sources: [v8-flag-definitions, v8-ignition-handlers, v8-deopt-kinds, v8-gc-tracer, v8-ignition, v8-runtime-h]
+uses: [ignition, bytecode, tiering, jit-compiler, optimizing-tiers, type-feedback, speculation, deoptimization, inline-cache, smi, heap-number, jit-warmup, benchmark-isolation, string-methods, engine-tracing, shape, transition-tree, dictionary-mode, elements-kind, field-representation, generational-gc, garbage-collection, class, bit-ops, function, object, property]
+sources: [v8-flag-definitions, v8-gc-tracer, v8-trash-talk, v8-runtime-h]
 ---
 import FlagMap from '../../../components/diagrams/ch264/FlagMap';
-import DeoptLineSteps from '../../../components/diagrams/ch264/DeoptLineSteps';
 import DebugPrintSteps from '../../../components/diagrams/ch264/DebugPrintSteps';
 import StatusBits from '../../../components/diagrams/ch264/StatusBits';
 
-{/* ── merge: from old chapter 88 (remnant: keep only what goes beyond the core), Watching the engine work ── */}
-
 ## Make the engine talk
 
-The chapters from *The V8 pipeline* to *Mark-compact and the write
-barrier* described V8's tiers, shapes, elements kinds, deoptimisation
-and garbage collector. You do not have to take any of it on trust: V8
-has flags that print what it is doing, and Node passes them through.
-Every output in this chapter is real, from this book's machine, trimmed
-only to fit your phone.
+You met engine tracing in *Tiers, speculation and deoptimisation*
+(`--print-bytecode`, `--trace-opt`, `--trace-deopt` and how to read a
+bailout line), and a few `%` helpers such as `%HaveSameMap` in *Shapes,
+inline caches and elements kinds*. This chapter goes further: the rest
+of the toolkit this part has used, the garbage collector's own log, and
+the `%` functions themselves, what they are, how to turn them on, and
+how to read what they print.
 
 <Analogy title="a car's diagnostic port">
 A modern car has a socket under the dashboard; plug a reader into it
@@ -44,200 +40,37 @@ developers and can change in any release, so every reading must be
 labelled with the version that produced it.</span>
 </Analogy>
 
-<Analogy extra title="a chess player thinking aloud">
-Some chess players, streaming a game, say their reasoning as they go:
-"his bishop is pinned, so I'll take the pawn; no, wait, that loses the
-knight". You learn more from that commentary than from the moves alone.
-<span slot="breaks">The player picks what to say for an audience; V8
-prints everything a flag covers, tersely, in its own shorthand, and the
-printing itself takes time, so never benchmark with tracing on.</span>
+<Analogy extra title="a television's service menu">
+Many televisions have a hidden service menu, opened by pressing a
+secret sequence of buttons on the remote, that shows the engineer
+readings no viewer ever sees: panel hours, voltages, calibration
+values.
+<span slot="breaks">A service menu belongs to one model and stays the
+same for its life; V8's natives belong to one version of V8 and can
+change or disappear in the next, so a program that relies on them is
+tied to that version.</span>
 </Analogy>
 
-<Callout kind="pitfall" label="These flags are V8's, not yours">
-They are defined inside V8 for its own developers, in one file per V8
-version<Cite id="v8-flag-definitions" />. They are not part of
-JavaScript or of Node's stable interface, and names, output formats and
-defaults can change in any release. Everything below was run on
-**Node v22.23.4, V8 12.4.254.21**. Addresses (`0x…`) differ on every
-run. Run `node --v8-options` to see what your own version offers.
-</Callout>
+Everything below was run on **Node v22.23.4, V8 12.4.254.21**, and
+addresses (`0x…`) differ on every run; `node --v8-options` lists what
+your own version offers, since every flag is defined inside V8, per
+version<Cite id="v8-flag-definitions" />. Here is the whole toolkit of
+this part in one place, by the question each flag answers:
 
-<Figure takeaway="One flag per question you want to ask the engine." caption="Each flag shows one part of V8. All of them were run on Node v22.23.4; the last two belong to the next chapter.">
+<Figure takeaway="One flag per question you want to ask the engine." caption="The V8 flags used in this part, each run on Node v22.23.4, and what each one shows.">
 <FlagMap />
 </Figure>
 
-<Callout kind="definition">
-**Engine tracing** means running a program with an engine's diagnostic
-flags so that the engine reports its own decisions as it makes them.
-In V8 these include `--print-bytecode` (Ignition bytecode),
-`--trace-opt` (functions marked and compiled by the optimising tiers),
-`--trace-deopt` (every deoptimisation, with its kind, reason and
-bytecode offset), `--trace-generalization` (hidden-class fields
-becoming more general) and `--trace-gc` (one line per garbage
-collection)<Cite id="v8-flag-definitions" />. Their output is for
-diagnosis, not for parsing in production: it varies between versions.
-</Callout>
-
-## Bytecode
-
-Ignition is a register machine with an accumulator (one special
-register that most instructions read and write)<Cite id="v8-ignition" />.
-Ask for one function's bytecode, using the filter so that you do not get
-Node's own thousands of functions as well:
-
-```text
-$ node --print-bytecode \
-    --print-bytecode-filter=add bc.js
-```
-
-For `function add(a, b) { return a + b; }`:
-
-```text
-# Node v22.23.4, V8 12.4.254.21 (trimmed)
-[generated bytecode for function:
- add (0x… <SharedFunctionInfo add>)]
-Bytecode length: 6
-Parameter count 3
-Register count 0
- @ 0 : 0b 04     Ldar a1
- @ 2 : 3b 03 00  Add a0, [0]
- @ 5 : ae        Return
-```
-
-`Ldar a1` loads the second argument into the accumulator. `Add a0, [0]`
-adds the first argument to it, and `[0]` is a **feedback slot**: where
-this `+` records the types it sees (*Speculation and
-deoptimisation*)<Cite id="v8-ignition-handlers" />. `Return` hands back
-whatever is in the accumulator. The `@ 2` on the `Add` line is its
-offset, its position in bytes from the start of the bytecode; remember
-it.
-
-<Prompts ids={['flags-internal', 'bc-filter', 'feedback-slot']} />
-
-## Optimising, and giving up
-
-This program makes `add` hot with integers, then hands it a double:
-
-```js
-function add(a, b) {
-  return a + b;
-}
-for (let i = 0; i < 1e5; i++) add(i, 1);
-add(0.5, 1); // a double!
-```
-
-```text
-$ node --trace-opt --trace-deopt opt.js
-```
-
-```text
-# Node v22.23.4, V8 12.4.254.21 (trimmed)
-[marking … <JSFunction add …> for
- optimization to TURBOFAN, …,
- reason: hot and stable]
-[compiling method … <JSFunction …>
- (target TURBOFAN) OSR, …]
-[completed optimizing … add …
- (target TURBOFAN)]
-[bailout (kind: deopt-eager, reason:
- Insufficient type feedback for call):
- … <JSFunction (sfi = …)>, …
- bytecode offset 41, …]
-[bailout (kind: deopt-eager, reason:
- not a Smi): … <JSFunction add …>,
- … bytecode offset 2, …]
-```
-
-`add` is "hot and stable", so TurboFan compiles it, concurrently, on
-another thread. The nameless function is the top-level script; its
-loop is still running when it gets hot, so V8 uses **on-stack
-replacement** (OSR)<Cite id="v8-flag-definitions" />: it switches the
-loop over to optimised code in the middle of running it. You will not
-see Maglev here: in this Node build, `--v8-options` lists it as off by
-default.
-
-Then two bailouts. The script's optimised code reaches the call
-`add(0.5, 1)`, which had never run, so it had no feedback to go on. And
-`add` itself fails its small-integer check at bytecode offset 2: the
-`Add` above. Here is that last line in full, read part by part:
-
-<DeoptLineSteps client:visible />
-
-<Formal title="The shape of a bailout line">
-
-```text
-line   ::= "[bailout (kind: " kind
-           ", reason: " reason "): "
-           … "bytecode offset " n … "]"
-kind   ::= "deopt-eager" | …
-```
-
-<span slot="read">A bailout line is the text "[bailout (kind: ", then a
-kind, then ", reason: " and a reason, then "): ", then other details,
-somewhere among which is "bytecode offset " followed by a number, and a
-closing bracket. A kind is deopt-eager, or the name of the other kind
-V8 12.4 defines, the lazy one. This is the grammar the exercise's regular expression
-matches; like the output itself, it is only true for this
-version<Cite id="v8-deopt-kinds" />.</span>
-</Formal>
-
-<Prompts ids={['osr', 'eager-lazy', 'deopt-offset']} />
-
-## Three programs, three traces
-
-Run each of these with `--trace-deopt` and see what V8 says. Try to
-predict each one before reading its output:
-
-<Examples of="engine-tracing">
-
-```js
-function sq(x) { return x * x; }
-for (let i = 0; i < 1e5; i++) sq(i);
-// [bailout (kind: deopt-eager,
-//   reason: overflow): … sq …
-//   bytecode offset 2, …]
-```
-
-```js
-// …the same loop, then:
-sq('3');
-// [bailout (kind: deopt-eager, reason:
-//   not a Number or Oddball): … sq …]
-```
-
-```js
-const x = new Float64Array(1e5);
-const vx = new Float64Array(1e5);
-function step(dt) {
-  for (let i = 0; i < 1e5; i++)
-    x[i] += vx[i] * dt;
-}
-for (let t = 0; t < 100; t++) step(0.5);
-// (no bailout lines at all)
-```
-
-</Examples>
-
-The first is the surprise: `sq` only ever sees integers, yet it
-deoptimises. The reason is `overflow`. The optimised code guessed that
-`x * x` stays a small integer, because every result so far had been
-one; on this build a Smi holds up to 2<sup>31</sup> − 1
-(`%DebugPrint(2 ** 31 - 1)`, from the next chapter, prints `Smi`), and 46341 × 46341 is the
-first square past that. (A loop that stopped at 46340 printed no
-overflow bailout; one that reached 46341 did.) V8 then compiles `sq`
-again with what it has learned. The second hands `sq` a string,
-and the reason changes to "not a Number or Oddball" (an *oddball*, in V8's own
-naming, is a special value such as `undefined`, `null` or `true`:
-`%DebugPrint(null)` labels it `[Oddball]`)<Cite id="v8-deopt-kinds" />: the multiply can no longer assume
-numbers at all. The third is the struct-of-arrays loop from Part II.
-With `--trace-opt` it shows `step` being compiled by TurboFan through
-OSR; with `--trace-deopt` it prints nothing, because two
-`Float64Array`s of doubles never surprise the optimised code. When you
-check your own hot loops, silence is the answer you want.
-
-<Prompts ids={['overflow-deopt']} />
-
 ## Garbage collection
+
+V8 splits its heap in two<Cite id="v8-trash-talk" />. New objects go
+into a small young generation, which a **scavenge** empties often and
+quickly by copying the few survivors out (most objects die young); the
+old generation, where survivors end up, is cleaned less often by a
+**mark-compact**, which marks every reachable object in the whole heap
+and then squeezes the live ones together. (*V8's garbage collector*, in
+the deep dive on garbage collection, takes both apart.) `--trace-gc`
+prints one line for each.
 
 Keep three million small objects alive and watch the collector:
 
@@ -260,82 +93,27 @@ Keep three million small objects alive and watch the collector:
 Each line gives the time since start, the collector, the size of the
 objects before and after (with the heap's memory size in brackets), the
 time it took, and the reason<Cite id="v8-gc-tracer" />. Scavenges are
-young-generation collections, mark-compacts whole-heap ones (*V8's
-garbage collector*). At 577 ms a scavenge freed nothing: every object
+the young-generation collections, mark-compacts the whole-heap ones. At 577 ms a scavenge freed nothing: every object
 was still in `keep`. Once the script had finished, the last
 mark-compact found almost everything dead. This is also the flag behind
-*Escape analysis in V8*: counting scavenges with
-`--trace-gc | grep -c Scavenge` is how that chapter showed the
-temporary objects had vanished.
+the escape-analysis chapters: counting scavenges with
+`--trace-gc | grep -c Scavenge` is how *Escape analysis across
+functions* and *Escape analysis in V8* showed which temporary objects
+had vanished.
 
-<Prompts ids={['gc-line']} />
+<Prompts ids={['gc-line', 'gc-two-kinds']} />
 
-<Callout kind="engine" label="Under the hood">
-These flags are how this book's findings were made, and how you should
-check them on your own code. Viscosity's output is ordinary
-JavaScript, so you can run its `Float64Array` columns under
-`--trace-deopt` and `--trace-opt` exactly like any other program, and
-compare with the original. Remember what you are reading, though: one
-engine's private diary, written for its own developers, in a format
-that will change.
-</Callout>
+## Looking inside one object
 
-## Your turn
-
-The first exercise is the core one; the second is extra practice.
-
-<Exercise id="parseDeopt" />
-
-<Exercise id="parseGc" />
-
-## What you learned
-
-- **Engine tracing**: V8's `--print-bytecode` (with a filter),
-  `--trace-opt`, `--trace-deopt` and `--trace-gc` report its decisions
-  as it makes them.
-- A bytecode listing shows each instruction's **offset** and its
-  **feedback slots**.
-- A deopt line gives the **kind** (eager or lazy), the **reason**, the
-  function, the tier and the **bytecode offset**, which you can match to
-  the `--print-bytecode` listing.
-- Even integer code can deoptimise, on **overflow**; a loop over typed
-  arrays of doubles should print no bailouts at all.
-- All of it is **V8-internal** and version-specific: label your output
-  with the version, and expect it to change.
-
-
-{/* ── merge: from old chapter 264, Looking inside objects with natives syntax ── */}
-
-## A question the trace cannot answer
-
-The previous chapter's flags report decisions as V8 makes them: this
-function was optimised, that guess failed, the young generation was
-collected. Sometimes, though, the question is about one object, right
-now: what shape does it have? Is it in dictionary mode? Are its numbers
-boxed? *Shapes in depth* and *Elements kinds* told you these things
-exist; this chapter shows you how to look at them directly.
+Flags report decisions as V8 makes them; sometimes, though, the
+question is about one object, right now: what
+shape does it have? Is it in dictionary mode? Are its numbers boxed?
+*Shapes, inline caches and elements kinds* and *Slack tracking and
+dictionary mode* told you these things exist; here is how to look at
+them directly.
 
 V8 has a set of internal runtime functions, and with one flag it lets
 your source call some of them by name, with a `%` in front.
-
-<Analogy title="a television's service menu">
-Many televisions have a hidden service menu, opened by pressing a
-secret sequence of buttons on the remote, that shows the engineer
-readings no viewer ever sees: panel hours, voltages, calibration
-values.
-<span slot="breaks">A service menu belongs to one model and stays the
-same for its life; V8's natives belong to one version of V8 and can
-change or disappear in the next, so a program that relies on them is
-tied to that version.</span>
-</Analogy>
-
-<Analogy extra title="an X-ray">
-A doctor who wants to know how a bone has healed does not ask the
-patient how it feels; an X-ray shows the inside directly.
-<span slot="breaks">An X-ray only looks; some natives also act, for
-example by telling V8 to optimise a function on its next call, so they
-can change what the engine does, not only show it.</span>
-</Analogy>
 
 ## Turning it on
 
@@ -355,12 +133,8 @@ DebugPrint: 0x…: [JS_OBJECT_TYPE]
 ```
 
 The file is the same two lines both times (`const p = { x: 1 };` and
-`%DebugPrint(p);`); only the flag differs. `--allow-natives-syntax` is
-defined in V8's flag file<Cite id="v8-flag-definitions" />, and the
-functions it unlocks are listed in V8's `runtime.h`, where
-`DebugPrint`, `HasFastProperties`, `HaveSameMap`,
-`GetOptimizationStatus`, `PrepareFunctionForOptimization` and
-`OptimizeFunctionOnNextCall` sit in the group meant for
+`%DebugPrint(p);`); only the flag differs. The functions it unlocks
+are listed in V8's `runtime.h`, in the group meant for
 testing<Cite id="v8-runtime-h" />.
 
 <Callout kind="definition">
@@ -397,7 +171,8 @@ a[10] = 1;
 Three small integers make a packed array of Smis. Pushing `1.5` moves
 the whole array to doubles, still packed. Writing to index 10 of an
 array of length 4 leaves holes at 4 to 9, so it becomes holey; each
-step is one of the one-way moves from *Elements kinds*, now seen from
+step is one of the one-way moves of *Shapes, inline caches and
+elements kinds* and *Stub caches and feedback vectors*, now seen from
 inside.
 
 <Prompts ids={['elements-debugprint']} />
@@ -484,10 +259,14 @@ bit 6 is 1 (TurboFanned) and bit 7 is 0 (not interpreted).</span>
 
 ## A field that changes kind
 
-The repository's findings (FINDINGS.md, section 4) used a tracing flag,
-`--trace-generalization`, to explain why a TypeScript-style class was
-slow. It belongs here because it is about one object's fields. You can
-reproduce it: a class with a field declaration, filled with doubles.
+One more flag is about one object's fields: `--trace-generalization`
+prints a line whenever a field's representation in a map becomes more
+general, which is how the repository's findings explained a slow
+TypeScript-style class.
+
+<More title="More: the class field that boxes every double">
+
+The findings are in FINDINGS.md, section 4. You can reproduce them: a class with a field declaration, filled with doubles.
 Node prints many lines for its own code, so keep only yours:
 
 ```js
@@ -515,37 +294,45 @@ the constructor runs), and storing a number generalises it to a generic
 `%DebugPrint` stepper becomes `mutable` at the same moment. Without the
 `x;` line, no such line appears for `x`.
 
+</More>
+
 <Prompts ids={['generalization']} />
 
 <Callout kind="engine" label="Under the hood">
 V8 lists these functions in the group meant for
-testing<Cite id="v8-runtime-h" />, and that is the right way to use them
-in your work too: a small test that says "these two objects
-share a map" or "this function is optimized" checks a performance
-assumption the way an ordinary test checks a result. Viscosity's
-claims can be checked like this, since its output is ordinary
-JavaScript. Keep them out of anything you ship: they are not
-JavaScript, no other engine understands them, and they belong to one
-V8 version.
+testing<Cite id="v8-runtime-h" />, and that is how to use them: a small
+test that says "these two objects share a map" checks a performance
+assumption the way an ordinary test checks a result. Keep them out of
+anything you ship.
 </Callout>
 
 ## Your turn
 
+The first exercise is the core one; the second is extra practice.
+
 <Exercise id="decodeStatus" />
+
+<Exercise id="parseGc" />
 
 ## What you learned
 
+- Every V8 flag answers one question, and all of them are
+  **V8-internal** and version-specific: label your output with the
+  version.
+- `--trace-gc` prints one line per collection: the time, **Scavenge**
+  (young generation) or **Mark-Compact** (whole heap), the sizes before
+  and after, the pause and the reason.
 - **Natives syntax**, `%Name(args)`, calls V8's internal runtime
   functions from JavaScript; without `--allow-natives-syntax` it is a
   `SyntaxError`.
 - `%DebugPrint` shows an object's **map**, its fields (a **Smi** in
   place, a double as a **HeapNumber**) and an array's **elements
-  kind**.
-- `%HasFastProperties` and `%HaveSameMap` answer yes-or-no questions
-  about dictionary mode and shapes.
+  kind**; `%HasFastProperties` and `%HaveSameMap` answer yes-or-no
+  questions.
 - `%GetOptimizationStatus` returns a bit set, named in `runtime.h`;
   `%OptimizeFunctionOnNextCall` forces optimisation for a test.
-- All of them are V8 test functions, for one version: use them to check
-  assumptions, never in shipped code.
+
+Next: *Objects, vtables and dynamic dispatch*, the first of the deep
+dive into how compilers implement language features.
 
 <Quiz />

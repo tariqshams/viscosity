@@ -1,4 +1,4 @@
-// Chapter 248 cards: recall prompts, examples, exercises and quiz.
+// Inside LLVM's code generator, clang and rustc: cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -19,7 +19,7 @@ export const prompts = {
     a: 'Greedy (with live-range splitting) by default; fast in debug builds.',
   },
   'fast-spills': {
-    q: 'Why is the loop full of loads and stores under `-regalloc=fast`?',
+    q: 'Why does LLVM’s `-regalloc=fast` fill a simple loop with loads and stores that the greedy allocator avoids?',
     a: 'The fast allocator works one block at a time, so values that live across blocks are spilled at block ends and reloaded.',
   },
   'clang-sema': {
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'AST, then HIR (desugared), then THIR (fully typed), then MIR (a CFG, used for borrow checking).',
   },
   'mir-overflow': {
-    q: 'Why does the debug MIR for `s += i * i` contain `MulWithOverflow` and `assert`?',
+    q: 'Why does rustc’s MIR for `s += i * i`, in a debug build, contain `MulWithOverflow` and `assert`?',
     a: 'Rust’s integer operators panic on overflow in debug builds, so every * and + is checked.',
   },
   'cranelift-why': {
@@ -223,7 +223,7 @@ export const quiz = [
       },
       {
         t: 'It produces worse code than SelectionDAG for every loop.',
-        why: 'For sumsq on RISC-V in LLVM 18 it produced exactly the same assembly.',
+        why: 'For a simple sum-of-squares loop on RISC-V, LLVM 18 produced exactly the same assembly with either selector.',
       },
       {
         t: 'It builds a DAG for each basic block.',
@@ -232,7 +232,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is the `-regalloc=fast` loop full of `ld` and `sd`?',
+    q: 'Why is a RISC-V loop compiled with LLVM’s `-regalloc=fast` full of `ld` and `sd`?',
     options: [
       {
         t: 'RISC-V has too few registers for this loop.',

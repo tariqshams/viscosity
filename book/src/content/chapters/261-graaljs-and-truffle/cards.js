@@ -1,4 +1,4 @@
-// Chapter 99 cards: recall prompts, examples, exercises and quiz.
+// GraalJS and Truffle: cards.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,7 +7,7 @@ export const prompts = {
     a: 'It records the values it sees and rewrites itself into a version specialised for them, generalising when they stop holding.',
   },
   'rewrite-on': {
-    q: 'In Truffle’s DSL, what does `rewriteOn = ArithmeticException.class` on an int `+` mean?',
+    q: 'In Truffle’s DSL, what does `rewriteOn = ArithmeticException.class` on the int specialisation of a `+` node mean?',
     a: 'If the int case ever throws (on overflow), this node never uses it again and the next, more general case runs instead.',
   },
   'sa-uninit': {
@@ -15,11 +15,11 @@ export const prompts = {
     a: 'It has seen no values yet, so it has nothing to specialise on; its first execution decides which case to try.',
   },
   'one-way': {
-    q: 'Why do specialisation rewrites only go from specific to general?',
+    q: 'Why do Truffle node specialisations only move from specific to general?',
     a: 'So a node settles: a node that could flip back and forth would keep invalidating and recompiling its code.',
   },
   'sa-overflow': {
-    q: 'An int `+` node is given `2147483647` and `1`. What does it return, and what state is it in afterwards?',
+    q: 'A self-specialising `+` node with int, double and generic states, in its int state, is given `2147483647` and `1`. What does it return, and what state is it in afterwards?',
     a: '`2147483648`, the right sum; the int case overflowed, so the node moves to its double case and never uses the int case again.',
   },
   'replace-invalidates': {

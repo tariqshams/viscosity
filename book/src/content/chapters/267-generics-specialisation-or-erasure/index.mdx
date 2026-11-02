@@ -26,15 +26,16 @@ function first<T>(xs: T[]): T {
 }
 ```
 
-TypeScript checks it once and then **erases** the types (chapter 28):
+TypeScript checks it once and then **erases** the types (*Interfaces, erasure and typeof*):
 the JavaScript that runs is `function first(xs) { return xs[0]; }`,
 and that is fine, because in a JavaScript engine every value already
 fits one slot. Now picture compiling `first` to RISC-V. For an array of
 32-bit integers, `xs[0]` is a 4-byte load into an integer register; for
 64-bit floats, an 8-byte load into a float register; for a 24-byte
 struct, three loads and a copy to memory. There is no single sequence
-of instructions for "return element 0 of a T", and last chapter's
-dictionaries only supply operations, not sizes. Real compilers take one
+of instructions for "return element 0 of a T", and the dictionaries of
+*Interfaces and traits: dictionary passing* only supply operations, not
+sizes. Real compilers take one
 of two roads, and Go found a third.
 
 <StrategySteps client:visible />
@@ -71,13 +72,16 @@ the matching copy; there is no run-time cost for being generic, but the
 code grows with the number of types.
 </Callout>
 
-The Rust compiler's guide says it plainly: rustc "stamps out a
+You met this in Rust, in *Generics and monomorphization*; here it sits
+beside the other roads. The Rust compiler's guide says it plainly:
+rustc "stamps out a
 different copy of the code of a generic function for each concrete type
 needed", which gives fast programs at the cost of compile time and
 binary size<Cite id="rustc-dev-guide-monomorph" />. C++ templates work
 the same way, and Swift does it as an optimisation whenever the
 generic's definition is visible<Cite id="swift-optimization-tips" />.
-Here is the evidence, from the trait `Area` of chapter 266 with two
+Here is the evidence, from the trait `Area` of *Interfaces and traits: dictionary passing*,
+with two
 types:
 
 <Examples of="generic-specialization">
@@ -227,7 +231,7 @@ static int sum(List<Integer> xs) {
 ```
 
 ```js
-// V8, chapter 53:
+// V8: a Smi and a HeapNumber
 let n = 7;    // a Smi: fits, no box
 let t = 4.2;  // a HeapNumber: boxed
 ```
@@ -238,11 +242,12 @@ The first is innocent-looking Java. Its bytecode, the second, shows
 boxing on the way in (`7` becomes an `Integer` object through
 `Integer.valueOf`) and unboxing on the way out (`checkcast`, then
 `intValue` to get the raw number back for `+ 1`). The third is the same
-problem inside a JavaScript engine, from chapter 53: V8 tags small
+problem inside a JavaScript engine, from *How JavaScript stores
+numbers, objects and fields*: V8 tags small
 integers to fit a pointer-sized slot, while `4.2` does not fit and is
 boxed as a HeapNumber.
 
-<Figure takeaway="Boxing turns one row of numbers into a row of pointers to scattered boxes." caption="The same three numbers stored specialised and erased. Reading the erased ones means following a pointer for each, the pointer chasing of chapter 52.">
+<Figure takeaway="Boxing turns one row of numbers into a row of pointers to scattered boxes." caption="The same three numbers stored specialised and erased. Reading the erased ones means following a pointer for each, the pointer chasing of “Prefetching, pointer chasing, branches and SIMD”.">
   <BoxingFigure />
 </Figure>
 
@@ -281,8 +286,8 @@ real type arguments<Cite id="go-generics-dictionaries" />. Compiling
 `First[T any](xs []T) T` with Go 1.24 for `int`, `float64`, `*A` and
 `*B` produced exactly three bodies, `First[go.shape.int]`,
 `First[go.shape.float64]` and one `First[go.shape.*uint8]` shared by
-both pointer types: dictionary passing from chapter 266, used for
-generics.
+both pointer types: the dictionary passing of *Interfaces and traits:
+dictionary passing*, used for generics.
 
 <Prompts ids={['gcshape']} />
 
@@ -301,7 +306,7 @@ generics.
   at the price of allocation and pointer chasing; Go's shapes sit
   between the two roads.
 
-Next: closures, and how a compiler turns a function that captures
-variables into plain code plus a record.
+Next: *Closure conversion and lambda lifting*, how a compiler turns a
+function that captures variables into plain code plus a record.
 
 <Quiz />

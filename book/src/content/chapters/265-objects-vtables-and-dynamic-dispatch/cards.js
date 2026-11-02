@@ -1,4 +1,4 @@
-// Chapter 101 cards: recall prompts, examples, exercises and quiz.
+// Objects, vtables and dynamic dispatch: cards.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,19 +15,19 @@ export const prompts = {
     a: 'An array of method addresses, one per class, with one fixed slot number per virtual method.',
   },
   'slot-fixed': {
-    q: 'Why does an overriding method keep its parent’s slot number?',
+    q: 'In a vtable scheme, why does an overriding method keep its parent’s slot number?',
     a: 'So code compiled against the parent, which reads that slot, finds the override when given a subclass object.',
   },
   'new-slot': {
-    q: 'Where does a method that a subclass adds (not overrides) go in its vtable?',
+    q: 'With single inheritance, where does a method that a subclass adds (not overrides) go in its vtable?',
     a: 'In the next free slot, after all of the parent’s slots.',
   },
   'prefix-why': {
-    q: 'Why does a subclass object put its new fields after all of its parent’s fields?',
+    q: 'In a single-inheritance object layout, why does a subclass object put its new fields after all of its parent’s fields?',
     a: 'So every parent field keeps its offset, and code compiled for the parent reads a subclass object correctly.',
   },
   'two-loads': {
-    q: 'What does a vtable call cost, in instructions, before the method starts?',
+    q: 'With single inheritance, what does a vtable call cost, in instructions, before the method starts?',
     a: 'Two loads (the vptr, then the slot) and one indirect jump or call.',
   },
   'js-no-vtable': {

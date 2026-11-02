@@ -1,38 +1,38 @@
-// Chapter 245 cards: recall prompts, examples, exercises and quiz.
+// Drip to RISC-V, end to end: cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'pipeline-order': {
-    q: 'Name the stages of the chapter’s compiler, in order.',
-    a: 'Scan, parse, select instructions, compute live intervals, allocate registers, lay out the frame, assemble, run (or link).',
+    q: 'Name the stages of a minimal native compiler, from source text to a program that runs, in order.',
+    a: 'Scan, parse, (optionally optimise), select instructions over virtual registers, allocate registers with spilling, lay out each frame by the ABI, assemble, link.',
   },
   'why-virtual': {
     q: 'Why does instruction selection write into virtual registers rather than real ones?',
     a: 'So it can use as many as it likes and leave the hard job of fitting them into 32 real registers to the allocator.',
   },
   'why-no-div': {
-    q: 'Why does the subset leave out `/`?',
-    a: 'Drip’s `/` is float division (7 / 2 is 3.5) but RISC-V’s integer div gives 3; the compiler refuses rather than compute it wrongly.',
+    q: 'A compiler keeps Drip numbers as integers in RISC-V registers. Why must it refuse Drip’s `/` rather than emit `div`?',
+    a: 'Drip’s `/` is float division (7 / 2 is 3.5) but RISC-V’s integer div gives 3; refusing is better than computing it wrongly.',
   },
-  'tests-only': {
-    q: 'Where may a comparison such as `a < b` appear in the subset?',
-    a: 'Only as the condition of an `if` or a `while`, never as a value.',
+  'test-as-branch': {
+    q: 'When a comparison such as `a < b` is only the condition of an `if`, what does a RISC-V compiler turn it into, rather than a 0 or 1 value?',
+    a: 'A single conditional branch (for `a < b`, `bge a, b, else`) that jumps to the false side when the test fails.',
   },
   'eight-params': {
-    q: 'Why does the subset allow at most eight parameters?',
-    a: 'The RISC-V calling convention passes the first eight integer arguments in a0 to a7; more would need stack arguments.',
+    q: 'Why can a RISC-V compiler that never passes arguments on the stack accept at most eight integer parameters?',
+    a: 'The RISC-V calling convention passes the first eight integer arguments in a0 to a7; more go on the stack.',
   },
   'tile-what': {
     q: 'What is a tile, in instruction selection?',
     a: 'A small tree pattern together with the instructions that compute it, such as “a + small constant” becoming one addi.',
   },
   'branch-on-fail': {
-    q: 'Why does the test `i < n` of a while loop become `bge`?',
-    a: 'The branch jumps out of the loop when the test fails, and `i < n` fails exactly when `i >= n`.',
+    q: 'A compiler branches out of a while loop when its test fails. Why does the signed test `i < n` become `bge`?',
+    a: 'The branch must be taken when the test fails, and `i < n` fails exactly when `i >= n`.',
   },
   'swap-operands': {
-    q: 'RISC-V has no `bgt`. How does the selector branch when `a > b` fails?',
-    a: 'It swaps the operands: `a > b` fails when `b >= a`, so it emits `bge b, a, no`.',
+    q: 'RISC-V has no `bgt` machine instruction (only an assembler pseudo-instruction). Which real branch jumps to `no` when `a > b` fails?',
+    a: '`bge b, a, no`: swap the operands, because `a > b` fails exactly when `b >= a`.',
   },
   'addi-tile': {
     q: 'Which instruction does `i - 1` become, and why not `sub`?',
@@ -480,7 +480,7 @@ The last test checks every test on every pair of small numbers, including equal 
 
 export const quiz = [
   {
-    q: 'In which order do the chapter’s stages run?',
+    q: 'In which order do the stages of a simple native compiler run?',
     options: [
       {
         t: 'Parse, scan, allocate registers, select instructions.',
@@ -498,7 +498,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the compiler refuse `print 7 / 2;` instead of using RISC-V’s `div`?',
+    q: 'A Drip compiler keeps numbers as 64-bit integers. Why must it refuse `print 7 / 2;` rather than use RISC-V’s `div`?',
     options: [
       {
         t: 'RISC-V has no division instruction.',
@@ -511,12 +511,12 @@ export const quiz = [
       {
         t: 'Drip’s `/` gives 3.5, integer `div` gives 3, and a compiler must not change what a program prints.',
         correct: true,
-        why: 'Right: the subset uses whole numbers only, so it leaves out anything whose meaning would change.',
+        why: 'Right: a compiler that uses whole numbers only must leave out anything whose meaning would change.',
       },
     ],
   },
   {
-    q: 'What does the selector emit for the test of `while i < n`, with i in v2 and n in v0?',
+    q: 'A compiler branches to `.Lexit` when a loop test fails. What does it emit for the test of `while i < n`, with i in v2 and n in v0?',
     options: [
       {
         t: '`blt v2, v0, .Lexit`',
@@ -538,7 +538,7 @@ export const quiz = [
     options: [
       {
         t: '`li d, 1` then `add d, i, d`',
-        why: 'That works but uses two instructions and a register; the selector prefers the bigger tile.',
+        why: 'That works but uses two instructions and a register; a selector that picks the biggest matching tile avoids it.',
       },
       {
         t: '`addi d, i, 1`',
@@ -570,24 +570,24 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these is inside the chapter’s Drip subset?',
+    q: 'Which single RISC-V instruction jumps to `no` when the test `x == 0` fails?',
     options: [
       {
-        t: '`let ok = a < b;`',
-        why: 'Comparisons may only be the condition of if or while, never values.',
-      },
-      {
-        t: '`for i in 0..10 { print i; }`',
-        why: 'for is not in the subset; write it as a while loop.',
-      },
-      {
-        t: '`fn f(x) { if x > 0 { return x; } return -x; }`',
+        t: '`bne x, zero, no`',
         correct: true,
-        why: 'Right: a function with one parameter, a test in an if, returns and unary minus are all in.',
+        why: 'Right: the test fails when x is not 0, and the zero register (x0) always reads 0, so no constant needs loading.',
       },
       {
-        t: '`print "hi";`',
-        why: 'Strings are not in the subset.',
+        t: '`beq x, zero, no`',
+        why: 'That jumps when the test holds, which is the wrong way round.',
+      },
+      {
+        t: '`li t0, 0` then `bne x, t0, no`',
+        why: 'Correct but two instructions; x0 already holds 0.',
+      },
+      {
+        t: '`blt x, zero, no`',
+        why: 'That jumps only when x is negative, so a positive x would wrongly fall into the true side.',
       },
     ],
   },

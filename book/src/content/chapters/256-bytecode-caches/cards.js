@@ -1,4 +1,4 @@
-// Chapter 251 cards: recall prompts, examples, exercises and quiz.
+// Bytecode caches: cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,19 +11,19 @@ export const prompts = {
     a: 'So that it also holds the lazy functions that were called during startup, which have bytecode by then.',
   },
   'cache-grew': {
-    q: 'Why was the `vm.Script` cache bigger after the script ran (528 vs 672 bytes)?',
-    a: '`add` had been called, so it was compiled, and its bytecode joined the cache. Before running it was still lazy.',
+    q: 'In Node 22, a `vm.Script` defines `add` and `sub` and calls only `add`. Why is `createCachedData()` bigger after running it than before?',
+    a: 'Running compiled `add`, so its bytecode joined the cache; before running it was still lazy. `sub` stays lazy throughout.',
   },
   'cache-no-lazy': {
-    q: 'With `node --no-lazy`, both caches were 824 bytes. Why the same, and why bigger?',
+    q: 'Under `node --no-lazy`, why is a `vm.Script`’s `createCachedData()` the same size before and after running, and bigger than without the flag?',
     a: 'Lazy parsing was off, so every function was compiled up front: running the script added nothing new, and `sub` was in the cache too.',
   },
   'cache-reject': {
-    q: 'What did `cachedDataRejected` say when one space was added to the source?',
+    q: 'In Node 22, what does `cachedDataRejected` report when a `vm.Script` cache is offered for the same source plus one added space?',
     a: '`true`: the cache did not match, so V8 ignored it and compiled the source normally.',
   },
   'cache-same-length': {
-    q: 'In the chapter’s Node 22 test, what happened when `a + b` was changed to `a - b` and the old cache was offered?',
+    q: 'In Node v22.23.4 (V8 12.4), a `vm.Script` cache is offered for a source edited without changing its length (`a + b` to `a - b`). What happens?',
     a: 'It was accepted (`cachedDataRejected` was `false`) and the old `a + b` code ran: V8’s own check missed a same-length edit.',
   },
   'cache-embedder': {
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'Whoever stores the cache (the embedder: Chrome, Node’s compile cache, or your own code), for example by keeping a hash of the source text.',
   },
   'cache-node': {
-    q: 'How did Node’s module compile cache react to the one-character edit?',
+    q: 'How does Node 22’s module compile cache (`NODE_COMPILE_CACHE`) react when a cached file has been edited by one character?',
     a: 'It rejected the cache with “code hash mismatch”, compiled the file again and wrote a new cache.',
   },
 };
@@ -149,7 +149,7 @@ test('different files do not share', () => {
     return code;
   };
 }`,
-        why: 'This checks only the length, so editing `x+y` to `x-y` returns the old code: exactly the hole the chapter found in V8’s own check.',
+        why: 'This checks only the length, so editing `x+y` to `x-y` returns the old code: exactly the hole that a same-length edit opens in V8 12.4’s own check.',
       },
     ],
   },
@@ -175,7 +175,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the `vm.Script` experiment, why was the second cache bigger than the first?',
+    q: 'A `vm.Script` defines `add` and `sub`, and its top level calls `add`. Why is a cache taken after running it bigger than one taken before?',
     options: [
       {
         t: 'Running the script compiled `add`, so its bytecode was included',
@@ -193,7 +193,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which change was rejected by V8’s check in the chapter’s Node 22 test?',
+    q: 'In Node v22.23.4, a `vm.Script` cache for `function add(a, b) { return a + b; }…` is offered back. Which source does V8’s own check reject?',
     options: [
       {
         t: 'Changing `a + b` to `a - b`',
@@ -241,7 +241,7 @@ export const quiz = [
       },
       {
         t: 'Nothing; `cachedDataRejected` is enough',
-        why: 'The chapter’s test shows a same-length edit getting past it.',
+        why: 'In Node 22 a same-length edit (`a + b` to `a - b`) gets past it.',
       },
       {
         t: 'A hash of the source text (and the Node version), checked before offering the cache',

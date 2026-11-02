@@ -1,4 +1,4 @@
-// Chapter 98 cards: recall prompts, examples, exercises and quiz.
+// JavaScriptCore and SpiderMonkey: cards.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,7 +15,7 @@ export const prompts = {
     a: 'It starts from the DFG’s view of the function and lowers it into a second intermediate representation, B3.',
   },
   'sm-thresholds': {
-    q: 'By default, after how many calls or loop iterations does SpiderMonkey move a function into the Baseline Interpreter, the Baseline JIT and Ion?',
+    q: 'By the defaults in SpiderMonkey’s JitOptions.cpp (October 2026), after how many calls or loop iterations does a function move into the Baseline Interpreter, the Baseline JIT and Ion?',
     a: '10, 100 and 1500.',
   },
   'warp-input': {
@@ -318,7 +318,7 @@ export const quiz = [
       },
       {
         t: 'Truffle, Graal',
-        why: 'Truffle and the Graal compiler are behind GraalJS, the next chapter.',
+        why: 'Truffle and the Graal compiler are behind GraalJS, not JavaScriptCore.',
       },
     ],
   },
@@ -389,7 +389,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Viscosity measured its speed-ups on Node. What is the honest claim for Firefox?',
+    q: 'A tool’s speed-ups from `Float64Array` columns were all measured on Node. What is the honest claim for Firefox?',
     options: [
       {
         t: 'The same speed-ups, because the layout is the same',

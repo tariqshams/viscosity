@@ -19,7 +19,7 @@ import FatPointerFigure from '../../../components/diagrams/ch266/FatPointerFigur
 ## When one row of slots runs out
 
 Last chapter's vtable relied on each class having one parent whose
-slots it extends. An **interface** (chapter 28) breaks that. If
+slots it extends. An **interface** (*Interfaces, erasure and typeof*) breaks that. If
 `Printable` has `print` and `Comparable` has `lt`, each numbered on its
 own puts its method in slot 0, and a class `Doc` implementing both
 cannot hold two methods in one slot (while numbering every method in
@@ -296,7 +296,8 @@ value itself.
 - An **itable** finds an interface's methods from an object's class, as
   in Java's `invokeinterface`; Go caches one itab per pair of types.
 
-Next: the other way to compile generics, a fresh copy of the code for
-every type, and what each choice costs.
+Next: *Generics: specialisation or erasure*, the other way to compile
+generics, a fresh copy of the code for every type, and what each choice
+costs.
 
 <Quiz />

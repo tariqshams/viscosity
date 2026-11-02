@@ -1,155 +1,191 @@
-// Chapter 249 cards: recall prompts, examples, exercises and quiz.
+// Ignition and the tiers above it: cards.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'ignition-why': {
-    q: 'What problem was Ignition originally built to solve?',
-    a: 'Memory: its bytecode is a quarter to a half the size of the baseline machine code V8 used to generate.',
+    q: 'What problem was V8’s Ignition interpreter originally built to solve?',
+    a: 'Memory: its bytecode is a quarter to a half the size of the baseline machine code V8 used to generate for every function.',
   },
-  accumulator: {
-    q: 'In Ignition’s `Ldar a1; Add a0, [0]; Return`, where does the sum end up?',
-    a: 'In the accumulator, the implicit register most bytecodes read and write. `Return` returns it.',
+  'bytecode-shared': {
+    q: 'Since V8 5.9 (2017), what does TurboFan compile from?',
+    a: 'Ignition’s bytecode, not the source text; every function starts in Ignition, so the bytecode is the form all the tiers share.',
   },
-  'feedback-slot': {
-    q: 'What is the `[0]` in `Add a0, [0]`?',
-    a: 'A feedback slot number: where the handler records what kinds of values this addition saw.',
+  'param-count': {
+    q: 'In V8 12.4, `--print-bytecode` reports “Parameter count 2” for `function sum(xs)`. Why 2?',
+    a: 'The receiver (`this`) is passed as a hidden first parameter, so a function’s parameter count is its declared parameters plus one.',
   },
-  'sparkplug-removes': {
-    q: 'Sparkplug does no optimisations. What does it remove, then?',
-    a: 'The interpreter’s overhead: decoding each instruction’s operands and dispatching to the next one.',
+  'frame-size': {
+    q: 'An Ignition listing (V8 12.4, 64-bit) says “Register count 3” and “Frame size 24”. How are the two related?',
+    a: 'Ignition’s registers are 8-byte slots in the call’s stack frame, so three registers take 24 bytes.',
   },
-  speculate: {
-    q: 'What does it mean that Maglev and TurboFan make **speculative** code?',
-    a: 'The code assumes what the feedback saw will keep happening (for example, small integers) and checks that assumption, bailing out if it fails.',
+  'source-pos': {
+    q: 'In a `--print-bytecode` listing, what does a mark such as `57 S>` or `52 E>` give?',
+    a: 'A source position: the character offset where a statement (S) or expression (E) begins, used to map bytecode back to the source.',
+  },
+  'jumploop-ops': {
+    q: 'What are the three operands of V8’s `JumpLoop [26], [0], [7]` (V8 12.4)?',
+    a: 'How many bytes to jump back (26), the loop depth (0 for an outermost loop) and a feedback slot (7).',
+  },
+  'sparkplug-ir': {
+    q: 'What intermediate representation does V8’s Sparkplug build between bytecode and machine code?',
+    a: 'None: it makes one pass over the bytecode (a switch inside a for loop) and emits machine code directly.',
+  },
+  'same-frame': {
+    q: 'Why can a running call move from Ignition into Sparkplug code with almost no work?',
+    a: 'Sparkplug code uses the interpreter’s frame layout, registers and all, so the values are already where it expects them.',
   },
   'sparkplug-batch': {
-    q: 'In Node 22, does Sparkplug compile each warm function the moment it is warm?',
-    a: 'No: it queues them and compiles a whole batch once their estimated size passes a threshold (4096), on the main thread.',
+    q: 'In Node 22 (V8 12.4), does Sparkplug compile each warm function the moment it is warm?',
+    a: 'No: it queues them and compiles a whole batch, on the main thread, once their estimated size passes a threshold (4096 by default).',
   },
   'maglev-node': {
-    q: 'Why did the tier-watching run never show Maglev?',
-    a: 'In this Node 22 build Maglev is not enabled (even `--maglev` reports “Maglev is not enabled.”), so code goes from Sparkplug to TurboFan.',
+    q: 'In Node v22.23.4, which V8 tier is turned off by default, and what happens if you ask for it with `--maglev`?',
+    a: 'Maglev; even with `--maglev`, `%OptimizeMaglevOnNextCall` reports “Maglev is not enabled.”, so code goes from Sparkplug to TurboFan.',
   },
-  'why-fall': {
-    q: 'Why did `add` drop out of TurboFan near call 65,536?',
-    a: 'The running sum passed the largest Smi (2³¹ − 1), so TurboFan’s assumption of small integers failed and its code was thrown away.',
+  'osr-what': {
+    q: 'What is on-stack replacement (OSR)?',
+    a: 'Switching a call that is already running into another tier’s code at a loop back edge, by building the new frame from the current one and jumping into the middle of the new code.',
+  },
+  'osr-where': {
+    q: 'In V8, at which bytecode can a running loop enter OSR code, and how does `--trace-osr` name the place?',
+    a: 'At the loop’s `JumpLoop`; the trace gives its bytecode offset as `osr offset`.',
+  },
+  'osr-not-installed': {
+    q: 'In Node 22, after a single call has run its loop in TurboFan OSR code, is that code used for the function’s next call?',
+    a: 'No: OSR code is for that loop entry; the function’s next call starts in its normal tier (here Sparkplug) and is optimised separately.',
   },
 };
 
 export const examples = {
-  acc: {
-    title: 'a + b + c on a stack and in an accumulator',
-    code: `const a = 1, b = 2, c = 3;
-// Drip-style: a stack of values
-const st = [];
-st.push(a);
-st.push(b);
-st.push(st.pop() + st.pop());
-st.push(c);
-st.push(st.pop() + st.pop());
-console.log('stack:', st.pop());
-// Ignition-style: one accumulator
-let acc = c;    // Ldar c
-acc = b + acc;  // Add b
-acc = a + acc;  // Add a
-console.log('accumulator:', acc);
-// Same answer; count the steps.`,
+  'osr-chunks': {
+    title: 'One call, timed in blocks of trips',
+    code: `function longSum(n) {
+  let s = 0;
+  let t = performance.now();
+  for (let i = 0; i < n; i++) {
+    s += i % 7;
+    if (i % 2e5 === 199999) {
+      const now = performance.now();
+      const ms = (now - t).toFixed(1);
+      console.log(i + 1, ms, 'ms');
+      t = now;
+    }
+  }
+  return s;
+}
+console.log(longSum(2e6));`,
   },
 };
 
 export const exercises = {
-  runAcc: {
-    title: 'A tiny accumulator machine',
-    prompt: 'Write `runAcc(code, regs, fb)`, an interpreter for five Ignition-style instructions. `code` is an array of instructions such as `[\'Ldar\', \'a1\']`. `regs` is an object of registers, like `{ a0: 2, a1: 3 }`, and `fb` is an array of feedback slots. The instructions are: `[\'LdaSmi\', n]` puts the number `n` in the accumulator; `[\'Ldar\', r]` copies register `r` into the accumulator; `[\'Star\', r]` copies the accumulator into register `r`; `[\'Add\', r, k]` sets the accumulator to `regs[r] + acc` (in that order) and sets `fb[k]` to `\'number\'` if both operands were numbers, or `\'any\'` otherwise; `[\'Return\']` returns the accumulator.',
-    starter: `function runAcc(code, regs, fb) {
-  let acc;
-  return acc;
+  findLoops: {
+    title: 'Find the loops in a bytecode listing',
+    prompt: 'Write `findLoops(listing)`. `listing` is the text of a `--print-bytecode` listing, one bytecode per line, such as `@ 30 : 8e 1a 00 07 JumpLoop [26], [0], [7]`. For every `JumpLoop` line, return an object `{ at, to, depth, slot }`: `at` is the offset of the `JumpLoop` itself (the number after `@`), `to` is the offset it jumps back to (`at` minus the first operand), `depth` is the second operand and `slot` the third. Return them in the order they appear; ignore every other line. These are the places where V8 can enter OSR code.',
+    starter: `function findLoops(listing) {
+  const out = [];
+  // for each line containing JumpLoop,
+  // read @ offset and the three [n]
+  return out;
 }`,
-    solution: `function runAcc(code, regs, fb) {
-  let acc;
-  for (const [op, x, k] of code) {
-    if (op === 'LdaSmi') acc = x;
-    if (op === 'Ldar') acc = regs[x];
-    if (op === 'Star') regs[x] = acc;
-    if (op === 'Add') {
-      const r = regs[x];
-      const num = typeof r === 'number'
-        && typeof acc === 'number';
-      fb[k] = num ? 'number' : 'any';
-      acc = r + acc;
-    }
-    if (op === 'Return') return acc;
+    solution: `function findLoops(listing) {
+  const out = [];
+  const lines = listing.split('\\n');
+  for (const line of lines) {
+    if (!line.includes('JumpLoop'))
+      continue;
+    const at = Number(
+      line.match(/@\\s*(\\d+)/)[1]);
+    const ops = [...line
+      .matchAll(/\\[(\\d+)\\]/g)]
+      .map((m) => Number(m[1]));
+    const [back, depth, slot] = ops;
+    out.push({ at, to: at - back,
+      depth, slot });
   }
+  return out;
 }`,
-    tests: `const ADD = [['Ldar', 'a1'], ['Add', 'a0', 0],
-  ['Return']];
-test('add(2, 3) is 5', () => {
-  expect(runAcc(ADD, { a0: 2, a1: 3 }, [])).toBe(5);
+    tests: `const SUM = [
+  '@ 4 : 2f 03 00 00 GetNamedProperty a0, [0], [0]',
+  '@ 8 : 71 f8 02 TestLessThan r1, [2]',
+  '@ 30 : 8e 1a 00 07 JumpLoop [26], [0], [7]',
+  '@ 34 : 0b f9 Ldar r0',
+].join('\\n');
+test('one loop in sum', () => {
+  expect(findLoops(SUM)).toEqual([
+    { at: 30, to: 4, depth: 0, slot: 7 }]);
 });
-test('Add records number feedback', () => {
-  const fb = [];
-  runAcc(ADD, { a0: 2, a1: 3 }, fb);
-  expect(fb[0]).toBe('number');
+test('no loops', () => {
+  expect(findLoops('@ 0 : 0b 04 Ldar a1\\n@ 2 : ae Return'))
+    .toEqual([]);
 });
-test('strings: a0 comes first, feedback is any', () => {
-  const fb = [];
-  const r = runAcc(ADD, { a0: 'a', a1: 'b' }, fb);
-  expect(r).toBe('ab');
-  expect(fb[0]).toBe('any');
+test('nested loops, inner first', () => {
+  const L = [
+    '@ 20 : 8e 0c 01 05 JumpLoop [12], [1], [5]',
+    '@ 31 : 8e 1d 00 08 JumpLoop [29], [0], [8]',
+  ].join('\\n');
+  expect(findLoops(L)).toEqual([
+    { at: 20, to: 8, depth: 1, slot: 5 },
+    { at: 31, to: 2, depth: 0, slot: 8 }]);
 });
-test('LdaSmi and Star', () => {
-  const regs = { a0: 10 };
-  const code = [['LdaSmi', 5], ['Star', 'r0'],
-    ['Ldar', 'a0'], ['Add', 'r0', 1], ['Return']];
-  expect(runAcc(code, regs, [])).toBe(15);
-  expect(regs.r0).toBe(5);
+test('ignores the feedback operands of other lines', () => {
+  const r = findLoops(SUM);
+  expect(r.length).toBe(1);
+  expect(r[0].to).toBe(4);
 });`,
     hints: [
-      'Your Drip VM had a loop that read one instruction at a time and did what it said. This is the same loop, with one variable, `acc`, instead of a stack.',
-      'Loop over `code` with `for (const [op, x, k] of code)`, so each instruction is split into its name and operands. Then one `if` per instruction name (an instruction has only one name, so at most one of them runs).',
-      'For `Add`: read `const r = regs[x]`, set `fb[k]` by checking `typeof r === \'number\' && typeof acc === \'number\'`, then `acc = r + acc` (register first, as Ignition does). `Return` is `return acc;`.',
+      'Split the listing into lines and skip every line that does not contain `JumpLoop`.',
+      'The offset is the number after `@`: a regular expression such as `/@\\s*(\\d+)/` finds it. The three operands are the numbers in square brackets: `matchAll(/\\[(\\d+)\\]/g)` finds them in order.',
+      'With `const [back, depth, slot] = ops;`, push `{ at, to: at - back, depth, slot }`. Do not search the whole listing for brackets at once, or the `[0]` of other bytecodes gets mixed in.',
     ],
-    walkthrough: `**How to think about it.** You have already built a dispatch loop for Drip: read an instruction, decide what it is, do it, move on. An accumulator machine is the same loop with a different place to keep values: instead of a stack, one variable (\`acc\`) that most instructions read or write, plus named registers in \`regs\`. Write down, for each of the five instructions, what it does to \`acc\`, \`regs\` and \`fb\`, and the code follows almost word for word. The one detail to watch is the order in \`Add\`: Ignition's \`Add a0\` computes \`a0 + acc\`, which matters for strings.
+    walkthrough: `**How to think about it.** A listing is plain text, one bytecode per line, and only one kind of line matters here. For a \`JumpLoop\` line you need two things: where it is (the number after \`@\`) and its three bracketed operands, in order. The first operand is a distance, not an address, so the target is the line's own offset minus that distance; the other two are copied as they are. Working line by line keeps the operands of one bytecode from mixing with another's.
 
 **The solution, line by line.**
 
-- \`function runAcc(code, regs, fb) {\` receives the instructions, the registers and the feedback slots.
-- \`  let acc;\` is the accumulator; it starts empty (\`undefined\`).
-- \`  for (const [op, x, k] of code) {\` is the dispatch loop. Each instruction is an array, and destructuring splits it into the instruction's name \`op\` and up to two operands, \`x\` and \`k\` (missing ones are \`undefined\`).
-- \`    if (op === 'LdaSmi') acc = x;\` loads a constant: the operand itself is the value.
-- \`    if (op === 'Ldar') acc = regs[x];\` loads a register into the accumulator; \`x\` is the register's name.
-- \`    if (op === 'Star') regs[x] = acc;\` goes the other way, storing the accumulator into a register, so it survives later instructions.
-- \`    if (op === 'Add') {\` begins the one instruction with feedback. (Separate \`if\`s are fine here: each instruction has one name, so only one of them matches.)
-- \`      const r = regs[x];\` reads the register operand.
-- \`      const num = typeof r === 'number'\` and the next line, \`&& typeof acc === 'number';\`, ask whether both operands were numbers.
-- \`      fb[k] = num ? 'number' : 'any';\` writes what was seen into slot \`k\`: this is the note Ignition leaves for the compilers above.
-- \`      acc = r + acc;\` does the work, register first.
-- \`    }\` ends the \`Add\` case.
-- \`    if (op === 'Return') return acc;\` ends the run with the accumulator's value.
-- The closing braces end the loop and the function.
-
-Trace the first test: \`Ldar a1\` makes \`acc\` 3; \`Add a0, 0\` reads \`r = 2\`, sees two numbers, records \`'number'\` in \`fb[0]\` and makes \`acc\` 5; \`Return\` returns 5. Three instructions, no stack.
+- \`const out = [];\` collects one object per loop.
+- \`for (const line of listing.split('\\\\n')) {\` walks the listing one bytecode at a time.
+- \`if (!line.includes('JumpLoop')) continue;\` skips every other bytecode.
+- \`const at = Number(line.match(/@\\\\s*(\\\\d+)/)[1]);\` finds \`@\`, any spaces, and the digits after them; group 1 is the offset, as text, so \`Number\` turns it into a number.
+- \`const ops = [...line.matchAll(/\\\\[(\\\\d+)\\\\]/g)].map((m) => Number(m[1]));\` finds every \`[n]\` on the line, in order, and keeps the numbers.
+- \`const [back, depth, slot] = ops;\` names them: the jump distance, the loop depth and the feedback slot.
+- \`out.push({ at, to: at - back, depth, slot });\` records the loop; for \`sum\`, 30 − 26 = 4, the loop test.
+- \`return out;\` returns the loops in listing order, which for nested loops puts the inner \`JumpLoop\` first, since it comes earlier in the bytecode.
 
 **Common wrong attempts.**
 
-- Writing \`acc = acc + r\`: for numbers it gives the same answer, but for strings \`'b' + 'a'\` is \`'ba'\`, not \`'ab'\`; the order of \`+\` matters in JavaScript.
-- Forgetting \`Star\`: the last test stores 5 into \`r0\` first, then adds through it, so a machine that ignores \`Star\` reads \`undefined\` and returns \`NaN\`.
-- Recording feedback from the result instead of the operands: \`'a' + 'b'\` is a string either way, but \`1 + '1'\` shows why the operands, not the result, are what an optimising compiler needs to know.`,
+- Taking \`to\` as the first operand itself: \`[26]\` is how far back to jump, not where to; the loop test is at 4, not 26.
+- Matching brackets across the whole listing: the \`[0]\`, \`[2]\` and so on of other bytecodes come first, and the operands are wrong.
+- Matching the hex bytes (\`1a 00 07\`) instead of the decoded operands: they are the same numbers in hex, so parsing them as decimal gives nonsense (\`1a\` is not a decimal number).`,
     wrong: [
       {
-        code: `function runAcc(code, regs, fb) {
-  let acc;
-  for (const [op, x, k] of code) {
-    if (op === 'Ldar') acc = regs[x];
-    else if (op === 'Add') {
-      fb[k] = 'number';
-      acc = acc + regs[x];
-    } else if (op === 'Return') {
-      return acc;
-    }
+        code: `function findLoops(listing) {
+  const out = [];
+  const lines = listing.split('\\n');
+  for (const line of lines) {
+    if (!line.includes('JumpLoop'))
+      continue;
+    const at = Number(
+      line.match(/@\\s*(\\d+)/)[1]);
+    const ops = [...line
+      .matchAll(/\\[(\\d+)\\]/g)]
+      .map((m) => Number(m[1]));
+    out.push({ at, to: ops[0],
+      depth: ops[1], slot: ops[2] });
   }
+  return out;
 }`,
-        why: 'Three mistakes: no `LdaSmi` or `Star`, feedback always says `number`, and `acc + regs[x]` puts the operands in the wrong order, so the string test gives `\'ba\'`.',
+        why: 'The first operand is a distance back, so `to` must be `at - ops[0]`; this gives 26 for `sum` instead of 4.',
+      },
+      {
+        code: `function findLoops(listing) {
+  const ops = [...listing
+    .matchAll(/\\[(\\d+)\\]/g)]
+    .map((m) => Number(m[1]));
+  const at = Number(listing
+    .match(/@\\s*(\\d+)\\s*:\\s*8e/)[1]);
+  return [{ at, to: at - ops[0],
+    depth: ops[1], slot: ops[2] }];
+}`,
+        why: 'It reads brackets from the whole listing, so the operands of earlier bytecodes are taken for the loop’s; it also always returns exactly one loop, and fails when there are none.',
       },
     ],
   },
@@ -157,100 +193,114 @@ Trace the first test: \`Ldar a1\` makes \`acc\` 3; \`Add a0, 0\` reads \`r = 2\`
 
 export const quiz = [
   {
-    q: 'Drip’s VM needs `load.local, load.local, add` where Ignition needs `Ldar, Add`. Why?',
+    q: 'Before V8 5.9 (2017), what ran a JavaScript function the first time it was called?',
     options: [
       {
-        t: 'Ignition skips reading one of the parameters',
-        why: 'Both are read: one by `Ldar`, one as `Add`’s register operand.',
+        t: 'Ignition, as today',
+        why: 'Ignition shipped as the first tier for every function only from V8 5.9.',
       },
       {
-        t: 'Ignition is a register machine whose accumulator is an implicit operand',
+        t: 'Full-codegen, a quick compiler to machine code, with Crankshaft above it',
         correct: true,
-        why: '`Add a0` adds a register to the accumulator directly, so nothing needs pushing first.',
+        why: 'Right: Ignition replaced it largely to save memory, since bytecode is a quarter to a half the size of that machine code.',
       },
       {
-        t: 'Drip’s VM is badly written',
-        why: 'It is a faithful stack machine. Stack machines need explicit pushes.',
+        t: 'TurboFan, compiling from the source text',
+        why: 'TurboFan was the top tier, not the first; and since 2017 it compiles from bytecode.',
       },
     ],
   },
   {
-    q: 'In `Add a0, [0]`, what is `[0]`?',
+    q: 'A V8 12.4 listing for a function with three declared parameters, on a 64-bit machine, says “Register count 2”. What are its parameter count and frame size?',
     options: [
       {
-        t: 'The constant 0 being added',
-        why: 'The value added is in register `a0`. The bracketed operand is something else.',
+        t: 'Parameter count 3, frame size 16',
+        why: 'The parameter count includes the receiver, `this`, so it is one more than declared.',
       },
       {
-        t: 'The address of the result',
-        why: 'The result goes into the accumulator, implicitly.',
-      },
-      {
-        t: 'The line number',
-        why: 'Source positions are stored in a separate table, not as operands.',
-      },
-      {
-        t: 'A feedback slot where Ignition records what kinds of values it saw',
+        t: 'Parameter count 4, frame size 16',
         correct: true,
-        why: 'The optimising tiers later read this feedback to decide what to specialise for.',
+        why: 'Right: three declared parameters plus the receiver, and two 8-byte register slots.',
+      },
+      {
+        t: 'Parameter count 4, frame size 2',
+        why: 'The frame size is in bytes, and each register is an 8-byte slot.',
+      },
+      {
+        t: 'Parameter count 3, frame size 40',
+        why: 'Parameters are not counted in the frame size; they sit above the frame.',
       },
     ],
   },
   {
-    q: 'What does Sparkplug remove, if it does no optimisations?',
+    q: '`@ 41 : 8e 21 00 09 JumpLoop [33], [0], [9]`. Where does it jump to?',
     options: [
       {
-        t: 'The cost of decoding bytecode and dispatching to the next instruction',
+        t: 'Offset 33',
+        why: 'The first operand is a distance back, not a target offset.',
+      },
+      {
+        t: 'Offset 8, the top of an outermost loop',
         correct: true,
-        why: 'Its machine code does the same work as the interpreter, minus the dispatch loop.',
+        why: 'Right: 41 − 33 = 8, and loop depth 0 means it is not nested in another loop.',
       },
       {
-        t: 'The need for feedback',
-        why: 'Sparkplug calls the same helpers as the interpreter and keeps the same frame layout; feedback is still collected.',
-      },
-      {
-        t: 'Parsing',
-        why: 'Sparkplug starts from bytecode, which parsing already produced.',
+        t: 'Offset 9, its feedback slot',
+        why: '[9] is a feedback slot number, not a place in the bytecode.',
       },
     ],
   },
   {
-    q: 'In the chapter’s Node 22 runs, why did `add` never use Maglev?',
+    q: 'Why does V8’s Sparkplug compile so much faster than an optimising compiler?',
     options: [
       {
-        t: 'Maglev was removed from V8 in 2023',
-        why: 'It was introduced in 2023, in Chrome M117.',
-      },
-      {
-        t: '`add` was not hot enough',
-        why: 'It was hot enough for TurboFan, the tier above Maglev.',
-      },
-      {
-        t: 'This Node build does not enable Maglev; even `--maglev` reports “Maglev is not enabled.”',
+        t: 'It builds no IR: one pass over the bytecode, mostly emitting calls to the interpreter’s helpers, in the interpreter’s frame layout',
         correct: true,
-        why: 'So the run went Ignition, Sparkplug, TurboFan. Defaults differ between builds and versions.',
+        why: 'Right: the bytecode generator has already done the analysis, so there is nothing to optimise or translate.',
+      },
+      {
+        t: 'It compiles only the hottest loop of each function',
+        why: 'It compiles whole functions, in batches.',
+      },
+      {
+        t: 'It runs on many threads at once',
+        why: 'In Node 22 it compiles each batch on the main thread.',
       },
     ],
   },
   {
-    q: 'Near call 65,536, `add` left TurboFan. What failed?',
+    q: 'A function is called once and spends seconds in one loop. How can V8 run most of that loop in TurboFan code?',
     options: [
       {
-        t: 'The guess that `a` and `b` are small integers: the sum passed 2³¹ − 1, the largest Smi',
+        t: 'It cannot: optimised code is only used from the next call',
+        why: 'That is true of normal tier-up, but OSR exists exactly for this case.',
+      },
+      {
+        t: 'It restarts the call from the beginning in TurboFan code',
+        why: 'The call may already have had effects; V8 never restarts it.',
+      },
+      {
+        t: 'On-stack replacement: it compiles a version that enters at the loop, and jumps into it from a JumpLoop with the current values',
         correct: true,
-        why: '`--trace-deopt` reports `reason: not a Smi`. The program carried on, correctly, in a slower tier.',
+        why: 'Right: `--trace-osr` names the entry by the JumpLoop’s bytecode offset.',
+      },
+    ],
+  },
+  {
+    q: 'In Node 22, `node --maglev` runs a program that calls `%OptimizeMaglevOnNextCall(f)`. What happens?',
+    options: [
+      {
+        t: 'f is compiled with Maglev on its next call',
+        why: 'This build does not enable Maglev even with the flag.',
       },
       {
-        t: 'TurboFan ran out of memory',
-        why: 'The trace names the reason, and it is about the value, not memory.',
+        t: 'Node refuses to start: --maglev is not a flag',
+        why: 'The flag exists (default --no-maglev); it just has no effect here.',
       },
       {
-        t: 'JavaScript numbers overflowed',
-        why: 'JavaScript numbers go far beyond 2³¹; only the engine’s small-integer form has that limit.',
-      },
-      {
-        t: 'The feedback slot was full',
-        why: 'A slot does not fill up; it records kinds of value, and widens.',
+        t: 'It prints “Maglev is not enabled.” and f carries on in its usual tiers',
+        correct: true,
+        why: 'Right: so code goes from Sparkplug straight to TurboFan. Defaults differ between builds and versions.',
       },
     ],
   },

@@ -18,8 +18,9 @@ import LayoutFigure from '../../../components/diagrams/ch265/LayoutFigure';
 
 ## One call, many bodies
 
-Part X shows how real languages build features you already use: each
-chapter builds a small version in JavaScript, then checks what C++,
+This deep dive, *Implementing language features*, shows how real
+languages build features you already use: each chapter builds a small
+version in JavaScript, then checks what C++,
 Java, Rust, Go or Python really emit. First, a method call:
 
 ```drip
@@ -103,7 +104,7 @@ const method =
 this.call(method, argCount);
 ```
 
-`methods` is a hash table from names to closures (chapter 78), and
+`methods` is a hash table from names to closures (*Hash tables*), and
 `Op.Inherit` copies the parent's methods into the child's table once,
 so lookups never walk up the chain. However, every call still hashes
 the name and probes a table, a million times for a million shapes. A
@@ -243,7 +244,7 @@ _Z2mkd:              # new Sq(s)
 
 </Examples>
 
-The first is the whole virtual call: `a0` holds `p` (chapter 228), one
+The first is the whole virtual call: `a0` holds `p` (*Calling conventions and the ABI*), one
 load fetches the vptr, a second fetches slot 0, and `jr` jumps there (a
 tail call); a call to `name` differs only in `ld a5, 8(a1)`, slot 1.
 The second is `Sq`'s vtable: two words the ABI requires (the "offset to
@@ -270,9 +271,10 @@ yet prints `shape 4` and `circle 3.14`.
 
 <Callout kind="engine" label="Under the hood">
 JavaScript cannot use fixed vtables, because a program may change a
-prototype at any moment. Engines win the speed back another way: hidden classes (chapter 87)
-play the vptr's part, and an inline cache at each call site remembers
-the method found for the hidden classes it has seen (chapter 87), an
+prototype at any moment. Engines win the speed back another way (*Shapes, inline caches and
+elements kinds*): hidden classes play the vptr's part, and an inline
+cache at each call site remembers the method found for the hidden
+classes it has seen, an
 idea from the Self system's polymorphic inline
 caches<Cite id="holzle1991" />. A vtable call also has a hidden cost:
 its target is unknown until run time, so the method cannot be inlined,
@@ -296,7 +298,8 @@ unless the compiler proves the object's class and calls it directly
 - **Object layout** puts the vptr first and fields at fixed offsets; a
   subclass only adds to the end, so parent code still works on it.
 
-Next: what happens when a class implements several unrelated
-interfaces, and the single row of slots is no longer enough.
+Next: *Interfaces and traits: dictionary passing*, what happens when a
+class implements several unrelated interfaces, and the single row of
+slots is no longer enough.
 
 <Quiz />

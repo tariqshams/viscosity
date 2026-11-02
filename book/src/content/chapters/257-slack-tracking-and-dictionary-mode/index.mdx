@@ -18,9 +18,10 @@ import DictSteps from '../../../components/diagrams/ch257/DictSteps';
 
 ## Where shapes strain
 
-The previous chapter showed the good case: a thousand particles built the
-same way share one map, and each one holds only its values. However, the
-scheme has two weak spots. First, V8 must decide how much room to give an
+You met shapes in *Shapes, inline caches and elements kinds*, in the
+good case: a thousand particles built the same way share one map, and
+each one holds only its values. This chapter goes further, into the
+scheme's two weak spots. First, V8 must decide how much room to give an
 object *before* its properties arrive, without knowing how many will
 come. Second, every new key moves an object to a new shape, so an object
 whose keys keep changing creates shape after shape that nothing else will
@@ -104,8 +105,9 @@ Step through one object going from a shared shape to a table of its own:
 <Callout kind="definition">
 An object in **dictionary mode** stores its named properties in its own
 hash table instead of using a shared shape. Adding and removing properties
-is cheap, but reads are slower, and the inline caches of a later chapter
-do not work on it<Cite id="v8-fast-properties" />. V8's source says a map
+is cheap, but reads are slower: the name must be searched for in the
+table, so an inline cache can no longer turn a read into a load at a
+fixed offset<Cite id="v8-fast-properties" />. V8's source says a map
 is used either for dictionary-mode objects or for fast ones, never
 both<Cite id="v8-src-map-12-4" />.
 </Callout>
@@ -166,7 +168,7 @@ whose keys change.
 <Run id="delete-vs-undefined" />
 
 <Callout kind="engine" label="Under the hood">
-You have met this cliff already: in the chapter "Measuring and speeding up the VM",
+You have met this cliff already: in *Measuring and speeding up the VM*,
 the Drip VM's biggest measured speed-up came from making its debug-only
 "poisoning" of freed objects, which deleted their properties, really
 debug-only, because those deletes pushed objects into V8's dictionary
@@ -184,11 +186,12 @@ offset<Cite id="v8-maglev" />, and a dictionary has no fixed offsets.
 - **Slack tracking** gives a constructor's first objects spare in-object
   room (expected plus eight), then trims the map to what was used.
 - **Dictionary mode** replaces the shared shape with a per-object hash
-  table: cheap to change, slower to read, and invisible to inline caches.
+  table: cheap to change, slower to read, and with no fixed offsets for
+  an inline cache to remember.
 - In V8 12.4, `delete` and many computed keys trigger it; for fixed
   fields set `undefined`, and for changing keys use a `Map`.
 
-Next: how V8 uses shapes to make `o.x` fast at one particular line of
-code.
+Next: *Stub caches and feedback vectors*, where the shapes an inline
+cache sees are actually stored, and what happens past four.
 
 <Quiz />

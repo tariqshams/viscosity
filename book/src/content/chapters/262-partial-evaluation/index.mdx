@@ -18,7 +18,7 @@ import Futamura from '../../../components/diagrams/ch262/Futamura';
 
 ## An interpreter is still an interpreter
 
-The previous chapter's `+` node learns that it only ever sees
+The `+` node of *GraalJS and Truffle* learns that it only ever sees
 integers, and its int case is short: two checks and an add. However, it
 is still a node in a tree; to reach it, the interpreter calls
 `execute` on its parent, which calls `execute` on it, which calls
@@ -187,7 +187,7 @@ record what it has seen, but once compilation starts they are folded
 like constants. Truffle counts calls and loop iterations, and compiles
 a root node (roughly, a function) once it is hot<Cite id="truffle-pe" />.
 
-That is how the previous chapter's specialisations reach the compiled
+That is how the specialisations of *GraalJS and Truffle* reach the compiled
 code. Truffle's documentation shows a node that records whether it has
 seen integers or strings in `@CompilationFinal` fields; while it has
 seen only integers, the partial evaluator reads that as a constant and
@@ -197,13 +197,13 @@ shows. If a recorded fact later turns out wrong, the node calls
 and execution continues in the interpreter, which re-specialises and
 may be compiled again<Cite id="truffle-pe" />. If the state never
 settles, that becomes a **deoptimisation cycle**, compiled and thrown
-away over and over, which is why the previous chapter's one-way rule
+away over and over, which is why the one-way rule of *GraalJS and Truffle*
 matters so much.
 
 <Prompts ids={['pe-constants', 'compilation-final', 'deopt-cycle']} />
 
 <Callout kind="engine" label="Under the hood">
-The previous chapter quoted the problem Truffle avoids: a language's
+*GraalJS and Truffle* quoted the problem Truffle avoids: a language's
 meaning written twice, once in the interpreter and once in the
 compiler. Deriving the optimised code from the interpreter instead has a
 price: the interpreter must be written carefully, so that partial evaluation can
@@ -211,7 +211,8 @@ see what is stable, and every speculation must eventually settle, or
 the code loops through compiling and invalidating<Cite id="truffle-pe" />.
 The same stack, which "One VM to Rule Them All" describes
 whole<Cite id="wurthinger2013" />, is also where the columnar-array
-research of the next chapter was built<Cite id="graal-publications" />.
+research of *Columnar arrays at run time: the research* was
+built<Cite id="graal-publications" />.
 </Callout>
 
 ## Your turn
@@ -229,5 +230,8 @@ research of the next chapter was built<Cite id="graal-publications" />.
   `@Child` nodes and `@CompilationFinal` fields as constants, and
   **invalidates** compiled code when one of them must change.
 - A node state that never settles causes a **deoptimisation cycle**.
+
+Next: *Columnar arrays at run time: the research*, where this same stack
+changes an array's layout while the program runs.
 
 <Quiz />

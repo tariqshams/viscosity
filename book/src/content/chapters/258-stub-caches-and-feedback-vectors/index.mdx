@@ -3,205 +3,130 @@ n: 258
 day: 23
 part: XIV
 title: 'Stub caches and feedback vectors'
-tagline: 'An inline cache that sees one shape is one check and one load; one that sees five gives up and asks a shared table every time, and a tree-walking interpreter is exactly the kind of code that makes it.'
+tagline: 'Every inline cache and every feedback slot has to live somewhere; in V8 that is one feedback vector per function, shared by all its closures and made only once the function has proved it is used, and its element loads also have to cope with arrays that have holes.'
 objectives:
-  - Trace an inline cache from monomorphic to polymorphic to megamorphic, and say where V8 12.4 draws the line.
-  - Read V8's real --log-ic output for a site that sees five shapes.
-  - Explain what the stub cache is, and why a megamorphic site gives the optimising tiers nothing to build on.
-  - Spot megamorphic sites in ordinary code, such as an interpreter reading node.type, and keep hot ones monomorphic.
+  - Explain what a feedback vector holds, and read one with %DebugPrint.
+  - Say when V8 12.4 allocates a function's feedback vector, and which calls are never recorded.
+  - Explain why closures made from the same function literal share their feedback, and what that does to their inline caches.
   - Explain what a hole is, and why it is not the same as storing undefined.
   - Explain why holey arrays need extra checks, using the prototype chain.
   - Predict whether an array ends up PACKED or HOLEY from the way it was built, including new Array(n).
   - Combine both one-way rules to predict an array's full elements kind.
 introduces: [holey-array]
-uses: [inline-cache, monomorphic, shape, transition-tree, ignition, optimizing-tiers, bytecode, hash-table, property, dot-access, object, function, class, inheritance, super, array-of-objects, for-of, ast, tree-walking-interpreter, elements-kind, array, index, length, push, array-loop, prototype-chain, smi, undefined, polymorphic, megamorphic]
-sources: [v8-src-ic-12-4, v8-src-tiering-12-4, v8-maglev, v8-fast-super, holzle1991, v8-elements-kinds, v8-src-elements-kind]
+uses: [inline-cache, monomorphic, shape, type-feedback, closure, transition-tree, ignition, optimizing-tiers, bytecode, hash-table, property, dot-access, object, function, class, inheritance, super, array-of-objects, for-of, ast, tree-walking-interpreter, elements-kind, array, index, length, push, array-loop, prototype-chain, smi, undefined, polymorphic, megamorphic]
+sources: [v8-src-ic-12-4, v8-src-tiering-12-4, v8-maglev, v8-elements-kinds, v8-src-elements-kind]
 ---
-import ICSteps from '../../../components/diagrams/ch258/ICSteps';
-import StubTable from '../../../components/diagrams/ch258/StubTable';
+import VectorSteps from '../../../components/diagrams/ch258/VectorSteps';
 import HoleReadSteps from '../../../components/diagrams/ch258/HoleReadSteps';
 import SixKinds from '../../../components/diagrams/ch258/SixKinds';
 
-{/* ── merge: from old chapter 87 (remnant: keep only what goes beyond the core), Polymorphic and megamorphic sites ── */}
+## Two closures, one cache
 
-## One site, many shapes
-
-The previous chapter's caches each saw one shape, because every particle
-was built the same way. Real code is not always so tidy. Your Drip
-tree-walking interpreter had a line that looked at whatever node it was
-handed and asked what kind it was, and every kind of node was a
-different class. Here is that idea in JavaScript, with five node classes:
+You met inline caches, their states and the shared stub cache in
+*Shapes, inline caches and elements kinds*, and feedback slots in *Tiers,
+speculation and deoptimisation*. This chapter goes further, into where
+that feedback is kept, and then into the other half of an array's
+elements kind, holes. Start with a puzzle:
 
 ```js
-class Num { constructor(v) {
-  this.type = 'num'; this.v = v; } }
-class Add { constructor(l, r) {
-  this.type = 'add'; this.l = l;
-  this.r = r; } }
-// ...and Mul, Neg and Var, alike
-const kindOf = (n) => n.type;
+function make() { return (o) => o.x; }
+const f = make(), g = make();
+for (let i = 0; i < 20; i++) f({ x: 1 });
+for (let i = 0; i < 20; i++)
+  g({ x: 1, y: 2 });
+// %DebugPrint(f): slot #0
+//   LoadProperty POLYMORPHIC
 ```
 
-Every class sets `type` first, so `type` is always field 0; but objects
-made by different classes have different maps, so the one load `n.type`
-in `kindOf` meets five shapes. What does its cache do?
+`f` and `g` are two different function objects, and each has only ever
+seen one shape; yet `%DebugPrint(f)` (Node v22.23.4, V8 12.4) reports its
+`o.x` as polymorphic. The shape that `g` saw is in `f`'s cache.
 
-## A short list, then a shared table
+## One vector per function
 
-<Analogy title="a receptionist">
-A receptionist at a small office recognises the four people who come in
-every day, and waves each of them through at once. When strangers start
-arriving by the dozen, she stops trying to remember faces and looks
-everyone up in the building's directory, which every desk shares.
-<span slot="breaks">A receptionist might learn a fifth face in time; in my
-V8 12.4 test, a site that had gone megamorphic stayed so through 100,000
-more calls that all brought the same shape.</span>
+Every slot number in a bytecode listing is an index into the function's
+**feedback vector**, a heap object that holds the state of each of its
+inline caches and feedback slots, together with bookkeeping for tiering:
+
+```
+// %DebugPrint(step), trimmed, for
+// function step(p, dt) {
+//   p.x += p.vx * dt;
+//   return Math.abs(p.x); }
+ - tiering state: TieringState::kNone
+ - invocation count: 12
+ - slot #0 LoadProperty MONOMORPHIC
+ - slot #2 BinaryOp BinaryOp:Number
+ - slot #3 BinaryOp BinaryOp:Number
+ - slot #4 LoadProperty MONOMORPHIC
+ - slot #6 SetNamedSloppy MONOMORPHIC
+ - slot #8 LoadGlobalNotInsideTypeof
+            MONOMORPHIC
+ - slot #10 LoadProperty MONOMORPHIC
+ - slot #12 Call MONOMORPHIC
+```
+
+There is a slot for each property load, arithmetic operation, store,
+global read and call (the numbers jump by two where a slot takes two
+entries), and above them a count of calls since the vector was made and
+whether the function is marked for a higher tier.
+
+<Analogy title="a logbook kept with the recipe">
+A restaurant keeps one logbook clipped to each recipe card, and every
+cook who makes the dish writes in it what the diners asked for. A new
+cook starting on the dish reads the same logbook, and adds to it.
+<span slot="breaks">A restaurant would start a logbook on the first
+night; V8 waits until a function has been called several times, and does
+not write down anything from those first calls at all.</span>
 </Analogy>
 
-<Analogy extra title="a key ring">
-With up to four keys on a ring you try each in turn, and that is still
-quick. Give someone twenty doors, and trying keys stops making sense; they
-go to the caretaker's cabinet, where every key hangs under a label for its
-door.
-<span slot="breaks">The cabinet is slow because you have to walk to it;
-the stub cache is a fast hash table, but every lookup still costs a hash
-and a compare, and it tells the optimising compiler nothing about which
-shapes to expect.</span>
-</Analogy>
+The logbook is made late on purpose, because most functions run only a
+handful of times and a vector for each would waste memory. In Node 22
+it is allocated once a function has been called eight times (the default
+of `--invocation-count-for-feedback-allocation`), and the calls before
+that leave no trace:
 
-Step through one access as five different shapes arrive:
-
-<ICSteps client:visible />
+<VectorSteps client:visible />
 
 <Callout kind="definition">
-An inline cache is **polymorphic** ("many forms") when it has seen
-several shapes and keeps an entry for each, and **megamorphic** ("huge
-number of forms") when it has seen too many to list. In the V8 inside
-Node 22, "too many" means more than four: the flag
-`--max-valid-polymorphic-map-count` defaults to
-4<Cite id="v8-src-tiering-12-4" />. A megamorphic access stops keeping
-entries of its own and uses the **stub cache**, a table shared by all
-megamorphic loads that maps a shape and a name to a
-handler<Cite id="v8-src-ic-12-4" />.
+A **feedback vector** is the per-function object in which V8 keeps the
+state of every inline cache and feedback slot in that function's
+bytecode, along with its invocation count and tiering state. It is
+allocated lazily, after a number of calls, and it belongs to the
+function literal rather than to one function object: closures created
+from the same literal share it<Cite id="v8-src-tiering-12-4" />.
 </Callout>
 
-<Formal title="The states of one site (V8 12.4)">
+That explains the puzzle. `f` and `g` were made by the same arrow
+function in `make`, so `%DebugPrint` shows the same vector address for
+both, and for a third closure `h = make()` made afterwards, which
+inherits a polymorphic `o.x` before it has run once. The invocation count
+says the same: 32, the forty calls of `f` and `g` together minus the
+eight made before the vector existed.
 
-```text
-n = number of different shapes seen
-state = 0  if n = 0     (uninitialized)
-        1  if n = 1     (monomorphic)
-        P  if 2 ≤ n ≤ 4 (polymorphic)
-        N  if n > 4     (megamorphic)
-```
+<More title="More: what sharing means for real code">
 
-<span slot="read">Count the different shapes that have reached the site
-(not the number of accesses). None: state 0. One: state 1. Two to four:
-P. More than four: N. The letters are the ones V8's own log
-prints<Cite id="v8-src-ic-12-4" />, and the count only grows, so the
-state only moves down the list.</span>
-</Formal>
+A helper such as `getX(o)` has one vector however many places call it,
+so if one caller passes particles and another passes points, the helper's
+load is polymorphic for both, and the optimised code for either caller
+inherits the wider case when the helper is inlined into it. A factory
+that returns closures (`make` above, or a library that builds accessors
+for you) has the same property: every closure from one factory shares
+one set of caches. When a hot loop must see one shape, give it a function
+of its own. And past four shapes the slot reads `MEGAMORPHIC`, meaning the
+site has handed over to the stub cache shared by all megamorphic loads in
+the engine<Cite id="v8-src-ic-12-4" />.
 
-<Figure caption="A polymorphic site keeps its own short list; megamorphic sites share one table keyed by map and name." takeaway="Past four shapes, a site stops remembering and starts asking.">
-  <StubTable />
-</Figure>
+</More>
 
-<Examples of="polymorphic megamorphic">
+<Prompts ids={['fv-what', 'eight-calls', 'fv-shared', 'fv-count']} />
 
-```
-// getX called with { x } and { x, y }
-LoadIC 1:29 0 1 x
-LoadIC 1:29 1 P x
-```
-
-```
-// getX called ten times each with
-// { x }, { x, a }, { x, b },
-// { x, c }, { x, d }
-LoadIC 1:29 0 1 x
-LoadIC 1:29 1 P x
-LoadIC 1:29 P P x
-LoadIC 1:29 P P x
-LoadIC 1:29 P N x
-```
-
-```
-// kindOf(n) over the five node classes,
-// ten calls each
-LoadIC 6:25 0 1 type
-LoadIC 6:25 1 P type
-LoadIC 6:25 P P type
-LoadIC 6:25 P P type
-LoadIC 6:25 P N type
-```
-
-</Examples>
-
-All three are real `node --log-ic` runs (Node v22.23.4, V8 12.4, Node's
-own lines removed). The first is the smallest polymorphic site: two
-shapes, so `0 → 1` on the first and `1 → P` on the second. The second
-walks the whole ladder: the third and fourth shapes are added to the list
-(`P → P`), and the fifth sends the site to `N`. (Why ten calls each? A function only gets its feedback vector after about eight calls in Node 22, and
-with five calls each, the first shape was never recorded and the site
-stopped at `P`.) The third is the interpreter case: one innocent-looking
-`n.type`, five classes, and the site is megamorphic, which is worth
-knowing before you write a tree-walker in JavaScript for real.
-
-<Prompts ids={['poly-what', 'mega-what', 'log-letters', 'count-shapes', 'eight-calls']} />
-
-## Why the optimising tiers care
-
-A monomorphic site gives Maglev something precise to build on: check one
-shape, then load at a fixed offset<Cite id="v8-maglev" />. A polymorphic
-site still gives it a short list of cases, which is the observation
-Hölzle, Chambers and Ungar made for Self in 1991: the types a polymorphic
-inline cache records are information an optimising compiler can
-use<Cite id="holzle1991" />. A megamorphic site gives it nothing: the
-stub cache is shared, so it says nothing about which shapes *this* line
-sees.
-
-Megamorphic sites turn up in ordinary code. A helper called with many
-kinds of object is one; the V8 team's 2021 post on `super` shows another,
-a `super.m()` call inside a mixin, where each use of the mixin creates a
-new class, so that one access site goes megamorphic<Cite id="v8-fast-super" />.
-Try one shape against twenty on your device:
-
-<Run id="mono-vs-mega" />
-
-<Callout kind="pitfall">
-Do not reshape a whole program around this. A site that sees two or three
-shapes is polymorphic, not megamorphic, and what matters is the *hot*
-code: the inner loop that reads `p.x` for every particle. Make every
-particle with the same function, in the same order, and that loop sees
-one shape.
-</Callout>
-
-<Prompts ids={['stub-shared', 'mixin-mega', 'poly-ok']} />
-
-## Your turn
-
-<Exercise id="icStates" />
-
-## What you learned
-
-- **Polymorphic**: several shapes seen at one site, each with its own
-  entry; in the V8 inside Node 22, up to four.
-- **Megamorphic**: more than four; the site gives up its own entries and
-  looks up (shape, name) in the shared **stub cache**.
-- The states count different shapes, not accesses, and only move one way.
-- Different classes mean different shapes even with the same fields, so
-  an interpreter's `node.type` is a classic megamorphic site.
-
-Next: arrays get their own version of shapes, elements kinds.
-
-
-{/* ── merge: from old chapter 258, Holey arrays ── */}
 
 ## An index with nothing in it
 
-The previous chapter's kinds all began with `PACKED_`, and one of the
-stepper's lines ended in `HOLEY_ELEMENTS`. That other half of the name is
-about a question every array read has to answer: is there really an
+The elements kinds of *Shapes, inline caches and elements kinds* all
+began with `PACKED_`. The other half of the name is about a question
+every element load has to answer: is there really an
 element at this index? In most languages the answer is always yes for an
 index below the length; in JavaScript it is not:
 
@@ -218,7 +143,7 @@ array simply does not have an element 1, and reading `xs[1]` makes
 JavaScript look further, at the object the array inherits from,
 `Array.prototype`<Cite id="v8-elements-kinds" />.
 
-<Analogy title="numbered lockers">
+<Analogy extra title="numbered lockers">
 A row of lockers numbered 0 to 2, where locker 1 has never been assigned
 to anyone. Ask for whatever is in locker 1 and the attendant does not hand
 you an empty box; she goes to the office to ask whether anything for
@@ -325,11 +250,10 @@ stepper, written down.
 <Prompts ids={['holey-what', 'hole-not-undefined', 'holey-why', 'holey-new-array', 'holey-fill', 'holey-avoid', 'holey-one-way', 'holes-log']} />
 
 <Callout kind="engine" label="Under the hood">
-A typed array can never be holey: every index below its length holds a
-number, and `%DebugPrint` reports a fixed kind such as `FLOAT64ELEMENTS`
-for a `Float64Array`<Cite id="v8-elements-kinds" />. Viscosity's
-struct-of-arrays columns are typed arrays for exactly this reason, among
-others: no hole checks, ever.
+A typed array can never be holey (`%DebugPrint` reports a fixed kind
+such as `FLOAT64ELEMENTS`<Cite id="v8-elements-kinds" />), which is one
+reason Viscosity's struct-of-arrays columns are typed arrays: no hole
+checks, ever.
 </Callout>
 
 ## Your turn
@@ -343,6 +267,9 @@ practice) joins two kinds.
 
 ## What you learned
 
+- A **feedback vector** holds a function's inline caches and feedback
+  slots, its invocation count and its tiering state; in Node 22 it is
+  made after eight calls, and closures of one function literal share it.
 - A **hole** is an index below `length` with no element of its own; it is
   not `undefined`, and reading it continues along the prototype chain.
 - Every basic kind has a **holey** variant, and PACKED → HOLEY is one-way;
@@ -350,7 +277,7 @@ practice) joins two kinds.
 - Build arrays with literals or `push` to keep them packed, or use a
   typed array, which has no holes at all.
 
-Next: the feedback all these caches collect, and the bets V8's optimising
-compilers place on it.
+Next: *Escape analysis in V8*, where TurboFan uses all this to remove
+objects that never leave a function.
 
 <Quiz />

@@ -138,7 +138,7 @@ br i1 %cmp, label %for.body,
 
 The first is the loop test: `icmp slt` compares two `i64`s as signed
 numbers ("signed less than") and produces an `i1`, and `br` jumps to one
-of two blocks on it. The second is a phi node, exactly chapter 90's:
+of two blocks on it. The second is a phi node, exactly as in *SSA and phi nodes, built on the fly*:
 `s` is 0 when arriving from `entry`, and `%add` when arriving from the
 loop body. The third is from the optimised code we are about to meet:
 LLVM's integer types can be any width from 1 bit to 2²³
@@ -155,7 +155,7 @@ that "returns a PreservedAnalyses and takes in some unit of IR along
 with an analysis manager"<Cite id="llvm-new-pm-pass" />: it changes the
 function, or only looks at it, and then says which cached analyses
 (dominator trees, loop information and so on) are still true, so the
-pass manager knows what to recompute (chapter 224's invalidation). A
+pass manager knows what to recompute (the invalidation of *Pass managers*). A
 pass can be run on its own with `opt -passes=name`, and `-O2` is
 nothing more than a long, carefully ordered list of passes, built by
 `PassBuilder::buildPerModuleDefaultPipeline`<Cite id="llvmnewpm" />.
@@ -175,7 +175,8 @@ matter:
 
 <PassSteps client:visible />
 
-The first two steps are the SSA construction of chapter 204: LLVM's
+The first two steps are the SSA construction of *Dominance frontiers
+and classic SSA construction*: LLVM's
 `sroa` pass breaks up stack slots and, where it can, "transforms the
 individual alloca instructions into nice clean scalar SSA
 form"<Cite id="llvm-passes-loops" />. The fourth is the surprise. The
@@ -243,12 +244,13 @@ on; with `-O0`, clang marks functions `optnone`, so to experiment with
   ending in branches, phi nodes, integer types of any width, and flags
   such as `nsw` that record what the front end promises.
 - clang's `-O0` IR keeps every variable in memory; `sroa` builds SSA
-  from it, as chapter 204 did.
+  from it, as *Dominance frontiers and classic SSA construction* did.
 - An **LLVM pass** is one transformation or analysis, and `-O2` is a
   fixed pipeline of them; for `sumsq`, `indvars` and `loop-deletion`
   replace the whole loop with a formula.
 
-Next: how LLVM turns that IR into RISC-V instructions, and how clang
-and rustc are put together around it.
+Next: *Inside LLVM's code generator, clang and rustc*, how LLVM turns
+that IR into RISC-V instructions, and how clang and rustc are put
+together around it.
 
 <Quiz />

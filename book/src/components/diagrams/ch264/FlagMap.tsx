@@ -1,33 +1,37 @@
-// Chapter 88: which V8 flag (Node v22 / V8 12.4) shows which part of the
-// engine. Every flag here was run on this book's machine; help texts are
-// in src/flags/flag-definitions.h. The last two are used in the next chapter.
+// The V8 flags used in the deep dive into real JavaScript engines, and
+// what each one shows. Every flag here was run on Node v22.23.4
+// (V8 12.4.254.21); help texts are in src/flags/flag-definitions.h.
 import { Box, Svg, T, tok } from '../../viz/svg';
 
 const ROWS = [
-  { flag: '--print-bytecode', what: 'Ignition bytecode', next: false, c: tok('f2') },
-  { flag: '--trace-opt', what: 'tiering up to TurboFan', next: false, c: tok('f3') },
-  { flag: '--trace-deopt', what: 'failed guesses', next: false, c: tok('f6') },
-  { flag: '--trace-gc', what: 'scavenges, mark-compacts', next: false, c: tok('f5') },
-  { flag: '--trace-turbo-inlining', what: 'inlining decisions', next: false, c: tok('f1') },
-  { flag: '--trace-generalization', what: 'fields getting general', next: true, c: tok('f4') },
-  { flag: '--allow-natives-syntax', what: '%DebugPrint and friends', next: true, c: tok('f4') },
+  { flag: '--print-bytecode', what: 'Ignition bytecode, per function', c: tok('f2') },
+  { flag: '--log-function-events', what: 'preparse, parse, compile, first run', c: tok('f2') },
+  { flag: '--trace-baseline-batch-compilation', what: 'Sparkplug batches', c: tok('f3') },
+  { flag: '--trace-opt', what: 'tiering up to TurboFan', c: tok('f3') },
+  { flag: '--trace-osr', what: 'entering optimised code mid-loop', c: tok('f3') },
+  { flag: '--log-ic', what: 'inline-cache state changes', c: tok('f1') },
+  { flag: '--trace-turbo-inlining', what: 'inlining decisions', c: tok('f1') },
+  { flag: '--trace-deopt(-verbose)', what: 'failed guesses, rebuilt frames', c: tok('f6') },
+  { flag: '--trace-generalization', what: 'fields getting more general', c: tok('f4') },
+  { flag: '--trace-gc', what: 'scavenges and mark-compacts', c: tok('f5') },
+  { flag: '--allow-natives-syntax', what: '%DebugPrint and friends', c: tok('f4') },
 ];
 
 export default function FlagMap() {
-  const rowH = 34;
+  const rowH = 30;
   return (
-    <Svg w={400} h={ROWS.length * rowH + 26} title="A map from V8 flags to what each one shows">
+    <Svg w={400} h={ROWS.length * rowH + 26} title="A map from eleven V8 flags to what each one shows, from bytecode and parsing at the top, through tiering, inline caches and deoptimisation, to fields, garbage collection and natives syntax at the bottom.">
       <T x={6} y={10} size={11} weight={700} fill={tok('muted')}>FLAG</T>
-      <T x={214} y={10} size={11} weight={700} fill={tok('muted')}>SHOWS</T>
+      <T x={230} y={10} size={11} weight={700} fill={tok('muted')}>SHOWS</T>
       {ROWS.map((r, i) => {
-        const y = 22 + i * rowH;
+        const y = 20 + i * rowH;
         return (
           <g key={r.flag}>
-            <Box x={4} y={y} w={196} h={rowH - 8} stroke={r.c}>
-              <T x={12} y={y + (rowH - 8) / 2} size={11} mono>{r.flag}</T>
+            <Box x={4} y={y} w={216} h={rowH - 6} stroke={r.c}>
+              <T x={10} y={y + (rowH - 6) / 2} size={10} mono>{r.flag}</T>
             </Box>
-            <line x1={200} y1={y + 13} x2={210} y2={y + 13} stroke={r.c} strokeWidth={2} />
-            <T x={214} y={y + 13} size={11} fill={r.next ? tok('muted') : undefined}>{r.what}</T>
+            <line x1={220} y1={y + 12} x2={228} y2={y + 12} stroke={r.c} strokeWidth={2} />
+            <T x={230} y={y + 12} size={10}>{r.what}</T>
           </g>
         );
       })}

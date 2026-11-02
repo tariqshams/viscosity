@@ -1,4 +1,4 @@
-// Chapter 246 cards: recall prompts, examples, exercises and quiz.
+// From virtual registers to a running program: cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,11 +7,11 @@ export const prompts = {
     a: 'The loop runs again from the top, so the value is needed on the next trip too, even after its last use in this one.',
   },
   'why-saved-only': {
-    q: 'Why does the chapter’s allocator only hand out s1 to s11?',
-    a: 'They are callee-saved, so values in them survive calls without saving and restoring around each call.',
+    q: 'Why might a simple RISC-V register allocator hand out only s1 to s11?',
+    a: 'They are callee-saved, so values in them survive calls with no saving and restoring around each call; the cost is paid once, in the prologue.',
   },
   'spill-which': {
-    q: 'When linear scan runs out of registers, which interval does it spill?',
+    q: 'In Poletto and Sarkar’s linear scan, which interval is spilled when no register is free?',
     a: 'The one that ends last (among the active ones and the new one), so the others free their registers soonest.',
   },
   'save-ra': {
@@ -19,7 +19,7 @@ export const prompts = {
     a: 'The call writes its own return address into ra, overwriting the address this function needs to return to.',
   },
   'align-16': {
-    q: 'Why is a 24-byte frame rounded up to 32 bytes?',
+    q: 'On RISC-V, why is a 24-byte stack frame rounded up to 32 bytes?',
     a: 'The psABI requires sp to be 16-byte (128-bit) aligned on entry to every procedure.',
   },
   'sim-what': {
@@ -27,16 +27,16 @@ export const prompts = {
     a: 'The registers, the program counter and memory; it fetches, decodes and executes one instruction at a time.',
   },
   'call-reloc': {
-    q: 'Why does `call sumsq` leave an R_RISCV_CALL_PLT relocation in the object file?',
-    a: 'The assembler cannot know how far away sumsq will be once everything is linked, so the linker fills in the auipc/jalr offset.',
+    q: 'Why does a RISC-V `call f` to a global function leave an R_RISCV_CALL_PLT relocation in the object file?',
+    a: 'The assembler cannot know how far away f will be once everything is linked, so the linker fills in the auipc/jalr offset.',
   },
   relax: {
     q: 'Why does clang (with linker relaxation on) leave even a local branch as a relocation?',
     a: 'Relaxation may delete bytes at link time and move the branch target, so the linker must fix the offset.',
   },
   'clang-no-frame': {
-    q: 'clang’s -O2 sumsq has no frame at all. Why can it do without one?',
-    a: 'It makes no calls, so it can keep everything in caller-saved a and t registers, which it need not save.',
+    q: 'A small RISC-V function that makes no calls is compiled with no stack frame at all. Why can it do without one?',
+    a: 'With no calls, ra is never overwritten and caller-saved a and t registers are enough for its values, so there is nothing to save.',
   },
 };
 
@@ -887,34 +887,34 @@ function run(asm, args) {
 
 export const quiz = [
   {
-    q: 'sumsq’s values n, s, i and i*i all need registers inside the loop, and only s1 and s2 are free. What does linear scan do when i arrives?',
+    q: 'Linear scan reaches a new interval that ends at line 9, with both registers taken by active intervals that end at lines 8 and 10. Under the rule “spill the interval that ends last”, what happens?',
     options: [
       {
-        t: 'Gives up: the function cannot be compiled.',
+        t: 'The allocator gives up: the function cannot be compiled.',
         why: 'An allocator never gives up; it spills.',
       },
       {
-        t: 'Spills s, which is alive until after the loop, and gives its register to i.',
+        t: 'The interval ending at line 10 is spilled, and its register goes to the new one.',
         correct: true,
-        why: 'Right: s ends last (line 10), so spilling it frees a register for the longest time.',
+        why: 'Right: it ends last, so spilling it frees a register for the longest time.',
       },
       {
-        t: 'Spills n, because it was allocated first.',
-        why: 'The rule is about which interval ends last, not which came first; n ends at line 8.',
+        t: 'The interval ending at line 8 is spilled, because it was allocated first.',
+        why: 'The rule is about which interval ends last, not which came first.',
       },
       {
-        t: 'Puts i in t0.',
-        why: 't0 to t2 are kept back as scratch registers for loading and storing spilled values.',
+        t: 'The new interval is spilled, because it arrived last.',
+        why: 'It ends at line 9, before the line-10 interval, so spilling it would free nothing for as long.',
       },
     ],
   },
   {
-    q: 'Why does `fib(n - 1) + fib(n - 2)` stay correct even though the second call could overwrite registers?',
+    q: 'A RISC-V compiler keeps the result of `fib(n - 1)` in a callee-saved register while it calls `fib(n - 2)`. Why does the value survive the second call?',
     options: [
       {
         t: 'The first result is in an s register, which fib’s callee must restore before returning.',
         correct: true,
-        why: 'Right: by handing out only callee-saved registers, every value survives every call.',
+        why: 'Right: the callee saves any s register it uses and restores it before returning.',
       },
       {
         t: 'The first result stays in a0, which the second call does not touch.',
@@ -927,7 +927,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'main uses s1 and s2 and makes calls. How big is its frame, and why?',
+    q: 'A RISC-V function uses s1 and s2, makes calls, and keeps nothing else on the stack. How big is its frame, and why?',
     options: [
       {
         t: '24 bytes: ra, s1 and s2.',
@@ -935,7 +935,7 @@ export const quiz = [
       },
       {
         t: '16 bytes: s1 and s2 only.',
-        why: 'main makes calls, so its own return address in ra would be overwritten; it must be saved.',
+        why: 'The function makes calls, so its own return address in ra would be overwritten; it must be saved.',
       },
       {
         t: '32 bytes: ra, s1 and s2, rounded up to a multiple of 16.',
@@ -945,10 +945,10 @@ export const quiz = [
     ],
   },
   {
-    q: 'After `llvm-mc -filetype=obj`, why is the `bge` of sumsq’s loop already finished but `call sumsq` in main is not?',
+    q: 'After `llvm-mc -filetype=obj` (no linker relaxation), why is a loop’s `bge` already finished but a `call` to a global function is not?',
     options: [
       {
-        t: 'The branch target is in the same section at a known distance; where sumsq ends up is only known after linking, so the call gets a relocation.',
+        t: 'The branch target is in the same section at a known distance; where the callee ends up is only known after linking, so the call gets a relocation.',
         correct: true,
         why: 'Right: R_RISCV_CALL_PLT marks the auipc/jalr pair for the linker to fill in.',
       },
@@ -981,15 +981,15 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these is something clang -O2 does for sumsq that our compiler does not?',
+    q: 'Which of these does clang -O2 do for a sum-of-squares loop that a minimal teaching compiler (callee-saved registers only, loop test at the top) does not?',
     options: [
       {
         t: 'Following the calling convention: n in a0, the result in a0.',
-        why: 'Both do; ours had to, to call and be called.',
+        why: 'Both do; any compiler must, to call and be called.',
       },
       {
         t: 'Saving s registers it uses in a prologue.',
-        why: 'That is what ours does; clang avoids it by not using s registers at all.',
+        why: 'That is what the teaching compiler does; clang avoids it by not using s registers at all.',
       },
       {
         t: 'Keeping a leaf function’s values in caller-saved registers, with no frame, and testing the loop at the bottom.',

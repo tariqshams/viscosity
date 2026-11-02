@@ -18,7 +18,7 @@ import CacheCheckSteps from '../../../components/diagrams/ch256/CacheCheckSteps'
 
 ## The second visit
 
-The previous chapter saved work by not parsing what is not called.
+*Parsing JavaScript for real* saved work by not parsing what is not called.
 However, a page you visit every day ships the same script every day, and
 every day V8 would parse and compile the same functions into the same
 bytecode again. The work is identical each time; the obvious move is to
@@ -182,6 +182,7 @@ from bytecode that was never recompiled<Cite id="v8-sparkplug" />.
   check can be fooled, so the embedder (Chrome, Node's compile cache)
   keys it by the real content.
 
-Next: what V8 does with an object once it exists. Shapes.
+Next: *Slack tracking and dictionary mode*, what V8 does when an object
+outgrows the room its shape gave it, or stops fitting shapes at all.
 
 <Quiz />

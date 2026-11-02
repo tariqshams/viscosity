@@ -18,8 +18,7 @@ import TwoParses from '../../../components/diagrams/ch255/TwoParses';
 
 ## Most of the code is never called
 
-Drip's compiler, from the chapter "One pass from source to bytecode"
-onwards, works
+Drip's compiler, from *One pass from source to bytecode* onwards, works
 on a whole program in one go: every function is parsed and turned into
 bytecode before anything runs, which is fine for a test script. A web page
 is different. It might ship a framework, a date library and the code for a
@@ -220,5 +219,8 @@ first visit; the next chapter is about saving it on the second.
   track the variables that closures capture.
 - A called lazy function is parsed twice, so V8 parses likely-called
   functions (`(function`) eagerly, and a wrong eager guess wastes work.
+
+Next: *Bytecode caches*, which save the parse and the compile on a
+page's second visit.
 
 <Quiz />

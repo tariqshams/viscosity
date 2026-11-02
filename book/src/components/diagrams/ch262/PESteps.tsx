@@ -25,7 +25,7 @@ class Arg {
   }
 }`,
     line: 1,
-    note: 'A tiny tree-walking interpreter, like yours from Part III but with one class per node kind. prog.execute could be any node’s method, so every call is a dynamic dispatch.',
+    note: 'A tiny tree-walking interpreter, like your Drip tree-walker but with one class per node kind. prog.execute could be any node’s method, so every call is a dynamic dispatch.',
   },
   {
     label: 'fix the program',

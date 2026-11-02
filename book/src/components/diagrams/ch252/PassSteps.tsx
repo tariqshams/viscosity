@@ -33,7 +33,7 @@ for.body:
 for.body:
   %mul = mul nsw i64 %i.0, %i.0
   %add = add nsw i64 %s.0, %mul
-  %inc = add nsw i64 %i.0, 1`, note: 'SROA turns the stack slots into SSA values: the loads and stores are gone, and two phi nodes merge each variable\'s value from before the loop and from the last trip. This is the same SSA construction as chapter 204, and it looks almost exactly like our VIR for sumsq.' },
+  %inc = add nsw i64 %i.0, 1`, note: 'SROA turns the stack slots into SSA values: the loads and stores are gone, and two phi nodes merge each variable\'s value from before the loop and from the last trip. This is the same SSA construction as in Dominance frontiers and classic SSA construction, and it looks almost exactly like our VIR for sumsq.' },
   { k: 2, code: `for.body:
   %i.07 = phi i64 [ 0, ... ],
                   [ %inc, %for.body ]

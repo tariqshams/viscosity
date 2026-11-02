@@ -25,7 +25,7 @@ stages: instruction selection, scheduling, optimisations on machine
 code in SSA form, register allocation, prologue and epilogue
 insertion, late optimisations, and code emission; until register
 allocation, the code uses "virtual registers in SSA form"<Cite id="llvm-codegen" />.
-That is our compiler from chapter 250, stage for stage, with much
+That is our compiler from *Drip to RISC-V, end to end*, stage for stage, with much
 more inside each stage.
 
 To see the loop, we ask clang to keep it (`-mllvm -replexitval=never`
@@ -37,9 +37,10 @@ chosen passes with `-stop-after=`. Step through the loop body:
 The middle form is **Machine IR** (MIR): RISC-V's own instructions,
 over virtual registers such as `%10:gpr` (a general-purpose register,
 not yet chosen), with physical ones such as `$x10` only where the ABI
-demands them. PHI elimination and the coalescer are chapters 234 and
-238, the machine scheduler is chapter 241, and the result is the same
-four-instruction loop clang gave us at the end of chapter 251.
+demands them. PHI elimination and the coalescer are *Leaving SSA* and *Coalescing*,
+the machine scheduler is *Instruction scheduling*, and the result is
+the same four-instruction loop clang gave us at the end of *From
+virtual registers to a running program*.
 
 <Prompts ids={['codegen-stages', 'mir-what']} />
 
@@ -50,7 +51,8 @@ one, builds a graph (a DAG) of each basic block's operations, then
 runs a fixed sequence: build, optimise, legalise types (remove the
 ones the target lacks), optimise, legalise operations, optimise,
 select instructions by matching patterns, and schedule them into a
-list<Cite id="llvm-codegen" />, which is chapter 232's tree tiling on
+list<Cite id="llvm-codegen" />, which is the tree tiling of *Instruction
+selection by tree tiling* on
 a DAG, one block at a time. **GlobalISel** is "intended to be a
 replacement for SelectionDAG and FastISel", working on the whole
 function and directly on MIR, through four passes: IRTranslator,
@@ -102,7 +104,8 @@ our loop. Here is its body under `-regalloc=fast`:
 ```
 
 Values that live across blocks go back to memory at every block's
-end, much as with our two-register example in chapter 251; greedy
+end, much as with our two-register example in *From virtual registers to a
+running program*; greedy
 keeps everything in registers. (Two honest footnotes. The same
 documentation still shows `-regalloc=linearscan` in an example, but
 LLVM 18's `llc` answers "Cannot find option named 'linearscan'", so
@@ -137,8 +140,8 @@ lexer and preprocessor feed "a recursive-descent parser", which hands
 each construct to **Sema**, the semantic analysis library that checks
 it and, "for valid programs", builds the AST; **CodeGen** then "takes
 an AST as input and produces LLVM IR code from it"<Cite id="clang-internals" />.
-That is Part III's front end, scanner, parser, resolver and type
-checker, at industrial size.
+That is the front end of *Building Drip* (scanner, parser and resolver)
+plus a type checker, at industrial size.
 
 **rustc.** Rust's compiler lowers the program more times. The AST is
 lowered to **HIR**, "a more compiler-friendly representation of the
@@ -225,7 +228,7 @@ generator, by hand. The second shows rustc's last two
 representations, MIR and LLVM IR. The third looks inside `llc`: the
 Machine IR after instruction selection, the other selector, and the
 other allocator. Viscosity, for comparison, sits beside all of this:
-its IR (VIR) and passes are the middle end of Part VI, and it hands
+its IR (VIR) and passes are the middle end of *Building Viscosity*, and it hands
 JavaScript, not LLVM IR, to an engine.
 
 <Prompts ids={['clang-sema', 'rustc-irs', 'mir-overflow', 'cranelift-why']} />
@@ -246,7 +249,9 @@ JavaScript, not LLVM IR, to an engine.
   LLVM IR. **rustc**: AST, HIR, THIR, MIR, then LLVM IR (or Cranelift
   or GCC).
 
-That closes Part VII: from an IR to running machine code, by hand, in
-a toy compiler, and in the real ones. Part VIII returns to Viscosity.
+That closes the native back end: from an IR to running machine code,
+by hand, in a toy compiler, and in the real ones. Next, the deep dive
+into real JavaScript engines begins with *Ignition and the tiers above
+it*.
 
 <Quiz />

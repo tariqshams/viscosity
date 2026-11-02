@@ -18,12 +18,11 @@ import SpecializeSteps from '../../../components/diagrams/ch261/SpecializeSteps'
 
 ## The question your tree-walker keeps asking
 
-Your Part III interpreter evaluates `a + b` by asking the same
+Your Drip tree-walking interpreter evaluates `a + b` by asking the same
 questions every single time: what kind of node is this? Are both
 values numbers? Strings? In a loop that runs a million times, the
 answers never change, and you pay for them a million times; that is the
-interpreter overhead you measured in *Inheritance, and measuring the
-tree-walker*.
+interpreter overhead of *Why bytecode*.
 
 V8's answer is separate machinery: bytecode for Ignition, then
 compilers that rewrite hot code using what the interpreter
@@ -37,7 +36,8 @@ GraalVM", is built this way<Cite id="graaljs-add" />.
 
 Two ideas make it work: nodes that specialise themselves, which this
 chapter is about, and *partial evaluation*, which turns such an
-interpreter into compiled code and is the next chapter's subject.
+interpreter into compiled code and is the subject of *Partial
+evaluation: compiling by specializing an interpreter*.
 
 ## Nodes that rewrite themselves
 
@@ -205,5 +205,8 @@ compiler turns a tree of specialised nodes into machine code.
 - States only move from specific to general, so every node settles;
   a node that flipped back and forth would cause a deoptimisation
   cycle.
+
+Next: *Partial evaluation: compiling by specializing an interpreter*,
+how Graal turns a tree of specialised nodes into machine code.
 
 <Quiz />

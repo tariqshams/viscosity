@@ -1,4 +1,4 @@
-// Chapter 100 cards: recall prompts, examples, exercises and quiz.
+// Columnar arrays at run time: the research: cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -7,7 +7,7 @@ export const prompts = {
     a: 'Each field of a collection of records kept in its own contiguous array (a column): struct-of-arrays by its database name.',
   },
   'columnar-db': {
-    q: 'What kind of work does columnar storage speed up?',
+    q: 'What kind of work does columnar storage speed up most?',
     a: 'Read-heavy work that reads a few fields (columns) of many records.',
   },
   'rtt-what': {
@@ -23,16 +23,16 @@ export const prompts = {
     a: 'Compiled code can’t assume the array is columnar, so a check picks a copy optimised for columns, with the original loop as the slow path.',
   },
   'aot-safety': {
-    q: 'An engine can guess about an array and deoptimise if wrong. What must Viscosity do instead?',
+    q: 'A JIT can guess an array is safe to store as columns and deoptimise if wrong. What must an ahead-of-time compiler with no deoptimiser do instead?',
     a: 'Prove from the source that every use of the array can be rewritten; otherwise bail out and leave it alone.',
   },
   'no-deopt': {
-    q: 'Why does Viscosity’s generated loop need no “is it columnar?” check?',
-    a: 'The array is columnar from its first push and can never change layout, so the loop only ever sees one layout.',
+    q: 'An ahead-of-time compiler stores an array as columns from its first push, and nothing can change its layout later. Why do its loops need no “is it columnar?” check?',
+    a: 'The array can never change layout, so each loop only ever sees one layout.',
   },
   'bail-out-result': {
-    q: 'One line of the program adds a new property to one element. What does Viscosity do with that array?',
-    a: 'It keeps it as an array of objects, and `explain` gives that line as the reason.',
+    q: 'An ahead-of-time compiler that rewrites arrays of objects into columns finds one line that adds a new property to a single element. What should it do with that array?',
+    a: 'Leave it as an array of objects (bail out), and report that line as the reason.',
   },
 };
 
@@ -503,7 +503,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the 2023 follow-up duplicate loops?',
+    q: 'Why does the 2023 follow-up on run-time columnar arrays in GraalVM (Kloibhofer et al.) duplicate loops?',
     options: [
       {
         t: 'To unroll them for speed',
@@ -525,11 +525,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'Viscosity can’t prove an array is safe to transform. What happens?',
+    q: 'An ahead-of-time layout rewriter whose output is ordinary JavaScript (Viscosity) cannot prove an array is safe to transform. What should happen?',
     options: [
       {
         t: 'It transforms it anyway and deoptimises if something goes wrong',
-        why: 'Viscosity has no deoptimisation: its output is ordinary JavaScript.',
+        why: 'An ahead-of-time rewriter has no deoptimisation: its output is ordinary JavaScript.',
       },
       {
         t: 'It inserts a run-time check and converts the array back if needed',
@@ -540,23 +540,23 @@ export const quiz = [
         why: 'An unsafe array isn’t an error. It is simply left alone.',
       },
       {
-        t: 'It bails out: that array stays an array of objects, and `explain` says why',
+        t: 'It bails out: that array stays an array of objects, and the tool reports why',
         correct: true,
         why: 'Anything it can’t prove is left unchanged.',
       },
     ],
   },
   {
-    q: 'What can a run-time transformation know that Viscosity can’t?',
+    q: 'What can a run-time layout transformation know that an ahead-of-time one cannot?',
     options: [
       {
         t: 'The real sizes and values of the arrays in this run',
         correct: true,
-        why: 'Viscosity must estimate sizes from the source, or use a recorded profile.',
+        why: 'An ahead-of-time compiler must estimate sizes from the source, or use a recorded profile.',
       },
       {
         t: 'Which fields a loop reads',
-        why: 'Viscosity finds that from the source too.',
+        why: 'An ahead-of-time compiler finds that from the source too.',
       },
       {
         t: 'Whether the program is written in JavaScript',
@@ -569,11 +569,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'In this book’s end-to-end run, why might `nbody` gain much less than `ledger`?',
+    q: 'Columns made a large ledger, read a few fields at a time, several times faster, but an n-body simulation of 1,500 bodies, each step reading every field of the others, gained much less. Why?',
     options: [
       {
-        t: 'Because Viscosity failed to transform it',
-        why: 'Its layout column says `bs=soa`: it was transformed.',
+        t: 'Because the compiler failed to transform it',
+        why: 'It was transformed; the difference is in how the data is used.',
       },
       {
         t: 'Because nbody uses strings',

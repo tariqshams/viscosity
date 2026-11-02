@@ -1,53 +1,53 @@
-// Chapter 244 cards: recall prompts, examples, exercises and quiz.
+// Compiling hot Drip functions to WebAssembly: cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
   'jit-three-parts': {
-    q: 'What are the three parts of the chapter’s JIT?',
-    a: 'A counter (compile once a function is hot), a compiler (tree to WebAssembly, or refuse) and a guard (only safe calls reach the compiled code).',
+    q: 'A minimal JIT compiles whole functions between calls and checks each call before using the compiled code. What are its three parts?',
+    a: 'A counter (compile once a function is hot), a compiler (to machine code or WebAssembly, or refuse) and a guard (only calls the compiled code handles exactly as the interpreter would reach it).',
   },
   'why-count': {
     q: 'Why does a JIT wait for a function to be called several times before compiling it?',
     a: 'Compiling costs time; a function called once or twice never pays it back.',
   },
   'children-first': {
-    q: 'In what order does the compiler emit code for `a - b` on a stack machine?',
+    q: 'In what order does a compiler emit code for `a - b` for a stack machine such as WebAssembly?',
     a: 'The code for a, then the code for b, then f64.sub (children first, operator last).',
   },
   'while-shape': {
-    q: 'Which WebAssembly instructions does a `while` loop become?',
-    a: '`block`, `loop`, the test, `i32.eqz`, `br_if 1` (leave), the body, `br 0` (repeat), `end`, `end`.',
+    q: 'WebAssembly has no jump to a label. With which structure can `while c { B }` be compiled?',
+    a: 'A `block` holding a `loop`: the test, `i32.eqz`, `br_if 1` (leave the block), the body, `br 0` (back to the loop), `end`, `end`.',
   },
-  'locals-order': {
-    q: 'In `sumsq(n)` with `let s` and `let i`, which local numbers do n, s and i get?',
-    a: 'n is 0 (parameters first), s is 1 and i is 2, in the order they are declared.',
+  'wasm-locals-order': {
+    q: 'In a WebAssembly function with two parameters and one declared local, which local indices do they get?',
+    a: 'The parameters come first, as locals 0 and 1, in order; the declared local is 2.',
   },
   'why-no-rem': {
-    q: 'Why does the JIT refuse a function that uses `%`?',
-    a: 'WebAssembly has remainder instructions only for integers; there is no f64 remainder.',
+    q: 'Why can a remainder of two f64 values not be computed with one WebAssembly instruction?',
+    a: 'WebAssembly has remainder instructions only for integers (rem_s, rem_u); there is no f64 remainder.',
   },
   'truthy-zero': {
-    q: 'Why must the JIT not compile `while n { ... }` as "loop while n is not 0"?',
+    q: 'Why must a Drip compiler not compile `while n { ... }` as "loop while n is not 0"?',
     a: 'In Drip every number, even 0, is truthy, so that loop never stops on its own; testing against 0 would change its meaning.',
   },
   'guard-why': {
-    q: 'What does the guard check, and why?',
-    a: 'That there are the right number of arguments and all are numbers; otherwise ToNumber would silently convert them where Drip reports an error.',
+    q: 'A Drip function compiled to WebAssembly with f64 parameters is called from JavaScript. What must be checked first, and why?',
+    a: 'That there are the right number of arguments and all are numbers; otherwise the JS API’s ToNumber would quietly convert them (a missing one becomes NaN) where Drip reports an error.',
   },
   'liftoff-what': {
     q: 'What is V8’s Liftoff?',
     a: 'A baseline WebAssembly compiler: one pass over the function’s bytes, with a virtual stack of where each operand lives.',
   },
   'guard-vs-deopt': {
-    q: 'How does a speculating JIT’s check differ from this chapter’s guard?',
-    a: 'It checks inside the compiled code and can deoptimise halfway through; our guard only checks the arguments before the call.',
+    q: 'How does a speculating JIT’s guard differ from a guard that checks only the arguments before a call?',
+    a: 'It checks its guesses inside the compiled code and can deoptimise halfway through the call; an argument guard can only choose a path before the call starts.',
   },
 };
 
 export const examples = {
   jit: {
     title: 'A JIT for Drip, from scratch',
-    code: `// --- the encoder (chapter 248) ---
+    code: `// --- the encoder (from A tiny JIT) ---
 function uleb(n) {
   const out = [];
   do {
@@ -611,7 +611,7 @@ test('a refused compile stays slow', () => {
 
 export const quiz = [
   {
-    q: 'What is the guard in the chapter’s JIT for?',
+    q: 'A JIT checks each call’s arguments and then runs either the compiled code or the interpreter. What is that check for?',
     options: [
       {
         t: 'To decide when a function is hot enough to compile.',
@@ -629,7 +629,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In which order does the compiler emit `n - i`, with n in local 0 and i in local 2?',
+    q: 'Which WebAssembly sequence computes `n - i`, with n in local 0 and i in local 2?',
     options: [
       {
         t: '`f64.sub`, `local.get 0`, `local.get 2`',
@@ -647,12 +647,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the JIT refuse `while n { n -= 1; }` even though it could compile it?',
+    q: 'Why must a Drip compiler not translate `while n { n -= 1; }` as a loop that stops at 0?',
     options: [
       {
         t: 'In Drip every number is truthy, so this loop never ends; a compiled "loop while n is not 0" would end at 0 and change what the program does.',
         correct: true,
-        why: 'Right: the JIT must keep Drip’s meaning, so it only compiles conditions that are comparisons.',
+        why: 'Right: a compiler must keep Drip’s meaning; a safe one compiles only conditions that are comparisons.',
       },
       {
         t: 'WebAssembly cannot compare a float with zero.',
@@ -660,12 +660,12 @@ export const quiz = [
       },
       {
         t: 'Loops cannot be compiled to WebAssembly.',
-        why: 'They can, as block, loop and br_if; the chapter compiles sumsq’s loop.',
+        why: 'They can, as block, loop and br_if.',
       },
     ],
   },
   {
-    q: '`sumsq(2.5)` returns 5 in the interpreter. What does the compiled version return, and why?',
+    q: 'A Drip function sums `i * i` for i = 0, 1, 2, ... while `i < n`, so the interpreter gives 5 for n = 2.5. What does the same function compiled to WebAssembly f64 code give, and why?',
     options: [
       {
         t: '5, because WebAssembly’s f64 is the same 64-bit float as Drip’s numbers, with the same arithmetic.',
@@ -683,11 +683,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does V8’s Liftoff do with the module our JIT hands it?',
+    q: 'What does V8’s Liftoff do with a WebAssembly module?',
     options: [
       {
         t: 'It interprets the bytes one at a time.',
-        why: 'Liftoff is a compiler, not an interpreter; V8 found a WebAssembly interpreter far too slow except for debugging.',
+        why: 'Liftoff is a compiler, not an interpreter: it produces machine code.',
       },
       {
         t: 'It compiles each function to machine code in one quick pass, tracking where each stack value lives; TurboFan can recompile hot code later.',
@@ -701,20 +701,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which is a real difference between this JIT and a speculating JIT such as V8’s TurboFan?',
+    q: 'Which is a real difference between a JIT that checks only the arguments before each call and a speculating JIT such as V8’s TurboFan?',
     options: [
       {
-        t: 'This JIT produces machine code and TurboFan does not.',
-        why: 'Both end in machine code; ours goes through WebAssembly and the engine.',
+        t: 'The argument-checking JIT produces machine code and TurboFan does not.',
+        why: 'Both end in machine code (a JIT built on WebAssembly gets it from the engine).',
       },
       {
-        t: 'This JIT checks the arguments before the call; a speculating JIT checks its guesses inside the compiled code and can deoptimise halfway through.',
+        t: 'The first checks the arguments before the call; a speculating JIT checks its guesses inside the compiled code and can deoptimise halfway through.',
         correct: true,
         why: 'Right: that is what lets a speculating JIT compile code whose types it can only guess.',
       },
       {
         t: 'TurboFan never falls back to the interpreter.',
-        why: 'It does: that is deoptimisation (chapter 88).',
+        why: 'It does: that is deoptimisation.',
       },
     ],
   },

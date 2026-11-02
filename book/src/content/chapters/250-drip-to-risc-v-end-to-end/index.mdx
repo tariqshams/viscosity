@@ -18,7 +18,7 @@ import TilesFigure from '../../../components/diagrams/ch250/TilesFigure';
 
 ## All the pieces, joined
 
-Since chapter 225 we have built a back end one piece at a time: the instruction set, the calling convention, code shapes,
+Since *Machine code and assembly* we have built a back end one piece at a time: the instruction set, the calling convention, code shapes,
 instruction selection, register allocation, scheduling, peephole
 clean-ups and the assembler. Each was shown on its own, on a
 fragment. That leaves a fair question: do the pieces actually fit
@@ -74,7 +74,7 @@ strings, lists, classes and closures, which is a book of its own. So
 we choose a subset, and say exactly what it is:
 
 - **Numbers** are whole numbers, held as 64-bit integers (as typed
-  Drip, chapter 192, could prove for programs like `sumsq`), and only
+  Drip, from *A type checker for typed Drip*, could prove for programs like `sumsq`), and only
   `+`, `-` (also as a prefix) and `*` are allowed. Drip's `/` gives
   `3.5` for `7 / 2` while RISC-V's integer `div` gives 3, so `/` and
   `%` are left out rather than computed wrongly.
@@ -83,7 +83,7 @@ we choose a subset, and say exactly what it is:
 - **Comparisons** (`<`, `<=`, `>`, `>=`, `==`, `!=`) only as the
   condition of an `if` or a `while`, never as values.
 - **Functions** with up to eight parameters, the number of argument
-  registers (chapter 228), calling each other and themselves.
+  registers (*Calling conventions and the ABI*), calling each other and themselves.
 - **Not included**: floats, strings, booleans as values, `none`,
   `&&` and `||`, `for`, lists, classes and closures. A function that
   ends without `return` returns 0 here, where Drip would give `none`.
@@ -132,11 +132,12 @@ The scanner happily makes a `/` token, but the parser's `term` rule
 only knows `*`, so after reading `7` as a whole expression it expects
 the `;` and finds `/` instead.
 
-<Prompts ids={['why-no-div', 'tests-only', 'eight-params']} />
+<Prompts ids={['why-no-div', 'test-as-branch', 'eight-params']} />
 
 ## Stages 1 and 2: from text to trees
 
-These are Part III's scanner and parser, made small. The scanner is
+These are the core's Drip scanner and parser (*Tokens and a scanner*,
+*Recursive descent, precedence and associativity*), made small. The scanner is
 one regular expression, which matches numbers, words, the two-character
 operators and then any other single character:
 
@@ -157,7 +158,7 @@ here on the program is a list of functions.
 
 The selector walks each function's tree and covers it with **tiles**,
 small tree patterns that each become one or a few RISC-V instructions
-(chapter 232), choosing the bigger tile where one matches:
+(*Instruction selection by tree tiling*), choosing the bigger tile where one matches:
 
 <Figure takeaway="Each tree pattern has its own short instruction sequence; constants that fit in 12 bits ride along inside addi, and a comparison becomes a single branch." caption="The tiles of the chapter's selector. d is a fresh virtual register, and no is the label to jump to when a test fails.">
   <TilesFigure />
@@ -166,8 +167,8 @@ small tree patterns that each become one or a few RISC-V instructions
 The results go into **virtual registers**, `v0`, `v1` and so on, as
 many as needed; mapping them onto real ones is the next chapter's job.
 Every variable gets one virtual register for its whole life (we skip
-SSA here; chapter 234 showed how a compiler leaves it anyway). The
-convention from chapter 228 is already visible: parameters arrive in
+SSA here; *Leaving SSA* showed how a compiler leaves it anyway). The
+convention from *Calling conventions and the ABI* is already visible: parameters arrive in
 `a0` to `a7`, a call puts its arguments there, and results come back in
 `a0`. A test jumps to the false branch when it **fails**, which is why
 `i < n` becomes `bge`, "branch if greater or equal". RISC-V's
@@ -216,7 +217,7 @@ The first is the smallest program there is: `1 + 2` matches the
 `addi` tile because 2 fits in 12 bits, so only 1 needs a register;
 `print` is a call like any other, with its argument in `a0`, and
 `main` ends by putting 0 in `a0`, its return value. The second is the
-running example, and it is nearly the listing chapter 225 promised:
+running example, and it is nearly the listing *Machine code and assembly* promised:
 the loop test is one `bge`, `s += i * i` is a `mul` and an `add`
 straight into `s`'s register (the selector writes the result of an
 assignment directly into the variable, with no extra copy), and
@@ -243,7 +244,8 @@ what the selector makes of it.
   registers**, follows the calling convention, and turns each test
   into one branch taken when the test fails.
 
-Next: giving the virtual registers real homes, building each frame,
-and running the result, on a simulator and through LLVM's assembler.
+Next: *From virtual registers to a running program*, which gives the
+virtual registers real homes, builds each frame, and runs the result,
+on a simulator and through LLVM's assembler.
 
 <Quiz />

@@ -27,13 +27,13 @@ turn the text into something that runs.
 
 ## Stages 4 and 5: intervals and linear scan
 
-We use the allocator from chapter 240, **linear scan**, because it is
+We use the allocator from *Linear scan*, **linear scan**, because it is
 short and needs only each value's **live interval**: the first and
 last line of the function that mention it. One subtlety comes from
 loops: a value used inside a loop is needed on every trip, so its
 interval is stretched to cover the whole loop, from the loop's label
-to the jump back (a cruder picture than chapter 236's liveness, but a
-safe one). Then the intervals are walked in order of their start,
+to the jump back (a cruder picture than the liveness of *Live ranges and
+interference*, but a safe one). Then the intervals are walked in order of their start,
 each takes a free register, and when none is free, the one that ends
 last is **spilled** to a stack slot.
 
@@ -51,7 +51,7 @@ every single use, not once.</span>
 <ScanSteps client:visible />
 
 Our allocator only hands out `s1` to `s11`, the callee-saved
-registers (chapter 229). That is a deliberate simplification: values
+registers (*Saving registers: prologues and epilogues*). That is a deliberate simplification: values
 in them survive every call without any extra code around the call, so
 `fib(n - 1) + fib(n - 2)` keeps the first result safe while the second
 call runs. The price is paid once per function instead, in the
@@ -77,7 +77,7 @@ frame of `main`, which calls two functions and keeps two values:
   <FrameFigure />
 </Figure>
 
-Last comes a two-rule peephole pass (chapter 245): delete `mv x, x`,
+Last comes a two-rule peephole pass (*Peephole optimisation*): delete `mv x, x`,
 and delete a jump to the label on the very next line, which removes the
 `j .Lsumsq_ret` that the selector wrote for `return s;`.
 
@@ -137,7 +137,7 @@ $ llvm-objdump -d -r sumsq.o
 Each instruction is four bytes, little-endian. The loop's `bge` was
 resolved by the assembler (`63 da 99 00` already holds the distance to
 `0x34`), but the two `call`s became `auipc` and `jalr` with an
-`R_RISCV_CALL_PLT` relocation, a hole for the linker (chapter 247) to
+`R_RISCV_CALL_PLT` relocation, a hole for the linker (*Linkers and loaders*) to
 fill with the distance to `sumsq` and to `print`<Cite id="riscv-psabi-relocations" />.
 (Assembling the same file with `clang --target=riscv64 -c` leaves
 even the local branches as relocations, `R_RISCV_BRANCH` and
@@ -233,7 +233,8 @@ cannot be added later.
   (caller-saved registers for leaf functions, loop rotation,
   scheduling), not stages.
 
-Next: the real thing. LLVM's IR and passes, its code generator, and
-the front ends of clang and rustc.
+Next: the real thing, in *Real back ends: LLVM, clang and rustc*:
+LLVM's IR and passes, its code generator, and the front ends of clang
+and rustc.
 
 <Quiz />

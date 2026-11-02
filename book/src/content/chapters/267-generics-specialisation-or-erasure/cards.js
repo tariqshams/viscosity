@@ -1,4 +1,4 @@
-// Chapter 102 cards: recall prompts, examples, exercises and quiz.
+// Generics: specialisation or erasure: cards.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,7 +11,7 @@ export const prompts = {
     a: 'Compile time and binary size: every copy has to be compiled and stored.',
   },
   'spec-inline': {
-    q: 'Why could rustc inline `Sq::area` into `gen::<Sq>` but not into the `&dyn Area` version?',
+    q: 'Why can rustc inline a trait method called inside the monomorphised copy `gen::<Sq>`, but not the same call made through `&dyn Area`?',
     a: 'In the copy for `Sq` the type is known, so the call has one target; through a vtable the target is only known at run time.',
   },
   'erase-what': {
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'An allocation per box, and an extra load (pointer chasing) on every use; also the object header’s memory.',
   },
   gcshape: {
-    q: 'In Go’s generics, which types share one compiled copy?',
+    q: 'In Go 1.24’s implementation of generics, which type arguments share one compiled copy?',
     a: 'Types with the same gcshape: the same underlying type, or any pointer types; a dictionary tells the copy the real type.',
   },
 };

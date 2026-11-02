@@ -3,7 +3,7 @@ n: 260
 day: 24
 part: XIV
 title: 'JavaScriptCore and SpiderMonkey'
-tagline: 'Every benchmark in this book ran on V8. Safari and Firefox run the same JavaScript on different machinery: other tiers, other thresholds, even another way of putting a number into 64 bits. Here is what their own source code says, and why it should make you careful with any speed-up.'
+tagline: 'Nearly every benchmark in this book ran on V8. Safari and Firefox run the same JavaScript on different machinery: other tiers, other thresholds, even another way of putting a number into 64 bits. Here is what their own source code says, and why it should make you careful with any speed-up.'
 objectives:
   - Name the execution tiers of JavaScriptCore and SpiderMonkey, as their own sources name them.
   - Say where each engine resumes when an optimised guess fails.
@@ -18,19 +18,19 @@ import ValueEncodings from '../../../components/diagrams/ch260/ValueEncodings';
 
 ## One loop, three engines
 
-Every number this book has measured came from Node, which runs V8.
+Nearly every number this book has measured came from Node, which runs V8.
 Open the same page in Safari and a different engine, JavaScriptCore,
 runs it; in Firefox, SpiderMonkey does. All three follow one
 specification<Cite id="ecma262" />, so your program prints the same
 thing everywhere; however, nothing in that specification says *how
 fast* anything must be, or how a value must be laid out in memory.
 
-So is struct-of-arrays faster in Safari too? This book has not measured
-that yet (*Benchmarking Viscosity end to end*, much later, runs its
-programs on Bun, which uses JavaScriptCore), and this chapter will not
-pretend to know. What it can do is show
-you, from the engines' own source code, how differently they are
-built; after that, "it was four times faster on my machine" stops
+So is struct-of-arrays faster in Safari too? The one measurement off V8,
+in *End to end: benchmarks and differential testing at scale*, ran
+Viscosity's programs on Bun, which uses JavaScriptCore, and the gains
+were smaller there, some of them zero. This chapter shows you, from the
+engines' own source code, why that should not surprise anyone: they are
+built very differently; after that, "it was four times faster on my machine" stops
 sounding like a law of nature and starts sounding like what it is, a
 fact about one engine.
 
@@ -58,7 +58,8 @@ away and go back down the ladder, and where it lands is one of the
 ways the engines differ.</span>
 </Analogy>
 
-*The V8 pipeline* and *Ignition and the tiers above it* climbed V8's ladder: the Ignition interpreter, then
+*Tiers, speculation and deoptimisation* and *Ignition and the tiers
+above it* climbed V8's ladder: the Ignition interpreter, then
 Sparkplug, Maglev and TurboFan<Cite id="v8-maglev" />. Step through all
 three engines side by side:
 
@@ -73,8 +74,8 @@ translated for each processor<Cite id="jsc-llint" />. The same option
 list shows that even this interpreter has inline caches for property
 accesses and calls. At the top, the FTL takes the DFG's view of a
 function and lowers it into a second **intermediate representation**
-(the compiler's private form of the program, which Part VI is all
-about), called B3, for heavier optimisation<Cite id="jsc-ftl-b3" />.
+(the compiler's private form of the program, from *IR, three-address
+code and control-flow graphs*), called B3, for heavier optimisation<Cite id="jsc-ftl-b3" />.
 
 **SpiderMonkey** has a C++ interpreter, a Baseline Interpreter, a
 Baseline JIT and an optimising compiler, Ion. Its options file states
@@ -105,8 +106,8 @@ machine code<Cite id="sm-cacheir" />.
 
 ## Where a failed guess lands
 
-All three engines speculate (*Speculation and deoptimisation* showed
-V8 doing it), and all three can be wrong. What differs is where they go
+All three engines speculate (*Tiers, speculation and deoptimisation*
+showed V8 doing it), and all three can be wrong. What differs is where they go
 back to. V8's deoptimiser rebuilds interpreter
 frames<Cite id="v8-maglev" />. JavaScriptCore's DFG code describes "how
 to exit the speculative path by going into baseline
@@ -122,13 +123,13 @@ one<Cite id="sm-bailouts" />.
 ## Same number, three encodings
 
 Tiers are not the only difference: even a single value is stored
-differently. *How JavaScript stores numbers and objects* showed V8's
-choice, where a small integer is a **Smi** kept in the value itself and
+differently. *How JavaScript stores numbers, objects and fields* showed
+V8's choice, where a small integer is a **Smi** kept in the value itself and
 a double held in an object's field usually lives in a separate
 **HeapNumber** (on this book's Node, `%DebugPrint` shows a field
 holding `1.5` as `<HeapNumber 1.5>` and a field holding `2` as plain
-`2`). *NaN-boxing and generational collection* showed SpiderMonkey's: every value is
-NaN-boxed, so a double is stored as its own bits, and everything else,
+`2`). SpiderMonkey uses the NaN-boxing of *Measuring and speeding up the
+VM*: every value is NaN-boxed, so a double is stored as its own bits, and everything else,
 small integers included, hides inside the bit patterns that would
 otherwise mean "not a number", with a tag next to the
 exponent<Cite id="spidermonkey-value" />.
@@ -161,7 +162,7 @@ is.</span>
 </Formal>
 
 Adding 2<sup>49</sup> to a 64-bit pattern adds `0x20000` to its high
-32-bit word, so a typed-array view (from *Bits and bytes*) can show it.
+32-bit word, so a typed-array view (from *Floats and typed arrays: numbers as bytes*) can show it.
 The example puts a double into a `Float64Array`, reads the same 8 bytes
 as two 32-bit halves through a `Uint32Array`, and adds the offset to the
 high half:
@@ -200,9 +201,10 @@ for (let i = 0; i < 50; i++) f(i);
 ```
 
 ```text
-update-xy, 100,000 particles:
-V8 (Node 22): SoA about 3.8× faster
-JSC, SpiderMonkey: not measured
+heat, original → columns:
+V8 (Node 22): about 4× faster
+JSC (Bun):    1.02×
+SpiderMonkey: not measured
 ```
 
 </Examples>
@@ -215,9 +217,11 @@ a function called 50 times has reached its Baseline Interpreter but not
 its Baseline JIT, so a benchmark that runs only 50 calls is measuring
 an interpreter there; on another engine the same 50 calls may meet
 different machinery, which is one more reason to warm up before
-measuring. The third is the realistic one, this book's own headline
-result from the benchmark run in *AoS vs SoA, measured*: it is a true
-statement about V8 12.4, and it says nothing about the other two.
+measuring. The third is the realistic one, from *End to end: benchmarks and
+differential testing at scale*: the same rewrite of the same program
+made it about four times faster on Node and made no difference on Bun,
+which ran the original far faster to begin with; each line is a true
+statement about one engine, and says nothing about the others.
 
 <Prompts ids={['jsc-double', 'diversity-what']} />
 

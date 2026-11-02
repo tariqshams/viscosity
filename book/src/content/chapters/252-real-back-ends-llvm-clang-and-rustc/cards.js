@@ -1,4 +1,4 @@
-// Chapter 247 cards: recall prompts, examples, exercises and quiz.
+// Real back ends: LLVM, clang and rustc: cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -31,8 +31,8 @@ export const prompts = {
     a: 'A fixed, ordered pipeline of passes (built by PassBuilder::buildPerModuleDefaultPipeline).',
   },
   'indvars-did': {
-    q: 'What did `indvars` and `loop-deletion` do to sumsq at -O2?',
-    a: 'indvars computed the loop’s final value of s as a formula before the loop, leaving the loop unused; loop-deletion removed it.',
+    q: 'In LLVM 18 at -O2, what do `indvars` and `loop-deletion` do to a loop whose only job is to compute a sum of `i * i`?',
+    a: 'indvars rewrites the uses after the loop to compute the final sum as a closed formula, which leaves the loop dead; loop-deletion removes it.',
   },
   'magic-constant': {
     q: 'Why can LLVM multiply by 6148914691236517206 instead of dividing by 3?',
@@ -233,7 +233,7 @@ export const quiz = [
       },
       {
         t: '`_10 = AddWithOverflow(copy _2, copy _6)`',
-        why: 'That is Rust’s MIR, one level above LLVM IR (the next chapter).',
+        why: 'That is Rust’s MIR, one level above LLVM IR.',
       },
     ],
   },
@@ -292,7 +292,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'After -O2, sumsq has no loop. Which passes did that?',
+    q: 'In LLVM 18 at -O2, a C loop that sums `i * i` disappears from the IR. Which passes did that?',
     options: [
       {
         t: 'sroa and mem2reg.',
@@ -301,7 +301,7 @@ export const quiz = [
       {
         t: 'indvars, which computed the final value of s before the loop, and loop-deletion, which removed the unused loop.',
         correct: true,
-        why: 'Right: the -print-changed output shows both.',
+        why: 'Right: opt’s -print-changed output shows both.',
       },
       {
         t: 'The register allocator.',
@@ -315,7 +315,7 @@ export const quiz = [
       {
         t: 'The pass manager throws away its cached analyses for that IR and recomputes them when they are next asked for.',
         correct: true,
-        why: 'Right: this is chapter 224’s invalidation, in LLVM’s pass manager.',
+        why: 'Right: this is analysis invalidation, in LLVM’s pass manager.',
       },
       {
         t: 'The pass’s changes are undone.',
