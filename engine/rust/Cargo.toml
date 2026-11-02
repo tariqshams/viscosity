@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/vir", "crates/core", "crates/frontend-js", "crates/frontend-python", "crates/cli", "crates/wasm"]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 authors = ["Tariq Shams"]
 license = "MIT"
@@ -15,10 +15,10 @@ keywords = ["compiler", "data-layout", "struct-of-arrays", "javascript", "python
 rust-version = "1.97"
 
 [workspace.dependencies]
-viscosity-vir = { path = "crates/vir", version = "0.0.1" }
-viscosity-core = { path = "crates/core", version = "0.0.1" }
-viscosity-frontend-js = { path = "crates/frontend-js", version = "0.0.1" }
-viscosity-frontend-python = { path = "crates/frontend-python", version = "0.0.1" }
+viscosity-vir = { path = "crates/vir", version = "0.0.2" }
+viscosity-core = { path = "crates/core", version = "0.0.2" }
+viscosity-frontend-js = { path = "crates/frontend-js", version = "0.0.2" }
+viscosity-frontend-python = { path = "crates/frontend-python", version = "0.0.2" }
 oxc_allocator = "0.156"
 oxc_ast = "0.156"
 oxc_parser = "0.156"

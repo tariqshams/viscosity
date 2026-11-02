@@ -1,6 +1,6 @@
 {
   "name": "@viscosity/cli",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "The viscosity command: build, explain and profile.",
   "author": "Tariq Shams",
   "license": "MIT",

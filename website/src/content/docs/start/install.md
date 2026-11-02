@@ -54,7 +54,7 @@ it instead, pack the tarball yourself:
 ```sh
 cd viscosity/engine/ts/packages/cli
 npm pack
-npm install -g ./viscosity-cli-0.0.1.tgz
+npm install -g ./viscosity-cli-0.0.2.tgz
 viscosity --version
 ```
 
@@ -105,7 +105,7 @@ target and `wasm-bindgen-cli` 0.2.106 (binaryen's `wasm-opt` is optional).
 cd viscosity/engine/rust/packages/wasm
 npm install          # binaryen, for the optional wasm-opt step
 npm pack             # runs build.mjs (Node and browser targets), then packs
-                     # viscosity-wasm-0.0.1.tgz, to install in your project
+                     # viscosity-wasm-0.0.2.tgz, to install in your project
 ```
 
 ```js
