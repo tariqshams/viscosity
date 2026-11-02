@@ -1,4 +1,4 @@
-// Chapter 58 cards: recall prompts, examples, exercises and quiz.
+// Chapter 66 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -11,7 +11,7 @@ export const prompts = {
     a: 'The operator needs both operand values, and those values are what the children return.',
   },
   'grouping-nothing': {
-    q: 'What does `evaluate` do with a grouping node?',
+    q: 'In a tree-walking interpreter, what does evaluating a grouping (bracket) node do?',
     a: 'It evaluates the expression inside and returns that. The brackets already did their job by shaping the tree.',
   },
   'tree-walker-what': {
@@ -19,7 +19,7 @@ export const prompts = {
     a: 'An interpreter that runs a program by visiting the nodes of its syntax tree directly, with a recursive function, without turning the program into any other form first.',
   },
   'none-is-null': {
-    q: 'Which JavaScript value does the tree-walker use for Drip’s `none`?',
+    q: 'Which JavaScript value does Drip’s TypeScript tree-walker use for Drip’s `none`?',
     a: '`null` (and `stringify` prints it as `none`).',
   },
   'truthy-zero': {
@@ -275,7 +275,7 @@ print str("half: " + 12 / 2);`,
 
 export const quiz = [
   {
-    q: 'In what order does the tree-walker *finish* the nodes of `(+ 1 (* 2 3))`?',
+    q: 'In what order does a tree-walking interpreter *finish* the nodes of `(+ 1 (* 2 3))`?',
     options: [
       {
         t: '`+`, then `1`, then `*`, then `2`, then `3`',

@@ -3,16 +3,12 @@ n: 64
 day: 5
 part: III
 title: 'Pratt parsing'
-tagline: 'One loop and a small table of numbers can parse every binary operator in Drip, at every precedence level, grouped the right way. This is how the real Drip parser reads expressions.'
+tagline: 'One loop and a small table of numbers can parse every operator in Drip, at every precedence level, grouped the right way; and one simple fact, whether the parser already holds an operand, tells it whether a - negates or subtracts. This is how the real Drip parser reads expressions.'
 objectives:
   - Explain what a binding power is, and read Drip’s table of them.
-  - Trace the Pratt loop by hand on an expression like 1 + 2 * 3 - 4.
-  - Say why an operator of equal power stops the loop, and what that does to 1 - 2 - 3.
-  - Write a small Pratt parser of your own in about twenty lines.
+  - Trace the Pratt loop by hand on an expression like 1 + 2 * 3 - 4, and say why an operator of equal power stops it.
   - Tell prefix and infix positions apart, even for a token that can be both.
-  - Read the companion’s prefix and infix rules, and say which runs for each token.
   - Explain why -f(2) * 3 negates the call before multiplying.
-  - Make an operator group to the right, and explain how Drip parses assignment.
 introduces: [pratt-parser, binding-power, prefix-infix]
 uses: [parser, recursive-descent, precedence, associativity, grammar, ast, ast-node, tree-printer, expression-vs-statement, token, token-type, lookahead, literal, drip, function, return, recursion, call-stack, tree, object, bracket-access, array, nested-function, discriminated-union, typescript, for-loop, comparison, if]
 sources: [pratt1973]
@@ -22,30 +18,26 @@ import BpLadder from '../../../components/diagrams/ch064/BpLadder';
 import TokenRoles from '../../../components/diagrams/ch064/TokenRoles';
 import PrefixInfixSteps from '../../../components/diagrams/ch064/PrefixInfixSteps';
 
-{/* ── merge: from old chapter 64, Pratt parsing ── */}
-
 ## A ladder with too many rungs
 
-In "Precedence and associativity" you parsed expressions with one
-function per precedence level, each calling the next, tighter one for
-its operands. It works, and it reads exactly like the grammar; however,
-count what happens when it parses the lone number `7`. Drip has six
-levels of binary operators, then unary, then calls, and every one of
-those functions is entered, finds no operator of its own and hands back
-what the level below gave it, before anyone looks at the `7`. And a new
-operator means a new rung: one more function, and one more call.
+The parser of *Recursive descent, precedence and associativity* has one
+function per precedence level. Count what happens when it parses the
+lone number `7`: Drip has six levels of binary operators, then unary,
+then calls, and every one of those functions is entered, finds no
+operator of its own and hands back what the level below gave it. A new
+operator means one more function, and one more call.
 
-The real Drip parser, in `companion/ts/src/parser.ts`, reads expressions
-with one small table of numbers and one loop instead. The method is
-named after Vaughan Pratt, who described it in 1973 as "top down
-operator precedence"<Cite id="pratt1973" />, and it builds exactly the
-same trees as the ladder, with far less code.
+The real Drip parser, in `companion/ts/src/parser.ts`, reads
+expressions with one small table of numbers and one loop instead. The
+method is named after Vaughan Pratt, who described it in 1973 as "top
+down operator precedence"<Cite id="pratt1973" />, and it builds the same
+trees with far less code.
 
 ## Binding power
 
 Look at the `2` in `1 + 2 * 3`. Both operators want it: the `+` as its
-right operand, the `*` as its left one. Whichever wins decides the shape
-of the tree, so the parser needs a rule for settling the contest.
+right operand, the `*` as its left one, and whichever wins decides the
+shape of the tree.
 
 <Analogy title="two magnets and a paperclip">
 Put a paperclip between a weak magnet and a strong one, and it slides
@@ -53,42 +45,12 @@ to the strong one. In `1 + 2 * 3` the `2` is the paperclip, `+` is the
 weak magnet and `*` the strong one, so `2 * 3` becomes one chunk before
 the `+` gets anything.
 <span slot="breaks">Two equal magnets would leave the paperclip stuck
-halfway; in a parser a tie always goes to the operator on the left, by
-a rule we will see shortly.</span>
+halfway; in a parser a tie always goes to the operator on the left.</span>
 </Analogy>
 
-<Analogy extra title="an auction with two bidders">
-An item goes to whoever bids more, and each operator bids for the
-operand beside it with a number printed on a card: `*` always bids 6
-and `+` always bids 5, so `*` wins every contest between them.
-<span slot="breaks">At an auction people raise their bids as they go;
-here the bids are fixed in a table before parsing starts, so the same
-contest always ends the same way.</span>
-</Analogy>
-
-That bid is called the operator's binding power, and Drip's whole
-precedence ladder becomes a table of them:
-
-<Figure takeaway="Precedence becomes a table of numbers." caption="Drip’s binding powers. When two operators compete for the operand between them, the longer bar wins. (The prefix row is for -x and !x, which the next chapter covers.)">
+<Figure takeaway="Precedence becomes a table of numbers." caption="Drip’s binding powers. When two operators compete for the operand between them, the longer bar wins. The prefix row is for -x and !x.">
   <BpLadder />
 </Figure>
-
-This chapter uses the numbers in the figure. The companion keeps the
-same ladder one higher, because it saves 1 for assignment:
-
-```ts
-export const INFIX_PREC = {
-  '*': Prec.FACTOR, // 7
-  '+': Prec.TERM,   // 6
-  '<': Prec.COMPARISON, // 5
-  // ...and every other operator
-};
-```
-
-Looking up `INFIX_PREC['*']` gives `7`. A token that is not in the
-table, such as a number or a `;`, has no binding power at all, which is
-how the parser will know an expression has ended; and adding an
-operator to Drip is one more line here, not one more function.
 
 <Callout kind="definition">
 A **binding power** is a number attached to an operator that says how
@@ -97,30 +59,7 @@ for the same operand, the one with the higher binding power gets it; on
 a tie, the one on the left gets it.
 </Callout>
 
-<Formal title="Who gets the middle operand">
-
-```text
-a ∘₁ b ∘₂ c  groups as
-  a ∘₁ (b ∘₂ c)   if bp(∘₂) > bp(∘₁)
-  (a ∘₁ b) ∘₂ c   otherwise
-```
-
-<span slot="read">In a row a, operator one, b, operator two, c, the
-middle operand b goes to the right-hand operator when its binding
-power is strictly greater than the left-hand one's; otherwise, ties
-included, it goes to the left-hand operator.</span>
-</Formal>
-
 <Examples of="binding-power">
-
-```text
-1 + 2 * 3   →  (+ 1 (* 2 3))
-```
-
-```text
-2 * 3 + 4   →  (+ (* 2 3) 4)
-a < b == c  →  (== (< a b) c)
-```
 
 ```text
 x + 1 < n && ok
@@ -129,18 +68,19 @@ x + 1 < n && ok
 
 </Examples>
 
-In the first, `*` (6) outbids `+` (5) for the `2`. In the second the
-stronger operator is on the left, so it keeps the `3`, and `<` (4)
-beats `==` (3) the same way, which is why `a < b == c` needs no
-brackets. The third is a realistic loop condition: the `1` goes to `+`
-rather than `<`, the `n` to `<` rather than `&&` (2), and `&&` ends up
-at the root, worked out last, just as a person would read it.
+A realistic loop condition: the `1` goes to `+` (5) rather than `<`
+(4), the `n` to `<` rather than `&&` (2), and `&&` ends up at the root,
+worked out last, just as a person would read it. A token that is not in
+the table, such as a number or a `;`, has no binding power at all,
+which is how the parser will know an expression has ended; and adding
+an operator to Drip is one more line in the table, not one more
+function.
 
 <Prompts ids={['bp-what', 'bp-compete', 'tie-left']} />
 
 ## The loop
 
-Here is the code that runs these contests, in the form we will trace:
+Here is the code that runs these contests:
 
 ```ts
 function pratt(minBp: number): Expr {
@@ -156,44 +96,21 @@ function pratt(minBp: number): Expr {
 }
 ```
 
-Line 2 reads one operand (for now, think of `prefix()` as "read a
-number or a name"; the next chapter shows what else it does). The loop
-then peeks at the next token without taking it and looks up its power.
-Line 5 is the whole contest: if the token is not an operator, or its
+Line 2 reads one operand (for now, think of `prefix()` as "read a number
+or a name"). The loop peeks at the next token and looks up its power;
+line 5 is the whole contest: if the token is not an operator, or its
 power is not greater than `minBp`, stop. Otherwise take the operator and
 build a node with everything so far on the left and, on the right,
-whatever a fresh call `pratt(bp)` returns; that node becomes `left`, and
-the loop goes round to see whether a weaker operator wants the lot.
-
-`minBp` is a promise to the caller: "I am the right operand of an
-operator this strong, so I only take stronger ones." The first call,
-`pratt(0)`, has no operator waiting, so it takes everything.
-
-<Analogy extra title="a fairground ride with a height sign">
-Each call is a ride with a "you must be this tall" sign set to `minBp`.
-A taller operator gets on; a shorter one walks back out to the ride
-before, whose sign is lower. The first ride, `pratt(0)`, has its sign
-on the floor, so every operator gets on somewhere.
-<span slot="breaks">A child who is turned away misses the ride; an
-operator turned away by an inner call loses nothing, because the outer
-call that takes it gets everything already built to its left.</span>
-</Analogy>
-
-<Analogy extra title="a snowball rolling downhill">
-A snowball picks up a layer on every turn, and each layer wraps the
-whole ball so far. `left` grows the same way, and it stops rolling
-where the slope flattens: at the first operator too weak for this call.
-<span slot="breaks">Snow is snow; here each layer's right side may be a
-whole tree, built by a separate, nested call before it is wrapped
-on.</span>
-</Analogy>
-
-Step through it on `1 + 2 * 3 - 4`:
+whatever a fresh call `pratt(bp)` returns; then go round to see whether
+a weaker operator wants the lot. `minBp` is a promise to the caller: "I
+am the right operand of an operator this strong, so I only take stronger
+ones"; the first call, `pratt(0)`, takes everything. Step through it on
+`1 + 2 * 3 - 4`:
 
 <PrattSteps client:visible />
 
-The `*` node is built first, even though `+` came first in the text:
-the call stack holds the unfinished `+` while the `*` finishes, and the
+The `*` node is built first, even though `+` came first in the text: the
+call stack holds the unfinished `+` while the `*` finishes, and the
 final `-` is turned away twice before the top call takes it.
 
 <Callout kind="definition">
@@ -203,6 +120,29 @@ keeps taking operators whose binding power is greater than `minBp`,
 parsing each one's right operand with a recursive call whose `minBp` is
 that operator's own binding power.
 </Callout>
+
+<Examples of="pratt-parser">
+
+```text
+1 - 2 - 3  pratt(5) meets -: 5 <= 5,
+           so (- (- 1 2) 3)
+```
+
+</Examples>
+
+Left associativity falls out of that `<=`. The right operand of the
+first `-` is parsed by `pratt(5)`, which meets the second `-`, also 5;
+`5 <= 5` stops it, so it returns only `2`, and the outer loop takes the
+second `-` itself: `(- (- 1 2) 3)`, which is `-4`. Change the test to
+`<` and the chain would lean right.
+
+<More title="Work these out, then run them; and the loop as equations">
+
+`1 + 6 - 4` is `3`; brackets start a fresh `pratt(0)`, so `(1 + 2) * 3`
+is `9`; `*` beats `==`, so `2 * 3 == 6` is `true`; and `8 / 4 / 2` leans
+left, giving `1`.
+
+<Run id="groupings" />
 
 <Formal title="The loop as two equations">
 
@@ -220,126 +160,40 @@ loop. In the loop, with L built so far and the next token an operator
 otherwise the answer is L.</span>
 </Formal>
 
-<Prompts ids={['pratt-vs-ladder', 'minbp-meaning', 'top-level-zero', 'no-bp-stops']} />
-
-## Equal stops, so chains lean left
-
-Left associativity falls out of that `<=`. In `1 - 2 - 3`, the right
-operand of the first `-` is parsed by `pratt(5)`, which meets the second
-`-`, also 5; `5 <= 5` stops it, so it returns only `2`, and the outer
-loop takes the second `-` itself: `(- (- 1 2) 3)`, which is `-4`.
-
-<Examples of="pratt-parser">
-
-```text
-7          pratt(0) reads 7; no operator
-```
-
-```text
-1 - 2 - 3  pratt(5) meets -: 5 <= 5,
-           so (- (- 1 2) 3)
-```
-
-<Run id="groupings" />
-
-</Examples>
-
-The first is the smallest case: one call, one operand, and a peek at the
-end of the input, which has no power (compare eight functions on the
-ladder). The second is the tie rule. The runnable one is real Drip; work
-each line out before you run it: `1 + 6 - 4` is `3`; `1 - 2 - 3` is
-`-4`; `-2 * 3` is `-6`; brackets start a fresh `pratt(0)`, so
-`(1 + 2) * 3` is `9`; `*` beats `==`, so `2 * 3 == 6` is `true`; and
-`8 / 4 / 2` leans left, giving `1`.
-
-A common slip is two operands with no operator between them, or an
-operator with nothing after it:
-
-```text
-print 1 2;
-# line 1: expected ';' after the
-#   value, found '2'
-print 1 +;
-# line 1: expected an expression,
-#   found ';'
-print 1 + 2;  # 3
-```
-
-(Drip prints each message on one line.) In the first, the `2` has no
-power, so the expression ends after `1` and `print` wants its `;`. In
-the second, the loop takes the `+` and calls `pratt(5)`, which finds a
-`;` where an operand should start.
-
-<Prompts ids={['equal-stops']} />
-
-<Callout kind="engine" label="Under the hood">
-The bytecode compiler in Part IV (`companion/ts/src/vm/compiler.ts`)
-parses expressions with the same loop and the same table; the
-difference is that its rules emit bytecode instead of building tree
+The companion keeps the same ladder one higher (`*` is 7 there), because
+it saves 1 for assignment; and the bytecode compiler of Part IV parses
+expressions with the same loop and table, emitting bytecode instead of
 nodes.
-</Callout>
 
-## Your turn
+<Analogy extra title="a fairground ride with a height sign">
+Each call is a ride with a "you must be this tall" sign set to `minBp`.
+A taller operator gets on; a shorter one walks back out to the ride
+before, whose sign is lower.
+<span slot="breaks">A child who is turned away misses the ride; an
+operator turned away by an inner call loses nothing, because the outer
+call that takes it gets everything already built to its left.</span>
+</Analogy>
 
-The exercise is the whole Pratt loop in miniature: plain JavaScript,
-tokens as strings, nodes as arrays.
+</More>
 
-<Exercise id="mini-pratt" />
-
-## What you learned
-
-- A **binding power** says how tightly an operator holds its operands.
-  The higher number wins a contested operand; a tie goes to the left.
-- A **Pratt parser** replaces the ladder of precedence functions with
-  a table and one loop: read an operand, then keep taking operators
-  whose power is greater than `minBp`, each with a recursive call for
-  its right side.
-- `bp <= minBp` stops on equals, which makes chains
-  **left-associative**; a token with no power ends the expression.
-
-Next: the other half of the method, where one token can do two
-different jobs depending on what came before it.
-
-
-{/* ── merge: from old chapter 64, Prefix and infix operators ── */}
+<Prompts ids={['pratt-vs-ladder', 'minbp-meaning', 'no-bp-stops']} />
 
 ## One token, two jobs
 
-In "Pratt parsing" every operand was a number or a name, so `prefix()`
-did almost nothing. Real Drip asks more of it. Read this line:
+In `print 7 - -2;` the first `-` subtracts and the second negates.
+Brackets do it too: the `(` in `(a + b) * 2` groups, while the `(` in
+`f(a + b) * 2` calls a function. The parser tells them apart by one
+fact: if it holds nothing yet, it is looking for the *start* of an
+operand; if it already holds one, the next token can only *join* that
+operand to something else.
 
-```text
-print 7 - -2;
-```
-
-The first `-` subtracts and the second negates: the same token, doing
-two different jobs. Brackets do it too: the `(` in `(a + b) * 2` groups,
-while the `(` in `f(a + b) * 2` calls a function, and the `[` in
-`[1, 2]` makes a list, while the `[` in `xs[0]` reads an element. A
-parser has to tell which job each token is doing, and it must do it
-without guessing.
-
-<Analogy title="a shop door">
-The same door is the way in when you are standing in the street and
-the way out when you are standing in the shop; nobody needs a sign to
-know which, because it depends only on which side you are on.
-<span slot="breaks">A door can be used both ways by different people
-at once; a token is read once, from one side only, and some tokens
-(`*`, `.`) have only one side that works at all.</span>
+<Analogy extra title="a shop door">
+The same door is the way in from the street and the way out from the
+shop; which, depends only on which side you are on.
+<span slot="breaks">A door can be used both ways by different people at
+once; a token is read once, from one side only, and some tokens (`*`,
+`.`) have only one side that works at all.</span>
 </Analogy>
-
-<Analogy extra title="a word that changes with its place">
-In English, "record" after "a" is a thing (a record), while "record"
-after "I" is an action (I record). You know which from what came just
-before it, not from the word itself.
-<span slot="breaks">English often needs the whole sentence, or the
-stress you put on the word; Drip's parser only ever needs one fact,
-whether it is already holding a finished operand.</span>
-</Analogy>
-
-That one fact is the whole rule. If the parser holds nothing yet, it
-is looking for the *start* of an operand; if it already holds one, the
-next token can only *join* that operand to something else.
 
 <Figure takeaway="Where a token appears decides what it does." caption="Drip tokens with their two possible jobs. A blank box means the token cannot appear there; the number is the binding power of the infix job.">
   <TokenRoles />
@@ -353,35 +207,36 @@ next (`a - b`, `f(x)`, `xs[i]`, `p.x`). The same token can mean
 different things in the two positions.
 </Callout>
 
-Pratt's paper calls the two jobs a token's "null denotation", what it
-means with nothing on its left, and its "left denotation", what it
-means with something on its left<Cite id="pratt1973" />.
+So `prefix()` is really a table of its own: for each token that can
+start an operand, a function that parses one (a number, a name, a
+bracketed group, a negation), and none for a token like `*`, which is
+why `print * 2;` reports `expected an expression, found '*'`. Calls,
+`.` and `[` are infix operators with the highest power of all. Pratt's
+paper calls the two jobs a token's "null denotation" and "left
+denotation"<Cite id="pratt1973" />.
 
-<Formal title="Two tables, one loop">
+<Examples of="prefix-infix">
 
 ```text
-prefix : Token ⇀ Rule
-infix  : Token ⇀ Rule × bp
-
-parse(m):
-  L ← prefix(next)()
-  while infix(peek) = (R, b), b > m:
-    L ← R(L)
+-f(2) * 3  →  (* (- (call f 2)) 3)
 ```
 
-<span slot="read">prefix is a partial table (the half arrow means not
-every token has an entry) from tokens to rules; infix is a partial
-table from tokens to a rule and a binding power. To parse with minimum
-power m, run the prefix rule of the next token to get L; then, while
-the token after it has an infix entry with power greater than m, run
-its rule on L to get the new L.</span>
-</Formal>
+</Examples>
 
-<Prompts ids={['prefix-vs-infix', 'minus-two-ways', 'paren-two-ways']} />
+The first `-` has nothing on its left, so it is prefix: negate. Prefix
+minus parses its operand with the prefix power (7 in our table), so the
+operand's loop only takes stronger operators: the call's `(`, which
+follows the finished operand `f`, is infix with power 8 and gets in,
+while the `*` (6) is too weak, and is taken by the outer loop. So the
+call is negated first, then multiplied.
 
-## The two tables in the companion
+<PrefixInfixSteps client:visible />
 
-The companion stores the first table as a `switch`:
+<More title="The companion's two tables, and leaning right">
+
+<Run id="two-jobs" />
+
+The companion stores the prefix table as a `switch`:
 
 ```ts
 function prefixRule(t: TokenType) {
@@ -396,144 +251,27 @@ function prefixRule(t: TokenType) {
 }
 ```
 
-It hands back the function that parses an operand starting with this
-token (`grouping` reads an expression and then a `)`; `list` reads
-elements up to `]`), or `null` when the token cannot start one. The
-second table is `infix`, another `switch` on the operator: `(` builds a
-call node and reads the arguments, `.` reads a property name, `[` reads
-an index, and every other operator builds a binary node. Here is where
-the two meet:
+The infix table is another `switch`: `(` builds a call node and reads
+the arguments, `.` reads a property name, `[` reads an index, and every
+other operator builds a binary node. Its loop is written the other way
+round, `while (prec <= power of the next token)`, parsing a binary
+operator's right side with its power plus one; "at least one more than
+mine" is the same as "more than mine", so the trees are the same.
 
-```ts
-function parsePrecedence(prec) {
-  advance();
-  const prefix = prefixRule(previous.type);
-  if (!prefix) {
-    // (simplified message)
-    errorAt(previous, 'expected an ' +
-      'expression, found ...');
-    return { kind: 'literal', value: null };
-  }
-  return continueExpression(prec, prefix);
-}
-```
+To make an operator group to the *right*, parse its right side with one
+less than its own power, `pratt(bp - 1)`. Drip's assignment operators
+are not in the table at all: the prefix rule for a name checks for `=`
+and parses the value with `expression()`, which starts again from the
+loosest level, so `a = b = 5` nests to the right; a flag, `canAssign`,
+makes `a + 1 = 3` report `cannot assign to this expression`.
 
-It takes a token, looks up its prefix rule, and reports an error if
-there is none (with Drip's real wording, which names the token where
-the dots are). Then `continueExpression` runs that rule and goes into
-the loop you know, written the other way round: `while (prec <= power
-of the next token)`, parsing a binary operator's right side with its
-power plus one. "At least one more than mine" is the same as "more than
-mine", so the trees are the same. Watch the two positions take turns:
+</More>
 
-<PrefixInfixSteps client:visible />
-
-<Examples of="prefix-infix">
-
-```text
--x       →  (- x)       prefix: negate
-a - x    →  (- a x)     infix: subtract
-```
-
-```text
-(1 + 2)  →  (group (+ 1 2))
-f(2)     →  (call f 2)
-```
-
-<Run id="two-jobs" />
-
-</Examples>
-
-In the first pair the `-` is the first token of an operand, then the
-second; same token, different node. In the second pair a `(` with
-nothing on its left groups, while one after the name `f` calls. The
-runnable program mixes both on each line: `-f(2) * 3` is `-60`, `-xs[1]
-+ 1` is `-4`, `10 - -2` is `12` (an infix minus whose right operand
-starts with a prefix one), and `!false == true` is `true`.
-
-A token with no prefix rule cannot start an operand:
-
-```text
-print * 2;
-# line 1: expected an expression,
-#   found '*'
-print -2;  # -2
-```
-
-`*` only has an infix job, so in prefix position `prefixRule` returns
-`null` and the parser reports the message above; `-` has a prefix job,
-so `-2` is fine.
-
-<Prompts ids={['call-is-infix', 'no-prefix-rule']} />
-
-## How tightly does a prefix operator hold?
-
-Unary minus parses its operand with a high promise:
-
-```ts
-function unary() {
-  const operator = previous;
-  return { kind: 'unary', operator,
-    right: parsePrecedence(Prec.UNARY) };
-}
-```
-
-`Prec.UNARY` is 8 in the companion (7 in our table), so the operand's
-loop only takes the operators stronger than that: calls, `.` and `[`
-(9 in the companion, 8 in our table). That is why `-2 * 3` is `(-2) * 3` (the `*` is too weak
-to get inside the minus), while `-f(2)` negates the *result* of the
-call, because the call's `(` is stronger still.
-
-<Prompts ids={['unary-bp']} />
-
-## Leaning the other way
-
-To make an operator group to the *right*, parse its right side with
-one less than its own power, `pratt(bp - 1)`: then another operator of
-the same power is stronger than the promise, and it nests inward. (The
-extra exercise adds a power operator `^` exactly this way.)
-
-Drip's right-associative operators, `=`, `+=` and `-=`, are not in the
-table at all. The companion handles them in the prefix rule for a
-name:
-
-```ts
-function variable(canAssign) {
-  const name = previous;
-  if (canAssign && matchAny(ASSIGN_OPS)) {
-    const op = previous;
-    return { kind: 'assign', name, op,
-             value: expression() };
-  }
-  return { kind: 'variable', name };
-}
-```
-
-After a name and an assignment operator, the value is parsed by
-`expression()`, which starts again from the loosest level, so
-`a = b = 5` nests to the right. `canAssign` is true only when the call
-is as loose as assignment. In `a + 1 = 3` the `1` is the right side of
-`+`, so it may not take the `=`; the `=` is left over, and after its
-loop `continueExpression` reports it:
-
-```text
-let a = 1;
-a + 1 = 3;
-# line 2: cannot assign to this
-#   expression
-a = a + 1;  # fine
-```
-
-(The rules for `.` and `[` do the same for `o.x = 1` and `xs[i] = 1`.)
-What the parser does after reporting an error is the business of the
-next two chapters.
-
-<Prompts ids={['right-assoc-trick', 'assign-outside']} />
+<Prompts ids={['prefix-vs-infix', 'minus-two-ways', 'unary-bp']} />
 
 ## Your turn
 
-The core exercise adds prefix minus and brackets to your parser from
-"Pratt parsing"; the extra one adds a right-associative operator.
+<Exercise id="mini-pratt" />
 
 <Exercise id="mini-prefix" />
 
@@ -541,17 +279,14 @@ The core exercise adds prefix minus and brackets to your parser from
 
 ## What you learned
 
-- A token is in **prefix** position when the parser holds no operand
-  yet, and in **infix** position when it follows a finished one; `-`,
-  `(` and `[` have a job in each.
-- The companion keeps two tables, `prefixRule` and `infix`; a token
-  with no prefix rule in prefix position is
-  `expected an expression`.
-- Prefix `-` and `!` parse their operand with power 8 (in the
-  companion's numbering), so only calls,
-  `.` and `[` get inside them.
-- Parsing a right side with `bp - 1` makes an operator lean right;
-  assignment parses its value with `expression()` and is only allowed
-  where `canAssign` is true.
+- A **binding power** says how tightly an operator holds its operands;
+  the higher number wins a contested operand, and a tie goes left.
+- A **Pratt parser** replaces the ladder with a table and one loop;
+  `bp <= minBp` stops on equals, so chains lean left.
+- A token is **prefix** when the parser holds no operand yet and
+  **infix** after one; `-`, `(` and `[` have a job in each.
+
+Next: *Syntax errors and panic mode*, what the parser does when the
+tokens do not fit.
 
 <Quiz />

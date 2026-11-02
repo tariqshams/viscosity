@@ -1,6 +1,5 @@
-// Chapter 57 cards: recall prompts, examples, exercises and quiz.
+// Chapter 64 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 64, 64.
 
 export const prompts = {
   'bp-what': {
@@ -9,63 +8,35 @@ export const prompts = {
   },
   'bp-compete': {
     q: 'In `1 + 2 * 3`, two operators compete for the `2`. Which one gets it, and why?',
-    a: 'The `*`, because its binding power (6) is higher than the `+`’s (5).',
+    a: 'The `*`, because its binding power is higher than the `+`’s.',
   },
   'pratt-vs-ladder': {
     q: 'What does a Pratt parser use in place of one function per precedence level?',
     a: 'A table of binding powers and a single loop that compares them.',
   },
   'minbp-meaning': {
-    q: 'What promise does the `minBp` argument of `pratt(minBp)` stand for?',
+    q: 'In a Pratt parser, what promise does the `minBp` argument of `pratt(minBp)` stand for?',
     a: '“Only take operators stronger than this.” It is the binding power of the operator whose right operand is being parsed.',
-  },
-  'top-level-zero': {
-    q: 'Why does the parser start with `pratt(0)`?',
-    a: 'At the top there is no operator waiting for an operand, so every operator is strong enough to be taken.',
   },
   'no-bp-stops': {
     q: 'How does the Pratt loop know that an expression has ended, say at a `;` or a `)`?',
     a: 'The next token has no binding power (it is not in the table), so the loop’s test fails and it stops.',
-  },
-  'equal-stops': {
-    q: 'In the loop’s test `bp <= minBp`, what would change if it were `bp < minBp`?',
-    a: 'Equal-power operators would nest to the right: `1 - 2 - 3` would parse as `1 - (2 - 3)`, giving 2 instead of -4.',
   },
   'tie-left': {
     q: 'Two operators with the same binding power compete for the operand between them. Which one gets it?',
     a: 'The one on the left. That is why `1 - 2 - 3` means `(1 - 2) - 3`.',
   },
   'prefix-vs-infix': {
-    q: 'How does the parser know whether a token is in prefix or infix position?',
+    q: 'How does a Pratt parser know whether a token is in prefix or infix position?',
     a: 'By whether it already holds a finished operand. With nothing on the left, the token starts an operand (prefix); after one, it joins operands (infix).',
   },
   'minus-two-ways': {
     q: 'What does `-` mean in prefix position, and what does it mean in infix position?',
     a: 'Prefix: negate (`-x`). Infix: subtract (`a - b`).',
   },
-  'paren-two-ways': {
-    q: 'What does `(` do in prefix position, and what does it do in infix position?',
-    a: 'Prefix: it groups an expression, as in `(1 + 2)`. Infix: it calls the operand before it, as in `f(2)`.',
-  },
-  'call-is-infix': {
-    q: 'In Drip’s parser, what kind of operator is the `(` in `f(x)`, and what is its binding power?',
-    a: 'An infix operator (it follows the operand `f`), with the highest binding power of all (8 in the chapter’s table, 9 in the companion).',
-  },
-  'no-prefix-rule': {
-    q: 'What does Drip report when a token with no prefix rule, such as `*`, appears where an operand should start?',
-    a: '`expected an expression, found \'*\'`: `prefixRule` returns `null` for it.',
-  },
   'unary-bp': {
-    q: 'Why does `-2 * 3` parse as `(-2) * 3`?',
+    q: 'In Drip, why does `-2 * 3` parse as `(-2) * 3`?',
     a: 'Prefix minus parses its operand with the unary power, which is higher than `*`’s, so the `*` is too weak to get inside the minus.',
-  },
-  'right-assoc-trick': {
-    q: 'How do you make one operator right-associative in a Pratt parser?',
-    a: 'Parse its right operand with `pratt(bp - 1)` instead of `pratt(bp)`, so an equal operator on the right is still strong enough to be taken.',
-  },
-  'assign-outside': {
-    q: 'Why does the companion parse `=` in the prefix rule for a name (with a `canAssign` flag) instead of putting it in the binding-power table?',
-    a: 'So the value is parsed by `expression()`, which nests `a = b = 5` to the right, and so a bad target is caught: in `a + 1 = 3` the `=` is left over and reported.',
   },
 };
 
@@ -216,6 +187,7 @@ function parse(ts) {
     ],
   },
   'mini-prefix': {
+    optional: true,
     title: 'Negation and brackets',
     prompt: 'This is the parser from “Pratt parsing”, with reading an operand moved into `prefix()`. Make `prefix()` handle two tokens in prefix position: `-` (negate) returns `[\'neg\', operand]`, where the operand is parsed with binding power 7; and `(` parses a whole expression, skips the `)` and returns the expression (no node for the brackets). Anything else is a number, as before.',
     starter: `const BP = { '+': 5, '-': 5,
@@ -529,7 +501,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'The loop is inside `pratt(5)` (parsing the right side of a `+`) and peeks at a `-`. What happens?',
+    q: 'A Pratt parser’s loop is inside `pratt(5)` (parsing the right side of a `+`) and peeks at a `-`. What happens?',
     options: [
       {
         t: 'It takes the `-`, because `-` has binding power 5',
@@ -569,50 +541,6 @@ export const quiz = [
       {
         t: 'It is a syntax error without brackets',
         why: 'The binding powers settle every contest, so no brackets are needed.',
-      },
-    ],
-  },
-  {
-    q: 'What does Drip report for `print 1 2;`, and why?',
-    options: [
-      {
-        t: '`expected an expression, found \'2\'`',
-        why: 'The parser never tries to start an operand at the `2`; the loop only peeks at it.',
-      },
-      {
-        t: '`expected \';\' after the value, found \'2\'`',
-        correct: true,
-        why: 'The `2` has no binding power, so the loop stops after `1`, and the `print` statement then wants its `;`.',
-      },
-      {
-        t: 'Nothing: it prints `1` and then `2`',
-        why: 'A `print` statement takes one expression and then a `;`; two operands side by side do not fit the grammar.',
-      },
-      {
-        t: '`expected an operator, found \'2\'`',
-        why: 'Drip has no such message; the expression simply ends where the loop stops.',
-      },
-    ],
-  },
-  {
-    q: 'You change the loop’s test from `bp <= minBp` to `bp < minBp`. What does `8 / 4 / 2` now evaluate to?',
-    options: [
-      {
-        t: '`1`, as before',
-        why: 'That is the left grouping, which the original `<=` gives.',
-      },
-      {
-        t: '`4`',
-        correct: true,
-        why: 'Equal operators are now taken by the inner call, so it groups as `8 / (4 / 2)`, which is `8 / 2`.',
-      },
-      {
-        t: '`0.25`',
-        why: 'That would be `(4 / 2) / 8`; the operands never change order.',
-      },
-      {
-        t: 'It loops for ever',
-        why: 'Every call still takes at least one token, so it finishes; only the grouping changes.',
       },
     ],
   },
@@ -657,72 +585,6 @@ export const quiz = [
       {
         t: 'Not an operator: calls are handled by the statement parser',
         why: 'Calls are expressions, and in Drip they go through `infix`.',
-      },
-    ],
-  },
-  {
-    q: 'What does Drip report for `print * 2;`?',
-    options: [
-      {
-        t: '`line 1: expected an expression, found \'*\'`',
-        correct: true,
-        why: 'The `*` is in prefix position, where it has no rule, so `prefixRule` returns `null`.',
-      },
-      {
-        t: '`line 1: cannot assign to this expression`',
-        why: 'Nothing is being assigned here.',
-      },
-      {
-        t: 'It prints `2`',
-        why: 'Drip has no prefix `*`; the parser does not skip it.',
-      },
-      {
-        t: '`line 1: expected \';\' after the value, found \'*\'`',
-        why: 'The parser fails earlier than that: it cannot even start the value.',
-      },
-    ],
-  },
-  {
-    q: 'You want a new operator `@` to be **right**-associative with power 6. What do you pass when parsing its right operand?',
-    options: [
-      {
-        t: '`pratt(6)`',
-        why: 'That makes it left-associative, like `*`: an equal operator on the right stops the inner call.',
-      },
-      {
-        t: '`pratt(0)`',
-        why: 'That swallows every operator to the right, including weaker ones like `+`.',
-      },
-      {
-        t: '`pratt(7)`',
-        why: 'That stops even another `@` (6 is not above 7), so `@` would group to the left again.',
-      },
-      {
-        t: '`pratt(5)`',
-        correct: true,
-        why: 'With `bp - 1`, another `@` (6 > 5) is taken by the inner call and nests right, while `+` (5) is still left outside.',
-      },
-    ],
-  },
-  {
-    q: 'Why is assignment handled by the parser rules for its targets (a name, `.` and `[`) instead of being another entry in the binding-power table?',
-    options: [
-      {
-        t: 'Because `=` is a keyword',
-        why: 'It is an ordinary single-character token.',
-      },
-      {
-        t: 'Because assignment is a statement, not an expression',
-        why: 'In Drip assignment is an expression: `print a = 3;` prints 3.',
-      },
-      {
-        t: 'Because only a name, a field or an element may be assigned to, and the value must nest to the right',
-        correct: true,
-        why: 'Those rules check for `=` themselves (when `canAssign` allows it) and parse the value with `expression()`; an `=` left over after anything else is reported as `cannot assign to this expression`.',
-      },
-      {
-        t: 'Because the table can only hold left-associative operators',
-        why: 'The table holds powers. Associativity comes from what you pass when recursing, and that could be changed for one operator.',
       },
     ],
   },

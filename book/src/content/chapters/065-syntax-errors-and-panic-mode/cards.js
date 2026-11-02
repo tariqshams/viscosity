@@ -1,6 +1,5 @@
-// Chapter 58 cards: recall prompts, examples, exercises and quiz.
+// Chapter 65 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 65, 65.
 
 export const prompts = {
   'syntax-error-what': {
@@ -11,21 +10,9 @@ export const prompts = {
     q: 'A `;` is missing at the end of line 1, and line 2 starts with `print`. Where does Drip report the error?',
     a: 'On line 1: a missing `;` is reported on the line of the token before it, where the `;` belongs. The message still names the token found: `found \'print\'`.',
   },
-  'at-end': {
-    q: 'When does a Drip syntax error say `found end of file` instead of naming a token?',
-    a: 'When the parser ran out of tokens: the token it was looking at is the end-of-file token.',
-  },
-  'found-names': {
-    q: 'How does a Drip syntax error name the token it found, for `print`, for a string, and for a `;`?',
-    a: '`\'print\'` and `\';\'` (the token’s text in quotes), but `a string` for any string.',
-  },
   'exit-65': {
     q: 'A Drip program has one syntax error on its last line. How many of its statements run?',
     a: 'None. If any error was reported, Drip stops before running anything and exits with code 65.',
-  },
-  'consume-no-throw': {
-    q: 'What does Drip’s `consume` do when the token it needs is not there?',
-    a: 'It reports `expected …, found …` to the reporter and returns without taking a token; it does not throw, so parsing carries on.',
   },
   'recovery-goals': {
     q: 'What are the two goals of **error recovery**?',
@@ -47,25 +34,9 @@ export const prompts = {
     q: 'Where does Drip’s `synchronize()` stop skipping?',
     a: 'Just after a `;`, just before a keyword that starts a statement, at the `}` that closes the block it is in, or at the end of the file.',
   },
-  'braces-whole': {
-    q: 'While skipping, `synchronize()` meets a `{`. What does it do with the tokens up to the matching `}`?',
-    a: 'It skips them all: inside braces it opened itself (`depth > 0`) nothing counts as a safe place.',
-  },
-  'skip-first': {
-    q: 'Why can Drip’s parser never get stuck, failing on the same token for ever?',
-    a: 'Every statement takes at least one token before `synchronize()` runs, so each round moves forward. (The exercise’s `sync`, which starts at the bad token, gets the same guarantee by skipping that token first.)',
-  },
   'panic-price': {
     q: 'What does panic mode give up in exchange for reporting no cascading errors?',
     a: 'The tokens it skips are never checked, so a second mistake inside them is only found on the next run.',
-  },
-  'missing-brace': {
-    q: 'In `if x > 1 print x;` the `{` is missing. What does the parser do with `print x;`?',
-    a: 'It reports `expected \'{\' after the condition`, parses no body at all, and then checks `print x;` as an ordinary statement.',
-  },
-  'no-throw-target': {
-    q: 'For `a + b = 3;`, Drip reports `cannot assign to this expression`. How much does `synchronize()` skip, and why so little?',
-    a: 'Only the `3` and the `;`: the parser knows exactly where it is, so the skip stops right after the statement’s own `;`.',
   },
 };
 
@@ -94,6 +65,7 @@ fn f() {
 
 export const exercises = {
   message: {
+    optional: true,
     title: 'Word the error like Drip',
     prompt: 'Write `message(ts, i, need, what)`. `ts` is an array of tokens, each `{ t, line }`, where `t` is the token’s text (a string token’s text starts with `"`, and the last token is `{ t: \'eof\', line }`). The parser needed a token `need` at index `i`, and found `ts[i]` instead; `what` is the description, such as `"\';\' after the value"`. Return Drip’s message: `line N: expected WHAT, found FOUND`. FOUND is `end of file` for `eof`, `a string` for a string, and otherwise the text in single quotes. N is the line of `ts[i]`, except that when `need` is `\';\'` it is the line of the token before, `ts[i - 1]`. A helper `name(t)` is a good start.',
     starter: `function name(t) {
@@ -481,32 +453,6 @@ print x;
     ],
   },
   {
-    q: `Which error does Drip report for this program?
-\`\`\`
-print 1 +
-print 2;
-\`\`\``,
-    options: [
-      {
-        t: '`line 1: expected an expression, found \'print\'`',
-        why: 'Only a missing `;` is moved to the line before. This error is reported where the parser noticed.',
-      },
-      {
-        t: '`line 1: expected \';\' after the value, found \'print\'`',
-        why: 'The value is not finished: the `+` still needs a right operand.',
-      },
-      {
-        t: '`line 2: expected an expression, found \'print\'`',
-        correct: true,
-        why: 'The `+` needs an operand, and the next token, `print` on line 2, cannot start one.',
-      },
-      {
-        t: 'It prints `1` and then `2`',
-        why: 'A program with a syntax error runs nothing.',
-      },
-    ],
-  },
-  {
     q: 'What is a **cascading** error?',
     options: [
       {
@@ -551,28 +497,6 @@ print 2;
     ],
   },
   {
-    q: 'Drip sometimes skips a statement after an error without checking it, so a second mistake there is only found on the next run. Why is that an acceptable price?',
-    options: [
-      {
-        t: 'Because statements after an error are never checked',
-        why: 'They are: the parser picks up again and checks the rest normally. Only a little is skipped.',
-      },
-      {
-        t: 'Because a missed error costs one more run, while a made-up error costs confusion',
-        correct: true,
-        why: 'Error recovery puts “no echoes” first and “find as many as possible” second.',
-      },
-      {
-        t: 'Because it makes the parser faster',
-        why: 'Speed is not the reason; the aim is to avoid cascading errors.',
-      },
-      {
-        t: 'Because Drip only ever reports one error',
-        why: 'Drip reports one error per statement, and can report many in one run.',
-      },
-    ],
-  },
-  {
     q: 'In panic mode, `synchronize()` is skipping tokens (no braces are open). Which situation makes it stop?',
     options: [
       {
@@ -595,28 +519,6 @@ print 2;
     ],
   },
   {
-    q: 'Why does panic mode sometimes skip a perfectly good statement without checking it?',
-    options: [
-      {
-        t: 'Because the good statement was swallowed while looking for a safe point, as when a missing `;` makes it skip through the next `;`',
-        correct: true,
-        why: 'Skipping a little too much costs at worst one more run. Inventing errors costs confusion.',
-      },
-      {
-        t: 'It has a bug',
-        why: 'It is a deliberate trade-off.',
-      },
-      {
-        t: 'To save time',
-        why: 'Speed is not the reason. The reason is to avoid cascading errors.',
-      },
-      {
-        t: 'Because statements after an error can never be parsed',
-        why: 'They can: the parser resumes after the safe point and parses the rest normally.',
-      },
-    ],
-  },
-  {
     q: 'How many errors does Drip report for `print (1 + ;`?',
     options: [
       {
@@ -635,50 +537,6 @@ print 2;
         t: 'One: `expected an expression, found \';\'`',
         correct: true,
         why: 'The first error sets `panicMode`, and the others in the same statement are dropped.',
-      },
-    ],
-  },
-  {
-    q: 'In `if x > 1 print x;` the `{` is missing. What does Drip do?',
-    options: [
-      {
-        t: 'Takes `print x;` as the body, as JavaScript would',
-        why: 'Drip always needs braces; it does not guess that a single statement is the body.',
-      },
-      {
-        t: 'Reports `expected \'{\' after the condition, found \'print\'`, parses no body, and checks `print x;` as its own statement',
-        correct: true,
-        why: 'What follows is more likely the next statement than a body, and `print` is a safe point.',
-      },
-      {
-        t: 'Skips to the end of the file',
-        why: '`print` is a statement keyword, so the skip stops there at once.',
-      },
-      {
-        t: 'Reports two errors: no `{` and no `}`',
-        why: 'Only one is reported; no body is parsed, so no `}` is expected.',
-      },
-    ],
-  },
-  {
-    q: 'For `a + b = 3;`, Drip reports `cannot assign to this expression`. What happens next?',
-    options: [
-      {
-        t: 'The parser stops: nothing after it is checked',
-        why: 'Panic mode resumes after the statement, so later lines are still checked.',
-      },
-      {
-        t: 'It also reports `expected \';\' after the expression, found \'3\'`',
-        why: 'That complaint is in the same statement, so the panic flag drops it as an echo.',
-      },
-      {
-        t: 'Only the `3` and the `;` are skipped, and the next statement is checked normally',
-        correct: true,
-        why: 'The statement wants its `;` and finds the `3`; `synchronize()` skips the `3` and the `;` and stops right after it.',
-      },
-      {
-        t: 'It is a runtime error, so the program runs up to that line',
-        why: 'It is found while parsing, before anything runs, and gives exit code 65.',
       },
     ],
   },

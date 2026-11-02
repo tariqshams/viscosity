@@ -1,6 +1,5 @@
-// Chapter 57 cards: recall prompts, examples, exercises and quiz.
+// Chapter 63 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 63, 63.
 
 export const prompts = {
   'parser-what': {
@@ -15,52 +14,24 @@ export const prompts = {
     q: 'In recursive descent, what does a `*` (“zero or more”) in a rule become in code?',
     a: 'A `while` loop that runs as long as the next token can start one more repeat.',
   },
-  'rd-terminal': {
-    q: 'In recursive descent, what does a terminal such as `";"` in a rule become in code?',
-    a: 'A check that the next token is `;`, taking it if so and reporting an error if not: `consume(\';\')`.',
-  },
-  'block-twice': {
-    q: 'While parsing `{ { print 1 ; } }`, how many calls to `block` are running at the deepest point?',
-    a: 'Two: the outer block is waiting inside its loop while the inner block runs.',
-  },
   'peek-not-next': {
-    q: 'Why must `statement` choose with `peek()`, not `next()`?',
+    q: 'In a recursive descent parser, why must a function that chooses between alternatives (such as `statement → printStmt | block`) look with `peek()` rather than take with `next()`?',
     a: '`next()` takes the token while looking at it, so the chosen function (such as `block`) would no longer find its own first token.',
-  },
-  'one-token': {
-    q: 'Why is one token of lookahead enough for `statement → printStmt | block`?',
-    a: 'The two alternatives start with different tokens (`print` and `{`), so the next token alone says which one it is.',
-  },
-  'companion-split': {
-    q: 'In the companion’s parser, which parts use recursive descent, and which use Pratt parsing?',
-    a: 'Statements use recursive descent; expressions with operators use Pratt parsing. Both build the same kind of tree.',
   },
   'precedence-what': {
     q: 'What does it mean that `*` has higher precedence than `+`?',
     a: '`*` binds tighter: in `1 + 2 * 3`, the product `2 * 3` becomes one operand of `+`.',
   },
-  'lower-tighter': {
-    q: 'In a grammar with one rule per precedence level, which operators do the lowest rules (just above primary) handle?',
-    a: 'The tightest-binding ones. Each rule builds its operands from the rule below it.',
-  },
-  'brackets-restart': {
-    q: 'Why can brackets override precedence in `(1 + 2) * 3`?',
-    a: '`primary` parses a bracketed group by starting again from the top rule, so the whole sum becomes one operand of `*`.',
-  },
   'factor-sees-plus': {
-    q: 'While parsing `1 + 2 * 3`, `factor` has read `1` and sees `+`. What does it do?',
+    q: 'In a recursive descent parser with one function per precedence level, `factor` (for `*` and `/`) has read `1` in `1 + 2 * 3` and sees `+`. What does it do?',
     a: 'It returns `1`. `+` is not one of its operators, so it leaves the token for `term`.',
-  },
-  'unary-self': {
-    q: 'Why does the `unary` function call itself?',
-    a: 'Its rule is `( "!" | "-" ) unary`, so prefix operators can stack, as in `- - 1` or `!!x`.',
   },
   'assoc-what': {
     q: 'What does associativity decide?',
     a: 'How a chain of operators on the same precedence level groups, e.g. whether `a - b - c` is `(a - b) - c` or `a - (b - c)`.',
   },
   'loop-left': {
-    q: 'Why does the `while` loop in `term` make `-` left-associative?',
+    q: 'In a recursive descent parser, why does a level written as `left = factor(); while (at(\'+\', \'-\')) { ... left = bin(left, op, factor()); }` make `-` left-associative?',
     a: 'Each pass builds a new node with the whole tree so far as its left child.',
   },
   'left-recursion': {
@@ -267,6 +238,7 @@ console.log(show(parse(
 
 export const exercises = {
   blockParser: {
+    optional: true,
     title: 'Parse blocks that nest',
     prompt: 'The helpers, `printStmt` and `expr` are written. Write `statement` and `block` for the rules `statement → printStmt | block` and `block → "{" statement* "}"`. `statement` must choose by peeking; `block` returns `{ kind: \'block\', body }`, where `body` is the array of statement nodes.',
     starter: `function parse(ts) {
@@ -1492,65 +1464,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'While parsing `{ { print 1 ; } }`, what is on the call stack when `expr` takes the `1`?',
-    options: [
-      {
-        t: 'Only `expr`',
-        why: 'Every function that called on the way down is still waiting for its answer.',
-      },
-      {
-        t: '`statement`, `block`, `statement`, `block`, `statement`, `printStmt`, `expr`',
-        correct: true,
-        why: 'Each block called statement, the inner statement called printStmt, which called expr: seven calls, one inside the other.',
-      },
-      {
-        t: '`block` and `expr`',
-        why: 'statement and printStmt calls are waiting too.',
-      },
-      {
-        t: 'Nothing: recursive descent does not use the call stack',
-        why: 'It relies on it entirely: each waiting call remembers its place in its rule.',
-      },
-    ],
-  },
-  {
-    q: 'In the companion’s `ifStatement`, how does `( "else" ( ifStmt | block ) )?` become code?',
-    options: [
-      {
-        t: 'A `while` loop over `else` tokens',
-        why: 'That would be `*`; `?` allows at most one.',
-      },
-      {
-        t: '`consume(\'else\')`, which must succeed',
-        why: 'consume demands the token; the else part is optional.',
-      },
-      {
-        t: '`if (match(\'else\'))`, then `match(\'if\') ? ifStatement() : bracedBody(...)`',
-        correct: true,
-        why: 'An optional group becomes an if on the next token (`match` takes `else` only if it is there, and `otherwise` stays `null` if not); the choice inside it is one more `match`.',
-      },
-    ],
-  },
-  {
-    q: 'What does the parser in this chapter do with `{ print 1 ;` (no closing `}`)?',
-    options: [
-      {
-        t: 'Loops for ever, waiting for a `}`',
-        why: 'Each time round, the loop either takes tokens or throws, so it cannot spin.',
-      },
-      {
-        t: 'Returns a block with one statement',
-        why: 'The rule requires the closing `}`.',
-      },
-      {
-        t: 'Throws an error: the loop calls statement again, and printStmt finds no `print`',
-        correct: true,
-        why: 'With no tokens left, `consume(\'print\')` fails. (The chapter on syntax errors makes the message clearer.)',
-      },
-    ],
-  },
-  {
-    q: 'A grammar lists `term` (for `+` `-`) above `factor` (for `*` `/`), each built from the rule below. What tree does it give `2 * 3 + 4`?',
+    q: 'A grammar has `term → factor ( ( "+" | "-" ) factor )*` and `factor → NUMBER ( ( "*" | "/" ) NUMBER )*`, with `term` as the start symbol. What tree does it give `2 * 3 + 4`?',
     options: [
       {
         t: '`(* 2 (+ 3 4))`',
@@ -1568,28 +1482,6 @@ export const quiz = [
       {
         t: 'It depends on the order of the tokens only',
         why: 'Precedence is about operators, wherever they appear.',
-      },
-    ],
-  },
-  {
-    q: 'In recursive descent, what does the grammar rule `factor → unary ( ( "*" | "/" ) unary )*` become?',
-    options: [
-      {
-        t: 'A table of operators and their priorities',
-        why: 'That is closer to Pratt parsing (next chapter).',
-      },
-      {
-        t: 'A `factor` function that calls `factor()` first',
-        why: 'The rule starts with `unary`, not `factor`.',
-      },
-      {
-        t: 'A function that calls `unary()`, then loops while the next token is `*` or `/`, calling `unary()` again each time',
-        correct: true,
-        why: 'Nonterminals become calls; `*` becomes a loop.',
-      },
-      {
-        t: 'A separate pass over the tokens for each operator',
-        why: 'One pass is enough: the functions consume tokens as they go.',
       },
     ],
   },
@@ -1634,28 +1526,6 @@ export const quiz = [
       {
         t: 'JavaScript rejects the function as a syntax error',
         why: 'The code is valid JavaScript; the problem only shows when it runs.',
-      },
-    ],
-  },
-  {
-    q: 'In this chapter’s parser, why does `primary` call `expression()` (the top rule) for `(`?',
-    options: [
-      {
-        t: 'To skip the brackets',
-        why: 'The brackets are consumed, but the reason for calling the top rule is what goes inside them.',
-      },
-      {
-        t: 'Because brackets have the lowest precedence',
-        why: 'Brackets aren’t an operator with a precedence; they contain a full expression.',
-      },
-      {
-        t: 'To make the parser faster',
-        why: 'Speed isn’t the point.',
-      },
-      {
-        t: 'So that any expression, even a loose one like `1 + 2`, can sit inside the brackets and act as a single operand',
-        correct: true,
-        why: 'Starting over at the top is how brackets override precedence.',
       },
     ],
   },

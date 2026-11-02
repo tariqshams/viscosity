@@ -18,11 +18,10 @@ import ValueMap from '../../../components/diagrams/ch066/ValueMap';
 
 ## A tree is not an answer
 
-After all the chapters on parsing, `print 1 + 2 * 3 - 4;` has become a
-tidy tree, `(- (+ 1 (* 2 3)) 4)`; however, nobody who types that line
-wants a tree, they want to see `3`. This chapter starts the back end of
-the pipeline, which in our interpreter is one function that looks at a
-node and works out what it is worth.
+The parser has turned `print 1 + 2 * 3 - 4;` into a tidy tree, `(- (+
+1 (* 2 3)) 4)`; however, nobody who types that line wants a tree, they
+want to see `3`. The back end of Drip's tree-walker is one function that
+looks at a node and works out what it is worth.
 
 ## Walking the tree
 
@@ -83,9 +82,8 @@ evaluate(e: Expr): Value {
 }
 ```
 
-There is one `case` per kind of node, and narrowing on `kind` tells
-TypeScript which fields each case may touch. A **literal** already holds its value, put there by
-the scanner, so it returns it. A **grouping** does nothing of its own:
+There is one `case` per kind of node. A **literal** already holds its
+value, put there by the scanner, so it returns it. A **grouping** does nothing of its own:
 the brackets did their work when they shaped the tree. A **unary** node
 evaluates its one child and then applies `!` or `-`; a **binary** node
 evaluates its left child, then its right child, and only then applies
@@ -117,25 +115,15 @@ code.</span>
 <Examples of="evaluate tree-walking-interpreter">
 
 ```text
-print 7;            # 7
-```
-
-```text
 print (1 + 2) * 3;  # 9
 print -(2 - 5);     # 3
 ```
 
-```text
-print 10 + 2 * 0.5; # 11
-```
-
 </Examples>
 
-The first tree is one literal node, so `evaluate` returns `7`. In the second, the brackets make `+` the left child of `*`, so the
-sum is finished first and the answer is `9`; the next line's unary minus
-waits for its child, `2 - 5`, which is `-3`, and negates it. The third is a
-particle at 10 moving at speed 2 for half a second: `2 * 0.5` is `1`, and
-`10 + 1` is `11`.
+The brackets make `+` the left child of `*`, so the sum is finished
+first and the answer is `9`; the next line's unary minus waits for its
+child, `2 - 5`, which is `-3`, and negates it.
 
 <Prompts ids={['evaluate-what', 'children-first', 'grouping-nothing', 'tree-walker-what']} />
 
@@ -171,26 +159,24 @@ themselves), so a Drip value's type can be checked with `typeof`.
 <Examples of="runtime-value">
 
 ```text
-print none;    # none
-```
-
-```text
-print 10 / 4;  # 2.5
 print 1 / 0;   # inf
-```
-
-```text
-print 0.1 + 0.2;  # 0.30000000000000004
 print 3 == "3";   # false
 ```
 
 </Examples>
 
-`none` is held as `null` and printed by its Drip name. `10 / 4` is
-`2.5`, because division never rounds down, and `1 / 0` is JavaScript's
-`Infinity`, shown as `inf`. In the third, the sum is a double's nearest
-answer, and `3 == "3"` is `false`: the companion's `isEqual` is `a === b`, so values of different
-types are never equal.
+`1 / 0` is JavaScript's `Infinity`, shown as `inf`; and `3 == "3"` is
+`false`, because the companion's `isEqual` is `a === b`, so values of
+different types are never equal.
+
+<More title="More values">
+
+`print none;` shows `none`, the Drip name for `null`; `10 / 4` is `2.5`,
+because division never rounds down; and `0.1 + 0.2` prints
+`0.30000000000000004`, a double's nearest answer, exactly as in
+JavaScript.
+
+</More>
 
 <Prompts ids={['none-is-null']} />
 
@@ -219,24 +205,15 @@ where a condition is expected. In Drip, `none` and `false` are
 
 ```text
 print !none;  # true
-```
-
-```text
 print !0;     # false
-print !"";    # false
-```
-
-```text
-print !(3 > 4);  # true
 ```
 
 </Examples>
 
-`none` is falsey, so `!none` is `true`. `0` and `""` are truthy in Drip,
-so negating them gives `false` (in JavaScript `!0` is `true`). The last
-is the everyday case: a comparison makes a real boolean, and `!` flips
-it. A common slip in the interpreter is writing `!right` instead of
-`!isTruthy(right)`, which borrows JavaScript's rule.
+`none` is falsey, so `!none` is `true`; `0` is truthy in Drip, so `!0`
+is `false` (in JavaScript it is `true`). A common slip in the
+interpreter is writing `!right` instead of `!isTruthy(right)`, which
+borrows JavaScript's rule.
 
 <Prompts ids={['truthy-zero']} />
 
@@ -261,16 +238,20 @@ The other operators need two numbers, checked the same way. In
 JavaScript `'1' - 1` is `0`, because the string is quietly converted;
 Drip refuses. `describe` names a type with its article (`a number`,
 `none`), and `RuntimeError` extends `Error`<Cite id="mdn-error" /> with
-the line of the operator's token. The runner catches it, prints it, and
-exits with code 70:
+the line of the operator's token. The runner catches it, prints
+`runtime error:`, the message and `at line 2 in script`, and exits with
+code 70, not a compile error's 65, because this was good Drip that went
+wrong only while running; lines before it have already printed.
+
+<More title="Run a runtime error">
 
 <Run id="type-error" />
 
-The first `print` showed `3`; the second stopped the program with
-`runtime error: cannot use '-' on a string and a number` and
-`at line 2 in script`, and the third never ran. The exit code is 70, not
-a compile error's 65, because this was good Drip that went wrong only
-while running.
+The first `print` shows `3`; the second stops the program with
+`runtime error: cannot use '-' on a string and a number`, and the third
+never runs.
+
+</More>
 
 <Callout kind="definition">
 A **runtime error** is an error found while the program runs, such as an
@@ -283,43 +264,33 @@ before anything runs.
 <Examples of="runtime-error">
 
 ```text
-print -"hi";
-# cannot negate a string
-```
-
-```text
-print 1 < "2";
-# cannot compare a number and a string
-# with '<'
-```
-
-```text
 print 2 + " cups";      # error
 print str(2) + " cups"; # 2 cups
 ```
 
 </Examples>
 
-Unary minus needs a number. The comparison names both types and the
-operator, so you can see which side was wrong. The last pair is the
-spot-the-difference you will meet most: the first line stops with
+The spot-the-difference you will meet most: the first line stops with
 `cannot add a number and a string`; the second turns the number into a
-string with the built-in `str`, so `+` joins two strings.
+string with the built-in `str`, so `+` joins two strings. (Unary minus
+on a string says `cannot negate a string`, and `1 < "2"` says `cannot
+compare a number and a string with '<'`.)
 
 <Prompts ids={['runtime-vs-syntax', 'token-for-line']} />
 
-<Callout kind="engine" label="Under the hood">
-Walking the tree has a price: every node costs a function call and a
-`switch`, even a lone `4`. V8 avoids paying it again and again by
-turning each function into a compact bytecode that its Ignition
-interpreter runs<Cite id="v8-ignition" />; Part IV does the same for
-Drip.
-</Callout>
+<More title="The price of walking a tree">
+
+Every node costs a function call and a `switch`, even a lone `4`. V8
+avoids paying it again and again by turning each function into a compact
+bytecode that its Ignition interpreter runs<Cite id="v8-ignition" />;
+Part IV does the same for Drip.
+
+</More>
 
 ## Your turn
 
-The core exercise is the evaluator itself, in JavaScript; the second is
-a Drip program to mend.
+The core exercise is the evaluator itself, in JavaScript; the extra one
+is a Drip program to mend.
 
 <Exercise id="mini-eval" />
 
@@ -337,7 +308,7 @@ a Drip program to mend.
 - Operators check their operands as they run, and a mismatch is a
   **runtime error**: a message, a line, and exit code 70.
 
-Next: statements, which do things instead of producing values, and the
-variables they remember.
+Next: *Statements, environments and control flow*, which do things
+instead of producing values, and the variables they remember.
 
 <Quiz />

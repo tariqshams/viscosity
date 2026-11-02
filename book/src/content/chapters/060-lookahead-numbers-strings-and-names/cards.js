@@ -1,47 +1,26 @@
-// Chapter 55 cards: recall prompts, examples, exercises and quiz.
+// Chapter 60 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 60, 60, 60.
 
 export const prompts = {
   'peek-vs-advance': {
-    q: 'What is the difference between `peek()` and `advance()`?',
+    q: 'In a hand-written scanner, what is the difference between the helpers `peek()` and `advance()`?',
     a: '`advance` returns the next character and moves `current` past it. `peek` returns it without moving.',
   },
   'match-what': {
-    q: 'What does `match(\'=\')` do?',
+    q: 'In a hand-written scanner, what does the helper `match(\'=\')` do?',
     a: 'If the next character is `=`, it consumes it and returns true. Otherwise it changes nothing and returns false.',
-  },
-  'comment-peek': {
-    q: 'Why does the comment loop stop with `peek() !== \'\\n\'` instead of consuming the newline?',
-    a: 'So the newline is left for the `\'\\n\'` case, which adds 1 to `line`.',
   },
   'munch-what': {
     q: 'What is maximal munch?',
     a: 'Always taking the longest run of characters that forms a valid token.',
   },
-  orchid: {
-    q: 'Why is `fortune` one identifier and not the keyword `for` plus `tune`?',
-    a: 'Maximal munch: the scanner takes the whole run of letters, then checks whether that word is a keyword.',
-  },
-  'peek-end': {
-    q: 'What does Drip’s `peek()` return at the end of the source, and why?',
-    a: '`\'\\0\'`, a stand-in character that no check matches, so loops like “while the next is a digit” stop cleanly instead of meeting `undefined`.',
-  },
-  'bang-eq': {
-    q: 'How does Drip’s scanner cut `!===`?',
-    a: 'Into `!=` and then `==`: the longest valid token each time.',
-  },
   'a-plus': {
     q: 'In JavaScript, how is `a+++b` cut into tokens?',
     a: '`a`, `++`, `+`, `b`: maximal munch takes `++` first, so it means `a++ + b`.',
   },
-  'literal-what': {
-    q: 'What is a literal?',
-    a: 'A value written directly in the source, such as `4.25` or `"hi"`.',
-  },
   'dot-peeknext': {
-    q: 'The number scanner has read `4` and `peek()` is `.`. Why must it also look at `peekNext()`?',
-    a: 'The dot belongs to the number only if a digit follows it. In `4.` or `point.x` it is something else.',
+    q: 'A Drip scanner has read the digit `4` and the next character is `.`. Why must it also look at the character after the dot before taking it?',
+    a: 'The dot belongs to the number only if a digit follows it; in `4.` or `p.x` it is a token of its own.',
   },
   'lexeme-vs-value': {
     q: 'For the Drip source `4.250`, what are the token’s lexeme and its literal value?',
@@ -51,53 +30,13 @@ export const prompts = {
     q: 'For the Drip source `"hi"`, what is the lexeme, and what is the literal value?',
     a: 'The lexeme is `"hi"`, quotes included (4 characters). The value is `hi`, without the quotes.',
   },
-  'string-newline': {
-    q: 'Why does the string loop do `line++` when it passes a newline?',
-    a: 'Drip strings may span lines. Counting them keeps the line numbers of later tokens right.',
-  },
-  unterminated: {
-    q: 'What does Drip’s scanner do if the file ends before a string’s closing quote?',
-    a: 'It makes an error token, `unterminated string`, on the line where the string began, and no string token.',
-  },
-  'number-host': {
-    q: 'How does Drip’s scanner turn the lexeme `\'4.25\'` into a number?',
-    a: 'It hands it to JavaScript’s own `Number`, which gives the 64-bit float 4.25.',
-  },
-  'no-escapes': {
-    q: 'How do you put a `"` character inside a Drip string?',
-    a: 'With the escape `\\"`: after a backslash the scanner takes the next character at once, so that quote does not end the string.',
-  },
-  'identifier-rule': {
-    q: 'In Drip, what may an identifier start with, and what may follow?',
-    a: 'It starts with a letter or `_`, followed by any letters, digits or `_`.',
-  },
-  'digit-first': {
-    q: 'What tokens does Drip’s scanner make from `2x`?',
-    a: 'The number `2`, then the identifier `x`. A digit always starts a number.',
-  },
-  'keyword-what': {
-    q: 'What is a keyword?',
-    a: 'A word with a fixed meaning in the language, such as `if` or `while`. In Drip, keywords can’t be used as names.',
-  },
   'whole-word-first': {
-    q: 'Why does the scanner read a whole word before checking the keyword table?',
+    q: 'Why does a scanner read a whole word before looking it up in its keyword table?',
     a: 'Maximal munch: in `iffy` it must not stop at `if`. Only the complete word is looked up.',
-  },
-  'true-is-keyword': {
-    q: 'What token type does Drip’s scanner give the word `true`?',
-    a: 'The keyword type `true`. The parser later turns it into the literal value true.',
   },
   'let-if': {
     q: 'Why is `let if = 3;` an error in Drip?',
     a: '`if` is a reserved keyword, so the scanner makes an `if` token, not an identifier, and the parser needs a name there.',
-  },
-  'case-matters': {
-    q: 'Are `Total` and `total` the same identifier in Drip?',
-    a: 'No: letters are compared exactly, so they are two different names.',
-  },
-  'nullish-fallback': {
-    q: 'In `KEYWORDS.get(text) ?? \'identifier\'`, when is `\'identifier\'` used?',
-    a: 'When the word is not in the table: `get` returns `undefined`, and `??` then takes its right-hand side.',
   },
 };
 
@@ -162,6 +101,7 @@ print Total + total;
 
 export const exercises = {
   'scan-ops': {
+    optional: true,
     title: 'Maximal munch for comparisons',
     prompt: `Write \`scanOps(src)\`. The source contains only the characters \`<\`, \`>\`, \`=\`, \`!\` and spaces. Return the operator tokens, using maximal munch: \`<=\`, \`>=\`, \`==\` and \`!=\` are single tokens, and spaces are skipped.
 
@@ -201,7 +141,7 @@ test('a space splits tokens', () => {
   expect(scanOps('= =')).toEqual(['=', '=']);
 });`,
     hints: [
-      'Use the same loop as the last chapter’s exercise: `start = cur`, then read `src[cur++]`.',
+      'Use the usual scanning loop: `start = cur`, then read `src[cur++]`.',
       'Each of these four characters can be followed by `=` to make a longer token. Look at `src[cur]` before you finish the token.',
       'Take at most one extra `=`. `!==` is `!=` followed by `=`: there is no three-character token.',
     ],
@@ -451,6 +391,7 @@ test('no closing quote', () => {
     ],
   },
   scanWord: {
+    optional: true,
     title: 'Scan a word, then look it up',
     prompt: 'Write `scanWord(s, i)`. A word starts at index `i` (its first character is a letter or `_`). Take letters, digits and underscores, then return `{ type, lexeme }`. The type comes from the `KEYWORDS` table, or is `\'identifier\'` if the word isn’t in it.',
     starter: `const KEYWORDS = new Map([
@@ -599,28 +540,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the comment loop test `peek() !== \'\\n\'` rather than advancing past the newline?',
-    options: [
-      {
-        t: 'So the newline is handled by the `\'\\n\'` case, which counts the line',
-        correct: true,
-        why: 'If the comment swallowed the newline, `line` would not go up, and every later error would report the wrong line.',
-      },
-      {
-        t: 'Because `advance` can’t read a newline',
-        why: '`advance` can read any character. The choice is about who handles the newline.',
-      },
-      {
-        t: 'To make the comment a token',
-        why: 'Comments never become tokens.',
-      },
-      {
-        t: 'It makes no difference',
-        why: 'It does: the line count would drift by one per comment.',
-      },
-    ],
-  },
-  {
     q: 'In JavaScript, `let a = 1, b = 2;` then `a+++b` evaluates to what?',
     options: [
       {
@@ -639,72 +558,6 @@ export const quiz = [
       {
         t: '`NaN`',
         why: 'All the values involved are numbers.',
-      },
-    ],
-  },
-  {
-    q: 'What does Drip’s `peek()` return when `current` has reached the end of the source?',
-    options: [
-      {
-        t: '`undefined`',
-        why: 'That’s what `source[current]` would give, but `peek` checks `atEnd()` first.',
-      },
-      {
-        t: 'The last character again',
-        why: 'It never goes backwards.',
-      },
-      {
-        t: 'It throws an error',
-        why: 'Reaching the end is normal. Loops simply stop there.',
-      },
-      {
-        t: '`\'\\0\'`',
-        correct: true,
-        why: 'A stand-in character that no check matches, so loops like “while the next is a digit” stop cleanly.',
-      },
-    ],
-  },
-  {
-    q: 'What is the difference between `match(\'=\')` and `peek() === \'=\'`?',
-    options: [
-      {
-        t: 'None: both just look',
-        why: '`match` also moves `current` forward when it succeeds.',
-      },
-      {
-        t: '`match` consumes the `=` when it is there; `peek` never consumes anything',
-        correct: true,
-        why: 'That’s why `<` can use `match`: if the `=` is there, it becomes part of the same token.',
-      },
-      {
-        t: '`peek` consumes; `match` only looks',
-        why: 'It’s the other way round.',
-      },
-      {
-        t: '`match` reads two characters ahead',
-        why: 'That’s `peekNext`. `match` looks at exactly one character.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these is a literal in the Drip line `let total = 4.25;`?',
-    options: [
-      {
-        t: '`total`',
-        why: '`total` is an identifier: a name that refers to a value, not a value itself.',
-      },
-      {
-        t: '`let`',
-        why: '`let` is a keyword.',
-      },
-      {
-        t: '`4.25`',
-        correct: true,
-        why: 'It is a value written directly in the source.',
-      },
-      {
-        t: '`=`',
-        why: '`=` is an operator token.',
       },
     ],
   },
@@ -753,50 +606,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `print 4.250;` show in Drip?',
-    options: [
-      {
-        t: '`4.250`',
-        why: 'That is the lexeme. `print` shows the value, and `Number` drops the trailing zero.',
-      },
-      {
-        t: '`4.25`',
-        correct: true,
-        why: 'The token’s literal is the number 4.25; the lexeme `4.250` is only how it was written.',
-      },
-      {
-        t: '`4`',
-        why: 'A digit follows the dot, so the fraction is part of the number.',
-      },
-      {
-        t: 'An error',
-        why: 'Trailing zeros are allowed: they are still digits.',
-      },
-    ],
-  },
-  {
-    q: 'The file ends while Drip’s scanner is still inside a string. What happens?',
-    options: [
-      {
-        t: 'The scanner adds the missing quote and carries on',
-        why: 'It never invents characters; that would hide a real mistake.',
-      },
-      {
-        t: 'The rest of the file is printed',
-        why: 'Nothing runs once the scanner has reported an error.',
-      },
-      {
-        t: 'The string is silently dropped',
-        why: 'It is reported, so the programmer knows.',
-      },
-      {
-        t: 'It makes an error token, `unterminated string`, and no string token; nothing runs',
-        correct: true,
-        why: 'The loop stops at the end of the source, `atEnd()` is true, and the parser reports the error token when it reaches it.',
-      },
-    ],
-  },
-  {
     q: 'A Drip scanner checked for keywords as soon as their letters appeared, before reading the whole word. What would go wrong with `let format = 1;`?',
     options: [
       {
@@ -815,94 +624,6 @@ export const quiz = [
       {
         t: 'The number `1` would be lost',
         why: 'Numbers are scanned by a different loop.',
-      },
-    ],
-  },
-  {
-    q: 'In Drip’s scanner, what happens to a word that is not in the `KEYWORDS` table?',
-    options: [
-      {
-        t: 'The scanner reports an unknown word',
-        why: 'Any word not in the table is just a name.',
-      },
-      {
-        t: 'It becomes an `identifier` token, because `get` returns `undefined` and `??` supplies the fallback',
-        correct: true,
-        why: '`KEYWORDS.get(text) ?? \'identifier\'`.',
-      },
-      {
-        t: 'It is added to the table',
-        why: 'The table is fixed: it lists the language’s keywords.',
-      },
-      {
-        t: 'It becomes a `string` token',
-        why: 'Strings start with a quote.',
-      },
-    ],
-  },
-  {
-    q: 'JavaScript lets you write `let async = 1`, but Drip rejects `let fn = 1;`. Why the difference?',
-    options: [
-      {
-        t: 'Drip has more keywords than JavaScript',
-        why: 'The number of keywords doesn’t matter; whether they are reserved does.',
-      },
-      {
-        t: 'JavaScript doesn’t have a scanner',
-        why: 'Every JavaScript engine scans source into tokens.',
-      },
-      {
-        t: '`fn` contains no vowels',
-        why: 'Spelling has nothing to do with it.',
-      },
-      {
-        t: 'Every Drip keyword is reserved, but some JavaScript keywords, like `async`, are not',
-        correct: true,
-        why: 'JavaScript’s specification keeps keywords and reserved words separate; Drip makes every keyword reserved.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these is a valid Drip identifier?',
-    options: [
-      {
-        t: '`2nd`',
-        why: 'A digit always starts a number, so this is the number `2` and then the name `nd`.',
-      },
-      {
-        t: '`_2nd`',
-        correct: true,
-        why: 'It starts with `_` and continues with digits and letters, which is allowed.',
-      },
-      {
-        t: '`my-name`',
-        why: '`-` is not allowed in a name; this is `my` minus `name`.',
-      },
-      {
-        t: '`while`',
-        why: 'It has the right shape, but it is a reserved keyword.',
-      },
-    ],
-  },
-  {
-    q: 'What token type does Drip’s scanner give the word `true`?',
-    options: [
-      {
-        t: '`\'identifier\'`',
-        why: '`true` is in the keyword table, so it is not an ordinary name.',
-      },
-      {
-        t: '`\'true\'`, a keyword type; the parser later turns it into the boolean value',
-        correct: true,
-        why: 'The scanner only labels words; making values out of keywords is the parser’s job.',
-      },
-      {
-        t: '`\'string\'`',
-        why: 'It has no quote marks; `"true"` would be a string.',
-      },
-      {
-        t: '`\'boolean\'`',
-        why: 'There is no `boolean` token type; there is one type per keyword.',
       },
     ],
   },

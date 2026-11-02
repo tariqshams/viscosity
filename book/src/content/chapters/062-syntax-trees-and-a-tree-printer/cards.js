@@ -1,6 +1,5 @@
-// Chapter 56 cards: recall prompts, examples, exercises and quiz.
+// Chapter 62 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 62, 62.
 
 export const prompts = {
   'ast-what': {
@@ -15,14 +14,6 @@ export const prompts = {
     q: 'In TypeScript, why can code read `e.left` only after checking `e.kind === \'binary\'`?',
     a: '`Expr` is a discriminated union. The check narrows `e` to the binary variant, which is the one with `left`.',
   },
-  'token-kept': {
-    q: 'Why do Drip’s binary nodes hold the whole operator token, not just the string `\'+\'`?',
-    a: 'The token carries its line number, so a later error can say where the operator was.',
-  },
-  'grouping-why': {
-    q: 'The shape of the tree already says `(3 + 4)` happens first. Why does Drip still have a `grouping` node?',
-    a: 'So a printed tree shows where the brackets were in the source. It isn’t needed for the meaning.',
-  },
   'expr-or-stmt': {
     q: 'What is the difference between an expression and a statement?',
     a: 'An expression produces a value. A statement is run for its effect, such as printing or declaring a variable.',
@@ -30,14 +21,6 @@ export const prompts = {
   'expression-statement': {
     q: 'In Drip, what is the line `f(1);`?',
     a: 'An expression statement: the call expression `f(1)`, run for its effect, with its value thrown away.',
-  },
-  'stmt-in-expr': {
-    q: 'Why is `let x = print 1;` a syntax error in Drip?',
-    a: 'After `=` the grammar needs an expression, something with a value, and `print 1` is a statement. The parser says “expected an expression, found \'print\'”.',
-  },
-  'json-why-not': {
-    q: 'Why is `JSON.stringify` a poor way to look at a syntax tree?',
-    a: 'It prints every field name and brace, so even `1 + 2` is over a hundred characters and the shape is hard to see.',
   },
   'printer-what': {
     q: 'What does a tree printer do?',
@@ -47,25 +30,9 @@ export const prompts = {
     q: 'What does Drip’s `printExpr` print for the tree of `(1 + 2) * 3`?',
     a: '`(* (group (+ 1 2)) 3)`',
   },
-  'printer-order': {
-    q: 'When `printExpr` prints a binary node, which strings must it have first?',
-    a: 'The strings of both children. It calls itself on them first, so children are finished before their parent.',
-  },
-  'printer-source': {
-    q: 'Does `printExpr` give back the original source text?',
-    a: 'No: `x += 1` prints as `(+= x 1)`, and brackets come back as `group`. It shows the tree’s shape, not the spelling.',
-  },
   'why-prefix': {
     q: 'Why does Drip’s printer put brackets and the operator first, rather than printing `1 + 2 * 3` as it was written?',
     a: 'Written plainly, two different trees can print as the same text. Bracketing every node makes each tree print differently.',
-  },
-  'no-default': {
-    q: 'Why does the real `printExpr` have no `default:` case?',
-    a: 'So that if a new node kind is added without a case, TypeScript reports that the function can end without returning a string.',
-  },
-  'printer-why': {
-    q: 'How does a tree printer make parser tests easier to write?',
-    a: 'The expected tree becomes one short line of text, like `(+ 1 (* 2 3))`, instead of a nest of objects.',
   },
 };
 
@@ -135,6 +102,7 @@ console.log(show(bin(lit(1), '+',
 
 export const exercises = {
   buildTree: {
+    optional: true,
     title: 'Build two trees by hand',
     prompt: 'Using the helpers `lit`, `bin`, `neg` and `grp` (they make literal, binary, unary minus and grouping nodes), write `tree1()`, which returns the AST of `(1 + 2) * -3`, and `tree2()`, which returns the AST of `2 * 3 + 1`. Remember that the operation that happens first is deeper in the tree, and that brackets become a grouping node.',
     starter: `const lit = (value) =>
@@ -804,7 +772,7 @@ test('an unknown operator throws', () => {
 - \`  throw new Error('cannot evaluate');\` ...and lands here, as does any unknown kind.
 - \`}\` closes the function.
 
-Notice that \`1 - 2 - 3\` gives \`-4\` only because the tree groups it to the left. The evaluator does no precedence work at all: the parser has already decided everything by the shape it built. The chapter "Running expressions: a tree that computes" grows this into Drip's real evaluator.
+Notice that \`1 - 2 - 3\` gives \`-4\` only because the tree groups it to the left. The evaluator does no precedence work at all: the parser has already decided everything by the shape it built. *Running expressions: a tree that computes* grows this into Drip's real evaluator.
 
 **Common wrong attempt.** Leaving out the grouping case: any tree with brackets in it falls through to the \`throw\`, even though brackets do not change the value.`,
     wrong: [
@@ -870,7 +838,7 @@ export const quiz = [
       {
         t: 'The `kind` check narrows the discriminated union to the unary variant, which has `right`',
         correct: true,
-        why: 'Exactly the narrowing from the chapter on tagged unions.',
+        why: 'Exactly the narrowing of a discriminated union.',
       },
       {
         t: 'TypeScript doesn’t check property names',
@@ -901,46 +869,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the AST of `print -2 * (3 + 4);`, what happens to the two bracket tokens?',
-    options: [
-      {
-        t: 'Each becomes a node of its own',
-        why: 'Brackets are punctuation; neither is stored as a node.',
-      },
-      {
-        t: 'Together they become one grouping node around the sum',
-        correct: true,
-        why: 'Drip keeps a grouping node so the brackets can be shown again; the tokens themselves are dropped.',
-      },
-      {
-        t: 'They are stored as the `*` node’s operator',
-        why: 'The `*` node’s operator is the `*` token.',
-      },
-      {
-        t: 'They vanish and leave nothing behind',
-        why: 'That is true of the `;`, but Drip keeps a grouping node where brackets were.',
-      },
-    ],
-  },
-  {
-    q: 'What does Drip report for `let x = print 1;`?',
-    options: [
-      {
-        t: 'Nothing: x becomes 1',
-        why: '`print 1` is a statement, so it has no value to store.',
-      },
-      {
-        t: '`runtime error: undefined variable \'print\'`',
-        why: '`print` is a keyword, not a variable; the problem is found by the parser, before anything runs.',
-      },
-      {
-        t: '`line 1: expected an expression, found \'print\'`',
-        correct: true,
-        why: 'After `=` the grammar needs an expression, and the parser finds the keyword of a statement instead.',
-      },
-    ],
-  },
-  {
     q: 'What does Drip’s `printExpr` print for the tree of `-x * 3`?',
     options: [
       {
@@ -963,46 +891,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why is a tree printer useful when testing a parser?',
-    options: [
-      {
-        t: 'It makes the parser faster',
-        why: 'The printer runs only when you ask for it.',
-      },
-      {
-        t: 'It lets you write the expected tree as one short string and compare',
-        correct: true,
-        why: '`(+ 1 (* 2 3))` is far easier to write and read than nested objects.',
-      },
-      {
-        t: 'It is needed to run the program',
-        why: 'The interpreter walks the tree directly; printing is only for people.',
-      },
-      {
-        t: 'It turns the tree back into the exact source text',
-        why: 'It doesn’t: `x += 1` prints as `(+= x 1)`, and brackets become `group`.',
-      },
-    ],
-  },
-  {
-    q: '`printExpr` is called on a binary node whose children are both binary nodes. In what order are the nodes finished?',
-    options: [
-      {
-        t: 'The root first, then its children',
-        why: 'The root can’t build its string until it has its children’s strings.',
-      },
-      {
-        t: 'In the order the tokens appear in the source',
-        why: 'The order follows the tree, not the token list.',
-      },
-      {
-        t: 'The left child’s subtree, then the right child’s subtree, then the root',
-        correct: true,
-        why: 'Each call finishes its children before itself, so parents finish last.',
-      },
-    ],
-  },
-  {
     q: 'A printer writes binary nodes as `left op right`, with no brackets. What goes wrong?',
     options: [
       {
@@ -1017,28 +905,6 @@ export const quiz = [
       {
         t: 'It cannot print literals',
         why: 'Literals print the same either way.',
-      },
-    ],
-  },
-  {
-    q: 'You add a `ternary` kind to `Expr` but no case for it in `printExpr`, which has no `default`. What happens?',
-    options: [
-      {
-        t: 'The program crashes the first time it prints anything',
-        why: 'The mistake is found before the program runs at all.',
-      },
-      {
-        t: 'Ternary nodes print as an empty string',
-        why: 'TypeScript does not let it get that far.',
-      },
-      {
-        t: 'TypeScript reports that the function lacks an ending return statement (error TS2366)',
-        correct: true,
-        why: 'With one kind unhandled, the `switch` can finish without returning a string: the exhaustiveness check.',
-      },
-      {
-        t: 'TypeScript adds the missing case for you',
-        why: 'It reports the gap; you write the case.',
       },
     ],
   },

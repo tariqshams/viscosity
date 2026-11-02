@@ -1,114 +1,41 @@
-// Chapter 59 cards: recall prompts, examples, exercises and quiz.
+// Chapter 67 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 67, 67, 67.
 
 export const prompts = {
-  'program-list': {
-    q: 'What does Drip’s parser hand to the interpreter for a whole program?',
-    a: 'A list (array) of statement trees, in source order. The interpreter runs them one by one.',
-  },
   'stop-midway': {
     q: 'Statement 5 of a 7-statement Drip program causes a runtime error. What happens to the output of statements 1 to 4, and to statements 6 and 7?',
     a: 'Output from 1 to 4 stays, because those statements really ran. Statements 6 and 7 never run.',
-  },
-  'statement-no-value': {
-    q: 'Why does no statement hand back a value, when every expression does?',
-    a: 'Statements are run only for their side effects (output, variables), not for a value.',
   },
   'expr-stmt-drop': {
     q: 'What does the Drip statement `1 + 2;` do?',
     a: 'It evaluates `1 + 2` and throws the value away. Nothing visible happens.',
   },
-  'global-what': {
-    q: 'What is a **global variable** in Drip, and where does the tree-walker keep it?',
-    a: 'A variable declared at the top level, outside any block. It lives in one table (a `Map` from names to values) shared by the whole program.',
-  },
   'let-vs-assign': {
     q: 'In Drip, what is the difference between `let a = 1;` and `a = 1;` when `a` does not exist yet?',
     a: '`let` defines `a`. The assignment is a runtime error, `undefined variable \'a\'`: assignment only overwrites an existing variable.',
-  },
-  'assign-returns': {
-    q: 'What does `print a = 3;` print (when `a` exists), and why?',
-    a: '`3`. Assignment is an expression whose value is the value assigned.',
-  },
-  'use-before-let': {
-    q: 'Why is `print a; let a = 1;` an error in Drip, and what kind?',
-    a: 'A runtime error: when the `print` runs, the `let` has not run yet, so `a` is not in the table.',
-  },
-  'none-default': {
-    q: 'What value does `a` hold after `let a;`?',
-    a: '`none` (held as `null` in the interpreter).',
   },
   'env-what': {
     q: 'What two things does a Drip environment hold?',
     a: 'A table (a `Map`) from names to values, and a reference to its enclosing (parent) environment.',
   },
-  'env-parent': {
-    q: 'Which environment has no parent?',
-    a: 'The globals. Their `enclosing` is `null`.',
-  },
-  'define-current': {
-    q: 'Where does `let x = 1;` put `x`?',
-    a: 'In the current environment only. `define` never looks at parents.',
-  },
   'lookup-order': {
-    q: 'In what order does `get` look for a name?',
+    q: 'In an interpreter whose environments each hold a table and a parent, in what order is a variable’s name looked up?',
     a: 'The current environment first, then its parent, then that one’s parent, out to the globals. It stops at the first match.',
-  },
-  'undefined-end': {
-    q: 'What happens when a lookup walks past the globals without finding the name?',
-    a: 'It throws a runtime error: `runtime error: undefined variable \'name\'`',
   },
   'shadow-what': {
     q: 'What does it mean for an inner variable to *shadow* an outer one?',
     a: 'It has the same name, so lookups inside its block find it first and the outer one can’t be reached by name there.',
   },
-  'assign-vs-let': {
-    q: 'Inside a block, what is the difference between `n = 2;` and `let n = 2;` when an outer `n` exists?',
-    a: '`n = 2;` walks out and changes the outer `n`. `let n = 2;` makes a new `n` in the block that shadows it.',
-  },
-  'block-new-env': {
-    q: 'What is the parent of the environment a block statement creates?',
-    a: 'Whatever environment was current when the block started.',
-  },
-  'finally-why': {
-    q: 'Why does `executeBlock` restore the old environment in a `finally`?',
-    a: 'So it is restored even when something is thrown out of the block, such as a runtime error.',
-  },
   'if-truthy': {
     q: 'Does `if 0 { print "yes"; }` print anything in Drip? Why?',
     a: 'Yes, `yes`: `if` uses Drip’s truthiness, and only `none` and `false` are falsey.',
-  },
-  'else-if-nested': {
-    q: 'How does the parser represent `if a { } else if b { } else { }`?',
-    a: 'As an `if` whose `else` branch is a second `if` (with its own `else`). There is no separate else-if node.',
-  },
-  'completion-why': {
-    q: 'Why does `execute` hand back a completion value (`NORMAL`, `BREAK`, `CONTINUE`, `RETURN`)?',
-    a: 'So a `break` or `continue` buried inside ifs and blocks can stop each enclosing statement list on the way out, until the innermost loop handles it.',
-  },
-  'continue-skips': {
-    q: 'In a `while` loop, what does `continue` skip, and what runs next?',
-    a: 'It skips the rest of the body for this time round; next, the condition is tested again.',
-  },
-  'break-outside': {
-    q: 'What happens with a `break;` that is not inside any loop?',
-    a: 'A compile error, `\'break\' outside a loop`, so nothing runs (exit code 65).',
   },
   'desugar-what': {
     q: 'What is **desugaring**?',
     a: 'Rewriting a construct in terms of simpler constructs the language already has, so the rest of the implementation handles fewer kinds of node.',
   },
-  'for-end-once': {
-    q: 'In `for i in 0..n { n = 1; print i; }` with `n` at 3, how many times does the body run?',
-    a: 'Three: the end of the range is evaluated once, before the loop starts, so changing `n` inside does not matter.',
-  },
-  'continue-trap': {
-    q: 'Rewrite `for i in a..b` as a `while` with `k += 1` at the end of the body. What goes wrong if the body has a `continue`?',
-    a: '`continue` jumps back to the test and skips `k += 1`, so `k` never grows and the loop never ends.',
-  },
   'logical-not-binary': {
-    q: 'Why can’t `&&` and `||` be ordinary binary nodes in the tree-walker?',
+    q: 'In a tree-walking interpreter whose binary nodes evaluate both children first, why can’t `&&` and `||` be ordinary binary nodes?',
     a: 'A binary node evaluates both children first, but `&&` and `||` must skip the right side when the left already decides the answer.',
   },
 };
@@ -156,6 +83,7 @@ print total;`,
 
 export const exercises = {
   'mini-run': {
+    optional: true,
     title: 'A tiny interpreter with state',
     prompt: 'Finish `run(prog)`. `prog` is a list of statements: `{ kind: \'let\', name, init }` (`init` may be `null`), `{ kind: \'print\', expr }` and `{ kind: \'expr\', expr }`. Expressions are `num` and `add` (already done), `{ kind: \'var\', name }`, and `{ kind: \'assign\', name, op, value }` where `op` is `\'=\'` or `\'+=\'`. Keep globals in the `Map`, push each printed value onto `out`, and return `out`. Using or assigning a name that is not defined throws `Error("undefined variable \'NAME\'")`. Follow Drip: `let` without an initialiser gives `null` (Drip’s `none`), `let` may redefine a global, `x += e` adds to the old value, and an assignment returns the value it stored.',
     starter: `function run(prog) {
@@ -701,6 +629,7 @@ print x;`,
     ],
   },
   'mini-flow': {
+    optional: true,
     title: 'if, while, break, continue, && and ||',
     prompt: 'Finish this small interpreter. Expressions: `num`, `var`, `add`, `lt`, `eq` and `boom` (which throws) are done; add `{ kind: \'logical\', op, left, right }` with `op` `\'&&\'` or `\'||\'`, which short-circuits and returns an operand. Statements: `print` and `set` are done; add `{ kind: \'if\', cond, then, else }` (`then` is a list of statements, `else` a list or `null`), `{ kind: \'while\', cond, body }`, `{ kind: \'break\' }` and `{ kind: \'continue\' }`. Every `execute` returns a completion string, `\'normal\'`, `\'break\'` or `\'continue\'`, and `block(list)` runs a list, stopping at the first statement that does not finish normally and returning its completion. Use Drip truthiness (`truthy`).',
     starter: `function run(prog) {
@@ -1054,78 +983,6 @@ print "done";`,
 
 export const quiz = [
   {
-    q: `What does this Drip program print?
-\`\`\`
-let x = 1;
-x += 1;
-print x;
-x = x * 10;
-\`\`\``,
-    options: [
-      {
-        t: '`1`',
-        why: '`x += 1;` runs before the `print`, so `x` is already 2.',
-      },
-      {
-        t: '`2`',
-        correct: true,
-        why: 'Statements run in order. The `print` sees `x` after the first assignment, and the last line runs after the `print`.',
-      },
-      {
-        t: '`20`',
-        why: 'The `x * 10` assignment comes after the `print`, so it cannot affect what was printed.',
-      },
-      {
-        t: 'Nothing: assignments make no output',
-        why: 'The `print` statement does make output.',
-      },
-    ],
-  },
-  {
-    q: 'What happens when Drip runs `count = 1;` and no `count` has been declared?',
-    options: [
-      {
-        t: 'It creates a global `count`',
-        why: 'Some languages do that. In Drip only `let` creates a variable.',
-      },
-      {
-        t: 'A compile error, because `let` is missing',
-        why: '`count = 1;` is a valid expression statement; the problem is only found when it runs.',
-      },
-      {
-        t: 'Nothing happens',
-        why: 'Drip does not silently ignore it.',
-      },
-      {
-        t: 'A runtime error: `undefined variable \'count\'`',
-        correct: true,
-        why: 'Assignment needs the name to exist, and the table has no `count`. Exit code 70.',
-      },
-    ],
-  },
-  {
-    q: 'Which statement has **no** visible side effect?',
-    options: [
-      {
-        t: '`5 * 2;`',
-        correct: true,
-        why: 'An expression statement evaluates `5 * 2` and drops the 10. Nothing is printed and no variable changes.',
-      },
-      {
-        t: '`print 5 * 2;`',
-        why: 'It writes `10` to the output.',
-      },
-      {
-        t: '`let n = 5 * 2;`',
-        why: 'It creates the variable `n`.',
-      },
-      {
-        t: '`n += 2;` (with `n` defined)',
-        why: 'It changes the value of `n`.',
-      },
-    ],
-  },
-  {
     q: 'What does `let a = 1; let b = a = 7; print a; print b;` print?',
     options: [
       {
@@ -1148,59 +1005,7 @@ x = x * 10;
     ],
   },
   {
-    q: 'A program prints two lines, then line 3 is `print zz;` where `zz` was never declared, then line 4 prints a third line. What is the output?',
-    options: [
-      {
-        t: 'Only the error',
-        why: 'That would be a compile error. Using an unknown name parses fine, so lines 1 and 2 run.',
-      },
-      {
-        t: 'The two lines, then `runtime error: undefined variable \'zz\'` and `at line 3 in script`',
-        correct: true,
-        why: 'The statement list runs in order and stops at the runtime error. Line 4 never runs.',
-      },
-      {
-        t: 'The two lines, `none`, and the third line',
-        why: 'An unknown name is an error, not `none`; `none` is for a declared variable with no initialiser.',
-      },
-      {
-        t: 'All three lines, plus a warning',
-        why: 'Drip does not warn and carry on. The runtime error stops the program.',
-      },
-    ],
-  },
-  {
     q: `What does this Drip program print?
-\`\`\`
-let a = 1;
-{
-  let a = 2;
-  print a;
-}
-print a;
-\`\`\``,
-    options: [
-      {
-        t: '`2` then `2`',
-        why: 'That is what one global table would do. With environments, the inner `let` makes a separate `a`.',
-      },
-      {
-        t: '`2` then `1`',
-        correct: true,
-        why: 'The inner `a` shadows the outer one inside the block and disappears at `}`.',
-      },
-      {
-        t: '`1` then `1`',
-        why: 'Inside the block, the lookup finds the inner `a` first, which is 2.',
-      },
-      {
-        t: 'A compile error: `a` is declared twice',
-        why: 'The two declarations are in different scopes, so there is no clash; only two `let a` in the same block are refused.',
-      },
-    ],
-  },
-  {
-    q: `What does this print?
 \`\`\`
 let n = 1;
 {
@@ -1229,72 +1034,6 @@ print n;
     ],
   },
   {
-    q: 'Which environment does `define` write to?',
-    options: [
-      {
-        t: 'The current environment, always',
-        correct: true,
-        why: '`define` never looks at parents. That is what lets an inner `let` shadow an outer variable.',
-      },
-      {
-        t: 'The nearest environment that already has the name',
-        why: 'That is `assign`.',
-      },
-      {
-        t: 'The globals',
-        why: 'Only when the globals are the current environment.',
-      },
-      {
-        t: 'A new environment it creates',
-        why: 'Environments are created by blocks (and later, calls), not by `define`.',
-      },
-    ],
-  },
-  {
-    q: 'A lookup for `b` starts in block 2, whose parent is block 1, whose parent is the globals. Only the globals have `b`. How many tables are checked?',
-    options: [
-      {
-        t: 'One',
-        why: 'Block 2 doesn’t have `b`, so the walk must continue.',
-      },
-      {
-        t: 'Two',
-        why: 'Block 1 doesn’t have it either.',
-      },
-      {
-        t: 'Three',
-        correct: true,
-        why: 'Block 2, block 1, then the globals, where it is found.',
-      },
-      {
-        t: 'Every environment ever created',
-        why: 'Only the chain of parents from the current one is searched. Discarded environments aren’t on it.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `executeBlock` use `try { ... } finally { this.env = previous; }`?',
-    options: [
-      {
-        t: 'To catch runtime errors and print them',
-        why: 'There is no catch. The error still travels on; `finally` only does clean-up on the way.',
-      },
-      {
-        t: 'To make blocks run faster',
-        why: '`finally` is about correctness, not speed.',
-      },
-      {
-        t: 'Because JavaScript requires `try` around loops',
-        why: 'It doesn’t.',
-      },
-      {
-        t: 'So the previous environment is restored even if a statement throws',
-        correct: true,
-        why: 'Without it, a throw would leave `this.env` pointing at the inner block’s environment.',
-      },
-    ],
-  },
-  {
     q: 'In the program `{ let z = 1; } print z;` what happens?',
     options: [
       {
@@ -1317,7 +1056,7 @@ print n;
     ],
   },
   {
-    q: `What does this print?
+    q: `What does this Drip program print?
 \`\`\`
 let n = 0;
 while n < 5 {
@@ -1348,28 +1087,6 @@ while n < 5 {
     ],
   },
   {
-    q: 'How does a `break` inside an `if` inside a loop body reach the loop?',
-    options: [
-      {
-        t: 'It throws a JavaScript exception that the loop catches',
-        why: 'Some interpreters do that, but the companion returns a completion value instead.',
-      },
-      {
-        t: 'The `if` checks whether it is inside a loop',
-        why: 'The `if` knows nothing about loops; it only passes its branch’s completion up.',
-      },
-      {
-        t: 'Each `execute` returns `BREAK`, and every enclosing statement list stops and passes it up until the loop handles it',
-        correct: true,
-        why: '`executeBlock` stops at the first completion that is not `NORMAL` and returns it, so the value climbs to the innermost loop.',
-      },
-      {
-        t: 'The parser moves the `break` to the end of the loop',
-        why: 'The parser leaves `break` where it is; the interpreter handles it while running.',
-      },
-    ],
-  },
-  {
     q: 'What does `print none || 0;` print in Drip?',
     options: [
       {
@@ -1388,50 +1105,6 @@ while n < 5 {
         t: '`0`',
         correct: true,
         why: 'The left side is falsey, so the result is the right side, `0`.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the companion keep a real `for` node instead of desugaring `for i in a..b` into a `while` loop?',
-    options: [
-      {
-        t: 'A naive rewrite gets `continue` wrong (it skips the counter step), needs hidden variables, and must still give each time round a fresh `i`',
-        correct: true,
-        why: 'Running `for` directly makes all three behaviours easy to get right.',
-      },
-      {
-        t: 'Because `while` is slower than `for` in JavaScript',
-        why: 'Speed is not the reason; correctness is.',
-      },
-      {
-        t: 'Because desugaring is not allowed in a tree-walking interpreter',
-        why: 'It is allowed: `else if` is desugared by the companion’s parser.',
-      },
-      {
-        t: 'Because Drip has no `while` loop',
-        why: 'It does; the rewrite would use it.',
-      },
-    ],
-  },
-  {
-    q: 'What does `print false && missing;` do when `missing` was never declared?',
-    options: [
-      {
-        t: 'A runtime error: `undefined variable \'missing\'`',
-        why: 'The right side is never evaluated, so the name is never looked up.',
-      },
-      {
-        t: 'Prints `false`',
-        correct: true,
-        why: '`&&` stops at the falsey left side and returns it.',
-      },
-      {
-        t: 'A compile error',
-        why: 'An unknown global is only noticed when it is looked up while running.',
-      },
-      {
-        t: 'Prints `none`',
-        why: 'The result is the left operand, `false`.',
       },
     ],
   },
