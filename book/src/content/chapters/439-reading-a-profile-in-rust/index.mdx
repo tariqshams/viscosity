@@ -124,8 +124,9 @@ The checked map goes into `PlanOptions::profile` as a
 `HashMap<String, f64>` of `maxLength` by name, and the size rung of
 *Sizes and thresholds in Rust* looks the collection up by its name,
 `opts.profile.as_ref().and_then(|p| p.get(&c.name))`. A hit wins over
-the estimate, in either direction, and a measured size is always
-worded "about ... (measured)". Nothing else in the planner reads the
+the estimate, in either direction, and a measured size is worded "about
+... (measured)" in a refusal and "(measured by profiling)" in a
+transformed collection's reasons. Nothing else in the planner reads the
 profile: it is consulted after every safety check, so it can only move
 a collection across the size threshold, never make an unsafe rewrite
 look safe.
@@ -204,7 +205,9 @@ name**, and it can only change the size threshold's verdict.
 <Callout kind="engine" label="Under the hood">
 What tests this? When this chapter was first written, `parity.rs`
 checked only the Python refusal message, and no fixture ran
-`--profile`. Now four profiles in `engine/rust/tests/profiles` run
+`--profile`, so the port's refusal printed "about 10 (measured)
+elements" where the reference wrote "about 10 elements (measured)"
+and every test passed (README bug 20). Now four profiles in `engine/rust/tests/profiles` run
 through both the library and `--profile` in
 `profiled_output_equals_typescript_output`; `profile_cli.rs` (4 tests,
 which all passed in my run of `cargo test --workspace`, 77 tests in

@@ -3,7 +3,7 @@
 export const prompts = {
   'pg-same-finder': {
     q: 'How does `instrument` in `profile.rs` decide which arrays to wrap?',
-    a: 'The way the compiler does: `JsPlugin.lower`, then `analyze`, then each collection’s initializer span.',
+    a: 'The way the compiler does: `JsPlugin.lower`, then `analyze`, then each collection’s initialiser span.',
   },
   'pg-reverse': {
     q: 'Why are the edits sorted with `Reverse(start)` before they are applied?',
@@ -38,9 +38,9 @@ export const prompts = {
 export const exercises = {
   instrument: {
     lang: 'rust',
-    title: 'Wrap the initializers',
+    title: 'Wrap the initialisers',
     prompt:
-      'Write the edit loop of `instrument`. `spans` lists `(start, end, name)` for each collection’s initializer, as byte offsets into `src`, in no particular order (they never overlap). Return `src` with each span replaced by `__vsc_track("name", <the span’s text>)`. Quote the name with `{:?}`.',
+      'Write the edit loop of `instrument`. `spans` lists `(start, end, name)` for each collection’s initialiser, as byte offsets into `src`, in no particular order (they never overlap). Return `src` with each span replaced by `__vsc_track("name", <the span’s text>)`. Quote the name with `{:?}`.',
     starter: `// Wraps each span src[start..end] (byte
 // offsets) in __vsc_track("name", ...).
 fn instrument(
@@ -125,7 +125,7 @@ fn no_spans_no_change() {
       'Sort with `sort_by_key(|e| std::cmp::Reverse(e.0))`: the edit furthest into the text goes first, so it can’t move any span that is still to do.',
       'In the loop, build the wrapper from `&out[start..end]` with `format!("__vsc_track({:?}, {})", name, ...)`, then `out.replace_range(start..end, &w)`.',
     ],
-    walkthrough: `**How to think about it.** This is the edit loop of \`instrument\` in \`engine/rust/crates/cli/src/profile.rs\`. Try two spans by hand on \`const a = []; const b = [];\`: \`a\`'s \`[]\` is at bytes 10..12 and \`b\`'s at 23..25. Wrap \`a\` first and it becomes \`__vsc_track("a", [])\`, 18 bytes longer, so \`b\`'s \`[]\` is now at 41..43, and cutting at 23..25 would cut the wrong text. Wrap \`b\` first and \`a\`'s offsets haven't moved at all. So the whole exercise is "apply the edits from the end of the text backwards".
+    walkthrough: `**How to think about it.** This is the edit loop of \`instrument\` in \`engine/rust/crates/cli/src/profile.rs\`. Try two spans by hand on \`const a = []; const b = [];\`: \`a\`'s \`[]\` is at bytes 10..12 and \`b\`'s at 24..26. Wrap \`a\` first and it becomes \`__vsc_track("a", [])\`, 18 bytes longer, so \`b\`'s \`[]\` is now at 42..44, and cutting at 24..26 would cut the wrong text. Wrap \`b\` first and \`a\`'s offsets haven't moved at all. So the whole exercise is "apply the edits from the end of the text backwards".
 
 **The solution, line by line.**
 

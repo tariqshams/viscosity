@@ -287,11 +287,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'Before the first crates.io release, what did `cargo package -p viscosity-core` do in the repository?',
+    q: 'Once the path dependencies had versions, but before the first crates.io release, what did `cargo package -p viscosity-core` do?',
     options: [
       { t: 'Built a `.crate` file and verified it, ready to upload', why: 'Not on its own: the verifying build looked for `viscosity-vir` on crates.io, where it wasn’t yet.' },
       { t: 'Uploaded the crate to crates.io', why: '`cargo package` never uploads. That is `cargo publish`.' },
-      { t: 'Stopped: `viscosity-vir` was a path dependency without a version', why: 'That was the very first result. crates.io needs a version requirement, and the workspace now gives one.' },
+      { t: 'Stopped: `viscosity-vir` was a path dependency without a version', why: 'That was the result before the versions were added; by now the workspace gives one.' },
       { t: 'Packed it, then failed to verify it: `viscosity-vir` wasn’t on crates.io yet', correct: true, why: 'The verifying build resolves dependencies from crates.io. `cargo package --workspace` packs `viscosity-vir` first and verifies against that instead.' },
     ],
   },

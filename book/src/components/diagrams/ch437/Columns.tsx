@@ -1,6 +1,6 @@
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 436b: where `ps` starts on line 9 of this chapter's fr.js,
+// Chapter 437: where `ps` starts on line 9 of this chapter's fr.js,
 // `const t = "🎉"; f(t, ps[2]);`, counted three ways. A small rustc
 // program here printed 23 (UTF-8 bytes, Rust's str::find), 21 (UTF-16 code
 // units, encode_utf16().count()) and 20 (code points, chars().count()).

@@ -1,6 +1,6 @@
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 448b: the line terminators ECMAScript counts, and so the ones
+// Chapter 449: the line terminators ECMAScript counts, and so the ones
 // LineIndex in crates/frontend-js/src/lines.rs records: \n, \r not
 // followed by \n, \r\n (one break, recorded after the \n), U+2028 and
 // U+2029. Each new line starts just after its break.

@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 454 (second half, "Parsing arguments by hand"): parse_args and main in engine/rust/crates/cli/src/main.rs,
+// Chapter 455 ("Parsing arguments by hand"): parse_args and main in engine/rust/crates/cli/src/main.rs,
 // one argument at a time, on
 //   viscosity build a.js b.js -o out/ --mode fast
 // The messages are the CLI's own (run by the author with the release
@@ -17,7 +17,7 @@ const STATES: S[] = [
   { at: [0], arm: 'cmd = argv[0]', f: { cmd: 'build', files: [] }, note: 'The first word is the command. parse_args stores it without checking it: run() checks it later and reports “unknown command” as a usage error.' },
   { at: [1], arm: '_ if !a.starts_with(\'-\')', f: { cmd: 'build', files: ['a.js'] }, note: 'Anything that does not start with a dash is a file. The match has no arm for it by name, so the guard arm near the end catches it.' },
   { at: [2], arm: '_ if !a.starts_with(\'-\')', f: { cmd: 'build', files: ['a.js', 'b.js'] }, note: 'A second file. Flags and files can come in any order, because each word is looked at on its own.' },
-  { at: [3, 4], arm: '"-o" | "--out" => next()?', f: { cmd: 'build', files: ['a.js', 'b.js'], out: 'out/' }, note: 'A flag that takes a value. The closure next() moves i on by one and returns that word, or a usage error “-o needs a value” if the line ended.' },
+  { at: [3, 4], arm: '"-o" | "--out" => next_os()?', f: { cmd: 'build', files: ['a.js', 'b.js'], out: 'out/' }, note: 'An option, which takes a value. The closure next_os() moves i on by one and returns that word, or a usage error “-o needs a value” if the line ended.' },
   { at: [5, 6], arm: '"--mode" => match next()?', f: { cmd: 'build', files: ['a.js', 'b.js'], out: 'out/' }, err: true, note: '--mode takes a value too, and only two are allowed. “fast” is neither, so parse_args returns Err(CliError::Usage("--mode must be auto or opt-in")) and stops.' },
   { at: [5, 6], arm: 'Err(CliError::Usage(e))', f: { cmd: 'build', files: ['a.js', 'b.js'], out: 'out/' }, err: true, exit: true, note: 'main matches on the error. A usage error prints “viscosity: ” and the message, a blank line and the help, all on stderr, and the process exits with status 1. Nothing was compiled.' },
 ];

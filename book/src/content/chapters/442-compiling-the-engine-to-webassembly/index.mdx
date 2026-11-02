@@ -3,7 +3,7 @@ n: 442
 day: 111
 part: XIII
 title: 'Compiling the engine to WebAssembly'
-tagline: 'The chapter on Rust and WebAssembly got the Rust engine running in Node once, by hand. Shipping it takes a repeatable build: two kinds of glue, a version check, an optimizer, and a file small enough to download. Here is that build, and what each step does to 1.8 MB of WebAssembly.'
+tagline: 'The chapter on Rust and WebAssembly got the Rust engine running in Node once, by hand. Shipping it takes a repeatable build: two kinds of glue, a version check, an optimiser, and a file small enough to download. Here is that build, and what each step does to 1.8 MB of WebAssembly.'
 objectives:
   - Say what wasm-pack automates, and why Viscosity does the same steps in its own build.mjs.
   - Follow the .wasm through cargo, wasm-bindgen and wasm-opt, and say what each step removes.
@@ -35,7 +35,7 @@ interoperability and for publishing a package to npm": it compiles the
 crate, runs wasm-bindgen, and writes a `pkg` folder holding the
 `.wasm`, the JavaScript wrapper, your README and a
 `package.json`<Cite id="wasm-pack-book" />. For release builds it also
-runs wasm-opt, an optimizer from the Binaryen
+runs wasm-opt, an optimiser from the Binaryen
 project<Cite id="wasm-pack-book" /><Cite id="binaryen-readme" />.
 
 <Analogy title="a flat-pack wardrobe">
@@ -52,7 +52,7 @@ unusual wall writes its steps down in its own script.</span>
 **wasm-pack** builds an npm package from a Rust crate. `wasm-pack build`
 compiles to WebAssembly, runs **wasm-bindgen** for one `--target`
 (`bundler` by default, or `nodejs`, `web`, `no-modules`, `deno`),
-optimizes with **wasm-opt** in release builds, and writes `pkg/` with a
+optimises with **wasm-opt** in release builds, and writes `pkg/` with a
 generated `package.json`<Cite id="wasm-pack-book" />.
 </Callout>
 
@@ -107,9 +107,9 @@ wasm-opt -O3 <features> f -o f
 ```
 
 Step 3 is optional: with no wasm-opt, the build carries on and says
-so, and the result works, only larger. The wasm-opt it looks for
-first is an npm devDependency, so `npm install` is all a contributor
-needs.
+so, and the result works, only larger. Unless `$WASM_OPT` names one,
+the wasm-opt it looks for first is an npm devDependency, so `npm
+install` is all a contributor needs.
 
 <Prompts ids={['why-build-mjs']} />
 
@@ -258,7 +258,7 @@ lists its features in its own `target_features` custom section.
 
 ## What you learned
 
-- **wasm-pack** compiles, binds, optimizes and packages a crate for
+- **wasm-pack** compiles, binds, optimises and packages a crate for
   npm, one target at a time; `build.mjs` does the same steps for two.
 - Cargo's file carries **describe functions** for the CLI, which runs
   them, writes the glue and removes them; wasm-opt then drops the

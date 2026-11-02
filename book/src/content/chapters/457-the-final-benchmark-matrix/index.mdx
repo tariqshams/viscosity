@@ -3,7 +3,7 @@ n: 457
 day: 115
 part: XIV
 title: 'The final benchmark matrix'
-tagline: 'One script, one evening, one machine: the end-to-end programs on two JavaScript engines, the compiler in two languages, and Drip three ways. Most of it is what you would predict; one row is not, and it says something about every promise a layout optimizer can make.'
+tagline: 'One script, one evening, one machine: the end-to-end programs on two JavaScript engines, the compiler in two languages, and Drip three ways. Most of it is what you would predict; one row is not, and it says something about every promise a layout optimiser can make.'
 objectives:
   - Read the matrix’s three sections and say what each one compares, and how each cell was measured.
   - Compute a speed-up and a geometric mean from the results file, and say why rounding each ratio first can move the last digit.
@@ -226,8 +226,8 @@ run, `results/e2e-node-2026-10-31.json`: Node only, a median of three
 runs, made before the fuzzer fixes of Part XIII. One of those fixes
 changed heat's compiled code: a field write whose right-hand side may
 throw now stores late, through a small helper (`__vsc_set`), so an error
-comes out in the original's order (the Rust CLI here emits it three
-times in heat). The matrix measured the code as it is now; the two files
+comes out in the original's order (in heat, the Rust CLI here emits
+one such store, for the write to `next`). The matrix measured the code as it is now; the two files
 used different methods too, so compare their shapes, never their cells.
 </Callout>
 

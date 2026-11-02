@@ -1,6 +1,6 @@
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 450b: speed-up of 4 threads over 1 for 396 files, from
+// Chapter 451: speed-up of 4 threads over 1 for 396 files, from
 // engine/rust/results/parallel-build-2026-10-31.md (best of 11 runs on a
 // shared 4-vCPU VM). The dashed line is the ideal, 4x.
 const ROWS: { label: string; x: number; note: string }[] = [

@@ -1,4 +1,4 @@
-// Chapter 452b cards. Keys are stable ids: never rename them.
+// Chapter 453 cards. Keys are stable ids: never rename them.
 
 const SOL = `// The fixtures parity.rs expects for
 // each program (name, ext): its code
@@ -99,6 +99,7 @@ fn main() {
         ("Test", true),
         ("Merge new references", true),
         ("Build", true),
+        ("Check site links", true),
         ("Smoke test", true),
     ];
     println!("book");

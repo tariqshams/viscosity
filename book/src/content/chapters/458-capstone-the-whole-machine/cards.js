@@ -42,7 +42,7 @@ export const prompts = {
   },
   'm-stages': {
     q: 'Name the stages one program passes through in the Rust engine, in order.',
-    a: 'Parse (oxc), lower to VIR in SSA form, analyze (collections, shapes, escapes, access patterns, sizes and bounds), plan (the cost model), emit, explain.',
+    a: 'Parse (oxc), lower to VIR in SSA form, analyse (collections, shapes, escapes, access patterns, sizes and bounds), plan (the cost model), emit, explain.',
   },
   'm-qs': {
     q: 'In the chapter’s program, why is `qs` kept as an array of objects?',

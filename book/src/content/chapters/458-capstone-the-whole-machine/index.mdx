@@ -3,7 +3,7 @@ n: 458
 day: 115
 part: XIV
 title: 'Capstone: the whole machine'
-tagline: 'You started with a function that doubles a number, and you finish with an optimizing compiler built twice, in two languages, checked byte for byte and published. Here is the whole book in one picture, one program through every stage of the machine, what is still open, and where you might take it next.'
+tagline: 'You started with a function that doubles a number, and you finish with an optimising compiler built twice, in two languages, checked byte for byte and published. Here is the whole book in one picture, one program through every stage of the machine, what is still open, and where you might take it next.'
 objectives:
   - Say what each part of the book built or taught, and how the two tracks fit together.
   - Trace one program through the Rust engine, naming the stage and the chapter behind each step of its output.
@@ -45,7 +45,7 @@ You have learned to drive not when you can repeat the route of your test,
 but when you can drive a town you have never visited, because you know
 what the signs mean and what to check at each junction.
 <span slot="breaks">Roads come with signs. A new language or a new
-optimization often does not, and part of the skill is writing the tests
+optimisation often does not, and part of the skill is writing the tests
 that will act as the signs.</span>
 </Analogy>
 
@@ -115,13 +115,13 @@ it is trimmed only to fit:
 Read the stages against the book. oxc parsed the source (*Parsing with
 oxc*), and the plugin lowered it to VIR in SSA form, where line 6's
 `for…of` became a phi, a length check, an `index.get`, two `field.get`s
-and a `field.set` (*Lowering oxc's AST to VIR*). The analyses saw only
+and a `field.set` (*Lowering oxc’s AST to VIR*). The analyses saw only
 VIR: two collections, three numeric fields each, and an escape for `qs`
 when `qs[0]` was handed to `console.log` (*Escape and alias analysis in
 Rust*). The cost model wrote its reasons as it decided (*The cost model in
 Rust*), the emitter turned `ps` into three `Float64Array` columns (*SoA
 code generation in Rust*), and `explain --frames` put carets under
-`qs[0]` (*explain in Rust*). Both programs print `509500 { x: 0, vx: 1,
+`qs[0]` (*explain in Rust*, *Code frames in Rust*). Both programs print `509500 { x: 0, vx: 1,
 hp: 3 }`, and the TypeScript CLI prints the same report, byte for byte.
 
 Run it yourself, on the Rust engine compiled to WebAssembly (the toggle
@@ -222,7 +222,7 @@ numbers twenty-two bugs: ten in the TypeScript reference found while
 porting, five found by the fuzzer in both engines, and seven found while
 writing this book. Five of them were soundness bugs, where a compiled
 program would have behaved differently from its original; every one is
-fixed in both engines and has a corpus program that keeps it fixed.
+fixed, and has a test (for most, a corpus program) that keeps it fixed.
 </Callout>
 
 ## Your turn
@@ -251,7 +251,7 @@ checker.
 - **Grow the subset.** Pick one refusal from *The research frontier*,
   prove it safe, and let the fuzzer tell you whether you were right.
 - **Build your own.** You now know every layer from the bytes to the
-  release: a language of your own, a VM, a back end, an optimizer.
+  release: a language of your own, a VM, a back end, an optimiser.
 
 ## What you learned
 
@@ -261,7 +261,7 @@ checker.
   book's Playground.
 - Every implementation is **checked against another**: the shared corpus,
   byte-identical fixtures, the fuzzer and original-against-compiled runs.
-- One program passes through **parse, lower, analyze, plan, emit and
+- One program passes through **parse, lower, analyse, plan, emit and
   explain**, and each line of its output traces back to a chapter.
 - What is **open** is written down, and **mastery** is being able to
   build it again and to say how you would know it works.

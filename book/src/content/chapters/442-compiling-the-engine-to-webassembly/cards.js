@@ -355,7 +355,7 @@ export const quiz = [
   {
     q: 'wasm-opt cut the file from 1,759,823 to 1,373,422 bytes. Gzipped, the saving was about 33 KB. Why so much less?',
     options: [
-      { t: 'gzip undoes wasm-opt’s optimizations', why: 'Compression is lossless; it can’t undo anything. It only shrinks repetitive bytes well.' },
+      { t: 'gzip undoes wasm-opt’s optimisations', why: 'Compression is lossless; it can’t undo anything. It only shrinks repetitive bytes well.' },
       { t: 'Most of the saving was the name section, and names compress very well', correct: true, why: '257 KB of the 386 KB were function names, which are highly repetitive text.' },
       { t: 'wasm-opt makes the code larger but faster', why: 'The code section shrank too, by about 9%.' },
     ],

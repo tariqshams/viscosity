@@ -1,4 +1,4 @@
-// Chapter 450b cards. Keys are stable ids: never rename them.
+// Chapter 451 cards. Keys are stable ids: never rename them.
 
 const SOL = `// Amdahl's law, turned round. A run
 // takes t1 on one thread and tn on n

@@ -7,7 +7,7 @@ import { PARTS } from '../../../data/outline/index.js';
 //   k="parts"        how many parts
 //   k="part:III"     "chapters 63–135" for that part
 //   k="n:III"        how many chapters that part has
-//   k="track:A"      "Parts I–X, chapters 1–327" for that track
+//   k="track:A"      "Parts I–X, chapters 1–328" for that track
 //   k="trackn:A"     how many chapters that track has
 type OutlinePart = { id: string; track: string; chapters: { n: number }[] };
 const ALL = PARTS as OutlinePart[];

@@ -46,7 +46,7 @@ size, so you can see the order of events:
 step prints `✓` and a failing one prints `X` and clears the flag; once
 the flag is false, every later step is only listed with a dash. The
 book job here has one failing step, so it prints one tick, one cross,
-four dashes, and "the job is red".
+five dashes, and "the job is red".
 
 <Analogy title="security at an airport">
 Before a flight you pass several checks: a person compares your face
@@ -141,8 +141,8 @@ wasm32-unknown-unknown -p viscosity-wasm` proves the engine still
 compiles for the browser (*Compiling the engine to WebAssembly*), and
 `cargo package --workspace --no-verify --allow-dirty` proves every crate
 can still be packaged for crates.io, where all six were published at
-version 0.0.1 on 2 November. (The comment above that step in `ci.yml`
-still says "Not published, but kept publishable", which is out of date.)
+version 0.0.1 on 2 November (the comment above that step in `ci.yml`
+says so: "Published on crates.io (0.0.1), and kept publishable").
 
 <Examples of="continuous-integration">
 

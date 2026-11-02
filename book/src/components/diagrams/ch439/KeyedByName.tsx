@@ -1,6 +1,6 @@
 import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 438b: a profile is keyed by collection name. This chapter's
+// Chapter 439: a profile is keyed by collection name. This chapter's
 // two.js has a() building a ps of 1000 records and b() a ps of 10. The
 // profile `viscosity profile two.js` wrote (rustc 1.97 release build) has
 // one entry, "ps": { "maxLength": 1000 }, and with it explain reports

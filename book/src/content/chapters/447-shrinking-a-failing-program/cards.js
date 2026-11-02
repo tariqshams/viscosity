@@ -1,4 +1,4 @@
-// Chapter 446b cards. Keys are stable ids: never rename them.
+// Chapter 447 cards. Keys are stable ids: never rename them.
 
 const SOL = `// Line-based delta debugging, as in
 // fuzz.mjs: remove chunks of k lines

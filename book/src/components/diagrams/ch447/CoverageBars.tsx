@@ -1,6 +1,6 @@
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 446b: line coverage of the TypeScript engine (core and
+// Chapter 447: line coverage of the TypeScript engine (core and
 // frontend-js, without the two unused parsers), measured with c8 10.1.3
 // and NODE_V8_COVERAGE at commit c68daec when this chapter was first
 // written: lines run, of 2,614. Bars start at zero, so the plateau is

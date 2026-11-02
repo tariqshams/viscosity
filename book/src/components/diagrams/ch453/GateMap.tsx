@@ -1,6 +1,6 @@
 import { Svg, T, tok } from '../../viz/svg';
 
-// Chapter 452b: what each job of .github/workflows/ci.yml protects, from
+// Chapter 453: what each job of .github/workflows/ci.yml protects, from
 // the steps as committed. A full dot: the job checks that thing
 // directly. A ring: it relies on it (engine-rust's parity reads the
 // TypeScript engine's committed output and runs the TS engine for fuzz

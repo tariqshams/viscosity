@@ -9,7 +9,7 @@ type S = { hi: K[]; line?: string; note: string };
 
 const STATES: S[] = [
   { hi: ['src'], line: 'const ps = [];', note: 'The input is the original spawn.js. Nothing about it changes on disk; the profile run uses a copy.' },
-  { hi: ['inst'], line: 'const ps = __vsc_track("ps", []);', note: 'Rust: instrument() lowers the source with JsPlugin, runs analyze, and wraps each collection’s initializer. Edits go last-first, so earlier byte offsets stay valid.' },
+  { hi: ['inst'], line: 'const ps = __vsc_track("ps", []);', note: 'Rust: instrument() lowers the source with JsPlugin, runs analyze(), and wraps each collection’s initialiser. Edits go last-first, so earlier byte offsets stay valid.' },
   { hi: ['file'], line: 'PRELUDE + instrumented source', note: 'Rust writes instrumented.cjs to a temporary directory: the JavaScript prelude (copied from the TS CLI) followed by the edited program.' },
   { hi: ['node'], line: 'Command::new("node")', note: 'node runs it, with VSC_PROFILE_OUT in its environment, stdin empty and stdout thrown away. Rust waits for the exit status: non-zero is an error. The temporary directory is removed either way.' },
   { hi: ['json'], line: '{ "ps": { "maxLength": 20 } }', note: 'At exit the hook reads each tracked array’s length and writes JSON.stringify(p, null, 2). Node wrote it, as in the TS CLI, so the bytes are the same.' },

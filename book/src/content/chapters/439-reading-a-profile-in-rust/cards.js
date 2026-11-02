@@ -1,4 +1,4 @@
-// Chapter 438b cards. Keys are stable ids: never rename them.
+// Chapter 439 cards. Keys are stable ids: never rename them.
 
 // Shared by the exercise: a cut-down JSON entry.
 const SCAF = `use std::collections::HashMap;

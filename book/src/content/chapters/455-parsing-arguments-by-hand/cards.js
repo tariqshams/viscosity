@@ -1,4 +1,4 @@
-// Chapter 454b cards ("Parsing arguments by hand"). Keys are stable ids.
+// Chapter 455 cards ("Parsing arguments by hand"). Keys are stable ids.
 
 const PRE = `#[derive(Debug, PartialEq, Default)]
 enum Mode {

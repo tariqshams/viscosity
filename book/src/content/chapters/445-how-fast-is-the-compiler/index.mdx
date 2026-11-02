@@ -194,7 +194,7 @@ above, `start_ms + files * per_file_ms`. The loop prints the two times
 and their ratio for 1, 10, 100 and 10,000 files: 26 times, 24, 18, and
 finally 15, closing in on 1.8 / 0.12 = 15, the ratio of the per-file
 costs. Change `per_file_ms` for Rust to 0.24 (as if every file took
-twice as long) and the last line drops to about 7.5: with enough
+twice as long) and the last line drops to `8x` (7.5, rounded): with enough
 files, only the cost per file matters.
 
 With hundreds of files, the per-file cost dominates, and threads can
@@ -231,7 +231,7 @@ translation of the reference, not a rewrite for speed.
 - A CLI run is mostly **start-up**, and the first compile in a process
   is cold; ratios of milliseconds are fragile, so sum the **medians**
   and report the load.
-- With many files, start-up **amortizes**: per-file cost and threads
+- With many files, start-up **amortises**: per-file cost and threads
   decide, and the disk can cap them.
 
 <Quiz />

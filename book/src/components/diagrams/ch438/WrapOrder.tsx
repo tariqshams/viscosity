@@ -15,7 +15,7 @@ const STEPS: Step[] = [
 export default function WrapOrder() {
   let y = 6;
   return (
-    <Svg w={400} h={232} title="Two initializers wrapped last first, so the earlier byte offsets never move">
+    <Svg w={400} h={232} title="Two initialisers wrapped last first, so the earlier byte offsets never move">
       {STEPS.map((s, k) => {
         const top = y;
         const h = 22 + s.lines.length * 16;

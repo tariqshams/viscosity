@@ -176,7 +176,12 @@ and every internal entry now reads like `viscosity-vir = { path =
 `cargo package --list` for `viscosity-vir` showed no licence text,
 because `crates/vir` had no LICENSE file, and the MIT licence asks for
 its notice to be "included in all copies or substantial portions of the
-Software". Each crate folder has a LICENSE now.
+Software". Each crate folder has a LICENSE now. One catch remained
+before the first upload: `cargo package -p viscosity-core` on its own
+packed the crate but failed to verify it ("no matching package named
+`viscosity-vir` found"), because the verifying build looks for
+dependencies on crates.io; `--workspace` packs `viscosity-vir` first and
+verifies against that, which is why the script's dry run uses it.
 
 On the npm side, `@viscosity/cli` is one esbuild bundle with no runtime
 dependencies, plus `LICENSE` and the notices of the three packages bundled

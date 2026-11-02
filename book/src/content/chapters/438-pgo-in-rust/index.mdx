@@ -94,7 +94,7 @@ records its own sizes. It starts the way the compiler does,
 `JsPlugin.lower(source)` and then `analyze`, so it finds exactly the
 collections the planner will later ask about (a syntax error becomes
 the `Err` string the CLI prints, through `map_err(...)?`). For each
-collection it takes the byte span of its initializer, such as `[]`,
+collection it takes the byte span of its initialiser, such as `[]`,
 into a list of `(start, end, name)` edits, and then (rewrapped):
 
 ```rust
@@ -123,7 +123,7 @@ code generation in Rust*. `replace_range` edits the `String` in place,
 and the offsets are UTF-8 bytes from oxc, which is what a `String` is
 indexed by. The name is quoted with `serde_json`, so it is always a
 valid JavaScript string literal, and the wrapper keeps the original
-initializer as its second argument.
+initialiser as its second argument.
 
 <Figure caption="instrument on a program with two collections: the later span is wrapped first, so the earlier one's offsets are still right." takeaway="Applying edits last first keeps every byte offset valid.">
   <WrapOrder />
@@ -263,7 +263,7 @@ than Node writes it): `ps` ended with its 2 elements and `qs` with the
 
 <Callout kind="definition">
 **PGO in Rust** starts with `viscosity profile`: `instrument` finds the
-candidate collections as the compiler does, **wraps each initializer**
+candidate collections as the compiler does, **wraps each initialiser**
 in `__vsc_track(...)` with edits applied **last first**, and prepends a
 JavaScript **prelude** shared with the TypeScript CLI; `profile` runs
 the result with **`node`** through `std::process::Command`, with a
@@ -281,7 +281,7 @@ both engines.
 ## What you learned
 
 - **`instrument`** finds collections the way the compiler does and wraps
-  each initializer in `__vsc_track(...)`, applying edits **last first**
+  each initialiser in `__vsc_track(...)`, applying edits **last first**
   so the byte offsets stay valid.
 - The JSON is written by **Node**, from a prelude copied from the
   TypeScript CLI, so it is **byte-identical**; Rust only starts `node`

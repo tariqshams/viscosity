@@ -189,7 +189,7 @@ fn behaviour_is_checked_even_if_rust_fails() {
 
 **Common wrong attempts.**
 
-- *Comparing the error messages.* \`if ts != rs\` on two \`Err\`s, or comparing the strings, fails on every syntax error, because oxc and acorn word their messages differently ("Identifier directly after number" against "Invalid characters after number"). That is why the fuzzer compares errors by presence. The price of the rule: if both engines rejected a program for different reasons, nobody would know.
+- *Comparing the error messages.* \`if ts != rs\` on two \`Err\`s, or comparing the strings, fails on every syntax error, because acorn and oxc word their messages differently ("Identifier directly after number" against "Invalid characters after number"). That is why the fuzzer compares errors by presence. The price of the rule: if both engines rejected a program for different reasons, nobody would know.
 - *Returning early when Rust fails.* Writing the parity check first and returning on a Rust error silences the behaviour check, so a miscompile by the TypeScript engine goes unreported whenever the Rust engine happens to crash. One oracle failing must not hide the other; the last test checks exactly that.
 - *Running the Rust output too.* It is not wrong, but it adds nothing whenever parity passes, and it costs a run per program; the real fuzzer reaches the Rust engine through its CLI, one call per batch of 250 files, and never runs its output.`,
     wrong: [

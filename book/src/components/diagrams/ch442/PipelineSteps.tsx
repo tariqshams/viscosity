@@ -30,7 +30,7 @@ type S = { upto: number; gz?: boolean; note: string };
 const STATES: S[] = [
   { upto: 0, note: 'Cargo compiles the crate, the engine and 71 third-party crates for wasm32-unknown-unknown. It has 75 exports, and 58 of them are __wbindgen_describe_ functions, which JavaScript will never call. A 7 KB custom section, __wasm_bindgen_unstable, is for the CLI too.' },
   { upto: 1, note: 'wasm-bindgen runs the describe functions in its own small interpreter, writes the JS glue from what they report, then deletes them and the custom section. 15 exports are left, and the code is 82 KB smaller.' },
-  { upto: 2, note: 'wasm-opt -O3 optimizes the code again (9% smaller) and drops the name section: 257 KB of function names, for stack traces and profilers. Together: 386 KB less.' },
+  { upto: 2, note: 'wasm-opt -O3 optimises the code again (9% smaller) and drops the name section: 257 KB of function names, for stack traces and profilers. Together: 386 KB less.' },
   { upto: 2, gz: true, note: 'Now compress each stage with gzip, as a web server usually would. Names compress well, so over the wire wasm-opt saves only 33 KB of 531 KB, about 6%. The download is about 498 KB.' },
 ];
 

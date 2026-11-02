@@ -19,10 +19,11 @@ import OracleMap from '../../../components/diagrams/ch441/OracleMap';
 ## Two bugs nobody's tests saw
 
 While this Part was being written, two differences between the engines
-turned up by hand. The chapter *The cost model in Rust* noticed that,
-given a profile, the Rust planner wrote "about 20 (measured) elements"
-where the TypeScript one wrote "about 20 elements (measured)". And the
-chapter *PGO in Rust* fed both CLIs a hand-edited profile:
+turned up by hand. The chapter *Sizes and thresholds in Rust* noticed
+that, given a profile, the Rust planner wrote "about 25 (measured)
+elements" where the TypeScript one wrote "about 25 elements
+(measured)". And *Reading a profile in Rust* fed both CLIs a
+hand-edited profile:
 
 ```json
 { "ps": { "maxLength": "20" } }
@@ -177,7 +178,7 @@ notice it:
 The first two are opposites. The line deleted from the Rust builder
 was a Rust-only change on a corpus program, so parity and the node
 differential both failed at once. The fuzzer's five finds (the chapter
-*SoA code generation in Rust* covered the write-order ones) were all
+*The order of a field write in Rust* covered the write-order ones) were all
 in *both* engines, because the port mirrors the reference; parity
 cannot see a bug both share, so every one was found by a different
 oracle: the behaviour check, or the rule that the TypeScript engine

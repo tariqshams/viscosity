@@ -220,7 +220,8 @@ before a change of wording in the analysis ("a dataclass call is
 modelled only with its arguments in field order and literal
 defaults"), so it still printed the old sentence. I bundled the CLI
 from its current source into a scratch folder and compared again: all
-60 programs matched, three ways. It is the lesson of the chapter
+60 programs matched, three ways (the bundle has since been rebuilt, and
+`smoke.mjs` now prints three ✓ lines with 0 mismatches). It is the lesson of the chapter
 *TypeScript vs Rust: differential tests* in miniature: a test is only as current as the thing it trusts. (On
 2026-11-02 both packages went to npm, as the chapter *Release
 engineering* describes, so `npm install @viscosity/wasm` works now.)

@@ -265,7 +265,7 @@ loops forever cannot hang the page.
 
 - A **playground** runs the real compiler in the page; the Rust engine
   is fetched only when a reader picks it, into a **worker**, through
-  one memoized loading promise that resets on failure.
+  one memoised loading promise that resets on failure.
 - Each compile takes a **ticket**, and a reply is shown only if its
   ticket is still the latest, whichever engine it came from.
 - A Rust panic in WebAssembly is a **trap**: nothing unwinds, state can

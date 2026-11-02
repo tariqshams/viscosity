@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 448b: one position counted three ways, on the line
+// Chapter 449: one position counted three ways, on the line
 // `const s = "🎉"; [;` (oxc reports the error at the last `;`). Bytes are
 // UTF-8 (what oxc's spans and Rust's str indexes count), characters are
 // Unicode code points (what Rust's chars() yields and what the code

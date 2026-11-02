@@ -35,7 +35,7 @@ export const prompts = {
   },
   'first-call': {
     q: 'How did the TS engine’s first `compile()` in a fresh process compare with a warm one?',
-    a: 'About 25× slower (22 ms for `boids`): the code hasn’t been optimized by the JIT yet.',
+    a: 'About 25× slower (22 ms for `boids`): the code hasn’t been optimised by the JIT yet.',
   },
   'batch': {
     q: 'How does compiling 400 files in one process change the comparison?',
@@ -91,7 +91,7 @@ export const exercises = {
     lang: 'rust',
     title: 'Sum of medians',
     prompt:
-      'The matrix summarizes many noisy timings in two steps. Write `median`: sort a copy (use `total_cmp` for `f64`), take the middle value, or the mean of the two middle values for an even count. Then write `total_speedup`: the sum of the TS programs’ medians divided by the sum of the Rust programs’ medians. (Not the mean of per-program ratios: a slow program should count for more.)',
+      'The matrix summarises many noisy timings in two steps. Write `median`: sort a copy (use `total_cmp` for `f64`), take the middle value, or the mean of the two middle values for an even count. Then write `total_speedup`: the sum of the TS programs’ medians divided by the sum of the Rust programs’ medians. (Not the mean of per-program ratios: a slow program should count for more.)',
     starter: `${MED_DOC}fn median(xs: &[f64]) -> f64 {
     todo!()
 }
@@ -263,7 +263,7 @@ export const quiz = [
     q: 'A build compiles 10,000 files. Which matters most?',
     options: [
       { t: 'Process start-up', why: 'Paid once per process; spread over 10,000 files it nearly vanishes.' },
-      { t: 'The cost per file, and how many cores share the work', correct: true, why: 'Start-up amortizes, so per-file speed dominates, and threads divide it (2.95× on 4 vCPUs to tmpfs).' },
+      { t: 'The cost per file, and how many cores share the work', correct: true, why: 'Start-up amortises, so per-file speed dominates, and threads divide it (2.95× on 4 vCPUs to tmpfs).' },
       { t: 'The size of the `.wasm`', why: 'A CLI build doesn’t load the WebAssembly at all.' },
     ],
   },
@@ -271,7 +271,7 @@ export const quiz = [
     q: 'Writing to the VM’s disk, 4 threads gave only 1.24×. Why?',
     options: [
       { t: 'The compiler has a global lock', why: 'On tmpfs the same build reached 2.95×, so compiling scales.' },
-      { t: 'Creating the 396 output files cost about 65 ms whatever the thread count', correct: true, why: 'The virtual disk serializes file creation, so that part doesn’t shrink with threads.' },
+      { t: 'Creating the 396 output files cost about 65 ms whatever the thread count', correct: true, why: 'The virtual disk serialises file creation, so that part doesn’t shrink with threads.' },
       { t: 'Rust threads don’t run in parallel', why: 'They do: `std::thread::scope` threads are OS threads.' },
     ],
   },

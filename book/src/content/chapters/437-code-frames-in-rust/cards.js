@@ -1,4 +1,4 @@
-// Chapter 436b cards. Keys are stable ids: never rename them.
+// Chapter 437 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'rx-zip': {

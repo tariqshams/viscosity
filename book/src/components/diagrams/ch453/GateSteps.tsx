@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 452b: which gate of .github/workflows/ci.yml catches which
+// Chapter 453: which gate of .github/workflows/ci.yml catches which
 // mistake. Jobs and steps as committed; the failure texts are real
 // (rustfmt 1.9.0 --check, the parity.rs fixture assertion, a
 // check_chapters message from this book's own CI, the smoke test's

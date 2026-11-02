@@ -1,7 +1,7 @@
 import { CodeTrace, StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 438b: read_profile in engine/rust/crates/cli/src/main.rs,
+// Chapter 439: read_profile in engine/rust/crates/cli/src/main.rs,
 // rewrapped and shortened, on three profile files. The messages are the
 // real ones both CLIs printed here for `explain sp.js --profile <file>`
 // (rustc 1.97 release build; the TypeScript CLI printed the same line).

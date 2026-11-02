@@ -20,7 +20,7 @@ const GAVE: Record<string, string> = {
   III: 'Drip’s front end and the whole theory of parsing, meaning and types: grammars, automata, scanning, recursive descent, Pratt, LL and LR, a tree-walking interpreter, scope, closures, classes and type systems.',
   IV: 'Drip compiled to bytecode and run on a stack VM of our own, with its hash tables, interned strings, call frames, upvalues and a garbage collector.',
   V: 'Inside real JavaScript engines: V8’s tiers, shapes and inline caches, elements kinds, speculation and deoptimization, garbage collection, JavaScriptCore and SpiderMonkey, and the columnar-array research.',
-  VI: 'The middle end: IRs and control-flow graphs, dominators and SSA, dataflow and abstract interpretation, the classic optimizations, alias and escape analysis, and pass managers.',
+  VI: 'The middle end: IRs and control-flow graphs, dominators and SSA, dataflow and abstract interpretation, the classic optimisations, alias and escape analysis, and pass managers.',
   VII: 'A native back end for RISC-V: machine code and assembly, calling conventions, instruction selection, register allocation, scheduling, linking and a tiny JIT.',
   VIII: 'Viscosity, built: plugins and VIR, the JavaScript front end, finding collections, proving safety, the cost model, SoA and AoSoA code, PGO, explain, and differential tests.',
   IX: 'Beyond JavaScript: a Python front end on the same IR, WebAssembly as a target, the research frontier, and shipping version 0.0.1.',

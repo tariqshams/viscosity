@@ -53,8 +53,9 @@ not always so: when this chapter was first written, the second printed
 `viscosity: SyntaxError: Unexpected token` with no position, and the
 third `viscosity: No such file or directory (os error 2)` with no file
 name, which is a puzzle when you passed ten files. (The TypeScript CLI
-now prints the same second message; for the third it prints Node's
-wording, `ENOENT: no such file or directory, open 'nope.js'`.) The next
+now prints the same second message; for the third it names the file
+too, followed by Node's wording, `ENOENT: no such file or directory,
+open 'nope.js'`.) The next
 chapter, *Lines and columns*, follows how the position came back; this
 one is about what such a message is made of, and how the first one is
 drawn.
@@ -100,7 +101,7 @@ rustc says it is an `error`, gives it the code `E0308` (whose long
 explanation `rustc --explain E0308` prints), and points at `e.rs`, line
 2, column 18, with a label under the carets that says what it expected.
 Viscosity's frame has the message, the line number, the line of code and
-the carets. It has no level (every reason is a refusal to optimize, not
+the carets. It has no level (every reason is a refusal to optimise, not
 an error in your program), no code, no file name (the file is printed
 once, above, when there are several) and no column.
 
@@ -143,7 +144,8 @@ under `ps[1]`.
 
 ## From a span to a caret
 
-*explain in Rust* drew the frame; here is where its numbers come from.
+*Code frames in Rust* drew the frame; here is where its numbers come
+from.
 oxc, the parser, gives every node of the syntax tree a `Span`, its start
 and end as byte offsets, and nothing else. During lowering, the
 JavaScript plugin turns that span into a `SourceRef` and attaches it to

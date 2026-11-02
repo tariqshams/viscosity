@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 450b: Amdahl's law against engine/rust/results/
+// Chapter 451: Amdahl's law against engine/rust/results/
 // parallel-build-2026-10-31.md (396 files, best of 11, ms). For each
 // target the serial part is estimated from the 1- and 4-thread runs,
 // s = (4 * t4 - t1) / 3, and the rest is assumed to shrink with the

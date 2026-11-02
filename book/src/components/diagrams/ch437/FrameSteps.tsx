@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 436b: code_frame in engine/rust/crates/core/src/plan.rs, step by
+// Chapter 437: code_frame in engine/rust/crates/core/src/plan.rs, step by
 // step, on line 7 of the chapter's program ("\t\tkeep.push(ps[i]);"). The
 // bailout site is the element ps[i]. → stands for a tab.
 const CELLS = ['→', '→', ...'keep.push(ps[i]);'];

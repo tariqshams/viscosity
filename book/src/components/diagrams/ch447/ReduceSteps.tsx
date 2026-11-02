@@ -1,7 +1,7 @@
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Box, Svg, T, tok } from '../../viz/svg';
 
-// Chapter 446b: the line-based reducer of engine/rust/scripts/fuzz.mjs
+// Chapter 447: the line-based reducer of engine/rust/scripts/fuzz.mjs
 // (`reduce`), run by hand on an eight-line program whose failure needs
 // lines L2 and L5. Chunks of 4, then 2, then 1; a deletion is kept when
 // the failure is still there, and a pass is repeated until nothing
@@ -52,7 +52,7 @@ export default function ReduceSteps() {
             <T x={31 + k * 48} y={151} size={13} mono anchor="middle">{`L${l}`}</T>
           </Box>
         ))}
-        <T x={200} y={196} size={12} anchor="middle" fill={tok('muted')}>blue border: the two lines the failure needs</T>
+        <T x={200} y={196} size={12} anchor="middle" fill={tok('muted')}>orange border: the two lines the failure needs</T>
         <T x={200} y={214} size={12} anchor="middle" fill={tok('muted')}>{st.lines.length} of 8 lines left</T>
       </Svg>
     </StepFrame>
