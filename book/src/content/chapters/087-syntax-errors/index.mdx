@@ -1,0 +1,300 @@
+---
+n: 87
+day: 22
+part: III
+title: 'Syntax errors and recovery'
+tagline: 'Real programs are typed by people, so they arrive broken. A good parser says exactly where and what it expected, keeps going, and finds the next mistake too, without inventing ones that are not there.'
+objectives:
+  - Read a Drip syntax error and say which token the parser was looking at, and why the line is the one it names.
+  - Explain how consume checks for a token the grammar needs, and what it does when the token is missing.
+  - Explain the two goals of error recovery, and what a cascading error is.
+  - Explain why a program with a syntax error runs none of its statements.
+introduces: [syntax-error, error-recovery]
+uses: [parser, pratt-parser, recursive-descent, grammar, token, lexeme, token-type, source-location, keyword, scanner, expression-vs-statement, compiler-pipeline, drip, throw, try-catch, error-object, error-propagation, class, instanceof, set, while-loop, function, if]
+sources: [coopertorczon2022]
+---
+import ErrorAnatomy from '../../../components/diagrams/ch087/ErrorAnatomy';
+import ConsumeSteps from '../../../components/diagrams/ch087/ConsumeSteps';
+
+## Three typos, one run
+
+Say twenty lines of Drip have three typos. One parser stops at the
+first; you fix it, run again, meet the second, and so on. Another tells
+you all three at once. A third tells you the three and a dozen more
+that are not really there, because it got lost after the first. You
+want the second parser, and this chapter is about how to be it.
+
+## What a syntax error is
+
+At every step the grammar tells the parser what may come next: after
+`let`, a name; after `print` and a value, a `;`. A syntax error is the
+moment that promise is broken.
+
+<Analogy title="a sentence that stops short">
+Read "the cat sat on." and you stop, because "on" promised something
+after it and a full stop arrived instead. You know exactly where it
+broke: at the full stop, where you noticed, even though the missing
+word belongs before it.
+<span slot="breaks">You can usually guess the missing word ("the
+mat"); the parser never guesses what was meant, it only reports what it
+needed and what it found.</span>
+</Analogy>
+
+<Analogy title="a jigsaw piece that will not fit">
+Doing a jigsaw, you know the shape of the gap in front of you; when the
+piece in your hand has the wrong shape, you notice at once, with that
+piece in your hand.
+<span slot="breaks">You can turn a jigsaw piece round, or try it
+somewhere else; a parser cannot move tokens around, it can only say
+"this one does not fit here".</span>
+</Analogy>
+
+In the Drip parser, every place where the grammar *requires* a
+particular token goes through `consume`:
+
+```ts
+function consume(t, what) {
+  if (check(t)) advance();
+  else expected(what, t === ';'
+    ? previous : current);
+}
+```
+
+A `print` statement, for example, ends with
+`consume(';', "';' after the value")`. `check(t)` asks whether the next
+token (`current`) has type `t`; if so, `advance()` takes it. If not,
+`expected` builds `expected <what>, found <token>` and hands it to the
+**reporter**, an object that collects error messages in a list; it does
+not throw. Step through a `let` that is missing its `;`:
+
+<ConsumeSteps client:visible />
+
+The `t === ';' ? previous : current` part picks the line. Usually it is
+the line where the parser noticed; however, a missing `;` belongs at the
+end of the line before, so it gets the line of the token before it:
+
+<Figure takeaway="Drip names the token it found, and reports a missing ; where the ; belongs." caption="One Drip syntax error, taken apart.">
+  <ErrorAnatomy />
+</Figure>
+
+The token found is named as `';'` or `'print'` (its text, in quotes),
+as `a string` for a string, or as `end of file` when the tokens ran out.
+
+<Callout kind="definition">
+A **syntax error** is source code that breaks the grammar: at some
+point the parser needs a certain kind of token and finds another. Drip
+reports it as `line N: expected <what>, found <token>`, naming what the
+grammar needed and the token where the parser noticed. Syntax errors
+are found before the program starts, so nothing has run yet.
+</Callout>
+
+<Formal title="The earliest token that cannot fit">
+
+```text
+P = t₁ t₂ … tₙ  is valid  ⇔  program ⇒* P
+
+error at tₖ  ⇔  t₁ … tₖ₋₁ starts some
+               valid program, and
+               t₁ … tₖ starts none
+```
+
+<span slot="read">A row of tokens t one to t n is a valid program
+exactly when the grammar's start rule, program, can derive it in some
+number of steps. There is a syntax error at token t k when the tokens
+before it are still the beginning of at least one valid program, but
+adding t k makes them the beginning of none.</span>
+</Formal>
+
+A parser that checks each token as it arrives, as Drip's does, notices
+at that earliest bad token: `let x = 1` could still become a valid
+program, while `let x = 1 print` cannot.
+
+<Examples of="syntax-error">
+
+```text
+print 1 +;
+# line 1: expected an expression,
+#   found ';'
+```
+
+```text
+print "hi" "there";
+# line 1: expected ';' after the
+#   value, found a string
+```
+
+```text
+let n = 3;
+while n > 0 {
+  print n
+  n -= 1;
+}
+# line 3: expected ';' after the
+#   value, found 'n'
+```
+
+</Examples>
+
+(Drip prints each message on one line.) In the first, the `+` needs a
+right operand, and a `;` cannot start one. In the second, `"hi"` is a
+complete value, so `print` wants its `;`, and the string found is named
+by its kind. The third is the slip everyone makes: the parser notices
+at the `n` on line 4 and reports line 3, where the `;` belongs.
+
+That line rule is only for a missing `;`. Leave out the right operand
+at the end of a line and the error is reported where the parser
+noticed:
+
+```text
+print 1 +
+print 2;
+# line 2: expected an expression,
+#   found 'print'
+print 1 + 2;  # 3
+```
+
+The `print` on line 2 is where an operand should start, and it cannot
+start one, so the message names line 2, though the fix is on line 1.
+
+<Prompts ids={['syntax-error-what', 'where-noticed', 'at-end', 'found-names']} />
+
+## A syntax error stops everything
+
+What happens to the statements that parsed fine? They are never run.
+Here is the top of `run` in `companion/ts/src/drip.ts`:
+
+```ts
+const reporter = makeReporter();
+const program = parse(scan(source),
+  reporter);
+if (reporter.errors.length)
+  return { stdout, exitCode: 65,
+    stderr: reporter.errors };
+```
+
+`makeReporter()` makes the empty list; `scan` and `parse` add to it as
+they go (the scanner turns a mistake such as an unterminated string into
+an error token, which the parser reports). If the list is not empty,
+`run` returns the errors with exit code 65, Drip's code for "not a
+valid program", and nothing runs.
+
+<Prompts ids={['exit-65', 'consume-no-throw']} />
+
+## Don't stop at the first
+
+Reporting one error is easy: throw, and let the whole parse fail.
+Reporting *several* is harder, because after an error the parser is in
+the middle of something it no longer understands. Here is what Drip
+would print if it complained about everything that looked wrong after
+an error (I tried it, by deleting the one line in a copy of the
+companion that keeps it quiet):
+
+```text
+print (1 + ;
+print 2;
+# line 1: expected an expression,
+#   found ';'
+# line 2: expected ')' after the
+#   expression, found 'print'
+# line 1: expected ';' after the
+#   value, found 'print'
+```
+
+One mistake, three messages: the second and third exist only because
+the first left the parser confused (the line numbers even run
+backwards). The real Drip prints the first message alone. Messages like the other two are called
+**cascading** errors, and they send people hunting for problems that do
+not exist.
+
+<Analogy title="a proofreader with a red pen">
+A good proofreader marks every real mistake in one pass, rather than
+handing the page back at the first; however, when a sentence is so
+mangled they cannot follow it, they mark it once and pick up again at
+the next sentence, rather than marking every word after it as wrong.
+<span slot="breaks">A proofreader can reread and understand what the
+writer meant; a parser has to decide where to pick up again from the
+tokens alone, by rules fixed in advance.</span>
+</Analogy>
+
+<Analogy title="a mechanic's report">
+A good mechanic lists every fault in one inspection; but if the battery
+is flat, they do not also list "lights dead" and "radio silent", because
+those are the battery again.
+<span slot="breaks">A mechanic can test each part on its own to be
+sure; a parser cannot, so it sometimes stays quiet about a real second
+mistake to be safe.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Error recovery** is what a parser does after a syntax error so that
+it can keep parsing and report later errors too. It has two goals that
+pull against each other: report as many **real** errors as possible in
+one run, and report no **cascading** errors, messages that are only
+echoes of an earlier one.
+</Callout>
+
+<Examples of="error-recovery">
+
+<Run id="three-typos" />
+
+```text
+print 1 +;
+print 2;
+print (3;
+# line 1: expected an expression,
+#   found ';'
+# line 3: expected ')' after the
+#   expression, found ';'
+```
+
+```text
+print (1 + ;
+print 2;
+# line 1: expected an expression,
+#   found ';'
+```
+
+</Examples>
+
+The runnable one has a mistake on each of its three lines, and Drip
+reports all three from one run, with nothing invented. The second has
+two separate mistakes with a good line between them, and both are
+reported. The third is the cascade from above, as Drip really reports
+it: one mistake, one message. The price is that, to stay safe, the
+parser sometimes skips a little code unchecked, so a mistake hidden
+there waits for the next run; a missed error costs a run, while a
+made-up one costs confusion. How it skips is the next chapter, "Panic
+mode".
+
+<Prompts ids={['recovery-goals', 'cascade-what']} />
+
+<Callout kind="engine" label="Under the hood">
+Drip's bytecode compiler in Part IV (`companion/ts/src/vm/compiler.ts`)
+parses with the same functions in the same order, so both versions
+report exactly the same errors; the test corpus in `companion/corpus`
+pins every message word for word, and every Drip must match it.
+</Callout>
+
+## Your turn
+
+The core exercise builds Drip's message for a missing token, line rule
+included. The extra one is a broken Drip program to repair from the
+errors Drip gives you.
+
+<Exercise id="message" />
+
+<Exercise id="fix-drip" />
+
+## What you learned
+
+- A **syntax error** is a token the grammar did not allow. Drip reports
+  `line N: expected <what>, found <token>`, noticed at the earliest
+  token that cannot fit.
+- A missing `;` is reported on the line where it belongs; everything
+  else on the line where the parser noticed.
+- `consume` reports and carries on; if anything was reported, Drip runs
+  nothing and exits with code 65.
+- **Error recovery** aims to report every real error in one run, and no
+  **cascading** errors that are only echoes of an earlier one.
+
+<Quiz />

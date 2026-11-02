@@ -1,0 +1,263 @@
+---
+n: 118
+day: 30
+part: III
+title: 'The lambda calculus'
+tagline: 'Take away numbers, strings, if, loops and classes, and keep only functions: what is left is a whole programming language, three lines long, and the one that every paper about types is written in.'
+objectives:
+  - Read and write lambda-calculus terms aloud, and translate them to JavaScript arrow functions.
+  - Say which variables of a term are free and which are bound, and by which λ.
+  - Rename bound variables without changing a term’s meaning (alpha-equivalence).
+  - Substitute a term for a variable without capturing names, by hand and in code.
+introduces: [lambda-calculus, free-and-bound-variables, substitution]
+uses: [function, parameter, argument, call, return, arrow-function, first-class-function, higher-order-function, closure, captured-environment, scope, lexical-scope, shadowing, nested-function, grammar, bnf, ast, ast-node, tree, recursion, set, object, property, strings, if]
+sources: [church1936, church1941, pierce2002]
+---
+import TermTree from '../../../components/diagrams/ch118/TermTree';
+import SubstSteps from '../../../components/diagrams/ch118/SubstSteps';
+
+## How small can a language be?
+
+Drip has numbers, strings, lists, `if`, loops, functions and classes,
+and chapters 99 to 114 needed every one of them in the interpreter. So
+how little could a language have and still describe any calculation at
+all? In the early 1930s the logician Alonzo Church built a system with
+functions and nothing else, the **lambda calculus**; it turned out to be
+enough, and in 1936 he used it to show that some problems can have no
+algorithm<Cite id="church1936" />. It is still the place where new
+ideas about programming languages are tried first, because it is small
+enough to reason about completely; the type systems of the next
+chapters are all written on top of it<Cite id="pierce2002" />.
+
+<Analogy title="Morse code">
+Two signals, a dot and a dash, are enough to send any message in any
+language that uses the alphabet; nothing is gained by adding a third.
+<span slot="breaks">Morse code only spells out letters that mean
+something elsewhere; a lambda term *runs*, and its meaning is worked out
+by the language's own single rule, with no outside dictionary.</span>
+</Analogy>
+
+## Three kinds of term
+
+<Formal title="The syntax of the lambda calculus">
+
+```text
+t ::= x        a variable
+    | λx. t    a function (abstraction)
+    | t t      an application
+```
+
+<span slot="read">A term t is one of three things: a variable, such as
+x; a function, read "lambda x dot t", which takes a parameter x and
+whose body is the term t; or an application, two terms side by side,
+read "t applied to t", which calls the first with the second as its
+argument.</span>
+</Formal>
+
+Two conventions keep the brackets down. Application groups to the
+left, so `f a b` means `(f a) b`; and the body of a λ runs as far right
+as it can, so `λx. x y` means `λx. (x y)`, not `(λx. x) y`. If you know
+arrow functions, you can already read every term: `λx. t` is `x => t`,
+and `t s` is the call `t(s)`. A function of two arguments is a function
+that returns a function (this is called *currying*): `λx. λy. x` is
+`x => y => x`.
+
+<Callout kind="definition">
+The **lambda calculus** is a language whose terms are variables,
+functions of one parameter (`λx. t`) and applications (`t s`), and
+nothing else: no numbers, no booleans, no `if`. Its only rule of
+computation, the subject of the next chapter, calls a function by
+substituting the argument for the parameter<Cite id="church1941" />.
+</Callout>
+
+<Examples of="lambda-calculus">
+
+```text
+λx. x          x => x
+```
+
+```text
+λx. λy. x      x => y => x
+(λx. x) (λy. y)
+```
+
+```text
+λf. λx. f (f x)
+f => x => f(f(x))
+```
+
+</Examples>
+
+The first, read "lambda x dot x", is the identity function: it gives
+back whatever it is given. The second line of the second block applies
+the identity to another identity (the brackets matter: without them the
+body of the first λ would swallow the rest). The third is a function
+you might write in real code: "apply `f` twice", which takes a function
+and a starting value; the next chapter turns exactly this term into the
+number 2.
+
+<Prompts ids={['lc-three-forms', 'app-left', 'body-right', 'js-arrow']} />
+
+## Free and bound variables
+
+In `λx. x y`, the `x` in the body refers to the parameter: it is
+**bound** by the `λx`. The `y` refers to nothing inside the term: it is
+**free**, a name that must be given a meaning from outside, exactly
+like a variable that a JavaScript closure uses from an enclosing scope.
+
+<Analogy title="pronouns in a sentence">
+In "Ada said she would come", *she* points back to Ada, inside the
+sentence; in "She will come", *she* points to someone outside it, whom
+you have to know already.
+<span slot="breaks">A reader guesses what a pronoun refers to from
+context; in a term there is no guessing: an occurrence of x is bound by
+the nearest λx that encloses it, and free if there is none.</span>
+</Analogy>
+
+<Figure takeaway="Each variable is bound by the nearest enclosing λ with its name, or else it is free." caption="λx. (λy. x y) z as a tree. Follow each leaf upwards: x meets λx at the root, y meets λy, and z meets no λz at all.">
+  <TermTree />
+</Figure>
+
+<Callout kind="definition">
+An occurrence of a variable `x` is **bound** if it lies inside the body
+of some `λx`, and it is bound by the nearest such λ; otherwise it is
+**free**. The **free variables** of a term, written `FV(t)`, are the
+names that occur free in it. A term with no free variables is
+**closed**<Cite id="pierce2002" />.
+</Callout>
+
+<Formal title="Free variables">
+
+```text
+FV(x)       = {x}
+FV(λx. t)   = FV(t) minus {x}
+FV(t₁ t₂)   = FV(t₁) ∪ FV(t₂)
+```
+
+<span slot="read">A variable on its own is free. The free variables of
+a function are those of its body, except its own parameter, which the λ
+binds. The free variables of an application are the free variables of
+both parts together (the ∪ is read "union").</span>
+</Formal>
+
+<Examples of="free-and-bound-variables">
+
+```text
+λx. x          FV = {}
+λx. x y        FV = {y}
+```
+
+```text
+(λx. x) x      FV = {x}
+```
+
+```js
+const tax = (p) => p * rate;
+// λp. p * rate: rate is free
+```
+
+</Examples>
+
+The identity has no free variables; `λx. x y` has one, `y`. The second
+block is the trap: the first `x` is bound by the λ, but the last `x`
+stands outside the brackets, so it is free; the same name can be both,
+in different places. The third is everyday code: `rate` is free in the
+arrow function, which is why chapter 108's closures have to keep the
+environment they were made in.
+
+Bound names are only placeholders: `λx. x` and `λy. y` are the same
+function, as `x => x` and `y => y` are. Renaming a bound variable
+everywhere it is bound (to a name that is not already free in the body)
+is called an **alpha-conversion**, and two terms that differ only that
+way are **alpha-equivalent** (written `λx. x ≡ λy. y`).
+
+<Prompts ids={['bound-free', 'fv-of', 'alpha-same']} />
+
+## Substitution, carefully
+
+Calling a function means putting the argument where the parameter was,
+so the operation everything rests on is **substitution**: `[x ↦ s] t`
+(read "x goes to s, in t") replaces the free `x`s in `t` by `s`. Done
+as find-and-replace on the text, it goes wrong in two ways. It must not
+touch a bound `x` (in `λx. x`, the `x` belongs to the λ, not to us). And
+it must not let a free variable of `s` land under a λ that binds the
+same name, which is called **capture**.
+
+<Analogy title="find and replace in a letter">
+You replace "the new manager" with "Sam" in a letter that already
+mentions another Sam; afterwards nobody can tell which Sam is meant.
+<span slot="breaks">In a letter you cannot rename the other Sam; in a
+term you can, because a bound name is only a placeholder, so the cure
+for capture is to rename the λ's variable first.</span>
+</Analogy>
+
+<SubstSteps client:visible />
+
+<Formal title="Capture-avoiding substitution">
+
+```text
+[x ↦ s] x       = s
+[x ↦ s] y       = y            (y ≠ x)
+[x ↦ s] (t₁ t₂) = [x↦s]t₁ [x↦s]t₂
+[x ↦ s] (λx. t) = λx. t
+[x ↦ s] (λy. t) = λy. [x ↦ s] t
+          if y ≠ x and y ∉ FV(s);
+          otherwise rename y first
+```
+
+<span slot="read">Substituting s for x in the variable x gives s; in
+any other variable, it changes nothing. In an application, substitute
+in both parts. In a function whose parameter is x itself, stop: every x
+inside is bound, not ours. In a function with another parameter y, go
+inside, but only if y is not free in s ("not an element of", written
+∉); if it is, first rename y to a fresh name.</span>
+</Formal>
+
+<Callout kind="definition">
+**Substitution** `[x ↦ s] t` replaces every free occurrence of `x` in
+`t` by `s`, renaming bound variables of `t` where needed so that no free
+variable of `s` is captured. The result is defined up to the choice of
+fresh names, that is, up to alpha-equivalence<Cite id="pierce2002" />.
+</Callout>
+
+<Examples of="substitution">
+
+```text
+[x ↦ z] (x x)   =  z z
+[x ↦ y] (λx. x) =  λx. x
+```
+
+```text
+[x ↦ y] (λy. x) =  λz. y
+```
+
+<Run id="no-capture" />
+
+</Examples>
+
+The first line replaces both free `x`s; the second leaves the bound one
+alone. The third is the capture case: blind replacement gives `λy. y`,
+the identity, while the correct answer is a function that ignores its
+argument and returns the *outside* `y`. The runnable example shows that
+JavaScript gets this right too, by never substituting text at all: a
+closure remembers its environment instead.
+
+<Prompts ids={['capture-what', 'subst-bound-stop']} />
+
+## Your turn
+
+<Exercise id="subst" />
+
+## What you learned
+
+- The **lambda calculus** has three kinds of term: variables,
+  functions `λx. t` and applications `t s`.
+- A variable is **bound** by the nearest enclosing λ with its name, or
+  else **free**; renaming bound variables (alpha) changes nothing.
+- **Substitution** `[x ↦ s] t` replaces free `x`s only, renaming a λ
+  first if it would capture a free variable of `s`.
+
+Next: the one rule that makes these terms compute, and how numbers and
+booleans can be built from nothing but functions.
+
+<Quiz />

@@ -1,0 +1,294 @@
+---
+n: 106
+day: 27
+part: III
+title: 'Return and the call stack'
+tagline: 'A return statement can sit deep inside loops and ifs, yet it has to leave all of them at once. The interpreter does it by having every statement report how it finished.'
+objectives:
+  - Explain why return has to leave several nested statements, and several interpreter methods, at once.
+  - Trace a return through the companion's completion codes, from the return statement to the edge of the call.
+  - Compare completion codes with throwing an exception, and say what each design costs.
+  - Predict what a Drip call returns with a value, with a bare return, and with no return at all.
+introduces: [return-unwinding]
+uses: [callable, arity, native-function, return, call, function, local-variable, recursion, base-case, call-stack, throw, try-catch, environment, scope-chain, control-flow, desugaring, while-loop, evaluate, tree-walking-interpreter, runtime-value, runtime-error, ast-node, drip, drip-list, index-expression, for-in-loop, typescript, discriminated-union, variables, numbers, comparison, if, console-log]
+sources: [mdn-call-stack]
+---
+import ReturnSteps from '../../../components/diagrams/ch106/ReturnSteps';
+import UnwindFigure from '../../../components/diagrams/ch106/UnwindFigure';
+
+## A way out from deep inside
+
+Drip functions can do work, but so far the only way to get an answer out
+of one is to print it. They need `return`. Here is a function that finds
+the first whole number whose square is bigger than a limit:
+
+```
+fn find(limit) {
+  let i = 0;
+  while true {
+    if i * i > limit {
+      return i;
+    }
+    i += 1;
+  }
+}
+print find(50); # 8
+```
+
+The `while true` loop would go round forever on its own; each time round
+the `if` asks whether `i * i` has passed the limit, and the first `i`
+for which it has is 8 (7 × 7 is 49, 8 × 8 is 64), so `return i;` hands
+8 back.
+
+Now think about where the interpreter *is* when it reaches `return i;`.
+It is not in one place; it is inside a whole pile of its own TypeScript
+method calls, each one half-way through its work:
+
+```text
+callFunction           the call of find
+  executeBlock         find's body
+    execute(while)     going round
+      executeBlock     the loop body
+        execute(if)
+          execute(block)
+            executeBlock
+              execute(return)
+```
+
+`execute(while)` is in the middle of a loop that would never end by
+itself, and two `executeBlock`s are each half-way down a list of
+statements. `return` has to abandon *all* of them at once and land back
+at `callFunction`, carrying the 8, without running another statement on
+the way.
+
+## Two ways out
+
+There are two well-known ways to build this, and it helps to see both.
+
+<Analogy title="a note passed down a line">
+You are at the back of a long queue and need to tell the person at the
+front that you are leaving. You hand a note forward; each person reads
+it, stops whatever they were doing for you, and passes it on, until it
+reaches the front.
+<span slot="breaks">People in a queue can read a note however they like;
+in the interpreter, every method that runs statements must be written to
+check the note and pass it on, and one that forgets breaks `return` for
+every statement inside it.</span>
+</Analogy>
+
+<Analogy title="a fire alarm">
+Pull the alarm on the top floor and nobody on the way down needs a
+message: everyone between you and the street stops at once and leaves,
+and only the person at the door (who was waiting for exactly that)
+reacts.
+<span slot="breaks">A real alarm empties the whole building; an
+exception in an interpreter stops only at the nearest `catch` that wants
+it, which is placed at the edge of each call, and the alarm has to be
+pulled (an object made and thrown) for every single `return`.</span>
+</Analogy>
+
+The fire alarm is an exception: the chapter *Errors and exceptions*
+showed that a `throw` abandons every frame between it and the nearest
+`catch`, which is exactly the shape of `return`, and a tree-walker can
+throw a small object holding the return value and catch it in the
+method that runs a call. The note is a **completion code**: every
+`execute` returns a small value that says how the statement finished,
+and every method that runs statements looks at it. The companion's
+interpreter passes notes:
+
+```ts
+const NORMAL = 0, BREAK = 1;
+const CONTINUE = 2, RETURN = 3;
+```
+
+`break` and `continue` need to leave nested statements too, so one
+mechanism serves all three, and a thrown TypeScript exception always
+means a real runtime error. The price is that every method that runs
+statements has to remember to check.
+
+<Prompts ids={['return-deep', 'two-ways', 'four-codes']} />
+
+## Passing the note
+
+Here is the `return` case of `execute`:
+
+```ts
+case 'return':
+  this.returnValue = s.value
+    ? this.evaluate(s.value) : null;
+  return RETURN;
+```
+
+It evaluates the value (or uses `null`, Drip's `none`, for a bare
+`return;`), parks it in a field of the interpreter called
+`returnValue`, and returns the code `RETURN` instead of `NORMAL`, so
+the code can stay a small number. Then every method between here and the call passes the code on.
+`executeBlock` stops running its list of statements as soon as one does
+not finish normally:
+
+```ts
+for (const s of statements) {
+  const c = this.execute(s);
+  if (c !== NORMAL) return c;
+}
+return NORMAL;
+```
+
+(A `finally` around this loop switches the environment back, so even a
+block left early cleans up after itself.) An `if` returns whatever its chosen branch returned, and
+a loop stops on `BREAK` but hands `RETURN` straight up, because a
+`return` inside a loop leaves the whole function, not only the loop:
+
+```ts
+const c = this.executeBlock(s.body,
+  new Environment(this.env));
+if (c === BREAK) break;
+if (c === RETURN) return c;
+```
+
+Finally, at the edge of the call, `callFunction` turns the code back
+into a value (two lines that keep stack traces and classes working are
+left out; the next chapter and the classes chapter show them):
+
+```ts
+const c = this.executeBlock(
+  f.decl.body, env);
+if (c === RETURN) {
+  const v = this.returnValue;
+  this.returnValue = null;
+  return v;
+}
+return null;
+```
+
+If the body finished with `RETURN`, the parked value is taken out (and
+the field cleared, so a stale value can never leak into a later call)
+and returned as an ordinary TypeScript value; if the body ran off its
+end, the call gives `null`, Drip's `none`. Step through it in a
+recursive function, where each call's `return` has to find its *own*
+`callFunction`:
+
+<ReturnSteps client:visible />
+
+Each code travels only as far as its own call's `callFunction`: `fib(3)`
+never sees the `RETURN` inside `fib(2)`, only the 1 it produced.
+
+<Figure caption="Each method that runs statements gets a completion code back from the statement below it and decides what to do with it. RETURN goes straight up to callFunction; BREAK stops at the nearest loop." takeaway="Every level checks the code; only callFunction turns RETURN into a value.">
+  <UnwindFigure />
+</Figure>
+
+<Callout kind="definition">
+**Return unwinding** is leaving every statement between a `return` and
+the start of its function call in one move. Drip's tree-walker does it
+with **completion codes**: `execute` returns `NORMAL`, `BREAK`,
+`CONTINUE` or `RETURN`; a `return` parks its value in `returnValue` and
+returns `RETURN`; blocks, `if`s and loops pass `RETURN` up unchanged;
+and `callFunction` takes the parked value and returns it. A body that
+ends without a `return`, or with a bare `return;`, gives `none`.
+</Callout>
+
+<Formal title="How a statement can finish">
+
+```text
+execute : Stmt → NORMAL | BREAK
+               | CONTINUE | RETURN
+execute(return e;) = RETURN,
+  and returnValue := value of e
+call f(args) = returnValue  if the
+  body gave RETURN, else none
+```
+
+<span slot="read">Running a statement always ends in one of four ways.
+Running return e gives RETURN, and as it does so it sets returnValue to
+the value of e (the symbol := reads "becomes"). A call of f produces the
+parked return value if its body finished with RETURN, and none
+otherwise.</span>
+</Formal>
+
+<Prompts ids={['parked-where', 'block-passes', 'loop-return', 'own-call']} />
+
+## What a call gives back
+
+<Examples of="return-unwinding">
+
+```
+fn indexOf(xs, v) {
+  for i in 0..len(xs) {
+    if xs[i] == v {
+      return i;
+    }
+  }
+  return -1;
+}
+print indexOf([4, 8, 15], 8); # 1
+print indexOf([4, 8, 15], 7); # -1
+```
+
+```
+fn quiet() {
+  print "a";
+  return;
+  print "b";
+}
+print quiet();
+# a
+# none
+```
+
+<Run id="pair" />
+
+</Examples>
+
+The first is the most common shape of all: search, and leave the moment
+you find it. For 8, the `if` matches when `i` is 1, so `return i;` parks
+1 and the code leaves the `if`, the loop body and the loop; for 7
+nothing matches, the loop ends normally, and the last line returns -1.
+The second shows a bare `return;`: it stops the call (so `b` is never
+printed) and gives `none`, as a body with no `return` at all does. The runnable one leaves from inside
+*two* nested loops at once, and returns a list; it also shows what
+happens when the search fails and the body runs off its end.
+
+A `return` must sit inside a function, and Drip checks that before the
+program starts:
+
+```
+return 1;
+# line 1: 'return' outside a function
+```
+
+There is no call for the code to travel back to, so this is a compile
+error (the resolver chapter shows where it is caught).
+
+<Prompts ids={['return-none']} />
+
+<Callout kind="engine" label="Under the hood">
+The bytecode VM in Part IV needs neither notes nor alarms: its code is a
+flat list of instructions, so there is nothing nested to climb out of,
+and a `return` instruction pops the current call's record off the VM's
+own call stack<Cite id="mdn-call-stack" />. The chapter *Frames:
+calling and returning in the VM* builds it.
+</Callout>
+
+## Your turn
+
+<Exercise id="callFn" />
+
+<Exercise id="power" />
+
+## What you learned
+
+- `return` can sit deep inside loops, blocks and `if`s, and must leave
+  them all in one move: **return unwinding**.
+- The companion's interpreter uses **completion codes**: `execute`
+  returns `NORMAL`, `BREAK`, `CONTINUE` or `RETURN`, and a `return` parks
+  its value in `returnValue`.
+- Blocks, `if`s and loops pass `RETURN` up; `callFunction` takes the
+  value and clears the field. No `return`, or a bare `return;`, gives
+  `none`.
+- The other design throws an exception and catches it at the edge of
+  the call; it is shorter to write, but throws on every `return`.
+
+Next: the call stack itself, which the interpreter quietly borrows from
+TypeScript, and the stack traces Drip prints when something goes wrong.
+
+<Quiz />

@@ -1,0 +1,223 @@
+---
+n: 246
+day: 62
+part: IX
+title: 'Emitting Python with column storage'
+tagline: "The Python emitter writes a container class with one array('d') per float field and rewrites every access to use it. It works, the output matches, and in CPython it is slower. Here is the code it writes, and the measurement that makes it opt-in."
+objectives:
+  - Read the container class, helpers and edits the Python emitter generates.
+  - "Explain what Python’s `array('d')` stores, and why only floats may go in it."
+  - Explain why columns save memory but cost time in CPython, from the committed measurement.
+  - Generate a container class from a list of fields.
+introduces: [python-array-module]
+uses: [semantic-differences, python-subset, multi-language-ir, language-plugin, codegen, emit, source-to-source, column-storage, soa-container, access-rewriting, identity-preservation, handle, annotation, cost-model, optimization-report, typed-array, float64, heap-number, tagged-value, interpreter, jit-compiler, aos-vs-soa, cache-line, spatial-locality, memory, class, constructor, method, this, push, string-building, template-literal, differential-testing]
+sources: [python-array, cpython-arraymodule, python-datamodel]
+---
+import EmitSteps from '../../../components/diagrams/ch246/EmitSteps';
+import PyLayoutBars from '../../../components/diagrams/ch246/PyLayoutBars';
+
+## What comes out
+
+Put `# @viscosity soa` above a list, and `viscosity build` turns this:
+
+```py
+ps = []
+for i in range(1000):
+    ps.append(P(float(i), 1.0))
+for p in ps:
+    p.x += p.vx
+print(ps[3].x)
+```
+
+into this (the prelude it adds at the top comes later):
+
+```py
+ps = _Vsc_ps()
+for i in range(1000):
+    ps.append(float(i), 1.0)
+for p in _vsc_iter(ps):
+    ps.x[p] += ps.vx[p]
+print(ps.x[_vsc_ix(ps, 3)])
+```
+
+Both print `4.0`. The records are gone. `p` is now an index, and each
+field lives in its own column. It is the same plan the JavaScript
+emitter carries out in chapters 233 and 234, written in Python's
+syntax and with Python's rules.
+
+<Callout kind="intuition">
+A list of floats is a row of labelled boxes, each box holding a slip
+that says where its number is kept. An `array('d')` is an egg carton:
+the numbers sit directly in the slots, packed side by side, with no
+boxes at all. The carton is far smaller. But in Python you can't hold a
+bare egg: every time you take one out, it has to be put in a new box
+before you can use it.
+</Callout>
+
+## One edit at a time
+
+Like the JavaScript emitter, the Python emitter never regenerates the
+program. It collects edits to source ranges and applies them. Step
+through them:
+
+<EmitSteps client:visible />
+
+<Prompts ids={['em-edits', 'em-index', 'em-ix']} />
+
+## The container
+
+Here is the class the emitter generated for `ps`, from the real output:
+
+```py
+class _Vsc_ps:
+    __slots__ = ('n', 'x', 'vx')
+    def __init__(self):
+        self.n = 0
+        self.x = _vsc_array('d')
+        self.vx = _vsc_array('d')
+    def append(self, v0, v1):
+        self.x.append(v0)
+        self.vx.append(v1)
+        self.n += 1
+    def __len__(self):
+        return self.n
+```
+
+(It also has a class method `_of` that builds a container from a list
+literal.) `n` counts the elements, `append` takes one value per column,
+and `__len__` makes `len(ps)` keep working. `__slots__` declares the
+container's attributes up front, so the container itself has no
+per-instance dictionary<Cite id="python-datamodel" />. That has a
+consequence for the generator: every attribute, `n` included, must be
+listed, or `self.n = 0` raises `AttributeError`.
+
+And the two helpers, wrapped to fit:
+
+```py
+def _vsc_ix(c, i):
+    if -c.n <= i < c.n:
+        return i
+    raise IndexError(
+        'list index out of range')
+
+def _vsc_iter(c):
+    i = 0
+    while i < c.n:
+        yield i
+        i += 1
+```
+
+`_vsc_ix` is the bounds check from chapter 245's semantics: negative
+indexes are fine, and anything else past an end raises the same
+`IndexError` with the same message a list would. `_vsc_iter` yields
+indexes and re-reads `c.n` on every step, so a loop that appends while
+it iterates sees the new elements, just as it would with a list.
+
+<Prompts ids={['em-slots', 'em-iter']} />
+
+## Python's array module
+
+The typed columns are Python's own `array` type, not a library.
+`array('d')` holds C doubles, packed one after another, and only
+accepts values of that type:
+
+```py
+>>> from array import array
+>>> a = array('d', [1])
+>>> a[0]
+1.0
+>>> a.append('hi')
+TypeError: must be real number, not str
+>>> a.itemsize
+8
+```
+
+(Real output from Python 3.13, with the traceback trimmed.) Notice the first line: the int
+`1` went in and the float `1.0` came out. That is why the planner only
+gives a typed column to fields proven to hold floats, and every other
+field gets a plain `list` column. Python's ints are unbounded
+<Cite id="python-datamodel" />, so a 64-bit integer column (type code
+`'q'`) is no way out either: `array('q', [2**63])` raises
+`OverflowError`.
+
+<Callout kind="definition">
+Python's **array module** provides `array(typecode)`, a mutable
+sequence that stores its items compactly as C values of one type, fixed
+when it is created<Cite id="python-array" />. Type code `'d'` is a C
+`double`, holding Python floats in 8 bytes each. Arrays index, slice
+and `append` like lists, but storing a value of the wrong type is an
+error.
+</Callout>
+
+<Prompts ids={['pa-what', 'pa-int', 'pa-q']} />
+
+## Why it is opt-in
+
+Everything above works: the corpus programs print the same output and
+raise the same exceptions as the originals. And yet, by default,
+Viscosity keeps Python lists as objects. This is why:
+
+<Figure takeaway="In CPython, columns save memory and cost time." caption="CPython 3.13, 100,000 elements, from this book’s benchmark run (packages/bench/e2e-py/layouts.py, results/python-layouts-2026-10-31.json). The time is one update loop, x += vx * 0.016, written by hand for each layout.">
+  <PyLayoutBars />
+</Figure>
+
+The update loop took 26.7 ns per element over dataclass objects, 43.3
+over list columns and 72.7 over `array('d')` columns. Memory went from
+16.0 MB to 3.3 MB, about 4.9 times less.
+
+The reason is in CPython's source. Reading item `i` of an `array('d')`
+runs `PyFloat_FromDouble` on the stored double<Cite id="cpython-arraymodule" />:
+it creates a new float object, every time. The egg goes into a new
+box. A dataclass object, or a list, already holds float objects, so
+reading `p.x` just hands one over. CPython is an interpreter, and the
+cost of making objects dwarfs anything a cache line can give back.
+
+In JavaScript the same plan wins, because V8's optimizing compiler
+reads `Float64Array` elements as raw doubles (`FINDINGS.md`, section 6). Same
+IR, same analyses, same safety proofs; the measurement differs, so the
+cost model's verdict differs. That is why Python reports
+`CPython: column access measured slower per element than objects` and
+asks you to opt in, with `# @viscosity soa` or `--python-auto`, when
+memory matters more than time.
+
+<Callout kind="pitfall">
+The benchmark measures a hand-written loop, not Viscosity's output. The
+generated code also looks `ps.x` up on every access, which the
+benchmark loop doesn't. No end-to-end Python result is committed yet;
+`packages/bench/e2e-py/particles.py` is there for you to run on the
+original and the compiled program.
+</Callout>
+
+<Prompts ids={['pa-slow', 'pa-memory', 'pa-js']} />
+
+<Callout kind="engine" label="Under the hood">
+This is the multi-language bargain in one chapter. The emitter is 134
+lines, and none of them decides what to transform: which lists, which fields
+are floats, which accesses need a check all arrive in the plan. What
+the emitter knows is Python: `__slots__`, `array('d')`, `IndexError`,
+generators. And the one place the answer differs from JavaScript, the
+verdict, comes from a measurement of a real interpreter, not from a
+guess.
+</Callout>
+
+## Your turn
+
+<Exercise id="containerClass" />
+
+<Exercise id="colName" />
+
+## What you learned
+
+- The Python emitter applies source edits: the list becomes a
+  container, `append(P(...))` passes the arguments, element loops walk
+  indexes, and field accesses become `ps.x[p]`, with `_vsc_ix` where a
+  bound isn't proven.
+- The container uses `__slots__`, one column per field, a count `n`, and
+  `__len__`.
+- Python's **array module** stores C values compactly. `array('d')`
+  holds floats only: an int comes back as a float.
+- In CPython every read from an `array('d')` makes a new float object,
+  so columns measured slower but used about 4.9 times less memory. So
+  Python columns are opt-in.
+
+<Quiz />

@@ -1,0 +1,268 @@
+---
+n: 89
+day: 23
+part: III
+title: 'FIRST and FOLLOW'
+tagline: 'Your recursive-descent parser chose each rule by peeking at one token, and it worked because someone chose the tests well. FIRST and FOLLOW are how to choose them for any grammar, by a loop that sweeps the rules until nothing changes.'
+objectives:
+  - Work out which nonterminals are nullable, sweep by sweep.
+  - Compute FIRST sets, and FIRST of a row of symbols, by repeating sweeps until nothing changes.
+  - Compute FOLLOW sets, and explain the two ways tokens flow into them.
+  - Connect each set to the token tests in a recursive-descent parser.
+introduces: [first-set, follow-set]
+uses: [derivation, parse-tree, ambiguity, grammar, production-rule, terminal, nonterminal, bnf, parser, recursive-descent, precedence, syntax-error, lookahead, token, keyword, drip, set, object, for-of, while-loop, function, arrow-function, array, map-filter-reduce, recursion]
+sources: [aho2006]
+---
+import FixpointSteps from '../../../components/diagrams/ch089/FixpointSteps';
+import FollowFlow from '../../../components/diagrams/ch089/FollowFlow';
+
+## How did the parser know?
+
+In "Recursive descent parsing" each function chose what to do by
+peeking at the next token: a loop like `while (at('+', '-'))` kept
+taking operators, and a statement function asked "is the next token
+`print`? `if`? `{`?" to pick its rule. Those tests were written by
+hand, by someone who looked at the grammar and *knew* which tokens
+start which rule. That works for a small grammar; however, for a big
+one we want a method that reads the grammar and produces the tests,
+and that can tell us when one token is not enough to decide.
+
+Here is the grammar we will work on: the adding grammar, with the star
+in `expr → item ( "+" item )*` unfolded into plain rules exactly as the
+chapter on BNF showed, so that `rest` stands for "zero or more
+`+ item`s":
+
+```text
+stmt → "print" expr ";"
+expr → item rest
+rest → "+" item rest | ε
+item → NUMBER | "(" expr ")"
+```
+
+A function for `rest` has two rules to choose from, and the question
+is which to pick for each possible next token. If the token is `+`,
+the first rule is the only one that can match. If it is `;` or `)`,
+the answer is `rest → ε`, because those are tokens that can come
+*after* a `rest`. The first question has a name, FIRST; the second
+is FOLLOW; and both need one small idea before them.
+
+## Nullable: what can vanish
+
+A nonterminal is **nullable** when it can derive ε, the empty row: it
+can disappear without using a single token. `rest` is nullable,
+because of `rest → ε`. So is any nonterminal with a body made only of
+nullable symbols, and that "only of" means the answer can spread: if
+`opt → rest rest`, then `opt` is nullable too, but you only find out
+once you know about `rest`.
+
+The way to compute it is to sweep over every rule, mark each head
+whose body is all nullable, and sweep again until a whole sweep marks
+nothing new:
+
+<Run id="nullableSweeps" />
+
+`nul` starts as an empty `Set`. In each sweep the loop skips heads
+already marked, and `body.every((s) => nul.has(s))` asks whether
+every symbol of a body is already known to vanish; for an empty body
+`every` is `true` straight away, which is how ε starts things off. A
+terminal is never in `nul`, so a body with a token in it never
+counts. It prints each sweep's number and set: `1 [ 'rest', 'opt' ]`, then
+the same after sweep 2, which added nothing, so the loop stops.
+
+<Analogy title="news spreading through a village">
+On the first morning, only the baker knows the fair is cancelled. Each
+morning, everyone tells their neighbours everything they know. On a
+morning when nobody hears anything they did not already know, the news
+has gone as far as it ever will.
+<span slot="breaks">Real news can be forgotten or garbled; a set here
+only ever grows, and an item, once added, stays exactly as it
+is.</span>
+</Analogy>
+
+<Analogy title="a spreadsheet recalculating">
+In a spreadsheet where some cells add up other cells, changing one
+number makes the program recalculate, and a total that feeds another
+total may need a second pass. It stops when every cell agrees with its
+formula.
+<span slot="breaks">A spreadsheet works out a sensible order and does
+each cell once; our sweeps don't bother with order, and simply go round
+again, which is slower but needs no planning.</span>
+</Analogy>
+
+That style of computing, "repeat until nothing changes", is called
+iterating to a **fixed point**, and all three sets in this chapter
+are computed that way. It always stops: the sets only grow, and a
+grammar has only so many tokens to put in them.
+
+<Prompts ids={['nullable-what', 'fixed-point']} />
+
+## FIRST: what a rule can start with
+
+For a nonterminal `A`, **FIRST(A)** is the set of tokens that can
+begin something `A` derives. A rule's body tells you some of it: if
+the body starts with a token, that token is in; if it starts with a
+nonterminal `B`, all of FIRST(B) is in; and if `B` is nullable, the
+next symbol can start the body too, so walk on to it. Step through
+the sweeps for our grammar (FOLLOW, at the end, is the next section):
+
+<FixpointSteps client:visible />
+
+Notice sweep 1: `expr` was visited before `item` had anything in its
+set, so `expr` got nothing; sweep 2 put it right. Nobody planned the
+order, and nobody needed to.
+
+<Callout kind="definition">
+**FIRST(A)** is the set of terminals that can begin a sentence derived
+from `A`. For a row of symbols, FIRST of the row is FIRST of its first
+symbol, together with FIRST of the second if the first is nullable,
+and so on; a terminal's FIRST is the terminal itself. A nonterminal is
+**nullable** if it can derive ε<Cite id="aho2006" />.
+</Callout>
+
+<Examples of="first-set">
+
+```text
+greeting → "hello" name
+FIRST(greeting) = { hello }
+```
+
+```text
+S → A B "c"   A → "a" | ε   B → "b" | ε
+FIRST(S) = { a, b, c }
+```
+
+```text
+Drip: statement → printStmt | ifStmt
+  | whileStmt | block | ...
+FIRST(statement) ⊇
+  { print, if, while, {, ... }
+```
+
+</Examples>
+
+The first is the simplest: the only body starts with the token
+`hello`. In the second, `A` can vanish, so `B` can start `S`; `B` can
+vanish too, so even `c` can; FIRST(S) collects all three. The third is
+Drip: each kind of statement starts with its own keyword (`print`,
+`if`, `while`, `for`, `return`, `break`, `continue`) or a `{`, and the
+expression statement adds everything an expression can start with
+(numbers, names, `(`, `-`, `!` and the rest). As long as those sets
+don't overlap, one look at the next token picks the kind of statement,
+which is exactly the chain of `if (match('print'))` tests a
+recursive-descent `statement` function makes.
+
+<Prompts ids={['first-what', 'first-seq']} />
+
+## FOLLOW: what can come next
+
+FIRST is enough to choose between rules that use tokens. For a rule
+that can produce *nothing*, like `rest → ε`, it is no help: the next
+token is not part of `rest` at all, but of whatever comes after it.
+So we need **FOLLOW(A)**: the tokens that can come straight after `A`.
+Tokens flow into FOLLOW in two ways, which the picture shows for the
+rule `expr → item rest`:
+
+<Figure takeaway="FOLLOW collects what comes next, and what comes after the head when the rest can vanish." caption="Where FOLLOW(item) and FOLLOW(rest) come from in the rule expr → item rest. (1) What rest can start with comes right after item. (2) rest ends the rule, so whatever follows expr follows rest. (3) rest can vanish, so item can end the rule too, and whatever follows expr follows item.">
+  <FollowFlow />
+</Figure>
+
+<Callout kind="definition">
+**FOLLOW(A)** is the set of terminals that can appear straight after
+`A` in some sentential form, with `$` (the end of the input) in
+FOLLOW of the start symbol. For every rule `X → α A β`: everything in
+FIRST(β) is in FOLLOW(A); and if β is nullable (or empty), everything
+in FOLLOW(X) is in FOLLOW(A)<Cite id="aho2006" />.
+</Callout>
+
+<Formal title="The three sets">
+
+```text
+nullable(A)  ⇔  A ⇒* ε
+FIRST(α)  = { a | α ⇒* a β }
+FOLLOW(A) = { a | S ⇒* α A a β }
+            ∪ { $ | S ⇒* α A }
+```
+
+<span slot="read">A is nullable exactly when A becomes the empty row in
+zero or more steps. FIRST of a row alpha is the set of terminals a such
+that alpha becomes some row starting with a. FOLLOW of A is the set of
+terminals a such that the start symbol becomes some sentential form in
+which a comes straight after A; together with (∪) the end marker $ if
+A can come at the very end. The ⇒* is the "zero or more steps" arrow
+from the chapter on derivations.</span>
+</Formal>
+
+<Examples of="follow-set">
+
+```text
+stmt → "print" expr ";"
+FOLLOW(stmt) = { $ }
+FOLLOW(expr) ∋ ;
+```
+
+```text
+FOLLOW(rest) = { ;, ) }
+FOLLOW(item) = { +, ;, ) }
+```
+
+```text
+Drip: ifStmt → "if" expression block ...
+FOLLOW(expression) ∋ {
+```
+
+</Examples>
+
+The first shows the two starting facts: `$` follows the start symbol,
+and a token written straight after a nonterminal follows it (`∋` reads
+"contains"). The second is our grammar's answer, after the sweeps in
+the step-through: `rest` is followed by whatever follows `expr`, the
+`;` of a print statement or the `)` of a bracketed item, and `item`
+gets the `+` from FIRST(rest) as well. The third is real and explains
+a feature of Drip: an `if` condition is followed by the `{` of its
+block, and no rule lets an expression continue with `{`, so a parser
+reading the condition knows it has ended the moment it sees `{`; that
+is why Drip needs no brackets round its conditions.
+
+Now the `rest` function can be written from the sets alone: if the next
+token is in FIRST of `"+" item rest` (that is, `+`), use that rule; if
+it is in FOLLOW(rest) (`;` or `)`), use `rest → ε` and return; and
+anything else is a syntax error, found at once, at the token that is
+wrong. That is the `while (at('+'))` loop from recursive descent, with
+its stopping condition finally explained.
+
+<Prompts ids={['follow-what', 'why-follow', 'dollar', 'drip-brace']} />
+
+<Callout kind="engine" label="Under the hood">
+The sweep-until-nothing-changes loop is the standard way textbooks and
+parser tools compute these sets<Cite id="aho2006" />, and it is far
+from the last time you will meet it: the data-flow analyses of the
+optimiser, later in the book, which work out facts like "this variable
+might be used later", are fixed-point loops of exactly this shape over
+a program's blocks rather than a grammar's rules.
+</Callout>
+
+## Your turn
+
+The first exercise computes FIRST sets with the sweep loop; the second,
+for extra practice, does FOLLOW.
+
+<Exercise id="firstSets" />
+
+<Exercise id="followSets" />
+
+## What you learned
+
+- A nonterminal is **nullable** if it can vanish; FIRST and FOLLOW
+  both need to know which ones can.
+- **FIRST(A)**: the tokens that can start `A`; for a row, walk past
+  nullable symbols.
+- **FOLLOW(A)**: the tokens that can come after `A`; they come from
+  what follows `A` in a rule, and, when the rest of the rule can
+  vanish, from what follows the rule's head.
+- All three are computed by sweeping over the rules until a sweep
+  changes nothing: a **fixed point**.
+
+Next: putting FIRST and FOLLOW into one table that runs a parser, and
+rewriting grammars whose rules one token cannot tell apart.
+
+<Quiz />

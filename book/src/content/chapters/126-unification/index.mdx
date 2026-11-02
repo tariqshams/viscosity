@@ -1,0 +1,240 @@
+---
+n: 126
+day: 32
+part: III
+title: 'Unification'
+tagline: 'Leave out a parameter’s type and the checker can still work it out: give it an unknown, collect what the code says about that unknown, and solve. The solver is called unification, and it is the engine inside every type inference you have ever relied on.'
+objectives:
+  - Use type variables to stand for types the checker does not know yet.
+  - Represent a substitution, and apply it to a type.
+  - Unify two types by hand, step by step, or say why they cannot be unified.
+  - Write the unification algorithm in JavaScript.
+introduces: [type-variable, unification]
+uses: [typed-drip, type-checker, type-annotation-checking, typing-judgment, inference-rule, type-environment, substitution, lambda-calculus, generic, generic-inference, type-annotation, recursion, function, parameter, object, property, copy-spread, map, strings, numbers]
+sources: [robinson1965, pierce2002, ts-generics]
+---
+import UnifySteps from '../../../components/diagrams/ch126/UnifySteps';
+import TypeTrees from '../../../components/diagrams/ch126/TypeTrees';
+
+## A parameter with no label
+
+Typed Drip, as we left it, insists that every parameter has a type:
+
+```
+fn double(x) { return x * 2; }
+# parameter 'x' of double() needs a type
+```
+
+That is a little silly, because anyone reading the body can see what
+`x` must be: it is multiplied by 2, and `*` only takes numbers, so `x`
+is a `number`, and so is the result. TypeScript does this kind of
+reasoning every time you call a generic function without saying what
+its type parameter is (chapter 36): for `identity(3)` it works out that
+`T` is `number`<Cite id="ts-generics" />. This chapter builds the tool
+that does it, in two parts: an *unknown* for each type we do not know,
+and a *solver* that works out what the unknowns must be.
+
+## Type variables
+
+Give `x` an unknown type, call it α (the Greek letter alpha), and check
+the body as usual. When the checker reaches `x * 2`, the rule for `*`
+needs a `number` on both sides, so instead of failing it writes down an
+equation, `α = number`, and carries on; at the end, it solves the
+equations it collected.
+
+<Analogy title="the x in an algebra lesson">
+"Some number, times 2, is 10": you write `x × 2 = 10` and solve for x,
+without knowing x at the start. A type variable is that x, for types.
+<span slot="breaks">Algebra solves with arithmetic (divide both sides by
+2); type equations have no arithmetic at all, only matching of shapes:
+`[α] = [number]` is solved by lining up the brackets, so α is
+`number`.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **type variable** (written α, β, γ in papers, and `'a`, `'b` in our
+code, as OCaml prints them) is a placeholder for a type that is not yet
+known. It may appear anywhere a type can, as in `[α]` or
+`fn(α) -> β`, and the checker works out later which type it stands
+for<Cite id="pierce2002" />.
+</Callout>
+
+<Examples of="type-variable">
+
+```
+fn same(x) { return x; }
+# fn('a) -> 'a
+```
+
+```
+fn double(x) { return x * 2; }
+# 'a = number, so fn(number) -> number
+```
+
+```
+fn callOne(f) { return f(1); }
+# 'a = fn(number) -> 'b
+# so fn(fn(number) -> 'b) -> 'b
+```
+
+</Examples>
+
+In the first, nothing in the body says what `x` is, so the type keeps
+its variable: `same` works for *any* type, exactly like TypeScript's
+`<T>(x: T) => T` (chapter 128 turns that leftover variable into a real
+generic). In the second, `*` forces `'a = number`. The third is the
+interesting one: `f` is called with a number, so its type `'a` must be a
+function taking a number and returning *something*; the something gets a
+fresh variable `'b`, and the whole call has type `'b`.
+
+<Prompts ids={['tv-what', 'tv-equation', 'tv-leftover']} />
+
+## Substitutions
+
+The answer to a set of type equations is a **substitution**: a table
+from type variables to types, such as `{ 'a ↦ number, 'b ↦ ['a] }`.
+**Applying** it to a type replaces each variable by its entry, again and
+again until none of the table's variables is left. This is chapter
+118's substitution, made simpler: types have no λ in them, so nothing
+can be captured, and no renaming is ever needed.
+
+<Formal title="Applying a substitution S">
+
+```text
+S(α)          = S(S[α])  if α is in S
+S(α)          = α        otherwise
+S(number)     = number   (and so on)
+S([T])        = [S(T)]
+S(fn(T…) -> R) = fn(S(T)…) -> S(R)
+```
+
+<span slot="read">To apply S to a variable that S has an entry for, look
+up its entry and apply S to that too (the entry may mention other
+variables); a variable with no entry stays as it is. A base type such as
+number never changes. For a list or a function type, apply S to every
+type inside it.</span>
+</Formal>
+
+<Run id="apply-subst" />
+
+The runnable box builds that table as a plain object and applies it.
+`resolve` only follows one variable's chain (`'b` gives `['a]`), while
+`apply` goes all the way through, so `'b` becomes `[number]`, and the
+function type `fn('a, 'b) -> 'b` becomes `fn(number, [number]) ->
+[number]`. A variable the table does not mention, `'c`, stays a
+variable.
+
+<Prompts ids={['subst-what', 'resolve-vs-apply']} />
+
+## Unifying two types
+
+The equations a checker collects have the form "this type equals that
+type", where both sides may contain variables. **Unification** finds a
+substitution that makes the two sides the same, if there is
+one<Cite id="robinson1965" />. Think of the two types as trees and lay
+one over the other:
+
+<Figure takeaway="Unification lines two type trees up; wherever a variable meets something, that is a binding." caption="fn('a, ['a]) -> 'b laid over fn(number, 'c) -> 'c. Each variable on one side faces a piece of the other side: 'a faces number, 'c faces ['a], and 'b faces 'c.">
+  <TypeTrees />
+</Figure>
+
+<Analogy title="two half-filled forms">
+Two clerks each filled in half of the same form: one wrote the name and
+left the date blank, the other wrote the date and left the name blank.
+Merging them fills both blanks; if both wrote a *different* name, the
+forms cannot be merged.
+<span slot="breaks">A blank on a form is filled with a plain answer; a
+type variable can be filled with another variable or a whole type, and
+the same variable can appear in several places, which must all be filled
+the same way.</span>
+</Analogy>
+
+The algorithm takes two types and the substitution so far, and has one
+case for each pair of shapes:
+
+<Formal title="unify(A, B), given the bindings so far">
+
+```text
+first replace A and B by what they are
+bound to, if they are bound variables
+α and α         ok, nothing to add
+α and T         bind α ↦ T
+T and α         bind α ↦ T
+same base type  ok
+[A] and [B]     unify A and B
+fn(A₁…Aₙ) -> R and fn(B₁…Bₙ) -> Q
+                unify each Aᵢ with Bᵢ,
+                then R with Q
+anything else   fail
+```
+
+<span slot="read">Look through any variable already bound. Two copies
+of the same variable already agree. A variable on either side gets
+bound to whatever is on the other side. Two equal base types agree; two
+different ones fail. Two lists agree if their element types do. Two
+function types with the same number of parameters agree if each pair of
+parameters does and the results do, with each step using the bindings
+made by the steps before it. Any other pair, such as a list and a
+number, fails.</span>
+</Formal>
+
+Step through it on the two types from the picture:
+
+<UnifySteps client:visible />
+
+<Callout kind="definition">
+**Unification** is solving an equation between two types: finding a
+substitution S such that S(A) and S(B) are the same type, or reporting
+that none exists. The algorithm walks the two types together, binding a
+variable whenever it meets one, and fails when it meets two different
+shapes<Cite id="robinson1965" /><Cite id="pierce2002" />.
+</Callout>
+
+<Examples of="unification">
+
+```text
+'a      with  number      'a ↦ number
+['a]    with  [string]    'a ↦ string
+```
+
+```text
+fn('a) -> 'a  with  fn(number) -> string
+'a ↦ number, then number with string:
+cannot unify number with string
+```
+
+```text
+fn('a, 'b) -> 'a with fn('b, bool) -> 'c
+'a ↦ 'b, 'b ↦ bool, 'c ↦ bool
+```
+
+</Examples>
+
+The first two are single steps: a variable meets a type, and lists match
+by their element types. The second shows why each step must see the
+earlier bindings: after `'a ↦ number`, the result `'a` *is* `number`,
+which cannot equal `string`, so this pair has no solution (a function
+that returns its argument cannot turn a number into a string). The third
+chains variables: `'a` is bound to `'b`, which is then bound to `bool`,
+so when the results are unified, `'a` resolves to `bool` and `'c` gets
+`bool` too.
+
+<Prompts ids={['unify-what', 'unify-order', 'unify-fail']} />
+
+## Your turn
+
+<Exercise id="unify" />
+
+## What you learned
+
+- A **type variable** stands for a type not yet known; checking code
+  that uses it produces equations between types.
+- A **substitution** maps variables to types; applying it replaces them,
+  following chains until none are left.
+- **Unification** solves one equation, walking both types together,
+  binding variables and failing on mismatched shapes.
+
+Next: using `unify` to infer the types of whole functions, and the one
+equation it must refuse to solve: `'a = ['a]`.
+
+<Quiz />

@@ -1,0 +1,259 @@
+---
+n: 168
+day: 42
+part: V
+title: 'JavaScriptCore and SpiderMonkey'
+tagline: 'Every benchmark in this book ran on V8. Safari and Firefox run the same JavaScript on different machinery: other tiers, other thresholds, even another way of putting a number into 64 bits. Here is what their own source code says, and why it should make you careful with any speed-up.'
+objectives:
+  - Name the execution tiers of JavaScriptCore and SpiderMonkey, as their own sources name them.
+  - Say where each engine resumes when an optimized guess fails.
+  - Encode an integer and a double the way JavaScriptCore does, and compare it with V8 and SpiderMonkey.
+  - Explain why a speed-up measured on one engine is only a hypothesis on another.
+introduces: [engine-diversity]
+uses: [tiering, jit-compiler, ignition, optimizing-tiers, bytecode, interpreter, dispatch-loop, inline-cache, type-feedback, speculation, deoptimization, shape, nan-boxing, tagged-value, value-representation, smi, heap-number, ieee754, float64, typed-array, arraybuffer, bit-ops, jit-warmup, benchmark-isolation, aos-vs-soa]
+sources: [v8-maglev, v8-sparkplug, jsc-optionslist, jsc-llint, jsc-osr-exit, jsc-ftl-b3, jsc-jsvalue, sm-jitoptions, sm-warp, sm-cacheir, sm-bailouts, spidermonkey-value, ecma262, mdn-typed-arrays]
+---
+import TierSteps from '../../../components/diagrams/ch168/TierSteps';
+import ValueEncodings from '../../../components/diagrams/ch168/ValueEncodings';
+
+## One loop, three engines
+
+Every number this book has measured came from Node, which runs V8.
+Open the same page in Safari and a different engine, JavaScriptCore,
+runs it; in Firefox, SpiderMonkey does. All three follow one
+specification<Cite id="ecma262" />, so your program prints the same
+thing everywhere; however, nothing in that specification says *how
+fast* anything must be, or how a value must be laid out in memory.
+
+So is struct-of-arrays faster in Safari too? This book never measured
+it, and this chapter will not pretend to know. What it can do is show
+you, from the engines' own source code, how differently they are
+built; after that, "it was four times faster on my machine" stops
+sounding like a law of nature and starts sounding like what it is, a
+fact about one engine.
+
+<Analogy title="one score, three orchestras">
+Three orchestras play the same symphony from the same printed score.
+The notes are fixed; but one rehearses a new piece for a week before
+playing it at full speed, another sight-reads it at once, and each
+seats its players differently.
+<span slot="breaks">Orchestras are allowed to sound different, and
+that is the point of going to hear them; engines must produce exactly
+the same output for the same program, and only their speed and memory
+use may differ.</span>
+</Analogy>
+
+## Same ladder, different rungs
+
+<Analogy title="three kitchens, one recipe book">
+Three restaurants cook from the same recipe book. Each starts a new
+dish slowly, by the book, then lets a faster cook take over once it is
+ordered often; but one has two fast cooks, another has one, and they
+promote a dish after a different number of orders.
+<span slot="breaks">A cook who gets a dish wrong can taste and fix it
+quietly; an engine whose fast code guesses wrong must throw that code
+away and go back down the ladder, and where it lands is one of the
+ways the engines differ.</span>
+</Analogy>
+
+*The V8 pipeline* climbed V8's ladder: the Ignition interpreter, then
+Sparkplug, Maglev and TurboFan<Cite id="v8-maglev" />. Step through all
+three engines side by side:
+
+<TierSteps client:visible />
+
+**JavaScriptCore** has four tiers, and its option list names them: the
+LLInt, the Baseline JIT, the DFG JIT and the FTL
+JIT<Cite id="jsc-optionslist" />. The LLInt ("low-level interpreter")
+is not written in C++; it is written in an assembly-like language of
+JavaScriptCore's own, with macros and per-platform `if`s, which is
+translated for each processor<Cite id="jsc-llint" />. The same option
+list shows that even this interpreter has inline caches for property
+accesses and calls. At the top, the FTL takes the DFG's view of a
+function and lowers it into a second **intermediate representation**
+(the compiler's private form of the program, which Part VI is all
+about), called B3, for heavier optimization<Cite id="jsc-ftl-b3" />.
+
+**SpiderMonkey** has a C++ interpreter, a Baseline Interpreter, a
+Baseline JIT and an optimizing compiler, Ion. Its options file states
+the default warm-up counts, each counting "invocations or loop
+iterations"<Cite id="sm-jitoptions" />:
+
+```cpp
+// js/src/jit/JitOptions.cpp, trimmed
+SET_DEFAULT(
+  baselineInterpreterWarmUpThreshold, 10);
+SET_DEFAULT(
+  baselineJitWarmUpThreshold, 100);
+SET_DEFAULT(
+  normalIonWarmUpThreshold, 1500);
+```
+
+Read it as three rules: a function that has run 10 times (or whose
+loops have gone round 10 times) moves into the Baseline Interpreter, at
+100 it is compiled by the Baseline JIT, and at 1500 by Ion. The front
+end of Ion is called Warp: its oracle takes a snapshot of what the
+Baseline inline caches saw, and WarpBuilder turns the bytecode into
+Ion's own representation off the main thread<Cite id="sm-warp" />. Those
+caches are written in CacheIR, "an (extremely simple) linear IR
+language for inline caches", from which both Baseline and Ion produce
+machine code<Cite id="sm-cacheir" />.
+
+<Prompts ids={['jsc-tiers', 'llint-lang', 'ftl-b3', 'sm-thresholds', 'warp-input']} />
+
+## Where a failed guess lands
+
+All three engines speculate (*Speculation and deoptimization* showed
+V8 doing it), and all three can be wrong. What differs is where they go
+back to. V8's deoptimizer rebuilds interpreter
+frames<Cite id="v8-maglev" />. JavaScriptCore's DFG code describes "how
+to exit the speculative path by going into baseline
+code"<Cite id="jsc-osr-exit" />. In SpiderMonkey, a *bailout* recovers
+"a baseline interpreter frame" from Ion's frame, for example when a
+shape guard fails or an integer add overflows; because values in Ion's
+frame may be unboxed or optimized away, and inlined calls may have no
+frame at all, small *snapshots* record how to rebuild each
+one<Cite id="sm-bailouts" />.
+
+<Prompts ids={['sm-bailout']} />
+
+## Same number, three encodings
+
+Tiers are not the only difference: even a single value is stored
+differently. *How JavaScript stores numbers and objects* showed V8's
+choice, where a small integer is a **Smi** kept in the value itself and
+a double held in an object's field usually lives in a separate
+**HeapNumber** (on this book's Node, `%DebugPrint` shows a field
+holding `1.5` as `<HeapNumber 1.5>` and a field holding `2` as plain
+`2`). *Making the VM fast* showed SpiderMonkey's: every value is
+NaN-boxed, so a double is stored as its own bits, and everything else,
+small integers included, hides inside the bit patterns that would
+otherwise mean "not a number", with a tag next to the
+exponent<Cite id="spidermonkey-value" />.
+
+JavaScriptCore also uses that NaN space, but the other way round. A
+pointer is stored as it is, so its top 16 bits are zero. A 32-bit
+integer gets the tag `0xFFFE` in its top 16 bits. A double is stored as
+its own bits *plus* 2<sup>49</sup>, which moves every real double out
+of both of those ranges, and decoding subtracts it
+again<Cite id="jsc-jsvalue" />.
+
+<Figure takeaway="Same JavaScript number, three different bit patterns." caption="The numbers 5 and 1.5 in each engine, from their sources (and, for V8, from %DebugPrint on Node v22.23.4).">
+  <ValueEncodings />
+</Figure>
+
+<Formal title="JavaScriptCore's encoding">
+
+```text
+int32 i   ↦  0xFFFE × 2⁴⁸ + (i mod 2³²)
+double d  ↦  bits(d) + 2⁴⁹
+pointer p ↦  p          (top 16 bits 0)
+```
+
+<span slot="read">An int32 i is stored as 0xFFFE shifted into the top
+16 bits, plus i read as an unsigned 32-bit number in the bottom 32. A
+double d is stored as its own 64 bits plus 2 to the 49, which adds 2 to
+the top 16 bits. A pointer p is stored unchanged, and its top 16 bits
+are zero. So the top 16 bits alone say which of the three a value
+is.</span>
+</Formal>
+
+Adding 2<sup>49</sup> to a 64-bit pattern adds `0x20000` to its high
+32-bit word, so a typed-array view (from *Bits and bytes*) can show it.
+The example puts a double into a `Float64Array`, reads the same 8 bytes
+as two 32-bit halves through a `Uint32Array`, and adds the offset to the
+high half:
+
+<Run id="jsc-encode" />
+
+It prints `fffe0000:00000005` for 5 and `fffe0000:ffffffff` for −1
+(the tag on top, the integer's 32 bits below), and for 1.5 it shows
+the high word changing from `3ff80000` to `3ffa0000`: the same double,
+moved up by 2<sup>49</sup>.
+
+<Callout kind="definition">
+**Engine diversity** is the fact that JavaScript engines implementing
+the same specification make different implementation choices: how
+many tiers, when code moves between them, what each tier speculates
+on, where a failed guess resumes, and how values and objects are
+represented. As such, the same program can perform differently in
+different engines, and a speed-up measured in one engine is a
+hypothesis for the others until it is measured there.
+</Callout>
+
+<Examples of="engine-diversity">
+
+```text
+5 in V8:     a Smi, in the value itself
+5 in SM:     int32 tag, then 5
+5 in JSC:    fffe0000 00000005
+```
+
+```js
+function f(x) { return x + 1; }
+for (let i = 0; i < 50; i++) f(i);
+// SpiderMonkey's default counts: f is
+// past 10, not yet 100: Baseline
+// Interpreter, no machine code yet
+```
+
+```text
+update-xy, 100,000 particles:
+V8 (Node 22): SoA about 3.8× faster
+JSC, SpiderMonkey: not measured
+```
+
+</Examples>
+
+The first is the smallest possible case: one number, three bit
+patterns, and code that reads the raw bits of a value (as a debugger or
+a native add-on might) would see three different things. The second
+shows the ladders differing in time: by SpiderMonkey's default counts,
+a function called 50 times has reached its Baseline Interpreter but not
+its Baseline JIT, so a benchmark that runs only 50 calls is measuring
+an interpreter there; on another engine the same 50 calls may meet
+different machinery, which is one more reason to warm up before
+measuring. The third is the realistic one, this book's own headline
+result from the benchmark run in *AoS vs SoA, measured*: it is a true
+statement about V8 12.4, and it says nothing about the other two.
+
+<Prompts ids={['jsc-double', 'diversity-what']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity's output stores numeric fields in `Float64Array` columns. A
+typed array's elements are raw IEEE 754 values in an `ArrayBuffer`, in
+every engine<Cite id="mdn-typed-arrays" />, so that part of the layout
+does not depend on whether an engine uses Smis, NaN-boxing or
+JavaScriptCore's encoding. How fast each engine's optimizing tier turns
+`xs[i] += vs[i]` into machine code is a different question. The honest
+position: this book's speed-ups are V8 numbers, and if you care about
+Safari or Firefox, measure there, with the same care as in
+*Benchmarking honestly*.
+</Callout>
+
+## Your turn
+
+The first exercise is the core one; the second is extra practice.
+
+<Exercise id="jscBox" />
+
+<Exercise id="tierAt" />
+
+## What you learned
+
+- **JavaScriptCore** runs code in the **LLInt**, the **Baseline JIT**,
+  the **DFG JIT** and the **FTL JIT**; the LLInt is written in its own
+  portable assembly language, and the FTL lowers the DFG's view of a
+  function into **B3**.
+- **SpiderMonkey** has a C++ interpreter, the **Baseline
+  Interpreter**, the **Baseline JIT** and **Ion**, whose front end
+  **Warp** compiles from snapshots of baseline **CacheIR** caches, with
+  default warm-up counts of 10, 100 and 1500.
+- A failed guess resumes in V8's interpreter, JSC's baseline code, or
+  SpiderMonkey's Baseline Interpreter.
+- JSC **NaN-encodes** values with raw pointers, `0xFFFE`-tagged int32s
+  and doubles offset by 2<sup>49</sup>.
+- **Engine diversity**: one specification, many designs; a speed-up
+  measured in one engine is a hypothesis in another.
+
+<Quiz />

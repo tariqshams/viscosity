@@ -1,0 +1,209 @@
+---
+n: 134
+day: 34
+part: III
+title: 'Beyond: System F, dependent and linear types'
+tagline: 'A short tour past the edge of this part: a language where types are passed as arguments, and a language where types can mention values, such as the length of a list. Neither is needed to build Drip; both explain features you will meet in TypeScript and Rust.'
+objectives:
+  - Read System F terms with type abstraction (Λα) and type application (e [T]), and connect them to TypeScript generics.
+  - Explain what a rank-2 type adds over Hindley–Milner, and what it costs.
+  - Say what a dependent type is, and read a vector type whose length is part of the type.
+  - Write a type checker for a small System F in JavaScript.
+introduces: [system-f, dependent-types]
+uses: [hindley-milner, let-polymorphism, generalization, instantiation, bidirectional-typing, soundness, lambda-calculus, beta-reduction, substitution, typing-judgment, inference-rule, type-environment, type-checker, generic, generic-inference, type-erasure, typescript, type-annotation, array, length, index, function, call, recursion, map]
+sources: [girard1972, reynolds1974, pierce2002, ts-generics, idris2-docs-types]
+---
+import TypeAppSteps from '../../../components/diagrams/ch134/TypeAppSteps';
+import VectAppend from '../../../components/diagrams/ch134/VectAppend';
+
+This chapter and the next are a **survey**: a guided look at four
+ideas that go beyond what this part builds, each with its precise
+definition and a real example, but without the full theory (Pierce's
+book has it, chapter by chapter<Cite id="pierce2002" />). Read them for
+the map; the details can wait until you need them.
+
+## Types as arguments: System F
+
+Recall the program that Hindley–Milner refused, because a parameter
+could not be used at two types:
+
+```text
+λf. if f true then f 1 else 2
+```
+
+The trouble is that inference has to guess every type, and guessing a
+polymorphic type for a parameter is too much to ask. What if we did
+not guess, and wrote the types in? In 1972 Jean-Yves Girard, working in
+logic, and in 1974 John Reynolds, working on programming languages,
+independently found the same answer: a lambda calculus in which a
+function can take a *type* as an argument, just as it takes a
+value<Cite id="girard1972" /><Cite id="reynolds1974" />.
+
+<Analogy title="a socket set">
+With a socket wrench you first choose the socket that fits this bolt
+(a 10 mm, say), clip it on, and only then turn the bolt. The wrench
+itself works for every size; choosing the size is a separate step that
+comes first.
+<span slot="breaks">Choosing the wrong socket is a nuisance you notice
+by hand; choosing a type argument is checked, so a wrong one is a type
+error, and once the program runs, the type argument has vanished
+altogether.</span>
+</Analogy>
+
+<Callout kind="definition">
+**System F**, the polymorphic lambda calculus, extends the typed lambda
+calculus with **type abstraction**, `Λα. e` (a term that takes a type α
+as its argument), and **type application**, `e [T]` (passing the type T
+to it). The type of `Λα. e` is `∀α. T`, and a ∀ may appear anywhere in
+a type, including to the left of an arrow. Every type is explicit:
+nothing is inferred<Cite id="pierce2002" />.
+</Callout>
+
+<Formal title="The two new rules">
+
+```text
+      Γ, α ⊢ e : T
+───────────────────── (TAbs)
+ Γ ⊢ Λα. e : ∀α. T
+
+     Γ ⊢ e : ∀α. T
+────────────────────────── (TApp)
+ Γ ⊢ e [S] : [α ↦ S] T
+```
+
+<span slot="read">TAbs: if, with the type variable alpha in scope, e has
+type T, then capital-lambda alpha dot e has type "for all alpha, T".
+TApp: if e has type "for all alpha, T", then e applied to the type S
+has type T with S put in place of alpha.</span>
+</Formal>
+
+<TypeAppSteps client:visible />
+
+<Examples of="system-f">
+
+```text
+id = Λα. λx:α. x     : ∀α. α → α
+id [number] 5        : number
+```
+
+```ts
+function id<T>(x: T): T { return x; }
+id<number>(5); // type application
+id(true);      // T inferred: boolean
+```
+
+```text
+λf:(∀α. α → α).
+  if f [bool] true then f [number] 1
+  else 2      : (∀α. α → α) → number
+```
+
+</Examples>
+
+The first is the identity again, now with its type argument written in:
+`Λα` takes the type, `λx:α` takes a value of it. The second is the same
+thing in TypeScript, where `<T>` is a type abstraction and `id<number>`
+a type application, though usually you leave the brackets out and the
+checker infers them (chapter 36)<Cite id="ts-generics" />. The third is
+the program Hindley–Milner refused, accepted: `f` is annotated as a
+polymorphic function, so the body can apply it to `bool` and to
+`number`. A type with a ∀ to the left of an arrow like this is called
+**rank-2**. TypeScript can say this too: a parameter typed
+`f: <T>(x: T) => T` must itself be generic, and passing it
+`(x: number) => x` is error TS2345 (checked with tsc 5.9).
+
+The price of this power is inference: for full System F, deciding
+whether an unannotated term has a type at all is undecidable, which is
+why languages built on it ask for annotations, often with a
+bidirectional checker to keep their number down<Cite id="pierce2002" />.
+
+<Prompts ids={['sysf-what', 'tabs-tapp', 'rank2', 'sysf-ts', 'sysf-cost']} />
+
+## Types that mention values
+
+TypeScript's `number[]` says what the elements are, but not how many.
+So the type checker cannot stop `xs[5]` on a three-element array, or a
+function that zips two lists of different lengths. What if the length
+were part of the type?
+
+<Analogy title="a form whose questions depend on your answers">
+A form asks "How many children do you have?", and the next section has
+exactly that many rows for their names: answer 2, get two rows. The
+*shape* of the rest of the form depends on a *value* you wrote earlier.
+<span slot="breaks">A paper form can only print a fixed number of rows;
+a dependent type can mention any number, even one that is only known
+when the program runs, and the checker reasons about it symbolically
+(as n, or n + m).</span>
+</Analogy>
+
+<Callout kind="definition">
+A **dependent type** is a type that mentions a value. The standard
+example is `Vect n a`, a list of exactly n elements of type a; a
+function type may then name its argument and use it in the result,
+`(n : Nat) → Vect n a`, read "for each natural number n, a vector of n
+a's". Checking such types can require working out values (is `2 + 3`
+equal to `5`?), and languages built on them, such as Idris, do exactly
+that<Cite id="idris2-docs-types" />.
+</Callout>
+
+<Figure takeaway="With lengths in the types, the checker knows the length of the result before the program runs." caption="Appending two vectors. The type of ++ says the result's length is the sum of the inputs' lengths, so the checker can see that this one has five elements.">
+  <VectAppend />
+</Figure>
+
+<Examples of="dependent-types">
+
+```text
+data Vect : Nat -> Type -> Type where
+  Nil  : Vect Z a
+  (::) : a -> Vect k a -> Vect (S k) a
+```
+
+```text
+(++) : Vect n a -> Vect m a
+    -> Vect (n + m) a
+(++) Nil       ys = ys
+(++) (x :: xs) ys = x :: xs ++ xs
+-- Mismatch between: k and m
+```
+
+```ts
+type Vec2 = [number, number];
+const v: Vec2 = [1, 2, 3];
+// error TS2322: Source has 3 element(s)
+//   but target allows only 2.
+```
+
+</Examples>
+
+The first is Idris: `Vect` takes a natural number and a type, and
+returns a type. `Nil` is a vector of length zero (`Z`), and `::` puts an
+element in front of a vector of length k, giving length k + 1 (`S k`,
+the successor of k). The second is the Idris tutorial's own spot the
+difference: the type of `++` promises length n + m, and a broken
+definition that appends `xs` to itself (instead of `ys`) is rejected,
+with Idris reporting a mismatch between k and m, because the lengths no
+longer add up<Cite id="idris2-docs-types" />. The third is the small
+piece of this that TypeScript has: a tuple type fixes its length, so a
+three-element array is not a `Vec2`; however, the length must be a
+literal written in the type, not a value computed by the program.
+
+<Prompts ids={['dep-what', 'vect-read', 'dep-check', 'ts-tuples']} />
+
+## Your turn
+
+<Exercise id="system-f" />
+
+## What you learned
+
+- **System F** passes types as arguments (`Λα. e` and `e [T]`); it is
+  generics with nothing hidden, and allows ∀ anywhere, at the cost of
+  inference.
+- A **dependent type** mentions a value, such as a length in
+  `Vect n a`, so the checker can rule out errors that depend on values.
+- TypeScript has a little of each: explicit type arguments and generic
+  parameters, and fixed-length tuples.
+
+Next: types that count how many times a value is used, and types that
+record what a piece of code may do.
+
+<Quiz />

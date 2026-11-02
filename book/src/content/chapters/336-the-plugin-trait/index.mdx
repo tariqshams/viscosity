@@ -1,0 +1,233 @@
+---
+n: 336
+day: 84
+part: XIII
+title: 'The plugin trait'
+tagline: 'In TypeScript, a plugin’s emit receives a plain LoweredModule and casts it back to the kind its own lower made. Nothing stops you handing it another plugin’s. In Rust an associated type ties the two halves together, and the compiler rejects the mix-up.'
+objectives:
+  - Read engine/rust’s LanguagePlugin trait, and say what its associated type Extra replaces in the TypeScript interface.
+  - 'Explain how compile<P: LanguagePlugin> and the two implementors, JsPlugin and PyPlugin, fit together.'
+  - Explain why a Vec<&dyn LanguagePlugin> fails with E0191, and why naming Extra doesn’t fix it.
+  - Pick a plugin at run time without trait objects, and erase Extra behind a second trait when you need one.
+introduces: [plugin-trait]
+uses: [viscosity-rs, ir-arena, vir, language-plugin, multi-language-ir, python-subset, trait, trait-object, rust-generics, trait-bound, monomorphization, monomorphic, struct, impl, enum, match, option, result, question-mark, hashmap, vec, string-vs-str, lifetime, typescript, interface, type-checking, webassembly, wasm-bindgen]
+sources: [rustref-dyn-compatibility, rustc-e0191, rust-reference-trait-object]
+---
+import DispatchSteps from '../../../components/diagrams/ch336/DispatchSteps';
+
+## A cast nobody checks
+
+Chapter 220's interface gives `emit` the same `LoweredModule` that
+`lower` returned. But the JavaScript plugin needs more than the base
+type holds: the ESTree program and the scope resolution. So its `lower`
+returns a bigger object, and its `emit` casts it back:
+
+```ts
+emit(_source, lowered: LoweredModule,
+     plan: Plan): string {
+  const l = lowered as JsLowered;
+  return emitJs(l.js, l.program,
+                l.resolution, plan);
+}
+```
+
+`as` is a promise, not a check. I lowered `xs = []` with the Python
+plugin and handed the result to the JavaScript plugin's `emit`:
+
+```ts
+const lowered = pythonPlugin().lower(py);
+jsPlugin().emit(py, lowered, p);
+```
+
+`tsc --strict` accepted it. Run, it returned `undefined`: not an error,
+not a string. The two halves of a plugin belong together, and the type
+system can't see it.
+
+<Callout kind="intuition">
+A coat check gives you a ticket. In TypeScript every ticket looks the
+same, so you can hand in someone else's and get handed whatever hangs
+on that hook. In Rust each cloakroom prints tickets of its own colour,
+and the other cloakroom's attendant won't take yours.
+</Callout>
+
+## The trait
+
+Here is the Rust version, from `crates/core/src/plugin.rs` (doc
+comments shortened):
+
+```rust
+pub trait LanguagePlugin {
+    /// carried from lower to emit
+    type Extra;
+
+    fn id(&self) -> &'static str;
+    fn extensions(&self)
+        -> &'static [&'static str];
+    fn lower(&self, source: &str) -> Result<
+        LoweredModule<Self::Extra>,
+        CompileError,
+    >;
+    fn emit(
+        &self,
+        source: &str,
+        lowered:
+            &LoweredModule<Self::Extra>,
+        plan: &Plan,
+    ) -> Result<String, CompileError>;
+}
+```
+
+`type Extra;` is an **associated type**: a type that each implementation
+chooses, the way `Iterator` lets each iterator choose its `Item`
+(chapter 288). `LoweredModule` is generic over it:
+
+```rust
+pub struct LoweredModule<X> {
+    pub module: Module,
+    pub annotations:
+        HashMap<BindingId, Annotation>,
+    pub extra: X,
+}
+```
+
+The module and the annotations are what the core reads. `extra` is the
+plugin's private data, the part TypeScript smuggled through the cast.
+
+Two types implement the trait. `JsPlugin` sets
+`type Extra = JsExtra`: facts about the syntax nodes behind
+instructions and the VIR binding of each JavaScript binding (chapter 337
+says why the AST itself can't be kept). `PyPlugin` sets
+`type Extra = PyExtra`: the lowered Python, or `None` plus the reason
+when the source is outside the subset, so that `emit` returns the file
+unchanged (chapter 352). Both are empty structs: neither has options.
+
+Now the mix-up from above, in Rust, against the real crates (rustc 1.97,
+trimmed):
+
+```
+error[E0308]: mismatched types
+  JsPlugin.emit(py, &l, &p);
+                    ^^ expected
+  `&LoweredModule<JsExtra>`, found
+  `&LoweredModule<PyExtra>`
+```
+
+<Callout kind="definition">
+**LanguagePlugin** is the Rust trait a Viscosity front-end implements:
+`id`, `extensions`, `lower` and `emit`, plus an **associated type**
+`Extra` for the data that `lower` passes to `emit`. Because `emit` takes
+`&LoweredModule<Self::Extra>`, it only accepts what its own plugin's
+`lower` produced. Errors are `Result`s with a `CompileError` instead of
+exceptions.
+</Callout>
+
+<Prompts ids={['pt-extra', 'pt-lowered', 'pt-mixup', 'pt-two']} />
+
+## One copy per plugin
+
+The pipeline is generic, as chapter 286 said:
+
+```rust
+pub fn compile<P: LanguagePlugin>(
+    source: &str,
+    plugin: &P,
+    opts: CompileOptions,
+) -> Result<CompileResult, CompileError> {
+    let lowered = plugin.lower(source)?;
+    let analysis = analyze(&lowered.module);
+    // options: opts + the annotations
+    let p = plan(&analysis, options);
+    let code =
+        plugin.emit(source, &lowered, &p)?;
+    let explain = explain(&p);
+    Ok(CompileResult { code, plan: p,
+        analysis, explain })
+}
+```
+
+(Adapted from `crates/core/src/lib.rs`.) Each plugin gets its own
+monomorphized copy, `compile::<JsPlugin>` and `compile::<PyPlugin>`, and
+inside each copy `Extra` is one known type. Look at what comes out:
+`CompileResult` has the code, the plan, the analysis and the explain
+text. None of them mentions `Extra`. It is born in `lower`, used in
+`emit`, and dropped before `compile` returns.
+
+<Run id="mono-pick" />
+
+<Prompts ids={['pt-mono', 'pt-result']} />
+
+## Why not dyn?
+
+Chapter 285 kept a `Js` and a `Py` in one `Vec<&dyn Plugin>`. Try that
+with the real trait, and step through what rustc says:
+
+<DispatchSteps client:visible />
+
+The trait itself is fine. The Rust Reference's rules for a
+**dyn-compatible** trait forbid generic methods, associated constants
+and associated types *with generics*, and ask for a receiver like
+`&self`<Cite id="rustref-dyn-compatibility" />. `LanguagePlugin` breaks
+none of them. But a trait object has to name every associated type,
+which is what E0191 says<Cite id="rustc-e0191" />. And once you name it,
+`dyn LanguagePlugin<Extra = JsExtra>` and
+`dyn LanguagePlugin<Extra = PyExtra>` are different types. That is not
+fussiness. Code that calls `lower` through a
+vtable<Cite id="rust-reference-trait-object" /> gets the result back and
+has to know its type, so the type can't be left open.
+
+The port's answer is to branch *before* the generic call. From
+`run_language` in `crates/wasm/src/lib.rs`, where `compile` is imported
+under another name:
+
+```rust
+let r = match language {
+    "javascript" | "js" =>
+        compile(source, &JsPlugin, opts),
+    "python" | "py" =>
+        compile(source, &PyPlugin, opts),
+    _ => return Err(/* ... */),
+};
+```
+
+Both arms have the type `Result<CompileResult, CompileError>`, so the
+`match` has one type. The CLI does the same with the file's extension.
+Chapter 286 left this as an open question; the answer needed no change
+to the trait.
+
+<Prompts ids={['pt-e0191', 'pt-dyncompat', 'pt-branch']} />
+
+<Callout kind="engine" label="Under the hood">
+A few smaller changes from the TypeScript interface. `jsPlugin(opts)`
+was a factory taking a parser choice and a TypeScript flag; `JsPlugin`
+has no options, because the port has one JavaScript parser (oxc) and
+rejects `.ts` files. `lower` takes no file name. `id` and `extensions`
+return `&'static` data: string constants that live for the whole
+program (chapter 287). A Python file outside the subset is not an
+error: `PyPlugin::lower` returns `Ok` with an empty module, as the
+TypeScript plugin does, so the core sees nothing to transform. And
+`STRATEGIES`, the layout list from chapter 220, is a
+`&[LayoutStrategy]` constant.
+</Callout>
+
+## Your turn
+
+If the port ever needs a registry of plugins chosen at run time, the
+usual move is a second trait without the associated type, implemented
+for every plugin at once. That is a design, not code in engine/rust,
+and it is the exercise.
+
+<Exercise id="anyPlugin" />
+
+## What you learned
+
+- **LanguagePlugin** has `id`, `extensions`, `lower` and `emit`, and an
+  **associated type** `Extra` that carries each plugin's own data from
+  `lower` to `emit`. Passing one plugin's output to another is E0308.
+- `compile<P: LanguagePlugin>` is monomorphized per plugin, and its
+  result never mentions `Extra`.
+- `&dyn LanguagePlugin` is E0191: a trait object must name `Extra`, and
+  each choice is a different type (E0271 for the other plugin).
+- To pick a plugin at run time, branch first and call `compile` in each
+  arm, or erase `Extra` behind a second, dyn-friendly trait.
+
+<Quiz />

@@ -1,0 +1,254 @@
+---
+n: 283
+day: 71
+part: XI
+title: 'Option and Result'
+tagline: 'Rust has no null and no exceptions. A missing value and a failed step are ordinary enums, the compiler makes you look inside them, and one character, ?, passes failures up the call stack.'
+objectives:
+  - Return Option when a value may be absent, and get the value out with match, if let or unwrap_or.
+  - Return Result when a step can fail, and say what Ok and Err carry.
+  - Use the ? operator to pass an error or a None up to the caller, and say where it is allowed.
+  - Compare Drip's TypeScript VM, which throws runtime errors, with drip-rs, which returns them.
+introduces: [option, result, question-mark]
+uses: [rust, rust-functions, expression-oriented, let-mut, scalar-types, enum, match, pattern, borrow, slice, string-vs-str, struct, impl, undefined, union-type, discriminated-union, narrowing, exhaustiveness, generic, throw, try-catch, error-propagation, runtime-error, call-stack, virtual-machine, stack-machine, pointer]
+sources: [klabnik2026, rust-std-option]
+---
+import QuestionSteps from '../../../components/diagrams/ch283/QuestionSteps';
+
+## Where did the value go?
+
+You have written this TypeScript many times:
+
+```ts
+const xs = [4, 5, 6];
+const i = xs.indexOf(9);   // -1
+const p = ps.find((p) => p.x > 100);
+console.log(p.x);  // crash if none matched
+```
+
+Two ways of saying "nothing here": `-1` and `undefined`. With
+`strictNullChecks`, TypeScript flags the second, because `find` returns
+`P | undefined`, but `-1` is a perfectly good number. And failures are
+another story. When the Drip VM from Part IV meets `1 - true`, it
+**throws**, and nothing in the type of the function that threw warns
+you.
+
+Rust takes both ideas away. There is no `null` or `undefined`, and there
+are no exceptions. Absence and failure are ordinary values, of two enums
+you already know how to read.
+
+<Callout kind="intuition">
+Think of a parcel locker. You get a slip back, and the slip says either
+"box 7" or "nothing for you today". You can't open box 7 without first
+reading the slip, and you can't misread "nothing" as a box number. Rust
+hands you the slip, not the parcel.
+</Callout>
+
+## Option: maybe a value
+
+`Option` is an enum from the standard library, just like the ones in
+chapter 282. Simplified, its definition is:
+
+```rust
+enum Option<T> {
+    None,
+    Some(T),
+}
+```
+
+The `<T>` says "some type, to be filled in": `Option<usize>` is maybe a
+`usize`, `Option<&str>` maybe a string slice. (Chapter 286 is all about
+those angle brackets; for now read them as TypeScript's `Array<T>`.)
+`Option`, `Some` and `None` are so common that you can use them without
+importing anything.
+
+Here is `indexOf` done honestly:
+
+```rust
+fn find(xs: &[i32], t: i32)
+    -> Option<usize> {
+    for i in 0..xs.len() {
+        if xs[i] == t {
+            return Some(i);
+        }
+    }
+    None
+}
+```
+
+(`for i in 0..xs.len()` counts `i` from 0 up to the length minus one,
+like TypeScript's counting loop; chapter 288 explains Rust's `for` fully.)
+The return type now says "maybe an index", and the caller can't pretend
+otherwise. Try to use the answer as a number:
+
+```rust
+let i = find(&[4, 5], 5);
+println!("{}", i + 1);
+```
+
+Rust 1.97 on this machine refuses (trimmed):
+
+```
+error[E0369]: cannot add `{integer}`
+  to `Option<usize>`
+12 |     println!("{}", i + 1);
+   |                    - ^ - {integer}
+   |                    Option<usize>
+```
+
+An `Option<usize>` is not a `usize`, so you have to open the slip.
+
+<Callout kind="definition">
+**`Option<T>`** is an enum with two variants: **`Some(value)`**, holding a
+`T`, and **`None`**, holding nothing. A function that might have no answer
+returns `Option<T>`, and the type system stops the caller from using the
+`T` until it has checked which variant it got.
+</Callout>
+
+<Prompts ids={['opt-what', 'opt-vs-undefined', 'opt-minus-one']} />
+
+## Opening the slip
+
+`Option` is an enum, so `match` works, and it must cover both `Some(i)`
+and `None`. When you only care about one arm, **`if let`** is a one-arm `match`:
+`if let Some(i) = find(&xs, 5) { ... }` runs the block only for `Some`,
+with `i` bound. Two methods cover common cases. `unwrap_or(d)` gives the
+value or a default `d`. `unwrap()` gives the value or **panics**: it stops
+the program with a message. Use it only where `None` would be a bug, as
+in a test.
+
+You have met this idea before: `Option<T>` is a discriminated union, like
+the ones in chapter 29, and `match` is narrowing that the compiler checks
+for exhaustiveness.
+
+<Run id="opt-play" />
+
+<Prompts ids={['if-let', 'unwrap-panics']} />
+
+## Result: it worked, or here is why not
+
+`Option` says *whether* there is a value. When something fails you
+usually want to know *why*. That is `Result`:
+
+```rust
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+```
+
+`Ok` carries the answer, of type `T`. `Err` carries the error, of type
+`E`, which can be any type you like: a `String` message, or an enum of
+error kinds (chapter 298). Here is the operand check from Drip's VM,
+cut down to two value kinds:
+
+```rust
+enum Value {
+    Num(f64),
+    Bool(bool),
+}
+
+fn as_num(v: &Value)
+    -> Result<f64, String> {
+    match v {
+        Value::Num(n) => Ok(*n),
+        _ => Err(String::from(
+            "Operands must be numbers.")),
+    }
+}
+```
+
+The message is the real one: drip-rs and the TypeScript VM both print
+`Operands must be numbers.` for `1 - true`.
+
+<Callout kind="definition">
+**`Result<T, E>`** is an enum with two variants: **`Ok(value)`** for
+success, holding a `T`, and **`Err(error)`**, holding an `E` that
+describes the failure. A function that can fail returns `Result`, so its
+failure is part of its type, and callers must handle it before they get
+the `T`.
+</Callout>
+
+<Prompts ids={['res-what', 'res-vs-throw']} />
+
+## Passing it up with ?
+
+Subtraction needs two numbers. Written with `match`, it would check each
+operand and return early on `Err`, twice. That pattern is so common that
+Rust gives it one character:
+
+```rust
+fn sub(a: &Value, b: &Value)
+    -> Result<f64, String> {
+    let x = as_num(a)?;
+    let y = as_num(b)?;
+    Ok(x - y)
+}
+```
+
+`as_num(a)?` means: if this is `Ok(n)`, the expression is `n`; if it is
+`Err(e)`, return `Err(e)` from `sub` right now. Step through a failing
+call:
+
+<QuestionSteps client:visible />
+
+<Callout kind="definition">
+The **`?` operator**, written after a `Result`, unwraps an `Ok` and
+otherwise returns the `Err` from the enclosing function at once. On the
+way it converts the error into the function's error type with the `From`
+trait<Cite id="klabnik2026" />, which matters once errors have several
+types. After an `Option`, it unwraps `Some` and returns `None`. It works
+only in a function whose return type can hold that early return.
+</Callout>
+
+That last rule is checked. Put `?` in a function that returns `i32` and
+the compiler says (trimmed):
+
+```
+error[E0277]: the `?` operator can
+  only be used in a function that
+  returns `Result` or `Option` ...
+```
+
+<Run id="question-play" />
+
+<Prompts ids={['q-does', 'q-where', 'q-option']} />
+
+<Callout kind="engine" label="Under the hood">
+Compare the two Drip VMs. The TypeScript one's `runtimeError` records the
+message and stack trace, then does `throw new VmRuntimeError(message)`,
+and `interpret` catches it. drip-rs (in `book/companion/rust/src/vm.rs`)
+does the same bookkeeping, then *returns* a value. Its run loop has the
+type `Result<(), RuntimeError>`, the arithmetic opcodes are written
+`let (a, b) = self.pop_numbers()?;`, and returning from a call uses `?`
+on an `Option`: `let caller = self.frames.last()?;`. Each `?` is one
+early-return branch you can see in the source. And `Option` often costs
+no space: the standard library guarantees that `Option<&T>` is the same
+size as `&T`, because a reference is never null, so `None` can use the
+null bit pattern<Cite id="rust-std-option" />. On this machine
+`Option<&i32>` is 8 bytes, like `&i32`, while `Option<i32>` takes 8
+bytes to `i32`'s 4, since every `i32` bit pattern is already a number.
+</Callout>
+
+<Prompts ids={['npo']} />
+
+## Your turn
+
+<Exercise id="addTop" />
+
+<Exercise id="topTwo" />
+
+## What you learned
+
+- **`Option<T>`** is `Some(value)` or `None`. It replaces `null`,
+  `undefined` and magic values like `-1`.
+- Get the value out with `match`, **`if let`**, `unwrap_or`, or
+  `unwrap` (which panics on `None`).
+- **`Result<T, E>`** is `Ok(value)` or `Err(error)`. Failure is in the
+  function's type, instead of thrown past it.
+- **`?`** unwraps `Ok` or `Some`, and otherwise returns early with the
+  `Err` (converted with `From`) or the `None`. It only works in functions
+  that return a matching type.
+- drip-rs returns its runtime errors where the TypeScript VM throws them.
+
+<Quiz />

@@ -1,0 +1,225 @@
+---
+n: 109
+day: 28
+part: III
+title: 'Environments that outlive their call'
+tagline: 'A call ends, its TypeScript methods return, and yet its variables can live on for as long as a closure needs them. This chapter is about how long an environment lasts, and what that costs.'
+objectives:
+  - Explain why an environment can outlive the call that made it, and what keeps it alive.
+  - Say when an environment can be reclaimed, in terms of what refers to it.
+  - Predict what closures made in the same call see when one of them changes a shared variable.
+  - Name the cost of making every environment a heap object, and how the VM avoids it.
+introduces: [environment-lifetime]
+uses: [captured-environment, callable, return-unwinding, host-stack, closure, lexical-scope, environment, scope-chain, drip, drip-list, index-expression, for-in-loop, tree-walking-interpreter, call-stack, stack-and-heap, reference, function, call, return, local-variable, variables]
+sources: [mdn-closures]
+---
+import LifetimeSteps from '../../../components/diagrams/ch109/LifetimeSteps';
+import SharedBox from '../../../components/diagrams/ch109/SharedBox';
+
+## The call is over; its variables are not
+
+Here is the counter from the last chapter once more, written with an
+anonymous function:
+
+```
+fn makeCounter() {
+  let n = 0;
+  return fn () {
+    n += 1;
+    return n;
+  };
+}
+let a = makeCounter();
+print a(); # 1
+print a(); # 2
+```
+
+By the time `a()` runs, the call of `makeCounter` is completely over:
+its `callFunction` has returned, and so have the `executeBlock` and
+`execute` that ran its body, so every TypeScript frame it used on the
+host stack (from the chapter *Borrowing the host's call stack*) is gone.
+Yet `n` is still there, and it even keeps its value from one call of
+`a` to the next. If the frames are gone, where is `n`?
+
+## Environments live on the heap
+
+The answer is that `n` was never in those frames. `callFunction` makes
+each call's environment with `new Environment(...)`, and in JavaScript
+an object made with `new` lives on the **heap**, the big pool of memory
+from the chapter *Pointers, the stack and the heap*. The frame only held
+a *reference* to it, in a local variable called `env`. When the frame
+went away, that reference went with it, but the environment did not,
+because something else still refers to it: the anonymous function's
+`closure` field.
+
+The rule JavaScript (and so TypeScript) follows is the simple one: an
+object stays alive as long as the program can still reach it by
+following references, starting from the variables currently in use.
+When nothing refers to it any more, the engine's **garbage collector**
+is free to reclaim its memory, whenever it chooses.
+
+<Prompts ids={['heap-why', 'gc-what']} />
+
+<Analogy title="a library book on loan">
+A library book is not thrown out because the person who first borrowed
+it brought it back; it stays on the shelf while anyone might still ask
+for it. Only when the catalogue drops it, and no one has it out, can it
+be cleared away.
+<span slot="breaks">A library withdraws a book on a schedule; the
+garbage collector never removes an environment that can still be
+reached, and it can remove one the moment nothing reaches it, with no
+one asking.</span>
+</Analogy>
+
+<Analogy title="a balloon on strings">
+A balloon held by three children stays down as long as any one of them
+holds a string; when the last one lets go, it drifts off. Each string
+is a reference: the running call, a closure, a child environment.
+<span slot="breaks">A balloon floats away at once; an unreachable
+environment just sits there until the garbage collector gets round to
+it, and your program cannot tell when that happens.</span>
+</Analogy>
+
+Step through the life of the counter's environment:
+
+<LifetimeSteps client:visible />
+
+<Callout kind="definition">
+**Environment lifetime** is how long an environment exists. In a
+tree-walking interpreter, environments are ordinary heap objects, so an
+environment lives as long as anything can reach it: the running call, a
+child environment (through its parent link), or a function's captured
+environment. It can therefore **outlive** the call that made it, and it
+is reclaimed by the host's garbage collector once nothing reaches it.
+</Callout>
+
+<Formal title="When an environment is alive">
+
+```text
+alive(E)  ⟺  E is reachable from a root
+roots: the running calls' environments
+       and the globals
+reach: env → its parent,
+       env → each value it holds,
+       function → its closure
+```
+
+<span slot="read">An environment E is alive exactly when it can be
+reached from a root (the symbol ⟺ reads "exactly when"). The roots are
+the environments of the calls now running, and the globals. From an
+environment you can reach its parent and every value it holds; from a
+function you can reach its captured environment.</span>
+</Formal>
+
+<Prompts ids={['outlives', 'host-frame', 'what-keeps']} />
+
+## Sharing a kept environment
+
+Two functions made in the same call capture the same environment, so
+they share its variables, live, for as long as either of them lives:
+
+```
+fn makeBox(v) {
+  let get = fn () { return v; };
+  let set = fn (x) { v = x; };
+  return [get, set];
+}
+let box = makeBox("old");
+print box[0](); # old
+box[1]("new");
+print box[0](); # new
+```
+
+`makeBox("old")` makes one environment holding `v`, then two anonymous
+functions that both capture it, and returns them in a list. `box[0]()`
+calls `get`, which reads `v` and prints `old`; `box[1]("new")` calls
+`set`, whose body assigns to `v`, found one step out in the shared
+environment; and the next `box[0]()` reads the same `v` and prints
+`new`.
+
+<Figure caption="get and set were made in the same call, so both closure fields point at one environment. A change through set is seen by get; the environment lives as long as either function is reachable." takeaway="Closures made together share one environment.">
+  <SharedBox />
+</Figure>
+
+<Examples of="environment-lifetime">
+
+```
+fn mk() {
+  let n = 0;
+  return fn () { n += 1; return n; };
+}
+let a = mk();
+print a(); # 1
+a = none;
+# nothing reaches n's environment now
+```
+
+```
+let fs = [];
+for i in 0..3 {
+  push(fs, fn () { return i * i; });
+}
+print fs[2](); # 4
+```
+
+<Run id="shared-box" />
+
+</Examples>
+
+The first is the end of a life: once `a` stops holding the function,
+nothing reaches the function, and so nothing reaches the environment
+with `n` in it either; neither is ever used again, and both can go. The
+second keeps environments alive in bulk: the loop is over, but each of
+the three functions in the list keeps its own pass's environment alive
+(holding that pass's `i`), so `fs[2]()` still finds `i` is 2, and those
+three environments will live exactly as long as the list. The runnable
+one is the box above; add a third function to it, or make a second box,
+and check which values are shared.
+
+<Prompts ids={['live-shared', 'reclaimed-when']} />
+
+## What this costs
+
+The tree-walker gets all of this almost for free, because it makes every
+environment an ordinary heap object and lets the host's garbage
+collector decide when one is dead. The price is paid on every call:
+`callFunction` makes a new `Environment`, with its own `Map` inside,
+even for a function whose environment no closure will ever capture
+(which is most of them), and every one of those objects is work for the
+garbage collector later. A benchmark chapter at the end of this part
+measures what calls cost.
+
+<Callout kind="engine" label="Under the hood">
+The bytecode VM in Part IV makes the opposite choice. It keeps locals in
+slots on one shared stack, which is fast and needs no garbage collecting,
+but a slot disappears when its call returns. So the VM looks for the few
+variables that closures capture and, when the call ends, moves each one
+into a small heap object of its own that the closures point at; the
+chapter *Capturing variables: upvalues* builds it, and JavaScript
+engines manage closures' variables in a similar spirit<Cite id="mdn-closures" />.
+</Callout>
+
+<Prompts ids={['call-allocates']} />
+
+## Your turn
+
+<Exercise id="liveEnvs" />
+
+<Exercise id="account" />
+
+## What you learned
+
+- Environments are heap objects; a call's TypeScript frames only refer
+  to them, so an environment can **outlive** the call that made it.
+- An environment lives as long as something can reach it: a running
+  call, a child environment, or a closure. Once nothing does, the
+  garbage collector may reclaim it.
+- Closures made in the same call share one environment, live.
+- The price: every call allocates an `Environment` and a `Map`, whether
+  or not anything captures them. The VM keeps locals on a stack instead,
+  and moves only captured variables to the heap.
+
+Next: a quiet bug in looking names up through the chain at run time, and
+a whole extra pass over the program that fixes it.
+
+<Quiz />

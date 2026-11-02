@@ -1,0 +1,269 @@
+---
+n: 175
+day: 44
+part: VI
+title: 'Three-address code'
+tagline: 'Drip’s VM never names the result of 2 * 3; it leaves it on the stack for one instruction and moves on. An optimizer needs to point at that result and ask questions about it, so every intermediate value gets a name.'
+objectives:
+  - Turn an expression tree into three-address code, children first.
+  - Explain what a temporary is and why a compiler makes so many of them.
+  - Read VIR’s Inst record and connect each field to a line of a listing.
+  - Use names to answer “who uses this value?” with a lookup rather than a search.
+introduces: [three-address-code, temporary]
+uses: [ir, lowering, ast, ast-node, recursion, stack-machine, bytecode, opcode, stack-slot, register, ignition, interface, typescript, union-type, map, object, array, push, function, return, parameter, local-variable, constant-pool, dead-code-elimination]
+sources: [v8-ignition, coopertorczon2022]
+---
+import TacSteps from '../../../components/diagrams/ch175/TacSteps';
+import StackVsNames from '../../../components/diagrams/ch175/StackVsNames';
+
+## Where did 2 * 3 go?
+
+In A stack-based VM, Drip ran `1 + 2 * 3` as five instructions:
+push 1, push 2, push 3, multiply, add. The `6` that the multiply
+produced never had a name; it sat on the stack for one instruction and
+was gone, which is perfect for *running* code. Now imagine an optimizer
+looking at it. It wants to say "the product is a constant, 6", or
+"nobody uses this result, delete it", or "this is the same product as
+three lines ago, reuse it", and every one of those sentences needs to
+*point at* the product. On a stack, the only way to point is "whatever
+is on top right now", and that changes with every instruction.
+
+<Figure takeaway="On a stack a value is a position that keeps moving; in three-address code it is a name that stays put." caption="Left: the stack after each instruction; the 6 exists for one step. Right: the same work as two named lines, where the use of t1 points straight back at its definition.">
+  <StackVsNames />
+</Figure>
+
+## One operation per line
+
+<Analogy title="long multiplication at school">
+You did not write the answer to 47 × 36 in one go; you wrote each
+partial product on its own line, then added the lines. Each line was
+one small operation, and because each had its own place on the page,
+your teacher could check any of them, and you could reuse one.
+<span slot="breaks">Your lines were numbered by where they sat on the
+page; a compiler's lines are found by name, and it moves them around,
+deletes them and merges them freely, which nobody does to a page of
+working.</span>
+</Analogy>
+
+<Analogy title="labelled jars on a shelf">
+A baker making a cake in stages puts each stage in a jar with a label:
+"jar 1: creamed butter", "jar 2: jar 1 plus eggs". Anyone can see what
+went into jar 2, because the label says so, rather than "whatever was
+in the bowl at the time".
+<span slot="breaks">Jars run out and get washed for reuse; a compiler
+has as many labels as it likes and never needs to reuse one, at least
+until the very end, when values have to share the CPU's few registers.</span>
+</Analogy>
+
+Three-address code is that page of working. The same expression:
+
+```text
+t1 = 2 * 3
+t2 = 1 + t1
+```
+
+The first line multiplies 2 by 3 and calls the result `t1`; the second
+adds 1 to `t1` and calls that `t2`. Each line has at most one operator,
+at most two inputs and one named result, and `t1` and `t2` are names the
+compiler invented: you did not write them, and they exist so that every
+intermediate value has an address. Step through how lowering produces
+it for a function with three parameters; the walk is the same recursion
+as the tree-walker's, but rather than computing values it emits
+instructions:
+
+<TacSteps client:visible />
+
+Children are lowered before their parent, because an instruction can
+only be written once its inputs have names. Here is the real code, from
+`packages/frontend-js/src/lower.ts`, trimmed:
+
+```ts
+function expr(e: Node): ValueId {
+  switch (e.type) {
+    case 'Literal':
+      return fb.constant(e.value);
+    case 'Identifier':
+      return read(binding(e), e);
+    case 'BinaryExpression':
+      return fb.emit('binop',
+        [expr(e.left), expr(e.right)],
+        { operator: e.operator });
+  }
+}
+```
+
+`expr` returns a `ValueId`, which is the *name* of the result, not the
+result itself. A literal becomes a `const` instruction. An identifier
+emits nothing and returns the name the variable already has. A binary
+expression first calls `expr` on both sides (so their names exist), and
+then `fb.emit` appends one `binop` instruction to the current block and
+hands back its fresh id.
+
+<Callout kind="definition">
+**Three-address code** is an IR whose instructions each perform one
+operation on at most two operands and put the result in a named
+destination, `x = y op z`. The name comes from the three addresses: two
+inputs and an output. Copies (`x = y`), one-operand operations
+(`x = op y`), jumps and conditional jumps complete the set.
+</Callout>
+
+<Formal title="The forms of a three-address instruction">
+
+```text
+x = y op z      (binary operation)
+x = op y        (unary operation)
+x = y           (copy)
+goto L          (jump)
+if x goto L     (conditional jump)
+```
+
+<span slot="read">Every instruction has one of these five shapes. In
+the first three, x is the destination and y and z are operands, each a
+name or a constant, so no instruction mentions more than three places.
+The last two change which instruction runs next: goto L always jumps to
+the line labelled L, and "if x goto L" jumps there only when x is
+true.</span>
+</Formal>
+
+<Prompts ids={['tac-what', 'why-three', 'children-first']} />
+
+## Temporaries
+
+`t1`, `t2` and VIR's `%3`, `%4` and `%5` are **temporaries**. A compiler
+makes them freely, one for every result, because at this stage names
+cost it nothing; deciding which temporaries share a machine register or
+a stack slot comes much later, if at all. VIR goes one step further:
+*every* value is a temporary, even your own variables.
+
+<Callout kind="definition">
+A **temporary** is a name the compiler creates to hold an intermediate
+value: the result of one instruction. Temporaries are cheap and
+plentiful in an IR. In VIR every value is one, written `%n`, and the
+number is unique in the whole module.
+</Callout>
+
+<Examples of="three-address-code temporary">
+
+```text
+%3 = binop * %1, %2
+%4 = binop + %0, %3
+```
+
+```text
+%1 = field.get %0 .x
+%2 = field.get %0 .x
+%3 = binop * %1, %2
+```
+
+```text
+func f(%0):            // let t = a;
+  b0:                  // let u = t * 2;
+    %0 = param         // return u + t;
+    %1 = const 2
+    %2 = binop * %0, %1
+    %3 = binop + %2, %0
+    return %3
+```
+
+</Examples>
+
+The first is the simplest: the real VIR for `return 1 + 2 * 3` (after
+three `const` lines that name 1, 2 and 3 as `%0`, `%1` and `%2`), and
+it has the same two lines as our hand-made version, with `%3` and `%4`
+in place of `t1` and `t2`. The second is part of `s.x * s.x`: VIR reads
+the field twice, into `%1` and `%2`, and because both reads have names
+a later pass can notice that they are the same value and keep one (Part
+VI's chapter on value numbering does exactly that). The third is a
+whole function, and its variables have disappeared. `let t = a`
+produced no instruction at all, because the front end only remembers
+that `t` now means `%0`; when the code reads `t`, it gets `%0`. The
+literal `2` *is* an instruction, `%1 = const 2`, because constants are
+values, so they get names too.
+
+You can run the same bookkeeping yourself. This keeps a map from each
+variable to the name of its current value, and only emits a line when
+there is real work to do:
+
+<Run id="no-copies" />
+
+It prints `t1 = a * 2`, `t2 = t1 + a` and `return t2`: `let t = a` only
+wrote into the map, so every later read of `t` became `a`.
+
+<Prompts ids={['temp-what', 'let-vanishes', 'const-is-inst']} />
+
+## An instruction is a record
+
+What does `%2 = binop * %0, %1` look like in memory? It is one object,
+of the `Inst` interface in `packages/core/src/vir.ts`, trimmed:
+
+```ts
+interface Inst {
+  id: ValueId;       // 2: its own name
+  op: Op;            // 'binop'
+  args: ValueId[];   // [0, 1]: inputs
+  block: BlockId;    // 0: where it lives
+  operator?: string; // '*'
+  value?: number | string | boolean
+    | null | undefined;  // for const
+  field?: string;    // for field.get/set
+}
+```
+
+The listing is `printFunc` turning these records into text. And because
+inputs are names, the question an optimizer asks most ("who uses this
+value?") is easy: walk every instruction once and file it under each of
+its inputs. That is what `buildUses` does:
+
+```ts
+for (const b of f.blocks)
+  for (const i of b.insts)
+    for (const a of i.args)
+      add(a, { inst: i });
+```
+
+For `f` above, `%0` is used by `%2` and `%3`, and `%3` by the `return`
+(the real function also files the values that terminators such as
+`return` use). A value with no uses is dead, and can usually be
+deleted; the Dead code elimination chapter builds that pass on exactly
+this map.
+
+<Callout kind="pitfall">
+"Two operands" is a convention, not a law. VIR's `call` takes the
+callee and every argument, and `record.new` takes one value per field.
+What matters is the other half of the idea: each instruction does one
+thing, and its result and inputs are named.
+</Callout>
+
+<Prompts ids={['inst-args', 'uses-map', 'dead-value']} />
+
+<Callout kind="engine" label="Under the hood">
+Ignition, V8's interpreter, sits between the two designs. It is a
+register machine: most of its bytecodes name the registers they read,
+and an implicit accumulator holds the running result, so instructions
+stay short<Cite id="v8-ignition" />. A stack machine names nothing,
+three-address code names everything, and an accumulator machine names
+all but one. For analysis, compilers want the fully named form, and
+compiler textbooks build their optimizations on IRs of this
+kind<Cite id="coopertorczon2022" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="to-tac" />
+
+<Exercise id="find-uses" />
+
+## What you learned
+
+- **Three-address code**: one operation per instruction, at most two
+  inputs, one named result, `x = y op z`.
+- Lowering an expression walks the tree **children first**, because an
+  instruction needs names for its inputs.
+- A **temporary** is a compiler-made name for an intermediate value. In
+  VIR every value is a temporary, `%n`; even `let t = a` emits nothing.
+- An instruction is a record (`id`, `op`, `args`, `block`), and named
+  inputs make "who uses this?" a lookup (`buildUses`).
+
+Next: straight runs of these instructions, and the jumps between them.
+
+<Quiz />

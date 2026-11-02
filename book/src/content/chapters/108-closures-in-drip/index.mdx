@@ -1,0 +1,273 @@
+---
+n: 108
+day: 27
+part: III
+title: 'Closures in Drip'
+tagline: 'One field on a function value, and one line in its call, give Drip closures: a function made inside another keeps hold of the variables around it.'
+objectives:
+  - Explain which environment a Drip function stores, and why it is the one current when the function is made.
+  - Trace a call whose new environment hangs off the function's captured environment, and predict what it can see.
+  - Explain why closures capture variables rather than copies of values.
+  - Predict what closures made in a for loop and in a while loop print, and say why they differ.
+introduces: [captured-environment]
+uses: [callable, arity, return-unwinding, host-stack, closure, lexical-scope, nested-function, environment, scope-chain, shadowing, drip, drip-list, for-in-loop, tree-walking-interpreter, global-variable, ast-node, reference, function, call, return, parameter, local-variable, for-loop, while-loop, variables]
+sources: [mdn-closures]
+---
+import KeptEnvSteps from '../../../components/diagrams/ch108/KeptEnvSteps';
+import SharedLoopEnv from '../../../components/diagrams/ch108/SharedLoopEnv';
+
+## A counter, in Drip
+
+In the chapter *Closures: functions that remember* you wrote a counter in
+JavaScript. Here it is in Drip:
+
+```
+fn makeCounter() {
+  let n = 0;
+  fn count() {
+    n += 1;
+    return n;
+  }
+  return count;
+}
+let a = makeCounter();
+print a(); # 1
+print a(); # 2
+```
+
+`makeCounter` makes a local `n`, declares a function `count` inside
+itself, and hands `count` back as a value; the program keeps it in `a`
+and calls it twice. However, `count`'s body uses `n`, and `n` was a
+local of a call that has already returned by the time `a()` runs. Where
+does the interpreter find it?
+
+Everything hangs on one decision. A call makes a fresh environment for
+its parameters, and every environment has a parent, the place a lookup
+goes next when a name is not found. **Which environment should be the
+parent of a call's environment?**
+
+<Prompts ids={['call-parent-question']} />
+
+## Three possible parents
+
+There are three candidates, and each gives a different language.
+
+1. **The globals.** Simple, but then `count` cannot see `n` at all: the
+   lookup searches the call's environment, then the globals, and stops
+   with `undefined variable 'n'`.
+2. **The caller's environment.** Then what a name means depends on *who
+   calls* the function, not where it was written. That rule is called
+   *dynamic scope*, and Drip does not use it.
+3. **The environment the function was made in.** That is lexical scope,
+   the rule JavaScript follows<Cite id="mdn-closures" /> and the rule
+   Drip follows too: inside `count`, `n` means the `n` that was visible
+   where `count` was written.
+
+<Analogy title="a letter written in a particular house">
+A note says "the spare key is under the blue pot". Whoever reads it,
+wherever they read it, the words mean the blue pot at the house where
+the note was written, not one at the reader's house.
+<span slot="breaks">A note is a frozen description; a Drip function
+reads the *current* contents of the place it was written, so if someone
+moves the key, the next call finds it in its new spot.</span>
+</Analogy>
+
+Option 3 has a cost: the function must *remember* where it was made,
+which is the job of the `closure` field the chapter *Functions in Drip*
+gave `DripFunction`.
+
+<Prompts ids={['parent-globals', 'parent-caller']} />
+
+## The closure field
+
+When the interpreter makes a function value, from a `fn` declaration or
+from an anonymous `fn (...) { ... }`, it stores the environment that is
+current at that moment:
+
+```ts
+case 'fn':   // a declaration
+  this.env.define(s.fn.name.lexeme,
+    new DripFunction(s.fn, this.env,
+      false));
+  return NORMAL;
+// ...
+case 'function': // fn (x) { ... }
+  return new DripFunction(e.fn,
+    this.env, false);
+```
+
+And when the function is called, `callFunction` hangs the new
+environment off that stored one, not off whatever environment the caller
+happens to be in:
+
+```ts
+const env = new Environment(f.closure);
+```
+
+That is the whole feature: one field, filled in when the function value
+is made, and used as the parent at every call. While `makeCounter` runs,
+the current environment is its call's own, so that is what `count`
+keeps. Step through it:
+
+<KeptEnvSteps client:visible />
+
+<Analogy title="a bookmark in someone else's copy">
+A friend lends you their copy of a novel with a bookmark in it. The
+bookmark does not point at "page 112 of any copy"; it sits in *that*
+copy, and if your friend scribbles a note on page 112 tomorrow, you will
+see it when you open the book there.
+<span slot="breaks">A bookmark points at one page; a captured
+environment gives the function the whole chain of environments around
+it, from its own maker's call out to the globals.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **captured environment** is the environment a function value stores
+when it is made: the one that was current when its `fn` declaration ran,
+or when its anonymous `fn` expression was evaluated. In the companion
+code it is the `closure` field of `DripFunction`. Every call of the
+function makes a new environment whose parent is the captured one, so
+the body sees the names around where it was *written*. The function plus
+its captured environment is a **closure**; it holds the variables
+themselves, not copies of their values.
+</Callout>
+
+<Formal title="Making and calling a closure">
+
+```text
+make fn in env E   ⟹  value ⟨decl, E⟩
+call ⟨decl, E⟩(args) runs decl.body in
+  E′ = new env, parent E, params ↦ args
+```
+
+<span slot="read">Making a function while the current environment is E
+gives the pair of its declaration and E (the arrow ⟹ reads "gives").
+Calling that pair runs the body in a new environment E prime, whose
+parent is E and in which each parameter holds its argument.</span>
+</Formal>
+
+<Examples of="captured-environment">
+
+```
+fn makeAdder(n) {
+  return fn (x) { return x + n; };
+}
+let add2 = makeAdder(2);
+let add10 = makeAdder(10);
+print add2(5);  # 7
+print add10(5); # 15
+```
+
+```
+let x = 1;
+let f = fn () { print x; };
+x = 2;
+f(); # 2
+```
+
+<Run id="two-counters" />
+
+</Examples>
+
+In the first, each call of `makeAdder` makes its own environment holding
+its own `n`, and the anonymous function made during that call captures
+it; so `add2` carries an environment where `n` is 2, `add10` one where
+`n` is 10, and the same body gives 7 and 15. The second shows that a
+closure captures the *variable*, not its value at the time: `f` was made
+while `x` was 1, but by the time `f()` runs, `x` is 2, and the lookup
+reads the variable as it is now. The runnable one makes two counters
+from one `makeCounter`, and shows that they count separately, because
+each call of `makeCounter` made a separate `n`.
+
+<Prompts ids={['closure-field', 'which-env', 'variable-not-value']} />
+
+## Closures in a loop
+
+In JavaScript, the chapter on closures showed that each pass of a
+`for (let i ...)` loop gets its own `i`, so functions made in the loop
+remember different values. Drip's `for` is the same, and you can see
+exactly why in `forLoop`:
+
+```ts
+const loopEnv = new Environment(this.env);
+loopEnv.define(s.name.lexeme, v);
+const c = this.executeBlock(s.body,
+  new Environment(loopEnv));
+```
+
+These three lines run once *per pass*: each pass makes a brand-new
+environment holding that pass's value of the loop variable, and runs the
+body in a fresh environment inside it. A function made in the body
+captures the body's environment, whose parent is that pass's own
+variable. A `while` loop is different: its counter is an ordinary
+variable declared *before* the loop, so there is only one of it, and
+every function made in the loop shares it.
+
+<Figure caption="Left: each pass of a for loop has its own environment for i, so each function sees its own pass's value. Right: a while loop's counter lives outside the loop, so every function made in it sees the one j, which has reached 3 by the time they run." takeaway="A fresh environment per pass gives each closure its own variable.">
+  <SharedLoopEnv />
+</Figure>
+
+Here is the difference side by side, three functions saved from each
+kind of loop:
+
+```
+let fs = [];
+for i in 1..4 {
+  push(fs, fn () { print i; });
+}
+fs[0](); # 1
+fs[2](); # 3
+```
+
+```
+let gs = [];
+let j = 1;
+while j < 4 {
+  push(gs, fn () { print j; });
+  j += 1;
+}
+gs[0](); # 4
+gs[2](); # 4
+```
+
+In the first, each anonymous function captured a different pass's `i`,
+so they print 1 and 3. In the second, all three captured environments
+lead to the one `j`, which the loop left at 4, so they all print 4. The
+fix, if you need a `while`, is to make a new variable inside the body
+(`let mine = j;`), because the body gets a fresh environment on every
+pass, and to capture that instead.
+
+<Prompts ids={['loop-fresh', 'while-shared']} />
+
+<Callout kind="engine" label="Under the hood">
+The tree-walker gets closures almost for free, because every
+environment is an ordinary object that the function can point at. The
+bytecode VM in Part IV keeps locals in a fast stack instead, where a
+variable cannot outlive its call, so it has to spot the variables that
+closures capture and move them somewhere safer when the call returns;
+the chapter *Capturing variables: upvalues* builds that. The idea is the
+same as here; only the bookkeeping changes.
+</Callout>
+
+## Your turn
+
+<Exercise id="fixLoop" />
+
+<Exercise id="accumulator" />
+
+## What you learned
+
+- A Drip function value stores its **captured environment**: the one
+  current when it was made, by a `fn` declaration or an anonymous `fn`.
+- Each call makes a new environment whose parent is that captured
+  environment, not the globals and not the caller's. That is lexical
+  scope.
+- A closure captures variables, not copies: it sees later changes.
+- Each pass of a `for` loop makes a fresh environment for the loop
+  variable, so closures made in the loop keep their own values; a
+  `while` loop's counter is shared.
+
+Next: the call that made `n` has returned, yet `n` lives on. The next
+chapter is about how long an environment lasts, and what keeps it alive.
+
+<Quiz />

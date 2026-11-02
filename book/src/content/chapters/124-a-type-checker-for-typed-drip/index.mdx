@@ -1,0 +1,288 @@
+---
+n: 124
+day: 31
+part: III
+title: 'A type checker for typed Drip'
+tagline: 'Give Drip a few optional type annotations, and a pass over the tree can catch "total: " + price before a single line runs. It is the evaluator from chapter 99 again, computing types where it used to compute values.'
+objectives:
+  - Describe typed Drip, its types and where annotations may go.
+  - Represent types as data, and print them the way a programmer writes them.
+  - Turn typing rules into a checker that walks an expression and returns its type, or a friendly error.
+  - Check a sequence of statements, keeping the type environment in step with the scopes.
+introduces: [typed-drip, type-checker]
+uses: [type-system, type-error, static-vs-dynamic-typing, type-soundness-intro, typing-judgment, inference-rule, type-environment, drip, grammar, bnf, ast, ast-node, resolver, static-analysis, evaluate, tree-walking-interpreter, environment, block-scope, shadowing, drip-list, index-expression, type-annotation, type-erasure, map, recursion, function, object, property, array, strings, numbers, booleans, if]
+sources: [pierce2002, ts-basics]
+---
+import CheckerWalk from '../../../components/diagrams/ch124/CheckerWalk';
+import ScopeMaps from '../../../components/diagrams/ch124/ScopeMaps';
+
+## Catching it before it runs
+
+Here is the mistake from chapter 122 again, in two lines of Drip:
+
+```
+let price = 4;
+let label = "total: " + price;
+```
+
+Drip runs line 1, then stops at line 2 with `runtime error: cannot add
+a string and a number`. By the end of this chapter we will have a
+program that reads the same two lines, runs neither, and says
+
+```text
+line 2: cannot add a string and a number
+```
+
+That program is a **type checker**, and the language it checks is
+**typed Drip**: Drip with optional type annotations. Over this chapter
+and the next we build it from the rules of chapter 123, one kind of
+node at a time.
+
+## Typed Drip
+
+Typed Drip is ordinary Drip plus a little extra syntax for writing
+types down. Its types are `number`, `string`, `bool`, `none`, lists such
+as `[number]` (a list whose elements are all numbers), and function
+types such as `fn(number, string) -> bool`:
+
+<Formal title="What typed Drip adds to the grammar">
+
+```text
+type    → "number" | "string" | "bool"
+        | "none" | "[" type "]"
+        | "fn" "(" types? ")" "->" type ;
+types   → type ( "," type )* ;
+letDecl → "let" IDENT ( ":" type )?
+          ( "=" expression )? ";" ;
+params  → IDENT ":" type
+          ( "," IDENT ":" type )* ;
+fnDecl  → "fn" IDENT "(" params? ")"
+          ( ":" type )? block ;
+```
+
+<span slot="read">A type is one of the four base type names, or a type
+in square brackets (a list of that type), or fn, then the parameter
+types in brackets, then an arrow and the result type. A let may have a
+colon and a type after its name. Each function parameter has a colon and
+a type, and a function may have a colon and its result type after the
+parameter list.</span>
+</Formal>
+
+<Analogy title="labels on kitchen jars">
+Some jars in a kitchen are labelled ("flour", "rice") and some are not,
+because what is inside is obvious at a glance. Typed Drip's annotations
+are the labels: write one where it helps, and leave it off where the
+value makes the type plain, as in `let s = "hi";`.
+<span slot="breaks">Nobody checks a kitchen label against the jar;
+typed Drip's checker checks every label it finds against the value, as
+the next chapter builds.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Typed Drip** is Drip with optional type annotations on `let`
+declarations, required ones on function parameters, and an optional
+result type on functions (leaving it off means the function returns
+`none`). Every operation must be applied to the types its rule allows,
+and removing the annotations gives an ordinary Drip program that runs
+exactly the same, as erasing TypeScript's types gives
+JavaScript<Cite id="ts-basics" />.
+</Callout>
+
+<Examples of="typed-drip">
+
+```
+let n: number = 3;
+let s = "hi";   # s : string
+```
+
+```
+fn area(w: number, h: number): number {
+  return w * h;
+}
+```
+
+```
+let names: [string] = ["ana", "ben"];
+let big: fn(number) -> bool = isBig;
+```
+
+</Examples>
+
+The first block declares `n` with a label and `s` without one; the
+checker works out that `s` is a `string` from its value. The second is a
+function whose two parameters must be numbers and whose result is a
+number. The third gives a list type and a function type: `names` holds
+only strings, and `big` holds a function (here one called `isBig`,
+declared elsewhere) that takes a number and returns a bool.
+
+Typed Drip is also a little stricter than Drip in three places, because
+each is usually a mistake: an `if` or `while` condition must be a
+`bool` (no truthiness: `if count` is an error, write `if count > 0`);
+`&&` and `||` take two bools; and `==` compares two values of the same
+type. Parameters must be annotated for now; chapters 126 and 128 show
+how a checker can work their types out by itself.
+
+<Prompts ids={['typed-drip-what', 'erase-runs-same', 'strict-cond']} />
+
+## Types as data
+
+The checker needs types as values it can compare and print. The
+simplest choice is a string for each base type and a small object for
+each compound type, with a `show` function that prints a type the way a
+programmer would write it:
+
+```js
+'number'             // number
+{ list: 'string' }   // [string]
+{ params: ['number'],
+  ret: 'bool' }      // fn(number) -> bool
+```
+
+Two types are the same if they print the same (`same(a, b)` compares
+`show(a)` with `show(b)`), and `describe(t)` adds the article the error
+messages need: `a number`, `a [string]`, or plain `none`.
+
+## The checker is an evaluator of types
+
+Chapter 99's `evaluate` took an expression and returned its value; the
+checker's `typeOf(e, env)` takes an expression and the type environment
+Γ (a `Map` from names to types) and returns its type, following exactly
+one rule per kind of node. A number literal is a `number`; a variable
+has the type Γ gives it (T-Var); an operator gets the result type from
+the rule for its operand types (chapter 122's exercise, extended to
+every operator). Lists and indexing add two rules:
+
+<Formal title="Rules for lists and indexing">
+
+```text
+Γ ⊢ e₁ : T   …   Γ ⊢ eₙ : T     (n ≥ 1)
+─────────────────────────────── List
+     Γ ⊢ [e₁, …, eₙ] : [T]
+
+Γ ⊢ xs : [T]     Γ ⊢ i : number
+─────────────────────────────── Index
+         Γ ⊢ xs[i] : T
+```
+
+<span slot="read">If every element of a non-empty list literal has the
+same type T, the list has type list of T. If xs is a list of T and i is
+a number, then xs[i] has type T.</span>
+</Formal>
+
+Step through the checker on `price * 2 + "1"` with `price : number` in
+Γ, and watch the types travel up the tree exactly as values did in the
+interpreter:
+
+<CheckerWalk client:visible />
+
+<Analogy title="a building inspector with the plans">
+An inspector reads the drawings, not the building: a beam marked "pine,
+5 cm" under a floor marked "concrete, 20 cm" fails on paper, before
+anyone pours anything. The checker reads the program's tree the same
+way, part by part, checking that each joint matches its rule.
+<span slot="breaks">An inspector can approve a plan that is badly built
+afterwards; the checker's approval holds for every run, because what it
+read is exactly what runs (that is the soundness of chapter 122).</span>
+</Analogy>
+
+<Callout kind="definition">
+A **type checker** is a pass over a program's tree that applies the
+typing rules to each node, computing the type of every expression from
+the types of its parts, and reporting the first place where no rule
+applies<Cite id="pierce2002" />. It runs after parsing and before the
+program runs, like the resolver of chapter 110.
+</Callout>
+
+<Examples of="type-checker">
+
+```
+"total: " + str(price)  # string
+```
+
+```
+[1, "two"]
+# a list cannot mix a number
+# and a string
+```
+
+```
+xs[0] < 9   # xs : [number]
+# xs[0] : number, so: bool
+```
+
+</Examples>
+
+The first is the fixed label: `str` returns a string, so `+` joins two
+strings and the whole expression is a `string`. The second breaks the
+List rule, because the elements have two different types, and the
+message names both. The third chains two rules: Index gives
+`xs[0] : number`, and `<` on two numbers gives a `bool`, which is exactly
+what an `if` condition needs.
+
+<Prompts ids={['checker-what', 'like-evaluate', 'empty-list']} />
+
+## Statements and scopes
+
+Statements have no type; they are either fine or not, and they change
+Γ for the statements after them. A `let` checks its value and then adds
+the new name with that value's type; an `if` checks that its condition
+is a `bool`, then checks each branch:
+
+<Formal title="Rules for let and if">
+
+```text
+         Γ ⊢ e : T
+──────────────────────────── Let
+let x = e;  ok, then Γ, x : T
+
+Γ ⊢ c : bool   Γ ⊢ s₁ ok   Γ ⊢ s₂ ok
+──────────────────────────────────── If
+   Γ ⊢ if c { s₁ } else { s₂ } ok
+```
+
+<span slot="read">If e has type T in Γ, the declaration let x = e is
+fine, and every statement after it is checked in Γ extended with x of
+type T. If the condition is a bool and both blocks are fine in Γ, the
+whole if statement is fine.</span>
+</Formal>
+
+A block is a new scope, so names declared inside it must vanish at its
+closing brace. The checker gets this for free by checking each block in
+a *copy* of the Map: additions go into the copy, and the outer Map never
+sees them.
+
+<Figure takeaway="Each block gets a copy of Γ; what it declares disappears at its closing brace." caption="Checking if true { let t = 1; } print t;. The block's copy gains t : number; the outer Γ never does, so print t is an undefined variable.">
+  <ScopeMaps />
+</Figure>
+
+Here is the whole checker for lets, prints, ifs and whiles, run on four
+small programs (written as trees, as the parser would give them):
+
+<Run id="check-program" />
+
+It prints `ok` with the final Γ for the first program, then one error
+for each of the others, each with its line: the label bug, an `if` on a
+number, and a variable used outside the block that declared it. (It
+stops at the first error in a program; a real checker, like Drip's
+parser in chapter 87, would note it and keep going.)
+
+<Prompts ids={['let-extends', 'block-copy']} />
+
+## Your turn
+
+<Exercise id="type-of" />
+
+## What you learned
+
+- **Typed Drip** is Drip plus optional annotations: `let x: number`,
+  annotated parameters, result types, `[T]` and `fn(T) -> R`.
+- A **type checker** walks the tree and computes each expression's type
+  from its parts' types, one rule per kind of node, before anything
+  runs.
+- A `let` adds its name and type to Γ for what follows; each block is
+  checked in a copy of Γ, so its names vanish at its end.
+
+Next: comparing what the annotations *say* with what the checker
+*computes*, and checking functions and calls.
+
+<Quiz />

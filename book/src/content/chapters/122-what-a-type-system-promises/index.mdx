@@ -1,0 +1,313 @@
+---
+n: 122
+day: 31
+part: III
+title: 'What a type system promises'
+tagline: 'Drip notices a mistake like "many: " + n only on the day that line runs; a type system notices it by reading the program. This chapter says exactly what that buys you, what it never can, and why TypeScript chose to promise a little less.'
+objectives:
+  - Say in plain words what a type is, what a type system does, and what counts as a type error.
+  - Tell static checking from dynamic checking, and predict when each one reports a mistake.
+  - Explain why "strongly typed" and "weakly typed" muddle two questions, and ask those questions instead.
+  - State type soundness informally, and show a TypeScript program that passes the checker and still crashes.
+introduces: [type-system, static-vs-dynamic-typing, type-error, type-soundness-intro]
+uses: [dynamic-typing, language-spec, aliasing, runtime-error, runtime-value, evaluate, tree-walking-interpreter, static-analysis, resolver, typescript, type-annotation, type-checking, type-erasure, tsconfig, strict-mode-ts, drip, operational-semantics, function, return, array, if, strings, numbers, booleans, comparison]
+sources: [pierce2002, cardelli1997, milner1978, ts-basics, ts-type-compatibility, ts-design-goals]
+---
+import CheckTimeline from '../../../components/diagrams/ch122/CheckTimeline';
+import SafetyGrid from '../../../components/diagrams/ch122/SafetyGrid';
+
+## A mistake on a quiet path
+
+Here is a small Drip function with a mistake hidden in it:
+
+```
+fn label(n) {
+  if n > 99 {
+    return "many: " + n;
+  }
+  return str(n);
+}
+print label(5);    # 5
+print label(7);    # 7
+print label(120);  # runtime error
+```
+
+The first two calls print `5` and `7`, because small numbers never
+reach line 3; the third reaches it and stops with `cannot add a string
+and a number`. This is exactly what chapter 66 promised (types are
+checked on values, as each operation runs); however, if every test you
+wrote used small numbers, the mistake would wait, quietly, for the
+first real customer with a big order. The question of the next few
+chapters is whether a program can *read* `label` and say "line 3 adds a
+string and a number" without running anything.
+
+## What a type is
+
+A type names a set of values and what you may do with them: `number`
+is 3, 2.5, -7 and every other number, which you may add and compare;
+`string` is every piece of text, and two strings may be joined with
+`+`.
+
+<Analogy title="plugs and sockets">
+A British plug has three flat pins and a European socket two round
+holes; you can see they do not fit without switching anything on. Types
+are the shapes of values, and operations are sockets that take only
+certain shapes.
+<span slot="breaks">A plug's shape is visible; a type has to be worked
+out from the program's text, which takes real reasoning. And an adaptor
+converts plugs, whereas Drip's `+` never converts: you call `str`
+yourself.</span>
+</Analogy>
+
+<Analogy title="units in a physics sum">
+A physics teacher marks "3 metres + 2 seconds" wrong without looking at
+the numbers: the units do not match, and "only add like units" catches
+the nonsense before any arithmetic.
+<span slot="breaks">Units are mostly about adding; a type system also
+has rules for calls, list elements and branches. And units multiply
+into new units (metres per second), which most types do not.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **type** is a set of values with the operations allowed on them. A
+**type error** is an operation applied to a kind of value it is not
+defined for. A **type system** is a set of rules that assigns a type to
+every piece of a program by reading its text, so that programs which
+could make certain type errors are rejected<Cite id="pierce2002" />.
+</Callout>
+
+<Examples of="type-error type-system">
+
+```
+print -"hello";
+# runtime error: cannot negate a string
+```
+
+```ts
+function half(n: number) { /* ... */ }
+half("ten");
+// Argument of type 'string' is not
+// assignable to parameter of type 'number'.
+```
+
+```js
+"3" * 2;  // 6, no error at all
+"a" * 2;  // NaN, no error either
+```
+
+</Examples>
+
+The first is a type error in Drip: `-` is only defined on numbers.
+The second is the same kind of mistake caught by a type system before
+anything runs (error TS2345 in TypeScript 5.9). The third is the surprise: JavaScript
+has *no* type error for `*` on a string, because its rules say to
+convert the string to a number first, so `"3" * 2` is `6` and `"a" * 2`
+is `NaN`. What counts as a type error is decided by the language's
+rules, not by common sense.
+
+<Prompts ids={['type-what', 'type-system-what']} />
+
+## Before running, or while running
+
+Drip checks types **dynamically**: each operation looks at the
+values it is given, as it runs. TypeScript checks types **statically**:
+a checker reads the whole source and works out the type of every
+expression before anything runs (and then, as chapter 28 showed, the
+types are erased<Cite id="ts-basics" />). Step through both:
+
+<CheckTimeline client:visible />
+
+<Callout kind="definition">
+**Static typing** checks types by reading the program before it runs,
+covering every path through it, taken or not. **Dynamic typing** checks
+the types of the actual values when each operation runs, so only paths
+that are taken are ever checked. Many languages do some of each.
+</Callout>
+
+Checking every path has a price: a static checker must also refuse
+some programs that would never go wrong.
+
+```ts
+let n: number = 1;
+if (false) {
+  n = "one";
+}
+// Type 'string' is not assignable
+// to type 'number'.
+```
+
+The assignment can never run, yet TypeScript rejects it. This is not
+carelessness: no checker can know in general which branches will run
+without running the program, so it judges every branch as if it
+might. Checkers are deliberately **conservative**: when unsure, they say
+no<Cite id="pierce2002" />.
+
+<Examples of="static-vs-dynamic-typing">
+
+```
+# Drip (dynamic): prints a, then stops
+print "a";
+print 1 + "b";
+```
+
+```ts
+// TypeScript (static): nothing runs
+console.log("a");
+console.log(1 * "b");
+// error TS2363: The right-hand side
+// of an arithmetic operation must be
+// of type 'any', 'number', ...
+```
+
+```python
+# Python (dynamic): prints a, then
+print("a")
+print(1 + "b")  # TypeError
+```
+
+</Examples>
+
+Drip prints `a` and only then meets the bad line; TypeScript reports
+the error before anything runs; Python behaves like Drip, printing `a`
+and then stopping with a `TypeError`.
+
+<Prompts ids={['static-when', 'conservative']} />
+
+## Strong and weak: two questions in one word
+
+You will often read that a language is "strongly" or "weakly" typed;
+however, people use these words for at least two different things, so
+they start more arguments than they settle. It is better to ask two
+questions separately, as Cardelli does in his survey of type
+systems<Cite id="cardelli1997" />. The first is *when* types are
+checked: before running (static) or while running (dynamic). The second
+is *what happens to a mistake that is not caught by a check*: does the
+language always stop it with an error (Cardelli calls such errors
+**trapped**), or can it slip through unnoticed and corrupt something
+later (**untrapped**, like C reading past the end of an array)? A
+language where no untrapped error can ever happen is called **safe**.
+
+<Figure takeaway="When types are checked and whether mistakes can slip through are two separate questions." caption="Four corners, after Cardelli's survey: Java and Drip are both safe, but check at different times; C checks before running but is not safe; a machine's assembly language does neither.">
+  <SafetyGrid />
+</Figure>
+
+So rather than "Drip is strongly typed", say "Drip is dynamically
+typed and safe"; rather than "C is weakly typed", say "C is statically
+typed but unsafe". (JavaScript turning `"3"` into `3` is a third thing
+again: a choice about what `*` *means*, not about checking.)
+
+<Prompts ids={['strong-weak', 'safe-meaning']} />
+
+## The promise: well-typed programs do not go wrong
+
+What exactly does a static type system promise? In 1978 Robin Milner
+proved, for the language he was designing, a theorem usually summed up
+in one line: **well-typed programs cannot "go
+wrong"**<Cite id="milner1978" />. "Going wrong" has a precise meaning:
+reaching a point where the next operation has no rule for its values,
+like `+` on a string and a number in Drip (the program is *stuck*: not
+finished, and no rule says what happens next). A type system with this
+property is called **sound**.
+
+<Analogy title="an electrical safety certificate">
+An electrician certifies that no socket in the house will give you a
+shock; the certificate does not promise that your toaster works or that
+the bill will be small.
+<span slot="breaks">An electrician tests a sample of sockets and could
+miss one; soundness is a proof about every well-typed program, with no
+sampling.</span>
+</Analogy>
+
+The second half of the picture matters as much as the first:
+soundness rules out *type* errors only. A sound type system still lets
+a program read index 10 of a three-element list (a deliberate, trapped
+check, not a stuck state) or loop forever.
+
+<Formal title="Type soundness, informally">
+
+```text
+⊢ e : T   implies   running e never
+                    gets stuck, and if it
+                    finishes, its value
+                    has type T
+```
+
+<span slot="read">If the type system can show that the expression e has
+the type T (the symbol ⊢ is read "it can be shown that", and the next
+chapter is all about it), then running e never reaches a point where an
+operation has no rule for its values; and if e finishes, the value it
+produces really is a T.</span>
+</Formal>
+
+<Callout kind="definition">
+A type system is **sound** if no program it accepts makes a type
+error when it runs, and every value an expression produces has the type
+the checker gave it. Errors the language checks on purpose (an index
+out of range) and programs that never finish are not ruled
+out<Cite id="milner1978" />.
+</Callout>
+
+## TypeScript promises a little less
+
+TypeScript is **not** sound, and on purpose: its design goals list a
+sound type system as a *non*-goal<Cite id="ts-design-goals" />, and its
+handbook says it allows some operations that cannot be known to be safe
+when checked<Cite id="ts-type-compatibility" />. The last two programs
+below pass `tsc --strict` (TypeScript 5.9) and then crash:
+
+<Examples of="type-soundness-intro">
+
+```
+# typed Drip (chapter 124): accepted,
+# and it can never add a string to n
+fn twice(n: number): number {
+  return n + n;
+}
+```
+
+```ts
+const xs: number[] = [];
+const n: number = xs[0];
+n.toFixed(2);
+// TypeError: Cannot read properties
+// of undefined (reading 'toFixed')
+```
+
+<Run id="ts-hole" />
+
+</Examples>
+
+In the first, a sound checker's promise holds: `n` is a number in
+every run, so `+` always has a rule. The second fools TypeScript, which
+types `xs[0]` as `number` although the array is empty (the option
+`noUncheckedIndexedAccess` closes this hole). In the runnable one, `ns`
+and `all` are two names for one array (chapter 7's aliasing); a string
+goes in through `all` and comes out through `ns`, where a number was
+promised. Chapter 132 explains why TypeScript allows this.
+
+<Prompts ids={['sound-promise', 'ts-unsound']} />
+
+## Your turn
+
+Checking one operator is chapter 99's evaluator again, run on types
+instead of values: where `evaluate` took `3` and `"a"`, this takes
+`'number'` and `'string'`.
+
+<Exercise id="result-type" />
+
+## What you learned
+
+- A **type** is a set of values and the operations allowed on them; a
+  **type error** is an operation applied to the wrong kind of value; a
+  **type system** assigns types to a program's pieces from its text.
+- **Static** checking reads every path before running, conservatively;
+  **dynamic** checking looks at real values, only on paths that run.
+- Instead of "strong" and "weak", ask *when* types are checked and
+  whether the language is **safe** (no untrapped errors).
+- A **sound** type system promises that accepted programs never get
+  stuck on a type error; TypeScript chose not to be sound.
+
+Next: the notation every type system is written in, read aloud one
+symbol at a time.
+
+<Quiz />

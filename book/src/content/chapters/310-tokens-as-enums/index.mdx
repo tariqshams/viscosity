@@ -1,0 +1,214 @@
+---
+n: 310
+day: 78
+part: XII
+title: 'Tokens as enums'
+tagline: 'In TypeScript a token’s type was a string that the type checker watched over. In drip-rs it is a one-byte enum, and the token itself is a 32-byte value that points into the source instead of copying it.'
+objectives:
+  - Translate the TypeScript TokenType union into a Rust enum, and say what each derive buys.
+  - Read Token<'src>, and account for each of its 32 bytes.
+  - Explain how error and synthetic tokens carry text that isn’t in the source.
+  - Write the keyword lookup as a match that returns Option.
+introduces: [token-enum]
+uses: [drip-rs, enum, match, pattern, struct, impl, option, borrow, slice, string-vs-str, lifetime, lifetime-annotation, size-of, padding, trait, token, token-type, lexeme, keyword, reserved-word-table, identifier, literal, scanner, union-type, discriminated-union, typescript, map, compiler]
+sources: [klabnik2026, rustref-enum]
+---
+import TokenSteps from '../../../components/diagrams/ch310/TokenSteps';
+
+## Forty names
+
+Open `companion/ts/src/token.ts` and the token types are strings:
+
+```ts
+type TokenType =
+  | '(' | ')' | '{' | '}' | ','
+  // ...
+  | 'identifier' | 'string' | 'number'
+  | 'and' | 'class' | 'else' // ...
+  | 'eof';
+```
+
+The VM's scanner adds one more, `type VmTokenType = TokenType | 'error'`,
+for forty in all. At run time each one is an ordinary JavaScript string,
+and the compiler tests them with `current.type === 'identifier'`. The
+union type is what makes a typo like `'identifer'` a compile error.
+
+Rust has no string literal types. It has something better suited to the
+job, and you met it in chapter 282.
+
+<Callout kind="intuition">
+A TypeScript token type is a name tag with the word written on it, and
+the type checker reads every tag to make sure the word is on the list.
+A Rust enum is a set of numbered coat-check tickets. The list is printed
+on the counter, there is nothing to misspell, and the ticket is tiny.
+</Callout>
+
+## TokenKind
+
+Here is the start of drip-rs's version, from `scanner.rs`:
+
+```rust
+#[derive(Clone, Copy, Debug,
+         PartialEq, Eq)]
+pub enum TokenKind {
+    // Single-character tokens.
+    LeftParen,
+    RightParen,
+    // ...
+    Identifier,
+    String,
+    Number,
+    And,
+    Class,
+    // ...
+    Error,
+    Eof,
+}
+```
+
+Forty variants, the same forty as the TypeScript union, `Error`
+included. Two changes are forced. A variant must be an identifier, so
+`'('` becomes `LeftParen` and `'>='` becomes `GreaterEqual`. And Rust
+can't extend an enum the way `TokenType | 'error'` extends a union, so
+`Error` lives in the one enum from the start.
+
+The `derive` line asks the compiler to write four trait impls (chapter
+285). `Copy` (with `Clone`) lets a kind be passed around like an
+integer. `PartialEq` and `Eq` give `==`, which the compiler's `check`
+needs:
+
+```rust
+fn check(&self, kind: TokenKind)
+    -> bool {
+    self.current.kind == kind
+}
+```
+
+`Debug` prints a variant's name, `Let`, for free. Chapter 312 will lean
+on that.
+
+<Callout kind="definition">
+A **token enum** is an enum with one fieldless variant per kind of
+token. In drip-rs it is `TokenKind`. Each value is just a
+**discriminant**, a small integer chosen by the compiler<Cite id="rustref-enum" />,
+so it is `Copy`, compares with `==`, and takes 1 byte: forty variants fit
+in a `u8` with room to spare.
+</Callout>
+
+<Prompts ids={['kind-forty', 'kind-names', 'kind-derive', 'kind-size']} />
+
+## Token&lt;'src&gt;
+
+A token is a kind, the text it came from, and a line:
+
+```rust
+pub struct Token<'src> {
+    pub kind: TokenKind,
+    pub lexeme: &'src str,
+    pub line: usize,
+}
+```
+
+The TypeScript `VmToken` has the same three fields, but its `lexeme` is
+a new string made by `source.slice(start, current)`. Here it is a
+`&str` slice: a pointer into the source and a length. Step through the
+tokens of one line:
+
+<TokenSteps client:visible />
+
+Chapter 287 took this struct apart: `'src` ties every token to the
+text it slices, and E0597 stops a token from outliving it. In drip-rs
+that never comes up, because the compiler holds the source for the
+whole compile, and its `Compiler<'src, 'a>` struct says so in its type.
+What this chapter adds is the size. A `Token` is 32 bytes on this
+machine: 1 byte of kind, a 16-byte slice and an 8-byte line, padded to
+a multiple of 8 (chapter 293). It is `Copy`, so the compiler's
+`previous` and `current` are plain copies, not borrows of the scanner.
+
+<Prompts ids={['lexeme-slice', 'src-lifetime']} />
+
+## Error tokens
+
+When the scanner meets `@`, it doesn't stop. It returns a token of kind
+`Error` whose lexeme is the message, exactly as the TypeScript scanner
+does; chapter 287 showed why a `&'static str` message fits in the
+`&'src str` field. That one variant is why `Error` had to be in the enum
+from the start, where TypeScript could bolt `'error'` on.
+
+The same trick makes tokens the compiler invents. To compile `this`
+inside a method, or `super` in a subclass, drip-rs calls
+`Token::synthetic("this", line)`: an `Identifier` whose lexeme is a
+literal, so the compiler can resolve it like any other variable name.
+
+<Prompts ids={['error-static']} />
+
+## Keywords
+
+The TypeScript scanner looks words up in a `Map` from text to type,
+`KEYWORDS`. drip-rs uses a `match` on the text instead:
+
+```rust
+fn keyword(text: &str)
+    -> Option<TokenKind> {
+    use TokenKind as T;
+    Some(match text {
+        "and" => T::And,
+        "class" => T::Class,
+        // ... 14 more
+        _ => return None,
+    })
+}
+```
+
+Two small idioms here. `use TokenKind as T` gives the enum a short local
+name. And the `_` arm says `return None`, which leaves the function, so
+every arm that finishes yields a `TokenKind` and the `Some(...)` wraps
+it. The caller turns "not a keyword" into an identifier:
+
+```rust
+let kind = keyword(text)
+    .unwrap_or(TokenKind::Identifier);
+```
+
+There is no table to build at startup and nothing to allocate. And the
+match patterns are exact strings, so `classy` and `Class` both fall
+through to `_`.
+
+<Run id="tokens" />
+
+<Prompts ids={['kw-match', 'kw-return-none']} />
+
+<Callout kind="engine" label="Under the hood">
+Couldn't the token carry its value, `Number(f64)` or `String(&str)`,
+like the tree-walker's `literal` field? That would be a design choice,
+and drip-rs doesn't make it. Its kinds stay fieldless, so every kind is
+`Copy`, 1 byte, and comparable with `==` against a constant, which is
+how `check`, `consume` and `matches` work. The compiler parses numbers
+itself when it emits them, with `self.previous.lexeme.parse()`, and
+strips the quotes from strings the same way the TypeScript compiler
+does. TypeScript also hid a cost here: each token's lexeme was a fresh
+string, while the Rust scanner, its file's comment says, never
+allocates.
+</Callout>
+
+## Your turn
+
+<Exercise id="keywordMatch" />
+
+<Exercise id="tsName" />
+
+## What you learned
+
+- drip-rs's **`TokenKind`** is a **token enum**: forty fieldless
+  variants, one per TypeScript token type, `Error` included. Punctuation
+  gets names like `LeftParen`.
+- `#[derive(Clone, Copy, Debug, PartialEq, Eq)]` makes kinds cheap to
+  copy, comparable with `==` and printable by name. A kind is 1 byte.
+- **`Token<'src>`** holds a kind, a line and a `&'src str` lexeme that
+  points into the source. A token is 32 bytes and can't outlive its
+  source.
+- Error and synthetic tokens use `&'static str` literals, which outlive
+  any `'src`.
+- Keywords are a `match` on the text that returns `Option<TokenKind>`.
+
+<Quiz />

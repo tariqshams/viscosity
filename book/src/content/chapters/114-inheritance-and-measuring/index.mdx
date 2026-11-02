@@ -1,0 +1,295 @@
+---
+n: 114
+day: 29
+part: III
+title: 'Inheritance, and measuring the tree-walker'
+tagline: 'Drip gets its last feature: a class that builds on another class, and super, which is decided by where a method is written rather than by the object it runs on.'
+objectives:
+  - Explain how a Drip method lookup finds an inherited method through the superclass chain.
+  - Explain overriding, and read the errors for a bad superclass.
+  - Trace a super call, and explain why super is stored in an environment instead of found through self.
+introduces: [inheritance, super]
+uses: [drip-class, field, bound-method, resolver, scope-depth, static-analysis, captured-environment, environment, scope-chain, closure, callable, runtime-error, tree-walking-interpreter, return-unwinding, host-stack, drip, class, instance, this, method, map, recursion, function, call, return, variables]
+sources: [mdn-map]
+---
+import SuperSteps from '../../../components/diagrams/ch114/SuperSteps';
+import ChainFigure from '../../../components/diagrams/ch114/ChainFigure';
+
+## A dog is an animal
+
+Every animal has a name and can make a sound; a dog does that *and*
+barks. Writing the shared part twice would bring back the copy-and-fix
+problem that functions cured, so Drip, like JavaScript in the chapter
+*Inheritance: extends and super*, lets one class build on another:
+
+```
+class Animal {
+  init(name) { self.name = name; }
+  speak() {
+    print self.name + " makes a sound";
+  }
+}
+class Dog extends Animal {
+  speak() {
+    super.speak();
+    print self.name + " barks";
+  }
+}
+new Dog("Rex").speak();
+# Rex makes a sound
+# Rex barks
+```
+
+`Dog` has no `init`, yet `new Dog("Rex")` sets `name`; and `Dog`'s
+`speak` replaces `Animal`'s, but can still call it through `super`. This
+chapter is about the two lookups that make that happen.
+
+## Inheritance: one more place to look
+
+`class Dog extends Animal` gives `Dog` a **superclass**, `Animal`. The
+class statement evaluates the name after `extends` like any variable and
+checks that it holds a class, so `let A = "x"; class B extends A {}`
+stops at run time; `class A extends A {}` is caught even earlier, as the
+compile error `a class cannot extend itself`. Then finding a method becomes a walk up the
+chain of superclasses:
+
+```ts
+findMethod(name: string) {
+  return this.methods.get(name)
+    ?? this.superclass?.findMethod(name);
+}
+```
+
+Look in this class's own methods; if the name is not there (`??` means
+"if the left side is missing, use the right"), ask the superclass, which
+does the same, until a class has no superclass (where `?.` gives
+`undefined`). That is the whole of inheritance in the interpreter. `new Dog("Rex")` calls `findMethod('init')`, which is not
+in `Dog` but is in `Animal`, so `Animal`'s `init` is bound to the new
+`Dog` instance and sets its `name`.
+
+<Analogy title="family recipe books">
+If your own notebook has no recipe for scones, you look in your
+parent's book, then in your grandparent's. A recipe in your own
+notebook wins over an older one with the same name, because you look
+there first.
+<span slot="breaks">A family recipe can be adapted as it is copied;
+Drip copies nothing, it looks up the chain every single time a method is
+read, and a class has at most one parent book to look in.</span>
+</Analogy>
+
+<Figure caption="A method lookup starts at the instance's class and walks up the superclass links until a class has the method. If no class has it, the read is an error." takeaway="Inheritance is a walk up the superclass chain.">
+  <ChainFigure />
+</Figure>
+
+<Callout kind="definition">
+**Inheritance** lets a class reuse another class's methods. The class it
+builds on is its **superclass** (`class B extends A` makes `A` the
+superclass of `B`), which must be a class, and not `B` itself. Looking a
+method up checks the class's own methods first and then walks the
+superclass chain, so a subclass **overrides** a method by defining one
+with the same name. `init` is inherited like any method, so a subclass
+with no `init` is made with its superclass's.
+</Callout>
+
+<Examples of="inheritance">
+
+```
+class A { hi() { print "A"; } }
+class B extends A {}
+new B().hi(); # A
+```
+
+```
+class S { init(a) { self.a = a; } }
+class T extends S {}
+print new T(1); # T { a: 1 }
+print new T();
+# runtime error: init() takes
+#   1 argument but got 0
+#   at line 4 in script
+```
+
+```
+let A = "x";
+class B extends A {}
+# runtime error: a class can only
+#   extend a class, not a string
+#   at line 2 in script
+```
+
+</Examples>
+
+The first is the simplest inheritance there is: `B` has no methods, so
+`hi` is found one class up. The second shows `init` inherited: `new
+T(1)` runs `S`'s, and the instance prints as a `T`; the inherited `init`
+has arity 1, so `new T()` fails. The third is the runtime check on the
+superclass.
+
+<Prompts ids={['find-walk', 'override', 'super-must-be-class', 'extends-self', 'init-inherited']} />
+
+## super: decided where it is written
+
+`super.speak()` means "the `speak` above the class this method was
+written in, called on the same `self`". A tempting shortcut is to take
+`self`'s class and ask for *its* superclass. It breaks with three
+levels:
+
+```
+class A {
+  m() { print "A.m"; }
+}
+class B extends A {
+  m() {
+    print "B.m";
+    super.m();
+  }
+}
+class C extends B {}
+new C().m(); # B.m, then A.m
+```
+
+`new C().m()` reaches `B`'s `m` with `self` a `C` instance. "The
+superclass of `self`'s class" is `B`, so the shortcut would make
+`super.m()` call `B`'s `m` again, which would call it again, until
+`stack overflow`. The right answer, `A`, depends on where the method was
+*written*, which is lexical scope again, so the interpreter uses the
+same trick it used for `self`: an environment. When a class with a
+superclass is declared, its methods capture an environment holding
+`super`:
+
+```ts
+let env = this.env;
+if (superclass) {
+  env = new Environment(env);
+  env.define('super', superclass);
+}
+// ... each method captures env ...
+```
+
+The resolver begins a matching scope (declaring `super`) around the
+class's `self` scope, so `super` gets a distance like any variable, and
+`self` is always exactly one environment closer:
+
+```ts
+private superMethod(e) {
+  const d = this.locals.get(e)!;
+  const sc = this.env.getAt(d, 'super');
+  const me = this.env.getAt(d - 1,
+    'self');
+  const m = sc.findMethod(
+    e.method.lexeme);
+  if (!m) throw new RuntimeError(...);
+  return m.bind(me);
+}
+```
+
+It finds the superclass `d` environments out and the instance one
+closer, looks the method up starting at the superclass, and binds it to
+the instance (if nothing is found: `Shape has no method 'm'`). Step
+through the three-level example:
+
+<SuperSteps client:visible />
+
+<Analogy title="a family motto">
+"Do as your grandmother did" means one particular grandmother, fixed by
+which family the saying was handed down in, whoever happens to be
+repeating it today; a grandchild who repeats it does not mean *their*
+grandchild's grandmother.
+<span slot="breaks">A motto can be misremembered as it passes down;
+`super` is fixed exactly, once, when the class is declared, and it
+names only the class directly above.</span>
+</Analogy>
+
+<Callout kind="definition">
+**`super.name`** finds the method `name` starting from the superclass of
+the class the current method was *written in*, and binds it to the
+current `self`. Drip stores that superclass in an environment made when
+the subclass is declared, so `super` is found by scope depth, like any
+variable, with `self` one environment closer. Using `super` outside a
+method, or in a class that does not extend another, is a compile error.
+</Callout>
+
+<Formal title="Method lookup and super">
+
+```text
+find(C, m) = C.methods[m]  if it exists
+           = find(C.super, m)  otherwise
+super.m, written in class B:
+  = find(B.super, m), bound to self
+```
+
+<span slot="read">Finding method m in class C gives C's own m if it has
+one, and otherwise the result of finding m in C's superclass. super.m in
+a method written in class B finds m starting from B's superclass, and
+binds it to the current self, whatever the instance's own class
+is.</span>
+</Formal>
+
+<Examples of="super">
+
+```
+class S { init(a) { self.a = a; } }
+class T extends S {
+  init(a, b) {
+    super.init(a);
+    self.b = b;
+  }
+}
+print new T(1, 2); # T { a: 1, b: 2 }
+```
+
+```
+class S {}
+class T extends S {
+  m() { super.m(); }
+}
+new T().m();
+# runtime error: S has no method 'm'
+#   at line 3 in fn m
+#   at line 5 in script
+```
+
+<Run id="animals" />
+
+</Examples>
+
+The first is the most common use of all: a subclass's `init` runs its
+superclass's `init` on the same instance first, then adds its own field
+(`super.init` is the only way to reach an initialiser other than `new`).
+The second asks `super` for a method no class above has, and the error
+names the superclass where the search began. The runnable one is the
+animals from the start with one more class; predict each line before
+you run it.
+
+<Prompts ids={['why-not-self-class', 'super-env', 'super-self-distance']} />
+
+<Callout kind="engine" label="Under the hood">
+JavaScript does the same walk on a *prototype chain* (the chapter
+*Overriding and the prototype chain*). Part IV's VM trades it away: when
+a subclass is declared it copies the superclass's methods into its own
+table once, so a lookup never walks a chain (the tree-walker's tables
+are JavaScript `Map`s<Cite id="mdn-map" />; the VM's are its own hash
+tables).
+</Callout>
+
+## Your turn
+
+<Exercise id="square" />
+
+<Exercise id="findMethod" />
+
+## What you learned
+
+- **Inheritance**: `class B extends A` makes `A` the superclass (it must
+  be a class, and not `B` itself), and `findMethod` walks up the chain.
+  A subclass overrides by reusing a name; `init` is inherited too.
+- **`super`** is decided by where a method is written. Drip keeps the
+  superclass in an environment made when the subclass is declared, so
+  `super` is found by scope depth, with `self` one environment closer.
+- `super.init(...)` runs the superclass's initialiser on the same
+  instance.
+
+That is the whole of Drip. Next: how fast all of this really is, and why
+walking a tree is slow.
+
+<Quiz />

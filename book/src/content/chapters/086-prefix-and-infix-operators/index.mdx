@@ -1,0 +1,269 @@
+---
+n: 86
+day: 22
+part: III
+title: 'Prefix and infix operators'
+tagline: 'The same minus sign means negate in -x and subtract in a - x, and the same bracket means group in (a) and call in f(a). One question settles every case, and with it the Pratt parser can read the whole of Drip.'
+objectives:
+  - Tell prefix and infix positions apart, even for a token that can be both.
+  - Read the companion’s prefix and infix rules, and say which runs for each token.
+  - Explain why -f(2) * 3 negates the call before multiplying.
+  - Make an operator group to the right, and explain how Drip parses assignment.
+introduces: [prefix-infix]
+uses: [pratt-parser, binding-power, parser, recursive-descent, precedence, associativity, grammar, ast, ast-node, tree-printer, expression-vs-statement, token, token-type, lookahead, literal, drip, function, return, recursion, call-stack, tree, object, bracket-access, array, nested-function, discriminated-union, typescript, for-loop, comparison, if]
+sources: [pratt1973]
+---
+import TokenRoles from '../../../components/diagrams/ch086/TokenRoles';
+import PrefixInfixSteps from '../../../components/diagrams/ch086/PrefixInfixSteps';
+
+## One token, two jobs
+
+In "Pratt parsing" every operand was a number or a name, so `prefix()`
+did almost nothing. Real Drip asks more of it. Read this line:
+
+```text
+print 7 - -2;
+```
+
+The first `-` subtracts and the second negates: the same token, doing
+two different jobs. Brackets do it too: the `(` in `(a + b) * 2` groups,
+while the `(` in `f(a + b) * 2` calls a function, and the `[` in
+`[1, 2]` makes a list, while the `[` in `xs[0]` reads an element. A
+parser has to tell which job each token is doing, and it must do it
+without guessing.
+
+<Analogy title="a shop door">
+The same door is the way in when you are standing in the street and
+the way out when you are standing in the shop; nobody needs a sign to
+know which, because it depends only on which side you are on.
+<span slot="breaks">A door can be used both ways by different people
+at once; a token is read once, from one side only, and some tokens
+(`*`, `.`) have only one side that works at all.</span>
+</Analogy>
+
+<Analogy title="a word that changes with its place">
+In English, "record" after "a" is a thing (a record), while "record"
+after "I" is an action (I record). You know which from what came just
+before it, not from the word itself.
+<span slot="breaks">English often needs the whole sentence, or the
+stress you put on the word; Drip's parser only ever needs one fact,
+whether it is already holding a finished operand.</span>
+</Analogy>
+
+That one fact is the whole rule. If the parser holds nothing yet, it
+is looking for the *start* of an operand; if it already holds one, the
+next token can only *join* that operand to something else.
+
+<Figure takeaway="Where a token appears decides what it does." caption="Drip tokens with their two possible jobs. A blank box means the token cannot appear there; the number is the binding power of the infix job.">
+  <TokenRoles />
+</Figure>
+
+<Callout kind="definition">
+A token is in **prefix** position when it starts an operand, with
+nothing on its left (`-x`, `!ok`, `(1 + 2)`, `7`). It is in **infix**
+position when it follows a finished operand and joins it to what comes
+next (`a - b`, `f(x)`, `xs[i]`, `p.x`). The same token can mean
+different things in the two positions.
+</Callout>
+
+Pratt's paper calls the two jobs a token's "null denotation", what it
+means with nothing on its left, and its "left denotation", what it
+means with something on its left<Cite id="pratt1973" />.
+
+<Formal title="Two tables, one loop">
+
+```text
+prefix : Token ⇀ Rule
+infix  : Token ⇀ Rule × bp
+
+parse(m):
+  L ← prefix(next)()
+  while infix(peek) = (R, b), b > m:
+    L ← R(L)
+```
+
+<span slot="read">prefix is a partial table (the half arrow means not
+every token has an entry) from tokens to rules; infix is a partial
+table from tokens to a rule and a binding power. To parse with minimum
+power m, run the prefix rule of the next token to get L; then, while
+the token after it has an infix entry with power greater than m, run
+its rule on L to get the new L.</span>
+</Formal>
+
+<Prompts ids={['prefix-vs-infix', 'minus-two-ways', 'paren-two-ways']} />
+
+## The two tables in the companion
+
+The companion stores the first table as a `switch`:
+
+```ts
+function prefixRule(t: TokenType) {
+  switch (t) {
+    case '(': return grouping;
+    case '[': return list;
+    case '-': case '!': return unary;
+    case 'identifier': return variable;
+    // ...number, string, true, new, fn
+    default: return null;
+  }
+}
+```
+
+It hands back the function that parses an operand starting with this
+token (`grouping` reads an expression and then a `)`; `list` reads
+elements up to `]`), or `null` when the token cannot start one. The
+second table is `infix`, another `switch` on the operator: `(` builds a
+call node and reads the arguments, `.` reads a property name, `[` reads
+an index, and every other operator builds a binary node. Here is where
+the two meet:
+
+```ts
+function parsePrecedence(prec) {
+  advance();
+  const prefix = prefixRule(previous.type);
+  if (!prefix) {
+    // (simplified message)
+    errorAt(previous, 'expected an ' +
+      'expression, found ...');
+    return { kind: 'literal', value: null };
+  }
+  return continueExpression(prec, prefix);
+}
+```
+
+It takes a token, looks up its prefix rule, and reports an error if
+there is none (with Drip's real wording, which names the token where
+the dots are). Then `continueExpression` runs that rule and goes into
+the loop you know, written the other way round: `while (prec <= power
+of the next token)`, parsing a binary operator's right side with its
+power plus one. "At least one more than mine" is the same as "more than
+mine", so the trees are the same. Watch the two positions take turns:
+
+<PrefixInfixSteps client:visible />
+
+<Examples of="prefix-infix">
+
+```text
+-x       →  (- x)       prefix: negate
+a - x    →  (- a x)     infix: subtract
+```
+
+```text
+(1 + 2)  →  (group (+ 1 2))
+f(2)     →  (call f 2)
+```
+
+<Run id="two-jobs" />
+
+</Examples>
+
+In the first pair the `-` is the first token of an operand, then the
+second; same token, different node. In the second pair a `(` with
+nothing on its left groups, while one after the name `f` calls. The
+runnable program mixes both on each line: `-f(2) * 3` is `-60`, `-xs[1]
++ 1` is `-4`, `10 - -2` is `12` (an infix minus whose right operand
+starts with a prefix one), and `!false == true` is `true`.
+
+A token with no prefix rule cannot start an operand:
+
+```text
+print * 2;
+# line 1: expected an expression,
+#   found '*'
+print -2;  # -2
+```
+
+`*` only has an infix job, so in prefix position `prefixRule` returns
+`null` and the parser reports the message above; `-` has a prefix job,
+so `-2` is fine.
+
+<Prompts ids={['call-is-infix', 'no-prefix-rule']} />
+
+## How tightly does a prefix operator hold?
+
+Unary minus parses its operand with a high promise:
+
+```ts
+function unary() {
+  const operator = previous;
+  return { kind: 'unary', operator,
+    right: parsePrecedence(Prec.UNARY) };
+}
+```
+
+`Prec.UNARY` is 8 in the companion (7 in our table), so the operand's
+loop only takes the operators stronger than that: calls, `.` and `[`
+(9 in the companion, 8 in our table). That is why `-2 * 3` is `(-2) * 3` (the `*` is too weak
+to get inside the minus), while `-f(2)` negates the *result* of the
+call, because the call's `(` is stronger still.
+
+<Prompts ids={['unary-bp']} />
+
+## Leaning the other way
+
+To make an operator group to the *right*, parse its right side with
+one less than its own power, `pratt(bp - 1)`: then another operator of
+the same power is stronger than the promise, and it nests inward. (The
+extra exercise adds a power operator `^` exactly this way.)
+
+Drip's right-associative operators, `=`, `+=` and `-=`, are not in the
+table at all. The companion handles them in the prefix rule for a
+name:
+
+```ts
+function variable(canAssign) {
+  const name = previous;
+  if (canAssign && matchAny(ASSIGN_OPS)) {
+    const op = previous;
+    return { kind: 'assign', name, op,
+             value: expression() };
+  }
+  return { kind: 'variable', name };
+}
+```
+
+After a name and an assignment operator, the value is parsed by
+`expression()`, which starts again from the loosest level, so
+`a = b = 5` nests to the right. `canAssign` is true only when the call
+is as loose as assignment. In `a + 1 = 3` the `1` is the right side of
+`+`, so it may not take the `=`; the `=` is left over, and after its
+loop `continueExpression` reports it:
+
+```text
+let a = 1;
+a + 1 = 3;
+# line 2: cannot assign to this
+#   expression
+a = a + 1;  # fine
+```
+
+(The rules for `.` and `[` do the same for `o.x = 1` and `xs[i] = 1`.)
+What the parser does after reporting an error is the business of the
+next two chapters.
+
+<Prompts ids={['right-assoc-trick', 'assign-outside']} />
+
+## Your turn
+
+The core exercise adds prefix minus and brackets to your parser from
+"Pratt parsing"; the extra one adds a right-associative operator.
+
+<Exercise id="mini-prefix" />
+
+<Exercise id="power-right" />
+
+## What you learned
+
+- A token is in **prefix** position when the parser holds no operand
+  yet, and in **infix** position when it follows a finished one; `-`,
+  `(` and `[` have a job in each.
+- The companion keeps two tables, `prefixRule` and `infix`; a token
+  with no prefix rule in prefix position is
+  `expected an expression`.
+- Prefix `-` and `!` parse their operand with power 8, so only calls,
+  `.` and `[` get inside them.
+- Parsing a right side with `bp - 1` makes an operator lean right;
+  assignment parses its value with `expression()` and is only allowed
+  where `canAssign` is true.
+
+<Quiz />

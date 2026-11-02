@@ -1,0 +1,190 @@
+---
+n: 160
+day: 40
+part: V
+title: 'Polymorphic and megamorphic sites'
+tagline: 'An inline cache that sees one shape is one check and one load; one that sees five gives up and asks a shared table every time, and a tree-walking interpreter is exactly the kind of code that makes it.'
+objectives:
+  - Trace an inline cache from monomorphic to polymorphic to megamorphic, and say where V8 12.4 draws the line.
+  - Read V8's real --log-ic output for a site that sees five shapes.
+  - Explain what the stub cache is, and why a megamorphic site gives the optimizing tiers nothing to build on.
+  - Spot megamorphic sites in ordinary code, such as an interpreter reading node.type, and keep hot ones monomorphic.
+introduces: [polymorphic, megamorphic]
+uses: [inline-cache, monomorphic, shape, transition-tree, ignition, optimizing-tiers, bytecode, hash-table, property, dot-access, object, function, class, inheritance, super, array-of-objects, for-of, ast, tree-walking-interpreter]
+sources: [v8-src-ic-12-4, v8-src-tiering-12-4, v8-maglev, v8-fast-super, holzle1991]
+---
+import ICSteps from '../../../components/diagrams/ch160/ICSteps';
+import StubTable from '../../../components/diagrams/ch160/StubTable';
+
+## One site, many shapes
+
+The previous chapter's caches each saw one shape, because every particle
+was built the same way. Real code is not always so tidy. Your Drip
+tree-walking interpreter had a line that looked at whatever node it was
+handed and asked what kind it was, and every kind of node was a
+different class. Here is that idea in JavaScript, with five node classes:
+
+```js
+class Num { constructor(v) {
+  this.type = 'num'; this.v = v; } }
+class Add { constructor(l, r) {
+  this.type = 'add'; this.l = l;
+  this.r = r; } }
+// ...and Mul, Neg and Var, alike
+const kindOf = (n) => n.type;
+```
+
+Every class sets `type` first, so `type` is always field 0; but objects
+made by different classes have different maps, so the one load `n.type`
+in `kindOf` meets five shapes. What does its cache do?
+
+## A short list, then a shared table
+
+<Analogy title="a receptionist">
+A receptionist at a small office recognises the four people who come in
+every day, and waves each of them through at once. When strangers start
+arriving by the dozen, she stops trying to remember faces and looks
+everyone up in the building's directory, which every desk shares.
+<span slot="breaks">A receptionist might learn a fifth face in time; in my
+V8 12.4 test, a site that had gone megamorphic stayed so through 100,000
+more calls that all brought the same shape.</span>
+</Analogy>
+
+<Analogy title="a key ring">
+With up to four keys on a ring you try each in turn, and that is still
+quick. Give someone twenty doors, and trying keys stops making sense; they
+go to the caretaker's cabinet, where every key hangs under a label for its
+door.
+<span slot="breaks">The cabinet is slow because you have to walk to it;
+the stub cache is a fast hash table, but every lookup still costs a hash
+and a compare, and it tells the optimizing compiler nothing about which
+shapes to expect.</span>
+</Analogy>
+
+Step through one access as five different shapes arrive:
+
+<ICSteps client:visible />
+
+<Callout kind="definition">
+An inline cache is **polymorphic** ("many forms") when it has seen
+several shapes and keeps an entry for each, and **megamorphic** ("huge
+number of forms") when it has seen too many to list. In the V8 inside
+Node 22, "too many" means more than four: the flag
+`--max-valid-polymorphic-map-count` defaults to
+4<Cite id="v8-src-tiering-12-4" />. A megamorphic access stops keeping
+entries of its own and uses the **stub cache**, a table shared by all
+megamorphic loads that maps a shape and a name to a
+handler<Cite id="v8-src-ic-12-4" />.
+</Callout>
+
+<Formal title="The states of one site (V8 12.4)">
+
+```text
+n = number of different shapes seen
+state = 0  if n = 0     (uninitialized)
+        1  if n = 1     (monomorphic)
+        P  if 2 ≤ n ≤ 4 (polymorphic)
+        N  if n > 4     (megamorphic)
+```
+
+<span slot="read">Count the different shapes that have reached the site
+(not the number of accesses). None: state 0. One: state 1. Two to four:
+P. More than four: N. The letters are the ones V8's own log
+prints<Cite id="v8-src-ic-12-4" />, and the count only grows, so the
+state only moves down the list.</span>
+</Formal>
+
+<Figure caption="A polymorphic site keeps its own short list; megamorphic sites share one table keyed by map and name." takeaway="Past four shapes, a site stops remembering and starts asking.">
+  <StubTable />
+</Figure>
+
+<Examples of="polymorphic megamorphic">
+
+```
+// getX called with { x } and { x, y }
+LoadIC 1:29 0 1 x
+LoadIC 1:29 1 P x
+```
+
+```
+// getX called ten times each with
+// { x }, { x, a }, { x, b },
+// { x, c }, { x, d }
+LoadIC 1:29 0 1 x
+LoadIC 1:29 1 P x
+LoadIC 1:29 P P x
+LoadIC 1:29 P P x
+LoadIC 1:29 P N x
+```
+
+```
+// kindOf(n) over the five node classes,
+// ten calls each
+LoadIC 6:25 0 1 type
+LoadIC 6:25 1 P type
+LoadIC 6:25 P P type
+LoadIC 6:25 P P type
+LoadIC 6:25 P N type
+```
+
+</Examples>
+
+All three are real `node --log-ic` runs (Node v22.23.4, V8 12.4, Node's
+own lines removed). The first is the smallest polymorphic site: two
+shapes, so `0 → 1` on the first and `1 → P` on the second. The second
+walks the whole ladder: the third and fourth shapes are added to the list
+(`P → P`), and the fifth sends the site to `N`. (Why ten calls each? A
+function only gets its feedback vector after eight calls in Node 22, and
+with five calls each, the first shape was never recorded and the site
+stopped at `P`.) The third is the interpreter case: one innocent-looking
+`n.type`, five classes, and the site is megamorphic, which is worth
+knowing before you write a tree-walker in JavaScript for real.
+
+<Prompts ids={['poly-what', 'mega-what', 'log-letters', 'count-shapes', 'eight-calls']} />
+
+## Why the optimizing tiers care
+
+A monomorphic site gives Maglev something precise to build on: check one
+shape, then load at a fixed offset<Cite id="v8-maglev" />. A polymorphic
+site still gives it a short list of cases, which is the observation
+Hölzle, Chambers and Ungar made for Self in 1991: the types a polymorphic
+inline cache records are information an optimizing compiler can
+use<Cite id="holzle1991" />. A megamorphic site gives it nothing: the
+stub cache is shared, so it says nothing about which shapes *this* line
+sees.
+
+Megamorphic sites turn up in ordinary code. A helper called with many
+kinds of object is one; the V8 team's 2021 post on `super` shows another,
+a `super.m()` call inside a mixin, where each use of the mixin creates a
+new class, so that one access site goes megamorphic<Cite id="v8-fast-super" />.
+Try one shape against twenty on your device:
+
+<Run id="mono-vs-mega" />
+
+<Callout kind="pitfall">
+Do not reshape a whole program around this. A site that sees two or three
+shapes is polymorphic, not megamorphic, and what matters is the *hot*
+code: the inner loop that reads `p.x` for every particle. Make every
+particle with the same function, in the same order, and that loop sees
+one shape.
+</Callout>
+
+<Prompts ids={['stub-shared', 'mixin-mega', 'poly-ok']} />
+
+## Your turn
+
+<Exercise id="icStates" />
+
+## What you learned
+
+- **Polymorphic**: several shapes seen at one site, each with its own
+  entry; in the V8 inside Node 22, up to four.
+- **Megamorphic**: more than four; the site gives up its own entries and
+  looks up (shape, name) in the shared **stub cache**.
+- The states count different shapes, not accesses, and only move one way.
+- Different classes mean different shapes even with the same fields, so
+  an interpreter's `node.type` is a classic megamorphic site.
+
+Next: arrays get their own version of shapes, elements kinds.
+
+<Quiz />

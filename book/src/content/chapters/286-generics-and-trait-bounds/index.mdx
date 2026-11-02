@@ -1,0 +1,258 @@
+---
+n: 286
+day: 72
+part: XI
+title: 'Generics and trait bounds'
+tagline: 'TypeScript erases its type parameters and runs one function for every type. Rust stamps out one copy per type, so each call site knows exactly what it calls. That is the inline cache’s monomorphic case, decided before the program ever runs.'
+objectives:
+  - Write generic functions and structs with type parameters, and read Option<T>, Vec<T> and HashMap<K, V> as generic types.
+  - 'Add trait bounds, with T: Trait, + and where, so a generic body may call trait methods.'
+  - Explain monomorphization, and show the copies it makes in a compiled program.
+  - Choose between a generic parameter and dyn Trait, relating each to monomorphic and polymorphic call sites.
+introduces: [rust-generics, trait-bound, monomorphization]
+uses: [rust, rust-functions, let-mut, scalar-types, borrow, slice, struct, impl, self-receiver, enum, option, result, question-mark, vec, hashmap, trait, trait-object, generic, type-erasure, typescript, inline-cache, monomorphic, polymorphic, megamorphic, inlining, jit-compiler, shape, language-plugin, garbage-collection, roots, hash-function, ssa-construction, aos-vs-soa, compiler]
+sources: [klabnik2026, rust-reference-trait-object, v8-maglev]
+---
+import MonoSteps from '../../../components/diagrams/ch286/MonoSteps';
+
+## One function, or many?
+
+Here is a generic function in TypeScript:
+
+```ts
+function first<T>(xs: T[]): T | undefined {
+  return xs[0];
+}
+first([1, 2]);      // T = number
+first(['a', 'b']);  // T = string
+```
+
+From chapter 27 you know what runs: the types are erased, and one
+JavaScript function serves numbers, strings and everything else. Rust
+has the same syntax and a different answer:
+
+```rust
+fn first<T>(xs: &[T]) -> Option<&T> {
+    xs.get(0)
+}
+```
+
+`<T>` declares a **type parameter**: `first` works for a slice of any
+`T`, and returns a borrowed `T` if there is one. Call it with `&[1, 2]`
+and `T` is `i32`; with `&["a", "b"]`, `T` is `&str`. The types are
+checked exactly as in TypeScript. What happens next is not erasure.
+
+<Callout kind="intuition">
+A generic function is a recipe with a blank in it: "toast two slices of
+___". TypeScript hands every customer the same recipe card and lets
+them fill in the blank while cooking. Rust's kitchen prints a separate
+card for every filling it will ever be asked for, before opening, so
+the cook never has to stop and think.
+</Callout>
+
+## Generic types you already use
+
+`Option<T>`, `Result<T, E>`, `Vec<T>` and `HashMap<K, V>` from the last
+three chapters are all generic types: one definition, with type
+parameters. Your own structs can have them too:
+
+```rust
+struct Column<T> {
+    data: Vec<T>,
+}
+
+impl<T> Column<T> {
+    fn get(&self, i: usize) -> Option<&T> {
+        self.data.get(i)
+    }
+}
+```
+
+`impl<T> Column<T>` reads "for every `T`, here are methods of
+`Column<T>`". drip-rs uses this to make its handles safe. A `Gc<T>` is
+just a `u32` index into the `Vec` of objects of type `T`, but the
+parameter keeps them apart: a `Gc<ObjClosure>` can't be used to look up
+a class, because indexing the heap with it gives back an `ObjClosure`.
+
+<Callout kind="definition">
+**Generics** in Rust are type parameters, written in angle brackets on a
+function (`fn first<T>`), a struct or enum (`struct Column<T>`), or an
+impl (`impl<T> Column<T>`). Each use fills them with concrete types,
+written or inferred, and the compiler checks the code for those types.
+</Callout>
+
+<Prompts ids={['gen-what', 'gen-impl', 'gen-gc']} />
+
+## Bounds: what T can do
+
+Try a generic function that compares:
+
+```rust
+fn top<T>(xs: &[T]) -> Option<&T> {
+    let mut best = xs.get(0)?;
+    for x in xs {
+        if x > best {
+            best = x;
+        }
+    }
+    Some(best)
+}
+```
+
+Rust 1.97 refuses (trimmed):
+
+```
+error[E0369]: binary operation `>`
+  cannot be applied to type `&T`
+help: consider restricting type
+  parameter `T` with trait `PartialOrd`
+```
+
+Interestingly, the TypeScript version of this function passes
+`tsc --strict`: TypeScript lets `>` through for any `T`. Rust wants to
+know that `T` can be compared, and the fix is to promise that it
+implements the comparison trait:
+`fn top<T: PartialOrd>(xs: &[T])`. Inside the body you may now use
+`>`, and every caller must pass a type that implements `PartialOrd`.
+Calling `top` with a type that doesn't is the E0277 you met in chapter
+285.
+
+Bounds can be combined with `+`, and long ones move into a `where`
+clause. A real one, from `engine/rust/crates/core/src/builder.rs`, where
+the SSA builder keeps variables in `HashMap`s keyed by `K`:
+
+```rust
+impl<K> FunctionBuilder<K>
+where
+    K: Clone + Eq + Hash,
+{ ... }
+```
+
+`HashMap` needs keys that can be compared and hashed, so the builder
+says so once. For a single parameter there is also a short form:
+`fn show(p: &impl Plugin)` means the same as
+`fn show<P: Plugin>(p: &P)`<Cite id="klabnik2026" />.
+
+<Callout kind="definition">
+A **trait bound** such as `T: PartialOrd` restricts a type parameter to
+types that implement the trait. It lets the generic body call the
+trait's methods and operators, and makes every caller supply such a
+type. `T: A + B` asks for both traits; `where` clauses hold longer
+bounds.
+</Callout>
+
+<Run id="bound-play" />
+
+<Prompts ids={['bound-what', 'bound-why', 'bound-where']} />
+
+## One copy per type
+
+Now the difference from TypeScript. Take the `Layout` trait from the
+last chapter's exercise, and a generic sum over one field:
+
+```rust
+fn total<L: Layout>(l: &L, buf: &[f64],
+    n: usize, f: usize) -> f64 {
+    let mut s = 0.0;
+    for i in 0..n {
+        s += buf[l.slot(i, f)];
+    }
+    s
+}
+```
+
+Called with an `&Aos` and an `&Soa`, plus a `total_dyn` that takes
+`&dyn Layout`, then compiled with Rust 1.97 using
+`-C symbol-mangling-version=v0` (so symbol names show type parameters)
+and listed with `nm -C`, the program contains:
+
+```
+g3::total::<g3::Aos>
+g3::total::<g3::Soa>
+g3::total_dyn
+<g3::Aos as g3::Layout>::slot
+<g3::Soa as g3::Layout>::slot
+```
+
+Two `total`s, one per type. One `total_dyn`. Step through what each
+copy does at its call to `slot`:
+
+<MonoSteps client:visible />
+
+<Callout kind="definition">
+**Monomorphization** is how Rust compiles generic code: for each set of
+concrete types a generic item is used with, it generates a separate,
+ordinary copy with those types filled in. The copies call trait methods
+directly (static dispatch), so generic code runs like code written by
+hand for each type, and the compiler may inline those
+calls<Cite id="klabnik2026" />.
+</Callout>
+
+<Prompts ids={['mono-what', 'mono-evidence']} />
+
+## Monomorphic by construction
+
+You have seen this trade before, from the engine's side. In chapter 159
+an inline cache that has seen one shape is *monomorphic*, and Maglev
+turns such an access into one shape check and a plain load at a fixed
+offset<Cite id="v8-maglev" />. V8 has to *discover* that a site is
+monomorphic by watching it run, and must keep a check in case a new
+shape arrives.
+
+Inside `total::<Aos>`, the call `l.slot(i, f)` can only ever reach
+`Aos::slot`. The site is monomorphic by construction, known before the
+program runs, so there is nothing to check and nothing to deoptimize.
+`total_dyn` is the other case. Its one call site sees whatever vtable it
+is handed, like a polymorphic site, and has no feedback to specialize on:
+it loads a function pointer and calls it<Cite id="rust-reference-trait-object" />.
+
+So which should you write? Generics give each type its own fast copy,
+at the cost of more machine code and one copy per type to compile. `dyn`
+gives one copy and lets one `Vec` hold many types, at the cost of an
+indirect call. A plugin registry, a list of GC roots or anything decided
+at run time wants `dyn`. A hot loop over one known type wants generics.
+This chapter hasn't timed the two, so it makes no speed claim; chapter
+296 shows how to measure such things properly.
+
+<Prompts ids={['mono-ic', 'gen-vs-dyn']} />
+
+<Callout kind="engine" label="Under the hood">
+The Rust Viscosity chose generics. In `engine/rust/crates/core/src/lib.rs`
+the pipeline is `pub fn compile<P: LanguagePlugin>(source: &str, plugin:
+&P, ...)`, and the command-line tool calls `compile(&src, &JsPlugin,
+...)`, so the binary holds one copy, `compile::<JsPlugin>`. `dyn` isn't
+even available as written: the trait has an associated type, `Extra`,
+and `Vec<&dyn LanguagePlugin>` fails with E0191, "the value of the
+associated type `Extra` in `LanguagePlugin` must be specified". Plugins
+with different private data can't share one trait-object type as the
+trait stands. Picking a plugin by file extension at run time, as the
+TypeScript CLI does, would need a design change; that is an open design
+question, not code that exists yet. drip-rs uses both styles in one file: `gc.rs` has
+`impl<T: Trace> Trace for Vec<T>` (a bounded generic impl: every `Vec`
+of traceable things is traceable) and `fn alloc<T: HeapObject>`, while
+`collect` takes `&[&dyn Trace]`.
+</Callout>
+
+<Prompts ids={['engine-generic']} />
+
+## Your turn
+
+<Exercise id="totalGeneric" />
+
+<Exercise id="argmax" />
+
+## What you learned
+
+- **Generics** put type parameters on functions, structs and impls.
+  `Option<T>`, `Vec<T>` and `HashMap<K, V>` are generic types.
+- A **trait bound** like `T: PartialOrd` lets the body use the trait,
+  and makes callers supply it. Combine with `+`; move long ones to
+  `where`.
+- **Monomorphization** makes one copy per concrete type: `nm` showed
+  `total::<Aos>` and `total::<Soa>`.
+- Each copy's calls are monomorphic by construction; a `dyn` call site
+  takes whatever vtable it gets.
+- Viscosity's Rust `compile` is generic over `P: LanguagePlugin`;
+  drip-rs mixes generic impls with `&dyn Trace`.
+
+<Quiz />

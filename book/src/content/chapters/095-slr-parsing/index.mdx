@@ -1,0 +1,234 @@
+---
+n: 95
+day: 24
+part: III
+title: 'SLR parsing: lookahead from FOLLOW sets'
+tagline: 'An LR(0) parser decides to reduce without looking at what comes next. Let it peek at one token, and most of its conflicts vanish; how cleverly it chooses which tokens allow a reduction is the whole difference between SLR, LALR and LR(1).'
+objectives:
+  - Say what a lookahead set is, and why one token of lookahead removes most LR(0) conflicts.
+  - Build the SLR table of a grammar from its LR(0) automaton and its FOLLOW sets.
+  - Trace an SLR parser through a state where the next token decides between shift and reduce.
+  - Explain, with an example, why FOLLOW sets are sometimes too coarse.
+introduces: [slr, lookahead-set]
+uses: [lr0-item, closure-goto, lr-automaton, lr-conflict, follow-set, first-set, ll1-table, shift-reduce, lr-handle, bottom-up-parsing, grammar, production-rule, terminal, nonterminal, precedence, lookahead, array, object, function, for-of, if, return]
+sources: [deremer1969, deremer1971, aho2006]
+---
+import SlrParseSteps from '../../../components/diagrams/ch095/SlrParseSteps';
+import SlrFails from '../../../components/diagrams/ch095/SlrFails';
+
+## One peek would settle it
+
+The last chapter's grammar with multiplication had a conflict in state
+2, which holds `E → T ·` and `T → T · * F`. With a `T` on the stack the
+LR(0) table could not say whether to reduce the `T` to an `E` or to shift
+a `*`; however, *you* can, the moment you see the next token. If it is
+`*`, the `T` is not finished (it is the left side of a product), so
+shift. If it is `+`, `)` or the end of the input, the `T` is a whole
+expression so far, so reduce. The LR(0) parser was blind only because
+it never looked.
+
+There are three classic ways to choose which tokens allow a reduction,
+and they are this chapter's title: **SLR**, the simplest, which this
+chapter builds; then **LR(1)**, the most precise, and **LALR**, the
+compromise almost every parser generator uses, which come next. All
+three keep the shift-reduce loop exactly as it was; they differ only in
+which cells get the reductions.
+
+<Analogy title="a guest list at the door">
+A doorman lets a guest into a party only if their name is on the list.
+A reduction gets the same treatment: before it happens, the parser
+checks the next token against the reduction's list, and if the token is
+not there, the reduction does not go ahead.
+<span slot="breaks">A guest who is turned away goes home; a token that
+does not allow a reduction is not thrown away. It stays next in line,
+and the parser shifts it instead, or reports an error if nothing at all
+accepts it.</span>
+</Analogy>
+
+<Callout kind="definition">
+The **lookahead set** of a reduction is the set of terminals (with `$`
+for the end of the input) on which the parser may perform it. A
+reduction by `A → α` in a state goes only into the ACTION cells of the
+tokens in its lookahead set; every other cell of that row is left for
+shifts or errors.
+</Callout>
+
+<Examples of="lookahead-set">
+
+```text
+LR(0):  every terminal
+reduce E → T on n + * ( ) $
+```
+
+```text
+state 2:  E → T ·   lookahead { + ) $ }
+          T → T · * F   shift on *
+no cell has two actions
+```
+
+```text
+call → f ( args )
+args → args , n  |  n
+after "f ( n": reduce n to args
+only on "," or ")"
+```
+
+</Examples>
+
+The first is the LR(0) table in these terms: its lookahead set is
+everything, which is why it clashed with every shift. The second is the
+same state with a sensible lookahead set: the reduction now lives under
+`+`, `)` and `$`, the shift under `*`, and the two never meet. The third
+is an argument list, the kind every language has: once a name has been
+read inside `f(`, it may become a finished `args` only if a comma or the
+closing bracket comes next; any other token there is a syntax error,
+found in the right place.
+
+<Prompts ids={['lookahead-what', 'lr0-lookahead', 'token-kept']} />
+
+## SLR: FOLLOW sets as lookahead
+
+Where does a good lookahead set come from? Chapter 89 already computed
+the obvious candidate: **FOLLOW(A)**, the set of terminals that can come
+right after an `A` anywhere in any program. If the next token cannot
+follow an `A` at all, reducing to `A` now cannot be right. For the
+grammar with `*`:
+
+```text
+FOLLOW(E) = { + ) $ }
+FOLLOW(T) = { + * ) $ }
+FOLLOW(F) = { + * ) $ }
+```
+
+(`E` is followed by `+` in `E + T`, by `)` in `( E )`, and by `$` at the
+end; a `T` can also be followed by the `*` of `T * F`, and an `F` ends
+every `T`, so it shares `T`'s set.)
+
+<Callout kind="definition">
+An **SLR** (*simple LR*) parser uses the LR(0) automaton unchanged, and
+puts a reduction by `A → α` only under the tokens in **FOLLOW(A)**.
+Shifts, GOTO entries and accept are exactly as in the LR(0) table. A
+grammar is **SLR(1)** when this table has no conflicts.
+</Callout>
+
+<Formal title="SLR reductions">
+
+```text
+A → α · in Iᵢ,  A ≠ S,  a ∈ FOLLOW(A)
+  ⇒  ACTION[i, a] = reduce by A → α
+```
+
+<span slot="read">If state i holds a complete item for A goes to alpha,
+A is not the start symbol, and the token a is in the FOLLOW set of A,
+then the ACTION cell for state i and token a says reduce by that rule.
+Compared with LR(0), only the condition on a is new.</span>
+</Formal>
+
+Step through an SLR parse of `n + n * n`, and watch the two states that
+had conflicts:
+
+<SlrParseSteps client:visible />
+
+The step that matters is the ninth: `E + T` sits complete on the stack,
+which an LR(0) parser would have reduced on the spot, but the `*` that
+comes next can never follow an `E`, so the SLR parser shifts and builds
+`n * n` first. Precedence was in the grammar all along (it is why `F`
+and `T` exist); the lookahead set is what lets the parser respect it.
+
+<Examples of="slr">
+
+```text
+E → T + E | T,  T → n
+state 2: E → T · + E,  E → T ·
+FOLLOW(E) = { $ }: + shifts, $ reduces
+```
+
+```text
+grammar with *: states 2 and 9
+LR(0): 2 conflicts   SLR: 0
+```
+
+<Run id="slr-row" />
+
+</Examples>
+
+The first is the smallest grammar that is SLR but not LR(0): after a
+`T`, a `+` means more list to come, and only the end of the input
+allows `E → T`. The second is the expression grammar in one line: the
+same twelve states, and the two conflicts gone. The runnable one is a whole SLR
+parser for the grammar with `*`, its table written compactly as text; it
+prints every decision, so you can find the moment state 9 sees a `*` and
+shifts. Try `n * n + n` and `( n + n ) * n` as well.
+
+<Prompts ids={['slr-what', 'slr-same-states', 'state9-star']} />
+
+## Where FOLLOW is too coarse
+
+SLR's lookahead set is one list per nonterminal, used in every state,
+whatever the context. Usually that is fine; sometimes it is too
+generous. Here is a grammar for assignments in a C-like language, where
+the left side may be a name or `*` applied to a pointer, as in `*p = x`:
+
+```text
+P → L = R      P → R
+L → * R        L → id
+R → L
+```
+
+Its LR(0) automaton has ten states, and state 2, reached after an `L`
+at the start of a statement, is where SLR fails:
+
+<Figure takeaway="FOLLOW(R) says what can come after an R somewhere, not what can come after it here." caption="FOLLOW(R) contains =, because the R inside * R can be followed by = (as in *p = x). So SLR reduces R → L under =, beside the shift of =. Yet in state 2 the L starts a statement, and reducing it to R would leave R =, which no rule allows.">
+  <SlrFails />
+</Figure>
+
+<Analogy title="one dress code for a whole building">
+A hotel has one dress code for every room: "jackets or swimwear". That
+list is right for the building as a whole, but the doorman of the
+ballroom who follows it will let in a swimmer, who is only welcome at
+the pool.
+<span slot="breaks">A doorman can see who you are; a parser's state
+cannot see the context that led to it unless the state itself records
+it, which is exactly what the next chapter's LR(1) items do.</span>
+</Analogy>
+
+The grammar is not ambiguous, and one token of lookahead *is* enough to
+parse it; the trouble is only that SLR asked the wrong question ("what
+can follow an `R` anywhere?") instead of the right one ("what can
+follow an `R` that was made in *this* state?"). Answering the right
+question means the items themselves must carry their own lookahead,
+which is LR(1), the subject of the next chapter.
+
+<Prompts ids={['follow-too-big', 'not-ambiguous']} />
+
+<Callout kind="engine" label="Under the hood">
+Knuth's LR(k) parsers were hard to put into practice when they were
+new, because their tables were so large. Frank DeRemer's 1969 thesis
+found two ways round that, both starting from the small LR(0)
+automaton: SLR, which this chapter built, and LALR, which
+the next chapter builds<Cite id="deremer1969" />. His 1971 paper defined
+the SLR(k) grammars and showed how to build their
+parsers<Cite id="deremer1971" />. The dragon book introduces LR parsing
+through SLR for the same reason we did: it needs nothing beyond the
+LR(0) automaton and FOLLOW sets<Cite id="aho2006" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="slr-actions" />
+
+## What you learned
+
+- A **lookahead set** says on which tokens a reduction may happen; in
+  LR(0) it is every token, which causes most conflicts.
+- **SLR** keeps the LR(0) automaton and uses **FOLLOW(A)** as the
+  lookahead set for every reduction to `A`, which removes conflicts like
+  the one between `E → T ·` and `T → T · * F`.
+- FOLLOW is about the whole grammar, not the current state, so SLR can
+  still report a conflict where one token of lookahead would really be
+  enough.
+
+Next: items that carry their own lookahead (LR(1)), and how merging
+their states (LALR) keeps the table small.
+
+<Quiz />

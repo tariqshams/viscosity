@@ -1,0 +1,216 @@
+---
+n: 115
+day: 29
+part: III
+title: 'Measuring the tree-walker'
+tagline: 'Drip is finished, so it is time to ask how fast it is. The honest answer, from this book’s own benchmark run, is more interesting than “slow”: and the reasons why walking a tree is slow point straight at Part IV.'
+objectives:
+  - Read the tree-walker against bytecode VM benchmark honestly, including how it was measured and what it cannot tell you.
+  - Count the work the tree-walker does for one small expression, and separate overhead from real work.
+  - Name three sources of a tree-walker's overhead and connect them to Part II.
+introduces: [interpreter-overhead]
+uses: [inheritance, super, drip-class, field, bound-method, resolver, scope-depth, captured-environment, environment, scope-chain, closure, callable, ast, ast-node, evaluate, tree-walking-interpreter, compiler, return-unwinding, host-stack, drip, class, method, map, hash-intuition, pointer, memory, latency, pointer-chasing, jit-warmup, benchmark-isolation, recursion, function, call, return, variables]
+sources: [slotin-amh-latency, mdn-map, v8-maglev]
+---
+import BenchChart from '../../../components/diagrams/ch115/BenchChart';
+import OverheadSteps from '../../../components/diagrams/ch115/OverheadSteps';
+
+## How fast is Drip?
+
+Drip is a whole language now, about a thousand lines of TypeScript, and
+the natural next question is how fast it runs. "Fast" only means
+something next to something else, so the companion code has a second
+Drip implementation to compare with: the bytecode VM you will build in
+Part IV, also written in TypeScript, which turns the tree into a flat
+list of small instructions before running it. Both run the same
+benchmark programs, kept in `corpus/benchmark/` beside the test corpus:
+`fib` computes `fib(32)` by plain recursion, `method_calls` flips
+objects through methods and `super`, `instantiation` makes 600,000
+instances, `fields` reads and writes fields in a loop, and so on.
+
+The harness (`scripts/bench.mjs`) follows the rules from the chapter
+*Noisy numbers: the median, p95 and a fresh process*: each program runs
+in a fresh Node process for each engine, three times, and the best of
+the three is kept; the time covers the whole `run(source)`, scanning,
+parsing, resolving and running. These numbers are from this book's
+benchmark run, committed as
+`companion/ts/results/drip-bench-2026-11-02.md`: Node 22.23.4 (V8 12.4)
+on a shared cloud machine. By that chapter's standards, three runs on a
+shared machine are a careful first look, not a verdict.
+
+<BenchChart />
+
+Read it carefully, because it is not the picture you might expect:
+
+- **The VM is faster on six of the ten programs, and never by much**:
+  1.3 times on `method_calls`, 1.24 times on `fib` and `closures`, less
+  on the rest. Turning the tree into bytecode, on its own, did not make
+  Drip several times faster.
+- **On four programs the VM is slower**: `instantiation` (0.69),
+  `fields` (0.74), `trees` (0.8) and `strings` (0.95). These are the
+  programs that make many objects or read many fields.
+- **Both engines run on the same JavaScript engine.** The tree-walker's
+  `Map`s and objects are V8's own, built in and heavily tuned; the VM in
+  TypeScript keeps its own stack, its own hash tables and its own
+  object representation, all written in TypeScript. One likely part of
+  the answer is that the VM pays to rebuild, in TypeScript, things the
+  tree-walker gets from V8 for free; the chapter *Measuring and speeding
+  up the VM* tests that idea rather than assuming it.
+
+None of that makes the tree-walker fast. It means the costs are spread
+around, and to see them you have to look at what it does for a single
+line.
+
+<Prompts ids={['how-measured', 'vm-slower', 'same-engine']} />
+
+## What one subtraction costs
+
+Take one tiny piece of `fib`: `n - 2`. A CPU can subtract in a single
+instruction. Here is everything the tree-walker does for it, counted:
+
+<OverheadSteps client:visible />
+
+Seven method calls, four switches, two hash-map lookups and five checks,
+for one subtraction; and `fib(32)` evaluates `n - 2` millions of times,
+asking the same questions about the same nodes every time. That
+surrounding bookkeeping is the interpreter's overhead.
+
+<Analogy title="a cook who rereads the recipe">
+Picture a cook making a hundred pancakes who, for every single pancake,
+fetches the recipe card, finds the line "add one egg", reads it, works
+out what an egg is, and only then cracks one. The cracking is the real
+work; the rereading is all overhead, and it happens a hundred times.
+<span slot="breaks">A cook would learn the recipe by heart after a few
+pancakes; a tree-walker never learns, which is exactly what a bytecode
+compiler (and, later, a JIT) adds: work done once so it need not be
+redone.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Interpreter overhead** is the work an interpreter does that the
+program did not ask for: dispatching on node kinds, following pointers
+between nodes and environments, looking names up in tables, allocating
+environments and checking types. In a tree-walker it often costs far
+more than the operations themselves.
+</Callout>
+
+<Formal title="Where the time goes">
+
+```text
+time ≈ Σ over nodes evaluated
+         (dispatch + lookups + checks)
+       + real work
+```
+
+<span slot="read">The running time is roughly the sum, over every node
+the interpreter evaluates (the Σ reads "the sum of"), of what it costs
+to find out what the node is, to look its names up and to check its
+values, plus the work the program actually asked for. In a tree-walker
+the first part is the large one.</span>
+</Formal>
+
+<Prompts ids={['overhead-what', 'n-minus-2']} />
+
+## Three sources of overhead
+
+**Dispatch on every node.** Every node costs a method call and a
+`switch` to find out what it is, every time it runs, though the answer
+never changes.
+
+**Pointer chasing.** The tree is a web of separate objects joined by
+references, and so is the chain of environments. Each step loads the
+next pointer, and the step after cannot start until that load arrives:
+the pointer chasing of the chapter *Prefetching and pointer chasing*,
+where dependent loads are far slower than walking an array in
+order<Cite id="slotin-amh-latency" />.
+
+<Analogy title="a treasure hunt">
+Each clue tells you where the next clue is hidden, so you cannot even
+start walking to clue five until you have read clue four; a shopping
+list, by contrast, can be read all at once and the whole route planned.
+<span slot="breaks">A treasure hunt is slow because of walking between
+places; the processor is slow here because of *waiting* for each value
+to arrive from memory, which caches sometimes hide and sometimes do
+not.</span>
+</Analogy>
+
+**Environments made of Maps, and allocation everywhere.** Every local
+read is two hash lookups (the resolver's table, then the environment's
+`Map`); `Map` lookups are fast for a general table<Cite id="mdn-map" />,
+but nothing like reading a value at a known position. And the
+tree-walker allocates as it goes: a new `Environment` with a new `Map`
+for every call, two more for every pass of a `for` loop, a bound method
+and an environment for every method read, and a `frames` entry for every
+call.
+
+<Examples of="interpreter-overhead">
+
+```
+fn f(n) {
+  return n - 2;
+}
+print f(5); # 3
+# n - 2 alone: 7 calls, 4 switches,
+# 2 Map lookups, 5 checks
+```
+
+```
+let sum = 0;
+for i in 0..3 {
+  sum += i;
+}
+print sum; # 3
+# per pass: 2 new environments,
+# a define, 7 more Map operations
+```
+
+<Run id="timing" />
+
+</Examples>
+
+The first is the step-through above, inside a function as in `fib`
+(the call around it adds its own environment, `Map` and `frames`
+entry). The second is the smallest loop that does something: each pass
+makes the loop variable's environment and the body's, defines `i`, and
+reads `sum`, reads `i` and writes `sum` back through `Map`s, to do one
+addition. The
+runnable one times `fib(20)` and a loop of 100,000 additions with
+`clock`; your numbers will differ from run to run and from machine to
+machine, so run it a few times before you believe any of them.
+
+<Prompts ids={['dispatch', 'chase', 'allocations']} />
+
+<Callout kind="engine" label="Under the hood">
+Part IV attacks each source. The tree becomes **bytecode**, a flat array
+of small instructions read in order, so there are no nodes to chase;
+locals live in numbered stack slots instead of `Map`s, so the resolver's
+distances become slot numbers; and a `return` pops a frame. Engines took
+the same road: V8 runs your JavaScript first in Ignition, a bytecode
+interpreter, before its faster tiers take over the code that runs
+most<Cite id="v8-maglev" />. As the chart shows, though, bytecode alone
+is not the whole story, and Part IV measures each step rather than
+assuming it helps.
+</Callout>
+
+## Your turn
+
+<Exercise id="countVisits" />
+
+## What you learned
+
+- In this book's benchmark run (best of three, fresh processes, one
+  shared machine), the bytecode VM was at most 1.3 times faster than the
+  tree-walker, and slower on four object-heavy programs: both run on V8,
+  and the VM rebuilds in TypeScript what the tree-walker borrows.
+- **Interpreter overhead** is the work the program did not ask for:
+  `n - 2` costs seven calls, four switches, two `Map` lookups and five
+  checks for one subtraction.
+- Its three big sources: dispatch on every node, pointer chasing
+  through the tree and the environments, and `Map`-based environments
+  that allocate on every call and every loop pass.
+
+That is Drip: a whole language, walked as a tree. Part IV rebuilds it as
+a compiler and a virtual machine, and measures every piece of overhead
+it removes.
+
+<Quiz />

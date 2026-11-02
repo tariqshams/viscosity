@@ -1,0 +1,196 @@
+---
+n: 225
+day: 57
+part: VIII
+title: 'Round-trip testing the front-end'
+tagline: 'The easiest program to compile is one where there is nothing to do. Viscosity must hand it back byte for byte, and running that one check over five hundred real files found a crash nobody had written a test for.'
+objectives:
+  - Define an identity transform and explain why a splicing emitter makes it a byte-for-byte check.
+  - Say what the repository's round-trip, differential and parser-equivalence tests each catch.
+  - Explain why each run in the differential test gets a fresh vm context.
+  - Write a small differential tester that compares printed output and errors.
+introduces: [identity-transform]
+uses: [round-trip-testing, differential-testing, test, assertion, edge-case, codegen, pretty-printing, ast-to-ir, viscosity-pipeline, source-to-source, parser-adapter, estree, parser, ast, vir, resolver, typescript, type-erasure, class, import-export, module, try-catch, error-object, throw, function, callback, array]
+sources: [node-vm, csmith]
+---
+import FrontEndSteps from '../../../components/diagrams/ch225/FrontEndSteps';
+
+## Nothing to do
+
+Most code in a real project has no arrays of same-shaped objects.
+Viscosity will run over all of it anyway, every time you build. For
+those files, the only correct output is your file, unchanged. Not
+reformatted, not with a comment moved, not with a stray blank line at
+the top.
+
+<Callout kind="intuition">
+A good proofreader handed a page with no mistakes hands it back
+untouched. If the page comes back with a comma moved, you stop
+trusting the proofreader, even on pages that did need fixing.
+</Callout>
+
+<Callout kind="definition">
+An **identity transform** is a compile that must change nothing:
+for an input with nothing to transform, the output equals the
+input. For a source-to-source compiler that splices edits, "equals"
+can mean byte for byte. It is the simplest **round-trip** test: the
+input is its own expected output.
+</Callout>
+
+Chapter 202 showed the round trip for a printer: parse, print, parse
+again, compare trees. The trees can match while the text differs,
+because a printer chooses its own layout. Viscosity's emitter splices
+instead of printing (chapter 224), so it can promise more: the same
+bytes.
+
+<Prompts ids={['identity-what', 'bytes-not-trees']} />
+
+## The test in the repository
+
+It sits at the end of `differential.test.ts`:
+
+```ts
+it('leaves programs with nothing to ' +
+   'transform byte-identical', () => {
+  const src =
+    'const a = [1, 2, 3];\n' +
+    '// a comment\n' +
+    'console.log(a.length);\n';
+  expect(compile(src, jsPlugin()).code)
+    .toBe(src);
+});
+```
+
+(The real test name is one string.) It looks almost too small to
+matter. But `compile` runs the whole pipeline: acorn parses, the
+resolver walks the scopes, the lowering builds VIR, the analyses look
+at `a` and reject it (its elements are numbers, not object literals),
+the planner decides nothing, and the emitter has no prelude, so it
+returns its input. A crash anywhere, or a single stray edit, fails
+the test.
+
+The program was chosen with care. It has an array, so the collection
+analysis really runs; a comment, which a printer would lose; and a
+trailing newline, the classic thing to drop.
+
+TypeScript is the one exception: the plugin strips types first, so a
+`.ts` file with nothing to transform comes back as the same code
+without its types.
+
+<Prompts ids={['identity-pipeline', 'identity-snippet', 'identity-ts']} />
+
+## Three checks, one front-end
+
+The front-end package has three kinds of test, and each catches
+something the others can't. Step through them:
+
+<FrontEndSteps client:visible />
+
+The differential test runs each version in a brand-new `vm`
+context. Inside it, the global object is a fresh one with its own
+built-ins, and the outside globals stay unchanged<Cite id="node-vm" />,
+so neither run can see what the other left behind. (Node warns that
+`vm` is not a security mechanism; here it is only isolation for
+testing.)
+
+Run for this chapter, the whole package:
+
+```
+$ npx vitest run packages/frontend-js
+ ✓ mini-parser.test.ts (43 tests)
+ ✓ differential.test.ts (38 tests)
+      Tests  81 passed (81)
+```
+
+The 38 are the 36 corpus files plus two round-trip tests (the tiny
+program, and the `export default` cases you are about to meet).
+The 43 are those 36 files and 5 benchmark programs through both
+parsers, plus 2 tests of the mini parser itself. One more fact,
+measured for this chapter: 16 of the 36 corpus files keep every collection as an array of
+objects, and their compiled code is byte-identical to the source. The
+identity property holds inside the differential suite too, even
+though nothing there checks it.
+
+<Prompts ids={['fresh-context', 'three-tests', 'header-aos']} />
+
+## Five hundred real files
+
+A test with one hand-written snippet only covers what its author
+thought of. The identity check needs no expected output, so it scales
+for free: any JavaScript file is a test case. For this chapter, it
+was run over the `.js` and `.mjs` files (minus CommonJS builds) in the engine's
+`node_modules` (514 files from 61 third-party packages):
+
+```
+same: 497   changed: 0   failed: 17
+```
+
+No file was changed. That is the good news: the emitter never
+touched code it had no business touching. But 17 files crashed the
+compiler, every one with the same error, and every one containing
+`export default class`. The smallest program that crashes is one
+line:
+
+```js
+export default class A {}
+```
+
+```
+TypeError: Cannot read properties of
+undefined (reading 'owner')
+```
+
+The resolver declares names from `export` declarations, but not from
+`export default class`, so the lowering asks for the binding of `A`
+and gets `undefined`. The repository's corpus is about arrays and
+loops; one file has an `export function`, none a default export, so
+no existing test could see it. The fix was one line: `resolve.ts`
+now declares names from `export default` declarations too, and a
+round-trip test for it joined the suite. (An anonymous
+`export default function () {}` crashed the resolver too. The Rust
+port's parity work found it later, and the same test covers it now.)
+Rerun on the same files:
+
+```
+same: 514   changed: 0   failed: 0
+```
+
+The fix was small; finding the bug took a test with no expected
+output and a pile of other people's code. This is the corpus idea of
+chapter 242, and the reason fuzzers like Csmith exist: inputs that no
+test author would have thought of<Cite id="csmith" />.
+
+<Prompts ids={['scale-free', 'found-crash']} />
+
+<Callout kind="engine" label="Under the hood">
+Each test here guards a different promise. The round trip guards
+"don't touch what you don't change". The differential test guards
+"change it without changing what it does". Parser equivalence guards
+"the tree is the tree, whichever parser built it". A front-end that
+passes only one of them can still be badly wrong, and Viscosity
+needs all three because it is a source-to-source compiler: its
+output is somebody's code.
+</Callout>
+
+## Your turn
+
+<Exercise id="diffRun" />
+
+<Exercise id="preserved" />
+
+## What you learned
+
+- An **identity transform** must change nothing. For Viscosity it is
+  checked byte for byte, because the emitter splices instead of
+  printing.
+- The repository's round trip runs the **whole pipeline** on a tiny
+  program with an array, a comment and a trailing newline.
+- The front-end has **three checks**: the round trip, the
+  differential corpus (fresh `vm` contexts, output and errors), and
+  acorn against the mini parser. 75 tests pass.
+- The identity check needs no expected output, so it **scales to any
+  code**. On 514 real files it found a crash on
+  `export default class`, since fixed: all 514 now come back
+  byte-identical.
+
+<Quiz />

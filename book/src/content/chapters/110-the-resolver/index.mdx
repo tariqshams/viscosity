@@ -1,0 +1,270 @@
+---
+n: 110
+day: 28
+part: III
+title: 'Finding every name before running: the resolver'
+tagline: 'Looking names up by searching outwards at run time has a crack in it: the same line can mean two different variables. The fix is to read the whole program once before running it, and write down where every variable lives.'
+objectives:
+  - Explain the bug where a closure's variable changes meaning when a later declaration shadows it.
+  - Trace the resolver's stack of scopes and the distance it records for each local variable.
+  - Explain how the interpreter turns a distance into exactly the right environment, and why both sides must agree on every scope.
+introduces: [resolver, scope-depth]
+uses: [captured-environment, environment-lifetime, environment, scope-chain, shadowing, global-variable, closure, lexical-scope, block-scope, ast, ast-node, tree-walking-interpreter, compiler-pipeline, syntax-error, runtime-error, callable, return-unwinding, drip, for-in-loop, map, identity, reference, function, call, return, variables]
+sources: [mdn-map]
+---
+import ResolveSteps from '../../../components/diagrams/ch110/ResolveSteps';
+import HopsFigure from '../../../components/diagrams/ch110/HopsFigure';
+
+## The same line, two answers
+
+Here is a Drip program to think hard about:
+
+```
+let x = "global";
+{
+  fn show() { print x; }
+  show();
+  let x = "block";
+  show();
+}
+```
+
+When `show` is declared, the only `x` it can see is the global one, so
+both calls should print `global`: the line `print x` is written once,
+in one place, and lexical scope promises that *where* it is written
+decides what `x` means.
+
+Now imagine running it on the first interpreter from the chapter
+*Environments and scope*, where every lookup searches outwards through
+the chain of environments at the moment it runs. `show` captured the
+block's environment. The first call does not find `x` in its own
+environment or in the block's, follows the parent link to the globals,
+and prints `global`. But then `let x = "block"` adds an `x` *to that
+same block environment*, and the second call finds it one step earlier
+and prints `block`.
+
+Same line, same function, two different variables, depending on *when*
+it runs. Searching the chain answers "which `x` is visible right now?",
+when the question should be "which `x` did this line mean when it was
+written?"
+
+<Prompts ids={['shadow-bug']} />
+
+## Decide once, before running
+
+Nothing about which declaration a name refers to depends on running the
+program; you can tell by reading the source, the way you just did. So
+Drip gets one more stage in its pipeline, between parsing and running.
+Here is `drip.ts`, slightly trimmed:
+
+```ts
+const program = parse(scan(source),
+  reporter);
+if (reporter.errors.length) return ...;
+const locals = resolve(program, reporter);
+if (reporter.errors.length) return ...;
+interp.interpret(program, locals);
+```
+
+The **resolver** walks the whole tree once. It keeps a stack of scopes,
+one for each block, function body or loop it is inside; each scope is a
+`Map` from a name to a flag that says whether the variable is ready to
+be read yet. There are no values anywhere: the resolver never runs a
+line of the program.
+
+<Analogy title="directions written on a note">
+Someone writes "the café two streets north" on a sticky note, looking at
+the map today. Tomorrow a new café opens one street north, but the note
+still means the one it was written about; if you follow the note rather
+than asking "which café is nearest now?", you end up where the writer
+meant.
+<span slot="breaks">A note can go out of date if the café closes; the
+resolver's notes cannot, because a Drip declaration never moves once
+the program is written.</span>
+</Analogy>
+
+<Analogy title="a seating plan">
+At a wedding, someone draws up the seating plan before any guest
+arrives, so on the day each guest walks straight to their table rather
+than wandering the room looking for a free chair.
+<span slot="breaks">A seating plan names a table; the resolver writes a
+*distance* ("two environments out from wherever you are"), because the
+same function's body runs in a different environment on every
+call.</span>
+</Analogy>
+
+<ResolveSteps client:visible />
+
+For each variable it meets, the resolver searches from the innermost
+scope outwards, and records how many scopes it had to step out:
+
+```ts
+const resolveLocal = (expr, name) => {
+  for (let i = scopes.length - 1;
+       i >= 0; i--) {
+    const done = scopes[i]
+      .get(name.lexeme);
+    if (done !== undefined) {
+      if (!done) report(name, ...);
+      locals.set(expr,
+        scopes.length - 1 - i);
+      return;
+    }
+  }
+};
+```
+
+`locals` is a `Map` whose keys are the syntax-tree nodes themselves. Map
+keys can be objects, compared by identity<Cite id="mdn-map" />, so two
+different `x` nodes in a program get separate entries, even though they
+spell the same name. A name found in no scope gets no entry at all; it
+must be a global. (The `report` line is the subject of the next chapter:
+`done` is false while a variable is still being declared.)
+
+<Callout kind="definition">
+The **resolver** is a pass over the syntax tree, run after parsing and
+before running, that works out which declaration each variable use
+refers to. It keeps a stack of scopes that mirrors the environments the
+interpreter will make, and for each use of a local variable it records
+how far out its declaration is. Names it cannot find in any scope are
+treated as globals and get no entry.
+</Callout>
+
+<Prompts ids={['resolver-when', 'what-recorded', 'global-no-entry', 'node-keys']} />
+
+## From distance to environment
+
+The interpreter's lookup changes from "search the chain" to "hop exactly
+`d` parents up, then look":
+
+```ts
+private lookUp(name: Token, e: Expr) {
+  const d = this.locals.get(e);
+  if (d !== undefined)
+    return this.env.getAt(d,
+      name.lexeme);
+  const v = this.globals.values
+    .get(name.lexeme);
+  if (v === undefined) throw ...;
+  return v;
+}
+```
+
+`getAt(d, name)` walks `d` parent links with `ancestor(d)` and reads the
+name there; assignment has a matching `assignAt`. A name with no entry
+is looked for in the globals, and if it is not there either, the program
+stops with `undefined variable 'x'`. Here is a case with real distances,
+seen from inside `inner`:
+
+```
+fn outer() {
+  let a = 1;
+  {
+    let b = 2;
+    fn inner() { print a + b; }
+    inner();
+  }
+}
+outer(); # 3
+```
+
+<Figure caption="When inner runs, the current environment is its call's. b is 1 hop up, in the block; a is 2 hops up, in outer's call. The resolver counted the same steps through its scopes." takeaway="One scope in the resolver for each environment at run time.">
+  <HopsFigure />
+</Figure>
+
+<Callout kind="definition">
+A variable's **scope depth** (or distance) is the number of environments
+between the one current where it is used and the one where it is
+declared: 0 for the innermost, 1 for its parent, and so on. The resolver
+computes it once, from the source; the interpreter uses it on every
+lookup to go straight to the right environment.
+</Callout>
+
+<Formal title="Scope depth">
+
+```text
+scopes s₀ … sₖ, with sₖ innermost
+depth(x) = k − i, for the largest i
+           with x declared in sᵢ
+no such i  ⟹  x is a global
+```
+
+<span slot="read">With the scopes numbered from 0 on the outside to k on
+the inside, the depth of a use of x is k minus the number of the
+innermost scope that declares x. If no scope declares it, x is treated
+as a global (the arrow reads "means").</span>
+</Formal>
+
+This only works because the two sides agree on every level. Every place
+the resolver begins a scope must be a place where the interpreter makes
+an environment, and the other way round: a block (one each), a function
+call (one, holding the parameters *and* the body's own variables), and a
+`for` loop (two: one for the loop variable and one for the body, on
+every pass). If one side ever added a level the other did not, every
+distance past it would be off by one, and lookups would quietly read the
+wrong variable.
+
+<Examples of="resolver scope-depth">
+
+```
+let x = "global";
+{
+  fn show() { print x; }
+  show();  # global
+  let x = "block";
+  show();  # global
+}
+```
+
+```
+for i in 0..2 {
+  print i;  # i is 1 step out
+}
+```
+
+<Run id="hops" />
+
+</Examples>
+
+The first is the program from the start of the chapter, which now does
+what its text says: when the resolver walked `show`'s body, no scope
+held an `x`, so the `x` node got no entry, and at run time both calls
+look in the globals. The second shows the two levels of a `for` loop:
+the body's environment is innermost and `i` lives in the loop
+variable's environment just outside it, so the resolver records 1 for
+this `i`, and the interpreter hops once. The runnable one is the
+`outer`/`inner` example with a shadowing twist; predict what it prints
+before you run it.
+
+<Prompts ids={['depth-what', 'hops', 'must-match']} />
+
+<Callout kind="engine" label="Under the hood">
+The resolver is the first step towards a compiler. In Part IV, Drip's
+bytecode compiler does this same scope walk while it generates code, and
+turns each local into a *slot number* instead of a distance, so the VM
+never looks a local up by name at all (the chapter *Locals as stack
+slots* builds it). Viscosity, later in the book, is mostly this kind of
+work: it must prove facts about your JavaScript before it dares change
+how an array is laid out.
+</Callout>
+
+## Your turn
+
+<Exercise id="resolveDepth" />
+
+## What you learned
+
+- Searching the environment chain at run time let a closure's variable
+  change meaning when a later declaration shadowed it.
+- The **resolver** is a pass between parsing and running. It walks a
+  stack of scopes and records, for each local variable node, its
+  **scope depth**: how many environments out it lives. Globals get no
+  entry.
+- The interpreter hops exactly that many parents. That needs one
+  resolver scope for every runtime environment: blocks, calls, and two
+  per `for` loop.
+
+Next: the resolver already knows enough to catch whole kinds of mistakes
+before a single line runs.
+
+<Quiz />

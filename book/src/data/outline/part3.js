@@ -1,5 +1,5 @@
 export default {
-  id: 'III', track: 'A', days: '16–30', title: 'Front ends: building Drip, and the theory behind it',
+  id: 'III', track: 'A', days: '16–34', title: 'Front ends: building Drip, and the theory behind it',
   blurb: 'Build Drip, a small language: grammars, scanning, recursive descent and Pratt parsing, evaluation, environments, closures, resolution, classes.',
   chapters: [
     { n: 63, title: 'From source text to a running program', introduces: {
@@ -87,120 +87,184 @@ export default {
       precedence: 'which operators bind tighter',
       associativity: 'how a - b - c groups',
     } },
-    { n: 85, title: 'Pratt parsing', introduces: { 'pratt-parser': 'parsing expressions with binding powers', 'binding-power': 'how strongly an operator holds its operands', 'prefix-infix': 'operators before vs between operands' } },
-    { n: 86, title: 'Syntax errors and recovery', introduces: { 'syntax-error': 'source that breaks the grammar', 'error-recovery': 'resynchronizing so more errors can be reported', 'panic-mode': 'skipping tokens to a safe point' } },
-    { n: 87, title: 'FIRST and FOLLOW', introduces: {
+    { n: 85, title: 'Pratt parsing', introduces: {
+      'pratt-parser': 'parsing expressions with binding powers',
+      'binding-power': 'how strongly an operator holds its operands',
+    } },
+    { n: 86, title: 'Prefix and infix operators', introduces: {
+      'prefix-infix': 'operators before vs between operands',
+    } },
+    { n: 87, title: 'Syntax errors and recovery', introduces: {
+      'syntax-error': 'source that breaks the grammar',
+      'error-recovery': 'resynchronizing so more errors can be reported',
+    } },
+    { n: 88, title: 'Panic mode', introduces: {
+      'panic-mode': 'skipping tokens to a safe point',
+    } },
+    { n: 89, title: 'FIRST and FOLLOW', introduces: {
       'first-set': 'the tokens a rule can start with',
       'follow-set': 'the tokens that can come after a nonterminal',
     } },
-    { n: 88, title: 'LL(1) tables and rewriting grammars', introduces: {
+    { n: 90, title: 'LL(1) tables and rewriting grammars', introduces: {
       'll1-table': 'a table that picks the rule from one token of lookahead',
       'left-recursion-elimination': 'rewriting A → A x so a top-down parser can use it',
     } },
-    { n: 89, title: 'Bottom-up parsing: shift and reduce', introduces: {
+    { n: 91, title: 'Bottom-up parsing: shift and reduce', introduces: {
       'shift-reduce': 'parsing by pushing tokens and replacing rule bodies with their heads',
       'bottom-up-parsing': 'building the parse tree from the leaves up',
     } },
-    { n: 90, title: 'Handles and the LR driver', introduces: {
+    { n: 92, title: 'Handles and the LR driver', introduces: {
       'lr-handle': 'the part of the stack that should be reduced next',
     } },
-    { n: 91, title: 'LR(0) items and the LR automaton', introduces: {
+    { n: 93, title: 'LR(0) items and the LR automaton', introduces: {
       'lr0-item': 'a rule with a dot showing how much has been seen',
       'closure-goto': 'the two operations that build LR states',
       'lr-automaton': 'the DFA over items that drives an LR parser',
     } },
-    { n: 92, title: 'The LR parse table and conflicts', introduces: {
+    { n: 94, title: 'The LR parse table and conflicts', introduces: {
       'lr-conflict': 'shift/reduce and reduce/reduce conflicts',
     } },
-    { n: 93, title: 'SLR parsing: lookahead from FOLLOW sets', introduces: {
+    { n: 95, title: 'SLR parsing: lookahead from FOLLOW sets', introduces: {
       slr: 'LR(0) states with FOLLOW sets for lookahead',
       'lookahead-set': 'the tokens that allow a reduction',
     } },
-    { n: 94, title: 'LR(1) and LALR', introduces: {
+    { n: 96, title: 'LR(1) and LALR', introduces: {
       lr1: 'items that carry their own lookahead token',
       lalr: 'LR(1) states merged when their cores match',
     } },
-    { n: 95, title: 'Parser generators and PEGs', introduces: {
+    { n: 97, title: 'Parser generators and PEGs', introduces: {
       'parser-generator': 'a tool that builds a parser from a grammar',
       peg: 'parsing expression grammars: ordered choice',
     } },
-    { n: 96, title: 'GLR, Earley and incremental parsing', introduces: {
+    { n: 98, title: 'GLR, Earley and incremental parsing', introduces: {
       glr: 'generalised LR: following every choice at once',
       'incremental-parsing': 'reparsing only what an edit changed',
     } },
-    { n: 97, title: 'Running expressions: a tree that computes', introduces: { evaluate: 'computing the value of a tree', 'tree-walking-interpreter': 'an interpreter that walks the syntax tree', 'runtime-value': 'how values are represented while running', truthiness: 'which values count as true', 'runtime-error': 'an error found while running' } },
-    { n: 98, title: 'Doing things in order: statements and variables', introduces: { 'global-variable': 'a variable visible everywhere', 'side-effect': 'a change a statement makes to the world', 'program-as-list': 'a program is a list of statements' } },
-    { n: 99, title: 'Environments and scope', introduces: { environment: 'a table from names to values, with a parent', 'scope-chain': 'looking a name up through parent environments', shadowing: 'an inner variable hiding an outer one' } },
-    { n: 100, title: 'Choosing and repeating: if, while and for', introduces: { 'control-flow': 'deciding which statement runs next', desugaring: 'rewriting a construct in terms of simpler ones', 'short-circuit': 'and/or skipping the right side' } },
-    { n: 101, title: 'Lists in Drip', introduces: {
+    { n: 99, title: 'Running expressions: a tree that computes', introduces: { evaluate: 'computing the value of a tree', 'tree-walking-interpreter': 'an interpreter that walks the syntax tree', 'runtime-value': 'how values are represented while running', truthiness: 'which values count as true', 'runtime-error': 'an error found while running' } },
+    { n: 100, title: 'Doing things in order: statements and variables', introduces: { 'global-variable': 'a variable visible everywhere', 'side-effect': 'a change a statement makes to the world', 'program-as-list': 'a program is a list of statements' } },
+    { n: 101, title: 'Environments and scope', introduces: { environment: 'a table from names to values, with a parent', 'scope-chain': 'looking a name up through parent environments', shadowing: 'an inner variable hiding an outer one' } },
+    { n: 102, title: 'Choosing and repeating: if, while and for', introduces: { 'control-flow': 'deciding which statement runs next', desugaring: 'rewriting a construct in terms of simpler ones', 'short-circuit': 'and/or skipping the right side' } },
+    { n: 103, title: 'Lists in Drip', introduces: {
       'drip-list': 'an ordered, growable collection of values written [a, b, c]',
       'index-expression': 'xs[i]: reading or writing one element of a list',
       'for-in-loop': 'for x in xs { ... }: running a block once per element',
     } },
-    { n: 102, title: 'Functions in Drip', introduces: { callable: 'a runtime value you can call', arity: 'how many arguments a function takes', 'native-function': 'a function implemented by the host language' } },
-    { n: 103, title: 'Return and the call stack', introduces: { 'return-unwinding': 'jumping out of nested statements on return', 'host-stack': 'the interpreter reusing its host language’s call stack' } },
-    { n: 104, title: 'Closures in Drip', introduces: { 'captured-environment': 'a function remembering the environment it was made in', 'environment-lifetime': 'environments outliving the call that made them' } },
-    { n: 105, title: 'Finding every name before running: the resolver', introduces: { resolver: 'a pass that works out which declaration each name refers to', 'static-analysis': 'learning about a program without running it', 'scope-depth': 'how many environments up a variable lives' } },
-    { n: 106, title: 'Records with behaviour: classes in Drip', introduces: { 'drip-class': 'classes in the interpreter', field: 'per-instance data', 'bound-method': 'a method remembering its this' } },
-    { n: 107, title: 'Inheritance, and measuring the tree-walker', introduces: { inheritance: 'a class reusing another class’s methods', super: 'calling the parent class’s method', 'interpreter-overhead': 'why walking trees is slow' } },
-    { n: 108, title: 'Syntax-directed translation and attribute grammars', introduces: {
+    { n: 104, title: 'Functions in Drip', introduces: {
+      callable: 'a runtime value you can call',
+    } },
+    { n: 105, title: 'Arity and native functions', introduces: {
+      arity: 'how many arguments a function takes',
+      'native-function': 'a function implemented by the host language',
+    } },
+    { n: 106, title: 'Return and the call stack', introduces: {
+      'return-unwinding': 'jumping out of nested statements on return',
+    } },
+    { n: 107, title: 'Borrowing the host\'s call stack', introduces: {
+      'host-stack': 'the interpreter reusing its host language’s call stack',
+    } },
+    { n: 108, title: 'Closures in Drip', introduces: {
+      'captured-environment': 'a function remembering the environment it was made in',
+    } },
+    { n: 109, title: 'Environments that outlive their call', introduces: {
+      'environment-lifetime': 'environments outliving the call that made them',
+    } },
+    { n: 110, title: 'Finding every name before running: the resolver', introduces: {
+      resolver: 'a pass that works out which declaration each name refers to',
+      'scope-depth': 'how many environments up a variable lives',
+    } },
+    { n: 111, title: 'Static analysis: errors before running', introduces: {
+      'static-analysis': 'learning about a program without running it',
+    } },
+    { n: 112, title: 'Records with behaviour: classes in Drip', introduces: {
+      'drip-class': 'classes in the interpreter',
+      field: 'per-instance data',
+    } },
+    { n: 113, title: 'Methods that keep their self', introduces: {
+      'bound-method': 'a method remembering its this',
+    } },
+    { n: 114, title: 'Inheritance, and measuring the tree-walker', introduces: {
+      inheritance: 'a class reusing another class’s methods',
+      super: 'calling the parent class’s method',
+    } },
+    { n: 115, title: 'Measuring the tree-walker', introduces: {
+      'interpreter-overhead': 'why walking trees is slow',
+    } },
+    { n: 116, title: 'Syntax-directed translation and attribute grammars', introduces: {
       'syntax-directed-translation': 'attaching actions to grammar rules',
-      'attribute-grammar': 'a grammar whose nodes carry computed values',
       'synthesized-attribute': 'a value computed from a node’s children',
+    } },
+    { n: 117, title: 'Inherited attributes and attribute grammars', introduces: {
+      'attribute-grammar': 'a grammar whose nodes carry computed values',
       'inherited-attribute': 'a value passed down from a node’s parent',
     } },
-    { n: 109, title: 'The lambda calculus', introduces: {
+    { n: 118, title: 'The lambda calculus', introduces: {
       'lambda-calculus': 'a whole language made of functions and nothing else',
-      'beta-reduction': 'applying a function by substituting its argument',
       substitution: 'replacing a variable, carefully, without capturing names',
       'free-and-bound-variables': 'variables defined outside and inside a function',
     } },
-    { n: 110, title: 'Operational semantics', introduces: {
+    { n: 119, title: 'Beta-reduction and Church encodings', introduces: {
+      'beta-reduction': 'applying a function by substituting its argument',
+    } },
+    { n: 120, title: 'Operational semantics', introduces: {
       'operational-semantics': 'defining a language by rules for how programs run',
       'small-step-semantics': 'one tiny step of evaluation at a time',
+    } },
+    { n: 121, title: 'Big-step semantics and the interpreter', introduces: {
       'big-step-semantics': 'an expression and its final value in one rule',
     } },
-    { n: 111, title: 'What a type system promises', introduces: {
+    { n: 122, title: 'What a type system promises', introduces: {
       'type-system': 'rules that classify program pieces by the values they produce',
       'static-vs-dynamic-typing': 'checking types before running, or while running',
       'type-error': 'an operation applied to the wrong kind of value',
       'type-soundness-intro': 'the promise that well-typed programs do not go wrong',
     } },
-    { n: 112, title: 'Reading typing rules', introduces: {
+    { n: 123, title: 'Reading typing rules', introduces: {
       'typing-judgment': 'Γ ⊢ e : T, read “in context Γ, e has type T”',
       'inference-rule': 'premises above a line, a conclusion below it',
       'type-environment': 'Γ: the types of the names in scope',
     } },
-    { n: 113, title: 'A type checker for typed Drip', introduces: {
+    { n: 124, title: 'A type checker for typed Drip', introduces: {
       'type-checker': 'a pass that applies the typing rules to a program',
       'typed-drip': 'Drip with optional type annotations',
+    } },
+    { n: 125, title: 'Checking annotations, functions and calls', introduces: {
       'type-annotation-checking': 'comparing declared types with computed ones',
     } },
-    { n: 114, title: 'Unification', introduces: {
+    { n: 126, title: 'Unification', introduces: {
       'type-variable': 'a placeholder for a type not yet known',
       unification: 'solving equations between types',
+    } },
+    { n: 127, title: 'Inferring types, and the occurs check', introduces: {
       'occurs-check': 'refusing to solve α = List<α>',
     } },
-    { n: 115, title: 'Hindley–Milner type inference', introduces: {
-      'hindley-milner': 'complete type inference for a language with let-polymorphism',
+    { n: 128, title: 'Hindley–Milner type inference', introduces: {
       'let-polymorphism': 'a let-bound function used at several types',
       generalization: 'turning leftover type variables into ∀',
       instantiation: 'giving a ∀ type fresh variables at each use',
     } },
-    { n: 116, title: 'Subtyping and variance', introduces: {
+    { n: 129, title: 'Algorithm W, step by step', introduces: {
+      'hindley-milner': 'complete type inference for a language with let-polymorphism',
+    } },
+    { n: 130, title: 'Subtyping and variance', introduces: {
       subtyping: 'S <: T: an S can be used wherever a T is expected',
       'structural-vs-nominal': 'compatible by shape, or by declared name',
+    } },
+    { n: 131, title: 'Variance: functions, arrays and mutation', introduces: {
       variance: 'how subtyping of parts carries to wholes: co-, contra- and invariance',
     } },
-    { n: 117, title: 'Bidirectional checking and soundness', introduces: {
+    { n: 132, title: 'Bidirectional checking and soundness', introduces: {
       'bidirectional-typing': 'checking mode and synthesis mode',
+    } },
+    { n: 133, title: 'Soundness: progress and preservation', introduces: {
       soundness: 'progress and preservation, stated and proved',
       'progress-preservation': 'well-typed terms step, and stay well-typed',
       'unsound-by-design': 'where TypeScript chose convenience over soundness',
     } },
-    { n: 118, title: 'Beyond: System F, dependent and linear types', introduces: {
+    { n: 134, title: 'Beyond: System F, dependent and linear types', introduces: {
       'system-f': 'the polymorphic lambda calculus',
       'dependent-types': 'types that mention values',
+    } },
+    { n: 135, title: 'Linear types and effect systems', introduces: {
       'linear-types': 'values that must be used exactly once',
       'effect-systems': 'types that track what code may do',
     } },

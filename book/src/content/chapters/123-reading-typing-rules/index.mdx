@@ -1,0 +1,255 @@
+---
+n: 123
+day: 31
+part: III
+title: 'Reading typing rules'
+tagline: 'Every paper about types speaks in fractions: a few facts above a line, one fact below it, and a strange symbol, ⊢. Learn to read them aloud and you can read the type system of almost any language.'
+objectives:
+  - 'Read a typing judgment Γ ⊢ e : T aloud, and say what Γ holds.'
+  - Read an inference rule as "if the premises hold, the conclusion holds", and spot the axioms.
+  - State the typing rules of the simply typed lambda calculus, and apply them to a term.
+  - Build a typing derivation step by step, and turn the rules into a recursive function.
+introduces: [typing-judgment, inference-rule, type-environment]
+uses: [type-system, type-error, type-soundness-intro, static-vs-dynamic-typing, lambda-calculus, free-and-bound-variables, operational-semantics, environment, scope-chain, shadowing, resolver, ast, tree, recursion, function, arrow-function, type-annotation, map, object, property, strings, booleans, numbers, if]
+sources: [pierce2002]
+---
+import RuleAnatomy from '../../../components/diagrams/ch123/RuleAnatomy';
+import DerivationSteps from '../../../components/diagrams/ch123/DerivationSteps';
+
+## Rules in sentences are not enough
+
+The last exercise wrote its rules in English: "`+` on two numbers is a
+number". That works for `3 + 4`; however, what about `x + 1`? Whether
+it is a number depends on what `x` is, and that depends on where `x` was
+declared, which is somewhere else in the program. Sentences get vague
+fast when rules depend on other rules, so type systems are written in a
+small notation that nearly every textbook and paper on types
+shares<Cite id="pierce2002" />. It has only three ideas, and this chapter
+takes them one at a time.
+
+## Judgments and the type environment
+
+The first idea is a way to write one claim about one expression:
+
+<Formal title="A typing judgment">
+
+```text
+Γ ⊢ e : T
+```
+
+<span slot="read">"In the context gamma, e has type T." Γ (the capital
+Greek letter gamma) is the list of variables in scope and their types;
+the symbol ⊢ (called a turnstile) is read "it can be shown that" or
+"entails"; and e : T is read "e has type T".</span>
+</Formal>
+
+Γ is the **type environment**: the types of the names in scope, written
+as a list such as `x : Num, f : Num → Bool` (read "x has type Num, f
+has type function from Num to Bool"). An empty Γ is written `∅` or left
+out, as in `⊢ 3 : Num`. It plays the part that chapter 101's environments
+played for the interpreter, except that it holds types where they held
+values.
+
+<Analogy title="a sum on a receipt">
+"Given these prices, the total is £12" is a claim you can check, and
+its truth depends on the prices written above it; change one price and
+the same total may become false. A judgment is that kind of claim:
+"given Γ, e has type T".
+<span slot="breaks">A receipt's total is worked out by one sum; a
+judgment is shown by a whole tree of rules, as the end of this chapter
+builds.</span>
+</Analogy>
+
+<Analogy title="a guest list at the door">
+A guest list says who each name on it is ("Ana: speaker, Ben: staff");
+the person at the door does not need to have met anyone to say whether
+Ben may go backstage. Γ is the list a checker consults for each name.
+<span slot="breaks">A guest list rarely names someone twice; Γ often
+does, when an inner scope shadows an outer one, and then the most
+recently added entry (the rightmost) is the one that counts.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **type environment** Γ is a finite list of variables with their types,
+`x₁ : T₁, …, xₙ : Tₙ`; `Γ, x : T` is Γ with one more entry, which hides
+any earlier `x`. A **typing judgment** `Γ ⊢ e : T` is the claim that, if
+each variable has the type Γ gives it, then the expression e has type
+T<Cite id="pierce2002" />. A judgment may be true or false; the rules
+decide which.
+</Callout>
+
+<Examples of="typing-judgment type-environment">
+
+```text
+⊢ 3 + 4 : Num
+```
+
+```text
+x : Num ⊢ x + 1 : Num
+x : Bool ⊢ x + 1 : Num   (false)
+```
+
+```text
+x : Num, x : Bool ⊢ x : Bool
+```
+
+</Examples>
+
+The first needs no environment at all: no variables appear. The second
+pair shows why Γ is part of the claim: the same expression `x + 1` is a
+`Num` when `x` is a `Num`, and has no type at all when `x` is a `Bool`,
+so the second judgment is false (it is not "wrong syntax", only a claim
+nobody can show). The third has `x` twice, as after shadowing; the
+later entry wins, so `x` is a `Bool`.
+
+<Prompts ids={['judgment-read', 'gamma-what', 'shadow-in-gamma']} />
+
+## Inference rules: a line with facts above it
+
+The second idea is how to say *why* a judgment holds. An **inference
+rule** has zero or more judgments above a horizontal line (the
+**premises**) and one below it (the **conclusion**), with a name beside
+the line; it says "if everything above holds, the thing below holds".
+
+<Figure takeaway="Read a rule from top to bottom as 'if ... and ..., then ...'." caption="The rule for + in Drip-like notation. The two premises sit above the line, the conclusion below, and the rule's name to the right.">
+  <RuleAnatomy />
+</Figure>
+
+<Analogy title="a recipe card">
+"Pastry, filling ⟹ pie": the ingredients go above, the dish below.
+Some recipes need nothing prepared (boil water); those are like rules
+with no premises, called **axioms**.
+<span slot="breaks">Cooking uses up the ingredients; a premise, once
+shown, stays true and can be used again. And a checker usually reads a
+rule upwards: it starts from the dish it wants and asks which
+ingredients that takes.</span>
+</Analogy>
+
+<Callout kind="definition">
+An **inference rule** has premises above a line and a conclusion below
+it, and says that whenever all the premises hold, so does the
+conclusion. A rule with no premises is an **axiom**: its conclusion
+always holds. The letters in a rule (Γ, e₁, T) stand for any
+environment, expression or type, so one rule covers infinitely many
+cases<Cite id="pierce2002" />.
+</Callout>
+
+## The rules of the simply typed lambda calculus
+
+Here is a complete type system for chapter 118's lambda calculus, with
+numbers and booleans added; it is called the **simply typed lambda
+calculus**. Types are `Num`, `Bool`, and function types `T₁ → T₂` (in
+TypeScript, `(x: T1) => T2`; the arrow groups to the right, so
+`Num → Num → Num` means `Num → (Num → Num)`), and a λ now names its
+parameter's type, as in `λx:Num. x + 1`.
+
+<Examples of="inference-rule">
+
+```text
+─────────── T-Num  (n a number)
+Γ ⊢ n : Num
+
+Γ ⊢ e₁ : Num    Γ ⊢ e₂ : Num
+──────────────────────────── T-Plus
+     Γ ⊢ e₁ + e₂ : Num
+```
+
+```text
+Γ ⊢ c : Bool  Γ ⊢ a : T  Γ ⊢ b : T
+────────────────────────────────── T-If
+   Γ ⊢ if c then a else b : T
+```
+
+```text
+ x : T ∈ Γ
+─────────── T-Var
+ Γ ⊢ x : T
+
+   Γ, x : T₁ ⊢ e : T₂
+────────────────────── T-Abs
+Γ ⊢ λx:T₁. e : T₁ → T₂
+
+Γ ⊢ f : T₁ → T₂    Γ ⊢ a : T₁
+───────────────────────────── T-App
+         Γ ⊢ f a : T₂
+```
+
+</Examples>
+
+Read them aloud. **T-Num** is an axiom: any number literal is a `Num`,
+in any environment (`true` and `false` have similar axioms giving
+`Bool`). **T-Plus**: if both sides are `Num`, the sum is a `Num`.
+**T-If**: if the condition is a `Bool` and both branches have the
+*same* type T, the whole `if` has type T (which is why the branches must
+agree: the checker cannot know which one will run). **T-Var**: if Γ
+says x has type T (∈ is read "is in"), then x has type T. **T-Abs**, the
+rule for a function: if the body has type T₂ *when Γ is extended with
+the parameter*, then the function has type `T₁ → T₂`. **T-App**: if f
+is a function from T₁ to T₂ and the argument is a T₁, the call is a T₂.
+Notice how T-App *matches* types: the argument's type must be the very
+T₁ the function expects.
+
+<Prompts ids={['rule-read', 'axiom-what', 'abs-extends', 'if-same']} />
+
+## Building a derivation
+
+The third idea: to show a judgment holds, stack rules into a
+**derivation**, a tree whose root (at the bottom) is the judgment you
+want and whose every branch ends in an axiom or a lookup in Γ. Build
+one for `(λx:Num. x + 1) 2`, starting from the bottom and working up,
+exactly as a checker does:
+
+<DerivationSteps client:visible />
+
+Written in the stacked form you will meet in papers, the top part of
+that tree (the body of the function) looks like this:
+
+```text
+x:Num ∈ Γ
+───────── Var  ───────── Num
+Γ ⊢ x:Num      Γ ⊢ 1:Num
+──────────────────────── Plus
+     Γ ⊢ x + 1 : Num
+```
+
+where Γ is `x : Num`. Read it from the top down, the way a proof is
+read: `x : Num` is in Γ, so by T-Var `x` is a `Num`; `1` is a `Num` by
+the axiom T-Num (nothing above its line); with both of those, T-Plus
+gives `x + 1 : Num`. The checker *found* it in the other direction,
+from the bottom up; both directions describe the same tree.
+
+If you ever reach a goal that no rule's
+conclusion matches, such as `⊢ true + 1 : Num` (T-Plus needs
+`⊢ true : Num`, and the only rule for `true` gives `Bool`), there is no
+derivation, and that is exactly what a type error *is* in this
+notation. A checker is a program that searches for the derivation; when
+each kind of expression has exactly one rule, as here, the search never
+has to choose, and the rules turn straight into a recursive function,
+one `case` per rule, as the runnable example shows:
+
+<Run id="derive" />
+
+It prints the derivation as an indented tree, one line per rule used,
+root first, each line's premises indented beneath it (it trusts the term
+to be well typed; adding the checks is the exercise).
+
+<Prompts ids={['derivation-what', 'no-derivation']} />
+
+## Your turn
+
+<Exercise id="stlc" />
+
+## What you learned
+
+- A **typing judgment** `Γ ⊢ e : T` reads "in context Γ, e has type
+  T"; the **type environment** Γ lists the types of the names in scope,
+  and later entries shadow earlier ones.
+- An **inference rule** says: if the premises above the line hold, the
+  conclusion below holds; a rule with no premises is an axiom.
+- A **derivation** stacks rules into a tree; finding one shows a
+  judgment holds, and finding none is a type error.
+
+Next: the same rules, grown up for a real language: a type checker for
+Drip with type annotations.
+
+<Quiz />

@@ -1,0 +1,259 @@
+---
+n: 323
+day: 81
+part: XII
+title: 'Capturing variables in Rust'
+tagline: 'A TypeScript upvalue is an object with a slot that turns into -1 when the variable moves. In drip-rs it is an enum behind a handle, Open or Closed, and closing it overwrites the variant in place. The handle never changes, so every closure that shares it sees the same variable.'
+objectives:
+  - Map drip-rs’s ObjUpvalue enum and open-upvalue Vec to the TypeScript upvalue object and its linked list.
+  - Trace capture_upvalue and close_upvalues through a closure that outlives its frame.
+  - Explain why drip-rs captures every upvalue before it allocates the closure.
+  - Write capture and close for a small VM, with tests.
+introduces: [upvalue-handle]
+uses: [drip-rs, frame-stack, object-handle, value-enum, upvalue, open-upvalue, closed-upvalue, closure, call-frame, stack-slot, enum, match, pattern, vec, option, borrow, shared-vs-mutable, borrow-checker, struct, impl, roots, garbage-collection, typescript, drip]
+sources: [klabnik2026, rust-std-vec-insert]
+---
+import UpvalueSteps from '../../../components/diagrams/ch323/UpvalueSteps';
+
+## A counter that outlives its frame
+
+```
+fn makeCounter() {
+  let n = 0;
+  fn count() { n = n + 1; return n; }
+  return count;
+}
+let c = makeCounter();
+print c(); // 1
+print c(); // 2
+```
+
+`n` is a local of `makeCounter`, in a stack slot. By the time `c()`
+runs, that frame has returned and its slots are gone, yet `count` still
+reads and writes `n`. Chapter 149's answer was the upvalue: an object
+that points at the variable's slot while the slot exists, and holds the
+variable itself afterwards. drip-rs prints `1` and `2`, as the
+TypeScript VM does. What changes is how an upvalue is written down.
+
+<Callout kind="intuition">
+A cloakroom ticket. While the cloakroom is open, the ticket says "hook
+7". When it closes for the night, your coat goes into a locker, and the
+ticket is rewritten to say "in the locker". Friends holding copies of
+the same ticket number all find the coat in its new place.
+</Callout>
+
+## Two states, one enum
+
+The TypeScript upvalue, from `object.ts`:
+
+```ts
+interface ObjUpvalue extends ObjHeader {
+  type: 'upvalue';
+  slot: number;   // -1 once closed
+  closed: Value;
+  nextOpen: ObjUpvalue | null;
+}
+```
+
+And drip-rs's, from `src/object.rs`:
+
+```rust
+pub enum ObjUpvalue {
+    /// Still on the stack, in this slot.
+    Open(usize),
+    /// Its frame returned: it holds the
+    /// variable itself.
+    Closed(Value),
+}
+```
+
+The TypeScript object has three fields for two states, and the rule
+"`closed` means something only when `slot` is -1" lives in your head.
+The enum makes the states exclusive: an open upvalue has no stale
+`closed` value, and a closed one has no slot (chapter 282). Reading one
+is a `match`, adapted from the `GetUpvalue` and `SetUpvalue` arms:
+
+```rust
+let c = self.closure_register();
+let up = self.heap[c].upvalues[i];
+// GetUpvalue:
+let value = match self.heap[up] {
+    ObjUpvalue::Open(slot) =>
+        self.stack[slot],
+    ObjUpvalue::Closed(v) => v,
+};
+// SetUpvalue, with value = peek(0):
+match &mut self.heap[up] {
+    ObjUpvalue::Open(slot) =>
+        self.stack[*slot] = value,
+    ObjUpvalue::Closed(v) => *v = value,
+}
+```
+
+`closure_register` is the top frame's closure handle. A TypeScript
+closure holds its upvalues directly; here it is two lookups, the closure
+and then the upvalue. In `SetUpvalue`, `&mut self.heap[up]` and
+`self.stack[*slot]` are borrowed at once: different fields, so that's
+fine.
+
+<Callout kind="definition">
+In drip-rs, an **upvalue handle** is a `Gc<ObjUpvalue>`: a slot number
+in the heap's upvalue arena. The object behind it is
+`ObjUpvalue::Open(slot)` while the variable is still on the stack, and
+`ObjUpvalue::Closed(value)` after its frame returns. Closures hold
+handles, never values, so closures that capture the same variable share
+one handle, and closing it, which overwrites the object in place, is
+seen by all of them.
+</Callout>
+
+<Prompts ids={['uh-handle', 'uh-enum', 'uh-two-lookups']} />
+
+<Run id="shared-upvalue" />
+
+## The open list is a Vec
+
+The VM must find an existing upvalue for a slot, so that two closures
+over `n` share it, and it must close the right ones when a frame ends.
+TypeScript links the open upvalues through `nextOpen`, highest slot
+first. drip-rs keeps their handles in a `Vec` sorted by slot, lowest
+first, so the end of the `Vec` matches the top of the stack. Adapted
+from `src/vm.rs`:
+
+```rust
+fn capture_upvalue(&mut self, slot: usize)
+    -> Gc<ObjUpvalue> {
+    let mut i = self.open_upvalues.len();
+    while i > 0 {
+        let up = self.open_upvalues[i - 1];
+        let s = self.open_slot(up);
+        if s == slot { return up; }
+        if s < slot { break; }
+        i -= 1;
+    }
+    let new = self.alloc(Open(slot));
+    self.open_upvalues.insert(i, new);
+    new
+}
+
+fn close_upvalues(&mut self, last: usize) {
+    while let Some(&up) =
+        self.open_upvalues.last()
+    {
+        let slot = self.open_slot(up);
+        if slot < last { break; }
+        let v = self.stack[slot];
+        self.heap[up] = Closed(v);
+        self.open_upvalues.pop();
+    }
+}
+```
+
+(`Open` and `Closed` are short for the `ObjUpvalue::` variants.)
+`open_slot` reads the slot of an `Open` upvalue; a `Closed` one in the
+open list would be a VM bug, so it panics. `close_upvalues(last)` runs at `Return`, with the
+frame's base, and at `CloseUpvalue`, with the top slot of a block that
+ends (chapter 320). The assignment replaces the whole object in its
+arena slot. The handle stays the same, so every closure holding it now
+reads the `Closed` value. Step through the counter:
+
+<UpvalueSteps client:visible />
+
+<Prompts ids={['uh-sorted', 'uh-share', 'uh-close']} />
+
+## Capture first, then allocate
+
+The TypeScript `CLOSURE` case allocates the closure first, with an
+array of `null`s, pushes it so the collector can see it, and then fills
+each entry with `captureUpvalue`. Try the same order in a toy Rust VM:
+
+```rust
+self.closures.push(Closure::default());
+let c = self.closures.last_mut().unwrap();
+for &s in slots {
+    c.upvalues.push(self.capture(s));
+}
+```
+
+rustc 1.97 (trimmed):
+
+```
+error[E0499]: cannot borrow `*self` as
+  mutable more than once at a time
+16 | let c = self.closures.last_mut()...
+   |         ------------- first mutable
+   |            borrow occurs here
+18 | c.upvalues.push(self.capture(s));
+   | ----------      ^^^^ second mutable
+   | |                    borrow occurs here
+   | first borrow later used here
+```
+
+`capture` needs all of `self`, because it may allocate, while `c` still
+borrows the closure. So drip-rs reverses the order, adapted from
+`Vm::closure`:
+
+```rust
+let n = self.heap[func].upvalue_count;
+let mut upvalues = Vec::with_capacity(n);
+for _ in 0..n {
+    let is_local = self.read_byte() == 1;
+    let index = self.read_byte() as usize;
+    upvalues.push(if is_local {
+        let s = self.slots + index;
+        self.capture_upvalue(s)
+    } else {
+        let c = self.closure_register();
+        self.heap[c].upvalues[index]
+    });
+}
+let closure = self.alloc(ObjClosure {
+    function: func, upvalues });
+self.push(Value::Closure(closure));
+```
+
+The type gets simpler too: `Vec<Gc<ObjUpvalue>>`, with no `null`s,
+because the list is complete before the closure exists.
+
+Is it safe? `upvalues` is a local `Vec`, invisible to the collector,
+and both `capture_upvalue` and `alloc` may collect. The comment in
+`vm.rs` gives the argument. Every handle in `upvalues` is either in
+`open_upvalues`, which is a root, or in the enclosing closure, which the
+running frame keeps alive. The function comes from the running chunk's
+constants, which are traced too. Chapter 324 shows what happens when
+the first half of that argument breaks.
+
+<Prompts ids={['uh-order', 'uh-safe']} />
+
+<Callout kind="engine" label="Under the hood">
+`Vec::insert` shifts every element after the insertion point, so it
+takes time proportional to the `Vec`'s length
+<Cite id="rust-std-vec-insert" />. That would hurt for a long list, but
+the open list holds only captured variables whose frames are still
+running. I instrumented a scratch copy of drip-rs to record its
+longest length over every corpus program, benchmarks included: 3, in
+`closure/nested_closure.drip`. And older frames' variables sit lower on
+the stack than the running frame's, so a new upvalue only ever moves
+past others from its own frame.
+</Callout>
+
+<Prompts ids={['uh-insert']} />
+
+## Your turn
+
+<Exercise id="captureClose" />
+
+<Exercise id="readWrite" />
+
+## What you learned
+
+- drip-rs's **`ObjUpvalue`** is an enum: `Open(slot)` while the
+  variable is on the stack, `Closed(value)` once its frame returns.
+- Closures hold **upvalue handles**. Closing overwrites the object in
+  its arena slot, so every closure sharing the handle sees the change.
+- The **open upvalues** are a `Vec` of handles sorted by slot, lowest
+  first: capture searches from the end, and close pops from the end.
+- drip-rs **captures every upvalue before allocating the closure**:
+  the borrow checker forbids the other order, and every captured handle
+  is already reachable from a root.
+
+<Quiz />

@@ -1,0 +1,234 @@
+---
+n: 139
+day: 35
+part: IV
+title: 'One pass from source to bytecode'
+tagline: 'The bytecode compiler never builds a tree. It reads one token at a time and writes bytes as it goes, and the Pratt loop from chapter 85 puts them in exactly the right order.'
+objectives:
+  - Explain what makes Drip’s bytecode compiler single-pass, and what it gives up.
+  - Say what emit does, and which source line each byte is tagged with.
+  - Trace the compiler on an expression and predict the bytes it emits, in order.
+  - Spot the cost of building one comparison out of two instructions.
+introduces: [single-pass-compiler, emit]
+uses: [pratt-parser, binding-power, prefix-infix, precedence, associativity, scanner, token, token-type, lookahead, ast, tree-walking-interpreter, compiler, compiler-pipeline, front-end-back-end, bytecode, opcode, chunk, constant-pool, disassembler, stack-machine, dispatch-loop, desugaring, ieee754, differential-testing-intro, arrow-function, closure, recursion, call-stack, drip, while-loop]
+sources: [nystrom2021, v8-sparkplug]
+---
+import CompileSteps from '../../../components/diagrams/ch139/CompileSteps';
+
+## A tree nobody needs
+
+In Part III, `1 + 2 * 3 - 4` went through three stages. The scanner
+made a full list of tokens, the parser built a tree from them, and the
+interpreter walked the tree. If you now compiled that tree to bytecode,
+you would build it, walk it once to write bytes, and throw it away.
+
+Drip's bytecode compiler skips the middle. It parses and writes bytes in
+the same breath, so the tree never exists. From the outside it looks
+like any other compiler: source in, a chunk out.
+
+## One pass, one token at a time
+
+<Callout kind="intuition">
+A simultaneous interpreter at a conference doesn't wait for the speech
+to end, write it down, and then translate the transcript. She listens
+a few words ahead and speaks the translation as she goes. She never
+holds the whole speech, only the sentence in progress.
+</Callout>
+
+The compiler doesn't even ask for all the tokens. Its scanner, in
+`companion/ts/src/vm/scanner.ts`, hands out one token each time
+`scanToken()` is called. The compiler keeps just two: `current`, the
+lookahead, and `previous`, the one it just consumed:
+
+```ts
+function advance() {
+  previous = current;
+  for (;;) {
+    current = scanner.scanToken();
+    if (current.type !== 'error') break;
+    errorAtCurrent(current.lexeme);
+  }
+}
+```
+
+A scan error comes back as a token of type `'error'`, whose lexeme is
+the message, so the compiler reports it and keeps going.
+
+<Callout kind="definition">
+A **single-pass compiler** reads the source once, from start to end,
+and produces its output during that one read, with no complete
+intermediate form such as a syntax tree. It is quick and uses little
+memory, but each decision must be made with only what has been seen
+so far.
+</Callout>
+
+<Prompts ids={['single-pass-what', 'two-tokens', 'what-lost']} />
+
+## Emit
+
+Writing bytes is one small function in `compiler.ts`:
+
+```ts
+const emit = (...bytes: number[]) => {
+  for (const b of bytes)
+    chunk().write(b, previous.line);
+};
+const emitConstant = (v: Value) =>
+  emit(OP.CONSTANT, makeConstant(v));
+```
+
+Each byte is tagged with the line of `previous`, the token just
+consumed, which is how chapter 137's error found line 3. `emitConstant`
+puts the value in the pool (checking the 256 limit) and writes the two
+bytes of `OP_CONSTANT`.
+
+<Callout kind="definition">
+To **emit** an instruction is to append its bytes to the end of the
+chunk being compiled. Emitting only ever appends, so the order of the
+`emit` calls *is* the order the VM will run the instructions.
+</Callout>
+
+<Prompts ids={['emit-what', 'emit-line']} />
+
+## Pratt rules that write bytes
+
+The compiler parses expressions with chapter 85's Pratt loop, but each
+rule emits code instead of returning a node. A table gives every token
+type a prefix rule, an infix rule and a precedence:
+
+```ts
+'-': { prefix: unary, infix: binary,
+       prec: Prec.TERM },
+'+': { prefix: null, infix: binary,
+       prec: Prec.TERM },
+'*': { prefix: null, infix: binary,
+       prec: Prec.FACTOR },
+number: { prefix: number, infix: null,
+          prec: Prec.NONE },
+```
+
+The rules themselves are tiny:
+
+```ts
+const number = () =>
+  emitConstant(Number(previous.lexeme));
+
+const unary = () => {
+  const op = previous.type;
+  parsePrecedence(Prec.UNARY);
+  emit(op === '!' ? OP.NOT : OP.NEGATE);
+};
+
+const binary = () => {
+  const op = previous.type;
+  parsePrecedence(getRule(op).prec + 1);
+  emit(OPCODE_FOR[op]); // simplified
+};
+```
+
+Look where the `emit` is. `unary` and `binary` compile their operand
+*first* and emit their own opcode *after*. That's chapter 136's
+children-first order, falling out of the order of two lines of code.
+`grouping` emits nothing: it compiles the inside and consumes the `)`.
+
+And the loop, nearly verbatim:
+
+```ts
+function parsePrecedence(prec: Prec) {
+  advance();
+  const prefix =
+    getRule(previous.type).prefix;
+  if (!prefix) {
+    error('Expect expression.');
+    return;
+  }
+  prefix();
+  while (
+    prec <= getRule(current.type).prec
+  ) {
+    advance();
+    getRule(previous.type).infix!();
+  }
+}
+```
+
+It's chapter 85's loop in different clothes. There, `pratt(minBp)`
+stopped when `bp <= minBp`; here the loop continues while
+`prec <= rule.prec`, and `binary` asks for one level tighter than its
+own. Both make operators of equal strength group to the left. (The
+real code also passes a `canAssign` flag, for chapter 145.) Watch it
+compile `print 1 + 2 * 3 - 4;`:
+
+<CompileSteps client:visible />
+
+The real disassembly agrees:
+
+```text
+0000    1 OP_CONSTANT         0 '1'
+0002    | OP_CONSTANT         1 '2'
+0004    | OP_CONSTANT         2 '3'
+0006    | OP_MULTIPLY
+0007    | OP_ADD
+0008    | OP_CONSTANT         3 '4'
+0010    | OP_SUBTRACT
+0011    | OP_PRINT
+```
+
+<Prompts ids={['emit-after', 'grouping-emits', 'prec-plus-one']} />
+
+## Fewer opcodes, and a catch
+
+There's no `OP_GREATER_EQUAL`. `binary` builds `a >= b` as "not
+(a < b)", `LESS` then `NOT`, and `<=` and `!=` the same way. One less
+case in the dispatch loop, at the cost of one extra instruction.
+
+<Callout kind="pitfall">
+"Not less than" is not always "greater or equal". Chapter 57's IEEE 754
+rules say every comparison with `NaN` is false. So in the tree-walker,
+`0 / 0 >= 1` is `false`, but on this VM it's `true`, because `0 / 0 < 1`
+is false and `NOT` flips it. Running the same programs on both engines,
+chapter 32's differential testing, catches exactly this kind of
+mismatch.
+</Callout>
+
+Statements are a few lines more. `print` compiles its expression and
+emits `OP_PRINT`. An expression statement like `1 + 2;` emits `OP_POP`
+afterwards, so its unused value doesn't stay on the stack. And the
+script ends with `OP_NIL, OP_RETURN`.
+
+<Run id="exprs-vm" />
+
+<Prompts ids={['ge-two-ops', 'nan-catch', 'expr-stmt-pop']} />
+
+<Callout kind="engine" label="Under the hood">
+V8's baseline compiler, Sparkplug, is single-pass in the same spirit,
+one level down: it turns bytecode into machine code in one linear walk,
+with no intermediate representation, its core a `switch` inside a `for`
+loop. It can be that simple because the bytecode compiler before it has
+already done the hard work, such as resolving variables<Cite id="v8-sparkplug" />.
+Drip's compiler follows clox from *Crafting Interpreters*, keeping its
+structure and error messages so the same tests check
+both<Cite id="nystrom2021" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="mini-compile" />
+
+
+## What you learned
+
+- A **single-pass compiler** parses and generates code in the same
+  read of the source. Drip's never builds a syntax tree.
+- The compiler pulls one token at a time and keeps only `previous` and
+  `current`.
+- To **emit** is to append bytes to the chunk, tagged with the line of
+  the previous token. Emission order is execution order.
+- Pratt rules emit their operands first and their opcode last, so the
+  bytes come out children-first without a tree.
+- `>=`, `<=` and `!=` are two instructions each, which saves opcodes
+  but gets `NaN` wrong for `>=` and `<=`.
+
+Next: what a Drip value actually looks like inside the VM.
+
+<Quiz />

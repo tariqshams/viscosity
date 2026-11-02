@@ -1,10 +1,10 @@
 export default {
-  id: 'XIV', track: 'B', days: '87', title: 'Shipping',
+  id: 'XIV', track: 'B', days: '91–92', title: 'Shipping',
   blurb: 'The command-line interface, release builds, the TypeScript vs Rust benchmark matrix, and the capstone.',
   chapters: [
-    { n: 345, title: 'A command-line interface', introduces: { cli: 'a program driven from the terminal', 'argument-parsing': 'turning command-line flags into options' } },
-    { n: 346, title: 'Release engineering', introduces: { 'release-process': 'versioning, changelogs and publishing' } },
-    { n: 347, title: 'The final benchmark matrix', introduces: { 'benchmark-matrix': 'every layout × engine × implementation' } },
-    { n: 348, title: 'Capstone: the whole machine', introduces: { mastery: 'being able to build it again yourself' } },
+    { n: 362, title: 'A command-line interface', introduces: { cli: 'a program driven from the terminal', 'argument-parsing': 'turning command-line flags into options' } },
+    { n: 363, title: 'Release engineering', introduces: { 'release-process': 'versioning, changelogs and publishing' } },
+    { n: 364, title: 'The final benchmark matrix', introduces: { 'benchmark-matrix': 'every layout × engine × implementation' } },
+    { n: 365, title: 'Capstone: the whole machine', introduces: { mastery: 'being able to build it again yourself' } },
   ],
 };

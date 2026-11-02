@@ -1,0 +1,208 @@
+---
+n: 181
+day: 46
+part: VI
+title: 'Phi nodes'
+tagline: 'Where two paths meet, two versions of a variable arrive and no single name can be right. SSA settles it with one strange instruction that chooses a value by the road control came in on.'
+objectives:
+  - Explain what a phi node does at a join, and why it has one operand per predecessor.
+  - Read the phis in real VIR, including a loop phi whose operand comes from the back edge.
+  - Explain why all the phis of a block take their values at once, and simulate entering a block.
+  - Say how phis disappear before machine code.
+introduces: [phi-node]
+uses: [ssa, ir, three-address-code, temporary, basic-block, cfg, dominator, dominator-tree, register, ignition, optimizing-tiers, local-variable, variables, if, for-loop]
+sources: [v8-maglev, cytron1991]
+---
+import RenameSteps from '../../../components/diagrams/ch181/RenameSteps';
+import LoopPhi from '../../../components/diagrams/ch181/LoopPhi';
+
+## Where paths meet
+
+Straight-line code is easy to put in SSA, because there is always
+exactly one latest version of each name. Branches break that:
+
+```js
+x = a + 1;
+if (x > 5) {
+  x = x * 2;
+} else {
+  x = 0;
+}
+y = x + 3;
+```
+
+Rename both branches and you get `x2` on the left and `x3` on the
+right. The block after the `if` has two predecessors, and they
+disagree: no single name can go in `y = ? + 3`, because the right
+answer depends on which way the program went.
+
+<Analogy title="a railway junction">
+Two lines merge into one track. A wagon arriving on the merged track
+might have come from either line, and the signal box records which line
+it came in on, so you always know what it carries.
+<span slot="breaks">Wagons from both lines can be on the merged track
+at once; a phi deals with one arrival at a time, and on each arrival it
+picks exactly one of its operands.</span>
+</Analogy>
+
+<Analogy title="a TV with two inputs">
+What is on the screen depends on which input is selected: HDMI 1 shows
+the games console, HDMI 2 the laptop. The screen itself has one
+picture, chosen by where the signal comes in.
+<span slot="breaks">You can switch a TV's input whenever you like; a
+phi makes its choice once, at the moment control enters the block, and
+the choice is fixed by the edge that was taken, not by anyone's
+preference.</span>
+</Analogy>
+
+SSA's answer is a new kind of instruction at the start of the join
+block, `x4 = φ(x2, x3)` (φ is the Greek letter phi), which means "x2 if
+we came from the left, x3 if we came from the right". Step through the
+renaming:
+
+<RenameSteps client:visible />
+
+<Callout kind="definition">
+A **phi node** (φ) sits at the start of a block and has **one operand
+per predecessor**, in predecessor order. When control enters the block
+along the edge from its k-th predecessor, the phi takes the value of
+operand k. Phis appear only where different versions meet. They are
+not real machine instructions: before code generation, a compiler
+replaces them with copies at the ends of the predecessor blocks.
+</Callout>
+
+<Formal title="What a phi means">
+
+```text
+B has preds P1, …, Pn, and starts with
+   v = φ(a1, …, an)
+arrive from Pk  ⟹  v := ak
+```
+
+<span slot="read">Take a block B whose predecessors, in order, are P1 up
+to Pn, and which begins with a phi defining v from operands a1 up to
+an. If control arrives in B from its k-th predecessor Pk, then v is set
+to (:= reads "gets the value of") the k-th operand, ak: the k-th
+operand belongs to the k-th predecessor<Cite id="cytron1991" />. Each
+operand only has to be available at the end of its own predecessor, so
+a phi's use of ak counts as happening there, not in B.</span>
+</Formal>
+
+<Prompts ids={['why-phi', 'phi-what', 'phi-operands', 'phi-not-real']} />
+
+## Phis in real VIR
+
+<Examples of="phi-node">
+
+```text
+  b3:  ; preds b1 b2
+    %4 = phi %2, %3
+```
+
+```text
+  b1:  ; preds b0 b3
+    %6 = phi %1, %7
+    %3 = phi %2, %10
+```
+
+```text
+  b1:  ; preds b0 b3
+    %1 = phi %0, %12
+  b7:  ; preds b5 b6
+    %12 = phi %9, %11
+```
+
+</Examples>
+
+All three are real `printFunc` output. The first is the simplest, from
+`if (c) { x = 1; } else { x = 2; } return x * 10;`: the join b3 has
+predecessors b1 and b2, so `%4` is `%2` (the 1) if control came from b1
+and `%3` (the 2) if it came from b2, in the order the `; preds` comment
+lists them. The second is varied: it is the head of a loop,
+`for (let i = 0; i < n; i++) s = s + i;`, with one phi per variable that
+changes in the loop. A loop header is a join too, where the way in from
+before the loop meets the back edge from the end of each pass:
+
+<Figure takeaway="A loop phi takes its first value from the entry edge and every later value from the back edge." caption="The header b1 of sum. On the first arrival, from b0, the phis take %1 and %2, the two zeros. Every later arrival comes along the back edge from b3 and takes %7 (the new s) and %10 (the new i).">
+  <LoopPhi />
+</Figure>
+
+`%3` is `i`: `%2` (the `0`) on the first entry from b0, and `%10`
+(`i + 1`) each time round the back edge from b3. The operand `%10` is
+defined *later* in the listing; that is fine, because it is only read
+when control arrives from b3, and by then b3 has run. The third example
+is the realistic one, the whole Collatz loop: `n` changes in the loop,
+so the header b1 has a phi joining the parameter `%0` with `%12`, and
+`%12` is itself a phi at the join b7, choosing between `3 * n + 1` from
+the odd branch (`%9`) and `n / 2` from the even one (`%11`). Phis feed
+phis, one per join where versions differ.
+
+You can play the phi by hand in JavaScript, by remembering which branch
+ran and choosing on it:
+
+<Run id="phi-by-hand" />
+
+It prints `23 3`: for `f(9)`, `x1` is 10, the left branch runs, the
+"phi" picks `x2` = 20, and the result is 23; for `f(1)`, `x1` is 2, the
+right branch runs, the phi picks `x3` = 0, and the result is 3.
+
+<Prompts ids={['vir-phi-order', 'loop-phi']} />
+
+## All at once
+
+All the phis at the top of a block take their values *at the same
+moment*, as control crosses the edge, and none of them sees another
+one's new value. That matters when one phi's operand is another phi of
+the same block. Here is a loop that swaps two variables each time
+round:
+
+```text
+b1:  ; preds b0 b2
+  p2 = φ(p0, q2)
+  q2 = φ(q0, p2)
+```
+
+Arriving along the back edge, `p2` should get the *old* `q2` and `q2`
+the *old* `p2`. If the two phis ran one after the other, the second
+would read the `p2` that the first had just written, and both would end
+up holding the same value; the swap would be lost.
+
+<Callout kind="pitfall">
+This is also why removing phis is not as simple as it looks. Turning
+`p2 = φ(…, q2)` and `q2 = φ(…, p2)` into two copies at the end of the
+predecessor, `p2 = q2; q2 = p2;`, has exactly the bug above. A compiler
+leaving SSA must order the copies carefully, or use a spare temporary,
+to keep the "all at once" meaning.
+</Callout>
+
+<Prompts ids={['phis-together', 'swap-copies']} />
+
+<Callout kind="engine" label="Under the hood">
+V8's Maglev compiler uses the same idea. While it walks Ignition's
+bytecode it keeps an SSA value for each interpreter register, and where
+paths merge it inserts Phi nodes, "value nodes that know which value to
+pick depending on which path was taken at runtime"<Cite id="v8-maglev" />.
+Loops are the awkward case for it too, since the value arriving along
+the back edge is not known when the header is first reached; the
+chapter after next shows how Viscosity's builder handles that.
+</Callout>
+
+## Your turn
+
+<Exercise id="enter-block" />
+
+## What you learned
+
+- A **phi node** at the start of a join block has one operand per
+  incoming edge, in predecessor order, and takes the operand of the edge
+  that control arrived on.
+- Loop headers have phis whose later operand arrives on the back edge,
+  so it may be defined further down the listing.
+- All of a block's phis take their values **at once**; done one after
+  the other, a swap goes wrong.
+- Phis are not machine instructions: they become copies at the ends of
+  predecessors, carefully ordered.
+
+Next: where exactly to put the phis, and how to rename a whole CFG.
+
+<Quiz />

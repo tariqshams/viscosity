@@ -1,0 +1,248 @@
+---
+n: 317
+day: 80
+part: XII
+title: 'Heap objects in an arena'
+tagline: 'In the TypeScript VM, closure.fn.name.chars is three pointer hops. In drip-rs it is three trips to the heap: heap[closure], heap[function], heap.str(name). This chapter builds the Heap that answers them, with one arena per kind of object and one generic alloc for all eight.'
+objectives:
+  - Read drip-rs’s Heap struct and map it to the TypeScript heap’s object list.
+  - Explain how the HeapObject trait lets one generic alloc and one heap[handle] serve every object type.
+  - Turn TypeScript field chains like inst.klass.name into heap lookups.
+  - Fix the borrow error that comes from reading one object while writing another.
+introduces: [object-handle]
+uses: [drip-rs, value-enum, arena, typed-index, heap-object, object-list, garbage-collection, mark-sweep, trait, rust-generics, trait-bound, monomorphization, struct, impl, option, vec, borrow, shared-vs-mutable, borrow-checker, size-of, upvalue, interface, typescript, pointer, handle, chunk]
+sources: [klabnik2026, rust-std-ops-index, rust-std-type-name]
+---
+import HandleSteps from '../../../components/diagrams/ch317/HandleSteps';
+
+## Three hops
+
+When the TypeScript VM prints a closure, it follows three object
+references (chapter 141):
+
+```ts
+case 'closure': return formatValue(v.fn);
+// ...which prints `<fn ${v.name.chars}>`
+```
+
+`v.fn` is a pointer to the function, `.name` a pointer to a string,
+`.chars` the text. drip-rs has no pointers between objects. Chapter 292
+showed why: every object lives in an arena, and a reference is a
+`Gc<T>`, a typed slot number. So each hop becomes a trip to the heap.
+Adapted from `src/value.rs`:
+
+```rust
+Value::Closure(c) => {
+    let func = heap[c].function;
+    match heap[func].name {
+        Some(name) => write!(f, "<fn {}>",
+            heap.str(name)),
+        None => f.write_str("<script>"),
+    }
+}
+```
+
+This chapter is about the `Heap` behind those square brackets.
+
+<Callout kind="intuition">
+A warehouse with one aisle per kind of parcel. Your ticket says which
+shelf. You never carry a parcel around; you carry the ticket, and every
+time you want to look inside, you walk to the aisle. The kind of parcel
+printed on the ticket tells you which aisle without anyone checking.
+</Callout>
+
+## One arena per kind
+
+Here is the heap, adapted from `src/gc.rs`:
+
+```rust
+pub struct Heap {
+    pub strings: Arena<ObjString>,
+    pub functions: Arena<ObjFunction>,
+    pub natives: Arena<ObjNative>,
+    pub upvalues: Arena<ObjUpvalue>,
+    pub closures: Arena<ObjClosure>,
+    pub classes: Arena<ObjClass>,
+    pub instances: Arena<ObjInstance>,
+    pub bound_methods:
+        Arena<ObjBoundMethod>,
+    interned: Table,
+    // ...GC bookkeeping
+}
+```
+
+The TypeScript heap keeps one linked list of every object, threaded
+through a `next` field in each object's header, and each object says
+what it is in a `type` field. drip-rs's objects have neither. The arena
+an object sits in says what it is, and sweeping walks the arenas, so no
+list is needed. Mark bits live outside the objects too (chapter 324).
+What is left is just the fields. Compare a closure:
+
+```ts
+interface ObjClosure extends ObjHeader {
+  type: 'closure'; fn: ObjFunction;
+  upvalues: (ObjUpvalue | null)[];
+}
+```
+
+```rust
+pub struct ObjClosure {
+    pub function: Gc<ObjFunction>,
+    pub upvalues: Vec<Gc<ObjUpvalue>>,
+}
+```
+
+There is no `null` in the Rust upvalue list. The TypeScript VM
+allocates the closure first and fills its upvalues in afterwards. drip-rs
+captures them into a `Vec` first and only then allocates the closure,
+so the list is never half-filled (chapter 323).
+
+<Prompts ids={['oh-arenas', 'oh-no-header', 'oh-no-null']} />
+
+## One alloc for eight kinds
+
+The TypeScript heap has eight constructors, `newClass`, `newClosure` and
+so on, and a table of sizes keyed by `type`. drip-rs has one generic
+`alloc`. It works because every object type implements a trait that
+says which arena is its own:
+
+```rust
+pub trait HeapObject: Sized {
+    fn arena(heap: &Heap) -> &Arena<Self>;
+    fn arena_mut(heap: &mut Heap)
+        -> &mut Arena<Self>;
+    fn size(&self) -> usize {
+        size_of::<Self>()
+    }
+    // ...and which mark bits are its own
+}
+
+impl HeapObject for ObjClass {
+    fn arena(heap: &Heap) -> &Arena<Self> {
+        &heap.classes
+    }
+    // ...
+}
+
+pub fn alloc<T: HeapObject>(
+    &mut self, object: T) -> Gc<T> {
+    self.bytes_allocated += object.size();
+    T::arena_mut(self).insert(object)
+}
+```
+
+`ObjString` overrides `size` to add the length of its text, which is how
+the collector knows a long string costs more. Six of the eight
+`impl`s are identical apart from names, so `gc.rs` stamps them out with
+a small `macro_rules!` macro: a template that writes the same code for
+each type it is given.
+
+Then indexing. The standard `Index` trait is what `heap[handle]` calls:
+`container[index]` is shorthand for `*container.index(index)`
+<Cite id="rust-std-ops-index" />. drip-rs implements it once, for every
+handle type:
+
+```rust
+impl<T: HeapObject> Index<Gc<T>> for Heap {
+    type Output = T;
+    fn index(&self, h: Gc<T>) -> &T {
+        &T::arena(self)[h]
+    }
+}
+```
+
+`IndexMut` is the same with `&mut`, and it is what makes
+`self.heap[function].arity += 1` in the compiler work. Step through
+printing a closure:
+
+<HandleSteps client:visible />
+
+<Callout kind="definition">
+An **object handle** is a small `Copy` value that stands for a heap
+object: in drip-rs a `Gc<T>`, the object's slot number in the arena for
+`T`. You read the object with `heap[handle]` and change it with
+`heap[handle].field = ...`. The handle's type picks the arena at compile
+time, through the `HeapObject` trait. Handles never own anything, so
+values, objects and the VM can all hold copies.
+</Callout>
+
+<Prompts ids={['oh-handle', 'oh-trait', 'oh-index-sugar', 'oh-chain']} />
+
+<Run id="mini-heap" />
+
+## Read one, write another
+
+All eight arenas live in one `Heap`, and `heap[h]` borrows the whole
+`Heap`. So reading one object while writing another doesn't compile,
+even when they are different objects. Here is a first try at
+`Inherit`, which copies the superclass's methods into the subclass:
+
+```rust
+let from = &self.heap[superclass].methods;
+self.heap[subclass].methods.add_all(from);
+```
+
+rustc 1.97 (trimmed):
+
+```
+error[E0502]: cannot borrow `self.heap`
+  as mutable because it is also
+  borrowed as immutable
+19 | let from = &self.heap[superclass]...
+   |             --------- immutable
+   |                borrow occurs here
+20 | self.heap[subclass].methods.add_...
+   | ^^^^^^^^^ mutable borrow occurs here
+```
+
+The fix is chapter 292's rule, copy out then write. A handle is copied
+for free; a whole method table is cloned:
+
+```rust
+let methods = self.heap[superclass]
+    .methods.clone();
+self.heap[subclass].methods
+    .add_all(&methods);
+```
+
+Nesting has the same trap. `heap[heap[class].name]` is fine for
+reading, but writing through it fails, and rustc's help suggests a
+local. Uncomment the last line of the program above to see it.
+
+<Prompts ids={['oh-two-objects', 'oh-nested']} />
+
+<Callout kind="engine" label="Under the hood">
+`heap[c]` costs little. `alloc` and `Index` are generic, so rustc
+compiles a separate copy for each object type (chapter 286). In the copy
+for `Gc<ObjClosure>`, `T::arena(self)` is simply `&self.closures`. No
+type tag is checked at run time. What remains is the arena's own work: a
+bounds check on the `Vec`, and a check that the slot isn't `None`. That
+second check calls `use_after_free`, which is marked `#[cold]` and never
+returns. It names the type in its panic message with
+`std::any::type_name`, whose exact text the standard library doesn't
+promise<Cite id="rust-std-type-name" />. It is for people reading a
+crash, not for code to compare.
+</Callout>
+
+<Prompts ids={['oh-cost']} />
+
+## Your turn
+
+<Exercise id="heapIndex" />
+
+<Exercise id="inheritCopy" />
+
+## What you learned
+
+- drip-rs's **Heap** holds one **arena** per object type. Objects have no
+  header: no `type`, no `next`, no mark bit.
+- An **object handle** `Gc<T>` stands for an object. `heap[handle]`
+  reads it and `heap[handle].field = ...` writes it.
+- The **`HeapObject` trait** tells generic code which arena belongs to
+  each type, so one `alloc` and one `Index` impl serve all eight.
+- A TypeScript chain like `v.fn.name` becomes a chain of lookups, with
+  each handle copied out on the way.
+- `heap[h]` borrows the whole heap: to read one object and write
+  another, **copy or clone what you need first**.
+
+<Quiz />

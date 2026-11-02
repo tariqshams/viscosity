@@ -1,0 +1,299 @@
+---
+n: 128
+day: 32
+part: III
+title: 'Hindley–Milner type inference'
+tagline: 'An identity function works on numbers and on booleans, yet the inference of the last chapter rejects a program that uses it on both. One small idea, a type with a blank in it, copied afresh at every use, fixes that without a single annotation.'
+objectives:
+  - Explain why inference with one type per name rejects a program that uses `id` at two types.
+  - Read a type scheme such as ∀α. α → α aloud, and say what it promises.
+  - Generalise a type at a let, leaving alone the type variables the environment still depends on.
+  - Instantiate a scheme with fresh type variables at each use, and write both steps in JavaScript.
+introduces: [let-polymorphism, generalization, instantiation]
+uses: [type-variable, unification, occurs-check, typing-judgment, inference-rule, type-environment, type-checker, typed-drip, lambda-calculus, substitution, free-and-bound-variables, generic, generic-inference, function, call, drip, map, array, object, recursion]
+sources: [milner1978, damas1982, hindley1969, pierce2002, wright1995, ts-generics]
+---
+import LetSteps from '../../../components/diagrams/ch128/LetSteps';
+import SchemeCopies from '../../../components/diagrams/ch128/SchemeCopies';
+
+## One function, two types
+
+Here is a Drip program that nobody would call wrong:
+
+<Run id="id-twice" />
+
+Line 1 makes a function that hands back whatever it is given; line 2
+calls it with a number and prints `1`; line 3 calls it with a boolean
+and prints `true`. Drip checks nothing before running, so it runs.
+However, try it with the inference of chapter 126, where each name gets
+one type and unification fills in its type variables:
+
+```text
+id : α → α
+id(1)     α = number
+          so id : number → number
+id(true)  number = bool?  type error
+```
+
+(This is chapter 126's `fn('a) -> 'a`, with `α` for `'a`.) The first
+call settles `α` as `number` for good, so by the second call `id` takes
+only numbers, and `true` does not fit. The program is
+fine; the type checker is too strict. What we want is for `id` to have a
+type that says "for *any* type, give me one of those and you get the
+same type back", and for each use to pick its own.
+
+<Analogy title="a master form and a photocopier">
+An office keeps a blank master copy of a form, and whenever someone
+needs one, they photocopy the master and fill in the copy; Sam writes
+"bicycle" on his copy and Priya writes "laptop" on hers, and neither
+answer ever reaches the master. Chapter 126's inference had no
+photocopier: the first person to need the form wrote on the master
+itself, and everyone after was stuck with "bicycle".
+<span slot="breaks">A photocopy of a form can be filled in with
+anything at all; a copy of a type still has to pass unification at the
+place where it is used, so a copy can be "filled in" wrongly, and that
+is a type error.</span>
+</Analogy>
+
+<Analogy title="a cookie cutter">
+The cutter is one shape, a star, say; you can press it into gingerbread
+dough or into chocolate dough, and every cookie is a fresh star, made of
+whatever that batch is made of. Each cut is separate, so the chocolate
+star never turns the next one brown.
+<span slot="breaks">Cookies come out the same shape whatever the dough;
+a type's copies keep the same arrows, but the blanks inside may each be
+filled differently, and some shapes (like α → β) have several blanks
+that can be filled independently.</span>
+</Analogy>
+
+## A type with a blank: schemes
+
+The master form is called a **type scheme**, written with **∀** ("for
+all") in front of the type variables that are blanks:
+
+<Figure takeaway="A scheme is stored once; each use gets its own copy, so settling one use never constrains another." caption="id's scheme, ∀α. α → α, is copied twice. The first copy's variable is settled as bool and the second's as number, and the two never meet.">
+  <SchemeCopies />
+</Figure>
+
+<Callout kind="definition">
+A **type scheme** is a type with some of its type variables bound by a
+∀ in front: `∀α₁ … αₙ. τ`, where τ is an ordinary type with no ∀
+inside it. **Let-polymorphism** is the rule, from Milner's 1978 paper,
+that a name bound by `let` may be given a scheme, so that each use of it
+can have a different type, while a function's parameter always has a
+single type<Cite id="milner1978" />. A type system built this way, with
+inference that needs no annotations, is called **Hindley–Milner**, after
+Hindley, who found the same idea in logic in 1969<Cite id="hindley1969" />,
+and Milner, who brought it to programming.
+</Callout>
+
+From now on we use a small language, the lambda calculus of chapter 118
+with numbers, booleans, `if` and `let`:
+
+```text
+e ::= x | n | true | false
+    | λx. e | e e
+    | let x = e in e
+    | if e then e else e
+```
+
+Here `let x = e₁ in e₂` means "work out e₁, call it x, and use it in
+e₂", like Drip's `let` and the rest of its block.
+
+<Examples of="let-polymorphism">
+
+```text
+let id = λx. x in
+  if id true then id 1 else 2
+                          : number
+```
+
+```text
+let k = λx. λy. x in k 1 true
+   k : ∀α β. α → β → α
+                          : number
+```
+
+```text
+λf. if f true then f 1 else 2
+                     type error
+let f = λx. x in
+  if f true then f 1 else 2
+                          : number
+```
+
+</Examples>
+
+The first is our Drip program in the small language: `id` is used at
+`bool` in the condition and at `number` in the branch, and the whole
+thing is a number. In the second, `k` takes two arguments and returns
+the first, so its scheme has two blanks, `α` and `β`, which the call
+fills with `number` and `bool`. The third is a spot the difference: the
+two lines differ only in how `f` is bound. As a parameter (`λf.`), `f`
+has one type, which `f true` and `f 1` cannot agree on; bound by `let`,
+it gets a scheme, and the program is accepted. That is the whole meaning
+of *let*-polymorphism: only `let` makes schemes.
+
+<Prompts ids={['mono-fails', 'scheme-what', 'let-poly-what', 'lambda-mono']} />
+
+## Generalisation: which blanks to make
+
+When inference reaches `let x = e₁ in e₂`, it first infers e₁ exactly
+as in chapter 126, getting a type τ that may contain type variables.
+Then it **generalises**: it puts ∀ in front of the variables of τ that
+are truly free to vary. The catch is the word *truly*. Look at this:
+
+```text
+λx. let y = x in
+  if y then y else 1
+```
+
+Inside, `x` has some type `α`, and `y = x` gives `y` the type `α` too.
+If we generalised `y` to `∀α. α`, each use of `y` could pick its own
+type, so `y` would be a bool in the condition and a number in the
+branch, and the program would be accepted; yet `y` *is* `x`, and `x` has
+one type, chosen by whoever calls the function. The rule: never
+generalise a variable that also appears in the environment Γ, because
+something outside the `let` still depends on it.
+
+<Analogy title="planning a wedding's tables">
+On your seating plan, "a dessert, to be chosen per table" is your own
+blank, and each table may choose differently. "Whatever wine the bride
+picks" is a blank too, but it is not yours: every table gets the same
+wine, and only the bride settles it.
+<span slot="breaks">A planner can ask the bride early; inference cannot
+look ahead to the caller, so it leaves the bride's blank as a plain
+variable and lets later unification fill it in.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Generalisation** turns a type into a scheme by binding with ∀ every
+type variable that occurs in the type but not free in the environment.
+It happens at `let`, once the definition's type has been inferred.
+</Callout>
+
+<Formal title="Generalisation">
+
+```text
+gen(Γ, τ) = ∀ᾱ. τ
+  where ᾱ = ftv(τ) − ftv(Γ)
+```
+
+<span slot="read">Generalising tau in the environment gamma gives the
+scheme "for all alpha-bar, tau", where alpha-bar (a list of variables)
+is the free type variables of tau, minus the free type variables of
+gamma. A variable already bound by a ∀ inside one of gamma's schemes is
+not free there, so it does not count.</span>
+</Formal>
+
+## Instantiation: a fresh copy at every use
+
+The other half happens when a name is used. If `id : ∀α. α → α`, then
+each occurrence of `id` replaces `α` with a brand-new type variable,
+one that appears nowhere else yet; unification at that use can then
+settle the new variable without touching any other use. Step through
+both halves on our program:
+
+<LetSteps client:visible />
+
+<Callout kind="definition">
+**Instantiation** turns a scheme `∀α₁ … αₙ. τ` into an ordinary type by
+substituting a fresh type variable for each αᵢ in τ. It happens at every
+use of a variable, which is why two uses never share their copies.
+</Callout>
+
+<Formal title="The two rules that make let-polymorphism">
+
+```text
+ x : ∀ᾱ. τ in Γ     β̄ fresh
+──────────────────────────── (Var)
+     Γ ⊢ x : [ᾱ ↦ β̄] τ
+
+Γ ⊢ e₁ : τ₁
+Γ, x : gen(Γ, τ₁) ⊢ e₂ : τ₂
+──────────────────────────── (Let)
+Γ ⊢ let x = e₁ in e₂ : τ₂
+```
+
+<span slot="read">Var: if gamma says x has the scheme "for all
+alpha-bar, tau", and beta-bar are fresh variables, then x has type tau
+with each alpha replaced by its beta. Let: if e1 has type tau1, and e2
+has type tau2 in gamma extended with x bound to the generalisation of
+tau1, then the whole let has type tau2.</span>
+</Formal>
+
+<Examples of="generalization instantiation">
+
+```text
+gen({ }, α → α) = ∀α. α → α
+inst(∀α. α → α) = β → β
+inst(∀α. α → α) = γ → γ
+```
+
+```text
+gen({ x : α }, β → α) = ∀β. β → α
+```
+
+```text
+inst(∀α β. α → β → α) = γ → δ → γ
+k 1 true:  γ = number, δ = bool
+result:    number
+```
+
+</Examples>
+
+The first is the identity again: with an empty environment, `α` is
+generalised, and each instantiation hands out a new variable. In the second, `α` belongs to a parameter `x` that is in
+scope, so only `β` gets a ∀, and `α` stays shared with `x`. The third
+is `k`: both blanks are copied, the arguments settle them, and the
+result is the copy of `α`, which is now `number`. TypeScript does
+something similar when it infers `T` for a call of a generic function
+(chapter 36), but there you write `<T>` yourself; Hindley–Milner finds
+the ∀ with no annotation at all<Cite id="ts-generics" />, and Damas and
+Milner proved that the type it finds is the most general one the
+program has<Cite id="damas1982" />.
+
+<Prompts ids={['gen-what', 'gen-env', 'inst-what', 'inst-fresh']} />
+
+## One caution: the value restriction
+
+Generalising is only safe when the definition is a value. Picture a
+built-in `newBox`, which makes an empty mutable box:
+
+```text
+let b = newBox() in    b : Box α ?
+  put b 1;             α = number
+  upper (get b)        α = string ?!
+```
+
+If `b`'s type were generalised to `∀α. Box α`, the line that stores a
+number and the line that reads a string would each get their own copy
+of `α`, both would check, and the program would crash at run time.
+ML languages fix this with the **value restriction**: generalise only
+when the definition is a syntactic value (a function, a literal, a
+variable), never the result of a call<Cite id="wright1995" />. Our small
+language has no boxes, so every `let` may generalise, but a real
+language with mutation needs this rule<Cite id="pierce2002" />.
+
+<Prompts ids={['value-restriction']} />
+
+## Your turn
+
+<Exercise id="gen-inst" />
+
+## What you learned
+
+- One type per name is too strict: `id` used at two types fails to
+  unify.
+- A **type scheme** `∀α. τ` is a type with blanks; **let-polymorphism**
+  gives schemes to `let`-bound names only, never to parameters.
+- **Generalisation** binds the variables of the type that are not free
+  in the environment; **instantiation** copies a scheme with fresh
+  variables at each use.
+- With mutation, generalise only syntactic values (the value
+  restriction).
+
+Next: putting it all together as algorithm W, which infers a type for
+every program in the small language, and the implementation of it.
+
+<Quiz />

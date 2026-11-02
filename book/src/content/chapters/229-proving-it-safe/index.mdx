@@ -1,0 +1,251 @@
+---
+n: 229
+day: 58
+part: VIII
+title: 'Proving it safe'
+tagline: 'A compiled program must print exactly what the original printed. Viscosity can only promise that if no line of the program can tell how the elements are stored, and it has to prove that from the code before it changes a thing.'
+objectives:
+  - State the safety property Viscosity proves, and why it is checked with an allow-list.
+  - List the uses of an array and of its elements that Viscosity knows how to rewrite.
+  - Explain when passing a collection to a function is safe, using known functions and their call sites.
+  - Explain why every index must be provably a number, and how bailout reasons reach explain.
+introduces: [safety-analysis]
+uses: [array-of-objects, push, length, index, bracket-access, function, parameter, argument, call, method, import-export, reference, aliasing, identity, aos-vs-soa, materialization, ssa, worklist, fixpoint, static-analysis, type-inference, call-graph, alias-analysis, points-to, escape-analysis, escape-sites, collection-discovery, record-shape, shape-stability, access-pattern, source-to-source, vir]
+sources: [makor2022, mdn-equality]
+---
+import SafetySteps from '../../../components/diagrams/ch229/SafetySteps';
+import Playground from '../../../components/playground/Playground';
+
+## The promise
+
+Viscosity is a source-to-source compiler, and it makes one promise: the
+program it writes prints exactly what yours printed. The struct of arrays
+it builds stores the same numbers. But a JavaScript program can notice
+much more than numbers. It can notice how its data is *stored*:
+
+```js
+ps[1] === ps[2];   // is it one object?
+console.log(ps[3]); // print the object
+const keep = ps[0]; // a second name
+ps.sort(byX);       // move the objects
+for (const k in ps[0]) {} // its keys
+```
+
+After the rewrite there are no element objects at all, only columns. If
+any line like these survived, the program could tell, and the promise
+would be broken.
+
+<Callout kind="intuition">
+A theatre crew changes the set during the interval, with the curtain
+down. That is fine as long as nobody in the audience can see behind the
+curtain. Before moving anything, the stage manager checks every gap.
+</Callout>
+
+<Callout kind="definition">
+**Safety analysis** proves that no code can observe a layout change. In
+Viscosity it is an **allow-list**: every use of the collection, and of
+every element it hands out, must be one that Viscosity knows how to
+rewrite. Any other use adds a **reason** to the collection's bailout
+list. An empty list means safe.
+</Callout>
+
+Here is the whole decision; the rest of the chapter looks at each check.
+
+<SafetySteps client:visible />
+
+<Prompts ids={['sa-what', 'sa-allow', 'sa-all']} />
+
+## What the array may do
+
+Starting from every load of the array, Viscosity walks the uses (the
+same worklist as chapter 198). Four kinds are allowed. Simplified, from
+`packages/core/src/analysis.ts`:
+
+```ts
+for (const u of usesOf(ref)) {
+  const i = u.inst;
+  if (isLength(i)) continue;
+  if (isPush(i)) {
+    // one argument, a fresh literal:
+    // setShape (chapter 227)
+    continue;
+  }
+  if (isIndexGet(i)) {
+    elements.push(i); // check later
+    continue;
+  }
+  if (isKnownCall(i)) {
+    work.push(param); // follow it
+    continue;
+  }
+  bailouts.push('the array is ' +
+    describeUse(u));
+}
+```
+
+Everything else ends at `describeUse`, which names what happened. Real
+messages for `ps.reverse()`, `console.log(ps)` and `return ps`:
+
+```text
+· unsafe: line 10: uses .reverse on the
+  array (only .length and .push are
+  supported)
+· unsafe: the array is passed to a
+  method call at line 4
+· unsafe: returned or branched on in
+  make()
+```
+
+The first two can appear together: `ps.reverse()` both reads a property
+other than `length` and passes `ps` as the receiver of a method call.
+Each element `ps[i]` is then checked the same way, with an even shorter
+list: read a field of the shape, or write one. The safe uses are what
+fills the access table of chapter 228.
+
+<Prompts ids={['sa-array', 'sa-why-length']} />
+
+## Following a collection into a function
+
+Most real code doesn't loop over an array where it was made. It passes
+the array to a function. A call is normally an escape, because the
+callee could do anything. But if Viscosity can see *every* call of the
+function, the parameter is just another name for the collection.
+
+```ts
+// Known functions: declared once, and
+// every reference is a direct call.
+for (const f of m.functions) {
+  if (storesOf(f).length !== 1) continue;
+  let ok = true;
+  const sites = [];
+  for (const use of refsTo(f))
+    if (isDirectCall(use)) sites.push(use);
+    else ok = false;
+  if (ok) callSites.set(f, sites);
+}
+```
+
+When `ps` is passed to a known function at position `k`, Viscosity
+checks that *all* its call sites pass `ps` at `k`. If they do, the
+parameter joins the worklist, and its uses inside the function are
+checked like uses of `ps`. If some call passes something else, it bails
+out. Two corpus files show both outcomes:
+
+```text
+// interproc_ok.js: drift(bodies, 0.5)
+// and drift(bodies, -0.25)
+bodies (line 2) {x, y, m} → struct of
+  arrays
+
+// interproc_mixed.js: total(a), total(b)
+a (line 2) {x} → kept as array of objects
+  · unsafe: line 10: passed to total(),
+    which is also called with other
+    values
+```
+
+The rule is points-to analysis on a small scale: the parameter may point
+to exactly one collection. Two collections would need two versions of
+`total`, and Viscosity doesn't make copies of functions. An `export`ed
+function is not known either: code in another module could call it with
+anything. Passing `ps` to one gives “passed to a function call”.
+
+<Prompts ids={['sa-known', 'sa-mixed', 'sa-export']} />
+
+## Every index must be a number
+
+`ps[i]` is only an element if `i` is a number. Bracket access with a
+string asks for a property, and some strings happen to name
+elements:
+
+<Run id="keys" />
+
+After the rewrite, `ps[k]` becomes `ps.x[k]` and friends, which would
+answer `ps['length']` completely differently. So Viscosity requires
+every index to be provably a number. “Provably a number” is a fact from
+the numeric fixpoint (chapter 199), so this check waits until the
+fixpoint has finished:
+
+```ts
+for (const { c, i } of indexChecks)
+  if (!isNumber(i.args[1]))
+    c.bailouts.push(`line ${line(i)}: ` +
+      'indexes the array with something' +
+      ' that may not be a number');
+```
+
+The fixpoint follows parameters of known functions, too. With
+`function get(k) { return ps[k].x; }`, the calls `get(3)` and `get(4)`
+are fine, while one call `get('4')` makes `k` “maybe not a number” and
+the whole collection bails out.
+
+<Prompts ids={['sa-index']} />
+
+## From reasons to explain
+
+Viscosity never stops at the first problem. All the reasons are kept,
+duplicates removed, and handed to the planner, which makes this the very
+first question it asks. From `plan.ts`:
+
+```ts
+if (c.bailouts.length) {
+  out.push(keep(...c.bailouts.map(
+    (b) => `unsafe: ${b}`)));
+  continue;
+}
+```
+
+`keep` means “array of objects”. No cost is weighed for an unsafe
+collection. Try it on the program below. It is accepted as it stands.
+Then make one change at a time and watch the reasons appear: add
+`ps.reverse();` before the last line, print `ps[3]` instead of
+`ps[3].x`, add a call `step([{ x: 0, vx: 1 }]);`, or index with
+`const k = '3';`.
+
+<Playground client:visible title="Make the proof fail" initial={`const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i, vx: 1 });
+function step(qs) {
+  for (let i = 0; i < qs.length; i++)
+    qs[i].x += qs[i].vx;
+}
+step(ps);
+step(ps);
+console.log(ps[3].x);`} />
+
+<Callout kind="engine" label="Under the hood">
+Makor and colleagues transform arrays of JavaScript objects into columnar
+storage *while the program runs*<Cite id="makor2022" />. A run-time
+system is there as each operation happens. A source-to-source compiler
+gets no such second look: once its output
+runs, nothing of Viscosity is left to notice a surprise. That is why it
+works with an allow-list. Even `ps[1] === ps[2]`, which only asks
+whether two references name the same object<Cite id="mdn-equality" />,
+is enough to stop it.
+</Callout>
+
+<Prompts ids={['sa-aot']} />
+
+## Your turn
+
+<Exercise id="firstBailout" />
+
+<Exercise id="followParam" />
+
+## What you learned
+
+- **Safety analysis** proves that no code can observe the layout change.
+  Viscosity uses an **allow-list**: anything it can't rewrite is a
+  bailout reason.
+- The array may be used for `.length`, `push` of one fresh literal,
+  `ps[i]`, and as an argument to a **known function**. Elements may only
+  have fields of the shape read or written.
+- A known function is declared once and only called directly. Its
+  parameter is followed if **every** call site passes the same
+  collection; exported functions are never known.
+- Every index must be **provably a number**, which is checked after the
+  numeric fixpoint.
+- All reasons are collected; any reason makes the planner keep the
+  array of objects and print `unsafe:` reasons.
+
+<Quiz />

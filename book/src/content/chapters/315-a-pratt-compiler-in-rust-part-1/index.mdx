@@ -1,0 +1,244 @@
+---
+n: 315
+day: 79
+part: XII
+title: 'A Pratt compiler in Rust, part 1'
+tagline: 'The Pratt parser’s table moves to Rust almost row for row. Each cell becomes a function pointer, the precedence becomes an ordered enum, and the type checker has one small surprise about functions.'
+objectives:
+  - Read drip-rs’s ParseRule and ParseFn types and say what a function pointer is.
+  - Explain why the rule table is a match, and why its arms need a type annotation.
+  - Compare precedence as numbers (TypeScript, C) with an enum that derives Ord.
+  - Trace parse_precedence on an expression, using the table.
+introduces: [parse-rule-table]
+uses: [drip-rs, token-enum, opcode-enum, match-dispatch, pratt-parser, binding-power, prefix-infix, precedence, associativity, single-pass-compiler, emit, enum, match, pattern, option, struct, impl, self-receiver, lifetime, lifetime-annotation, rust-closure, trait, size-of, compiler, bytecode, chunk, drip]
+sources: [nystrom2021, rustref-fn-pointer, rust-std-fn-primitive, rust-std-ord]
+---
+import PrattSteps from '../../../components/diagrams/ch315/PrattSteps';
+
+## The table you already wrote
+
+In chapter 139 your TypeScript compiler parsed expressions with a Pratt
+parser driven by a table. Each token type maps to how it starts an
+expression (prefix), how it continues one (infix), and how tightly it
+binds:
+
+```ts
+const RULES = {
+  '-': { prefix: unary, infix: binary,
+         prec: Prec.TERM },
+  '+': { prefix: null, infix: binary,
+         prec: Prec.TERM },
+  '*': { prefix: null, infix: binary,
+         prec: Prec.FACTOR },
+  // ...
+};
+const getRule = (t) => RULES[t] ?? NO_RULE;
+```
+
+drip-rs keeps the same idea, the same rows and the same algorithm. What
+changes is how a cell holds a function, and how precedences compare.
+
+<Callout kind="intuition">
+Think of a phrasebook with one page per word. Each page answers three
+questions: can this word start a sentence, and how? Can it carry on a
+sentence someone else started, and how? And how strongly does it pull
+its neighbours towards itself? The parser never thinks about grammar. It
+looks up the page and does what it says.
+</Callout>
+
+## A cell is a function pointer
+
+From `src/compiler.rs`:
+
+```rust
+type ParseFn<'src, 'a> =
+    fn(&mut Compiler<'src, 'a>, bool);
+
+struct ParseRule<'src, 'a> {
+    prefix: Option<ParseFn<'src, 'a>>,
+    infix: Option<ParseFn<'src, 'a>>,
+    precedence: Precedence,
+}
+```
+
+`fn(&mut Compiler, bool)` is a **function pointer** type: it points at
+some function taking those arguments, and which function needn't be known
+at compile time<Cite id="rustref-fn-pointer" />.
+Every parse function in drip-rs is a method like
+`fn binary(&mut self, can_assign: bool)`, and a method is just a
+function whose first parameter is `self`. So `Self::binary` fits.
+The `bool` says whether an `=` may follow (chapter 139's `canAssign`).
+The lifetimes are there because `Compiler` borrows the source and the
+heap (chapter 316).
+
+`Option` stands in for TypeScript's `null`. It costs nothing: on this
+machine `size_of::<Option<fn(&mut u8, bool)>>()` is 8, the same as the
+bare pointer. Function pointers are assumed never to be
+null<Cite id="rust-std-fn-primitive" />, so `None` can use the null
+pattern. A whole `ParseRule` measured 24 bytes.
+
+There is one more difference. A TypeScript parse function is a closure
+that reads `previous` and `current` from the enclosing `compile`. A
+function pointer captures nothing (chapter 288's closures can, but then
+they aren't plain `fn` pointers). Everything a parse function needs
+arrives through its `&mut Compiler` argument. That is chapter 316's
+subject.
+
+<Prompts ids={['prt-fnptr', 'prt-option-size', 'prt-no-capture']} />
+
+## The table is a match
+
+TypeScript looks the rule up in an object, and clox indexes an array
+that has one row for every token type<Cite id="nystrom2021" />. drip-rs
+builds the row with a `match` on the `TokenKind` enum (chapter 310).
+Adapted from `Compiler::rule`:
+
+```rust
+use Precedence as P;
+use TokenKind as T;
+let (prefix, infix, precedence):
+    (Option<ParseFn>, Option<ParseFn>, _) =
+    match kind {
+        T::Minus => (Some(Self::unary),
+            Some(Self::binary), P::Term),
+        T::Plus => (None,
+            Some(Self::binary), P::Term),
+        T::Slash | T::Star => (None,
+            Some(Self::binary), P::Factor),
+        T::Number => (Some(Self::number),
+            None, P::None),
+        // ... 12 more arms
+        _ => (None, None, P::None),
+    };
+ParseRule { prefix, infix, precedence }
+```
+
+`T::Slash | T::Star` is one arm for two tokens. The `_` arm is
+`?? NO_RULE`: every token not listed can neither start nor continue an
+expression. (The price of `_` is that a new token kind gets an empty
+rule without a word from the compiler, where clox's array has a row for
+every token.)
+
+Why the type annotation on the tuple? In Rust, each function has its own
+unique type, and `Self::unary` is not the same type as `Self::number`.
+Leave the annotation off, and rustc 1.97 says (trimmed):
+
+```
+error[E0308]: `match` arms have
+  incompatible types
+  _ => (Some(Self::b), None, 0),
+       ^^^^^^^^^^^^^^^^^^^^^^^^
+       expected fn item, found a
+       different fn item
+```
+
+Annotating the tuple as `Option<ParseFn>` tells rustc to turn each
+function into the shared function-pointer type.
+
+<Callout kind="definition">
+A **parse-rule table** maps each token kind to a prefix parse function,
+an infix parse function (either may be absent) and an infix precedence.
+In drip-rs it is `Compiler::rule`, a `match` on `TokenKind` returning a
+`ParseRule` of `Option<fn(&mut Compiler, bool)>` cells.
+</Callout>
+
+<Prompts ids={['prt-match', 'prt-fn-item']} />
+
+## Precedence is an ordered enum
+
+TypeScript's precedences are numbers, `NONE: 0` up to `PRIMARY: 10`.
+drip-rs's are an enum, lowest first:
+
+```rust
+#[derive(Clone, Copy, PartialEq, Eq,
+    PartialOrd, Ord)]
+enum Precedence {
+    None, Assignment, Or, And, Equality,
+    Comparison, Term, Factor, Unary,
+    Call, Primary,
+}
+```
+
+Deriving `PartialOrd` and `Ord` on an enum orders the variants by their
+position: the first is the smallest<Cite id="rust-std-ord" />. So
+`Precedence::Term < Precedence::Factor`, and `<=` works between
+precedences exactly as it did between numbers. What doesn't work is
+`+ 1`. The TypeScript `binary` parses its right operand at
+`getRule(op).prec + 1`, and clox casts the enum to an integer and adds
+one. drip-rs writes a method, `next()`, that is a `match` from each
+variant to the one above it. `Primary.next()` stays `Primary`.
+
+<Prompts ids={['prt-ord', 'prt-next']} />
+
+## The heart of the parser
+
+`parse_precedence` is almost line for line the TypeScript one:
+
+```rust
+fn parse_precedence(&mut self,
+    precedence: Precedence) {
+    self.advance();
+    let kind = self.previous.kind;
+    let rule = Self::rule(kind);
+    let Some(prefix) = rule.prefix else {
+        self.error("Expect expression.");
+        return;
+    };
+    let can_assign = precedence
+        <= Precedence::Assignment;
+    prefix(self, can_assign);
+    while precedence
+        <= Self::rule(self.current.kind)
+            .precedence
+    {
+        self.advance();
+        let k = self.previous.kind;
+        let infix = Self::rule(k).infix
+            .expect("infix rule");
+        infix(self, can_assign);
+    }
+}
+```
+
+(Adapted. The real one goes on to report "Invalid assignment target.")
+`prefix(self, can_assign)` calls through the pointer, handing over the
+compiler itself. `rule` has no `self`: it's an associated function, so it
+borrows nothing and can be called in the middle of the loop condition.
+The `expect` records a promise the table keeps: every token with a
+precedence above `None` has an infix rule.
+
+Step through `-1 + 2 * 3`:
+
+<PrattSteps client:visible />
+
+<Prompts ids={['prt-assoc-fn', 'prt-expect']} />
+
+<Callout kind="engine" label="Under the hood">
+In `binary`, the right operand is parsed at the operator's precedence
+`.next()`, one step tighter. That one step makes `8 - 3 - 2` group as
+`(8 - 3) - 2`: the second `-` has the same precedence as the first,
+which is not tighter, so it can't join the right operand and is left
+for the outer loop. Pass the operator's own precedence instead, and the
+second `-` would join, giving `8 - (3 - 2)`. Chapter 316's exercise
+makes you get this right.
+</Callout>
+
+## Your turn
+
+<Exercise id="precTable" />
+
+<Exercise id="fnTable" />
+
+## What you learned
+
+- A **parse-rule table** cell is an `Option<fn(&mut Compiler, bool)>`: a
+  **function pointer** or nothing. `Option` adds no size, and a pointer
+  captures nothing, so state arrives through `&mut Compiler`.
+- `Compiler::rule` is a `match` on `TokenKind`. Its arms need a
+  `ParseFn` annotation, because every function has its own type.
+- `Precedence` is an enum deriving `Ord`, so variants compare by
+  position. `next()` replaces `+ 1`.
+- `parse_precedence` calls the prefix rule, then infix rules while the
+  next token binds at least as tightly as the given precedence.
+
+<Quiz />

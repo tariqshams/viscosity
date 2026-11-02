@@ -1,0 +1,213 @@
+---
+n: 243
+day: 61
+part: IX
+title: 'A second language: why plugins pay off'
+tagline: 'Six analyses, written once. A second language should cost one plugin, not a second compiler. Here is the bill for Python, line by line, including the parts that did not come free.'
+objectives:
+  - Explain why a shared IR turns the cost of languages × analyses into languages + analyses.
+  - List which parts of Viscosity the Python plugin reused unchanged, and which it had to write.
+  - Point at the places where a language fact leaks into the shared core, and say why they are needed.
+  - Recognise wording and tools that still assume one language.
+introduces: [multi-language-ir]
+uses: [language-plugin, layout-strategy, vir, ir, lowering, viscosity-pipeline, source-to-source, front-end-back-end, collection-discovery, record-shape, safety-analysis, bailout, access-pattern, hot-loop, cost-model, optimization-report, annotation, column-storage, typed-array, interpreter, jit-compiler, differential-testing, test-corpus, pgo, instrumentation, function, object, array, set, copy-spread, interface, module]
+sources: [llvm-readme, truffle-readme]
+---
+import BillSteps from '../../../components/diagrams/ch243/BillSteps';
+
+## The second customer
+
+Part VIII built a compiler for one language. Its front-end reads
+JavaScript, and its core finds arrays of objects, proves them safe,
+picks a layout and explains itself. Now someone asks: does it work on
+Python?
+
+Python programs have the same problem. A list of small records, a loop
+that touches two fields of each: the shape of the data is identical,
+only the spelling differs. The question is what the second language
+costs. A second compiler? Or something much smaller?
+
+<Callout kind="intuition">
+A meeting with five languages around the table could hire a translator
+for every pair: ten translators. Or everyone speaks to one shared
+language in the middle, and you hire one translator per person: five.
+The shared language doesn't have to be anyone's favourite. It only has
+to say everything the meeting needs to say.
+</Callout>
+
+## Languages times analyses
+
+Count the work. Step through it:
+
+<BillSteps client:visible />
+
+Without a shared IR, each analysis is written against one language's
+syntax tree, so every language needs its own copy of every analysis.
+With VIR in the middle, an analysis is written once, and a language
+costs one plugin: a parser, a lowering to VIR, and an emitter.
+
+The pipeline makes this literal. Here is `compile` from
+`core/src/index.ts`, the function the CLI calls for both languages:
+
+```ts
+function compile(source, plugin, opts) {
+  const lowered = plugin.lower(source);
+  const analysis = analyze(lowered.module);
+  const p = plan(analysis, { ...opts });
+  const code =
+    plugin.emit(source, lowered, p);
+  return { code, plan: p,
+    explain: explain(p) };
+}
+```
+
+(Simplified: the real one also passes the annotations through.) The only
+language-specific step is choosing the plugin, which the CLI does by file
+extension:
+
+```ts
+const plugin = ext === '.py'
+  ? pythonPlugin()
+  : jsPlugin({ parser, typescript });
+```
+
+<Callout kind="definition">
+A **multi-language IR** is an intermediate representation that several
+source languages lower into, so that analyses and code generation written
+against it serve all of them. The cost of supporting L languages and A
+analyses drops from about **L × A** to about **L + A**. The IR must be
+able to say what every language means, not only what one of them means.
+</Callout>
+
+<Prompts ids={['ml-what', 'ml-cost', 'ml-compile']} />
+
+## What Python got for free
+
+The Python plugin, `packages/frontend-python`, is 1,065 lines: a
+tokenizer, a parser, a lowering and an emitter, plus 44 lines that
+connect them. The next three chapters walk through it. It contains no
+safety analysis, no loop finder, no numeric inference, no bounds
+proofs, no cost model and no explain. It didn't need them.
+
+Here is what `viscosity explain --python-auto` says about a corpus
+program, `particles.py`, where the update loops live inside a function
+`step(arr, dt)` that is called with the list:
+
+```
+ps (line 13) {x, y, vx, vy, name}
+  → struct of arrays
+  · loop at line 18 in step() touches
+    2 of 5 fields (x, vx)
+  · loop at line 21 in step() touches
+    2 of 5 fields (y, vy)
+  · loop at line 27 in <module>()
+    touches 2 of 5 fields (x, y)
+  · typed array('d') columns for x, y,
+    vx, vy; list columns for name (may
+    hold non-floats)
+  · about 2000 elements
+  · 3 of 5 element accesses proven in
+    bounds
+```
+
+Every line was written by code from Part VIII. The loops inside `step()`
+were found because the core follows the list into a function call, just
+as it does for JavaScript. The bounds proofs are the same proofs. The
+format is the same `explain()`.
+
+Refusals come free too. In `escapes_print.py` the program prints an
+element, so the object must really exist:
+
+```
+ps (line 8) {x} → kept as array of objects
+  · unsafe: line 13: an element is passed
+    to a function call
+```
+
+That reason comes from the same escape check that protects JavaScript
+programs. A bug fixed there is fixed for both languages.
+
+<Prompts ids={['ml-free', 'ml-step', 'ml-bugfix']} />
+
+## What did not come free
+
+An honest bill has a second column. Some things in the core had to learn
+about Python, and some still haven't.
+
+**Language facts.** A handful of lines in the core read
+`module.language`. In JavaScript every number is a double, so any number
+fits a `Float64Array`. In Python, `1` and `1.0` are different kinds of
+number, so "numeric" has to mean "provably a float", and a valid index
+has to be an int. The planner reads it too: CPython measured slower with
+columns, so Python keeps objects unless you opt in (chapter 246 shows
+the measurement). The IR also grew to carry the difference: a VIR
+`const` has a note saying `int` or `float`, which JavaScript never needed.
+
+**Wording.** Messages were written with JavaScript in mind. For
+`not_dataclass.py`, a Python class that isn't a dataclass, the first
+report said "pushes something that is not a fresh object literal". The
+decision was right, but Python has no object literals. So the wording
+became a language fact too, and the real report now reads:
+
+```
+xs (line 6) {} → kept as array of objects
+  · unsafe: line 8: appends something
+    that is not a fresh dataclass
+    instance (dataclasses with
+    non-literal defaults are not
+    modelled)
+  · unsafe: line 11: reads .x, which the
+    records don't have
+```
+
+**Tools.** `viscosity profile` instruments the program and runs it with
+Node. At first, a `.py` file simply crashed Node with a `SyntaxError`.
+Now the CLI refuses up front: "profile runs JavaScript programs only;
+Python profiling is not supported yet".
+
+**Strategies.** The Python emitter writes `aos` and `soa`, and throws on
+`aosoa`. Each layout strategy is still code in each emitter.
+
+None of this breaks the argument. It shows where the seam is: anything
+that depends on what a value *means* in a language belongs to that
+language, even when it runs in the core. A good multi-language IR makes
+those facts explicit and few.
+
+<Prompts ids={['ml-float', 'ml-wording', 'ml-profile']} />
+
+<Callout kind="engine" label="Under the hood">
+Big compilers are built the same way. LLVM's core processes an
+intermediate representation and turns it into object files, while Clang
+is the front-end that compiles C, C++ and Objective-C into it
+<Cite id="llvm-readme" />. GraalVM's Truffle comes at it from the other
+side: each language is written as an interpreter in one framework, and
+the framework derives compiled code for all of them
+<Cite id="truffle-readme" />. Viscosity is far smaller, but the bargain
+is the same: put the shared work behind one representation, and make
+each language pay only for its own syntax and its own meaning.
+</Callout>
+
+<Prompts ids={['ml-llvm']} />
+
+## Your turn
+
+The first exercise builds the whole idea in miniature: two toy plugins,
+one shared analysis. The second puts a language fact in the core.
+
+<Exercise id="sharedCore" />
+
+<Exercise id="columnFor" />
+
+## What you learned
+
+- A **multi-language IR** lets L languages share A analyses, so the cost
+  is about **L + A** instead of **L × A**.
+- `compile` is one function for every language: `lower`, `analyze`,
+  `plan`, `emit`. The CLI picks the plugin by file extension.
+- The Python plugin is 1,065 lines and reuses every analysis, the
+  planner and `explain` unchanged.
+- Some meaning leaks into the core as **language facts**: floats versus
+  ints, int indexes, CPython's cost, even the wording of a reason. The
+  profiler is still JavaScript-only.
+
+<Quiz />
