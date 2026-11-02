@@ -6,7 +6,7 @@ title: 'The final benchmark matrix'
 tagline: 'One script, one evening, one machine: the end-to-end programs on two JavaScript engines, the compiler in two languages, and Drip three ways. Most of it is what you would predict; one row is not, and it says something about every promise a layout optimizer can make.'
 objectives:
   - Read the matrix’s three sections and say what each one compares, and how each cell was measured.
-  - Compute a speed-up and a geometric mean from the results file, skipping cells that are missing or meaningless.
+  - Compute a speed-up and a geometric mean from the results file, and say why rounding each ratio first can move the last digit.
   - Explain why Viscosity gains about 4× on heat under V8 and nothing under JavaScriptCore, and say which part of that explanation is still a hypothesis.
   - Tell the two compile-speed numbers apart, and say which parts of the matrix are older than the code they describe.
 introduces: [benchmark-matrix]
@@ -27,7 +27,8 @@ the three Drips (*Benchmarks: three implementations*). Numbers taken on
 different days by different methods cannot honestly sit in one table,
 because you cannot tell whether a difference comes from the code or from
 the day; so the last benchmark of the book runs all of them from one
-script, on one machine, in one sitting.
+script, on one machine, in one sitting (all but Drip, whose committed
+results the script copies in, as the last section explains).
 
 <Analogy title="a school report card">
 A report card lists every subject in one grid, marked in the same week by
@@ -119,10 +120,9 @@ r.bun.originalMs.best
 ```
 
 ```js
-// a column: skip what has no ratio
+// a column, from the raw times
 const xs = m.drip.rows
-  .map((r) => r.rustVsVm)
-  .filter((x) => x != null);
+  .map((r) => r.vmMs / r.rustMs);
 Math.exp(xs.reduce((a, x) =>
   a + Math.log(x), 0) / xs.length);
 ```
@@ -135,10 +135,9 @@ compiled time, <Num k="heatNodeComp" />, giving the <Num k="heatNode" />
 in the table. The second reads the same row along the engine axis: on
 Bun the original takes <Num k="heatBunOrig" /> and the compiled program
 <Num k="heatBunComp" />, a speed-up of <Num k="heatBun" />. The third
-works down a column, the Drip section's drip-rs-against-VM ratios;
-`filter` drops the rows that have none (more on those below), and the
-last line is the geometric mean from the formal box, which the file
-rounds to <Num k="rustVsVm" />.
+works down a column: for each Drip program it divides the TypeScript
+VM's time by drip-rs's, and the last line is the geometric mean from the
+formal box, which comes to <Num k="rustVsVm" />, as in the file.
 
 <Prompts ids={['best-of', 'interleave']} />
 
@@ -189,7 +188,7 @@ never promises a speed-up.
 
 <Prompts ids={['hypothesis', 'explain-claim']} />
 
-## Older than the code: two honest footnotes
+## Two honest notes: a timing not re-run, and rows copied in
 
 The compile-speed section has two numbers that are easy to mix up. Run
 as command-line tools, one process per file over the <Num k="programs" />
@@ -204,24 +203,22 @@ of linear memory, which the TypeScript side never has to do. `matrix.ts`
 now does, but the timing has not been re-run, so treat it as an upper
 bound.
 
-The Drip section was copied from Part XII's results of 2026-10-31, not
-re-run: there, the TS VM was <Num k="vmVsTree" /> faster than the
-tree-walker and drip-rs <Num k="rustVsVm" /> faster than the TS VM, as
-geometric means over <Num k="dripPrograms" /> programs. Two rows have no
-ratio: `string_equality` stopped on both VMs with "Too many constants in
-one chunk", and `zoo_batch` runs for a fixed time, so its time is not a
-speed. Both are footnoted rather than silently dropped, which is the
-exercise below. Those rows, however, describe Drip *before* it was
-redesigned into the language this book now teaches. The redesigned
-Drip's own committed run, of 2026-11-02, has <Num k="dripNowPrograms" />
-different programs: there drip-rs is <Num k="rustVsVmNow" /> faster than
-the TS VM, while the TS VM and the tree-walker are about level
-(<Num k="vmVsTreeNow" />); *Benchmarks: three implementations* explains
-why. The matrix has not been re-run since (when it is, `matrix.ts` picks the
-newest results file in each folder, so it will copy the new rows), and
-until then its Drip section is a record of the old language.
+The Drip section was not timed by the matrix at all: its times are
+copied (not re-run) from the redesigned Drip's committed results of
+2026-11-02, the files *Benchmarks: three implementations* reads. Its
+<Num k="dripPrograms" /> rows are that chapter's rows, each with all three
+times, and so are its means: the TypeScript VM is about level with the
+tree-walker (<Num k="vmVsTree" />), and drip-rs is <Num k="rustVsVm" />
+faster than it and <Num k="rustVsTree" /> faster than the tree-walker.
 
-<Prompts ids={['old-file', 'startup', 'drip-old']} />
+One digit differs. `matrix.ts` takes each mean over the ratios rounded
+to two places; taken from the times, drip-rs against the tree-walker is
+<Num k="rustVsTreeTimes" /> (the figure that chapter quotes). The gap is
+far below the noise, but only the mean from the times keeps an exact
+rule, which the exercise checks: the third mean is the first two
+multiplied, because each row's third ratio is its other two multiplied.
+
+<Prompts ids={['old-file', 'startup', 'drip-copied']} />
 
 <Callout kind="engine" label="Under the hood">
 The README and *Benchmarking Viscosity end to end* also quote an earlier
@@ -250,7 +247,9 @@ used different methods too, so compare their shapes, never their cells.
   **JavaScriptCore**, where heat gains nothing; the originals explain it.
 - The **heap-number** explanation is a **hypothesis**, built on
   documented facts about both engines and not yet confirmed.
-- The CLI compile-speed ratio mostly measures **start-up**, and the
-  matrix's **Drip** rows predate the redesigned Drip.
+- The CLI compile-speed ratio mostly measures **start-up**; the
+  **Drip** section is copied from the committed run of 2026-11-02, and a
+  geometric mean taken from the **times** multiplies exactly, while one
+  taken from **rounded ratios** can move the last digit.
 
 <Quiz />

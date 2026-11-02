@@ -1584,164 +1584,152 @@
   },
   "drip": {
     "sources": [
-      "book/companion/ts/results/drip-bench-2026-10-31.json",
-      "book/companion/rust/results/drip-rs-bench-2026-10-31.json"
+      "book/companion/ts/results/drip-bench-2026-11-02.json",
+      "book/companion/rust/results/drip-rs-bench-2026-11-02.json"
     ],
     "tsEnv": {
       "node": "v22.23.4",
       "v8": "12.4.254.21-node.57",
       "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
-      "date": "2026-10-31T18:28:28.987Z",
-      "runs": 1,
+      "date": "2026-11-02T07:39:29.562Z",
+      "runs": 3,
       "note": "Best of N, each in a fresh process. Includes compile time. Shared cloud VM."
     },
     "rustEnv": {
       "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
       "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
-      "date": "2026-10-31T19:55:24.609Z",
+      "date": "2026-11-02T07:39:43.783Z",
       "runs": 3,
-      "tsResults": "drip-bench-2026-10-31.json",
-      "note": "drip-rs: best of N wall-clock runs, each a fresh process, compile time included. TypeScript numbers are copied from tsResults (one run per program, each in a fresh process, per that file's own note). Same shared cloud VM for both, so expect noise."
+      "tsResults": "drip-bench-2026-11-02.json",
+      "note": "drip-rs: best of N wall-clock runs, each a fresh process, compile time included. TypeScript numbers are copied from tsResults (each a fresh process, best of 3). Same shared cloud VM for both, so expect noise."
     },
     "method": "Copied from the committed results (not re-run here). Wall-clock milliseconds, compile time included, each a fresh process; see each file's own note for its run count.",
     "rows": [
       {
-        "program": "binary_trees",
-        "treeMs": 19018,
-        "vmMs": 13078,
+        "program": "closures",
+        "treeMs": 811,
+        "vmMs": 655,
         "vmError": null,
-        "rustMs": 2672,
+        "rustMs": 139,
         "rustError": null,
         "fixedTime": false,
-        "vmVsTree": 1.45,
-        "rustVsVm": 4.89,
-        "rustVsTree": 7.12
-      },
-      {
-        "program": "equality",
-        "treeMs": 15533,
-        "vmMs": 16501,
-        "vmError": null,
-        "rustMs": 4220,
-        "rustError": null,
-        "fixedTime": false,
-        "vmVsTree": 0.94,
-        "rustVsVm": 3.91,
-        "rustVsTree": 3.68
+        "vmVsTree": 1.24,
+        "rustVsVm": 4.71,
+        "rustVsTree": 5.83
       },
       {
         "program": "fib",
-        "treeMs": 23695,
-        "vmMs": 5685,
+        "treeMs": 2365,
+        "vmMs": 1906,
         "vmError": null,
-        "rustMs": 1460,
+        "rustMs": 406,
         "rustError": null,
         "fixedTime": false,
-        "vmVsTree": 4.17,
-        "rustVsVm": 3.89,
-        "rustVsTree": 16.23
+        "vmVsTree": 1.24,
+        "rustVsVm": 4.69,
+        "rustVsTree": 5.83
+      },
+      {
+        "program": "fields",
+        "treeMs": 530,
+        "vmMs": 712,
+        "vmError": null,
+        "rustMs": 193,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 0.74,
+        "rustVsVm": 3.69,
+        "rustVsTree": 2.75
       },
       {
         "program": "instantiation",
-        "treeMs": 2742,
-        "vmMs": 3570,
+        "treeMs": 428,
+        "vmMs": 623,
         "vmError": null,
-        "rustMs": 628,
+        "rustMs": 140,
         "rustError": null,
         "fixedTime": false,
-        "vmVsTree": 0.77,
-        "rustVsVm": 5.68,
-        "rustVsTree": 4.37
+        "vmVsTree": 0.69,
+        "rustVsVm": 4.45,
+        "rustVsTree": 3.06
       },
       {
-        "program": "invocation",
-        "treeMs": 2962,
-        "vmMs": 2042,
+        "program": "method_calls",
+        "treeMs": 918,
+        "vmMs": 704,
         "vmError": null,
-        "rustMs": 577,
+        "rustMs": 167,
         "rustError": null,
         "fixedTime": false,
-        "vmVsTree": 1.45,
-        "rustVsVm": 3.54,
-        "rustVsTree": 5.13
+        "vmVsTree": 1.3,
+        "rustVsVm": 4.22,
+        "rustVsTree": 5.5
       },
       {
-        "program": "method_call",
-        "treeMs": 4106,
-        "vmMs": 1085,
+        "program": "particles",
+        "treeMs": 446,
+        "vmMs": 380,
         "vmError": null,
-        "rustMs": 316,
+        "rustMs": 83,
         "rustError": null,
         "fixedTime": false,
-        "vmVsTree": 3.78,
-        "rustVsVm": 3.43,
-        "rustVsTree": 12.99
+        "vmVsTree": 1.17,
+        "rustVsVm": 4.58,
+        "rustVsTree": 5.37
       },
       {
-        "program": "properties",
-        "treeMs": 11853,
-        "vmMs": 2781,
+        "program": "sieve",
+        "treeMs": 1317,
+        "vmMs": 1216,
         "vmError": null,
-        "rustMs": 795,
+        "rustMs": 283,
         "rustError": null,
         "fixedTime": false,
-        "vmVsTree": 4.26,
-        "rustVsVm": 3.5,
-        "rustVsTree": 14.91
+        "vmVsTree": 1.08,
+        "rustVsVm": 4.3,
+        "rustVsTree": 4.65
       },
       {
-        "program": "string_equality",
-        "treeMs": 13874,
-        "vmMs": null,
-        "vmError": "[line 32] Error at 'a4': Too many constants in one chunk.",
-        "rustMs": null,
-        "rustError": "[line 32] Error at 'a4': Too many constants in one chunk.",
+        "program": "sort",
+        "treeMs": 1394,
+        "vmMs": 1224,
+        "vmError": null,
+        "rustMs": 248,
+        "rustError": null,
         "fixedTime": false,
-        "vmVsTree": null,
-        "rustVsVm": null,
-        "rustVsTree": null
+        "vmVsTree": 1.14,
+        "rustVsVm": 4.94,
+        "rustVsTree": 5.62
+      },
+      {
+        "program": "strings",
+        "treeMs": 365,
+        "vmMs": 383,
+        "vmError": null,
+        "rustMs": 305,
+        "rustError": null,
+        "fixedTime": false,
+        "vmVsTree": 0.95,
+        "rustVsVm": 1.26,
+        "rustVsTree": 1.2
       },
       {
         "program": "trees",
-        "treeMs": 53136,
-        "vmMs": 21327,
+        "treeMs": 597,
+        "vmMs": 749,
         "vmError": null,
-        "rustMs": 4858,
+        "rustMs": 156,
         "rustError": null,
         "fixedTime": false,
-        "vmVsTree": 2.49,
-        "rustVsVm": 4.39,
-        "rustVsTree": 10.94
-      },
-      {
-        "program": "zoo",
-        "treeMs": 8358,
-        "vmMs": 1749,
-        "vmError": null,
-        "rustMs": 528,
-        "rustError": null,
-        "fixedTime": false,
-        "vmVsTree": 4.78,
-        "rustVsVm": 3.31,
-        "rustVsTree": 15.83
-      },
-      {
-        "program": "zoo_batch",
-        "treeMs": 10027,
-        "vmMs": 10011,
-        "vmError": null,
-        "rustMs": 10004,
-        "rustError": null,
-        "fixedTime": true,
-        "vmVsTree": null,
-        "rustVsVm": null,
-        "rustVsTree": null
+        "vmVsTree": 0.8,
+        "rustVsVm": 4.8,
+        "rustVsTree": 3.83
       }
     ],
     "geomean": {
-      "vmVsTree": 2.2,
-      "rustVsVm": 4,
-      "rustVsTree": 8.81
+      "vmVsTree": 1.01,
+      "rustVsVm": 3.94,
+      "rustVsTree": 3.99
     }
   }
 }

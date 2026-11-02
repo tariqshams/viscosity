@@ -1,14 +1,21 @@
 // Chapter 457 cards. Keys are stable ids: never rename them.
 
-const PRE = `// One program in two implementations:
-// milliseconds, or None if it failed.
+const PRE = `// One Drip program in the matrix:
+// milliseconds on the tree-walker,
+// the TypeScript VM and drip-rs.
 struct Row {
-    old: Option<f64>,
-    new: Option<f64>,
-    // runs for a fixed time: no speed
-    fixed: bool,
+    tree: f64,
+    vm: f64,
+    rust: f64,
 }
 `;
+
+const SIG = `// The geometric mean of f(row) over
+// the rows, or None if there are none.
+fn geo(
+    xs: &[Row],
+    f: fn(&Row) -> f64,
+) -> Option<f64> {`;
 
 export const prompts = {
   'matrix-what': {
@@ -47,9 +54,9 @@ export const prompts = {
     q: 'Why shouldn’t `e2e-node-2026-10-31` be compared cell by cell with the matrix?',
     a: 'It predates the late-store fix (heat’s compiled code changed since), and it used a different method: Node only, median of 3.',
   },
-  'drip-old': {
-    q: 'Why should the matrix’s Drip section not be read as a measurement of the Drip this book teaches?',
-    a: 'It was copied from results of 2026-10-31, before Drip was redesigned; the redesigned Drip’s own run (2026-11-02) has different programs and different ratios.',
+  'drip-copied': {
+    q: 'Where do the times in the matrix’s Drip section come from?',
+    a: 'They are copied, not re-run, from the redesigned Drip’s committed results of 2026-11-02: the same files *Benchmarks: three implementations* reads.',
   },
   startup: {
     q: 'Run once per file, the Rust CLI beats the TS CLI by a much bigger ratio than the in-process comparison shows. Why?',
@@ -60,181 +67,166 @@ export const prompts = {
 export const exercises = {
   geomean: {
     lang: 'rust',
-    title: 'A geometric mean with gaps',
+    title: 'The Drip means, from the times',
     prompt:
-      'Write `geomean`: the geometric mean of `old / new` over the rows that have a speed-up. Skip rows where either time is missing (the program failed) and rows marked `fixed` (they run for a fixed time, so their time is not a speed). Return `None` if no row is left. The geometric mean of n numbers is the n-th root of their product: compute it as `exp` of the mean of the `ln`s.',
+      'Write `geo`: the geometric mean of `f(row)` over all the rows, where `f` turns a row into one ratio (for example `|r| r.tree / r.vm`, the VM’s speed-up over the tree-walker). Return `None` if there are no rows. The geometric mean of n numbers is the n-th root of their product: compute it as `exp` of the mean of the `ln`s, from the ratio itself (do not round it first). The tests run it on the ten real rows of the matrix’s Drip section.',
     starter: `${PRE}
-// The geometric mean of old / new over
-// the rows that have a speed-up at all.
-fn geomean(rs: &[Row]) -> Option<f64> {
+${SIG}
     todo!()
 }`,
     solution: `${PRE}
-// The geometric mean of old / new over
-// the rows that have a speed-up at all.
-fn geomean(rs: &[Row]) -> Option<f64> {
-    let mut logs = 0.0;
-    let mut n = 0;
-    for r in rs {
-        if r.fixed {
-            continue;
-        }
-        if let (Some(a), Some(b)) =
-            (r.old, r.new)
-        {
-            logs += (a / b).ln();
-            n += 1;
-        }
-    }
-    if n == 0 {
+${SIG}
+    if xs.is_empty() {
         return None;
     }
-    Some((logs / n as f64).exp())
-}`,
-    tests: `fn row(a: f64, b: f64) -> Row {
-    Row {
-        old: Some(a),
-        new: Some(b),
-        fixed: false,
+    let mut logs = 0.0;
+    for r in xs {
+        logs += f(r).ln();
     }
+    let n = xs.len() as f64;
+    Some((logs / n).exp())
+}`,
+    tests: `fn r(tree: f64, vm: f64, rust: f64)
+    -> Row {
+    Row { tree, vm, rust }
 }
 
-fn close(x: Option<f64>, y: f64) -> bool {
-    x.is_some_and(|x| (x - y).abs() < 1e-9)
+// Part (c) of matrix-2026-10-31, copied
+// from the Drip results of 2026-11-02.
+fn matrix() -> Vec<Row> {
+    vec![
+        r(811.0, 655.0, 139.0),
+        r(2365.0, 1906.0, 406.0),
+        r(530.0, 712.0, 193.0),
+        r(428.0, 623.0, 140.0),
+        r(918.0, 704.0, 167.0),
+        r(446.0, 380.0, 83.0),
+        r(1317.0, 1216.0, 283.0),
+        r(1394.0, 1224.0, 248.0),
+        r(365.0, 383.0, 305.0),
+        r(597.0, 749.0, 156.0),
+    ]
+}
+
+fn r2(x: Option<f64>) -> f64 {
+    (x.unwrap() * 100.0).round() / 100.0
 }
 
 #[test]
-fn a_four_and_a_one_make_two() {
-    let rs = [row(8.0, 2.0), row(5.0, 5.0)];
-    assert!(close(geomean(&rs), 2.0));
+fn vm_vs_tree_is_1_01() {
+    let m = matrix();
+    let g = geo(&m, |r| r.tree / r.vm);
+    assert_eq!(r2(g), 1.01);
+}
+
+#[test]
+fn rust_vs_vm_is_3_94() {
+    let m = matrix();
+    let g = geo(&m, |r| r.vm / r.rust);
+    assert_eq!(r2(g), 3.94);
+}
+
+#[test]
+fn rust_vs_tree_from_times_is_3_98() {
+    let m = matrix();
+    let g = geo(&m, |r| r.tree / r.rust);
+    assert_eq!(r2(g), 3.98);
+}
+
+#[test]
+fn the_means_multiply() {
+    let m = matrix();
+    let a = geo(&m, |r| r.tree / r.vm);
+    let b = geo(&m, |r| r.vm / r.rust);
+    let c = geo(&m, |r| r.tree / r.rust);
+    let ab = a.unwrap() * b.unwrap();
+    assert!((c.unwrap() - ab).abs() < 1e-9);
 }
 
 #[test]
 fn a_loss_cancels_a_win() {
-    let rs = [row(10.0, 5.0), row(5.0, 10.0)];
-    assert!(close(geomean(&rs), 1.0));
+    let m = [
+        r(10.0, 5.0, 1.0),
+        r(5.0, 10.0, 1.0),
+    ];
+    let g = geo(&m, |r| r.tree / r.vm);
+    assert!((g.unwrap() - 1.0).abs() < 1e-9);
 }
 
 #[test]
-fn failed_runs_are_skipped() {
-    let bad = Row {
-        old: Some(13.0),
-        new: None,
-        fixed: false,
-    };
-    let rs = [row(9.0, 1.0), bad];
-    assert!(close(geomean(&rs), 9.0));
-}
-
-#[test]
-fn fixed_time_rows_are_skipped() {
-    let z = Row { fixed: true, ..row(10.0, 1.0) };
-    let rs = [row(3.0, 1.0), z];
-    assert!(close(geomean(&rs), 3.0));
-}
-
-#[test]
-fn nothing_to_average_is_none() {
-    assert_eq!(geomean(&[]), None);
-    let z = Row { new: None, ..row(1.0, 1.0) };
-    assert_eq!(geomean(&[z]), None);
+fn no_rows_is_none() {
+    assert_eq!(geo(&[], |r| r.tree), None);
 }
 `,
     hints: [
-      'Loop over the rows, `continue` past the fixed ones, and use `if let (Some(a), Some(b)) = (r.old, r.new)` to take only rows with both times.',
-      'Add up `(a / b).ln()` and count the rows you used. Adding logarithms is multiplying the ratios, without the product overflowing.',
-      'At the end, no rows means `None`. Otherwise `Some((sum / n as f64).exp())`.',
+      'Deal with the empty slice first: `if xs.is_empty() { return None; }`. Then loop over the rows and call `f(r)` to get each one’s ratio.',
+      'Add up `f(r).ln()` in a running total. Adding logarithms is multiplying the ratios, without ever forming a product that could grow huge.',
+      'At the end, divide the total by `xs.len() as f64` and turn it back into a ratio with `.exp()`, wrapped in `Some`.',
     ],
-    walkthrough: `**How to think about it.** This is \`geo\` from \`engine/ts/packages/bench/src/matrix.ts\`, in Rust, together with the filtering the matrix does before it calls \`geo\`. Split the job in two: first decide which rows count at all, then average what is left. A row counts only if it has both times (a failed run has no time, so there is no ratio to take) and is not a fixed-time row (\`zoo_batch\` runs for a set time on every implementation, so its time ratio is always about 1 and says nothing about speed). Then average the ratios the geometric way.
+    walkthrough: `**How to think about it.** This is \`geo\` from \`engine/ts/packages/bench/src/matrix.ts\`, in Rust, with one difference that matters here: \`matrix.ts\` takes the mean of each row's ratio after rounding it to two places (the ratios it prints in its table), while this \`geo\` takes it from the times. The tests feed it the ten real rows of the matrix's Drip section, so you can watch both ways of reading them. For the TypeScript VM against the tree-walker and for drip-rs against the TypeScript VM, the two ways agree to two places (1.01 and 3.94, the figures in the matrix); for drip-rs against the tree-walker the matrix prints 3.99, from its rounded column, while the times give 3.98, the figure *Benchmarks: three implementations* quotes. Neither is a mistake (the gap is far below the noise on that machine); however, only the mean from the times keeps an exact rule, which \`the_means_multiply\` checks: each row's \`tree / rust\` is its \`tree / vm\` times its \`vm / rust\`, and the geometric mean of products is the product of the geometric means, so the third mean is exactly the first two multiplied.
 
-Why geometric? Speed-ups are ratios, and ratios multiply. A program that gets 2× faster and another that gets 2× slower should average to "no change", 1×; the ordinary mean of 2 and 0.5 is 1.25, which wrongly reports a gain, while the geometric mean is exactly 1 (the test \`a_loss_cancels_a_win\` checks this). And why logarithms? Because \`ln(a × b) = ln a + ln b\`: the mean of the logs is the log of the n-th root of the product, so \`exp\` of that mean is the geometric mean, computed without ever forming a product that could grow huge or tiny.
+Why geometric at all? Speed-ups are ratios, and ratios multiply. A program that gets 2× faster and another that gets 2× slower should average to "no change", 1×; the ordinary mean of 2 and 0.5 is 1.25, which wrongly reports a gain, while the geometric mean is exactly 1 (\`a_loss_cancels_a_win\` checks this). And why logarithms? Because \`ln(a × b) = ln a + ln b\`: the mean of the logs is the log of the n-th root of the product, so \`exp\` of that mean is the geometric mean.
 
 **The solution, line by line.**
 
-- \`fn geomean(rs: &[Row]) -> Option<f64> {\` borrows a slice of rows and returns \`None\` when there is nothing to average, rather than inventing a number.
-- \`let mut logs = 0.0;\` is the running sum of logarithms, and \`let mut n = 0;\` counts the rows that were used.
-- \`for r in rs {\` visits each row by reference.
-- \`if r.fixed { continue; }\` skips fixed-time rows before looking at their times.
-- \`if let (Some(a), Some(b)) = (r.old, r.new) {\` builds a tuple of the two \`Option\`s and matches only when both are \`Some\`, binding the times to \`a\` and \`b\`; a row with a missing time simply does not match, so it is skipped with no extra code.
-- \`logs += (a / b).ln();\` adds the log of this row's speed-up (old over new), and \`n += 1;\` counts it.
-- \`if n == 0 { return None; }\` handles the empty case; dividing by zero would give \`NaN\`.
-- \`Some((logs / n as f64).exp())\` is the mean of the logs, turned back into a ratio with \`exp\`. \`n as f64\` converts the count, because Rust never mixes integers and floats silently.
+- \`fn geo(xs: &[Row], f: fn(&Row) -> f64) -> Option<f64> {\` borrows a slice of rows and takes \`f\`, a plain function from a row to one number; a closure such as \`|r| r.tree / r.vm\` that uses nothing from around it can be passed where a \`fn\` is expected. It returns \`None\` when there is nothing to average, rather than inventing a number.
+- \`if xs.is_empty() { return None; }\` handles the empty case first; without it the mean would be \`0.0 / 0.0\`, which is \`NaN\`, and the function would return \`Some(NaN)\`.
+- \`let mut logs = 0.0;\` is the running sum of logarithms.
+- \`for r in xs {\` visits each row by reference, so \`r\` is a \`&Row\`, exactly what \`f\` takes.
+- \`logs += f(r).ln();\` computes this row's ratio from its times and adds its natural logarithm. Nothing is rounded here.
+- \`let n = xs.len() as f64;\` converts the number of rows to a float, because Rust never mixes integers and floats silently.
+- \`Some((logs / n).exp())\` is the mean of the logs, turned back into a ratio with \`exp\`.
 
 **Common wrong attempts.**
 
-- The ordinary average of the ratios. It is pulled up by big wins and barely moved by losses, so a 2× gain and a 2× loss look like a 1.25× gain.
-- Treating a failed run as a ratio of 1 (or 0). That invents a result the machine never measured and drags the mean; the matrix footnotes such rows and leaves them out.
-- Forgetting the fixed-time rows. \`zoo_batch\`'s ratio is always about 1, so including it quietly pulls every mean towards "no change".`,
+- The ordinary average of the ratios. It is pulled up by big wins and barely moved by losses: on the real rows it gives about 1.04 for the VM against the tree-walker, although the VM loses on four of the ten programs.
+- Rounding each ratio to two places before taking its logarithm. That reproduces the matrix's printed mean, 3.99, for drip-rs against the tree-walker, but it is the mean of the rounded column, not of the measurements, and the three means no longer multiply exactly.
+- Leaving out the empty check. The loop does nothing, \`0.0 / 0.0\` is \`NaN\`, and the function returns \`Some(NaN)\`: a number that is not a number, where \`None\` would have said honestly that there was nothing to average.`,
     wrong: [
       {
         code: `${PRE}
-// The geometric mean of old / new over
-// the rows that have a speed-up at all.
-fn geomean(rs: &[Row]) -> Option<f64> {
+${SIG}
+    if xs.is_empty() {
+        return None;
+    }
     let mut sum = 0.0;
-    let mut n = 0;
-    for r in rs {
-        if r.fixed {
-            continue;
-        }
-        if let (Some(a), Some(b)) =
-            (r.old, r.new)
-        {
-            sum += a / b;
-            n += 1;
-        }
+    for r in xs {
+        sum += f(r);
     }
-    if n == 0 {
-        return None;
-    }
-    Some(sum / n as f64)
+    let n = xs.len() as f64;
+    Some(sum / n)
 }`,
-        why: 'That is the arithmetic mean of the ratios. A 2× win and a 2× loss average to 1.25×, not 1×.',
+        why: 'That is the arithmetic mean of the ratios. A 2× win and a 2× loss average to 1.25×, not 1×, and on the real rows the VM against the tree-walker comes to about 1.04, not 1.01.',
       },
       {
         code: `${PRE}
-// The geometric mean of old / new over
-// the rows that have a speed-up at all.
-fn geomean(rs: &[Row]) -> Option<f64> {
-    let mut logs = 0.0;
-    let mut n = 0;
-    for r in rs {
-        if r.fixed {
-            continue;
-        }
-        let a = r.old.unwrap_or(1.0);
-        let b = r.new.unwrap_or(1.0);
-        logs += (a / b).ln();
-        n += 1;
-    }
-    if n == 0 {
+${SIG}
+    if xs.is_empty() {
         return None;
     }
-    Some((logs / n as f64).exp())
+    let mut logs = 0.0;
+    for r in xs {
+        let x = f(r);
+        let x2 = (x * 100.0).round()
+            / 100.0;
+        logs += x2.ln();
+    }
+    let n = xs.len() as f64;
+    Some((logs / n).exp())
 }`,
-        why: 'Treating a missing time as 1.0 invents a speed-up for a program that failed, and never returns `None`.',
+        why: 'Rounding each ratio first gives the mean of the rounded column (3.99 for drip-rs against the tree-walker), not of the times (3.98), and the three means stop multiplying exactly.',
       },
       {
         code: `${PRE}
-// The geometric mean of old / new over
-// the rows that have a speed-up at all.
-fn geomean(rs: &[Row]) -> Option<f64> {
+${SIG}
     let mut logs = 0.0;
-    let mut n = 0;
-    for r in rs {
-        if let (Some(a), Some(b)) =
-            (r.old, r.new)
-        {
-            logs += (a / b).ln();
-            n += 1;
-        }
+    for r in xs {
+        logs += f(r).ln();
     }
-    if n == 0 {
-        return None;
-    }
-    Some((logs / n as f64).exp())
+    let n = xs.len() as f64;
+    Some((logs / n).exp())
 }`,
-        why: 'This forgets the fixed-time rows, so a program that runs for ten seconds on every implementation counts as a speed.',
+        why: 'With no rows, `logs / n` is `0.0 / 0.0`, which is `NaN`, so this returns `Some(NaN)` instead of `None`.',
       },
     ],
   },
@@ -275,11 +267,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the matrix’s Drip geometric mean (a record of Drip before its redesign) leave out `string_equality`?',
+    q: 'Where were the times in the matrix’s Drip section measured?',
     options: [
-      { t: 'It was too slow to measure', why: 'The tree-walker ran it. The two VMs refuse it.' },
-      { t: 'Both VMs stop with “Too many constants in one chunk”, so there is no ratio', correct: true, why: 'A failed cell has no speed-up; the matrix footnotes it and skips it.' },
-      { t: 'It runs for a fixed time', why: 'That is zoo_batch.' },
+      { t: 'In the redesigned Drip’s own committed run of 2026-11-02, and then copied into the matrix', correct: true, why: 'The section says “copied from the committed results (not re-run here)”, names the two files of 2026-11-02, and a note in the file says only part (c) was refreshed.' },
+      { t: 'By `matrix.ts`, in the same sitting as the end-to-end programs', why: '`matrix.ts` times the end-to-end and compile sections itself, but for Drip it only copies the committed results.' },
+      { t: 'Nowhere: the drip-rs times are estimated from the TypeScript ones', why: 'drip-rs was timed by its own run, the best of three fresh processes; nothing in the section is estimated.' },
+    ],
+  },
+  {
+    q: 'Over the same rows, taken from the times, the TS VM’s geometric-mean speed-up over the tree-walker is a, and drip-rs’s over the TS VM is b. What is drip-rs’s geometric-mean speed-up over the tree-walker?',
+    options: [
+      { t: 'a + b', why: 'Speed-ups multiply rather than add: twice as fast, and then twice as fast again, is four times as fast, not three.' },
+      { t: '(a + b) / 2', why: 'That averages two different comparisons, so it is not the speed-up of anything over anything.' },
+      { t: 'It cannot be known without the rows', why: 'For geometric means it can: each row’s ratio is the product of its two steps, and the geometric mean of products is the product of the means.' },
+      { t: 'a × b', correct: true, why: 'Exactly, when all three come from the same rows’ times; the matrix’s means, taken from ratios rounded to two places, can differ from this in the last digit.' },
     ],
   },
   {
