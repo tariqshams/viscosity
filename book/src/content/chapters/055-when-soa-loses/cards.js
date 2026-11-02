@@ -1,4 +1,4 @@
-// Chapter 52 cards: recall prompts, examples, exercises and quiz.
+// Chapter 55 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,12 +15,12 @@ export const prompts = {
     a: 'No. The materialised object is a copy; nothing links it back to the column.',
   },
   'materialize-cost': {
-    q: 'Why was SoA far slower than AoS in the `materialize` suite?',
-    a: 'Every element needed a fresh object allocation; AoS only copied references to objects that already existed.',
+    q: 'A loop builds an array holding one real object per element. Why is that far slower from SoA columns than from an array of objects?',
+    a: 'From SoA, every element needs a fresh object allocation; from AoS, the loop only copies references to objects that already exist.',
   },
   'escape-removed': {
-    q: 'Why did SoA *not* lose in `get-objects`, where each element is passed to a small function as an object?',
-    a: 'Most likely because the object did not escape: the harness notes say V8 inlined the function and removed the temporary object.',
+    q: 'Each element is materialised from SoA columns and passed to a small function that reads it but does not keep it. Why can this cost almost nothing in V8?',
+    a: 'The object does not escape, so once V8 inlines the function it can remove the temporary object and read the columns directly.',
   },
   'aosoa-what': {
     q: 'What is **AoSoA**?',
@@ -31,7 +31,7 @@ export const prompts = {
     a: '8 doubles are 64 bytes: each field\'s run inside a block fills exactly one cache line.',
   },
   'aosoa-random': {
-    q: 'Why was AoSoA slow at random access in this book\'s benchmark?',
+    q: 'In plain JavaScript (without SIMD), why is AoSoA slow at random access?',
     a: 'Every access must work out a block and a lane (a division and a remainder), which costs more than it saves without SIMD.',
   },
   'aosoa-small': {
@@ -218,20 +218,20 @@ function getFields(s, i, fields) {
 
 export const quiz = [
   {
-    q: 'Why was SoA 20 to 35 times slower than AoS in the `materialize` suite?',
+    q: 'In JavaScript, building an array that holds one real object per element is many times slower from SoA columns than from an array of objects. Why?',
     options: [
       {
         t: 'Typed arrays are slow to read',
-        why: 'SoA reads were fast in every other suite.',
+        why: 'Reading a typed array is fast; the cost is elsewhere.',
       },
       {
-        t: 'It had to allocate a new object for every element, while AoS copied references it already had',
+        t: 'It must allocate a new object for every element, while AoS copies references it already has',
         correct: true,
         why: 'That is materialisation of objects that are kept.',
       },
       {
-        t: 'SoA used more memory',
-        why: 'SoA used less; the cost was building objects.',
+        t: 'SoA uses more memory',
+        why: 'SoA uses less; the cost is building objects.',
       },
     ],
   },
@@ -254,24 +254,24 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `get-objects`, each element is materialised and passed to `consume(p)`, which does not keep it. Why did SoA not lose?',
+    q: 'In V8, each element is materialised from SoA columns and passed to `consume(p)`, a small function that reads its fields and does not keep it. Why can this be about as fast as reading the columns directly?',
     options: [
       {
-        t: 'Most likely, the object did not escape, so V8 inlined `consume` and removed the temporary object',
+        t: 'The object does not escape, so once V8 inlines `consume` it can remove the temporary object',
         correct: true,
-        why: 'That is the explanation in the harness’s own notes: with no object to allocate, the loop reads the columns directly.',
+        why: 'With no object to allocate, the loop reads the columns directly.',
       },
       {
         t: 'V8 caches every object it has built before',
-        why: 'There is no such cache; the object was removed, not reused.',
+        why: 'There is no such cache; the object is removed, not reused.',
       },
       {
-        t: '`consume` was never called',
-        why: 'It was called for every element; only the object was optimised away.',
+        t: '`consume` is never called',
+        why: 'It is called for every element; only the object is optimised away.',
       },
       {
         t: 'Objects are free in V8',
-        why: 'The `materialize` suite shows that kept objects are far from free.',
+        why: 'Objects that are kept cost an allocation each.',
       },
     ],
   },

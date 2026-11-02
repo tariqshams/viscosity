@@ -19,9 +19,8 @@ import BenchBars from '../../../components/bench/BenchBars';
 
 ## The code that wants its objects back
 
-The last chapter measured struct of arrays winning: a loop that reads a
-few fields of many particles streams through a few columns and nothing
-else. However, real programs do not only run tight loops; sometimes the
+*AoS vs SoA, measured* showed struct of arrays winning when a loop
+reads a few fields of many particles. However, real programs do not only run tight loops; sometimes the
 code really does want an object, because it pushes particles into a
 list, hands them to a library, or returns one to its caller:
 
@@ -59,9 +58,9 @@ them; a materialised object only costs something if it is kept, or
 passed somewhere the engine cannot follow.</span>
 </Analogy>
 
-Here is the smallest version of `get`, building an object from two
-columns, and what it means for identity (the "same object?" question
-from the chapter on references):
+Here is the smallest `get`, building an object from two columns, and
+what it means for identity (the "same object?" question of *References:
+two names, one object*):
 
 <MaterializeSteps client:visible />
 
@@ -80,8 +79,6 @@ function get(s, i) {
 }
 ```
 
-<Run id="materialize" />
-
 ```js
 // kept: one real object per element
 const all = [];
@@ -92,14 +89,19 @@ for (let i = 0; i < n; i++) {
 
 </Examples>
 
-The first is the simplest materialisation: read slot `i` of each column
-and put the values in a fresh object literal; every call allocates. The
-second you can run: it is the code from the diagram, so it prints the two
-equal-looking objects, then `false` for `a === b`, then `1`, because
-`a.x = 99` changed only the copy. The third is the expensive pattern: it
-keeps every materialised object, so the program ends up holding an
-array of real objects, one allocation per element, which is exactly what
-the array of objects had for free.
+The first reads slot `i` of each column into a fresh object literal, so
+every call allocates. The second is the expensive pattern: it keeps
+every materialised object, one allocation per element, ending with
+exactly the array of objects that AoS had for free.
+
+<More title="Try it: two equal-looking objects">
+
+The code from the diagram prints two equal-looking objects, then `false`
+for `a === b`, then `1`, because `a.x = 99` changed only the copy.
+
+<Run id="materialize" />
+
+</More>
 
 <Prompts ids={['materialize-what', 'identity-lost', 'copy-write']} />
 
@@ -133,11 +135,10 @@ for (let i = 0; i < n; i++) {
 
 <BenchBars suite="get-objects" n={100000} title="Passing each element to a function that wants an object" highlight={['soa']} layouts={['aos', 'soa']} caption="The temporary object never escapes, so V8 removes it, and SoA keeps its lead." />
 
-Here, in this book's run, SoA did **not** lose; it was about 3 times
-faster. The likely reason, given in the harness's own notes, is that V8
-inlined `consume` (copied its body into the loop) and then saw that the
-temporary object was never stored anywhere, never returned and
-never compared, so it removed the object altogether and read the columns
+Here SoA did **not** lose; it was about 3 times faster. The likely
+reason, given in the harness's own notes, is that V8 inlined `consume`
+(copied its body into the loop), saw that the temporary object was never
+stored, returned or compared, and removed it, reading the columns
 directly. An object that is only used inside the code that made it is
 said not to **escape**; whether materialising costs anything depends
 entirely on whether the object escapes, which is the question
@@ -194,11 +195,6 @@ divided by B". Field f of that record is at the start of its block
 <Examples of="aosoa">
 
 ```js
-// particle 0, field 1 (y)
-0 * 48 + 1 * 8 + 0; // slot 8
-```
-
-```js
 // particle 10, field 2 (vx)
 Math.floor(10 / 8) * 48 + 2 * 8 + 10 % 8;
 // 66
@@ -216,10 +212,9 @@ for (let b = 0; b < n / 8; b++) {
 
 </Examples>
 
-The first shows that inside block 0, field 1 starts right after the 8
-`x` values, at slot 8. The second is the general case, with the
-division (`Math.floor(10 / 8)` is 1) and the remainder (`10 % 8` is 2)
-that every random access has to do. The third is how a sequential loop
+The first is the general case, with the division (`Math.floor(10 / 8)`
+is 1) and the remainder (`10 % 8` is 2) that every random access has to
+do. The second is how a sequential loop
 avoids that arithmetic: walk block by block (`o` is the block's first
 slot), and inside a block walk the lanes, so `x` is at `o + l` and `vx`
 two rows later at `o + 16 + l`. (This simple version assumes `n` is a
@@ -285,6 +280,6 @@ one materialises any set of fields.
 - In order it streams nearly as well as SoA; at random, every access
   pays for a division and a remainder.
 
-Next: how to trust any of these numbers. Benchmarking honestly.
+Next: *Benchmarking honestly*, or how to trust any of these numbers.
 
 <Quiz />

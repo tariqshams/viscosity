@@ -1,27 +1,10 @@
-// Chapter 51 cards: recall prompts, examples, exercises and quiz.
+// Chapter 52 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 52, 52, 52.
 
 export const prompts = {
   'prefetch-what': {
     q: 'What does the hardware **prefetcher** do?',
     a: 'It watches which lines a program reads and fetches the ones it predicts come next, before they are asked for.',
-  },
-  'prefetch-patterns': {
-    q: 'Which access patterns can a prefetcher follow?',
-    a: 'Simple ones: forwards or backwards, through a few arrays at once, with a small or medium steady stride.',
-  },
-  'backwards-ok': {
-    q: 'Can the prefetcher help a loop that walks an array from the last element to the first?',
-    a: 'Yes: a steady negative stride is still a simple pattern.',
-  },
-  'shuffle-why': {
-    q: 'Two loops read the same million elements, one in order and one shuffled. Why is the shuffled one slower?',
-    a: 'The prefetcher can’t predict a shuffled order, so misses are no longer fetched ahead of time.',
-  },
-  'chase-what': {
-    q: 'What is **pointer chasing**?',
-    a: 'Following a chain of pointers, where each load needs the address that the previous load produced.',
   },
   'chase-why': {
     q: 'Why can’t the CPU start the next step of a pointer chase early?',
@@ -31,73 +14,29 @@ export const prompts = {
     q: 'A shuffled loop reads `x[idx[i]]` from a Float64Array. Why can its misses still overlap?',
     a: 'Each address comes straight from `idx[i]`, which is known without waiting, so the CPU can send several reads at once.',
   },
-  'tree-chase': {
-    q: 'Why is walking a tree of objects (like a syntax tree) pointer chasing?',
-    a: 'Each child is reached through a pointer stored in its parent, so you must load the parent before you know where the child is.',
-  },
-  'pipeline-what': {
-    q: 'What is a CPU **pipeline**?',
-    a: 'Splitting instructions into stages and working on several at once, each in a different stage, like an assembly line.',
-  },
-  'stage-ticks': {
-    q: 'With a 4-stage pipeline and nothing waiting, how many ticks do 100 instructions take, and how many without a pipeline?',
-    a: '103 with it (4 + 99); 400 without (100 × 4).',
-  },
   'dependent-wait': {
-    q: 'Why does `d = a + 1` straight after `a = b + c` leave a gap in the pipeline?',
+    q: 'In a pipelined CPU, why does `d = a + 1` straight after `a = b + c` leave a gap in the pipeline?',
     a: 'It needs the value of `a`, so it cannot execute until the instruction before it has finished.',
-  },
-  'why-guess': {
-    q: 'Why must a pipelined CPU guess which way an `if` will go?',
-    a: 'The answer comes late, at execute; to keep the pipeline full it must fetch the next instructions before then.',
   },
   'mispredict-cost': {
     q: 'What happens when a branch prediction turns out wrong?',
     a: 'The work done on the wrong path is thrown away, and the pipeline refills from the right one.',
   },
   'sorted-why': {
-    q: 'Why does `if (v < 50)` predict better over sorted data than over random data?',
+    q: 'Over numbers from 0 to 99, why does a branch on `v < 50` predict better when the numbers are sorted than when they are random?',
     a: 'Sorted data gives a long run of trues then a long run of falses: one switch. Random data switches unpredictably.',
-  },
-  'rare-branch': {
-    q: 'Why does a check that almost never fails, like an error check, cost almost nothing?',
-    a: 'The predictor learns it goes the same way every time, so its guess is almost always right.',
-  },
-  'loop-branch': {
-    q: 'How often is a loop’s own test `i < n` mispredicted, over a long loop?',
-    a: 'About once: at the very end, when it finally comes out false.',
-  },
-  'simd-what': {
-    q: 'What does **SIMD** stand for, and what does it mean?',
-    a: 'Single instruction, multiple data: one instruction applies the same operation to several values at once.',
-  },
-  'lane-what': {
-    q: 'What is a **lane**?',
-    a: 'One slot of a SIMD (vector) register, holding one of the values the instruction works on.',
   },
   'lanes-128': {
     q: 'How many 64-bit doubles fit in the lanes of a 128-bit register?',
     a: 'Two (128 ÷ 64). Four 32-bit floats would fit.',
   },
-  'vectorize-what': {
-    q: 'What does a compiler do when it **vectorises** a loop?',
-    a: 'Rewrites it so each step handles several iterations at once with SIMD instructions, one element per lane.',
-  },
   'float-order': {
     q: 'Why can’t a compiler freely vectorise a floating-point sum?',
     a: 'Lane-wise summing regroups the additions, and floating-point addition isn’t associative, so the result could change.',
   },
-  overlap: {
-    q: 'What happens if the arrays a vectorised loop reads and writes might overlap in memory?',
-    a: 'The compiler must check for overlap (LLVM does it at run time) and use the plain loop when they overlap.',
-  },
   gather: {
     q: 'Why does filling a SIMD register with `x` values from an array of structs need a *gather*?',
     a: 'The x values aren’t side by side: other fields sit between them (a stride), so each must be read separately.',
-  },
-  'js-simd': {
-    q: 'Where can web code use explicit SIMD instructions today?',
-    a: 'In WebAssembly (fixed-width 128-bit SIMD). JavaScript has no SIMD API: SIMD.js was withdrawn.',
   },
 };
 
@@ -197,6 +136,7 @@ console.log(c);`,
 
 export const exercises = {
   findStride: {
+    optional: true,
     title: 'Be the prefetcher',
     prompt: 'Write `findStride(xs)`, where `xs` is a list of addresses in the order they were read. If every gap between consecutive addresses is the same, return that gap (it may be negative: the reads go backwards). Otherwise, or if there are fewer than two addresses, return `null`: no pattern to follow.',
     starter: `function findStride(xs) {
@@ -256,7 +196,7 @@ test('too few reads to tell', () => {
 - \`  return d;\` is reached only when every gap matched.
 - \`}\` closes the function.
 
-Run it on addresses from a pointer chase and you get \`null\`: that is this chapter's point in one line. Real prefetchers are more forgiving than this (they keep watching and lock onto a pattern once it settles), but random addresses beat them too.
+Run it on addresses from a pointer chase and you get \`null\`: that is pointer chasing's problem in one line. Real prefetchers are more forgiving than this (they keep watching and lock onto a pattern once it settles), but random addresses beat them too.
 
 **Common wrong attempts.**
 
@@ -377,6 +317,7 @@ If each node took one 64-byte line, the addresses read would be \`[128, 0, 192, 
     ],
   },
   mispredicts: {
+    optional: true,
     title: 'Count the wrong guesses',
     prompt: 'A toy branch predictor guesses that each `if` will go the same way it went last time. Its very first guess is `false`. Write `mispredicts(outs)`, where `outs` is an array of booleans (what the `if` actually did each time), that returns how many guesses were wrong.',
     starter: `function mispredicts(outs) {
@@ -772,28 +713,6 @@ Gathering costs one separate read per element, which is exactly what SIMD hardwa
 
 export const quiz = [
   {
-    q: 'Which loop is the prefetcher most likely to help?',
-    options: [
-      {
-        t: 'Walking a linked list of nodes scattered around memory',
-        why: 'Each address is only known after the previous load: pointer chasing.',
-      },
-      {
-        t: 'Reading a Float64Array from the last element to the first',
-        correct: true,
-        why: 'Backwards with a steady stride is a simple pattern prefetchers follow.',
-      },
-      {
-        t: 'Reading elements at random indices',
-        why: 'There is no pattern to predict.',
-      },
-      {
-        t: 'None: prefetchers only work on strings',
-        why: 'Prefetchers see addresses, not types; they work on any data.',
-      },
-    ],
-  },
-  {
     q: 'Why is following `ps[j].x` for a random `j` worse than reading `x[j]` from a Float64Array?',
     options: [
       {
@@ -806,100 +725,12 @@ export const quiz = [
       },
       {
         t: 'There is no difference',
-        why: 'The benchmark shows a large one at a million elements.',
+        why: 'With a million elements, measurements show a large one.',
       },
       {
         t: 'The object’s address must first be loaded from memory, so each read waits on another read',
         correct: true,
         why: 'That is pointer chasing. With a typed array, the address comes straight from `j`.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these is pointer chasing?',
-    options: [
-      {
-        t: '`for (let p = head; p; p = p.next) s += p.v;`',
-        correct: true,
-        why: 'Each step loads `p.next` to find out where the next node is.',
-      },
-      {
-        t: '`for (let i = 0; i < n; i++) s += x[i];`',
-        why: 'The address of `x[i]` comes from `i` by arithmetic: no pointers to follow.',
-      },
-      {
-        t: '`for (const j of idx) s += x[j];`',
-        why: 'Shuffled, but every address comes from `idx`, which is read in order; nothing waits on a previous read of `x`.',
-      },
-      {
-        t: '`s = a + b + c;`',
-        why: 'No memory addresses are followed at all.',
-      },
-    ],
-  },
-  {
-    q: 'Four reads each miss and take about 100 ns. Roughly how long do they take as a pointer chase, and with their addresses known up front?',
-    options: [
-      {
-        t: '100 ns either way',
-        why: 'A chase cannot overlap its reads, so it pays all four trips.',
-      },
-      {
-        t: 'About 400 ns chased; a little over 100 ns overlapped',
-        correct: true,
-        why: 'Chased reads wait for each other; independent ones can be in flight together.',
-      },
-      {
-        t: 'About 400 ns either way',
-        why: 'Independent reads can overlap, so they need not pay four full trips.',
-      },
-      {
-        t: 'About 25 ns overlapped',
-        why: 'Overlap cannot make one trip shorter than a trip: each read still takes about 100 ns.',
-      },
-    ],
-  },
-  {
-    q: 'In the benchmark, shuffling the order slowed every layout, but the array of objects by far the most. Why?',
-    options: [
-      {
-        t: 'Objects are bigger, so shuffling them takes longer',
-        why: 'Nothing is moved: only the order of the reads changes.',
-      },
-      {
-        t: 'The prefetcher only works for objects',
-        why: 'It is the other way round: it follows the simple patterns of typed arrays.',
-      },
-      {
-        t: 'With objects, each field read first waits for a pointer load, so every visit is two misses, one after the other',
-        correct: true,
-        why: 'Typed arrays lose the prefetcher but each read can start at once; with objects, half of every pair must wait for the other.',
-      },
-      {
-        t: 'Typed arrays are sorted automatically',
-        why: 'Typed arrays keep whatever order you store values in.',
-      },
-    ],
-  },
-  {
-    q: 'What is the main benefit of a pipeline?',
-    options: [
-      {
-        t: 'Each instruction finishes in fewer stages',
-        why: 'Each instruction still goes through every stage.',
-      },
-      {
-        t: 'It makes caches bigger',
-        why: 'Pipelining is about instructions, not cache size.',
-      },
-      {
-        t: 'Several instructions are in progress at once, so one can finish nearly every tick',
-        correct: true,
-        why: 'Like an assembly line: the stages are kept busy.',
-      },
-      {
-        t: 'It removes the need for branches',
-        why: 'Branches still exist; in fact they are what makes pipelines guess.',
       },
     ],
   },
@@ -926,50 +757,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'The toy predictor (“same as last time”, first guess false) sees: true, true, false, false. How many wrong guesses?',
-    options: [
-      {
-        t: '0',
-        why: 'The first guess is false, so the first true is already a mistake.',
-      },
-      {
-        t: '4',
-        why: 'Repeated outcomes are guessed right by “same as last time”.',
-      },
-      {
-        t: '2',
-        correct: true,
-        why: 'Wrong at the first true (guessed false) and at the first false (guessed true). The repeats are guessed right.',
-      },
-      {
-        t: '1',
-        why: 'There are two switches the predictor can’t see coming: the start and the change.',
-      },
-    ],
-  },
-  {
-    q: 'What happens to instructions fetched after a branch that was mispredicted?',
-    options: [
-      {
-        t: 'They are kept and run anyway',
-        why: 'They belong to the wrong path; running them would give wrong results.',
-      },
-      {
-        t: 'They are moved into the L1 cache',
-        why: 'Caches hold memory contents; this is about instructions in flight.',
-      },
-      {
-        t: 'The program crashes',
-        why: 'Mispredictions are normal and invisible to the program, apart from the time they cost.',
-      },
-      {
-        t: 'They are thrown away and the right path is fetched instead',
-        correct: true,
-        why: 'That wasted work is the cost of a misprediction.',
-      },
-    ],
-  },
-  {
     q: 'Which change is most likely to make `if (v < 50)` cheaper inside a loop over many random numbers?',
     options: [
       {
@@ -992,68 +779,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'A SIMD add instruction works on two registers of four lanes each. What does it produce?',
-    options: [
-      {
-        t: 'One number: the sum of all eight values',
-        why: 'That would mix lanes, and a SIMD add keeps lanes separate.',
-      },
-      {
-        t: 'Four sums: lane 0 + lane 0, lane 1 + lane 1, and so on',
-        correct: true,
-        why: 'The same operation, applied lane by lane, in one instruction.',
-      },
-      {
-        t: 'Four sums, worked out one after another by four instructions',
-        why: 'The point of SIMD is that one instruction does all four.',
-      },
-    ],
-  },
-  {
-    q: 'JavaScript numbers are 64-bit doubles. How many fit in the lanes of a 128-bit register?',
-    options: [
-      {
-        t: '4',
-        why: 'Four lanes fit when each value is 32 bits, as in `f32x4`.',
-      },
-      {
-        t: '1',
-        why: 'One double uses only 64 of the 128 bits.',
-      },
-      {
-        t: '2',
-        correct: true,
-        why: '128 ÷ 64 = 2. WebAssembly calls this shape `f64x2`.',
-      },
-      {
-        t: '8',
-        why: 'Eight lanes would need 16-bit values in 128 bits, or a 512-bit register for doubles.',
-      },
-    ],
-  },
-  {
-    q: 'Why might a compiler refuse to vectorise `s += xs[i]` over an array of floats, unless told it may?',
-    options: [
-      {
-        t: 'Lane-wise summing regroups the additions, and a different grouping can round differently',
-        correct: true,
-        why: '`(0.1 + 0.2) + 0.3` and `0.1 + (0.2 + 0.3)` differ, so the answer could change. LLVM only reorders when you allow it.',
-      },
-      {
-        t: 'SIMD cannot add floating-point numbers',
-        why: 'There are float SIMD instructions, such as `f64x2.add`.',
-      },
-      {
-        t: 'The loop has a tail',
-        why: 'Tails are normal; a separate loop handles them.',
-      },
-      {
-        t: 'Sums always need an if',
-        why: 'This loop has no branch in its body.',
-      },
-    ],
-  },
-  {
     q: 'Particles are an array of structs, 6 numbers each. A SIMD loop wants four `x` values in one register. What has to happen?',
     options: [
       {
@@ -1068,28 +793,6 @@ export const quiz = [
       {
         t: 'Nothing: the CPU rearranges memory by itself',
         why: 'Hardware does not change your data layout.',
-      },
-    ],
-  },
-  {
-    q: 'Which statement about SIMD and JavaScript is accurate?',
-    options: [
-      {
-        t: 'Browsers ship the SIMD.js API',
-        why: 'SIMD.js was removed from Stage 3, and browsers are not implementing it.',
-      },
-      {
-        t: 'V8 is documented to vectorise every loop',
-        why: 'None of the sources checked for this book says that, so do not assume it.',
-      },
-      {
-        t: 'SIMD is impossible on the web',
-        why: 'WebAssembly has 128-bit SIMD.',
-      },
-      {
-        t: 'WebAssembly has fixed-width 128-bit SIMD; JavaScript has no SIMD API',
-        correct: true,
-        why: 'The `v128` type and instructions like `f64x2.add` are part of WebAssembly 2.0.',
       },
     ],
   },

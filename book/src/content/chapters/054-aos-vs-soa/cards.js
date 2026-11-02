@@ -1,4 +1,4 @@
-// Chapter 52 cards: recall prompts, examples, exercises and quiz.
+// Chapter 54 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
@@ -15,16 +15,16 @@ export const prompts = {
     a: 'C structs sit back to back with no headers or pointers; a JavaScript array holds references to separate objects, each with a header.',
   },
   'packed-vs-soa': {
-    q: 'Packed AoS (one Float64Array) was already much faster than an array of objects. What did it remove?',
-    a: 'Object headers, the pointer to each object, and boxed numbers: the data became raw doubles in one block.',
+    q: 'In JavaScript, packed AoS (every record’s fields in turn in one Float64Array) is usually much faster than an array of objects. What does it remove?',
+    a: 'Object headers, the pointer to each object, and boxed numbers: the data is raw doubles in one block.',
   },
   'random-access': {
-    q: 'In shuffled order, packed AoS and SoA were almost level, far ahead of objects. Why?',
-    a: 'The big cost was chasing a pointer to each object at an unpredictable place; both typed layouts remove that.',
+    q: 'In JavaScript, reading records in a shuffled order, why do packed AoS and SoA both come out far ahead of an array of objects?',
+    a: 'With objects, each visit chases a pointer to an unpredictable place; both typed layouts compute the address from the index instead.',
   },
   'small-n': {
-    q: 'Why did SoA help much less with 1,000 particles than with 100,000?',
-    a: 'The whole data set already fits in cache, so there are few misses for a better layout to remove.',
+    q: 'Why does switching a loop from an array of objects to SoA usually help much less when the whole data set fits in cache?',
+    a: 'Data that fits in cache causes few misses, so a better layout has little to remove.',
   },
   'hot-cold': {
     q: 'What is a **hot/cold split**?',
@@ -295,7 +295,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In this book\'s run, packed AoS was much faster than an array of objects, although both keep records together. Why?',
+    q: 'In JavaScript, packed AoS (one Float64Array holding every record’s fields in turn) is often much faster than an array of objects, although both keep each record’s fields together. Why?',
     options: [
       {
         t: 'Packed AoS has no headers, no pointers to chase and no boxed numbers',
@@ -304,7 +304,7 @@ export const quiz = [
       },
       {
         t: 'Packed AoS uses SIMD automatically',
-        why: 'Nothing in the benchmark shows that, and JavaScript has no SIMD API.',
+        why: 'Nothing guarantees that, and JavaScript has no SIMD API.',
       },
       {
         t: 'Packed AoS skips the unused fields',
@@ -313,7 +313,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'With 1,000 particles, packed AoS was no faster than objects in this book\'s run. What is the best explanation?',
+    q: 'A JavaScript benchmark finds packed AoS far faster than an array of objects with 100,000 records, but no faster with 1,000. What is the best explanation?',
     options: [
       {
         t: 'Typed arrays are slow when they are small',

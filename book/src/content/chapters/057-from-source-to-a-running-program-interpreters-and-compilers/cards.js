@@ -1,47 +1,22 @@
-// Chapter 53 cards: recall prompts, examples, exercises and quiz.
+// Chapter 57 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 57, 57.
 
 export const prompts = {
   'pipeline-order': {
-    q: 'Put Drip’s tree-walking pipeline in order: tree, source, output, tokens.',
+    q: 'Put the stages of a tree-walking interpreter’s pipeline in order: tree, source, output, tokens.',
     a: 'source → tokens → tree → output (scanner, then parser, then interpreter).',
   },
-  'scanner-io': {
-    q: 'What does the scanner take in, and what does it hand on?',
-    a: 'It takes the source string (characters) and returns a list of tokens.',
-  },
-  'parser-io': {
-    q: 'What does the parser take in, and what does it hand on?',
-    a: 'It takes the list of tokens and returns a syntax tree.',
-  },
   'stop-early': {
-    q: 'A Drip program prints on line 1 and has a syntax error on line 3. Why is nothing printed?',
-    a: 'The pipeline runs stage by stage: parsing finds the error and `run` stops before the interpreter ever starts.',
+    q: 'An implementation parses the whole program before running any of it. A program prints on line 1 and has a syntax error on line 3. Why is nothing printed?',
+    a: 'The pipeline runs stage by stage: parsing finds the error, and the implementation stops before the interpreter ever starts.',
   },
   'ir-why': {
     q: 'What does a shared tree or IR in the middle of a pipeline let you do?',
     a: 'Mix and match: one front end can feed several back ends, and several front ends one back end.',
   },
-  'why-stages': {
-    q: 'Why split a language implementation into stages instead of one big function?',
-    a: 'Each stage has one job, so it can be understood, tested and changed on its own.',
-  },
   'front-end': {
     q: 'Which half of a language implementation must change if you switch to a different source language?',
     a: 'The front end (scanner and parser): it depends on the source language.',
-  },
-  'viscosity-kind': {
-    q: 'What goes into Viscosity, and what comes out?',
-    a: 'JavaScript in, JavaScript out: a source-to-source compiler that rewrites data layout.',
-  },
-  'interp-def': {
-    q: 'What does an interpreter do with a program?',
-    a: 'It runs it directly and produces its output.',
-  },
-  'compiler-def': {
-    q: 'Does a compiler run the program it compiles?',
-    a: 'No. It translates the program into another form; something else runs the result.',
   },
   'compiler-input': {
     q: 'An interpreter is given a program and its input. What is a compiler given?',
@@ -51,17 +26,9 @@ export const prompts = {
     q: 'Why does compiling pay off for a program that runs a million times?',
     a: 'The translation is done once; every run after that skips reading the source or walking the tree.',
   },
-  'why-interp': {
-    q: 'Name one strength of interpreting over compiling.',
-    a: 'It starts at once (no translation step), it is simpler to write, and its errors point straight at the source.',
-  },
   'vm-both': {
-    q: 'Drip’s bytecode VM: is it an interpreter or a compiler?',
+    q: 'A bytecode VM compiles source into bytecode, then runs that bytecode in a loop. Is it an interpreter or a compiler?',
     a: 'Both. A compiler turns source into bytecode, then an interpreter loop runs the bytecode.',
-  },
-  'v8-both': {
-    q: 'What does V8 do with a function that runs very often?',
-    a: 'It compiles it again, with an optimising compiler, into machine code (after first running it as bytecode in Ignition).',
   },
   'source-to-source': {
     q: 'What is a source-to-source compiler? Give an example.',
@@ -86,6 +53,7 @@ print (1 + 2) * 3;`,
 
 export const exercises = {
   'mini-interp': {
+    optional: true,
     title: 'A complete tiny interpreter',
     prompt: `A tiny language has only whole numbers, \`+\` and \`-\`, with a space between every token: \`1 + 2 - 4\`. The scanner is done: \`scan\` splits the source into tokens such as \`['1', '+', '2', '-', '4']\`.
 
@@ -155,7 +123,7 @@ test('longer sums', () => {
 - \`i += 2;\` jumps over the operator and its number, to the next operator (indexes 1, 3, 5 and so on).
 - \`}\` ends the loop, and \`return total;\` hands back the answer. Because \`total\` is updated as the loop goes, \`5 - 3 - 1\` means \`(5 - 3) - 1\`, which is 1: left to right.
 
-Notice that \`evaluate\` *does* the work as it reads; that is what makes it an interpreter. In the next chapter, the same loop writes instructions instead.
+Notice that \`evaluate\` *does* the work as it reads; that is what makes it an interpreter. The same loop can write instructions instead, which is what a compiler does.
 
 **Common wrong attempts.**
 
@@ -209,7 +177,7 @@ function run(src) {
   },
   'mini-compile': {
     title: 'The same language, compiled',
-    prompt: `Last chapter’s tiny language has whole numbers, \`+\` and \`-\`, with tokens like \`['1', '+', '2']\`. Now make a **compiler** for it. Write \`compile(ts)\`: it does not compute anything. It returns a list of instructions for a little stack machine. \`push N\` pushes a number; \`add\` and \`sub\` pop two numbers and push the result.
+    prompt: `A tiny language has whole numbers, \`+\` and \`-\`, with tokens like \`['1', '+', '2']\`. Now make a **compiler** for it. Write \`compile(ts)\`: it does not compute anything. It returns a list of instructions for a little stack machine. \`push N\` pushes a number; \`add\` and \`sub\` pop two numbers and push the result.
 
 \`compile(['1', '+', '2', '-', '4'])\` should return \`['push 1', 'push 2', 'add', 'push 4', 'sub']\`. The machine, \`exec\`, is written for you.`,
     starter: `function exec(code) {
@@ -276,11 +244,11 @@ test('running the compiled code', () => {
   expect(exec(compile(ts))).toBe(1);
 });`,
     hints: [
-      'The loop has the same shape as `evaluate` from the last chapter: the first number, then pairs of operator and number.',
+      'The loop has the same shape as an evaluator for the language: the first number, then pairs of operator and number.',
       'Instead of updating a total, push strings onto an output array.',
       'The machine needs both numbers on the stack before it can add them, so emit `push` for the right-hand number *before* the `add` or `sub`.',
     ],
-    walkthrough: `**How to think about it.** Put \`compile\` next to \`evaluate\` from the last chapter's exercise: the loop is identical, because the shape of the token list has not changed (a number, then pairs of operator and number). What changes is what happens at each step. \`evaluate\` *does* the operation (\`total += n\`); \`compile\` *writes it down* (\`out.push('add')\`). The only new question is the order of the instructions. A stack machine works on whatever is on top of its stack, so before it can add it needs both numbers there: "push 1, push 2, add". Operands first, then the operator.
+    walkthrough: `**How to think about it.** Put \`compile\` next to \`evaluate\`, the interpreter of the extra exercise *A complete tiny interpreter*: the loop is identical, because the shape of the token list has not changed (a number, then pairs of operator and number). What changes is what happens at each step. \`evaluate\` *does* the operation (\`total += n\`); \`compile\` *writes it down* (\`out.push('add')\`). The only new question is the order of the instructions. A stack machine works on whatever is on top of its stack, so before it can add it needs both numbers there: "push 1, push 2, add". Operands first, then the operator.
 
 **The solution, line by line.**
 
@@ -292,7 +260,7 @@ test('running the compiled code', () => {
 - \`else out.push('sub');\` ...and \`sub\` for \`-\`.
 - \`i += 2;\` moves on to the next operator, and after the loop \`return out;\` hands back the whole list of instructions.
 
-For \`1 + 2 - 4\` that gives \`push 1, push 2, add, push 4, sub\`. Running it: the stack holds 1, then 1 and 2, then (after \`add\`) 3, then 3 and 4, then (after \`sub\`) -1. Look back at the instructions in this chapter's step-through diagram, \`push 1, push 2, push 3, mul, add\`: the same idea. And once you have the instructions, \`exec\` can run them as many times as you like without scanning again, which is one reason real systems compile.
+For \`1 + 2 - 4\` that gives \`push 1, push 2, add, push 4, sub\`. Running it: the stack holds 1, then 1 and 2, then (after \`add\`) 3, then 3 and 4, then (after \`sub\`) -1. Look back at the instructions in the step-through diagram of the two roads, \`push 1, push 2, push 3, mul, add\`: the same idea. And once you have the instructions, \`exec\` can run them as many times as you like without scanning again, which is one reason real systems compile.
 
 **Common wrong attempts.**
 
@@ -390,7 +358,7 @@ test('numbers, not strings', () => {
 - \`if (op === 'add') st.push(a + b);\` pushes the sum, \`else st.push(a - b);\` the difference, left minus right.
 - After the loop, \`return st.pop();\` hands back the value left on top.
 
-Put it next to \`evaluate\` from the last chapter: both are interpreters, one for the sums language and one for the compiler's instructions. Together with \`compile\`, this is a bytecode VM in miniature: compile once, then interpret the instructions.
+Put it next to \`evaluate\`, from the exercise *A complete tiny interpreter*: both are interpreters, one for the sums language and one for the compiler's instructions. Together with \`compile\`, this is a bytecode VM in miniature: compile once, then interpret the instructions.
 
 **Common wrong attempts.**
 
@@ -439,59 +407,15 @@ Put it next to \`evaluate\` from the last chapter: both are interpreters, one fo
 
 export const quiz = [
   {
-    q: 'In Drip’s tree-walker, which stage turns `print 1 + 2;` from a string into a list like `print`, `1`, `+`, `2`, `;`?',
-    options: [
-      {
-        t: 'The parser',
-        why: 'The parser starts from tokens and builds a tree. Something has to make the tokens first.',
-      },
-      {
-        t: 'The scanner',
-        correct: true,
-        why: 'The scanner reads characters and groups them into tokens; it is the first stage of the pipeline.',
-      },
-      {
-        t: 'The interpreter',
-        why: 'The interpreter works on the tree, at the very end of the pipeline.',
-      },
-      {
-        t: 'The resolver',
-        why: 'The resolver checks the tree after parsing; it never sees raw characters.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the tree for `1 + 2 * 3` have `*` below `+`?',
-    options: [
-      {
-        t: 'Because `*` comes later in the line',
-        why: 'Order in the line is not the rule: in `2 * 3 + 1`, `*` would still sit below `+`.',
-      },
-      {
-        t: 'Because `2 * 3` must be worked out first, and the tree is evaluated from the bottom up',
-        correct: true,
-        why: 'Lower nodes are computed first and feed their parents, so the tree records that `*` binds tighter.',
-      },
-      {
-        t: 'Because the scanner sorts the tokens',
-        why: 'The scanner keeps tokens in source order. Arranging them is the parser’s job.',
-      },
-      {
-        t: 'It does not matter: either shape gives 7',
-        why: 'With `+` below `*`, you would compute `(1 + 2) * 3`, which is 9.',
-      },
-    ],
-  },
-  {
-    q: 'You want Drip programs to run on a new kind of processor. Which part of the implementation must you write?',
+    q: 'You want programs in an existing language to run on a new kind of processor. Which part of the language’s implementation must you write?',
     options: [
       {
         t: 'A new scanner',
-        why: 'The scanner depends on Drip’s spelling, which has not changed.',
+        why: 'The scanner depends on the language’s spelling, which has not changed.',
       },
       {
         t: 'A new parser',
-        why: 'Drip’s grammar is the same, so the parser and its tree can stay.',
+        why: 'The grammar is the same, so the parser and its tree can stay.',
       },
       {
         t: 'A new back end',
@@ -527,50 +451,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does Viscosity, the compiler this book builds towards, output?',
-    options: [
-      {
-        t: 'Machine code',
-        why: 'Viscosity leaves machine code to the JavaScript engine.',
-      },
-      {
-        t: 'The value your program computes',
-        why: 'That would mean running your program. Viscosity only rewrites it.',
-      },
-      {
-        t: 'JavaScript, with arrays of objects stored as typed-array columns where that is safe',
-        correct: true,
-        why: 'It is a source-to-source compiler: JavaScript in, JavaScript out, with a different data layout.',
-      },
-      {
-        t: 'Bytecode for Drip’s VM',
-        why: 'Drip is the teaching language. Viscosity works on JavaScript (and a subset of Python).',
-      },
-    ],
-  },
-  {
-    q: 'A program reads a Python file and writes out an equivalent JavaScript file. It never runs either one. What is it?',
-    options: [
-      {
-        t: 'An interpreter',
-        why: 'An interpreter runs the program. This one only translates it.',
-      },
-      {
-        t: 'A scanner',
-        why: 'A scanner is only the first stage, producing tokens.',
-      },
-      {
-        t: 'Not a compiler, because the output is source code',
-        why: 'Output in another source language still counts: that is a source-to-source compiler, like Viscosity.',
-      },
-      {
-        t: 'A compiler',
-        correct: true,
-        why: 'It translates a program into another form without running it.',
-      },
-    ],
-  },
-  {
     q: 'A compiler turns a program that reads a number and doubles it into machine code. When it does so, what does it know about the number?',
     options: [
       {
@@ -593,50 +473,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Drip’s VM turns source into bytecode and then runs a loop over the bytecode. What is it?',
-    options: [
-      {
-        t: 'Only a compiler',
-        why: 'It also runs the bytecode, which is interpreting.',
-      },
-      {
-        t: 'Only an interpreter',
-        why: 'Before running anything it translates the whole program into bytecode, which is compiling.',
-      },
-      {
-        t: 'Neither: it is a virtual machine',
-        why: 'A virtual machine is the interpreter half; Drip’s VM also has the compiler half.',
-      },
-      {
-        t: 'Both: a compiler, then an interpreter for the compiler’s output',
-        correct: true,
-        why: 'That is what a bytecode VM is.',
-      },
-    ],
-  },
-  {
-    q: 'A compiled program and the interpreter give different outputs for the same program and input. What follows?',
-    options: [
-      {
-        t: 'Nothing: compiled programs are allowed to differ',
-        why: 'A correct compiler keeps the meaning for every input: run(P′, input) = interp(P, input).',
-      },
-      {
-        t: 'At least one of them has a bug',
-        correct: true,
-        why: 'Both claim to carry out the same program, so they must agree. (Which one is wrong is a question for the language’s specification, coming up soon.)',
-      },
-      {
-        t: 'The interpreter is always the one that is wrong',
-        why: 'Either can have a bug; an interpreter is simpler, but not perfect.',
-      },
-      {
-        t: 'The input must have been different',
-        why: 'The question says the input was the same.',
-      },
-    ],
-  },
-  {
     q: 'Which statement about V8, the engine in Chrome and Node, is right?',
     options: [
       {
@@ -648,8 +484,8 @@ export const quiz = [
         why: 'V8 starts with bytecode and an interpreter, and compiles more while the program runs.',
       },
       {
-        t: 'It walks the syntax tree, like Part III’s Drip',
-        why: 'V8 runs bytecode, not the tree. That is closer to Drip’s VM in Part IV.',
+        t: 'It walks the syntax tree, like a tree-walking interpreter',
+        why: 'V8 runs bytecode, not the tree, like a bytecode VM.',
       },
       {
         t: 'It compiles functions to bytecode, interprets that, and compiles hot code again to machine code',

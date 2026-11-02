@@ -3,22 +3,15 @@ n: 52
 day: 2
 part: II
 title: 'Prefetching, pointer chasing, branches and SIMD'
-tagline: 'The hardware tries to fetch your data before you ask for it, and when your reads follow a simple pattern it succeeds. When each address is hidden inside the data you are still waiting for, nothing can run ahead, and every miss is paid in full.'
+tagline: 'The hardware fetches data before you ask, overlaps instructions, guesses which way each if goes and adds several numbers at once; each trick works only when your code and your data let it, and a struct of arrays lets all of them.'
 objectives:
-  - Explain what the hardware prefetcher does, and which access patterns it can follow.
-  - Explain why reads whose addresses are known up front can overlap, even in a shuffled order.
-  - Explain pointer chasing, and why it defeats both the prefetcher and the overlap.
-  - Spot pointer chasing in real code, from linked lists to arrays of objects.
-  - Describe a pipeline, and work out how many ticks a run of instructions takes with and without one.
-  - Explain why one instruction waiting for another holds the pipeline back.
-  - Explain why a pipelined CPU must guess the outcome of an if, and what a wrong guess costs.
-  - Predict which data makes branch prediction easy, and count a simple predictor’s mistakes.
-  - Explain what SIMD is and what a lane is, and work out how many lanes a register has.
-  - Describe what a compiler does when it vectorises a loop, and name two things that stop it.
-  - Explain why SIMD wants a struct-of-arrays layout rather than an array of structs.
-  - Say accurately where SIMD is available to JavaScript today, and where it is not.
+  - Explain what the prefetcher does, and why a shuffled order or a chain of pointers defeats it.
+  - Explain why reads whose addresses are known up front can overlap, and why pointer chasing cannot.
+  - Describe a pipeline, and why one instruction waiting for another holds it back.
+  - Explain why a pipelined CPU guesses the way of an if, and which data makes the guess easy.
+  - Explain SIMD and lanes, what vectorisation needs, and why it wants a struct-of-arrays layout.
 introduces: [prefetcher, pointer-chasing, pipeline, branch-prediction, simd, vectorization, lane]
-uses: [cpu, register, cpu-cache, cache-miss, latency, cache-line, stride, spatial-locality, bandwidth, memory, address, pointer, array-of-objects, tree, typed-array, for-of, function, parameter, return, array, index, array-loop, object, if, comparison, while-loop, numbers, for-loop, console-log, booleans, contiguous, float64, length]
+uses: [cpu, register, cpu-cache, cache-miss, latency, cache-line, stride, spatial-locality, bandwidth, memory, address, pointer, array-of-objects, tree, typed-array, for-of, function, array, index, object, if, comparison, while-loop, numbers, for-loop, console-log, contiguous, float64]
 sources: [slotin-amh-prefetching, slotin-amh-latency, slotin-amh-mlp, slotin-amh-pipelining, slotin-amh-branching, apple-wwdc25-cpu, llvm-vectorizers, ispc-perfguide, ispcdocs, wasm-simd, wasm-finished-proposals, tc39-simdjs, mdn-typed-arrays]
 ---
 import PrefetchSteps from '../../../components/diagrams/ch052/PrefetchSteps';
@@ -30,33 +23,11 @@ import LaneSteps from '../../../components/diagrams/ch052/LaneSteps';
 import LaneSumSteps from '../../../components/diagrams/ch052/LaneSumSteps';
 import GatherPicture from '../../../components/diagrams/ch052/GatherPicture';
 
-{/* ── merge: from old chapter 52, Prefetching and pointer chasing ── */}
+## Less work, more time
 
-## Same data, different order
-
-Here are two loops over the same million particles. The first goes in
-order; the second visits them in a shuffled order, given by an index
-array `idx` that holds the numbers 0 to n − 1 mixed up:
-
-```js
-// in order
-for (let i = 0; i < n; i++) {
-  s += x[i] + vx[i];
-}
-// shuffled
-for (let i = 0; i < n; i++) {
-  const j = idx[i];
-  s += x[j] + vx[j];
-}
-```
-
-Both read every particle exactly once, so they fetch essentially the
-same cache lines (the shuffled one also reads `idx`), and by the
-line-counting of *Cache lines and locality* they should cost about the
-same. They don't. This book's benchmark has a shuffled loop like the
-second one (`random-x`) and an in-order loop over the same particles
-that does *more* work per particle (`update-xy` reads four fields and
-writes two):
+This book's benchmark has an in-order loop that reads four fields of
+every particle and writes two (`update-xy`), and a loop that reads just
+two fields but visits the particles in a shuffled order (`random-x`):
 
 <BenchBars suite="update-xy" n={1000000} title="In order: x += vx, y += vy"
   highlight={['soa']} layouts={['aos', 'aos-packed', 'soa']}
@@ -64,45 +35,58 @@ writes two):
 
 <BenchBars suite="random-x" n={1000000} title="Shuffled: read x and vx"
   highlight={['soa']} layouts={['aos', 'aos-packed', 'soa']}
-  caption="Reading just two fields, in shuffled order: slower for every layout, and dramatically slower for objects." />
+  caption="Reading two fields in a shuffled order: slower for every layout, and far slower for objects." />
 
-Less work, more time. Order matters, and the reason is that the
-hardware is quietly guessing what you will do next.
+Counting lines, as in *Caches, lines and locality*, the shuffled loop
+should be cheaper; it is not, because the hardware quietly runs ahead
+of your code, in four ways that each need your help.
 
 ## The prefetcher
 
 <Analogy title="a clerk who reads ahead">
-A good warehouse clerk notices that you asked for box 10, then box 11,
-then box 12. Without waiting to be asked, they put boxes 13, 14 and 15
-on the next van, so by the time you want them they are already on your
-desk.
-<span slot="breaks">You could tell the clerk your plans; the prefetcher
-cannot be told anything (in ordinary code), and it sees only the
-addresses you have read so far. It also only spots simple patterns: a
-clerk might guess "the boxes in the same aisle", the prefetcher
-cannot.</span>
-</Analogy>
-
-<Analogy extra title="a video that buffers ahead">
-While you watch the first minute of a video, the player is already
-downloading the second, so the picture never stops to wait.
-<span slot="breaks">A video player knows the file plays in order; the
-prefetcher has to work that out from the reads it sees, and skipping
-around at random (like jumping through a video) leaves it with nothing
-useful to fetch.</span>
+A good warehouse clerk notices that you asked for box 10, then 11, then
+12, and without being asked puts 13, 14 and 15 on the next van, so they
+are on your desk by the time you want them.
+<span slot="breaks">You could tell a clerk your plans; the prefetcher
+cannot be told anything (in ordinary code), sees only the addresses read
+so far, and spots only simple patterns.</span>
 </Analogy>
 
 <PrefetchSteps client:visible />
 
 <Callout kind="definition">
-The **prefetcher** is hardware that watches which memory a program
-reads and fetches the lines it predicts will be needed next, before
-they are asked for. It follows simple patterns: forwards or backwards,
-through several arrays at once, with small or medium
-strides<Cite id="slotin-amh-prefetching" />. When it works, the trips
-to memory still happen, but they overlap with useful work instead of
-stalling it.
+The **prefetcher** is hardware that watches which memory a program reads
+and fetches the lines it predicts come next, before they are asked for.
+It follows simple patterns: forwards or backwards, through several
+arrays at once, with small or medium
+strides<Cite id="slotin-amh-prefetching" />. The trips to memory still
+happen, but they overlap with useful work instead of stalling it.
 </Callout>
+
+<Examples of="prefetcher">
+
+```js
+for (let i = n - 1; i >= 0; i--)
+  x[i] += vx[i];  // two arrays, step -8
+s += x[idx[i]];   // shuffled: no pattern
+```
+
+</Examples>
+
+The first loop walks two arrays backwards, two steady patterns with a
+step of −8 bytes, well within what prefetchers follow; the second reads
+in an order no pattern describes, so nothing is fetched ahead.
+
+<More title="Try it: the same sum, in order and shuffled">
+
+The program sums one big `Float64Array` through two index arrays,
+`inOrder` (0, 1, 2, …) and `shuffled` (the same numbers mixed up by the
+standard fair shuffle); on most machines the shuffled sum is several
+times slower.
+
+<Run id="order-matters" />
+
+</More>
 
 <Formal title="What the prefetcher looks for">
 
@@ -111,89 +95,56 @@ a[k+1] − a[k] = d  for the last few reads
 ⇒ fetch a[k] + d, a[k] + 2d, …
 ```
 
-<span slot="read">If the last few addresses read, a[k], each differ
-from the one before by the same step d, then (⇒) fetch the next few
-addresses in that pattern ahead of time. The step d can be negative,
-for a loop that walks backwards.</span>
+<span slot="read">If the last few addresses read each differ from the
+one before by the same step d, then fetch the next few addresses in that
+pattern ahead of time; d may be negative, for a loop that walks
+backwards.</span>
 </Formal>
 
-<Examples of="prefetcher">
-
-```js
-// forwards, stride 8: easy
-for (let i = 0; i < n; i++) s += x[i];
-```
-
-```js
-// backwards through two arrays at
-// once: still a simple pattern
-for (let i = n - 1; i >= 0; i--) {
-  x[i] += vx[i];
-}
-```
-
-<Run id="order-matters" />
-
-</Examples>
-
-The first is the easiest pattern there is: the addresses go up by 8
-each time, so after a few misses the prefetcher runs ahead and the loop
-mostly hits. The second walks backwards and reads two arrays, which is
-still two steady patterns with a step of −8 bytes, well inside what
-prefetchers follow. The runnable one reads every element of one big
-`Float64Array` exactly once, first in order and then in a shuffled
-order (the shuffle swaps each element with a randomly chosen one at or
-before it, a standard way to mix an array fairly); on most machines the
-shuffled sum is several times slower, though it does the same additions.
-
-This also answers a question the chapter on cache lines left open. If
-each line of the every-8th loop over 64 megabytes, a million lines, had
-cost a full trip of around a hundred nanoseconds, the loop would have
-needed about a tenth of a second. It usually takes far less, because
-the prefetcher was running ahead. A shuffled order gives it nothing to
-follow.
-
-<Prompts ids={['prefetch-what', 'prefetch-patterns', 'backwards-ok', 'shuffle-why']} />
+<Prompts ids={['prefetch-what']} />
 
 ## Pointer chasing
 
-The charts at the top show a second problem: shuffling hurts objects
-far more than typed arrays. With a typed array, the CPU computes the
-address of `x[j]` from `j` straight away, so even in a shuffled order it
-can send off several reads and wait for them all at
-once<Cite id="slotin-amh-mlp" />. With objects, the address of
-`ps[j].x` is *stored inside memory*: first load the pointer from the
-array, then follow it.
-
-<Analogy extra title="a treasure hunt">
-Each clue in a treasure hunt tells you where the next clue is hidden.
-However many friends you bring, nobody can set off for clue 5 until
-someone has found clue 4 and read it.
-<span slot="breaks">Treasure-hunt clues are always far apart; in memory,
-two linked nodes may happen to sit in the same line or still be in the
-cache, and then a step of the chase is cheap.</span>
-</Analogy>
-
-<Analogy extra title="a chain of forwarded letters">
-A letter arrives saying "the answer is in the letter I sent to my
-sister"; her letter says "ask my neighbour". Each step is a full trip
-through the post, and you cannot post the next request until the last
-reply arrives.
-<span slot="breaks">You could post all the letters at once if you knew
-the addresses in advance; that is exactly the difference between
-`x[idx[i]]`, whose addresses are known from `idx`, and a linked list,
-whose addresses are not.</span>
-</Analogy>
+Shuffling hurts objects far more than typed arrays. For `x[j]` the CPU
+computes the address from `j` at once, so it can send several reads off
+together<Cite id="slotin-amh-mlp" />; for `ps[j].x` the object's address
+is *stored in memory*, and must be loaded first.
 
 <ChaseSteps client:visible />
 
 <Callout kind="definition">
 **Pointer chasing** is following a chain of pointers, where each load
 needs the address produced by the load before it. The prefetcher cannot
-predict the addresses, and the CPU cannot start the next load early, so
-every step waits out the full latency. It is very common in data
-structures built from many small heap objects<Cite id="slotin-amh-latency" />.
+predict the addresses and the CPU cannot start the next load early, so
+every step waits out the full latency; it is common in structures built
+from many small heap objects<Cite id="slotin-amh-latency" />.
 </Callout>
+
+<Examples of="pointer-chasing">
+
+```js
+s += x[idx[i]];     // address from idx[i]
+s += ps[idx[i]].x;  // load ps[j], then .x
+// a linked list:
+for (let p = head; p !== null; p = p.next)
+  s += p.v;
+```
+
+</Examples>
+
+The first line can overlap its misses, since every address follows from
+`idx`; the second waits for the pointer in `ps[j]` before it can ask for
+`x`. A linked list is the purest chase, and walking any tree of objects
+(every syntax tree this book builds) is one too.
+
+<More title="A treasure hunt, and the cost of a chase">
+
+<Analogy extra title="a treasure hunt">
+Each clue tells you where the next one is hidden; however many friends
+you bring, nobody can set off for clue 5 until someone has read clue 4.
+<span slot="breaks">Two linked nodes may happen to share a line or still
+be cached, and then a step of the chase is cheap.</span>
+</Analogy>
 
 <Formal title="Overlapped reads against a chase">
 
@@ -202,143 +153,47 @@ chase:       time ≈ n × t_mem
 overlapped:  time ≈ n × t_mem / k
 ```
 
-<span slot="read">A chain of n reads that each miss takes about n times
-the time of one trip to memory, t_mem. If the addresses are known up
-front and the CPU keeps k reads in flight at once, the same n reads take
-about k times less.</span>
+<span slot="read">A chain of n reads that each miss takes about n trips
+to memory; if the addresses are known up front and the CPU keeps k reads
+in flight, the same reads take about k times less.</span>
 </Formal>
 
-<Examples of="pointer-chasing">
+</More>
 
-```js
-// a linked list: the purest chase
-let p = head;
-while (p !== null) {
-  s += p.v;
-  p = p.next;
-}
-```
-
-```js
-// x[j]: address from j, at once
-s += x[idx[i]];
-// ps[j].x: load the pointer in ps[j]
-// first, then load x from there
-s += ps[idx[i]].x;
-```
-
-```js
-// walking a tree of objects
-function total(t) {
-  if (t === null) return 0;
-  return t.v + total(t.left) +
-    total(t.right);
-}
-```
-
-</Examples>
-
-The first is the chase in its plainest form, the same loop you wrote
-over a toy memory in the chapter on pointers: each node tells you where
-the next one is, so you can only ever be at one node at a time. The
-second is the spot the difference behind the benchmark: both lines read
-one number for a shuffled index, but the first can compute its address
-from `idx[i]` alone, while the second must wait for the pointer in
-`ps[j]` before it even knows where `x` is. The third is realistic: a
-tree from *Trees: recursion's natural home*, where every child is
-reached through a pointer. The syntax trees this book's compilers build
-are trees of exactly this kind, so walking them is pointer chasing too.
-
-<Prompts ids={['chase-what', 'chase-why', 'overlap-why', 'tree-chase']} />
-
-<Callout kind="engine" label="Under the hood">
-Look at what a struct-of-arrays loop gives the hardware: an address that
-is a simple function of `i`, so the prefetcher can run ahead, and no
-pointers to chase, so even a shuffled loop can keep several reads in
-flight. An array of objects asks for a pointer load before every field,
-and the objects may be anywhere. That is why, in the charts at the top
-of this chapter, shuffling cost the objects so much more time per
-element than it cost the typed arrays. Viscosity's rewrite turns
-`ps[i].x` into `x[i]`: it replaces pointer chasing with arithmetic the
-hardware can predict.
-</Callout>
-
-## Your turn
-
-<Exercise id="findStride" />
-
-<Exercise id="visitOrder" />
-
-## What you learned
-
-- The **prefetcher** fetches lines before you ask, when your reads
-  follow a simple pattern: forwards, backwards, or a steady stride,
-  through one array or a few.
-- Even without a pattern, reads whose addresses are known up front can
-  overlap, so a shuffled typed-array loop pays only part of each trip.
-- **Pointer chasing** defeats both: each address is only known once the
-  previous load arrives, so every miss is paid in full, one after
-  another.
-
-
-{/* ── merge: from old chapter 52, Pipelines and branch prediction ── */}
-
-## Sorting makes it faster?
-
-Here is a loop that adds up the elements of an array that are below 50:
-
-```js
-let s = 0;
-for (const v of xs) {
-  if (v < 50) s += v;
-}
-```
-
-Fill `xs` with random numbers from 0 to 99, and time it. Then sort `xs`
-first and time it again. The loop does exactly the same work either
-way, the same comparisons and the same additions, since sorting does not
-change which values are below 50. Yet in a well-known experiment, in
-compiled C++ on a modern CPU, the sorted version ran several times
-faster<Cite id="slotin-amh-branching" />. Nothing about memory explains
-that, because both versions read the array in order. The explanation
-is in how the CPU runs instructions, and it begins with a factory.
+<Prompts ids={['overlap-why', 'chase-why']} />
 
 ## The pipeline
 
-<Analogy title="a car factory">
-A car factory does not build one car from start to finish before
-starting the next. The line keeps every station busy: while one car
-gets its wheels, the next gets its doors, and the one behind it its
-frame, so a finished car rolls off the end far more often than it takes
-to build one.
-<span slot="breaks">Cars on a line never depend on each other;
-instructions often do, and an instruction that needs the answer of the
-one just ahead of it has to wait for it, leaving a gap in the line.</span>
-</Analogy>
-
-<Analogy extra title="doing the laundry">
-With one washer and one dryer, you start the second load washing as
-soon as the first goes into the dryer, rather than waiting for the
-first to be dry and folded.
-<span slot="breaks">Laundry has three or four stages; a real CPU
-pipeline has many more, and it also runs several instructions side by
-side in each stage, which a single washer cannot.</span>
-</Analogy>
-
-A CPU does the same with instructions, moving each one a stage along
-on every **tick** of its clock (a steady beat, billions of times a
-second). Step through it:
+A CPU does not finish one instruction before starting the next. It
+splits each into stages and moves every instruction one stage along on
+each **tick** of its clock, like a car factory where one car gets its
+wheels while the next gets its doors:
 
 <PipelineSteps client:visible />
 
 <Callout kind="definition">
-A **pipeline** splits running an instruction into stages (fetch,
-decode, execute, write back, and on real chips many more) and works on
-several instructions at once, each at a different
-stage<Cite id="slotin-amh-pipelining" />. Each instruction still takes
-every stage; however, once the pipeline is full, one instruction can
-finish on nearly every tick of the clock.
+A **pipeline** splits running an instruction into stages (fetch, decode,
+execute, write back, and on real chips many more) and works on several
+instructions at once, each at a different
+stage<Cite id="slotin-amh-pipelining" />. Once it is full, one
+instruction can finish on nearly every tick; an instruction that needs
+the result of one still in the line has to wait, leaving a gap.
 </Callout>
+
+<Examples of="pipeline">
+
+```text
+a = b + c
+d = e + f    ; independent: no gap
+a = b + c
+d = a + 1    ; needs a: waits for it
+```
+
+</Examples>
+
+The second pair waits because `d = a + 1` cannot execute until `a`
+exists; a running sum `s += v` is a chain of such waits, while the work
+around it (reading the next `v`, moving the loop on) flows past.
 
 <Formal title="Ticks for n instructions through S stages">
 
@@ -347,434 +202,208 @@ no pipeline:  n × S
 pipeline:     S + (n − 1)
 ```
 
-<span slot="read">Without a pipeline, each of the n instructions takes
-all S ticks before the next starts. With one, the first instruction
-takes S ticks to come out of the end, and after that one more finishes
-every tick, n − 1 more ticks in all.</span>
+<span slot="read">Without a pipeline each of n instructions takes all S
+ticks; with one, the first takes S ticks and one more finishes every
+tick after that. With 4 stages, 100 instructions take 400 ticks or
+103.</span>
 </Formal>
 
-<Examples of="pipeline">
-
-```text
-a = b + c
-d = e + f    ; independent: both can
-             ; be in the line at once
-```
-
-```text
-a = b + c
-d = a + 1    ; needs a: waits until
-             ; a = b + c is done
-```
-
-```js
-for (const v of xs) {
-  s += v; // each add needs the last s
-}
-```
-
-</Examples>
-
-The first two are the same pair of additions with one change. In the
-first, `d = e + f` does not use `a`, so it can follow `a = b + c` into
-the pipeline on the very next tick. In the second, `d = a + 1` needs the
-value of `a`, so it cannot execute until the instruction before it has
-finished, and the pipeline has a gap. The third is the realistic case:
-in a sum, every `s += v` needs the `s` from the turn before, a chain of
-waits through the whole loop, while the parts that do not depend on
-each other (reading the next `v`, moving the loop on) can still flow
-past it. With four stages, the formula says 100 instructions need 400
-ticks without a pipeline and 103 with one, when nothing waits.
-
-<Prompts ids={['pipeline-what', 'stage-ticks', 'dependent-wait']} />
+<Prompts ids={['dependent-wait']} />
 
 ## Guessing the way of an if
 
-Now put an `if` in the line. Whether the next instruction comes from
-the "then" side or the other side depends on the comparison, and the
-comparison is only worked out at the execute stage, several stages in.
-By then the pipeline would like to have fetched several more
-instructions; it cannot know which ones, so it guesses.
-
-<Analogy extra title="a driver at a familiar fork">
-A driver who takes the left fork every morning starts turning left
-before reading the sign. Nearly every day that is right and saves a
-moment; on the day the road is closed, they have to stop, reverse and
-take the other road.
-<span slot="breaks">A driver can see the closed road coming; the CPU
-only finds out it guessed wrong when the comparison finishes, by which
-time it has done several instructions' worth of work on the wrong
-road.</span>
-</Analogy>
-
-<Analogy extra title="a barista and your usual order">
-A barista who sees a regular come in starts making their usual before
-they reach the counter. If the regular orders something else, that cup
-is poured away and a new one started.
-<span slot="breaks">A barista can ask; the CPU cannot, and it guesses at
-every branch, billions of times a second, from nothing but how that
-branch went before.</span>
-</Analogy>
+Sum the elements of an array of random numbers from 0 to 99 that are
+below 50, then sort the array and do it again. The work is identical,
+yet in a well-known experiment in compiled C++ the sorted version ran
+several times faster<Cite id="slotin-amh-branching" />. The comparison
+is only worked out several stages into the pipeline, and by then the CPU
+wants to have fetched the next instructions; it cannot know which side
+of the `if` they come from, so it guesses.
 
 <BranchSteps client:visible />
 
 <Callout kind="definition">
-To keep the pipeline full at an `if`, the CPU predicts which way the
-branch will go and carries on along that path before it knows. This is
-**branch prediction**. If the guess was wrong, the work done on the
-wrong path is thrown away and the pipeline refills from the right
-one<Cite id="apple-wwdc25-cpu" />. Predictors learn from how each branch
-went before: branches that almost always go one way are guessed right
-nearly every time, and branches with no consistent pattern are where
-they go wrong<Cite id="apple-wwdc25-cpu" />.
+**Branch prediction** is the CPU predicting which way a branch will go
+and carrying on along that path before it knows. On a wrong guess, the
+work done on the wrong path is thrown away and the pipeline refills from
+the right one<Cite id="apple-wwdc25-cpu" />. Predictors learn from how
+each branch went before, so branches that nearly always go one way cost
+almost nothing, and branches with no pattern are where they go wrong.
 </Callout>
-
-<Formal title="The cost of guessing">
-
-```text
-time ≈ n × (t + m × p)
-```
-
-<span slot="read">A loop of n turns takes about n times the time of one
-turn, t, plus the misprediction rate m (the share of turns where the
-guess was wrong) times the penalty p, the work thrown away each time.
-Sorting the data in the example above cuts m from about one half to
-almost nothing.</span>
-</Formal>
 
 <Examples of="branch-prediction">
 
 ```js
-// i < n: true n times, false once
-for (let i = 0; i < n; i++) {
-  s += xs[i];
+for (const v of xs) {
+  if (v < 50) s += v;
 }
 ```
-
-```js
-// almost never true: nearly free
-if (v === undefined) {
-  throw new Error('missing value');
-}
-```
-
-<Run id="sorted-branch" />
 
 </Examples>
 
-The first is the branch in every loop: the test `i < n` comes out true
-on every turn but the last, so the predictor guesses "true" and is wrong
-once, at the very end. The second is a check that guards against bad
-data; because it almost never fires, it is predicted right nearly every
-time and costs almost nothing<Cite id="slotin-amh-branching" />, which
-is why it is fine to write such checks in hot code. The runnable one is
-the experiment from the start of the chapter, in JavaScript. How much of
-the effect shows up depends on the machine code the engine generates (an
-engine may turn a simple `if` into instructions that do not branch at
-all, and then the order no longer matters), so run it, and measure
-before you rely on it.
+Over random data the guess is wrong about half the time; over sorted
+data the `if` is true for a long run and then false, one switch in all.
+A loop's own test `i < n` is wrong once, at the end, and an error check
+that never fires is nearly free. (In JavaScript the effect depends on
+the machine code the engine generates, which may not branch at all, so
+measure.)
 
-<Prompts ids={['why-guess', 'mispredict-cost', 'sorted-why', 'rare-branch', 'loop-branch']} />
+<More title="Try it: random against sorted, in JavaScript">
 
-<Callout kind="engine" label="Under the hood">
-This is the last piece of the hardware picture, and it fits the others.
-A struct-of-arrays loop gives the CPU addresses it can predict (for the
-prefetcher), no pointers to chase, and a loop branch that is taken every
-time but the last (for the branch predictor). Your program also runs
-branches you never wrote: `xs[i]` must give `undefined` when `i` is past
-the end, so `i` is compared with the length on every read (unless the
-engine can prove it is always inside);
-because such checks almost never fail, the predictor makes them nearly
-free. The branches that
-cost time are the ones that depend on your data, and the next chapter
-shows a way to avoid some of them altogether: doing the same work on
-several numbers at once.
-</Callout>
+<Run id="sorted-branch" />
 
-## Your turn
+</More>
 
-<Exercise id="mispredicts" />
+<Prompts ids={['mispredict-cost', 'sorted-why']} />
 
-<Exercise id="twoBit" />
+## SIMD: one instruction, several numbers
 
-## What you learned
-
-- A **pipeline** works on many instructions at once, each at a
-  different stage, like an assembly line; an instruction that needs the
-  result of the one before it has to wait.
-- To keep it full, the CPU uses **branch prediction**: it guesses which
-  way each `if` goes and carries on. Wrong guesses throw work away.
-- Predictable branches (a loop's own test, checks that rarely fail,
-  sorted data) keep guesses right; random data does not.
-
-
-{/* ── merge: from old chapter 52, SIMD: one instruction, many numbers ── */}
-
-## The same sum, a million times
-
-Here is the loop at the heart of every particle game, written with one
-typed array per field, the way you met it in the chapter on floats and
-typed arrays:
-
-```js
-for (let i = 0; i < n; i++) {
-  x[i] = x[i] + vx[i];
-}
-```
-
-Every turn of the loop does the same three things (load two numbers,
-add them, store one), and only the index changes; for a million
-particles that is a million tiny additions that do not depend on each
-other at all. Most CPUs can do several of them with a single
-instruction, as long as the numbers are lined up the right way, and this
-chapter is about that ability and the one condition it puts on your
-data.
-
-## One instruction, four answers
-
-<Analogy title="a stamp with four heads">
-Stamping a hundred envelopes one at a time takes a hundred presses. Glue
-four stamps side by side onto one handle, line up four envelopes under
-it, and one press marks all four; a hundred envelopes now take
-twenty-five presses. The trick only works if the envelopes are **lined
-up** under the heads: scattered over the desk, you are back to one press
-each.
-<span slot="breaks">A stamp prints the same picture on every envelope,
-whereas one SIMD add gives each of its four slots a different answer,
-worked out from that slot's own two numbers.</span>
-</Analogy>
-
-<Analogy extra title="a muffin tray">
-A tray of four muffin cups goes into the oven once and four muffins come
-out, in the time one would take; the batter in cup 2 never runs into
-cup 3, so each muffin is its own.
-<span slot="breaks">You can bake a tray with one cup empty and nobody
-minds; a CPU's register has a fixed number of slots set by the hardware,
-and leftover numbers that do not fill a whole register (the "tail") are
-usually handled by a separate, ordinary loop.</span>
-</Analogy>
-
-That four-headed stamp exists in real CPUs. Besides the ordinary
-**registers** (the CPU's few tiny storage slots, from the chapter on the
-CPU and its caches), many CPUs have **wide registers** that hold several
-numbers at once, and instructions that work on all of them together.
-Step through an addition done both ways:
+The particle update `x[i] = x[i] + vx[i]` is a million independent
+additions, and most CPUs can do several with one instruction, using
+**wide registers** that hold several numbers at once.
 
 <LaneSteps client:visible />
 
 <Callout kind="definition">
-**SIMD** stands for *single instruction, multiple data*: one instruction
-applies the same operation to several values at once. The values sit in
-a wide **vector register**, and each slot of that register is a
-**lane**. A SIMD add adds lane 0 to lane 0, lane 1 to lane 1, and so on;
-lanes never mix.
+**SIMD** (*single instruction, multiple data*) is one instruction
+applying the same operation to several values at once. The values sit in
+a wide **vector register**, and each slot of it is a **lane**; a SIMD add
+adds lane 0 to lane 0, lane 1 to lane 1, and so on, and lanes never mix.
+The lane count is the register's width divided by the element's size.
 </Callout>
-
-How many lanes you get depends on the width of the register and the size
-of each number. A 128-bit register has room for four 32-bit floats, or
-two 64-bit doubles; JavaScript numbers are 64-bit doubles, so at that
-width they get **two** lanes. WebAssembly (a low-level code format
-that browsers and Node run beside JavaScript) has SIMD instructions that
-spell the shape out in their names (`f64x2` means "two lanes of 64-bit
-floats")<Cite id="wasm-simd" />.
-Some CPUs have wider registers still; the guide to ISPC (Intel's
-compiler for a C-like language built around SIMD) describes 256-bit registers (AVX2) and 512-bit ones (AVX-512) on x86
-CPUs<Cite id="ispcdocs" />.
-
-<Formal title="A lane-wise add">
-
-```text
-W = register bits ÷ element bits
-c[l] = a[l] + b[l]   for every l < W
-128 ÷ 64 = 2   128 ÷ 32 = 4   512 ÷ 64 = 8
-```
-
-<span slot="read">W, the number of lanes, is the width of the register
-divided by the size of one element. A vector add makes lane l of the
-result from lane l of each input, for every lane number l from 0 up to
-W minus 1, all at once. The last line works out W for three common
-cases: two lanes of doubles in 128 bits, four lanes of 32-bit floats,
-and eight lanes of doubles in a 512-bit register.</span>
-</Formal>
 
 <Examples of="simd lane">
 
-```js
-// lanes = register bits / element bits
-128 / 64; // 2 lanes of float64
-128 / 32; // 4 lanes of float32
-```
-
 ```text
-f64x2.add   two adds, lane by lane
-f32x4.mul   four multiplies at once
-i32x4.add   four 32-bit integer adds
+128 ÷ 64 = 2 lanes of float64
+128 ÷ 32 = 4 lanes of float32
+f64x2.add   two float64 adds at once
 ```
-
-<Run id="by-four" />
 
 </Examples>
 
-The first is the lane arithmetic: a 128-bit register holds two
-`float64`s (the size of every JavaScript number) or four 32-bit
-floats. The second is three
-real WebAssembly instruction names; the part before the `x` is the lane
-type (`f64` is a 64-bit float, `i32` a 32-bit integer), the number after
-it is the lane count, and the word after the dot is the operation done
-in every lane. The third you can run: our loop rewritten by hand into
-the *shape* SIMD hardware sees, with `W = 4` lanes per step. The first
-`for` jumps `i` forward four at a time while a whole chunk still fits
-(`i + W <= a.length`), and the inner loop does the four lanes; the
-second `for` picks up the **tail**, the elements left over (here, 4 and
-5). It prints `[11, 22, 33, 44, 55, 66]`; it is no faster (underneath
-it is still one addition at a time), but it shows the chunks a
-vectorised loop works in. Try `W = 3`.
+JavaScript numbers are 64-bit doubles, so a 128-bit register holds two
+of them; WebAssembly (the low-level code format browsers and Node run
+beside JavaScript) spells the shape in its instruction names, lane type
+before the `x` and lane count after it<Cite id="wasm-simd" />. Some x86
+chips have 256- and 512-bit registers as well<Cite id="ispcdocs" />.
 
-<Prompts ids={['simd-what', 'lane-what', 'lanes-128']} />
+<Prompts ids={['lanes-128']} />
 
-## Vectorisation: letting the compiler do it
+## Vectorisation, and why it wants columns
 
-You rarely write SIMD instructions by hand. Instead, an optimising
-compiler looks at an ordinary loop and rewrites it to handle several
-turns of the loop per step; LLVM, the compiler toolkit behind the clang
-C compiler, has a loop vectoriser that does this, and it is on by
-default<Cite id="llvm-vectorizers" />.
-
-<Analogy extra title="a manager batching the work">
-A manager watches a clerk stamp envelopes one by one and hands them the
-four-headed stamp, but only after checking that batching cannot change
-the result: if each envelope's number had to be copied from the one
-before it, stamping four at once would get it wrong.
-<span slot="breaks">A manager can look at the actual envelopes; a
-compiler sees only the code, so when it cannot prove batching is safe it
-either adds a quick check that runs while the program runs, or leaves
-the loop alone.</span>
-</Analogy>
-
-The compiler may only make the rewrite when it cannot change the answer,
-and two things commonly get in the way<Cite id="llvm-vectorizers" />.
-The first is **overlap**: if `x` and `vx` might be the same memory,
-writing four `x` values before reading the next four `vx` values could
-change what is read, so LLVM checks for overlap while the program runs
-and falls back to the plain loop when there is any. The second is
-**order**: adding floating-point numbers in a different grouping can
-round differently, and a sum split across lanes adds them in a different
-grouping, so for floats LLVM only does it when you explicitly allow
-reordering. Step through a four-lane sum to see the grouping change:
+You rarely write SIMD by hand; instead, an optimising compiler rewrites
+an ordinary loop to handle several turns per step (LLVM's loop
+vectoriser is on by default<Cite id="llvm-vectorizers" />), but only
+when that cannot change the answer.
 
 <LaneSumSteps client:visible />
 
 <Callout kind="definition">
 **Vectorisation** is rewriting a loop so that each step processes
-several elements with SIMD instructions, one element per lane, plus a
-tail for any leftovers. A compiler may only do it when it can show the
-result is unchanged, or when you have allowed it to change (as with a
-reordered floating-point sum).
+several elements with SIMD instructions, one per lane, plus a **tail**
+for the leftovers. A compiler does it only when the result is unchanged,
+or when you have allowed it to change<Cite id="llvm-vectorizers" />.
 </Callout>
 
 <Examples of="vectorization">
 
 ```js
-// safe: every i is independent
-for (let i = 0; i < n; i++) {
+for (let i = 0; i < n; i++)  // safe
   c[i] = a[i] + b[i];
-}
-```
-
-```js
-// not safe: each step needs the last
-for (let i = 1; i < n; i++) {
+for (let i = 1; i < n; i++)  // not safe
   x[i] = x[i - 1] + 1;
-}
-```
-
-```js
 (0.1 + 0.2) + 0.3; // 0.6000000000000001
 0.1 + (0.2 + 0.3); // 0.6
 ```
 
 </Examples>
 
-The first loop is the easy case: element `i` of `c` depends only on
-element `i` of `a` and `b`, so elements 0 to 3 can be done together, then
-4 to 7, and the answer is the same in any order. The second cannot be
-batched as written: `x[1]` needs the new `x[0]`, `x[2]` needs the new
-`x[1]`, and so on, so lanes 1 to 3 would read values that lane 0 has not
-written yet. The third shows why order matters even for a plain sum: the
-same three numbers, grouped two ways, give two answers, because each
-addition rounds to the nearest float64, so a compiler that quietly
-regrouped them would change what your program prints.
+In the first loop element `i` depends only on element `i`, so four at a
+time gives the same answer; in the second, `x[1]` needs the new `x[0]`.
+The last two lines are why a floating-point sum is not vectorised
+freely: lanes regroup the additions, each addition rounds, so LLVM does
+it only when you allow reordering (it also checks at run time that the
+arrays do not overlap).
 
-<Prompts ids={['vectorize-what', 'float-order', 'overlap']} />
+A vector load copies one **contiguous** run of memory into a register,
+which an array of structs does not have:
 
-## Why SIMD wants columns
-
-A vector load is fast because it copies one **contiguous** run of memory
-straight into a register: four neighbours in, four lanes full. So ask:
-in our particle data, are four `x` values neighbours?
-
-<Figure takeaway="SIMD needs the values for its lanes side by side." caption="In an array of structs (top), each x is 6 slots away from the next: the stride is 6, so filling four lanes takes a gather, four separate reads. In a struct of arrays (bottom), the x column is contiguous, and one vector load fills the register.">
+<Figure takeaway="SIMD needs the values for its lanes side by side." caption="In an array of structs (top), each x is 6 slots from the next, so filling four lanes takes a gather of four separate reads. In a struct of arrays (bottom), the x column is contiguous, and one vector load fills the register.">
   <GatherPicture />
 </Figure>
 
-In an array of structs the `x` values are spread out, with `y`, `vx`,
-`vy`, `mass` and `health` in between (a **stride** of six slots, in the
-words of the chapter on cache lines), so the hardware has to **gather**
-them one at a time. The ISPC performance guide says exactly this:
-contiguous accesses can use efficient vector loads and stores, while an
-array-of-structs layout needs gathers and runs slower<Cite id="ispc-perfguide" />;
-and LLVM's own documentation notes that its cost model often judges
-strided gathers not worth vectorising at all<Cite id="llvm-vectorizers" />.
-In a struct of arrays every column is already lined up under the
-stamp: it is the layout both cache lines and SIMD lanes want.
+An array of structs needs gathers and runs
+slower<Cite id="ispc-perfguide" />; the struct of arrays is the layout
+the prefetcher, the pipeline and SIMD lanes all want.
 
-<Prompts ids={['gather']} />
+<More title="A loop shaped like SIMD, and the stamp with four heads">
+
+The loop below is rewritten by hand into the chunks a vectorised loop
+works in: four lanes per step, then a tail. It is no faster (it still
+adds one number at a time), but it shows the shape. Try `W = 3`.
+
+<Run id="by-four" />
+
+<Analogy extra title="a stamp with four heads">
+Glue four stamps onto one handle and one press marks four envelopes, as
+long as they are lined up under the heads; scattered over the desk, you
+are back to one press each.
+<span slot="breaks">A stamp prints the same picture everywhere, whereas
+each SIMD lane gets its own answer from its own two numbers.</span>
+</Analogy>
+
+</More>
+
+<Prompts ids={['float-order', 'gather']} />
+
+JavaScript itself has no SIMD API; SIMD on the web lives in
+WebAssembly, so for Viscosity it is a future payoff.
+
+<More title="SIMD and JavaScript today">
 
 <Callout kind="engine" label="Under the hood">
-What about JavaScript itself? There was a proposal, **SIMD.js**, to add
-vector types to the language; it was removed from Stage 3 at TC39 and
-browsers are not implementing it, and SIMD on the web moved to
-WebAssembly instead<Cite id="tc39-simdjs" />. WebAssembly has a
-fixed-width 128-bit SIMD type, `v128`, with instructions such as
-`f64x2.add`<Cite id="wasm-simd" />, and it is part of WebAssembly
-2.0<Cite id="wasm-finished-proposals" />. So JavaScript has no SIMD API
-of its own. Does V8 vectorise ordinary JavaScript loops behind your
-back? None of the sources this book checked says so, so we will not
-assume it. For Viscosity, SIMD is a future payoff;
-its struct-of-arrays columns are `Float64Array`s<Cite id="mdn-typed-arrays" />,
-contiguous runs of doubles, which is exactly the input a WebAssembly or
-native back end would need to use lanes.
+JavaScript has no SIMD API of its own: the SIMD.js proposal was removed
+from Stage 3 at TC39<Cite id="tc39-simdjs" />, and SIMD on the web moved
+to WebAssembly, whose 128-bit `v128` type<Cite id="wasm-simd" /> is part
+of WebAssembly 2.0<Cite id="wasm-finished-proposals" />. None of the
+sources this book checked says V8 vectorises ordinary JavaScript loops,
+so we will not assume it. For Viscosity, SIMD is a future payoff: its
+columns are `Float64Array`s<Cite id="mdn-typed-arrays" />, exactly the
+contiguous input a WebAssembly or native back end needs.
 </Callout>
 
-<Prompts ids={['js-simd']} />
+</More>
 
 ## Your turn
 
-The core exercise is the skeleton of every vectorised sum: one running
-total per lane, then a step that adds the lanes. The second is the gather
-that an array of structs forces on SIMD code.
+The skeleton of every vectorised sum: one running total per lane, then
+a step that adds the lanes.
 
 <Exercise id="sumLanes" />
+
+<Exercise id="findStride" />
+
+<Exercise id="mispredicts" />
+
+<Exercise id="visitOrder" />
+
+<Exercise id="twoBit" />
 
 <Exercise id="column" />
 
 ## What you learned
 
-- **SIMD** means one instruction does the same operation on several
-  values at once, held in a wide vector register.
-- Each slot of that register is a **lane**; lanes never mix, and the lane
-  count is the register's width divided by the element size (two doubles
-  in 128 bits).
-- **Vectorisation** is a compiler rewriting a loop into SIMD steps plus a
-  tail. It must not change the answer, so possible overlap and
-  floating-point reordering can stop it.
-- SIMD loads want **contiguous** values: an array of structs needs a
-  gather, while a struct-of-arrays column loads straight into lanes.
-- JavaScript has no SIMD API (SIMD.js was withdrawn); WebAssembly has
-  fixed-width 128-bit SIMD.
+- The **prefetcher** fetches lines ahead along simple patterns; reads
+  whose addresses are known up front can overlap even when shuffled.
+- **Pointer chasing** defeats both, since each address arrives only with
+  the previous load.
+- A **pipeline** overlaps instructions; **branch prediction** keeps it
+  full by guessing, and pays when data has no pattern.
+- **SIMD** works on several **lanes** at once; **vectorisation** needs
+  independent turns and **contiguous** columns.
 
-Next: what JavaScript numbers and objects actually look like in memory,
-which explains why an innocent-looking TypeScript line can make a loop
-several times slower.
+Next: *How JavaScript stores numbers, objects and fields*, where one
+innocent-looking TypeScript line makes a loop several times slower.
 
 <Quiz />

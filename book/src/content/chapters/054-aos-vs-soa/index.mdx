@@ -21,7 +21,7 @@ import LiveBench from '../../../components/bench/LiveBench';
 ## Same data, three ways
 
 For several chapters you have heard that layout matters; now we
-measure it. This book's repository has a benchmark harness that stores the same
+measure it. This book's benchmark harness stores the same
 particles (`x`, `y`, `vx`, `vy`, `mass`, `health`) in several ways and
 runs the same loops over each; here are the three that matter most, each
 reading particle `i`'s `x`:
@@ -35,12 +35,11 @@ f[i * 6 + 0]
 x[i]
 ```
 
-All three hold identical numbers; only where they sit in memory
-changes. The first is how everyone writes it. The second keeps record
-order but packs each particle's six fields into one long
-`Float64Array`, so field 0 of particle `i` is at slot `i * 6`. The
-third is the struct of arrays from the chapter on arrays of
-objects: six separate columns, so `x[i]` is the `x` of particle `i`.
+All three hold identical numbers; only where they sit changes. The
+first is how everyone writes it; the second keeps record order but packs
+each particle's six fields into one long `Float64Array`, so field 0 of
+particle `i` is at slot `i * 6`; the third is the struct of arrays, six
+separate columns.
 
 ## What each loop actually loads
 
@@ -166,7 +165,6 @@ struct P { double x, vx; } ps[N];
 double x[N], vx[N];
 ```
 
-</OtherLanguages>
 
 Here the languages genuinely differ. In C, an array of structs is
 already *packed AoS*: the structs sit back to back with no headers and
@@ -178,6 +176,8 @@ objects, each with a header, so moving to primitive arrays (`double[]`,
 Python benchmark found them *slower* to loop over, because reading an
 element creates a new float object each time; the layout question has a
 different answer in a different engine.
+
+</OtherLanguages>
 
 <Prompts ids={['aos-soa-tradeoff', 'unused-bytes', 'c-packed']} />
 
@@ -197,7 +197,7 @@ strongly, because SoA reads exactly one column and nothing else (about
 
 Notice that **packed AoS** already captures a big part of the win. It
 keeps the record order, but drops the object headers, the pointer to
-each object and the boxed numbers of the last two chapters; so part of
+each object and the boxed numbers; so part of
 SoA's advantage is *typed storage* (raw doubles in one block), and part
 is *locality* (not loading the unused fields), and only the second part
 needs SoA. Random order separates them again: the `random-x` suite reads
@@ -268,18 +268,23 @@ for (let i = 0; i < n; i++) {
 }
 ```
 
-<Run id="hot-cold" />
-
 </Examples>
 
 The first sets up the split: two `Float64Array` columns for the hot
 fields, and an ordinary array of objects for the cold ones, where
 `cold[i]` belongs to the same particle as `hot.x[i]`. The second is the
 loop that runs every frame; it never touches `cold`, so names and health
-never pass through the cache. The third puts it together and runs: after
-moving every particle, the "menu screen" reads one particle's name from
-`cold[i]` and its position from `hot.x[i]`, matched by index, and
+never pass through the cache.
+
+<More title="Try it: a split you can run">
+
+After moving every particle, the "menu screen" reads one particle's name
+from `cold[i]` and its position from `hot.x[i]`, matched by index, and
 prints `cy 9` (three frames of `+3`).
+
+<Run id="hot-cold" />
+
+</More>
 
 <Prompts ids={['hot-cold', 'hot-cold-index']} />
 
@@ -300,9 +305,8 @@ problem"<Cite id="acton2014" />. Viscosity makes that choice as a
 compiler pass, with a cost model fed by exactly these measurements, and
 it generates `Float64Array` columns<Cite id="mdn-typed-arrays" /> for
 the fields it decides are hot. (Contiguous columns also happen to be
-what SIMD code needs<Cite id="ispc-perfguide" />, a door the SIMD
-chapter left open.) The next chapter looks at the cases where SoA
-*loses*, which the cost model has to spot too.
+what SIMD code needs<Cite id="ispc-perfguide" />.) The cases where SoA
+*loses* are the cost model's to spot too.
 </Callout>
 
 ## Your turn
@@ -327,7 +331,7 @@ counts cache lines with the formula above.
 - A **hot/cold split** moves only the busy fields into columns, and
   leaves the rest where they are.
 
-Next: where struct of arrays loses, and the blocked layout that sits
-between the two.
+Next: *When SoA loses: materialization and AoSoA*, and the blocked
+layout that sits between the two.
 
 <Quiz />

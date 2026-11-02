@@ -1,70 +1,37 @@
-// Chapter 52 cards: recall prompts, examples, exercises and quiz.
+// Chapter 56 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 56, 56.
 
 export const prompts = {
   'warmup-why': {
     q: 'Why must a benchmark warm up before it starts recording times?',
     a: 'Early runs measure the interpreter and the compilers; only after warm-up is the optimised code running.',
   },
-  'first-call': {
-    q: 'A benchmark times only the first call of a function. What is it mostly measuring?',
-    a: 'Cold code: the bytecode interpreter, plus the cost of getting started, not the optimised steady state.',
-  },
-  tiers: {
-    q: 'What does V8 do with a function before it becomes hot?',
-    a: 'Compiles it to bytecode and interprets it, while recording feedback such as the shapes and types it sees.',
-  },
-  feedback: {
-    q: 'What is the **feedback** V8 records while a function runs, and who uses it?',
-    a: 'A record of the object shapes and value types seen at each place in the code; the optimising tiers use it to specialise.',
-  },
   deopt: {
-    q: 'What is **deoptimisation**?',
+    q: 'In a speculative JIT such as V8, what is **deoptimisation**?',
     a: 'Throwing away speculative optimised code when one of its guesses breaks, and falling back to slower code.',
-  },
-  'dce-what': {
-    q: 'What is **dead-code elimination**?',
-    a: 'A compiler deleting computations whose results are never used and that have no other effect.',
   },
   'dce-legal': {
     q: 'Why is a compiler allowed to delete a loop whose result is never used?',
     a: 'Because the program\'s output cannot change: nothing observes the result, so removing the work is invisible.',
   },
   'sink-why': {
-    q: 'Why does the harness add every kernel\'s result into a `sink` and read it at the end?',
+    q: 'Why should a benchmark add every measured result into a `sink` and read it at the end?',
     a: 'So the work has an observable result and the compiler cannot delete it as dead code.',
   },
   'median-why': {
     q: 'Why report the median of many samples rather than the mean?',
     a: 'One very slow sample (a garbage-collection pause, say) drags the mean up, but barely moves the median.',
   },
-  'p95-what': {
-    q: 'What does a p95 of 4 ns per element tell you?',
-    a: '95% of the samples were at most 4 ns per element: it describes the slow end of the runs.',
-  },
-  'timer-coarse': {
-    q: 'Why does each sample in the harness last at least 10 ms?',
-    a: 'Timers are coarse (browsers round `performance.now()` to 100 µs), so one short run cannot be timed accurately.',
-  },
   'quantile-pos': {
-    q: 'With 21 sorted samples, at which slot is the p95?',
+    q: 'Using the linear-interpolation rule (position = (n − 1) × q, slots counted from 0), at which slot of 21 sorted samples is the p95?',
     a: 'Slot (21 − 1) × 0.95 = 19, counting from 0.',
   },
   'isolation-why': {
-    q: 'Why does the harness start a fresh process for each (suite, layout, size) case?',
-    a: 'So type feedback, compiled code and heap state from one layout cannot affect another layout\'s timing.',
-  },
-  'isolation-heap': {
-    q: 'Besides feedback, what else does a fresh process reset?',
-    a: 'The heap: garbage left by one case cannot trigger a collection in the middle of the next.',
-  },
-  ratios: {
-    q: 'Why compare ratios between layouts rather than absolute times on a shared machine?',
-    a: 'A slower or busier machine changes every absolute time, but tends to leave the ratio between layouts roughly the same.',
+    q: 'Why should a JavaScript benchmark harness run each case it measures in a fresh process?',
+    a: 'So the type feedback, compiled code and heap state left by one case cannot affect another case\'s timing.',
   },
   'gap-noise': {
-    q: 'The median is 2 ns and the p95 is 9 ns. What does that suggest?',
+    q: 'A benchmark reports a median of 2 ns and a p95 of 9 ns. What does that suggest?',
     a: 'The run was noisy: at least one sample in twenty was far slower than typical, so rerun it before trusting it.',
   },
 };
@@ -104,6 +71,7 @@ console.log('median', s[3]);`,
 
 export const exercises = {
   warmBench: {
+    optional: true,
     title: 'Warm up, and keep the result',
     prompt: '`warmBench(fn, now)` times the function `fn` with the clock function `now`, but it makes the first two classic mistakes. Fix it so that it calls `fn` **3 times to warm up** (without calling `now`), then calls `now()` once, calls `fn` **5 times**, calls `now()` again, and returns `{ perCall, sink }`: `perCall` is the time between the two `now()` calls divided by 5, and `sink` is the sum of **every** result `fn` returned, warm-up included.',
     starter: `function warmBench(fn, now) {
@@ -167,7 +135,7 @@ test('every result goes into the sink', () => {
 - \`const t = now() - t0;\` reads the clock again; \`t\` is how long the whole batch took. With the fake clock that is 60 − 10 = 50.
 - \`return { perCall: t / 5, sink };\` divides by the number of timed calls to get the time per call (50 / 5 = 10), and returns the sink, which by now is 8 (three warm-up results plus five timed ones).
 
-Timing a batch rather than one call matters too: one call of a fast function can be shorter than the timer's resolution, which the next chapter comes back to.
+Timing a batch rather than one call matters too: one call of a fast function can be shorter than the timer's resolution, which is why each of the harness's samples lasts at least 10 ms.
 
 **Common wrong attempts.**
 
@@ -203,6 +171,7 @@ Timing a batch rather than one call matters too: one call of a fast function can
     ],
   },
   summarize: {
+    optional: true,
     title: 'Median and p95, like the harness',
     prompt: 'Write `summarize(xs)` that returns `{ median, p95 }` for the timings `xs`, the way the harness does. Sort a **copy** of `xs` numerically (do not change `xs`). For a fraction `q`, the position is `pos = (n - 1) * q`; with `lo` and `hi` being `pos` rounded down and up, the answer is `s[lo] + (s[hi] - s[lo]) * (pos - lo)`. Use `q = 0.5` for the median and `q = 0.95` for p95.',
     starter: `function summarize(xs) {
@@ -265,7 +234,7 @@ test('leaves the input alone', () => {
 - \`const frac = pos - lo;\` is the leftover fraction: how far past slot \`lo\` the position is.
 - \`return s[lo] + (s[hi] - s[lo]) * frac;\` starts at \`s[lo]\` and moves towards \`s[hi]\` by that fraction. When \`lo\` and \`hi\` are equal, the second part is zero and the answer is that slot exactly.
 - \`function summarize(xs) {\` is the function the tests call.
-- \`const s = [...xs];\` copies the samples with spread (from the chapter on copies), so sorting cannot change the caller's array.
+- \`const s = [...xs];\` copies the samples with spread (from *Copies: an object of your own*), so sorting cannot change the caller's array.
 - \`s.sort((a, b) => a - b);\` sorts numerically: the comparison returns a negative number when \`a\` should come first.
 - \`return { median: quantile(s, 0.5), p95: quantile(s, 0.95) };\` (split over four lines in the solution) asks for the two fractions.
 
@@ -308,7 +277,6 @@ function summarize(xs) {
     ],
   },
   fixBench: {
-    optional: true,
     title: 'Fix the broken benchmark',
     prompt: '`bench(fn, now)` times `fn` with the clock function `now`, and makes every classic mistake. Fix it so that it: calls `fn` **3 times to warm up** (without timing them), then takes **9 timed samples** (one `fn()` call each, `now()` before and after), adds **every** result of `fn()` into a sink, and returns `{ median, sink }`, where `median` is the middle of the 9 sample times.',
     starter: `function bench(fn, now) {
@@ -363,7 +331,7 @@ test('reports the median, not the mean', () => {
       'Then 9 samples: `const t0 = now(); sink += fn(); ts.push(now() - t0);`.',
       'Sort numerically with `ts.sort((a, b) => a - b)`. With 9 sorted samples, the median is `ts[4]`.',
     ],
-    walkthrough: `**How to think about it.** Each fix answers one trap from this chapter or the last, so take them in order: warm up, keep every result, take many samples, and summarise with the median. The test's fake clock makes the nine sample times 5, 1, 2, 9, 3, 4, 100, 3 and 2; the mean of those is about 14, while sorted they are 1, 2, 2, 3, 3, 4, 5, 9, 100, with 3 in the middle.
+    walkthrough: `**How to think about it.** Each fix answers one trap of honest benchmarking, so take them in order: warm up, keep every result, take many samples, and summarise with the median. The test's fake clock makes the nine sample times 5, 1, 2, 9, 3, 4, 100, 3 and 2; the mean of those is about 14, while sorted they are 1, 2, 2, 3, 3, 4, 5, 9, 100, with 3 in the middle.
 
 **The solution, line by line.**
 
@@ -419,24 +387,6 @@ test('reports the median, not the mean', () => {
 
 export const quiz = [
   {
-    q: 'A benchmark times the first call of a function and reports it. What is it mostly measuring?',
-    options: [
-      {
-        t: 'The steady-state speed of optimised code',
-        why: 'The first call runs before V8 has optimised anything.',
-      },
-      {
-        t: 'Cold code: the interpreter, plus the cost of getting started',
-        correct: true,
-        why: 'V8 interprets bytecode first and optimises only once a function is hot.',
-      },
-      {
-        t: 'Exactly the same thing as the thousandth call',
-        why: 'Calls get faster as the engine learns and recompiles.',
-      },
-    ],
-  },
-  {
     q: 'After a million calls with numbers, `add` is called once with two strings. What is V8 likely to do?',
     options: [
       {
@@ -451,28 +401,6 @@ export const quiz = [
         t: 'Deoptimise: throw the number-specialised code away and fall back to slower code',
         correct: true,
         why: 'The optimised code was built on the guess "both are numbers", and the guess broke.',
-      },
-    ],
-  },
-  {
-    q: 'A benchmark computes `sum(xs)` a million times but never uses the result. What might an optimising compiler do?',
-    options: [
-      {
-        t: 'Run it faster by saving the answer in a file',
-        why: 'Compilers do not keep results between runs like that.',
-      },
-      {
-        t: 'Refuse to compile the function',
-        why: 'Unused results do not stop compilation.',
-      },
-      {
-        t: 'Delete the work as dead code, making the time meaningless',
-        correct: true,
-        why: 'If nothing observes the result, the computation can legally be removed. A sink prevents this.',
-      },
-      {
-        t: 'Nothing: compilers never remove code',
-        why: 'Dead-code elimination is a standard optimisation.',
       },
     ],
   },
@@ -495,28 +423,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does this book\'s harness warm up for at least 300 ms and five runs before recording?',
-    options: [
-      {
-        t: 'To let the CPU cool down',
-        why: 'Warm-up is about the engine\'s tiers, not temperature.',
-      },
-      {
-        t: 'So the measured runs use optimised code rather than the interpreter',
-        correct: true,
-        why: 'By then the hot kernel has climbed the tiers and the times have settled.',
-      },
-      {
-        t: 'Because the timer does not work at first',
-        why: 'The timer works from the start; the code being timed changes.',
-      },
-      {
-        t: 'To fill the sink before measuring',
-        why: 'The sink is filled during warm-up too, but that is not why warm-up exists.',
-      },
-    ],
-  },
-  {
     q: 'Samples (ms): `2, 2, 2, 2, 2, 2, 50`. Which summary best describes a typical run?',
     options: [
       {
@@ -535,25 +441,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What is the median of `[1, 2, 3, 4]`, using the harness\'s quantile rule?',
-    options: [
-      {
-        t: '2',
-        why: 'That is slot 1, but the position is 1.5, halfway between slots 1 and 2.',
-      },
-      {
-        t: '3',
-        why: 'That is slot 2; the position 1.5 is halfway between 2 and 3.',
-      },
-      {
-        t: '2.5',
-        correct: true,
-        why: '(4 − 1) × 0.5 = 1.5, so halfway between 2 and 3.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the harness run each (suite, layout, size) case in its own process?',
+    q: 'Why should a JavaScript benchmark harness run each (suite, layout, size) case in its own process?',
     options: [
       {
         t: 'To use all the CPU cores at once',
@@ -567,50 +455,6 @@ export const quiz = [
       {
         t: 'To make the benchmark finish sooner',
         why: 'Starting processes makes it slower, not faster.',
-      },
-    ],
-  },
-  {
-    q: 'In a browser, why can you not time a single 50-microsecond loop run with `performance.now()`?',
-    options: [
-      {
-        t: '`performance.now()` only counts whole seconds',
-        why: 'It returns fractional milliseconds.',
-      },
-      {
-        t: '`performance.now()` does not work inside loops',
-        why: 'It works anywhere; the issue is its resolution.',
-      },
-      {
-        t: 'Browsers round it (to 100 µs, or 5 µs when isolated), so one short run is below its resolution',
-        correct: true,
-        why: 'That is why each sample repeats the work until it lasts several milliseconds.',
-      },
-      {
-        t: 'The loop is deleted before it runs',
-        why: 'Dead-code elimination is a separate trap, fixed by a sink.',
-      },
-    ],
-  },
-  {
-    q: 'This book\'s results came from a shared cloud machine. What should you trust most?',
-    options: [
-      {
-        t: 'Ratios between layouts, checked against the gap between median and p95',
-        correct: true,
-        why: 'Ratios survive a slower or busier machine; a wide median-to-p95 gap warns of noise.',
-      },
-      {
-        t: 'The absolute nanoseconds, to two decimal places',
-        why: 'Absolute times change with the machine and its load.',
-      },
-      {
-        t: 'Only the fastest sample of each case',
-        why: 'The minimum hides how noisy the run was.',
-      },
-      {
-        t: 'Nothing: shared machines make benchmarks useless',
-        why: 'Careful method makes them useful, read as ratios.',
       },
     ],
   },

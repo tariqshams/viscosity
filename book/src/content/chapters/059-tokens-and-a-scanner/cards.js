@@ -1,71 +1,38 @@
-// Chapter 54 cards: recall prompts, examples, exercises and quiz.
+// Chapter 59 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 59, 59.
 
 export const prompts = {
-  'token-what': {
-    q: 'What is a token?',
-    a: 'One meaningful word of source code: a type, its lexeme, maybe a literal value, and where it came from.',
-  },
   'lexeme-literal': {
-    q: 'For the Drip source `"fast"`, what is the token’s lexeme, and what is its literal?',
+    q: 'For the string literal `"fast"` in source code (quotes included), what is the token’s lexeme, and what is its literal?',
     a: 'Lexeme: `"fast"`, quotes included (6 characters). Literal: the text `fast`.',
   },
   'not-tokens': {
-    q: 'Name two things in source code that never become tokens.',
+    q: 'In most languages, name two things in source code that never become tokens.',
     a: 'Whitespace (spaces, tabs, newlines) and comments.',
   },
   'eof-why': {
-    q: 'Why does the scanner end every token list with an `eof` token?',
+    q: 'Why do scanners commonly end the token list with an `eof` token?',
     a: 'So the parser can always ask for the next token and get a clear “the program has ended”.',
   },
   'why-types': {
     q: 'Why does a token need a type when its lexeme already says what it is?',
     a: 'The parser’s rules are about categories (“any name”, “any number”), and many lexemes share one type.',
   },
-  'punct-type': {
-    q: 'In Drip’s `TokenType`, what is the type of the token for `<=`?',
-    a: 'The string `\'<=\'` itself: for punctuation and keywords, the type is the spelling.',
-  },
-  'location-what': {
-    q: 'What source location does a Drip token record?',
-    a: 'Its line number (not its column).',
-  },
-  'front-end-first': {
-    q: '`print "one";` is line 1 and line 3 has a syntax error. Why is `one` never printed?',
-    a: 'Scanning and parsing check the whole program before any of it runs, and a syntax error stops it from running at all.',
-  },
-  'scanner-what': {
-    q: 'What does a scanner take in, and what does it produce?',
-    a: 'It takes source text (characters) and produces a list of tokens.',
+  'location-why': {
+    q: 'Why does each token carry a source location (a line, and perhaps a column)?',
+    a: 'Later stages, such as the parser, never see the characters, so the token’s location is the only way their error messages can say where the problem is.',
   },
   'start-current': {
-    q: 'In Drip’s scanner, what do `start` and `current` point at?',
+    q: 'In a scanner that cuts tokens out with two indexes, `start` and `current`, what does each point at?',
     a: '`start`: the first character of the token being built. `current`: the next character to read.',
   },
-  'advance-moves': {
-    q: 'What two things does `advance()` do?',
-    a: 'It returns the character at `current`, and moves `current` one place on.',
-  },
   'slice-lexeme': {
-    q: 'How does `add` get a token’s lexeme?',
+    q: 'In a scanner with two indexes, `start` and `current`, how is a finished token’s lexeme cut from the source?',
     a: '`source.slice(start, current)`: from `start` up to, but not including, `current`.',
   },
-  'newline-case': {
-    q: 'What does the scanner do when it reads `\'\\n\'`?',
-    a: 'It adds 1 to `line` and makes no token.',
-  },
-  'eof-push': {
-    q: 'When does the scanner push the `eof` token?',
-    a: 'Once, after the main loop ends because every character has been read.',
-  },
-  'keep-going': {
-    q: 'Drip’s scanner meets a character it does not know, such as `@`. What does it do?',
-    a: 'It adds an `error` token whose lexeme is the message, `unexpected character \'@\'`, and carries on scanning; the parser reports it in its place.',
-  },
-  'one-at-a-time': {
-    q: 'How does the scanner of Drip’s VM differ from the tree-walker’s?',
-    a: 'It hands out one token at a time, when the compiler asks, instead of building the whole list first.',
+  'error-token-why': {
+    q: 'Why might a scanner turn a character it does not recognise into an error token and carry on, rather than stopping?',
+    a: 'So it can finish the token list and leave the reporting to the parser, which then reports every error, from either stage, in source order.',
   },
 };
 
@@ -111,6 +78,7 @@ console.log(scan('{ @ };'));`,
 
 export const exercises = {
   locate: {
+    optional: true,
     title: 'From offset to line and column',
     prompt: `A scanner walks the source by **offset**: the index of a character in the whole string. Error messages want a **line** and **column** instead, both counted from 1.
 
@@ -412,7 +380,7 @@ function scan(src) {
 
 export const quiz = [
   {
-    q: 'How many tokens does Drip’s scanner make for `print x;`?',
+    q: 'A scanner skips spaces and ends every token list with an `eof` token. How many tokens does it make for `print x;`?',
     options: [
       {
         t: '3',
@@ -430,28 +398,6 @@ export const quiz = [
       {
         t: '5, counting the space',
         why: 'Spaces separate tokens but never become tokens.',
-      },
-    ],
-  },
-  {
-    q: 'What is the **lexeme** of the token made from `12.5` in a Drip program?',
-    options: [
-      {
-        t: 'The number 12.5',
-        why: 'That is the literal: the value the characters stand for.',
-      },
-      {
-        t: 'The string `"12.5"`',
-        correct: true,
-        why: 'The lexeme is always the exact characters from the source.',
-      },
-      {
-        t: '`number`',
-        why: 'That is the token’s type, its category.',
-      },
-      {
-        t: '`12` and `5`, as two lexemes',
-        why: 'The digits, the dot and the digits after it form one number token.',
       },
     ],
   },
@@ -478,55 +424,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In Drip’s `TokenType`, the token for `while` has which type?',
-    options: [
-      {
-        t: '`\'identifier\'`',
-        why: '`while` is a reserved keyword, not a name the programmer chose.',
-      },
-      {
-        t: '`\'keyword\'`',
-        why: 'There is no single keyword type: each keyword has its own.',
-      },
-      {
-        t: '`\'while\'`',
-        correct: true,
-        why: 'For keywords and punctuation, the type is the spelling itself.',
-      },
-      {
-        t: '`\'string\'`',
-        why: '`while` isn’t in quotes, so it isn’t a string literal.',
-      },
-    ],
-  },
-  {
-    q: `This Drip program has a syntax error on line 2. What is printed?
-\`\`\`
-print "hello";
-print 1 +;
-\`\`\``,
-    options: [
-      {
-        t: '`hello`, then an error for line 2',
-        why: 'That is what happens with a *runtime* error. A syntax error is found before anything runs.',
-      },
-      {
-        t: 'Only an error for line 2: `hello` is never printed',
-        correct: true,
-        why: 'The front end reads the whole program first, and a program with a syntax error never starts.',
-      },
-      {
-        t: 'An error for line 1',
-        why: 'Line 1 is fine. The `;` token on line 2 carries line 2.',
-      },
-      {
-        t: '`hello` and `1`',
-        why: '`1 +;` is missing its right-hand side, so it can’t be parsed.',
-      },
-    ],
-  },
-  {
-    q: 'The scanner is building a token for `12` in `x = 12;`. When `add` is called, `start` is 4. What is `current`?',
+    q: 'A scanner is building the token for `12` in `x = 12;` and is about to cut its lexeme with `source.slice(start, current)`. `start` is 4. What is `current`?',
     options: [
       {
         t: '4',
@@ -534,7 +432,7 @@ print 1 +;
       },
       {
         t: '5',
-        why: '`slice(4, 5)` would be just `1`. The digit loop moved past the `2` too.',
+        why: '`slice(4, 5)` would be just `1`. Scanning the number moved past the `2` too.',
       },
       {
         t: '7',
@@ -548,7 +446,7 @@ print 1 +;
     ],
   },
   {
-    q: 'The source is `(`, then two newlines, then `)`. On which line is the `)` token recorded?',
+    q: 'A scanner counts lines from 1 and adds 1 at each newline. The source is `(`, then two newlines, then `)`. On which line is the `)` token recorded?',
     options: [
       {
         t: '1',
@@ -566,72 +464,6 @@ print 1 +;
       {
         t: 'It has no line: only the first token gets one',
         why: 'Every token records the line it came from.',
-      },
-    ],
-  },
-  {
-    q: 'What happens when Drip scans `print 1 @ 2;`?',
-    options: [
-      {
-        t: 'The `@` becomes an error token, the parser reports `unexpected character \'@\'`, and nothing runs',
-        correct: true,
-        why: 'The scanner carries on past the `@`; the parser reports the error token (only the first error in the statement) and the pipeline stops before the interpreter.',
-      },
-      {
-        t: 'The scanner stops at the `@`, and the program prints `1`',
-        why: 'Nothing runs once any error has been reported, and the scanner does not stop.',
-      },
-      {
-        t: 'The `@` becomes an `identifier` token',
-        why: 'An identifier must start with a letter or `_`.',
-      },
-      {
-        t: 'It prints `1 @ 2`',
-        why: 'There is no string here; `@` is not a Drip character at all.',
-      },
-    ],
-  },
-  {
-    q: 'In `const c = advance();`, what has changed after the call?',
-    options: [
-      {
-        t: 'Nothing: `advance` only looks',
-        why: 'That is `peek`. `advance` moves on.',
-      },
-      {
-        t: '`start` has moved on by one',
-        why: '`start` only moves at the beginning of each round, with `start = current`.',
-      },
-      {
-        t: '`c` holds the character that was at `current`, and `current` is one bigger',
-        correct: true,
-        why: '`source[current++]` reads with the old value, then adds one.',
-      },
-      {
-        t: 'A token has been added',
-        why: 'Only `add` pushes tokens; `advance` reads one character.',
-      },
-    ],
-  },
-  {
-    q: 'Why does the whitespace case in the `switch` contain nothing but `break`?',
-    options: [
-      {
-        t: 'Because whitespace is an error',
-        why: 'Spaces are fine; they separate tokens.',
-      },
-      {
-        t: 'Because spaces are added to the next token’s lexeme',
-        why: 'The next round sets `start = current` first, so the space is outside every lexeme.',
-      },
-      {
-        t: 'Because the scanner has not been finished yet',
-        why: 'It is deliberate, and it is the whole of the space case in the real scanner.',
-      },
-      {
-        t: 'Because whitespace only separates tokens and never becomes one',
-        correct: true,
-        why: 'Reading it is enough: the next round starts a fresh token after it.',
       },
     ],
   },

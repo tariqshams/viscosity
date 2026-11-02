@@ -1,54 +1,33 @@
-// Chapter 51 cards: recall prompts, examples, exercises and quiz.
+// Chapter 53 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 53, 53.
 
 export const prompts = {
   'ieee-parts': {
     q: 'What are the three parts of an IEEE 754 double, and how many bits does each get?',
     a: 'Sign (1 bit), exponent (11 bits), fraction or mantissa (52 bits): 64 bits in all.',
   },
-  'engine-free': {
-    q: 'The language says every number is a double. Why may an engine store some numbers differently?',
-    a: 'Only the behaviour is fixed. Any storage is allowed as long as no program can tell the difference.',
-  },
-  'smi-what': {
-    q: 'What is a **Smi** in V8?',
-    a: 'A small integer stored directly in a pointer-sized slot, instead of being boxed on the heap.',
-  },
   'tag-bit': {
-    q: 'How does V8 tell a Smi from a pointer when it looks at a slot?',
+    q: 'How does V8 tell a Smi from a pointer when it looks at a tagged slot?',
     a: 'By the lowest bit: 0 means a Smi (the integer is in the slot), 1 means a pointer to a heap object.',
   },
   'heapnumber-what': {
-    q: 'What is a **HeapNumber**? Name one value that needs one.',
+    q: 'In V8, what is a **HeapNumber**? Name one value that needs one.',
     a: 'A heap object holding one double, used for numbers that are not Smis, e.g. `4.2`, `-0`, `NaN` or a huge integer.',
   },
   'heapnumber-update': {
-    q: 'What happens when you change a number stored as a HeapNumber?',
+    q: 'In V8, what happens when you change a number stored as a HeapNumber?',
     a: 'HeapNumbers are immutable, so V8 allocates a new one, and the old one becomes garbage.',
   },
   'header-what': {
     q: 'What does a V8 object header hold?',
     a: 'A pointer to the hidden class (the shape), then pointers to the properties store and the elements store.',
   },
-  'shared-shape': {
-    q: 'Two objects are built the same way, `{ x, n }`. What do they share, and what does each have its own copy of?',
-    a: 'They share one hidden class (shape); each has its own header and its own field slots.',
-  },
-  'rep-what': {
-    q: 'What is a **field representation**?',
-    a: 'How the engine has decided to store one field (Smi, Double, heap object, Tagged), recorded in the hidden class.',
-  },
   'widen-only': {
-    q: 'A field has the Double representation and then receives `7`. Does it go back to Smi?',
+    q: 'In V8, a field has the Double representation and then receives `7`. Does it go back to Smi?',
     a: 'No. A field only widens; `7` is stored as the double 7.0 and the field stays Double.',
   },
-  'double-in-place': {
-    q: 'Why can a field with the Double representation be updated without allocating?',
-    a: 'Its value lives in a box only that object can see, so V8 can overwrite the box in place.',
-  },
   'null-start': {
-    q: 'Why is `{ start: null }` a bad start for a field that will hold times from `performance.now()`?',
+    q: 'In V8, why is `{ start: null }` a bad start for a field that will hold times from `performance.now()`?',
     a: '`null` makes it a heap-object field; the first double then widens it to Tagged, so every new time is a fresh HeapNumber.',
   },
   'ts-field-undefined': {
@@ -58,14 +37,6 @@ export const prompts = {
   'declare-emits': {
     q: 'What JavaScript does TypeScript emit for `declare x: number;` in a class?',
     a: 'Nothing. The field only appears when the constructor first assigns it.',
-  },
-  'generalize-cost': {
-    q: 'Why did widening `x` to Tagged make `p.x += 0.1` slow?',
-    a: 'A Tagged field keeps doubles as immutable HeapNumbers, so every update allocates a new one.',
-  },
-  'float64array-rep': {
-    q: 'Why can a `Float64Array` column never suffer from a widened field representation?',
-    a: 'It has no per-element representation: every element is a raw 64-bit double, side by side.',
   },
 };
 
@@ -101,6 +72,7 @@ console.log('after:', p.x);`,
 
 export const exercises = {
   smiFits: {
+    optional: true,
     title: 'Would this be a Smi?',
     prompt: 'Assume V8 with pointer compression, where a Smi carries 31 bits including the sign: integers from −2^30 to 2^30 − 1. Write `smiFits(n)` that returns `true` if the number `n` could be stored as a Smi, and `false` if it would need a HeapNumber. Remember that `-0` is not a Smi.',
     starter: `function smiFits(n) {
@@ -390,28 +362,6 @@ function track(vals) {
 
 export const quiz = [
   {
-    q: 'In V8, how is the number `42` most likely stored in a variable?',
-    options: [
-      {
-        t: 'As a HeapNumber on the heap, with the variable holding its address',
-        why: 'That is for numbers that aren’t Smis, like `4.2`.',
-      },
-      {
-        t: 'As a Smi, directly in the slot, with a tag bit of 0',
-        correct: true,
-        why: 'Small integers fit in the slot itself, so nothing needs allocating.',
-      },
-      {
-        t: 'As a string, converted back when needed',
-        why: 'Numbers are never stored as text.',
-      },
-      {
-        t: 'As four separate bytes in an ArrayBuffer',
-        why: 'Plain variables don’t live in ArrayBuffers.',
-      },
-    ],
-  },
-  {
     q: 'Which of these values does V8 store as a HeapNumber, not a Smi?',
     options: [
       {
@@ -430,28 +380,6 @@ export const quiz = [
       {
         t: '`1000`',
         why: 'Well inside the Smi range.',
-      },
-    ],
-  },
-  {
-    q: '`let b = 4.2; b = b + 1;` What happens to the HeapNumber holding `4.2`?',
-    options: [
-      {
-        t: 'It is overwritten in place with `5.2`',
-        why: 'HeapNumbers are immutable, so they can’t be overwritten.',
-      },
-      {
-        t: 'It becomes a Smi',
-        why: '`5.2` isn’t an integer either.',
-      },
-      {
-        t: 'Nothing: `b + 1` is never computed',
-        why: 'It is computed; the question is where the result goes.',
-      },
-      {
-        t: 'A new HeapNumber holding `5.2` is allocated; the old one becomes garbage',
-        correct: true,
-        why: 'Every change to an immutable box means a new box.',
       },
     ],
   },
@@ -478,29 +406,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why don’t `Float64Array` columns suffer from any of these representation problems?',
-    options: [
-      {
-        t: 'They are converted to Smis',
-        why: 'A Float64Array stores doubles, not Smis.',
-      },
-      {
-        t: 'They store raw 64-bit doubles side by side, with no tags, boxes or per-element headers',
-        correct: true,
-        why: 'There is nothing per element for the engine to choose or change.',
-      },
-      {
-        t: 'They are slower, so the problem doesn’t show',
-        why: 'They are the fast option.',
-      },
-      {
-        t: 'V8 copies them to WebAssembly',
-        why: 'Typed arrays are ordinary JavaScript objects.',
-      },
-    ],
-  },
-  {
-    q: 'A field has held `1`, then `2.5`, then `3`. Which representation does it have now?',
+    q: 'In V8, an object field has held `1`, then `2.5`, then `3`. Which representation does it have now?',
     options: [
       {
         t: 'Smi, because the last value is a small integer',
@@ -518,7 +424,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A TypeScript class declares `x: number;` and its constructor stores doubles into `x`. Why can `p.x += 0.1` allocate?',
+    q: 'A TypeScript class compiled for ES2022 or later declares `x: number;`, and its constructor stores doubles into `x`. In V8, why can `p.x += 0.1` allocate?',
     options: [
       {
         t: 'TypeScript adds a type check to every assignment',
@@ -536,64 +442,6 @@ export const quiz = [
       {
         t: 'Doubles can never be stored in object fields',
         why: 'They can: that is what the Double representation is for.',
-      },
-    ],
-  },
-  {
-    q: 'What does TypeScript emit for the line `declare x: number;` inside a class?',
-    options: [
-      {
-        t: 'A class field `x;` that starts as `undefined`',
-        why: 'That is what plain `x: number;` becomes with a modern target.',
-      },
-      {
-        t: 'Nothing at all',
-        correct: true,
-        why: '`declare` only tells the type checker the field exists; the constructor creates it.',
-      },
-      {
-        t: 'A field `x = 0;`',
-        why: 'TypeScript never invents a starting value.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these is the best way to start an object that will store times from `performance.now()` in `start`?',
-    options: [
-      {
-        t: '`{ start: null }`',
-        why: '`null` makes `start` a heap-object field, so the first time widens it to Tagged.',
-      },
-      {
-        t: '`{ start: undefined }`',
-        why: 'The same problem as `null`: undefined is a heap object, not a number.',
-      },
-      {
-        t: '`{ start: performance.now() }`',
-        correct: true,
-        why: 'The first value is already a double, so the field is Double from the start.',
-      },
-      {
-        t: 'It makes no difference to V8',
-        why: 'It does: the first value decides the first rung.',
-      },
-    ],
-  },
-  {
-    q: 'Why does a `Float64Array` column avoid every problem in this chapter?',
-    options: [
-      {
-        t: 'It turns doubles into Smis',
-        why: 'It stores doubles, not Smis.',
-      },
-      {
-        t: 'V8 copies it into WebAssembly',
-        why: 'Typed arrays are ordinary JavaScript objects.',
-      },
-      {
-        t: 'It stores raw 64-bit doubles side by side, with no per-element representation to widen',
-        correct: true,
-        why: 'There are no tags, no boxes and no hidden-class records per element.',
       },
     ],
   },

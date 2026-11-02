@@ -1,71 +1,30 @@
-// Chapter 53 cards: recall prompts, examples, exercises and quiz.
+// Chapter 58 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 58, 58.
 
 export const prompts = {
   'drip-why': {
-    q: 'Why does Part III build a small language of its own instead of JavaScript?',
-    a: 'JavaScript is too big to implement fully while learning; Drip is small enough to finish, yet has closures and classes.',
-  },
-  'drip-twice': {
-    q: 'In which two ways does this book implement Drip?',
-    a: 'As a tree-walking interpreter (Part III) and as a bytecode VM (Part IV).',
-  },
-  'float-div': {
-    q: 'What does `7 / 2` give in Drip, and why?',
-    a: '`3.5`: every Drip number is a 64-bit float, as in JavaScript, so division does not round down.',
-  },
-  'fn-value': {
-    q: 'Can a Drip function return another function?',
-    a: 'Yes: functions are values, so they can be returned, stored in variables and passed around.',
-  },
-  'class-state': {
-    q: 'Two instances of the same Drip class each set `self.n`. Do they share one `n`?',
-    a: 'No: each instance has its own fields.',
-  },
-  'print-statement': {
-    q: 'Is `print` a function in Drip?',
-    a: 'No, it is a statement: `print x;` needs no parentheses.',
+    q: 'When learning to build an interpreter, why implement a small language of your own rather than JavaScript?',
+    a: 'JavaScript is too big to implement fully while learning; a small language can be finished, and can still have the hard parts, such as closures and classes.',
   },
   'zero-true': {
     q: 'In Drip, does `if 0 { print "yes"; }` print anything?',
     a: 'Yes, it prints `yes`. Only `none` and `false` count as false; `0` counts as true.',
   },
-  'closure-drip': {
-    q: 'A Drip function is created inside another function. What does it remember?',
-    a: 'The variables around the place it was made, even after the outer call returns (a closure).',
-  },
   'dyn-when': {
-    q: 'In a dynamically typed language like Drip, when is a type error found?',
+    q: 'In a dynamically typed language, when is a type error found?',
     a: 'While the program runs, at the moment the operation with the wrong types runs.',
   },
   'types-on-values': {
-    q: 'In Drip, does the type belong to the variable or to the value?',
-    a: 'To the value: each value carries a tag (number, string, …); a variable is only a name for whichever value it holds.',
+    q: 'In a dynamically typed language, does a type belong to the variable or to the value?',
+    a: 'To the value: each value carries a tag (number, string, …), and a variable is only a name for whichever value it holds.',
   },
-  'var-change-type': {
-    q: 'Is `let x = 1; x = "one";` allowed in Drip?',
-    a: 'Yes. A variable can hold any kind of value, and the kind can change.',
-  },
-  'dyn-vs-js': {
-    q: 'What does `"a" + 1` do in Drip, and in JavaScript?',
-    a: 'Drip stops with a runtime error. JavaScript converts the 1 and gives `"a1"`.',
+  'dyn-js-python': {
+    q: 'JavaScript and Python are both dynamically typed. What does each do with `"a" + 1`?',
+    a: 'JavaScript converts the 1 and gives `"a1"`; Python stops with a `TypeError` when the line runs.',
   },
   'spec-what': {
     q: 'What is a language specification for?',
     a: 'To say precisely what every program means, so that every implementation behaves the same way.',
-  },
-  'corpus-role': {
-    q: 'How is Drip’s meaning pinned down in this book?',
-    a: 'By hundreds of test programs (the corpus) whose comments give the exact expected output or error; both implementations must pass them.',
-  },
-  'expect-comment': {
-    q: 'How does a Drip test program say that a line should fail?',
-    a: 'With a comment `# expect runtime error:` followed by the exact error message.',
-  },
-  'not-proof': {
-    q: 'An implementation passes every test in the corpus. Is it certainly correct?',
-    a: 'No: the tests only cover the programs written down. Passing them is strong evidence, not proof.',
   },
 };
 
@@ -158,6 +117,7 @@ print "never printed";`,
 
 export const exercises = {
   'sum-to': {
+    optional: true,
     lang: 'drip',
     title: 'Add up 1 to n, in Drip',
     prompt: 'Write a Drip function `sumTo(n)` that **returns** `1 + 2 + … + n`. The program then prints `sumTo(10)` and `sumTo(100)`, so the expected output is `55` and then `5050`.',
@@ -516,28 +476,6 @@ Compare \`out\` with the program's printed lines, element by element, and you ha
 
 export const quiz = [
   {
-    q: 'What does `print 7 / 2;` show in Drip?',
-    options: [
-      {
-        t: '`3`',
-        why: 'Drip has one kind of number, a 64-bit float, so division doesn’t round down.',
-      },
-      {
-        t: '`3.5`',
-        correct: true,
-        why: 'Numbers are floats, like JavaScript’s, and whole numbers print without a decimal point.',
-      },
-      {
-        t: '`3.50`',
-        why: 'Drip prints numbers the way JavaScript’s `String` does: no trailing zeros.',
-      },
-      {
-        t: 'A runtime error',
-        why: 'Both operands are numbers, so `/` is fine.',
-      },
-    ],
-  },
-  {
     q: `What does this Drip program print?
 \`\`\`
 if "" { print "yes"; }
@@ -560,87 +498,6 @@ else { print "no"; }
         t: '`yes`',
         correct: true,
         why: 'Only `none` and `false` are false. `""` is a string, so it counts as true.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these values does Drip treat as false in an `if`?',
-    options: [
-      {
-        t: '`0`',
-        why: 'That is JavaScript’s rule. In Drip, every number is true.',
-      },
-      {
-        t: '`none`',
-        correct: true,
-        why: 'Only `none` and `false` are false in Drip.',
-      },
-      {
-        t: '`""`',
-        why: 'The empty string is still a string, and every string is true in Drip.',
-      },
-      {
-        t: 'a function',
-        why: 'Functions are values like any other, and true.',
-      },
-    ],
-  },
-  {
-    q: 'Every runnable Drip box in Part III runs on which implementation?',
-    options: [
-      {
-        t: 'The bytecode VM',
-        why: 'The VM comes in Part IV.',
-      },
-      {
-        t: 'JavaScript’s own engine, directly',
-        why: 'Drip is not JavaScript; it needs its own interpreter, even though that interpreter is written in TypeScript.',
-      },
-      {
-        t: 'The tree-walking interpreter you are about to build',
-        correct: true,
-        why: 'Part III builds it, and the companion code is a finished copy of it.',
-      },
-      {
-        t: 'None: the boxes only show the code',
-        why: 'They really run; edit them and run them again.',
-      },
-    ],
-  },
-  {
-    q: `What does this print?
-\`\`\`
-fn make() {
-  let n = 0;
-  fn inc() {
-    n = n + 1;
-    return n;
-  }
-  return inc;
-}
-let a = make();
-let b = make();
-print a();
-print a();
-print b();
-\`\`\``,
-    options: [
-      {
-        t: '`1`, `2`, `3`',
-        why: 'That would mean `a` and `b` share one `n`. Each call to `make` creates a new one.',
-      },
-      {
-        t: '`1`, `1`, `1`',
-        why: 'The closure keeps its `n` between calls, so `a` counts up.',
-      },
-      {
-        t: '`0`, `1`, `0`',
-        why: '`inc` adds 1 before returning, so the first call returns 1.',
-      },
-      {
-        t: '`1`, `2`, `1`',
-        correct: true,
-        why: '`a` and `b` each close over their own `n`. `a` counts 1, 2 and `b` starts again at 1.',
       },
     ],
   },
@@ -671,51 +528,7 @@ print "a" * 2;
     ],
   },
   {
-    q: 'Which of these Drip lines runs without an error?',
-    options: [
-      {
-        t: '`print "3" + 4;`',
-        why: 'A string and a number: no rule for `+` fits, so it is a runtime error.',
-      },
-      {
-        t: '`print 3 + "4";`',
-        why: 'The same pair the other way round; still a runtime error.',
-      },
-      {
-        t: '`print none + none;`',
-        why: '`none` is neither a number nor a string.',
-      },
-      {
-        t: '`print "3" + "4";`',
-        correct: true,
-        why: 'Two strings join, so it prints `34`.',
-      },
-    ],
-  },
-  {
-    q: 'What does `"a" + 1` give in JavaScript, and why is that not what Drip does?',
-    options: [
-      {
-        t: '`"a1"`: JavaScript’s `+` converts the number to a string; Drip refuses and stops with a runtime error',
-        correct: true,
-        why: 'Both are dynamically typed; they differ in whether `+` converts.',
-      },
-      {
-        t: 'A runtime error, exactly as in Drip',
-        why: 'That is Python’s behaviour. JavaScript converts.',
-      },
-      {
-        t: '`NaN`, because a string is not a number',
-        why: 'With a string on either side, JavaScript’s `+` joins rather than adds.',
-      },
-      {
-        t: 'A compile error, because JavaScript checks types first',
-        why: 'Plain JavaScript checks no types before running; TypeScript would.',
-      },
-    ],
-  },
-  {
-    q: 'Drip’s tree-walker and its VM print different things for the same program. How do you decide which one is wrong?',
+    q: 'Two implementations of the same language print different things for the same program. How do you decide which one is wrong?',
     options: [
       {
         t: 'The faster one is right',
@@ -724,10 +537,10 @@ print "a" * 2;
       {
         t: 'Check the program against the spec: what the language says it must do',
         correct: true,
-        why: 'The spec, here made concrete by the test programs, defines the right answer. Whichever disagrees with it has the bug.',
+        why: 'The spec (made concrete by its conformance tests) defines the right answer. Whichever disagrees with it has the bug.',
       },
       {
-        t: 'The tree-walker is always right, because it came first',
+        t: 'The older one is always right, because it came first',
         why: 'An implementation can have bugs no matter when it was written.',
       },
       {
@@ -737,7 +550,7 @@ print "a" * 2;
     ],
   },
   {
-    q: 'A new Drip implementation passes every test program in the corpus. What can you say?',
+    q: 'A new implementation of a language passes every program in the language’s test suite. What can you say?',
     options: [
       {
         t: 'It is certainly correct',
@@ -753,7 +566,7 @@ print "a" * 2;
         why: 'That is exactly what a test suite gives you.',
       },
       {
-        t: 'It must be faster than the tree-walker',
+        t: 'It must be faster than the older implementations',
         why: 'The tests check output, not speed.',
       },
     ],

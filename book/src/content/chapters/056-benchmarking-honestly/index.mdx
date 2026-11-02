@@ -3,18 +3,14 @@ n: 56
 day: 3
 part: II
 title: 'Benchmarking honestly'
-tagline: 'A stopwatch around a loop feels like science, but the engine is rewriting your code while you time it, and is allowed to delete work whose answer nobody uses. Here is how this book''s harness avoids both traps.'
+tagline: 'A stopwatch around a loop feels like science, but the engine rewrites your code while you time it, may delete work nobody uses, and leaves traces that colour the next measurement. Here is how this book''s harness avoids every trap.'
 objectives:
   - Explain JIT warm-up, V8's tiers and deoptimisation, and why a benchmark must discard its first runs.
-  - Explain dead-code elimination, and why a compiler is allowed to do it.
-  - Keep measured work alive with a sink.
-  - Fix a naive stopwatch benchmark so that it warms up and sinks every result.
-  - Summarise noisy timings with the median and p95 instead of a single run or the mean.
-  - Work out a quantile from sorted samples, interpolating between two slots.
-  - Explain why each benchmark case runs in its own fresh process, and what would leak otherwise.
-  - Read benchmark results as ratios, and use the median-to-p95 gap to spot a noisy run.
+  - Explain dead-code elimination, and keep measured work alive with a sink.
+  - Summarise noisy timings with the median and p95, and work out a quantile from sorted samples.
+  - Explain why each benchmark case runs in its own fresh process, and read results as ratios.
 introduces: [jit-warmup, dead-code-elimination, median-p95, benchmark-isolation]
-uses: [function, parameter, return, callback, first-class-function, while-loop, array, length, for-loop, for-of, numbers, object, typed-array, field-representation, aos-vs-soa, cpu-cache, console-log, arrow-function, copy-spread]
+uses: [function, return, array, length, for-loop, for-of, numbers, object, typed-array, field-representation, aos-vs-soa, console-log, arrow-function, copy-spread]
 sources: [v8-maglev, llvm-passes, mdn-performance-now]
 ---
 import WarmupSteps from '../../../components/diagrams/ch056/WarmupSteps';
@@ -22,149 +18,124 @@ import TierLadder from '../../../components/diagrams/ch056/TierLadder';
 import MeasureSteps from '../../../components/diagrams/ch056/MeasureSteps';
 import IsolationPicture from '../../../components/diagrams/ch056/IsolationPicture';
 
-{/* ── merge: from old chapter 56, Benchmarking honestly ── */}
-
 ## A stopwatch is not enough
 
-Every chart in this part of the book came from a benchmark, and you have
-been asked to trust it. Here is the benchmark almost everyone writes
-first:
+Every chart in this part came from a benchmark, and you have been asked
+to trust it. Here is the benchmark almost everyone writes first:
 
 ```js
 const t0 = performance.now();
 sumAll(xs);
-const t1 = performance.now();
-console.log(t1 - t0, 'ms');
+console.log(performance.now() - t0, 'ms');
 ```
 
-`performance.now()` returns the time in milliseconds, with a fraction<Cite id="mdn-performance-now" />,
-so `t1 - t0` is how long `sumAll` took. It looks reasonable, yet it is
-wrong in four separate ways. It times the function the very first time
-it runs, before the engine has optimised it. It throws the result away,
-so a clever compiler is allowed to skip the work. It trusts a single
-measurement on a machine doing a hundred other things. And it may run
-straight after some *other* benchmark that left the engine in an odd
-state. This chapter fixes the first two, which are both about the
-engine changing your code while you time it; the next chapter fixes the
-other two.
+`performance.now()` returns milliseconds with a
+fraction<Cite id="mdn-performance-now" />, so this looks reasonable; yet
+it is wrong in four ways. It times the function's first run, before the
+engine has optimised it; it throws the result away, so a compiler may
+skip the work; it trusts one measurement on a busy machine; and it may
+run straight after another benchmark that left the engine in an odd
+state. This chapter fixes all four.
 
 ## Warm-up: time the code that really runs
 
-A JavaScript engine does not run your function the same way every time.
-V8 first compiles everything to **bytecode** (a compact list of simple
-instructions) and runs it in an interpreter, and while it runs, it
-records how the program behaves, including the shapes of the objects
-and the types of the values it sees; this record is called
-**feedback**. Functions that get **hot** (called often, or looping a
-lot) are compiled again by faster **tiers**: first Sparkplug, then the
-optimising compilers Maglev and TurboFan, which use the feedback to
-generate machine code specialised for what they saw<Cite id="v8-maglev" />.
+V8 first compiles a function to **bytecode** and interprets it, while
+recording **feedback** (the object shapes and value types it sees at
+each place in the code). Functions that get **hot** are compiled again
+by faster **tiers**, Sparkplug and then the optimising compilers Maglev
+and TurboFan, which use the feedback to build machine code specialised
+for what they saw<Cite id="v8-maglev" />.
 
 <Figure takeaway="Code climbs the tiers as it gets hot, and can fall back." caption="V8's tiers, as the V8 team describes them. Every function starts as bytecode in the Ignition interpreter; hot functions move up; the optimising tiers build on feedback, and drop back down (deoptimise) when one of their guesses turns out wrong.">
   <TierLadder />
 </Figure>
 
-That optimised code is *speculative*: it is built on guesses such as
-"`p` always has this shape". If a guess turns out wrong, V8 throws the
-optimised code away and falls back to a lower tier, which is called
-**deoptimisation**<Cite id="v8-maglev" />. Step through one function
-warming up, and then deoptimising:
+That code is *speculative*: if a guess such as "`p` always has this
+shape" breaks, V8 throws it away and falls back to a lower tier, which
+is **deoptimisation**<Cite id="v8-maglev" />.
 
 <WarmupSteps client:visible />
 
 <Analogy title="a runner's first lap">
 Timing a runner on their first lap of the morning, still stiff and
-tying a shoelace, tells you little about how fast they run. A coach lets
-them warm up first, then times the laps that follow.
+tying a shoelace, tells you little about how fast they run; a coach
+lets them warm up, then times the laps that follow.
 <span slot="breaks">A runner warms up the same way every morning; an
 engine's warm-up depends on what the code has seen, so code that later
-meets different data can lose its speed again (a deoptimisation) in a
-way no runner does.</span>
-</Analogy>
-
-<Analogy extra title="a new barista">
-On a new barista's first morning, every order means reading the menu
-and checking the recipe card, so it is slow. After a week they know
-that the regular at nine wants a flat white and start it as she walks
-in; when one day she asks for tea instead, the guess is wrong, the milk
-goes down the sink, and they go back to the card.
-<span slot="breaks">A barista remembers people; V8's feedback is about
-the shapes and types of values at particular places in the code, and it
-can be thrown away and relearned at any moment, without anyone being
-told.</span>
+meets different data can lose its speed again, in a way no runner
+does.</span>
 </Analogy>
 
 <Callout kind="definition">
 **JIT warm-up** is the period in which code gets faster as the engine
 observes it and recompiles it with better tiers (a **JIT**, "just in
-time", compiler is one that compiles while the program runs). A
-benchmark that wants steady-state speed must run the code until it is
-warm, and only then start measuring. **Deoptimisation** is throwing
-away optimised code whose guesses broke, and falling back to slower
-code.
+time", compiler compiles while the program runs). A benchmark that
+wants steady-state speed runs the code until it is warm, and only then
+measures. **Deoptimisation** is throwing away optimised code whose
+guesses broke, and falling back to slower code.
 </Callout>
 
 <Examples of="jit-warmup">
 
 ```js
-sumAll(xs); // 1st call: bytecode, slow
-sumAll(xs); // ...
-sumAll(xs); // 500th: optimized, fast
+for (let i = 0; i < 1e6; i++)
+  add(i, 1);  // warm: numbers only
+add('a', 'b'); // a string: deoptimise
 ```
-
-```js
-// only numbers seen so far...
-for (let i = 0; i < 1e6; i++) add(i, 1);
-add('a', 'b'); // a string: deopt
-```
-
-<Run id="warmup" />
 
 </Examples>
 
-The first shows the problem in three lines: the same call, on the same
-data, takes different times depending on how many times it has run
-before, because the engine has moved it up the tiers in between. The
-second shows the fall back down: after a million calls with numbers, the
-optimised `add` is built on the guess "both arguments are numbers", and
-the first string breaks it. The third you can run: it times eight
-rounds of summing a million-element `Float64Array`, and prints each
-round's time and, at the end, the total. On most machines the first
-round or two are noticeably slower than the rest, though the exact
-numbers depend on your device (and a browser rounds the timer, so very
-fast rounds may show as 0). This book's harness handles warm-up by
-running the work for 300 milliseconds, and at least five times, before
+A million calls with numbers make `add` hot, and the optimised code is
+built on the guess "both arguments are numbers"; the first strings break
+it, and `add` is slow again until it warms up anew. This book's harness
+runs the work for at least 300 milliseconds and five times before
 recording anything.
 
-<Prompts ids={['warmup-why', 'first-call', 'tiers', 'feedback', 'deopt']} />
+<More title="Try it: eight rounds of the same sum">
+
+Each round sums a million-element `Float64Array`; on most machines the
+first round or two are noticeably slower (a browser rounds the timer, so
+very fast rounds may show 0).
+
+<Run id="warmup" />
+
+</More>
+
+<Prompts ids={['warmup-why', 'deopt']} />
 
 ## Dead code: make the result matter
 
-The second trap is subtler, because the code it breaks looks fine.
-Compilers delete work whose result nobody uses: it is a standard
-optimisation called **dead-code elimination**, and LLVM, for example,
-ships several passes that do it<Cite id="llvm-passes" />. A benchmark
-loop whose answer is thrown away is a perfect candidate, and an
-optimising compiler that removes it would make your benchmark report a
-near-zero time for a loop that never ran.
-
-<Analogy extra title="homework nobody marks">
-A student notices that the teacher never collects question 4, so they
-stop doing it; every mark they get is exactly the same as before, and
-they finish sooner.
-<span slot="breaks">The student is cutting a corner the teacher would
-object to; a compiler that removes dead code is doing nothing wrong,
-because the program's output cannot differ, and the only "victim" is a
-benchmark that was timing work nobody needed.</span>
-</Analogy>
+Compilers delete work whose result nobody uses: **dead-code
+elimination** is a standard optimisation, and LLVM ships several passes
+that do it<Cite id="llvm-passes" />. A benchmark loop whose answer is
+thrown away is a perfect candidate, and would report a near-zero time
+for a loop that never ran.
 
 <Callout kind="definition">
 **Dead-code elimination** is a compiler deleting computations whose
 results are never used and that have no other effect (no printing, no
-storing, no throwing). A **sink** is a variable that collects every
-measured result and is used at the end, so the measured work stays
-observable.
+storing, no throwing); it is legal because the program's output cannot
+change. A **sink** is a variable that collects every measured result and
+is used at the end, so the measured work stays observable.
 </Callout>
+
+<Examples of="dead-code-elimination">
+
+```js
+sumAll(xs);          // result goes nowhere
+sink += sumAll(xs);  // result is kept
+// ... and at the end:
+console.log(sink);   // now it is live
+```
+
+</Examples>
+
+The bare `sumAll(xs)` builds a value nothing reads, so an optimiser that
+can prove the function has no other effect may remove the call
+altogether. Adding the result into `sink`, which is printed, makes the
+sum live, so the loop that produced it is live and the work has to
+happen. Neither version throws an error, which is what makes the trap
+dangerous: the broken one quietly reports a number.
 
 <Formal title="What makes a computation dead">
 
@@ -174,231 +145,93 @@ live(v) ⇐ v is used to compute a live w
 dead(v) ⇔ not live(v)
 ```
 
-<span slot="read">A value is live if it is printed, stored somewhere the
-outside world can see, or returned; it is also live if it helps compute
-some other live value. Every value that cannot be reached by those two
-rules is dead, and a compiler may remove the work that produces it
-(provided that work has no other effect, such as throwing an
-error).</span>
+<span slot="read">A value is live if it is printed, stored where the
+outside world can see it, or returned, or if it helps compute another
+live value; every other value is dead, and the work producing it may be
+removed, provided that work has no other effect.</span>
 </Formal>
 
-<Examples of="dead-code-elimination">
+<Prompts ids={['dce-legal', 'sink-why']} />
+
+## The median and p95
+
+Suppose seven warm, sunk runs take these times, in milliseconds:
+`2.1, 2.0, 2.2, 2.0, 30, 2.1, 2.3`. Six agree, and one is fifteen times
+slower, perhaps because the garbage collector paused the program or
+another program grabbed the CPU. Their mean is about 6.1, slower than
+six of the seven; it describes no run at all.
+
+<Analogy extra title="your commute">
+Asked how long your commute takes, you say "about 25 minutes", not the
+average with the day of the motorway crash in it; someone catching a
+train also wants "how bad is a bad day?", say 40.
+<span slot="breaks">A benchmark's slow samples can come from the program
+itself (a pause its own allocations caused), so a long tail is sometimes
+the real cost, not noise.</span>
+</Analogy>
+
+This book's harness takes 30 samples, sorts them, and reports the
+**median** (what a typical run costs) and the **p95** (how bad the slow
+end gets). Each sample lasts at least 10 milliseconds, repeating the
+work and dividing, because browsers round `performance.now()` to 100
+microseconds<Cite id="mdn-performance-now" />.
+
+<MeasureSteps client:visible />
+
+<Callout kind="definition">
+The **median** of a set of timings is the middle one once they are
+sorted (or halfway between the two middle ones); the **p95** (95th
+percentile) is the value that 95% of the timings are at or below. Both
+ignore a few wild outliers that drag the **mean** around. From n sorted
+samples, the quantile q sits at position (n − 1) × q, interpolating
+between the two slots either side.
+</Callout>
+
+<Examples of="median-p95">
 
 ```js
-const area = w * h; // never used:
-// a compiler may delete this line
-```
-
-```js
-let s = 0;
-for (const x of xs) s += x;
-// s is never used: the loop is dead
-```
-
-```js
-let sink = 0;
-sink += sumAll(xs); // keep the result
-console.log(sink);  // now it is live
+const s = [1, 2, 3, 4];
+// median: pos = (4 - 1) * 0.5 = 1.5
+s[1] + (s[2] - s[1]) * 0.5; // 2.5
 ```
 
 </Examples>
 
-The first is the simplest case: `area` is computed and then never read,
-so by the rules above it is dead, and so is the multiplication. The
-second is the benchmark case: the loop builds `s`, but nothing reads `s`
-afterwards, so the whole loop is dead, and an optimiser that can prove
-it may remove the loop. The third is the fix this book's harness uses:
-every result is added into `sink`, and `sink` is printed, so the sum is
-live, the loop that produced it is live, and the work has to happen.
-Spot the difference between the two:
+Four samples have no single middle: the position 1.5 falls halfway
+between slot 1 (`2`) and slot 2 (`3`), giving `2.5`. With 21 samples
+the p95 sits at slot (21 − 1) × 0.95 = 19 exactly. (Sort timings with
+`sort((a, b) => a - b)`: plain `sort()` compares as strings, so `30`
+would come before `4`.)
 
-```js
-// broken: the result goes nowhere
-const t0 = performance.now();
-sumAll(xs);
-const ms = performance.now() - t0;
-```
+<More title="Try it, and the quantile rule written out">
 
-```js
-// working: the result is kept
-const t0 = performance.now();
-sink += sumAll(xs);
-const ms = performance.now() - t0;
-```
-
-Neither throws an error, which is what makes this trap dangerous: the
-broken version quietly reports a number, and you have no way to tell
-from the number alone whether the work happened.
-
-<Prompts ids={['dce-what', 'dce-legal', 'sink-why']} />
-
-<Callout kind="engine" label="Under the hood">
-The harness behind this book's charts (`engine/ts/packages/bench`)
-builds both defences into its core: a warm-up of at least 300
-milliseconds and five runs, and a `sink` that every run's result is
-added into, read at the end of each case. It also has to deal with the
-two traps of the next chapter: a single timing is one roll of the dice,
-and one benchmark can leave the engine in a state that changes the next
-one's result.
-</Callout>
-
-## Your turn
-
-The core exercise hands you the broken stopwatch from the start of the
-chapter; fix its first two problems.
-
-<Exercise id="warmBench" />
-
-## What you learned
-
-- **JIT warm-up:** V8 interprets bytecode first and recompiles hot code
-  with faster tiers that rely on feedback, so a benchmark must warm up
-  before it measures.
-- **Deoptimisation** throws optimised code away when one of its guesses
-  breaks, and the code is slow again for a while.
-- **Dead-code elimination** may delete work whose result is never used;
-  it is legal because the program's output cannot change.
-- A **sink** keeps every measured result observable, so the work cannot
-  be deleted.
-
-Next: how to summarise noisy timings honestly, and why every case in
-this book's benchmark ran in its own fresh process.
-
-
-{/* ── merge: from old chapter 56, Noisy numbers: the median, p95 and a fresh process ── */}
-
-## Which number do you report?
-
-The last chapter fixed two traps: the benchmark now warms up, so it
-times optimised code, and it sinks every result, so the work cannot be
-deleted. Suppose you run the warm loop seven times and get these
-times, in milliseconds:
-
-```js
-[2.1, 2.0, 2.2, 2.0, 30, 2.1, 2.3]
-```
-
-Six of them agree, and one is fifteen times slower: maybe the garbage
-collector (the part of the engine that frees memory nobody uses any
-more) paused the program, or another program grabbed the CPU for a
-moment. Which number describes your loop? And there is a second, quieter
-question: if this benchmark had run straight after a different one, in
-the same process, would you even have got these seven? This chapter
-answers both, with the two remaining habits of an honest benchmark.
-
-## The median and p95
-
-<Analogy title="your commute">
-Asked how long your commute takes, you say "about 25 minutes", even
-though once, after a crash on the motorway, it took two hours; you
-would not average the two hours in. But if someone needs to be sure of
-catching a train, they also want to know "how bad is a bad day?", and
-you might say "on a bad day, 40".
-<span slot="breaks">A commute's bad days come from the outside world;
-a benchmark's slow samples can also come from the program itself (a
-garbage-collection pause the loop's own allocations caused), so a long
-slow tail is sometimes the real cost, not noise.</span>
-</Analogy>
-
-<Analogy extra title="house prices on one street">
-Ten houses on a street sell for about the same price, and then a
-footballer's mansion sells for twenty times as much. The *average* price
-on the street jumps, though no ordinary house got dearer; the price of
-the middle house, the one with as many dearer houses as cheaper ones,
-barely moves.
-<span slot="breaks">House prices are a fixed list; benchmark samples
-are drawn fresh every run, so the median itself wobbles a little from
-run to run, which is one more reason to take many samples.</span>
-</Analogy>
-
-This book's harness takes 30 samples, sorts them, and reports two
-numbers. The **median** (the 50% point) says what a typical run costs;
-the **p95** (95% of samples were at most this slow) says how bad the
-slow end gets. Step through the harness's `measure()` function, warm-up
-and sink included:
-
-<MeasureSteps client:visible />
-
-Each sample also lasts at least 10 milliseconds, because one call of a
-fast loop is too short to time: browsers deliberately round
-`performance.now()` to 100 microseconds, or 5 in specially isolated
-pages<Cite id="mdn-performance-now" />, so the harness repeats the
-kernel until a sample is long enough and divides by the number of runs.
-
-<Callout kind="definition">
-The **median** of a set of timings is the middle one once they are
-sorted (or halfway between the two middle ones). The **p95** (95th
-percentile) is the value that 95% of the timings are at or below. Both
-ignore a few wild outliers that would drag the **mean** (the average)
-around.
-</Callout>
+<Run id="mean-vs-median" />
 
 <Formal title="A quantile from sorted samples">
 
 ```text
-s₀ ≤ s₁ ≤ … ≤ sₙ₋₁   (sorted)
 pos = (n − 1) × q
 lo = ⌊pos⌋   hi = ⌈pos⌉
 Q(q) = s_lo + (s_hi − s_lo) × (pos − lo)
 ```
 
-<span slot="read">Sort the n samples from fastest to slowest. For a
-fraction q (0.5 for the median, 0.95 for p95), the position is n minus
-1, times q; usually it falls between two slots, lo (rounded down) and hi
-(rounded up). The answer starts at the sample in slot lo and moves
-towards the one in slot hi by the fraction left over. This is exactly
-the harness's quantile function.</span>
+<span slot="read">For a fraction q (0.5 for the median, 0.95 for p95)
+the position is n minus 1, times q; the answer starts at the sample in
+slot lo, rounded down, and moves towards slot hi, rounded up, by the
+fraction left over.</span>
 </Formal>
 
-<Examples of="median-p95">
+</More>
 
-```js
-// odd count: the middle one
-[1, 2, 9]; // median 2
-```
-
-```js
-// even count: halfway between
-[1, 2, 3, 4]; // pos 1.5, median 2.5
-```
-
-<Run id="mean-vs-median" />
-
-</Examples>
-
-The first is the simplest case: three sorted samples, position
-(3 − 1) × 0.5 = 1, so the median is the sample in slot 1, `2`, whatever
-the 9 might have been. The second has no single middle sample: the
-position is (4 − 1) × 0.5 = 1.5, halfway between slot 1 (`2`) and slot
-2 (`3`), which gives `2.5`. The third you can run: it takes the seven
-timings from the start of the chapter, prints their mean (about 6.1,
-higher than six of the seven samples) and then sorts a copy and prints
-the middle one, `2.1`, which is what a typical run really costs. Notice
-`sort((a, b) => a - b)`: plain `sort()` compares as strings, so `30`
-would sort before `4`.
-
-<Prompts ids={['median-why', 'p95-what', 'quantile-pos', 'timer-coarse']} />
+<Prompts ids={['median-why', 'quantile-pos']} />
 
 ## One fresh process per case
 
-The last trap is the sneakiest, because each benchmark on its own is
-fine. V8's optimised code is specialised for the shapes and types it has
-seen<Cite id="v8-maglev" />. Suppose the `get-objects` suite ran every
-layout in one process: the shared `consume(p)` function would see
-object literals, then instances of one class, then of another, three
-different shapes. Its feedback becomes mixed, so the code optimised for
-it is more general and slower, and each layout's time would depend on
-which layouts ran before it.
-
-<Analogy extra title="tasting with a clean glass">
-At a wine tasting, you rinse your glass (and your mouth) between wines;
-otherwise the second wine tastes partly of the first, and the order you
-tasted them in decides your verdict.
-<span slot="breaks">A rinse leaves a little behind and you can still
-taste fine; with an engine, the leftover feedback can change which
-machine code runs at all, so the only reliable rinse is a completely
-new engine.</span>
-</Analogy>
+V8's optimised code is specialised for the shapes it has
+seen<Cite id="v8-maglev" />. If every layout of the `get-objects` suite
+ran in one process, the shared `consume(p)` would see object literals,
+then instances of one class, then another: mixed feedback, more general
+and slower code, and each layout's time decided by which ran before it.
 
 <Figure takeaway="Isolation keeps one layout's history out of another's timing." caption="If every layout ran in one process (left), consume would see three shapes, and the measurements would depend on the order. One fresh process per case (right) gives each layout a clean engine.">
   <IsolationPicture />
@@ -413,87 +246,58 @@ state left by one case cannot affect another.
 <Examples of="benchmark-isolation">
 
 ```js
-// one process per case
 for (const layout of LAYOUTS) {
   const out = execFileSync(
-    process.execPath,
-    ['case.ts', suite, layout, n],
-  );
+    process.execPath,  // Node itself
+    ['case.ts', suite, layout, n]);
   rows.push(JSON.parse(out));
 }
 ```
 
-```js
-// not isolated: consume sees all three
-timeLayout('aos', consume);
-timeLayout('aos-class', consume);
-timeLayout('aos-ctor', consume);
-```
-
-```js
-// in the browser: a fresh Worker
-const w = new Worker(url, {
-  type: 'module',
-});
-```
-
 </Examples>
 
-The first is the driver from this book's harness (simplified): for
-every layout, `execFileSync` starts a brand-new Node process
-(`process.execPath` is the path to Node itself) that runs one case and
-prints its result as JSON, which the driver collects. A fresh process
-also starts with a fresh heap, so garbage left by one layout cannot
-trigger a collection during the next. The second is the version to
-avoid: three layouts timed one after another in the same process,
-sharing one `consume`, so the third is measured with feedback from the
-first two. The third is how the in-browser `LiveBench` from the AoS vs
-SoA chapter does the same thing: a new Web Worker (a separate
-JavaScript engine running beside the page) for each layout.
+The harness's driver (simplified) starts a brand-new Node process for
+each layout, which runs one case and prints its result as JSON. A fresh
+process also has a fresh heap, so garbage left by one layout cannot
+trigger a collection during the next; in the browser, `LiveBench` does
+the same with a new Web Worker per layout.
 
-<Prompts ids={['isolation-why', 'isolation-heap']} />
+Finally, this book's results came from a shared cloud machine, so
+compare **ratios, not absolute times**: "SoA was about 3.8 times faster"
+survives a busier machine, while "1.72 nanoseconds per element" does
+not. A wide gap between median and p95 means the run was noisy; run it
+again.
 
-## Noise is normal
-
-This book's results came from a shared cloud machine, and the results
-file says so: expect noise, and compare **ratios, not absolute times**.
-A ratio like "SoA was about 3.8 times faster on `update-xy`" survives a
-slower or busier machine; "1.72 nanoseconds per element" does not. When
-a result surprises you, run it again, and look at the p95 next to the
-median: a wide gap means the run was noisy.
+<Prompts ids={['isolation-why', 'gap-noise']} />
 
 <Callout kind="engine" label="Under the hood">
-This harness is more than a teaching aid. The hand-written layouts it
-measures are the baselines that Viscosity's *generated* code will be
-compared against, and when the compiler claims "this program should be
-SoA", the claim is checked by exactly these rules: warm, sunk,
-summarised by median and p95, one process per case. An optimiser is
-only as honest as the benchmark that judges it.
+The hand-written layouts this harness measures are the baselines
+Viscosity's *generated* code will be compared against; when the compiler
+claims "this program should be SoA", the claim is checked by exactly
+these rules: warm, sunk, median and p95, one process per case.
 </Callout>
-
-<Prompts ids={['ratios', 'gap-noise']} />
 
 ## Your turn
 
-The core exercise is the summary step of the harness; the extra one puts
-every habit from this chapter and the last together.
-
-<Exercise id="summarize" />
+Every habit at once: fix a benchmark that makes every classic mistake.
 
 <Exercise id="fixBench" />
 
+<Exercise id="warmBench" />
+
+<Exercise id="summarize" />
+
 ## What you learned
 
-- Summarise many samples with the **median** (a typical run) and the
-  **p95** (the slow end), not with one run or the mean.
-- A quantile comes from sorted samples, interpolating between the two
-  slots either side of its position.
-- **Benchmark isolation:** one fresh process (or worker) per case, so
-  feedback, compiled code and heap state cannot leak between layouts.
-- On shared machines, trust **ratios**, and read the gap between the
-  median and the p95 as a measure of noise.
+- **JIT warm-up**: measure only once the optimised tiers are running;
+  **deoptimisation** can make code slow again.
+- **Dead-code elimination** may delete unused work; a **sink** keeps it.
+- Report the **median and p95** of many samples, never one run or the
+  mean.
+- **Benchmark isolation**: one fresh process per case; trust ratios.
 
-That is the end of Part II. Next comes Part III, where you start
-building Drip, your own programming language, one piece at a time.
+That is the end of *Core 1: the machine under JavaScript*. Next: *From
+source to a running program: interpreters and compilers*, the start of
+building Drip.
 
 <Quiz />
