@@ -8,6 +8,8 @@
 #                                 (no tokens, no git check)
 #   scripts/release.sh --npm-only publish only @viscosity/cli and @viscosity/wasm
 #                                 (needs NPM_TOKEN only; crates are skipped)
+#   scripts/release.sh --crates-only publish only the six crates
+#                                 (needs CARGO_REGISTRY_TOKEN only; npm is skipped)
 #
 # NPM_TOKEN may also be provided as an environment variable named
 # npm-publish (not a valid shell name, so it is read with printenv).
@@ -31,11 +33,13 @@ UA="viscosity-release (https://github.com/tariqshams/viscosity)"
 
 DRY_RUN=0
 NPM_ONLY=0
+CRATES_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run|-n) DRY_RUN=1 ;;
     --npm-only) NPM_ONLY=1 ;;
-    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --crates-only) CRATES_ONLY=1 ;;
+    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "release.sh: unknown argument: $arg (try --help)" >&2; exit 2 ;;
   esac
 done
@@ -50,7 +54,7 @@ if [[ -z "${NPM_TOKEN:-}" ]] && printenv npm-publish >/dev/null 2>&1; then
 fi
 if [[ $DRY_RUN -eq 0 ]]; then
   missing=()
-  [[ -n "${NPM_TOKEN:-}" ]] || missing+=(NPM_TOKEN)
+  [[ $CRATES_ONLY -eq 1 || -n "${NPM_TOKEN:-}" ]] || missing+=(NPM_TOKEN)
   [[ $NPM_ONLY -eq 1 || -n "${CARGO_REGISTRY_TOKEN:-}" ]] || missing+=(CARGO_REGISTRY_TOKEN)
   if [[ ${#missing[@]} -gt 0 ]]; then
     die "missing ${missing[*]}. Set NPM_TOKEN (an npm access token that can publish to the \"viscosity\" org) and CARGO_REGISTRY_TOKEN (a crates.io API token with publish-new and publish-update scopes), or run with --dry-run."
@@ -152,6 +156,9 @@ else
   done
 fi
 
+if [[ $CRATES_ONLY -eq 1 ]]; then
+  step "--crates-only: skipping npm"
+else
 # --- 4. npm -------------------------------------------------------------------
 NPMRC="$(mktemp)"
 trap 'rm -f "$NPMRC"' EXIT
@@ -184,6 +191,7 @@ else
   step "npm publish @viscosity/wasm"
   # Just built above, so skip the prepack rebuild.
   (cd "$RUST/packages/wasm" && npm publish --ignore-scripts "${NPM_FLAGS[@]}")
+fi
 fi
 
 step "Done: Viscosity $VERSION$([[ $DRY_RUN -eq 1 ]] && echo ' (dry run, nothing uploaded)')"
