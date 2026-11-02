@@ -27,12 +27,12 @@ export const prompts = {
     a: 'When its rules can make a cycle in the dependency graph: some value would depend, through others, on itself.',
   },
   'width-order': {
-    q: 'In the type rules for `int[2][3]`, why does the result say `array(2, array(3, int))` and not the other way round?',
-    a: 'The innermost C (the last brackets) wraps the base type first, and each outer C wraps the result of the one inside it: the first brackets end up outermost.',
+    q: 'Why is the C type `int[2][3]` written `array(2, array(3, int))` as a type expression, and not `array(3, array(2, int))`?',
+    a: 'It is an array of 2 rows, each an `int[3]`: the last brackets wrap the base type first, and each earlier pair wraps the result, so the first brackets end up outermost.',
   },
   'down-then-up': {
-    q: 'For `int[2][3]`, in which direction do `b` and `w` travel?',
-    a: '`b` (the base type) travels down the chain of C nodes; `w` (the width) is computed at the bottom and travels back up.',
+    q: 'An attribute grammar computes the type and byte width of a C array type such as `int[2][3]`, whose brackets form a chain of nodes after the base type. Which values travel down the chain, and which up?',
+    a: 'The base type and its width are inherited, travelling down the chain; the full type and the total width are synthesised at the bottom and travel back up.',
   },
   'l-attributed': {
     q: 'What does L-attributed mean, and why is it useful?',
@@ -220,7 +220,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'With the chapter’s rules, what are the type and width of `int[4][2]`?',
+    q: 'With 4-byte ints, what are the type and the size in bytes of the C array type `int[4][2]`?',
     options: [
       {
         t: '`array(4, array(2, int))`, 32 bytes',
@@ -274,7 +274,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `N(\'10.1\')` return, using Knuth’s binary-numeral rules?',
+    q: 'Under Knuth’s attribute grammar for binary numerals, what value does the numeral `10.1` get?',
     options: [
       {
         t: '`2.5`',

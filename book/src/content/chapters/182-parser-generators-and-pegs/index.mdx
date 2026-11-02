@@ -98,7 +98,7 @@ they measured<Cite id="parr2014allstar" />.
 
 ## Parsing expression grammars
 
-A grammar like those of "Grammars" is a *description*: `A → x | y` says
+A grammar like those of *Grammars and parse trees* is a *description*: `A → x | y` says
 an `A` may be an `x` or a `y`, and leaves it to the parser to find out
 which, which is where ambiguity and conflicts come from. A **parsing
 expression grammar** (PEG) is written as a *procedure* instead: `A ← x / y`
@@ -166,8 +166,8 @@ alternative comes first and succeeds, so the longer one is dead, and a
 rule `B ← A "c"` would fail on `abc`. Put the longer alternative first
 and both work. The second shows a predicate doing a scanner's job: the
 keyword `if` is only a keyword when no letter follows it, and `!` checks
-that without consuming the letter (this is maximal munch, from "Lookahead and
-maximal munch", written into the grammar). The runnable one builds these pieces as small
+that without consuming the letter (this is maximal munch, from *Lookahead, numbers, strings and
+names*, written into the grammar). The runnable one builds these pieces as small
 JavaScript functions, each taking the input and a position and returning
 where it stopped, or `-1`; try `'ifx'`, `'if('` and `'i'`.
 

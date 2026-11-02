@@ -148,7 +148,7 @@ reductions, innermost first, ending with the start symbol alone. The
 second is `1 - 2` under the subtraction grammar, written as the table
 people use to trace these parsers, with the stack on the left and the
 input on the right. The third is a moment in parsing `print (1 + 2);`
-with the original adding grammar from the chapter on grammars, left
+with the adding grammar as first written, left
 recursion and all: when the `)` arrives, `expr + item` is on top, the
 parser reduces it to one `expr`, and it can then shift the `)` and
 reduce `( expr )` to an `item`.

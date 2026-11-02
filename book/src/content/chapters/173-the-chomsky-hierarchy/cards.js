@@ -1,257 +1,225 @@
-// Chapter 258 cards: recall prompts, examples, exercises and quiz.
+// Chapter 173 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
-  'ambiguous-what': {
-    q: 'When is a grammar **ambiguous**?',
-    a: 'When some sentence has two different parse trees (equivalently, two different leftmost derivations).',
-  },
-  'levels-fix': {
-    q: 'How does a grammar make `*` bind tighter than `+`?',
-    a: 'It gives each level its own nonterminal (`term`, `factor`, `primary`), and `*` only joins `primary`s, so a product is always finished before a `+` sees it.',
-  },
-  'left-rec-assoc': {
-    q: 'In `term → term "-" factor | factor`, why must `1 - 2 - 3` group as `(1 - 2) - 3`?',
-    a: 'The right side of `-` is a `factor`, which cannot hold a `-`; so the only `-` that can sit lower in the tree is on the left.',
-  },
-  'dangling-what': {
-    q: 'What is the **dangling else**?',
-    a: 'In `if a if b s1 else s2` the grammar allows the `else` to belong to either `if`, giving two parse trees.',
-  },
-  'dangling-fix': {
-    q: 'Name two ways languages remove the dangling else.',
-    a: 'A rule that `else` belongs to the nearest `if` (as JavaScript says), or requiring braces round every branch (as Drip does).',
-  },
-  'grammar-not-language': {
-    q: 'Is ambiguity a property of a grammar or of the language it describes?',
-    a: 'Of the grammar: the same language of sums can have an ambiguous grammar and an unambiguous one.',
-  },
   'chomsky-four': {
-    q: 'Name the four levels of the Chomsky hierarchy, from smallest to largest.',
-    a: 'Regular (type 3), context-free (type 2), context-sensitive (type 1), unrestricted (type 0).',
+    q: 'Name the four levels of the Chomsky hierarchy, from smallest to largest, with the machine that recognises each.',
+    a: 'Regular (type 3, finite automata), context-free (type 2, pushdown automata), context-sensitive (type 1, linear-bounded automata), unrestricted (type 0, Turing machines).',
   },
   'cf-machine': {
-    q: 'What does a context-free language need that a finite automaton lacks?',
-    a: 'A stack (unbounded memory), to remember how many brackets are still open: a pushdown automaton.',
+    q: 'What does recognising a context-free language need that a finite automaton lacks?',
+    a: 'Unbounded memory in the form of a stack (a pushdown automaton), for example to remember how many brackets are still open.',
   },
   'declare-before-use': {
-    q: 'Why does a compiler check “every name was declared” in a later pass, not in the grammar?',
-    a: 'That rule is not context-free: a context-free grammar cannot make a later name match an earlier one.',
+    q: 'Why do compilers check that every name was declared in a pass after parsing, rather than in the grammar?',
+    a: 'The rule is not context-free: matching a use to an earlier declaration of the same name has the shape of a word written twice, which no context-free grammar can describe.',
+  },
+  'pump-lemma': {
+    q: 'State the pumping lemma for regular languages.',
+    a: 'For a regular L there is a p such that every w in L with |w| ≥ p splits as x y z with y ≠ ε and |xy| ≤ p, and x yᵏ z is in L for every k ≥ 0.',
+  },
+  'pump-anbn': {
+    q: 'With the pumping lemma and w = aᵖbᵖ, why is `aⁿbⁿ` not regular?',
+    a: 'Since |xy| ≤ p, y lies among the a’s and is all a’s; pumping it (x yy z) adds a’s but no b’s, giving a string outside the language.',
+  },
+  'pump-one-way': {
+    q: 'Can the pumping lemma prove that a language is regular?',
+    a: 'No. Every regular language pumps, but some languages that are not regular pump too; to show a language is regular, give a regular expression or a finite automaton for it.',
+  },
+  'rd-is-pda': {
+    q: 'In what sense is a recursive-descent parser a pushdown automaton?',
+    a: 'Its call stack is the automaton’s stack: each call to a rule’s function pushes a frame recording where to resume, and each return pops one.',
+  },
+  'dpda-weaker': {
+    q: 'Do deterministic pushdown automata accept every context-free language?',
+    a: 'No. Palindromes are context-free, but a PDA has to guess where the middle is, and no deterministic PDA accepts them.',
+  },
+  'lr-dcfl': {
+    q: 'Which languages have LR(k) grammars, according to Knuth (1965)?',
+    a: 'Exactly the deterministic context-free languages, those a deterministic pushdown automaton accepts; and every one of them also has an LR(1) grammar.',
+  },
+  anbncn: {
+    q: 'Why can no pushdown automaton accept aⁿbⁿcⁿ?',
+    a: 'Checking the b’s against the a’s pops the a’s count off the stack, so nothing is left to check the c’s against (the context-free pumping lemma makes this a proof).',
+  },
+  'typedef-names': {
+    q: 'Why can a C parser not decide, from the grammar alone, whether `T * x;` is a declaration or a multiplication?',
+    a: 'It depends on whether T was declared earlier as a type name (with typedef), which a context-free grammar cannot remember; GNU C’s scanner looks names up and returns a separate TYPENAME token.',
+  },
+  'js-slash': {
+    q: 'How does the ECMAScript specification decide whether a `/` starts a division or a regular expression literal?',
+    a: 'Its lexical grammar has several goal symbols (InputElementDiv, InputElementRegExp and others), and the syntactic context says which one the scanner uses for the next token.',
+  },
+  'python-indent': {
+    q: 'How does Python’s tokenizer turn indentation into tokens?',
+    a: 'It keeps a stack of indentation levels: a deeper line pushes a level and gives one INDENT; a shallower line pops levels, giving one DEDENT for each level popped.',
   },
 };
 
 export const examples = {
-  allValues: {
-    title: 'Every value an ambiguous grammar allows',
-    code: `// expr → expr op expr | NUMBER
-// Every tree has some operator as its
-// root; try each one in turn.
-function values(ts) {
-  if (ts.length === 1) {
-    return [Number(ts[0])];
+  pump: {
+    title: 'Finding the loop, and pumping it',
+    code: `// A DFA for a+b+: it accepts every
+// aⁿbⁿ, and more besides.
+const D = {
+  start: 'A', accept: ['B'],
+  next: {
+    A: { a: 'X' },
+    X: { a: 'X', b: 'B' },
+    B: { b: 'B' },
+  },
+};
+
+function trail(dfa, s) {
+  const qs = [dfa.start];
+  for (const c of s) {
+    qs.push(dfa.next[qs.at(-1)]?.[c]);
   }
-  const out = [];
-  const n = ts.length;
-  for (let i = 1; i < n; i += 2) {
-    const op = ts[i];
-    const ls = values(ts.slice(0, i));
-    const rs = values(ts.slice(i + 1));
-    for (const a of ls) {
-      for (const b of rs) {
-        if (op === '-') out.push(a - b);
-        if (op === '+') out.push(a + b);
-        if (op === '*') out.push(a * b);
-      }
-    }
+  return qs;
+}
+const accepts = (dfa, s) =>
+  dfa.accept.includes(
+    trail(dfa, s).at(-1));
+
+// The first state that comes back.
+function loop(dfa, s) {
+  const qs = trail(dfa, s);
+  for (let j = 1; j < qs.length; j++) {
+    const i = qs.indexOf(qs[j]);
+    if (i < j) return [i, j];
   }
-  return out;
 }
 
-const sp = (s) => s.split(' ');
-console.log(values(sp('1 - 2 - 3')));
-console.log(values(sp('1 + 2 * 3')));
-console.log(
-  values(sp('8 - 4 - 2 - 1')));`,
+const p = 3; // number of states
+const w = 'aaabbb';
+console.log(trail(D, w).join(' '));
+const [i, j] = loop(D, w);
+const x = w.slice(0, i);
+const y = w.slice(i, j);
+const z = w.slice(j);
+console.log({ x, y, z });
+for (const k of [0, 2, 3]) {
+  const v = x + y.repeat(k) + z;
+  console.log(v, accepts(D, v));
+}`,
   },
 };
 
 export const exercises = {
-  groupings: {
-    title: 'Every tree, written out',
-    prompt: 'Under the ambiguous grammar `expr → expr op expr | NUMBER`, a row of tokens such as `[\'1\', \'-\', \'2\', \'-\', \'3\']` can have several parse trees. Write `groupings(ts)`, returning every tree as a fully bracketed string with no spaces: a single number stays as it is (`\'1\'`), and an operator node is `(left op right)`. List the trees by the position of the root operator, leftmost first, and within that in the order of the left side’s list, then the right side’s. So `groupings(\'1 - 2 - 3\'.split(\' \'))` is `[\'(1-(2-3))\', \'((1-2)-3)\']`.',
-    starter: `function groupings(ts) {
+  'run-pda': {
+    title: 'Run a pushdown automaton',
+    prompt: `A deterministic pushdown automaton is given as data:
+
+- \`start\`: the start state; \`accept\`: the accepting states; \`bottom\`: the one-character bottom marker the stack starts with.
+- \`moves\`: an object whose keys are \`'state char top'\` (three parts separated by single spaces) and whose values are \`[next, push]\`: go to state \`next\`, pop the top symbol, and push the characters of the string \`push\` (so the **last** character of \`push\` becomes the new top; \`''\` only pops).
+
+The stack is a string whose last character is the top. Write \`runPda(pda, s)\`: read \`s\` one character at a time; if no move fits, return \`false\` at once. At the end, accept (return \`true\`) only if the state is accepting **and** the stack is back to the bottom marker alone.`,
+    starter: `function runPda(pda, s) {
   // your code here
-  return [];
 }
 
-console.log(groupings(
-  '1 - 2 - 3'.split(' ')));`,
-    solution: `function groupings(ts) {
-  if (ts.length === 1) return [ts[0]];
-  const out = [];
-  const n = ts.length;
-  for (let i = 1; i < n; i += 2) {
-    const op = ts[i];
-    const ls = groupings(
-      ts.slice(0, i));
-    const rs = groupings(
-      ts.slice(i + 1));
-    for (const a of ls) {
-      for (const b of rs) {
-        out.push(\`(\${a}\${op}\${b})\`);
-      }
-    }
-  }
-  return out;
-}`,
-    tests: `const sp = (s) => s.split(' ');
-test('one number', () => {
-  expect(groupings(['7'])).toEqual(['7']);
-});
-test('one operator: one tree', () => {
-  expect(groupings(sp('1 + 2'))).toEqual(['(1+2)']);
-});
-test('1 - 2 - 3 has two trees', () => {
-  expect(groupings(sp('1 - 2 - 3')))
-    .toEqual(['(1-(2-3))', '((1-2)-3)']);
-});
-test('1 + 2 * 3 has two trees', () => {
-  expect(groupings(sp('1 + 2 * 3')))
-    .toEqual(['(1+(2*3))', '((1+2)*3)']);
-});
-test('three operators: five trees', () => {
-  expect(groupings(sp('1 - 2 - 3 - 4'))).toEqual([
-    '(1-(2-(3-4)))', '(1-((2-3)-4))',
-    '((1-2)-(3-4))',
-    '((1-(2-3))-4)', '(((1-2)-3)-4)',
-  ]);
-});`,
-    hints: [
-      'Every tree of `expr op expr` has one operator at its root. Which positions in the token list can hold the root?',
-      'Operators sit at the odd positions 1, 3, 5, …. For the root at position `i`, the left child is a tree of `ts.slice(0, i)` and the right child a tree of `ts.slice(i + 1)`, and those are smaller versions of the same problem.',
-      'Recurse on both sides, then pair every left string with every right string in two nested loops: `\'(\' + a + ts[i] + b + \')\'`. A single number is the base case: return `[ts[0]]`.',
-    ],
-    walkthrough: `**How to think about it.** Do not try to list the trees directly; describe one tree instead. Under \`expr → expr op expr | NUMBER\`, a tree is either a single number, or one operator at the root with a whole tree on its left and a whole tree on its right. So to list *every* tree of a row, choose which operator is the root, list every tree of the tokens to its left, list every tree of the tokens to its right, and combine each left one with each right one. The lists for the two sides are the same problem on shorter rows, which is recursion, and a single number is the base case. This is exactly the shape of the runnable example, with strings in place of numbers.
-
-**The solution, line by line.**
-
-- \`if (ts.length === 1) return [ts[0]];\` is the base case: one token is one number, which has exactly one tree, written as the number itself.
-- \`const out = [];\` collects the answers.
-- \`const n = ts.length;\` and \`for (let i = 1; i < n; i += 2) {\` visit each operator. In a row like \`1 - 2 - 3\` the numbers are at the even positions and the operators at the odd ones, so start at 1 and step by 2.
-- \`const op = ts[i];\` is the root operator. \`const ls = groupings(ts.slice(0, i));\` lists every tree of the left part (for the second \`-\` of \`1 - 2 - 3\`, that is \`1 - 2\`, with one tree, \`(1-2)\`).
-- \`const rs = groupings(ts.slice(i + 1));\` lists every tree of the right part.
-- The two nested \`for\` loops pair every left tree \`a\` with every right tree \`b\`, and \`\` out.push(\`(\${a}\${op}\${b})\`) \`\` writes the combined tree with the root operator between them, in brackets (a template literal, with each \`\${...}\` filled in).
-- \`return out;\` returns them all; their order is root position first, then the left list, then the right list, as the exercise asks.
-
-For \`1 - 2 - 3 - 4\` the root can be any of three operators: the first gives one left tree times two right trees, the middle one gives one times one, and the last gives two times one, five in all. The counts for 1, 2, 3, 4 operators are 1, 2, 5, 14, growing fast (they are the *Catalan numbers*), which is why an ambiguous grammar is no use to a compiler: it must pick one tree, and the grammar gives it no reason to.
-
-**Common wrong attempts.**
-
-- Looping over every position (\`i++\`) treats numbers as roots too, and slicing round a number gives rows that start or end with an operator, which crash or produce nonsense.
-- Joining only the *first* tree of each side (\`ls[0]\`, \`rs[0]\`) finds one tree per root position and misses the rest: three trees for \`1 - 2 - 3 - 4\` rather than five.`,
-    wrong: [
-      {
-        code: `function groupings(ts) {
-  if (ts.length === 1) return [ts[0]];
-  const out = [];
-  const n = ts.length;
-  for (let i = 1; i < n; i += 2) {
-    const l = ts.slice(0, i);
-    const r = ts.slice(i + 1);
-    const a = groupings(l)[0];
-    const b = groupings(r)[0];
-    out.push('(' + a + ts[i] + b + ')');
-  }
-  return out;
-}`,
-        why: 'It keeps only the first tree of each side, so `1 - 2 - 3 - 4` gives three trees instead of five.',
-      },
-    ],
+const BRACKETS = {
+  start: 'q', accept: ['q'],
+  bottom: 'Z',
+  moves: {
+    'q ( Z': ['q', 'Z('],
+    'q ( (': ['q', '(('],
+    'q ) (': ['q', ''],
   },
-  rightLinear: {
-    optional: true,
-    title: 'Is this grammar regular?',
-    prompt: 'A grammar (as data, with `[]` for ε) is **right-linear**, the regular kind at the bottom of the Chomsky hierarchy, when every body is empty, a single terminal, or a terminal followed by one nonterminal. Write `isRightLinear(rules)`, returning `true` or `false`.',
-    starter: `function isRightLinear(rules) {
-  // your code here
-}
-
-const num = {
-  num: [['DIGIT', 'num'], ['DIGIT']],
 };
-console.log(isRightLinear(num));`,
-    solution: `function isRightLinear(rules) {
-  const nt = (s) => s in rules;
-  for (const head in rules) {
-    for (const b of rules[head]) {
-      const ok = b.length === 0 ||
-        (b.length === 1 && !nt(b[0])) ||
-        (b.length === 2 && !nt(b[0]) &&
-          nt(b[1]));
-      if (!ok) return false;
-    }
+console.log(runPda(BRACKETS, '(())'));`,
+    solution: `function runPda(pda, s) {
+  let q = pda.start;
+  let stack = pda.bottom;
+  for (const c of s) {
+    const top = stack.at(-1);
+    const key = q + ' ' + c + ' ' + top;
+    const m = pda.moves[key];
+    if (!m) return false;
+    q = m[0];
+    stack = stack.slice(0, -1) + m[1];
   }
-  return true;
+  return pda.accept.includes(q) &&
+    stack === pda.bottom;
 }`,
-    tests: `test('numbers: regular', () => {
-  expect(isRightLinear({ num: [['DIGIT', 'num'], ['DIGIT']] })).toBe(true);
+    tests: `const BRACKETS = {
+  start: 'q', accept: ['q'], bottom: 'Z',
+  moves: {
+    'q ( Z': ['q', 'Z('],
+    'q ( (': ['q', '(('],
+    'q ) (': ['q', ''],
+  },
+};
+const AB = {
+  start: 'p', accept: ['p', 'q'], bottom: 'Z',
+  moves: {
+    'p a Z': ['p', 'ZA'],
+    'p a A': ['p', 'AA'],
+    'p b A': ['q', ''],
+    'q b A': ['q', ''],
+  },
+};
+test('balanced brackets are accepted', () => {
+  for (const s of ['', '()', '(())', '(()())']) {
+    expect(runPda(BRACKETS, s)).toBe(true);
+  }
 });
-test('a list with an empty body', () => {
-  expect(isRightLinear({ xs: [['x', 'xs'], []] })).toBe(true);
+test('an unclosed bracket is rejected', () => {
+  expect(runPda(BRACKETS, '((')).toBe(false);
+  expect(runPda(BRACKETS, '(()')).toBe(false);
 });
-test('two states', () => {
-  expect(isRightLinear({
-    a: [['x', 'b']], b: [['y', 'a'], ['y']],
-  })).toBe(true);
+test('a close with nothing open is rejected', () => {
+  expect(runPda(BRACKETS, ')(')).toBe(false);
+  expect(runPda(BRACKETS, '())')).toBe(false);
 });
-test('brackets: not regular', () => {
-  expect(isRightLinear({ p: [['(', 'p', ')'], []] })).toBe(false);
-});
-test('nonterminal first', () => {
-  expect(isRightLinear({ xs: [['xs', 'x'], ['x']] })).toBe(false);
-});
-test('two nonterminals', () => {
-  expect(isRightLinear({
-    s: [['a', 's'], ['s', 's']],
-  })).toBe(false);
-});
-test('terminal, terminal', () => {
-  expect(isRightLinear({ s: [['a', 'b']] })).toBe(false);
+test('a^n b^n', () => {
+  for (const s of ['', 'ab', 'aabb', 'aaabbb']) {
+    expect(runPda(AB, s)).toBe(true);
+  }
+  for (const s of ['a', 'aab', 'abb', 'abab', 'ba']) {
+    expect(runPda(AB, s)).toBe(false);
+  }
 });`,
     hints: [
-      'Check every body of every head; one bad body makes the whole grammar not right-linear.',
-      'A symbol is a nonterminal when it is a key of `rules`. There are three good shapes: length 0, length 1 with a terminal, length 2 with a terminal then a nonterminal.',
-      'Loop with `for (const head in rules)` and `for (const b of rules[head])`; return `false` as soon as a body has none of the three shapes, and `true` after the loops.',
+      'Keep two variables, the current state and the stack (a string that starts as the bottom marker), and update both once per character.',
+      'The top of the stack is `stack.at(-1)`. Build the key with single spaces, look up the move, and return `false` straight away if there is none.',
+      'A move replaces the top: `stack.slice(0, -1) + push`. After the loop, check both conditions: the state is in `accept`, and `stack === pda.bottom`.',
     ],
-    walkthrough: `**How to think about it.** The definition is a list of allowed shapes for a body, so the code is a check of every body against that list. A grammar passes only if *every* body passes, which is the "search for a counter-example" pattern: loop, return \`false\` at the first bad body, and return \`true\` if the loop finishes.
+    walkthrough: `**How to think about it.** A pushdown automaton is a DFA run (one state, one loop over the characters) with one more piece of memory beside the state. So the code is the DFA runner of *Finite automata* with a second variable for the stack, and the move table is looked up with the top of the stack as part of the key.
 
 **The solution, line by line.**
 
-- \`const nt = (s) => s in rules;\` is a small helper: a symbol is a nonterminal when it is a key of the grammar.
-- \`for (const head in rules) {\` visits each nonterminal (\`for...in\` gives an object's keys), and \`for (const b of rules[head]) {\` each of its bodies.
-- \`const ok = b.length === 0 || ... ;\` is true when the body has one of the three shapes: empty (ε); one symbol that is a terminal; or two symbols, a terminal and then a nonterminal.
-- \`if (!ok) return false;\` stops at the first body that fails.
-- \`return true;\` is reached only when every body passed.
+- \`let q = pda.start;\` and \`let stack = pda.bottom;\` set up the two pieces of memory: the state, and a stack holding only the bottom marker.
+- \`for (const c of s) {\` reads the input once, left to right.
+- \`const top = stack.at(-1);\` is the symbol on top (the last character of the string).
+- \`const key = q + ' ' + c + ' ' + top;\` builds the same \`'state char top'\` key the table uses, and \`const m = pda.moves[key];\` looks the move up.
+- \`if (!m) return false;\` rejects at once when no move fits, such as a \`)\` with only \`Z\` on top.
+- \`q = m[0];\` changes state, and \`stack = stack.slice(0, -1) + m[1];\` pops the top and pushes the move's string; for \`'Z('\` that puts the \`Z\` back and a \`(\` above it, and for \`''\` it is a plain pop.
+- \`return pda.accept.includes(q) && stack === pda.bottom;\` accepts only in an accepting state with every pushed symbol popped again.
 
-The bracket grammar \`p → "(" p ")" | ε\` fails because its first body has three symbols, with the nonterminal in the middle: that middle position is what lets it count brackets, and it is exactly what a regular grammar may not do. \`xs → xs "x"\` fails too, though it describes a regular language (rows of x): this check is about the *shape* of the rules, and a different, left-linear grammar can describe a regular language as well.
+On \`(()\` the loop finishes happily in state \`q\`, but the stack is \`Z(\`: one bracket is still open, and the last line rejects it. On \`())\` the third character finds \`Z\` on top, there is no move \`'q ) Z'\`, and the loop rejects on the spot.
 
 **Common wrong attempts.**
 
-- Checking only that each body has at most one nonterminal lets \`p → "(" p ")"\` through, which is context-free but not regular.
-- Returning \`true\` as soon as one body is fine answers "is some rule right-linear?", not "are all of them?".`,
+- Checking only the state at the end accepts \`((\`, because \`q\` is accepting; the stack is what remembers the open brackets, so it must be checked too.
+- Pushing \`m[1]\` without popping the top first (\`stack + m[1]\`) never removes anything, so no bracket is ever closed.
+- Reading the top as \`stack[0]\` uses the bottom of the stack, which is always the marker, so every \`)\` is rejected.`,
     wrong: [
       {
-        code: `function isRightLinear(rules) {
-  for (const head in rules) {
-    for (const b of rules[head]) {
-      const n = b.filter(
-        (s) => s in rules).length;
-      if (n > 1) return false;
-    }
+        code: `function runPda(pda, s) {
+  let q = pda.start;
+  let stack = pda.bottom;
+  for (const c of s) {
+    const top = stack.at(-1);
+    const key = q + ' ' + c + ' ' + top;
+    const m = pda.moves[key];
+    if (!m) return false;
+    q = m[0];
+    stack = stack.slice(0, -1) + m[1];
   }
-  return true;
+  return pda.accept.includes(q);
 }`,
-        why: 'Counting nonterminals is not enough: `( p )` has only one, but in the middle, which makes it context-free, not regular.',
+        why: 'It never checks the stack at the end, so `((` is accepted: the state is accepting, but two brackets are still open.',
       },
     ],
   },
@@ -259,105 +227,45 @@ The bracket grammar \`p → "(" p ")" | ε\` fails because its first body has th
 
 export const quiz = [
   {
-    q: 'Which of these shows that a grammar is ambiguous?',
+    q: 'Which language does the pumping lemma for regular languages show is **not** regular?',
     options: [
-      {
-        t: 'A sentence with a leftmost and a rightmost derivation',
-        why: 'Every sentence of a grammar has both, and the two can still draw one and the same tree.',
-      },
-      {
-        t: 'A sentence that is very long',
-        why: 'Length has nothing to do with it.',
-      },
-      {
-        t: 'A sentence with two different parse trees',
-        correct: true,
-        why: 'That is the definition: two trees, so two possible meanings.',
-      },
-      {
-        t: 'A rule that mentions itself',
-        why: 'Recursive rules are normal; the layered grammar is recursive and unambiguous.',
-      },
+      { t: 'Strings of a’s and b’s with an even number of a’s', why: 'A two-state DFA accepts it, so it is regular, and every long string pumps.' },
+      { t: '`(ab)*`', why: 'It is regular: take y = ab, and every pumped string still repeats ab.' },
+      { t: 'Strings of `(` and `)` in which the brackets balance', correct: true, why: 'Take w = (ᵖ)ᵖ: y lies among the (’s, and pumping it leaves too many or too few of them.' },
+      { t: 'Every infinite language', why: 'Many infinite languages, such as a*, are regular; being infinite is not the problem.' },
     ],
   },
   {
-    q: 'Under `term → term "+" factor | factor`, `factor → factor "*" primary | primary`, `primary → NUMBER`, what is at the root of the tree for `1 + 2 * 3`?',
+    q: 'A pushdown automaton recognises balanced brackets. What does its stack hold after reading `(()(`?',
     options: [
-      {
-        t: 'The `+`',
-        correct: true,
-        why: '`*` can only join `primary`s inside a `factor`, so `2 * 3` is one `factor`, and the `+` joins `1` to it.',
-      },
-      {
-        t: 'The `*`',
-        why: 'That would need `1 + 2` to be a `primary`, and a `primary` here is only a number.',
-      },
-      {
-        t: 'Either, since the grammar is ambiguous',
-        why: 'This layered grammar has exactly one tree for every sentence.',
-      },
+      { t: 'The bottom marker and two `(`', correct: true, why: 'Three ( are pushed and one is popped by the ), so two are still open.' },
+      { t: 'The bottom marker and three `(`', why: 'The `)` popped one of them.' },
+      { t: 'Only the bottom marker', why: 'That would mean every bracket so far was closed, but two are still open.' },
     ],
   },
   {
-    q: 'JavaScript’s specification resolves `if (a) if (b) s1; else s2;` how?',
+    q: 'Which statement about deterministic and nondeterministic pushdown automata is true?',
     options: [
-      {
-        t: 'It is a syntax error',
-        why: 'It is allowed; the specification says which `if` gets the `else`.',
-      },
-      {
-        t: 'The `else` belongs to the outer `if`',
-        why: 'That is the other reading, which JavaScript does not choose.',
-      },
-      {
-        t: 'The engine chooses at run time',
-        why: 'The grouping is fixed when the program is parsed.',
-      },
-      {
-        t: 'The `else` belongs to the nearest (inner) `if`',
-        correct: true,
-        why: 'Its grammar has a note saying exactly this.',
-      },
-    ],
-  },
-  {
-    q: 'Why does Drip have no dangling else?',
-    options: [
-      {
-        t: 'Its parser tries both trees',
-        why: 'A parser that tried both would still have to choose one.',
-      },
-      {
-        t: 'Braces are required, so an inner `if` and its `else` are always inside `{ }`',
-        correct: true,
-        why: 'The braces show which `if` an `else` belongs to; there is only one tree.',
-      },
-      {
-        t: 'Drip has no `else`',
-        why: 'It does: `if c { ... } else { ... }`.',
-      },
+      { t: 'They accept the same languages, as DFAs and NFAs do', why: 'That holds for finite automata, not for pushdown automata: palindromes need the guessing kind.' },
+      { t: 'Deterministic ones accept more languages', why: 'Every deterministic PDA is also a (trivially) nondeterministic one, so they cannot accept more.' },
+      { t: 'Deterministic ones accept fewer languages, and those are exactly the languages with LR(1) grammars', correct: true, why: 'Knuth (1965) showed that LR(k) languages are the deterministic context-free languages, and that LR(1) is always enough for them.' },
     ],
   },
   {
     q: 'Which machine recognises exactly the context-free languages?',
     options: [
-      {
-        t: 'A finite automaton',
-        why: 'That recognises the regular languages, the level below.',
-      },
-      {
-        t: 'A Turing machine',
-        why: 'That reaches the top level, type 0.',
-      },
-      {
-        t: 'A pushdown automaton: a finite automaton with a stack',
-        correct: true,
-        why: 'The stack is what remembers how many brackets are open.',
-      },
-      {
-        t: 'A linear-bounded automaton',
-        why: 'That recognises the context-sensitive languages, type 1.',
-      },
+      { t: 'A finite automaton', why: 'That recognises the regular languages, the level below; it cannot count brackets without limit.' },
+      { t: 'A pushdown automaton: a finite automaton with a stack', correct: true, why: 'The stack is the unbounded memory that matching brackets needs; nondeterministic PDAs accept exactly the context-free languages.' },
+      { t: 'A linear-bounded automaton', why: 'That recognises the context-sensitive languages, type 1, which include some that are not context-free.' },
+      { t: 'A Turing machine', why: 'That reaches the top level, type 0.' },
+    ],
+  },
+  {
+    q: 'In JavaScript, how does the scanner know whether the `/` in `a = b / c` starts a regular expression literal?',
+    options: [
+      { t: 'It tries both and keeps the one that parses', why: 'The specification does not backtrack here; it chooses before scanning the token.' },
+      { t: 'It looks for a closing `/` on the same line', why: 'Two divisions on one line would fool that, as in `a / b / c`.' },
+      { t: 'The syntactic context picks the scanner’s goal symbol: after an operand, `/` can only be division', correct: true, why: 'The specification gives the lexical grammar several goal symbols, such as InputElementDiv and InputElementRegExp, and the parser says which applies.' },
     ],
   },
 ];

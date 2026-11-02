@@ -31,7 +31,7 @@ export const prompts = {
     a: 'At the reduce by that production: the children’s values are on top of its value stack, and the result is pushed in their place.',
   },
   'plus-no-val': {
-    q: 'In the expression grammar, why do the `+` token and the brackets have no `val`?',
+    q: 'In a syntax-directed definition that computes `val` for arithmetic (as in `E → E₁ + T`, `E.val = E₁.val + T.val`), why do the `+` token and the brackets have no `val`?',
     a: 'They carry no value of their own; they only decide which production was used, and so how the tree is shaped.',
   },
   'annotated-tree': {
@@ -316,7 +316,7 @@ export const quiz = [
     options: [
       {
         t: 'The type a declaration gives to the names listed after it',
-        why: 'That information comes from a sibling and the parent, flowing down the list: the next chapter calls that inherited.',
+        why: 'That information comes from a sibling and the parent, flowing down the list: that is an inherited attribute.',
       },
       {
         t: 'The number of statements inside a block, counted from its children',
@@ -366,7 +366,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the rule table need `E → T   E.val = T.val`, which seems to do nothing?',
+    q: 'In a syntax-directed definition for arithmetic, why does the production `E → T` need the rule `E.val = T.val`, which seems to do nothing?',
     options: [
       {
         t: 'Every production needs a rule, or the nodes built by it get no value',
@@ -375,7 +375,7 @@ export const quiz = [
       },
       {
         t: 'It does not: copy rules can always be left out',
-        why: 'Leave it out and the chapter’s evaluator stops with `rules[n.rule] is not a function`.',
+        why: 'Leave it out and every E built by `E → T` has no `val`, so an evaluator that runs one rule per node finds no rule to run there.',
       },
       {
         t: 'It converts the number to a string',

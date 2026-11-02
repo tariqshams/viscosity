@@ -625,10 +625,10 @@ function toDFA(nfa, alphabet) {
 
 export const quiz = [
   {
-    q: 'In Thompson’s construction, how many new states does concatenation `rs` add (in this chapter’s version)?',
+    q: 'In Thompson’s construction, how many new states does concatenation `rs` add?',
     options: [
       {
-        t: 'None: it joins the end of N(r) to the start of N(s) with one ε-move',
+        t: 'None: it links the accepting state of N(r) to the start of N(s), by an ε-move (or, in some versions, by merging the two states)',
         correct: true,
         why: 'The combined machine starts at N(r)’s start and accepts at N(s)’s accepting state.',
       },
@@ -638,7 +638,7 @@ export const quiz = [
       },
       {
         t: 'One, to sit between the two parts',
-        why: 'The ε-arrow goes straight from one part to the other; no state is needed in between.',
+        why: 'An ε-arrow (or a merge) joins the two parts directly; no state is needed in between.',
       },
     ],
   },
@@ -670,7 +670,7 @@ export const quiz = [
       {
         t: 'Point the arrow at the existing DFA state for that set',
         correct: true,
-        why: 'As in the stepper, A on x gave {5}, which was already C, so the arrow simply goes to C.',
+        why: 'A DFA state is named by its set, so the same set must be the same state: the arrow goes to the state already made for it.',
       },
       {
         t: 'Stop the construction',
@@ -679,20 +679,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the if-or-name DFA, state D is the set `{3, 5}`. Why is D accepting?',
+    q: 'The subset construction makes a DFA state for the set of NFA states {2, 6}. In the NFA, 6 is accepting and 2 is not. Is the DFA state accepting?',
     options: [
       {
-        t: 'Because it contains at least one accepting NFA state (both 3 and 5 are)',
+        t: 'No, because 2 is not accepting',
+        why: 'The set stands for every path the NFA could be on, and one accepting path is enough.',
+      },
+      {
+        t: 'Yes, because the set contains an accepting NFA state',
         correct: true,
-        why: 'A DFA state accepts when its set shares a state with the NFA’s accepting states.',
+        why: 'A DFA state accepts exactly when its set shares at least one state with the NFA’s accepting states.',
       },
       {
-        t: 'Because it was the last state discovered',
-        why: 'Order of discovery has nothing to do with accepting.',
-      },
-      {
-        t: 'Because every DFA state is accepting',
-        why: 'A = {0, 1, 4} is not: none of 0, 1 or 4 is accepting.',
+        t: 'Only if it is the last DFA state discovered',
+        why: 'The order of discovery has nothing to do with accepting.',
       },
     ],
   },

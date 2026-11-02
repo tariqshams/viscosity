@@ -212,7 +212,7 @@ rules and other strange hacks required by C/C++", and it makes it
 straightforward to give "excellent diagnostics and error
 recovery"<Cite id="clang-features" />. Each point is something the
 earlier chapters showed: an error message is easiest to write where the
-code knows exactly which construct it is in ("Syntax errors and recovery"), real languages
+code knows exactly which construct it is in (*Syntax errors and panic mode*), real languages
 have corners that do not fit a clean grammar, and a hand-written parser
 needs no extra tool in the build. Generators keep their place where
 those matter less: in editors (tree-sitter), for grammars that change
@@ -241,6 +241,7 @@ a language, where a grammar file is the quickest thing to change.
   recursive descent**, for its error messages, its flexibility and its
   plainness.
 
-Next: the tree finally does something, as we start to evaluate it.
+Next: *Syntax-directed translation and attribute grammars*, which attaches
+a computation to every rule of the grammar.
 
 <Quiz />

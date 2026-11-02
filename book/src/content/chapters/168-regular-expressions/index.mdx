@@ -18,7 +18,7 @@ import LanguageSteps from '../../../components/diagrams/ch168/LanguageSteps';
 
 ## Rules written as loops
 
-In *Numbers and strings* you wrote down what a Drip number looks like, and you
+In *Lookahead, numbers, strings and names* you wrote down what a Drip number looks like, and you
 wrote it as code: a `while` loop over digits, then a test with two
 characters of lookahead for the dot, then another `while` loop. It
 works; however, if a friend asked you "what *is* a Drip number?", you
@@ -109,7 +109,7 @@ The first is pure concatenation: three characters in a row, so exactly
 one string matches. The second line of the second example shows why
 brackets matter: `(ab)*` repeats the pair, so its strings have even
 length, while `ab*` is one `a` and then any number of `b`s. The third is
-Drip's own number rule from *Numbers and strings*, with spaces added for reading
+Drip's own number rule from *Lookahead, numbers, strings and names*, with spaces added for reading
 and a name, `digit`, for the long alternation: a digit, then any more
 digits, then either a dot with at least one digit or nothing at all
 (the `ε` branch).

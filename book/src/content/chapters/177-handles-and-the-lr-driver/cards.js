@@ -11,7 +11,7 @@ export const prompts = {
     a: 'At the top of the stack; so the only questions are whether the top is a handle yet, and of which rule.',
   },
   'match-not-handle': {
-    q: 'With `E + T` on the stack and `*` next, why is `E + T` not a handle?',
+    q: 'Under `E → E + T | T`, `T → T * F | F`, `F → n`, a shift-reduce parser has `E + T` on its stack and `*` next. Why is `E + T` not a handle?',
     a: 'The `T` is not finished: `*` binds tighter, so `T * F` must be built and reduced first.',
   },
   'lr-state': {
@@ -346,7 +346,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the LR table, state 7 means the stack ends in `E + T`. What does it do with each next token?',
+    q: 'Under `E → E + T | T`, `T → T * F | F`, `F → n`, what should an LR parser do in the state for a stack ending in `E + T`, for each possible next token?',
     options: [
       {
         t: 'Reduce by `E → E + T`, whatever comes next',

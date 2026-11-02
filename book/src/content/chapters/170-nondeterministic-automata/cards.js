@@ -403,11 +403,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the `closure` function check `out.has(r)` before adding a state to `todo`?',
+    q: 'An ε-closure is computed with a worklist: take a state off the list, and for each ε-move from it to r, add r to the result and push r onto the list. Why check first that r is not already in the result?',
     options: [
       {
         t: 'To keep the set sorted',
-        why: 'Sets in JavaScript are not sorted; the check is about repeats.',
+        why: 'The order of the result does not matter; the check is about repeats.',
       },
       {
         t: 'So that an ε-cycle does not make the loop run forever',
@@ -415,8 +415,8 @@ export const quiz = [
         why: 'Without it, `0 → 1 → 0` by ε-moves would push the same states again and again.',
       },
       {
-        t: 'Because `Set.add` throws on a repeat',
-        why: '`add` quietly ignores a repeat; the danger is pushing onto `todo` again.',
+        t: 'Because adding a state twice to a set is an error',
+        why: 'A set quietly ignores a repeat (JavaScript’s `Set.add` does); the danger is pushing r onto the worklist again.',
       },
     ],
   },

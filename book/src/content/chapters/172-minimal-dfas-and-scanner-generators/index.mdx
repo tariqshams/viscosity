@@ -26,7 +26,7 @@ way, so a machine with one of them in place of both accepts the same
 strings with less to store. On a real scanner the subset construction
 often leaves many such twins behind, and a smaller table means a
 smaller, faster scanner (it fits better in the CPU's cache, the fast
-memory of *The CPU and its caches*).
+memory of *Caches, lines and locality*).
 
 <Analogy title="two routes that meet">
 You can reach the motorway from the north car park or the south car
@@ -66,8 +66,8 @@ p ≡ q  ⟺  for all w:
 
 <span slot="read">p is equivalent to q exactly when, for every string w,
 running w from p ends in an accepting state if and only if running w
-from q does. (δ star is the "run a whole string" function from the
-chapter on finite automata, and F the set of accepting states.)</span>
+from q does. (δ star is the "run a whole string" function of
+*Finite automata*, and F the set of accepting states.)</span>
 </Formal>
 
 ## Splitting groups until nothing splits
@@ -162,7 +162,7 @@ match three characters and `let` comes first. A range such as `1..5`
 comes out as `NUMBER`, `DOT_DOT`, `NUMBER`: the number rule cannot take
 a dot with no digit after it, and `..` is longer than `.`. That is
 maximal munch and
-the reserved-word table of *Names and keywords*, now expressed as the order of
+the reserved-word table of *Lookahead, numbers, strings and names*, now expressed as the order of
 lines in a file. Inside the DFA, it means each accepting state is
 labelled with the earliest rule among its NFA states; state D in the
 stepper holds both the keyword's and the name's accepting states, and
@@ -189,7 +189,7 @@ generators<Cite id="aho2006" />.
 
 There are two common ways to print out the DFA. A **table-driven**
 scanner stores the transition table as data and runs one small loop,
-exactly like `run` in the finite automata chapter. A **direct-coded**
+exactly like `run` in *Finite automata*. A **direct-coded**
 scanner turns each state into a block of code with comparisons and
 jumps, so there is no table to look up at all; re2c works this
 way<Cite id="re2c" />, and Cooper and Torczon compare the two
@@ -267,8 +267,8 @@ fast, small, correct machine.
 - Generated scanners are table-driven or direct-coded; hand-written ones,
   like Drip's, trade that automation for control.
 
-Next: the scanner is finished, and the words are in order; the next
-question is whether they are in an order that makes sense, which is the
-job of a grammar.
+Next: *The Chomsky hierarchy*, where regular languages meet the levels
+above them, and a proof that some languages need more than any finite
+automaton.
 
 <Quiz />

@@ -31,8 +31,8 @@ export const prompts = {
     a: 'Pulling a shared start out of two rules: `A → α β₁ | α β₂` becomes `A → α A′` and `A′ → β₁ | β₂`, so the choice is made after α.',
   },
   'drip-fn': {
-    q: 'Why does `fn` at the start of a Drip declaration need a second token to decide?',
-    a: '`fn` can start a function declaration (`fn f(...)`) or an expression statement starting with an anonymous function (`fn (...)`); the token after it, a name or `(`, decides.',
+    q: 'In a language where `fn f(...)` declares a function and `fn (...)` starts an anonymous function that may begin an expression statement, why is a statement that starts with `fn` not LL(1)?',
+    a: 'Both rules have `fn` in their FIRST set, so the LL(1) cell for `fn` holds two rules; the token after it, a name or `(`, decides, so that spot needs two tokens (LL(2)).',
   },
 };
 
@@ -460,7 +460,7 @@ Remember what the rewrite changes: the language is the same, but the parse trees
 
 export const quiz = [
   {
-    q: 'In the adding grammar’s table, why is `rest → ε` in the column for `)`?',
+    q: 'In the grammar `expr → item rest`, `rest → "+" item rest | ε`, `item → NUMBER | "(" expr ")"`, why does the LL(1) table put `rest → ε` in the column for `)`?',
     options: [
       {
         t: 'Because `)` is in FIRST(rest)',
@@ -544,20 +544,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these is a spot where Drip’s grammar needs more than one token of lookahead?',
+    q: 'Which of these grammars is LL(1)?',
     options: [
       {
-        t: 'Every binary operator, because the grammar is left-recursive',
-        why: 'Drip’s grammar uses `*` for repetition, which unfolds into right recursion.',
+        t: '`S → "a" S | "a"`',
+        why: 'Both rules start with `a`, so both land in the cell [S, a]: it would need left factoring first.',
       },
       {
-        t: '`fn` can begin both a function declaration and an expression statement, so one token cannot choose',
+        t: '`S → S "a" | "b"`',
+        why: 'It is left-recursive: both rules have `b` in their FIRST set, so both land in [S, b].',
+      },
+      {
+        t: '`S → "a" S | "b"`',
         correct: true,
-        why: 'The second token, a name or `(`, decides, so that spot needs two tokens of lookahead.',
-      },
-      {
-        t: 'The `else` of an `if`',
-        why: 'With braces required, FOLLOW(elsePart) has no `else` in it, so one token decides.',
+        why: 'FIRST of the two bodies is `{ a }` and `{ b }`, which do not overlap, and neither body can vanish, so every cell holds at most one rule.',
       },
     ],
   },

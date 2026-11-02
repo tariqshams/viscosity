@@ -250,7 +250,7 @@ Here, though, the table has a surprise left. Because a `stmt` can be
 followed by `else` (it may be the inner statement of another `if`),
 `else` is in FOLLOW(elsePart), so `elsePart → ε` lands in
 `[elsePart, else]` beside `elsePart → "else" stmt`: the dangling else
-from the chapter on ambiguity, found by the table. Left factoring
+from *Grammars and parse trees*, found by the table. Left factoring
 cannot remove an ambiguity; it only shows it plainly. Parsers resolve
 it by preferring `"else" stmt`, which gives the nearest `if` the
 `else`. Drip, with braces required, has no `else` in FOLLOW(elsePart)

@@ -291,7 +291,7 @@ On the \`E → T + E | T\` grammar, state 2 holds \`E → T · + E\` and \`E →
 
 export const quiz = [
   {
-    q: 'State 0 of the chapter’s automaton has an arrow on `n` to state 3. What goes in the table?',
+    q: 'In an LR(0) automaton, state 0 has an arrow labelled with the terminal `n` to state 3. What does that put in the parse table?',
     options: [
       {
         t: 'GOTO[0, n] = 3',
@@ -309,10 +309,10 @@ export const quiz = [
     ],
   },
   {
-    q: 'The stack is `0 1 5 7` and the parser reduces by `E → E + T`. What happens next?',
+    q: 'An LR parser’s stack of states is `0 1 5 7`, and it reduces by `E → E + T`. What happens next?',
     options: [
       {
-        t: 'Pop three states, leaving `0`, then push GOTO[0, E] = 1',
+        t: 'Pop three states, leaving `0`, then push GOTO[0, E]',
         correct: true,
         why: 'The body has three symbols, so three states go, and GOTO from the uncovered state on the head says where to go.',
       },

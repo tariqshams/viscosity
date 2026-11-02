@@ -27,7 +27,7 @@ every program you will ever run, so it needs something better: a way to
 decide by reading each character exactly once, left to right, while
 remembering as little as possible.
 
-Look at what Drip's number loop from *Numbers and strings* actually remembers. It
+Look at what Drip's number loop from *Lookahead, numbers, strings and names* actually remembers. It
 never keeps a list of characters it has seen; at any moment it only
 knows which *part* of a number it is in: nothing read yet, the whole
 part, a dot with no digit after it yet, or the fraction. Four
@@ -187,7 +187,7 @@ Being *in* an accepting state is not the same as being finished. In the
 number machine, I is accepting, so `12` is a number; but reading on can
 leave I and come back to accepting later, as `12.5` does, or leave it
 for good, as `12.` does. A scanner uses this to apply maximal munch
-(from *Lookahead and maximal munch*): it keeps running the machine and remembers the **last
+(from *Lookahead, numbers, strings and names*): it keeps running the machine and remembers the **last
 position where it was in an accepting state**; when the machine gets
 stuck, the token is everything up to that position.
 
@@ -241,7 +241,7 @@ remembering the position and reading on finds `4.25`.
 Michael Rabin and Dana Scott set out the theory of finite automata in
 1959, in the paper that also introduced the nondeterministic machines of
 the next chapter<Cite id="rabinscott1959" />. The scanner you wrote by
-hand in *Writing a scanner* and *Numbers and strings* is a DFA in disguise: deciding what the
+hand in *Tokens and a scanner* and *Lookahead, numbers, strings and names* is a DFA in disguise: deciding what the
 first character begins picks a state, each loop that keeps taking
 digits is a self-loop arrow, and looking one character past the dot
 before taking it is how it avoids getting stuck in D. Chapter 3 of the classic compilers textbook by Aho, Lam, Sethi and Ullman develops this same machinery for

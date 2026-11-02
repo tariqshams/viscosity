@@ -10,7 +10,7 @@ objectives:
   - Compute FOLLOW sets, and explain the two ways tokens flow into them.
   - Connect each set to the token tests in a recursive-descent parser.
 introduces: [first-set, follow-set]
-uses: [derivation, parse-tree, ambiguity, grammar, production-rule, terminal, nonterminal, bnf, parser, recursive-descent, precedence, syntax-error, lookahead, token, keyword, drip, set, object, for-of, while-loop, function, arrow-function, array, map-filter-reduce, recursion]
+uses: [derivation, parse-tree, ambiguity, grammar, production-rule, terminal, nonterminal, bnf, parser, recursive-descent, precedence, syntax-error, lookahead, token, keyword, drip, set, object, for-of, while-loop, function, arrow-function, array, map-filter-reduce, recursion, fixpoint, dataflow]
 sources: [aho2006]
 ---
 import FixpointSteps from '../../../components/diagrams/ch174/FixpointSteps';
@@ -18,7 +18,7 @@ import FollowFlow from '../../../components/diagrams/ch174/FollowFlow';
 
 ## How did the parser know?
 
-In "Recursive descent parsing" and the chapters after it, each
+In *Recursive descent, precedence and associativity* and the chapters after it, each
 function chose what to do by peeking at the next token: a loop like
 `while (at('+', '-'))` kept taking operators, and a statement function
 asked "is the next token
@@ -29,8 +29,8 @@ one we want a method that reads the grammar and produces the tests,
 and that can tell us when one token is not enough to decide.
 
 Here is the grammar we will work on: the adding grammar, with the star
-in `expr → item ( "+" item )*` unfolded into plain rules exactly as the
-chapter on BNF showed, so that `rest` stands for "zero or more
+in `expr → item ( "+" item )*` unfolded into plain rules exactly as
+*Grammars and parse trees* showed, so that `rest` stands for "zero or more
 `+ item`s":
 
 ```text
@@ -90,10 +90,11 @@ each cell once; our sweeps don't bother with order, and simply go round
 again, which is slower but needs no planning.</span>
 </Analogy>
 
-That style of computing, "repeat until nothing changes", is called
-iterating to a **fixed point**, and all three sets in this chapter
-are computed that way. It always stops: the sets only grow, and a
-grammar has only so many tokens to put in them.
+This is the fixed-point iteration of *Dataflow, fixpoints and
+constant propagation*, with grammar rules in place of a program's
+blocks, and all three sets in this chapter are computed that way. It
+always stops: the sets only grow, and a grammar has only so many tokens
+to put in them.
 
 <Prompts ids={['nullable-what', 'fixed-point']} />
 
@@ -190,7 +191,7 @@ that alpha becomes some row starting with a. FOLLOW of A is the set of
 terminals a such that the start symbol becomes some sentential form in
 which a comes straight after A; together with (∪) the end marker $ if
 A can come at the very end. The ⇒* is the "zero or more steps" arrow
-from the chapter on derivations.</span>
+from *Grammars and parse trees*.</span>
 </Formal>
 
 <Examples of="follow-set">
@@ -235,11 +236,11 @@ its stopping condition finally explained.
 
 <Callout kind="engine" label="Under the hood">
 The sweep-until-nothing-changes loop is the standard way textbooks and
-parser tools compute these sets<Cite id="aho2006" />, and it is far
-from the last time you will meet it: the data-flow analyses of the
-optimiser, later in the book, which work out facts like "this variable
-might be used later", are fixed-point loops of exactly this shape over
-a program's blocks rather than a grammar's rules.
+parser tools compute these sets<Cite id="aho2006" />. It is also why the
+dataflow analyses you have already met carry over so easily: a grammar's
+rules and a program's blocks are both a set of equations that can
+depend on each other in loops, and the same fixed-point loop solves
+both.
 </Callout>
 
 ## Your turn

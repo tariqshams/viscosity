@@ -23,7 +23,7 @@ export const prompts = {
     a: 'It takes token rules (a regular expression and an action each) and produces the source code of a scanner.',
   },
   'longest-rule': {
-    q: 'Under flex’s rules, is `letter` the keyword `let` followed by `ter`, or one name? Why?',
+    q: 'A flex file has a rule for the keyword `let` and a rule `[a-z]+` for names. Is the input `letter` the keyword `let` followed by `ter`, or one name? Why?',
     a: 'One name: flex takes the rule that matches the most text, and the name rule matches six characters.',
   },
   'tie-rule': {
@@ -398,7 +398,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Minimising the "if or a name" DFA as a plain language gives 2 states. Why is that wrong for a scanner?',
+    q: 'A scanner’s DFA recognises the keyword `if` and names `[a-z]+`. Minimised as a plain language (accepting against non-accepting states), it shrinks to 2 states. Why is that wrong for a scanner?',
     options: [
       {
         t: 'It accepts different strings from the original',
@@ -434,7 +434,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the same file, what does the input `if` become?',
+    q: 'A flex file lists the rule `"if"` (giving IF) before `[a-z]+` (giving a name). What does the input `if`, followed by a space, become?',
     options: [
       {
         t: 'IF',
@@ -447,7 +447,7 @@ export const quiz = [
       },
       {
         t: 'It depends on what comes after it',
-        why: 'After `if` the input ends; both rules match exactly two characters.',
+        why: 'What follows matters only when it could extend a match; a space extends neither rule, so both match exactly two characters.',
       },
     ],
   },

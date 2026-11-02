@@ -30,9 +30,9 @@ export const prompts = {
     q: 'The LR(0) automaton is a DFA. What does it read: the input tokens or the stack?',
     a: 'The stack, from bottom to top, terminals and nonterminals alike; the state it ends in summarises what the stack holds.',
   },
-  'nine-states': {
-    q: 'In the chapter’s automaton, state 4 on `(` leads to state 4 itself. Why is that not a new state?',
-    a: 'goto gives exactly the item set state 4 already is (a bracket inside a bracket looks the same), and a known item set is never added twice.',
+  'goto-existing': {
+    q: 'Building an LR(0) automaton, goto from some state gives an item set that is already a state. What do you do, and why?',
+    a: 'Draw the arrow to the existing state: a state is its item set, so the same set is the same state, and adding it again would make the construction loop for ever.',
   },
 };
 
@@ -271,7 +271,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What is `closure({ T → ( · E ) })` for the chapter’s grammar?',
+    q: 'In the grammar `E → E + T | T`, `T → n | ( E )`, what is `closure({ T → ( · E ) })`?',
     options: [
       {
         t: 'Just `T → ( · E )`',
@@ -289,7 +289,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'State 0 is the closure of `S → · E`. What is `goto(state 0, +)`?',
+    q: 'In the grammar `S → E`, `E → E + T | T`, `T → n | ( E )`, let I be the closure of `{ S → · E }`. What is `goto(I, +)`?',
     options: [
       {
         t: 'The empty set',
@@ -325,7 +325,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Running the automaton over the stack `E + T` ends in state 7, which holds `E → E + T ·`. What should the parser do?',
+    q: 'Running the LR(0) automaton over the stack `E + T` ends in a state whose only item is `E → E + T ·`. What should the parser do?',
     options: [
       {
         t: 'Shift the next token',

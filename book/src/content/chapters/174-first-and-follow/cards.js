@@ -27,12 +27,12 @@ export const prompts = {
     a: 'The start symbol derives the whole program, so the end of the input comes straight after it.',
   },
   'fixed-point': {
-    q: 'Why does the sweep-until-nothing-changes loop always stop?',
+    q: 'FIRST sets are computed by sweeping over the grammar’s rules, adding tokens, until a sweep changes nothing. Why does this always stop?',
     a: 'The sets only ever grow, and there are only finitely many tokens to add, so a sweep must eventually add nothing.',
   },
   'drip-brace': {
-    q: 'In Drip, `{` is in FOLLOW(expression). Why does that let Drip drop the brackets round an `if` condition?',
-    a: 'No expression rule continues with `{`, so the parser knows the condition has ended exactly when it sees the `{` of the block.',
+    q: 'A language writes `if x > 1 { ... }`, with no brackets round the condition. Which fact about its grammar lets a parser tell where the condition ends?',
+    a: 'No finished expression can be continued by `{` (it is in FOLLOW(expression) but cannot extend one), so the first `{` after a complete expression ends the condition.',
   },
 };
 
@@ -581,7 +581,7 @@ export const quiz = [
     q: 'Why compute FIRST by sweeping repeatedly, rather than once in a clever order?',
     options: [
       {
-        t: 'Rules can depend on each other in loops (like `expr` and `item`), so no order handles every case in one pass',
+        t: 'Rules can depend on each other in loops (an expression contains bracketed items, which contain expressions), so no order handles every case in one pass',
         correct: true,
         why: 'Repeating until nothing changes reaches the answer whatever the order.',
       },

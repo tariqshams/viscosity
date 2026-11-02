@@ -44,7 +44,7 @@ pattern.</span>
 
 ## Rules attached to productions
 
-Here is a small expression grammar, layered (as in the chapter *Precedence and associativity*) so
+Here is a small expression grammar, layered (as in *Recursive descent, precedence and associativity*) so
 that `*` binds tighter than `+`, with a **semantic rule** beside each production
 saying how to compute a value called `val`:
 
@@ -61,7 +61,7 @@ Read the first line as "an E can be an E, a plus and a T; when it is,
 its `val` is the left part's `val` plus the right part's". The small
 `₁` only tells the two `E`s apart (they are the same nonterminal in
 different places), and `num.lexval` is the number the scanner read
-(the literal of the chapter *Numbers and strings*). The `+` and the brackets carry no value: they
+(the literal of *Lookahead, numbers, strings and names*). The `+` and the brackets carry no value: they
 only decided which production was used.
 
 <Figure takeaway="A semantic rule computes a parent's value from its children's values." caption="The production E → E₁ + T as one piece of a parse tree. The rule beside it says where E.val comes from: the two arrows.">

@@ -23,16 +23,16 @@ export const prompts = {
     a: 'No. It uses the LR(0) automaton unchanged; only the reduce entries of the table differ.',
   },
   'state9-star': {
-    q: 'With `E + T` complete on the stack and `*` next, why does the SLR parser shift?',
+    q: 'Under `E → E + T | T`, `T → T * F | F`, `F → ( E ) | n`, an SLR parser has `E + T` complete on its stack and `*` next. Why does it shift?',
     a: '`*` is not in FOLLOW(E) = { + ) $ }, so reducing to E is not allowed there; the only action under * is the shift.',
   },
   'follow-too-big': {
-    q: 'Why does SLR report a conflict in state 2 of the `L = R` grammar?',
-    a: 'FOLLOW(R) contains `=` (from `* R = ...`), so SLR reduces R → L under `=`, though in that state an R can never be followed by `=`.',
+    q: 'In the grammar `P → L = R | R`, `L → * R | id`, `R → L`, the state reached after an `L` at the start holds `P → L · = R` and `R → L ·`. Why does SLR report a conflict there?',
+    a: 'FOLLOW(R) contains `=` (from `* R = ...`), so SLR reduces R → L under `=`, beside the shift of `=`; yet an R made from this L can only be followed by the end of input.',
   },
   'not-ambiguous': {
     q: 'Does an SLR conflict prove that a grammar is ambiguous?',
-    a: 'No. The `L = R` grammar is unambiguous and needs only one token of lookahead; FOLLOW sets are too coarse for it.',
+    a: 'No. Some unambiguous grammars that one token of lookahead can parse (such as `P → L = R | R`, `L → * R | id`, `R → L`) still have SLR conflicts, because FOLLOW sets ignore the state.',
   },
 };
 
@@ -230,7 +230,7 @@ In state 2 of the \`L = R\` grammar the shift adds \`'=': 's6'\`, then the compl
 
 export const quiz = [
   {
-    q: 'For the grammar with `*`, FOLLOW(E) is `{ + ) $ }`. In SLR, where does the reduction `E → T` go in state 2?',
+    q: 'Under `E → E + T | T`, `T → T * F | F`, `F → ( E ) | n`, FOLLOW(E) is `{ + ) $ }`. In the SLR table, under which tokens does the reduction `E → T` go, in the state holding `E → T ·` and `T → T · * F`?',
     options: [
       {
         t: 'Under every terminal',
@@ -266,12 +266,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'The stack is `E + T`, state 9, and the next token is `$`. What does the SLR parser do?',
+    q: 'Under `E → E + T | T`, `T → T * F | F`, `F → ( E ) | n`, an SLR parser’s stack is `E + T` (in the state holding `E → E + T ·` and `T → T · * F`) and the next token is `$`. What does it do?',
     options: [
       {
         t: 'Reduce by `E → E + T`',
         correct: true,
-        why: '`$` is in FOLLOW(E), and state 9 has no shift on `$`.',
+        why: '`$` is in FOLLOW(E), and that state has no shift on `$`.',
       },
       {
         t: 'Shift the `$`',
@@ -279,7 +279,7 @@ export const quiz = [
       },
       {
         t: 'Report a conflict',
-        why: 'The only conflict state 9 had was under `*`, and SLR resolved it.',
+        why: 'The only conflict in that state was under `*`, and SLR resolved it with FOLLOW(E).',
       },
     ],
   },
@@ -315,7 +315,7 @@ export const quiz = [
       {
         t: 'The grammar is not SLR(1), though a more precise use of one token might parse it',
         correct: true,
-        why: 'SLR uses one FOLLOW set for every state; LR(1), next chapter, tracks what can follow in each state.',
+        why: 'SLR uses one FOLLOW set for every state; LR(1) tracks what can follow in each state, and parses it.',
       },
     ],
   },

@@ -37,7 +37,6 @@ export default {
       derivation: 'rewriting the start symbol, one rule at a time, into a sentence',
       'parse-tree': 'the tree a derivation draws',
       ambiguity: 'one sentence with two different parse trees',
-      'chomsky-hierarchy': 'regular, context-free, context-sensitive and unrestricted grammars',
     } },
     { n: 62, title: 'Syntax trees and a tree printer', introduces: {
       ast: 'abstract syntax tree: the program as nested nodes',

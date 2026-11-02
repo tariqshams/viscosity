@@ -19,7 +19,9 @@ import SubstSteps from '../../../components/diagrams/ch186/SubstSteps';
 ## How small can a language be?
 
 Drip has numbers, strings, lists, `if`, loops, functions and classes,
-and chapters 66 to 71 needed every one of them in the interpreter. So
+and the tree-walking interpreter, from *Running expressions: a tree
+that computes* to *Classes, methods and inheritance in Drip*, needed every
+one of them. So
 how little could a language have and still describe any calculation at
 all? In the early 1930s the logician Alonzo Church built a system with
 functions and nothing else, the **lambda calculus**; it turned out to be
@@ -162,7 +164,8 @@ The identity has no free variables; `λx. x y` has one, `y`. The second
 block is the trap: the first `x` is bound by the λ, but the last `x`
 stands outside the brackets, so it is free; the same name can be both,
 in different places. The third is everyday code: `rate` is free in the
-arrow function, which is why chapter 69's closures have to keep the
+arrow function, which is why the closures of *Return, the host stack and closures*
+have to keep the
 environment they were made in.
 
 Bound names are only placeholders: `λx. x` and `λy. y` are the same

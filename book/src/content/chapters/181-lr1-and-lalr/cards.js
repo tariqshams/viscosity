@@ -3,7 +3,7 @@
 
 export const prompts = {
   'lr1-item': {
-    q: 'What does the LR(1) item `[R → L ·, $]` allow that `R → L ·` in an SLR parser does not decide?',
+    q: 'What does the LR(1) item `[R → L ·, $]` tell the parser that the LR(0) item `R → L ·` does not?',
     a: 'It allows the reduction R → L only when the next token is $; the lookahead belongs to this item in this state, not to R everywhere.',
   },
   'lr1-closure': {
@@ -12,7 +12,7 @@ export const prompts = {
   },
   'lr1-cost': {
     q: 'What is the price of canonical LR(1) compared with LR(0)?',
-    a: 'More states: a core that is reached with different lookaheads becomes several states (22 instead of 12 for the expression grammar).',
+    a: 'More states: an LR(0) item set reached with different lookaheads becomes several LR(1) states (for `E → E + T | T`, `T → T * F | F`, `F → ( E ) | n`, 22 instead of 12).',
   },
   'core-what': {
     q: 'What is the **core** of an LR(1) state?',
@@ -252,7 +252,7 @@ function rrConflicts(g, state) {
 
 export const quiz = [
   {
-    q: 'Closing `[P → · R, $]` in the assignment grammar adds which item for R?',
+    q: 'In the grammar `P → L = R | R`, `L → * R | id`, `R → L`, which item for R does closing `[P → · R, $]` add?',
     options: [
       {
         t: '`[R → · L, =]`',
@@ -332,7 +332,7 @@ export const quiz = [
       },
       {
         t: 'Every LR(1) grammar is also LALR(1)',
-        why: 'The `a c` / `b c` grammar is LR(1) but not LALR(1).',
+        why: 'Some LR(1) grammars are not LALR(1): merging states with the same core can create a reduce/reduce conflict.',
       },
       {
         t: 'LALR has as many states as LR(0), and is what yacc and Bison build by default',

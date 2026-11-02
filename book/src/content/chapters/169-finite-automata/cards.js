@@ -8,7 +8,7 @@ export const prompts = {
   },
   'dfa-one-arrow': {
     q: 'What makes a finite automaton *deterministic* (a DFA)?',
-    a: 'Each state has at most one transition for each character, so the next state is never in doubt.',
+    a: 'From every state, each character leads to exactly one next state (drawings often leave out the arrows into a dead state), so the next state is never a choice.',
   },
   'missing-arrow': {
     q: 'A DFA is in state D and reads a character that has no arrow out of D. What happens?',
@@ -261,12 +261,12 @@ On \`1..5\`: after \`1\` the state is \`I\`, accepting, so \`last = 1\`; after \
 
 export const quiz = [
   {
-    q: 'The number DFA (S, I, D, F; I and F accepting) reads `3.`. Which state is it in at the end, and does it accept?',
+    q: 'A DFA for decimal numbers has states S (start), I (after the whole part; accepting), D (after a dot) and F (after fraction digits; accepting), with S→I and I→I on a digit, I→D on `.`, and D→F and F→F on a digit. It reads `3.`. Which state does it end in, and does it accept?',
     options: [
       {
         t: 'D, and it rejects',
         correct: true,
-        why: '`3` takes S to I, `.` takes I to D, and D has a single ring.',
+        why: '`3` takes S to I, `.` takes I to D, and D is not an accepting state.',
       },
       {
         t: 'I, and it accepts',
@@ -283,14 +283,14 @@ export const quiz = [
     options: [
       {
         t: 'It has exactly one accepting state',
-        why: 'The number DFA has two (I and F); a DFA may have any number, even none.',
+        why: 'A DFA may have any number of accepting states, even none; a DFA for decimal numbers needs two, after the whole part and after the fraction.',
       },
       {
         t: 'It can read the input backwards when it gets stuck',
         why: 'A DFA reads each character once, left to right, and never goes back.',
       },
       {
-        t: 'From any state, each character leads to at most one next state',
+        t: 'From any state, each character leads to at most one next state (exactly one, if the dead state is drawn)',
         correct: true,
         why: 'That is what *deterministic* means: the next state is never a choice.',
       },
@@ -315,7 +315,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'With the number DFA, a scanner reads `12.x`. What token does maximal munch give?',
+    q: 'A DFA for decimal numbers has states S (start), I (after the whole part; accepting), D (after a dot) and F (after fraction digits; accepting), with S→I and I→I on a digit, I→D on `.`, and D→F and F→F on a digit. A scanner runs it on `12.x`. What token does maximal munch give?',
     options: [
       {
         t: '`12.`',
@@ -337,7 +337,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the two-state "even number of a" machine, what does each state remember?',
+    q: 'A DFA with two states, E (start, accepting) and O, swaps between them on every `a`; it accepts strings with an even number of a\'s. What does each state remember?',
     options: [
       {
         t: 'The exact number of a\'s read',

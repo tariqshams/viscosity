@@ -23,7 +23,9 @@ export default {
       'dfa-minimization': 'merging DFA states that behave the same',
       'scanner-generator': 'a tool (like lex) that writes a scanner from regular expressions',
     } },
-    { n: 173, title: 'The Chomsky hierarchy', introduces: {} },
+    { n: 173, title: 'The Chomsky hierarchy', introduces: {
+      'chomsky-hierarchy': 'regular, context-free, context-sensitive and unrestricted grammars',
+    } },
     { n: 174, title: 'FIRST and FOLLOW', introduces: {
       'first-set': 'the tokens a rule can start with',
       'follow-set': 'the tokens that can come after a nonterminal',

@@ -3,7 +3,7 @@
 
 export const prompts = {
   'three-ops': {
-    q: 'What are the three operators every regular expression is built with?',
+    q: 'Apart from single characters and ε, what are the three operators that build every regular expression?',
     a: 'Concatenation (`ab`, one after the other), alternation (`a|b`, either one) and Kleene star (`a*`, zero or more times).',
   },
   precedence: {
