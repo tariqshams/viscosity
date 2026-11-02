@@ -7,8 +7,8 @@ export const prompts = {
     a: 'A blueprint for making objects of one kind: every object made from it is set up the same way.',
   },
   'new-steps': {
-    q: 'What three things does `new Particle(3, 1)` do?',
-    a: 'Makes a fresh empty object, runs the constructor with `this` set to it, and gives that object back.',
+    q: '`Particle` is a class that does not extend another class. What three things does `new Particle(3, 1)` do?',
+    a: 'Makes a fresh empty object (linked to `Particle.prototype`, where the methods live), runs the constructor with `this` set to it, and gives that object back (unless the constructor itself returns a different object).',
   },
   'constructor-this': {
     q: 'Inside a constructor, what does `this` refer to?',
@@ -187,7 +187,7 @@ test('each one is a separate object', () => {
       'A `for` loop with `i` from `0` up to (but not including) `n` gives exactly the indexes you need.',
       'Inside the loop, `ps.push(new Particle(i, 1));`. After the loop, `return ps;`.',
     ],
-    walkthrough: `**How to think about it.** You do not know \`n\` in advance, so you cannot write the particles out by hand; build the array one slot at a time, the way chapter 3's countdown did. The particle at index \`i\` needs \`x = i\`, which is a strong hint that the loop counter itself should be the \`x\`.
+    walkthrough: `**How to think about it.** You do not know \`n\` in advance, so you cannot write the particles out by hand; build the array one slot at a time, the way the countdown in *Arrays* did. The particle at index \`i\` needs \`x = i\`, which is a strong hint that the loop counter itself should be the \`x\`.
 
 **The solution, line by line.**
 
@@ -200,7 +200,7 @@ test('each one is a separate object', () => {
 
 **Common wrong attempts.**
 
-- Making one particle before the loop and pushing it \`n\` times: the array then holds \`n\` arrows to the *same* object (chapter 7), so every slot shows the same \`x\`, and changing one changes them all. Put the \`new\` inside the loop.
+- Making one particle before the loop and pushing it \`n\` times: the array then holds \`n\` arrows to the *same* object (*References*), so every slot shows the same \`x\`, and changing one changes them all. Put the \`new\` inside the loop.
 - Looping with \`i <= n\` makes one particle too many.`,
     wrong: [
       {
@@ -244,7 +244,7 @@ function makeRow(n) {
 
 export const quiz = [
   {
-    q: 'What is the **first** thing `new Particle(3, 1)` does?',
+    q: '`Particle` is a class that does not extend another class. Which of these does `new Particle(3, 1)` do first?',
     options: [
       {
         t: 'Runs the constructor on the class itself',

@@ -39,7 +39,7 @@ for (let i = 0; i < ps.length; i++) {
 
 Apart from one line these are the same loop, and the copy even has a
 bug (the second loop pushes into `xs`, the kind of slip copying
-invites). Chapter 1 said that when work repeats, you name it; however,
+invites). *Functions* said that when work repeats, you name it; however,
 the part that *differs* here is itself a piece of work ("take the `x`",
 "take the `vx`"), so to write the loop once we need to hand a piece of
 work *to* a function.
@@ -68,7 +68,7 @@ Line 3 has no brackets after `double`, so nothing runs: the function
 itself is stored under a second name. Line 4 calls it through that
 name, and line 5 shows that both names hold the very same function. In
 JavaScript every function is an object<Cite id="mdn-function-object" />,
-so chapter 7's rules apply: the variable holds an arrow, and copying
+so the rules of *References* apply: the variable holds an arrow, and copying
 it makes an alias.
 
 <Figure takeaway="Function names hold arrows, like any object." caption="double, twice and the array slot ops[0] all point at one function object. Calling any of them runs the same code.">
@@ -269,8 +269,8 @@ good(4); // 8
 ```
 
 With braces, `n * 2` is a statement that works out a value and throws it
-away; nothing returns it, so the call gives `undefined` (chapter 2's
-rule). Drop the braces, or add `return`.
+away; nothing returns it, so the call gives `undefined` (the rule from
+*What a call leaves behind*). Drop the braces, or add `return`.
 
 <Formal title="Functions as values, in notation">
 

@@ -4,26 +4,26 @@
 export const prompts = {
   'rec-what': {
     q: 'What is a recursive function?',
-    a: 'A function that calls itself, each time on a smaller version of the problem.',
+    a: 'A function that calls itself (directly, or through other functions), usually on a smaller version of the problem.',
   },
   'base-case': {
     q: 'What is the **base case** of a recursive function?',
     a: 'An input the function answers directly, without calling itself. It is where the recursion stops.',
   },
   smaller: {
-    q: 'Why must every recursive call work on a *smaller* problem?',
-    a: 'So the calls are guaranteed to reach the base case eventually, instead of going on forever.',
+    q: 'Why must every recursive call move its input closer to a base case?',
+    a: 'So the chain of calls is certain to reach a base case and stop, instead of going on until the stack runs out.',
   },
   'frame-what': {
     q: 'What is a stack frame?',
-    a: 'The page one unfinished call keeps for its own parameters and local variables.',
+    a: 'The record one unfinished call keeps on the call stack: its own parameters and local variables, and where to carry on when it returns.',
   },
   'stack-order': {
-    q: 'Calls A, then B, then C are on the call stack. Which one finishes first, and why?',
+    q: '`A` calls `B`, and `B` calls `C`, so all three are on the call stack. Which one finishes first, and why?',
     a: 'C. It was pushed last, so it is on top: the last call to start is the first to finish.',
   },
   paused: {
-    q: 'While `sumTo(2)` is running inside `sumTo(3)`, what is the `sumTo(3)` frame doing?',
+    q: '`sumTo(n)` returns `0` when `n === 0`, and `n + sumTo(n - 1)` otherwise. While `sumTo(2)` is running inside `sumTo(3)`, what is the `sumTo(3)` frame doing?',
     a: 'Waiting, paused part-way through `3 + sumTo(2)`, with its own `n` still 3.',
   },
   'overflow-cause': {
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'Too many unfinished calls, usually recursion that never reaches its base case: frames keep being pushed until the stack runs out of space.',
   },
   'never-reached': {
-    q: '`sumTo` has the base case `if (n === 0)`. What happens with `sumTo(-1)`?',
+    q: '`sumTo(n)` returns `0` when `n === 0`, and `n + sumTo(n - 1)` otherwise. What happens with `sumTo(-1)`?',
     a: 'It asks about -2, -3, … and never reaches 0, so it ends in a stack overflow.',
   },
 };
@@ -230,7 +230,7 @@ console.log(f(4));
     ],
   },
   {
-    q: 'In `sumTo(3)`, at the moment the base case `sumTo(0)` is running, how many `sumTo` frames are on the call stack?',
+    q: '`sumTo(n)` returns `0` when `n === 0`, and `n + sumTo(n - 1)` otherwise. In `sumTo(3)`, at the moment the base case `sumTo(0)` is running, how many `sumTo` frames are on the call stack?',
     options: [
       {
         t: '1',
@@ -308,12 +308,12 @@ function down(n) {
     options: [
       {
         t: 'C gives the same RangeError as JavaScript',
-        why: 'RangeError is JavaScript’s; C has no such check.',
+        why: 'RangeError is the error V8’s JavaScript throws; C has no such check.',
       },
       {
         t: 'C checks nothing, so the program usually just crashes',
         correct: true,
-        why: 'JavaScript stops with a RangeError; C runs off the end of its stack and typically crashes with no friendly message.',
+        why: 'A JavaScript engine throws an error you can read (a RangeError in V8); C runs off the end of its stack and typically crashes with no friendly message.',
       },
       {
         t: 'C makes the stack bigger automatically',

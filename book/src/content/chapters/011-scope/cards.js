@@ -4,7 +4,7 @@
 export const prompts = {
   'block-scope': {
     q: 'A `const` is declared inside an `if (...) { }` block. Where can it be used?',
-    a: 'Only from its declaration to the closing `}` of that block. Outside it you get a ReferenceError.',
+    a: 'Only in code written inside that block (and, even there, reading it before the declaration has run is an error). Code outside the block cannot name it: a ReferenceError.',
   },
   'see-outward': {
     q: 'Can code inside a function use a variable declared outside it? Can outside code use a variable declared inside?',
@@ -32,7 +32,7 @@ export const prompts = {
   },
   'nested-sees': {
     q: 'A function `inner` is written inside `outer`. Can `inner` use `outer`’s parameters without being passed them?',
-    a: 'Yes. A nested function can see every name of the function around it.',
+    a: 'Yes. A nested function can see every name of the function around it, unless it declares a name of its own that shadows one.',
   },
 };
 
@@ -330,7 +330,7 @@ function total(xs) {
     ],
   },
   {
-    q: 'A variable is given the value 1 inside an `if` block and printed after the block. In which language does that print `1` rather than fail?',
+    q: 'A variable `a` is first given the value 1 inside an `if` block and printed after the block. In which language does that print `1` rather than fail?',
     options: [
       {
         t: 'Java',

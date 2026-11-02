@@ -103,7 +103,7 @@ calculation, so `mixed[i + 1]` works out `i + 1` (which is `2`) first and
 reads slot 2. The third is the shape this whole book is about: the
 x positions of three particles in one array and their speeds in
 another, so particle 2's next position is `xs[2] + vx[2]`, `4.5`
-(Viscosity rewrites your programs into exactly this shape, as chapter 6
+(Viscosity rewrites your programs into exactly this shape, as *Arrays of objects*
 begins to show).
 
 <Prompts ids={['array-what', 'first-index', 'index-expr']} />
@@ -130,7 +130,7 @@ This is close to how the computer really finds a slot when the values
 are stored packed side by side (as numbers often are): start where the
 array begins in memory, and step forward `index` slots. As such, reading
 slot 2 takes as long as reading slot 2,000,000, because nothing is
-searched (give or take a wrinkle about caches that chapter 51 explains).
+searched (give or take a wrinkle about caches that *Caches, lines and locality* explains).
 
 <Formal title="Which indexes exist, and where they are">
 
@@ -147,7 +147,7 @@ beginning and moving forward i slots.</span>
 </Formal>
 
 Read outside that range and there is no slot to read, so you get
-`undefined`, the "nothing" value from chapter 2, rather than an error:
+`undefined`, the "nothing" value from *What a call leaves behind*, rather than an error:
 
 ```js
 const scores = [90, 72, 85, 64];
@@ -219,7 +219,7 @@ slot.
 
 (You may wonder how `push` can change an array declared with `const`.
 `const` only means the *name* can never be pointed at a different array;
-the array itself can still change, and chapter 7 explains why.)
+the array itself can still change, and *References* explains why.)
 
 <OtherLanguages>
 

@@ -15,11 +15,11 @@ export const prompts = {
     a: 'Exactly one, except the root, which has none. Branches never join up again.',
   },
   'count-base': {
-    q: '`count` has no `if`. Where is its base case?',
+    q: '`count(node)` starts a total at 1 and adds `count(c)` for each child `c` in a `for` loop, with no `if`. Where is its base case?',
     a: 'In the loop: a leaf has no children, so the loop runs zero times and `count` returns 1.',
   },
   'child-tree': {
-    q: 'Why can `count` call itself on each child?',
+    q: 'Why can a function that counts the nodes of a tree call itself on each child?',
     a: 'Each child is a whole tree itself (a subtree), so the same function answers the same question about it.',
   },
   'brackets-gone': {
@@ -27,8 +27,8 @@ export const prompts = {
     a: 'The addition is a child of the multiplication, so the shape of the tree already says it must be worked out first.',
   },
   'tree-why-recursion': {
-    q: 'Why can a fixed number of nested loops not walk any folder tree?',
-    a: 'The depth is unknown until the program runs; recursion goes as deep as the tree does.',
+    q: 'Why can nested `for` loops, one per level, not walk every folder tree?',
+    a: 'The depth is unknown until the program runs, so no fixed number of loops is enough; recursion (or one loop that keeps its own stack of folders still to visit) goes as deep as the tree does.',
   },
   'leaf-base': {
     q: 'When a recursive function walks a tree, what is usually its base case?',
@@ -283,7 +283,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A root has three children, and each of them is a leaf. What is `count(root)`?',
+    q: '`count(node)` starts a total at 1 and adds `count(c)` for each child `c` in a `for` loop, with no `if`. A root has three children, and each of them is a leaf. What is `count(root)`?',
     options: [
       {
         t: '3',
@@ -327,7 +327,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `show` (from the chapter) return for the tree of `1 + (2 * 3)`?',
+    q: '`show(t)` returns a number leaf as its digits, and an `add` or `mul` node as `\'(\' + show(t.left) + \' + \' + show(t.right) + \')\'` (with `*` for `mul`). What does it return for the tree of `1 + (2 * 3)`?',
     options: [
       {
         t: '`\'(1 + (2 * 3))\'`',
@@ -362,7 +362,7 @@ export const quiz = [
       },
       {
         t: 'Interpreters cannot use recursion',
-        why: 'They can, and the one in this book does.',
+        why: 'They can, and tree-walking interpreters usually do.',
       },
       {
         t: 'Strings in the program are too long',

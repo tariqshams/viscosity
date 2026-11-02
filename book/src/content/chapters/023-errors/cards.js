@@ -3,16 +3,16 @@
 
 export const prompts = {
   'throw-what': {
-    q: 'What does `throw new Error(\'x\')` do to the function it runs in?',
-    a: 'Stops it immediately, without returning anything, and raises an exception carrying the Error object.',
+    q: 'Nothing in a function catches errors. What does `throw new Error(\'x\')` do to that function?',
+    a: 'Ends it at once without returning a value (running any `finally` blocks on the way out), and the exception, carrying the Error object, carries on to the code that called it.',
   },
   'throw-vs-return': {
-    q: 'Why is throwing better than returning a strange value like `-1` when a function can’t do its job?',
-    a: 'A strange value flows on silently and causes a bug far away; a throw stops the program right where the problem is, unless some code handles it.',
+    q: 'When a function cannot do its job, what is the main advantage of throwing over returning a strange value like `-1`?',
+    a: 'A strange value can flow on silently and cause a bug far away; a throw cannot be ignored by accident, because it stops the work right where the problem is unless some code chooses to handle it.',
   },
   'catch-when': {
     q: 'When does a `catch` block run?',
-    a: 'Only when something inside the matching `try` block throws (including code in functions it calls).',
+    a: 'Only when something inside the matching `try` block throws (including code in functions it calls) and no nearer `catch` has already caught it.',
   },
   'try-skip': {
     q: 'Line 2 of a 4-line `try` block throws. Do lines 3 and 4 run?',
@@ -24,7 +24,7 @@ export const prompts = {
   },
   'finally-when': {
     q: 'When does a `finally` block run?',
-    a: 'Always, after the `try` (and the `catch`, if it ran), whether or not anything was thrown, even after a `return`.',
+    a: 'Whenever the `try` (and the `catch`, if one ran) is left, however it is left: by finishing normally, by a throw, or by a `return`, `break` or `continue`.',
   },
   'block-scope': {
     q: '`try { const n = 5; } catch (e) {}` then `console.log(n);`. What happens, and why?',
@@ -32,7 +32,7 @@ export const prompts = {
   },
   'other-langs': {
     q: 'C has no exceptions. How does a C function like `strtol` report that its input was bad?',
-    a: 'Through what it returns or fills in (here, `end` pointing at the bad character); every caller must check by hand.',
+    a: 'Through values it returns or fills in: the end pointer it sets shows where reading stopped, and `errno` is set if the number is out of range. Every caller must check by hand.',
   },
 };
 

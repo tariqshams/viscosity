@@ -3,39 +3,39 @@
 
 export const prompts = {
   'no-return': {
-    q: 'What does a call produce if the function never reaches a `return`?',
-    a: '`undefined`, JavaScript’s value for “nothing”.',
+    q: 'What does a call to an ordinary function produce if its body ends without reaching a `return`?',
+    a: '`undefined`, JavaScript’s value for “nothing”. (Some later kinds of call differ: an `async` function always hands back a promise, and a call with `new` hands back the new object.)',
   },
   'bare-return': {
-    q: 'What does a call produce when it runs `return;` with no value after it?',
+    q: 'What does a call to an ordinary function produce when it runs `return;` with no value after it?',
     a: '`undefined`: the call ends there, with nothing handed back.',
   },
   'missing-arg': {
-    q: 'A function has a parameter `name`, and you call it with no arguments. What does `name` hold?',
-    a: '`undefined`. JavaScript fills a parameter that got no argument with `undefined` (Python and Java would refuse instead).',
+    q: 'A function has a parameter `name` with no default value, and you call it with no arguments. What does `name` hold?',
+    a: '`undefined`. JavaScript fills a parameter that got no argument with `undefined` (Python and Java would refuse the call instead).',
   },
   'print-vs-return': {
-    q: 'A function prints `6` with `console.log` but has no `return`. What is `x` after `const x = f();`?',
+    q: 'An ordinary function `f` prints `6` with `console.log` but has no `return`. What is `x` after `const x = f();`?',
     a: '`undefined`. Printing shows a value to a human; only `return` hands it back to the calling code.',
   },
   'fresh-page': {
-    q: 'What does each function call get for its parameters and local variables?',
-    a: 'Its own fresh, private “page” (environment). Two calls never share local variables.',
+    q: 'Two calls to the same function run. Do they share the parameters and local variables declared in its body?',
+    a: 'No. Every call gets a fresh set of its own (a new environment), so one call’s locals never hold another call’s values.',
   },
-  'local-gone': {
-    q: 'Why does reading a function’s local variable from outside, after the call, fail?',
-    a: 'The call’s page (and every local variable on it) is thrown away when the call ends. Only the returned value survives.',
+  'local-scope': {
+    q: 'Code outside a function tries to read a local variable `a` declared in the function’s body. Why does it fail with a `ReferenceError`?',
+    a: 'Scope: the name `a` exists only inside that function’s body, so code outside it cannot name it at all, whether or not the function has been called.',
   },
   'same-name-locals': {
     q: 'Can two different functions each have a local variable called `t`?',
-    a: 'Yes. Each call keeps its locals on its own page, so the two `t`s never meet.',
+    a: 'Yes. Each `t` is scoped to its own function’s body, so they are two different variables that never clash.',
   },
   'tick-resets': {
     q: 'Why does a function that does `let count = 0; count = count + 1; return count;` return `1` on every call?',
-    a: 'Each call gets a fresh page with a brand-new `count` starting at 0; nothing is remembered from the call before.',
+    a: 'Each call declares a brand-new `count` starting at 0; a local declared inside the body is not carried over from the call before.',
   },
   'fn-calls-fn': {
-    q: 'If `hypot` calls `square` twice, how many separate pages (sets of local variables) for `square` are created?',
+    q: 'A function `hypot` calls `square(x)` twice. How many separate sets of `square`’s parameters and locals are created?',
     a: 'Two: one per call, each with its own `x`.',
   },
 };
@@ -213,7 +213,7 @@ function distance(x1, y1, x2, y2) {
 
 export const quiz = [
   {
-    q: 'A function prints a number with `console.log` but has no `return`. You write `const r = f();`. What is `r`?',
+    q: 'An ordinary function `f` prints a number with `console.log` but has no `return`. You write `const r = f();`. What is `r`?',
     options: [
       {
         t: 'The printed number',
@@ -256,13 +256,13 @@ export const quiz = [
     q: 'Why can two different functions both have a local variable called `total` without any conflict?',
     options: [
       {
-        t: 'Each call keeps its local variables on its own private page',
+        t: 'Each `total` is scoped to its own function’s body, so they are two different variables',
         correct: true,
-        why: 'Local variables live only in the call that created them, so they never collide.',
+        why: 'A local name can be seen only inside the body that declares it, so the two never collide.',
       },
       {
         t: 'JavaScript renames one of them secretly',
-        why: 'No renaming happens. Each call simply has its own page.',
+        why: 'No renaming happens. The two names live in different scopes.',
       },
       {
         t: 'The second one overwrites the first',
@@ -288,7 +288,7 @@ console.log(tick());
     options: [
       {
         t: '`2`',
-        why: 'The first call’s `count` was thrown away with its page; the second call starts again from 0.',
+        why: 'The first call’s `count` belongs to that call alone; the second call declares a new `count` starting from 0.',
       },
       {
         t: '`0`',
@@ -314,7 +314,7 @@ console.log(a);
     options: [
       {
         t: 'It prints `12`',
-        why: '`a` lived only on the call’s page, which is gone by the last line.',
+        why: '`a` is scoped to the body of `area`, so the last line cannot name it.',
       },
       {
         t: 'It prints `undefined`',
@@ -323,7 +323,7 @@ console.log(a);
       {
         t: 'It stops with `ReferenceError: a is not defined`',
         correct: true,
-        why: 'The outside code cannot see a finished call’s local variables.',
+        why: 'The name `a` exists only inside the body of `area`, so outside it there is no `a` to read.',
       },
     ],
   },

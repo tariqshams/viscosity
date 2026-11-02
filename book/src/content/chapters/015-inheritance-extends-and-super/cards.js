@@ -8,7 +8,7 @@ export const prompts = {
   },
   'super-call-what': {
     q: 'Inside a subclass constructor, what does `super(line)` do?',
-    a: 'It runs the parent class’s constructor, passing it `line`; that constructor makes the object and sets up the parent’s part.',
+    a: 'It runs the parent class’s constructor, passing it `line`; that constructor makes the object and sets up the parent’s part, and from then on `this` refers to it.',
   },
   'super-first': {
     q: 'What happens if a subclass constructor uses `this` before calling `super(...)`?',
@@ -31,8 +31,8 @@ export const prompts = {
     a: 'The shared code is written once, so a change to it reaches every subclass, and no copy can be missed.',
   },
   'error-super': {
-    q: 'Why does `class RuntimeError extends Error` call `super(message)` in its constructor?',
-    a: 'So that Error’s own constructor runs and stores the `message`; RuntimeError then adds its extra `line`.',
+    q: 'Why does a constructor in `class RuntimeError extends Error` call `super(message)`?',
+    a: 'A subclass constructor must call `super(...)` before it can use `this` (or finish), and passing `message` lets Error’s own constructor store it as the error’s `message`.',
   },
 };
 
@@ -311,7 +311,7 @@ new Num(1, 2);
       {
         t: 'It has no `line` attribute, because the parent’s setup never ran',
         correct: true,
-        why: 'The object is made, but only what the subclass’s `__init__` stored is there. JavaScript refuses with a ReferenceError instead, and Java refuses to compile.',
+        why: 'The object is made, but only what the subclass’s `__init__` stored is there. JavaScript refuses with a ReferenceError instead, and Java refuses to compile (when the parent has no constructor without arguments).',
       },
     ],
   },

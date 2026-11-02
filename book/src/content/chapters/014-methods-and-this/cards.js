@@ -8,31 +8,31 @@ export const prompts = {
   },
   'method-shared': {
     q: 'You make 1000 particles from a class with a `move` method. How many copies of `move` are there?',
-    a: 'One. Methods are stored with the class and shared by every instance.',
+    a: 'One. Methods written in a class body are stored once, on the class’s prototype object, and shared by every instance.',
   },
   'this-what': {
-    q: 'In the call `q.move()`, what is `this` inside `move`?',
+    q: '`move` is a method written in a class body. In the call `q.move()`, what is `this` inside `move`?',
     a: '`q`: the object before the dot.',
   },
   'this-when': {
-    q: 'Lexical scope is decided by where a function is written. What decides what `this` means?',
-    a: 'How the function is called: the object it was called on, in each call.',
+    q: 'Lexical scope is decided by where a function is written. What decides what `this` means inside an ordinary function or method?',
+    a: 'How it is called: the object it was called on, in each call. (An arrow function is the exception: it takes `this` from where it is written.)',
   },
   'lost-this': {
-    q: '`const m = p.move; m();` Why does this fail in class code?',
+    q: '`move` is a class method that reads `this.x`. Why does `const m = p.move; m();` fail?',
     a: '`m()` has no object before a dot, so `this` is `undefined`, and reading `this.x` is a TypeError.',
   },
   'arrow-fix': {
-    q: 'Why does `twice(p.move)` fail while `twice(() => p.move())` works?',
+    q: '`twice(f)` calls `f()` twice, and `move` is a class method that uses `this`. Why does `twice(p.move)` fail while `twice(() => p.move())` works?',
     a: '`p.move` passes only the function, which is later called with no object. The arrow function keeps the call `p.move()`, dot and all.',
   },
   'instanceof-what': {
     q: 'What does `a instanceof C` check?',
-    a: 'Whether the object `a` was made by the class `C`.',
+    a: 'Whether the object holding `C`’s shared methods (`C.prototype`) is on the chain of objects `a` borrows methods from: true for objects made by `new C`, or by a class that extends `C`.',
   },
   'instanceof-fake': {
     q: '`const fake = { x: 0, vx: 2 };` Why is `fake instanceof Particle` false, even though it looks like a particle?',
-    a: '`instanceof` checks which class made the object, not what properties it has, and `fake` was not made by `new Particle`.',
+    a: '`instanceof` follows the object’s hidden link to where its methods come from, not its properties, and `fake` is a plain object, linked to `Object.prototype` rather than `Particle.prototype`.',
   },
 };
 
@@ -136,7 +136,7 @@ test('add changes neither vector', () => {
 - \`    return Math.sqrt(x * x + y * y);\` is Pythagoras: for \`(3, 4)\` that is the square root of \`9 + 16\`, which is \`5\`.
 - \`  }\` and \`}\` close the method and the class.
 
-Why return a new Vec rather than changing \`this\`? Because \`a\` might be shared with other code (chapter 7), and someone holding it would be surprised to see it move. Small value-like objects that never change are easy to reason about, and, as Part VIII shows, easy for an optimiser to store however it likes.
+Why return a new Vec rather than changing \`this\`? Because \`a\` might be shared with other code (*References*), and someone holding it would be surprised to see it move. Small value-like objects that never change are easy to reason about, and, as Part V shows, easy for an optimiser to store however it likes.
 
 **Common wrong attempts.**
 
@@ -331,7 +331,7 @@ console.log(p.x, q.x);
     ],
   },
   {
-    q: '`const m = p.move; m();` What happens?',
+    q: '`p` is a `Particle`, and its class method `move` adds `this.vx` to `this.x`. `const m = p.move; m();` What happens?',
     options: [
       {
         t: '`p` moves as usual',
@@ -356,9 +356,9 @@ console.log(p.x, q.x);
     q: 'Where does the `move` method of 1000 Particle instances live?',
     options: [
       {
-        t: 'Once, with the class, shared by all of them',
+        t: 'Once, on the class’s prototype, shared by all of them',
         correct: true,
-        why: 'Methods in a class body are stored once. Each call works on a different object through `this`.',
+        why: 'Methods in a class body are stored once, on `Particle.prototype`. Each call works on a different object through `this`.',
       },
       {
         t: 'A copy inside each instance',
@@ -392,7 +392,7 @@ console.log(p.x, q.x);
       {
         t: '`false`',
         correct: true,
-        why: '`o` was not made by `new Particle`, so it is not a Particle instance.',
+        why: '`o` is a plain object, so `Particle.prototype` is not on its chain of prototypes.',
       },
     ],
   },

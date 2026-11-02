@@ -66,7 +66,7 @@ kinds, and you have met most of them already: a **TypeError** means a
 value was the wrong kind for what you did (`null.x`, since `null` has no
 properties); a **ReferenceError**, a name that does not exist; a
 **RangeError**, a number out of its allowed range (Node and Chrome use it
-for the too-deep recursion of chapter 19); and a **SyntaxError**, code
+for the too-deep recursion of *Recursion and the call stack*); and a **SyntaxError**, code
 that could not be read at all (`let 1x = 0;`), reported before anything
 runs<Cite id="mdn-error" />.
 
@@ -145,8 +145,8 @@ wants; an error that no `catch` takes reaches the bottom of the call
 stack and stops the program.</span>
 </Analogy>
 
-The third example above is a subclass, as in chapter 15
-(*Inheritance: extends and super*): a ParseError is a kind of `Error`,
+The third example above is a subclass, as in
+*Inheritance: extends and super*: a ParseError is a kind of `Error`,
 so `instanceof Error` is true for it, and `super(message)` lets Error's
 own constructor store the message; then the constructor sets
 `this.name`, which would otherwise still read

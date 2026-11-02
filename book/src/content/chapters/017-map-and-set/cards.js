@@ -4,7 +4,7 @@
 export const prompts = {
   'object-keys-strings': {
     q: 'Why does `hit[a] = true` (where `a` is an object, and `hit` a plain object) also make `hit[b]` true for a different object `b`?',
-    a: 'Property names are always strings, and every plain object turns into the same string, `\'[object Object]\'`.',
+    a: 'A plain object’s keys can only be strings (or symbols), so an object used as a key is turned into a string, and every plain object turns into the same one, `\'[object Object]\'`.',
   },
   'map-get-missing': {
     q: 'What does `m.get(k)` return when the Map `m` has no key `k`?',
@@ -19,7 +19,7 @@ export const prompts = {
     a: '`undefined`. Object keys are compared by identity, and the second `{ id: 1 }` is a different object.',
   },
   'forof-what': {
-    q: 'What does `for (const x of xs)` give you each time round, and what does it not give you?',
+    q: 'For an array `xs`, what does `for (const x of xs)` give you each time round, and what does it not give you?',
     a: 'Each value of `xs` in order. It doesn’t give the index; use a classic `for` loop if you need `i`.',
   },
   'forof-map': {
@@ -30,9 +30,9 @@ export const prompts = {
     q: 'You `add` the same value to a Set three times. What is its `size`?',
     a: '`1`. A Set holds each value at most once.',
   },
-  'set-from-array': {
-    q: 'What is the quickest way to remove duplicates from an array `xs`?',
-    a: '`new Set(xs)`: it keeps one of each value, in first-seen order.',
+  'set-keeps-first': {
+    q: '`xs` is an array with repeated values. What does `new Set(xs)` hold, and in what order?',
+    a: 'One of each distinct value, in the order each was first seen in `xs`.',
   },
 };
 
@@ -193,7 +193,7 @@ test('works with strings', () => {
 - \`  const seen = new Set();\` starts with nothing seen.
 - \`  for (const x of xs) {\` reads the values from left to right.
 - \`    if (seen.has(x)) {\` asks whether this value appeared earlier.
-- \`      return x;\` if so, this is the first second sighting, so return it at once; the early \`return\` from chapter 1 stops the loop too.
+- \`      return x;\` if so, this is the first second sighting, so return it at once; the early \`return\` from *Functions* stops the loop too.
 - \`    }\` closes the \`if\`.
 - \`    seen.add(x);\` otherwise remembers the value for later.
 - \`  }\` closes the loop.
@@ -327,7 +327,7 @@ console.log(m.get({ id: 1 }));
         why: 'Objects can hold many properties.',
       },
       {
-        t: 'An object turns every key into a string, so all particle objects become the same key',
+        t: 'An object turns every object used as a key into a string, so all particle objects become the same key',
         correct: true,
         why: 'They all become `\'[object Object]\'`. A Map keeps each object as its own key.',
       },

@@ -23,8 +23,8 @@ export const prompts = {
     a: '`undefined`: there is no slot there, and JavaScript gives “nothing” rather than an error.',
   },
   'why-fast': {
-    q: 'Why does reading slot 2,000,000 of a packed array take no longer than reading slot 2?',
-    a: 'Nothing is searched: the slot’s place is worked out directly as the start plus `index` steps.',
+    q: 'Why does finding slot 2,000,000 of a packed array take no more steps than finding slot 2?',
+    a: 'Nothing is searched: the slot’s place is worked out directly as the start plus `index` steps. (Whether that memory is already in a cache can still change the time.)',
   },
   push: {
     q: 'What does `arr.push(x)` do to `arr` and its `length`?',
@@ -277,7 +277,7 @@ console.log(a.length);
     ],
   },
   {
-    q: 'Why does reading a slot by index take the same time for index 2 or index 2,000,000?',
+    q: 'In a packed array, why does finding a slot by index take the same number of steps for index 2 as for index 2,000,000?',
     options: [
       {
         t: 'The engine searches from the start, but very quickly',

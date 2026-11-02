@@ -21,7 +21,7 @@ import RecordLoopSteps from '../../../components/diagrams/ch006/RecordLoopSteps'
 
 Last chapter gave a particle a tidy home, `{ x: 3, vx: 1 }`. A game,
 however, has thousands of them, and naming each one (`p0`, `p1`, `p2`,
-and so on) is the problem chapter 3 already solved for numbers: one
+and so on) is the problem *Arrays* already solved for numbers: one
 variable per value means the code grows with the data, and no loop can
 visit "every particle". The answer is the same as before: put them in an
 array. The only new thing is that each slot now holds a whole object.
@@ -50,7 +50,7 @@ phone number you first pick her card out of the box, then read the
 "phone" line on it; that is `ps[i]` first, then `.phone`.
 <span slot="breaks">Cards in a box sit physically side by side; in a
 JavaScript array, the slots usually hold arrows to objects that live
-elsewhere in memory, a difference chapter 7 explains and Part II
+elsewhere in memory, a difference *References* explains and Part II
 measures.</span>
 </Analogy>
 
@@ -71,7 +71,7 @@ for a record with named fields).
 
 ## Visiting every record
 
-The loop from chapter 4 works unchanged; inside it, `ps[i]` is a whole
+The loop from *Visiting every slot* works unchanged; inside it, `ps[i]` is a whole
 record rather than a number. Step through a loop that moves every
 particle by its speed:
 
@@ -80,7 +80,7 @@ particle by its speed:
 The line to notice is `const p = ps[i];`. It gives the current record a
 short name for one pass of the loop, which saves writing `ps[i]` three
 times; and because `p` reaches the very object in the slot (not a
-copy), `p.x = ...` changes the particle inside the array. Chapter 7
+copy), `p.x = ...` changes the particle inside the array. *References*
 explains exactly why that is so.
 
 <Examples of="array-of-objects">
@@ -236,7 +236,7 @@ When every record has the same properties, created in the same order,
 the engine gives them one shared shape<Cite id="bynensmeurer2018" />, so
 a loop over the array finds `x` in the same place in every object. Mix
 records with different properties (one with `vX` by mistake, say) and
-that loop gets slower; chapter 13 shows how classes keep records alike.
+that loop gets slower; *Classes* shows how classes keep records alike.
 </Callout>
 
 <Prompts ids={['soa-what', 'soa-read', 'record-push']} />
@@ -253,7 +253,7 @@ that loop gets slower; chapter 13 shows how classes keep records alike.
 
 - An **array of objects** keeps one record per slot; `ps[i].x` picks
   the slot first, then the field.
-- The chapter 4 loop visits every record, and `const p = ps[i]` names
+- The loop from *Visiting every slot* visits every record, and `const p = ps[i]` names
   the current one without copying it.
 - `ps.x` is `undefined` (arrays have no `x`), and `ps[i].x` past the end
   is a TypeError.

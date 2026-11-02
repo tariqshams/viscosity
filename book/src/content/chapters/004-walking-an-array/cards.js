@@ -3,11 +3,11 @@
 
 export const prompts = {
   'loop-start': {
-    q: 'Why does the standard array loop start with `let i = 0`?',
+    q: 'Why does the loop `for (let i = 0; i < arr.length; i++)` start with `let i = 0`?',
     a: 'Because `0` is the index of the first slot.',
   },
   'loop-bound': {
-    q: 'Why does the standard array loop test `i < arr.length` and not `i <= arr.length`?',
+    q: 'Why does a loop over every slot of `arr` test `i < arr.length` and not `i <= arr.length`?',
     a: 'The last valid index is `length - 1`. With `<=` the loop would read one slot past the end and get `undefined`.',
   },
   'loop-runs': {
@@ -19,7 +19,7 @@ export const prompts = {
     a: 'So it survives from one pass of the loop to the next and keeps collecting. Declared inside, it would restart every time.',
   },
   'nan-off-by-one': {
-    q: 'A summing loop uses `i <= arr.length` by mistake. What does the total become, and why?',
+    q: 'A loop summing an array of numbers uses `i <= arr.length` by mistake. What does the total become, and why?',
     a: '`NaN`: the last pass reads `arr[arr.length]`, which is `undefined`, and a number plus `undefined` is `NaN`.',
   },
   'why-function': {

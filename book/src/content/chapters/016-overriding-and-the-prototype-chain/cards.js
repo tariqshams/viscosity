@@ -11,15 +11,15 @@ export const prompts = {
     a: '`Num`’s `show` (the nearer one wins) and `Node`’s `where` (the only one there is).',
   },
   'super-method': {
-    q: 'Inside a method of `Call extends Node`, what does `super.where()` run, and what is `this` inside it?',
+    q: '`Node` defines a method `where`. Inside a method of `Call extends Node`, what does `super.where()` run, and what is `this` inside it?',
     a: '`Node`’s `where`, with `this` still the same `Call` object.',
   },
   'proto-what': {
-    q: 'For `n = new Num(3, 42)`, where `Num extends Node`, what are the links of `n`’s prototype chain, in order?',
+    q: 'For `n = new Num(3, 42)`, where `Num extends Node` and `Node` extends no other class, what are the links of `n`’s prototype chain, in order?',
     a: '`Num.prototype`, then `Node.prototype`, then `Object.prototype`, then `null`.',
   },
   'own-property': {
-    q: 'Why is `Object.hasOwn(n, \'where\')` false even though `n.where()` works?',
+    q: '`Node` defines `where() { return \'line \' + this.line; }`, and `Num extends Node` does not define `where`. For `n = new Num(3, 42)`, why is `Object.hasOwn(n, \'where\')` false even though `n.where()` works?',
     a: '`where` is not stored on `n` itself; it is stored once on `Node.prototype` and found by walking the chain.',
   },
   'chain-end': {
@@ -27,8 +27,8 @@ export const prompts = {
     a: '`undefined`. The chain ends with a link that is `null`, so the search stops there.',
   },
   shadow: {
-    q: 'After `n.where = () => \'here\'`, what do `n.where()` and another Num’s `m.where()` give?',
-    a: '`\'here\'` and Node’s usual answer: the own property on `n` shadows the inherited `where` for `n` only.',
+    q: '`Node` defines `where() { return \'line \' + this.line; }`, and `Num extends Node` does not define `where`. `n` and `m` are both Nums. After `n.where = () => \'here\'`, what do `n.where()` and `m.where()` give?',
+    a: '`\'here\'`, and `\'line \'` followed by `m.line` (Node’s method, as before): the own property on `n` shadows the inherited `where` for `n` only.',
   },
   'instanceof-chain': {
     q: 'What does `n instanceof Node` actually check?',
@@ -477,7 +477,7 @@ export const quiz = [
     ],
   },
   {
-    q: `What do the last two lines give?
+    q: `\`Node\` defines \`where() { return 'line ' + this.line; }\`, and \`Num extends Node\` passes its first argument to \`super\` as \`line\`, without its own \`where\`. What do the last two lines give?
 \`\`\`
 const a = new Num(1, 1);
 const b = new Num(2, 2);

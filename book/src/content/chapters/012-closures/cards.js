@@ -7,23 +7,23 @@ export const prompts = {
     a: 'A function together with the variables from the place it was written, which it keeps access to.',
   },
   'times-k': {
-    q: '`const triple = times(3);` How does `triple` still know `k` after `times` has returned?',
-    a: 'It is a closure: it kept an arrow to the page of that call, where `k` is 3.',
+    q: '`times(k)` returns `(n) => n * k`. After `const triple = times(3);`, how does `triple` still know `k` once `times` has returned?',
+    a: 'It is a closure: it keeps a reference to the environment of that call to `times`, where `k` is 3.',
   },
   'page-survives': {
-    q: 'Why isn’t `makeCounter`’s `count` thrown away when `makeCounter` returns?',
-    a: 'The returned function still points at the page holding `count`, and a page is only thrown away once nothing points at it.',
+    q: '`makeCounter` declares `let count = 0` and returns `() => { count = count + 1; return count; }`. Why is `count` not thrown away when `makeCounter` returns?',
+    a: 'The returned function still refers to the environment holding `count`, and an environment stays alive as long as something can still reach it.',
   },
   'two-counters': {
-    q: '`const a = makeCounter(); const b = makeCounter();` After `a(); a();`, what does `b()` return?',
-    a: '`1`. Each call to `makeCounter` made its own page, so `b` has its own `count`.',
+    q: '`makeCounter` declares `let count = 0` and returns `() => { count = count + 1; return count; }`. With `const a = makeCounter(); const b = makeCounter();`, after `a(); a();`, what does `b()` return?',
+    a: '`1`. Each call to `makeCounter` made its own environment with its own `count`, and `b` closes over a different one from `a`.',
   },
   'live-not-copy': {
     q: '`let n = 1; const f = () => n; n = 5;` What does `f()` return?',
     a: '`5`. A closure holds the variable itself, not a copy of its value when the function was made.',
   },
   'alias-closure': {
-    q: '`const a = makeCounter(); const b = a;` Do `a` and `b` have separate counts?',
+    q: '`makeCounter` declares `let count = 0` and returns `() => { count = count + 1; return count; }`. After `const a = makeCounter(); const b = a;`, do `a` and `b` have separate counts?',
     a: 'No: `b = a` copies the arrow to the one function, so they share one `count`.',
   },
   'loop-let': {
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'With `let`, each pass of the loop gets its own fresh `i`, and each function closes over its own pass’s `i`.',
   },
   'private-why': {
-    q: 'Why can no other code change `makeCounter`’s `count`?',
+    q: '`makeCounter` declares `let count = 0` and returns `() => { count = count + 1; return count; }`. Why can no code outside `makeCounter` change `count` except by calling the returned function?',
     a: 'It is in `makeCounter`’s scope, which outside code cannot see into; the only way to reach it is through the returned function.',
   },
 };
@@ -238,7 +238,7 @@ test('waits for the first call', () => {
 
 export const quiz = [
   {
-    q: '`const a = makeCounter(); const b = makeCounter();` Then `a(); a(); a();`. What does `b()` return?',
+    q: '`makeCounter` declares `let count = 0` and returns `() => { count = count + 1; return count; }`. `const a = makeCounter(); const b = makeCounter();` Then `a(); a(); a();`. What does `b()` return?',
     options: [
       {
         t: '`4`',
@@ -255,7 +255,7 @@ export const quiz = [
       {
         t: '`1`',
         correct: true,
-        why: 'Each `makeCounter()` call made its own page with its own `count`, so `b` starts from 0 and returns 1.',
+        why: 'Each `makeCounter()` call made its own environment with its own `count`, so `b` starts from 0 and returns 1.',
       },
     ],
   },
@@ -339,7 +339,7 @@ console.log(fs[1]());
     ],
   },
   {
-    q: 'Why is `makeCounter`’s `count` safe from the rest of the program?',
+    q: '`makeCounter` declares `let count = 0` and returns `() => { count = count + 1; return count; }`. Why is `count` safe from the rest of the program?',
     options: [
       {
         t: 'It is a `const`',

@@ -4,7 +4,7 @@
 export const prompts = {
   'spread-copy': {
     q: 'What does `{ ...p, x: 50 }` produce?',
-    a: 'A brand-new object with all of `p`’s properties, except that `x` is `50`.',
+    a: 'A brand-new plain object with copies of all of `p`’s own properties, except that `x` is `50`. (Spread copies only an object’s own properties, not anything it inherits.)',
   },
   'spread-order': {
     q: '`p` has `x: 1`. What is `x` in `{ x: 9, ...p }`, and why?',

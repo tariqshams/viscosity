@@ -16,14 +16,14 @@ export const prompts = {
   },
   'hash-collision': {
     q: 'What is a collision in a hash table?',
-    a: 'Two different keys hashing to the same bucket. They share it, and a lookup checks each one there.',
+    a: 'Two different keys landing in the same bucket. The table has to keep both, and a lookup must check which key it has found.',
   },
   'hash-same-key': {
     q: 'Why must a hash function always give the same number for the same key?',
     a: 'Otherwise a key could be stored in one bucket and later looked for in another, and it would seem to be missing.',
   },
   'bucket-mod': {
-    q: 'A table has 8 buckets and a key hashes to 21. Which bucket does it go in?',
+    q: 'A table with 8 buckets picks a bucket by the remainder of the hash. A key hashes to 21. Which bucket does it go in?',
     a: 'Bucket 5: the remainder of 21 divided by 8 (`21 % 8`).',
   },
   'even-spread': {

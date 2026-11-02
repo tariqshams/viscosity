@@ -8,14 +8,14 @@ export const prompts = {
   },
   'filter-returns': {
     q: 'What does `xs.filter(f)` give back?',
-    a: 'A new array holding only the items for which `f` returned `true`, in order. `xs` itself is unchanged.',
+    a: 'A new array holding only the items for which `f` returned `true` (or any other value an `if` treats as true), in order. `xs` itself is unchanged.',
   },
   'filter-same-objects': {
     q: '`const fast = ps.filter(f);` Is `fast[0]` a copy of a particle in `ps`?',
     a: 'No: the array is new, but its slots hold arrows to the same particle objects.',
   },
   'reduce-init': {
-    q: 'Why should you always pass `reduce` a starting value, as in `xs.reduce(f, 0)`?',
+    q: 'Why is it safer to pass `reduce` a starting value, as in `xs.reduce(f, 0)`?',
     a: 'Without one, reduce starts from the first item, so on an empty array it throws a TypeError. With one, an empty array just gives the starting value.',
   },
   'reduce-steps': {
@@ -28,11 +28,11 @@ export const prompts = {
   },
   'break-continue': {
     q: 'What is the difference between `break` and `continue` in a loop?',
-    a: '`break` leaves the loop entirely. `continue` skips the rest of this pass and goes on to the next check.',
+    a: '`break` leaves the loop entirely. `continue` skips the rest of this pass and goes on to the next one (in a `for` loop, after running its update step).',
   },
   'while-forever': {
-    q: 'What does every `while` loop need in its body, so that it ends?',
-    a: 'A change that moves the condition towards false (such as `i++`), placed before any `continue`.',
+    q: 'A `while` loop contains no `break`, `return` or `throw`. What must its body do for the loop to end?',
+    a: 'Change something the condition depends on, so that it eventually becomes false (such as `i++`), on every path through the body, including before any `continue`.',
   },
 };
 

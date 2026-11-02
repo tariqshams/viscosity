@@ -19,8 +19,8 @@ export const prompts = {
     a: 'A function passed to another function, which calls it when it needs to.',
   },
   'pass-not-call': {
-    q: 'Why does `pluck(ps, getX())` go wrong, when `pluck(ps, getX)` works?',
-    a: '`getX()` calls `getX` straight away and passes its result, not the function. `pluck` then tries to call a value that isn’t a function.',
+    q: '`pluck(xs, f)` calls the function `f` on each item of `xs`. Why does `pluck(ps, getX())` go wrong, when `pluck(ps, getX)` works?',
+    a: '`getX()` calls `getX` straight away, with no argument, and passes what that call produces (if it does not fail first) instead of the function itself, so `pluck` is not given a function to call.',
   },
   'hof-what': {
     q: 'What makes a function *higher-order*?',
@@ -96,11 +96,11 @@ test('nothing passes', () => {
   expect(countIf([1, 2], (n) => n > 9)).toBe(0);
 });`,
     hints: [
-      'This is a counting loop from chapter 4. What changes is who decides whether an item counts.',
+      'This is a counting loop from *Visiting every slot*. What changes is who decides whether an item counts.',
       'Start a counter at 0 and loop over every item. For each item, *call* the callback with it: `test(xs[i])`.',
       'If that call returns `true`, add one to the counter: `if (test(xs[i])) { n++; }`. Return the counter after the loop.',
     ],
-    walkthrough: `**How to think about it.** Without callbacks you would write a counting loop with the question baked in: \`if (xs[i] > 4) n++\`. Here the question is not yours to write; it arrives as a function, \`test\`, and your loop only has to *ask* it about each item. So start from chapter 4's counting loop and replace the fixed condition with a call of the callback. Try one by hand: for \`[1, 5, 8]\` and \`(n) => n > 4\`, asking about 1 gives \`false\`, about 5 gives \`true\`, about 8 gives \`true\`, so the count is 2.
+    walkthrough: `**How to think about it.** Without callbacks you would write a counting loop with the question baked in: \`if (xs[i] > 4) n++\`. Here the question is not yours to write; it arrives as a function, \`test\`, and your loop only has to *ask* it about each item. So start from the counting loop from *Visiting every slot* and replace the fixed condition with a call of the callback. Try one by hand: for \`[1, 5, 8]\` and \`(n) => n > 4\`, asking about 1 gives \`false\`, about 5 gives \`true\`, about 8 gives \`true\`, so the count is 2.
 
 **The solution, line by line.**
 

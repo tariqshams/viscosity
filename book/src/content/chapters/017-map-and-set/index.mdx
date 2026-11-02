@@ -19,7 +19,7 @@ import CountSteps from '../../../components/diagrams/ch017/CountSteps';
 ## Remembering things about objects
 
 Say you want to note which particles have already been hit. An object
-seems a good place for notes, with bracket access from chapter 5:
+seems a good place for notes, with bracket access from *Objects*:
 
 ```js
 const hit = {};
@@ -130,7 +130,7 @@ for (let i = 0; i < cs.length; i++) {
 
 The first shows that setting a key again replaces its value rather than
 adding a second entry. The second fixes the hook: object keys are
-compared by identity (chapter 7), so `a` is found, `b` is not, and a
+compared by identity (*References*), so `a` is found, `b` is not, and a
 lookalike `{ id: 1 }` is a different object and is not found either. The
 third is the most common Map job of all, counting: for each colour, if
 it has been seen, add one to its count, otherwise start it at `1`. Step
@@ -178,7 +178,7 @@ System.out.println(
 ```c
 /* C has no built-in map: you
    write your own hash table, as
-   chapter 78 does, or use a
+   *Hash tables* does, or use a
    library. */
 ```
 
@@ -292,7 +292,7 @@ duplicates: one of each value is kept, in first-seen order. The runnable
 example puts Map, Set and `for...of` together; predict each line before
 you run it.
 
-<Prompts ids={['set-dup', 'set-from-array']} />
+<Prompts ids={['set-dup', 'set-keeps-first']} />
 
 ## Your turn
 

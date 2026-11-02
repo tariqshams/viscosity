@@ -4,14 +4,14 @@
 export const prompts = {
   'object-what': {
     q: 'What is an object made of?',
-    a: 'Properties: each one is a key (a name) paired with a value.',
+    a: 'Properties: each one is a key (a name) paired with a value. (Every object also has a hidden link to a prototype, met with classes.)',
   },
   'key-is-string': {
     q: 'In `{ x: 3 }`, what kind of value is the key `x`, and can the value be another object?',
     a: 'The key is a string (`\'x\'`); the value can be anything, another object included.',
   },
   'missing-prop': {
-    q: 'What does reading a property that doesn’t exist give you?',
+    q: 'What does reading a property that an object does not have give you?',
     a: '`undefined`, with no error.',
   },
   'add-prop': {
@@ -19,12 +19,12 @@ export const prompts = {
     a: '`p.y = 2;` (assigning to a new key adds it).',
   },
   'typo-nan': {
-    q: '`p` has `x: 3` and `vx: 1`. Why is `p.x + p.vX` equal to `NaN` rather than an error?',
-    a: '`vX` is a different key, so `p.vX` is `undefined`, and `3 + undefined` is `NaN`. A missing property is never an error.',
+    q: 'In JavaScript, `p` has `x: 3` and `vx: 1`. Why is `p.x + p.vX` equal to `NaN` rather than an error?',
+    a: '`vX` is a different key, so `p.vX` is `undefined` (reading a missing property is not an error), and `3 + undefined` is `NaN`.',
   },
   'dot-vs-bracket': {
     q: 'When do you need `obj[expr]` instead of `obj.name`?',
-    a: 'When the key is worked out while the program runs (for example, held in a variable), or is not a plain word.',
+    a: 'When the key is worked out while the program runs (for example, held in a variable), or is not a valid name (such as `\'first name\'` or `\'2\'`).',
   },
   'p-dot-key': {
     q: '`const key = \'y\';` What is the difference between `p.key` and `p[key]`?',
@@ -32,7 +32,7 @@ export const prompts = {
   },
   'bracket-space': {
     q: 'How do you read the property whose key is `\'first name\'` (with a space)?',
-    a: '`o[\'first name\']`. No dot can spell a key with a space, so brackets are the only way.',
+    a: 'With brackets: `o[\'first name\']`. A dot must be followed by a valid name, and a name cannot contain a space.',
   },
 };
 
@@ -91,10 +91,10 @@ test('a key with a space', () => {
 });`,
     hints: [
       'You do not know the key names when you write the code; they arrive in an array. Which kind of access works with a name held in a variable?',
-      'Loop over `ks` with the loop from chapter 4, keeping a `total` that starts at 0. In each pass, `ks[i]` is one key name, a string.',
+      'Loop over `ks` with the loop from *Visiting every slot*, keeping a `total` that starts at 0. In each pass, `ks[i]` is one key name, a string.',
       'Inside the loop, read the property with brackets: `p[ks[i]]`, and add it to the total. Return the total after the loop.',
     ],
-    walkthrough: `**How to think about it.** Work one example by hand: for \`p = { a: 1, b: 2, c: 3 }\` and \`ks = ['a', 'c']\`, you look up \`'a'\` (1), then \`'c'\` (3), and add them to get 4. So the job is "for each key in the array, read that property and add it to a total": a chapter 4 accumulator loop, over \`ks\` rather than over \`p\`. The one decision is *how* to read the property. You cannot write \`p.a\`, because the names are not known until the function is called; they are strings sitting in an array, which is exactly the case brackets are for.
+    walkthrough: `**How to think about it.** Work one example by hand: for \`p = { a: 1, b: 2, c: 3 }\` and \`ks = ['a', 'c']\`, you look up \`'a'\` (1), then \`'c'\` (3), and add them to get 4. So the job is "for each key in the array, read that property and add it to a total": an accumulator loop from *Visiting every slot*, over \`ks\` rather than over \`p\`. The one decision is *how* to read the property. You cannot write \`p.a\`, because the names are not known until the function is called; they are strings sitting in an array, which is exactly the case brackets are for.
 
 **The solution, line by line.**
 
@@ -171,7 +171,7 @@ test('works for any names', () => {
       'Adding a property is writing to it. When the name is in a variable, write with brackets: `out[k] = ...`.',
       'In the loop: `const k = ks[i]; out[k] = p[k];`. Return `out` after the loop.',
     ],
-    walkthrough: `**How to think about it.** You are building an object whose property names you do not know in advance, so you cannot write it out with curly braces. Instead, start empty and add properties one at a time, the way chapter 3 built an array with \`push\`. Writing to a property that does not exist adds it, and brackets let the name come from a variable, on the left of \`=\` as well as on the right.
+    walkthrough: `**How to think about it.** You are building an object whose property names you do not know in advance, so you cannot write it out with curly braces. Instead, start empty and add properties one at a time, the way *Arrays* built an array with \`push\`. Writing to a property that does not exist adds it, and brackets let the name come from a variable, on the left of \`=\` as well as on the right.
 
 **The solution, line by line.**
 
@@ -185,7 +185,7 @@ test('works for any names', () => {
 **Common wrong attempts.**
 
 - \`out.k = p[k];\` writes a property literally called \`k\` every time, so the result is \`{ k: 1 }\` (the last value) instead of \`{ x: 3, vx: 1 }\`.
-- Deleting the unwanted properties from \`p\` itself changes the caller's object; the exercise asks for a new one, and chapter 7 shows why changing the original can surprise whoever else is using it.`,
+- Deleting the unwanted properties from \`p\` itself changes the caller's object; the exercise asks for a new one, and *References* shows why changing the original can surprise whoever else is using it.`,
     wrong: [
       {
         code: `function pick(p, ks) {
@@ -298,7 +298,7 @@ console.log(p);
       },
       {
         t: 'An error, because `y` does not exist yet',
-        why: 'Writing to a missing property creates it; only reading a property of `undefined` is an error.',
+        why: 'Writing to a missing property creates it; reading a property of `undefined` (or `null`) is what is an error.',
       },
     ],
   },
@@ -311,7 +311,7 @@ console.log(p);
       },
       {
         t: 'A TypeError',
-        why: 'Reading a missing property of an object is not an error; only reading a property of `undefined` itself is.',
+        why: 'Reading a missing property of an object is not an error; reading a property of `undefined` (or `null`) itself is.',
       },
       {
         t: '`3`',

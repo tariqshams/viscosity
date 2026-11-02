@@ -15,12 +15,12 @@ export const prompts = {
     a: '`undefined`: the array itself has no property `x`. Pick a slot first: `ps[0].x`.',
   },
   'loop-p-name': {
-    q: 'In the loop body, after `const p = ps[i];`, does `p.x = 1` change the particle inside the array?',
+    q: '`ps[i]` holds an object. After `const p = ps[i];`, does `p.x = 1` change the object inside the array?',
     a: 'Yes: `p` reaches the very object in slot `i`, not a copy of it.',
   },
   'past-end-record': {
     q: '`ps` has 3 records. What happens on `ps[3].x`?',
-    a: 'A TypeError: `ps[3]` is `undefined`, and asking `undefined` for a property stops the program.',
+    a: 'A `TypeError` is thrown: `ps[3]` is `undefined`, and reading a property of `undefined` is an error.',
   },
   'soa-what': {
     q: 'What does SoA (struct of arrays) mean?',
@@ -90,11 +90,11 @@ test('a single particle', () => {
   expect(centerX([{ x: -4 }])).toBe(-4);
 });`,
     hints: [
-      'An average is the total divided by how many there are. Which loop from chapter 4 builds a total?',
-      'It is chapter 4’s `sum` loop, but each slot holds an object rather than a number. Which part of the object do you add?',
+      'An average is the total divided by how many there are. Which loop from *Visiting every slot* builds a total?',
+      'It is the `sum` loop from *Visiting every slot*, but each slot holds an object rather than a number. Which part of the object do you add?',
       'Add `ps[i].x` (not `ps[i]`) to a `total` that starts at 0, then after the loop return `total / ps.length`.',
     ],
-    walkthrough: `**How to think about it.** Do one by hand first: for \`[{ x: 2 }, { x: 4 }, { x: 9 }]\` the x values are 2, 4 and 9, their total is 15, and there are 3 of them, so the average is 15 / 3 = 5. That is two jobs: build a total, then divide by the count. Building a total over an array is the accumulator loop from chapter 4; the only new thing is that each slot is an object, so you must reach inside it for the number. The count is the array's own \`length\`.
+    walkthrough: `**How to think about it.** Do one by hand first: for \`[{ x: 2 }, { x: 4 }, { x: 9 }]\` the x values are 2, 4 and 9, their total is 15, and there are 3 of them, so the average is 15 / 3 = 5. That is two jobs: build a total, then divide by the count. Building a total over an array is the accumulator loop from *Visiting every slot*; the only new thing is that each slot is an object, so you must reach inside it for the number. The count is the array's own \`length\`.
 
 **The solution, line by line.**
 
@@ -178,7 +178,7 @@ test('velocity is unchanged', () => {
   expect(ps[0].x).toBe(14);
 });`,
     hints: [
-      'You need to visit every particle, so start with the loop from chapter 4.',
+      'You need to visit every particle, so start with the loop from *Visiting every slot*.',
       'Each slot is a particle object. Give it a short name: `const p = ps[i];`.',
       'Write to the properties: `p.x = p.x + p.vx;` and the same for `y` with `vy`.',
     ],
@@ -188,7 +188,7 @@ test('velocity is unchanged', () => {
 
 - \`function step(ps) {\` takes the array of particles.
 - \`  for (let i = 0; i < ps.length; i++) {\` visits every slot once.
-- \`    const p = ps[i];\` gives the current particle a short name. \`p\` is not a copy: it reaches the very same object that sits in slot \`i\` (chapter 7 explains exactly why).
+- \`    const p = ps[i];\` gives the current particle a short name. \`p\` is not a copy: it reaches the very same object that sits in slot \`i\` (*References* explains exactly why).
 - \`    p.x = p.x + p.vx;\` reads \`x\` and \`vx\`, adds them, and writes the answer back into \`x\`.
 - \`    p.y = p.y + p.vy;\` does the same for \`y\`.
 - \`  }\` and \`}\` close the loop and the function. There is no \`return\`; the caller's array now holds moved particles.
@@ -259,7 +259,7 @@ test('no particles gives empty arrays', () => {
 - \`    soa.vx.push(ps[i].vx);\` does the same for \`vx\`.
 - \`  }\` ends the loop, and \`  return soa;\` hands back the finished columns.
 
-For an empty \`ps\` the loop never runs and you get \`{ x: [], vx: [] }\`, which is right. This is, in miniature, the rewrite Viscosity makes; the hard part (which chapter 7 starts to show) is doing it without breaking any other code that still holds the old records.
+For an empty \`ps\` the loop never runs and you get \`{ x: [], vx: [] }\`, which is right. This is, in miniature, the rewrite Viscosity makes; the hard part (which *References* starts to show) is doing it without breaking any other code that still holds the old records.
 
 **Common wrong attempts.**
 

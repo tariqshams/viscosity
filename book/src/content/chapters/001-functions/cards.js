@@ -4,7 +4,7 @@
 export const prompts = {
   'fn-what': {
     q: 'In one sentence: what is a function?',
-    a: 'A named piece of work (a block of code) that runs whenever you call it.',
+    a: 'A reusable piece of work (a block of code, usually given a name) that runs whenever you call it, can take inputs and can hand back a result.',
   },
   'define-vs-call': {
     q: 'Does writing `function double(n) { return n * 2; }` compute anything?',
@@ -24,7 +24,7 @@ export const prompts = {
   },
   'return-two-jobs': {
     q: 'What two things does `return` do?',
-    a: 'It decides the value the call produces, and it stops the function immediately.',
+    a: 'It decides the value the call produces, and it ends the call at once (only a surrounding `finally` block still runs before it leaves).',
   },
   'call-is-value': {
     q: 'If `double(3)` returns `6`, what is `double(3) + 1`?',
@@ -280,7 +280,7 @@ console.log(g(5));
     ],
   },
   {
-    q: 'What is one real difference between the JavaScript and the Java version of `area(w, h)`?',
+    q: 'A function `area(w, h)` multiplies two whole numbers. What is one real difference between writing it in JavaScript and writing it in Java?',
     options: [
       {
         t: 'Java has no `return`',
@@ -293,7 +293,7 @@ console.log(g(5));
       {
         t: 'Java makes you write the type of each parameter and of the result',
         correct: true,
-        why: '`static int area(int w, int h)` says both parameters and the answer are whole numbers; JavaScript checks no types.',
+        why: '`static int area(int w, int h)` says both parameters and the answer are whole numbers; a JavaScript function names no types at all.',
       },
     ],
   },

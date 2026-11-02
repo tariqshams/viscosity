@@ -7,8 +7,8 @@ export const prompts = {
     a: '`\'4\'`: a one-character string, not the number 4.',
   },
   'last-char': {
-    q: 'How do you read the last character of a string `s`, whatever its length?',
-    a: '`s[s.length - 1]`, the same habit as for arrays.',
+    q: 'How do you read the last character of a non-empty string `s`, whatever its length?',
+    a: '`s[s.length - 1]`, the same habit as for arrays. (Strictly, that reads the last UTF-16 unit, which is only half of a character such as an emoji.)',
   },
   'str-immutable': {
     q: 'After `let t = \'cat\'; t[0] = \'b\';`, what is `t`, and why?',
@@ -16,7 +16,7 @@ export const prompts = {
   },
   'char-code-what': {
     q: 'What does `str.charCodeAt(i)` return?',
-    a: 'The number (char code) that stores the character at index `i`; for example `\'A\'.charCodeAt(0)` is 65.',
+    a: 'The number (char code, a UTF-16 unit from 0 to 65535) stored at index `i`; for example `\'A\'.charCodeAt(0)` is 65.',
   },
   'from-char-code': {
     q: 'What does `String.fromCharCode(97)` give?',

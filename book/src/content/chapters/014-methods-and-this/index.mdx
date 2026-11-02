@@ -93,7 +93,7 @@ with nothing before it runs it with this set to undefined, which is
 what class code always does.</span>
 </Formal>
 
-Compare that with chapter 11: what a function can *see* is decided by
+Compare that with *Scope*: what a function can *see* is decided by
 where it is **written**, but what `this` means is decided by how it is
 **called**.
 
@@ -176,7 +176,7 @@ Class code always runs in
 JavaScript's *strict mode*, which is what makes `this` `undefined` here
 rather than something stranger<Cite id="mdn-classes" />.
 
-It bites most often with callbacks (chapter 9), because passing `p.move`
+It bites most often with callbacks (*Functions as values*), because passing `p.move`
 passes only the function, not `p`:
 
 ```js
@@ -249,7 +249,7 @@ object gives a function that remembers `c`, so the "lost `this`" slip
 cannot happen. Java lets you leave out `this.` altogether (`n` inside a
 method means the object's `n`), and checks before the program runs that
 the method exists. C has no methods: you write an ordinary function and
-pass the object in yourself (as a pointer, C's arrow from chapter 7),
+pass the object in yourself (as a pointer, C's arrow from *References*),
 which is, underneath, exactly what JavaScript does for you with `this`.
 
 ## Which class made it? instanceof
@@ -308,7 +308,7 @@ It checks where an object came from, not what it contains.
 "Stored once, with the class" is literal: every class has one hidden
 object holding its methods, and each instance keeps a link to it, so
 `p.move` is found by following that link<Cite id="mdn-using-classes" />.
-That link is also what `instanceof` follows. In chapter 71 you will build
+That link is also what `instanceof` follows. In *Classes, methods and inheritance in Drip* you will build
 classes, instances, methods and `this` yourself, inside your own
 interpreter, and see that `this` (Drip calls it `self`) is nothing more than one extra,
 hidden argument handed to every method call.

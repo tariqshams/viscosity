@@ -36,7 +36,7 @@ next();      // 501
 That has two problems: any line of the program can change `count` by
 accident, and there is only one counter, so a second ticket queue would
 need a second variable and a second function. A *local* variable would
-be private, but chapter 2 said it is thrown away when the call ends, so
+be private, but *What a call leaves behind* said it is thrown away when the call ends, so
 it cannot remember. We want both, private *and* remembered, and last
 chapter's scope rules turn out to give us exactly that.
 
@@ -58,13 +58,13 @@ a(); // 1
 a(); // 2
 ```
 
-By chapter 2's rule, `makeCounter`'s page should be thrown away when it
+By the rule from *What a call leaves behind*, `makeCounter`'s page should be thrown away when it
 returns, yet the arrow function it returns still uses `count`. Step
 through to see what really happens:
 
 <ClosureSteps client:visible />
 
-So chapter 2's rule needs one correction: a call's page is thrown away
+So the rule from *What a call leaves behind* needs one correction: a call's page is thrown away
 only once nothing points at it any more. A function made inside the
 call points at it, so as long as that function is alive, the page is
 too.
@@ -88,7 +88,7 @@ Each call of `makeCounter` makes a new page, so each closure gets its
 own private `count`.
 </Callout>
 
-This also answers chapter 9's puzzle: `times(3)` returned a function that closed over the page where `k` is 3.
+This also answers the puzzle from *Functions as values*: `times(3)` returned a function that closed over the page where `k` is 3.
 
 <Prompts ids={['times-k']} />
 
@@ -127,7 +127,7 @@ tmp(); // 't2'
 
 The first shows that a closure holds the *variable*: `getN` was made
 when `n` was 1, but it reads `n` when it runs, and by then `n` is 2. The
-second is chapter 7 again: `b = a` copies the arrow to the *function*,
+second is *References* again: `b = a` copies the arrow to the *function*,
 so `a` and `b` are one closure with one `count`, and calling either one
 moves it on (`++count` adds one to `count` and gives the new value).
 Only calling `makeTicker` again makes a second, separate count. The third is real: compilers keep
@@ -244,9 +244,9 @@ them in a `struct` and pass a pointer to it on every call, which is
 exactly what a closure does for you behind the scenes.
 
 <Callout kind="engine" label="Under the hood">
-You will build all of this. In chapter 69, a function value in your
+You will build all of this. In *Return, the host stack and closures*, a function value in your
 interpreter will store the environment it was created in, which is
-exactly the closure arrow in the step-through above. In chapter 83, the
+exactly the closure arrow in the step-through above. In *Upvalues: capturing and closing*, the
 virtual machine will have to *move* captured variables out of a call's
 short-lived storage when the call returns, because a closure still needs
 them. And Viscosity cares too: if a closure captures your particles

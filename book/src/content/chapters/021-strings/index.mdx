@@ -101,7 +101,7 @@ peek(); // '1'
 
 The first reads one character straight off a string written in quotes,
 then the last character of `w` using its length, exactly the
-`arr[arr.length - 1]` habit from chapter 3. The second is the loop every
+`arr[arr.length - 1]` habit from *Arrays*. The second is the loop every
 scanner is built on: the same `for` loop you use for arrays, visiting
 index 0, 1, 2 in turn. The third is realistic: a scanner keeps a finger
 `i` on the source text, and a tiny function `peek` reports the character
@@ -119,7 +119,7 @@ console.log(t); // bat
 ```
 
 Writing to `t[0]` does nothing: quietly, or, in *strict mode* (which
-chapter 14 mentioned, for class code), with
+*Methods and this* mentioned, for class code), with
 `TypeError: Cannot assign to read only property '0' of string 'cat'`.
 What does work is making `t` hold a **different** string, `'bat'`; the
 string `'cat'` itself is exactly as it was.

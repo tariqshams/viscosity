@@ -40,7 +40,8 @@ news, but there is nothing in your hands: that is `console.log` without
 a `return`, and your empty hands are `undefined`.
 <span slot="breaks">A friend can bring back several things at once; a
 function returns exactly one value (to send back several, you put them in
-one list or object, as chapters 3 and 5 show).</span>
+one array or object, as *Arrays: a row of numbered boxes* and *Objects:
+things with named parts* show).</span>
 </Analogy>
 
 <Analogy extra title="a blank on a form">
@@ -171,9 +172,12 @@ Every time you call a function, JavaScript gives that call its own fresh
 page to write on. The parameters are written on it first, holding the
 arguments, and any variable the body makes with `let` or `const` goes on
 the same page; when the call ends, the page is thrown away, and only the
-returned value survives. `a` lived on the page of that one call, so by the
-last line there is no `a` anywhere, and JavaScript stops with that exact
-error. Step through it:
+returned value survives. However, the error has a simpler cause than the
+binning of the page: the name `a` belongs to the body of `area`, and only
+code inside that body can use it (the name's *scope*, which *Scope: where
+a name can be seen* explores), so the last line could not read `a` even
+while a call was running, and JavaScript stops with that exact error. Step
+through it:
 
 <CallSteps client:visible />
 
@@ -184,8 +188,8 @@ The only thing that leaves the room is the decision written in the
 minutes, which is the return value.
 <span slot="breaks">One room holds one meeting at a time, but calls can
 pile up: while one call waits for another, both pages exist at once (see
-the second diagram below). And chapter 12 shows a way for a page to outlive
-its call.</span>
+the second diagram below). And *Closures: functions that remember* shows a
+way for a page to outlive its call.</span>
 </Analogy>
 
 <Analogy extra title="scrap paper in an exam">
@@ -194,17 +198,18 @@ collected and binned at the end; only the answer sheet is marked. Two
 candidates can both write "x = 4" on their scrap paper without any
 confusion.
 <span slot="breaks">Exam scrap paper could be fished out of the bin;
-a finished call's page cannot be read by anyone, ever, not even by the
-code that made the call.</span>
+the code that made a call can never read that call's page, only the value
+it returned.</span>
 </Analogy>
 
 <Callout kind="definition">
 A **local variable** is a variable made inside a function's body (with
-`let` or `const`); the parameters behave the same way. It exists only
-while that one call runs, and every call gets its own. The set of names
-and values belonging to one call is the call's **environment** (the
-"page"). A function can also read variables made *outside* it; chapter 11
-is about exactly that.
+`let` or `const`); the parameters behave the same way. Its name can be
+used only inside that body, and every call gets its own copy, which (until
+closures arrive) is gone when the call ends. The set of names and values
+belonging to one call is the call's **environment** (the "page"). A
+function can also read variables made *outside* it; *Scope: where a name
+can be seen* is about exactly that.
 </Callout>
 
 <Examples of="local-variable">
@@ -256,7 +261,7 @@ binding, and return hands back one value and throws E away. Part III
 builds exactly this table in the interpreter.</span>
 </Formal>
 
-<Prompts ids={['fresh-page', 'local-gone', 'same-name-locals', 'tick-resets']} />
+<Prompts ids={['fresh-page', 'local-scope', 'same-name-locals', 'tick-resets']} />
 
 ## Calls inside calls
 
@@ -281,7 +286,7 @@ The "fresh page per call" really exists inside every JavaScript engine,
 and you will build one. In Part III our interpreter keeps an
 *environment* for each call, a little table of names and values; in Part
 IV the virtual machine keeps them in a *stack frame*, and the pile of
-pages in the diagram above is the *call stack*. In Part VIII you will see
+pages in the diagram above is the *call stack*. In Part V you will see
 why it matters to Viscosity whether a value can *escape* its page, because
 values that never escape can be stored however we like.
 </Callout>

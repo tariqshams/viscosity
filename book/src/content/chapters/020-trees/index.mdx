@@ -228,7 +228,7 @@ freely, so a tree needs no declaration. Java wants a declared type first
 (a `record` is a short way to write a class that only holds fields), and
 its children are a typed `List`. C needs the most: a struct cannot hold
 other structs of its own type directly, only point at them (that is what
-the `*` marks, an idea Part II explains), and because C arrays do not know their own length (chapter 3),
+the `*` marks, an idea Part II explains), and because C arrays do not know their own length (*Arrays*),
 the node must carry a separate count of its children.
 
 <Callout kind="engine" label="Where this goes">
@@ -238,7 +238,7 @@ value by recursing down it, exactly like the exercise below; because
 every level of nesting adds a frame, a deeply nested program can still
 overflow the stack<Cite id="mdn-call-stack" />. Viscosity reads your
 JavaScript into a tree as well, before lowering it to its own simpler
-form, VIR (chapter 99).
+form, VIR (*VIR: records, collections and opaque values*).
 </Callout>
 
 ## Your turn

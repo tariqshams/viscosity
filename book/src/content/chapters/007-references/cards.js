@@ -92,7 +92,7 @@ test('empty list', () => {
 });`,
     hints: [
       'Which comparison asks “is this the very same object?” rather than “does it look the same?”',
-      'Loop over the slots (chapter 4) and compare each slot with `target` using `===`.',
+      'Loop over the slots (*Visiting every slot*) and compare each slot with `target` using `===`.',
       'As soon as `xs[i] === target`, `return i`. If the loop finishes without finding one, `return -1`.',
     ],
     walkthrough: `**How to think about it.** The words "the very same object" are the whole clue: that is identity, and \`===\` on objects is exactly the identity test, \`true\` only when both arrows point at one object. So the job is a search: look at each slot in turn, ask "is this arrow pointing at the same object as \`target\`?", and stop at the first yes. If you get to the end without a yes, report "not found" with \`-1\` (which can never be a real index, so the caller can tell the two cases apart).
@@ -102,7 +102,7 @@ test('empty list', () => {
 - \`function indexOfSame(xs, target) {\` takes the array and the object to find.
 - \`  for (let i = 0; i < xs.length; i++) {\` visits the slots in order, from 0.
 - \`    if (xs[i] === target) {\` compares the arrow in slot \`i\` with the arrow in \`target\`. It does not look inside the objects at all.
-- \`      return i;\` stops the function at once with the index found (the early return from chapter 1), which is why the third test, with \`a\` in two slots, gets the first one, 1.
+- \`      return i;\` stops the function at once with the index found (the early return from *Functions*), which is why the third test, with \`a\` in two slots, gets the first one, 1.
 - \`    }\` and \`  }\` close the \`if\` and the loop.
 - \`  return -1;\` only runs if the loop finished without returning, which means no slot matched.
 - \`}\` closes the body.

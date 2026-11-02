@@ -3,7 +3,7 @@
 
 export const prompts = {
   'error-props': {
-    q: 'Which two properties does every Error object have?',
+    q: 'Which two standard properties does every Error object have (its own or inherited)?',
     a: '`name` (the kind of error, e.g. `\'TypeError\'`) and `message` (the text describing it).',
   },
   'builtin-kinds': {
@@ -23,7 +23,7 @@ export const prompts = {
     a: 'To pass on an error it doesn’t know how to handle, so it keeps unwinding to code that does.',
   },
   'unwind-what': {
-    q: 'A throws inside B, which was called by C, and only C has a `try`. What happens to B’s frame?',
+    q: '`C` calls `B`, `B` calls `A`, and `A` throws. Only `C` has a `try`, around its call to `B`. What happens to `B`’s frame?',
     a: 'It is popped without returning or finishing its line; the error carries on down to C’s `catch`.',
   },
   'propagate-why': {
@@ -375,7 +375,7 @@ export const quiz = [
       },
       {
         t: 'Print the stack trace',
-        why: '`instanceof` only checks which class made an object.',
+        why: '`instanceof` only checks whether an object is an instance of a class.',
       },
       {
         t: 'Convert the error to a string',
@@ -435,7 +435,7 @@ catch (e) { console.log(e.message); }
     ],
   },
   {
-    q: 'Why does a parser usually throw an error on bad input, rather than return a special value?',
+    q: 'A JavaScript parser made of recursive functions notices bad input deep inside nested calls. Why is throwing an error a common choice there, rather than returning a special value?',
     options: [
       {
         t: 'Throwing is faster than returning',

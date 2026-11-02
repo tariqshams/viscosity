@@ -162,7 +162,7 @@ Every object has a hidden link to one other object, its **prototype**,
 and that object has a prototype of its own, and so on, until a link
 holds `null`. For `n`, the prototype is `Num.prototype`, the object
 where Num's methods are kept (the "stored once, with the class" of
-chapter 14); its prototype is `Node.prototype`, which holds Node's
+*Methods and this*); its prototype is `Node.prototype`, which holds Node's
 methods, and then comes `Object.prototype`, which holds methods every
 object has, such as `toString`<Cite id="mdn-prototype-chain" />.
 Reading a property walks along this chain:
@@ -284,7 +284,7 @@ each `struct Class` points to its parent and holds a function pointer
 `show`.
 
 <Callout kind="engine" label="Under the hood">
-In chapter 71 you will write this search for Drip. Your interpreter's
+In *Classes, methods and inheritance in Drip* you will write this search for Drip. Your interpreter's
 instances look in their own fields first and then ask their class,
 which looks in its own methods and then its parent's; the companion's
 `findMethod` (in `companion/ts/src/runtime.ts`) does it in one line,
