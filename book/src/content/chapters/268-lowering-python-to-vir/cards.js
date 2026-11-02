@@ -17,18 +17,12 @@ export const prompts = {
     q: 'What does the hidden counter give the bounds proofs?',
     a: 'A clean induction variable: an access through the counter’s value is proven even if the body reassigns the loop variable later.',
   },
-  'sd-forin': {
-    q: 'Why does the lowering of `for p in ps` read the length on every pass?',
-    a: 'A Python list iterator sees elements appended during the loop, so the loop must re-check the length each step.',
-  },
+
   'sd-int': {
     q: 'Why may an int never go into an `array(\'d\')` column?',
     a: 'The column stores C doubles, so the int comes back as a float and prints differently (`1` becomes `1.0`).',
   },
-  'sd-div': {
-    q: 'In Python, what types do `7 / 2` and `7 // 2` produce?',
-    a: '`7 / 2` is the float `3.5`; `7 // 2` is the int `3`.',
-  },
+
   'sd-index': {
     q: 'Besides typed columns, what else needs Python’s “is an int” fact?',
     a: 'Indexing: a list index must be an int, so a possibly non-int index makes Viscosity keep the list.',
@@ -41,10 +35,7 @@ export const prompts = {
     q: 'Why is `P(y=1.0, x=v)` (keywords out of field order) not lowered to a record?',
     a: 'Python evaluates arguments left to right; reordering them into field order could change that, so the plugin refuses instead.',
   },
-  'sd-default': {
-    q: 'When does Python evaluate a dataclass field’s default expression?',
-    a: 'Once, when the class is defined, not at each call.',
-  },
+
 };
 
 export const exercises = {
@@ -104,13 +95,27 @@ test('nested', () => {
       'For an operation, work out both sides first (recursively), and return `other` if either side is.',
       'Then: `/` is always `float`; otherwise two ints give `int`, and anything else gives `float`.',
     ],
-    walkthrough: `This is the Python half of the numeric inference in \`core/src/analysis.ts\`, for a single expression tree instead of a whole program.
+    walkthrough: `**How to think about it.** This is the Python half of the numeric inference in \`core/src/analysis.ts\`, for one expression tree rather than a whole program. A tree is either a leaf (a constant, which has no \`op\`) or an operation with two subtrees, so the natural shape is recursion: classify both sides first, then combine. Before coding, classify a few by hand. \`1 + 1\` is \`2\`, an int. \`7 / 2\` is \`3.5\`, a float, although both sides are ints. \`7 // 2\` is \`3\`, an int. \`2.0 * 3\` is \`6.0\`, a float. And anything with a string in it is not a number at all. That gives the order of checks: leaves; then "other" wins over everything; then \`/\` is always a float; then two ints give an int; and everything left is a float.
 
-- **Two facts, not one.** JavaScript only needs “is a number”. Python needs to know *which* number, because only floats may go into an \`array('d')\` column and only ints may index a list. The core computes both, \`n\` (float) and \`I\` (int), for every value.
-- **\`/\` is the odd one out.** \`7 / 2\` is \`3.5\` even though both sides are ints; \`7 // 2\` is the int \`3\`. The language reference spells this out, and the lowering must follow it.
-- **Unknown poisons.** If either side might be a string (or anything not proven), the result is not proven to be a number, so the field gets a plain list column. Viscosity’s rule is the same: prove it, or don’t use a typed column.
+**The solution, line by line.**
 
-In the real analysis this runs as a fixpoint over the whole program, because values flow through loops and fields. Here a tree only needs one recursive pass.`,
+- \`function pyKind(e) {\` takes one node of the tree.
+- \`  if (!e.op) {\` asks whether this is a leaf (a constant has no \`op\`).
+- \`    return e.k === 'str'\` and \`      ? 'other' : e.k;\` return \`'other'\` for a string and the constant's own kind (\`'int'\` or \`'float'\`) otherwise.
+- \`  const a = pyKind(e.a);\` and \`  const b = pyKind(e.b);\` classify the two sides, recursively; a nested operation is handled by the same function.
+- \`  if (a === 'other' ||\` and \`      b === 'other') {\` check whether either side is unproven;
+- \`    return 'other';\` because one unknown side makes the result unknown ("poison").
+- \`  if (e.op === '/') return 'float';\` is Python's true division: always a float for two numbers.
+- \`  if (a === 'int' && b === 'int') {\` and \`    return 'int';\` keep ints as ints for \`+ - * //\`.
+- \`  return 'float';\` covers the rest: at least one side is a float.
+
+For the nested test, \`half\` is \`int / int\`, a float, so \`half * int\` is a float; \`next\` is \`int + int\`, an int, so \`next * int\` stays an int.
+
+**Common wrong attempts.**
+
+- Calling every number a float: that is JavaScript's rule, where every number is a double. In Python \`1 + 1\` is an int, and storing it in a float column would make it print as \`2.0\`.
+- Forgetting the \`/\` line: \`7 / 2\` comes out as an int, but it is \`3.5\`.
+- Checking \`/\` before the "other" check: \`'a' / 2\` would come out as a float, although a string divided by a number is not a number at all.`,
     wrong: [
       {
         code: `function pyKind(e) {
@@ -194,11 +199,24 @@ test('a float index is a TypeError', () => {
       'The valid range is `-n <= i < n`, where `n` is the length. Check it before reading.',
       'For a negative `i`, the element is at `n + i`.',
     ],
-    walkthrough: `Indexing is a semantic difference Viscosity has to preserve exactly, because a transformed program must fail the same way the original does.
+    walkthrough: `**How to think about it.** A compiled program must fail exactly where, and how, the original fails, so this is a rule Viscosity has to copy precisely. Write down Python's three cases for \`xs[i]\` on a list of length \`n\`: a non-integer \`i\` is a \`TypeError\`; an \`i\` from \`-n\` to \`n - 1\` is fine, with a negative one counting from the end; anything else is an \`IndexError\`. JavaScript does none of this: \`xs[-1]\` and \`xs[3]\` quietly give \`undefined\`. So check the type first, then the range, and only then read.
 
-- **Negative indexes are legal.** Python’s built-in sequences add the length to a negative index, so \`xs[-1]\` is the last element. In JavaScript \`xs[-1]\` is \`undefined\`.
-- **Out of range is an exception, not a value.** Python raises \`IndexError\`; JavaScript returns \`undefined\` and carries on. So the JavaScript plugin’s bounds checks throw a \`TypeError\` at the field read, while the Python plugin’s \`_vsc_ix\` helper (next chapter) accepts exactly \`-n <= i < n\` and raises \`IndexError('list index out of range')\` otherwise.
-- **The index must be an int.** That is the second job of the int fact from this chapter: when Viscosity can’t prove an index is an int, it keeps the list.`,
+**The solution, line by line.**
+
+- \`function pyIndex(xs, i) {\` takes a JavaScript array and an index.
+- \`  if (!Number.isInteger(i)) {\` asks whether \`i\` is a whole number;
+- \`    throw new TypeError(\` and \`      'list indices must be integers');\` refuse anything else, as Python does for \`xs[1.5]\`.
+- \`  const n = xs.length;\` keeps the length for the range check.
+- \`  if (i < -n || i >= n) {\` is the complement of Python's valid range, \`-n <= i < n\`;
+- \`    throw new Error(\` and \`      'list index out of range');\` give Python's message.
+- \`  return i < 0 ? xs[n + i] : xs[i];\` reads the element, turning a negative index into a position from the end (\`-1\` becomes \`n - 1\`).
+
+With \`xs = [10, 20, 30]\`: \`pyIndex(xs, -3)\` is \`xs[0]\`, \`10\`; \`pyIndex(xs, -4)\` fails the range check, because \`-4 < -3\`.
+
+**Common wrong attempts.**
+
+- Using JavaScript's idea of a valid index, \`0 <= i < n\`: \`-1\` is rejected, though in Python it is the last element, and a float index slips through.
+- Handling negatives but not the range: \`pyIndex(xs, 3)\` returns \`undefined\` where Python would have stopped with an \`IndexError\`, so the two programs would behave differently. The next chapter's \`_vsc_ix\` helper is this check, written in Python.`,
     wrong: [
       {
         code: `function pyIndex(xs, i) {
@@ -226,15 +244,7 @@ test('a float index is a TypeError', () => {
 };
 
 export const quiz = [
-  {
-    q: 'In VIR for `for i in range(1000):`, where is the bound 1000 computed?',
-    options: [
-      { t: 'In the loop header, on every pass', why: 'That is the JavaScript lowering of `i < 1000`, where the test expression is re-evaluated.' },
-      { t: 'Once, before the loop', correct: true, why: 'Python evaluates `range(...)` once, so the plugin computes start and bound in the block before the loop.' },
-      { t: 'Inside the body', why: 'The body only copies the counter into `i`.' },
-      { t: 'Nowhere: the loop is unrolled', why: 'Viscosity never unrolls loops.' },
-    ],
-  },
+
   {
     q: 'A Python loop `for i in range(len(ps)):` reads `ps[i].x`, then does `i = 0`. What happens to the bounds proof for `ps[i]` at the top of the body?',
     options: [

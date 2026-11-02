@@ -30,7 +30,7 @@ export default function LowerSteps() {
     <StepFrame title="Python lines, VIR instructions" steps={s} note={st.note}>
       <CodeTrace code={CODE} line={st.line} />
       <Svg w={400} h={Math.max(80, 30 + rows * 20)} title="The VIR instructions produced for the highlighted Python line">
-        <T x={10} y={12} size={10} weight={700} fill={tok('muted')}>VIR</T>
+        <T x={10} y={12} size={11} weight={700} fill={tok('muted')}>VIR</T>
         {st.vir.length === 0 && <T x={10} y={40} size={12} fill={tok('muted')}>step through to see the IR</T>}
         {st.vir.map((l, k) => (
           <Box key={k} x={8} y={22 + k * 20} w={384} h={18} fill={tok('f4', 0.12)} stroke={tok('f4')} r={3}>
@@ -39,7 +39,7 @@ export default function LowerSteps() {
         ))}
         {st.js && (
           <g>
-            <T x={10} y={32 + st.vir.length * 20} size={10} weight={700} fill={tok('muted')}>THE SAME LOOP IN JAVASCRIPT</T>
+            <T x={10} y={32 + st.vir.length * 20} size={11} weight={700} fill={tok('muted')}>THE SAME LOOP IN JAVASCRIPT</T>
             {st.js.map((l, k) => (
               <Box key={k} x={8} y={42 + (st.vir.length + k) * 20} w={384} h={18} fill={tok('f3', 0.12)} stroke={tok('f3')} r={3}>
                 <T x={16} y={51 + (st.vir.length + k) * 20} size={11} mono>{l}</T>

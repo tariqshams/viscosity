@@ -31,7 +31,7 @@ export const prompts = {
   },
   'op-cost': {
     q: 'Name one measurement from this book that shows the cost model is still rough.',
-    a: 'Any of: gains shrink to about 1.3–2.3× at 1,000 elements; AoSoA often loses there; nbody gains only 1.09× end to end; in CPython columns lose on time.',
+    a: 'Any of: gains shrink to about 1.3–2.3× at 1,000 elements; AoSoA often loses there; in the benchmark matrix nbody gains 1.2× on Node and 0.97× on Bun; in CPython columns lose on time.',
   },
   'op-who': {
     q: 'How does Odin’s `#soa` differ from Viscosity’s approach?',
@@ -115,13 +115,28 @@ test('a file with no collections', () => {
       'Only verdict lines contain ` → `. Use `indexOf` to find it, and look at what comes after.',
       'Not every `·` line is a refusal: transformed collections have `·` lines too. Count only lines starting with `  · unsafe:`.',
     ],
-    walkthrough: `This is the first tool a researcher would write: run explain over many programs, then count.
+    walkthrough: `**How to think about it.** This is the first tool a researcher would write: run explain over many programs, then count. Look at a report before writing code and notice that every line is one of two kinds. A **verdict** line names a collection and contains \` → \` followed by its fate. A **reason** line starts with two spaces and \`·\`. Only some reason lines are safety refusals (those that continue \`unsafe:\`); the others are either cost decisions ("no field is provably numeric") or the evidence for a transformed collection ("about 300 elements"). So one pass over the lines is enough, as long as each line is classified carefully. And the three verdicts start with different letters (\`s\`truct of arrays, \`A\`oSoA, \`k\`ept), so the first character after the arrow tells them apart.
 
-- **Two kinds of line.** A verdict line has \` → \` and the layout after it. A reason line starts with \`  · \`. Each line is one or the other, so one pass over the lines is enough.
-- **The verdict.** Slice off everything after the arrow. The three verdicts start with different letters, so the first character is enough: \`s\` for \`struct of arrays\`, \`A\` for \`AoSoA\`, and otherwise it is \`kept\`.
-- **The refusals.** Only reasons that start with \`unsafe:\` are safety refusals. The other kind of keep reason (“no field is provably numeric”) is a cost decision, and a transformed collection’s reasons are evidence, not refusals.
+**The solution, line by line.**
 
-Run it over a whole corpus, add the counts, and group the unsafe reasons by their wording, and you have a ranked list of edges to work on.`,
+- \`function tally(report) {\` takes the whole report as one string.
+- \`  const t = { soa: 0, aosoa: 0,\` and \`    kept: 0, unsafe: 0 };\` start every count at zero, so a report with no collections returns all zeros.
+- \`  for (const l of report.split('\\n')) {\` looks at each line once.
+- \`    if (l.startsWith('  · unsafe:')) {\` and \`      t.unsafe++;\` count only the safety refusals, by their exact prefix.
+- \`    const i = l.indexOf(' → ');\` finds the arrow, or \`-1\` on a reason line.
+- \`    if (i >= 0) {\` handles verdict lines only.
+- \`      const v = l.slice(i + 3);\` keeps what comes after the arrow and its two spaces (three characters in all).
+- \`      if (v[0] === 's') t.soa++;\` counts \`struct of arrays\`;
+- \`      else if (v[0] === 'A') {\` and \`        t.aosoa++;\` count \`AoSoA, blocks of N\`;
+- \`      } else t.kept++;\` counts the rest, which can only be \`kept as array of objects\`.
+- \`  return t;\` returns the four counts.
+
+Run it over a whole corpus, add the counts, then group the unsafe reasons by their wording, and you have a ranked list of edges to work on.
+
+**Common wrong attempts.**
+
+- Counting every \`  · \` line as unsafe: a transformed collection's evidence lines ("about 300 elements") become refusals, so the first test of a transformed collection fails.
+- Checking only for \`struct of\` and treating every other verdict as kept: AoSoA verdicts land in \`kept\`. There are three verdicts, so check for all three.`,
     wrong: [
       {
         code: `function tally(report) {
@@ -206,13 +221,25 @@ test('empty in both layouts', () => {
       'An ordinary array has no `x` property, so the check is false for it.',
       'For the container, loop to `ps.length`, not `ps.x.length`: the column has spare room.',
     ],
-    walkthrough: `This is control-flow duplication in miniature: one check, then a loop specialized for each layout.
+    walkthrough: `**How to think about it.** This is control-flow duplication from the run-time research, in miniature: one check that decides which layout you were given, then a loop written for that layout. So the first question is what test tells the two apart. An ordinary array of objects has no property called \`x\` at all (\`ps.x\` is \`undefined\`), while the container's \`x\` is a \`Float64Array\`, so \`ps.x instanceof Float64Array\` is a reliable guard. The second question is where the container's elements end: the prompt warns that the column may be longer than \`length\`, because containers keep spare capacity, so the loop must stop at \`ps.length\`, not at the end of the column.
 
-- **The guard.** \`ps.x instanceof Float64Array\` is true only for the container. An array of objects has no \`x\` property at all.
-- **The column loop** reads one typed array, and stops at \`length\`. Chapter 258’s containers double their capacity, so the column is usually longer than the collection.
-- **The object loop** is the original code, unchanged.
+**The solution, line by line.**
 
-Inside a JIT, the guard is cheap and the engine can compile each loop for its own layout. Ahead of time, Viscosity would have to emit both loops for every hot loop, which is the code-size cost the chapter mentions.`,
+- \`function sumX(ps) {\` takes either layout.
+- \`  let s = 0;\` is the running total.
+- \`  if (ps.x instanceof Float64Array) {\` is the guard: true only for the container.
+- \`    const n = ps.length;\` is the number of real elements, not the column's capacity.
+- \`    for (let i = 0; i < n; i++) {\` and \`      s += ps.x[i];\` walk one typed column, which is the fast, cache-friendly loop.
+- \`  } else {\` handles an array of objects;
+- \`    for (const p of ps) s += p.x;\` is the original loop, unchanged.
+- \`  return s;\` returns the total from whichever loop ran.
+
+With \`{ length: 2, x: [1, 2, 99, 99] }\` the loop stops after two elements, so the answer is 3.
+
+**Common wrong attempts.**
+
+- Looping over the whole column (\`for (const v of ps.x)\`): the spare capacity is summed too, so the example gives 201. Containers that double their capacity as they grow, as in *Growing collections*, are almost always longer than their contents.
+- Testing \`Array.isArray(ps)\` the other way round works too, but testing for the layout you want to be fast keeps the fast path first, which is how a JIT orders its guards. Ahead of time, Viscosity would have to emit both loops for every hot loop, which is the code-size cost the chapter mentions.`,
     wrong: [
       {
         code: `function sumX(ps) {
@@ -264,7 +291,7 @@ export const quiz = [
       { t: 'At 1,000 elements AoSoA was often slower than plain objects', correct: true, why: 'FINDINGS.md section 3. Size and layout interact in ways a fixed threshold doesn’t capture.' },
       { t: 'SoA always wins by 3.8×', why: 'The win depends heavily on the suite and size; it is not a constant.' },
       { t: 'Python and JavaScript gave the same verdict', why: 'They gave opposite verdicts: CPython columns lost on time.' },
-      { t: 'Every end-to-end program gained at least 3×', why: 'nbody gained 1.09× and boids 1.18× in the recorded run.' },
+      { t: 'Every end-to-end program gained at least 3×', why: 'In the benchmark matrix nbody gained 1.2× and boids 1.31× on Node, and nbody 0.97× on Bun.' },
     ],
   },
   {

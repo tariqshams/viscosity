@@ -9,9 +9,10 @@ export const prompts = {
     q: 'With 3 languages and 6 analyses, how many analysis implementations do you need without a shared IR, and with one?',
     a: '18 without (3 × 6). With a shared IR: 6 analyses plus 3 plugins.',
   },
-  'ml-compile': {
-    q: 'Which step of Viscosity’s `compile` is language-specific before `lower` runs?',
-    a: 'Only choosing the plugin, which the CLI does by file extension (`.py` gets the Python plugin).',
+
+  'ml-plugin': {
+    q: 'What are a language plugin’s two jobs in Viscosity?',
+    a: '`lower`: turn source text into a VIR module. `emit`: given the source, the lowered module and the plan, write the rewritten program.',
   },
   'ml-free': {
     q: 'Name three things the Python plugin reuses from the core without writing its own.',
@@ -21,10 +22,7 @@ export const prompts = {
     q: 'In `particles.py` the hot loops are inside `step(arr, dt)`. Why does the report still list them?',
     a: 'The shared core follows the list into the function call, exactly as it does for JavaScript.',
   },
-  'ml-bugfix': {
-    q: 'Why is one shared escape check better than one per language, beyond saving code?',
-    a: 'A bug fixed in it is fixed for every language at once, and both languages are tested against the same logic.',
-  },
+
   'ml-float': {
     q: 'Why does the core need to know a module is Python when deciding if a field is numeric?',
     a: 'In Python only a float may go in an `array(\'d\')` column; an int would come back as a float. In JavaScript any number fits a Float64Array.',
@@ -37,10 +35,7 @@ export const prompts = {
     q: 'What happens if you run `viscosity profile` on a `.py` file today?',
     a: 'The CLI refuses: profiling runs JavaScript programs only. (It used to run the file with Node, which failed with a SyntaxError.)',
   },
-  'ml-llvm': {
-    q: 'In LLVM, what plays the role of a Viscosity language plugin for C and C++?',
-    a: 'Clang, the front-end that compiles them into LLVM’s IR.',
-  },
+
 };
 
 export const exercises = {
@@ -110,13 +105,27 @@ test('both languages get the same answer', () => {
       'Turn the set into an array with `[...fs]` and call `.sort()` on it.',
       '`compile` is three lines: `plugin.lower(src)`, then `fieldsTouched(ir)`, then `plugin.emit(src, fs)`.',
     ],
-    walkthrough: `This is Viscosity’s \`compile\` in miniature.
+    walkthrough: `**How to think about it.** This is Viscosity’s \`compile\` in miniature, so start from the rule that makes \`compile\` work: the shared part may look only at IR, and everything that depends on a language’s spelling belongs to the plugin. The analysis, \`fieldsTouched\`, receives a list of ops and must not care where they came from; \`compile\` must call the plugin for both ends (lowering in, emitting out) and do the analysis in between. Before writing anything, work out the answer for the first test by hand: the ops are a read of \`vx\`, a write of \`x\`, a read of \`x\` and a push, so the fields touched are \`vx\` and \`x\`; \`x\` appears twice but is one field, and sorted the list is \`['vx', 'x']\`. That tells you two things the code needs: something that keeps each name once, and a sort at the end.
 
-- **The analysis sees only IR.** \`fieldsTouched\` has no idea whether \`{ op: 'set', field: 'x' }\` came from \`p.x += ...\` in JavaScript or in Python. That is the point: written once, it serves both plugins, and the last test checks they agree.
-- **A set, then sorted.** \`x\` is both written and read, but it is one field. Sorting makes the answer independent of the order the plugin lowered things in, so two languages that spell the loop differently still give the same list.
-- **The plugin owns both ends.** Only the plugin knows that Python comments start with \`#\` and JavaScript ones with \`//\`, just as only the real plugins know how to parse and how to write their own syntax.
+**The solution, line by line.**
 
-Adding a third language here means writing a third \`{ lower, emit }\` object. Neither function you wrote changes.`,
+- \`function fieldsTouched(ir) {\` takes the IR, a plain array of op objects.
+- \`  const fs = new Set();\` makes an empty set; adding a name that is already in a set does nothing, which is exactly "each field once".
+- \`  for (const op of ir) {\` visits every op in order.
+- \`    if (op.op === 'get' ||\` and \`        op.op === 'set') {\` keep only the ops that read or write a field; a \`push\` has no field and is skipped.
+- \`      fs.add(op.field);\` records the field's name.
+- \`  return [...fs].sort();\` spreads the set into a new array and sorts it alphabetically, so the answer does not depend on the order in which a plugin happened to lower things. That is what makes the last test pass: the JavaScript and Python sources touch the fields in a different order, and both still give \`['vx', 'x']\`.
+- \`function compile(src, plugin) {\` is the pipeline.
+- \`  const ir = plugin.lower(src);\` asks the plugin to turn its own syntax into IR; \`compile\` has no idea how.
+- \`  const fs = fieldsTouched(ir);\` runs the shared analysis.
+- \`  return plugin.emit(src, fs);\` hands the result back to the same plugin, which knows how to write a comment in its own language (\`//\` for JavaScript, \`#\` for Python, \`--\` for the Lua plugin in the third test).
+
+Adding a third language here means writing a third \`{ lower, emit }\` object; neither function you wrote changes, which is the whole argument of the chapter in fifteen lines.
+
+**Common wrong attempts.**
+
+- Collecting \`op.field\` into a plain array: \`x\` is written and then read, so it appears twice, and without sorting the report follows the source order (\`x, vx, x\`).
+- Writing the comment inside \`compile\` with a test like \`plugin.id === 'python' ? '# ' : '// '\`: it passes for two languages, but now the shared part knows Python’s comment syntax, and the Lua plugin gets JavaScript’s comments. Output is the plugin’s job.`,
     wrong: [
       {
         code: `function fieldsTouched(ir) {
@@ -198,13 +207,23 @@ test('nothing known', () => {
       'The only language-specific rule: in Python, an `int` also rules it out.',
       'An empty list proves nothing, so it must be `plain`.',
     ],
-    walkthrough: `This is the shape of the one place where the core’s numeric inference asks \`module.language\`.
+    walkthrough: `**How to think about it.** Ask, for each kind of value, "can this go into a typed column without changing what the program prints?". A string never can, in either language. A float always can. An int is the interesting case: a JavaScript \`Float64Array\` holds every JavaScript number exactly as it was (JavaScript has only one kind of number), while Python’s \`array('d')\` turns the int \`1\` into the float \`1.0\`, so a later \`print\` would show \`1.0\`. Finally, a field about which nothing is known proves nothing, and Viscosity only uses a typed column when it can prove every value fits, so an empty list must give \`'plain'\`.
 
-- **Most of the rule is shared.** A string never fits a numeric column in either language. That part doesn’t depend on the language at all.
-- **One line is a language fact.** Python keeps \`1\` and \`1.0\` apart. \`array('d')\` stores C doubles, so an int put in comes back as a float, and \`print\` would show \`1.0\` instead of \`1\`. The program’s output would change. In JavaScript \`1\` and \`1.0\` are the same value, so the same field is fine.
-- **Unknown is not typed.** Viscosity only uses a typed column when it can prove every value fits. With nothing known, the safe answer is a plain column.
+**The solution, line by line.**
 
-Keeping facts like this few and explicit is what keeps a multi-language core honest.`,
+- \`function columnFor(lang, kinds) {\` takes the language and the list of kinds the field may hold.
+- \`  if (kinds.length === 0) {\` and \`    return 'plain';\` handle "nothing known" first, before the loop, because a loop over an empty list would fall straight through to \`'typed'\`.
+- \`  for (const k of kinds) {\` checks each kind in turn.
+- \`    if (k === 'str') return 'plain';\` is the shared rule: a string rules out a typed column in every language.
+- \`    if (lang === 'python' &&\` and \`        k === 'int') return 'plain';\` is the single language fact: only in Python does an int rule it out.
+- \`  return 'typed';\` is reached only when every kind passed both checks.
+
+Notice the shape: most of the rule is shared, and one line asks the language. That is the shape of the real numeric inference in \`core/src/analysis.ts\`, which reads \`m.language === 'python'\` once and then tracks floats and ints separately.
+
+**Common wrong attempts.**
+
+- Ignoring the language and only rejecting strings: a Python int field gets an \`array('d')\` column, so \`1\` would print as \`1.0\`, and an empty list comes out \`'typed'\`.
+- Applying Python’s rule everywhere (\`if (k !== 'float') return 'plain'\`): it is safe, but too strict, because a JavaScript field holding whole numbers loses its \`Float64Array\` for no reason.`,
     wrong: [
       {
         code: `function columnFor(lang, kinds) {
@@ -247,7 +266,7 @@ export const quiz = [
       { t: 'The bounds proofs', why: 'Those run on VIR in the core.' },
       { t: 'The explain report', why: '`explain()` is shared; the reports come from the same planner.' },
       { t: 'The escape (safety) checks', why: 'Shared too: `escapes_print.py` is refused by the same check as JavaScript.' },
-      { t: 'A tokenizer, parser, lowering and emitter', correct: true, why: 'Those depend on Python’s syntax, so they live in the 1,065-line plugin.' },
+      { t: 'A tokenizer, parser, lowering and emitter', correct: true, why: 'Those depend on Python’s syntax, so they live in the 1,085-line plugin.' },
     ],
   },
   {
@@ -275,15 +294,6 @@ export const quiz = [
       { t: 'Shared messages were written in one language’s terms', correct: true, why: 'Python has no object literals. The core now words it for Python: “appends something that is not a fresh dataclass instance”.' },
       { t: 'The Python plugin lowered the program as JavaScript', why: 'It lowered it as Python; the wording lives in the shared analysis.' },
       { t: 'Python does not support push', why: '`append` is lowered to the same VIR `push`.' },
-    ],
-  },
-  {
-    q: 'Which statement about LLVM is supported by its own README?',
-    options: [
-      { t: 'LLVM can only compile C', why: 'Clang alone handles C, C++, Objective-C and Objective-C++.' },
-      { t: 'LLVM parses C++ itself, without a front-end', why: 'C-like languages use the Clang front-end.' },
-      { t: 'LLVM is an interpreter framework', why: 'That describes Truffle, not LLVM.' },
-      { t: 'Its core processes an IR, and Clang compiles C-like languages into it', correct: true, why: 'The same split as Viscosity: a front-end per language, a shared core.' },
     ],
   },
 ];

@@ -9,18 +9,12 @@ export const prompts = {
     q: 'What are the first 8 bytes of every WebAssembly module?',
     a: 'The magic number `00 61 73 6d` (“\\0asm”) and the version, `01 00 00 00` (version 1).',
   },
-  'wasm-section': {
-    q: 'What three parts does every section of a module have?',
-    a: 'A one-byte section id, the length of its contents in bytes, and the contents.',
-  },
+
   'wasm-validate': {
     q: 'Why can an engine compile WebAssembly to machine code without keeping a real operand stack?',
     a: 'Validation type-checks every function, which fixes the stack height at every instruction, so the stack slots can be treated as registers.',
   },
-  'wasm-instantiate': {
-    q: 'Why is `WebAssembly.instantiate` asynchronous (it returns a promise)?',
-    a: 'Compiling a large module takes time, and doing it asynchronously keeps the page responsive.',
-  },
+
   'wasm-wrap': {
     q: 'What does the exported `add` return for `add(2147483647, 1)`, and why?',
     a: '`-2147483648`: `i32.add` works modulo 2³², so it wraps around instead of growing.',
@@ -29,10 +23,7 @@ export const prompts = {
     q: 'What is linear memory?',
     a: 'A module’s single contiguous, growable array of raw bytes, read and written by integer address.',
   },
-  'lm-page': {
-    q: 'In what unit does linear memory grow?',
-    a: 'Pages of 64 KiB (65,536 bytes).',
-  },
+
   'lm-trap': {
     q: 'What happens when WebAssembly loads from an address past the end of its memory?',
     a: 'It traps: the call stops and JavaScript sees a thrown `WebAssembly.RuntimeError`. Nothing outside the memory is touched.',
@@ -41,10 +32,7 @@ export const prompts = {
     q: 'You made `new Float64Array(mem.buffer)` and then called `mem.grow(1)`. What is the view’s length now, and why?',
     a: '0. Growing detaches the old ArrayBuffer and creates a new one, so views must be made again.',
   },
-  'lm-layout': {
-    q: 'With capacity `cap`, at which byte does element `i` of column number `k` (8-byte numbers) start?',
-    a: '`k * cap * 8 + i * 8`.',
-  },
+
   'visc-wasm-status': {
     q: 'Does Viscosity emit WebAssembly today?',
     a: 'No. Both engines emit JavaScript. The Rust port’s `wasm` crate compiles the compiler itself to WebAssembly, so it can run in a browser.',
@@ -180,13 +168,24 @@ test('one byte over needs a second page', () => {
       'Column `k` starts after the `k` columns before it: at `k * cap * 8`.',
       'Pages must hold *all* the bytes, so round up: `Math.ceil(bytes / 65536)`.',
     ],
-    walkthrough: `This is the layout a WebAssembly back end for SoA would need, worked out in JavaScript.
+    walkthrough: `**How to think about it.** This is the layout a WebAssembly back end for SoA would need, worked out in JavaScript. Draw it first for the first test: two fields, capacity 4, 8 bytes per number. The \`x\` column needs 4 × 8 = 32 bytes, so it fills bytes 0 to 31, and the \`vx\` column starts right after it, at byte 32; together they take 64 bytes, which fits easily in one page. The general rule falls out of the picture: every column is \`cap * 8\` bytes long, column number \`k\` starts after the \`k\` columns before it, and the page count must be enough to hold *every* byte, so it is a division rounded up.
 
-- **Offsets are in bytes.** Linear memory is addressed by byte, and every number in a column takes 8 of them. So column \`k\` starts at \`k * cap * 8\`, and element \`i\` of it would sit \`i * 8\` bytes further on.
-- **Total size.** \`fs.length\` columns of \`cap * 8\` bytes each.
-- **Round up.** Memory comes in whole 65,536-byte pages, and a plan that needs one byte more than a page needs two. \`Math.ceil\` does that; \`Math.floor\` or \`Math.round\` would leave the last bytes outside the memory, and the first access to them would trap.
+**The solution, line by line.**
 
-The 4-field, 2048-element case is exactly 4 × 2048 × 8 = 65,536 bytes: one page, no more.`,
+- \`function planMemory(fs, cap) {\` takes the field names, in order, and the capacity.
+- \`  const offsets = {};\` will map each field to the byte where its column starts.
+- \`  for (let k = 0; k < fs.length; k++) {\` walks the fields by position, because the position decides the start.
+- \`    offsets[fs[k]] = k * cap * 8;\` is the start of column \`k\`: \`k\` whole columns of \`cap\` numbers of 8 bytes come before it.
+- \`  const bytes = fs.length * cap * 8;\` is the total: every column, end to end.
+- \`  const pages =\` and \`    Math.ceil(bytes / 65536);\` round up to whole 64 KiB pages, because memory only comes in pages and the last byte must be inside it.
+- \`  return { offsets, bytes, pages };\` returns the three answers in one object.
+
+The four-field, 2048-element test is exactly 4 × 2048 × 8 = 65,536 bytes, so one page; with 2049 elements it is 65,600 bytes, so two.
+
+**Common wrong attempts.**
+
+- Offsets of \`k * 8\`: that puts the fields of one element next to each other, which is packed AoS, not columns. Each column needs room for \`cap\` numbers, so the step between columns is \`cap * 8\`.
+- \`Math.floor\` (or \`Math.round\`) for the pages: a small plan gets 0 pages, and 65,544 bytes gets 1, so the last bytes would lie outside the memory and the first access to them would trap.`,
     wrong: [
       {
         code: `function planMemory(fs, cap) {
@@ -259,13 +258,25 @@ test('one page in bytes', () => {
       'Every byte except the last has its top bit set: `low | 0x80`.',
       'Zero still needs one byte, so check whether anything is left *after* taking the first 7 bits.',
     ],
-    walkthrough: `LEB128 writes a number 7 bits at a time, smallest group first. The eighth bit of each byte says “more bytes follow”.
+    walkthrough: `**How to think about it.** LEB128 writes a number 7 bits at a time, smallest group first, and uses the eighth bit of each byte to say "more bytes follow". So the loop is: cut off the lowest 7 bits, shift them away, and decide whether this byte is the last one by looking at what is *left*. Try \`128\` by hand: its lowest 7 bits are 0 and what is left is 1, so the first byte is \`0 | 0x80 = 0x80\`; then the lowest 7 bits of 1 are 1 and nothing is left, so the last byte is \`0x01\`. Notice that zero must still produce one byte, so the "is anything left?" test has to come *after* taking the first group, not before.
 
-- **Take 7 bits:** \`n & 0x7f\` (chapter 34’s bit operations).
-- **Drop them:** \`n >>> 7\`. The unsigned shift keeps large numbers positive.
-- **More to come?** If \`n\` is not 0 yet, push \`low | 0x80\` and go round again. Otherwise push \`low\` as the last byte and stop.
+**The solution, line by line.**
 
-624485 is \`0b100110_0001110_1100101\`: the groups 1100101, 0001110 and 100110 become 0xE5, 0x8E and 0x26. Small numbers, like every length in this chapter’s modules, fit in one byte, which is why the format stays compact.`,
+- \`function uleb(n) {\` takes a non-negative integer.
+- \`  const out = [];\` collects the bytes.
+- \`  while (true) {\` loops until the last byte is written; the \`return\` inside ends it.
+- \`    const low = n & 0x7f;\` keeps the lowest 7 bits (\`0x7f\` is seven 1-bits), using the bit operations from *Bits and bytes*.
+- \`    n = n >>> 7;\` drops those 7 bits; the unsigned shift \`>>>\` keeps large numbers from turning negative.
+- \`    if (n === 0) {\` asks whether anything is left;
+- \`      out.push(low);\` and \`      return out;\` write the final byte, top bit clear, and stop.
+- \`    out.push(low | 0x80);\` otherwise writes this group with the top bit set, meaning "more follows", and the loop goes round again.
+
+For 624485 the 7-bit groups, smallest first, are 1100101, 0001110 and 100110, which become 0xE5, 0x8E (both with the top bit set) and 0x26.
+
+**Common wrong attempts.**
+
+- Looping \`while (n > 0)\` and never setting \`0x80\`: a decoder cannot tell where the number ends, and \`uleb(0)\` returns an empty array instead of \`[0]\`.
+- Setting \`0x80\` on every byte, including the last: the decoder keeps reading past the number into whatever comes next.`,
     wrong: [
       {
         code: `function uleb(n) {
@@ -301,15 +312,7 @@ export const quiz = [
       { t: 'The JavaScript engine’s parser', why: 'WebAssembly is not JavaScript source and isn’t parsed as such.' },
     ],
   },
-  {
-    q: 'Why does the book’s runnable example use `new WebAssembly.Module` instead of `WebAssembly.instantiate`?',
-    options: [
-      { t: 'instantiate doesn’t work in Node', why: 'It works in Node; the chapter’s modules were checked with it.' },
-      { t: 'The synchronous constructors make faster code', why: 'Both compile the same module; only the timing of the work differs.' },
-      { t: 'instantiate can’t take raw bytes', why: 'It takes bytes (a buffer) or an already compiled module.' },
-      { t: 'The runner stops when your code returns, before a promise could finish', correct: true, why: 'Synchronous loading prints its output before the runner stops. In real pages, prefer the asynchronous form.' },
-    ],
-  },
+
   {
     q: 'A module’s memory is 1 page. What happens on `f64.load` at byte 65,536?',
     options: [

@@ -17,10 +17,7 @@ export const prompts = {
     q: 'Why must the generated `__slots__` include `n`?',
     a: 'With `__slots__` there is no per-instance dictionary, so assigning an attribute that isn’t listed (`self.n = 0`) raises AttributeError.',
   },
-  'em-iter': {
-    q: 'Why does `_vsc_iter` re-read `c.n` on every step instead of using `range(c.n)`?',
-    a: 'So a loop that appends while iterating sees the new elements, exactly as iterating a list would.',
-  },
+
   'pa-what': {
     q: 'What does `array(\'d\')` store?',
     a: 'C doubles, packed one after another: Python floats, 8 bytes each.',
@@ -29,10 +26,7 @@ export const prompts = {
     q: 'What comes back from `array(\'d\', [1])[0]`?',
     a: 'The float `1.0`: the int was converted when it was stored.',
   },
-  'pa-q': {
-    q: 'Why doesn’t Viscosity use an `array(\'q\')` (64-bit int) column for int fields?',
-    a: 'Python ints are unbounded, so a big int would raise OverflowError; ints get plain list columns instead.',
-  },
+
   'pa-slow': {
     q: 'Why is reading an `array(\'d\')` column slower than reading `p.x` in CPython?',
     a: 'Each read creates a new float object (`PyFloat_FromDouble`); a dataclass field already holds one.',
@@ -115,13 +109,28 @@ test('append takes one value per column, in field order', () => {
       'The slots tuple is `\'n\'` followed by every field in quotes: build the quoted names with `map`, then `join(\', \')`.',
       'For each field, the `__init__` line uses `_vsc_array(\'d\')` if the field is in `fl`, and `[]` otherwise. The parameters of `append` are `v0, v1, ...`, one per field, in order.',
     ],
-    walkthrough: `This is the top half of \`containerClass\` in \`frontend-python/src/emit.ts\`, built with string joins instead of template literals.
+    walkthrough: `**How to think about it.** This is the top half of \`containerClass\` in \`frontend-python/src/emit.ts\`, so the target text is fixed: compare your output with the example line by line, not by eye. Notice the three repeating patterns before writing anything: the slots tuple is \`'n'\` followed by every field in quotes; \`__init__\` has one line per field, whose right-hand side depends on whether the field is proven to be a float; and \`append\` has one parameter and one line per field, matched by position. Everything else is fixed text. The easiest way to get indentation and line breaks exactly right is to collect lines in an array and join them with \`'\\n'\` once at the end.
 
-- **The emitter decides nothing.** Which fields are floats arrived in the plan, from the numeric inference. The generator just turns that into text: \`_vsc_array('d')\` for a proven float field, \`[]\` for any other.
-- **\`__slots__\` is a promise.** Listing the attributes up front means the container has no per-instance dictionary, and Python will refuse any attribute not listed. Forget \`'n'\` and the very first line of \`__init__\` fails with AttributeError. The real generator lists \`n\` first for exactly that reason.
-- **One parameter per column, in field order.** The emitter rewrites \`ps.append(P(a, b))\` to \`ps.append(a, b)\` with the arguments already in field order (keywords and defaults resolved), so \`v0\` belongs to the first field, \`v1\` to the second, and so on.
+**The solution, line by line.**
 
-The real class adds \`__len__\` and a class method \`_of\` for list literals, and renames fields whose names would clash (the next exercise).`,
+- \`function container(name, fs, fl) {\` takes the collection's name, its fields in order, and the fields proven to be floats.
+- \`  const s = '    ';\` is one level of indentation (four spaces); \`s + s\` is two.
+- \`  const q = fs.map((f) => \\\`'\${f}'\\\`);\` wraps each field name in single quotes, ready for the tuple.
+- \`  const vs = fs.map((f, k) => 'v' + k);\` makes the parameter names \`v0\`, \`v1\`, ..., one per field.
+- \`  const out = [];\` will hold the lines.
+- \`  out.push('class _Vsc_' + name + ':');\` is the class header.
+- The \`__slots__\` line puts \`"'n'"\` in front of the quoted fields and joins them with \`', '\`, so \`n\` is always first.
+- \`  out.push(s + 'def __init__(self):');\` and \`  out.push(s + s + 'self.n = 0');\` start the constructor and the count.
+- \`  for (const f of fs) {\` makes one column per field: \`fl.includes(f)\` chooses \`_vsc_array('d')\` for a proven float and \`[]\` otherwise, and the line \`self.<field> = <column>\` is pushed at two levels of indentation.
+- The \`def append(self, ...)\` line joins the \`v\` names with \`', '\`.
+- \`  fs.forEach((f, k) => {\` pushes \`self.<field>.append(v<k>)\` for each field, so value number \`k\` goes to field number \`k\`.
+- \`  out.push(s + s + 'self.n += 1');\` keeps the count in step.
+- \`  return out.join('\\n');\` turns the lines into one string.
+
+**Common wrong attempts.**
+
+- Leaving \`'n'\` out of \`__slots__\`: the output looks plausible, but in Python \`self.n = 0\` would raise \`AttributeError\`, because a class with slots has nowhere else to put an attribute.
+- Giving every field \`_vsc_array('d')\`: a string field would raise \`TypeError\` on the first append, and an int field would come back as floats and print as \`3.0\`. The emitter must follow the plan's list of float fields, not guess.`,
     wrong: [
       {
         code: `function container(name, fs, fl) {
@@ -219,13 +228,23 @@ test('one underscore is fine', () => {
       'Names starting with two underscores are renamed too: `f.startsWith(\'__\')`.',
       'The new name is built from the position, so two renamed fields can never collide with each other.',
     ],
-    walkthrough: `This is \`col()\` from \`frontend-python/src/emit.ts\`.
+    walkthrough: `**How to think about it.** A field becomes an attribute of the container, so ask which attribute names the container already uses for itself: \`n\` (the count), \`append\`, \`_of\`, and the special methods \`__len__\`, \`__init__\` and \`__slots__\`. A field with one of those names would overwrite part of the container (a field called \`append\` would replace the method every \`ps.append(...)\` relies on). Names starting with two underscores are special in Python classes in other ways too, so the simple, safe rule is to rename all of them. The new name only has to be impossible to clash with, and the field's position gives that for free.
 
-- **A field named \`n\`** would overwrite the element count, and one named \`append\` would replace the method every \`ps.append(...)\` call depends on. Both are perfectly good dataclass field names, so the emitter must cope.
-- **Dunder names** (\`__x\`) are special in Python: names starting with two underscores inside a class are mangled, and \`__len__\`, \`__init__\` and friends are the protocol methods the container itself defines. Renaming every \`__\` name is the simple, safe rule.
-- **Position makes it unique.** \`f0_\`, \`f2_\` can’t collide with each other, and the trailing underscore keeps them unlike ordinary names. The access rewriting uses the same function, so \`p.n\` becomes \`ps.f0_[p]\` everywhere.
+**The solution, line by line.**
 
-Chapter 256 met the same problem for the JavaScript container; each language has its own list of names to avoid.`,
+- \`const RESERVED = new Set([\` lists the container's own names, \`'n', 'append', '_of', '__len__',\` and \`'__init__', '__slots__',\`, in a \`Set\` so that checking membership is one call.
+- \`function colName(f, i) {\` takes the field name and its position.
+- \`  if (RESERVED.has(f) ||\` catches the listed names;
+- \`      f.startsWith('__')) {\` catches every name beginning with two underscores;
+- \`    return 'f' + i + '_';\` builds a new name from the position (\`f0_\`, \`f2_\`), so two renamed fields can never collide with each other.
+- \`  return f;\` keeps every other name exactly as written, which keeps the generated code readable.
+
+The access rewriting uses the same function, so \`p.n\` becomes \`ps.f0_[p]\` everywhere it appears.
+
+**Common wrong attempts.**
+
+- Renaming only \`n\` and \`append\`: a field called \`__len__\` would then replace the container's own \`__len__\`, and \`len(ps)\` would break.
+- Renaming every name that starts with one underscore: safe, but too eager; \`_tmp\` clashes with nothing and should stay as it is. The JavaScript container in *Generating SoA storage* meets the same problem with its own list of names.`,
     wrong: [
       {
         code: `function colName(f, i) {

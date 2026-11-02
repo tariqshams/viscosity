@@ -59,14 +59,14 @@ export default function ModuleBytes() {
           );
         })}
         <Box x={4} y={mY} w={st.stack ? 270 : 392} h={98} fill={tok('panel')} stroke={tok('line')}>
-          <T x={14} y={mY + 15} size={10} weight={700} fill={tok('muted')}>WHAT IT MEANS</T>
+          <T x={14} y={mY + 15} size={11} weight={700} fill={tok('muted')}>WHAT IT MEANS</T>
           {st.meaning.map((m, j) => (
             <T key={j} x={14} y={mY + 36 + j * 20} size={12} mono={j > 0 || st.hi >= 0}>{m}</T>
           ))}
         </Box>
         {st.stack && (
           <g>
-            <T x={336} y={mY + 15} size={10} weight={700} anchor="middle" fill={tok('muted')}>STACK</T>
+            <T x={336} y={mY + 15} size={11} weight={700} anchor="middle" fill={tok('muted')}>STACK</T>
             <rect x={300} y={mY + 24} width={72} height={74} fill="none" stroke={tok('ink', 0.5)} />
             {st.stack.map((v, j) => (
               <Box key={j} x={306} y={mY + 72 - j * 24} w={60} h={20} r={3} fill={tok('safe', 0.2)} stroke={tok('safe')}>

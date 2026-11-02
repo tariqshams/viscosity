@@ -3,7 +3,7 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 
 // Chapter 271: six short programs at the edge of what Viscosity can do.
 // Each "says" line is real `viscosity explain` output (TypeScript engine,
-// 2026-10-31), wrapped to fit a phone.
+// 2026-10-31, re-checked 2026-11-02), wrapped to fit a phone.
 type Case = { problem: string; kind: 'open' | 'gap'; code: string[]; says: string[]; verdict: 'kept' | 'soa' };
 
 const CASES: Case[] = [
@@ -54,7 +54,7 @@ export default function FrontierSteps() {
   const st = s.state;
   const c = st.hi >= 0 ? CASES[st.hi] : null;
   return (
-    <StepFrame title="The edges of the map" steps={s} note={st.note}>
+    <StepFrame title="Six edges of what Viscosity can do" steps={s} note={st.note}>
       <Svg w={400} h={300} title="A list of six kinds of program that Viscosity refuses or only partly transforms, with its real explain message for the highlighted one">
         {CASES.map((k, j) => {
           const y = 6 + j * 26;
@@ -65,19 +65,19 @@ export default function FrontierSteps() {
               <Box x={4} y={y} w={392} h={22} r={4} fill={on ? tok('brand', 0.12) : tok('panel')} stroke={on ? tok('brand') : tok('line')}>
                 <T x={12} y={y + 11.5} size={12} weight={on ? 700 : 500}>{k.problem}</T>
                 <Box x={250} y={y + 3} w={54} h={16} r={8} fill={col} stroke={col} opacity={0.9}>
-                  <T x={277} y={y + 11.5} size={9} weight={700} anchor="middle" fill={tok('paper')}>{k.kind === 'open' ? 'OPEN' : 'GAP'}</T>
+                  <T x={277} y={y + 11.5} size={11} weight={700} anchor="middle" fill={tok('paper')}>{k.kind === 'open' ? 'OPEN' : 'GAP'}</T>
                 </Box>
-                <T x={388} y={y + 11.5} size={10} mono anchor="end" fill={k.verdict === 'kept' ? tok('danger') : tok('safe')}>{k.verdict === 'kept' ? 'kept' : 'SoA'}</T>
+                <T x={388} y={y + 11.5} size={11} mono anchor="end" fill={k.verdict === 'kept' ? tok('danger') : tok('safe')}>{k.verdict === 'kept' ? 'kept' : 'SoA'}</T>
               </Box>
             </g>
           );
         })}
         <Box x={4} y={168} w={392} h={128} fill={tok('panel')} stroke={c ? tok('brand') : tok('line')} dash={!c}>
-          <T x={14} y={182} size={10} weight={700} fill={tok('muted')}>THE PROGRAM</T>
+          <T x={14} y={182} size={11} weight={700} fill={tok('muted')}>THE PROGRAM</T>
           {(c ? c.code : ['step through to see one']).map((l, j) => (
             <T key={j} x={14} y={200 + j * 15} size={11} mono={!!c}>{l}</T>
           ))}
-          <T x={14} y={238} size={10} weight={700} fill={tok('muted')}>VISCOSITY EXPLAIN SAYS</T>
+          <T x={14} y={238} size={11} weight={700} fill={tok('muted')}>VISCOSITY EXPLAIN SAYS</T>
           {(c ? c.says : []).map((l, j) => (
             <T key={j} x={14} y={255 + j * 15} size={11} mono>{l}</T>
           ))}

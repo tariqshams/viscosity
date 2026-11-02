@@ -51,11 +51,11 @@ export default function EmitSteps() {
           </Box>
         ) : (
           <g>
-            <T x={10} y={12} size={10} weight={700} fill={tok('muted')}>REPLACE</T>
+            <T x={10} y={12} size={11} weight={700} fill={tok('muted')}>REPLACE</T>
             <Box x={8} y={20} w={384} h={26} fill={st.from ? tok('f6', 0.12) : 'transparent'} stroke={st.from ? tok('f6') : tok('line')} dash={!st.from}>
               <T x={18} y={33} size={12} mono>{st.from ?? '—'}</T>
             </Box>
-            <T x={10} y={56} size={10} weight={700} fill={tok('muted')}>WITH</T>
+            <T x={10} y={56} size={11} weight={700} fill={tok('muted')}>WITH</T>
             <Box x={8} y={64} w={384} h={26} fill={st.to ? tok('f4', 0.15) : 'transparent'} stroke={st.to ? tok('f4') : tok('line')} dash={!st.to}>
               <T x={18} y={77} size={12} mono>{st.to ?? '—'}</T>
             </Box>

@@ -1,25 +1,23 @@
 // Chapter 273: Track A's two headline measurements, read from the
 // committed results. No number is typed by hand.
-//   Drip: src/data/bench/drip-bench-2026-10-31.json
-//     (copy of companion/ts/results/drip-bench-2026-10-31.json)
-//   Viscosity: src/data/bench/e2e-node-2026-10-31.json
-//     (copy of engine/ts/packages/bench/results/e2e-node-2026-10-31.json)
-import drip from '../../../data/bench/drip-bench-2026-10-31.json';
-import e2e from '../../../data/bench/e2e-node-2026-10-31.json';
+//   Drip (the redesigned language): book/companion/ts/results/drip-bench-2026-11-02.json
+//   Viscosity: engine/ts/packages/bench/results/matrix-2026-10-31.json,
+//     section (a), Node, best of 9 fresh processes (measured after the
+//     check-mode fix; the older e2e-node file predates it).
+import drip from '../../../../companion/ts/results/drip-bench-2026-11-02.json';
+import matrix from '../../../../../engine/ts/packages/bench/results/matrix-2026-10-31.json';
 
 type Bar = { label: string; value: number; title: string };
 
-const FIXED_TIME = 'zoo_batch'; // runs for a fixed 10 s, so it has no speed-up
-
-const dripRows = (drip.rows as { program: string; tree: number; vm: number | null; speedup: number | null }[]);
+const dripRows = drip.rows as { program: string; tree: number; vm: number | null; speedup: number | null }[];
 const dripBars: Bar[] = dripRows
-  .filter((r) => r.speedup !== null && r.program !== FIXED_TIME)
+  .filter((r) => r.speedup !== null)
   .map((r) => ({ label: r.program, value: r.speedup as number, title: `${r.program}: tree-walker ${r.tree} ms, VM ${r.vm} ms` }))
   .sort((a, b) => b.value - a.value);
-const dripFailed = dripRows.filter((r) => r.speedup === null).map((r) => r.program);
 
-const e2eBars: Bar[] = (e2e.rows as { program: string; layouts: string; originalMs: number; viscosityMs: number; speedup: number }[])
-  .map((r) => ({ label: r.program, value: r.speedup, title: `${r.program}: ${r.originalMs} ms → ${r.viscosityMs} ms (${r.layouts})` }))
+type E2ERow = { program: string; layouts: string; node: { originalMs: { best: number }; viscosityMs: { best: number }; speedupBest: number } };
+const e2eBars: Bar[] = (matrix.e2e.rows as unknown as E2ERow[])
+  .map((r) => ({ label: r.program, value: r.node.speedupBest, title: `${r.program}: ${r.node.originalMs.best} ms → ${r.node.viscosityMs.best} ms on Node (${r.layouts})` }))
   .sort((a, b) => b.value - a.value);
 
 const W = 400;
@@ -58,17 +56,17 @@ export default function TrackAResults({ caption }: { caption?: string }) {
       <div className="fig-card">
         <div className="mb-1 font-sans text-[0.95rem] font-semibold">Track A, measured</div>
         <div className="mb-2 font-sans text-xs text-muted">Speed-ups, longer is better; the dashed lines mark 1× (no change)</div>
-        <svg viewBox={`0 0 ${W} ${H}`} className="viz" role="img" aria-label={`Drip VM over tree-walker: ${dripBars.map((b) => `${b.label} ${b.value}×`).join('; ')}. Viscosity over original: ${e2eBars.map((b) => `${b.label} ${b.value}×`).join('; ')}.`}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="viz" role="img" aria-label={`Drip VM over tree-walker: ${dripBars.map((b) => `${b.label} ${b.value}×`).join('; ')}. Viscosity over original, on Node: ${e2eBars.map((b) => `${b.label} ${b.value}×`).join('; ')}.`}>
           <Group bars={dripBars} y0={0} head="DRIP: BYTECODE VM vs TREE-WALKER" color="rgb(var(--accent))" />
-          <Group bars={e2eBars} y0={y2} head="VISCOSITY: COMPILED vs ORIGINAL PROGRAM" color="rgb(var(--brand))" />
+          <Group bars={e2eBars} y0={y2} head="VISCOSITY: COMPILED vs ORIGINAL (NODE)" color="rgb(var(--brand))" />
         </svg>
         <details className="mt-2 font-sans text-xs">
           <summary className="cursor-pointer text-muted">Where these numbers come from</summary>
           <p className="mt-2 text-muted">
-            Drip: companion/ts/results/drip-bench-2026-10-31.json, Node {drip.env.node}, {drip.env.cpu}. {drip.env.note} Not shown: {FIXED_TIME} (runs for a fixed time) and {dripFailed.join(', ')} (the VM failed to compile it).
+            Drip: book/companion/ts/results/drip-bench-2026-11-02.json, Node {drip.env.node}, {drip.env.cpu}. {drip.env.note}
           </p>
           <p className="mt-2 text-muted">
-            Viscosity: engine/ts/packages/bench/results/e2e-node-2026-10-31.json, Node {e2e.env.node}, V8 {e2e.env.v8}, {e2e.env.cpu}. {e2e.env.note}
+            Viscosity: engine/ts/packages/bench/results/matrix-2026-10-31.json, section (a), Node {matrix.meta.versions.node}, best of {matrix.meta.settings.e2eRuns} fresh processes each. {matrix.meta.noise}
           </p>
         </details>
       </div>

@@ -15,7 +15,7 @@ const STATES: S[] = [
   { mode: 'grid', langs: 2, hi: 1, total: '12 pieces of analysis', note: 'Add Python with no shared IR. Every analysis would have to be written again against Python’s syntax tree: six new boxes, six new sets of bugs, and two copies to keep in step for ever.' },
   { mode: 'grid', langs: 3, hi: 2, total: '18 pieces of analysis', note: 'A third language makes it 18. The bill is languages × analyses, and every new analysis is paid once per language too.' },
   { mode: 'ir', langs: 2, hi: -1, total: '6 analyses + 2 plugins', note: 'With VIR in the middle, the analyses run once, on VIR. Each language pays for one plugin: a parser, a lowering, an emitter. The bill is languages + analyses.' },
-  { mode: 'ir', langs: 2, hi: 1, total: 'Python: 1,041 lines', note: 'The real Python plugin is 1,041 lines in five files: tokens 104, parser 339, lower 420, emit 134, index 44. The core it plugs into is 1,194 lines, and it got all of them.' },
+  { mode: 'ir', langs: 2, hi: 1, total: 'Python: 1,085 lines', note: 'The real Python plugin is 1,085 lines in five files: tokens 106, parser 342, lower 445, emit 148, index 44. The core it plugs into is 1,347 lines, and it got every one of them without writing any.' },
   { mode: 'ir', langs: 2, hi: 1, leak: true, total: 'a few dozen core lines', note: 'Not quite free. A few dozen lines in the core ask module.language: a Python “number” must be a float, an index must be an int, and CPython’s measured cost changes the verdict.' },
 ];
 
@@ -34,7 +34,7 @@ export default function BillSteps() {
                   <Box key={a} x={6 + c * 65} y={44 + r * 52} w={58} h={26}
                     fill={r === st.hi ? tok('f2', 0.2) : tok('brand', 0.1)}
                     stroke={r === st.hi ? tok('f2') : tok('brand')}>
-                    <T x={35 + c * 65} y={57 + r * 52} size={10} mono anchor="middle">{a}</T>
+                    <T x={35 + c * 65} y={57 + r * 52} size={11} mono anchor="middle">{a}</T>
                   </Box>
                 ))}
               </g>
@@ -57,7 +57,7 @@ export default function BillSteps() {
                 <Box key={a} x={12 + c * 63} y={108} w={57} h={26}
                   fill={st.leak && (a === 'numeric' || a === 'bounds') ? tok('f6', 0.25) : tok('panel')}
                   stroke={st.leak && (a === 'numeric' || a === 'bounds') ? tok('f6') : tok('line')}>
-                  <T x={40 + c * 63} y={121} size={10} mono anchor="middle">{a}</T>
+                  <T x={40 + c * 63} y={121} size={11} mono anchor="middle">{a}</T>
                 </Box>
               ))}
             </Box>
