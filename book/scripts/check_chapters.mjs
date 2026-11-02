@@ -133,9 +133,14 @@ const diagramsDir = join(root, 'src/components/diagrams');
 
 const silent = { log() {}, info() {}, warn() {}, error() {}, table() {} };
 
-const folders = readdirSync(dir).filter((d) => /^\d{3}-/.test(d)).sort();
+// --only 1,2,23 (or --only 1-4) checks just those chapters, for a quick
+// loop while writing; a full run checks everything.
+const onlyArg = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : null;
+const only = onlyArg && new Set(onlyArg.split(',').flatMap((x) => { const [a, b] = x.split('-').map(Number); return b ? Array.from({ length: b - a + 1 }, (_, i) => a + i) : [a]; }));
+const allFolders = readdirSync(dir).filter((d) => /^\d{3}-/.test(d)).sort();
+const folders = only ? allFolders.filter((d) => only.has(Number(d.slice(0, 3)))) : allFolders;
 let expectN = 1;
-let prevN = 0;
+let prevN = only ? Number(folders[0]?.slice(0, 3) ?? 1) - 1 : 0;
 const summary = [];
 for (const folder of folders) {
   const mdxPath = join(dir, folder, 'index.mdx');
@@ -351,7 +356,7 @@ for (const folder of folders) {
 // 12. Coverage: every concept the textbook map (src/data/coverage.js) names
 // must be taught by some chapter of the outline.
 {
-  const written = new Set(folders.map((f) => Number(f.slice(0, 3))));
+  const written = new Set(allFolders.map((f) => Number(f.slice(0, 3))));
   let done = 0;
   for (const [book, ch, title, concepts] of COVERAGE) {
     const missing = concepts.filter((c) => !(c in CONCEPTS));

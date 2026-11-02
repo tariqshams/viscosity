@@ -14,7 +14,8 @@ export default defineConfig({
   integrations: [react(), mdx()],
   // Chapters that moved when new ones were inserted (scripts/renumber.mjs).
   // Static redirect pages, so they work on any host.
-  redirects: REDIRECTS,
+  // Astro adds the base to each source, but not to the destination.
+  redirects: Object.fromEntries(Object.entries(REDIRECTS).map(([from, to]) => [from, `/book${to}`])),
   build: { format: 'directory' },
   trailingSlash: 'ignore',
   markdown: {
