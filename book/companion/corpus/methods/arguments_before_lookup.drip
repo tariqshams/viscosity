@@ -1,0 +1,7 @@
+class C {}
+fn note(s) {
+  print s;
+  return s;
+}
+new C().missing(note("arg")); # expect runtime error: C has no property 'missing'
+# expect: arg

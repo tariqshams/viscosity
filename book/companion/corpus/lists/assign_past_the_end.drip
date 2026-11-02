@@ -1,0 +1,2 @@
+let xs = [1, 2, 3];
+xs[3] = 4; # expect runtime error: index 3 is out of range for a list of length 3

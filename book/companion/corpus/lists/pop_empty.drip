@@ -1,0 +1,3 @@
+let xs = [1];
+pop(xs);
+pop(xs); # expect runtime error: cannot pop from an empty list

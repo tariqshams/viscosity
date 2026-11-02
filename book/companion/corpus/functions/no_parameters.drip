@@ -1,0 +1,2 @@
+fn h() {}
+h(1); # expect runtime error: h() takes 0 arguments but got 1

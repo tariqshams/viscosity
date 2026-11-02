@@ -1,0 +1,6 @@
+fn take(xs) {
+  return pop(xs); # expect runtime error: cannot pop from an empty list
+}
+take([]);
+# expect trace: at line 2 in fn take
+# expect trace: at line 4 in script

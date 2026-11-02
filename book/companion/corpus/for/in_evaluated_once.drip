@@ -1,0 +1,10 @@
+fn items() {
+  print "items";
+  return [1, 2];
+}
+for x in items() {
+  print x;
+}
+# expect: items
+# expect: 1
+# expect: 2

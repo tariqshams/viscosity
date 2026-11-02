@@ -1,0 +1,46 @@
+# Method calls: invoke, self, and fields read in each call.
+class Toggle {
+  init(on) {
+    self.on = on;
+  }
+  flip() {
+    self.on = !self.on;
+    return self;
+  }
+  value() {
+    return self.on;
+  }
+}
+
+class CountingToggle extends Toggle {
+  init(on, limit) {
+    super.init(on);
+    self.limit = limit;
+    self.count = 0;
+  }
+  flip() {
+    self.count += 1;
+    if self.count >= self.limit {
+      self.count = 0;
+      super.flip();
+    }
+    return self;
+  }
+}
+
+let t = new Toggle(true);
+let on = 0;
+for i in 0..400000 {
+  if t.flip().value() {
+    on += 1;
+  }
+}
+print on; # expect: 200000
+let c = new CountingToggle(true, 3);
+on = 0;
+for i in 0..400000 {
+  if c.flip().value() {
+    on += 1;
+  }
+}
+print on; # expect: 200000

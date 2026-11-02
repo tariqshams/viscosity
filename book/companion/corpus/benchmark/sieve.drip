@@ -1,0 +1,20 @@
+# A big sieve: list indexing in tight loops.
+fn countPrimes(n) {
+  let isPrime = [];
+  for i in 0..n {
+    push(isPrime, true);
+  }
+  let count = 0;
+  for i in 2..n {
+    if isPrime[i] {
+      count += 1;
+      let j = i * i;
+      while j < n {
+        isPrime[j] = false;
+        j += i;
+      }
+    }
+  }
+  return count;
+}
+print countPrimes(1000000); # expect: 78498

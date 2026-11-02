@@ -1,0 +1,10 @@
+let counters = [];
+for i in 0..2 {
+  push(counters, fn () {
+    i += 10;
+    return i;
+  });
+}
+print counters[0](); # expect: 10
+print counters[0](); # expect: 20
+print counters[1](); # expect: 11

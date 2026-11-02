@@ -1,0 +1,8 @@
+let x = "outer";
+fn show() {
+  print x;
+}
+{
+  let x = "inner";
+  show(); # expect: outer
+}

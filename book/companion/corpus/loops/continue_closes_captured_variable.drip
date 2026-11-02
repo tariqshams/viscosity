@@ -1,0 +1,17 @@
+let fs = [];
+for i in 0..4 {
+  push(fs, fn () { return i; });
+  if i % 2 == 0 {
+    continue;
+  }
+  print "odd " + str(i);
+}
+# expect: odd 1
+# expect: odd 3
+for f in fs {
+  print f();
+}
+# expect: 0
+# expect: 1
+# expect: 2
+# expect: 3

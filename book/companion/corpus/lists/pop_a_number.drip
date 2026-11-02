@@ -1,0 +1,1 @@
+print pop(42); # expect runtime error: pop() needs a list, not a number

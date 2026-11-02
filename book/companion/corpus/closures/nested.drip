@@ -1,0 +1,12 @@
+fn a() {
+  let x = "x";
+  fn b() {
+    let y = "y";
+    fn c() {
+      return x + y;
+    }
+    return c;
+  }
+  return b();
+}
+print a()(); # expect: xy

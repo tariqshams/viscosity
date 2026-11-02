@@ -1,0 +1,2 @@
+let x = 0;
+while x < 3 x += 1; # expect compile error: line 2: expected '{' after the condition, found 'x'

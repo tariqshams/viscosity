@@ -1,0 +1,37 @@
+class Account {
+  init(owner, balance) {
+    self.owner = owner;
+    self.balance = balance;
+    self.log = [];
+  }
+  deposit(n) {
+    self.balance += n;
+    push(self.log, "+" + str(n));
+    return self;
+  }
+  withdraw(n) {
+    if n > self.balance {
+      push(self.log, "refused " + str(n));
+      return self;
+    }
+    self.balance -= n;
+    push(self.log, "-" + str(n));
+    return self;
+  }
+}
+
+class Savings extends Account {
+  init(owner, balance, rate) {
+    super.init(owner, balance);
+    self.rate = rate;
+  }
+  addInterest() {
+    return self.deposit(self.balance * self.rate);
+  }
+}
+
+let s = new Savings("ann", 100, 0.25);
+s.withdraw(20).addInterest().withdraw(500);
+print s.balance; # expect: 100
+print s.log; # expect: ["-20", "+20", "refused 500"]
+print s; # expect: Savings { owner: "ann", balance: 100, log: ["-20", "+20", "refused 500"], rate: 0.25 }

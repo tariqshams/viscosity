@@ -1,0 +1,20 @@
+fn note(s) {
+  print s;
+  return s;
+}
+fn three(a, b, c) {
+  return a + b + c;
+}
+print three(note("a"), note("b"), note("c"));
+# expect: a
+# expect: b
+# expect: c
+# expect: abc
+fn pick() {
+  print "callee";
+  return fn (x) { return x; };
+}
+print pick()(note("arg"));
+# expect: callee
+# expect: arg
+# expect: arg

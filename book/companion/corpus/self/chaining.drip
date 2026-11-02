@@ -1,0 +1,10 @@
+class Builder {
+  init() {
+    self.parts = [];
+  }
+  add(p) {
+    push(self.parts, p);
+    return self;
+  }
+}
+print new Builder().add("a").add("b").parts; # expect: ["a", "b"]

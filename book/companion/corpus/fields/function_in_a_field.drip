@@ -1,0 +1,6 @@
+class Holder {}
+let h = new Holder();
+h.double = fn (x) { return x * 2; };
+print h.double(4); # expect: 8
+h.native = len;
+print h.native([1, 2, 3]); # expect: 3

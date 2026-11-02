@@ -1,0 +1,2 @@
+fn g(a, b) {}
+g(1); # expect runtime error: g() takes 2 arguments but got 1

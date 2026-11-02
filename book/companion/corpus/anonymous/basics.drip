@@ -1,0 +1,6 @@
+let square = fn (x) { return x * x; };
+print square(4); # expect: 16
+print fn (a, b) { return a - b; }(10, 3); # expect: 7
+print square; # expect: fn
+let noop = fn () {};
+print noop(); # expect: none

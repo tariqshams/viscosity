@@ -1,0 +1,10 @@
+fn make() {
+  class Inner {
+    hi() {
+      return "inner";
+    }
+  }
+  class Outer extends Inner {}
+  return new Outer();
+}
+print make().hi(); # expect: inner

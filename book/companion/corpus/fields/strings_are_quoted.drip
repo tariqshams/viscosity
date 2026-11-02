@@ -1,0 +1,6 @@
+class P {}
+let p = new P();
+p.name = "ann";
+p.tags = ["a", "b"];
+print p; # expect: P { name: "ann", tags: ["a", "b"] }
+print p.name; # expect: ann

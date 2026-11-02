@@ -1,0 +1,10 @@
+class Greeter {
+  init(name) {
+    self.name = name;
+  }
+  greeter() {
+    return fn () { return "hi " + self.name; };
+  }
+}
+let g = new Greeter("ann").greeter();
+print g(); # expect: hi ann

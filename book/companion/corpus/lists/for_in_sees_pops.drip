@@ -1,0 +1,8 @@
+let xs = [1, 2, 3, 4];
+for x in xs {
+  print x;
+  pop(xs);
+}
+# expect: 1
+# expect: 2
+print xs; # expect: [1, 2]

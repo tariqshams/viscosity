@@ -1,0 +1,66 @@
+# A tiny stack machine: a program is a list of [op, argument] pairs.
+fn run(program) {
+  let stack = [];
+  let pc = 0;
+  while pc < len(program) {
+    let ins = program[pc];
+    let op = ins[0];
+    pc += 1;
+    if op == "push" {
+      push(stack, ins[1]);
+    } else if op == "add" {
+      let b = pop(stack);
+      let a = pop(stack);
+      push(stack, a + b);
+    } else if op == "sub" {
+      let b = pop(stack);
+      let a = pop(stack);
+      push(stack, a - b);
+    } else if op == "mul" {
+      let b = pop(stack);
+      let a = pop(stack);
+      push(stack, a * b);
+    } else if op == "dup" {
+      let a = pop(stack);
+      push(stack, a);
+      push(stack, a);
+    } else if op == "jumpIfZero" {
+      if pop(stack) == 0 {
+        pc = ins[1];
+      }
+    } else if op == "jump" {
+      pc = ins[1];
+    } else if op == "print" {
+      print stack[len(stack) - 1];
+    } else {
+      print "unknown op " + op;
+      return none;
+    }
+  }
+  return stack;
+}
+
+print run([["push", 2], ["push", 3], ["add"], ["push", 4], ["mul"], ["print"]]);
+# expect: 20
+# expect: [20]
+
+let countdown = [
+  ["push", 3],
+  ["print"],
+  ["push", 1],
+  ["sub"],
+  ["dup"],
+  ["jumpIfZero", 7],
+  ["jump", 1],
+  ["push", 100],
+  ["print"]
+];
+print run(countdown);
+# expect: 3
+# expect: 2
+# expect: 1
+# expect: 100
+# expect: [0, 100]
+print run([["halt"]]);
+# expect: unknown op halt
+# expect: none

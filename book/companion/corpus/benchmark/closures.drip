@@ -1,0 +1,29 @@
+# Making and calling closures.
+fn counter() {
+  let n = 0;
+  return fn () {
+    n += 1;
+    return n;
+  };
+}
+
+fn compose(f, g) {
+  return fn (x) { return f(g(x)); };
+}
+
+let total = 0;
+for i in 0..80000 {
+  let c = counter();
+  c();
+  c();
+  total += c();
+}
+print total; # expect: 240000
+let inc = fn (x) { return x + 1; };
+let twice = compose(inc, inc);
+let four = compose(twice, twice);
+let x = 0;
+for i in 0..400000 {
+  x = four(x);
+}
+print x; # expect: 1600000

@@ -1,0 +1,6 @@
+class Dog {
+  speak() {
+    return "woof";
+  }
+}
+new Dog().speak(1); # expect runtime error: speak() takes 0 arguments but got 1

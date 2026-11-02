@@ -1,0 +1,12 @@
+class Shape {
+  init(name) {
+    self.name = name;
+  }
+}
+class Square extends Shape {
+  init(side) {
+    super.init("square");
+    self.side = side;
+  }
+}
+print new Square(3); # expect: Square { name: "square", side: 3 }

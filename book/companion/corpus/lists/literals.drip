@@ -1,0 +1,8 @@
+print []; # expect: []
+print [1]; # expect: [1]
+print [1, 2, 3]; # expect: [1, 2, 3]
+print [1 + 1, "two", none, true, false]; # expect: [2, "two", none, true, false]
+print [[], [[]]]; # expect: [[], [[]]]
+let xs = [10, 20];
+print len(xs); # expect: 2
+print len([]); # expect: 0

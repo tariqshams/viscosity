@@ -1,0 +1,12 @@
+class Calc {
+  add(a, b) {
+    return a + b;
+  }
+  twice(x) {
+    return self.add(x, x);
+  }
+}
+let c = new Calc();
+print c.add(2, 3); # expect: 5
+print c.twice(21); # expect: 42
+print c.add; # expect: fn add

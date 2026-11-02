@@ -1,0 +1,14 @@
+fn c() {
+  return none + 1; # expect runtime error: cannot add none and a number
+}
+fn b() {
+  return c();
+}
+fn a() {
+  return b();
+}
+a();
+# expect trace: at line 2 in fn c
+# expect trace: at line 5 in fn b
+# expect trace: at line 8 in fn a
+# expect trace: at line 10 in script

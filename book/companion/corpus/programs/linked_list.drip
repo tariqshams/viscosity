@@ -1,0 +1,41 @@
+class Node {
+  init(value, next) {
+    self.value = value;
+    self.next = next;
+  }
+}
+
+class LinkedList {
+  init() {
+    self.head = none;
+    self.size = 0;
+  }
+  prepend(v) {
+    self.head = new Node(v, self.head);
+    self.size += 1;
+    return self;
+  }
+  each(f) {
+    let n = self.head;
+    while n != none {
+      f(n.value);
+      n = n.next;
+    }
+  }
+  reversed() {
+    let out = new LinkedList();
+    self.each(fn (v) { out.prepend(v); });
+    return out;
+  }
+  toList() {
+    let xs = [];
+    self.each(fn (v) { push(xs, v); });
+    return xs;
+  }
+}
+
+let l = new LinkedList().prepend(3).prepend(2).prepend(1);
+print l.toList(); # expect: [1, 2, 3]
+print l.reversed().toList(); # expect: [3, 2, 1]
+print l.size; # expect: 3
+print new LinkedList().toList(); # expect: []

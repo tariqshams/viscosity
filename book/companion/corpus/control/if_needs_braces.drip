@@ -1,0 +1,2 @@
+let x = 1;
+if x > 0 print x; # expect compile error: line 2: expected '{' after the condition, found 'print'

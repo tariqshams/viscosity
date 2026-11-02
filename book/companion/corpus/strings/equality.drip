@@ -1,0 +1,9 @@
+print "a" == "a"; # expect: true
+print "a" == "b"; # expect: false
+print "ab" == "a" + "b"; # expect: true
+print "1" == 1; # expect: false
+print "" == none; # expect: false
+print "abc" != "abd"; # expect: true
+let built = "dr";
+built += "ip";
+print built == "drip"; # expect: true

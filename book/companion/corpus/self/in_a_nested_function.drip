@@ -1,0 +1,12 @@
+class Box {
+  init(v) {
+    self.v = v;
+  }
+  getter() {
+    fn get() {
+      return self.v;
+    }
+    return get;
+  }
+}
+print new Box(7).getter()(); # expect: 7

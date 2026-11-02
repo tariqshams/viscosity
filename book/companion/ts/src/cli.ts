@@ -1,21 +1,23 @@
 #!/usr/bin/env node
 // drip [--vm] script.drip
+// Exit codes: 0 success, 65 compile error, 70 runtime error,
+// 66 the file cannot be read, 64 usage error.
 import { readFileSync } from 'node:fs';
 import { run } from './drip.ts';
 
 const args = process.argv.slice(2);
-const file = args.find((a) => !a.startsWith('--'));
-if (!file) {
-  console.error('Usage: drip [--vm] script.drip');
+const files = args.filter((a) => !a.startsWith('--'));
+if (files.length !== 1) {
+  console.error('usage: drip [--vm] <file>');
   process.exit(64);
 }
+const file = files[0];
 let source: string;
 try {
   source = readFileSync(file, 'utf8');
 } catch (e) {
-  // Like clox and drip-rs: report and exit 74 (EX_IOERR), no stack trace.
-  console.error(`Could not read "${file}": ${(e as Error).message}`);
-  process.exit(74);
+  console.error(`cannot read ${file}: ${(e as NodeJS.ErrnoException).code ?? (e as Error).message}`);
+  process.exit(66);
 }
 const result = args.includes('--vm')
   ? (await import('./vm/index.ts')).runVm(source)

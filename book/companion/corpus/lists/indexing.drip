@@ -1,0 +1,11 @@
+let xs = ["a", "b", "c"];
+print xs[0]; # expect: a
+print xs[2]; # expect: c
+print xs[1 + 1]; # expect: c
+let i = 1;
+print xs[i]; # expect: b
+print [5, 6, 7][1]; # expect: 6
+let grid = [[1, 2], [3, 4]];
+print grid[1][0]; # expect: 3
+print xs[len(xs) - 1]; # expect: c
+print xs[2.0]; # expect: c

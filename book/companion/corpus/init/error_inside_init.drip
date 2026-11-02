@@ -1,0 +1,8 @@
+class Bad {
+  init() {
+    self.x = 1 + "one"; # expect runtime error: cannot add a number and a string
+  }
+}
+let b = new Bad();
+# expect trace: at line 3 in fn init
+# expect trace: at line 6 in script

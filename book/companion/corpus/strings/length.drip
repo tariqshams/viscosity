@@ -1,0 +1,5 @@
+print len(""); # expect: 0
+print len("drip"); # expect: 4
+print len("héllo"); # expect: 5
+print len("🙂!"); # expect: 2
+print len("a\nb"); # expect: 3

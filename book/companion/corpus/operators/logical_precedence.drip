@@ -1,0 +1,7 @@
+print false && true || true; # expect: true
+print true || false && false; # expect: true
+print 1 < 2 && 2 < 3; # expect: true
+print !true || true; # expect: true
+print !(true || true); # expect: false
+print 1 == 1 && 2 == 2; # expect: true
+print none || false && true; # expect: false

@@ -1,0 +1,8 @@
+class Point {}
+let p = new Point();
+p.y = 2;
+p.x = 1;
+p.y = 20;
+print p; # expect: Point { y: 20, x: 1 }
+p.label = "near the origin";
+print p; # expect: Point { y: 20, x: 1, label: "near the origin" }

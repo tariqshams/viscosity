@@ -1,0 +1,2 @@
+print 1; } # expect compile error: line 1: expected an expression, found '}'
+print 2;

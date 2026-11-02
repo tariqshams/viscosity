@@ -1,0 +1,15 @@
+class Dog {
+  init(name) {
+    self.name = name;
+  }
+  speak() {
+    return self.name + " says woof";
+  }
+}
+let speak = new Dog("rex").speak;
+print speak(); # expect: rex says woof
+print speak; # expect: fn speak
+let a = new Dog("a");
+let b = new Dog("b");
+b.speak = a.speak;
+print b.speak(); # expect: a says woof

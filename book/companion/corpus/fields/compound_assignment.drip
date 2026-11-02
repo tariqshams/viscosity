@@ -1,0 +1,10 @@
+class Counter {
+  init() {
+    self.n = 0;
+  }
+}
+let c = new Counter();
+c.n += 5;
+c.n -= 2;
+print c.n; # expect: 3
+print c.n += 1; # expect: 4

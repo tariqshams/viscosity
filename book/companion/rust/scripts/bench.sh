@@ -5,7 +5,7 @@
 #
 # Writes results/drip-rs-bench-<date>.json and .md, with a three-way
 # table that adds the TypeScript tree-walker and VM numbers recorded in
-# $TS_RESULTS (by default ../ts/results/drip-bench-2026-10-31.json).
+# $TS_RESULTS (by default ../ts/results/drip-bench-2026-11-02.json).
 #
 # Usage: scripts/bench.sh [name-filter]
 # Needs: cargo, and node to write the JSON (it is the book's other
@@ -16,7 +16,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 runs=${RUNS:-3}
 filter=${1:-}
-ts_results=${TS_RESULTS:-../ts/results/drip-bench-2026-10-31.json}
+ts_results=${TS_RESULTS:-../ts/results/drip-bench-2026-11-02.json}
 bin=target/release/drip-rs
 cargo build --release --quiet
 
@@ -35,8 +35,7 @@ for file in ../corpus/benchmark/*.drip; do
     code=0
     "$bin" "$file" >"$out" 2>"$err" || code=$?
     end=$(date +%s%N)
-    # A program that fails (string_equality hits the 256-constant limit
-    # in both VMs) is reported, not timed.
+    # A program that fails is reported, not timed.
     [[ $code -ne 0 ]] && break
     ms=$(((end - start) / 1000000))
     [[ -z "$best" || $ms -lt $best ]] && best=$ms
@@ -103,12 +102,6 @@ for (const r of rows) {
   const rust = r.rust === null ? `error: ${r.rustError}` : r.rust;
   const tsVm = r.tsVm === null && r.tsVmError ? 'error (same)' : cell(r.tsVm);
   md += `| ${r.program} | ${cell(r.tsTree)} | ${tsVm} | ${rust} | ${x(r.speedupVsTsVm)} | ${x(r.speedupVsTsTree)} |\n`;
-}
-const zoo = rows.find((r) => r.program === 'zoo_batch');
-if (zoo) {
-  const batches = zoo.stdout.split(' ')[1];
-  md += `\nzoo_batch runs for a fixed 10 seconds, so its time says little: what `;
-  md += `differs is how many batches it finishes. drip-rs finished ${batches}.\n`;
 }
 fs.writeFileSync(`results/drip-rs-bench-${stamp}.md`, md);
 console.log(`wrote results/drip-rs-bench-${stamp}.json and .md`);

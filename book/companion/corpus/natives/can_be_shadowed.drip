@@ -1,0 +1,6 @@
+fn push(x) {
+  return "my own push";
+}
+print push(1); # expect: my own push
+let len = 5;
+print len; # expect: 5

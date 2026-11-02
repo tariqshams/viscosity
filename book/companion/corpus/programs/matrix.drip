@@ -1,0 +1,34 @@
+fn matrix(rows, cols, f) {
+  let m = [];
+  for i in 0..rows {
+    let row = [];
+    for j in 0..cols {
+      push(row, f(i, j));
+    }
+    push(m, row);
+  }
+  return m;
+}
+
+fn multiply(a, b) {
+  let k = len(b);
+  return matrix(len(a), len(b[0]), fn (i, j) {
+    let s = 0;
+    for t in 0..k {
+      s += a[i][t] * b[t][j];
+    }
+    return s;
+  });
+}
+
+let a = [[1, 2], [3, 4]];
+let id = matrix(2, 2, fn (i, j) {
+  if i == j {
+    return 1;
+  }
+  return 0;
+});
+print id; # expect: [[1, 0], [0, 1]]
+print multiply(a, id); # expect: [[1, 2], [3, 4]]
+print multiply(a, a); # expect: [[7, 10], [15, 22]]
+print multiply([[1, 2, 3]], [[1], [2], [3]]); # expect: [[14]]

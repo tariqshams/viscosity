@@ -1,43 +1,21 @@
-// This benchmark stresses instance creation and initializer calling.
-
-class Foo {
-  init() {}
+# Creating instances: new, init, and garbage.
+class Point {
+  init(x, y) {
+    self.x = x;
+    self.y = y;
+  }
 }
 
-let start = clock();
-let i = 0;
-while (i < 500000) {
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  Foo();
-  i = i + 1;
+class Segment {
+  init(a, b) {
+    self.a = a;
+    self.b = b;
+  }
 }
 
-print clock() - start;
+let sum = 0;
+for i in 0..200000 {
+  let s = new Segment(new Point(i, 0), new Point(0, i));
+  sum += s.a.x - s.b.y;
+}
+print sum; # expect: 0

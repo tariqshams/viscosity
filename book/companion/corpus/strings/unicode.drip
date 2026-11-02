@@ -1,0 +1,3 @@
+print "naïve café ☕"; # expect: naïve café ☕
+print "日本" + "語"; # expect: 日本語
+print ["ü"]; # expect: ["ü"]

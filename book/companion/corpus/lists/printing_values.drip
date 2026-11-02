@@ -1,0 +1,9 @@
+class P {
+  init(x) {
+    self.x = x;
+  }
+}
+print [new P(1), new P(2)]; # expect: [P { x: 1 }, P { x: 2 }]
+print [[1, [2, [3]]]]; # expect: [[1, [2, [3]]]]
+print [fn () {}, len, P]; # expect: [fn, native fn len, class P]
+print [0.5, -0, 1 / 0]; # expect: [0.5, -0, inf]

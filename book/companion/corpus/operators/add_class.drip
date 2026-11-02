@@ -1,0 +1,2 @@
+class Kettle {}
+print Kettle + "s"; # expect runtime error: cannot add a class and a string

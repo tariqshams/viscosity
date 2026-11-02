@@ -1,0 +1,2 @@
+if false {
+} else print "x"; # expect compile error: line 2: expected '{' or 'if' after 'else', found 'print'

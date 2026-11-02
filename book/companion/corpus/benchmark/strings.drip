@@ -1,0 +1,16 @@
+# Building strings, interning them, and comparing them.
+let words = ["drip", "drop", "flow", "pour", "seep", "leak", "rain", "pool"];
+let matches = 0;
+let built = 0;
+for i in 0..240000 {
+  let a = words[i % 8] + str(i % 100);
+  let b = words[(i + 3) % 8] + str(i % 100);
+  if a == b {
+    matches += 1;
+  }
+  if a == words[i % 8] + str(i % 100) {
+    built += 1;
+  }
+}
+print matches; # expect: 0
+print built; # expect: 240000

@@ -1,0 +1,9 @@
+print none == none; # expect: true
+print none == false; # expect: false
+print false == 0; # expect: false
+print true == 1; # expect: false
+print 0 == ""; # expect: false
+print "true" == true; # expect: false
+print true == true; # expect: true
+print none != false; # expect: true
+print [] == none; # expect: false

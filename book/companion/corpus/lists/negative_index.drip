@@ -1,0 +1,2 @@
+let xs = [1, 2, 3];
+print xs[-1]; # expect runtime error: index -1 is out of range for a list of length 3

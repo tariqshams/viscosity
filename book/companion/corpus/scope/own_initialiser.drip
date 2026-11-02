@@ -1,0 +1,6 @@
+{
+  let a = "outer";
+  {
+    let a = a; # expect compile error: line 4: cannot read 'a' in its own initialiser
+  }
+}

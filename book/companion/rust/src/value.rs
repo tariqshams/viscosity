@@ -1,10 +1,10 @@
-//! Values (book chapters 49 and 50): what a Drip variable can hold.
-
-use std::fmt;
+//! Values (book chapters 49 and 50): what a Drip variable can hold, and
+//! how `print` shows them.
 
 use crate::gc::Heap;
 use crate::object::{
-    Gc, ObjBoundMethod, ObjClass, ObjClosure, ObjFunction, ObjInstance, ObjNative, StrRef,
+    Gc, ObjBoundMethod, ObjClass, ObjClosure, ObjFunction, ObjInstance, ObjList,
+    ObjNative, StrRef,
 };
 
 /// A Drip value. Small values live right in the enum; objects live in the
@@ -15,10 +15,11 @@ use crate::object::{
 /// is right for strings too because they are interned.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
-    Nil,
+    None,
     Bool(bool),
     Number(f64),
     String(StrRef),
+    List(Gc<ObjList>),
     Function(Gc<ObjFunction>),
     Native(Gc<ObjNative>),
     Closure(Gc<ObjClosure>),
@@ -28,60 +29,149 @@ pub enum Value {
 }
 
 impl Value {
-    /// `nil` and `false` are falsey; everything else is truthy.
+    /// `none` and `false` are false; everything else is true.
     pub fn is_falsey(self) -> bool {
-        matches!(self, Value::Nil | Value::Bool(false))
+        matches!(self, Value::None | Value::Bool(false))
     }
 
-    /// A value that prints itself, given the heap its objects live in.
-    pub fn display(self, heap: &Heap) -> Display<'_> {
-        Display { value: self, heap }
+    /// The value as `print` and `str()` show it.
+    pub fn format(self, heap: &Heap) -> String {
+        let mut out = String::new();
+        format_into(&mut out, heap, self, false, &mut Vec::new());
+        out
     }
 }
 
-/// The result of [`Value::display`].
-pub struct Display<'a> {
+/// A list or instance being printed, to spot cycles.
+#[derive(PartialEq)]
+enum Open {
+    List(Gc<ObjList>),
+    Instance(Gc<ObjInstance>),
+}
+
+/// Print `value` into `out`. Inside a list or an instance (`nested`),
+/// strings are quoted; `open` holds the containers being printed, so a
+/// list that contains itself prints as `[...]`.
+fn format_into(
+    out: &mut String,
+    heap: &Heap,
     value: Value,
-    heap: &'a Heap,
-}
-
-impl fmt::Display for Display<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let heap = self.heap;
-        match self.value {
-            Value::Nil => f.write_str("nil"),
-            Value::Bool(b) => write!(f, "{b}"),
-            Value::Number(n) => f.write_str(&format_number(n)),
-            Value::String(s) => f.write_str(heap.str(s)),
-            Value::Function(func) => write_function(f, heap, func),
-            Value::Native(_) => f.write_str("<native fn>"),
-            Value::Closure(c) => write_function(f, heap, heap[c].function),
-            Value::Class(c) => f.write_str(heap.str(heap[c].name)),
-            Value::Instance(i) => {
-                let class = heap[i].class;
-                write!(f, "{} instance", heap.str(heap[class].name))
+    nested: bool,
+    open: &mut Vec<Open>,
+) {
+    match value {
+        Value::None => out.push_str("none"),
+        Value::Bool(b) => out.push_str(if b { "true" } else { "false" }),
+        Value::Number(n) => out.push_str(&format_number(n)),
+        Value::String(s) if nested => quote_into(out, heap.str(s)),
+        Value::String(s) => out.push_str(heap.str(s)),
+        Value::List(list) => {
+            if open.contains(&Open::List(list)) {
+                out.push_str("[...]");
+                return;
             }
-            Value::BoundMethod(b) => {
-                let method = heap[b].method;
-                write_function(f, heap, heap[method].function)
+            open.push(Open::List(list));
+            out.push('[');
+            for (i, item) in heap[list].items.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                format_into(out, heap, *item, true, open);
             }
+            out.push(']');
+            open.pop();
+        }
+        Value::Instance(instance) => {
+            let object = &heap[instance];
+            out.push_str(heap.str(heap[object.class].name));
+            if open.contains(&Open::Instance(instance)) {
+                out.push_str(" {...}");
+                return;
+            }
+            if object.field_order.is_empty() {
+                out.push_str(" {}");
+                return;
+            }
+            open.push(Open::Instance(instance));
+            out.push_str(" { ");
+            for (i, &key) in object.field_order.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                out.push_str(heap.str(key));
+                out.push_str(": ");
+                let field = object.fields.get(key).expect("an ordered field exists");
+                format_into(out, heap, field, true, open);
+            }
+            out.push_str(" }");
+            open.pop();
+        }
+        Value::Function(function) => write_function(out, heap, function),
+        Value::Closure(c) => write_function(out, heap, heap[c].function),
+        Value::BoundMethod(b) => write_function(out, heap, heap[heap[b].method].function),
+        Value::Native(n) => {
+            out.push_str("native fn ");
+            out.push_str(heap[n].name);
+        }
+        Value::Class(c) => {
+            out.push_str("class ");
+            out.push_str(heap.str(heap[c].name));
         }
     }
 }
 
-fn write_function(
-    f: &mut fmt::Formatter<'_>,
-    heap: &Heap,
-    func: Gc<ObjFunction>,
-) -> fmt::Result {
-    match heap[func].name {
-        Some(name) => write!(f, "<fn {}>", heap.str(name)),
-        None => f.write_str("<script>"),
+fn write_function(out: &mut String, heap: &Heap, function: Gc<ObjFunction>) {
+    let f = &heap[function];
+    match f.name {
+        Some(name) => {
+            out.push_str("fn ");
+            out.push_str(heap.str(name));
+        }
+        None if f.is_script => out.push_str("script"),
+        None => out.push_str("fn"),
+    }
+}
+
+/// A string as it appears inside a list: quoted, with escapes.
+fn quote_into(out: &mut String, s: &str) {
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str(r"\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str(r"\n"),
+            '\t' => out.push_str(r"\t"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
+/// A value's type, with its article, as error messages name it.
+pub fn describe(heap: &Heap, value: Value) -> String {
+    match value {
+        Value::None => "none".into(),
+        Value::Bool(_) => "a boolean".into(),
+        Value::Number(_) => "a number".into(),
+        Value::String(_) => "a string".into(),
+        Value::List(_) => "a list".into(),
+        Value::Class(_) => "a class".into(),
+        Value::Instance(i) => {
+            let name = heap.str(heap[heap[i].class].name);
+            let vowel =
+                name.starts_with(['A', 'E', 'I', 'O', 'U', 'a', 'e', 'i', 'o', 'u']);
+            format!("{} {name} instance", if vowel { "an" } else { "a" })
+        }
+        Value::Function(_)
+        | Value::Native(_)
+        | Value::Closure(_)
+        | Value::BoundMethod(_) => "a function".into(),
     }
 }
 
 /// Format a number exactly as the TypeScript VM does: JavaScript's
-/// `String(n)`, except that -0 prints as `-0`.
+/// `String(n)`, except that -0 prints as `-0`, NaN as `nan` and the
+/// infinities as `inf` and `-inf`.
 ///
 /// Rust's `{:e}` already finds the shortest digits that read back as the
 /// same float, which is what JavaScript prints too. Only the layout
@@ -89,10 +179,10 @@ fn write_function(
 /// exponents outside that range, as `1e+21` or `1.5e-7`.
 pub fn format_number(n: f64) -> String {
     if n.is_nan() {
-        return "NaN".into();
+        return "nan".into();
     }
     if n.is_infinite() {
-        return if n > 0.0 { "Infinity" } else { "-Infinity" }.into();
+        return if n > 0.0 { "inf" } else { "-inf" }.into();
     }
     if n == 0.0 {
         return if n.is_sign_negative() { "-0" } else { "0" }.into();
@@ -159,9 +249,9 @@ mod tests {
         (0x43e56a95319d63e1, "12345678901234567000"),
         (0x0000000000000001, "5e-324"),
         (0x7fefffffffffffff, "1.7976931348623157e+308"),
-        (0x7ff8000000000000, "NaN"),
-        (0x7ff0000000000000, "Infinity"),
-        (0xfff0000000000000, "-Infinity"),
+        (0x7ff8000000000000, "nan"),
+        (0x7ff0000000000000, "inf"),
+        (0xfff0000000000000, "-inf"),
         (0x54b249ad2594c37d, "1e+100"),
         (0xab2bff2ee48e0530, "-1e-100"),
         (0x400921f9f01b866e, "3.14159"),
@@ -187,8 +277,8 @@ mod tests {
     }
 
     #[test]
-    fn nil_and_false_are_falsey() {
-        assert!(Value::Nil.is_falsey());
+    fn none_and_false_are_falsey() {
+        assert!(Value::None.is_falsey());
         assert!(Value::Bool(false).is_falsey());
         assert!(!Value::Bool(true).is_falsey());
         assert!(!Value::Number(0.0).is_falsey());
@@ -198,6 +288,6 @@ mod tests {
     fn equality_follows_ieee_for_numbers() {
         assert_ne!(Value::Number(f64::NAN), Value::Number(f64::NAN));
         assert_eq!(Value::Number(0.0), Value::Number(-0.0));
-        assert_ne!(Value::Nil, Value::Bool(false));
+        assert_ne!(Value::None, Value::Bool(false));
     }
 }

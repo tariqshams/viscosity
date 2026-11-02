@@ -1,0 +1,14 @@
+let total = 0;
+for i in 0..4 {
+  let doubled = i * 2;
+  let label = "n" + str(i);
+  if i == 2 {
+    continue;
+  }
+  total += doubled;
+  print label;
+}
+# expect: n0
+# expect: n1
+# expect: n3
+print total; # expect: 8

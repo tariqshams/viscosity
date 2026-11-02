@@ -1,0 +1,13 @@
+fn make() {
+  let total = 0;
+  let adders = [];
+  for i in 1..4 {
+    push(adders, fn () { total += i; return total; });
+  }
+  return adders;
+}
+let adders = make();
+print adders[0](); # expect: 1
+print adders[1](); # expect: 3
+print adders[2](); # expect: 6
+print adders[0](); # expect: 7

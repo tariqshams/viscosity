@@ -1,8 +1,8 @@
 //! `drip-rs <file>`: run a Drip program.
 //!
 //! Output goes to stdout and errors to stderr. The exit code is 0, 65 for
-//! a compile error, 70 for a runtime error, or 64 for bad usage (the
-//! `sysexits.h` codes clox and the TypeScript CLI use).
+//! a compile error, 70 for a runtime error, 66 if the file can't be read,
+//! or 64 for bad usage, as with the TypeScript `drip` command.
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -12,7 +12,7 @@ use drip::debug::disassemble_function;
 use drip::gc::Heap;
 use drip::{Options, Vm};
 
-const USAGE: &str = "Usage: drip-rs [--disassemble] <file>";
+const USAGE: &str = "usage: drip-rs [--disassemble] <file>";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -25,8 +25,8 @@ fn main() -> ExitCode {
     let source = match std::fs::read_to_string(path) {
         Ok(source) => source,
         Err(e) => {
-            eprintln!("Could not read \"{path}\": {e}");
-            return ExitCode::from(74);
+            eprintln!("cannot read {path}: {e}");
+            return ExitCode::from(66);
         }
     };
 

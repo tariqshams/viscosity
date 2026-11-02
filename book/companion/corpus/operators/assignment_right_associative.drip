@@ -1,0 +1,10 @@
+let a;
+let b;
+let c;
+a = b = c = 7;
+print a; # expect: 7
+print b; # expect: 7
+print c; # expect: 7
+a += b -= 2;
+print a; # expect: 12
+print b; # expect: 5

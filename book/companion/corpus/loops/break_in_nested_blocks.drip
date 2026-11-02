@@ -1,0 +1,15 @@
+let i = 0;
+while true {
+  {
+    let a = "deep";
+    {
+      let b = a + "er";
+      if i == 1 {
+        print b; # expect: deeper
+        break;
+      }
+    }
+  }
+  i += 1;
+}
+print i; # expect: 1

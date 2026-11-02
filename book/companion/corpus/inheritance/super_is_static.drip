@@ -1,0 +1,19 @@
+class A {
+  m() {
+    return "A";
+  }
+}
+class B extends A {
+  m() {
+    return "B";
+  }
+  test() {
+    return super.m();
+  }
+}
+class C extends B {
+  m() {
+    return "C";
+  }
+}
+print new C().test(); # expect: A

@@ -1,0 +1,14 @@
+fn note(s, v) {
+  print s;
+  return v;
+}
+let xs = [0, 0];
+note("list", xs)[note("index", 1)] = note("value", 5);
+# expect: list
+# expect: index
+# expect: value
+print xs; # expect: [0, 5]
+print [note("first", 1), note("second", 2)];
+# expect: first
+# expect: second
+# expect: [1, 2]

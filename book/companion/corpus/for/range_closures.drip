@@ -1,0 +1,10 @@
+let fs = [];
+for i in 0..3 {
+  push(fs, fn () { return i; });
+}
+for f in fs {
+  print f();
+}
+# expect: 0
+# expect: 1
+# expect: 2

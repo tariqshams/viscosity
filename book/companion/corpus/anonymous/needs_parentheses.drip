@@ -1,0 +1,1 @@
+let f = fn x { }; # expect compile error: line 1: expected '(' after 'fn', found 'x'

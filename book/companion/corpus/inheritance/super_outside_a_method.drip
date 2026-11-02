@@ -1,0 +1,1 @@
+print super.x; # expect compile error: line 1: cannot use 'super' outside a method

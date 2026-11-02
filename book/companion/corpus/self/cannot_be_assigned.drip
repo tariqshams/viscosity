@@ -1,0 +1,5 @@
+class C {
+  m() {
+    self = 1; # expect compile error: line 3: cannot assign to this expression
+  }
+}

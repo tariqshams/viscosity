@@ -1,0 +1,6 @@
+class Bag {}
+let b = new Bag();
+b.apples = 3;
+b.pears = b.apples + 1;
+print b.pears; # expect: 4
+print b; # expect: Bag { apples: 3, pears: 4 }

@@ -1,0 +1,12 @@
+if 0 {
+  print "zero is true"; # expect: zero is true
+}
+if none {
+  print "never";
+} else {
+  print "none is false"; # expect: none is false
+}
+let maybe;
+if !maybe {
+  print "not set"; # expect: not set
+}

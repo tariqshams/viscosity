@@ -1,0 +1,18 @@
+class Animal {
+  init(name) {
+    self.name = name;
+  }
+  describe() {
+    return self.name + " is an animal";
+  }
+}
+class Cat extends Animal {
+  speak() {
+    return self.name + " meows";
+  }
+}
+let c = new Cat("tom");
+print c.describe(); # expect: tom is an animal
+print c.speak(); # expect: tom meows
+print c; # expect: Cat { name: "tom" }
+print Cat; # expect: class Cat

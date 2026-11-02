@@ -1,0 +1,4 @@
+print str(1.5) + "!"; # expect: 1.5!
+print str(1 / 0); # expect: inf
+print str(100) + str(0.25); # expect: 1000.25
+print len(str(12345)); # expect: 5

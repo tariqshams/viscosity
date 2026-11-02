@@ -1,29 +1,34 @@
+# Allocation and the garbage collector: build and walk many binary trees.
 class Tree {
-  init(depth) {
-    this.depth = depth;
-    if (depth > 0) {
-      this.a = Tree(depth - 1);
-      this.b = Tree(depth - 1);
-      this.c = Tree(depth - 1);
-      this.d = Tree(depth - 1);
-      this.e = Tree(depth - 1);
+  init(left, right) {
+    self.left = left;
+    self.right = right;
+  }
+  count() {
+    if self.left == none {
+      return 1;
     }
-  }
-
-  walk() {
-    if (this.depth == 0) return 0;
-    return this.depth 
-        + this.a.walk()
-        + this.b.walk()
-        + this.c.walk()
-        + this.d.walk()
-        + this.e.walk();
+    return 1 + self.left.count() + self.right.count();
   }
 }
 
-let tree = Tree(8);
-let start = clock();
-for (let i = 0; i < 100; i = i + 1) {
-  if (tree.walk() != 122068) print "Error";
+fn build(depth) {
+  if depth == 0 {
+    return new Tree(none, none);
+  }
+  return new Tree(build(depth - 1), build(depth - 1));
 }
-print clock() - start;
+
+let longLived = build(14);
+let total = 0;
+for depth in 4..13 {
+  let iterations = 1;
+  for i in 0..(14 - depth) {
+    iterations = iterations * 2;
+  }
+  for i in 0..iterations {
+    total += build(depth).count();
+  }
+}
+print total; # expect: 292868
+print longLived.count(); # expect: 32767

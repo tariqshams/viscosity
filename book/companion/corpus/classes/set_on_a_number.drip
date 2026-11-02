@@ -1,0 +1,2 @@
+let n = 1;
+n.x = 2; # expect runtime error: cannot set 'x' on a number

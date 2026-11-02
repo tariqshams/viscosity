@@ -1,0 +1,2 @@
+class Point {}
+print Point.origin; # expect runtime error: cannot read 'origin' of a class

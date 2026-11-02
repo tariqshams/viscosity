@@ -1,0 +1,12 @@
+class A {
+  m() {
+    return "A.m";
+  }
+}
+class B extends A {
+  m() {
+    return "B.m";
+  }
+}
+print new B().m(); # expect: B.m
+print new A().m(); # expect: A.m

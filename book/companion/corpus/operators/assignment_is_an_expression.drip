@@ -1,0 +1,5 @@
+let x;
+print x = 3; # expect: 3
+print x; # expect: 3
+let y = x = 4;
+print y; # expect: 4

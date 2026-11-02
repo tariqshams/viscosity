@@ -1,0 +1,9 @@
+let xs = [1];
+push(xs, xs);
+print xs; # expect: [1, [...]]
+print len(xs); # expect: 2
+print xs[1][1][0]; # expect: 1
+let a = [];
+let b = [a];
+push(a, b);
+print a; # expect: [[[...]]]

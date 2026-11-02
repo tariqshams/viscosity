@@ -1,0 +1,1 @@
+let g = new Ghost(); # expect runtime error: undefined variable 'Ghost'

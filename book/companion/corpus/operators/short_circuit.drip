@@ -1,0 +1,12 @@
+fn loud(v) {
+  print "evaluated " + str(v);
+  return v;
+}
+print false && loud(1); # expect: false
+print true || loud(2); # expect: true
+print true && loud(3);
+# expect: evaluated 3
+# expect: 3
+print false || loud(4);
+# expect: evaluated 4
+# expect: 4

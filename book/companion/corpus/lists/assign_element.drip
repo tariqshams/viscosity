@@ -1,0 +1,14 @@
+let xs = [1, 2, 3];
+xs[0] = 10;
+print xs; # expect: [10, 2, 3]
+print xs[1] = 20; # expect: 20
+xs[2] += 5;
+print xs; # expect: [10, 20, 8]
+xs[0] -= 1;
+print xs[0]; # expect: 9
+let grid = [[0, 0], [0, 0]];
+grid[1][0] = 7;
+print grid; # expect: [[0, 0], [7, 0]]
+let words = ["a"];
+words[0] += "b";
+print words; # expect: ["ab"]

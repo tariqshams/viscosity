@@ -1,0 +1,40 @@
+# A list of particle records, stepped frame by frame: the shape of data
+# this book is about.
+class Particle {
+  init(x, y, vx, vy) {
+    self.x = x;
+    self.y = y;
+    self.vx = vx;
+    self.vy = vy;
+  }
+  step(dt) {
+    self.vy -= 9.75 * dt;
+    self.x += self.vx * dt;
+    self.y += self.vy * dt;
+    if self.y < 0 {
+      self.y = -self.y;
+      self.vy = -self.vy * 0.75;
+    }
+  }
+}
+
+let ps = [];
+for i in 0..1000 {
+  push(ps, new Particle(i, 10 + i % 7, (i % 13) - 6, 0));
+}
+for frame in 0..300 {
+  for p in ps {
+    p.step(0.03125);
+  }
+}
+let sumX = 0;
+let maxY = 0;
+for p in ps {
+  sumX += p.x;
+  if p.y > maxY {
+    maxY = p.y;
+  }
+}
+print len(ps); # expect: 1000
+print sumX; # expect: 499443.75
+print maxY > 0; # expect: true

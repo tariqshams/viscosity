@@ -1,24 +1,27 @@
-//! The bytecode virtual machine (book chapters 47 and 53 to 60).
+//! The bytecode virtual machine (book chapters 47 and 53 to 60). It runs
+//! the same instructions as the TypeScript VM, with the same results and
+//! the same error messages, to the byte.
 
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use crate::chunk::{Chunk, OpCode};
 use crate::compiler::compile;
 use crate::gc::{Heap, HeapObject, Marks, Trace};
 use crate::object::{
-    Gc, NativeFn, ObjBoundMethod, ObjClass, ObjClosure, ObjInstance, ObjNative,
-    ObjUpvalue, StrRef,
+    Gc, Native, ObjBoundMethod, ObjClass, ObjClosure, ObjFunction, ObjInstance, ObjList,
+    ObjNative, ObjUpvalue, StrRef,
 };
 use crate::table::Table;
-use crate::value::Value;
+use crate::value::{Value, describe, format_number};
 
-/// The deepest the call stack may go before "Stack overflow.".
-pub const FRAMES_MAX: usize = 64;
+/// The deepest calls may nest before "stack overflow"; the TypeScript
+/// implementations have the same limit.
+pub const FRAMES_MAX: usize = 256;
 /// Room for every frame to use all 256 of its slots.
 const STACK_MAX: usize = FRAMES_MAX * 256;
 
-/// The exit codes of the `sysexits.h` convention, as clox uses them.
+/// The exit codes of the command-line tools.
 pub const EXIT_COMPILE_ERROR: i32 = 65;
 pub const EXIT_RUNTIME_ERROR: i32 = 70;
 
@@ -54,9 +57,13 @@ pub struct Options {
 
 /// A runtime error. Its message and stack trace are already on stderr by
 /// the time one of these exists, so it carries nothing.
-struct RuntimeError;
+pub struct RuntimeError;
 
 type Run<T = ()> = Result<T, RuntimeError>;
+
+fn plural(n: usize, word: &str) -> String {
+    if n == 1 { format!("1 {word}") } else { format!("{n} {word}s") }
+}
 
 pub struct Vm {
     pub heap: Heap,
@@ -77,6 +84,8 @@ pub struct Vm {
     open_upvalues: Vec<Gc<ObjUpvalue>>,
     /// The string "init", kept to look up initializers quickly.
     init_string: StrRef,
+    /// When the VM started, for `clock()`.
+    start: Instant,
     stdout: Vec<String>,
     stderr: Vec<String>,
 }
@@ -125,10 +134,15 @@ impl Vm {
             globals: Table::new(),
             open_upvalues: Vec::new(),
             init_string,
+            start: Instant::now(),
             stdout: Vec::new(),
             stderr: Vec::new(),
         };
-        vm.define_native("clock", 0, clock);
+        vm.define_native("clock", 0, Native::Clock);
+        vm.define_native("len", 1, Native::Len);
+        vm.define_native("push", 2, Native::Push);
+        vm.define_native("pop", 1, Native::Pop);
+        vm.define_native("str", 1, Native::Str);
         vm
     }
 
@@ -207,14 +221,14 @@ impl Vm {
         self.heap.collect(&[&roots]);
     }
 
-    fn define_native(&mut self, name: &str, arity: usize, function: NativeFn) {
+    fn define_native(&mut self, name: &'static str, arity: usize, native: Native) {
         // Both stay on the stack, so a collection mid-way can't free them.
         self.collect_if_needed();
-        let name = self.heap.intern(name);
-        self.push(Value::String(name));
-        let native = self.alloc(ObjNative { arity, function });
-        self.push(Value::Native(native));
-        self.globals.set(name, Value::Native(native));
+        let interned = self.heap.intern(name);
+        self.push(Value::String(interned));
+        let object = self.alloc(ObjNative { native, name, arity });
+        self.push(Value::Native(object));
+        self.globals.set(interned, Value::Native(object));
         self.pop();
         self.pop();
     }
@@ -240,11 +254,15 @@ impl Vm {
         self.stack[index] = value;
     }
 
+    fn describe(&self, value: Value) -> String {
+        describe(&self.heap, value)
+    }
+
     // ---- errors -----------------------------------------------------------
 
     /// Report a runtime error with a stack trace, innermost call first.
     fn runtime_error(&mut self, message: impl Into<String>) -> RuntimeError {
-        self.stderr.push(message.into());
+        self.stderr.push(format!("runtime error: {}", message.into()));
         let top = self.frames.len().saturating_sub(1);
         for (depth, frame) in self.frames.iter().enumerate().rev() {
             let ip = if depth == top { self.ip } else { frame.ip };
@@ -252,10 +270,11 @@ impl Vm {
             let line = frame.chunk.lines[ip - 1];
             let function = &self.heap[self.heap[frame.closure].function];
             let place = match function.name {
-                Some(name) => format!("{}()", self.heap.str(name)),
-                None => "script".to_string(),
+                Some(name) => format!("fn {}", self.heap.str(name)),
+                None if function.is_script => "script".to_string(),
+                None => "anonymous fn".to_string(),
             };
-            self.stderr.push(format!("[line {line}] in {place}"));
+            self.stderr.push(format!("  at line {line} in {place}"));
         }
         RuntimeError
     }
@@ -266,11 +285,15 @@ impl Vm {
         let function = self.heap[closure].function;
         let arity = self.heap[function].arity;
         if arg_count != arity {
-            let message = format!("Expected {arity} arguments but got {arg_count}.");
+            let label = self.label(function);
+            let message = format!(
+                "{label} takes {} but got {arg_count}",
+                plural(arity, "argument")
+            );
             return Err(self.runtime_error(message));
         }
         if self.frames.len() == FRAMES_MAX {
-            return Err(self.runtime_error("Stack overflow."));
+            return Err(self.runtime_error("stack overflow"));
         }
         // Save the caller's ip, then load the callee into the registers.
         if let Some(caller) = self.frames.last_mut() {
@@ -285,6 +308,14 @@ impl Vm {
         Ok(())
     }
 
+    /// How arity errors name a function: `area()`, or `anonymous fn`.
+    fn label(&self, function: Gc<ObjFunction>) -> String {
+        match self.heap[function].name {
+            Some(name) => format!("{}()", self.heap.str(name)),
+            None => "anonymous fn".to_string(),
+        }
+    }
+
     /// Return from the running frame to its caller, if it has one.
     fn pop_frame(&mut self) -> Option<CallFrame> {
         let frame = self.frames.pop().expect("a frame is running");
@@ -297,60 +328,126 @@ impl Vm {
 
     fn call_value(&mut self, callee: Value, arg_count: usize) -> Run {
         match callee {
+            Value::Closure(closure) => self.call(closure, arg_count),
             Value::BoundMethod(bound) => {
                 let ObjBoundMethod { receiver, method } = self.heap[bound];
-                // The receiver goes in slot 0, where the method finds `this`.
+                // The receiver goes in slot 0, where the method finds `self`.
                 self.set_peek(arg_count, receiver);
                 self.call(method, arg_count)
             }
-            Value::Class(class) => {
-                let instance = self.alloc(ObjInstance { class, fields: Table::new() });
-                self.set_peek(arg_count, Value::Instance(instance));
-                match self.heap[class].methods.get(self.init_string) {
-                    Some(init) => self.call(as_closure(init), arg_count),
-                    None if arg_count != 0 => {
-                        let message =
-                            format!("Expected 0 arguments but got {arg_count}.");
-                        Err(self.runtime_error(message))
-                    }
-                    None => Ok(()),
-                }
-            }
-            Value::Closure(closure) => self.call(closure, arg_count),
             Value::Native(native) => {
-                let ObjNative { arity, function } = self.heap[native];
+                let ObjNative { native, name, arity } = self.heap[native];
                 if arg_count != arity {
-                    let message =
-                        format!("Expected {arity} arguments but got {arg_count}.");
+                    let message = format!(
+                        "{name}() takes {} but got {arg_count}",
+                        plural(arity, "argument")
+                    );
                     return Err(self.runtime_error(message));
                 }
+                // The arguments stay on the stack while the native runs, so
+                // a collection it causes can't free them.
+                let result = self.call_native(native, arg_count)?;
                 let args_start = self.stack.len() - arg_count;
-                let result = function(&self.stack[args_start..]);
-                // Pop the arguments and the native itself.
                 self.stack.truncate(args_start - 1);
                 self.push(result);
                 Ok(())
             }
-            _ => Err(self.runtime_error("Can only call functions and classes.")),
+            Value::Class(class) => {
+                let name = self.heap.str(self.heap[class].name).to_string();
+                Err(self
+                    .runtime_error(format!("cannot call a class: use 'new {name}(...)'")))
+            }
+            other => {
+                let message = format!("cannot call {}", self.describe(other));
+                Err(self.runtime_error(message))
+            }
         }
     }
 
-    fn invoke_from_class(
-        &mut self,
-        class: Gc<ObjClass>,
-        name: StrRef,
-        arg_count: usize,
-    ) -> Run {
-        match self.heap[class].methods.get(name) {
-            Some(method) => self.call(as_closure(method), arg_count),
-            None => Err(self.undefined_property(name)),
+    /// Run a native function on the top `arg_count` values.
+    fn call_native(&mut self, native: Native, arg_count: usize) -> Run<Value> {
+        let arg = |vm: &Vm, i: usize| vm.stack[vm.stack.len() - arg_count + i];
+        match native {
+            Native::Clock => Ok(Value::Number(self.start.elapsed().as_secs_f64())),
+            Native::Len => match arg(self, 0) {
+                Value::List(list) => {
+                    Ok(Value::Number(self.heap[list].items.len() as f64))
+                }
+                Value::String(s) => {
+                    Ok(Value::Number(self.heap.str(s).chars().count() as f64))
+                }
+                other => {
+                    let message = format!(
+                        "len() needs a list or a string, not {}",
+                        self.describe(other)
+                    );
+                    Err(self.runtime_error(message))
+                }
+            },
+            Native::Push => match arg(self, 0) {
+                Value::List(list) => {
+                    let value = arg(self, 1);
+                    self.heap[list].items.push(value);
+                    Ok(Value::None)
+                }
+                other => {
+                    let message =
+                        format!("push() needs a list, not {}", self.describe(other));
+                    Err(self.runtime_error(message))
+                }
+            },
+            Native::Pop => match arg(self, 0) {
+                Value::List(list) => match self.heap[list].items.pop() {
+                    Some(value) => Ok(value),
+                    None => Err(self.runtime_error("cannot pop from an empty list")),
+                },
+                other => {
+                    let message =
+                        format!("pop() needs a list, not {}", self.describe(other));
+                    Err(self.runtime_error(message))
+                }
+            },
+            Native::Str => {
+                let text = arg(self, 0).format(&self.heap);
+                Ok(Value::String(self.intern_owned(text)))
+            }
+        }
+    }
+
+    /// `new C(args)`: the class is under the arguments on the stack.
+    fn new_instance(&mut self, arg_count: usize) -> Run {
+        let Value::Class(class) = self.peek(arg_count) else {
+            let message = format!(
+                "'new' needs a class, not {}",
+                self.describe(self.peek(arg_count))
+            );
+            return Err(self.runtime_error(message));
+        };
+        let instance = self.alloc(ObjInstance {
+            class,
+            fields: Table::new(),
+            field_order: Vec::new(),
+        });
+        self.set_peek(arg_count, Value::Instance(instance));
+        match self.heap[class].methods.get(self.init_string) {
+            Some(init) => self.call(as_closure(init), arg_count),
+            None if arg_count != 0 => {
+                let name = self.heap.str(self.heap[class].name);
+                let message = format!(
+                    "{name} has no init, so it takes no arguments, but got {arg_count}"
+                );
+                Err(self.runtime_error(message))
+            }
+            None => Ok(()),
         }
     }
 
     /// `receiver.name(args)`, without making a bound method on the way.
     fn invoke(&mut self, name: StrRef, arg_count: usize) -> Run {
         let Value::Instance(instance) = self.peek(arg_count) else {
-            return Err(self.runtime_error("Only instances have methods."));
+            let receiver = self.describe(self.peek(arg_count));
+            let message = format!("cannot read '{}' of {receiver}", self.heap.str(name));
+            return Err(self.runtime_error(message));
         };
         // A field holding a function shadows a method of the same name.
         if let Some(field) = self.heap[instance].fields.get(name) {
@@ -358,25 +455,33 @@ impl Vm {
             return self.call_value(field, arg_count);
         }
         let class = self.heap[instance].class;
-        self.invoke_from_class(class, name, arg_count)
+        match self.heap[class].methods.get(name) {
+            Some(method) => self.call(as_closure(method), arg_count),
+            None => Err(self.no_property(class, name)),
+        }
     }
 
-    /// Replace the instance on top of the stack with its method `name`,
-    /// bound to it.
-    fn bind_method(&mut self, class: Gc<ObjClass>, name: StrRef) -> Run {
-        let Some(method) = self.heap[class].methods.get(name) else {
-            return Err(self.undefined_property(name));
-        };
-        let receiver = self.peek(0);
-        let bound = self.alloc(ObjBoundMethod { receiver, method: as_closure(method) });
-        self.pop();
-        self.push(Value::BoundMethod(bound));
-        Ok(())
-    }
-
-    fn undefined_property(&mut self, name: StrRef) -> RuntimeError {
-        let message = format!("Undefined property '{}'.", self.heap.str(name));
+    fn no_property(&mut self, class: Gc<ObjClass>, name: StrRef) -> RuntimeError {
+        let class_name = self.heap.str(self.heap[class].name);
+        let message = format!("{class_name} has no property '{}'", self.heap.str(name));
         self.runtime_error(message)
+    }
+
+    /// The superclass's method `name`.
+    fn super_method(
+        &mut self,
+        superclass: Gc<ObjClass>,
+        name: StrRef,
+    ) -> Run<Gc<ObjClosure>> {
+        match self.heap[superclass].methods.get(name) {
+            Some(method) => Ok(as_closure(method)),
+            None => {
+                let class_name = self.heap.str(self.heap[superclass].name);
+                let message =
+                    format!("{class_name} has no method '{}'", self.heap.str(name));
+                Err(self.runtime_error(message))
+            }
+        }
     }
 
     // ---- upvalues ---------------------------------------------------------
@@ -442,7 +547,7 @@ impl Vm {
     }
 
     fn read_constant(&mut self) -> Value {
-        let index = self.read_byte() as usize;
+        let index = self.read_short();
         self.chunk.constants[index]
     }
 
@@ -453,13 +558,45 @@ impl Vm {
         }
     }
 
-    /// Pop two numbers for an arithmetic or comparison instruction.
-    fn pop_numbers(&mut self) -> Run<(f64, f64)> {
+    /// The two numbers an arithmetic or comparison instruction needs, popped.
+    fn pop_numbers(&mut self, op: &str) -> Run<(f64, f64)> {
         let (Value::Number(a), Value::Number(b)) = (self.peek(1), self.peek(0)) else {
-            return Err(self.runtime_error("Operands must be numbers."));
+            let (a, b) = (self.describe(self.peek(1)), self.describe(self.peek(0)));
+            let message = if matches!(op, "<" | "<=" | ">" | ">=") {
+                format!("cannot compare {a} and {b} with '{op}'")
+            } else {
+                format!("cannot use '{op}' on {a} and {b}")
+            };
+            return Err(self.runtime_error(message));
         };
         self.stack.truncate(self.stack.len() - 2);
         Ok((a, b))
+    }
+
+    /// The list and element index for `index.get` and `index.set`.
+    fn check_index(&mut self, list: Value, index: Value) -> Run<(Gc<ObjList>, usize)> {
+        let Value::List(list) = list else {
+            let message = format!("cannot index {}", self.describe(list));
+            return Err(self.runtime_error(message));
+        };
+        let Value::Number(i) = index else {
+            let message =
+                format!("a list index must be a number, not {}", self.describe(index));
+            return Err(self.runtime_error(message));
+        };
+        if i.fract() != 0.0 || !i.is_finite() {
+            let message = format!("index {} is not a whole number", format_number(i));
+            return Err(self.runtime_error(message));
+        }
+        let len = self.heap[list].items.len();
+        if i < 0.0 || i >= len as f64 {
+            let message = format!(
+                "index {} is out of range for a list of length {len}",
+                format_number(i)
+            );
+            return Err(self.runtime_error(message));
+        }
+        Ok((list, i as usize))
     }
 
     fn run(&mut self) -> Run {
@@ -467,29 +604,44 @@ impl Vm {
             let byte = self.read_byte();
             let op = OpCode::from_byte(byte).expect("the compiler emits valid opcodes");
             match op {
-                OpCode::Constant => {
+                OpCode::Const => {
                     let value = self.read_constant();
                     self.push(value);
                 }
-                OpCode::Nil => self.push(Value::Nil),
+                OpCode::None => self.push(Value::None),
                 OpCode::True => self.push(Value::Bool(true)),
                 OpCode::False => self.push(Value::Bool(false)),
                 OpCode::Pop => {
                     self.pop();
                 }
-                OpCode::GetLocal => {
+                OpCode::Dup => self.push(self.peek(0)),
+                OpCode::Dup2 => {
+                    let (a, b) = (self.peek(1), self.peek(0));
+                    self.push(a);
+                    self.push(b);
+                }
+                OpCode::List => {
+                    let n = self.read_byte() as usize;
+                    let start = self.stack.len() - n;
+                    let items = self.stack[start..].to_vec();
+                    // The elements stay on the stack while the list is allocated.
+                    let list = self.alloc(ObjList { items });
+                    self.stack.truncate(start);
+                    self.push(Value::List(list));
+                }
+                OpCode::LoadLocal => {
                     let slot = self.slots + self.read_byte() as usize;
                     self.push(self.stack[slot]);
                 }
-                OpCode::SetLocal => {
+                OpCode::StoreLocal => {
                     let slot = self.slots + self.read_byte() as usize;
                     self.stack[slot] = self.peek(0);
                 }
-                OpCode::GetGlobal => {
+                OpCode::LoadGlobal => {
                     let name = self.read_string();
                     let Some(value) = self.globals.get(name) else {
                         let message =
-                            format!("Undefined variable '{}'.", self.heap.str(name));
+                            format!("undefined variable '{}'", self.heap.str(name));
                         return Err(self.runtime_error(message));
                     };
                     self.push(value);
@@ -499,17 +651,17 @@ impl Vm {
                     self.globals.set(name, self.peek(0));
                     self.pop();
                 }
-                OpCode::SetGlobal => {
+                OpCode::StoreGlobal => {
                     let name = self.read_string();
                     // Assigning never creates a global: undo and complain.
                     if self.globals.set(name, self.peek(0)) {
                         self.globals.delete(name);
                         let message =
-                            format!("Undefined variable '{}'.", self.heap.str(name));
+                            format!("undefined variable '{}'", self.heap.str(name));
                         return Err(self.runtime_error(message));
                     }
                 }
-                OpCode::GetUpvalue => {
+                OpCode::LoadUpvalue => {
                     let index = self.read_byte() as usize;
                     let upvalue = self.heap[self.closure_register()].upvalues[index];
                     let value = match self.heap[upvalue] {
@@ -518,7 +670,7 @@ impl Vm {
                     };
                     self.push(value);
                 }
-                OpCode::SetUpvalue => {
+                OpCode::StoreUpvalue => {
                     let index = self.read_byte() as usize;
                     let upvalue = self.heap[self.closure_register()].upvalues[index];
                     let value = self.peek(0);
@@ -527,91 +679,185 @@ impl Vm {
                         ObjUpvalue::Closed(closed) => *closed = value,
                     }
                 }
-                OpCode::GetProperty => {
-                    let Value::Instance(instance) = self.peek(0) else {
-                        return Err(self.runtime_error("Only instances have properties."));
-                    };
+                OpCode::GetProp => {
                     let name = self.read_string();
+                    let Value::Instance(instance) = self.peek(0) else {
+                        let what = self.describe(self.peek(0));
+                        let message =
+                            format!("cannot read '{}' of {what}", self.heap.str(name));
+                        return Err(self.runtime_error(message));
+                    };
                     // Fields shadow methods.
                     if let Some(value) = self.heap[instance].fields.get(name) {
-                        self.pop();
-                        self.push(value);
+                        self.set_peek(0, value);
                     } else {
                         let class = self.heap[instance].class;
-                        self.bind_method(class, name)?;
+                        let Some(method) = self.heap[class].methods.get(name) else {
+                            return Err(self.no_property(class, name));
+                        };
+                        let receiver = self.peek(0);
+                        let bound = self.alloc(ObjBoundMethod {
+                            receiver,
+                            method: as_closure(method),
+                        });
+                        self.set_peek(0, Value::BoundMethod(bound));
                     }
                 }
-                OpCode::SetProperty => {
-                    let Value::Instance(instance) = self.peek(1) else {
-                        return Err(self.runtime_error("Only instances have fields."));
-                    };
+                OpCode::SetProp => {
                     let name = self.read_string();
+                    let Value::Instance(instance) = self.peek(1) else {
+                        let what = self.describe(self.peek(1));
+                        let message =
+                            format!("cannot set '{}' on {what}", self.heap.str(name));
+                        return Err(self.runtime_error(message));
+                    };
                     let value = self.peek(0);
-                    self.heap[instance].fields.set(name, value);
+                    let object = &mut self.heap[instance];
+                    if object.fields.set(name, value) {
+                        object.field_order.push(name);
+                    }
                     // Leave the value as the assignment's result.
                     self.pop();
-                    self.pop();
-                    self.push(value);
+                    self.set_peek(0, value);
                 }
                 OpCode::GetSuper => {
                     let name = self.read_string();
                     let superclass = as_class(self.pop());
-                    self.bind_method(superclass, name)?;
+                    let method = self.super_method(superclass, name)?;
+                    let receiver = self.peek(0);
+                    let bound = self.alloc(ObjBoundMethod { receiver, method });
+                    self.set_peek(0, Value::BoundMethod(bound));
                 }
-                OpCode::Equal => {
+                OpCode::IndexGet => {
+                    let index = self.pop();
+                    let (list, i) = self.check_index(self.peek(0), index)?;
+                    let value = self.heap[list].items[i];
+                    self.set_peek(0, value);
+                }
+                OpCode::IndexSet => {
+                    let value = self.pop();
+                    let index = self.pop();
+                    let (list, i) = self.check_index(self.peek(0), index)?;
+                    self.heap[list].items[i] = value;
+                    self.set_peek(0, value);
+                }
+                OpCode::Add => self.add()?,
+                OpCode::Sub => {
+                    let (a, b) = self.pop_numbers("-")?;
+                    self.push(Value::Number(a - b));
+                }
+                OpCode::Mul => {
+                    let (a, b) = self.pop_numbers("*")?;
+                    self.push(Value::Number(a * b));
+                }
+                OpCode::Div => {
+                    let (a, b) = self.pop_numbers("/")?;
+                    self.push(Value::Number(a / b));
+                }
+                OpCode::Rem => {
+                    let (a, b) = self.pop_numbers("%")?;
+                    self.push(Value::Number(a % b));
+                }
+                OpCode::Eq => {
                     let b = self.pop();
                     let a = self.pop();
                     self.push(Value::Bool(a == b));
                 }
-                OpCode::Greater => {
-                    let (a, b) = self.pop_numbers()?;
-                    self.push(Value::Bool(a > b));
+                OpCode::Ne => {
+                    let b = self.pop();
+                    let a = self.pop();
+                    self.push(Value::Bool(a != b));
                 }
-                OpCode::Less => {
-                    let (a, b) = self.pop_numbers()?;
+                OpCode::Lt => {
+                    let (a, b) = self.pop_numbers("<")?;
                     self.push(Value::Bool(a < b));
                 }
-                OpCode::Add => self.add()?,
-                OpCode::Subtract => {
-                    let (a, b) = self.pop_numbers()?;
-                    self.push(Value::Number(a - b));
+                OpCode::Le => {
+                    let (a, b) = self.pop_numbers("<=")?;
+                    self.push(Value::Bool(a <= b));
                 }
-                OpCode::Multiply => {
-                    let (a, b) = self.pop_numbers()?;
-                    self.push(Value::Number(a * b));
+                OpCode::Gt => {
+                    let (a, b) = self.pop_numbers(">")?;
+                    self.push(Value::Bool(a > b));
                 }
-                OpCode::Divide => {
-                    let (a, b) = self.pop_numbers()?;
-                    self.push(Value::Number(a / b));
+                OpCode::Ge => {
+                    let (a, b) = self.pop_numbers(">=")?;
+                    self.push(Value::Bool(a >= b));
                 }
                 OpCode::Not => {
                     let value = self.pop();
                     self.push(Value::Bool(value.is_falsey()));
                 }
-                OpCode::Negate => {
+                OpCode::Neg => {
                     let Value::Number(n) = self.peek(0) else {
-                        return Err(self.runtime_error("Operand must be a number."));
+                        let message =
+                            format!("cannot negate {}", self.describe(self.peek(0)));
+                        return Err(self.runtime_error(message));
                     };
                     self.set_peek(0, Value::Number(-n));
                 }
                 OpCode::Print => {
                     let value = self.pop();
-                    let text = value.display(&self.heap).to_string();
+                    let text = value.format(&self.heap);
                     self.stdout.push(text);
                 }
                 OpCode::Jump => {
                     let offset = self.read_short();
                     self.ip += offset;
                 }
-                OpCode::JumpIfFalse => {
+                OpCode::JumpUnless => {
+                    let offset = self.read_short();
+                    if self.pop().is_falsey() {
+                        self.ip += offset;
+                    }
+                }
+                OpCode::JumpUnlessKeep => {
                     let offset = self.read_short();
                     if self.peek(0).is_falsey() {
+                        self.ip += offset;
+                    }
+                }
+                OpCode::JumpIfKeep => {
+                    let offset = self.read_short();
+                    if !self.peek(0).is_falsey() {
                         self.ip += offset;
                     }
                 }
                 OpCode::Loop => {
                     let offset = self.read_short();
                     self.ip -= offset;
+                }
+                OpCode::IterRange => {
+                    for (distance, end) in [(1, "start"), (0, "end")] {
+                        let value = self.peek(distance);
+                        if !matches!(value, Value::Number(_)) {
+                            let message = format!(
+                                "a range must {end} with a number, not {}",
+                                self.describe(value)
+                            );
+                            return Err(self.runtime_error(message));
+                        }
+                    }
+                }
+                OpCode::IterList => {
+                    if !matches!(self.peek(0), Value::List(_)) {
+                        let message =
+                            format!("cannot loop over {}", self.describe(self.peek(0)));
+                        return Err(self.runtime_error(message));
+                    }
+                }
+                OpCode::ListLen => {
+                    let Value::List(list) = self.peek(0) else {
+                        unreachable!("iter.list checked it is a list")
+                    };
+                    let len = self.heap[list].items.len();
+                    self.set_peek(0, Value::Number(len as f64));
+                }
+                OpCode::IncLocal => {
+                    let slot = self.slots + self.read_byte() as usize;
+                    if let Value::Number(n) = self.stack[slot] {
+                        self.stack[slot] = Value::Number(n + 1.0);
+                    }
                 }
                 OpCode::Call => {
                     let arg_count = self.read_byte() as usize;
@@ -622,11 +868,16 @@ impl Vm {
                     let arg_count = self.read_byte() as usize;
                     self.invoke(name, arg_count)?;
                 }
-                OpCode::SuperInvoke => {
+                OpCode::InvokeSuper => {
                     let name = self.read_string();
                     let arg_count = self.read_byte() as usize;
                     let superclass = as_class(self.pop());
-                    self.invoke_from_class(superclass, name, arg_count)?;
+                    let method = self.super_method(superclass, name)?;
+                    self.call(method, arg_count)?;
+                }
+                OpCode::New => {
+                    let arg_count = self.read_byte() as usize;
+                    self.new_instance(arg_count)?;
                 }
                 OpCode::Closure => self.closure(),
                 OpCode::CloseUpvalue => {
@@ -637,7 +888,7 @@ impl Vm {
                     let result = self.pop();
                     self.close_upvalues(self.slots);
                     let Some(frame) = self.pop_frame() else {
-                        self.pop(); // the script's own closure
+                        self.stack.clear();
                         return Ok(());
                     };
                     // Drop the callee's slots, then hand back its result.
@@ -651,7 +902,11 @@ impl Vm {
                 }
                 OpCode::Inherit => {
                     let Value::Class(superclass) = self.peek(1) else {
-                        return Err(self.runtime_error("Superclass must be a class."));
+                        let message = format!(
+                            "a class can only extend a class, not {}",
+                            self.describe(self.peek(1))
+                        );
+                        return Err(self.runtime_error(message));
                     };
                     let subclass = as_class(self.peek(0));
                     // Copy-down inheritance: methods are copied once, now.
@@ -670,7 +925,7 @@ impl Vm {
         }
     }
 
-    /// `+` adds two numbers or concatenates two strings.
+    /// `+` adds two numbers or joins two strings.
     fn add(&mut self) -> Run {
         match (self.peek(1), self.peek(0)) {
             (Value::Number(a), Value::Number(b)) => {
@@ -685,8 +940,9 @@ impl Vm {
                 self.stack.truncate(self.stack.len() - 2);
                 self.push(Value::String(result));
             }
-            _ => {
-                let message = "Operands must be two numbers or two strings.";
+            (a, b) => {
+                let message =
+                    format!("cannot add {} and {}", self.describe(a), self.describe(b));
                 return Err(self.runtime_error(message));
             }
         }
@@ -731,10 +987,4 @@ fn as_class(value: Value) -> Gc<ObjClass> {
         Value::Class(class) => class,
         _ => unreachable!("expected a class"),
     }
-}
-
-/// The `clock()` native: seconds since the Unix epoch.
-fn clock(_args: &[Value]) -> Value {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-    Value::Number(now.as_secs_f64())
 }

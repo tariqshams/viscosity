@@ -1,0 +1,1 @@
+print self; # expect compile error: line 1: cannot use 'self' outside a method

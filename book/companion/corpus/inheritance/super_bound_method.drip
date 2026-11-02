@@ -1,0 +1,16 @@
+class A {
+  name() {
+    return "A sees " + self.tag;
+  }
+}
+class B extends A {
+  init() {
+    self.tag = "b";
+  }
+  grab() {
+    return super.name;
+  }
+}
+let m = new B().grab();
+print m(); # expect: A sees b
+print m; # expect: fn name

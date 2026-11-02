@@ -1,0 +1,16 @@
+class Scale {
+  init(k) {
+    self.k = k;
+  }
+  apply(x) {
+    return x * self.k;
+  }
+}
+fn map(xs, f) {
+  let out = [];
+  for x in xs {
+    push(out, f(x));
+  }
+  return out;
+}
+print map([1, 2, 3], new Scale(10).apply); # expect: [10, 20, 30]

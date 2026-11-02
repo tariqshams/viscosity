@@ -1,0 +1,7 @@
+class C {
+  m() {}
+}
+let c = new C();
+print c.m == c.m; # expect: false
+let m = c.m;
+print m == m; # expect: true

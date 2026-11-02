@@ -1,0 +1,72 @@
+{
+  "env": {
+    "node": "v22.23.4",
+    "v8": "12.4.254.21-node.57",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "date": "2026-11-02T07:39:29.562Z",
+    "runs": 3,
+    "note": "Best of N, each in a fresh process. Includes compile time. Shared cloud VM."
+  },
+  "rows": [
+    {
+      "program": "closures",
+      "tree": 811,
+      "vm": 655,
+      "speedup": 1.24
+    },
+    {
+      "program": "fib",
+      "tree": 2365,
+      "vm": 1906,
+      "speedup": 1.24
+    },
+    {
+      "program": "fields",
+      "tree": 530,
+      "vm": 712,
+      "speedup": 0.74
+    },
+    {
+      "program": "instantiation",
+      "tree": 428,
+      "vm": 623,
+      "speedup": 0.69
+    },
+    {
+      "program": "method_calls",
+      "tree": 918,
+      "vm": 704,
+      "speedup": 1.3
+    },
+    {
+      "program": "particles",
+      "tree": 446,
+      "vm": 380,
+      "speedup": 1.17
+    },
+    {
+      "program": "sieve",
+      "tree": 1317,
+      "vm": 1216,
+      "speedup": 1.08
+    },
+    {
+      "program": "sort",
+      "tree": 1394,
+      "vm": 1224,
+      "speedup": 1.14
+    },
+    {
+      "program": "strings",
+      "tree": 365,
+      "vm": 383,
+      "speedup": 0.95
+    },
+    {
+      "program": "trees",
+      "tree": 597,
+      "vm": 749,
+      "speedup": 0.8
+    }
+  ]
+}

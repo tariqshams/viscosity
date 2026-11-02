@@ -1,0 +1,15 @@
+fn outer() {
+  let count = 0;
+  fn middle() {
+    fn inner() {
+      count += 1;
+      return count;
+    }
+    return inner;
+  }
+  let f = middle();
+  f();
+  f();
+  return count;
+}
+print outer(); # expect: 2

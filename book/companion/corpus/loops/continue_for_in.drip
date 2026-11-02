@@ -1,0 +1,8 @@
+let kept = [];
+for x in [1, -2, 3, -4] {
+  if x < 0 {
+    continue;
+  }
+  push(kept, x);
+}
+print kept; # expect: [1, 3]

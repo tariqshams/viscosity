@@ -1,0 +1,5 @@
+class Empty {}
+print Empty; # expect: class Empty
+let e = new Empty();
+print e; # expect: Empty {}
+print new Empty(); # expect: Empty {}

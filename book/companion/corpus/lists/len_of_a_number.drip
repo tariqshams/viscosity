@@ -1,0 +1,1 @@
+print len(5); # expect runtime error: len() needs a list or a string, not a number

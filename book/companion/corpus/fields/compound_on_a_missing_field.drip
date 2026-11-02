@@ -1,0 +1,3 @@
+class Counter {}
+let c = new Counter();
+c.missing += 1; # expect runtime error: Counter has no property 'missing'

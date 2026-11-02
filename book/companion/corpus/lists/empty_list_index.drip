@@ -1,0 +1,2 @@
+let xs = [];
+print xs[0]; # expect runtime error: index 0 is out of range for a list of length 0

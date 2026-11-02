@@ -1,0 +1,2 @@
+let count = 3;
+print "count: " + count; # expect runtime error: cannot add a string and a number

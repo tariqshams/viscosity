@@ -1,0 +1,6 @@
+print 1; # expect: 1
+print 2;# expect: 2
+# print 3;
+print "# inside a string"; # expect: # inside a string
+print 4 # a comment can sit between tokens
+  + 5; # expect: 9

@@ -1,5 +1,8 @@
 // A disassembler: prints bytecode as readable text (book chapter 46).
-import { OP, OP_NAMES, type Chunk } from './chunk.ts';
+//
+//   0004    2 load.global       2 'add'
+//   offset line  instruction    operands
+import { Op, OP_NAMES, type Chunk } from './chunk.ts';
 import { formatValue, type ObjFunction } from './object.ts';
 
 export function disassembleChunk(chunk: Chunk, name: string): string[] {
@@ -12,48 +15,50 @@ export function disassembleChunk(chunk: Chunk, name: string): string[] {
   return lines;
 }
 
+/** A function's chunk, then the chunks of the functions in its constants. */
+export function disassembleFunction(fn: ObjFunction): string[] {
+  const lines = disassembleChunk(fn.chunk, fn.name ? fn.name.chars : fn.isScript ? '<script>' : '<fn>');
+  for (const c of fn.chunk.constants) {
+    if (c !== null && typeof c === 'object' && c.type === 'function') lines.push(...disassembleFunction(c));
+  }
+  return lines;
+}
+
 export function disassembleInstruction(chunk: Chunk, offset: number): [string, number] {
-  const pad = (n: number, w: number) => String(n).padStart(w, '0');
+  const code = chunk.code;
   const line = offset > 0 && chunk.lines[offset] === chunk.lines[offset - 1] ? '   |' : String(chunk.lines[offset]).padStart(4);
-  const prefix = `${pad(offset, 4)} ${line} `;
-  const op = chunk.code[offset];
-  const name = OP_NAMES[op] ?? `Unknown opcode ${op}`;
-  const constant = () => {
-    const c = chunk.code[offset + 1];
-    return [`${prefix}${name.padEnd(16)} ${String(c).padStart(4)} '${formatValue(chunk.constants[c])}'`, offset + 2] as [string, number];
-  };
-  const byte = () => [`${prefix}${name.padEnd(16)} ${String(chunk.code[offset + 1]).padStart(4)}`, offset + 2] as [string, number];
-  const jump = (sign: number) => {
-    const j = (chunk.code[offset + 1] << 8) | chunk.code[offset + 2];
-    return [`${prefix}${name.padEnd(16)} ${String(offset).padStart(4)} -> ${offset + 3 + sign * j}`, offset + 3] as [string, number];
-  };
-  const invoke = () => {
-    const c = chunk.code[offset + 1];
-    const args = chunk.code[offset + 2];
-    return [`${prefix}${name.padEnd(16)} (${args} args) ${String(c).padStart(4)} '${formatValue(chunk.constants[c])}'`, offset + 3] as [string, number];
-  };
+  const prefix = `${String(offset).padStart(4, '0')} ${line} `;
+  const op = code[offset];
+  const name = (OP_NAMES[op] ?? `unknown opcode ${op}`).padEnd(16);
+  const short = (at: number) => (code[at] << 8) | code[at + 1];
+  const constant = (k: number) => `${String(k).padStart(4)} '${formatValue(chunk.constants[k])}'`;
   switch (op) {
-    case OP.CONSTANT: case OP.GET_GLOBAL: case OP.DEFINE_GLOBAL: case OP.SET_GLOBAL:
-    case OP.GET_PROPERTY: case OP.SET_PROPERTY: case OP.GET_SUPER: case OP.CLASS: case OP.METHOD:
-      return constant();
-    case OP.GET_LOCAL: case OP.SET_LOCAL: case OP.GET_UPVALUE: case OP.SET_UPVALUE: case OP.CALL:
-      return byte();
-    case OP.JUMP: case OP.JUMP_IF_FALSE: return jump(1);
-    case OP.LOOP: return jump(-1);
-    case OP.INVOKE: case OP.SUPER_INVOKE: return invoke();
-    case OP.CLOSURE: {
-      let o = offset + 1;
-      const c = chunk.code[o++];
-      const fn = chunk.constants[c] as ObjFunction;
-      const out = [`${prefix}${name.padEnd(16)} ${String(c).padStart(4)} ${formatValue(fn)}`];
+    case Op.Const: case Op.LoadGlobal: case Op.DefineGlobal: case Op.StoreGlobal:
+    case Op.GetProp: case Op.SetProp: case Op.GetSuper: case Op.Class: case Op.Method:
+      return [`${prefix}${name} ${constant(short(offset + 1))}`, offset + 3];
+    case Op.LoadLocal: case Op.StoreLocal: case Op.LoadUpvalue: case Op.StoreUpvalue:
+    case Op.Call: case Op.New: case Op.List: case Op.IncLocal:
+      return [`${prefix}${name} ${String(code[offset + 1]).padStart(4)}`, offset + 2];
+    case Op.Jump: case Op.JumpUnless: case Op.JumpUnlessKeep: case Op.JumpIfKeep:
+      return [`${prefix}${name} ${String(offset).padStart(4)} -> ${offset + 3 + short(offset + 1)}`, offset + 3];
+    case Op.Loop:
+      return [`${prefix}${name} ${String(offset).padStart(4)} -> ${offset + 3 - short(offset + 1)}`, offset + 3];
+    case Op.Invoke: case Op.InvokeSuper:
+      return [`${prefix}${name} ${constant(short(offset + 1))} (${code[offset + 3]} args)`, offset + 4];
+    case Op.Closure: {
+      const k = short(offset + 1);
+      const fn = chunk.constants[k] as ObjFunction;
+      const out = [`${prefix}${name} ${String(k).padStart(4)} ${formatValue(fn)}`];
+      let o = offset + 3;
       for (let i = 0; i < fn.upvalueCount; i++) {
-        const isLocal = chunk.code[o++];
-        const index = chunk.code[o++];
-        out.push(`${pad(o - 2, 4)}    |                     ${isLocal ? 'local' : 'upvalue'} ${index}`);
+        const isLocal = code[o];
+        const index = code[o + 1];
+        out.push(`${String(o).padStart(4, '0')}    |   ${isLocal ? 'local' : 'upvalue'} ${index}`);
+        o += 2;
       }
       return [out.join('\n'), o];
     }
     default:
-      return [`${prefix}${name}`, offset + 1];
+      return [`${prefix}${name.trimEnd()}`, offset + 1];
   }
 }

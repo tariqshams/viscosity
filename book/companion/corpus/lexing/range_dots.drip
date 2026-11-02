@@ -1,0 +1,11 @@
+for i in 1..4 {
+  print i;
+}
+# expect: 1
+# expect: 2
+# expect: 3
+for x in 1.5..3 {
+  print x;
+}
+# expect: 1.5
+# expect: 2.5

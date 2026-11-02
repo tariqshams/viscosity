@@ -1,0 +1,6 @@
+let a = ; # expect compile error: line 1: expected an expression, found ';'
+print "fine";
+let b = 1 # expect compile error: line 3: expected ';' after the variable declaration, found 'print'
+print b;
+fn f( { } # expect compile error: line 5: expected a parameter name, found '{'
+print 1 +; # expect compile error: line 6: expected an expression, found ';'

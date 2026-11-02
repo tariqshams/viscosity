@@ -1,0 +1,13 @@
+let xs = [3, 2, 1];
+let x = pop(xs);
+while x {
+  print x;
+  if len(xs) > 0 {
+    x = pop(xs);
+  } else {
+    x = none;
+  }
+}
+# expect: 1
+# expect: 2
+# expect: 3

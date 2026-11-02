@@ -1,0 +1,7 @@
+fn f(a) {
+  a = "changed";
+  return a;
+}
+let a = "global";
+print f(1); # expect: changed
+print a; # expect: global

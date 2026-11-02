@@ -1,0 +1,4 @@
+class N {}
+let n = new N();
+n.me = n;
+print n; # expect: N { me: N {...} }

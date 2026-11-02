@@ -1,0 +1,3 @@
+fn f() {
+  return self; # expect compile error: line 2: cannot use 'self' outside a method
+}

@@ -1,0 +1,9 @@
+class Node {
+  init(v, next) {
+    self.v = v;
+    self.next = next;
+  }
+}
+let list = new Node(1, new Node(2, none));
+print list; # expect: Node { v: 1, next: Node { v: 2, next: none } }
+print list.next.v; # expect: 2

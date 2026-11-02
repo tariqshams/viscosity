@@ -1,0 +1,10 @@
+let x = 10;
+x += 5;
+print x; # expect: 15
+x -= 3;
+print x; # expect: 12
+print x += 1; # expect: 13
+let y = 1;
+let z = y += 1;
+print y; # expect: 2
+print z; # expect: 2

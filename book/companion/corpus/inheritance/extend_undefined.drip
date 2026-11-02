@@ -1,0 +1,1 @@
+class B extends Nowhere {} # expect runtime error: undefined variable 'Nowhere'

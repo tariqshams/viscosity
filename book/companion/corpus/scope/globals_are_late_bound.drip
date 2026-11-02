@@ -1,0 +1,7 @@
+fn show() {
+  print later;
+}
+let later = "defined after the function";
+show(); # expect: defined after the function
+later = "changed";
+show(); # expect: changed

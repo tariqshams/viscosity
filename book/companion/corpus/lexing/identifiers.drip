@@ -1,0 +1,14 @@
+let _ = 1;
+let _private = 2;
+let camelCase = 3;
+let snake_case_9 = 4;
+let A1b2 = 5;
+print _ + _private + camelCase + snake_case_9 + A1b2; # expect: 15
+let fortune = "for is a keyword; fortune is not";
+print fortune; # expect: for is a keyword; fortune is not
+let selfish = 1;
+let nonetheless = 2;
+let ink = 3;
+let initial = 4;
+let newton = 5;
+print selfish + nonetheless + ink + initial + newton; # expect: 15

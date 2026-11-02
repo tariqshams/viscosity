@@ -1,0 +1,1 @@
+for i in 0..3 print i; # expect compile error: line 1: expected '{' before the loop body, found 'print'

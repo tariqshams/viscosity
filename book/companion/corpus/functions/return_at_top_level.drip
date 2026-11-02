@@ -1,0 +1,2 @@
+print "never runs";
+return 1; # expect compile error: line 2: 'return' outside a function

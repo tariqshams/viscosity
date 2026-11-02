@@ -1,0 +1,6 @@
+let fs = [];
+for name in ["ann", "bo"] {
+  push(fs, fn () { return "hi " + name; });
+}
+print fs[0](); # expect: hi ann
+print fs[1](); # expect: hi bo

@@ -1,8 +1,8 @@
+# Recursive calls and arithmetic: the classic.
 fn fib(n) {
-  if (n < 2) return n;
-  return fib(n - 2) + fib(n - 1);
+  if n < 2 {
+    return n;
+  }
+  return fib(n - 1) + fib(n - 2);
 }
-
-let start = clock();
-print fib(35) == 9227465;
-print clock() - start;
+print fib(32); # expect: 2178309

@@ -1,0 +1,7 @@
+print !true; # expect: false
+print !false; # expect: true
+print !none; # expect: true
+print !0; # expect: false
+print !!"x"; # expect: true
+print ![]; # expect: false
+print !!!true; # expect: false

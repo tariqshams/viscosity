@@ -1,0 +1,1 @@
+print [6] / 2; # expect runtime error: cannot use '/' on a list and a number

@@ -1,0 +1,112 @@
+# A tokenizer and a small calculator. Drip strings can't be indexed, so the
+# source arrives as a list of one-character strings.
+let DIGITS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+fn digitValue(c) {
+  for i in 0..10 {
+    if DIGITS[i] == c {
+      return i;
+    }
+  }
+  return -1;
+}
+
+class Token {
+  init(kind, value) {
+    self.kind = kind;
+    self.value = value;
+  }
+}
+
+fn tokenize(chars) {
+  let tokens = [];
+  let i = 0;
+  while i < len(chars) {
+    let c = chars[i];
+    if c == " " {
+      i += 1;
+      continue;
+    }
+    if digitValue(c) >= 0 {
+      let n = 0;
+      while i < len(chars) && digitValue(chars[i]) >= 0 {
+        n = n * 10 + digitValue(chars[i]);
+        i += 1;
+      }
+      push(tokens, new Token("number", n));
+      continue;
+    }
+    if c == "+" || c == "-" || c == "*" || c == "(" || c == ")" {
+      push(tokens, new Token("op", c));
+    } else {
+      push(tokens, new Token("error", c));
+    }
+    i += 1;
+  }
+  return tokens;
+}
+
+let tokens = tokenize(["1", "2", " ", "+", " ", "3", "*", "(", "4", "0", "-", "x", ")"]);
+print len(tokens); # expect: 9
+for t in tokens {
+  print t.kind + " " + str(t.value);
+}
+# expect: number 12
+# expect: op +
+# expect: number 3
+# expect: op *
+# expect: op (
+# expect: number 40
+# expect: op -
+# expect: error x
+# expect: op )
+
+class Calculator {
+  init(tokens) {
+    self.tokens = tokens;
+    self.pos = 0;
+  }
+  peek() {
+    if self.pos < len(self.tokens) {
+      return self.tokens[self.pos].value;
+    }
+    return none;
+  }
+  next() {
+    let t = self.tokens[self.pos];
+    self.pos += 1;
+    return t;
+  }
+  expr() {
+    let v = self.term();
+    while self.peek() == "+" || self.peek() == "-" {
+      let op = self.next().value;
+      let r = self.term();
+      if op == "+" {
+        v += r;
+      } else {
+        v -= r;
+      }
+    }
+    return v;
+  }
+  term() {
+    let v = self.atom();
+    while self.peek() == "*" {
+      self.next();
+      v = v * self.atom();
+    }
+    return v;
+  }
+  atom() {
+    let t = self.next();
+    if t.kind == "number" {
+      return t.value;
+    }
+    let v = self.expr();
+    self.next();
+    return v;
+  }
+}
+let calc = new Calculator(tokenize(["2", "*", "(", "3", "+", "4", ")", "-", "5"]));
+print calc.expr(); # expect: 9

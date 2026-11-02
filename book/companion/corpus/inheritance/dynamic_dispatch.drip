@@ -1,0 +1,15 @@
+class Base {
+  describe() {
+    return "I am " + self.name();
+  }
+  name() {
+    return "base";
+  }
+}
+class Child extends Base {
+  name() {
+    return "child";
+  }
+}
+print new Child().describe(); # expect: I am child
+print new Base().describe(); # expect: I am base

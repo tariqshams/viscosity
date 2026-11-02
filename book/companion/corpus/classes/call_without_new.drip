@@ -1,0 +1,2 @@
+class Point {}
+let p = Point(); # expect runtime error: cannot call a class: use 'new Point(...)'

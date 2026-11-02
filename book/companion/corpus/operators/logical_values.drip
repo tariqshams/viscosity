@@ -1,0 +1,8 @@
+print true && false; # expect: false
+print true && true; # expect: true
+print false || true; # expect: true
+print none || 3; # expect: 3
+print 0 || 3; # expect: 0
+print "a" && "b"; # expect: b
+print none && 1; # expect: none
+print false || none; # expect: none

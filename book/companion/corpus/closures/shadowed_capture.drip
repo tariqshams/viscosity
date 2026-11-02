@@ -1,0 +1,6 @@
+let x = "global";
+fn f() {
+  let x = "local";
+  return fn () { return x; };
+}
+print f()(); # expect: local

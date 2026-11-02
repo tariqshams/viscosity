@@ -14,6 +14,7 @@
     "check": "node scripts/check_chapters.mjs && node scripts/check_site.mjs",
     "check:chapters": "node scripts/check_chapters.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "migrate-drip": "node scripts/migrate_drip.mjs",
     "prebuild": "node -e \"process.env.VERCEL && process.exit(1)\" || node scripts/merge_refs.mjs --all"
   },
   "dependencies": {

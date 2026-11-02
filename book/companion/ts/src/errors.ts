@@ -1,35 +1,32 @@
-// Error reporting shared by the scanner, parser, resolver and interpreter.
-// The message formats match the Crafting Interpreters test suite (MIT),
-// so Drip can be checked against it.
+// Error reporting shared by the parser, resolver and interpreter.
+//
+// Compile errors print as `line 3: expected '}' to close the block, found
+// end of file`; runtime errors as `runtime error: <message>` followed by one
+// `  at line N in <place>` line per active call, innermost first. The exact
+// wording is pinned by the corpus (book/companion/corpus).
 import type { Token } from './token.ts';
 
+/** Collects compile errors, in the order they are found. */
 export interface Reporter {
-  /** a compile-time (static) error: exit code 65 */
-  error(line: number, where: string, message: string): void;
-  hadError: boolean;
+  error(line: number, message: string): void;
+  readonly errors: string[];
 }
 
-export function makeReporter(write: (line: string) => void): Reporter {
-  const r: Reporter = {
-    hadError: false,
-    error(line, where, message) {
-      write(`[line ${line}] Error${where}: ${message}`);
-      r.hadError = true;
+export function makeReporter(): Reporter {
+  const errors: string[] = [];
+  return {
+    errors,
+    error(line, message) {
+      errors.push(`line ${line}: ${message}`);
     },
   };
-  return r;
 }
 
-export function tokenError(reporter: Reporter, token: Token, message: string): void {
-  if (token.type === 'eof') reporter.error(token.line, ' at end', message);
-  else reporter.error(token.line, ` at '${token.lexeme}'`, message);
-}
-
-/** An error while running: reported as the message, then "[line N]". Exit 70. */
+/** An error while running. `line` is where in the source it happened. Exit 70. */
 export class RuntimeError extends Error {
-  token: Token;
-  constructor(token: Token, message: string) {
+  readonly line: number;
+  constructor(token: Token | number, message: string) {
     super(message);
-    this.token = token;
+    this.line = typeof token === 'number' ? token : token.line;
   }
 }

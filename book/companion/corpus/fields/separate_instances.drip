@@ -1,0 +1,8 @@
+class P {}
+let a = new P();
+let b = new P();
+a.x = 1;
+b.x = 2;
+print a.x; # expect: 1
+print b.x; # expect: 2
+print a; # expect: P { x: 1 }

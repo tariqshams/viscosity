@@ -1,0 +1,24 @@
+for i in 0..3 {
+  print i;
+}
+# expect: 0
+# expect: 1
+# expect: 2
+for i in 3..3 {
+  print "never";
+}
+for i in 5..2 {
+  print "never";
+}
+for i in -2..1 {
+  print i;
+}
+# expect: -2
+# expect: -1
+# expect: 0
+let n = 4;
+let sum = 0;
+for i in 1..n + 1 {
+  sum += i;
+}
+print sum; # expect: 10

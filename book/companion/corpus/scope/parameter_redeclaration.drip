@@ -1,0 +1,4 @@
+fn f(a, a) {} # expect compile error: line 1: 'a' is already declared in this scope
+fn g(x) {
+  let x = 1; # expect compile error: line 3: 'x' is already declared in this scope
+}

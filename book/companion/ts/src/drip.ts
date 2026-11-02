@@ -1,6 +1,5 @@
 // Run a Drip program: scan → parse → resolve → interpret.
-// Exit codes follow the Crafting Interpreters tests: 65 for a static
-// (compile) error, 70 for a runtime error.
+// Exit codes: 65 for a compile error, 70 for a runtime error.
 import { makeReporter, RuntimeError } from './errors.ts';
 import { scan } from './scanner.ts';
 import { parse } from './parser.ts';
@@ -15,26 +14,29 @@ export interface RunResult {
 
 export function run(source: string): RunResult {
   const stdout: string[] = [];
-  const stderr: string[] = [];
-  const reporter = makeReporter((l) => stderr.push(l));
-  const tokens = scan(source, reporter);
-  const program = parse(tokens, reporter);
-  if (reporter.hadError) return { stdout, stderr, exitCode: 65 };
+  const reporter = makeReporter();
+  const program = parse(scan(source), reporter);
+  if (reporter.errors.length) return { stdout, stderr: reporter.errors, exitCode: 65 };
   const locals = resolve(program, reporter);
-  if (reporter.hadError) return { stdout, stderr, exitCode: 65 };
+  if (reporter.errors.length) return { stdout, stderr: reporter.errors, exitCode: 65 };
   const interp = new Interpreter((l) => stdout.push(l));
   try {
     interp.interpret(program, locals);
   } catch (e) {
-    if (e instanceof RuntimeError) {
-      stderr.push(e.message, `[line ${e.token.line}]`);
-      return { stdout, stderr, exitCode: 70 };
+    let error: RuntimeError;
+    if (e instanceof RuntimeError) error = e;
+    else if (e instanceof RangeError) {
+      // JavaScript's own stack ran out before Drip's limit: still an overflow.
+      const top = interp.frames[interp.frames.length - 1];
+      error = new RuntimeError(top.line, 'stack overflow');
+    } else throw e;
+    const stderr = [`runtime error: ${error.message}`];
+    const frames = interp.frames;
+    for (let i = frames.length - 1; i >= 0; i--) {
+      const line = i === frames.length - 1 ? error.line : frames[i].line;
+      stderr.push(`  at line ${line} in ${frames[i].place}`);
     }
-    if (e instanceof RangeError) {
-      stderr.push('Stack overflow.', '[line 0]');
-      return { stdout, stderr, exitCode: 70 };
-    }
-    throw e;
+    return { stdout, stderr, exitCode: 70 };
   }
-  return { stdout, stderr, exitCode: 0 };
+  return { stdout, stderr: [], exitCode: 0 };
 }

@@ -1,0 +1,1 @@
+fn init() {} # expect compile error: line 1: expected a function name after 'fn', found 'init'

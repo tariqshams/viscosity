@@ -1,15 +1,21 @@
-//! The corpus test runner, shared by `corpus.rs` and `stress_gc.rs`.
+//! The corpus test runner, shared by `corpus.rs` and `stress_gc.rs`: a
+//! port of `check()` in the TypeScript `test/corpus.ts`. A program says
+//! what it should do in comments:
 //!
-//! A port of `check()` in the TypeScript `test/corpus.ts`, which mirrors
-//! the Crafting Interpreters test runner (`tool/bin/test.dart`, MIT): it
-//! checks expected stdout, compile errors with their line numbers, the
-//! runtime error and its line, and the exit code. The patterns are
-//! matched by hand, because this crate uses no dependencies.
+//! - `# expect: <line>`: a line of output, in order;
+//! - `# expect runtime error: <message>`: it stops with this error, and
+//!   the innermost `at` line names the line the comment is on...
+//! - `# expect trace: at line N in <place>`: ...unless these pin the
+//!   whole stack trace;
+//! - `# expect compile error: line N: <message>`: the exact list of
+//!   compile errors, in order.
+//!
+//! The patterns are matched by hand, because this crate uses no
+//! dependencies.
 
 // Each test binary uses its own part of this module.
 #![allow(dead_code)]
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use drip::{Options, Outcome};
@@ -19,7 +25,7 @@ pub fn corpus_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../corpus")
 }
 
-/// Every `.drip` file under `dir`, as sorted paths relative to the corpus.
+/// Every `.drip` file in the corpus, as sorted paths relative to it.
 pub fn list_tests() -> Vec<String> {
     fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
         let mut entries: Vec<_> = std::fs::read_dir(dir)
@@ -42,200 +48,95 @@ pub fn list_tests() -> Vec<String> {
     out
 }
 
-/// The VM's skip list, exactly `SKIP.vm` in corpus.ts: early-chapter
-/// tests that aren't whole programs, and the (slow) benchmarks.
-pub const SKIP_VM: &[&str] = &["scanning", "expressions", "benchmark"];
-
-pub fn should_skip(test: &str, skip: &[&str]) -> bool {
-    skip.iter().any(|p| test == format!("{p}.drip") || test.starts_with(&format!("{p}/")))
+/// The benchmarks are long-running: `scripts/bench.sh` runs them.
+pub fn is_benchmark(test: &str) -> bool {
+    test.starts_with("benchmark/")
 }
 
-/// What the test's comments say should happen.
+/// What the program's comments say should happen.
 #[derive(Default)]
 struct Expectations {
     output: Vec<String>,
-    errors: BTreeSet<String>,
+    compile_errors: Vec<String>,
     runtime_error: Option<(String, usize)>,
+    trace: Vec<String>,
     exit_code: i32,
 }
 
-/// `// expect: ?(.*)`: the text after `// expect:` and one optional space.
-fn expect_output(line: &str) -> Option<&str> {
-    let rest = after(line, "// expect:")?;
-    Some(rest.strip_prefix(' ').unwrap_or(rest))
-}
-
-/// `// (Error.*)`
-fn expect_error(line: &str) -> Option<&str> {
-    let start = line.find("// Error")?;
-    Some(&line[start + 3..])
-}
-
-/// `// \[((java|c) )?line (\d+)\] (Error.*)`: the language (if any), the
-/// line number and the error. Tried at every `// [` in the line.
-fn expect_error_at_line(line: &str) -> Option<(Option<&str>, usize, &str)> {
-    let mut search = 0;
-    while let Some(found) = line[search..].find("// [") {
-        let start = search + found + 4;
-        search = start;
-        let mut rest = &line[start..];
-        let mut language = None;
-        for lang in ["java", "c"] {
-            if let Some(r) = rest.strip_prefix(lang).and_then(|r| r.strip_prefix(' ')) {
-                language = Some(lang);
-                rest = r;
-                break;
-            }
-        }
-        let Some(rest) = rest.strip_prefix("line ") else { continue };
-        let digits =
-            rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
-        if digits == 0 {
-            continue;
-        }
-        let Some(error) = rest[digits..].strip_prefix("] ") else { continue };
-        if !error.starts_with("Error") {
-            continue;
-        }
-        let number = rest[..digits].parse().expect("digits");
-        return Some((language, number, error));
-    }
-    None
-}
-
-/// `// expect runtime error: (.+)`
-fn expect_runtime_error(line: &str) -> Option<&str> {
-    after(line, "// expect runtime error: ").filter(|m| !m.is_empty())
-}
-
-/// The rest of `line` after the first `marker`, up to any `\r` (which
-/// JavaScript's `.` would not match).
+/// The rest of `line` after the first `marker`.
 fn after<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
-    let rest = &line[line.find(marker)? + marker.len()..];
-    Some(rest.split('\r').next().unwrap_or(""))
+    Some(&line[line.find(marker)? + marker.len()..])
 }
 
-/// `\[.*line (\d+)\] (Error.+)` on a line of stderr: like the greedy
-/// regex, prefer the last `line N] Error...` after the first `[`.
-fn reported_error(line: &str) -> Option<(usize, &str)> {
-    let open = line.find('[')?;
-    let candidates: Vec<usize> =
-        line[open + 1..].match_indices("line ").map(|(i, _)| open + 1 + i + 5).collect();
-    for &start in candidates.iter().rev() {
-        let rest = &line[start..];
-        let digits =
-            rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
-        if digits == 0 {
-            continue;
-        }
-        if let Some(error) = rest[digits..].strip_prefix("] ")
-            && error.starts_with("Error")
-            && error.len() > "Error".len()
-        {
-            return Some((rest[..digits].parse().expect("digits"), error));
-        }
-    }
-    None
-}
-
-/// `\[line (\d+)\]`: the first line number in a stack trace.
-fn first_line_number(text: &str) -> Option<usize> {
-    let mut search = 0;
-    while let Some(found) = text[search..].find("[line ") {
-        let start = search + found + 6;
-        search = start;
-        let rest = &text[start..];
-        let digits =
-            rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
-        if digits > 0 && rest[digits..].starts_with(']') {
-            return rest[..digits].parse().ok();
-        }
-    }
-    None
-}
-
-fn parse_expectations(source: &str, language: &str) -> Option<Expectations> {
+fn parse_expectations(source: &str) -> Expectations {
     let mut e = Expectations::default();
     for (i, line) in source.split('\n').enumerate() {
-        let n = i + 1;
-        if line.contains("// nontest") {
-            return None;
-        }
-        if let Some(text) = expect_output(line) {
-            e.output.push(text.split('\r').next().unwrap_or("").to_string());
-        } else if let Some(error) = expect_error(line) {
-            e.errors.insert(format!("[line {n}] {}", error.trim_end_matches('\r')));
-            e.exit_code = 65;
-        } else if let Some((lang, number, error)) = expect_error_at_line(line) {
-            if lang.is_none_or(|l| l == language) {
-                e.errors
-                    .insert(format!("[line {number}] {}", error.trim_end_matches('\r')));
-                e.exit_code = 65;
-            }
-        } else if let Some(message) = expect_runtime_error(line) {
-            e.runtime_error = Some((message.to_string(), n));
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        if let Some(text) = after(line, "# expect:") {
+            e.output.push(text.strip_prefix(' ').unwrap_or(text).to_string());
+        } else if let Some(message) = after(line, "# expect runtime error: ") {
+            e.runtime_error = Some((message.to_string(), i + 1));
             e.exit_code = 70;
+        } else if let Some(trace) = after(line, "# expect trace: ") {
+            e.trace.push(trace.to_string());
+        } else if let Some(error) = after(line, "# expect compile error: ") {
+            e.compile_errors.push(error.to_string());
+            e.exit_code = 65;
         }
     }
-    Some(e)
+    e
 }
 
-/// Check one program's outcome against its expectations. Returns the
-/// failures: an empty list means the test passed.
-pub fn check(source: &str, o: &Outcome, language: &str) -> Vec<String> {
-    let Some(expected) = parse_expectations(source, language) else {
-        return vec![];
-    };
+/// Check one program's outcome. Returns the failures: an empty list
+/// means the test passed.
+pub fn check(source: &str, o: &Outcome) -> Vec<String> {
+    let want = parse_expectations(source);
     let mut fails = Vec::new();
-
-    if let Some((message, line)) = &expected.runtime_error {
-        if o.stderr.len() < 2 {
-            fails.push(format!("expected runtime error \"{message}\" and got none"));
-        } else {
-            if &o.stderr[0] != message {
-                fails.push(format!(
-                    "expected runtime error \"{message}\", got \"{}\"",
-                    o.stderr[0]
-                ));
-            }
-            let trace = o.stderr[1..].join("\n");
-            if first_line_number(&trace) != Some(*line) {
-                let got = o.stderr[1..].join(" | ");
-                fails.push(format!("expected runtime error on line {line}, got {got}"));
-            }
-        }
-    } else {
-        let mut found = BTreeSet::new();
-        for l in &o.stderr {
-            if let Some((number, error)) = reported_error(l) {
-                let e = format!("[line {number}] {error}");
-                if expected.errors.contains(&e) {
-                    found.insert(e);
-                } else {
-                    fails.push(format!("unexpected error: {l}"));
-                }
-            } else if !l.is_empty() {
-                fails.push(format!("unexpected output on stderr: {l}"));
-            }
-        }
-        for e in expected.errors.difference(&found) {
-            fails.push(format!("missing expected error: {e}"));
-        }
+    if o.exit_code != want.exit_code {
+        fails.push(format!("expected exit code {}, got {}", want.exit_code, o.exit_code));
     }
-
-    if o.exit_code != expected.exit_code {
-        let (want, got) = (expected.exit_code, o.exit_code);
-        fails.push(format!("expected exit code {want}, got {got}"));
+    if want.exit_code == 65 {
+        if o.stderr != want.compile_errors {
+            let (expected, got) = (want.compile_errors.join("\n"), o.stderr.join("\n"));
+            fails.push(format!("compile errors:\nexpected:\n{expected}\ngot:\n{got}"));
+        }
+    } else if let Some((message, line)) = &want.runtime_error {
+        let first = o.stderr.first().map(String::as_str);
+        if first != Some(&format!("runtime error: {message}")) {
+            fails.push(format!("expected \"runtime error: {message}\", got {first:?}"));
+        }
+        let trace = o.stderr.get(1..).unwrap_or_default();
+        if !want.trace.is_empty() {
+            let expected: Vec<String> =
+                want.trace.iter().map(|t| format!("  {t}")).collect();
+            if trace != expected.as_slice() {
+                let (expected, got) = (expected.join("\n"), trace.join("\n"));
+                fails.push(format!("stack trace:\nexpected:\n{expected}\ngot:\n{got}"));
+            }
+        } else if !trace
+            .first()
+            .is_some_and(|t| t.starts_with(&format!("  at line {line} in ")))
+        {
+            fails.push(format!(
+                "expected the error at line {line}, got {:?}",
+                trace.join(" | ")
+            ));
+        }
+    } else if !o.stderr.is_empty() {
+        fails.push(format!("unexpected stderr: {}", o.stderr.join(" | ")));
     }
 
     // stdout is compared line by line, as a terminal would split it.
     let stdout: Vec<&str> = o.stdout.iter().flat_map(|l| l.split('\n')).collect();
-    let lines = stdout.len().max(expected.output.len());
+    let lines = stdout.len().max(want.output.len());
     for i in 0..lines {
         let got = stdout.get(i).copied();
-        let want = expected.output.get(i).map(String::as_str);
-        if got != want {
-            fails.push(format!("output line {}: expected {want:?}, got {got:?}", i + 1));
+        let expected = want.output.get(i).map(String::as_str);
+        if got != expected {
+            fails.push(format!(
+                "output line {}: expected {expected:?}, got {got:?}",
+                i + 1
+            ));
             break;
         }
     }
@@ -263,7 +164,7 @@ pub fn run_suite(suite: &str, select: impl Fn(&str) -> bool, options: Options) {
             drip::run(&source, options)
         }));
         let fails = match run {
-            Ok(outcome) => check(&source, &outcome, "c"),
+            Ok(outcome) => check(&source, &outcome),
             Err(payload) => {
                 let msg = payload
                     .downcast_ref::<String>()

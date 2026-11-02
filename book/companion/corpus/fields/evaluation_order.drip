@@ -1,0 +1,10 @@
+fn note(s, v) {
+  print s;
+  return v;
+}
+class O {}
+let o = new O();
+note("object", o).f = note("value", 1);
+# expect: object
+# expect: value
+print o.f; # expect: 1

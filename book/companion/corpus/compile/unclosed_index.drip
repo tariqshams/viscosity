@@ -1,0 +1,2 @@
+let xs = [1];
+print xs[0; # expect compile error: line 2: expected ']' after the index, found ';'

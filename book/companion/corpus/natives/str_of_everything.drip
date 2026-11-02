@@ -1,0 +1,9 @@
+class P {
+  init() {
+    self.a = [1, "x"];
+  }
+}
+print str(new P()); # expect: P { a: [1, "x"] }
+print str(fn () {}); # expect: fn
+print str(P); # expect: class P
+print str(none) + str(false); # expect: nonefalse

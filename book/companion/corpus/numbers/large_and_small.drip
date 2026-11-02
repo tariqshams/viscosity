@@ -1,0 +1,9 @@
+let big = 1;
+for i in 0..21 {
+  big = big * 10;
+}
+print big; # expect: 1e+21
+print big / 10; # expect: 100000000000000000000
+print 1 / 10000000; # expect: 1e-7
+print 1 / 1000000; # expect: 0.000001
+print 1.5 / 10000000; # expect: 1.5e-7

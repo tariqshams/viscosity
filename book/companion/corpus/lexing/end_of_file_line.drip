@@ -1,0 +1,5 @@
+let s = "a
+b";
+
+# "end of file" is reported on the last line with anything on it.
+print s # expect compile error: line 5: expected ';' after the value, found end of file

@@ -1,0 +1,8 @@
+let poem = "rain
+on the
+roof";
+print poem;
+# expect: rain
+# expect: on the
+# expect: roof
+print len(poem); # expect: 16

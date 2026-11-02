@@ -1,0 +1,4 @@
+print "one"; # expect: one
+print "two"; # expect: two
+print 1 + none; # expect runtime error: cannot add a number and none
+print "three";

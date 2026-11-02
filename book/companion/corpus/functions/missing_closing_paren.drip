@@ -1,0 +1,2 @@
+fn f(a, b { # expect compile error: line 1: expected ')' after the parameters, found '{'
+}

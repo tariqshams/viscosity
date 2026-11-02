@@ -1,0 +1,2 @@
+let xs = [];
+xs.size = 0; # expect runtime error: cannot set 'size' on a list

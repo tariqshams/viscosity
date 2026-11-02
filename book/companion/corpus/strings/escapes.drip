@@ -1,0 +1,8 @@
+print "a\nb";
+# expect: a
+# expect: b
+print "say \"hi\""; # expect: say "hi"
+print "back\\slash"; # expect: back\slash
+print len("\t"); # expect: 1
+print len("\\n"); # expect: 2
+print "\\\"" == "\\" + "\""; # expect: true
