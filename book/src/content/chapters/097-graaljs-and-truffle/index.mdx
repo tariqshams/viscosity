@@ -1,0 +1,193 @@
+---
+n: 97
+day: 25
+part: V
+title: 'GraalJS and Truffle'
+tagline: 'What if you never wrote a JavaScript compiler at all? Truffle lets you write a tree-walking interpreter whose nodes specialize themselves, and then derives the compiled code from that interpreter. GraalJS is a whole JavaScript engine built this way.'
+objectives:
+  - Explain how a self-optimizing AST node specializes itself and generalizes when a guess fails.
+  - Partially evaluate a small interpreter by hand, step by step, down to its residual program.
+  - Say what Truffle treats as constant during compilation, and what happens when such a value changes.
+  - Compare Truffle’s approach with V8’s separate interpreter and compilers.
+introduces: [partial-evaluation, self-optimizing-ast]
+uses: [tree-walking-interpreter, evaluate, ast, ast-node, interpreter-overhead, interpreter, compiler, runtime-value, dynamic-typing, class, method, closure, tiering, jit-compiler, ignition, optimizing-tiers, type-feedback, speculation, deoptimization, inline-cache, engine-diversity, smi, aos-vs-soa]
+sources: [truffle-readme, truffle-pe, truffle-node-replace, truffle-specialization, graaljs-add, graal-publications, wurthinger2012, wurthinger2013, v8-maglev]
+---
+import NodeStates from '../../../components/diagrams/ch097/NodeStates';
+import PESteps from '../../../components/diagrams/ch097/PESteps';
+
+## The question your tree-walker keeps asking
+
+Your Part III interpreter evaluates `a + b` by asking the same questions
+every single time: what kind of node is this? Are both values numbers?
+Strings? In a loop that runs a million times, the answers never change,
+and you pay for them a million times. That is the interpreter overhead
+you measured in chapter 60.
+
+V8's answer is separate machinery: bytecode for Ignition, then
+compilers that rewrite hot code using what the interpreter
+observed<Cite id="v8-maglev" />. Truffle, from Oracle and the Johannes
+Kepler University Linz, takes another road. You write an interpreter
+for "self-modifying Abstract Syntax Trees", and the Graal compiler
+derives fast machine code from that interpreter
+itself<Cite id="truffle-readme" />. GraalJS, "a JavaScript engine
+implemented in Java on top of GraalVM", is built this
+way<Cite id="graaljs-add" />.
+
+Two ideas make it work: nodes that specialize themselves, and partial
+evaluation.
+
+## Nodes that rewrite themselves
+
+<Callout kind="intuition">
+A post-room clerk notices that every letter for a month has been
+local. She puts up a "local only" tray and stops checking addresses.
+The day a foreign letter turns up, she takes the tray down for good and
+goes back to checking, a little slower but always right.
+</Callout>
+
+A `+` node starts with no idea what it will see. After the first few
+executions it narrows itself to the case it saw, and it widens again
+when something else turns up:
+
+<Figure takeaway="Specialize on what you have seen; widen when it stops being true." caption="A self-specializing + node. Each arrow is a rewrite. Arrows only go one way, so a node can't flip back and forth forever.">
+<NodeStates />
+</Figure>
+
+This is GraalJS's real `+`, trimmed. Each `@Specialization` is one
+case. The integer case uses `Math.addExact`, which throws on
+overflow:
+
+```java
+// JSAddNormalNode.java (GraalJS)
+@Specialization(rewriteOn =
+    ArithmeticException.class)
+static int doInt(int a, int b) {
+  return Math.addExact(a, b);
+}
+// JSAddNode.java (GraalJS)
+@Specialization
+static double doDouble(double a,
+    double b) {
+  return a + b;
+}
+```
+
+`rewriteOn` means: if this exception is thrown even once, this node
+never uses that case again, and the next one runs
+instead<Cite id="truffle-specialization" />. Further down, a generic case that first
+converts its operands *replaces* all the specific ones<Cite id="graaljs-add" />.
+At the lowest level, any node can swap itself for another in the tree
+with `replace`, which also invalidates compiled code that relied on the
+old node<Cite id="truffle-node-replace" />.
+
+<Callout kind="definition">
+A **self-optimizing AST** interpreter is a tree-walking interpreter
+whose nodes record what they have seen and rewrite themselves (or swap
+in a replacement node) into a version specialized for those cases, with
+a check that falls back and generalizes when a case fails. The GraalVM
+team traces the design to a 2012 paper on self-optimizing,
+self-specializing interpreters applied to JavaScript<Cite id="graal-publications" /><Cite id="wurthinger2012" />.
+</Callout>
+
+<Prompts ids={['self-opt-what', 'rewrite-on', 'one-way', 'replace-invalidates']} />
+
+## Partial evaluation
+
+<Callout kind="intuition">
+A recipe says "if a guest is vegetarian, use beans, otherwise use beef".
+Once you know tonight's guests, you can cross out the branch that can't
+happen. You are left with a shorter recipe that only works for tonight,
+and needs no more thinking.
+</Callout>
+
+Truffle's documentation starts with exactly this kind of
+example<Cite id="truffle-pe" />, here in JavaScript:
+
+```js
+function round(v, up) {
+  return up ? Math.ceil(v)
+            : Math.floor(v);
+}
+// specialized for up = true:
+function roundUp(v) {
+  return Math.ceil(v);
+}
+```
+
+Now apply the same trick to an *interpreter*. Its two inputs are the
+program and the program's data. The program doesn't change while it
+runs, so fix it and simplify:
+
+<PESteps client:visible />
+
+<Callout kind="definition">
+**Partial evaluation** specializes a program for the inputs that are
+known (static), producing a **residual program** that only takes the
+rest (dynamic): `Input -> Output` becomes `DynamicInput -> Output`.
+Partially evaluating an interpreter with respect to one guest program
+gives code specialized to that program, with the interpretation
+removed. This is the **first Futamura projection**<Cite id="truffle-pe" />.
+</Callout>
+
+You can do a version of this by hand in JavaScript. Instead of a
+`switch` that runs on every evaluation, walk the tree *once* and build
+closures. The kind of each node is decided while building, not while
+running:
+
+<Run id="closure-pe" />
+
+<Prompts ids={['pe-what', 'residual', 'futamura']} />
+
+How does Truffle know what may be treated as constant? It starts from
+the root node of the code being compiled and `static final` fields,
+then follows stable fields: `final` fields and declared `@Child`
+nodes. Fields marked `@CompilationFinal` can still change, so a node
+can record what it has seen, but once compilation starts they are
+folded like constants. Truffle counts calls and loop iterations, and
+compiles a root node (roughly, a function) once it is hot. If a recorded fact later turns out
+wrong, the node calls `transferToInterpreterAndInvalidate`: the
+compiled code is thrown away and execution continues in the
+interpreter, which re-specializes and may be compiled
+again<Cite id="truffle-pe" />.
+
+<Prompts ids={['pe-constants', 'compilation-final', 'deopt-cycle']} />
+
+<Callout kind="engine" label="Under the hood">
+Truffle's documentation names the problem it avoids: a classic engine
+needs "semantics, profiling, and optimization knowledge to be
+represented in both interpreter and compiler". With Truffle, the
+optimized code is derived from the interpreter. The price is that the
+interpreter must be written carefully, so that partial evaluation can
+see what is stable, and every speculation must eventually settle, or
+the code loops through compiling and invalidating<Cite id="truffle-pe" />.
+The GraalVM team describes the whole stack, interpreter and dynamic
+compiler, in "One VM to Rule Them All"<Cite id="wurthinger2013" />. It is
+also where the columnar-array research of the next chapter was
+built<Cite id="graal-publications" />.
+</Callout>
+
+<Prompts ids={['two-copies']} />
+
+## Your turn
+
+<Exercise id="selfAdd" />
+
+<Exercise id="peString" />
+
+## What you learned
+
+- A **self-optimizing AST** node records the types it sees, rewrites
+  itself into a specialized version, and generalizes, one way only,
+  when a guard fails. GraalJS's `+` has int, double, string and generic
+  cases.
+- **Partial evaluation** fixes the known inputs and simplifies. Applied
+  to an interpreter and one program, it inlines and folds the
+  interpreter away, leaving a **residual program**: the **first
+  Futamura projection**.
+- Truffle treats the root node, `final` fields, `@Child` nodes and
+  `@CompilationFinal` fields as constants, and **invalidates** compiled
+  code when one of them must change.
+- The engine's semantics live in one place, the interpreter.
+
+<Quiz />

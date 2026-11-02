@@ -1,0 +1,280 @@
+---
+n: 273
+day: 69
+part: XIII
+title: 'The Python plugin in Rust'
+tagline: 'The second language plugin came across almost line for line: a byte tokenizer, an arena AST that walks its children in the TypeScript order, and a lowering that only trusts literal defaults. Porting it found five bugs in the reference, three of them miscompiles or hangs.'
+objectives:
+  - Map the four modules of frontend-python to the TypeScript files they port.
+  - Explain how the tokenizer makes INDENT, DEDENT and NEWLINE tokens from bytes and bracket depth.
+  - Explain why Ast::children must list children in the reference’s key order.
+  - Describe the five reference bugs the port found, and the tests that hold the two engines together.
+introduces: [rust-python-plugin]
+uses: [viscosity-rs, plugin-trait, ir-arena, rust-codegen, cross-implementation-tests, python-subset, indentation-tokens, python-array-module, semantic-differences, language-plugin, multi-language-ir, ast, ast-node, scanner, byte-scanning, token-enum, arena, typed-index, enum, match, pattern, struct, vec, hashmap, option, result, rust-closure, rust-iterator, string-vs-str, differential-testing, test-corpus, ssa]
+sources: ['python-lexical', 'python-dataclasses', 'python-array']
+---
+import IndentSteps from '../../../components/diagrams/ch273/IndentSteps';
+
+## Same columns, same reasons
+
+This is most of `ints_stay_ints.py`, from the reference's Python corpus
+(chapter 168 showed what the TypeScript engine makes of programs like
+it):
+
+```python
+@dataclass
+class Cell:
+    count: int
+    weight: float
+
+cs = []
+for i in range(300):
+    cs.append(Cell(i, i / 2))
+for i in range(len(cs)):
+    cs[i].count += 1
+    cs[i].weight *= 2
+```
+
+The Rust CLI, with `--python-auto` (long lines wrapped):
+
+```
+cs (line 9) {count, weight} → struct of
+  arrays
+  · loop at line 12 in <module>() touches
+    2 of 2 fields (weight, count)
+  · typed array('d') columns for weight;
+    list columns for count (may hold
+    non-floats)
+  · about 300 elements
+  · 2 of 5 element accesses proven in
+    bounds
+```
+
+and in the container class it emits:
+
+```python
+        self.count = []
+        self.weight = _vsc_array('d')
+```
+
+`weight` is a float, so it gets a typed `array('d')`. `count` is an int,
+and an int stored in `array('d')` comes back as a float and prints as
+`1.0`, so it gets a plain list. Every byte of the output, code and
+explain, is the TypeScript engine's.
+
+<Callout kind="intuition">
+A translator working on a recipe book keeps the steps in the original
+order, even where another order would cook the same dish. The reader
+is checking the translation against the original line by line.
+</Callout>
+
+## Four modules, four files
+
+`crates/frontend-python` depends only on the core, the IR and
+`indexmap`, and each module is one file of
+`engine/ts/packages/frontend-python`:
+
+```
+tokens.rs   tokens.ts   INDENT/DEDENT
+parser.rs   parser.ts   the subset, an AST
+lower.rs    lower.ts    scopes, dataclasses
+emit.rs     emit.ts     column classes
+```
+
+The crate root implements `LanguagePlugin` for `PyPlugin`, the trait
+from chapter 257. Its `lower` fails closed: if `parse_python` returns a
+`PySyntaxError` (a comprehension, a `lambda`, a `try`, a base class),
+it lowers an empty module, `explain` prints "No arrays of objects
+found.", and `emit` returns the source unchanged. I checked with the
+corpus program `unsupported_left_alone.py`: the output is the input.
+
+<Prompts ids={['py-four', 'py-fail-closed']} />
+
+## Indentation from bytes
+
+The tokenizer reads `src.as_bytes()`. Everything it inspects is ASCII
+(other characters can only be inside strings and comments), so byte
+offsets cut the source where the reference's UTF-16 offsets do. It
+keeps a stack of indentation widths and a bracket `depth`:
+
+<IndentSteps client:visible />
+
+At the start of a line with `depth == 0`, it measures the width, with a
+tab moving to the next multiple of 8, and compares it with the top of
+the stack: wider pushes and emits INDENT, narrower pops and emits a
+DEDENT per level, and a width between two levels is "inconsistent
+indentation". Inside brackets, a newline is just whitespace, so a call
+spread over lines stays one logical line.
+
+One small closure fixed a real bug:
+
+```rust
+// `src.charAt(k)`: past the end there
+// is no character.
+let at = |k: usize| -> u8 {
+    s.get(k).copied().unwrap_or(0)
+};
+```
+
+The reference used to read `src[i]`, which past the end of a JavaScript
+string is `undefined`. A regex test turns `undefined` into the string
+`"undefined"`, so `/[eE]/` matched, and in a file ending `k = 1` with
+no line break, `1` became a float. A file ending `k = 0x1` hung:
+`/[0-9a-fA-F_]/` matches `"undefined"` forever. In Rust, `s.get(k)` is
+`None` past the end, and byte 0 matches none of the classes. The
+reference now uses `charAt`, and two corpus programs pin it down.
+
+<Prompts ids={['py-bytes', 'py-depth', 'py-eof']} />
+
+## An arena that walks like objects
+
+The reference's parser builds plain objects, and much of `lower.ts`
+walks them generically: every key, in insertion order, skipping
+`decorators`. The port stores nodes in an arena, as chapter 256 did for
+VIR. A `Node` has `start`, `end`, `line`, its decorators and a `Kind`:
+
+```rust
+pub enum Kind {
+    For {
+        target: NodeId,
+        iter: NodeId,
+        body: Vec<NodeId>,
+    },
+    Call {
+        func: NodeId,
+        args: Vec<NodeId>,
+        keywords: Vec<(String, NodeId)>,
+    },
+    // ... 27 more
+}
+```
+
+There are no keys to iterate, so `Ast::children` spells out each kind's
+children in the order the reference created the keys:
+
+```rust
+Kind::For { target, iter, body } => {
+    out.extend([*target, *iter]);
+    out.extend(body);
+}
+Kind::Call { func, args, keywords } => {
+    out.push(*func);
+    out.extend(args);
+    out.extend(
+        keywords.iter().map(|(_, v)| *v));
+}
+```
+
+Why care about order, if a walk visits the same nodes? Because the walks
+emit things. When a statement isn't modelled, the lowering collects the
+names it reads, in walk order, and emits a read for each. Those become
+VIR instructions, the analyses visit instructions in order, and the
+order of the reasons in `explain` follows. A walk in another order
+would make the same decisions and still fail parity.
+
+<Prompts ids={['py-children', 'py-order']} />
+
+<Callout kind="definition">
+**The Python plugin in Rust** is `viscosity-frontend-python`: a byte
+**tokenizer** with an indentation stack and bracket depth, a parser
+into an **arena AST** whose `children` copy the reference's walk order,
+a lowering to the same VIR as JavaScript, and an emitter of container
+classes with **`array('d')`** columns for proven floats and lists for
+everything else. Source outside the subset is left unchanged.
+</Callout>
+
+## Only literals, only one class
+
+Python evaluates a dataclass default once, when the class is defined.
+The emitter copies the default's text to every call site instead. That
+is the same only for a literal, so `lower.rs` checks:
+
+```rust
+fn is_literal_default(
+    ast: &Ast,
+    e: NodeId,
+) -> bool {
+    match ast.kind(e) {
+        // An f-string reads variables.
+        Kind::Constant(ConstValue::Str {
+            fstring: true, ..
+        }) => false,
+        Kind::Constant(_) => true,
+        Kind::UnaryOp { op, operand }
+            if op == "-" || op == "+" =>
+        {
+            matches!(ast.kind(*operand),
+                Kind::Constant(
+                    ConstValue::Int(_)
+                    | ConstValue::Float(_)))
+        }
+        _ => false,
+    }
+}
+```
+
+The first arm is a fix. The reference's parser makes an f-string a
+`Constant`, so `tag: str = f"k={K}"` counted as a literal. After
+`K = 2.0`, the compiled program printed `k=2.0` where the original
+printed `k=1.0`. Its node already carried an `fstring`
+flag; the check just never looked at it. In the Rust enum the flag is
+part of the pattern, so the fix is one arm.
+
+The same kind of question found the last bug. After `P = Twice`, every
+`P(...)` was still compiled as a record of the dataclass. A dataclass is
+now modelled only when its `class` statement is the only module-level
+statement binding the name (`module_defs`, a count per name).
+
+<Prompts ids={['py-literal', 'py-rebound']} />
+
+## Five bugs, two test suites
+
+The README lists the five reference bugs this port found, each fixed in
+both engines with a new corpus program:
+
+1. A number literal at the end of the file (above).
+2. f-string defaults copied to each call: a miscompile.
+3. `global g` with no module-level `g` crashed the compiler.
+4. `len(ps[i])`, with a field named `length`, crashed the emitter.
+5. A rebound dataclass name: a miscompile.
+
+The Python side is held to the reference two ways. Parity: 27 Python
+programs (the reference's corpus, its Python benchmark, and six written
+for the port: CRLF, tabs, backslash continuations, semicolons, renamed
+columns) compiled in both bounds modes, 54 fixture pairs. And a
+`python3` differential test, which runs each original and compiled
+program and compares stdout and the last line of stderr. When I ran
+`cargo test`, both passed, 54 of 54 and 27 of 27.
+
+<Prompts ids={['py-tests']} />
+
+<Callout kind="engine" label="Under the hood">
+The core is shared, but Python's numbers aren't JavaScript's. A Python
+`array('d')` column may hold only floats, so the analysis tracks ints
+apart; `/` always gives a float; and `**` gives a float only with an int
+exponent, since `(-1.0) ** 0.5` is a complex number. The core switches
+on `Module.language` for these, exactly where the reference does. The
+README notes that the Rust core lagged the reference on the `**` rule
+until the Python port exercised it.
+</Callout>
+
+## Your turn
+
+<Exercise id="arenaWalk" />
+
+## What you learned
+
+- `frontend-python` is four modules, one per TypeScript file, behind the
+  same **`LanguagePlugin`** trait. Outside the subset it **fails
+  closed**: the file is left unchanged.
+- The **tokenizer** works on bytes, with an indentation stack and a
+  bracket **depth** that turns newlines into whitespace.
+- The **arena AST** has no keys, so `Ast::children` lists children in
+  the reference's key order: walk order becomes VIR order becomes
+  explain order.
+- Only **literal defaults** are modelled, and a dataclass only if its
+  name is bound once. Columns are **`array('d')`** for proven floats.
+- The port found **five reference bugs**. 54 fixture pairs and a
+  `python3` differential test hold the engines together.
+
+<Quiz />

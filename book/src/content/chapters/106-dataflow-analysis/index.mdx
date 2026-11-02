@@ -1,0 +1,216 @@
+---
+n: 106
+day: 27
+part: VI
+title: 'Dataflow analysis'
+tagline: 'Is this value always a number? Inside a loop, the answer depends on itself. The way out is to guess, check, and keep correcting until the guesses stop changing.'
+objectives:
+  - Describe a dataflow analysis as facts, a rule per instruction, and a merge where paths meet.
+  - Use a small lattice to merge facts, and explain why facts only move one way.
+  - Run a worklist to a fixpoint by hand, and say why it must stop.
+  - Explain why Viscosity’s numeric inference starts optimistic, and what a pessimistic start would miss.
+introduces: [dataflow, lattice, fixpoint, worklist]
+uses: [ssa, phi-node, ssa-construction, cfg, basic-block, ir, static-analysis, float64, typed-array, aos-vs-soa, columnar-storage, dynamic-typing, set, map, while-loop, for-loop, booleans, numbers, strings]
+sources: [coopertorczon2022]
+---
+import WorklistSteps from '../../../components/diagrams/ch106/WorklistSteps';
+
+## A question that depends on itself
+
+Part VIII's compiler wants to store a field like `x` in a
+`Float64Array` column (chapter 30's SoA). That is only safe if every
+value ever written to `x` is a number. So Viscosity has to answer, for
+every SSA value: **is this always a number?**
+
+For most instructions the answer is easy. `const 0` is a number.
+`const "!"` isn't. But look at a loop's running total, in the VIR from
+chapter 104:
+
+```text
+  b1:  ; preds b0 b3
+    %6 = phi %1, %7
+  ...
+  b2:  ; preds b1
+    %7 = binop + %6, %3
+```
+
+`%6` is a number if `%1` and `%7` are. `%7` is a number if `%6` and
+`%3` are. Each answer waits on the other. You can't compute them in
+order, because there is no order: the loop is a cycle.
+
+## Facts, rules and merges
+
+<Callout kind="intuition">
+A rumour passing round a group of friends, where each person repeats
+what they last heard from their neighbours. Nobody knows the truth at
+the start. But if everyone keeps updating from their neighbours, the
+story eventually stops changing, and that settled story is what the
+group "knows".
+</Callout>
+
+An analysis like this has three parts:
+
+- a **fact** about each value (here: number, or maybe not);
+- a **rule** for each kind of instruction, computing its fact from
+  its operands' facts. From Viscosity's `analysis.ts`:
+
+```ts
+case 'const':
+  return typeof i.value === 'number';
+case 'binop':
+  return ARITH.has(i.operator) &&
+    n(i.args[0]) && n(i.args[1]);
+case 'phi':
+  return i.args.every(n);
+```
+
+- a **merge** where paths meet. In SSA, the merge *is* the phi rule:
+  a phi is a number only if every incoming value is.
+
+<Callout kind="definition">
+A **dataflow analysis** computes a fact for every point (or every
+value) in a program, where each fact depends on facts flowing in along
+CFG edges. Each instruction has a **transfer function** that turns
+incoming facts into outgoing ones, and facts from different
+predecessors are **merged** at joins. A **dense** analysis keeps facts
+per block, along CFG edges. A **sparse** one, like this, keeps one
+fact per SSA value and follows def-use links instead.
+</Callout>
+
+<Prompts ids={['dataflow-what', 'merge-where', 'sparse']} />
+
+## A ladder of facts
+
+The facts need an order, so that merging always has an answer. Here
+there are just two, with "number" above "maybe-not". Merging two
+facts gives the lower one: if either side might not be a number, the
+result might not be either.
+
+Real analyses use taller ladders. Next chapter's constant analysis has
+three levels: "no information yet", "the constant 4", and "varies".
+
+<Callout kind="definition">
+A **lattice** is a set of facts with an order (higher means "knows
+more" or "promises more"), where any two facts have a merge: the
+highest fact below both. If the lattice has a finite height and every
+rule only moves facts in one direction, an analysis can only change
+each fact a bounded number of times, so it must stop.
+</Callout>
+
+<Prompts ids={['lattice-what', 'merge-two', 'finite-height']} />
+
+## Guess, check, repeat
+
+To break the cycle, start with a guess and correct it. Which guess?
+Try starting everything at "maybe-not" (pessimistic):
+
+<Run id="optimistic" />
+
+Pessimistic gets stuck. `%6` is maybe-not because `%7` is; `%7` is
+maybe-not because `%6` is. That answer is consistent, but it's useless.
+Starting optimistic, at "number", the loop also stays consistent, and
+this time the answer is the useful one. Both are **fixpoints**: states
+where applying every rule again changes nothing. Optimism finds the
+best one, as long as you keep checking until the guesses stop being
+contradicted.
+
+<Callout kind="definition">
+A **fixpoint** is a state where applying every rule once more changes
+no fact. An **optimistic** analysis starts every unknown fact at the
+top of the lattice and only lowers facts that the rules contradict;
+it reaches the most precise fixpoint. A **pessimistic** one starts at
+the bottom and may stop at a weaker, still-consistent answer.
+</Callout>
+
+<Prompts ids={['fixpoint-what', 'why-optimistic']} />
+
+## A worklist
+
+Rerunning every rule until nothing changes is wasteful: most values
+didn't change since the last round. Instead, keep a queue of values
+that might need updating. When a value's fact changes, put its users
+on the queue.
+
+<WorklistSteps client:visible />
+
+<Callout kind="definition">
+A **worklist** is the queue of items (values, or blocks in a dense
+analysis) whose facts may be out of date. The solver takes one off,
+reapplies its rule, and, if its fact changed, adds the items that
+depend on it. When the worklist is empty, the analysis is at a
+fixpoint.
+</Callout>
+
+<Prompts ids={['worklist-what', 'requeue']} />
+
+## The real thing in Viscosity
+
+Viscosity's numeric inference is exactly this optimistic analysis,
+over SSA values plus the bindings and collection fields that values
+flow through. It skips the worklist: each round, it reruns every
+rule, and it repeats rounds until a whole round changes nothing (with
+a cap of 1000 rounds, after which it gives up every guess: it fails closed). Simplified from `analysis.ts`:
+
+```ts
+for (const v of m.values)
+  num.set(v.id, optimistic(v)
+    ? true : compute(v));
+for (let changed = true, rounds = 0;
+     changed && rounds < 100;
+     rounds++) {
+  changed = false;
+  for (const v of m.values) {
+    const nv = compute(v);
+    if (num.get(v.id) !== nv) {
+      num.set(v.id, nv);
+      changed = true;
+    }
+  }
+  // ...then bindings and fields
+}
+```
+
+`optimistic(v)` is true for phis, binding loads, field reads and
+parameters, the values that can sit on a cycle. On the `sum` loop the
+real analysis reports `%3` (`i`), `%6` (`s`) and `%7` as numbers. The
+parameter `%0` comes out maybe-not: nothing in the program calls
+`sum`, so nothing is known about `n`. Add a call `sum(3)` and `%0`
+becomes a number too: `sum` is only ever called directly, so the
+`param` rule can check the argument at every call site. Replace the loop body with something that can add a string, and
+the doubt travels round the back edge, just as in the diagram.
+
+<Prompts ids={['viscosity-rounds']} />
+
+<Callout kind="engine" label="Under the hood">
+The same machinery, facts on a lattice, a rule per instruction, a
+merge and a worklist, underlies most of the middle of an optimizing
+compiler: reaching definitions, liveness, constant propagation and
+more. Textbooks such as Cooper and Torczon's treat it as one framework
+with many instances<Cite id="coopertorczon2022" />. Viscosity's
+numeric inference is one instance; the next two chapters are two more.
+</Callout>
+
+## Your turn
+
+<Exercise id="numeric" />
+
+<Exercise id="reaching" />
+
+## What you learned
+
+- A **dataflow** analysis has a fact per value or point, a rule per
+  instruction, and a merge where paths meet. In SSA, the phi's rule is
+  the merge.
+- A **lattice** orders the facts. Merging takes the highest fact below
+  both. Finite height plus one-way movement means the analysis ends.
+- A **fixpoint** is where no rule changes anything. Starting
+  optimistic finds the most precise one; starting pessimistic can get
+  stuck on loops.
+- A **worklist** only revisits values whose inputs changed.
+- Viscosity's numeric inference is an optimistic fixpoint, run in
+  rounds over values, bindings and fields.
+
+Next: the most famous analysis of all, and the transformation it
+enables.
+
+<Quiz />

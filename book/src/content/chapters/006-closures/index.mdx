@@ -210,13 +210,13 @@ this book uses only `let` and `const`.)
 <Prompts ids={['loop-let']} />
 
 <Callout kind="engine" label="Under the hood">
-You'll build all of this. In chapter 37 your interpreter gets an
+You'll build all of this. In chapter 53 your interpreter gets an
 *environment*: a table from names to values, plus an arrow to the
 enclosing environment. That is the rooms picture, made of data. Looking a
 name up means checking this table, then its parent, and so on outward. In
-chapter 41, a function value will store the environment it was created in,
+chapter 57, a function value will store the environment it was created in,
 which is exactly the closure arrow in the step-through above. And in
-chapter 57, the virtual machine will have to *move* captured variables out
+chapter 84, the virtual machine will have to *move* captured variables out
 of a call's short-lived storage when the call returns, because a closure
 still needs them.
 

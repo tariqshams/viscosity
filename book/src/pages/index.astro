@@ -1,6 +1,6 @@
 ---
 import Book from '../layouts/Book.astro';
-import { BOOK, PARTS } from '../data/book.js';
+import { BOOK, PARTS, TOTAL_DAYS } from '../data/book.js';
 import { curriculum, START_HREF } from '../lib/chapters';
 import { href } from '../lib/url';
 const { entries } = await curriculum();
@@ -45,7 +45,7 @@ const written = entries.filter((e) => e.href);
     <div class="mt-7 flex flex-wrap gap-3 font-sans">
       <a href={START_HREF} class="btn-3d btn-3d-primary px-5 py-2.5 text-base font-semibold" data-start>Start with the preface →</a>
       <a href={href('/front/about-the-author/')} class="btn-3d px-5 py-2.5 text-base">About the author</a>
-      <a href={href('/days/')} class="btn-3d px-5 py-2.5 text-base">See the 50-day plan</a>
+      <a href={href('/days/')} class="btn-3d px-5 py-2.5 text-base">See the {TOTAL_DAYS}-day plan</a>
     </div>
 
     <h2 class="mt-14 font-display text-2xl font-semibold">Contents</h2>

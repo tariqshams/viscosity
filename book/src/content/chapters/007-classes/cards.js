@@ -128,7 +128,7 @@ test('add changes neither vector', () => {
 - **\`add(o)\`.** Called as \`a.add(b)\`, \`this\` is \`a\` and \`o\` is \`b\`. We build the answer with \`new Vec(this.x + o.x, this.y + o.y)\`. Using \`new\` inside the class's own method is completely normal, and it means the result is a real Vec, with \`add\` and \`len\` of its own.
 - **\`len()\`.** Pythagoras on \`this.x\` and \`this.y\`. Copying them into local \`x\` and \`y\` first just keeps the formula short.
 
-Why return a new Vec instead of changing \`this\`? Because \`a\` might be aliased elsewhere (chapter 4), and someone holding it would be surprised to see it move. Small value-like objects that never change are easy to reason about, and as you'll see in Part VII, they are also easy for an optimizer to store however it likes.`,
+Why return a new Vec instead of changing \`this\`? Because \`a\` might be aliased elsewhere (chapter 4), and someone holding it would be surprised to see it move. Small value-like objects that never change are easy to reason about, and as you'll see in Part VIII, they are also easy for an optimizer to store however it likes.`,
     wrong: [
       {
         code: `class Vec {

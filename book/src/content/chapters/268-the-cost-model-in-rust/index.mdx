@@ -1,0 +1,212 @@
+---
+n: 268
+day: 67
+part: XIII
+title: 'The cost model in Rust'
+tagline: 'The planner is one Rust function with a ladder of early returns, an Option for the size, and a list of reasons in plain English. Reading it closely turned up a sentence the Rust engine worded differently from the reference, in a case no fixture covered.'
+objectives:
+  - Walk plan_one in plan.rs rung by rung, and say what each early return records.
+  - Explain how a measured size, an estimate, an upper bound and an unknown size reach the threshold.
+  - Describe a parity bug the threshold message had, and why the fixtures missed it.
+  - Implement the bottom of the ladder, reasons included, with tests.
+introduces: [rust-cost-model]
+uses: [viscosity-rs, rust-access-pass, plugin-trait, cross-implementation-tests, cost-model, bailout, annotation, pgo, optimization-report, aosoa, block-size, option, enum, match, struct, impl, rust-closure, rust-iterator, string-vs-str, vec, hashmap, ieee754, test-corpus, fuzzing]
+sources: [rust-std-option-or, rust-std-is-power-of-two]
+---
+import SizeRungSteps from '../../../components/diagrams/ch268/SizeRungSteps';
+
+## Same collection, three verdicts
+
+This program pushes inside an `if`:
+
+```js
+const ps = [];
+for (let i = 0; i < 100; i++)
+  if (i % 4 === 0) ps.push({ x: i });
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += 1;
+```
+
+Here is what the Rust CLI decides, by default, with a higher threshold,
+and with a profile from `viscosity profile` (rustc 1.97 release build;
+first two lines of each, wrapped):
+
+```
+$ viscosity explain l1.js
+ps (line 1) {x} → struct of arrays
+  · loop at line 4 in <module>() …
+$ viscosity explain l1.js --min-size 200
+ps (line 1) {x} → kept as array of objects
+  · at most 100 elements: below the
+    200-element threshold, where …
+$ viscosity explain l1.js --profile p.json
+ps (line 1) {x} → kept as array of objects
+  · about 25 elements (measured): below
+    the 64-element threshold, where …
+```
+
+Chapter 153 built this ladder in TypeScript. In Rust it is one function,
+`plan_one` in `crates/core/src/plan.rs`, and the details of how it is
+written decide every word of those lines.
+
+<Callout kind="intuition">
+A loan officer works down a checklist. The first box that fails ends the
+interview, and the reason goes on the letter. An applicant who passes
+every box gets the loan, with a note of what was checked.
+</Callout>
+
+## From continue to return
+
+The TypeScript `plan()` is one loop over collections, and each refusal
+is `out.push(keep(...)); continue;`. The port moves the body into its own
+function, so each refusal is an early `return`:
+
+```rust
+fn plan_one(
+    a: &Analysis,
+    c: &Collection,
+    opts: &PlanOptions,
+) -> CollectionPlan {
+    let keep = |reasons: Vec<String>| {
+        CollectionPlan {
+            collection: c.clone(),
+            layout: Layout::Aos,
+            block_size: 0,
+            reasons,
+        }
+    };
+    if !c.bailouts.is_empty() {
+        return keep(c.bailouts.iter()
+            .map(|b| format!("unsafe: {b}"))
+            .collect());
+    }
+    // ... the other rungs ...
+}
+```
+
+`keep` is a closure that borrows `c` and builds the plan for "leave it
+alone". Every rung below is the same shape: test, then `return keep(...)`
+with the reason. A collection with bailouts gets exactly one reason per
+bailout. `explain --frames` relies on that: it pairs the k-th reason with
+the k-th bailout's source position.
+
+The annotation rungs come next. Two refusals look inside an
+`aosoa(N)` annotation (chapter 270 explains them):
+
+```rust
+let b = ann.block_size.unwrap_or(8);
+if !(b >= 2 && b.is_power_of_two()) {
+    return keep(vec![format!(
+        "annotated aosoa({}), but …",
+        js_number(b as f64))]);
+}
+```
+
+`is_power_of_two` is true exactly when the number is 2 to some power<Cite id="rust-std-is-power-of-two" />,
+which includes 1, so `b >= 2` rules that out separately. Then come opt-in
+mode, Python without `--python-auto`, no numeric field, and no loop. Each
+is three lines, and each reason string is meant to match the
+reference's word for word.
+
+<Prompts ids={['cm-rs-return', 'cm-rs-keep', 'cm-rs-one-per-bailout', 'cm-rs-pow2']} />
+
+## The size rung
+
+Now the only rung with arithmetic. Step through it on the program
+above, under all three option sets:
+
+<SizeRungSteps client:visible />
+
+The code, adapted (the long message is shortened):
+
+```rust
+let measured = opts.profile.as_ref()
+    .and_then(|p| p.get(&c.name))
+    .copied();
+let size = measured.or(c.size_estimate);
+if let Some(size) = size {
+    if size < opts.min_size {
+        let word = if measured.is_none()
+            && c.size_is_upper_bound
+            { "at most" } else { "about" };
+        let m = if measured.is_some()
+            { " (measured)" } else { "" };
+        return keep(vec![format!(
+            "{word} {} elements{m}: …",
+            js_number(size))]);
+    }
+}
+```
+
+`Option::or` keeps the first value if there is one<Cite id="rust-std-option-or" />,
+so a measurement always wins over the estimate. `if let Some(size)` makes
+the unknown case explicit: no size, no refusal. The planner bets that a
+collection it can't count may be large. A maximum is compared as if it
+were the size, so "at most 100" passes a threshold of 64 even though the
+program holds 25. A maximum *below* the threshold is a safe refusal,
+since the real size can only be smaller.
+
+The comparison is plain `f64` `<`. That has one odd consequence, in
+both engines: a `min_size` of `NaN` makes every comparison false, so
+the threshold silently disappears. Both CLIs once let `--min-size abc`
+through as `Number("abc")`, which is `NaN`. Now both refuse it with
+`--min-size must be a non-negative number`; only a program calling the
+library can still pass `NaN`. Try it:
+
+<Run id="size-rung" />
+
+<Callout kind="definition">
+The **cost model in Rust** is `plan_one` in `plan.rs`: a **ladder of
+early returns**. Safety first (one `unsafe:` reason per bailout), then
+annotations, opt-in mode and Python, then the cost rules: some field
+numeric, some loop touching a field, and a size not **below
+`min_size`**. The size is the **measured** one if a profile has it, else
+the **estimate** (`Option::or`). An **unknown** size passes. A collection
+that passes every rung becomes SoA, and `describe` lists its **reasons**.
+</Callout>
+
+<Prompts ids={['cm-rs-or', 'cm-rs-unknown', 'cm-rs-max', 'cm-rs-nan']} />
+
+## A sentence the fixtures never saw
+
+When I first wrote this chapter, the profiled line in Rust read
+`about 25 (measured) elements: below`. The format string was
+`"{} {}{} elements: below …"`, so the third placeholder,
+" (measured)", landed before the word "elements". The TypeScript
+reference writes `${size} elements${...}`: same decision, different
+text. Why did nothing catch it? The 186 parity fixtures then compiled
+every program with default options and with `--bounds assume`, never
+with `--profile`, and the fuzzer passed no profile either. Parity holds
+only for what is tested. The fix moved the placeholder and added the
+missing tests: four profile fixtures beside today's 190 parity pairs,
+and random profiles in the fuzzer.
+
+<Prompts ids={['cm-rs-bug']} />
+
+<Callout kind="engine" label="Under the hood">
+The options are typed. `Mode` and `Bounds` are enums with
+`#[derive(Default)]` and a `#[default]` variant, and `PlanOptions`
+implements `Default` by hand: auto mode, `min_size: 64.0`, bounds
+checks on, no annotations, no profile, no `python_auto`. Where the
+reference's `compile()` ignores an option passed as `undefined`, Rust
+has no such value: the README lists that as one of the few things the
+port doesn't reproduce.
+</Callout>
+
+## Your turn
+
+<Exercise id="planBottom" />
+
+## What you learned
+
+- `plan_one` is a **ladder of early returns**, each through a `keep`
+  closure that records the reason.
+- **One reason per bailout** lets `--frames` pair reasons with
+  positions.
+- The size is **`measured.or(estimate)`**. An **unknown** size passes,
+  a **maximum** is treated as the size, and `NaN` disables the
+  threshold.
+- Byte parity covers **what the fixtures exercise**. The threshold
+  message with a profile differs between the engines.
+
+<Quiz />

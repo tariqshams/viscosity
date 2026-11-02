@@ -1,0 +1,210 @@
+---
+n: 76
+day: 19
+part: IV
+title: 'Representing values'
+tagline: 'Your VM’s stack has held nothing but numbers. Real Drip programs push nil, booleans and strings onto the same stack, and every instruction has to know which is which.'
+objectives:
+  - Explain why a dynamically typed VM attaches a type tag to every value.
+  - Describe a tagged value as a tag plus a payload, and draw the four kinds Drip needs.
+  - Read the companion VM’s Value type and explain how it borrows JavaScript’s own tags.
+  - Implement equality and truthiness for tagged values, types first.
+introduces: [tagged-value, value-representation]
+uses: [stack-machine, dispatch-loop, opcode, bytecode, virtual-machine, chunk, constant-pool, emit, dynamic-typing, runtime-value, truthiness, runtime-error, union-type, discriminated-union, narrowing, typeof, interface, typescript, smi, heap-number, ieee754, float64, pointer, stack-and-heap, memory, identity, reference, drip, object, property, function, return, if, comparison, logical-operators, numbers, strings, booleans, console-log]
+sources: [nystrom2021, v8-pointer-compression, v8-react-cliff]
+---
+import ValueBoxes from '../../../components/diagrams/ch076/ValueBoxes';
+import StackTagSteps from '../../../components/diagrams/ch076/StackTagSteps';
+
+## One stack, many kinds of thing
+
+The stack machine from chapter 74 held numbers, and only numbers. That
+made `OP_NEGATE` easy: pop, flip the sign, push. Now look at what real
+Drip programs push:
+
+```
+print -(1 + 2) == nil;
+print !true;
+print "tea" + "pot";
+```
+
+Numbers, `nil`, booleans and strings all land in the same stack array.
+`OP_NEGATE` must refuse a string. `OP_ADD` must add numbers but join
+strings. `OP_EQUAL` must say `1 == "1"` is false. An instruction can only
+do that if every value on the stack can answer one question: *what kind
+of thing are you?*
+
+Drip is dynamically typed (chapter 33): the compiler doesn’t know the
+answer ahead of time, so the value itself has to carry it, all the way to
+runtime.
+
+## Tagged values
+
+<Callout kind="intuition">
+A cloakroom. Every hook is the same size, and every hook has a small
+label: “umbrella”, “scarf”, “ticket for the big suitcase in the back”.
+The attendant reads the label first, then knows how to handle what hangs
+there. Nobody has to unwrap anything to find out.
+</Callout>
+
+<Figure takeaway="A value is a tag plus a payload." caption="The four kinds of Drip value. nil needs no payload at all. A boolean or a number fits in the slot. An object is too big for any fixed slot, so its payload is an address: an arrow to the object on the heap.">
+  <ValueBoxes />
+</Figure>
+
+You can write that picture down directly. In TypeScript, a
+discriminated union (chapter 14) is exactly a tag plus a payload:
+
+```ts
+type Tagged =
+  | { tag: 'nil' }
+  | { tag: 'bool'; as: boolean }
+  | { tag: 'num'; as: number }
+  | { tag: 'obj'; as: Obj };
+```
+
+The instruction checks the tag, and TypeScript narrows the payload for
+you:
+
+```ts
+function negate(v: Tagged): Tagged {
+  if (v.tag !== 'num') {
+    throw new Error(
+      'Operand must be a number.');
+  }
+  return { tag: 'num', as: -v.as };
+}
+```
+
+This is close to what clox, the C virtual machine in *Crafting
+Interpreters*, does: a small struct holding a type field and a C union
+for the payload<Cite id="nystrom2021" />. Drip is a dialect of that
+book’s language, Lox.
+
+<Callout kind="definition">
+A **tagged value** is a runtime value stored together with a **tag**
+that says its type, plus a **payload** holding the data itself. Every
+instruction that cares about types reads the tag before it touches the
+payload. In Drip the tags are nil, boolean, number and object, and an
+object’s payload is a **reference** to memory on the heap.
+</Callout>
+
+<Run id="tagged" />
+
+<Prompts ids={['why-tags', 'tag-payload', 'nil-payload', 'obj-payload']} />
+
+## The tags at work
+
+Here is that first line, `print -(1 + 2) == nil;`, compiled by the
+companion compiler and run on the real stack. Watch the tags, not the
+numbers.
+
+<StackTagSteps client:visible />
+
+Three rules fell out of that run, and Drip keeps them everywhere:
+
+- **Arithmetic checks types.** `-"a"` is a runtime error, `Operand must
+  be a number.`, and so is `1 + nil`.
+- **Equality never fails.** Values with different tags are simply
+  unequal. `1 == "1"` and `nil == false` are both false.
+- **Truthiness looks at tags too.** Only `nil` and `false` are falsey
+  (chapter 51). `0` and `""` are truthy, because their tags aren’t nil or
+  bool.
+
+<Run id="drip-values" />
+
+<Prompts ids={['equal-tags', 'equal-mixed', 'negate-check']} />
+
+## How the companion VM stores a value
+
+The `Tagged` union above works, but think about what it costs in a VM
+written in JavaScript. Every `{ tag, as }` is a fresh object. So `1 + 2`
+would allocate a new object to hold `3`, and every read of a value would
+follow a reference to reach its payload. That is the HeapNumber problem
+from chapter 29, built by hand, for every value in the program.
+
+The companion VM doesn’t write a tag at all. Here is its whole value
+type, from `vm/object.ts`:
+
+```ts
+type Value =
+  null | boolean | number | Obj;
+```
+
+`null` stands for `nil`, and booleans and numbers are plain JavaScript
+values. The tag is still there. JavaScript values already carry their
+type, and the engine keeps track of it (chapter 29’s Smi tag bit is one
+of V8’s ways<Cite id="v8-pointer-compression" />). So reading the tag is
+just asking JavaScript:
+
+```ts
+case OP.NEGATE:
+  if (typeof peek(0) !== 'number') {
+    runtimeError(
+      'Operand must be a number.');
+  }
+  push(-(pop() as number));
+  break;
+```
+
+Equality is one line, `a === b`. For numbers, booleans and `null`,
+JavaScript’s `===` already compares type and contents. For objects it
+compares identity, which is right for every object Drip has, and
+chapter 79 makes it right for strings too.
+
+Printing has one surprise. `String(-0)` gives `"0"`, but Drip prints
+negative zero as `-0`, so the VM checks for it first:
+
+```ts
+function formatNumber(n: number) {
+  return Object.is(n, -0)
+    ? '-0' : String(n);
+}
+```
+
+<Callout kind="definition">
+A **value representation** is the memory layout a runtime chooses for
+its values: where the tag lives, where the payload lives, and how big a
+slot is. A **boxed** layout puts each value in its own object behind a
+reference. An **unboxed** or **immediate** layout keeps the value right
+in the slot. The companion VM uses JavaScript primitives for nil,
+booleans and numbers, so they stay unboxed as far as the VM is
+concerned, and only heap objects sit behind a reference.
+</Callout>
+
+<Prompts ids={['ts-value', 'boxing-cost', 'minus-zero']} />
+
+<Callout kind="engine" label="Under the hood">
+“Unboxed as far as the VM is concerned” hides a layer. V8 tags every
+slot it stores: small integers are Smis, kept in the slot with a tag
+bit, and other numbers, like `3.5`, can become HeapNumbers on V8’s heap
+behind a pointer<Cite id="v8-react-cliff" />. So the companion VM’s
+values are tagged twice over, once by meaning (its `Value` type) and once
+by the engine underneath. A VM written in C can’t lean on anybody: it
+picks its own layout, such as clox’s struct with a type field and a
+union<Cite id="nystrom2021" />. Chapter 87 shows a cleverer layout that
+squeezes the tag and the payload into a single 64-bit double, using bit
+patterns that IEEE 754 leaves spare.
+</Callout>
+
+## Your turn
+
+<Exercise id="tagEquality" />
+
+<Exercise id="tagFormat" />
+
+## What you learned
+
+- A dynamically typed VM needs **tagged values**: a **tag** saying the
+  type, and a **payload** with the data. Instructions read the tag first.
+- Drip has four tags: nil, boolean, number and object. An object’s
+  payload is a reference to the heap.
+- Arithmetic checks tags and can fail. Equality compares tags first and
+  never fails: different types are unequal.
+- A **value representation** is the layout of a value in memory. The
+  companion VM’s `Value` is `null | boolean | number | Obj`, so it reads
+  JavaScript’s own tags with `typeof`, and `valuesEqual` is `===`.
+
+Next: the fourth tag. Strings are the first value that can’t fit in a
+slot, so they move to the heap.
+
+<Quiz />

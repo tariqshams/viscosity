@@ -1,0 +1,247 @@
+---
+n: 78
+day: 20
+part: IV
+title: 'Hash tables'
+tagline: 'Chapter 8 promised you would build the machine inside a Map. Here it is: a hash function, one flat array, a rule for collisions, and the small trick that makes deleting safe.'
+objectives:
+  - Implement the FNV-1a hash function with correct 32-bit arithmetic in JavaScript.
+  - Explain how a hash table turns a hash into a slot, and what a collision is.
+  - Trace inserts, lookups and deletes in an open-addressing table with linear probing and tombstones.
+  - Explain the load factor, why the table grows, and why its storage is a struct of arrays.
+introduces: [hash-function, hash-table, open-addressing, load-factor]
+uses: [heap-object, object-list, tagged-value, value-representation, virtual-machine, hash-intuition, map, bit-ops, binary, bit, char-code, string-index, aos-vs-soa, pointer-chasing, contiguous, identity, reference, array, index, length, push, object, property, class, method, this, constructor, new, interface, typescript, function, return, if, for-loop, while-loop, comparison, numbers, strings, booleans, console-log, global-variable, field, drip]
+sources: [nystrom2021, lcn2-fnv, mdn-math-imul, mdn-unsigned-right-shift, mdn-bitwise-and, cpython-dictobject]
+---
+import ProbeSteps from '../../../components/diagrams/ch078/ProbeSteps';
+
+## Finding things by name
+
+The VM is about to look things up by name everywhere: global variables
+(chapter 80), an instance’s fields, a class’s methods. The tree-walker
+used a JavaScript `Map`. The companion VM has its own table, about a
+hundred lines in `vm/table.ts`, so you can see what a `Map` does inside,
+and so the garbage collector can walk it and delete entries itself
+(chapter 85).
+
+Chapter 8’s picture was a wall of pigeonholes. To build it you need two
+pieces: a way to turn a key into a number, and a rule for when two keys
+want the same pigeonhole.
+
+## A hash function
+
+<Callout kind="intuition">
+A kitchen blender for text. Put in `"health"` and you always get the same
+smoothie, but change one letter and the result looks completely
+different. You can’t un-blend it, and you don’t need to: you only need
+the same input to give the same output, and different inputs to spread
+out.
+</Callout>
+
+The companion VM uses FNV-1a, a hash named after Glenn Fowler, Landon
+Curt Noll and Phong Vo, and designed to be fast while keeping
+collisions rare<Cite id="lcn2-fnv" />. It starts from a fixed 32-bit number, the
+*offset basis*. Then, for each character, it XORs the character code
+into the hash and multiplies by a fixed prime, keeping only the low 32
+bits:
+
+```ts
+function hashString(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+```
+
+`2166136261` is `0x811c9dc5` and `16777619` is `0x01000193`, the values
+in the reference implementation<Cite id="lcn2-fnv" />. Two JavaScript
+details matter:
+
+- **`Math.imul`**, not `*`. A plain `h * 16777619` is a double
+  multiplication, and the product can be far beyond 2<sup>53</sup>, so its
+  low bits are lost. `Math.imul` does a C-style 32-bit multiply, wrapping
+  around exactly<Cite id="mdn-math-imul" />.
+- **`>>> 0`** at the end. XOR and `Math.imul` give *signed* 32-bit results,
+  which may be negative. Shifting by zero with `>>>` reads the same 32
+  bits as an unsigned number<Cite id="mdn-unsigned-right-shift" />.
+
+The reference code hashes bytes. This one hashes UTF-16 code units
+(chapter 10), which are the same thing for plain ASCII names.
+
+<Run id="fnv" />
+
+<Callout kind="definition">
+A **hash function** turns a key into a number, its **hash**. It must be
+**deterministic**: equal keys always give equal hashes. A good one also
+spreads different keys evenly over its range, so that similar keys don’t
+cluster. The companion VM computes each string’s hash once, when the
+string object is made, and keeps it in the object’s `hash` field.
+</Callout>
+
+<Prompts ids={['hash-what', 'fnv-steps', 'imul-why', 'ushr-why']} />
+
+## From a hash to a slot
+
+A table with 8 slots needs a slot number from 0 to 7. Because the
+capacity is always a power of two, keeping the low bits does it in one
+instruction (chapter 16): `hash & 7` keeps the last three
+bits<Cite id="mdn-bitwise-and" />. `hash("x") & 7` is 7.
+
+With more possible names than slots, two keys will sooner or later
+want the same slot. That’s a **collision**, and no hash function can
+prevent it.
+
+<Prompts ids={['mask-index']} />
+
+## Open addressing
+
+<Callout kind="intuition">
+A car park with numbered bays and no reservations. You drive to the bay
+your ticket says. If it’s taken, you try the next one along, and the
+next, wrapping round at the end of the row. Finding your car later, you
+walk the same route from the same starting bay.
+</Callout>
+
+One way to handle collisions hangs a little list off every slot. The
+companion table doesn’t. Every entry lives in the array itself, and a
+key whose slot is taken simply moves along. Here is the whole idea on a
+real 8-slot table, using the particle fields as keys:
+
+<ProbeSteps client:visible />
+
+Lookups and inserts share one function. It returns the slot where the
+key *is*, or where it *should go*:
+
+```ts
+static find(keys, values, key) {
+  const mask = keys.length - 1;
+  let index = key.hash & mask;
+  let tombstone = -1;
+  for (;;) {
+    const k = keys[index];
+    if (k === null) {
+      if (values[index] === null) {
+        return tombstone !== -1
+          ? tombstone : index;
+      }
+      if (tombstone === -1) {
+        tombstone = index;
+      }
+    } else if (k === key) {
+      return index;
+    }
+    index = (index + 1) & mask;
+  }
+}
+```
+
+Notice `k === key`: keys are compared by identity, not by their
+characters. That is only correct because equal strings are always the
+same object in this VM, which is chapter 79’s job. Deleting sets the
+key to `null` and the value to `true`, the tombstone.
+
+<Callout kind="definition">
+A **hash table** is an array indexed by hashes: a key’s hash, reduced to
+the array’s size, says where to start looking. With **open addressing**,
+entries live in the array itself, and a key whose slot is taken goes to
+another slot found by **probing**. **Linear probing** tries the next
+slot, then the next, wrapping round. A lookup stops at the key or at a
+truly empty slot. A deleted entry becomes a **tombstone**, which probes
+pass over, so keys stored beyond it stay findable.
+</Callout>
+
+<Prompts ids={['linear-probe', 'stop-empty', 'tombstone-why']} />
+
+## How full is too full?
+
+Probing is quick when most slots are empty and slow when they’re not:
+in a nearly full table, a key might walk past half the array. And if no
+slot were ever truly empty, `find`’s loop would never end. So the table
+watches its **load**, and grows before it gets crowded:
+
+```ts
+set(key: ObjString, value: Value) {
+  if (this.count + 1 >
+      this.keys.length * MAX_LOAD) {
+    this.grow(this.keys.length < 8
+      ? 8 : this.keys.length * 2);
+  }
+  const i = Table.find(
+    this.keys, this.values, key);
+  const isNew = this.keys[i] === null;
+  if (isNew && this.values[i] === null) {
+    this.count++;
+  }
+  this.keys[i] = key;
+  this.values[i] = value;
+  return isNew;
+}
+```
+
+`MAX_LOAD` is 0.75, and `count` includes tombstones, because a tombstone
+still takes up a slot as far as probing is concerned. Reusing a
+tombstone doesn’t add to `count`; only filling a truly empty slot does.
+
+`grow` makes new, bigger arrays and inserts every live key again. It
+can’t just copy: the mask changes from 7 to 15, so each key’s starting
+slot changes too. Tombstones aren’t copied, so growing also cleans up.
+
+<Callout kind="definition">
+The **load factor** is how full a table is: occupied slots divided by
+capacity. The companion table counts live entries and tombstones, and
+grows to double the capacity when an insert would take it past
+**0.75**. A lower limit wastes memory; a higher one makes probe
+sequences long.
+</Callout>
+
+<Prompts ids={['count-tombstones', 'grow-reinsert']} />
+
+## Two arrays, not one
+
+The first `table.ts` stored an array of `{ key, value }` entry
+objects. A later commit switched to two parallel arrays, `keys[]` and
+`values[]`: chapter 30’s struct of arrays, inside the VM. With entry
+objects, every slot is a separate heap object, and probing chases a
+pointer to each one before it can read the key. The comment in
+`table.ts` says object-heavy programs got measurably faster; the commit
+records no separate number for this change.
+
+<Prompts ids={['soa-table']} />
+
+<Callout kind="engine" label="Under the hood">
+CPython’s `dict` is an open-addressing table too, and its source spells
+out the same ideas. A deleted entry becomes a *dummy* slot, which can’t
+be made unused again or the probe sequence would lose its way. The
+table is resized when it reaches two-thirds full. Unlike the companion
+table it doesn’t probe linearly: it mixes higher bits of the hash into
+each next step, so keys whose low bits agree spread
+apart<Cite id="cpython-dictobject" />. The design of the companion table
+follows clox’s<Cite id="nystrom2021" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="probeTable" />
+
+<Exercise id="fnv1a" />
+
+## What you learned
+
+- A **hash function** turns a key into a number. FNV-1a XORs in each
+  character and multiplies by a prime. In JavaScript, use `Math.imul`
+  and finish with `>>> 0`.
+- A **hash table** uses `hash & (capacity - 1)` as the starting slot.
+  Two keys wanting one slot is a **collision**.
+- **Open addressing** keeps every entry in the array. Linear probing
+  steps to the next slot; lookups stop at an empty slot; deletes leave
+  **tombstones**.
+- The **load factor** limit, 0.75, makes the table double and reinsert
+  everything before probes get long.
+- The companion table is a struct of arrays: `keys[]` and `values[]`.
+
+Next: the trick that lets `find` compare keys with a single `===`.
+
+<Quiz />

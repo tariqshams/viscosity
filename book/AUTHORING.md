@@ -1,7 +1,7 @@
 # Writing a chapter of *Viscosity*
 
 This guide is for anyone (human or AI) adding chapters. Read chapters
-001–004 first: they are the reference template. Copy their structure, voice
+1–4 first: they are the reference template. Copy their structure, voice
 and density.
 
 ## Files
@@ -196,7 +196,7 @@ bytecode VM). For a Drip exercise, `tests` is the exact expected output
   ordinary `js`/`ts` exercises.
 - Benchmark results for Drip: `companion/ts/results/drip-bench-*.md`.
 
-**The real compiler, in the page (Part VII onward):**
+**The real compiler, in the page (Part VIII onward):**
 
 ```mdx
 import Playground from '../../../components/playground/Playground';
@@ -219,7 +219,7 @@ port compiled to WebAssembly. Readers switch with the small **TS / Rust**
 toggle in its header. Props:
 
 - `engine="rust"` starts on the Rust engine (default `"ts"`). Use it only
-  where the chapter is about the Rust port (Part XI): the `.wasm` is about
+  where the chapter is about the Rust port (Part XIII): the `.wasm` is about
   1.4 MB (0.5 MB gzipped), fetched the first time the Rust engine is used.
 - `engineToggle={false}` hides the toggle.
 

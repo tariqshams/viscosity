@@ -1,0 +1,195 @@
+---
+n: 219
+day: 55
+part: XI
+title: 'Rust and WebAssembly'
+tagline: 'A WebAssembly function only understands numbers, and Viscosity’s compiler wants a string and returns two. wasm-bindgen writes the code in between. Here is that code, generated for the real engine, and what it costs to cross.'
+objectives:
+  - Build a Rust crate for wasm32-unknown-unknown and run wasm-bindgen on it.
+  - Explain how a &str argument and a struct result cross the boundary.
+  - Say what a Result's Err becomes in JavaScript, and why free() exists.
+  - Read the engine/rust wasm crate, and what its build did and didn't prove.
+introduces: [wasm-bindgen]
+uses: [rust, cargo, crate, ownership, borrow, string-vs-str, struct, impl, enum, match, result, question-mark, trait, typed-index, handle, webassembly, linear-memory, arraybuffer, typed-array, garbage-collection, try-catch, error-object, typescript, interface, viscosity-pipeline, language-plugin, source-to-source]
+sources: [wasm-bindgen-guide, wasm-spec-jsapi]
+---
+import BoundarySteps from '../../../components/diagrams/ch219/BoundarySteps';
+
+## Numbers only
+
+Chapter 169 called a WebAssembly function from JavaScript: `add(40, 2)`.
+Its parameters were `i32`s, because that is all a WebAssembly function
+can take or return: numbers. Now look at the function the Rust port of
+Viscosity wants to offer the browser:
+
+```rust
+fn compile(source: &str)
+    -> Result<Output, JsError>
+```
+
+A string goes in. A struct of two strings, or an error, comes out. None
+of that is a number, so something has to translate on both sides of the
+call, and write it by hand for every function and you'd soon get it
+wrong.
+
+<Callout kind="intuition">
+WebAssembly is a hatch in a wall, just big enough for a few numbers at a
+time. wasm-bindgen is a pair of clerks, one on each side. Yours puts
+your letter into a locker on the far side and passes the locker number
+through the hatch. The other clerk opens the locker and reads it.
+</Callout>
+
+## The real crate
+
+`engine/rust/crates/wasm/src/lib.rs` is the whole wrapper, about fifty
+lines. Its core, simplified:
+
+```rust
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen(getter_with_clone)]
+pub struct Output {
+    pub code: String,
+    pub explain: String,
+}
+
+#[wasm_bindgen]
+pub fn compile(source: &str)
+    -> Result<Output, JsError> {
+    let r = compile_js(source, &JsPlugin,
+        CompileOptions::default())
+        .map_err(|e| {
+            JsError::new(&e.to_string())
+        })?;
+    Ok(Output {
+        code: r.code,
+        explain: r.explain,
+    })
+}
+```
+
+`#[wasm_bindgen]` marks what JavaScript should see. `getter_with_clone`
+lets JavaScript read the `String` fields: a getter normally needs a
+`Copy` field, and this one clones instead<Cite id="wasm-bindgen-guide" />.
+A second export, `compileWith`, takes the mode, bounds and minimum size
+as well; you'll write its option parsing in the exercise. The crate's
+`Cargo.toml` asks for `crate-type = ["cdylib", "rlib"]`: a `cdylib` is
+what becomes the `.wasm` file.
+
+Building it takes two tools. Cargo compiles the crate for the
+`wasm32-unknown-unknown` target, WebAssembly with no operating system.
+The `wasm-bindgen` CLI then reads that `.wasm` and writes the
+JavaScript glue next to it<Cite id="wasm-bindgen-guide" />:
+
+```sh
+cargo build --release -p viscosity-wasm \
+  --target wasm32-unknown-unknown
+W=target/wasm32-unknown-unknown/release
+wasm-bindgen --target nodejs \
+  --out-dir pkg $W/viscosity_wasm.wasm
+```
+
+I ran exactly this with cargo 1.97 and wasm-bindgen 0.2.106, the
+version the workspace pins. The build took 41 seconds from scratch;
+the `.wasm` was about 1.25 MB, and about 1.19 MB after wasm-bindgen
+moved its glue out (the exact byte counts move by a few hundred as the
+engine changes). The TypeScript types it wrote, trimmed:
+
+```ts
+export class Output {
+  free(): void;
+  code: string;
+  explain: string;
+}
+export function compile(
+  source: string): Output;
+```
+
+<Callout kind="definition">
+**wasm-bindgen** generates the bindings between Rust compiled to
+WebAssembly and JavaScript. The `#[wasm_bindgen]` attribute marks
+exported functions and structs; the `wasm-bindgen` CLI then writes the
+JavaScript glue and `.d.ts` types that convert strings, structs and
+`Result`s to and from the numbers WebAssembly actually
+passes<Cite id="wasm-bindgen-guide" />.
+</Callout>
+
+<Prompts ids={['wasm-target', 'numbers-only', 'bindgen-what']} />
+
+## Crossing the boundary
+
+Here is the generated `compile`, trimmed and re-indented:
+
+```js
+function compile(source) {
+  const ptr0 = passStringToWasm0(source,
+    wasm.__wbindgen_malloc,
+    wasm.__wbindgen_realloc);
+  const len0 = WASM_VECTOR_LEN;
+  const ret = wasm.compile(ptr0, len0);
+  if (ret[2]) {
+    throw takeFromExternrefTable0(ret[1]);
+  }
+  return Output.__wrap(ret[0]);
+}
+```
+
+Step through one call:
+
+<BoundarySteps client:visible />
+
+The string is *copied*, and re-encoded: JavaScript strings are UTF-16,
+Rust's are UTF-8. A JavaScript string may hold an unpaired surrogate,
+which isn't valid Unicode; `TextEncoder` replaces it with U+FFFD, so
+Rust gets a slightly different string<Cite id="wasm-bindgen-guide" />.
+The run below models the copy with a `Vec<u8>` standing in for linear
+memory. Notice that the lengths differ: 23 UTF-8 bytes, 22 UTF-16 units.
+
+<Run id="boundary-model" />
+
+<Prompts ids={['str-copy', 'surrogate', 'output-handle', 'free']} />
+
+An `Err` takes the other branch. wasm-bindgen turns an exported
+function's `Err` into a JavaScript exception<Cite id="wasm-bindgen-guide" />.
+From Node, `compile("let = ;")` threw an `Error` whose message was
+`Unexpected token (1:6)`: the `CompileError` from oxc, through
+`to_string()`, through `JsError`, into a `try`/`catch` you could write
+in chapter 11.
+
+<Prompts ids={['result-throw']} />
+
+<Callout kind="engine" label="Under the hood">
+The README says the WebAssembly build reproduces every parity fixture.
+I checked: a short Node script loaded the `nodejs` build and compiled
+all 61 test programs with both bounds modes, opt-in mode where the
+header asks for it. All 122 outputs matched the TypeScript engine's
+`code` and `explain`, byte for byte. A rough timing on the shared VM put
+`particles.js` at a minimum of 96 to 114 µs a compile, near the native
+build's 74 to 95 µs, but that is one quick look, not a benchmark. One
+line of the glue connects back to chapter 169. Before each copy it
+checks its `Uint8Array` view of the memory, and if the view's
+`byteLength` is 0 it makes a new one. A `malloc` inside Rust may have
+grown the memory, which detaches the old buffer<Cite id="wasm-spec-jsapi" />.
+The book's playground starts on the TypeScript engine; chapter 275
+compiles the Rust one for the browser.
+</Callout>
+
+<Prompts ids={['parity-wasm', 'refresh-view']} />
+
+## Your turn
+
+<Exercise id="options" />
+
+## What you learned
+
+- WebAssembly exports exchange numbers only. Strings and structs cross
+  as pointers and lengths into **linear memory**.
+- **wasm-bindgen** is an attribute plus a CLI. Together they write the
+  glue and the TypeScript types.
+- A `&str` argument is copied in as UTF-8; a returned struct stays in
+  Rust's memory, behind a JS object holding its address.
+- Getters copy on every read; `free()` drops the Rust value.
+- An `Err(JsError)` becomes a thrown JavaScript `Error`.
+- The engine's wasm build reproduced all 122 fixtures from Node.
+
+<Quiz />

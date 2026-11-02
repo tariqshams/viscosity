@@ -1,0 +1,233 @@
+---
+n: 152
+day: 38
+part: VIII
+title: 'What Viscosity refuses to touch'
+tagline: 'The most common thing Viscosity says is no. Every no comes with a reason, and every reason is a small lesson in how a program can notice where its data lives.'
+objectives:
+  - Define a bailout, and tell a safety bailout apart from a decision that a change wouldn't pay off.
+  - Explain, for each refusal in the differential corpus, what the program could observe if Viscosity went ahead.
+  - Change a refused program so that Viscosity can prove it safe, without changing what it prints.
+  - Contrast Viscosity's compile-time bailouts with an engine's run-time deoptimization.
+introduces: [bailout]
+uses: [array-of-objects, reference, aliasing, identity, mutation, closure, captured-environment, map-filter-reduce, method, console-log, bracket-access, import-export, aos-vs-soa, materialization, speculation, deoptimization, escape-analysis, escape-sites, differential-testing, record-shape, shape-stability, access-pattern, hot-loop, safety-analysis]
+sources: [mdn-equality, v8-maglev]
+---
+import RefusalSteps from '../../../components/diagrams/ch152/RefusalSteps';
+import Playground from '../../../components/playground/Playground';
+
+## Saying no
+
+Viscosity's differential corpus is a folder of small programs, each run
+twice, once as written and once compiled, and the two outputs must
+match. Each file's first line, such as `// viscosity: ps=aos`, also
+says which layout Viscosity must pick. Nearly half of them are there to make Viscosity *refuse*. A wrong
+refusal costs some speed. A wrong acceptance changes what a program
+prints. So the refusals are tested as carefully as the transformations.
+
+<Callout kind="intuition">
+A bank teller who can't verify a signature doesn't cash the cheque. It
+isn't an accusation: the cheque may be perfectly good. The teller just
+can't prove it, and the cost of being wrong falls on someone else.
+</Callout>
+
+<Callout kind="definition">
+A **bailout** is leaving a collection unchanged because its safety can't
+be proved. In Viscosity it is a reason string in the collection's
+`bailouts` list, and `viscosity explain` prints it after **`unsafe:`**.
+A bailout says nothing is known to be wrong; only that something might
+be.
+</Callout>
+
+Step through six refusals from the corpus. Each traces a chain of uses
+from the collection to the first use Viscosity can't rewrite:
+
+<RefusalSteps client:visible />
+
+The rest of this chapter takes them one lesson at a time, with the real
+explain output (wrapped to fit).
+
+<Prompts ids={['bo-what', 'bo-cost']} />
+
+## Lesson 1: two names, one object
+
+From `aliasing_identity.js`:
+
+```js
+const keep = [];
+for (let i = 0; i < ps.length; i++)
+  keep.push(ps[i]);
+keep[0].x = 42;
+console.log(ps[0].x, keep[0] === ps[0]);
+```
+
+```text
+ps (line 2) {x} → kept as array of
+  objects
+  · unsafe: line 7: an element is
+    compared or combined with "==="
+  · unsafe: line 5: an element is used
+    by push
+```
+
+It prints `42 true`: one object, two names (chapter 4). In a struct of
+arrays an element is a row number, not an object. To give `keep` an
+element, Viscosity would have to build one, and a built object is a
+copy. Writes to it are lost, and `===` compares identity, so a fresh
+copy is never the same object<Cite id="mdn-equality" />:
+
+<Run id="fake" />
+
+Chapter 158 looks at what it would take to keep identity anyway. Here,
+Viscosity's answer is to refuse.
+
+<Prompts ids={['bo-identity', 'bo-push']} />
+
+## Lesson 2: a name that outlives the line
+
+From `closure_alias.js`:
+
+```js
+const p = ps[3];
+const f = () => p.x;
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += 1;
+console.log(f());
+```
+
+```text
+· unsafe: line 4: an element is stored
+  in another variable (p)
+```
+
+`f()` must print `4`, the value *after* the loop. Only a real object
+shared by `p` and `ps[3]` gives that. Viscosity doesn't try to follow
+`p` into the closure; storing an element under another name is enough
+to stop it. There is an easy fix, though: keep the *index* instead of
+the element. Try it: replace the first two lines with `const k = 3;` and
+`const f = () => ps[k].x;`.
+
+<Playground client:visible title="Fix the refusal" initial={`const ps = [];
+for (let i = 0; i < 100; i++)
+  ps.push({ x: i });
+const p = ps[3];
+const f = () => p.x;
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += 1;
+console.log(f());`} />
+
+<Prompts ids={['bo-closure']} />
+
+## Lesson 3: code that can't be seen
+
+From `escapes_log.js` and `map_method.js`:
+
+```text
+// console.log(ps[3]);
+· unsafe: line 5: an element is passed
+  to a method call
+
+// ps.map((p) => p.x).slice(0, 3)
+· unsafe: line 5: uses .map on the
+  array (only .length and .push are
+  supported)
+· unsafe: the array is passed to a
+  method call at line 5
+```
+
+`console.log` prints the object, `{ x: 4, y: 3 }`, keys and all. `map`
+calls a function with every element and collects the results. Neither
+can be rewritten into columns without building objects, and in general a
+function Viscosity can't see into might do anything with what it's
+given. Unknown code counts as code that observes.
+
+<Prompts ids={['bo-unknown', 'bo-map']} />
+
+## Lesson 4: shapes, names and types
+
+Four more refusals come from facts the earlier chapters established:
+
+```text
+// shape_mismatch.js (chapter 149)
+· unsafe: line 4: records with
+  different fields or field order
+  ({x, y} vs {y, x})
+
+// record_shared.js (chapter 149)
+· unsafe: line 6: the new record is also
+  referenced elsewhere, so it could be
+  aliased
+
+// reassigned.js: later, ps = [];
+· unsafe: "ps" is reassigned (line 5),
+  so it may not always hold this array
+
+// string_index.js: const k = '5';
+· unsafe: line 6: indexes the array with
+  something that may not be a number
+```
+
+`reassigned.js` is the plainest. After `ps = []`, the name means a
+different array, one built after Viscosity's rewrite was planned; every
+`ps[i]` would have to work on both. And `ps[k]` with a string happens to
+work for `'5'`, but the same line with `'length'` reads a property, so
+a string can't be trusted as an index.
+
+<Prompts ids={['bo-reassign', 'bo-string']} />
+
+## Lesson 5: callers it can't see
+
+```text
+// interproc_mixed.js: total(a), total(b)
+· unsafe: line 10: passed to total(),
+  which is also called with other values
+
+// param_unknown.js:
+// export function nudge(dx) {...}
+ps (line 2) {x} → kept as array of
+  objects
+  · no field is provably numeric, so
+    there are no typed columns to gain
+```
+
+The second one is not a bailout at all; notice there is no `unsafe:`.
+`nudge` is exported, so its callers aren't all visible and `dx` might be
+anything. `ps[i].x += dx` could then put a string in `x`, so `x` gets no
+typed column, and with no typed column there is nothing to gain. The
+same goes for `all_generic.js`, whose only field is a string, and for
+`no_loops.js` and `small_auto.js`: safe, but not worth changing. Those
+are the cost model's decisions, in the next chapter.
+
+<Prompts ids={['bo-notunsafe']} />
+
+<Callout kind="engine" label="Under the hood">
+Engines bail out too, but later. V8's optimizing tiers speculate from
+the feedback they've seen and, when a guess fails at run time,
+deoptimize: they throw the optimized code away and carry on in a slower
+tier<Cite id="v8-maglev" />. A bailout there costs time at the moment it
+happens. Viscosity's bailouts happen before the program runs and can't
+be undone, so they last for the whole run. In exchange, the decision is
+written down, with a reason you can read and act on.
+</Callout>
+
+## Your turn
+
+<Exercise id="refusal" />
+
+<Exercise id="lesson" />
+
+## What you learned
+
+- A **bailout** leaves a collection unchanged because safety can't be
+  proved. explain prints each one after `unsafe:`.
+- **Identity**: a second name (another array, a variable, a closure) or
+  `===` needs real element objects, which columns don't have.
+- **Unknown code**: calls and array methods that Viscosity can't see into
+  might observe the elements, so they count as observing.
+- **Shapes, names, types**: mismatched or shared literals, a reassigned
+  binding, and indexes that may not be numbers.
+- **Callers**: a known function must get the same collection at every
+  call. Unknown callers can also make columns non-numeric, which is a
+  cost decision, not a bailout.
+
+<Quiz />

@@ -1,0 +1,233 @@
+---
+n: 104
+day: 26
+part: VI
+title: 'SSA form'
+tagline: 'A variable that is assigned five times is really five values wearing one name. Give each of them its own name, and add one strange instruction where paths meet, and half of the optimizer’s questions answer themselves.'
+objectives:
+  - Rename straight-line code so that every variable is assigned exactly once.
+  - Explain what a phi node does at a join, and why it has one operand per predecessor.
+  - Read the phis in real VIR, including a loop phi whose operand comes from the back edge.
+  - Say what SSA makes cheap for an optimizer, and which variables VIR keeps out of SSA.
+introduces: [ssa, phi-node]
+uses: [ir, lowering, three-address-code, temporary, basic-block, cfg, dominator, dominator-tree, static-analysis, compiler, closure, captured-environment, upvalue, register, ignition, optimizing-tiers, local-variable, variables, if, for-loop]
+sources: [v8-maglev, braun2013]
+---
+import RenameSteps from '../../../components/diagrams/ch104/RenameSteps';
+
+## Which x is this?
+
+Here are four lines of three-address code:
+
+```js
+x = a + 1;
+x = x * 2;
+y = x + 3;
+x = 0;
+```
+
+Suppose an optimizer wants to know something about the `x` in line 3.
+Is it a number? Is it a constant? Is it still needed later? Before it
+can answer, it has to work out *which* assignment to `x` it is looking
+at. Here it is line 2, but finding that out meant scanning backwards
+and noticing that line 2 overwrote line 1. With branches and loops,
+the scan turns into a search over the whole CFG, and every analysis
+would have to repeat it.
+
+The trouble is that one name, `x`, stands for three different values
+over time. So stop doing that.
+
+## One name per value
+
+<Callout kind="intuition">
+A lab notebook kept in pen. You never cross out a measurement and
+write a new one over it. You write a new line: sample 1, sample 2,
+sample 3. Anyone reading a result later can see exactly which sample
+it came from, because every label was used only once.
+</Callout>
+
+Give every assignment a fresh version of the name, and make every use
+refer to the latest version:
+
+```js
+x1 = a0 + 1;
+x2 = x1 * 2;
+y1 = x2 + 3;
+x3 = 0;
+```
+
+Now line 3 says `x2`, and `x2` has exactly one definition. No scanning.
+`a0` is version 0: a value that came in from outside, such as a
+parameter.
+
+<Callout kind="definition">
+A program is in **static single assignment form** (**SSA**) when every
+variable is assigned in exactly one place in the program text. Each use
+then refers to exactly one definition. "Static" means *in the text*: an
+assignment inside a loop still runs many times, but it is written
+only once, so it still defines only one SSA name.
+</Callout>
+
+<Prompts ids={['ssa-what', 'static-meaning', 'read-before-write']} />
+
+## Where paths meet
+
+Straight-line code is easy, because there is always exactly one latest
+version. Branches break that:
+
+```js
+x = a + 1;
+if (x > 5) {
+  x = x * 2;
+} else {
+  x = 0;
+}
+y = x + 3;
+```
+
+Rename both branches and you get `x2` on the left and `x3` on the
+right. The block after the `if` has two predecessors, and they
+disagree. No single name can go in `y = ? + 3`, because the right
+answer depends on which way the program went.
+
+<Callout kind="intuition">
+A railway junction where two lines merge into one. A wagon arriving
+on the merged track might have come from either line. The signal box
+records which line it came in on, so you always know what it carries.
+</Callout>
+
+SSA's answer is a new kind of instruction at the start of the join
+block: `x4 = φ(x2, x3)`. Step through the renaming:
+
+<RenameSteps client:visible />
+
+<Callout kind="definition">
+A **phi node** (φ) sits at the start of a block and has **one operand
+per predecessor**, in predecessor order. When control enters the block
+along edge *k*, the phi takes the value of operand *k*. Phis only
+appear where different versions meet. They are not real machine
+instructions: before code generation, a compiler replaces them with
+copies at the ends of the predecessor blocks.
+</Callout>
+
+All the phis at the top of a block take their values *at the same
+moment*, as control crosses the edge. None of them sees another one's
+new value. The extra exercise shows why that matters.
+
+<Run id="phi-by-hand" />
+
+<Prompts ids={['phi-what', 'phi-operands', 'phi-not-real', 'phis-together']} />
+
+## Phis in real VIR
+
+Viscosity's IR, VIR, is in SSA form. Here is the `if` program written
+as a function, lowered by the real front end and printed with
+`printFunc`:
+
+```js
+function f(c) {
+  let x;
+  if (c) { x = 1; } else { x = 2; }
+  return x * 10;
+}
+```
+
+```text
+func f(%0):
+  b0:
+    %0 = param
+    %1 = const undefined
+    condbr %0, b1, b2
+  b1:  ; preds b0
+    %2 = const 1
+    br b3
+  b2:  ; preds b0
+    %3 = const 2
+    br b3
+  b3:  ; preds b1 b2
+    %4 = phi %2, %3
+    %5 = const 10
+    %6 = binop * %4, %5
+    return %6
+```
+
+There are no variable names in it at all. In VIR an SSA value *is*
+the instruction that defines it: `%4` means "the result of instruction
+4". Because an instruction is written once, the value is assigned once.
+`%4 = phi %2, %3` lists its operands in the order of the `preds`
+comment: `%2` if control came from `b1`, `%3` if from `b2`.
+
+Loops need phis too, at the loop header, where the entry edge and the
+back edge meet. Here is the header of `function sum(n)`, whose body is
+`let s = 0; for (let i = 0; i < n; i++) s = s + i; return s;`:
+
+```text
+  b1:  ; preds b0 b3
+    %6 = phi %1, %7
+    %3 = phi %2, %10
+    %5 = binop < %3, %0
+    condbr %5, b2, b4
+```
+
+`%3` is `i`: `%2` (the `0`) on the first entry from `b0`, and `%10`
+(`i + 1`) each time round the back edge from `b3`. The operand `%10`
+is defined *later* in the listing. That is fine: it is only read
+when control arrives from `b3`, and by then `b3` has run.
+
+<Prompts ids={['vir-no-names', 'loop-phi']} />
+
+## What SSA buys
+
+With one definition per value, the questions from the start become
+look-ups:
+
+- **Where is this value defined?** It is the instruction itself.
+- **Is it a constant?** If `%1 = const 0`, every use of `%1` is 0. No
+  later assignment can change it, because there are none.
+- **Where is it defined, relative to its uses?** The definition
+  dominates every ordinary use (chapter 103). A phi operand only has to
+  be available at the end of the matching predecessor.
+
+Not everything fits. A local that a closure captures can be changed
+by another function, at a moment the CFG cannot see (chapters 57 and
+84). VIR keeps those as **bindings**, read and written with `load` and
+`store`. So do locals assigned inside a `try`, and arrays, which the
+layout analyses of Part VIII track by binding. Every other simple local
+becomes SSA values.
+
+<Prompts ids={['ssa-buys', 'captured-not-ssa']} />
+
+<Callout kind="engine" label="Under the hood">
+V8's Maglev compiler is a "somewhat traditional" SSA compiler over a
+CFG. While it walks Ignition's bytecode it keeps an SSA value for each
+interpreter register, and where paths merge it inserts phi nodes "that
+know which value to pick depending on which path was taken"<Cite id="v8-maglev" />.
+VIR does the same job for JavaScript source, and builds its SSA with
+the algorithm of Braun and colleagues<Cite id="braun2013" />: the next
+chapter.
+</Callout>
+
+## Your turn
+
+<Exercise id="to-ssa" />
+
+<Exercise id="enter-block" />
+
+## What you learned
+
+- In **SSA** form every variable is assigned in exactly one place in
+  the text, so every use points at exactly one definition.
+- Renaming straight-line code: each assignment makes a new version;
+  each use takes the latest version, read *before* the assignment on
+  the same line.
+- A **phi node** at the start of a join block picks one operand per
+  incoming edge. All of a block's phis take their values at once.
+- In VIR, a value is its defining instruction (`%4`). Loop headers
+  have phis whose second operand arrives on the back edge.
+- Captured variables stay out of SSA, as bindings with `load` and
+  `store`.
+
+Next: how VIR's builder creates all of this while it lowers, in one
+pass.
+
+<Quiz />

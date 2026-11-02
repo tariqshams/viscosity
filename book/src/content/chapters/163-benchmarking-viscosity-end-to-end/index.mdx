@@ -1,0 +1,257 @@
+---
+n: 163
+day: 41
+part: VIII
+title: 'Benchmarking Viscosity end to end'
+tagline: 'A loop in isolation can be 8× faster in columns. Your program is not one loop. Here is how Viscosity is measured on whole programs, what it found, and the two programs that were first made slower.'
+objectives:
+  - Explain what an end-to-end benchmark measures that a microbenchmark doesn’t.
+  - Describe the harness, with its fresh processes, checksum guard and medians.
+  - Read the committed results, and say which differences are real and which may be noise.
+  - Tell how bounds checks in a hot loop turned two speed-ups into slowdowns, and how they were removed.
+introduces: [end-to-end-benchmark]
+uses: [function, array, object, array-of-objects, typed-array, aos-vs-soa, cpu-cache, jit-warmup, dead-code-elimination, median-p95, benchmark-isolation, tiering, hot-loop, access-pattern, safety-analysis, cost-model, column-storage, access-rewriting, pgo, optimization-report, differential-testing, natural-loop, induction-variable]
+sources: [v8-maglev]
+---
+import E2ESteps from '../../../components/diagrams/ch163/E2ESteps';
+import E2EChart from '../../../components/diagrams/ch163/E2EChart';
+
+## One loop is not a program
+
+Part II measured layouts one loop at a time. In this book’s benchmark
+run, summing one field of 100,000 particles was 8.5× faster in columns
+than in objects. That is a fact about one loop.
+
+A program does more. It builds its data, one `push` at a time, through
+the generated container. It runs some loops that love columns and some
+that don’t care. Some of its accesses carry bounds checks, because
+Viscosity couldn’t prove them safe. Whether all of that adds up to a
+faster program is a separate question, and it needs a separate
+measurement.
+
+<Callout kind="intuition">
+A car’s engine on a test bench gives one number. Your commute gives
+another: traffic lights, hills, a cold start. Both are real. Only the
+second tells you how long the drive takes.
+</Callout>
+
+<Callout kind="definition">
+An **end-to-end benchmark** measures a whole program, compiled the way a
+user would compile it, rather than a single loop written for the
+benchmark. It answers “does my program get faster?” and includes
+everything the compiler changed, good and bad.
+</Callout>
+
+<Prompts ids={['e2e-what', 'e2e-why']} />
+
+## Five programs
+
+The programs live in `packages/bench/e2e/`. Each is ordinary
+JavaScript with no annotations:
+
+- **particles**: 200,000 particles with 8 fields; each frame updates
+  `x` and `y` from `vx` and `vy`, 4 of the 8.
+- **ledger**: 500,000 transactions with 6 fields; queries sum one
+  field, or filter on one and sum another.
+- **heat**: heat diffusion on a 512 × 512 grid of cells, reading each
+  cell’s four neighbours.
+- **boids**: 20,000 boids; each averages the velocity of the next 64.
+- **n-body**: gravity between every pair of 1,500 bodies.
+
+Every program times its own hot section and ends by printing one line
+of JSON. Here is the end of `particles.js`:
+
+```js
+const t0 = performance.now();
+for (let f = 0; f < 200; f++)
+  step(ps, 0.016);
+const ms = performance.now() - t0;
+let s = 0;
+for (const p of ps) s += p.x + p.y;
+console.log(JSON.stringify(
+  { check: s.toFixed(3), ms }));
+```
+
+The checksum does two jobs. It makes the result of the work observable,
+so no compiler can delete the work as dead code (chapter 31). And it
+lets the harness check that the compiled program computed the same
+thing.
+
+<Prompts ids={['e2e-self-time', 'e2e-checksum']} />
+
+## The harness
+
+`packages/bench/src/e2e.ts` compiles each program with the default
+options, then times both versions. Simplified:
+
+```ts
+const r = compile(src, jsPlugin());
+write(orig, src);
+write(comp, r.code);
+const time = (file) => {
+  const ms = [];
+  let check = '';
+  for (let i = 0; i < runs; i++) {
+    const out = JSON.parse(lastLine(
+      execFileSync('node', [file])));
+    ms.push(out.ms);
+    check = out.check;
+  }
+  return { ms: median(ms), check };
+};
+const a = time(orig);
+const b = time(comp);
+if (a.check !== b.check)
+  throw new Error('checksum mismatch');
+const speedup = a.ms / b.ms;
+```
+
+Step through one program, with real times from a rerun made for this
+chapter:
+
+<E2ESteps client:visible />
+
+Every run is a new Node process, as in chapter 31, so neither version
+inherits the other’s type feedback or garbage. And a fast wrong answer
+is not a result: on a checksum mismatch the harness stops.
+
+<Prompts ids={['e2e-fresh', 'e2e-median']} />
+
+## The results
+
+These are the committed results, read straight from the results file:
+
+<Figure takeaway="Three programs got several times faster; two got a little faster." caption="Each bar is the median of 3 fresh-process runs per version, on a shared cloud VM. Every program’s checksum matched.">
+<E2EChart />
+</Figure>
+
+The three big wins are the programs that look like Part II’s
+microbenchmarks: many elements, and hot loops that touch only some of
+the fields (`ledger` reads 1 or 2 of 6). `boids` and `n-body` gained
+little. N-body has only 1,500 bodies, and each pair does a square root
+and a division, so memory layout is a smaller share of the time. That
+is our reading of the program, not a measurement.
+
+<Prompts ids={['e2e-wins']} />
+
+## The two programs that got slower
+
+The first time this benchmark ran, n-body and boids were *slower* with
+Viscosity than without. The commit that fixed it says why: the bounds
+proofs didn’t cover outer-loop indexes, non-negative starts or `&&`
+guards, so checks sat inside the hot loops. In n-body the inner loop
+reads `b[i]`, where `i` belongs to the *outer* loop:
+
+```js
+for (let i = 0; i < b.length; i++) {
+  for (let j = 0; j < b.length; j++) {
+    const dx = b[j].x - b[i].x;
+    // ...
+```
+
+The old proof only trusted the innermost loop’s own counter, so every
+`b.x[i]` became `b.x[__vsc_bc(b, i, 'x', false)]`, a function call and
+two comparisons, 1,500 × 1,500 times per step. Boids’ window loop,
+`for (let j = i + 1; j < i + 64 && j < b.length; j++)`, failed for the
+other two reasons.
+
+The fix was to generalize the proof, not to drop the checks. An outer
+loop’s counter is just as bounded inside the inner loop, provided the
+inner loop doesn’t change it. A start of `i + 1` is non-negative when
+`i` is. And `j < b.length` still holds when it is one side of an `&&`.
+Now n-body reports `12 of 12 element accesses proven in bounds`.
+
+You can’t rerun the old compiler from this book, so here is a
+reconstruction, run for this chapter: today’s compiled code with those
+checks put back by hand (4 in n-body, 2 in boids), 11 runs per version,
+done twice:
+
+```
+         Viscosity     with the checks
+n-body   1.08×  1.16×   0.89×  0.97×
+boids    1.21×  1.49×   0.82×  0.92×
+```
+
+Below 1× means slower than the original. A few checks in the hottest
+loop cost more than the new layout saved.
+
+<Prompts ids={['e2e-story', 'e2e-fix']} />
+
+## How much to believe
+
+Look at that table again: the same compiled n-body measured 1.08× and
+1.16× in two back-to-back sessions. Here is a full rerun of the
+benchmark, made for this chapter with the same Node version and CPU
+model, 5 runs per version:
+
+```
+boids      73 →  53 ms  1.39×
+heat      372 → 119 ms  3.11×
+ledger    180 →  49 ms  3.68×
+nbody      64 →  53 ms  1.20×
+particles 393 →  91 ms  4.30×
+```
+
+Every checksum matched again. Particles came out the same; ledger came
+out 3.68× instead of 5.11×, mostly because the *original* ran faster
+this time. On a shared VM, the honest summary is the coarse one:
+particles, ledger and heat are several times faster; boids and n-body
+are a little faster, by an amount noise can hide. A 1.09× is not a
+claim worth defending to two decimal places.
+
+<Prompts ids={['e2e-noise']} />
+
+<Callout kind="pitfall">
+Benchmarking only the programs where your compiler shines is easy and
+tells you nothing. The slow results are the useful ones: n-body and
+boids are the reason the bounds proofs improved.
+</Callout>
+
+## A different language, a different verdict
+
+The same question was asked of Python. In CPython, an update loop over
+100,000 elements took 26.7 ns per element with dataclass objects, 43.3
+with list columns and 72.7 with `array('d')` columns (the committed
+`python-layouts` results, a loop benchmark rather than a whole
+program). Columns were *slower*. The repository’s findings put this
+down to CPython being an interpreter that creates a new float object
+for every `array('d')` element it reads. But columns used about 4.9×
+less memory (3.3 MB against 16.0 MB).
+
+So the Python plugin keeps objects unless you opt in, and its report
+says why. The analyses are the same for both languages; only the cost
+model’s verdict differs, and measurement is what decided it.
+
+<Prompts ids={['e2e-python']} />
+
+<Callout kind="engine" label="Under the hood">
+Each program times its hot section once per process, so the time
+includes the engine getting warm. V8 starts running code in its
+interpreter and moves hot functions up to optimizing compilers as it
+gathers feedback<Cite id="v8-maglev" />. A microbenchmark harness waits
+for that to finish (chapter 31). An end-to-end benchmark keeps it in,
+because a user’s program pays for it too.
+</Callout>
+
+<Prompts ids={['e2e-warmup']} />
+
+## Your turn
+
+<Exercise id="speedup" />
+
+<Exercise id="clearlyFaster" />
+
+## What you learned
+
+- An **end-to-end benchmark** measures whole programs, compiled as a
+  user would, including construction, checks and loops that don’t
+  benefit.
+- Viscosity’s harness runs each version in fresh processes, refuses to
+  report a speed-up when checksums differ, and divides the medians.
+- Committed results: particles 4.3×, ledger 5.11×, heat 3.3×, boids
+  1.18×, n-body 1.09×. The small ones are within run-to-run noise.
+- Bounds checks in a hot loop once made n-body and boids slower. The fix
+  was a more general proof, not fewer checks.
+- In CPython, columns cost time and save memory, so the verdict flips.
+
+<Quiz />

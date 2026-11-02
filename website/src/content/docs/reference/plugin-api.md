@@ -32,4 +32,4 @@ language.
 Two plugins exist, JavaScript/TypeScript (`engine/ts/packages/frontend-js`)
 and Python (`engine/ts/packages/frontend-python`). The Rust port has both
 (`engine/rust/crates/frontend-js` and `crates/frontend-python`, without
-TypeScript), behind the same interface as a Rust trait, `LanguagePlugin`. The book's Part VIII builds the Python plugin step by step.
+TypeScript), behind the same interface as a Rust trait, `LanguagePlugin`. The book's Part IX builds the Python plugin step by step.

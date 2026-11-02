@@ -18,4 +18,4 @@ from the program itself.
 A related measured finding: TypeScript class field declarations
 (`x: number;`) become real class fields that start as `undefined`, which
 made a hot update loop 3–7× slower in V8 than object literals. The book's
-chapter 22 explains why.
+chapter 29 explains why.

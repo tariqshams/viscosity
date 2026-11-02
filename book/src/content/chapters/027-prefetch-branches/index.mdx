@@ -1,0 +1,189 @@
+---
+n: 27
+day: 7
+part: II
+title: 'Prefetching and branch prediction'
+tagline: 'A modern CPU spends its time guessing: which memory you will want next, and which way your next if will go. When your data makes the guesses easy, code flies. When it doesn’t, even the fastest chip waits.'
+objectives:
+  - Explain what the hardware prefetcher does, and which access patterns it can follow.
+  - Explain pointer chasing, and why it defeats the prefetcher.
+  - Describe a pipeline, and why it forces the CPU to guess the outcome of an if.
+  - Predict which data makes branch prediction easy, and count a simple predictor’s mistakes.
+introduces: [prefetcher, branch-prediction, pipeline, pointer-chasing]
+uses: [cpu, register, cpu-cache, cache-miss, latency, cache-line, stride, spatial-locality, bandwidth, memory, address, pointer, array-of-objects, typed-array, if, booleans, comparison, for-of, function, return, array, array-loop, object, numbers, for-loop, console-log]
+sources: [slotin-amh-prefetching, slotin-amh-latency, slotin-amh-mlp, slotin-amh-pipelining, slotin-amh-branching, apple-wwdc25-cpu]
+---
+import PrefetchSteps from '../../../components/diagrams/ch027/PrefetchSteps';
+import PipelineSteps from '../../../components/diagrams/ch027/PipelineSteps';
+import BranchSteps from '../../../components/diagrams/ch027/BranchSteps';
+import BenchBars from '../../../components/bench/BenchBars';
+
+## Same data, different order
+
+Here are two loops over the same million particles. The first goes in
+order. The second visits them in a shuffled order, given by an index
+array `idx`:
+
+```js
+// in order
+for (let i = 0; i < n; i++) {
+  s += x[i] + vx[i];
+}
+// shuffled
+for (let i = 0; i < n; i++) {
+  const j = idx[i];
+  s += x[j] + vx[j];
+}
+```
+
+Both read every particle exactly once, so they fetch essentially the
+same cache lines (the shuffled one also reads `idx`). Chapter 26 says they should cost about the same. They don’t. This
+book’s benchmark has a shuffled loop like the second one (`random-x`)
+and an in-order loop over the same particles that does *more* work per
+particle (`update-xy` reads four fields and writes two):
+
+<BenchBars suite="update-xy" n={1000000} title="In order: x += vx, y += vy"
+  highlight={['soa']} layouts={['aos', 'aos-packed', 'soa']}
+  caption="Reading four fields and writing two, in order." />
+
+<BenchBars suite="random-x" n={1000000} title="Shuffled: read x and vx"
+  highlight={['soa']} layouts={['aos', 'aos-packed', 'soa']}
+  caption="Reading just two fields, in shuffled order: slower for every layout, and dramatically slower for objects." />
+
+Less work, more time. Order matters, and the reason is that the CPU is
+quietly guessing what you will do next.
+
+## The prefetcher
+
+<Callout kind="intuition">
+A good warehouse clerk notices that you asked for box 10, then box 11,
+then box 12. Without waiting to be asked, they put boxes 13, 14 and 15
+on the next van. By the time you want them, they’re already on your
+desk.
+</Callout>
+
+<PrefetchSteps client:visible />
+
+<Callout kind="definition">
+The **prefetcher** is hardware that watches which memory a program
+reads and fetches the lines it predicts will be needed next, before they
+are asked for. It follows simple patterns: forwards or backwards, through
+several arrays at once, with small or medium strides<Cite id="slotin-amh-prefetching" />.
+When it works, the trips to memory still happen, but they overlap with
+useful work instead of stalling it.
+</Callout>
+
+It also answers a question chapter 26 left open. If each line had cost
+a full trip to memory, around a hundred nanoseconds, the every-8th loop
+over a million lines would have needed about a tenth of a second. It
+usually takes far less, because the prefetcher was running ahead. A shuffled order gives it nothing to
+follow, so every miss is paid in full.
+
+Try it. This reads every element of one big `Float64Array` exactly once,
+first in order and then in a shuffled order:
+
+<Run id="order-matters" />
+
+<Prompts ids={['prefetch-what', 'prefetch-patterns', 'shuffle-why']} />
+
+## Pointer chasing
+
+Arrays of objects have a second problem, and the chart shows it: the
+shuffled loop hurts objects far more than typed arrays. With typed
+arrays, the CPU computes the address of `x[j]` from `j` straight away,
+so it can send off several reads and wait for them all at once<Cite id="slotin-amh-mlp" />. With objects, the address
+of `ps[j].x` is *stored inside memory*: first load the pointer from the
+array, then follow it.
+
+<Callout kind="definition">
+**Pointer chasing** is following a chain of pointers, where each load
+needs the address produced by the load before it. The prefetcher can’t
+predict the addresses, and the CPU can’t start the next load early, so
+every step waits out the full latency. It is very common in data
+structures built from many small heap objects<Cite id="slotin-amh-latency" />.
+</Callout>
+
+The linked list you summed in chapter 24 is the purest example. Each
+node tells you where the next one is, so you can only ever be at one
+node at a time.
+
+<Prompts ids={['chase-what', 'chase-why']} />
+
+## The pipeline
+
+<Callout kind="intuition">
+A car factory doesn’t build one car from start to finish before
+starting the next. The line keeps every station busy: while one car gets
+its wheels, the next gets its doors, and the one behind it its frame.
+</Callout>
+
+A CPU does the same with instructions. Step through it:
+
+<PipelineSteps client:visible />
+
+<Callout kind="definition">
+A **pipeline** splits running an instruction into stages (fetch,
+decode, execute, write back, and on real chips many more) and works on
+several instructions at once, each at a different stage<Cite id="slotin-amh-pipelining" />.
+To keep it full at an `if`, the CPU predicts which way the branch will
+go and carries on along that path before it knows. This is **branch
+prediction**. If the guess was wrong, the work done on the wrong path is
+thrown away<Cite id="apple-wwdc25-cpu" />.
+</Callout>
+
+<Prompts ids={['pipeline-what', 'why-guess', 'mispredict-cost']} />
+
+## What makes a branch easy to guess?
+
+Branch predictors learn from history. Branches that almost always go one
+way, like a loop’s `i < n`, are guessed right nearly every time. Branches
+with no consistent pattern are where they go wrong<Cite id="apple-wwdc25-cpu" />.
+Step through a toy predictor that always guesses “same as last time”:
+
+<BranchSteps client:visible />
+
+Real predictors find far subtler patterns than this toy. But they share
+its blind spot: random data. A well-known experiment sums the elements
+below 50 of an array of random numbers. In compiled C++ on a modern CPU,
+sorting the array first made the loop several times faster, because the
+branch became predictable<Cite id="slotin-amh-branching" />. How much
+of this shows up in JavaScript depends on the machine code the engine
+generates, so measure before you rely on it.
+
+<Prompts ids={['sorted-why', 'rare-branch']} />
+
+<Callout kind="engine" label="Under the hood">
+Look at what a struct-of-arrays loop gives the hardware: an address that
+is a simple function of `i`, so the prefetcher can run ahead; no
+pointers to chase; and a loop branch that is taken every time but the
+last. An array of objects asks for a pointer load before every field,
+and the objects may be anywhere. That is why, in the charts at the top of
+this chapter, shuffling cost the objects so much more time per element
+than it cost the typed arrays. Viscosity’s rewrite turns
+`ps[i].x` into `x[i]`: it replaces pointer chasing with arithmetic the
+hardware can predict.
+</Callout>
+
+## Your turn
+
+<Exercise id="mispredicts" />
+
+<Exercise id="findStride" />
+
+## What you learned
+
+- The **prefetcher** fetches lines before you ask, when your reads
+  follow a simple pattern: in order, backwards, or a steady stride.
+- **Pointer chasing** defeats it: each address is only known once the
+  previous load arrives, so every miss is paid in full.
+- A **pipeline** works on many instructions at once, like an assembly
+  line.
+- To keep it full, the CPU uses **branch prediction**: it guesses which
+  way each `if` goes. Wrong guesses throw work away.
+- Predictable data (sorted, or rarely-taken checks) keeps guesses right.
+  Random data doesn’t.
+
+That’s the end of Day 5. Tomorrow: SIMD, how JavaScript stores numbers
+and objects, and AoS against SoA, measured.
+
+<Quiz />

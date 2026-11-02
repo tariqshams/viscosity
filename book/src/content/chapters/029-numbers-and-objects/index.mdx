@@ -1,0 +1,212 @@
+---
+n: 29
+day: 8
+part: II
+title: 'How JavaScript stores numbers and objects'
+tagline: 'Every JavaScript number is a 64-bit double, yet V8 often stores it as something else entirely. Learn the tricks, and you’ll see why one TypeScript line can make a loop several times slower.'
+objectives:
+  - Describe the IEEE 754 double format that every JavaScript number follows.
+  - Explain how V8 stores small integers (Smis) and other numbers (HeapNumbers).
+  - Sketch what an object looks like in memory, header first.
+  - Explain field representations, and why TypeScript class field declarations slowed down this book’s benchmark.
+introduces: [ieee754, smi, heap-number, object-header, field-representation]
+uses: [float64, binary, bit, byte, memory, address, pointer, stack-and-heap, object, property, class, constructor, new, instance, typescript, type-annotation, typed-array, undefined, reference, numbers, cache-line]
+sources: [mdn-number, v8-react-cliff, v8-pointer-compression, v8-fast-properties, mdn-class-fields, ts-use-define, ts-37-declare, mdn-typed-arrays]
+---
+import Float64Bits from '../../../components/diagrams/ch029/Float64Bits';
+import TagSteps from '../../../components/diagrams/ch029/TagSteps';
+import FieldSteps from '../../../components/diagrams/ch029/FieldSteps';
+import BenchBars from '../../../components/bench/BenchBars';
+
+## Two classes that look the same
+
+Here are two TypeScript classes for a particle. Read them carefully:
+
+```ts
+class P {
+  x: number;
+  constructor(x: number) {
+    this.x = x;
+  }
+}
+
+class K {
+  declare x: number;
+  constructor(x: number) {
+    this.x = x;
+  }
+}
+```
+
+They hold the same data and run the same constructor. Yet in this book’s
+benchmarks, moving particles made from the first class was several times
+slower. By the end of this chapter you’ll know exactly why, and it starts
+with how a single number is stored.
+
+<Callout kind="intuition">
+A JavaScript engine is like a warehouse that promises every parcel looks
+the same from the outside. Behind the counter, though, it uses whatever
+packing is cheapest: a small item goes straight into a pigeonhole, and a
+bulky one goes on a shelf in the back with a ticket in the pigeonhole
+saying where to find it.
+</Callout>
+
+## Every number is a double
+
+The language says every JavaScript number is a 64-bit floating-point
+value in the **IEEE 754** double format: 1 sign bit, 11 exponent bits and
+52 mantissa bits<Cite id="mdn-number" />. You met these as `float64` in
+chapter 16.
+
+<Figure takeaway="A double is a sign, an exponent and a fraction." caption="The number 1.5 in IEEE 754 form. The sign bit is 0 (positive). The exponent bits say 1023, which means 2 to the power 0. The mantissa holds the digits after an implied leading 1: binary 1.1, which is 1.5.">
+  <Float64Bits />
+</Figure>
+
+<Callout kind="definition">
+**IEEE 754** is the standard format for floating-point numbers. A
+**double** uses 64 bits: a **sign** bit, 11 **exponent** bits (a power of
+two) and 52 **mantissa** bits (the significant digits). Integers are exact
+only up to 2<sup>53</sup> − 1<Cite id="mdn-number" />.
+</Callout>
+
+But the language only fixes what numbers *behave* like. An engine may
+store them however it likes, as long as nobody can tell the
+difference<Cite id="v8-react-cliff" />.
+
+<Prompts ids={['ieee-parts', 'engine-free']} />
+
+## Small integers live in the slot
+
+Loop counters, array indexes and lengths are small whole numbers, and they
+are everywhere. Wrapping each one in a 64-bit double on the heap would be
+wasteful, so V8 uses a trick called **pointer tagging**: a slot that
+normally holds an address can hold a small integer instead, and the lowest
+bit says which one it is<Cite id="v8-pointer-compression" />.
+
+<TagSteps client:visible />
+
+<Callout kind="definition">
+A **Smi** (small integer) is an integer stored directly in a
+pointer-sized slot, marked by a tag bit of 0. Anything that isn’t a Smi is
+a pointer to a heap object. A **HeapNumber** is a heap object that holds
+one double; V8 uses it for numbers that aren’t Smis, like `4.2`, `-0`,
+`NaN` or numbers that are too big<Cite id="v8-react-cliff" />. HeapNumbers
+are immutable, so changing the value means allocating a new
+one<Cite id="v8-react-cliff" />.
+</Callout>
+
+How big a Smi can be depends on how V8 was built. With **pointer
+compression**, which the V8 team built to save memory in Chrome, slots are
+32 bits and a Smi carries 31 bits including its sign. A 64-bit build
+without it uses 32-bit Smi payloads<Cite id="v8-pointer-compression" />.
+
+<Prompts ids={['smi-what', 'heapnumber-what', 'heapnumber-update']} />
+
+## What an object looks like
+
+An object is a block of memory too. V8’s blog describes its start: the
+first word points to the object’s **hidden class** (its shape: which
+properties it has and where they sit), followed by pointers to a store for
+extra properties and a store for indexed elements. After that come the
+**in-object properties**, the fastest kind<Cite id="v8-fast-properties" />.
+
+So a particle `{ x, y, vx, vy, mass, health }` is not six numbers in a
+row. It is a header, then six slots, and each slot holding a non-Smi
+number points somewhere else again. That overhead is exactly what
+chapter 30 will measure.
+
+<Callout kind="definition">
+The **object header** is the hidden bookkeeping at the start of every
+object: in V8, a pointer to its hidden class, then pointers to its
+properties and elements stores. A **field representation** is how the
+engine has decided to store one field, recorded in the hidden class. The V8
+blog describes **Smi** and **Double** representations<Cite id="v8-react-cliff" />;
+V8’s own trace output, below, also shows **heap object** and **tagged**
+(anything at all).
+</Callout>
+
+A field that always holds doubles gets the Double representation. In the
+design the V8 team described, its value sits in a box that only this
+object can see, so V8 can update it **in place** without allocating. If a
+field starts as one representation and then receives a value that doesn’t
+fit, V8 widens it to a more general one<Cite id="v8-react-cliff" />. The
+most general, Tagged, keeps doubles as ordinary immutable HeapNumbers.
+
+<Prompts ids={['header-what', 'rep-what', 'double-in-place']} />
+
+## Back to the two classes
+
+In modern JavaScript, `x;` inside a class body is a real **class field**.
+Fields are added before the constructor body runs, and a field without an
+initializer starts as `undefined`<Cite id="mdn-class-fields" />. You can
+watch it happen:
+
+<Run id="field-undefined" />
+
+TypeScript turns `x: number;` into exactly that kind of field when the
+target is ES2022 or later<Cite id="ts-use-define" />. Writing `declare
+x: number;` instead emits nothing at all, so the field appears only when
+the constructor first stores a number<Cite id="ts-37-declare" />. Step
+through what that does to the field:
+
+<FieldSteps client:visible />
+
+This isn’t guesswork. Running the benchmark with V8’s
+`--trace-generalization` flag printed this line for class `P`:
+
+```
+x:h{Any;const}->t{Any;mutable}
+```
+
+`h` is the heap-object representation (the `undefined`) and `t` is
+Tagged. Here is what that costs:
+
+<BenchBars suite="update-xy" n={1000000} title="Moving particles: x += vx, y += vy" highlight={['aos-class']} layouts={['aos', 'aos-class', 'aos-ctor']} caption="The class with TypeScript field declarations is the slow one: every update allocates a new HeapNumber." />
+
+In this book’s benchmark run, the class with field declarations was
+roughly 3 to 7 times slower than the object literal and the
+constructor-only class, depending on the number of particles. The V8 blog
+gives the same advice in plain JavaScript: don’t start numeric fields as
+`null`, because it defeats representation tracking<Cite id="v8-react-cliff" />.
+
+<Callout kind="pitfall">
+The fix is a starting value of the right kind: `x = 0.0` would still be a
+Smi (`0` is an integer), so for doubles use `declare`, or assign in the
+constructor only. Better still, don’t depend on it: chapter 30’s typed
+columns sidestep the problem completely.
+</Callout>
+
+<Prompts ids={['ts-field-undefined', 'generalize-cost']} />
+
+<Callout kind="engine" label="Under the hood">
+A `Float64Array` has none of these problems. It stores raw 64-bit doubles
+side by side, with no tags, no boxes and no per-element headers<Cite id="mdn-typed-arrays" />.
+The pointer compression post itself recommends Float64 typed arrays for
+number-crunching code<Cite id="v8-pointer-compression" />. That is why
+Viscosity’s struct-of-arrays columns are `Float64Array`s: whatever the
+source program declared, a column of doubles stays a column of doubles.
+A TypeScript-aware Viscosity pass can fix the slow class for free.
+</Callout>
+
+## Your turn
+
+<Exercise id="smiFits" />
+
+<Exercise id="exponentBits" />
+
+## What you learned
+
+- Every JavaScript number behaves like an **IEEE 754** double: sign,
+  exponent, mantissa, 64 bits.
+- V8 stores small integers as **Smis**, right inside the slot, marked by a
+  tag bit. Other numbers become immutable **HeapNumbers** on the heap.
+- Every object starts with an **object header**: a hidden-class pointer
+  plus pointers to its properties and elements stores.
+- Each field has a **field representation** (such as Smi, Double or
+  Tagged), and V8 widens it when a value doesn’t fit.
+- A TypeScript field declaration starts a field as `undefined`, so storing
+  doubles generalizes it to Tagged, and every update allocates.
+
+Next: AoS against SoA, measured properly, across seven kinds of loop.
+
+<Quiz />

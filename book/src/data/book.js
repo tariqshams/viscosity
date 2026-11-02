@@ -16,3 +16,7 @@ export const PARTS = OUTLINE_PARTS.map((p) => ({
 }));
 
 export const CHAPTERS_PER_DAY = 4;
+
+/** Chapters in the whole curriculum (written and planned), and the days they take. */
+export const TOTAL_CHAPTERS = OUTLINE_PARTS.reduce((n, p) => n + p.chapters.length, 0);
+export const TOTAL_DAYS = Math.ceil(TOTAL_CHAPTERS / CHAPTERS_PER_DAY);

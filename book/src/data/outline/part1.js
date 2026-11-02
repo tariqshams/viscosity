@@ -1,8 +1,8 @@
-// Part I: JavaScript for engine builders (days 1-4).
+// Part I: JavaScript for engine builders (days 1–6).
 // Each chapter lists the concepts it introduces: { id: description }.
 // The concept registry (../concepts.js) is built from these files.
 export default {
-  id: 'I', track: 'A', days: '1–4', title: 'JavaScript for engine builders',
+  id: 'I', track: 'A', days: '1–6', title: 'JavaScript for engine builders',
   blurb: 'Functions, arrays, objects, references, closures, classes, strings, errors, modules, TypeScript, testing, and the raw bytes behind typed arrays.',
   chapters: [
     { n: 1, title: 'Functions: naming a piece of work', introduces: {
@@ -67,5 +67,45 @@ export default {
       binary: 'numbers written in base 2', bit: 'a single 0 or 1', byte: '8 bits', 'bit-ops': '& | ^ << >> >>>',
       arraybuffer: 'a raw block of bytes', 'typed-array': 'Float64Array, Int32Array, ... views over an ArrayBuffer',
       'float64': 'a 64-bit floating-point number, what every JS number is' } },
+    { n: 17, title: 'TypeScript III: generics in depth', introduces: {
+      'generic-constraint': 'limiting a type parameter with extends',
+      'generic-inference': 'TypeScript working out type arguments from the call',
+      'generic-default': 'a type parameter with a fallback type',
+    } },
+    { n: 18, title: 'TypeScript IV: computing with types', introduces: {
+      keyof: 'the union of an object type’s keys',
+      'indexed-access-type': 'T[K]: the type of one property',
+      'mapped-type': '{ [K in keyof T]: ... }: a type built key by key',
+      'conditional-type': 'T extends U ? X : Y',
+      'template-literal-type': 'string types built from patterns',
+      'utility-types': 'Partial, Pick, Omit, Record and friends',
+    } },
+    { n: 19, title: 'Iterators and generators', introduces: {
+      'iterator-protocol': 'next() returning { value, done }',
+      generator: 'a function* that can pause',
+      yield: 'pausing a generator and handing out a value',
+      'lazy-sequence': 'values produced only when asked for',
+    } },
+    { n: 20, title: 'Asynchronous code: promises and the event loop', introduces: {
+      promise: 'a value that will be ready later',
+      'async-await': 'writing promise code as if it were sequential',
+      'event-loop': 'the loop that runs callbacks one at a time',
+      microtask: 'the queue promise callbacks wait in',
+    } },
+    { n: 21, title: 'The toolchain: tsconfig, modules and npm', introduces: {
+      tsconfig: 'the file that configures the TypeScript compiler',
+      'strict-mode-ts': 'the strict compiler options and why to turn them on',
+      'package-json': 'a package’s name, version, scripts and dependencies',
+      bundler: 'a tool that joins modules into files to ship',
+    } },
+    { n: 22, title: 'Designing with types', introduces: {
+      'type-driven-design': 'choosing types first so the code follows',
+      'branded-type': 'a nominal tag on a structural type',
+      'illegal-states-unrepresentable': 'types that make wrong data impossible to build',
+    } },
+    { n: 23, title: 'Checkpoint: a JSON parser in TypeScript', introduces: {
+      json: 'the JSON data format',
+      'checkpoint-ts': 'a whole TypeScript program, written without the book’s scaffolding',
+    } },
   ],
 };
