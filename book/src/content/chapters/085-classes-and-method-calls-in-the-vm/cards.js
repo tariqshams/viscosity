@@ -1,71 +1,38 @@
-// Chapter 64 cards: recall prompts, examples, exercises and quiz.
+// Chapter 85 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 85, 85.
 
 export const prompts = {
   'class-table': {
-    q: 'In the companion VM, what does a class object hold, and what does an instance hold?',
+    q: 'In the Drip bytecode VM, what does a class object hold, and what does an instance hold?',
     a: 'A class: its name and a method table. An instance: a pointer to its class, a field table, and the order its fields were first set.',
   },
-  'op-method': {
-    q: 'What does the `method` instruction do?',
-    a: 'It stores the closure on top of the stack in the method table of the class just below it, under the instruction’s name, and pops the closure.',
-  },
   'self-slot': {
-    q: 'How does `self.x` inside a method compile, and why does that work?',
+    q: 'In the Drip bytecode VM, how does `self.x` inside a method compile, and why does that work?',
     a: '`load.local 0`, then `get.prop \'x\'`: the compiler names slot 0 of every method `self`, and the VM puts the instance there when it calls the method.',
   },
-  'field-order': {
-    q: 'Why does `print` show an instance’s fields in the order they were first set, even after they are assigned again?',
-    a: '`set.prop` appends a name to `fieldOrder` only when `Table.set` reports the key as new.',
-  },
   'new-slot': {
-    q: 'Where does `new` put the instance it allocates, and why there?',
+    q: 'In the Drip bytecode VM, where does `new C(args)` put the instance it allocates, and why there?',
     a: 'Over the class, in the callee’s slot; that slot becomes `init`’s slot 0, so `self` and the arguments are already in place.',
   },
   'init-returns': {
-    q: 'What does an `init` method return, and how does the compiler make sure of it?',
-    a: 'Always the instance: in an initialiser, `emitReturn` emits `load.local 0` (slot 0, `self`) instead of `none` before `return`.',
-  },
-  'no-init-args': {
-    q: 'What happens with `new Point(1, 2)` if `Point` has no `init`?',
-    a: 'A runtime error: `Point has no init, so it takes no arguments, but got 2`.',
-  },
-  'bare-return': {
-    q: 'Inside `init`, which is allowed: `return;` or `return self;`?',
-    a: 'Only `return;`, which also returns the instance; `return self;` (any value) is the compile error `\'init\' cannot return a value`.',
+    q: 'In Drip, what does an `init` method return, and how does the bytecode compiler make sure of it?',
+    a: 'Always the instance: in an initialiser, every return (implicit or a bare `return;`) loads slot 0, `self`, instead of `none`, and `return value;` is a compile error.',
   },
   'invoke-why': {
-    q: 'Why does the compiler emit `invoke` for `o.m(args)` instead of `get.prop` and `call`?',
-    a: '`get.prop` would allocate a bound method that `call` unpacks at once; `invoke` calls the method directly, with no allocation and the same result.',
+    q: 'In a VM where reading `o.m` makes a bound method, why does the compiler emit one `invoke` instruction for `o.m(args)` instead of a property read and a call?',
+    a: 'The read would allocate a bound method that the call unpacks at once; `invoke` calls the method directly, with the same result and no allocation.',
   },
   'invoke-field': {
-    q: 'Why does `invoke` look in the instance’s fields before the class’s methods?',
+    q: 'Why must a VM’s `invoke` instruction look in the instance’s fields before its class’s methods, in a language where fields can hold functions?',
     a: 'A field holding a function shadows a method of the same name, so `o.m()` must call the field, exactly as reading `o.m` and calling it would.',
   },
-  'invoke-receiver': {
-    q: 'Where is the receiver when `invoke m n` runs, and why does that matter?',
-    a: 'Just below the n arguments, in the slot that becomes the method’s slot 0, so `self` is already in place and nothing has to move.',
-  },
-  'bound-still': {
-    q: 'Name two ways of writing a method call that still make a bound method in the VM.',
-    a: '`(o.m)(args)`, and `let f = o.m;` followed by `f(args)`: the property is read without an immediate call, so `get.prop` runs.',
-  },
   'copy-down': {
-    q: 'What does the `inherit` instruction do?',
-    a: 'It copies the superclass’s whole method table into the new subclass, once, when the class is made.',
-  },
-  'override-order': {
-    q: 'Why do a subclass’s overriding methods win over the copied ones?',
-    a: '`inherit` runs before the subclass’s own `method` instructions, which overwrite any copied entry with the same name.',
+    q: 'In copy-down inheritance, what happens to the superclass’s methods when a subclass is created?',
+    a: 'The whole method table is copied into the subclass once, before the subclass’s own methods are added (so overrides overwrite the copies).',
   },
   'super-upvalue': {
-    q: 'How does a method reach its superclass for `super.m()`?',
+    q: 'In the Drip bytecode VM, how does a method reach its superclass for `super.m()`?',
     a: 'The compiler stores the superclass in a hidden local named `super` around the class body; methods capture it as an upvalue, closed when the class declaration ends.',
-  },
-  'super-invoke': {
-    q: 'What does `super.m(args)` compile to?',
-    a: '`load.local 0` (self), the arguments, `load.upvalue` for the superclass, then `invoke.super m n`, which looks `m` up in the superclass and calls it on `self`.',
   },
 };
 
@@ -103,6 +70,7 @@ a.m();`,
 
 export const exercises = {
   vec: {
+    optional: true,
     title: 'A vector, printed properly',
     lang: 'drip-vm',
     prompt: 'Fix `Vec` so the program prints `Vec { x: 3, y: 4 }` and then `25`. `init(x, y)` stores both fields; `len2()` returns `x * x + y * y` for the instance it is called on.',
@@ -446,29 +414,7 @@ The second test shows the payoff: \`C\` inherits \`m\` from two levels up, yet f
 
 export const quiz = [
   {
-    q: 'Which instructions build `class P { get() { return 1; } }` before any instance exists?',
-    options: [
-      {
-        t: '`new`, then `set.prop` for each method',
-        why: '`new` makes instances; methods live in the class, not in instances.',
-      },
-      {
-        t: '`class \'P\'`, `define.global`, `load.global`, then `closure` and `method \'get\'`, then `pop`',
-        correct: true,
-        why: 'The class is made empty, stored, pushed again, given each method in turn, and finally dropped.',
-      },
-      {
-        t: 'One `call` per method',
-        why: 'Methods are only called later; building the class calls nothing.',
-      },
-      {
-        t: '`inherit`',
-        why: '`inherit` only appears when a class extends another.',
-      },
-    ],
-  },
-  {
-    q: 'During `new P(3)`, what does the VM write into the slot that held the class `P`?',
+    q: 'In the Drip bytecode VM, during `new P(3)`, what is written into the stack slot that held the class `P`?',
     options: [
       {
         t: 'Nothing: the class stays there for the whole call',
@@ -490,7 +436,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `new P(-1)` print with `init(x) { if x < 0 { return; } self.x = x; }` and then `print`?',
+    q: 'In Drip, class `P` has `init(x) { if x < 0 { return; } self.x = x; }`. What does `print new P(-1);` print?',
     options: [
       {
         t: '`none`',
@@ -512,51 +458,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`class Point {}` and then `new Point(1, 2)`. What happens?',
-    options: [
-      {
-        t: 'A runtime error: `Point has no init, so it takes no arguments, but got 2`',
-        correct: true,
-        why: 'With no `init`, there is nothing to receive the arguments, and `newInstance` says so.',
-      },
-      {
-        t: 'The arguments are ignored and you get `Point {}`',
-        why: 'Drip treats extra arguments as a mistake rather than ignoring them.',
-      },
-      {
-        t: 'Fields `0` and `1` are set to 1 and 2',
-        why: 'Drip never invents fields; only assignments make them.',
-      },
-      {
-        t: 'A compile error',
-        why: 'The compiler does not know whether `Point` will have an `init` when this line runs; it is checked at run time.',
-      },
-    ],
-  },
-  {
-    q: 'Why does `print` show `E { y: 2, x: 1 }` after `e.y = 2; e.x = 1;`, even if `e.y` is assigned again later?',
-    options: [
-      {
-        t: 'Fields are sorted backwards',
-        why: 'They are not sorted at all.',
-      },
-      {
-        t: 'The hash table happens to store them in that order',
-        why: 'Hash order is unrelated to set order; printing uses a separate list.',
-      },
-      {
-        t: 'Because `print` shows the newest field first',
-        why: 'It shows the oldest first; `y` was set first.',
-      },
-      {
-        t: '`set.prop` appends a name to `fieldOrder` only the first time the field is set',
-        correct: true,
-        why: '`Table.set` returns true only for a new key, so later assignments leave the order alone.',
-      },
-    ],
-  },
-  {
-    q: 'What does the compiler emit for `c.add(2)`?',
+    q: 'What does the Drip bytecode compiler emit for `c.add(2)`?',
     options: [
       {
         t: '`get.prop \'add\'`, then `call 1`',
@@ -565,7 +467,7 @@ export const quiz = [
       {
         t: 'The receiver, the argument, then `invoke \'add\' (1 args)`',
         correct: true,
-        why: '`dot` sees `(` after the name and emits `invoke` with the name and the argument count.',
+        why: 'The compiler sees `(` straight after the name and emits `invoke` with the name and the argument count.',
       },
       {
         t: '`new 1`',
@@ -578,7 +480,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'An instance has a field `m` holding a function, and its class has a method `m`. What does `o.m()` call?',
+    q: 'In Drip, an instance has a field `m` holding a function, and its class has a method `m`. What does `o.m()` call?',
     options: [
       {
         t: 'The method, because `invoke` only looks at classes',
@@ -600,7 +502,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In runs for this book, a copy of the VM without `invoke` ran the `method_calls` benchmark with 48 collections; the real VM ran none. Why?',
+    q: 'A copy of a bytecode VM whose compiler never emits `invoke` (so `o.m()` is a property read and a call) runs a method-call benchmark with 48 collections, where the original runs none. Why?',
     options: [
       {
         t: 'Every `o.m()` became `get.prop` and `call`, allocating a bound method that was garbage at once',
@@ -618,50 +520,6 @@ export const quiz = [
       {
         t: 'The copy ran in stress mode',
         why: 'Both ran normally; the difference is what each one allocated.',
-      },
-    ],
-  },
-  {
-    q: '`class B extends A`, and B overrides `m`. In what order are B’s table entries written?',
-    options: [
-      {
-        t: 'B’s own methods, then A’s copied over them',
-        why: 'That would make every override lose to the inherited version.',
-      },
-      {
-        t: 'Only B’s own; A’s are looked up at call time',
-        why: 'That is how the tree-walker did it; the VM copies down once.',
-      },
-      {
-        t: 'A’s methods are linked, not copied',
-        why: '`addAll` copies the entries into B’s own table.',
-      },
-      {
-        t: 'A’s methods are copied in by `inherit`, then B’s `method` instructions overwrite them',
-        correct: true,
-        why: 'So B’s `m` replaces the copied `A.m`, and every lookup is one probe.',
-      },
-    ],
-  },
-  {
-    q: 'After `class B extends A { ... }`, the disassembly shows `pop` and then `close.upvalue`. What is being closed?',
-    options: [
-      {
-        t: 'The hidden `super` local, holding A, which B’s methods captured',
-        correct: true,
-        why: 'The class body’s scope ends, and since methods captured `super`, it is closed into their upvalue.',
-      },
-      {
-        t: 'The class B',
-        why: 'B is dropped by the `pop`; it is a global, not a captured local.',
-      },
-      {
-        t: 'Every method’s `self`',
-        why: '`self` is slot 0 of each method’s own frame, not a local of the script.',
-      },
-      {
-        t: 'Nothing: `close.upvalue` is always emitted after a class',
-        why: 'It appears only because a method used `super`; a class without `extends` has no hidden local.',
       },
     ],
   },

@@ -1,143 +1,34 @@
-// Chapter 174 cards: recall prompts, examples, exercises and quiz.
+// Chapter 89 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 89, 89, 89, 89.
 
 export const prompts = {
   'ir-what': {
     q: 'What is an intermediate representation (IR)?',
     a: 'The form a compiler keeps a program in while it analyses and transforms it, between the source and the target.',
   },
-  'why-not-source': {
-    q: 'Why don’t optimisers analyse JavaScript source text directly?',
-    a: 'There are too many ways to write the same thing. Every analysis would need a case for every spelling.',
-  },
   'lowering-what': {
     q: 'What is lowering?',
     a: 'Translating a program into a lower-level form, with fewer kinds of construct and more explicit steps.',
-  },
-  'same-vir': {
-    q: 'What does `p.x += p.vx` lower to in VIR?',
-    a: 'Three steps: `field.get` x and vx, a `binop +`, and a `field.set` of x. The same as `p.x = p.x + p.vx`.',
-  },
-  'plus-plus-why': {
-    q: 'Why does `x++` lower to one more instruction (`unop +`) than `x += 1`?',
-    a: '`x++` converts x to a number first, `x += 1` doesn’t: with x = "5" they give 6 and "51". Lowering makes that visible.',
-  },
-  'opaque-what': {
-    q: 'What does an `opaque` instruction in VIR mean to the analyses?',
-    a: '“Might do anything with these arguments.” Its arguments are treated as lost to unknown code, so Viscosity stays safe.',
-  },
-  'why-not-bytecode': {
-    q: 'What does stack bytecode hide that an analysis needs?',
-    a: 'Which instruction produced each value: the inputs are only “whatever is on top of the stack”.',
-  },
-  'sparkplug-no-ir': {
-    q: 'Sparkplug compiles bytecode to machine code with no IR of its own. What does it gain, and what does it give up?',
-    a: 'It compiles very fast, but without an IR it can’t do the analyses an optimising compiler does.',
   },
   'tac-what': {
     q: 'What does one three-address instruction do?',
     a: 'One operation on at most two named inputs, with one named result: `x = y op z`.',
   },
-  'why-three': {
-    q: 'Which three “addresses” give three-address code its name?',
-    a: 'Two inputs and one output.',
-  },
-  'children-first': {
-    q: 'Why does lowering an expression emit the children’s instructions before the parent’s?',
-    a: 'The parent’s instruction names its inputs, and those names only exist once the children are lowered.',
-  },
-  'temp-what': {
-    q: 'What is a temporary?',
-    a: 'A name the compiler invents for an intermediate value, the result of one instruction.',
-  },
-  'let-vanishes': {
-    q: 'Why does `let t = a;` produce no VIR instruction at all?',
-    a: 'The front end only records that `t` now means `a`’s value (`%0`). Later reads of `t` use `%0` directly.',
-  },
-  'const-is-inst': {
-    q: 'How does VIR represent the literal `2` in `t * 2`?',
-    a: 'As its own instruction, `%1 = const 2`, so it has a name like any other value.',
-  },
-  'inst-args': {
-    q: 'In VIR’s `Inst` record for `%2 = binop * %0, %1`, what is `args`?',
-    a: '`[0, 1]`: the ids of the input values.',
-  },
-  'uses-map': {
-    q: 'What does `buildUses` compute, and how?',
-    a: 'For every value, the instructions that use it. One pass files each instruction under each of its arguments.',
-  },
-  'dead-value': {
-    q: 'What can usually be done with a value that has no uses?',
-    a: 'Delete its instruction: it is dead (if it has no side effects).',
-  },
   'bb-what': {
     q: 'What is a basic block?',
     a: 'A maximal run of instructions with one entry (the first) and one exit (the last).',
-  },
-  'leader-rules': {
-    q: 'What are the three rules for finding leaders?',
-    a: 'The first instruction, every jump target, and every instruction right after a jump (or a return).',
-  },
-  'all-or-nothing': {
-    q: 'If the first instruction of a basic block runs, what do you know about the rest of it?',
-    a: 'All of it runs, in order (barring an exception).',
-  },
-  maximal: {
-    q: 'What does *maximal* mean in “a maximal run of instructions”?',
-    a: 'The block is cut only at leaders, so it is as long as it can be; two blocks are never glued where nothing forces a cut.',
-  },
-  'twice-a-leader': {
-    q: 'An instruction is both a jump target and the line after a jump. How many blocks does it start?',
-    a: 'One. It is a leader for two reasons, but a leader is a leader; the set of leaders has no repeats.',
-  },
-  'collatz-blocks': {
-    q: 'In the ten-line Collatz list, the leaders are 0, 2, 4, 7 and 9. Which lines make up the block that starts at 4?',
-    a: 'Lines 4, 5 and 6: from the leader up to, but not including, the next leader (7).',
-  },
-  'call-no-end': {
-    q: 'Does a function call in the middle of a block end the block?',
-    a: 'No. The call comes back to the next instruction, so it is one step like any other. Only jumps, returns and throws end a block.',
-  },
-  'why-blocks': {
-    q: 'Why do analyses start by studying each basic block on its own?',
-    a: 'Inside a block, order is trivial (top to bottom, all or nothing), so a block can be summarised cheaply without thinking about paths.',
   },
   'cfg-what': {
     q: 'What are the nodes and edges of a control-flow graph?',
     a: 'Nodes are basic blocks; an edge A → B means B can run immediately after A.',
   },
-  'pred-succ': {
-    q: 'If there is an edge A → B, which is the predecessor?',
-    a: 'A is a predecessor of B; B is a successor of A.',
-  },
-  cycle: {
-    q: 'What does a cycle in a CFG mean?',
-    a: 'A loop: control can come back to a block it has already run.',
-  },
   'one-terminator': {
     q: 'In VIR, which part of a block can jump?',
     a: 'Only its terminator (`br`, `condbr`, `return`, `throw` or `unreachable`), and each block has exactly one, at the end.',
   },
-  'preds-filled': {
-    q: 'When does Viscosity’s builder fill in a block’s `preds`?',
-    a: 'When it sets the terminator of another block: `terminate` adds that block to each successor’s `preds`.',
-  },
-  'empty-blocks': {
-    q: 'Why does VIR’s CFG for the Collatz loop have blocks holding nothing but `br`?',
-    a: 'The lowering always makes a join block for an `if` and an end-of-pass block for a loop. It keeps lowering mechanical, and costs little.',
-  },
   'header-two-preds': {
-    q: 'Why does a loop’s test block have (at least) two predecessors?',
+    q: 'In a CFG, why does the test block of a `while` loop have at least two predecessors?',
     a: 'Control reaches it once from before the loop, and again from the end of every pass, along the back edge.',
-  },
-  unreachable: {
-    q: 'How can you tell from a CFG that a (non-entry) block can never run?',
-    a: 'No path from the entry reaches it; for example, it has no predecessors.',
-  },
-  'unreachable-chain': {
-    q: 'Can a block with predecessors still be unreachable?',
-    a: 'Yes, if all its predecessors are unreachable too. The safe test is a search from the entry.',
   },
 };
 
@@ -149,31 +40,6 @@ a += 1;
 let b = "5";
 b++;
 console.log(a, b);`,
-  },
-  'no-copies': {
-    title: 'Names, not copies',
-    code: `// Lower: let t = a; let u = t * 2;
-//        return u + t;
-const names = new Map();
-const code = [];
-let n = 0;
-const emit = (text) => {
-  const t = 't' + ++n;
-  code.push(t + ' = ' + text);
-  return t;
-};
-const get = (x) => names.get(x);
-
-names.set('a', 'a');
-// let t = a: no instruction
-names.set('t', get('a'));
-// let u = t * 2
-names.set('u', emit(get('t') + ' * 2'));
-// return u + t
-const r =
-  emit(get('u') + ' + ' + get('t'));
-code.push('return ' + r);
-console.log(code.join('\\n'));`,
   },
   'block-counts': {
     title: 'Every line of a block runs equally often',
@@ -216,6 +82,7 @@ preds.forEach((ps, b) => {
 
 export const exercises = {
   'lower-assign': {
+    optional: true,
     title: 'Lower compound assignment',
     prompt: `A tiny tree has assignment in three spellings. Write \`lower(node)\` so only one is left.
 
@@ -432,6 +299,7 @@ This lowering has a famous catch, which the tests leave out on purpose: a \`cont
     ],
   },
   'to-tac': {
+    optional: true,
     title: 'An expression tree to three-address code',
     prompt: `Expression trees have three kinds of node: a variable \`{ v: "a" }\`, a number \`{ n: 2 }\`, and an operator \`{ op: "+", l, r }\`. Write \`toTac(e)\` that returns the three-address code as an array of strings like \`"t1 = b * c"\`.
 
@@ -628,6 +496,7 @@ This is VIR's \`buildUses\` in miniature. It only works because every input is a
     ],
   },
   leaders: {
+    optional: true,
     title: 'Find the leaders',
     prompt: 'Each instruction is an object with an `op`. `{ op: "goto", to }` always jumps to index `to`; `{ op: "ifnot", to }` may jump there; `{ op: "return" }` leaves the function; anything else (like `{ op: "calc" }`) falls through to the next line. Write `leaders(code)` that returns the indices of the leaders, sorted in increasing order, without repeats. Treat `return` like a jump: whatever follows it starts a new block.',
     starter: `function leaders(code) {
@@ -1030,29 +899,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In VIR, how do `x += 1` and `x = x + 1` compare?',
-    options: [
-      {
-        t: 'They lower to identical instructions',
-        correct: true,
-        why: 'Both become a constant 1 and `binop +`. The spelling difference is gone.',
-      },
-      {
-        t: '`x += 1` has an extra `unop +`',
-        why: 'That is `x++`, which converts x to a number first.',
-      },
-      {
-        t: '`x += 1` becomes an `opaque` instruction',
-        why: 'Compound assignment is modelled; opaque is for things the lowering doesn’t understand.',
-      },
-      {
-        t: 'They can’t be compared: one is a statement, one an expression',
-        why: 'Both are assignment expressions, and both lower to the same VIR.',
-      },
-    ],
-  },
-  {
-    q: '`let s = "5"; s++;` What is `s` now, and why does it matter to lowering?',
+    q: 'In JavaScript, `let s = "5"; s++;` What is `s` now, and why does it matter to a compiler lowering `++`?',
     options: [
       {
         t: '`"51"`; lowering can treat ++ as += 1',
@@ -1070,94 +917,6 @@ export const quiz = [
         t: '`6`; so the lowering must make the number conversion explicit',
         correct: true,
         why: 'VIR emits `unop +` before adding 1. A lowering that skipped it would change what the program does.',
-      },
-    ],
-  },
-  {
-    q: 'What does Viscosity’s front end do with `delete o.x`, which VIR has no instruction for?',
-    options: [
-      {
-        t: 'Reports a compile error',
-        why: 'The program is valid JavaScript; Viscosity must accept it.',
-      },
-      {
-        t: 'Drops it, since the analyses don’t care about it',
-        why: 'Dropping code would change the program’s behaviour.',
-      },
-      {
-        t: 'Emits `opaque(delete)` with `o` as an argument, so the analyses assume anything may happen to `o`',
-        correct: true,
-        why: 'Opaque keeps the analyses sound: anything they can’t see into is treated as the worst case.',
-      },
-      {
-        t: 'Lowers it to `field.set o, undefined .x`',
-        why: 'Deleting a property is not the same as setting it to undefined: `"x" in o` would differ.',
-      },
-    ],
-  },
-  {
-    q: 'Which statement about lowering is true?',
-    options: [
-      {
-        t: 'A compiler lowers exactly once',
-        why: 'Many compilers lower in several stages, each to a lower IR.',
-      },
-      {
-        t: 'Lowering always makes the program shorter',
-        why: '`+=` becomes three instructions. Lowering usually makes it longer but simpler.',
-      },
-      {
-        t: 'Lowering must keep every syntax detail so the source can be rebuilt',
-        why: 'It deliberately drops spelling details. Viscosity keeps a pointer back to the source node instead.',
-      },
-      {
-        t: 'It erases differences that don’t matter and makes ones that do matter explicit',
-        correct: true,
-        why: 'Like `+=` vs `= x +` (erased) and `++`’s number conversion (made an instruction).',
-      },
-    ],
-  },
-  {
-    q: 'Which of these is a three-address instruction?',
-    options: [
-      {
-        t: '`MULTIPLY` (pop two, push one)',
-        why: 'A stack instruction: its inputs and output have no names.',
-      },
-      {
-        t: '`t3 = t1 * t2`',
-        correct: true,
-        why: 'One operation, two named inputs, one named result.',
-      },
-      {
-        t: '`x = (a + b) * c`',
-        why: 'Two operations in one line. Three-address code would split it with a temporary.',
-      },
-      {
-        t: '`print a + b`',
-        why: 'An addition and a print together. Lowered, the sum would get its own temporary first.',
-      },
-    ],
-  },
-  {
-    q: 'Lowering `(a + b) * c` children first, which instruction comes first?',
-    options: [
-      {
-        t: '`t1 = t2 * c`',
-        why: 'The product can’t be written until the sum has a name.',
-      },
-      {
-        t: '`t1 = b * c`',
-        why: 'The tree multiplies the sum by c; b * c isn’t computed at all.',
-      },
-      {
-        t: '`t1 = a + b`',
-        correct: true,
-        why: 'The left child, the sum, is lowered first; then `t2 = t1 * c`.',
-      },
-      {
-        t: 'It depends on the values of a, b and c',
-        why: 'Lowering happens before the program runs; values don’t matter.',
       },
     ],
   },
@@ -1184,205 +943,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What is a temporary?',
-    options: [
-      {
-        t: 'A variable the programmer declared with `let`',
-        why: 'Those may vanish entirely; temporaries are the names the compiler makes.',
-      },
-      {
-        t: 'A value that is deleted after one instruction',
-        why: 'A temporary can be used any number of times, like %0 in a + b and a - c.',
-      },
-      {
-        t: 'A machine register',
-        why: 'Mapping temporaries to registers is a much later decision, and there are usually more temporaries than registers.',
-      },
-      {
-        t: 'A compiler-made name for the result of one instruction',
-        correct: true,
-        why: 'It exists so every intermediate value can be pointed at.',
-      },
-    ],
-  },
-  {
-    q: 'Why is “who uses value %3?” easy to answer in VIR but hard in stack bytecode?',
-    options: [
-      {
-        t: 'VIR instructions name their inputs, so one pass can index users by name',
-        correct: true,
-        why: 'That is `buildUses`. Stack inputs are “the top of the stack”, which you’d have to simulate.',
-      },
-      {
-        t: 'VIR has fewer instructions',
-        why: 'Fewer instructions help a little, but the real difference is that inputs are named.',
-      },
-      {
-        t: 'Stack bytecode has no values',
-        why: 'It has plenty; they have no names.',
-      },
-      {
-        t: 'VIR runs faster',
-        why: 'Speed of running is unrelated to answering questions about the code.',
-      },
-    ],
-  },
-  {
-    q: 'How many instructions does Drip’s stack VM need for `(a + b) * (a - c)` with locals, against VIR’s three?',
-    options: [
-      {
-        t: 'Three',
-        why: 'The stack VM also needs an instruction to load each operand.',
-      },
-      {
-        t: 'Four',
-        why: 'There are four variable reads plus three operators.',
-      },
-      {
-        t: 'Seven: four loads and three operators',
-        correct: true,
-        why: 'Every operand must be pushed before an operator can use it. VIR names the operands instead.',
-      },
-      {
-        t: 'Ten',
-        why: 'No extra instructions are needed beyond the loads and operators.',
-      },
-    ],
-  },
-  {
-    q: 'Which instructions are leaders?',
-    options: [
-      {
-        t: 'Every instruction that computes a value',
-        why: 'Most instructions compute values; leaders are about control flow.',
-      },
-      {
-        t: 'Only jump targets',
-        why: 'Also the first instruction, and every instruction after a jump.',
-      },
-      {
-        t: 'The first instruction, jump targets, and instructions right after jumps',
-        correct: true,
-        why: 'Those are exactly the places control can enter other than from the line above.',
-      },
-      {
-        t: 'Every jump instruction',
-        why: 'A jump ends a block; the instruction after it is the leader.',
-      },
-    ],
-  },
-  {
-    q: 'Why can a compiler analyse one basic block in isolation so cheaply?',
-    options: [
-      {
-        t: 'Its instructions always run all together, in order',
-        correct: true,
-        why: 'One entry, one exit: there is no other order to consider inside a block.',
-      },
-      {
-        t: 'Basic blocks contain no variables',
-        why: 'They contain plenty; it is the control flow inside them that is trivial.',
-      },
-      {
-        t: 'Each basic block is one instruction',
-        why: 'A block can be long; it is “basic” because it has no internal branching.',
-      },
-      {
-        t: 'Blocks are always small enough to fit in a cache line',
-        why: 'Size is unrelated; it is the single entry and exit that matter.',
-      },
-    ],
-  },
-  {
-    q: '`0 t = a < b`, `1 ifnot t goto 3`, `2 a = b`, `3 return a`. What are the blocks?',
-    options: [
-      {
-        t: 'One block, lines 0–3',
-        why: 'Line 1 is a jump, so line 2 starts a block, and line 3 is a jump target.',
-      },
-      {
-        t: 'Lines 0–1, 2 and 3',
-        correct: true,
-        why: 'Leaders are 0 (first), 2 (after the jump) and 3 (the target).',
-      },
-      {
-        t: 'Lines 0, 1, 2 and 3, one each',
-        why: 'Lines 0 and 1 belong together: nothing jumps to line 1 and line 0 is not a jump.',
-      },
-      {
-        t: 'Lines 0–2 and 3',
-        why: 'Line 2 comes after the jump on line 1, so it must start a new block.',
-      },
-    ],
-  },
-  {
-    q: 'Running the Collatz list for some n, line 4 ran 7 times. How many times did line 6 run?',
-    options: [
-      {
-        t: 'It depends on n',
-        why: 'Lines 4, 5 and 6 are one block; whenever line 4 runs, so do 5 and 6.',
-      },
-      {
-        t: 'Fewer than 7',
-        why: 'Nothing can leave the block between line 4 and line 6.',
-      },
-      {
-        t: 'More than 7',
-        why: 'Nothing can enter the block between line 4 and line 6 either.',
-      },
-      {
-        t: 'Exactly 7',
-        correct: true,
-        why: 'All the lines of a basic block run together, so they run equally often.',
-      },
-    ],
-  },
-  {
-    q: 'A block contains `t = f(x)`, a call to another function. Where does the block end?',
-    options: [
-      {
-        t: 'Right after the call, because control leaves the function',
-        why: 'The call returns to the very next instruction, so it does not end the block.',
-      },
-      {
-        t: 'At its last instruction, as usual: a call does not end a block',
-        correct: true,
-        why: 'Only jumps, returns and throws end a block.',
-      },
-      {
-        t: 'Right before the call',
-        why: 'Nothing jumps to the call, so it is not a leader.',
-      },
-      {
-        t: 'Calls are not allowed inside basic blocks',
-        why: 'They are allowed; they are ordinary instructions from the caller’s point of view.',
-      },
-    ],
-  },
-  {
-    q: 'In VIR, how many terminators does a block have, and where?',
-    options: [
-      {
-        t: 'Any number, anywhere in `insts`',
-        why: 'Ordinary instructions cannot jump in VIR; that is the point of `term`.',
-      },
-      {
-        t: 'Zero or one',
-        why: 'Every block has one; an unfinished block has `unreachable` as its terminator.',
-      },
-      {
-        t: 'Two: one for each successor',
-        why: 'A single `condbr` names both successors.',
-      },
-      {
-        t: 'Exactly one, in `term`, after all the instructions',
-        correct: true,
-        why: 'The type itself guarantees one exit per block.',
-      },
-    ],
-  },
-  {
-    q: 'A block ends with `condbr %5, b5, b6`. What does `successors` return for it?',
+    q: 'In VIR, a block ends with `condbr %5, b5, b6`. What are its successors, in the order VIR lists them?',
     options: [
       {
         t: '`[5]`',
@@ -1400,72 +961,6 @@ export const quiz = [
       {
         t: '`[]`',
         why: 'An empty list is for `return`, `throw` and `unreachable`.',
-      },
-    ],
-  },
-  {
-    q: 'In the VIR CFG for the Collatz loop, block b1 has predecessors b0 and b3. What does that tell you?',
-    options: [
-      {
-        t: 'b1 is unreachable',
-        why: 'It has predecessors, and b0 is the entry.',
-      },
-      {
-        t: 'b1 runs exactly twice',
-        why: 'The CFG says which paths exist, not how many times each is taken.',
-      },
-      {
-        t: 'b1 can be entered from the entry or from the back edge: it is the loop’s header',
-        correct: true,
-        why: 'b3 → b1 closes the cycle, so b1 is reached once from b0 and again each time round the loop.',
-      },
-      {
-        t: 'b0 and b3 run at the same time',
-        why: 'Only one path is taken each time; the edges are alternatives.',
-      },
-    ],
-  },
-  {
-    q: 'In VIR for `function abs(x) { if (x < 0) return -x; return x; }`, how many predecessors does the block holding `return x` have?',
-    options: [
-      {
-        t: 'One: the empty else block',
-        correct: true,
-        why: 'The then branch returns, so it never reaches the code after the if; only b2 jumps to b3.',
-      },
-      {
-        t: 'Two: both branches of the if',
-        why: 'The then branch ends with its own return, so it has no edge to the code after the if.',
-      },
-      {
-        t: 'None',
-        why: 'Then the second return could never run, but it runs whenever x is not negative.',
-      },
-      {
-        t: 'Three',
-        why: 'There are only two ways out of the test, and one of them returns.',
-      },
-    ],
-  },
-  {
-    q: 'What does Viscosity’s lowering do with `x = 2;` written after `return x;`?',
-    options: [
-      {
-        t: 'Reports a syntax error',
-        why: 'Code after a return is valid JavaScript.',
-      },
-      {
-        t: 'Deletes it during parsing',
-        why: 'The parser keeps it; the lowering deals with it.',
-      },
-      {
-        t: 'Puts it at the end of the entry block',
-        why: 'Then it would run after the return, which cannot happen. The return is the block’s terminator.',
-      },
-      {
-        t: 'Lowers it into a fresh block with no predecessors, which is unreachable',
-        correct: true,
-        why: 'Nothing jumps to that block, and the CFG makes it visible: no path from the entry reaches it.',
       },
     ],
   },

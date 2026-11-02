@@ -5,44 +5,28 @@ part: V
 title: 'IR, three-address code and control-flow graphs'
 tagline: 'Source code is written for people, and bytecode for a machine that runs it. A compiler that wants to reason about a program needs a third form, built for asking questions; that form is the IR.'
 objectives:
-  - Explain why an optimiser works on an intermediate representation rather than on source text, syntax trees or stack bytecode.
-  - Describe lowering, and show how it turns many spellings of one idea into one form while keeping real differences visible.
-  - Read a short listing of VIR, Viscosity’s real IR, and say what each line does.
-  - Write a small lowering pass in JavaScript.
-  - Turn an expression tree into three-address code, children first.
-  - Explain what a temporary is and why a compiler makes so many of them.
-  - Read VIR’s Inst record and connect each field to a line of a listing.
-  - Use names to answer “who uses this value?” with a lookup rather than a search.
-  - Say what a basic block is, and why everything inside one runs together, in order.
-  - Find the leaders of a list of instructions with the three leader rules.
-  - Cut a list of instructions into basic blocks, and write the code that does it.
-  - Build a control-flow graph’s successors and predecessors from the jumps at the ends of blocks.
-  - Read VIR’s Block and Terminator types and the real successors function.
-  - Spot a loop as a cycle, and an unreachable block as one no path from the entry reaches.
-  - Write the code that turns successors into predecessors.
+  - Explain why an optimiser works on an intermediate representation rather than on source, syntax trees or stack bytecode.
+  - Describe lowering, and show how it erases spellings that mean the same while keeping real differences visible.
+  - Read a VIR listing as three-address code, and say what a temporary is.
+  - Say what a basic block is, and read VIR’s Block and Terminator types.
+  - Build a control-flow graph’s predecessors from its successors, and spot loops and unreachable blocks.
 introduces: [ir, lowering, three-address-code, temporary, basic-block, cfg]
-uses: [compiler-pipeline, front-end-back-end, compiler, ast, ast-node, desugaring, control-flow, bytecode, stack-machine, jump, tree-walking-interpreter, ignition, optimizing-tiers, aos-vs-soa, object, property, dot-access, array, function, parameter, for-of, discriminated-union, typescript, union-type, recursion, mutation, opcode, stack-slot, register, interface, map, push, return, local-variable, constant-pool, dead-code-elimination, backpatching, while-loop, for-loop, if, branch-prediction, pipeline, index, set]
-sources: [coopertorczon2022, makor2022, v8-sparkplug, v8-ignition]
+uses: [compiler-pipeline, compiler, ast, desugaring, control-flow, bytecode, stack-machine, jump, tree-walking-interpreter, ignition, optimizing-tiers, aos-vs-soa, object, property, dot-access, array, function, discriminated-union, typescript, union-type, recursion, opcode, interface, map, push, return, while-loop, if]
+sources: [coopertorczon2022, makor2022, v8-sparkplug]
 ---
 import FourForms from '../../../components/diagrams/ch089/FourForms';
-import SpellingsFunnel from '../../../components/diagrams/ch089/SpellingsFunnel';
 import TacSteps from '../../../components/diagrams/ch089/TacSteps';
-import StackVsNames from '../../../components/diagrams/ch089/StackVsNames';
-import LeaderSteps from '../../../components/diagrams/ch089/LeaderSteps';
-import OneEntryOneExit from '../../../components/diagrams/ch089/OneEntryOneExit';
 import CollatzCfg from '../../../components/diagrams/ch089/CollatzCfg';
 import PredSteps from '../../../components/diagrams/ch089/PredSteps';
-
-{/* ── merge: from old chapter 89, What an IR is for ── */}
 
 ## Too many ways to say one thing
 
 Viscosity wants to turn your arrays of objects into struct-of-arrays
-storage, the layout that won in Part II; however, before it can, it has
-to answer questions about your program, such as which fields of a
-particle are read, whether any particle is handed to code we cannot
-see, and whether a loop is hot. Try answering the first question by
-reading JavaScript source. Every one of these lines adds `vx` to `x`:
+storage, the layout that won in *AoS vs SoA, measured*; however, before
+it can, it has to answer questions about your program, such as which
+fields of a particle are read, whether a particle is handed to code we
+cannot see, and which loops are hot. Try answering the first question
+by reading source. Every one of these lines adds `vx` to `x`:
 
 ```js
 p.x += p.vx;
@@ -51,108 +35,72 @@ p["x"] = p["x"] + p.vx;
 const { vx } = p; p.x += vx;
 ```
 
-An analysis written over source text, or even over the syntax tree,
-needs a separate case for every one of them (and for the next spelling
-somebody invents), and again for every new question. Compilers do not work like that. Rather, they translate the
-program once into a form with far fewer cases, and then ask every
-question there.
-
-## A form built for questions
+An analysis over source text, or even over the syntax tree, needs a
+case for every spelling, and again for every new question; so compilers
+translate the program once into a form with far fewer cases, and ask
+every question there.
 
 <Analogy title="a bank statement">
 Your receipts come in every shape: printed, handwritten, emailed, a
 photo of a till slip. To answer "how much did I spend on food this
-month?" from the receipts you would need to understand each format.
-Your bank statement lists every payment in the same columns (date,
-payee, amount), so the same question becomes one pass down a list.
-<span slot="breaks">A statement is a summary, and it throws away detail
-(what you actually bought). An IR is not allowed to lose anything that
-changes what the program does; where it cannot describe something, it
-says so out loud, as we will see with `opaque`.</span>
+month?" from the receipts you would need to understand each format;
+your bank statement lists every payment in the same columns, so the
+same question becomes one pass down a list.
+<span slot="breaks">A statement throws away detail (what you actually
+bought). An IR may not lose anything that changes what the program
+does; where it cannot describe something, it says so out loud, as we
+will see with `opaque`.</span>
 </Analogy>
 
-<Analogy extra title="a kitchen's order card">
-A chatty cook says "pop the oven on, fairly hot, and while it warms you
-could chop the onions". A kitchen running fifty orders rewrites that as
-a card: *1. oven 200°C. 2. chop onions.* Each step does one thing, in
-the order it happens, and the head chef plans the whole evening from
-the cards, never from the chat.
-<span slot="breaks">Nobody runs a recipe card backwards or reorders it
-on a whim; a compiler rewrites its IR all the time (deleting steps,
-moving them, merging two into one), which is the whole reason the form
-was made easy to read.</span>
-</Analogy>
-
-Step through one small function in four forms, and watch what each form
+Step through one small function in four forms, and watch what each
 makes easy and what it hides:
 
 <FourForms client:visible />
 
-The source is for people and the tree keeps the program's nesting; the
-IR listing, and the graph drawn from it, are for the compiler: each
-instruction does one
-small thing and gives its result a name, such as `%2`, and the control
-flow (which in the tree was only implied by what an `If` node *means*)
-is written down as jumps between labelled blocks of code.
+In the IR, each instruction does one small thing and names its result
+(`%2`), and the control flow, which the tree only implied, is written
+down as jumps between labelled blocks.
 
 <Callout kind="definition">
 An **intermediate representation** (**IR**) is the form a compiler
-keeps a program in while it analyses and transforms it, sitting between
-the source language and the target. A good IR is **explicit** (values
-have names and control flow is spelled out), **small** (few kinds of
+keeps a program in while it analyses and transforms it, between the
+source language and the target. A good IR is **explicit** (values have
+names and control flow is spelled out), **small** (few kinds of
 instruction, so each analysis has few cases) and independent of how the
-source happened to be written.
+source happened to be written. Translating into a lower-level form like
+this, with fewer kinds of construct and more explicit steps, is called
+**lowering**.
 </Callout>
 
-<Examples of="ir">
+<Examples of="ir lowering">
 
 ```text
-%2 = binop + %0, %1
-return %2
-```
-
-```text
-%2 = binop < %0, %1
-condbr %2, b1, b2
-```
-
-```text
-%1 = field.get %0 .x
-%2 = field.get %0 .vx
-%3 = binop + %1, %2
-field.set %0, %3 .x
+func m(%0):        // p.x += p.vx;
+  b0:
+    %0 = param
+    %1 = field.get %0 .x
+    %2 = field.get %0 .vx
+    %3 = binop + %1, %2
+    field.set %0, %3 .x
+    return
 ```
 
 </Examples>
 
-All three are real VIR, Viscosity's IR, printed by its `printFunc`
-helper. The first is the body of `function add(a, b) { return a + b; }`:
-the parameters are already named `%0` and `%1`, the addition gets the
-next free name, `%2`, and `return` names the value it hands back. The
-second is the start of an `if (a < b)`: the comparison is named `%2`,
-and `condbr` (a *conditional branch*) says "if `%2` is true, go to block
-`b1`, otherwise to block `b2`", which is the decision the tree only
-implied. The third is `p.x += p.vx` inside `function m(p)`: two reads of
-fields of `%0` (the particle), one addition, one write of field `x`.
-That is the question we started with, and here it is answered by
-looking for `field.get`.
+This is real VIR, Viscosity's IR, for `function m(p) { p.x += p.vx; }`,
+printed by `printFunc` in `packages/core/src/vir.ts`. The parameter `p`
+is the value `%0`, and the compound `+=` became two field reads, one
+addition and one field write; `p.x = p.x + p.vx` lowers to the same
+four lines, so the spelling is erased, and "which fields are read?" is
+answered by looking for `field.get`. Real differences are kept, though:
+`x++` gets an extra `unop +` (convert to a number), because with
+`x = "5"` it gives `6` where `x += 1` gives `"51"`; and anything not
+modelled, like `delete o.x`, becomes `opaque`, which tells every
+analysis "this might do anything with its inputs".
 
-<Prompts ids={['ir-what', 'why-not-source']} />
+<More title="More: the lowering code, and ++ against += running">
 
-## Lowering
-
-Turning the tree into that listing is called **lowering**: the program
-is translated into a lower-level form, closer to the machine and further
-from the syntax. The compound `+=` from the last example is gone; it
-became a read, an add and a write, which are the same three steps that
-`p.x = p.x + p.vx` lowers to, instruction for instruction:
-
-<Figure takeaway="Lowering erases differences that do not matter and keeps the ones that do." caption="The real VIR for each line. The two spellings at the top meet in one form. At the bottom, x += 1 and x++ stay different: x++ first converts x to a number (unop +).">
-  <SpellingsFunnel />
-</Figure>
-
-Here is the part of Viscosity's front end that does it, from
-`packages/frontend-js/src/lower.ts`, trimmed:
+From `packages/frontend-js/src/lower.ts`, trimmed:
 
 ```ts
 case 'AssignmentExpression': {
@@ -166,298 +114,57 @@ case 'AssignmentExpression': {
 }
 ```
 
-`readTarget` works out what is being assigned to (a variable, or a field
-of an object) and gives back two small functions, `get` to read it and
-`set` to write it. `e.operator.slice(0, -1)` turns `"+="` into `"+"` by
-dropping the last character. `fb.emit` writes one `binop` instruction
-whose inputs are the old value and the right-hand side, and `t.set(v)`
-writes the result back. After this, no later pass ever sees `+=`.
-
-<Callout kind="definition">
-**Lowering** is translating a program into a lower-level form, with
-fewer kinds of construct and more explicit steps: compound assignment,
-`++` and loops become reads, writes, arithmetic and jumps. It can
-happen in several stages, each to a lower IR; desugaring `else if`
-into an `if` inside an `else`, in Choosing and repeating: if, while
-and for, was lowering inside the tree,
-while Viscosity's front end lowers the tree all the way to VIR.
-</Callout>
-
-<Formal title="What lowering must promise">
-
-```text
-lower : Tree → IR
-run(lower(p)) = run(p)       for every p
-p ≡ q  may give  lower(p) = lower(q)
-```
-
-<span slot="read">Lowering is a function from trees to IR. For every
-program p, running the lowered program must behave exactly like running
-p itself (the same output, the same effects). And when two programs p
-and q mean the same thing (the symbol ≡ reads "mean the same"), lowering
-is free to give them the very same IR, which is what makes later
-analyses short.</span>
-</Formal>
-
-<Examples of="lowering">
-
-```text
-x = x + 1  ┐  %1 = const 1
-x += 1     ┘  %2 = binop + %0, %1
-```
-
-```text
-x++  →  %1 = unop + %0
-        %2 = const 1
-        %3 = binop + %1, %2
-```
-
-```text
-delete o.x  →  %1 = opaque(delete) %0
-```
-
-</Examples>
-
-The first two lines show the simplest case: `x = x + 1` and `x += 1`
-lower to *identical* VIR (a constant `1`, then one addition), so the
-difference in spelling is erased. The second example is the varied
-one, and it looks like a mistake at first: `x++` lowers with one extra
-instruction, `unop +`, which is JavaScript's "convert to a number". It
-is not a mistake, because `x++` converts `x` to a number before adding
-and `x += 1` does not, so with a string they really differ. Here is that
-spot-the-difference pair, running:
+`readTarget` works out what is assigned to (a variable or a field) and
+returns a `get` and a `set`; `slice(0, -1)` turns `"+="` into `"+"`;
+`fb.emit` writes one `binop`, and `t.set(v)` writes the result back.
+After this, no later pass ever sees `+=`.
 
 <Run id="plus-plus" />
 
-`a += 1` joins the string `"5"` and the number `1` into `"51"`, while
-`b++` turns `"5"` into the number `5` first and then adds, giving `6`.
-A lowering that treated `++` as `+= 1` would quietly change what your
-program prints, and the `unop +` is how VIR makes that difference
-impossible to miss.
+VIR's `Op` union names records, fields, indexing and `push` as
+instructions of their own, because Viscosity cares about arrays of
+objects, and nothing in it says "JavaScript": each language's front end
+lowers to VIR, and every analysis after that sees only VIR. V8 makes a
+similar split: Sparkplug turns Ignition bytecode into machine code in
+one pass with no IR of its own<Cite id="v8-sparkplug" />, which is why
+it compiles fast and optimises little, while the analyses of a
+compiler's middle end run on an IR<Cite id="coopertorczon2022" />.
+Viscosity's idea itself comes from research done inside an optimising
+JIT<Cite id="makor2022" />.
 
-The third example is the realistic one, and the most honest op in VIR.
-Anything the lowering does not model, like `delete o.x`, becomes
-`opaque`, with every variable it mentions as an input. Opaque means
-"might do anything with these", so the analyses treat its inputs as lost
-to unknown code; when in doubt, Viscosity leaves the program alone,
-which keeps it safe without having to understand every corner of
-JavaScript.
+</More>
 
-<Prompts ids={['lowering-what', 'same-vir', 'plus-plus-why', 'opaque-what']} />
-
-## What VIR looks like inside
-
-VIR's instructions are a discriminated union (one object type per kind
-of instruction, told apart by a tag), and the tag is `op`. Here is a
-trimmed version of the list in `packages/core/src/vir.ts`:
-
-```ts
-type Op =
-  | 'const' | 'param' | 'phi'
-  | 'binop' | 'unop'
-  | 'field.get' | 'field.set'
-  | 'index.get' | 'index.set'
-  | 'record.new' | 'push' | 'length'
-  | 'call' | 'closure'
-  | 'opaque';
-```
-
-Records, fields, indexing and `push` are instructions of their own,
-because Viscosity cares about arrays of objects; and nothing in the list
-says "JavaScript". The front end for each
-language does the lowering, and every analysis after it only sees VIR.
-(A `phi` chooses between values where two paths join; it gets a chapter
-of its own, Phi nodes.)
-
-<Callout kind="pitfall">
-An IR that is *too* low loses facts you need. Drip's bytecode is lower
-than VIR, but a stack machine's instructions do not say which earlier
-instruction produced the value on top of the stack, so to ask "where
-does this value come from?" you would have to replay the stack in your
-head. An IR built for analysis names every value.
-</Callout>
-
-<Prompts ids={['why-not-bytecode']} />
-
-<Callout kind="engine" label="Under the hood">
-Engines make the same trade. V8 first compiles each function to
-Ignition bytecode, a form built for running<Cite id="v8-ignition" />.
-Sparkplug, its quick baseline compiler, turns that bytecode into machine
-code in one pass with no IR of its own, leaning on work the bytecode
-compiler already did<Cite id="v8-sparkplug" />; that is why it compiles
-fast, and also why it cannot do much optimising. The analyses and
-optimisations of a compiler's middle end, which the rest of Part VI
-builds, run on an IR<Cite id="coopertorczon2022" />. Viscosity's whole
-idea, changing the layout of arrays of objects automatically, comes from
-research done inside an optimising JIT<Cite id="makor2022" />, and VIR
-is where Viscosity asks the same questions ahead of time.
-</Callout>
-
-<Prompts ids={['sparkplug-no-ir']} />
-
-## Your turn
-
-<Exercise id="lower-assign" />
-
-<Exercise id="lower-for" />
-
-## What you learned
-
-- An **IR** is the compiler's working form of a program, made for
-  analysis: values are named, control flow is explicit, and there are
-  few kinds of instruction.
-- Source and trees are too varied, and stack bytecode hides where values
-  come from; an IR sits in between.
-- **Lowering** translates to a lower-level form while keeping the
-  program's behaviour. It erases spellings that mean the same (`+=` and
-  `= x +`) and makes real differences visible (`x++` converts to a
-  number first).
-- **VIR** is language-neutral, with records and arrays as instructions
-  of their own, and `opaque` for anything it does not model.
-
-Next: the shape of a single VIR instruction, three-address code.
-
-
-{/* ── merge: from old chapter 89, Three-address code ── */}
-
-## Where did 2 * 3 go?
-
-In A machine with a stack, Drip ran `1 + 2 * 3` as five instructions:
-push 1, push 2, push 3, multiply, add. The `6` that the multiply
-produced never had a name; it sat on the stack for one instruction and
-was gone, which is perfect for *running* code. Now imagine an optimiser
-looking at it. It wants to say "the product is a constant, 6", or
-"nobody uses this result, delete it", or "this is the same product as
-three lines ago, reuse it", and every one of those sentences needs to
-*point at* the product. On a stack, the only way to point is "whatever
-is on top right now", and that changes with every instruction.
-
-<Figure takeaway="On a stack a value is a position that keeps moving; in three-address code it is a name that stays put." caption="Left: the stack after each instruction; the 6 exists for one step. Right: the same work as two named lines, where the use of t1 points straight back at its definition.">
-  <StackVsNames />
-</Figure>
+<Prompts ids={['ir-what', 'lowering-what']} />
 
 ## One operation per line
 
-<Analogy title="long multiplication at school">
-You did not write the answer to 47 × 36 in one go; you wrote each
-partial product on its own line, then added the lines. Each line was
-one small operation, and because each had its own place on the page,
-your teacher could check any of them, and you could reuse one.
-<span slot="breaks">Your lines were numbered by where they sat on the
-page; a compiler's lines are found by name, and it moves them around,
-deletes them and merges them freely, which nobody does to a page of
-working.</span>
-</Analogy>
-
-<Analogy extra title="labelled jars on a shelf">
-A baker making a cake in stages puts each stage in a jar with a label:
-"jar 1: creamed butter", "jar 2: jar 1 plus eggs". Anyone can see what
-went into jar 2, because the label says so, rather than "whatever was
-in the bowl at the time".
-<span slot="breaks">Jars run out and get washed for reuse; a compiler
-has as many labels as it likes and never needs to reuse one, at least
-until the very end, when values have to share the CPU's few registers.</span>
-</Analogy>
-
-Three-address code is that page of working. The same expression:
+Drip's VM ran `1 + 2 * 3` as push, push, push, multiply, add, and the
+`6` never had a name; but an optimiser wants to say "the product is the
+constant 6" or "nobody uses this result", and each sentence needs to
+*point at* the product. Three-address code names every value:
 
 ```text
 t1 = 2 * 3
 t2 = 1 + t1
 ```
 
-The first line multiplies 2 by 3 and calls the result `t1`; the second
-adds 1 to `t1` and calls that `t2`. Each line has at most one operator,
-at most two inputs and one named result, and `t1` and `t2` are names the
-compiler invented: you did not write them, and they exist so that every
-intermediate value has an address. Step through how lowering produces
-it for a function with three parameters; the walk is the same recursion
-as the tree-walker's, but rather than computing values it emits
-instructions:
+Lowering an expression is the tree-walker's recursion, except that it
+emits instructions rather than computing values, children first,
+because an instruction needs names for its inputs:
 
 <TacSteps client:visible />
-
-Children are lowered before their parent, because an instruction can
-only be written once its inputs have names. Here is the real code, from
-`packages/frontend-js/src/lower.ts`, trimmed:
-
-```ts
-function expr(e: Node): ValueId {
-  switch (e.type) {
-    case 'Literal':
-      return fb.constant(e.value);
-    case 'Identifier':
-      return read(binding(e), e);
-    case 'BinaryExpression':
-      return fb.emit('binop',
-        [expr(e.left), expr(e.right)],
-        { operator: e.operator });
-  }
-}
-```
-
-`expr` returns a `ValueId`, which is the *name* of the result, not the
-result itself. A literal becomes a `const` instruction. An identifier
-emits nothing and returns the name the variable already has. A binary
-expression first calls `expr` on both sides (so their names exist), and
-then `fb.emit` appends one `binop` instruction to the current block and
-hands back its fresh id.
 
 <Callout kind="definition">
 **Three-address code** is an IR whose instructions each perform one
 operation on at most two operands and put the result in a named
-destination, `x = y op z`. The name comes from the three addresses: two
-inputs and an output. Copies (`x = y`), one-operand operations
-(`x = op y`), jumps and conditional jumps complete the set.
-</Callout>
-
-<Formal title="The forms of a three-address instruction">
-
-```text
-x = y op z      (binary operation)
-x = op y        (unary operation)
-x = y           (copy)
-goto L          (jump)
-if x goto L     (conditional jump)
-```
-
-<span slot="read">Every instruction has one of these five shapes. In
-the first three, x is the destination and y and z are operands, each a
-name or a constant, so no instruction mentions more than three places.
-The last two change which instruction runs next: goto L always jumps to
-the line labelled L, and "if x goto L" jumps there only when x is
-true.</span>
-</Formal>
-
-<Prompts ids={['tac-what', 'why-three', 'children-first']} />
-
-## Temporaries
-
-`t1`, `t2` and VIR's `%3`, `%4` and `%5` are **temporaries**. A compiler
-makes them freely, one for every result, because at this stage names
-cost it nothing; deciding which temporaries share a machine register or
-a stack slot comes much later, if at all. VIR goes one step further:
-*every* value is a temporary, even your own variables.
-
-<Callout kind="definition">
-A **temporary** is a name the compiler creates to hold an intermediate
-value: the result of one instruction. Temporaries are cheap and
-plentiful in an IR. In VIR every value is one, written `%n`, and the
-number is unique in the whole module.
+destination, `x = y op z` (two inputs and an output: three addresses).
+Copies, one-operand operations, jumps and conditional jumps complete
+the set. A **temporary** is a name the compiler creates for an
+intermediate value, the result of one instruction; in VIR every value
+is one, written `%n` and unique in the whole module.
 </Callout>
 
 <Examples of="three-address-code temporary">
-
-```text
-%3 = binop * %1, %2
-%4 = binop + %0, %3
-```
-
-```text
-%1 = field.get %0 .x
-%2 = field.get %0 .x
-%3 = binop * %1, %2
-```
 
 ```text
 func f(%0):            // let t = a;
@@ -471,109 +178,17 @@ func f(%0):            // let t = a;
 
 </Examples>
 
-The first is the simplest: the real VIR for `return 1 + 2 * 3` (after
-three `const` lines that name 1, 2 and 3 as `%0`, `%1` and `%2`), and
-it has the same two lines as our hand-made version, with `%3` and `%4`
-in place of `t1` and `t2`. The second is part of `s.x * s.x`: VIR reads
-the field twice, into `%1` and `%2`, and because both reads have names
-a later pass can notice that they are the same value and keep one (the
-Value numbering and common subexpressions chapter does exactly that). The third is a
-whole function, and its variables have disappeared. `let t = a`
-produced no instruction at all, because the front end only remembers
-that `t` now means `%0`; when the code reads `t`, it gets `%0`. The
-literal `2` *is* an instruction, `%1 = const 2`, because constants are
-values, so they get names too.
+Your variables have disappeared. `let t = a` produced no instruction at
+all, because the front end only remembers that `t` now means `%0`, so
+when the code reads `t` it gets `%0`. The literal `2` *is* an
+instruction, `%1 = const 2`, because constants are values and get names
+too. Because inputs are names, "who uses `%0`?" is a lookup:
+`buildUses` files every instruction under each of its `args`, which
+here gives `%2` and `%3`.
 
-You can run the same bookkeeping yourself. This keeps a map from each
-variable to the name of its current value, and only emits a line when
-there is real work to do:
+<Prompts ids={['tac-what']} />
 
-<Run id="no-copies" />
-
-It prints `t1 = a * 2`, `t2 = t1 + a` and `return t2`: `let t = a` only
-wrote into the map, so every later read of `t` became `a`.
-
-<Prompts ids={['temp-what', 'let-vanishes', 'const-is-inst']} />
-
-## An instruction is a record
-
-What does `%2 = binop * %0, %1` look like in memory? It is one object,
-of the `Inst` interface in `packages/core/src/vir.ts`, trimmed:
-
-```ts
-interface Inst {
-  id: ValueId;       // 2: its own name
-  op: Op;            // 'binop'
-  args: ValueId[];   // [0, 1]: inputs
-  block: BlockId;    // 0: where it lives
-  operator?: string; // '*'
-  value?: number | string | boolean
-    | null | undefined;  // for const
-  field?: string;    // for field.get/set
-}
-```
-
-The listing is `printFunc` turning these records into text. And because
-inputs are names, the question an optimiser asks most ("who uses this
-value?") is easy: walk every instruction once and file it under each of
-its inputs. That is what `buildUses` does:
-
-```ts
-for (const b of f.blocks)
-  for (const i of b.insts)
-    for (const a of i.args)
-      add(a, { inst: i });
-```
-
-For `f` above, `%0` is used by `%2` and `%3`, and `%3` by the `return`
-(the real function also files the values that terminators such as
-`return` use). A value with no uses is dead, and can usually be
-deleted; the Dead code elimination chapter builds that pass on exactly
-this map.
-
-<Callout kind="pitfall">
-"Two operands" is a convention, not a law. VIR's `call` takes the
-callee and every argument, and `record.new` takes one value per field.
-What matters is the other half of the idea: each instruction does one
-thing, and its result and inputs are named.
-</Callout>
-
-<Prompts ids={['inst-args', 'uses-map', 'dead-value']} />
-
-<Callout kind="engine" label="Under the hood">
-Ignition, V8's interpreter, sits between the two designs. It is a
-register machine: most of its bytecodes name the registers they read,
-and an implicit accumulator holds the running result, so instructions
-stay short<Cite id="v8-ignition" />. A stack machine names nothing,
-three-address code names everything, and an accumulator machine names
-all but one. For analysis, compilers want the fully named form, and
-compiler textbooks build their optimisations on IRs of this
-kind<Cite id="coopertorczon2022" />.
-</Callout>
-
-## Your turn
-
-<Exercise id="to-tac" />
-
-<Exercise id="find-uses" />
-
-## What you learned
-
-- **Three-address code**: one operation per instruction, at most two
-  inputs, one named result, `x = y op z`.
-- Lowering an expression walks the tree **children first**, because an
-  instruction needs names for its inputs.
-- A **temporary** is a compiler-made name for an intermediate value. In
-  VIR every value is a temporary, `%n`; even `let t = a` emits nothing.
-- An instruction is a record (`id`, `op`, `args`, `block`), and named
-  inputs make "who uses this?" a lookup (`buildUses`).
-
-Next: straight runs of these instructions, and the jumps between them.
-
-
-{/* ── merge: from old chapter 89, Basic blocks and control-flow graphs ── */}
-
-## A list with holes in it
+## Basic blocks and the graph between them
 
 Here is a classic loop: halve `n` if it is even, otherwise triple it
 and add one, until it reaches 1.
@@ -588,10 +203,96 @@ function g(n) {
 }
 ```
 
-Written as flat three-address code with jumps, the way the compiler in
-Branches and loops in bytecode wrote bytecode, it is ten lines (`ifnot t
-goto k` jumps to line `k` when `t` is false, and otherwise carries on to
-the next line):
+As one flat list with jumps, "what can run just before this line?"
+means searching the whole list; so compilers cut code into straight
+runs and draw the jumps between them as arrows.
+
+<Callout kind="definition">
+A **basic block** is a maximal sequence of instructions with one entry
+and one exit: control enters only at the first instruction and leaves
+only after the last, so if the first runs, they all run, in order. A
+**control-flow graph** (**CFG**) has a node for each block and an edge
+A → B whenever B can run immediately after A; B is a **successor** of
+A, A is a **predecessor** of B, one block is the **entry**, a block is
+**reachable** if some path leads to it from the entry, and a cycle is a
+loop.
+</Callout>
+
+Viscosity's lowering builds the blocks directly as it walks the tree
+(an `if` makes a block per branch and one where they meet), and VIR's
+types make "one exit per block" impossible to get wrong:
+
+```ts
+interface Block {
+  id: BlockId;
+  insts: Inst[];
+  term: Terminator;
+  preds: BlockId[];
+}
+type Terminator =
+  | { kind: 'br'; target: BlockId }
+  | { kind: 'condbr'; cond: ValueId;
+      then: BlockId; else: BlockId }
+  | { kind: 'return';
+      value: ValueId | null }
+  | { kind: 'throw'; value: ValueId }
+  | { kind: 'unreachable' };
+```
+
+The instructions in `insts` never jump; exactly one **terminator** in
+`term` can (`br` to `target`, `condbr` to `then` or `else`, or leave the
+function). So `successors` in `cfg.ts` is one expression on `term`, and
+when the builder sets a terminator, `terminate` pushes the block onto
+each successor's `preds`. Step through it for `g`:
+
+<PredSteps client:visible />
+
+<Examples of="basic-block cfg">
+
+```text
+b1:  ; preds b0 b3
+    %10 = binop > %8, %9
+    condbr %10, b2, b4
+b2:  ; preds b1
+    %12 = binop % %8, %11
+    condbr %12, b5, b6
+b3:  ; preds b7
+    br b1
+b7:  ; preds b5 b6
+    br b3
+```
+
+</Examples>
+
+These are four of the eight blocks of the real VIR for `g`, trimmed
+(the `phi` lines are left out for now), with each block's predecessors
+in a `; preds` comment. b1 is the loop test, and it has two
+predecessors: b0, the way in, and b3, the end of each pass. b2 tests
+the parity and branches to b5 or b6, the two arms of the `if`, which
+both jump to b7, where they meet; b7 jumps on to b3, which jumps back to
+the test: that ring is a cycle, and so a loop. (b3 and b7 hold only a
+`br`; the lowering always makes them, which keeps it mechanical.)
+
+<Figure takeaway="Eight blocks, and the loop is the cycle b1 → b2 → b5 or b6 → b7 → b3 → b1." caption="The real VIR control-flow graph of g. b1 tests the loop condition, b2 the parity, b5 and b6 are the two branches, b7 is where they meet, and b3 jumps back to the test (the highlighted edge). b4 is the exit.">
+  <CollatzCfg />
+</Figure>
+
+<More title="More: unreachable blocks, and finding blocks in a flat list">
+
+Code after a `return` is lowered into a fresh block that no terminator
+points at, so no path from the entry reaches it, and a compiler can
+drop it. (The entry has no predecessors either, and a block whose
+predecessors are all unreachable is unreachable too, so the safe test
+is a search from the entry.)
+
+A compiler that starts from flat code (bytecode, or machine code read
+back from a file) must find the blocks itself. It marks the
+**leaders**, where a block must start: the first instruction, every
+jump target, and every instruction straight after a jump or a `return`.
+Each block runs from one leader up to, but not including, the next. A
+call in the middle of a block does not end it, because the call comes
+back to the next instruction. Here is `g` as a flat list, with leaders
+0, 2, 4, 7 and 9:
 
 ```text
 0  t1 = n > 1
@@ -606,417 +307,46 @@ the next line):
 9  return n
 ```
 
-Now a simple question: when line 7 runs, which line ran just before it?
-Line 6 cannot be it, because line 6 always jumps away; the answer is
-line 3, and the only way to find that out is to search the whole list
-for jumps to 7. Every question about order ("is this value computed
-before that use?") has the same problem, and a compiler needs a better
-map than a list.
-
-## Runs with one way in and one way out
-
-<Analogy title="a stretch of motorway between junctions">
-Between two junctions, a motorway is only a road: once you are on it you
-drive to the end, and nobody joins halfway. All the decisions (turn off,
-carry on, change route) happen at the junctions.
-<span slot="breaks">A driver can stop on the hard shoulder; a basic
-block has no stopping halfway, except when an instruction throws an
-error, which compilers treat as a special kind of exit.</span>
-</Analogy>
-
-<Analogy extra title="a train between stations">
-Once the doors close, the train runs to the next station; nobody gets on
-or off between stations, so everyone aboard passes every point of that
-stretch, in order.
-<span slot="breaks">A train runs on a timetable, and the same stretch
-comes round at fixed times; a basic block runs whenever control happens
-to reach it, which may be never, once or a million times.</span>
-</Analogy>
-
-The stretches of motorway are runs of instructions with no jump into
-their middle and no jump out of their middle:
-
-<Figure takeaway="One way in at the top, one way out at the bottom." caption="Left: lines 2 and 3 of the list form a block. Right: lines 4 to 8 do not, because line 6 jumps away in the middle and line 7 is a jump target, so the run is cut between them.">
-  <OneEntryOneExit />
-</Figure>
-
-To find them, first mark the **leaders**, the instructions where a run
-must start. Step through it:
-
-<LeaderSteps client:visible />
-
-Three rules find every leader: the first instruction, every jump target,
-and every instruction straight after a jump (or a `return`). Each block
-then runs from one leader up to, but not including, the next.
-
-<Callout kind="definition">
-A **basic block** is a maximal sequence of instructions with one entry
-and one exit: control enters only at the first instruction and leaves
-only after the last. If the first instruction runs, they all run, in
-order. **Leaders** (the first instruction, jump targets, and the
-instructions following jumps) are where blocks begin; *maximal* means a
-block is never cut anywhere else, so it is as long as it can be.
-</Callout>
-
-<Formal title="Leaders and blocks">
-
-```text
-L = {0}
-  ∪ { target(i) : i is a jump }
-  ∪ { i + 1 : i is a jump or return }
-block(l) = l, l+1, …, next(l) − 1
-```
-
-<span slot="read">The set of leaders L contains line 0, every line that
-some jump goes to, and every line that comes straight after a jump or a
-return (the symbol ∪ reads "together with"). For each leader l, its
-block is the lines from l up to one before next(l), the next leader
-after l (or the end of the list, if there is none).</span>
-</Formal>
-
-<Prompts ids={['bb-what', 'leader-rules', 'all-or-nothing', 'maximal']} />
-
-## Blocks, three ways
-
-<Examples of="basic-block">
-
-```text
-0  t1 = a * 2
-1  t2 = t1 + b
-2  return t2
-```
-
-```text
-0  t1 = x < 0
-1  ifnot t1 goto 4
-2  x = 0 - x
-3  goto 4
-4  return x
-```
-
-```text
-B0: 0–1   B1: 2–3   B2: 4–6
-B3: 7–8   B4: 9
-```
-
-</Examples>
-
-The first has no jumps at all, so the only leader is line 0 and the
-whole function is one block. (Line 3 would be a leader, being straight
-after a `return`, but there is no line 3.) The second is an absolute
-value: line 0 is a leader by rule 1, line 4 is a jump target, and lines
-2 and 4 come straight after jumps, so the leaders are 0, 2 and 4 and the
-blocks are lines 0–1, 2–3 and 4. Notice that line 4 is a leader for two
-reasons and counts once, and that the `goto 4` on line 3 is a jump to
-the very next line, which changes nothing at run time but still ends the
-block. The third is the Collatz list from the start: its leaders are 0,
-2, 4, 7 and 9, which gives five blocks. Line 7 now starts block B3, and
-"what ran before line 7?" becomes "which blocks can come before B3?",
-a question about five things rather than ten.
-
-You can watch the "all or nothing" promise hold. This runs the ten-line
-list for `n = 6` with a small `switch` (one `case` per line, and `pc`
-holding the number of the next line to run) and counts how often each
-line ran:
+Running it for `n = 6` and counting each line shows the "all or
+nothing" promise: every line of a block runs exactly as often as its
+leader.
 
 <Run id="block-counts" />
 
-It prints `9 9 8 8 2 2 2 6 6 1`: lines 0 and 1 ran 9 times (once for
-each value `n` took, 6, 3, 10, 5, 16, 8, 4, 2 and 1), lines 4 to 6
-twice (for the odd values 3 and 5), lines 7 and 8 six times, and line 9
-once, so every line of a block ran exactly as often as its leader.
-
-<Prompts ids={['twice-a-leader', 'collatz-blocks']} />
-
-## Why compilers love them
-
-Inside a block, order is trivial: top to bottom, all or nothing. As
-such, a compiler can study each block on its own, cheaply, without
-asking about paths, and then combine the results across blocks; nearly
-every analysis in the rest of Part VI works that way. Blocks also line
-up with the hardware from Part II: inside a block the CPU's pipeline
-streams straight ahead, and every jump at the end of a block is a branch
-the branch predictor may have to guess.
-
-Viscosity never searches for leaders, because its lowering builds the
-blocks directly as it walks the tree: an `if` makes a block for each
-branch and one for the code after, and a `while` makes a block for the
-test, one for the body and one for the exit. A compiler that starts from
-flat code (bytecode, or machine code read back from a file) has to find
-the leaders first, exactly as you will now.
-
-<Callout kind="pitfall">
-A call in the middle of a block does not end it, even though control
-goes off to another function: the call comes back to the next
-instruction, so from this function's point of view it is one step like
-any other. Only jumps, returns and throws end a block.
-</Callout>
-
-<Prompts ids={['call-no-end', 'why-blocks']} />
-
-<Callout kind="engine" label="Under the hood">
-Basic blocks are the standard unit of a compiler's middle end, and the
-classic analyses are written over them<Cite id="coopertorczon2022" />:
-each analysis first works out a short summary of each block, and only
-then follows the jumps between blocks. The next chapter draws those
-jumps as a graph.
-</Callout>
-
-## Your turn
-
-<Exercise id="leaders" />
-
-<Exercise id="blocks" />
-
-## What you learned
-
-- A **basic block** is straight-line code with one entry and one exit:
-  if its first instruction runs, all of it does, in order.
-- **Leaders** start blocks: the first instruction, every jump target,
-  and every instruction after a jump or return.
-- Each block runs from one leader to just before the next, so cutting
-  a list into blocks is one pass after finding the leaders.
-- Inside a block order is trivial, which is why analyses start there.
-
-Next: the arrows between blocks, which turn them into a graph.
-
-
-{/* ── merge: from old chapter 89, Control-flow graphs ── */}
-
-## Which block can come next?
-
-The last chapter cut the Collatz loop into five basic blocks, and inside
-each one order is trivial. Between blocks, however, it is not: block B3
-(`n = n / 2`) can be reached only from B1, whose test failed, and the
-only way to know that is to read the jump at the end of B1. So we write
-those facts down once, as arrows between blocks, and stop searching.
-
-<Analogy title="a map of a city's junctions">
-A road map draws each road as a line and each junction as a dot, and
-from it you can answer "can I get from the station to the harbour?"
-without driving anywhere. The streets themselves stay out of the
-picture; only the connections matter.
-<span slot="breaks">Roads on a map usually go both ways; every edge of
-a control-flow graph is one-way, from the block that jumps to the block
-it jumps to, and going "backwards" along one is a different question
-with its own name, predecessors.</span>
-</Analogy>
-
-<Analogy extra title="a board game with arrows">
-In a board game of squares and printed arrows, each square tells you
-which squares you may move to next; some squares offer two arrows and
-let the dice decide, and an arrow pointing back down the board sends you
-round again.
-<span slot="breaks">A dice roll is random; the program's choice at a
-fork depends on its data, and the same data always takes the same path.
-The graph shows every path that *could* be taken, not which one will.</span>
-</Analogy>
-
-## The graph
-
-The blocks are the nodes of a graph. An edge from block A to block B
-means "control can go straight from the end of A to the start of B",
-either by a jump or by falling through to the next line.
-
-<Callout kind="definition">
-A **control-flow graph** (**CFG**) has a node for each basic block and
-an edge A → B whenever B can run immediately after A. B is a
-**successor** of A, and A is a **predecessor** of B. It has one
-**entry** block, where the function starts. A block is **reachable** if
-some path of edges leads to it from the entry, and a cycle in the graph
-is a loop.
-</Callout>
-
-<Formal title="A CFG, and the two directions of an edge">
-
-```text
-G = (N, E, entry)    E ⊆ N × N
-succ(a) = { b : (a, b) ∈ E }
-pred(b) = { a : (a, b) ∈ E }
-```
-
-<span slot="read">A control-flow graph G is a set of nodes N (the
-blocks), a set of edges E, and an entry node. Each edge is a pair of
-blocks (N × N reads "pairs of nodes", and ⊆ reads "is a subset of").
-The successors of a are all the blocks b that have an edge from a, and
-the predecessors of b are all the blocks a that have an edge into b:
-the same edges, read from the other end.</span>
-</Formal>
-
-<Prompts ids={['cfg-what', 'pred-succ', 'cycle']} />
-
-## Blocks in VIR
-
-Viscosity never has to look for leaders, because its lowering builds
-blocks directly. The types in `packages/core/src/vir.ts` make "one exit
-per block" impossible to get wrong:
-
-```ts
-interface Block {
-  id: BlockId;
-  insts: Inst[];
-  term: Terminator;
-  preds: BlockId[];
-}
-
-type Terminator =
-  | { kind: 'br'; target: BlockId }
-  | { kind: 'condbr'; cond: ValueId;
-      then: BlockId; else: BlockId }
-  | { kind: 'return';
-      value: ValueId | null }
-  | { kind: 'throw'; value: ValueId }
-  | { kind: 'unreachable' };
-```
-
-A `Block` holds its ordinary instructions in `insts`, which can never
-jump, and exactly one **terminator** in `term`, the only part that can:
-`br` always goes to `target`, `condbr` goes to `then` if `cond` is true
-and to `else` otherwise, and the last three leave the function (or, for
-`unreachable`, mark a block that never got a real ending). Reading off
-a block's successors is then one expression, from
-`packages/core/src/cfg.ts`:
-
-```ts
-function successors(f: Func, b: BlockId) {
-  const t = f.blocks[b].term;
-  return t.kind === 'br' ? [t.target]
-    : t.kind === 'condbr' ? [t.then, t.else]
-    : [];
-}
-```
-
-Predecessors are kept on each block, in `preds`, and filled in as edges
-are made: when the builder sets a block's terminator, its `terminate`
-method (in `builder.ts`) works out the successors the same way and runs
-`for (const s of succ) this.block(s).preds.push(this.current.id);`.
-Step through it for the Collatz loop:
-
-<PredSteps client:visible />
-
-<Prompts ids={['one-terminator', 'preds-filled']} />
-
-## CFGs, three ways
-
-<Examples of="cfg">
-
-```text
-b0: ... condbr %2, b1, b2
-b1:  ; preds b0
-    return %3
-b2:  ; preds b0
-    br b3
-b3:  ; preds b2
-    return %0
-```
-
-```text
-b0: ... br b1
-b1:  ; preds b0 b3   (i < n ?)
-b2:  ; preds b1      (s = s + i)
-b3:  ; preds b2      (i++)
-b4:  ; preds b1      (return s)
-```
-
-```text
-b1:  ; preds b0 b3
-b2:  ; preds b1
-b7:  ; preds b5 b6
-```
-
-</Examples>
-
-All three are trimmed from real VIR, where `printFunc` writes each
-block's predecessors as a `; preds` comment. The first is
-`function abs(x) { if (x < 0) return -x; return x; }`: b0 tests and
-branches two ways, b1 returns `-x`, and b2 is the empty "else" of the
-`if`, which only jumps on to b3, the code after the `if`. Notice that b3
-has one predecessor, not two, because the other branch already returned.
-The second is a `for` loop summing `0 + 1 + ... + (n - 1)`: the test b1
-has two predecessors (the way in, b0, and the end of each pass, b3), the
-body b2 and the step b3 follow it in a ring, and the exit b4 hangs off
-the test. That ring b1 → b2 → b3 → b1 is a cycle, which is to say a
-loop. The third is the Collatz loop, whose whole graph is drawn below:
-the loop test b1 has two predecessors for the same reason, and b7 has
-two because both branches of the `if` meet there.
-
-<Figure takeaway="Eight blocks, and the loop is the cycle b1 → b2 → b5 or b6 → b7 → b3 → b1." caption="The real VIR control-flow graph of g. b1 tests the loop condition, b2 the parity, b5 and b6 are the two branches, b7 is where they meet, and b3 jumps back to the test (the highlighted edge). b4 is the exit.">
-  <CollatzCfg />
-</Figure>
-
-That is eight blocks where the hand-cut list had five. The lowering is
-mechanical: it gives every `if` a join block (b7) and every loop a block
-for the end of a pass (b3, where a `for` loop's step goes), even when
-they hold nothing but a jump; a block with a single `br` costs almost
-nothing and keeps the lowering simple. Blocks with several predecessors
-are where values from different paths meet, which is what the Phi nodes
-chapter is about. Here is the same filing of edges the other way round,
-in plain JavaScript:
+The same filing of edges the other way round, in plain JavaScript:
 
 <Run id="succ-preds" />
 
-It prints each block with its predecessors, `b1 preds [ 0, 3 ]` and
-`b7 preds [ 5, 6 ]` among them, exactly matching the `; preds` comments.
-
-<Prompts ids={['empty-blocks', 'header-two-preds']} />
-
-## Unreachable blocks
-
-What does the lowering do with code after a `return`?
-
-```text
-func f(%0):            // return x; x = 2;
-  b0:
-    %0 = param
-    return %0
-  b1:
-    %1 = const 2
-    return
-```
-
-It keeps going, in a fresh block, b1. No terminator anywhere points at
-b1, so it has no predecessors and no path from the entry reaches it; in
-a CFG that is a fact you can *see*, and a compiler can drop such blocks
-without asking anything else.
-
-<Callout kind="pitfall">
-"No predecessors" means unreachable only for blocks other than the
-entry: the entry has no predecessors either, and it is the one block
-that always runs. And a block can have predecessors and still be
-unreachable, if they are unreachable themselves; the safe test is a
-search from the entry, as the extra exercise does.
-</Callout>
-
-<Prompts ids={['unreachable', 'unreachable-chain']} />
-
-<Callout kind="engine" label="Under the hood">
 Basic blocks and CFGs are the standard skeleton of a compiler's middle
-end, and the textbook analyses are written over
-them<Cite id="coopertorczon2022" />. They also line up with the hardware
-from Part II: every edge out of a block with two successors is a
-conditional branch the branch predictor has to guess. Viscosity uses
-its CFG to find loops (the Loops chapter), because a loop over an array
-of particles is exactly where a change of layout pays off.
-</Callout>
+end<Cite id="coopertorczon2022" />: an analysis first summarises each
+block, where order is trivial, and then follows the edges.
+
+</More>
+
+<Prompts ids={['bb-what', 'cfg-what', 'one-terminator', 'header-two-preds']} />
 
 ## Your turn
 
 <Exercise id="preds" />
 
+Extra practice:
+
+<Exercise id="lower-assign" />
+
+<Exercise id="to-tac" />
+
+<Exercise id="leaders" />
+
+<Exercise id="lower-for" />
+
+<Exercise id="find-uses" />
+
+<Exercise id="blocks" />
+
 <Exercise id="reachable" />
 
-## What you learned
-
-- A **CFG** has a node per basic block and an edge where control can
-  pass directly from one to the next; **successors** come from the jump
-  at the end of a block, and **predecessors** are the same edges read
-  backwards.
-- A cycle is a loop; a block with several predecessors is where paths
-  meet.
-- In **VIR**, only a block's single terminator can jump, and the
-  builder records `preds` as it links blocks.
-- A block that no path from the entry reaches is **unreachable**.
-
-Next: which blocks *must* run before which, whatever path is taken.
-
 <Quiz />
+
+Next: *SSA and phi nodes, built on the fly*, where every value gets
+exactly one definition, and blocks like b1 and b7 learn to choose
+between the values arriving along their edges.

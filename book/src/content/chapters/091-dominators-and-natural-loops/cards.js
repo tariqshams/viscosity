@@ -1,71 +1,22 @@
-// Chapter 176 cards: recall prompts, examples, exercises and quiz.
+// Chapter 91 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 91, 91, 91.
 
 export const prompts = {
   'dom-what': {
-    q: 'When does block A dominate block B?',
+    q: 'In a CFG, when does block A dominate block B?',
     a: 'When every path from the entry to B passes through A.',
   },
-  'self-entry': {
-    q: 'Which two blocks always dominate a reachable block B?',
-    a: 'The entry, and B itself.',
-  },
   'not-before': {
-    q: 'In the Collatz CFG, b2 can run before b4 (the exit). Why doesn’t b2 dominate b4?',
-    a: 'There is a path that skips it: if the loop test fails at once, b0 → b1 → b4.',
-  },
-  'start-all': {
-    q: 'In the iterative algorithm, why does every non-entry set start as “all blocks”?',
-    a: 'Sets only shrink, so starting as large as possible lets loops settle on the right answer instead of losing blocks too early.',
-  },
-  'only-shrink': {
-    q: 'How does the iterative dominator algorithm know it is finished?',
-    a: 'A whole pass over the blocks changes no set.',
-  },
-  'intersect-why': {
-    q: 'Why does the dominator equation *intersect* the predecessors’ sets rather than joining them (union)?',
-    a: 'A dominator must be on every way in. If a block is missing from even one predecessor’s set, the path through that predecessor avoids it.',
-  },
-  'why-rpo': {
-    q: 'Why visit blocks in reverse postorder?',
-    a: 'Each block then comes after its predecessors (except over back edges), so their sets are usually ready and few passes are needed.',
-  },
-  'back-edge-what': {
-    q: 'In reverse postorder, which predecessors of a block can come *after* it?',
-    a: 'Only those that reach it along a back edge, an edge that jumps back to the start of a loop.',
+    q: 'In a CFG, block b2 is the first block of a `while` loop’s body and b4 is the block after the loop. b2 can run before b4. Why doesn’t b2 dominate b4?',
+    a: 'There is a path that skips it: if the loop test fails the first time, control goes from the test straight to b4.',
   },
   'idom-what': {
-    q: 'What is a block’s immediate dominator?',
+    q: 'In a CFG, what is a block’s immediate dominator?',
     a: 'Its closest strict dominator: the one every other strict dominator of it also dominates.',
   },
-  'tree-ancestor': {
-    q: 'In the dominator tree, how do you read off all the dominators of B?',
-    a: 'They are B and all its ancestors, up to the entry.',
-  },
-  'sets-nest': {
-    q: 'Why is it enough to store one block (the idom) per block, rather than whole dominator sets?',
-    a: 'The strict dominators of a block form a single chain, so each set is its idom’s set plus the block itself.',
-  },
   'intersect-fingers': {
-    q: 'In Viscosity’s `intersect(a, b)`, which finger moves up?',
+    q: 'In Cooper, Harvey and Kennedy’s dominator algorithm, `intersect(a, b)` moves two fingers up the dominator tree until they meet. Which finger moves at each step?',
     a: 'Whichever block is later in reverse postorder moves to its idom, until the two meet.',
-  },
-  'unreachable-none': {
-    q: 'Why does an unreachable block never get an entry in Viscosity’s `idom` map?',
-    a: 'It is never in the reverse postorder, and only predecessors that already have an idom are used.',
-  },
-  'back-edge': {
-    q: 'How does `naturalLoops` recognise a back edge t → h?',
-    a: 'h dominates t. Then h is a loop header.',
-  },
-  'df-what': {
-    q: 'When is block Y in the dominance frontier of X?',
-    a: 'When X dominates some predecessor of Y but does not strictly dominate Y.',
-  },
-  'df-self': {
-    q: 'In the Collatz CFG, why is the loop header b1 in its own dominance frontier?',
-    a: 'b1 dominates b3, a predecessor of b1 (the back edge), and no block strictly dominates itself.',
   },
   'back-edge-o211': {
     q: 'What makes a CFG edge `t → h` a back edge?',
@@ -79,25 +30,9 @@ export const prompts = {
     q: 'Why does finding a natural loop walk *predecessors* from the latch, not successors from the header?',
     a: 'The loop is what leads back to the latch; walking forwards from the header would also collect the blocks after the loop.',
   },
-  'dominance-not-order': {
-    q: 'An edge goes from a block listed later to a block listed earlier. Is it a back edge?',
-    a: 'Not necessarily: only if its target dominates its source. Listing order is an accident of how the CFG was built.',
-  },
-  'two-latches': {
-    q: 'Two back edges, `a → h` and `b → h`, share the header `h`. How many natural loops is that?',
-    a: 'One: their bodies are merged into a single loop with two latches.',
-  },
   irreducible: {
     q: 'What is an irreducible cycle?',
     a: 'A cycle that can be entered at more than one block, so no block in it dominates the others and it has no back edge.',
-  },
-  'loop-depth': {
-    q: 'What is a loop’s depth?',
-    a: 'The number of loops that contain its header, itself included: 1 for an outermost loop.',
-  },
-  innermost: {
-    q: 'A block is inside two nested loops. Which loop does Viscosity charge a field access in it to?',
-    a: 'The innermost one: the smallest loop whose body contains the block.',
   },
 };
 
@@ -191,6 +126,7 @@ for (const t in succ) {
 
 export const exercises = {
   'dom-sets': {
+    optional: true,
     title: 'Iterative dominators',
     prompt: `A CFG is given as \`succ\`, where \`succ[b]\` lists block \`b\`’s successors. Block 0 is the entry, and every block is reachable from it. Write \`dominators(succ)\` that returns an array where entry \`b\` is the sorted list of blocks that dominate \`b\`.
 
@@ -266,7 +202,7 @@ test('order needs a second pass', () => {
 
 **The solution, line by line.**
 
-- The first five lines (from the starter) build \`preds\`, the predecessor lists, by filing every edge under its target, as in Control-flow graphs.
+- The first five lines (from the starter) build \`preds\`, the predecessor lists, by filing every edge under its target, as a VIR builder does.
 - \`const n = succ.length;\` is the number of blocks.
 - \`const all = succ.map((_, b) => b);\` is \`[0, 1, ..., n - 1]\`, the set of all blocks.
 - \`const dom = all.map((b) => b === 0 ? [0] : all);\` sets up the starting point: the entry is dominated only by itself, everything else starts as "all". (Every block shares the same \`all\` array at first, which is safe here, because the code below replaces a set with a new array rather than changing it.)
@@ -348,114 +284,6 @@ The last test shows why the loop is needed. With \`succ = [[2], [3], [1], []]\` 
   return dom;
 }`,
         why: 'That is the union of the predecessors’ sets: blocks on *some* path. Dominators must be on *every* path, so intersect.',
-      },
-    ],
-  },
-  frontiers: {
-    title: 'Dominance frontiers',
-    prompt: `A CFG is given by \`preds\` (\`preds[b]\` lists block \`b\`’s predecessors) and \`idom\` (\`idom[b]\` is \`b\`’s immediate dominator; the entry, block 0, is its own). Every block is reachable. Write \`frontiers(preds, idom)\` that returns an array whose entry \`b\` is the sorted list DF(b).
-
-For each block \`y\` with two or more predecessors, and each predecessor \`p\` of \`y\`: start a runner at \`p\`, and until it reaches \`idom[y]\`, add \`y\` to the runner’s frontier and move the runner up to its own idom.`,
-    starter: `function frontiers(preds, idom) {
-  return preds.map(() => []);
-}`,
-    solution: `function frontiers(preds, idom) {
-  const df = preds.map(() => new Set());
-  preds.forEach((ps, y) => {
-    if (ps.length < 2) return;
-    for (const p of ps) {
-      let r = p;
-      while (r !== idom[y]) {
-        df[r].add(y);
-        r = idom[r];
-      }
-    }
-  });
-  return df.map((s) =>
-    [...s].sort((a, b) => a - b));
-}`,
-    tests: `test('the Collatz CFG', () => {
-  const preds = [[], [0, 3], [1], [7],
-    [1], [2], [2], [5, 6]];
-  const idom = [0, 0, 1, 7, 1, 2, 2, 2];
-  expect(frontiers(preds, idom))
-    .toEqual([[], [1], [1], [1], [],
-      [7], [7], [1]]);
-});
-test('a diamond', () => {
-  const preds = [[], [0], [0], [1, 2]];
-  expect(frontiers(preds, [0, 0, 0, 0]))
-    .toEqual([[], [3], [3], []]);
-});
-test('a while loop', () => {
-  const preds = [[], [0, 2], [1], [1]];
-  expect(frontiers(preds, [0, 0, 1, 1]))
-    .toEqual([[], [1], [1], []]);
-});
-test('a chain has no frontiers', () => {
-  const preds = [[], [0], [1]];
-  expect(frontiers(preds, [0, 0, 1]))
-    .toEqual([[], [], []]);
-});`,
-    hints: [
-      'Frontiers end at joins, so only blocks with two or more predecessors can be in anyone’s frontier. Start from those.',
-      'For a join `y` and one predecessor `p`: every block on the climb from `p` up to (not including) `idom[y]` dominates `p` but not `y`, so `y` belongs in its frontier.',
-      'Keep a `Set` per block so a block added twice appears once: `let r = p; while (r !== idom[y]) { df[r].add(y); r = idom[r]; }`. Sort each set at the end.',
-    ],
-    walkthrough: `**How to think about it.** The definition says Y is in DF(X) when X dominates a predecessor of Y but not Y itself. Checking that for every pair of blocks would work, but it is slow and fiddly; turn it round and start from Y. Which blocks dominate a predecessor P of Y? Exactly P and its ancestors in the dominator tree. Which of those strictly dominate Y? Exactly idom(Y) and *its* ancestors (and idom(Y) dominates every predecessor of Y, so the climb from P is sure to reach it). So the blocks that qualify are the ones on the climb from P that come *before* idom(Y): add Y to each of their frontiers.
-
-**The solution, line by line.**
-
-- \`function frontiers(preds, idom) {\` takes the predecessors and the tree.
-- \`const df = preds.map(() => new Set());\` makes an empty set per block; a \`Set\` because two climbs towards the same join can pass the same block (when the join has three or more predecessors, say), and it should appear once.
-- \`preds.forEach((ps, y) => {\` visits each block \`y\` with its predecessor list \`ps\`.
-- \`if (ps.length < 2) return;\` skips blocks with fewer than two predecessors. (This is only a shortcut: with one predecessor \`p\`, \`idom[y]\` is \`p\` itself, so the climb would stop at once anyway.)
-- \`for (const p of ps) {\` tries each way into \`y\`.
-- \`let r = p;\` puts the runner on the predecessor.
-- \`while (r !== idom[y]) {\` climbs until the runner reaches the first block that strictly dominates \`y\`.
-- \`df[r].add(y);\` records that \`r\` dominates a predecessor of \`y\` but not \`y\` itself.
-- \`r = idom[r];\` moves the runner one step up the tree.
-- \`return df.map((s) => [...s].sort((a, b) => a - b));\` turns each set into a sorted array.
-
-Trace it on the Collatz CFG. b7 has predecessors b5 and b6 and idom b2: from b5 the runner adds 7 to DF(b5) and then steps to b2 and stops; the same for b6. b1 has predecessors b0 and b3 and idom b0: from b0 the runner is already at the stop; from b3 it adds 1 to DF(b3), DF(b7), DF(b2) and DF(b1) as it climbs b3, b7, b2, b1, then stops at b0. That is the whole answer.
-
-**Common wrong attempts.**
-
-- Adding \`y\` only to the predecessors themselves, without climbing: Collatz then gives DF(b3) = [1] but misses b7, b2 and b1, which also dominate b3.
-- Climbing all the way to the entry instead of stopping at \`idom[y]\`: then blocks that strictly dominate \`y\` (like b0 for b1) wrongly get \`y\` in their frontier.
-- Stopping when the runner reaches \`y\` itself: in a loop the runner can pass through \`y\` on its way up (b1 is in its own frontier), so the stop must be \`idom[y]\`.`,
-    wrong: [
-      {
-        code: `function frontiers(preds, idom) {
-  const df = preds.map(() => new Set());
-  preds.forEach((ps, y) => {
-    if (ps.length < 2) return;
-    for (const p of ps) {
-      if (p !== idom[y]) df[p].add(y);
-    }
-  });
-  return df.map((s) =>
-    [...s].sort((a, b) => a - b));
-}`,
-        why: 'Only the predecessors themselves get `y`. Their tree ancestors below `idom[y]` also dominate a predecessor of `y`, so the runner has to climb.',
-      },
-      {
-        code: `function frontiers(preds, idom) {
-  const df = preds.map(() => new Set());
-  preds.forEach((ps, y) => {
-    if (ps.length < 2) return;
-    for (const p of ps) {
-      let r = p;
-      while (r !== 0) {
-        df[r].add(y);
-        r = idom[r];
-      }
-    }
-  });
-  return df.map((s) =>
-    [...s].sort((a, b) => a - b));
-}`,
-        why: 'Climbing to the entry adds `y` to blocks that strictly dominate it, such as idom(y) and its ancestors. Stop at `idom[y]`.',
       },
     ],
   },
@@ -733,116 +561,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'A block A runs before block B on some path. Does A dominate B?',
-    options: [
-      {
-        t: 'Yes, always',
-        why: 'One path is not enough. b5 runs before b7 on one path but not on the other.',
-      },
-      {
-        t: 'Only if A comes earlier in the listing',
-        why: 'Listing order has nothing to do with dominance.',
-      },
-      {
-        t: 'No, never',
-        why: 'Dominators do run before; it is just not sufficient.',
-      },
-      {
-        t: 'Not necessarily: A must be on every path from the entry to B',
-        correct: true,
-        why: 'Dominance is about all paths.',
-      },
-    ],
-  },
-  {
-    q: 'In the iterative algorithm, why must you keep doing passes until nothing changes?',
-    options: [
-      {
-        t: 'A block can be visited before a predecessor’s set is final, for example across a back edge',
-        correct: true,
-        why: 'Its set was computed from an unfinished input, so another pass is needed to see whether it shrinks.',
-      },
-      {
-        t: 'Because sets grow each pass',
-        why: 'They only ever shrink.',
-      },
-      {
-        t: 'To randomise the order',
-        why: 'The order is fixed; repetition is what reaches the answer.',
-      },
-      {
-        t: 'Each pass handles one more loop iteration of the program',
-        why: 'The analysis never runs the program; passes are over the graph.',
-      },
-    ],
-  },
-  {
-    q: 'Block B has two predecessors, with Dom(P1) = {0, 1, 3} and Dom(P2) = {0, 1, 4}. What is Dom(B), if B is block 5?',
-    options: [
-      {
-        t: '{0, 1, 3, 4, 5}',
-        why: 'That is the union: the blocks on some path. Dominators must be on every path.',
-      },
-      {
-        t: '{0, 1}',
-        why: 'Close, but every block dominates itself, so 5 belongs too.',
-      },
-      {
-        t: '{0, 1, 5}',
-        correct: true,
-        why: 'The intersection {0, 1}, plus B itself.',
-      },
-      {
-        t: '{5}',
-        why: 'Blocks 0 and 1 are in both predecessors’ sets, so every path to B passes them.',
-      },
-    ],
-  },
-  {
-    q: 'You delete block A from a CFG, and block B can no longer be reached from the entry. What do you learn?',
-    options: [
-      {
-        t: 'B is unreachable in the original program',
-        why: 'B was reachable before the deletion; the deletion is only a thought experiment.',
-      },
-      {
-        t: 'A runs immediately before B',
-        why: 'A might be far above B; it only has to be on every path.',
-      },
-      {
-        t: 'B dominates A',
-        why: 'It is the other way round.',
-      },
-      {
-        t: 'A dominates B: every path from the entry to B went through A',
-        correct: true,
-        why: 'If any path avoided A, it would still reach B after the deletion.',
-      },
-    ],
-  },
-  {
-    q: 'What is the immediate dominator of a block?',
-    options: [
-      {
-        t: 'Its first predecessor',
-        why: 'A predecessor can be skipped, like b5 for b7.',
-      },
-      {
-        t: 'The entry block',
-        why: 'The entry dominates everything, but it is usually not the closest.',
-      },
-      {
-        t: 'Its closest strict dominator, its parent in the dominator tree',
-        correct: true,
-        why: 'Every other strict dominator is an ancestor of it.',
-      },
-      {
-        t: 'The block that most often runs just before it',
-        why: 'Dominance is about paths in the graph, not how often they are taken.',
-      },
-    ],
-  },
-  {
     q: 'In an `if`/`else` diamond b0 → b1, b2 → b3, what is the parent of b3 in the dominator tree?',
     options: [
       {
@@ -865,7 +583,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Viscosity’s `dominators` returns `idom`, a Map. How does `dominates(idom, a, b)` answer?',
+    q: 'A compiler stores dominance only as `idom`, a map from each block to its immediate dominator. How can it answer “does a dominate b?”',
     options: [
       {
         t: 'It looks `a` up in a stored set for `b`',
@@ -883,90 +601,6 @@ export const quiz = [
       {
         t: 'It compares their positions in reverse postorder',
         why: 'Being earlier in that order is necessary but not sufficient.',
-      },
-    ],
-  },
-  {
-    q: 'How does `naturalLoops` use dominators?',
-    options: [
-      {
-        t: 'Every block with two predecessors is a loop',
-        why: 'b7, the join of an `if`, has two predecessors and is not a loop header.',
-      },
-      {
-        t: 'It finds edges t → h where h dominates t: back edges, with h the loop header',
-        correct: true,
-        why: 'You can only jump back to a block you must already have passed through, which is what a loop header is.',
-      },
-      {
-        t: 'A block that dominates itself is in a loop',
-        why: 'Every block dominates itself.',
-      },
-      {
-        t: 'It does not; loops are found from the source’s `while` and `for`',
-        why: 'Working on the CFG means any loop is found, however it was written.',
-      },
-    ],
-  },
-  {
-    q: 'In the Collatz CFG, what is DF(b5), the frontier of the odd branch?',
-    options: [
-      {
-        t: '{b7}: b5 dominates b7’s predecessor b5, but not b7',
-        correct: true,
-        why: 'The join can also be reached through b6, so b5’s territory ends there.',
-      },
-      {
-        t: '{b1}',
-        why: 'b5 does not dominate b3, the source of the back edge, because the even branch also reaches b3.',
-      },
-      {
-        t: '{} (empty)',
-        why: 'b5 has a successor, b7, that it does not strictly dominate.',
-      },
-      {
-        t: '{b5, b7}',
-        why: 'b5 does not lead back to itself without passing through b1, which it does not dominate.',
-      },
-    ],
-  },
-  {
-    q: 'In a CFG, `b4 → b2` is an edge, and `b2` dominates `b4`. What do you know?',
-    options: [
-      {
-        t: '`b4 → b2` is a back edge, and `b2` is the header of a natural loop containing `b4`',
-        correct: true,
-        why: 'That is the definition: an edge to a block that dominates its source.',
-      },
-      {
-        t: '`b4` is unreachable',
-        why: 'Dominance is about paths to reachable blocks; `b4` is reached, through `b2`.',
-      },
-      {
-        t: '`b2` is inside a loop headed by `b4`',
-        why: 'The other way round: the target of a back edge is the header.',
-      },
-      {
-        t: 'Nothing, unless `b4` comes after `b2` in the block list',
-        why: 'Block order is irrelevant; dominance decides.',
-      },
-    ],
-  },
-  {
-    q: 'Why does finding a natural loop walk *predecessors* from the back edge’s source?',
-    options: [
-      {
-        t: 'Because walking successors is slower',
-        why: 'Speed is not the issue; walking forwards finds the wrong set.',
-      },
-      {
-        t: 'Because predecessors are already sorted',
-        why: 'Order does not matter for a set.',
-      },
-      {
-        t: 'Because the loop is the set of blocks that lead to the latch without passing the header, and walking backwards finds exactly those',
-        correct: true,
-        why: 'Forwards from the header you would also collect the blocks after the loop.',
       },
     ],
   },
@@ -989,7 +623,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `sum`, the read `g[i].x` sits in a block that belongs to both the `i` loop and the `k` loop. Which loop does `viscosity explain` charge it to?',
+    q: 'A field read sits in a block that belongs to two nested natural loops. Which loop does Viscosity charge the access to, when it reports which fields each loop touches?',
     options: [
       {
         t: 'The `k` loop, the innermost loop around the block',
@@ -1003,24 +637,6 @@ export const quiz = [
       {
         t: 'Both, counted twice',
         why: 'Each access is charged to exactly one loop.',
-      },
-    ],
-  },
-  {
-    q: 'What does Viscosity do with the loops it finds?',
-    options: [
-      {
-        t: 'Moves loop-invariant code out of them',
-        why: 'Viscosity moves no code; it keeps your loops exactly as written.',
-      },
-      {
-        t: 'Unrolls them to make struct-of-arrays access faster',
-        why: 'The rewritten program keeps the loops exactly as written.',
-      },
-      {
-        t: 'Uses them to describe the program: fields touched per loop, trip counts and bounds proofs',
-        correct: true,
-        why: 'Those feed its layout decision and tell it where it can drop bounds checks.',
       },
     ],
   },

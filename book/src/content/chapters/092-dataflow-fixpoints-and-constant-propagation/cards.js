@@ -1,183 +1,34 @@
-// Chapter 177 cards: recall prompts, examples, exercises and quiz.
+// Chapter 92 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 92, 92, 92, 92, 92.
 
 export const prompts = {
-  'why-not-paths': {
-    q: 'Why can’t a compiler answer “was `y` assigned on every path?” by listing the paths?',
-    a: 'There are far too many: they double with every `if`, and a loop makes infinitely many.',
-  },
   'dataflow-what': {
     q: 'What are the three parts of a **dataflow analysis**?',
     a: 'A fact at each point (IN and OUT of every block), a transfer function per block, and a meet where paths join.',
-  },
-  'in-out': {
-    q: 'In a dataflow analysis, what do `IN[B]` and `OUT[B]` stand for?',
-    a: 'The fact at the start of block B and the fact at its end.',
-  },
-  'meet-where': {
-    q: 'Where in a CFG does the meet operator do its work?',
-    a: 'At a block with several incoming edges (several predecessors, in a forward analysis), to combine the facts that arrive.',
-  },
-  'forward-backward': {
-    q: 'In a **backward** analysis, which fact does a block’s transfer function compute from which?',
-    a: 'It computes IN[B] (the start) from OUT[B] (the end), which is the meet of its successors’ IN facts.',
-  },
-  'must-may': {
-    q: 'A “must” question meets with intersection. What does a “may” question meet with, and why?',
-    a: 'Union: a fact that holds on at least one incoming path may hold, so it is kept.',
   },
   'lattice-what': {
     q: 'What is a **lattice**, in a dataflow analysis?',
     a: 'The set of possible facts with an order on them, in which any two facts have a meet: the highest fact below both.',
   },
-  'merge-two': {
-    q: 'Meet “number” with “maybe-not”. What do you get?',
-    a: '“maybe-not”: if either side might not be a number, the merge might not be one either.',
-  },
-  'side-by-side': {
-    q: 'In the lattice of sets ordered by “contains”, what is `{x} ⊓ {y}`, and why?',
-    a: 'The empty set: it is the highest set contained in both.',
-  },
-  'loop-circle': {
-    q: 'Why can’t a loop’s dataflow equations be solved in one pass, block after block?',
-    a: 'The loop header’s IN needs the body’s OUT, which needs the header’s OUT: a circle with no first block.',
-  },
   'fixpoint-what': {
     q: 'What is a **fixpoint** of a set of dataflow equations?',
     a: 'A choice of facts that applying every equation once more leaves unchanged.',
-  },
-  'start-top': {
-    q: 'Why is it safe to start unknown facts at the top of the lattice?',
-    a: 'The meet with the top changes nothing, and the equations then lower any fact that is contradicted.',
-  },
-  'why-optimistic': {
-    q: 'A loop phi depends on its own back-edge value. Why does a pessimistic start fail to prove it a number?',
-    a: 'Each value stays “maybe not” because the other one is: a consistent answer that never improves.',
-  },
-  'worklist-what': {
-    q: 'What is a **worklist**?',
-    a: 'The list of blocks (or values) whose facts may be out of date and must be recomputed.',
-  },
-  requeue: {
-    q: 'In a forward analysis, block b’s OUT just changed. What goes on the worklist?',
-    a: 'b’s successors (unless already there), since their IN is computed from b’s OUT.',
-  },
-  'finite-height': {
-    q: 'Why must a worklist solver on a finite-height lattice stop, if facts only move down?',
-    a: 'Each fact can move down only a bounded number of times, and blocks are re-added only after such a move.',
-  },
-  'viscosity-rounds': {
-    q: 'How does Viscosity’s numeric inference iterate, and what happens if it never settles?',
-    a: 'In rounds, rerunning every rule until a round changes nothing; after 1000 rounds it gives up every fact (fails closed).',
-  },
-  'partial-what': {
-    q: 'What makes an order **partial** rather than total?',
-    a: 'Some pairs need not be comparable: neither is below the other, like {a, b} and {b, c}.',
-  },
-  'meet-join': {
-    q: 'In the lattice of subsets of {a, b, c}, what are the meet and the join of {a, b} and {b, c}?',
-    a: 'Meet {b} (the highest set below both); join {a, b, c} (the lowest set above both).',
-  },
-  'height-what': {
-    q: 'What is the **height** of a lattice?',
-    a: 'The largest number of steps down from its top to its bottom.',
-  },
-  'wide-short': {
-    q: 'The constant lattice has infinitely many facts. Why does an analysis on it still stop?',
-    a: 'Its height is only 2, so each fact can move down at most twice.',
-  },
-  'monotone-what': {
-    q: 'What does it mean for a transfer function to be **monotone**?',
-    a: 'A higher input never gives a lower output: x ⊑ y implies f(x) ⊑ f(y).',
-  },
-  'genkill-monotone': {
-    q: 'Why is `f(IN) = gen ∪ (IN − kill)` monotone (with ⊆ as the order)?',
-    a: 'A bigger IN, minus the same kill and plus the same gen, still gives a set at least as big.',
   },
   'framework-what': {
     q: 'What are the three ingredients of a **monotone framework**?',
     a: 'A lattice of finite height, a meet, and monotone transfer functions.',
   },
-  'greatest-fixpoint': {
-    q: 'Iterating from the top reaches which fixpoint, and why is it the best one?',
-    a: 'The greatest: every fixpoint is below the top, and monotone steps keep it below every step of the chain.',
-  },
-  'mop-what': {
-    q: 'What is the **meet over all paths** answer?',
-    a: 'Apply the transfer functions along each path separately, then meet the results of all the paths.',
-  },
-  'distributive-equal': {
-    q: 'When does the iterative answer equal the meet over all paths?',
-    a: 'When every transfer function is distributive: f(x ⊓ y) = f(x) ⊓ f(y).',
-  },
   'fold-what': {
     q: 'What is **constant folding**?',
     a: 'Computing, at compile time, an instruction whose operands are all constants, and replacing it with a `const` holding the result.',
-  },
-  'fold-one-unknown': {
-    q: 'In `%7 = binop < %3, %6`, `%6` is `const 100` but `%3` is a loop counter (a phi). Can `%7` be folded?',
-    a: 'No. One operand that is not a known constant is enough to stop a fold; the answer changes each time round the loop.',
-  },
-  'fold-ssa-free': {
-    q: 'After `%6` is folded to `const 100`, why does nothing need to be copied into the instructions that use `%6`?',
-    a: 'In SSA they refer to `%6` itself, which is defined once and is now a constant, so every user sees the constant at once.',
-  },
-  'fold-exact': {
-    q: 'A folder rewrites `0.1 + 0.2` as `const 0.3`. What went wrong?',
-    a: 'It changed the program: at run time the float64 sum is 0.30000000000000004, and the folded answer must match it exactly.',
-  },
-  'fold-host': {
-    q: 'Why does a folder written in C++ or Rust need more care than one written in JavaScript, when compiling JavaScript?',
-    a: 'It must copy JavaScript’s rules (string `+`, `NaN`, `Infinity`, `-0`, float rounding) by hand; a JavaScript folder gets them by doing the same operation.',
-  },
-  'fold-never': {
-    q: 'Name two kinds of instruction a folder must leave alone even when every operand is a constant.',
-    a: 'Ones with side effects (a call that prints, a store) and ones that can throw (such as reading an index of something that may not be an array).',
-  },
-  'plus-object': {
-    q: 'Why can `+` run code in JavaScript?',
-    a: 'If an operand is an object, `+` first calls its `valueOf` (or `toString`) method, and that method can do anything.',
-  },
-  'algebra-trap': {
-    q: 'Why is rewriting `x * 1` as `x` wrong in JavaScript unless `x` is known to be a number?',
-    a: 'If `x` is the string `\'3\'`, `x * 1` is the number `3`, not the string; the rewrite would change the value’s type.',
   },
   'prop-what': {
     q: 'What is **constant propagation**?',
     a: 'Finding which values are the same constant on every run, across blocks and through phis, and replacing their uses with that constant.',
   },
-  'fold-not-enough': {
-    q: 'In `g`, folding turns `x > 0` into `true`. Why can folding alone still not find that `g` returns 20?',
-    a: 'The result goes through a phi of 2 and 3, and folding only handles operations on constants; something has to notice that the branch giving 3 never runs.',
-  },
-  'top-what': {
-    q: 'In the constant lattice, what does ⊤ mean, and what does ⊥ mean?',
-    a: '⊤: no information yet (not worked out, or its block not reached). ⊥: varies, not a constant.',
-  },
-  'meet-rule': {
-    q: 'Meet 2 with 3. Then meet 2 with ⊤.',
-    a: '2 ⊓ 3 = ⊥ (two different constants vary). 2 ⊓ ⊤ = 2 (⊤ gives way).',
-  },
-  'loop-seven': {
-    q: 'A loop header has `%5 = phi %1, %5` with `%1 = const 7`. Why must the analysis start `%5` at ⊤ to prove it is 7?',
-    a: 'The phi uses itself. Starting at ⊤, 7 ⊓ ⊤ = 7, which is then consistent. Starting at ⊥, 7 ⊓ ⊥ = ⊥, which is also consistent, but useless.',
-  },
-  counter: {
-    q: 'What does constant propagation conclude about a loop counter `i = φ(0, i + 1)`?',
-    a: '⊥: 0 arrives from the entry, then 1 round the back edge, and 0 ⊓ 1 varies.',
-  },
-  'sccp-edges': {
-    q: 'What second kind of fact does SCCP track, besides a lattice value per SSA value?',
-    a: 'Which CFG edges are executable (and so which blocks are reachable).',
-  },
   'sccp-phi': {
-    q: 'At a phi, which operands does SCCP meet?',
+    q: 'At a phi, which operands does sparse conditional constant propagation (SCCP) meet?',
     a: 'Only the ones arriving along edges already proven executable; the others are ignored.',
-  },
-  'sccp-sparse': {
-    q: 'What are SCCP’s two worklists?',
-    a: 'CFG edges that just became executable (visit their target block) and SSA values whose fact just changed (revisit their users).',
   },
 };
 
@@ -270,6 +121,7 @@ console.log(phi(0, -0));`,
 
 export const exercises = {
   'one-pass': {
+    optional: true,
     title: 'Definitely assigned, in one pass',
     prompt: `Write \`definite(blocks, order)\`. Each block has \`preds\` (the blocks with an edge into it) and \`assigns\` (the variables it gives a value to). The CFG has **no loops**, and \`order\` lists every block after all of its predecessors.
 
@@ -526,7 +378,7 @@ test('a straight line', () => {
       'For IN, start from `p.start` if the block is the entry and `p.top` otherwise, then fold in each predecessor with `f = p.meet(f, out[q])`.',
       'Compute `o = p.transfer(b, f)`. If `p.same(o, out[b])`, nothing downstream can change: `continue`. Otherwise store it and push each successor that is not already on the list.',
     ],
-    walkthrough: `**How to think about it.** The solver does not know or care what the facts are: sets of variables, numbers, anything. All it needs is the CFG, a starting guess (\`top\`), and the three operations. So write the loop from the chapter, and call \`p.meet\`, \`p.transfer\` and \`p.same\` wherever the chapter's code did a set operation. The tests run it twice on the same loop: once as a "must" analysis (meet is intersection, top is every variable) and once as a "may" analysis (meet is union, top is the empty set, which union leaves alone). The may version is the one that needs the back edge: b1 only learns that \`y\` may be assigned after b2 has been processed, so b1 must go back on the list.
+    walkthrough: `**How to think about it.** The solver does not know or care what the facts are: sets of variables, numbers, anything. All it needs is the CFG, a starting guess (\`top\`), and the three operations. So write the worklist loop the chapter describes, and call \`p.meet\`, \`p.transfer\` and \`p.same\` wherever a set operation would go. The tests run it twice on the same loop: once as a "must" analysis (meet is intersection, top is every variable) and once as a "may" analysis (meet is union, top is the empty set, which union leaves alone). The may version is the one that needs the back edge: b1 only learns that \`y\` may be assigned after b2 has been processed, so b1 must go back on the list.
 
 **The solution, line by line.**
 
@@ -799,125 +651,8 @@ function numeric(insts) {
       },
     ],
   },
-  monotone: {
-    title: 'Is this rule monotone?',
-    prompt: `Write \`isMonotone(points, leq, f)\`. \`points\` lists every fact of a small lattice, \`leq(x, y)\` says whether \`x\` is below or equal to \`y\`, and \`f\` maps facts to facts.
-
-Return \`true\` if \`f\` is monotone (for every pair with \`x ⊑ y\`, also \`f(x) ⊑ f(y)\`) and \`false\` otherwise. The tests use the two-point lattice \`'number'\` above \`'maybe'\`, and sets of variables (sorted arrays) ordered by “contains”.`,
-    starter: `// points: every fact in the lattice
-// leq(x, y): is x below or equal y?
-// f: a function from facts to facts
-// Return true if f is monotone.
-function isMonotone(points, leq, f) {
-  return true;
-}`,
-    solution: `// points: every fact in the lattice
-// leq(x, y): is x below or equal y?
-// f: a function from facts to facts
-// Return true if f is monotone.
-function isMonotone(points, leq, f) {
-  for (const x of points) {
-    for (const y of points) {
-      if (!leq(x, y)) continue;
-      const ok = leq(f(x), f(y));
-      if (!ok) return false;
-    }
-  }
-  return true;
-}`,
-    tests: `const two = ['maybe', 'number'];
-const le2 = (x, y) =>
-  x === y || x === 'maybe';
-const sets = [[], ['a'], ['b'],
-  ['a', 'b']];
-const sub = (x, y) =>
-  x.every((v) => y.includes(v));
-test('the identity is monotone', () => {
-  expect(isMonotone(two, le2,
-    (x) => x)).toBe(true);
-});
-test('swapping is not', () => {
-  expect(isMonotone(two, le2,
-    (x) => x === 'number'
-      ? 'maybe' : 'number'))
-    .toBe(false);
-});
-test('a constant rule is monotone', () => {
-  expect(isMonotone(two, le2,
-    () => 'maybe')).toBe(true);
-});
-test('gen/kill is monotone', () => {
-  const f = (s) => [...new Set(['b',
-    ...s.filter((v) => v !== 'a')])]
-    .sort();
-  expect(isMonotone(sets, sub, f))
-    .toBe(true);
-});
-test('“if empty, add a” is not', () => {
-  const f = (s) =>
-    s.length === 0 ? ['a'] : [];
-  expect(isMonotone(sets, sub, f))
-    .toBe(false);
-});`,
-    hints: [
-      'The definition talks about every pair of facts, so loop over every `x` and, inside, every `y`.',
-      'Skip the pairs where `x` is not below or equal to `y`: the definition says nothing about them.',
-      'For the others, check `leq(f(x), f(y))`. One failure is enough to return `false`; if no pair fails, return `true`.',
-    ],
-    walkthrough: `**How to think about it.** Monotone is a statement about every pair: "whenever x ⊑ y, f(x) ⊑ f(y)". On a small lattice you can check it directly by trying all the pairs. There are two traps: checking only pairs where the condition holds (pairs that are not ordered tell you nothing), and checking the conclusion the wrong way round.
-
-**The solution, line by line.**
-
-- \`for (const x of points) {\` and \`for (const y of points) {\` try every ordered pair of facts, including a fact with itself (which always passes).
-- \`if (!leq(x, y)) continue;\` skips pairs where x is not below y: the rule only promises something about ordered pairs. For sets this skips, for example, \`['a']\` against \`['b']\`.
-- \`const ok = leq(f(x), f(y));\` checks the promise: the output for the lower input must be below or equal to the output for the higher one.
-- \`if (!ok) return false;\` One broken pair is enough: the function is not monotone.
-- \`return true;\` No pair broke the promise.
-
-For the "if empty, add a" rule, the pair \`x = []\`, \`y = ['a']\` has \`x ⊑ y\`, but \`f(x) = ['a']\` and \`f(y) = []\`, and \`['a']\` is not contained in \`[]\`: a bigger input gave a smaller output. For swapping, \`'maybe' ⊑ 'number'\`, but the outputs are \`'number'\` and \`'maybe'\`, the wrong way round. The gen/kill rule (remove \`a\`, add \`b\`) passes every pair, as the chapter argued it must.
-
-**Common wrong attempts.**
-
-- Checking \`leq(f(y), f(x))\`, the conclusion turned round: that tests whether \`f\` turns the order upside down, which swapping does, so swapping would wrongly pass.
-- Checking only \`leq(f(x), x)\` ("the rule never goes up"): a rule can go up and still be monotone (the constant rule "always number" goes up from \`'maybe'\`), and a rule can never go up and still not be monotone (on sets, a rule that turns \`['a', 'b']\` into \`['b']\` and leaves every other set alone never goes up, yet \`['a'] ⊑ ['a', 'b']\` while the outputs are \`['a']\` and \`['b']\`).
-- Returning \`true\` as soon as one pair passes: monotone needs *every* ordered pair to pass.`,
-    wrong: [
-      {
-        code: `// points: every fact in the lattice
-// leq(x, y): is x below or equal y?
-// f: a function from facts to facts
-// Return true if f is monotone.
-function isMonotone(points, leq, f) {
-  for (const x of points) {
-    for (const y of points) {
-      if (!leq(x, y)) continue;
-      const ok = leq(f(y), f(x));
-      if (!ok) return false;
-    }
-  }
-  return true;
-}`,
-        why: 'This checks the order turned upside down: swapping number and maybe passes it, though it is not monotone.',
-      },
-      {
-        code: `// points: every fact in the lattice
-// leq(x, y): is x below or equal y?
-// f: a function from facts to facts
-// Return true if f is monotone.
-function isMonotone(points, leq, f) {
-  for (const x of points) {
-    for (const y of points) {
-      const ok = leq(f(x), f(y));
-      if (!ok) return false;
-    }
-  }
-  return true;
-}`,
-        why: 'Without skipping unordered pairs, even the identity fails (for x = number, y = maybe), though it is monotone.',
-      },
-    ],
-  },
   fold: {
+    optional: true,
     title: 'A folder for one block',
     prompt: `Write \`fold(insts)\` for one block of SSA instructions, given in order. Each instruction is an object with an \`id\` and an \`op\`:
 
@@ -1115,6 +850,7 @@ function fold(insts) {
     ],
   },
   sccp: {
+    optional: true,
     title: 'Sparse conditional constant propagation',
     prompt: `Write \`sccp(f)\` for a small function in SSA. \`f.blocks\` is a list of blocks; block 0 is the entry. Each block has \`preds\` (its predecessor block numbers), \`insts\` and a terminator \`term\`:
 
@@ -1306,7 +1042,7 @@ test('a counter varies', () => {
   - \`if (i.op === 'const') return i.value;\` a constant is itself;
   - \`if (i.op === 'param') return BOT;\` a parameter could be anything;
   - for a \`'phi'\`, \`const ps = f.blocks[b].preds;\` fetches the block's predecessors, \`let v = TOP;\` starts the merge, and the \`forEach\` meets in the k-th argument only when the edge \`ps[k] + '>' + b\` is executable; arguments from edges nobody has opened are ignored, which is the heart of SCCP;
-  - for an operator, \`const [x, y] = i.args.map(get);\` reads both operands; if either is ⊥ the answer varies, if either is still ⊤ we do not know yet, and otherwise \`OPS[i.op](x, y)\` folds it, exactly as in the last chapter.
+  - for an operator, \`const [x, y] = i.args.map(get);\` reads both operands; if either is ⊥ the answer varies, if either is still ⊤ we do not know yet, and otherwise \`OPS[i.op](x, y)\` folds it, exactly as constant folding does.
 - \`while (changed) { changed = false;\` repeats rounds until one changes nothing.
 - \`f.blocks.forEach((blk, b) => { if (!live.has(b)) return;\` visits only reachable blocks: an unreachable block's instructions stay at ⊤.
 - The inner \`for\` evaluates each instruction and, if its value differs from the stored one (\`Object.is\`, so that \`0\` and \`-0\` count as different and \`NaN\` as equal to itself), stores it and sets \`changed\`.
@@ -1486,24 +1222,6 @@ function meet(a, b) {
 
 export const quiz = [
   {
-    q: 'Why does a dataflow analysis attach facts to blocks rather than following paths?',
-    options: [
-      {
-        t: 'Blocks are faster to read than instructions.',
-        why: 'Speed of reading is not the point; the trouble with paths is how many there are.',
-      },
-      {
-        t: 'A program can have far too many paths, even infinitely many with a loop, but it has only a few blocks.',
-        correct: true,
-        why: 'One fact per block point, with rules on edges, covers every path at once.',
-      },
-      {
-        t: 'Paths do not exist until the program runs.',
-        why: 'Paths through the CFG exist on paper; there are just too many of them to list.',
-      },
-    ],
-  },
-  {
     q: 'At a join, OUT of the two predecessors is `{a, b}` and `{b, c}`. In a “definitely assigned” (must) analysis, what is IN of the join?',
     options: [
       {
@@ -1518,104 +1236,6 @@ export const quiz = [
         t: '`{b}`',
         correct: true,
         why: 'A must question keeps only what is true on every incoming path: the intersection.',
-      },
-    ],
-  },
-  {
-    q: '“Will this variable be read again later?” Which kind of analysis answers it?',
-    options: [
-      {
-        t: 'Backward: facts flow from a block’s successors to it.',
-        correct: true,
-        why: 'The question is about the future, so information comes from the blocks that run afterwards.',
-      },
-      {
-        t: 'Forward: facts flow from a block’s predecessors to it.',
-        why: 'Predecessors run earlier; they cannot tell you about later reads.',
-      },
-      {
-        t: 'Neither: it needs the program to run.',
-        why: 'It is a classic static question, answered by a backward dataflow analysis.',
-      },
-    ],
-  },
-  {
-    q: 'Which is the transfer function of a block in the “definitely assigned” analysis?',
-    options: [
-      {
-        t: 'OUT = IN minus the variables the block reads',
-        why: 'Reading a variable doesn’t un-assign it.',
-      },
-      {
-        t: 'OUT = the intersection of the successors’ IN',
-        why: 'That would be a backward meet, not a transfer function.',
-      },
-      {
-        t: 'OUT = IN, unchanged',
-        why: 'Then no variable would ever count as assigned.',
-      },
-      {
-        t: 'OUT = IN plus the variables the block assigns',
-        correct: true,
-        why: 'Passing through the block can only add assigned variables.',
-      },
-    ],
-  },
-  {
-    q: 'In a lattice, what is the meet of two facts?',
-    options: [
-      {
-        t: 'The fact that appears most often',
-        why: 'Merging is not a vote.',
-      },
-      {
-        t: 'The lowest fact in the whole lattice',
-        why: 'That is always below both, but usually far lower than needed: it throws information away.',
-      },
-      {
-        t: 'The highest fact that is below both of them',
-        correct: true,
-        why: 'It keeps as much as both facts promise, and no more.',
-      },
-      {
-        t: 'Whichever of the two facts is higher',
-        why: 'That would keep a promise one side doesn’t make. And for `{x}` and `{y}` neither is higher.',
-      },
-    ],
-  },
-  {
-    q: 'Why can’t “definitely assigned” be solved in a single pass on a CFG with a loop?',
-    options: [
-      {
-        t: 'Loops have no basic blocks.',
-        why: 'A loop is made of ordinary blocks; the trouble is how they depend on each other.',
-      },
-      {
-        t: 'The loop header’s IN depends on the body’s OUT, which depends on the header’s OUT.',
-        correct: true,
-        why: 'The back edge makes a cycle, so no order visits every block after all its predecessors.',
-      },
-      {
-        t: 'The loop might run for ever.',
-        why: 'The analysis never runs the loop. It stops even when the program would not.',
-      },
-    ],
-  },
-  {
-    q: 'Starting pessimistic, a counting loop’s phi ends up “maybe not a number”. Starting optimistic, it ends up “number”. Which is right?',
-    options: [
-      {
-        t: 'Pessimistic: assuming less is always more correct.',
-        why: 'Both are consistent, but the pessimistic one throws away a fact that is in fact true.',
-      },
-      {
-        t: 'Neither: the analysis didn’t reach a fixpoint.',
-        why: 'Both are fixpoints: applying the rules again changes nothing in either.',
-      },
-      {
-        t: 'Optimistic: both are fixpoints, and the optimistic one is the most precise.',
-        correct: true,
-        why: 'No rule contradicts “number” for that loop, so the optimistic answer holds and tells you more.',
       },
     ],
   },
@@ -1642,29 +1262,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What guarantees that a worklist solver for “definitely assigned” stops?',
-    options: [
-      {
-        t: 'The worklist never holds more than one block.',
-        why: 'It can hold many. What matters is how often each fact can change.',
-      },
-      {
-        t: 'Programs have no infinite loops.',
-        why: 'The analysis doesn’t run the program; it ends even on programs that loop for ever.',
-      },
-      {
-        t: 'The cap of 1000 rounds.',
-        why: 'That cap is Viscosity’s safety net for its round-based loop; a worklist on this lattice ends without one.',
-      },
-      {
-        t: 'Sets only lose variables, there are finitely many variables, and blocks are re-added only after a change.',
-        correct: true,
-        why: 'Finite height plus one-way movement bounds the number of changes, so the list empties.',
-      },
-    ],
-  },
-  {
-    q: 'What does Viscosity do if its numeric inference has not settled after 1000 rounds?',
+    q: 'Viscosity’s numeric inference (“is this value a number?”) iterates in rounds, capped at 1000. What does it do if the rounds have not settled by the cap?',
     options: [
       {
         t: 'Keeps the facts from the last round.',
@@ -1682,239 +1280,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the lattice of sets ordered by “contains”, which is true of {a} and {b}?',
-    options: [
-      {
-        t: '{a} is below {b}, because a comes before b.',
-        why: 'The order is containment, not the alphabet; neither set contains the other.',
-      },
-      {
-        t: 'Neither is below the other; their meet is { } and their join is {a, b}.',
-        correct: true,
-        why: 'They are incomparable, which a partial order allows, and the lattice still gives a meet and a join.',
-      },
-      {
-        t: 'They have no meet, so this is not a lattice.',
-        why: 'The empty set is below both, and it is the highest such set.',
-      },
-    ],
-  },
-  {
-    q: 'The constant lattice has a fact for every number. What is its height?',
-    options: [
-      {
-        t: 'Infinite, like its width',
-        why: 'Width and height are different: any path from top to bottom has only two steps.',
-      },
-      {
-        t: '1',
-        why: 'There are two steps: from “no info” to a constant, and from a constant to “varies”.',
-      },
-      {
-        t: '2',
-        correct: true,
-        why: '“no info” above every constant, every constant above “varies”.',
-      },
-    ],
-  },
-  {
-    q: 'Which rule is NOT monotone on sets ordered by “contains”?',
-    options: [
-      {
-        t: 'f(S) = S ∪ {x}',
-        why: 'A bigger S gives a bigger result.',
-      },
-      {
-        t: 'f(S) = S − {y}',
-        why: 'Removing the same element from both keeps the order.',
-      },
-      {
-        t: 'f(S) = {x} if S is empty, otherwise { }',
-        correct: true,
-        why: 'Going from { } to a bigger set shrinks the output from {x} to { }.',
-      },
-      {
-        t: 'f(S) = {z}, whatever S is',
-        why: 'A constant rule never breaks the order.',
-      },
-    ],
-  },
-  {
-    q: 'Why does iterating a monotone framework from the top always stop?',
-    options: [
-      {
-        t: 'Every step goes down or stays, and finite height allows only so many steps down.',
-        correct: true,
-        why: 'Monotone rules started at the top give a descending chain, and its length is bounded by the height.',
-      },
-      {
-        t: 'Because programs are finite.',
-        why: 'A finite program still has infinitely many paths; the argument is about the lattice.',
-      },
-      {
-        t: 'Because the worklist is a queue.',
-        why: 'The order of visits affects speed, not whether it stops.',
-      },
-    ],
-  },
-  {
-    q: '`if c { a = 1; b = 2 } else { a = 2; b = 1 }; x = a + b`. What does iterative constant propagation say about x, and why?',
-    options: [
-      {
-        t: 'x = 3, because it is 3 on both paths.',
-        why: 'That is the meet-over-all-paths answer; iteration meets a and b at the join first.',
-      },
-      {
-        t: 'Nothing: constant propagation can’t handle if/else.',
-        why: 'It handles it; it is just not as precise here.',
-      },
-      {
-        t: 'x varies, because a and b each vary at the join, and varies + varies is varies.',
-        correct: true,
-        why: 'The rule for + is monotone but not distributive, so meeting first loses information.',
-      },
-    ],
-  },
-  {
-    q: 'Which of these may a JavaScript compiler fold to a constant?',
-    options: [
-      {
-        t: '`console.log(2 + 3)` into `5`',
-        why: 'The `2 + 3` inside can be folded, but the call prints, and that side effect must stay.',
-      },
-      {
-        t: '`0.1 + 0.2` into `0.3`',
-        why: 'At run time the answer is 0.30000000000000004; a fold must give exactly that.',
-      },
-      {
-        t: '`\'1\' + 2` into `\'12\'`',
-        correct: true,
-        why: 'Both operands are primitive constants and string joining has no side effects, so `\'12\'` is exactly what the program would compute.',
-      },
-      {
-        t: '`1 / 0` into an error',
-        why: 'In JavaScript `1 / 0` is `Infinity`, not an error, and a fold must keep that.',
-      },
-    ],
-  },
-  {
-    q: '`%6 = binop * %4, %5` where `%4 = const 2` and `%5 = param`. What can a folder do with `%6`?',
-    options: [
-      {
-        t: 'Nothing: `%5` is not a known constant',
-        correct: true,
-        why: 'Folding needs every operand to be a constant; a parameter is only known when the function runs.',
-      },
-      {
-        t: 'Replace it with `const 2`',
-        why: 'That would be guessing the parameter is 1.',
-      },
-      {
-        t: 'Replace it with `%5`',
-        why: 'That is an algebraic shortcut for `* 1`, and the constant here is 2.',
-      },
-    ],
-  },
-  {
-    q: 'Why is `x + 0 → x` not a safe rewrite in JavaScript, even when `x` is known to be a number?',
-    options: [
-      {
-        t: 'Because `+` is slower than a copy',
-        why: 'Speed is the reason to do the rewrite, not a reason against it.',
-      },
-      {
-        t: 'Because `x` might be `NaN`',
-        why: '`NaN + 0` is `NaN`, the same as `x`, so `NaN` is not the problem.',
-      },
-      {
-        t: 'Because `-0 + 0` is `+0`, a different value from `x`',
-        correct: true,
-        why: 'The two zeros differ (`1 / -0` is `-Infinity`), so the rewrite changes the value when `x` is `-0`.',
-      },
-    ],
-  },
-  {
-    q: 'After folding `%6 = binop * %4, %5` into `%6 = const 100`, what has to happen to `%7 = binop < %3, %6`?',
-    options: [
-      {
-        t: 'Its operand must be rewritten to the literal 100',
-        why: 'In SSA, `%7` already refers to `%6`, which is now the constant; nothing needs copying.',
-      },
-      {
-        t: 'Nothing: it now has a constant operand by referring to `%6`',
-        correct: true,
-        why: 'Each value is defined once, so changing the definition of `%6` changes what every user sees.',
-      },
-      {
-        t: 'It must be folded too',
-        why: 'Its other operand, `%3`, is a loop counter, so it cannot be folded.',
-      },
-      {
-        t: 'It must be deleted',
-        why: 'It is still needed: the branch tests it.',
-      },
-    ],
-  },
-  {
-    q: 'Which instruction is **not** safe to fold, even with constant operands?',
-    options: [
-      {
-        t: '`%3 = binop < %1, %2` with constants 1 and 0',
-        why: 'A comparison of two numbers has no effects and always gives an answer: it folds to `false`.',
-      },
-      {
-        t: '`%3 = binop / %1, %2` with constants 1 and 0',
-        why: 'It gives `Infinity` and cannot throw, so it folds.',
-      },
-      {
-        t: '`%3 = binop * %1, %2` with constants 0 and -1',
-        why: 'It folds to `-0`; the folder just has to keep the sign.',
-      },
-      {
-        t: '`%3 = call %1, %2` with constant arguments',
-        correct: true,
-        why: 'A call can have side effects (printing, changing state), which must still happen at run time.',
-      },
-    ],
-  },
-  {
-    q: 'Viscosity has no folding pass. What does that change in its output for `for (let i = 0; i < 2 * 50; i++) ps.push(...)`?',
-    options: [
-      {
-        t: 'It refuses to change the layout',
-        why: 'It still chooses struct of arrays; folding affects only the size estimate here.',
-      },
-      {
-        t: 'It reports "size unknown statically" instead of "about 100 elements"',
-        correct: true,
-        why: 'It counts loop trips only when the bound is a `const` instruction, and `2 * 50` stays a `binop`.',
-      },
-      {
-        t: 'It makes the program print a different answer',
-        why: 'Viscosity never changes what a program prints; folding or not, the output is the same.',
-      },
-    ],
-  },
-  {
-    q: 'In the constant lattice, what is `⊤ ⊓ 5`?',
-    options: [
-      {
-        t: '⊤',
-        why: '⊤ means "no information yet", so it gives way to real information.',
-      },
-      {
-        t: '5',
-        correct: true,
-        why: 'Meeting ⊤ with anything gives the other side; that is what lets loops keep their constants.',
-      },
-      {
-        t: '⊥',
-        why: 'Nothing contradicts 5 yet, so there is no reason to give up.',
-      },
-    ],
-  },
-  {
-    q: '`x = 1; if (x > 0) y = 2; else y = 3; z = y * 10;` What does **plain** constant propagation (no edge tracking) conclude about `z`?',
+    q: 'In SSA, `x = 1; if (x > 0) y = 2; else y = 3; z = y * 10;` What does **plain** constant propagation (treating every block as reachable) conclude about `z`?',
     options: [
       {
         t: '`z` is 20',
@@ -1932,86 +1298,6 @@ export const quiz = [
       {
         t: 'It cannot run on code with an `if`',
         why: 'It runs fine; the `if` only limits what it can prove.',
-      },
-    ],
-  },
-  {
-    q: 'What does SCCP conclude about a loop counter `i = φ(0, i + 1)`?',
-    options: [
-      {
-        t: '0, because that is the first value',
-        why: 'The back edge brings 1, and 0 ⊓ 1 = ⊥.',
-      },
-      {
-        t: '⊤, because the loop might not run',
-        why: 'The header is reachable from the entry, so the phi gets at least 0.',
-      },
-      {
-        t: '⊥: it varies',
-        correct: true,
-        why: 'The entry brings 0 and the back edge 1; two different constants meet to ⊥.',
-      },
-    ],
-  },
-  {
-    q: 'In SCCP, a `condbr` whose condition is still ⊤ marks which edges executable?',
-    options: [
-      {
-        t: 'Both',
-        why: 'That is the rule for ⊥. With ⊤ nothing is known yet.',
-      },
-      {
-        t: 'Only the then edge',
-        why: 'That is the rule for the constant `true`.',
-      },
-      {
-        t: 'Neither, for now',
-        correct: true,
-        why: 'Being optimistic, it waits: a later visit, once the condition has a value, decides.',
-      },
-      {
-        t: 'Only the else edge',
-        why: 'That is the rule for the constant `false`.',
-      },
-    ],
-  },
-  {
-    q: 'After SCCP finishes, some values are still ⊤. What does that tell you?',
-    options: [
-      {
-        t: 'They are in blocks that never run',
-        correct: true,
-        why: 'Every value in a reachable block is evaluated at least once, so only values in unreachable blocks keep ⊤.',
-      },
-      {
-        t: 'They are constants that could not be computed',
-        why: 'A constant that was computed would hold its value, not ⊤.',
-      },
-      {
-        t: 'The analysis did not finish',
-        why: 'It finishes when both worklists are empty, which they are.',
-      },
-    ],
-  },
-  {
-    q: 'What does Viscosity’s numeric inference share with SCCP?',
-    options: [
-      {
-        t: 'Tracking which CFG edges are executable',
-        why: 'It does not track edges, so values from impossible branches still count.',
-      },
-      {
-        t: 'The three-level constant lattice',
-        why: 'Its lattice has two levels: number and maybe not.',
-      },
-      {
-        t: 'A pass that replaces your arithmetic with constants',
-        why: 'Viscosity rewrites data layouts, not arithmetic.',
-      },
-      {
-        t: 'An optimistic fixpoint over SSA values',
-        correct: true,
-        why: 'It starts optimistic and repeats its rules until nothing changes: the same machine on a smaller lattice.',
       },
     ],
   },

@@ -1,6 +1,5 @@
-// Chapter 175 cards: recall prompts, examples, exercises and quiz.
+// Chapter 90 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 90, 90, 90.
 
 export const prompts = {
   'ssa-what': {
@@ -8,123 +7,36 @@ export const prompts = {
     a: 'Static single assignment: every variable is assigned in exactly one place in the program text, so every use refers to exactly one definition.',
   },
   'static-meaning': {
-    q: 'An assignment sits inside a loop that runs 100 times. How many SSA names does it define?',
+    q: 'In SSA form, an assignment sits inside a loop that runs 100 times. How many SSA names does it define?',
     a: 'One. "Static" counts places in the text, not executions.',
-  },
-  'read-before-write': {
-    q: 'Renaming `x = x * 2` when the latest version is `x1`: what do you get, and why that order?',
-    a: '`x2 = x1 * 2`. The right-hand side is read before the assignment makes the new version.',
-  },
-  'vir-no-names': {
-    q: 'In VIR, what does `%4` name?',
-    a: 'The value produced by instruction 4. A value is its defining instruction, so it is assigned exactly once.',
-  },
-  'one-table': {
-    q: 'Filing definitions in a table by name works for SSA code but not for the original. Why?',
-    a: 'In the original, a later assignment to the same name overwrites the entry; in SSA every name is defined once.',
-  },
-  'ssa-buys': {
-    q: 'In SSA, `%1 = const 0`. What do you know about every use of `%1`?',
-    a: 'It is 0. There is no other assignment that could change it.',
   },
   'captured-not-ssa': {
     q: 'Why does VIR keep a closure-captured variable out of SSA?',
     a: 'Another function can change it at a moment this function’s CFG cannot see, so it is a binding with load and store.',
   },
-  'fields-not-ssa': {
-    q: 'Does SSA give versions to object fields such as `p.x`?',
-    a: 'No. Only plain local variables are renamed; fields are memory, read and written with instructions, because other names can reach the same object.',
-  },
-  'why-phi': {
-    q: 'After an `if` whose branches define `x2` and `x3`, why can no single name go in `y = ? + 3`?',
-    a: 'Which version is right depends on which branch ran, and that is only known at run time.',
-  },
   'phi-what': {
     q: 'What does a **phi node** do?',
     a: 'At the start of a join block, it picks the value of the operand that matches the edge control arrived on.',
   },
-  'phi-operands': {
-    q: 'How many operands does a phi have?',
-    a: 'One per predecessor of its block, in predecessor order.',
-  },
-  'phi-not-real': {
-    q: 'Do phis survive into machine code?',
-    a: 'No. Before code generation they are replaced by copies at the ends of the predecessor blocks.',
-  },
-  'vir-phi-order': {
-    q: 'In VIR, `b3: ; preds b1 b2` begins with `%4 = phi %2, %3`. Which operand is used when control comes from b1?',
-    a: '`%2`, the first: operands follow the order of the `preds` list.',
-  },
   'loop-phi': {
-    q: 'Why may a loop header’s phi use a value defined later in the listing?',
+    q: 'In SSA, why may a loop header’s phi use a value defined later in the listing?',
     a: 'That operand is only read when control arrives along the back edge, after the defining block has run.',
   },
-  'phis-together': {
-    q: 'A block starts with two phis. Can the second one see the first one’s new value?',
-    a: 'No. All of a block’s phis take their values at the same moment, as control crosses the edge.',
-  },
-  'swap-copies': {
-    q: 'Why is `p2 = q2; q2 = p2;` a wrong way to remove the phis `p2 = φ(…, q2)` and `q2 = φ(…, p2)`?',
-    a: 'The second copy reads the new `p2`, so both end up equal; the phis meant “all at once”, so the copies must be ordered carefully or use a temporary.',
-  },
-  'assign-no-inst': {
-    q: 'What does VIR’s builder emit for the assignment `x = y` (both SSA locals)?',
-    a: 'Nothing. It only records, in the current block’s table, that x now holds y’s value.',
-  },
-  'one-pred': {
-    q: 'A sealed block with one predecessor has no definition of `x`. What does `readVariable` return?',
-    a: 'Whatever `x` is at the end of that predecessor (it asks there).',
-  },
   'phi-first': {
-    q: 'Why does the builder record a new phi as the variable’s value *before* reading the operands?',
+    q: 'In on-the-fly SSA construction (Braun et al.), why is a new phi recorded as the variable’s value in its block *before* its operands are read?',
     a: 'In a loop the search can come back to this block. It then finds the phi and stops, instead of recursing forever.',
   },
   'sealed-what': {
-    q: 'When is a block **sealed**?',
+    q: 'In on-the-fly SSA construction (Braun et al.), when is a block **sealed**?',
     a: 'Once all of its predecessors are known, so no more edges into it will be added.',
   },
-  'unsealed-read': {
-    q: 'What happens when you read a variable in an unsealed block that doesn’t define it?',
-    a: 'The builder makes an empty, incomplete phi, remembers it, and fills in its operands when the block is sealed.',
-  },
-  'seal-when': {
-    q: 'When does VIR’s front end seal a loop header?',
-    a: 'Right after emitting the back edge from the end of the loop.',
-  },
   'trivial-what': {
-    q: 'What makes a phi **trivial**?',
+    q: 'In SSA construction, what makes a phi **trivial**?',
     a: 'Apart from itself, all its operands are one value. It always means that value.',
-  },
-  'trivial-cascade': {
-    q: 'After removing a trivial phi, why retry the phis that used it?',
-    a: 'Replacing it may leave one of them with only one distinct value, so it becomes trivial too.',
   },
 };
 
 export const examples = {
-  'which-def': {
-    title: 'Which line defines this?',
-    code: `function report(code) {
-  const def = new Map();
-  code.forEach(([d], i) =>
-    def.set(d, i));
-  code.forEach(([d, rhs], i) => {
-    const ns = rhs.match(/[a-z]\\d*/g);
-    for (const n of ns ?? []) {
-      if (!def.has(n)) continue;
-      const at = def.get(n);
-      console.log('line ' + i, 'uses',
-        n, 'from line', at);
-    }
-  });
-}
-report([['x1', 'a0 + 1'],
-  ['x2', 'x1 * 2'],
-  ['y1', 'x2 + 3'], ['x3', '0']]);
-console.log('--- without SSA:');
-report([['x', 'a + 1'], ['x', 'x * 2'],
-  ['y', 'x + 3'], ['x', '0']]);`,
-  },
   'phi-by-hand': {
     title: 'A phi, written by hand',
     code: `function f(a0) {
@@ -167,6 +79,7 @@ console.log(t('%3', ['%2', '%10']));`,
 
 export const exercises = {
   'to-ssa': {
+    optional: true,
     title: 'Rename into SSA',
     prompt: `Write \`toSSA(code)\` for straight-line code. Each instruction is \`[dst, op, a, b]\`, where \`a\` and \`b\` are variable names (strings) or numbers. Return a new list in which:
 
@@ -241,7 +154,7 @@ test('numbers stay numbers', () => {
 - \`ver[d] = (ver[d] ?? 0) + 1;\` then makes the next version of the destination: 1 for its first assignment, 2 for its second, and so on.
 - \`return [d + ver[d], op, ua, ub];\` builds the renamed instruction, such as \`['x2', '*', 'x1', 2]\`.
 
-Why is this enough, when the next chapter needs phis? Straight-line code has a single path, so "the latest version" is always one name. Phis are needed only where two paths join, each with its own latest version.
+Why is this enough, when joins need phis? Straight-line code has a single path, so "the latest version" is always one name. Phis are needed only where two paths join, each with its own latest version.
 
 **Common wrong attempts.**
 
@@ -279,6 +192,7 @@ function toSSA(code) {
     ],
   },
   'enter-block': {
+    optional: true,
     title: 'All phis at once',
     prompt: 'Write `enter(phis, env, k)`: control enters a block along predecessor edge `k`. `phis` is the block\'s list of `[dst, operands]`, and `env` maps names to current values. Return a **new** env in which every phi\'s `dst` holds the value of its `k`-th operand. All phis must read the env as it was *before* any of them ran. Don\'t change `env`.',
     starter: `// phis: [[dst, [op0, op1, ...]], ...]
@@ -576,7 +490,7 @@ test('never assigned', () => {
       'Check `defs[b]` first. If `v` isn’t there, look at `preds[b]`.',
       'Recurse into every predecessor with `map`. Compare all the answers with the first one.',
     ],
-    walkthrough: `**How to think about it.** This is \`readVariableRecursive\` for the easy case: every block sealed, and no loops, so asking predecessors always ends at the entry. Write the three rules from the chapter's Formal block as three \`if\`s, and add the trivial-phi check on the spot: if every predecessor gives the same answer, no phi is needed.
+    walkthrough: `**How to think about it.** This is \`readVariableRecursive\` for the easy case: every block sealed, and no loops, so asking predecessors always ends at the entry. Write the cases of reading a variable (a local definition, no predecessors, several predecessors) as \`if\`s, and add the trivial-phi check on the spot: if every predecessor gives the same answer, no phi is needed.
 
 **The solution, line by line.**
 
@@ -587,7 +501,7 @@ test('never assigned', () => {
 - \`if (vals.every((x) => x === vals[0])) return vals[0];\` returns the common answer when they all agree, which is trivial-phi removal done before the phi is ever made.
 - \`return 'phi(' + vals.join(',') + ')';\` otherwise describes the phi that would be made, with one operand per predecessor.
 
-The "agree" test is the \`%5\` that vanished from the chapter's VIR: \`y\`'s phi at the join would have been \`φ(5, 5)\`. With loops you would also need the "record the phi first" trick, or the recursion would chase the back edge forever.
+The "agree" test is the \`%18\` that vanished from the VIR of \`let x = 1; let y = 5; if (c) { x = 2; } return x + y;\`: \`y\`'s phi at the join would have had the same operand twice. With loops you would also need the "record the phi first" trick, or the recursion would chase the back edge forever.
 
 **Common wrong attempts.**
 
@@ -638,104 +552,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does the "static" in static single assignment mean?',
-    options: [
-      {
-        t: 'Each variable is assigned at most once while the program runs.',
-        why: 'An assignment in a loop runs many times. SSA only limits how many places in the text assign it.',
-      },
-      {
-        t: 'The variables are allocated statically, not on the stack.',
-        why: 'SSA says nothing about where values are stored.',
-      },
-      {
-        t: 'Each variable is assigned in exactly one place in the program text.',
-        correct: true,
-        why: 'That is the rule: one definition site per name, however often it executes.',
-      },
-    ],
-  },
-  {
-    q: 'Which JavaScript local does VIR keep as a binding, with `load` and `store`, instead of SSA values?',
-    options: [
-      {
-        t: 'A `let` counter used only in its own loop',
-        why: 'That is the easy case: it becomes SSA values with a phi in the loop header.',
-      },
-      {
-        t: 'A parameter that is reassigned in an `if`',
-        why: 'Reassignment is fine in SSA. The phi at the join handles it.',
-      },
-      {
-        t: 'A `const` holding a number',
-        why: 'A constant local is the easiest SSA value of all: one definition.',
-      },
-      {
-        t: 'A local that an inner function captures and changes',
-        correct: true,
-        why: 'Another function can change it whenever it is called, and this function’s CFG can’t see when that happens.',
-      },
-    ],
-  },
-  {
-    q: 'In SSA, the program does `p.x = 1; p.x = 2;`. How many versions of `p.x` does VIR make?',
-    options: [
-      {
-        t: 'Two, `x1` and `x2`',
-        why: 'Fields are not renamed: another variable could hold the same object, so VIR keeps two `field.set` instructions.',
-      },
-      {
-        t: 'None: SSA renames plain local variables, and these stay two `field.set` instructions',
-        correct: true,
-        why: 'Only locals get versions; memory such as object fields is read and written with instructions.',
-      },
-      {
-        t: 'One, because the first write is dead',
-        why: 'Deleting the first write is a later optimisation, not part of SSA.',
-      },
-    ],
-  },
-  {
-    q: 'Why can an analysis file SSA definitions in a table keyed by name, and trust the table?',
-    options: [
-      {
-        t: 'Because SSA programs have no loops',
-        why: 'They have loops; a loop’s values meet in phis.',
-      },
-      {
-        t: 'Because each name is defined in exactly one place, so no entry is ever overwritten',
-        correct: true,
-        why: 'In the original code a later assignment overwrites the entry for x, and uses get the wrong line.',
-      },
-      {
-        t: 'Because SSA names are numbers',
-        why: 'In VIR they are numbers, but the reason is single assignment, not the spelling.',
-      },
-    ],
-  },
-  {
-    q: 'A join block has three predecessors. How many operands does each of its phis have?',
-    options: [
-      {
-        t: 'Two',
-        why: 'Phis are not limited to two. They have one operand per incoming edge.',
-      },
-      {
-        t: 'As many as there are different values',
-        why: 'Even if two operands are the same name, there is still one per predecessor, in predecessor order.',
-      },
-      {
-        t: 'One',
-        why: 'A phi with one operand would just be a copy. Each edge needs its own operand.',
-      },
-      {
-        t: 'Three',
-        correct: true,
-        why: 'One operand per predecessor, so the phi knows what to pick for each edge.',
-      },
-    ],
-  },
-  {
     q: 'In VIR, `b3` has `; preds b1 b2` and starts with `%4 = phi %2, %3`. Control arrives from `b2`. What is `%4`?',
     options: [
       {
@@ -754,109 +570,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A loop header holds `%3 = phi %2, %10`, but `%10` is defined further down the listing. Is that a bug?',
-    options: [
-      {
-        t: 'Yes: a value must be defined before it is used.',
-        why: 'For ordinary uses, yes. A phi operand only has to be available at the end of its predecessor.',
-      },
-      {
-        t: 'No: `%10` arrives along the back edge, so its block has always run by then.',
-        correct: true,
-        why: 'On the first entry the phi takes `%2`. It only reads `%10` when coming round from the end of the loop body.',
-      },
-      {
-        t: 'No: phis are evaluated after the whole loop finishes.',
-        why: 'A header phi is evaluated every time control enters the header.',
-      },
-    ],
-  },
-  {
-    q: 'A loop header has `p2 = φ(p0, q2)` and `q2 = φ(q0, p2)`, with `p2 = 1` and `q2 = 2`. Control arrives along the back edge (the second operand). What do they hold now?',
-    options: [
-      {
-        t: '`p2 = 2`, `q2 = 2`',
-        why: 'That is what you get running the phis one after the other. Phis all read before any of them writes.',
-      },
-      {
-        t: '`p2 = 1`, `q2 = 2`',
-        why: 'The phis do pick new values: the second operands, read from before the edge was crossed.',
-      },
-      {
-        t: '`p2 = 2`, `q2 = 1`',
-        correct: true,
-        why: 'Each takes the old value of the other: a swap.',
-      },
-      {
-        t: '`p2 = 1`, `q2 = 1`',
-        why: 'That would be the in-order bug the other way round; neither phi sees the other’s new value.',
-      },
-    ],
-  },
-  {
-    q: 'What does a compiler do with phis before it emits machine code?',
-    options: [
-      {
-        t: 'Emits a special phi instruction the CPU understands',
-        why: 'CPUs have no such instruction; a phi depends on which edge was taken, which the CPU does not track.',
-      },
-      {
-        t: 'Replaces them with copies at the ends of the predecessor blocks, ordered so that “all at once” is kept',
-        correct: true,
-        why: 'Each predecessor copies the operand that belongs to it into the phi’s destination.',
-      },
-      {
-        t: 'Deletes them, since they compute nothing',
-        why: 'They choose a value; deleting them would lose it.',
-      },
-      {
-        t: 'Keeps only the first operand',
-        why: 'That would be wrong whenever control arrived from any other predecessor.',
-      },
-    ],
-  },
-  {
-    q: 'While lowering `x = 2;`, what does VIR’s builder do for the assignment itself?',
-    options: [
-      {
-        t: 'Emits a `store x` instruction',
-        why: '`store` is only for bindings (captured variables). An SSA local has no storage to write to.',
-      },
-      {
-        t: 'Records in the current block’s table that `x` is the `const 2`',
-        correct: true,
-        why: '`writeVariable` only updates the table. The `const 2` is the only instruction.',
-      },
-      {
-        t: 'Creates a phi for `x`',
-        why: 'Phis are made by reads at joins, not by writes.',
-      },
-    ],
-  },
-  {
-    q: 'Why is a loop header unsealed while the builder lowers the loop test?',
-    options: [
-      {
-        t: 'Its only predecessor is the entry block.',
-        why: 'If that were all, it could be sealed. The point is that one more predecessor is still coming.',
-      },
-      {
-        t: 'Phis may not be placed in loop headers.',
-        why: 'Loop headers are exactly where loop phis go.',
-      },
-      {
-        t: 'The test contains a comparison.',
-        why: 'What’s inside the block doesn’t matter. Sealing is about knowing all the incoming edges.',
-      },
-      {
-        t: 'The back edge from the end of the body hasn’t been built yet.',
-        correct: true,
-        why: 'Until the body is lowered, the header doesn’t know all its predecessors, so reads there make incomplete phis.',
-      },
-    ],
-  },
-  {
-    q: 'What does `seal(b)` do with b’s incomplete phis?',
+    q: 'In on-the-fly SSA construction (Braun et al.), what does sealing a block do with its incomplete phis?',
     options: [
       {
         t: 'Reads the variable at the end of each predecessor to fill in the operands, then tries to remove the phi as trivial',
@@ -874,7 +588,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these phis is trivial?',
+    q: 'Which of these SSA phis is trivial?',
     options: [
       {
         t: '`%3 = φ(%2, %10)`',
@@ -892,28 +606,6 @@ export const quiz = [
       {
         t: 'None: a phi with two operands is never trivial',
         why: 'The number of operands doesn’t matter. What counts is how many distinct values besides the phi itself.',
-      },
-    ],
-  },
-  {
-    q: 'How does placing phis at dominance frontiers (Building SSA) differ from Braun’s method?',
-    options: [
-      {
-        t: 'It produces programs that are not in SSA form.',
-        why: 'Both produce SSA. They differ in how they get there.',
-      },
-      {
-        t: 'It never places phis in loop headers.',
-        why: 'Loop headers are in the dominance frontier of blocks in the loop body, so they get phis.',
-      },
-      {
-        t: 'It needs no dominator tree.',
-        why: 'It is the one that does: the frontiers come from dominators.',
-      },
-      {
-        t: 'It works on a finished CFG, placing phis from the dominator tree, then renames in a second walk.',
-        correct: true,
-        why: 'Braun’s method works while the IR is still being generated, with no dominator tree.',
       },
     ],
   },

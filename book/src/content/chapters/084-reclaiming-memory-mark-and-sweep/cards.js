@@ -1,71 +1,34 @@
-// Chapter 63 cards: recall prompts, examples, exercises and quiz.
+// Chapter 84 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 84, 84.
 
 export const prompts = {
   'why-own-gc': {
-    q: 'The VM runs inside JavaScript, which has a garbage collector. Why does the VM need one of its own?',
-    a: 'The VM’s object list refers to every object it ever allocated, so V8 sees them all as reachable. Only the VM knows which ones Drip code can still use.',
-  },
-  'gc-def': {
-    q: 'When is an object garbage, for a tracing collector?',
-    a: 'When no chain of references leads to it from any root.',
+    q: 'A bytecode VM written in JavaScript links every object it allocates onto its own object list. Why does it need a garbage collector of its own, even though JavaScript has one?',
+    a: 'The object list refers to every object, so the JavaScript engine sees them all as reachable; only the VM knows which ones the guest program can still use.',
   },
   cycle: {
-    q: 'Two objects refer only to each other, and nothing else refers to either. Are they live?',
+    q: 'For a tracing collector, two objects refer only to each other, and nothing else refers to either. Are they live?',
     a: 'No. Neither is reachable from a root, so both are garbage; pointing at each other does not count.',
   },
   'roots-list': {
-    q: 'Name four of the companion VM’s roots.',
-    a: 'Any four of: the value stack up to `sp`, each frame’s closure, the open upvalues, the globals, the `"init"` string, the compiler’s unfinished functions, `extraRoots`.',
-  },
-  'sp-only': {
-    q: 'Why does `markRoots` mark the stack only up to `sp`, not the whole array?',
-    a: 'Slots above `sp` hold left-overs from calls that have returned; no code will read them again, so keeping their objects alive would keep garbage.',
-  },
-  'extra-roots': {
-    q: 'What is `heap.push(v)` for?',
-    a: 'It puts `v` on `extraRoots`, so a value that is reachable from nowhere else for a moment survives a collection until it is stored somewhere reachable.',
+    q: 'Name four kinds of root that a collector for a stack-based bytecode VM with closures and globals must mark.',
+    a: 'Any four of: the value stack up to the stack pointer, each call frame’s closure, the open upvalues, the globals (names and values), interned strings the VM itself keeps, functions the compiler is still building, and any temporary roots the VM pushes.',
   },
   'stress-mode': {
-    q: 'What does stress mode do, and why does it help?',
-    a: 'It collects on every allocation (and poisons freed objects), so a missing root fails at once instead of only when a collection happens to fall at the wrong moment.',
-  },
-  'define-native': {
-    q: 'Why does `defineNative` push the name and the native onto the value stack before storing them in the globals?',
-    a: 'Allocating the native can trigger a collection; until both are in the globals table, the stack is the only root that keeps them alive.',
-  },
-  'grey-meaning': {
-    q: 'In tri-colour marking, what does it mean for an object to be grey?',
-    a: 'It has been reached (marked), but the objects it refers to have not been traced yet. In the companion, it is on the `gray` stack.',
+    q: 'What does a collector’s stress mode (collect on every allocation, poison freed objects) do for finding bugs?',
+    a: 'A missing root fails at once, at the first allocation after the unrooted object is made, instead of only when a collection happens to fall at the wrong moment.',
   },
   'why-gray-stack': {
-    q: 'Why does the collector keep an explicit grey stack instead of marking recursively?',
+    q: 'Why does a mark phase written in JavaScript keep an explicit grey stack instead of marking recursively?',
     a: 'A long chain of references would need one host call per link and could overflow JavaScript’s call stack; an array can grow as far as it needs.',
   },
-  'blacken-list': {
-    q: 'What does blackening a Drip list mark?',
-    a: 'Every item in it (`markValue` on each of `o.items`); numbers and booleans are skipped, objects are greyed.',
-  },
   invariant: {
-    q: 'State the tri-colour invariant, and what it gives you when marking ends.',
+    q: 'State the tri-colour marking invariant, and what it gives you when marking ends.',
     a: 'No black object refers to a white one; so when nothing is grey, every white object is unreachable.',
   },
   'weak-strings': {
-    q: 'Why is the string table weak rather than a root?',
+    q: 'Why is a VM’s string-interning table held weakly rather than treated as a root?',
     a: 'It refers to every string, so as a root it would keep them all alive; and it must not keep entries for strings that sweep frees.',
-  },
-  'reset-white': {
-    q: 'Why does sweep set `isMarked = false` on every object it keeps?',
-    a: 'So the next collection starts with everything white; a stale mark would stop `markObject` tracing through that object.',
-  },
-  'grow-factor': {
-    q: 'After a collection, when does the next one start?',
-    a: 'When `bytesAllocated` passes `nextGC`, which is twice what survived, but never less than 1 MiB.',
-  },
-  'sweep-all': {
-    q: 'How does sweep find the objects to free, given that nothing refers to them?',
-    a: 'It walks the object list, which links every allocated object, and unlinks each one that is not marked.',
   },
 };
 
@@ -98,6 +61,7 @@ print n;`,
 
 export const exercises = {
   findRoots: {
+    optional: true,
     title: 'List the roots',
     prompt: 'A small model of the VM. `vm.stack` is an array and `vm.sp` the number of slots in use; `vm.frames` is an array of `{ closure }`; `vm.open` is an array of open upvalues; `vm.globals` is a `Map` from name objects to values. Objects are plain objects; numbers, booleans and `null` are not objects. Write `roots(vm)`: return an array of every **object** the VM holds directly, in this order: stack slots `0` to `sp - 1`, then each frame’s closure, then each open upvalue, then each global’s name followed by its value.',
     starter: `function roots(vm) {
@@ -402,7 +366,7 @@ test('marks are left alone', () => {
 - Resetting \`s.marked = false\` here, to be tidy, makes sweep think every string is white, so it frees live strings too.
 - Deleting marked strings instead of unmarked ones (a flipped condition) keeps garbage and forgets live strings, so the next \`copyString\` of a live string's characters makes a duplicate, and \`==\` by identity breaks.
 
-The companion's \`Table.removeWhite\` does the same over its key array, writing a tombstone into each emptied slot so later probes still work (the chapter "Finding things fast: hash tables").`,
+The companion's \`Table.removeWhite\` does the same over its key array, writing a tombstone into each emptied slot so later probes still work (*Hash tables*).`,
     wrong: [
       {
         code: `function removeWhite(table) {
@@ -419,7 +383,7 @@ The companion's \`Table.removeWhite\` does the same over its key array, writing 
 
 export const quiz = [
   {
-    q: 'Why doesn’t V8’s own collector free a Drip list that the program can no longer reach?',
+    q: 'A Drip VM written in JavaScript links every heap object onto its own object list. Why doesn’t V8’s collector free a Drip list that the Drip program can no longer reach?',
     options: [
       {
         t: 'V8 never frees arrays',
@@ -441,29 +405,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which of these is NOT one of the companion VM’s roots?',
-    options: [
-      {
-        t: 'The value stack, up to `sp`',
-        why: 'It is a root: it holds every local and temporary in use.',
-      },
-      {
-        t: 'The open upvalues',
-        why: 'They are roots: the VM searches them on every capture.',
-      },
-      {
-        t: 'The interned-string table',
-        correct: true,
-        why: 'The string table is deliberately not a root (it refers to every string); the next chapter shows how it is handled.',
-      },
-      {
-        t: 'The globals, names and values',
-        why: 'They are roots: any global can be read by name at any time.',
-      },
-    ],
-  },
-  {
-    q: 'An instance A has a field holding instance B, and B has a field holding A. Nothing else refers to either. After a collection?',
+    q: 'Under a tracing collector, instance A has a field holding instance B, and B has a field holding A. Nothing else refers to either. After a collection?',
     options: [
       {
         t: 'Both survive, because each is referred to',
@@ -485,16 +427,16 @@ export const quiz = [
     ],
   },
   {
-    q: 'A version of `defineNative` keeps the new name string only in a TypeScript variable while it allocates the native. What happens in stress mode?',
+    q: 'A VM helper written in TypeScript allocates a name string, keeps it only in a TypeScript local, then allocates a native function before storing either anywhere the collector can see. With a stress mode that collects on every allocation and poisons freed objects, what happens?',
     options: [
       {
-        t: 'The string is freed by the collection that the native’s allocation runs, and a later collection throws “use after free”',
+        t: 'The string is freed by the collection that the second allocation triggers, and the first later read of it throws a use-after-free error',
         correct: true,
-        why: 'Nothing the collector can see refers to the string, so it is swept and poisoned; the next time marking reaches it through the globals, reading it throws.',
+        why: 'Nothing the collector can see refers to the string, so it is swept and poisoned; as soon as anything reads it (marking through the globals, or the program), the poison throws.',
       },
       {
         t: 'Nothing: TypeScript variables are roots',
-        why: 'The collector only sees what `markRoots` and the heap’s own lists show it; a local variable in VM code is invisible.',
+        why: 'The collector only sees the roots the VM lists for it; a local variable in the VM’s own code is invisible.',
       },
       {
         t: 'The program prints the wrong answer silently',
@@ -507,62 +449,18 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `markRoots` mark the global names as well as the values?',
-    options: [
-      {
-        t: 'To print them in error messages',
-        why: 'Marking is about keeping objects alive, not about messages.',
-      },
-      {
-        t: 'Names are string objects on the heap; if one were freed, the globals table would hold a dead key',
-        correct: true,
-        why: 'Every heap object the VM still uses must be reachable, keys included.',
-      },
-      {
-        t: 'Because names are numbers',
-        why: 'Names are interned string objects.',
-      },
-      {
-        t: 'It does not need to; it is a precaution',
-        why: 'Once no running function’s constants mention a name, the globals table is the only thing referring to it, so it must be marked.',
-      },
-    ],
-  },
-  {
-    q: 'During marking, `blacken` takes an object off the grey stack. What does it do?',
-    options: [
-      {
-        t: 'Frees it',
-        why: 'Nothing is freed during marking; freeing is the sweep’s job.',
-      },
-      {
-        t: 'Marks every object it refers to, turning white ones grey',
-        correct: true,
-        why: 'That is tracing. Afterwards the popped object is black: reached and fully traced.',
-      },
-      {
-        t: 'Resets its mark to white',
-        why: 'Sweep resets survivors, after marking is finished.',
-      },
-      {
-        t: 'Pushes it back if it has fields',
-        why: 'Each object is traced once; the objects its fields hold are pushed instead.',
-      },
-    ],
-  },
-  {
-    q: 'A Drip list holds itself: `let a = []; push(a, a);`. What happens when the collector blackens it?',
+    q: 'A list is reachable from a global and holds itself as an element. In tri-colour marking with an “already marked? then return” check, what happens when the list is blackened?',
     options: [
       {
         t: 'Marking loops for ever',
-        why: '`markObject` returns at once for an object already marked, so the self-reference stops there.',
+        why: 'Marking returns at once for an object already marked, so the self-reference stops there.',
       },
       {
         t: 'The list is freed, because a cycle is garbage',
-        why: 'It is reachable from the global `a`, so it is live; cycles are only garbage when no root reaches them.',
+        why: 'It is reachable from a global, so it is live; cycles are only garbage when no root reaches them.',
       },
       {
-        t: '`markValue(a)` sees `isMarked` already set and does nothing more',
+        t: 'Marking the element finds the list already marked and does nothing more',
         correct: true,
         why: 'The early return is what makes cycles, including a list inside itself, safe.',
       },
@@ -573,7 +471,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the collector call `strings.removeWhite()` between marking and sweeping?',
+    q: 'A mark-sweep collector has a weak string-interning table. Why does it clear the table’s unmarked entries after marking and before sweeping?',
     options: [
       {
         t: 'To free strings faster than sweep would',
@@ -585,56 +483,12 @@ export const quiz = [
       },
       {
         t: 'Because sweep cannot see strings',
-        why: 'Strings are on the object list like every other object.',
+        why: 'Sweep visits every allocated object, strings included.',
       },
       {
         t: 'So the string table never points at a string that sweep frees',
         correct: true,
         why: 'After marking it knows which strings are live; before sweeping it can still drop the rest.',
-      },
-    ],
-  },
-  {
-    q: 'A collection has just finished with 3 MiB of objects still live. When will the next one start?',
-    options: [
-      {
-        t: 'When `bytesAllocated` passes 6 MiB',
-        correct: true,
-        why: '`nextGC` is set to twice what survived (at least 1 MiB), so it waits until the heap doubles.',
-      },
-      {
-        t: 'On the next allocation',
-        why: 'Only in stress mode. Normally the VM waits for `nextGC`.',
-      },
-      {
-        t: 'After another 1 MiB is allocated',
-        why: '1 MiB is only the floor. Here twice the live size is larger.',
-      },
-      {
-        t: 'Never, until the program ends',
-        why: 'Collections continue whenever allocation passes the threshold.',
-      },
-    ],
-  },
-  {
-    q: 'Sweep is walking the object list. `prev` is a kept object and `o` is unmarked. What happens?',
-    options: [
-      {
-        t: '`o` is reset to white and kept',
-        why: 'Only marked objects are kept; an unmarked one is garbage.',
-      },
-      {
-        t: '`o` is pushed on the grey stack',
-        why: 'Marking is over; sweep never greys anything.',
-      },
-      {
-        t: '`o` steps on to the next object, and `prev.next` is set to it, unlinking the dead one',
-        correct: true,
-        why: 'With nothing in the VM referring to it any more, V8 can reclaim it.',
-      },
-      {
-        t: 'The whole list is rebuilt',
-        why: 'Sweep changes one link per dead object, in a single walk.',
       },
     ],
   },

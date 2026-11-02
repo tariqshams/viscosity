@@ -1,31 +1,14 @@
-// Chapter 64 cards: recall prompts, examples, exercises and quiz.
+// Chapter 86 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 86, 86.
 
 export const prompts = {
-  'vm-result': {
-    q: 'In the companion’s 2026-11-02 benchmark run, how did the bytecode VM compare with the tree-walker?',
-    a: 'At best 1.3 times faster (`method_calls`), and slower on four programs: `fields`, `instantiation`, `strings` and `trees`.',
-  },
   'why-jit': {
-    q: 'Why doesn’t the usual argument for bytecode (no pointer chasing, cheap dispatch) give a big win here?',
+    q: 'A bytecode VM and a tree-walking interpreter for the same language are both written in JavaScript and run on V8. Why doesn’t the usual argument for bytecode (no pointer chasing, cheap dispatch) give the VM a big win?',
     a: 'Both engines are JavaScript run by V8, which compiles the tree-walker’s hot code to machine code just as it does the VM’s loop.',
   },
-  'per-instruction': {
-    q: 'Roughly how long does one VM instruction take in the companion, and where does most of that time go?',
-    a: 'About 20 nanoseconds; most of it is the loop around the work (counting, reading the opcode, choosing the case, reaching the stack through the VM object).',
-  },
-  rebuilt: {
-    q: 'Which two things does the VM build for itself in JavaScript that the tree-walker gets from V8?',
-    a: 'Hash tables (its own `Table` instead of V8’s built-in `Map`) and garbage collection (its own collector, on top of V8’s).',
-  },
   'poison-cost': {
-    q: 'Why was poisoning freed objects so expensive?',
+    q: 'Why does poisoning each freed object (deleting all its properties, as a debugging aid) slow a VM written in JavaScript so much on V8?',
     a: 'Deleting every property of a dead object pushes it into V8’s slow dictionary properties, and allocation-heavy programs free hundreds of thousands of objects.',
-  },
-  'measure-first': {
-    q: 'What found the VM’s biggest slowdown: a guess or a measurement?',
-    a: 'A profile. Nobody would have guessed that a debugging safety net was the bottleneck.',
   },
   'dispatch-cost': {
     q: 'What does a superinstruction save each time it runs?',
@@ -35,14 +18,6 @@ export const prompts = {
     q: 'Why must no jump land inside a fused superinstruction?',
     a: 'The middle instructions no longer exist as separate opcodes, so there is nothing valid to land on.',
   },
-  'inc-local': {
-    q: 'Which five instructions does `inc.local s` replace?',
-    a: '`load.local s`, `const 1`, `add`, `store.local s`, `pop`.',
-  },
-  'invoke-fused': {
-    q: 'In what sense is `invoke` a superinstruction?',
-    a: 'It does the work of `get.prop` followed by `call` in one instruction, and skips the bound method as well.',
-  },
   'nan-room': {
     q: 'Why is there room inside the NaNs of a double to store other values?',
     a: 'Any double with an all-ones exponent and a non-zero fraction is a NaN, which is a vast number of bit patterns, and arithmetic only produces one or two of them.',
@@ -51,14 +26,6 @@ export const prompts = {
     q: 'Why must a NaN-boxing VM store every real NaN in one canonical form?',
     a: 'A NaN that happened to carry the “boxed” bits would be misread as none, a boolean or an object.',
   },
-  'nan-js-payload': {
-    q: 'A NaN-boxing VM written in JavaScript cannot put a pointer in a double. What would its object payload be instead?',
-    a: 'An index into an array that holds the objects.',
-  },
-  'nan-test': {
-    q: 'In this chapter’s scheme, how do you tell whether a slot holds a number?',
-    a: 'Mask the high word with `BOX`: if the result is not `BOX`, it is a number.',
-  },
   'gen-hypothesis': {
     q: 'What is the generational hypothesis?',
     a: 'Most objects die young: they become unreachable soon after they are allocated.',
@@ -66,14 +33,6 @@ export const prompts = {
   'write-barrier': {
     q: 'Why does a generational collector need a write barrier?',
     a: 'A minor collection does not trace old objects, so it must be told which old objects point at young ones; the barrier records them, as extra roots.',
-  },
-  'trees-exception': {
-    q: 'In the companion’s `trees` benchmark, about half the objects survive each collection. What does that mean for a generational collector?',
-    a: 'Less benefit: many objects live long, get promoted, and the young generation is not mostly garbage. The hypothesis is about most programs, not all.',
-  },
-  'number-store': {
-    q: 'Why does a write barrier ignore a store like `o.f = 3`?',
-    a: 'A number is not a reference to an object, so it cannot create an old-to-young pointer.',
   },
 };
 
@@ -348,6 +307,7 @@ test('a loop', () => {
     ],
   },
   nanBox: {
+    optional: true,
     title: 'Box and unbox',
     prompt: 'Slot `i` of `f64` is one value; its high 32-bit word is `u32[2 * i + 1]` and its low word `u32[2 * i]`. Write `setValue(i, v)` for a number, `null`, `true` or `false`: store numbers as doubles, but store **every** NaN as the canonical bits (high `0x7ff80000`, low 0); store the others with low word 0 and high word `BOX | tag`. Write `getValue(i)` to turn the bits back into the same JavaScript value.',
     starter: `const f64 = new Float64Array(8);
@@ -582,51 +542,7 @@ test('numbers and null are not', () => {
 
 export const quiz = [
   {
-    q: 'What did the companion’s 2026-11-02 benchmark run show?',
-    options: [
-      {
-        t: 'The VM was several times faster on every program',
-        why: 'Its best was 1.3 times faster, on `method_calls`.',
-      },
-      {
-        t: 'The VM was slower on every program',
-        why: 'It was faster on six of the ten programs.',
-      },
-      {
-        t: 'The VM was at most about 1.3 times faster, and slower on four programs',
-        correct: true,
-        why: 'Faster on calls and loops, slower on `fields`, `instantiation`, `strings` and `trees`.',
-      },
-      {
-        t: 'The two engines took exactly the same time',
-        why: 'The times differ from program to program, in both directions.',
-      },
-    ],
-  },
-  {
-    q: 'Why are `fields` and `instantiation` slower on the VM than on the tree-walker?',
-    options: [
-      {
-        t: 'The VM keeps fields in its own hash table written in JavaScript, and runs its own collector on top of V8’s',
-        correct: true,
-        why: 'The tree-walker uses V8’s built-in `Map` and only V8’s collector; a copy of the VM with fields in a `Map` was measurably faster on both.',
-      },
-      {
-        t: 'The VM checks types and the tree-walker does not',
-        why: 'Both check types: Drip’s runtime errors are the same in both engines.',
-      },
-      {
-        t: 'The tree-walker caches every field read',
-        why: 'It does no caching of its own; it borrows V8’s fast `Map`.',
-      },
-      {
-        t: 'Bytecode is always slower for objects',
-        why: 'Not in general; it depends on what the instructions do and on the host.',
-      },
-    ],
-  },
-  {
-    q: 'Removing the instruction counter (`instructionsExecuted++`) from `run` gave 1.03 times on `fib`. What should you conclude?',
+    q: 'On a shared machine, removing an instruction counter from a VM’s dispatch loop makes a benchmark’s best of nine runs 1.03 times faster. What should you conclude?',
     options: [
       {
         t: 'The counter costs 3 per cent, so remove it',
@@ -648,7 +564,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'A loop runs three million passes. Without `inc.local` each pass is 17 instructions; with it, 13. How many dispatches does `inc.local` save in all?',
+    q: 'A loop runs three million passes. A superinstruction replaces a five-instruction sequence that runs once per pass. How many dispatches does it save in all?',
     options: [
       {
         t: '3 million',
@@ -665,51 +581,7 @@ export const quiz = [
       {
         t: '12 million',
         correct: true,
-        why: '(5 − 1) × 3,000,000: exactly 51,000,015 − 39,000,015.',
-      },
-    ],
-  },
-  {
-    q: 'Why must a superinstruction pass check that no jump lands inside the sequence it fuses?',
-    options: [
-      {
-        t: 'Jumps are slower to superinstructions',
-        why: 'Speed is not the issue; correctness is.',
-      },
-      {
-        t: 'A jump into the middle would land on what used to be the second instruction, which no longer exists',
-        correct: true,
-        why: 'The fused opcode does the whole sequence; there is no way to start halfway through it.',
-      },
-      {
-        t: 'Superinstructions cannot be jumped to at all',
-        why: 'A jump to the *start* is fine: it runs the whole fused sequence.',
-      },
-      {
-        t: 'The disassembler could not print it',
-        why: 'The disassembler is not affected; the code’s meaning is.',
-      },
-    ],
-  },
-  {
-    q: 'In this chapter’s scheme, how do you tell whether a 64-bit slot holds a number?',
-    options: [
-      {
-        t: 'Call `Number.isNaN` on it',
-        why: 'Every boxed value is a NaN, but so is the number NaN, so that test cannot tell them apart.',
-      },
-      {
-        t: 'Check whether all the `BOX` bits are set in the high word; if not, it is a number',
-        correct: true,
-        why: 'Only boxed values have the all-ones exponent, the quiet bit and the box bit together.',
-      },
-      {
-        t: 'Check whether the low word is zero',
-        why: 'Plenty of numbers have a zero low word, 1.5 for one.',
-      },
-      {
-        t: 'Look up its type in a side table',
-        why: 'The point of NaN-boxing is that the value carries its own type.',
+        why: '(5 − 1) × 3,000,000: each use still costs one dispatch for the superinstruction itself.',
       },
     ],
   },
@@ -736,29 +608,29 @@ export const quiz = [
     ],
   },
   {
-    q: 'In counts made for this chapter, `instantiation` kept 0.1% of the objects at each collection and `trees` kept 54%. What does that say?',
+    q: 'In a mark-sweep VM, one benchmark keeps 0.1% of the objects present at each collection and another keeps 54%. What does that say about the generational hypothesis?',
     options: [
       {
         t: 'The collector is broken on `trees`',
-        why: '`trees` really does keep its trees alive; the collector is right to keep them.',
+        why: 'A program can really keep many objects alive; the collector is right to keep them.',
       },
       {
-        t: 'Generational collection would help `trees` most',
-        why: 'It helps most where objects die young; `trees` keeps half of them.',
+        t: 'Generational collection would help the second program most',
+        why: 'It helps most where objects die young; the second program keeps half of them.',
       },
       {
         t: 'All programs keep about the same share',
         why: 'The two differ by a factor of hundreds.',
       },
       {
-        t: 'Most objects die young in `instantiation`, as the generational hypothesis says, while `trees` is an exception',
+        t: 'Most objects die young in the first, as the generational hypothesis says, while the second is an exception',
         correct: true,
         why: 'The hypothesis describes most programs, not every one.',
       },
     ],
   },
   {
-    q: 'Which store needs a write barrier to record something?',
+    q: 'In a generational collector, which store needs the write barrier to record something?',
     options: [
       {
         t: 'Storing a young list into a field of an old instance',
@@ -776,28 +648,6 @@ export const quiz = [
       {
         t: 'Storing an old object into a global',
         why: 'Globals are roots, and an old object is not collected by a minor collection anyway.',
-      },
-    ],
-  },
-  {
-    q: 'What does a minor collection treat as its roots?',
-    options: [
-      {
-        t: 'Only the stack',
-        why: 'It also needs the other roots, and the remembered old objects.',
-      },
-      {
-        t: 'Every old object',
-        why: 'That would make it as costly as a full collection.',
-      },
-      {
-        t: 'The usual roots, plus the old objects in the remembered set',
-        correct: true,
-        why: 'Those are exactly the old objects that might keep a young one alive.',
-      },
-      {
-        t: 'Nothing: it frees every young object',
-        why: 'Young objects that are still reachable must survive, and be promoted later.',
       },
     ],
   },

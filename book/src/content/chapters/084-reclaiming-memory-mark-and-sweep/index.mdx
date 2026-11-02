@@ -6,29 +6,22 @@ title: 'Reclaiming memory: mark and sweep'
 tagline: 'Every list, string, closure and instance the VM makes goes onto one list, and nothing would ever come off it; a collector frees what the program can no longer reach, and the whole art is knowing where reaching starts.'
 objectives:
   - Explain why a VM written in JavaScript still needs a garbage collector of its own.
-  - Define garbage by reachability, and read the definition in its formal form.
-  - List the VM’s roots, and say why each one has to be there.
-  - Explain how a missing root hides, and how stress mode and poisoning make it fail at once.
-  - Trace tri-colour marking with a grey stack, and explain why the stack replaces recursion.
-  - Say what blackening each kind of object marks, lists and instances included.
-  - Walk the sweep over the object list, and explain why the string table must be weak.
-  - Explain when the VM collects, and why the threshold grows with what survived.
+  - Define garbage by reachability from the roots, and list the VM’s roots.
+  - Explain how a missing root hides, and how stress mode makes it fail at once.
+  - Trace tri-colour marking with a grey stack, and say why the stack replaces recursion.
+  - Explain the sweep, the weak string table and when the VM collects.
 introduces: [garbage-collection, roots, tricolor, mark-sweep]
-uses: [heap-object, object-list, interning, hash-table, global-table, call-frame, stack-slot, stack-machine, virtual-machine, upvalue, open-upvalue, closed-upvalue, closure, single-pass-compiler, native-function, vm-list, drip, stack-and-heap, memory, reference, pointer, identity, object, array, property, test, throw, recursion, call-stack, stack-overflow]
+uses: [heap-object, object-list, interning, hash-table, global-table, call-frame, stack-slot, stack-machine, virtual-machine, upvalue, open-upvalue, closed-upvalue, closure, native-function, vm-list, drip, stack-and-heap, memory, reference, object, array, test, recursion, call-stack, stack-overflow]
 sources: [v8-trash-talk, v8-concurrent-marking]
 ---
 import RootsFigure from '../../../components/diagrams/ch084/RootsFigure';
 import MissingRootSteps from '../../../components/diagrams/ch084/MissingRootSteps';
 import GcSteps from '../../../components/diagrams/ch084/GcSteps';
-import SweepSteps from '../../../components/diagrams/ch084/SweepSteps';
-
-{/* ── merge: from old chapter 84, Reclaiming memory: mark and sweep ── */}
 
 ## A heap that would only grow
 
-Since the chapter "Objects that live on the heap", every object the VM
-makes is linked onto one list, the **object list**, by `allocate` in
-`heap.ts`:
+Every object the VM makes is linked onto one list, the **object list**
+(*Heap objects and lists in the VM*), by `allocate` in `heap.ts`:
 
 ```ts
 private allocate<T extends Obj>(o: T): T {
@@ -42,58 +35,35 @@ private allocate<T extends Obj>(o: T): T {
 }
 ```
 
-The last three lines link the new object onto the front of the list;
-the `if` (wrapped here) is this chapter's subject. Without it, nothing
-would ever come off the list. Run this:
+The last lines link the new object onto the list; the `if` is the
+subject of this chapter. Run this:
 
 <Run id="garbage" />
 
-Every pass makes a new two-element list, and once the pass ends nothing
-can reach it again; however, the object list still links it, so without
-a collector the VM would keep all 100,000 of them. With it, in a run I
-did for this chapter, the VM collected three times and freed 98,259 of
-them (the rest were still waiting for the next collection when the
-program ended).
-
-You may wonder why this matters, since the VM is written in JavaScript
-and JavaScript collects its own garbage. The catch is that V8 frees an
-object only when nothing refers to it, and the object list refers to
-*every* object. Only the VM knows which of them Drip code can still
-use, so the VM needs its own collector, over its own heap.
+Every pass makes a two-element list that nothing can reach once the pass
+ends, yet the object list still links it; without a collector the VM
+would keep all 100,000 of them. You may wonder why this
+matters, since JavaScript collects its own garbage; the catch is that V8
+frees an object only when nothing refers to it, and the object list
+refers to *every* object. Only the VM knows which of them Drip code can
+still use, so it needs a collector of its own, over its own heap.
 
 <Prompts ids={['why-own-gc']} />
 
 ## Reachable from the roots
-
-A Drip program can only get at an object by starting from something it
-holds directly (a value on the stack, a global, a running function) and
-following references from there: a field, a list element, an upvalue, a
-constant.
 
 <Analogy title="balloons on strings">
 Picture every object as a balloon, tied to other balloons with string,
 and a few balloons tied to your wrist. Anything connected to your wrist,
 however long the chain, stays; cut the rest loose and they drift away,
 including two balloons tied only to each other.
-<span slot="breaks">Balloons drift away on their own; garbage just sits
-there, taking memory, until the collector comes round and finds it.
-And a balloon can be cut free by accident, while an object is only
-garbage when no chain leads to it at all.</span>
+<span slot="breaks">Balloons drift away on their own; garbage sits
+there, taking memory, until the collector comes round and finds it.</span>
 </Analogy>
 
-<Analogy extra title="an address book">
-You can visit anyone whose address is in your address book, and anyone
-whose address is in *their* book, and so on. A person no chain of books
-leads to is someone you can never visit again, so as far as you are
-concerned their house could be let to someone else.
-<span slot="breaks">In real life you might bump into a lost friend in
-the street; a program has no street. If no chain of references leads to
-an object, no code can ever touch it again, which is why freeing it is
-safe.</span>
-</Analogy>
-
-The places reaching starts from are the **roots**, and this is the
-picture the rest of this chapter (and the next) fills in:
+A Drip program can only get at an object by starting from something it
+holds directly (a stack value, a global, a running function) and
+following references; those starting points are the **roots**:
 
 <Figure caption="The VM's roots, and what they reach." takeaway="An object is live if some chain of references leads to it from a root; everything else is garbage, even objects that point at each other.">
   <RootsFigure />
@@ -107,39 +77,51 @@ object is **live** if some chain of references leads to it from a root.
 Every other object is **garbage**, even if other garbage refers to it.
 </Callout>
 
-<Examples of="garbage-collection">
+In the companion VM the roots are listed by `markRoots` in `vm.ts`
+(wrapped):
 
-```text
-let xs = [1, 2];
-xs = [3];   # [1, 2] is now garbage
+```ts
+for (let i = 0; i < this.sp; i++)
+  mark(this.stack[i]);
+for (const f of this.frames)
+  mark(f.closure);
+for (let u = this.openUpvalues; u;
+     u = u.nextOpen) mark(u);
+this.globals.forEach((k, v) => {
+  mark(k); mark(v);
+});
+mark(this.initString);
 ```
+
+<Examples of="garbage-collection roots">
 
 ```text
 fn f() {
   let a = [];
   let b = [a];
-  push(a, b);   # now each holds the other
+  push(a, b);   # each holds the other
 }
 f();   # after the call, both are garbage
 ```
 
-```text
-program        collections  objects freed
-closures                 4        130,936
-instantiation           27        589,275
-trees                   10        276,486
-```
-
 </Examples>
 
-The first is the smallest piece of garbage there is: once `xs` holds the
-new list, nothing refers to `[1, 2]`. In the second, `a` and `b` refer
-to each other, but once `f` returns no root leads to either, so both
-are garbage despite the references between them. The third is from runs
-I did for this chapter, of three of the companion's benchmark programs
-(the chapter "Measuring and speeding up the VM" says more about them): the collector
-ran a handful of times and freed hundreds of thousands of objects,
-which is the normal life of a program that allocates as it goes.
+While `f` runs, `a` and `b` sit in stack slots below `sp`, so the first
+loop reaches both. Once `f` returns, `sp` drops below their slots (what
+is above `sp` is left-overs no code will read), nothing else leads to
+them, and both are garbage even though each refers to the other.
+
+<More title="More: why each of the other roots is there">
+
+A running frame's closure owns the constants being used; open upvalues
+sit on a list the next capture will search; globals can be read by name
+at any time, so both the name strings and the values are marked; and
+`initString` is the interned `"init"` that every `new` looks up.
+`Heap.collect` adds the functions the compiler is still building and
+`extraRoots`, a small stack filled by `heap.push(v)` for a value that is
+briefly reachable from nowhere else.
+
+</More>
 
 <Formal title="Live objects">
 
@@ -151,238 +133,52 @@ Live = the smallest set L such that
 
 <span slot="read">The live objects are the smallest collection that
 contains every root and is closed under following references: whenever
-an object o is live and o refers to p, p is live too. "Smallest" is what
-leaves out two objects that only refer to each other.</span>
+o is live and refers to p, p is live too. "Smallest" is what leaves out
+two objects that only refer to each other.</span>
 </Formal>
 
-<Prompts ids={['gc-def', 'cycle']} />
-
-## The VM's roots
-
-Here they are, from `vm.ts`:
-
-```ts
-markRoots(mark: (v: Value) => void) {
-  for (let i = 0; i < this.sp; i++)
-    mark(this.stack[i]);
-  for (const f of this.frames)
-    mark(f.closure);
-  for (let u = this.openUpvalues; u;
-       u = u.nextOpen) mark(u);
-  this.globals.forEach((k, v) => {
-    mark(k);
-    mark(v);
-  });
-  mark(this.initString);
-}
-```
-
-(Return type left out, long lines wrapped.) The
-stack holds every local and temporary, but only up to `sp`: the slots
-above it are left-overs from calls that have returned. Each frame's
-closure is running, so its constants and upvalues must stay. Open
-upvalues sit on the VM's own list, which a later capture will search,
-so they must stay valid even if no closure holds one any more. Globals
-are reachable by name, so both the names and the values are marked.
-`initString` is the interned `"init"`, which the chapter "Objects and
-method calls in the VM" uses on every `new`.
-
-`Heap.collect` adds two more kinds. `compilerRoots` holds the functions
-the compiler is still building, which nothing in the VM points at yet;
-and `extraRoots`, filled by `heap.push(v)` and emptied by `heap.pop()`,
-is for a value that is briefly reachable from nowhere else.
-
-<Examples of="roots">
-
-```ts
-// Op.Add, joining two strings
-const s = this.heap.copyString(
-  a.chars + b.chars);
-// a and b stay on the stack: safe from GC
-```
-
-```ts
-// copyString, after allocating s
-this.push(s);
-this.strings.set(s, null);
-this.pop();
-```
-
-```ts
-// defineNative
-this.push(this.heap.copyString(name));
-this.push(this.heap.newNative(
-  name, arity, fn));
-```
-
-</Examples>
-
-The first is the `add` instruction joining two strings: `copyString`
-allocates, so a collection may run inside it, and the two strings being
-joined are still on the stack (they are only popped afterwards), which
-keeps them alive. The second is inside `copyString` itself: the new
-string sits in `extraRoots` until it is in the string table. (Nothing
-between those lines allocates a heap object today, so this one is a
-precaution, keeping the rule "a new object is reachable before anything
-else can allocate" true if the table ever changes.) The third is
-the realistic one, and the next section is about it: `defineNative`
-pushes the name and the native function onto the *value stack* (a root)
-as soon as each exists, and pops them only once both are safely in the
-globals table.
-
-<Callout kind="definition">
-The **roots** of the companion VM are the value stack up to `sp`, each
-frame's closure, the open upvalues, the globals (names and values), the
-interned `"init"` string, the functions the compiler is building, and
-the heap's `extraRoots` stack. Any object the VM holds only in a
-TypeScript variable is *not* a root, and is invisible to the collector.
-</Callout>
-
-<Prompts ids={['roots-list', 'sp-only', 'extra-roots']} />
+<Prompts ids={['cycle', 'roots-list']} />
 
 ## A missing root, caught
 
-A forgotten root is the classic collector bug, and it hides well. Here
-is a variant of `defineNative` written for this chapter, which keeps
-its two new objects in TypeScript variables instead:
+An object the VM holds only in a TypeScript variable is not a root, and
+is invisible to the collector; forgetting this is the classic collector
+bug, and it hides well. Here is a broken variant of `defineNative`:
 
 <MissingRootSteps client:visible />
 
-Run normally, that variant works: collections are rare, and none
-happens to fall between the two allocations. So the heap has a
-**stress mode**, `new VM({ stressGC: true })`, which collects on
-*every* allocation. In JavaScript a freed object does not vanish while
-something still refers to it, so stress mode also **poisons** each
-freed object: it deletes its fields and makes reading `type` throw. In
-a copy of the VM with the broken `defineNative`, the program
-`print len([1, 2]);` prints `2` normally, and under stress mode throws
-`use after free: a string object was collected while still in use`
-before it can print anything. The companion's tests run a sample of the
-corpus under stress mode for exactly this reason.
+Run normally, that variant works, because collections are rare. So the
+heap has a **stress mode**, `new VM({ stressGC: true })`, which collects
+on *every* allocation and **poisons** each freed object (makes reading
+it throw). With the broken `defineNative`, `print len([1, 2]);` prints
+`2` normally and, under stress mode, throws `use after free: a string
+object was collected while still in use`. The real `defineNative`
+pushes each new object onto the value stack (a root) as soon as it
+exists.
 
-<Prompts ids={['stress-mode', 'define-native']} />
+<Prompts ids={['stress-mode']} />
 
-<Callout kind="engine" label="Under the hood">
-V8's own collector starts from roots in the same way: its major
-collector marks every object reachable from a root set that includes
-the execution stack and the global object, and treats everything it
-did not reach as garbage<Cite id="v8-trash-talk" />. A V8 developer
-never writes `markRoots` by hand, because the engine finds the stack's
-references itself; a VM in C or TypeScript has to list its roots
-explicitly, which is why a missing one is a bug you can write.
-</Callout>
+## Marking with a grey stack
 
-## Your turn
-
-<Exercise id="findRoots" />
-
-## What you learned
-
-- **Garbage collection** frees objects nothing can reach. The VM needs
-  its own collector because its object list keeps every object alive
-  as far as V8 can tell.
-- An object is live if a chain of references leads to it from a
-  **root**: the stack up to `sp`, frames' closures, open upvalues,
-  globals, the `"init"` string, the compiler's functions and
-  `extraRoots`.
-- An object held only in a TypeScript variable is not reachable; stress
-  mode and poisoning turn that mistake into an immediate error.
-
-Next: how the collector actually finds every live object, and frees
-the rest.
-
-
-{/* ── merge: from old chapter 84, Tracing and sweeping: white, grey and black ── */}
-
-## Finding everything the roots reach
-
-The chapter "Reclaiming memory: mark and sweep" said which objects are
-live (those a chain of references leads to from a root) and listed the
-VM's roots. Now the collector has to *find* them all, and the obvious
-way is recursion: mark an object, then mark everything it refers to,
-and so on. However, a Drip program can build a chain as long as it
-likes:
-
-```text
-let head = none;
-for i in 0..200000 {
-  head = [i, head];
-}
-```
-
-Each list holds the one before it, so a recursive marker would make one
-host call per link, 200,000 deep, and overflow JavaScript's own call
-stack (the chapter "Recursion and the call stack" showed what that
-looks like). So the collector keeps its own pile of work instead.
-
-<Analogy title="a to-do list of phone calls">
-You are trying to reach everyone in a club. You start with the few
-numbers you have and write them on a to-do list; each time you phone
-someone, you cross them off and ask for every number *they* have,
-adding any name you have not seen before. When the list is empty you
-have reached everyone you can, and anyone you never heard of is out of
-reach.
-<span slot="breaks">People forget numbers and lines are busy; the
-collector asks every object exactly once and always gets a complete
-answer, because an object's references are all written in it.</span>
-</Analogy>
-
-<Analogy extra title="chalk marks in a cave">
-Exploring a cave, you chalk a cross at the mouth of every tunnel you
-notice (grey: seen, not yet walked), and a tick once you have walked it
-to the end and chalked its side tunnels (black). Tunnels with no mark
-when you run out of crosses are ones you never found (white).
-<span slot="breaks">A cave explorer can get lost or walk a tunnel
-twice; the collector's marks are exact, and the `isMarked` check means
-nothing is ever walked twice, even when tunnels loop back.</span>
-</Analogy>
-
-The pile is an array called `gray`, and marking an object pushes it
-there:
+The obvious way to find every live object is recursion: mark an object,
+then everything it refers to, and so on. However, a Drip program can
+build a chain as long as it likes (`head = [i, head]` in a loop, 200,000
+times), and a recursive marker would make one host call per link and
+overflow JavaScript's own call stack. So the collector keeps its own
+pile of work in an array called `gray`:
 
 ```ts
 private markObject(o: Obj | null) {
   if (!o || o.isMarked) return;
   o.isMarked = true;
-  this.gray.push(o); // grey: reached, ...
+  this.gray.push(o);
 }
 ```
 
-(The comment is shortened.) The early return does two jobs: nothing is
-traced twice, and a cycle cannot send marking round for ever. Then
-`collect` pops grey objects one at a time and **blackens** each one,
-which means marking everything it refers to; what that is depends on
-its type:
-
-```ts
-case 'string': case 'native': return;
-case 'upvalue':
-  this.markValue(o.closed); return;
-case 'list':
-  for (const v of o.items)
-    this.markValue(v);
-  return;
-case 'function':
-  this.markObject(o.name);
-  for (const c of o.chunk.constants)
-    this.markValue(c);
-  return;
-case 'closure':
-  this.markObject(o.fn);
-  for (const u of o.upvalues)
-    this.markObject(u);
-  return;
-```
-
-(The first half of `blacken`'s `switch`, wrapped.) Strings and natives
-refer to no other heap object. A closed upvalue keeps its value alive.
-A **list** keeps every item alive, which is why the long chain above is
-fully marked, one list at a time, with the pile never more than a
-couple of entries deep. A function keeps its name and its constants
-(strings, numbers and the functions nested inside it). A closure keeps
-its function and its upvalues. The other half does the same for a class
-(its name and its method table), an instance (its class and its field
-table) and a bound method (its receiver and its method).
+The early return means nothing is traced twice, even in a cycle. Then `collect` pops grey objects one at a time
+and **blackens** each one, marking everything it refers to (a list's
+items, a closure's function and upvalues, an instance's class and
+fields, and so on).
 
 <GcSteps client:visible />
 
@@ -392,87 +188,45 @@ table) and a bound method (its receiver and its method).
 references not yet traced; in the companion, the objects on the `gray`
 stack. **Black**: reached and fully traced. Marking makes the roots
 grey, then blackens grey objects one at a time, greying every white
-object they refer to, and ends when nothing is grey. Whatever is still
-white is unreachable.
+object they refer to, and ends when nothing is grey. The invariant that
+makes this correct: no black object ever refers to a white one, so when
+nothing is grey, whatever is still white is unreachable.
 </Callout>
 
-<Formal title="The tri-colour invariant">
-
-```text
-no black object refers to a white one
-grey = ∅  ⇒  white = garbage
-```
-
-<span slot="read">At every moment of marking, no black object refers
-directly to a white one, because blackening greys everything an object
-refers to before it counts as black. So when there are no grey objects
-left, every object a live one refers to is marked, and the white ones
-are exactly the unreachable ones.</span>
-</Formal>
-
 <Examples of="tricolor">
-
-```text
-let xs = [[1], [2]];
-# xs's list, then [1] and [2]: grey, black
-```
 
 ```text
 let a = [];
 push(a, a);   # a list that holds itself
 ```
 
-```text
-class Box { init(f) { self.f = f; } }
-let b = new Box(fn () { return 1; });
-```
-
 </Examples>
 
-In the first, a global holds the outer list, so it is greyed from the
-root; blackening it greys the two inner lists, and blackening those
-finds only numbers, which are not objects. In the second, the list
-refers to itself: blackening it calls `markValue` on itself, sees
-`isMarked` already set, and stops. The third is the realistic chain:
-the global `b` greys the instance; the instance greys its class `Box`
-and the closure in field `f`; the closure greys its function, and the
-function greys its constants, until the pile is empty.
+The global `a` greys the list; blackening it marks its one item, the
+list itself, which is already marked, so marking stops there with the
+list black and alive.
 
-<Prompts ids={['grey-meaning', 'why-gray-stack', 'blacken-list', 'invariant']} />
+<Prompts ids={['why-gray-stack', 'invariant']} />
 
-## Sweeping, and a weak table
+## Sweeping, a weak table, and when to collect
 
-With marking done, **sweep** walks the object list once. Marked objects
-stay, and are reset to white for the next collection; unmarked ones are
-unlinked:
+With marking done, **sweep** walks the object list once: marked objects
+stay and are reset to white, and unmarked ones are unlinked, so V8 can
+reclaim them. The string table of *String interning and globals by
+name* needs care: as a root it would keep every string alive, and an
+entry for a freed string would let `copyString` hand out a dead one. So
+it is **weak**: `strings.removeWhite()` drops entries for unmarked
+strings. Finally, `allocate` collects only once `bytesAllocated` passes
+`nextGC`, which each sweep sets to twice what survived (at least 1 MiB),
+so a large live heap is not re-marked over and over.
 
-<SweepSteps client:visible />
-
-Once an object is unlinked, nothing in the VM refers to it, and V8's
-own collector can reclaim its memory whenever it likes.
-
-One table needs care: the string table of the chapter "String
-interning". It refers to every string, so if it were a root no string
-would ever die; and if it kept an entry for a string that sweep frees,
-`copyString` could later hand out a dead string. So it is **weak**: it
-does not keep its strings alive, and between marking and sweeping
-`collect` calls `strings.removeWhite()`, which turns every entry whose
-string is unmarked into a tombstone.
-
-Last comes the timing. Collecting costs time, so `allocate` only
-collects once `bytesAllocated` passes `nextGC`, and every sweep sets
-the next threshold from what survived:
-
-```ts
-this.nextGC = Math.max(1024 * 1024,
-  this.bytesAllocated *
-    GC_HEAP_GROW_FACTOR);
-```
-
-`GC_HEAP_GROW_FACTOR` is 2, so the next collection comes when the heap
-has doubled, but never below 1 MiB. A program with a large live heap
-therefore collects less often, instead of re-marking the same big heap
-over and over.
+<Callout kind="definition">
+**Mark-sweep** collection has two phases. **Mark** finds every object
+reachable from the roots. **Sweep** visits every allocated object (here
+by walking the object list) and frees the unmarked ones, resetting the
+marked ones for next time. A **weak** table's entries are removed, after
+marking, when their keys are unmarked.
+</Callout>
 
 <Examples of="mark-sweep">
 
@@ -485,63 +239,58 @@ collect():
   then nextGC = max(1 MiB, 2 × survivors)
 ```
 
+</Examples>
+
+That is the whole of `Heap.collect`, in order: step 3 comes after
+marking, so the table knows which strings are live, and before sweeping,
+so it never points at a freed one.
+
+<Prompts ids={['weak-strings']} />
+
+<More title="More: V8's marker, a realistic chain, and the reason for extraRoots">
+
+V8 marks with the same three colours, kept as mark bits, and a marking
+worklist plays the part of the grey stack; because it marks *while
+JavaScript runs*, it also needs a write barrier, so that a black object
+cannot gain a reference to a white one behind the marker's
+back<Cite id="v8-concurrent-marking" />, and it compacts fragmented
+pages after sweeping<Cite id="v8-trash-talk" />. The deep dives *V8’s
+garbage collector* and *Incremental and concurrent collection* go there;
+the companion stops the program while it collects, so it needs no
+barrier.
+
 ```text
-survived 300 KiB -> next at 1 MiB
-survived 2 MiB   -> next at 4 MiB
+class Box { init(f) { self.f = f; } }
+let b = new Box(fn () { return 1; });
 ```
+
+The global `b` greys the instance; blackening the instance greys its
+class `Box` and the closure in field `f`; the closure greys its
+function, and the function greys its constants, until the pile is
+empty. Inside `copyString`, the new string is pushed on `extraRoots`
+until it is in the string table: nothing between those lines allocates
+today, so it is a precaution keeping the rule "a new object is reachable
+before anything else can allocate" true if the table ever changes.
 
 <Run id="chain" />
 
-</Examples>
+The runnable example builds the 200,000-list chain and walks it, so the
+collector has to mark through every link while it runs.
 
-The first is the whole of `Heap.collect`, in order; step 3 must come
-after marking (so the table knows which strings are live) and before
-sweeping (so it never points at a freed one). The second shows the
-growth rule with sizes as the heap counts them (a rough fixed size per
-object): a small survivor set leaves the 1 MiB floor in charge, a large
-one pushes the next collection further away. The runnable one builds
-the 200,000-list chain from the start of the chapter and walks it, so
-the collector has to mark through every link while it runs.
-
-<Callout kind="definition">
-**Mark-sweep** collection has two phases. **Mark** finds every object
-reachable from the roots. **Sweep** visits every allocated object (here
-by walking the object list) and frees the unmarked ones, resetting the
-marked ones for next time. A **weak** table, like the string table,
-does not keep its entries alive: entries for unmarked keys are removed
-after marking and before sweeping.
-</Callout>
-
-<Prompts ids={['weak-strings', 'reset-white', 'grow-factor', 'sweep-all']} />
-
-<Callout kind="engine" label="Under the hood">
-V8 marks with the same three colours, kept as two mark bits per object,
-and a marking worklist plays the part of the grey stack; because it
-marks *while JavaScript runs*, it also needs a write barrier, so that a
-black object cannot gain a reference to a white one behind the
-marker's back<Cite id="v8-concurrent-marking" />. After marking, it
-sweeps the gaps left by dead objects into free lists for reuse, and
-compacts some fragmented pages<Cite id="v8-trash-talk" />. The
-companion stops the program while it collects, so it needs no barrier.
-</Callout>
+</More>
 
 ## Your turn
 
 <Exercise id="toyGc" />
 
+Extra practice:
+
+<Exercise id="findRoots" />
+
 <Exercise id="weakTable" />
 
-## What you learned
-
-- Marking keeps a **grey stack** instead of recursing, so a 200,000-link
-  chain needs no deep host calls, and the `isMarked` check stops cycles.
-- **Blackening** marks what an object refers to: a list's items, a
-  function's constants, a closure's function and upvalues, an
-  instance's class and fields.
-- **Tri-colour** invariant: no black object refers to a white one, so
-  when nothing is grey, white means garbage.
-- **Sweep** walks the object list once, unlinking white objects and
-  resetting black ones. The string table is weak, and the next
-  collection comes when the heap has doubled (at least 1 MiB).
-
 <Quiz />
+
+Next: *Classes and method calls in the VM*, where classes, instances and
+bound methods become heap objects too, and a method call learns to skip
+making one.
