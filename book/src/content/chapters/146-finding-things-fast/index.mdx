@@ -1,0 +1,286 @@
+---
+n: 146
+day: 37
+part: IV
+title: 'Finding things fast: hash tables'
+tagline: 'The chapter on hashing promised that a Map finds things without searching. Here you build the first half of the machine that does it: a hash function, and an array it points into.'
+objectives:
+  - Implement the FNV-1a hash function with correct 32-bit arithmetic in JavaScript.
+  - Explain why Math.imul and >>> 0 are needed, and what goes wrong without them.
+  - Turn a hash into a slot with a mask, and say what a collision is.
+  - Read the VM's Table and explain why it keeps its keys and values in two arrays.
+introduces: [hash-function, hash-table]
+uses: [heap-object, object-list, tagged-value, value-representation, virtual-machine, hash-intuition, map, bit-ops, binary, bit, char-code, string-index, aos-vs-soa, pointer-chasing, contiguous, identity, reference, array, index, length, push, object, property, class, method, this, constructor, new, interface, typescript, function, return, if, for-loop, while-loop, comparison, numbers, strings, booleans, console-log, global-variable, field, drip]
+sources: [lcn2-fnv, mdn-math-imul, mdn-unsigned-right-shift, mdn-bitwise-and]
+---
+import FnvSteps from '../../../components/diagrams/ch146/FnvSteps';
+import PlaceSteps from '../../../components/diagrams/ch146/PlaceSteps';
+
+## Finding a name without searching
+
+From here on the VM looks things up by name all the time: globals,
+fields, methods. Keep 500 globals in a plain list of `[name, value]`
+pairs, and every `print total;` compares `"total"` with up to 500 names
+before it prints anything. The tree-walker used a JavaScript `Map`; the
+VM builds its own, in `vm/table.ts`, so you can see what a `Map` does
+inside (and so the garbage collector, in *Reclaiming memory*, can walk
+it and remove entries itself).
+
+*Hashing: finding without searching* gave the picture: pigeonholes,
+where the key itself says which hole to look in. That takes a way to
+turn a key into a number and an array the number points into; this
+chapter builds both, and the next handles two keys wanting one hole.
+
+## A hash function
+
+<Analogy title="a smoothie blender">
+Put strawberries and a banana in, and you get a smoothie of one exact
+colour; put the same fruit in again and you get the same colour again.
+Swap the banana for a pear and the colour changes completely, and nobody
+can look at the smoothie and tell you which fruit went in.
+<span slot="breaks">A blender's result wobbles with how long you run it;
+a hash function gives exactly the same number every time, on every
+computer. Also, two different mixes can, rarely, come out the same; we
+will meet that as a collision.</span>
+</Analogy>
+
+The companion VM uses **FNV-1a**, a hash named after Glenn Fowler,
+Landon Curt Noll and Phong Vo, which is short, fast and spreads keys
+well<Cite id="lcn2-fnv" />. Here it is from `vm/object.ts` (one line
+break added to fit the page):
+
+```ts
+export function hashString(
+  s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+```
+
+`h` starts at a fixed number, the **offset basis** (`0x811c9dc5`).
+Then, for each character, `h ^= s.charCodeAt(i)` mixes the character's
+code into `h` with XOR (the bit operation from *Bits and bytes*), and
+the next line multiplies by the **FNV prime**, `16777619`
+(`0x01000193`), keeping only the low 32 bits; those are the values in
+the reference code<Cite id="lcn2-fnv" />. Step through it for `"vx"`:
+
+<FnvSteps client:visible />
+
+Two JavaScript details matter, and both are easy to get wrong:
+
+- **`Math.imul`, not `*`.** `h * 16777619` is an ordinary JavaScript
+  multiply on doubles, and the product can be far past 2<sup>53</sup>,
+  where doubles stop holding every whole number, so its low bits are
+  rounded away. `Math.imul` multiplies as 32-bit integers and wraps
+  round exactly, the way C does<Cite id="mdn-math-imul" />.
+- **`>>> 0` at the end.** XOR and `Math.imul` give *signed* 32-bit
+  results, which may be negative; `>>> 0` reads the same 32 bits as a
+  number that never is<Cite id="mdn-unsigned-right-shift" />.
+
+Here is the first mistake, caught on the one-letter key `"x"`:
+
+```js
+let h = 2166136261 ^ 120; // ^ 'x'
+(h >>> 0) * 16777619 % 2 ** 32;
+// 4245442696   wrong: off by one
+Math.imul(h, 16777619) >>> 0;
+// 4245442695   right
+```
+
+Line 1 XORs in the only character, `x` (code 120). Line 2 multiplies
+with `*` and keeps 32 bits with `% 2 ** 32`, but the true product had
+more digits than a double holds, so the last was rounded: one too big.
+Line 4 is right. (The reference code hashes bytes; this one hashes the
+UTF-16 code units of *Strings up close*, the same for ASCII names.)
+
+<Callout kind="definition">
+A **hash function** turns a key into a number, its **hash**. It must be
+**deterministic**: equal keys always give equal hashes. A good one also
+spreads different keys evenly over its range, so similar keys do not
+bunch up. The companion VM hashes each string once, when the string
+object is made, and keeps the result in the object's `hash` field.
+</Callout>
+
+<Formal title="FNV-1a, one character at a time">
+
+```text
+h₀     = 2166136261
+hᵢ₊₁   = ((hᵢ ⊕ cᵢ) × 16777619) mod 2³²
+hash(s) = hₙ      where n = length of s
+s = t  ⟹  hash(s) = hash(t)
+```
+
+<span slot="read">Start from the offset basis. For each character code
+c, XOR it in (the circled plus), multiply by the prime, and keep the
+remainder after dividing by 2 to the 32, which is the low 32 bits. The
+hash is the value after the last character. The last line is the rule
+every hash function obeys: if two keys are equal, their hashes are
+equal. It does not run backwards: equal hashes do not prove equal
+keys.</span>
+</Formal>
+
+<Examples of="hash-function">
+
+```js
+hashString('x'); // 4245442695
+```
+
+```js
+hashString('health'); // 1805184399
+hashString('healti'); // 1788406780
+```
+
+<Run id="fnv" />
+
+</Examples>
+
+The first is the smallest key, one character. The second changes only
+the last letter, yet the hashes differ from the first digits on. The runnable one hashes the six particle fields and
+prints `& 7` of each, where the next section is going; change a name
+and watch the number jump.
+
+<Prompts ids={['hash-what', 'fnv-steps', 'imul-why', 'ushr-why']} />
+
+## From a hash to a slot
+
+An 8-slot table needs a number from 0 to 7, not one in the billions.
+The companion keeps its capacity a power of two, so keeping the low
+bits does it in one cheap step: `hash & 7` keeps the last three
+bits<Cite id="mdn-bitwise-and" />, and `"x"`, whose hash ends in binary
+`111`, goes to slot 7 (with 16 slots, `hash & 15`).
+
+With more possible names than slots, two keys will sooner or later
+want one slot (nine names in eight slots guarantee it). That is a
+**collision**; a hash function can make it rare, never impossible.
+
+<Analogy title="a post room with numbered trays">
+A post room sorts letters into ten trays by a rule worked out from the
+address, say the last digit of the house number. To find a letter for
+number 37 you go straight to tray 7 and never look in the other nine.
+<span slot="breaks">A tray can hold many letters; a slot in this table
+holds one key, so when two keys want the same slot one of them must go
+somewhere else, and the next chapter decides where.</span>
+</Analogy>
+
+Step through five keys finding their slots, a hit, a miss and the
+first collision:
+
+<PlaceSteps client:visible />
+
+<Callout kind="definition">
+A **hash table** is an array indexed by hashes: a key's hash, reduced
+to the array's size (`hash & (capacity − 1)` here), says which slot to
+look in, so finding a key takes about the same time however many keys
+there are. Two keys that reduce to the same slot are a **collision**,
+and every hash table needs a rule for them.
+</Callout>
+
+<Formal title="Which slot a key starts in">
+
+```text
+m = 2ᵇ          (the capacity)
+slot(k) = hash(k) mod m
+        = hash(k) & (m − 1)
+```
+
+<span slot="read">When the capacity m is 2 to the power b, the slot is
+the remainder of the hash divided by m, and that is the same as keeping
+its low b bits with AND m minus 1. For m = 8, that is AND 7.</span>
+</Formal>
+
+## The VM's table: two arrays
+
+Here is the start of the `Table` class in `vm/table.ts`, and its `get`
+(line breaks added to fit the page):
+
+```ts
+export class Table {
+  count = 0; // live entries + tombstones
+  keys: (ObjString | null)[] = [];
+  values: Value[] = [];
+
+  get(key: ObjString): Value | undefined {
+    if (this.count === 0) return undefined;
+    const i = Table.find(
+      this.keys, this.values, key);
+    return this.keys[i] === null
+      ? undefined : this.values[i];
+  }
+```
+
+Keys are string objects (`ObjString`) carrying their hash, so a lookup
+never hashes again. `get` asks `find` for the slot
+where the key *is* or *would be*; an empty slot means `undefined`, the
+VM's "not here" (no Drip value is ever `undefined`), and otherwise the
+answer is the value at the same position of the other array. With no
+collisions `find` is only `key.hash & mask`; the next chapter writes the
+rest, and explains the tombstones in the comment.
+
+The table is two parallel arrays, `keys[]` and `values[]`, rather than
+one array of `{ key, value }` objects: the struct of arrays from *AoS vs
+SoA, measured*, inside the VM. With entry objects (the first version),
+every slot was a heap object that a lookup followed a pointer to before
+it could read the key. The comment in `table.ts` says the switch made
+object-heavy programs measurably faster; the commit records no number.
+
+<Examples of="hash-table">
+
+```js
+// set("x", 10), empty 8-slot table
+keys[7] = 'x'; values[7] = 10;
+```
+
+```js
+// get("z"): hash & 7 is 5, and
+keys[5] === null // so: undefined
+```
+
+```js
+// the VM's globals after start-up
+// keys: pop str . . len clock push .
+```
+
+</Examples>
+
+The first is a whole insert: `"x"` hashes to slot 7, so the key goes in
+`keys[7]` and its value in `values[7]`. The second is a miss: slot 5,
+where `"z"` would live, is empty, so one look says `z` is absent. The
+third is real: the VM defines five native functions before your program
+starts, leaving its globals table like this (a dot is an empty slot). `clock`, `len` and `pop` sit where their hashes say;
+however, `push` wanted slot 5, which `clock` already had, and `str`
+wanted slot 0, which `pop` had, so each moved one slot along: that is
+the collision rule of the next chapter, already at work.
+
+<Prompts ids={['mask-index', 'power-of-two', 'collision-what', 'hash-table-what', 'soa-table']} />
+
+<Callout kind="engine" label="Under the hood">
+The VM's table is there to be read and controlled, not to beat `Map`:
+`Map` is built into the JavaScript engine, while `Table` is ordinary
+JavaScript run by that engine, so it has no head start. *Globals by
+name* shows what that costs in this book's benchmark run.
+</Callout>
+
+## Your turn
+
+<Exercise id="fnv1a" />
+
+<Exercise id="tinyTable" />
+
+## What you learned
+
+- A **hash function** turns a key into a number, and equal keys always
+  get equal hashes. **FNV-1a** XORs in each character and multiplies by
+  a prime; in JavaScript that needs `Math.imul` and a final `>>> 0`.
+- `hash & (capacity − 1)` picks a slot, for a power-of-two capacity.
+- A **hash table** goes straight to that slot instead of searching. Two
+  keys wanting one slot is a **collision**, and cannot be avoided.
+- The VM's `Table` keeps keys and values in two parallel arrays, so no
+  entry object is allocated or followed per slot.
+
+Next: what the table does when the slot is already taken.
+
+<Quiz />

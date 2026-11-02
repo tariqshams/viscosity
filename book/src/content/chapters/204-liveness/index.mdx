@@ -1,0 +1,209 @@
+---
+n: 204
+day: 51
+part: VI
+title: 'Liveness'
+tagline: 'Will this variable be read again before it is overwritten? The answer lies in the future, so the analysis runs backwards, against the arrows of the control-flow graph, and it is the question every register allocator asks.'
+objectives:
+  - Say when a variable is live at a point, and find a dead store in straight-line code by walking backwards.
+  - Write liveness as equations over a control-flow graph, merging successors by union.
+  - Iterate those equations on a loop until nothing changes, by hand and in code.
+  - Explain what liveness means for SSA values, including the operands of a phi.
+introduces: [liveness]
+uses: [dce, dead-code-elimination, dataflow, lattice, fixpoint, worklist, gen-kill, reaching-definitions, very-busy-expressions, cfg, basic-block, ssa, phi-node, three-address-code, temporary, register, ir, compiler, set, map, array, for-of, while-loop, function, arrow-function]
+sources: [coopertorczon2022]
+---
+import LiveSteps from '../../../components/diagrams/ch204/LiveSteps';
+import BackwardBlock from '../../../components/diagrams/ch204/BackwardBlock';
+
+## A store nobody reads
+
+Mark and sweep worked so neatly on SSA because each value has exactly
+one definition: "is this definition needed?" is the same question as
+"does a live instruction use this value?". Ordinary variables are
+messier, because one name can be assigned many times:
+
+```text
+x = 1
+x = 2
+y = x + 1
+print y
+```
+
+The first line is wasted: its value is overwritten before anyone reads
+it. This is a **dead store**, and code is full of them before SSA (and
+again after a compiler leaves SSA, near the end of the pipeline, where
+values go back to being registers that get reused). To find them, we
+need to know, at each point, which variables will still be read.
+
+<Analogy title="leftovers in the fridge">
+A container of soup is worth keeping only if somebody will eat from it
+before it is thrown out or replaced by a fresh batch. To decide, you
+think about the *coming* days, not the past ones: who is eating what,
+and when the next pot gets made.
+<span slot="breaks">You can guess about the coming days; a compiler
+cannot know which path a program will take, so it keeps a variable if
+it *might* be read on *some* path, playing it safe rather than
+guessing.</span>
+</Analogy>
+
+<Analogy title="a book on your desk">
+A library book on your desk is "live" if you will open it again before
+you return it. If your next step is to take it back, it is already
+dead, even though it is still sitting there.
+<span slot="breaks">A book has one reader; a variable can be read on
+many different paths, and is live if any one of them reads it before
+overwriting it.</span>
+</Analogy>
+
+## Walking backwards through a block
+
+Because the question is about the future, we answer it from the end.
+Start at the bottom, where nothing will be read any more, and walk up.
+At each instruction, the variables live just *before* it are the ones
+it reads, plus the ones live after it that it does not overwrite:
+
+<Figure takeaway="Facts flow upwards: start from the end and work back." caption="The four lines from above, with the live set written after each one. Reading from the bottom: print y reads y; y = x + 1 overwrites y and reads x; x = 2 overwrites x, so nothing is live above it; and x = 1 assigns a variable that is not live afterwards, which makes it a dead store.">
+  <BackwardBlock />
+</Figure>
+
+The order inside that rule matters. For `x = x + 1`, first take `x`
+away (this line overwrites it), then add `x` back (this line reads it),
+so `x` stays live above the line, as it should: the old value is needed
+to compute the new one. Here is the same walk as a few lines of
+JavaScript; it prints the live set after each line, from the bottom up,
+and flags the dead store:
+
+<Run id="backwards" />
+
+<Prompts ids={['liveness-what', 'dead-store', 'order-matters']} />
+
+## Across a control-flow graph
+
+With branches, a variable is live at the end of a block if it is live
+at the start of *any* successor, because any one path that reads it is
+enough to make the old value matter. So facts flow backwards along the
+edges, and merge by **union**. This is a dataflow problem like those of
+the dataflow chapters, only run in reverse: what a block reads before
+writing is its *use* set (its "gen"), and what it writes is its *def*
+set (its "kill").
+
+<Formal title="The liveness equations">
+
+```text
+in(b)  = use(b) ∪ (out(b) − def(b))
+out(b) = ⋃ { in(s) : s ∈ succ(b) }
+out(b) = ∅  when b has no successors
+```
+
+<span slot="read">The variables live on entry to block b are those b
+reads before writing, together with those live on exit from b that b
+does not write. The variables live on exit from b are the union (⋃) of
+those live on entry to each successor s. A block with no successors,
+such as one ending in return, has nothing live after it.</span>
+</Formal>
+
+With a loop, the equations depend on each other round the cycle, so we
+do what the dataflow chapters do: start every set empty (nothing is
+known to be live) and keep recomputing until a whole round changes
+nothing. Because the problem runs backwards, visiting blocks from last
+to first gets there in fewer rounds. Step through a loop that sums
+`0 + 1 + ... + (n - 1)`:
+
+<LiveSteps client:visible />
+
+The second round is where the loop shows. In the first round, `n` was
+not yet known to be live at the end of the body, because the header,
+which reads it, had not been worked out when the body was; round two
+carries it round the back edge.
+
+<Callout kind="definition">
+A variable is **live** at a point if some path from that point reads
+it before it is overwritten. **Liveness** is a backward dataflow
+analysis: `in(b)` is `use(b)` plus whatever of `out(b)` the block does
+not define, and `out(b)` is the union of the successors' `in` sets,
+iterated to a fixpoint. An assignment to a variable that is not live
+just after it, with no other effect, is a **dead store**.
+</Callout>
+
+<Prompts ids={['liveness-backward', 'union-why', 'loop-round']} />
+
+<Examples of="liveness">
+
+```text
+a = p * 2      ; live after: {a}
+b = a + 1      ; live after: {b}
+return b
+```
+
+```text
+b0: t = p + 1; condbr c, b1, b2
+b1: return t      ; reads t
+b2: return 0
+; t live out of b0: one path reads it
+```
+
+```text
+b1: i < n ?   ; n live here...
+b2: s = s + i; i = i + 1; br b1
+; ...so n is live all round the loop
+```
+
+</Examples>
+
+In the first, each value dies at the line that reads it last, so at no
+point are more than two names live. In the second, `t` is live leaving
+`b0` even though `b2` never reads it, because the merge is a union; a
+compiler that deleted `t = p + 1` would break the path through `b1`.
+The third is the loop above: `n` is read only in the header, but since
+every pass round the loop comes back to the header, `n` stays live in
+the body too, and a register allocator must not reuse its register
+there.
+
+## Liveness for SSA values
+
+In SSA, each value has one definition, so it is live from that
+definition to its last use, and DCE did not need any of this. Liveness
+still matters for SSA, though, because it tells a register allocator
+which values are alive at the same time and so cannot share a register.
+One detail trips people up: a phi's operand is not used in the phi's
+block, but at the **end of the predecessor** it comes from. In
+`%3 = phi %2, %14`, the value `%14` is live at the end of the loop
+body, and not on the edge from the entry.
+
+<Prompts ids={['ssa-easier', 'phi-use']} />
+
+<Callout kind="engine" label="Under the hood">
+Liveness is the standard example of a backward dataflow problem in
+compiler textbooks, and the input to register allocation and to dead
+store elimination<Cite id="coopertorczon2022" />. The sets can be kept
+as bit vectors, one bit per variable, so that a union or a difference
+costs a few machine instructions per block, which matters when a
+function has thousands of variables. Viscosity has
+no liveness analysis at all, and needs none: it writes JavaScript, not
+machine code, so it never assigns registers, and the JavaScript engine
+that runs its output does its own liveness when it compiles.
+</Callout>
+
+## Your turn
+
+<Exercise id="liveness" />
+
+<Exercise id="deadStores" />
+
+## What you learned
+
+- A variable is **live** at a point if some path from there reads it
+  before it is overwritten; an assignment to a variable that is dead
+  afterwards is a **dead store**.
+- Liveness runs **backwards**: `in = use ∪ (out − def)`, and `out` is
+  the **union** of the successors' `in` sets.
+- Loops need rounds until nothing changes; visiting blocks from last
+  to first gets there sooner.
+- In SSA a value is live from its definition to its last use, and a
+  phi's operand counts as used at the end of its predecessor.
+
+Next: computations that are done twice, and how to notice that two of
+them are the same.
+
+<Quiz />

@@ -1,0 +1,229 @@
+---
+n: 217
+day: 55
+part: VI
+title: 'Locality, tiling and the polyhedral model'
+tagline: 'Some loops waste the cache whichever way round you nest them. Cutting the work into small square tiles, and finishing each tile before moving on, keeps what a loop needs close at hand; it is the single most effective loop transformation for memory.'
+objectives:
+  - Explain why swapping loops cannot fix a matrix transpose, using cache lines and reuse.
+  - Tile a two-deep loop nest by hand, including the partial tiles at the edges.
+  - Say when tiling is legal, in terms of the direction vectors from the last chapter.
+  - Relate tile size to what fits in a cache, using a measured run.
+introduces: [loop-tiling]
+uses: [dependence-analysis, loop-interchange-fusion, loop-unrolling, natural-loop, induction-variable, cpu-cache, cache-hierarchy, cache-miss, cache-line, spatial-locality, temporal-locality, stride, typed-array, float64, aosoa, aos-vs-soa, array, index, for-loop]
+sources: [wolflam1991, aho2006]
+---
+import TileSteps from '../../../components/diagrams/ch217/TileSteps';
+import TileOrder from '../../../components/diagrams/ch217/TileOrder';
+
+## A loop that loses either way
+
+Transposing a square grid (turning its rows into columns) is about as
+simple as a loop nest gets:
+
+```js
+// a and b: n × n grids, row by row
+for (let i = 0; i < n; i++)
+  for (let j = 0; j < n; j++)
+    b[j * n + i] = a[i * n + j];
+```
+
+`a` is read along a row, stride one, which chapter 52 showed is the
+cache's favourite pattern. `b`, however, is written down a column: each
+step jumps a whole row of `n` elements, so every write lands in a
+different cache line. The next element of that same line, `b[j * n + i
++ 1]`, is written on the next trip of the outer loop, after the inner
+loop has touched `n` other lines; with `n = 2048` and eight-byte
+numbers, that is 2,047 other lines, 128 KB of them, so unless the cache
+can hold all of that, the line has gone by the time it is needed again.
+Last chapter's fix, interchange, only swaps which array suffers: with
+`j` outside, `b` is written along rows and `a` is read down columns.
+
+<Analogy title="a big map on a small table">
+A wall map will not fit on your kitchen table, so you fold it to show
+one panel, do everything you need in that panel, and only then refold
+to the next. Reading the whole map in long strips, edge to edge, would
+mean unfolding and refolding constantly.
+<span slot="breaks">A map's panels are fixed by its folds; a compiler
+chooses the tile size, and has to handle the ragged tiles at the edges
+when the grid does not divide evenly.</span>
+</Analogy>
+
+<Analogy title="cooking for a banquet on a small worktop">
+You cannot lay out two hundred plates at once, so you work in batches
+of twenty that fit on the worktop: everything for those twenty, then
+clear and start the next batch.
+<span slot="breaks">A cook sees the worktop fill up; a program cannot
+see the cache, so the batch size is chosen from what the hardware is
+expected to hold, and checked by measuring.</span>
+</Analogy>
+
+## Tiles
+
+**Tiling** (also called blocking) splits the loops' ranges into chunks
+of `T` and adds two outer loops that walk from tile to tile; the two
+inner loops then finish one `T × T` tile before moving on. Inside a
+tile, `b` is written down `T` short columns of `T`, so it touches only
+`T` lines of `b`, each used `T` times while it is still in the cache.
+Step through an 8 × 8 transpose in a toy cache that holds four lines of
+four numbers:
+
+<TileSteps client:visible />
+
+```js
+for (let ii = 0; ii < n; ii += T)
+ for (let jj = 0; jj < n; jj += T)
+  for (let i = ii;
+       i < Math.min(ii + T, n); i++)
+   for (let j = jj;
+        j < Math.min(jj + T, n); j++)
+    b[j * n + i] = a[i * n + j];
+```
+
+The two new outer loops step `ii` and `jj` by the tile size. The two
+inner loops cover the tile that starts at row `ii`, column `jj`; the
+`Math.min` stops them at the edge of the grid when `n` is not a multiple
+of `T`, so the last tiles in each direction are smaller. The body is
+exactly the original one, run for exactly the same `(i, j)` pairs, in a
+different order.
+
+<Figure takeaway="Tiling changes only the order: every (i, j) is still visited once." caption="The order in which an 8 × 8 nest visits its iterations: row by row (left), and in 4 × 4 tiles (right). Shading marks the first tile.">
+  <TileOrder />
+</Figure>
+
+<Callout kind="definition">
+**Loop tiling** replaces a nest of loops over `i` and `j` with four
+loops: two that step from tile to tile by `T`, and two that visit the
+iterations inside one tile, so that each tile's data is used while it is
+still in the cache. It is **strip-mining** each loop (splitting it into
+an outer loop over chunks and an inner loop within a chunk, always
+legal) followed by an interchange that brings the chunk loops outside,
+so it is legal when that interchange is: when no dependence in the
+nest has a `>` in its direction vector (the loops are then called
+**fully permutable**)<Cite id="wolflam1991" />.
+</Callout>
+
+<Formal title="Tiling a two-deep nest">
+
+```text
+for i ∈ [0, n), j ∈ [0, n):  S(i, j)
+  ≡
+for ii, jj ∈ {0, T, 2T, …} below n:
+  for i ∈ [ii, min(ii+T, n)),
+      j ∈ [jj, min(jj+T, n)):  S(i, j)
+legal if every direction vector
+  has no '>'
+```
+
+<span slot="read">Running S for every i and j below n is the same as
+running it tile by tile, where ii and jj step by T and each tile covers
+i from ii up to ii plus T (or n, if that is smaller), and the same for
+j. This reordering keeps the meaning when no dependence has a "greater
+than" in its direction vector.</span>
+</Formal>
+
+<Examples of="loop-tiling">
+
+```js
+// one loop, strip-mined by T
+for (let ii = 0; ii < n; ii += T)
+  for (let i = ii;
+       i < Math.min(ii + T, n); i++)
+    s += a[i];
+```
+
+```js
+// transpose: as above, with T = 32
+```
+
+```js
+// matrix multiply C += A × B:
+// tile i, j and k; each tile of A
+// and B is reused T times
+```
+
+</Examples>
+
+The first is the building block: one loop split into chunks, which
+alone changes nothing about the order (it visits `0, 1, 2, ...` as
+before) and so is always legal; tiling is two of these, then a swap.
+The second is our transpose, whose measurements follow. The third is
+the classic: a matrix multiply reads every element of `A` and `B` `n`
+times, and tiling all three loops lets each small tile of `A` and `B`
+be reused many times while it is in the cache; Wolf and Lam's 1991
+algorithm, which models reuse and picks transformations to improve it,
+used tiling as one of its main tools<Cite id="wolflam1991" />.
+
+<Prompts ids={['tile-what', 'tile-reuse', 'tile-edges', 'tile-legal', 'strip-mine']} />
+
+## How big should a tile be?
+
+Big enough that each line fetched is used many times, small enough that
+a tile's data (about `T` lines of `a` and `T` of `b`) stays in the cache
+until the tile is done. The only honest way to choose is to measure.
+Here is the transpose of a 2048 × 2048 `Float64Array`, run for this
+chapter on Node v22.23.4 on a shared four-core Intel Xeon cloud machine,
+best of seven runs (two runs agreed to within a few milliseconds):
+
+```text
+tile T      milliseconds
+untiled     47.6
+8           32.3
+16          23.6
+32          21.5
+64          24.0
+128         30.5
+```
+
+The best tile here, 32, is more than twice as fast as the untiled loop.
+Too small, and the extra loops cost more than the reuse saves; too big,
+and a tile's data no longer fits in the cache. Where the balance falls
+depends on the machine, which is why compilers either model its caches
+or let you choose. Try it on
+your own device (a smaller grid, so it runs quickly):
+
+<Run id="tiled" />
+
+<Prompts ids={['tile-size', 'interchange-not-enough']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity does not tile loops; it can, however, tile *data*. Its AoSoA
+layout (chapter 60) stores a collection in blocks of `B` elements, one
+field after another inside each block. With `// @viscosity aosoa(8)`
+above `ps`, the loop `ps[i].x += ps[i].vx` compiles to:
+
+```js
+ps.data[((i) >> 3) * 16 + 0 + ((i) & 7)]
+  += ps.data[((i) >> 3) * 16 + 8
+    + ((i) & 7)];
+```
+
+`i >> 3` is the block number (`i` divided by 8, rounded down), `16` is
+the size of a block (8 elements × 2 fields), `0` or `8` picks the field
+inside the block, and `i & 7` is the position within the block: a tile
+of 8 elements, laid out so that each field's 8 values sit together.
+Its automatic mode chooses only struct of arrays; AoSoA is used when you
+ask for it.
+</Callout>
+
+<Prompts ids={['aosoa-tile']} />
+
+## Your turn
+
+<Exercise id="transposeTiled" />
+
+<Exercise id="lruMisses" />
+
+## What you learned
+
+- Some nests, such as a transpose, walk one array against its layout
+  whichever loop is outside; interchange cannot fix them.
+- **Loop tiling** adds tile loops that step by `T` and finishes one
+  `T × T` tile at a time, so lines are reused while they are cached;
+  `Math.min` handles the partial tiles at the edges.
+- Tiling is strip-mining plus interchange, legal when no dependence has
+  a `>` in its direction vector.
+- The best tile size depends on the machine: in this chapter's run, 32
+  made the transpose more than twice as fast.
+
+<Quiz />

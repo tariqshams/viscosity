@@ -1,0 +1,237 @@
+---
+n: 193
+day: 49
+part: VI
+title: 'Building SSA'
+tagline: 'Turning a whole function into SSA takes two passes: first decide where the phis go, which is exactly at the edges of each assignment’s territory, then walk the dominator tree renaming every use, with a stack of versions per variable.'
+objectives:
+  - Explain why a variable needs a phi exactly at the iterated dominance frontier of the blocks that assign it.
+  - Place phis with the worklist algorithm, and say why a new phi is itself an assignment.
+  - Rename a whole CFG by walking the dominator tree with a stack of versions per variable.
+  - Write the phi-placement algorithm in JavaScript.
+introduces: [ssa-construction]
+uses: [ssa, phi-node, dominator, dominator-tree, ir, lowering, three-address-code, basic-block, cfg, recursion, map, set, array, while-loop, for-of, function, compiler]
+sources: [cytron1991, llvm-passes, coopertorczon2022]
+---
+import PlaceSteps from '../../../components/diagrams/ch193/PlaceSteps';
+import RenameStackSteps from '../../../components/diagrams/ch193/RenameStackSteps';
+
+## From a finished CFG to SSA
+
+In SSA form you renamed straight-line code by hand, and in Phi nodes you
+saw where versions meet. Now we want a compiler to do the whole job for
+any function: take a finished CFG in which variables are assigned many
+times, and produce SSA. The easy answer ("put a phi for every variable
+at every join") works, but it fills the program with phis that choose
+between identical values, and every later pass would have to wade
+through them. The classic algorithm, from Cytron, Ferrante, Rosen,
+Wegman and Zadeck in 1991<Cite id="cytron1991" />, puts phis only where
+they are needed, and it does it in two steps: **place** the phis, then
+**rename** every assignment and use.
+
+## Where phis are needed
+
+A variable `v` needs a phi at a block exactly when two different
+assignments of `v` can reach that block along different paths. Think
+of the blocks that assign `v`, and of each one's territory, the blocks
+it dominates: inside the territory, its version is the only one that
+can arrive. Its version first has to compete with another at the
+blocks just outside the territory, which is its dominance frontier.
+
+<Analogy title="border towns">
+Each assignment rules a territory, and inside it everyone uses its
+coins. Travellers from the territory only meet travellers carrying other
+coins at the border towns just outside, so those are the only places
+that need a money changer (the phi).
+<span slot="breaks">A money changer is a lasting business; once a phi
+is placed it counts as a new assignment with a territory of its own, so
+it can make further border towns need changers, which is why the
+placement is repeated until nothing new appears.</span>
+</Analogy>
+
+<Analogy title="ripples in a pond">
+Drop a stone where `v` is assigned and its ripple spreads outward;
+where two ripples from different stones meet, the water is mixed, and
+that line is where a phi goes.
+<span slot="breaks">Ripples spread in every direction and fade with
+distance; a version spreads only forwards along edges, never fades, and
+the "meeting line" is exactly the dominance frontier, not wherever
+the waves happen to be strongest.</span>
+</Analogy>
+
+Because a phi is itself an assignment of `v`, placing one can make
+another necessary, at the phi's own frontier. So the set of blocks is
+the frontier of the assigning blocks, plus the frontier of those
+frontiers, and so on until nothing new is added: the **iterated
+dominance frontier**.
+
+<Formal title="The iterated dominance frontier">
+
+```text
+DF(S)     = ⋃ DF(X), X ∈ S
+DF₁       = DF(S)
+DFᵢ₊₁     = DF(S ∪ DFᵢ)
+phis(v)   = DF⁺(defs(v)), the limit
+```
+
+<span slot="read">For a set of blocks S, DF(S) is all their frontiers
+put together (⋃ reads "the union over"). Start with DF₁, the frontier
+of S; then repeatedly take the frontier of S together with what you have
+so far. The sets only grow, so they stop changing; the final set is
+DF⁺(S). The blocks that need a phi for v are DF⁺ of the blocks that
+assign v<Cite id="cytron1991" />.</span>
+</Formal>
+
+The paper computes DF⁺ with a worklist: put every block that assigns
+`v` on a list; take blocks off one at a time; give each block in its
+frontier a phi for `v` (once), and since a phi is an assignment, put
+that block on the list too, if it has never been there. Step through
+it for `n` in the Collatz loop:
+
+<PlaceSteps client:visible />
+
+<Callout kind="definition">
+**SSA construction** turns a program whose variables are assigned many
+times into SSA form. The classic method (Cytron et al.) works on a
+finished CFG in two steps: it **places** a phi for each variable `v` at
+every block of the iterated dominance frontier of the blocks that
+assign `v`, then **renames** by walking the dominator tree with a stack
+of versions per variable, so that every assignment and every phi defines
+a new name and every use reads the version on top of its stack.
+</Callout>
+
+<Prompts ids={['frontier', 'phi-is-def', 'iterate-why']} />
+
+## Placement, three ways
+
+<Examples of="ssa-construction">
+
+```text
+x assigned in b0 only
+DF(b0) = {}   →  no phis
+```
+
+```text
+diamond b0 → b1, b2 → b3
+x assigned in b0 and b1
+DF(b1) = {b3}  →  phi at b3
+```
+
+```text
+n assigned in b0, b5, b6
+DF⁺ = {b7, b1}  →  phis at b7, b1
+```
+
+</Examples>
+
+The first is the simplest: a variable assigned once, in the entry,
+needs no phi anywhere, because the entry dominates every block and its
+frontier is empty. The second is the varied one, and the one that
+surprises people: `x` is assigned before the `if` and again only in the
+*left* branch, yet the join b3 still needs a phi, `x3 = φ(x2, x1)`,
+because the right-hand path brings the old value; DF(b1) = \{b3\} finds
+it. (This is why the paper treats the entry as assigning every variable:
+there is always an "old value" to meet.) The third is the realistic one
+you stepped through: the worklist found b7 from the branches and then
+b1 from b7's phi, which is exactly where Viscosity's VIR has its two
+phis for `n`, `%12` and `%1`.
+
+<Prompts ids={['one-branch-phi']} />
+
+## Renaming with a stack
+
+With the phis placed, every assignment (phis included) gets a fresh
+version and every use must read the right one. In straight-line code a
+table of "latest versions" was enough; with branches, the latest version
+depends on where you are. The trick is to walk the **dominator tree**,
+because the versions that can reach a block are exactly those made in
+it and in its ancestors in the tree.
+
+<Analogy title="sticky notes in a house tour">
+Touring a house room by room, you stick a note on a board each time
+something is renamed in a room, and peel that room's notes off as you
+leave it; the note on top always says what the name means where you are
+standing.
+<span slot="breaks">A house tour walks the corridors; the renaming
+walks the dominator tree, which can jump from a room to one it is not
+directly connected to, because "dominates" is not the same as "is next
+to".</span>
+</Analogy>
+
+Keep one stack per variable, starting with version 0 (the value on
+entry). In each block, in order: a phi or assignment of `v` pushes a new
+version; a use of `v` reads the top. Then, for each CFG successor that
+has a phi for `v`, fill in the operand that belongs to this block with
+the top of the stack. Then visit this block's children in the dominator
+tree, and on the way out pop every version this block pushed. Step
+through it:
+
+<RenameStackSteps client:visible />
+
+The result matches VIR: `n1 = φ(n0, n4)` at the loop head and
+`n4 = φ(n2, n3)` at the join, `%1 = phi %0, %12` and
+`%12 = phi %9, %11` with different numbers. Notice two things the
+stack gets right without any extra work. b6 reads `n1`, not b5's `n2`,
+because b5's push was popped before the walk moved to its sibling. And
+the back edge from b3 fills b1's phi with `n4`, because b3 sits under b7
+in the tree, so `n4` is on top when the walk is in b3.
+
+Here is the walk as a program, for the one-branch diamond from the
+examples, where `x` is assigned in b0 and again only in the left branch
+b1:
+
+<Run id="rename-diamond" />
+
+`search` processes a block's code (a `def` or `phi` pushes the next
+version; a `use` reads the top), fills b3's phi operand if this block
+leads to b3, visits the block's children in the dominator tree (b0's
+children are b1, b2 and b3, since b0 is the nearest dominator of all
+three), and finally pops what it pushed. It prints `b1: use x1, def x2`,
+an empty b2, `b3: phi x3, use x3`, and the phi operands `[ 'x2', 'x1' ]`:
+the right-hand path really does bring the old `x1`.
+
+<Prompts ids={['stack-why', 'tree-walk', 'pop-why']} />
+
+<Callout kind="pitfall">
+Cytron's placement is *minimal*, not perfect: it puts a phi wherever two
+versions meet, even if nothing reads the variable after the join. Such a
+phi is harmless but useless, and later passes delete it. LLVM's
+`mem2reg` places phis "using dominator frontiers" and then rewrites
+loads and stores "in depth-first order", which it calls "the standard
+SSA construction algorithm", building the "pruned" form that leaves
+those useless phis out<Cite id="llvm-passes" />.
+</Callout>
+
+<Prompts ids={['pruned']} />
+
+<Callout kind="engine" label="Under the hood">
+This two-step method is the one compiler textbooks
+teach<Cite id="coopertorczon2022" />, and LLVM uses it for the local
+variables it can lift out of memory<Cite id="llvm-passes" />.
+It needs the whole CFG, the dominator tree and the frontiers before it
+starts. Viscosity's builder does not have those while it is still
+lowering, so it uses a different method that builds SSA as it goes;
+that is the next chapter.
+</Callout>
+
+## Your turn
+
+<Exercise id="place-phis" />
+
+<Exercise id="rename" />
+
+## What you learned
+
+- A variable needs a phi where two of its versions can meet: at the
+  **dominance frontier** of the blocks that assign it.
+- A phi is an assignment too, so the frontier is **iterated** until
+  nothing new appears; a worklist computes DF⁺.
+- **Renaming** walks the dominator tree with a stack of versions per
+  variable: push on assignment, read the top on use, fill successors'
+  phi operands, pop on the way out.
+- Placement plus renaming is **SSA construction** in the classic style
+  of Cytron et al.; LLVM's `mem2reg` builds a pruned version of it.
+
+Next: building SSA while the IR is still being made, the way VIR does.
+
+<Quiz />

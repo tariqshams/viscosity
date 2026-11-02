@@ -1,0 +1,236 @@
+---
+n: 202
+day: 51
+part: VI
+title: 'Sparse conditional constant propagation'
+tagline: 'Folding stops at the edge of a block. To carry constants through joins and loops, a compiler keeps a three-level ladder of facts, and if it is optimistic about branches as well as values, it can prove whole blocks never run.'
+objectives:
+  - Merge constant facts at a phi with the three-level lattice (unknown yet, one constant, varies).
+  - Explain why starting optimistic keeps constants that flow round a loop.
+  - Run sparse conditional constant propagation by hand, tracking executable edges as well as values.
+  - Implement it over a small CFG given as data.
+introduces: [constant-propagation]
+uses: [constant-folding, dataflow, lattice, fixpoint, worklist, ssa, phi-node, ssa-construction, cfg, basic-block, dominator, ir, compiler, static-analysis, dead-code-elimination, numbers, booleans, map, set, array, for-of, function, arrow-function, while-loop]
+sources: [wegmanzadeck1991, llvm-passes, gcc-tree-ssa-ccp]
+---
+import SccpSteps from '../../../components/diagrams/ch202/SccpSteps';
+import ConstLattice from '../../../components/diagrams/ch202/ConstLattice';
+
+## Constants that meet at a join
+
+Folding works inside a block, on instructions whose operands are
+already constants. Here is a function where that is not enough, and
+below it the VIR that Viscosity prints for it (trimmed: the
+`const undefined` for `let y` is left out, and each block's first
+instruction sits beside its label):
+
+```js
+function g() {
+  let x = 1;
+  let y;
+  if (x > 0) { y = 2; } else { y = 3; }
+  return y * 10;
+}
+```
+
+```text
+b0: %0 = const 1
+    %2 = const 0
+    %3 = binop > %0, %2
+    condbr %3, b1, b2
+b1: %4 = const 2       ; y = 2
+    br b3
+b2: %5 = const 3       ; y = 3
+    br b3
+b3: %6 = phi %4, %5    ; y
+    %7 = const 10
+    %8 = binop * %6, %7
+    return %8
+```
+
+Folding turns `%3` into `true`, but then it stops: `%6` is a phi, not
+arithmetic, and its two operands are different constants. Yet you can
+see that `g` always returns 20, because `x > 0` is always true, so the
+`else` block never runs and `y` is always 2. This chapter teaches a
+compiler to see it too. Carrying facts about constants from block to
+block, through phis and branches, is called **constant propagation**.
+
+<Prompts ids={['prop-what', 'fold-not-enough']} />
+
+## A ladder with three rungs
+
+At a phi we need to merge what we know about each operand. Three kinds
+of fact are enough:
+
+<Figure takeaway="Facts only ever move down the ladder." caption="The constant lattice. At the top, ⊤: nothing known yet. In the middle, one rung holding every possible constant side by side. At the bottom, ⊥: varies. Merging two facts gives the highest fact below both of them.">
+  <ConstLattice />
+</Figure>
+
+- **⊤** (read "top"): no information yet, because the value has not
+  been worked out, or its block has not been reached;
+- **a constant** such as `2`, `"hi"` or `true`;
+- **⊥** (read "bottom"): varies, not a constant.
+
+Merging follows from the picture: ⊤ gives way to anything; two equal
+constants stay that constant; two different constants, or anything with
+⊥, fall to ⊥. This is the lattice idea from the dataflow chapters with
+one constant rung that is very wide.
+
+<Analogy title="a detective's notebook">
+A detective keeps one line per question. At first it is blank (⊤).
+After one witness, it says "the butler". If every later witness agrees,
+it stays "the butler"; the moment one says "the cook", the honest entry
+becomes "could be either" (⊥), and no later witness can make it a
+single name again.
+<span slot="breaks">A detective can be told a witness lied and go back
+to a single name; facts in this lattice only ever move down, which is
+exactly what guarantees the analysis stops.</span>
+</Analogy>
+
+<Formal title="Meet in the constant lattice">
+
+```text
+⊤ ⊓ x = x          x ⊓ ⊤ = x
+⊥ ⊓ x = ⊥          x ⊓ ⊥ = ⊥
+c ⊓ c = c
+c ⊓ d = ⊥    when c and d differ
+```
+
+<span slot="read">The symbol ⊓ is read "meet" and means "merge two
+facts". Meeting top with anything gives that thing; meeting bottom with
+anything gives bottom; meeting a constant with itself gives the same
+constant; meeting two different constants gives bottom. "Same" means
+the same value in JavaScript's strictest sense, so 0 and -0 differ.</span>
+</Formal>
+
+<Examples of="constant-propagation">
+
+```text
+%6 = phi %4, %5   ; %4 = 2, %5 = 2
+                  ; %6 = 2 ⊓ 2 = 2
+```
+
+```text
+b1: %5 = phi %1, %5  ; %1 = const 7
+    ; first time: 7 ⊓ ⊤ = 7, and stays 7
+```
+
+```text
+b1: %3 = phi %2, %14 ; i: 0, then i + 1
+    ; 0 ⊓ 1 = ⊥: a counter varies
+```
+
+</Examples>
+
+The first is the easy case: both paths bring 2, so the phi is 2 and
+`%6 * 10` can fold to 20 later. The second is a loop that never changes
+a variable: its header phi takes 7 from the entry and *itself* round
+the back edge. If we start every value at ⊤, the back edge contributes
+nothing the first time, the phi becomes 7, and when the back edge is
+looked at again it brings 7, which agrees; this is the optimistic start
+from the dataflow chapters, and it is the only start that proves 7. The
+third is a real loop counter: 0 from the entry meets 1 from the back
+edge, which falls to ⊥, as it must.
+
+<Prompts ids={['top-what', 'meet-rule', 'loop-seven', 'counter']} />
+
+## Being optimistic about branches too
+
+Plain propagation still fails on `g`: it treats every block as if it
+might run, so it meets 2 with 3 at `%6` and gets ⊥. **Sparse
+conditional constant propagation** (SCCP), published by Wegman and
+Zadeck<Cite id="wegmanzadeck1991" />, adds a second kind of fact: which
+CFG edges can actually be taken (are **executable**). It is optimistic
+about both kinds. Every value starts at ⊤ and every edge starts not
+executable; the entry block is reachable, and a block becomes reachable
+when its first incoming edge becomes executable.
+
+<Analogy title="mapping a cave with a torch">
+You only draw the passages you have walked into. When you reach a gate
+that you can see is locked shut, you do not draw anything beyond it,
+so nothing behind the gate can confuse your map.
+<span slot="breaks">A locked gate might be opened tomorrow; a branch on
+a constant can never go the other way. And the explorer walks the
+passages, while SCCP never runs the program: it reasons about every
+run at once.</span>
+</Analogy>
+
+The rules are short:
+
+- visit an instruction only in a reachable block, and give it the
+  folded value of its operands (⊥ if any operand is ⊥, ⊤ if any is
+  still ⊤);
+- a phi meets only the operands that arrive along executable edges;
+- `br` makes its one edge executable; `condbr` makes the `then` edge
+  executable when its condition is `true`, the `else` edge when it is
+  `false`, both when it is ⊥, and neither while it is still ⊤.
+
+Step through it on `g`:
+
+<SccpSteps client:visible />
+
+Real SCCP avoids revisiting everything by keeping two worklists: one of
+CFG edges that have just become executable (visit the block they lead
+to), and one of SSA values whose fact just changed (revisit the
+instructions that use them). That is the "sparse" in the name: facts
+are kept per SSA value and pushed along def-use links, not recomputed
+for every block. When both lists are empty, the analysis is at a
+fixpoint, and every value still at ⊤ is in a block that never runs.
+
+<Callout kind="definition">
+**Constant propagation** finds, for each value, whether it is the same
+constant on every run, and replaces its uses with that constant.
+**Sparse conditional constant propagation** does it optimistically
+over SSA with the three-level lattice, while also tracking which CFG
+edges are executable: a phi merges only operands from executable edges,
+and a branch on a constant makes only one edge executable.
+</Callout>
+
+<Prompts ids={['sccp-edges', 'sccp-phi', 'sccp-sparse']} />
+
+Try the merges yourself; change the operands and predict each answer
+before you run it:
+
+<Run id="merges" />
+
+<Callout kind="engine" label="Under the hood">
+LLVM's `sccp` pass is this algorithm. Its documentation sums it up as:
+assume values are constant and blocks dead unless proven otherwise,
+replace values proven constant, and turn branches proven to go one way
+into unconditional ones; it adds that the pass tends to leave dead
+definitions behind, so a dead code pass should run
+afterwards<Cite id="llvm-passes" />. GCC's version, in
+`tree-ssa-ccp.cc`, describes a four-level lattice (an extra
+"uninitialized" state that a value has only until it is first looked
+at),
+ignores phi arguments that arrive through non-executable edges, and
+names Wegman and Zadeck as its source<Cite id="gcc-tree-ssa-ccp" />.
+
+Viscosity does not propagate constants, but its numeric inference is
+the same machine with a smaller ladder: an optimistic fixpoint over SSA
+values on the two-level lattice "number" and "maybe not". It does not
+track executable edges, so a value from a branch that can never run
+still counts against it.
+</Callout>
+
+## Your turn
+
+<Exercise id="sccp" />
+
+<Exercise id="meet" />
+
+## What you learned
+
+- **Constant propagation** carries "this is always the constant c"
+  across blocks; at a phi, facts merge in the lattice ⊤, constants, ⊥.
+- Starting every value at ⊤ (optimistic) is what keeps constants that
+  flow round a loop; a counter still falls to ⊥.
+- **SCCP** is optimistic about edges as well: phis ignore operands from
+  edges not proven executable, and a branch on a constant marks only one
+  edge, so values from impossible paths never spoil a merge.
+- It is sparse: facts live on SSA values and move along def-use links,
+  driven by two worklists.
+
+Next: deleting the code these passes have just made useless.
+
+<Quiz />

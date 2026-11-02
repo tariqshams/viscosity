@@ -1,0 +1,259 @@
+---
+n: 203
+day: 51
+part: VI
+title: 'Dead code elimination'
+tagline: 'Some instructions do work that nobody ever looks at. Finding them is garbage collection with instructions in place of objects; the only hard question is which instructions the outside world can see, and in JavaScript even a lonely + may be one of them.'
+objectives:
+  - Say which instructions are roots (their effect can be seen) and why an unused call or store is never dead.
+  - Remove dead instructions from SSA with mark and sweep, starting from the roots.
+  - Explain why a value that has a use can still be dead, and why deleting a JavaScript + needs a type fact.
+  - Implement mark-and-sweep dead code elimination over instructions given as data.
+introduces: [dce]
+uses: [dead-code-elimination, side-effect, constant-folding, constant-propagation, ir, three-address-code, temporary, basic-block, cfg, ssa, phi-node, dataflow, fixpoint, worklist, mark-sweep, roots, function, parameter, call, return, object, method, map, set, array, for-of, while-loop, numbers, strings, console-log]
+sources: [llvm-passes, gcc-tree-ssa-dce, coopertorczon2022]
+---
+import DceSteps from '../../../components/diagrams/ch203/DceSteps';
+import AfterSccp from '../../../components/diagrams/ch203/AfterSccp';
+
+## Work nobody asked for
+
+Here is a function with a leftover line, the kind that appears when
+code around it changes and nobody tidies up:
+
+```js
+function h(a) {
+  let t = a + 1;
+  let u = a * 2;  // never used
+  return t;
+}
+```
+
+And here is the real VIR that Viscosity prints for it:
+
+```text
+func h(%11):
+  b0:
+    %11 = param
+    %12 = const 1
+    %13 = binop + %11, %12
+    %14 = const 2
+    %15 = binop * %11, %14
+    return %13
+```
+
+`%15` is `u`, and nothing reads it; `%14` is read only by `%15`. Both
+do work whose answer goes nowhere. The last two chapters make far more
+of this: once SCCP has proved that `g` returns 20, almost every
+instruction in `g` is computing something nobody needs any more. This
+chapter is about how a compiler finds such code, and when it is allowed
+to delete it.
+
+## What the outside world can see
+
+Before deleting anything, decide what must stay. Some instructions
+matter even though no other instruction reads their result:
+
+- `return` and `throw` hand a value to the caller;
+- a `call` may print, write a file or change shared state;
+- a store (`field.set`, `index.set`, `storeBinding`) changes memory
+  that some other code may read later;
+- a branch (`condbr`) decides which of those things happen.
+
+These are the **roots**, the same word as in the garbage-collection
+chapter, and for the same reason: everything that matters can be
+reached from them.
+
+<Analogy title="clearing up after a dinner party">
+At the end of the evening, look at what was served: every dish that
+reached the table counted. A sauce counted if it went into a served
+dish, and the stock counted if it went into a sauce that counted.
+Start from the plates and trace back through the ingredients;
+whatever you never reach on that walk was wasted effort, however much
+work it was.
+<span slot="breaks">In a kitchen you can see what reached the table. A
+compiler has to *decide* which instructions are like served dishes,
+and if it wrongly calls a call "not served", it deletes something the
+user would have seen, such as a line of output.</span>
+</Analogy>
+
+In JavaScript the hard cases are the ones that look harmless. If an
+operand is an object, `w + h` first calls that object's `valueOf`
+method, and that method can do anything:
+
+<Run id="valueof-runs" />
+
+The "unused" `w + h` printed a line, so deleting it would change the
+output. A JavaScript compiler may treat `+` as free of effects only when
+it knows both operands are primitives (numbers, strings, booleans);
+property reads have the same trap (a getter is a hidden call), and
+calls to code the compiler cannot see are always roots.
+
+<Prompts ids={['dce-roots', 'plus-effect', 'unused-call']} />
+
+## Mark from the roots, then sweep
+
+<Analogy title="packing for a trip">
+Start with what you certainly need (passport, tickets). Add anything
+those need: the phone holds the tickets, so the phone goes in, and the
+phone needs its charger, so that goes in too. When nothing new gets
+added, everything left on the bed stays at home.
+<span slot="breaks">You might pack a jumper "just in case"; a compiler
+must not be so generous, or it removes nothing, and must not be
+stingier either, because leaving behind one thing a root needs breaks
+the program.</span>
+</Analogy>
+
+That is the mark-and-sweep collector, applied to code. Mark every root
+live. Whenever an instruction is live, the instructions that define its
+operands are live too. When nothing new can be marked, **sweep**: delete
+everything unmarked. Step through it:
+
+<DceSteps client:visible />
+
+<Callout kind="definition">
+**Dead code elimination** (**DCE**) removes instructions whose results
+can never affect what the program does. An instruction is **live** if
+it is a root (its effect can be seen) or if a live instruction uses its
+result; every other instruction is **dead**. Mark-and-sweep DCE starts
+by presuming everything dead, marks outward from the roots along
+operands, and deletes whatever was never marked.
+</Callout>
+
+<Formal title="The live instructions">
+
+```text
+Roots ⊆ Live
+i ∈ Live,  a ∈ args(i)  ⟹  def(a) ∈ Live
+Dead = All − Live  (Live smallest)
+```
+
+<span slot="read">Every root is live. If an instruction i is live and a
+is one of its operands, then the instruction that defines a is live
+too. Live is the smallest set obeying those two rules, and everything
+outside it is dead. ("Smallest" matters: putting every instruction in
+Live also obeys the rules, but deletes nothing.)</span>
+</Formal>
+
+Notice the step where `%3` uses `%2`, yet both are deleted: a value with
+a use can still be dead, if all its users are dead. That is why the
+mark starts from the roots rather than from "has no uses". A simpler
+pass deletes instructions with no uses at all, then looks again at
+their operands, which may just have lost their last use; it gets the
+same answer, one layer at a time.
+
+<Prompts ids={['dce-what', 'dce-chain', 'smallest-live']} />
+
+<Examples of="dce">
+
+```text
+%14 = const 2
+%15 = binop * %11, %14   ; u, unused
+; both deleted: nothing live uses %15
+```
+
+```text
+%2 = binop + %0, %1      ; p
+%3 = binop * %2, %2      ; q, unused
+store total, %0          ; root: kept
+; %3 dead, so %2 dead too
+```
+
+```text
+b3: %6 = phi %4, %5
+    %7 = const 10
+    %8 = binop * %6, %7
+    %9 = const 20        ; from SCCP
+    return %9            ; root
+; %6, %7, %8 now unmarked
+```
+
+</Examples>
+
+The first is `h` from the start of the chapter: `%15` has no users, and
+`%14`'s only user is `%15`, so neither is ever marked. The second shows
+both rules at once: the store has no users but is a root, so it stays,
+while `%2` has a user that is itself dead. The third is the realistic
+one, and the reason compilers run DCE after other passes: SCCP has
+already worked out that `%8` is 20, so the return can use the constant,
+and that leaves nothing that needs `%0` to `%8` at all. Here is the
+whole function:
+
+<Figure takeaway="SCCP proves facts; DCE collects what they made useless." caption="g after SCCP: the branch in b0 has become a plain br (it always went to b1), and the return uses a new constant %9 = 20. Marking from the roots reaches only %9; b2 is no longer reached by any edge, so the whole block goes.">
+  <AfterSccp />
+</Figure>
+
+## Branches, blocks and how far to go
+
+The pass above treats every branch as a root, which keeps the CFG as it
+is. Two cleanups go further. When SCCP proves a branch goes one way, it
+turns it into a plain `br`, and blocks that no edge reaches any more can
+be dropped whole. And an "aggressive" DCE starts by assuming even
+branches are dead, keeping one only if some live instruction depends on
+which way it goes; that needs a tool called *control dependence*,
+which this book leaves to the further reading.
+
+<Prompts ids={['adce-optimistic', 'unreachable-block']} />
+
+<Callout kind="engine" label="Under the hood">
+LLVM ships both styles: its `dce` pass rechecks the operands of each
+instruction it removes, to see whether they are newly dead, while
+`adce` ("aggressive") assumes values are dead until proven otherwise,
+which its documentation compares to SCCP applied to
+liveness<Cite id="llvm-passes" />. GCC's `tree-ssa-dce.cc` describes
+the same three phases as this chapter: mark the statements known to be
+necessary (most calls, writes to memory), propagate necessity to the
+statements that give them their operands, and remove the
+rest<Cite id="gcc-tree-ssa-dce" />. Textbooks treat DCE as the cleanup
+that lets other passes be simple, since they can leave junk behind and
+trust DCE to collect it<Cite id="coopertorczon2022" />.
+
+Viscosity has **no** DCE pass, since it rewrites only the code around
+the collections it changes. But it is built on the same two pieces.
+`buildUses` in `vir.ts` builds the use list of every value (the
+instructions and terminators that read it), and `analysis.ts` asks the
+roots question for the right-hand side of a field write, which it must
+keep in order. Simplified:
+
+```ts
+switch (x.op) {
+  case 'const': case 'phi':
+  case 'param': // and others
+    return 'inert';
+  case 'binop':
+    return numeric(0) && numeric(1)
+      ? 'inert' : 'effects';
+  default:
+    return 'effects';
+}
+```
+
+A `binop` counts as harmless only when numeric inference has proved
+both operands are numbers (the real code also lets `===` and `!==`
+through, which never call user code); anything it does not recognise
+counts as having effects. That is the safe way round.
+</Callout>
+
+## Your turn
+
+<Exercise id="sweep" />
+
+## What you learned
+
+- **Dead code elimination (DCE)** deletes instructions whose results
+  can never affect what the program does.
+- The **roots** are instructions whose effect can be seen: returns,
+  calls, stores and branches. "Unused" is not "dead": an unused call
+  still prints.
+- Mark and sweep: mark the roots, mark the definitions of every live
+  instruction's operands, delete what was never marked. A value whose
+  only users are dead is dead too.
+- In JavaScript, `+`, property reads and calls can run user code, so
+  calling them free of effects needs a type fact.
+- DCE cleans up after constant propagation and inlining, which is why it
+  runs after them.
+
+Next: the same question for ordinary variables, which are assigned many
+times, and the analysis that answers it, liveness.
+
+<Quiz />

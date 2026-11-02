@@ -1,0 +1,288 @@
+---
+n: 195
+day: 49
+part: VI
+title: 'Dataflow analysis'
+tagline: 'Has this variable been given a value on every path to here? A compiler cannot try every path, so it lets small facts flow along the edges of the CFG instead, changing at each block and merging where paths meet.'
+objectives:
+  - Describe a dataflow analysis as a fact at the start and end of every block, a transfer function per block and a meet where paths join.
+  - Tell a forward analysis from a backward one, and a "must" analysis (intersection) from a "may" one (union).
+  - Write the dataflow equations for "definitely assigned" and solve them by hand on an if/else.
+  - Explain what a lattice of facts is, and why the meet is the highest fact below both.
+introduces: [dataflow, lattice]
+uses: [cfg, basic-block, ir, three-address-code, dominator, ssa, phi-node, static-analysis, typescript, set, function, if, while-loop, for-loop, booleans, numbers]
+sources: [kildall1973, coopertorczon2022, aho2006]
+---
+import AssignSteps from '../../../components/diagrams/ch195/AssignSteps';
+import FactLattice from '../../../components/diagrams/ch195/FactLattice';
+
+## A question about every path
+
+Here is a small TypeScript function with a bug in it, and the error
+TypeScript gives when you check it with `strict` turned on:
+
+```ts
+let x: number, y: number;
+x = 1;
+if (c) {
+  y = 2;
+} else {
+  x = 3;
+}
+console.log(x + y);
+// error TS2454: Variable 'y' is used
+// before being assigned.
+```
+
+Line 1 declares two variables without values, line 2 sets `x`, the
+`if` sets `y` on one side and `x` again on the other, and the last line
+reads both. TypeScript is right to
+complain, because if `c` is false the program reaches the last line
+without ever having set `y`. How could a compiler work that out? The
+honest question is "on **every** path from the start of the function to
+this line, was `y` given a value?", and listing paths is hopeless: a
+function with ten `if`s in a row has over a thousand of them, and a
+loop gives a function infinitely many (once round, twice round, and so
+on). We need a way to answer a question about every path without
+walking any path at all.
+
+## Facts that flow along the edges
+
+The way out is to stop thinking about paths and think about the
+control-flow graph instead. We attach a small **fact** to the start and
+the end of every basic block (here, "the set of variables that are
+definitely assigned by now"), and we describe how each block changes
+the fact as control passes through it. Facts then travel along the
+edges of the CFG, block to block, like goods along a road network.
+
+<Analogy title="tour groups meeting at a museum door">
+Two tour groups take different routes through a city and meet at the
+museum door. Each guide carries a list of sights their group has seen.
+The museum guide wants to know which sights *everyone* now in front of
+her has seen, so she keeps only the sights that are on both lists; a
+sight on one list only might have been missed by half the crowd.
+<span slot="breaks">A real guide could ask each visitor; the analysis
+cannot, because once the two groups merge it no longer knows which path
+anyone came by, only the merged list.</span>
+</Analogy>
+
+<Analogy title="a parcel's label on its way through depots">
+A parcel passes through sorting depots, and each depot updates the
+label (adds a stamp, crosses out an old route) before sending it on.
+Knowing what each depot does to a label, you can say what the label
+reads at any point of the journey without following a single parcel.
+<span slot="breaks">A parcel takes one route; a fact in a dataflow
+analysis has to describe every route at once, which is why it needs a
+rule for combining labels where routes meet.</span>
+</Analogy>
+
+Every dataflow analysis has the same three parts. The **fact** at each
+point is written `IN[B]` at the start of block `B` and `OUT[B]` at its
+end. The **transfer function** of a block says how it turns `IN[B]`
+into `OUT[B]`; for our question it adds every variable the block
+assigns. The **meet** says how to combine facts where several edges
+come into one block; for our question it keeps only what is true on
+every incoming edge, which is the intersection of the sets (written
+`∩`). Step through the example, one block at a time:
+
+<AssignSteps client:visible />
+
+<Callout kind="definition">
+A **dataflow analysis** computes a fact for every point of a program
+(usually the start and end of each basic block), where each fact
+depends on the facts flowing into it along CFG edges. A block's
+**transfer function** turns the fact at its start into the fact at its
+end, and the **meet** operator combines the facts arriving from
+several predecessors into one. The answer is a set of facts that
+agrees with every transfer function and every meet at once<Cite id="kildall1973" />.
+</Callout>
+
+<Formal title="Definitely assigned, as equations">
+
+```text
+IN[entry] = ∅
+IN[B]  = ⋂ OUT[P]   for P ∈ pred(B)
+OUT[B] = IN[B] ∪ assigned(B)
+```
+
+<span slot="read">At the start of the entry block, nothing is assigned
+(∅ is the empty set). For any other block B, the fact at its start is
+the intersection, over every predecessor P of B, of the facts at the
+ends of those predecessors: only the variables assigned on every way
+in. The fact at the end of B is the fact at its start together with
+(∪, "union") the variables that B itself assigns.</span>
+</Formal>
+
+The answer is the facts that make every equation true at once. On the
+example, `OUT[b1]` is `{x, y}` and
+`OUT[b2]` is `{x}`, so `IN[b3]` is their intersection, `{x}`; `y` is
+missing from it, which is TypeScript's error. (You have met an equation
+like this before: the dominator equation of the Dominators chapter is
+a dataflow equation too, whose fact is a set of blocks.)
+
+<Examples of="dataflow">
+
+```text
+IN = {x}      block: y = 2     OUT = {x, y}
+```
+
+```text
+OUT[b1] = {x, y}  OUT[b2] = {x}
+IN[b3] = {x, y} ∩ {x} = {x}
+```
+
+```text
+%6 = phi %1, %7
+number if %1 and %7 are numbers
+```
+
+</Examples>
+
+The first is a transfer function on its own: the block assigns `y`, so
+`y` joins the set. The second is the meet at the join, keeping only
+`x`. The third is Viscosity's own question, "is this value always a
+number?"; there the fact belongs to each SSA value rather than each
+block, and the phi's rule (a number only if every operand is) plays the
+part of the meet.
+
+<Prompts ids={['why-not-paths', 'dataflow-what', 'in-out', 'meet-where']} />
+
+## Forward and backward, must and may
+
+Our question looked **back** in time ("has this happened already?"),
+so facts flowed the same way as the edges: from a block to its
+successors. Other questions look **forward** ("will this value be read
+later?", which the Dead code elimination chapter needs); for those,
+facts flow against the edges, from a block's successors back to it, and
+the transfer function turns `OUT[B]` into `IN[B]`. The second choice is
+the meet. Our question was a **must** question ("on every path"), so
+the meet is intersection; a **may** question ("on some path") uses
+union (`∪`) instead, keeping anything true on at least one way in.
+
+<Formal title="The two directions">
+
+```text
+forward:  IN[B]  = ⊓ OUT[P], P ∈ pred(B)
+          OUT[B] = f_B(IN[B])
+backward: OUT[B] = ⊓ IN[S],  S ∈ succ(B)
+          IN[B]  = f_B(OUT[B])
+```
+
+<span slot="read">In a forward analysis, the fact at the start of B is
+the meet (⊓, which is ∩ or ∪ depending on the question) of the facts at
+the ends of its predecessors, and B's transfer function f_B turns the
+fact at its start into the fact at its end. A backward analysis is the
+mirror image: the fact at the end of B is the meet of the facts at the
+starts of its successors, and f_B turns the end fact into the start
+fact.</span>
+</Formal>
+
+Try changing the meet yourself; the same two incoming facts give a
+different answer depending on whether the question is "must" or "may":
+
+<Run id="must-may" />
+
+<Prompts ids={['forward-backward', 'must-may']} />
+
+## A ladder of facts: the lattice
+
+The meet only makes sense if the facts have an order: "keep what both
+promise" assumes we know which facts promise more than which. For our
+sets, a bigger set promises more (`{x, y}` promises two assigned
+variables, `{x}` only one), and the meet of two sets is the biggest set
+that both of them contain. Drawn with the facts that promise most at
+the top and a line wherever one fact sits directly above another, they
+make a small diamond:
+
+<Figure takeaway="The meet of two facts is the highest fact that sits below both of them." caption="Left: every set of variables drawn from x and y, ordered by “contains”. The meet of {x, y} and {x} is {x}. Right: Viscosity’s two-point lattice for “is this a number?”.">
+  <FactLattice />
+</Figure>
+
+<Analogy title="what a weather forecast can promise">
+"Sunny all day" promises more than "sunny this morning", which promises
+more than "no promise at all". If two forecasters disagree, one saying
+"sunny all day" and the other "sunny this morning", the most you can
+safely tell a friend is the strongest promise both of them make:
+"sunny this morning".
+<span slot="breaks">Forecasts come with chances and shades of grey; a
+lattice is exact, and two facts can also sit side by side with neither
+above the other, like `{x}` and `{y}`, whose meet is the empty set.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **lattice**, in a dataflow analysis, is the set of possible facts
+together with an order on them (here, higher means "promises more"),
+in which any two facts have a **meet**: the highest fact that is below
+both of them. Merging facts at a join is taking their meet. The top of
+the lattice promises everything, and the bottom promises nothing.
+</Callout>
+
+<Formal title="The meet">
+
+```text
+a ⊓ b ⊑ a      a ⊓ b ⊑ b
+c ⊑ a and c ⊑ b  ⟹  c ⊑ a ⊓ b
+```
+
+<span slot="read">The symbol ⊑ reads "is below or equal to". The first
+line says the meet of a and b is below a, and also below b. The second
+says it is the highest such fact: any fact c that is below both a and b
+is also below their meet (⟹ reads "means that").</span>
+</Formal>
+
+<Examples of="lattice">
+
+```text
+{x, y} ⊓ {x}  =  {x}
+{x} ⊓ {y}     =  { }
+```
+
+```text
+number ⊓ maybe-not  =  maybe-not
+```
+
+```text
+the constant 4 ⊓ the constant 4  =  4
+the constant 4 ⊓ the constant 5  =  varies
+```
+
+</Examples>
+
+The first shows sets: a set below another, and two sets side by side
+whose meet is empty. The second is the two-point lattice: if either
+side might not be a number, the merge might not be one either. The
+third is the lattice of the Constant folding and propagation chapter,
+where two different constants merge to "varies". Different questions,
+different lattices, the same machinery.
+
+<Prompts ids={['lattice-what', 'merge-two', 'side-by-side']} />
+
+<Callout kind="engine" label="Under the hood">
+This framework (a fact per node of the control graph, a function per
+node, and a meet where information from different nodes comes
+together) was set out by Gary Kildall in 1973, who showed that
+constant propagation, common subexpression elimination and several
+other optimizations are all instances of one algorithm<Cite id="kildall1973" />.
+Today's textbooks still teach the middle of a compiler this
+way<Cite id="aho2006" /><Cite id="coopertorczon2022" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="one-pass" />
+
+## What you learned
+
+- A **dataflow analysis** attaches a fact to the start (`IN`) and end
+  (`OUT`) of each block, changes it with each block's **transfer
+  function**, and combines facts at joins with a **meet**.
+- **Forward** analyses follow the edges; **backward** ones go against
+  them. **Must** questions meet with intersection, **may** questions
+  with union.
+- The facts form a **lattice**: an order in which any two facts have a
+  meet, the highest fact below both.
+
+Next: with no loops, one pass in the right order is enough. With a
+loop, a block's fact depends on itself, and we need a new idea.
+
+<Quiz />

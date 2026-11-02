@@ -1,0 +1,286 @@
+---
+n: 158
+day: 40
+part: IV
+title: 'Reclaiming memory: mark and sweep'
+tagline: 'Every list, string, closure and instance the VM makes goes onto one list, and nothing would ever come off it; a collector frees what the program can no longer reach, and the whole art is knowing where reaching starts.'
+objectives:
+  - Explain why a VM written in JavaScript still needs a garbage collector of its own.
+  - Define garbage by reachability, and read the definition in its formal form.
+  - List the VM’s roots, and say why each one has to be there.
+  - Explain how a missing root hides, and how stress mode and poisoning make it fail at once.
+introduces: [garbage-collection, roots]
+uses: [heap-object, object-list, interning, hash-table, global-table, call-frame, stack-slot, stack-machine, virtual-machine, upvalue, open-upvalue, closed-upvalue, closure, single-pass-compiler, native-function, vm-list, drip, stack-and-heap, memory, reference, pointer, identity, object, array, property, test, throw]
+sources: [v8-trash-talk]
+---
+import RootsFigure from '../../../components/diagrams/ch158/RootsFigure';
+import MissingRootSteps from '../../../components/diagrams/ch158/MissingRootSteps';
+
+## A heap that would only grow
+
+Since the chapter "Objects that live on the heap", every object the VM
+makes is linked onto one list, the **object list**, by `allocate` in
+`heap.ts`:
+
+```ts
+private allocate<T extends Obj>(o: T): T {
+  this.bytesAllocated += SIZE[o.type];
+  if (this.stress ||
+      this.bytesAllocated > this.nextGC)
+    this.collect();
+  o.next = this.objects;
+  this.objects = o;
+  return o;
+}
+```
+
+The last three lines link the new object onto the front of the list;
+the `if` (wrapped here) is this chapter's subject. Without it, nothing
+would ever come off the list. Run this:
+
+<Run id="garbage" />
+
+Every pass makes a new two-element list, and once the pass ends nothing
+can reach it again; however, the object list still links it, so without
+a collector the VM would keep all 100,000 of them. With it, in a run I
+did for this chapter, the VM collected three times and freed 98,259 of
+them (the rest were still waiting for the next collection when the
+program ended).
+
+You may wonder why this matters, since the VM is written in JavaScript
+and JavaScript collects its own garbage. The catch is that V8 frees an
+object only when nothing refers to it, and the object list refers to
+*every* object. Only the VM knows which of them Drip code can still
+use, so the VM needs its own collector, over its own heap.
+
+<Prompts ids={['why-own-gc']} />
+
+## Reachable from the roots
+
+A Drip program can only get at an object by starting from something it
+holds directly (a value on the stack, a global, a running function) and
+following references from there: a field, a list element, an upvalue, a
+constant.
+
+<Analogy title="balloons on strings">
+Picture every object as a balloon, tied to other balloons with string,
+and a few balloons tied to your wrist. Anything connected to your wrist,
+however long the chain, stays; cut the rest loose and they drift away,
+including two balloons tied only to each other.
+<span slot="breaks">Balloons drift away on their own; garbage just sits
+there, taking memory, until the collector comes round and finds it.
+And a balloon can be cut free by accident, while an object is only
+garbage when no chain leads to it at all.</span>
+</Analogy>
+
+<Analogy title="an address book">
+You can visit anyone whose address is in your address book, and anyone
+whose address is in *their* book, and so on. A person no chain of books
+leads to is someone you can never visit again, so as far as you are
+concerned their house could be let to someone else.
+<span slot="breaks">In real life you might bump into a lost friend in
+the street; a program has no street. If no chain of references leads to
+an object, no code can ever touch it again, which is why freeing it is
+safe.</span>
+</Analogy>
+
+The places reaching starts from are the **roots**, and this is the
+picture the rest of this chapter (and the next) fills in:
+
+<Figure caption="The VM's roots, and what they reach." takeaway="An object is live if some chain of references leads to it from a root; everything else is garbage, even objects that point at each other.">
+  <RootsFigure />
+</Figure>
+
+<Callout kind="definition">
+**Garbage collection** is reclaiming memory that a program can never
+use again. A tracing collector decides what that is by reachability:
+the **roots** are the references the program holds directly, and an
+object is **live** if some chain of references leads to it from a root.
+Every other object is **garbage**, even if other garbage refers to it.
+</Callout>
+
+<Examples of="garbage-collection">
+
+```text
+let xs = [1, 2];
+xs = [3];   # [1, 2] is now garbage
+```
+
+```text
+fn f() {
+  let a = [];
+  let b = [a];
+  push(a, b);   # now each holds the other
+}
+f();   # after the call, both are garbage
+```
+
+```text
+program        collections  objects freed
+closures                 4        130,936
+instantiation           27        589,275
+trees                   10        276,486
+```
+
+</Examples>
+
+The first is the smallest piece of garbage there is: once `xs` holds the
+new list, nothing refers to `[1, 2]`. In the second, `a` and `b` refer
+to each other, but once `f` returns no root leads to either, so both
+are garbage despite the references between them. The third is from runs
+I did for this chapter, of three of the companion's benchmark programs
+(the chapter "Measuring and speeding up the VM" says more about them): the collector
+ran a handful of times and freed hundreds of thousands of objects,
+which is the normal life of a program that allocates as it goes.
+
+<Formal title="Live objects">
+
+```text
+Live = the smallest set L such that
+  every root r is in L, and
+  if o is in L and o → p, p is in L
+```
+
+<span slot="read">The live objects are the smallest collection that
+contains every root and is closed under following references: whenever
+an object o is live and o refers to p, p is live too. "Smallest" is what
+leaves out two objects that only refer to each other.</span>
+</Formal>
+
+<Prompts ids={['gc-def', 'cycle']} />
+
+## The VM's roots
+
+Here they are, from `vm.ts`:
+
+```ts
+markRoots(mark: (v: Value) => void) {
+  for (let i = 0; i < this.sp; i++)
+    mark(this.stack[i]);
+  for (const f of this.frames)
+    mark(f.closure);
+  for (let u = this.openUpvalues; u;
+       u = u.nextOpen) mark(u);
+  this.globals.forEach((k, v) => {
+    mark(k);
+    mark(v);
+  });
+  mark(this.initString);
+}
+```
+
+(Return type left out, long lines wrapped.) The
+stack holds every local and temporary, but only up to `sp`: the slots
+above it are left-overs from calls that have returned. Each frame's
+closure is running, so its constants and upvalues must stay. Open
+upvalues sit on the VM's own list, which a later capture will search,
+so they must stay valid even if no closure holds one any more. Globals
+are reachable by name, so both the names and the values are marked.
+`initString` is the interned `"init"`, which the chapter "Objects and
+method calls in the VM" uses on every `new`.
+
+`Heap.collect` adds two more kinds. `compilerRoots` holds the functions
+the compiler is still building, which nothing in the VM points at yet;
+and `extraRoots`, filled by `heap.push(v)` and emptied by `heap.pop()`,
+is for a value that is briefly reachable from nowhere else.
+
+<Examples of="roots">
+
+```ts
+// Op.Add, joining two strings
+const s = this.heap.copyString(
+  a.chars + b.chars);
+// a and b stay on the stack: safe from GC
+```
+
+```ts
+// copyString, after allocating s
+this.push(s);
+this.strings.set(s, null);
+this.pop();
+```
+
+```ts
+// defineNative
+this.push(this.heap.copyString(name));
+this.push(this.heap.newNative(
+  name, arity, fn));
+```
+
+</Examples>
+
+The first is the `add` instruction joining two strings: `copyString`
+allocates, so a collection may run inside it, and the two strings being
+joined are still on the stack (they are only popped afterwards), which
+keeps them alive. The second is inside `copyString` itself: the new
+string sits in `extraRoots` until it is in the string table. (Nothing
+between those lines allocates a heap object today, so this one is a
+precaution, keeping the rule "a new object is reachable before anything
+else can allocate" true if the table ever changes.) The third is
+the realistic one, and the next section is about it: `defineNative`
+pushes the name and the native function onto the *value stack* (a root)
+as soon as each exists, and pops them only once both are safely in the
+globals table.
+
+<Callout kind="definition">
+The **roots** of the companion VM are the value stack up to `sp`, each
+frame's closure, the open upvalues, the globals (names and values), the
+interned `"init"` string, the functions the compiler is building, and
+the heap's `extraRoots` stack. Any object the VM holds only in a
+TypeScript variable is *not* a root, and is invisible to the collector.
+</Callout>
+
+<Prompts ids={['roots-list', 'sp-only', 'extra-roots']} />
+
+## A missing root, caught
+
+A forgotten root is the classic collector bug, and it hides well. Here
+is a variant of `defineNative` written for this chapter, which keeps
+its two new objects in TypeScript variables instead:
+
+<MissingRootSteps client:visible />
+
+Run normally, that variant works: collections are rare, and none
+happens to fall between the two allocations. So the heap has a
+**stress mode**, `new VM({ stressGC: true })`, which collects on
+*every* allocation. In JavaScript a freed object does not vanish while
+something still refers to it, so stress mode also **poisons** each
+freed object: it deletes its fields and makes reading `type` throw. In
+a copy of the VM with the broken `defineNative`, the program
+`print len([1, 2]);` prints `2` normally, and under stress mode throws
+`use after free: a string object was collected while still in use`
+before it can print anything. The companion's tests run a sample of the
+corpus under stress mode for exactly this reason.
+
+<Prompts ids={['stress-mode', 'define-native']} />
+
+<Callout kind="engine" label="Under the hood">
+V8's own collector starts from roots in the same way: its major
+collector marks every object reachable from a root set that includes
+the execution stack and the global object, and treats everything it
+did not reach as garbage<Cite id="v8-trash-talk" />. A V8 developer
+never writes `markRoots` by hand, because the engine finds the stack's
+references itself; a VM in C or TypeScript has to list its roots
+explicitly, which is why a missing one is a bug you can write.
+</Callout>
+
+## Your turn
+
+<Exercise id="findRoots" />
+
+## What you learned
+
+- **Garbage collection** frees objects nothing can reach. The VM needs
+  its own collector because its object list keeps every object alive
+  as far as V8 can tell.
+- An object is live if a chain of references leads to it from a
+  **root**: the stack up to `sp`, frames' closures, open upvalues,
+  globals, the `"init"` string, the compiler's functions and
+  `extraRoots`.
+- An object held only in a TypeScript variable is not reachable; stress
+  mode and poisoning turn that mistake into an immediate error.
+
+Next: how the collector actually finds every live object, and frees
+the rest.
+
+<Quiz />

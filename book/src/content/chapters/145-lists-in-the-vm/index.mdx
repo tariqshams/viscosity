@@ -1,0 +1,306 @@
+---
+n: 145
+day: 37
+part: IV
+title: 'Lists in the VM'
+tagline: 'The tree-walker borrowed a JavaScript array and called it a list. The VM gets a list object of its own, four instructions to build, read, write and measure it, checks with exact errors, and a for loop made of nothing but bytecode.'
+objectives:
+  - Describe the VM’s list object, and trace how list n builds one from values on the stack.
+  - Trace index.get and index.set, and give the exact error for each kind of bad index, in the order they are checked.
+  - Explain how a list grows (length versus capacity) and why doubling makes each push cheap on average.
+  - Explain how the collector keeps a list’s elements alive, and read the bytecode a for-in loop compiles to.
+introduces: [vm-list]
+uses: [drip-list, index-expression, for-in-loop, native-function, heap-object, object-list, tagged-value, value-representation, stack-machine, instruction-pointer, dispatch-loop, opcode, bytecode, virtual-machine, chunk, constant-pool, disassembler, emit, single-pass-compiler, runtime-error, array, index, length, push, reference, aliasing, identity, stack-and-heap, memory, contiguous, typescript, class, method, function, return, if, for-loop, while-loop, numbers, strings, booleans, comparison, console-log, drip]
+sources: [mdn-array, rust-std-vec, v8-src-js-objects-h, cpython-listobject]
+---
+import ListLayout from '../../../components/diagrams/ch145/ListLayout';
+import BuildSteps from '../../../components/diagrams/ch145/BuildSteps';
+import GrowSteps from '../../../components/diagrams/ch145/GrowSteps';
+import ForInSteps from '../../../components/diagrams/ch145/ForInSteps';
+
+## A list the VM can hold
+
+In "Lists in Drip", the tree-walker wrapped a JavaScript array in a
+small class and evaluated `xs[i]` as a tree node. The VM has only
+instructions and a stack, so this program needs new parts:
+
+```text
+let xs = [10, 20];
+print xs[1];   # 20
+xs[0] = 7;
+print xs;      # [7, 20]
+```
+
+It needs a heap object for the list, instructions to build it and to
+read and write an element (refusing a bad index with Drip's exact
+error), a way to grow, a rule for the garbage collector, and, for
+`for x in xs`, a loop made only of bytecode. Each comes from the
+companion VM's real code.
+
+<Analogy title="a reading room with closed shelves">
+In some libraries you hand the librarian a slip saying "shelf 3", and
+before fetching anything she checks that the slip holds a whole shelf
+number and that the room has a shelf 3.
+<span slot="breaks">A helpful librarian might guess what you meant by
+"shelf 3.5"; the VM never guesses, and names exactly which check failed.
+And the room's shelves are fixed, where a list grows.</span>
+</Analogy>
+
+## The list object
+
+<Figure takeaway="A list is a heap object whose items are references and plain values." caption="The stack slot holds a reference to an ObjList. After the header come its type and items, a JavaScript array of Drip values. A number or none sits right in its cell; a string is one more reference.">
+  <ListLayout />
+</Figure>
+
+Its type is short: the shared header, `type: 'list'` and
+`items: Value[]`. It is made by `newList(items)` in `vm/heap.ts`, which
+hands the object to `allocate` like any other, and whose comment warns
+that the `items` "must already be reachable (e.g. on the stack)".
+
+<Callout kind="definition">
+A **VM list** is a growable list object on the VM's heap: the shared
+object header, then `items`, an array of values in order. The VM builds
+one with `list n`, reads an element with `index.get`, writes one with
+`index.set` and measures one with `list.len`; `index.get` and
+`index.set` check the index first and stop with a runtime error naming
+what is wrong.
+</Callout>
+
+## Building a list: list n
+
+For a list literal the compiler compiles each element in turn, leaving
+their values on the stack in source order, then emits `list` with the
+count as a one-byte operand (so a literal holds at most 255 elements).
+The VM's half is in `vm/vm.ts`:
+
+```ts
+case Op.List: {
+  const n = readByte();
+  // The elements stay on the stack
+  // while the list is allocated.
+  const list = this.heap.newList(
+    stack.slice(this.sp - n, this.sp));
+  this.sp -= n;
+  this.push(list);
+  break;
+}
+```
+
+`readByte` reads the count, `stack.slice` copies the top `n` values into
+a new JavaScript array, in order, and `newList` makes the object around
+it; only then does `this.sp -= n` drop the elements and `push` leave one
+reference. It is the same care as with `add` in the previous chapter:
+making the object may start a collection, and the new array is not yet
+reachable from anything the collector looks at, so the elements must
+still be on the stack, where it counts them as in use.
+
+<BuildSteps client:visible />
+
+<Prompts ids={['list-operand', 'elements-on-stack']} />
+
+## Reading and writing an element
+
+`index.get` expects the list and the index on the stack, index on top:
+
+```ts
+case Op.IndexGet: {
+  const i = this.pop();
+  const xs = this.checkIndex(
+    this.peek(0), i);
+  stack[this.sp - 1] =
+    xs.items[i as number];
+  break;
+}
+```
+
+It pops the index, passes the list (still on the stack) and the index to
+`checkIndex`, and replaces the list with the element. `checkIndex` tests
+four things in order, each with its own message; each line below, run
+alone, stops with the error under it:
+
+```text
+print "abc"[0];
+# cannot index a string
+print [1, 2]["0"];
+# a list index must be a number,
+#   not a string
+print [1, 2][1.5];
+# index 1.5 is not a whole number
+print [1, 2, 3][3];
+# index 3 is out of range for a
+#   list of length 3
+```
+
+The order matters for the message: `"abc"[1.5]` fails the first test and
+says `cannot index a string`, never anything about the `1.5`.
+
+<Formal title="What index.get does to the stack">
+
+```text
+… xs i   ⟶   … xs.items[i]
+  when xs is a list, i is a whole
+  number and 0 ≤ i < len(xs)
+```
+
+<span slot="read">With xs and i on top of the stack (the dots are
+whatever was below), index.get leaves element i of xs in their place,
+when xs is a list, i is a whole number, and i is at least 0 and less
+than the length; otherwise it is a runtime error.</span>
+</Formal>
+
+`index.set` expects three values (list, index, new value), pops the
+value and the index, runs the same `checkIndex`, stores the value into
+`items`, and leaves the value on the stack, because in Drip an
+assignment is an expression whose value is the value assigned. It can
+only replace an element, never add one:
+
+```text
+xs[len(xs)] = 4;
+# index 3 is out of range for a
+#   list of length 3
+push(xs, 4);   # [1, 2, 3, 4]
+```
+
+<Prompts ids={['index-order', 'index-set-value', 'no-grow-by-index']} />
+
+## Growing
+
+`push` is a native function, and its body in the companion VM, after
+checking it was given a list, is `xs.items.push(v)`: JavaScript's own
+array does the growing, which hides the part a VM in C or Rust must do
+itself.
+
+<Analogy title="booking a bigger table than you need">
+Five friends are coming to dinner and more may join, so you book a table
+for eight, and late arrivals sit straight down. When a ninth turns up,
+the party moves to a table for sixteen, which takes a while, but then
+nobody moves again for a long time.
+<span slot="breaks">Friends carry themselves to the new table; the VM
+moves every element itself, one by one, so a move costs time in
+proportion to the length.</span>
+</Analogy>
+
+<GrowSteps client:visible />
+
+Such a list keeps two numbers: its **length**, how many elements it
+has, and its **capacity**, how many slots it has room for. A push into
+spare room is one store; a push into a full list first copies everything
+into a bigger block, and doubling makes that rare enough to cost a
+small, fixed amount per push on average:
+
+<Formal title="The cost of doubling">
+
+```text
+copies over n pushes, from capacity 1:
+  1 + 2 + 4 + … + 2ᵏ  <  2n
+```
+
+<span slot="read">Starting from capacity 1 and doubling whenever the
+list is full, n pushes copy 1, then 2, then 4, up to 2 to the k at the
+last growth (which is less than n); the sum is less than 2n, so on
+average a push copies fewer than two elements.</span>
+</Formal>
+
+Real systems pick their own factor. V8, which runs the companion's
+arrays, grows to the old capacity plus half, plus 16<Cite id="v8-src-js-objects-h" />; Python grows its lists by about an
+eighth, padded to a multiple of four<Cite id="cpython-listobject" />;
+and Rust's `Vec`, which the companion's Rust VM uses, promises no
+particular factor, only that `push` is cheap on average and that the
+block is reallocated only when it is full<Cite id="rust-std-vec" />.
+
+<Prompts ids={['capacity']} />
+
+## Keeping elements alive
+
+A list refers to its elements, so as long as the list is in use, so are
+they. When the collector (built in "Reclaiming memory: mark and sweep")
+reaches a list, it visits each element in turn, from `vm/heap.ts`:
+
+```ts
+case 'list':
+  for (const v of o.items)
+    this.markValue(v);
+  return;
+```
+
+`markValue` ignores numbers, booleans and `none` and marks an object as
+in use; a list that contains itself cannot trap it, because an object
+already marked is skipped. (Printing has its own guard:
+`let xs = []; push(xs, xs); print xs;` prints `[[...]]`.)
+
+<Prompts ids={['items-trace']} />
+
+## for x in xs, compiled
+
+The tree-walker ran a for-in loop with a TypeScript loop of its own. The
+VM compiles it into ordinary instructions, keeping the list and a
+counter in two **hidden locals**, stack slots the compiler reserves under
+names no Drip program can write:
+
+<ForInSteps client:visible />
+
+Three details carry Drip's rules: `iter.list` checks once that the
+value is a list (`for x in 5` stops with `cannot loop over a number`);
+`list.len` runs at every test, so pushing inside the body lengthens the
+loop; and each round loads the element into a new slot and pops it at
+the end, so every round has a fresh `x`. ("Locals as stack slots" and
+"Branches and loops in bytecode" cover `load.local`, `jump.unless` and
+`loop` in full.)
+
+<Prompts ids={['for-len']} />
+
+<Examples of="vm-list">
+
+```text
+print [];
+# 0000    1 list                0
+```
+
+```text
+xs[0] += 5;
+# load.global xs, const 0, dup2,
+# index.get, const 5, add,
+# index.set, pop
+```
+
+<Run id="sieve" />
+
+</Examples>
+
+`list 0` takes nothing and pushes a new, empty list. The second needs the list and the index twice (to read the
+old element and to write the new one), so `dup2` copies the top two
+values, `index.get` uses the copies, `add` adds 5, and `index.set` uses
+the originals. The runnable one is a small sieve of Eratosthenes: a list
+of flags, filled with `push` and crossed out with `index.set`, and a
+list of the primes it finds.
+
+<Callout kind="engine" label="Under the hood">
+The benchmark program `sieve` runs the same algorithm up to a million,
+and in `companion/ts/results/drip-bench-2026-11-02.md` the VM ran it
+only 1.08 times as fast as the tree-walker. Both make the same four
+checks on every index and end in the same JavaScript array operation,
+which is most likely why removing the tree walk saves so little here;
+"Measuring and speeding up the VM" looks at where the time goes.
+</Callout>
+
+## Your turn
+
+<Exercise id="growList" />
+
+<Exercise id="markList" />
+
+## What you learned
+
+- A **VM list** is a heap object with `items`; `list n` builds one from
+  the top `n` stack values, which stay there until the object exists.
+- `index.get` and `index.set` check for a list, a number, a whole number
+  and a position in range, in that order, each with its own error.
+- A list grows by moving to a bigger block; doubling keeps each push
+  cheap on average.
+- The collector visits a list's `items`, and a for-in loop compiles to
+  two hidden locals, a `list.len` test each round, and a fresh `x`.
+
+Next: finding things fast. Before the VM can look up a global by name,
+it needs a hash table.
+
+<Quiz />

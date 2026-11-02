@@ -1,0 +1,102 @@
+{
+  "env": {
+    "node": "v22.23.4",
+    "v8": "12.4.254.21-node.57",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "date": "2026-11-02T09:19:29.709Z",
+    "runs": 9,
+    "note": "Each pair of variants run alternately, 9 times each, every run in a fresh process; best and median whole-run times in ms, compile time included. Shared cloud VM with other jobs running: treat differences under about 10% as noise."
+  },
+  "rows": [
+    {
+      "change": "poisoning",
+      "program": "instantiation",
+      "fastLabel": "poisoning off (as shipped)",
+      "slowLabel": "poisoning every freed object",
+      "fast": 748,
+      "slow": 1522,
+      "fastMedian": 907,
+      "slowMedian": 1789
+    },
+    {
+      "change": "poisoning",
+      "program": "trees",
+      "fastLabel": "poisoning off (as shipped)",
+      "slowLabel": "poisoning every freed object",
+      "fast": 881,
+      "slow": 1259,
+      "fastMedian": 975,
+      "slowMedian": 1383
+    },
+    {
+      "change": "inc.local",
+      "program": "for-range loop",
+      "fastLabel": "inc.local (as shipped)",
+      "slowLabel": "five instructions instead",
+      "fast": 745,
+      "slow": 855,
+      "fastMedian": 810,
+      "slowMedian": 1005
+    },
+    {
+      "change": "inc.local",
+      "program": "sieve",
+      "fastLabel": "inc.local (as shipped)",
+      "slowLabel": "five instructions instead",
+      "fast": 1082,
+      "slow": 1213,
+      "fastMedian": 1313,
+      "slowMedian": 1302
+    },
+    {
+      "change": "invoke",
+      "program": "method_calls",
+      "fastLabel": "invoke (as shipped)",
+      "slowLabel": "get.prop, then call",
+      "fast": 704,
+      "slow": 932,
+      "fastMedian": 859,
+      "slowMedian": 1045
+    },
+    {
+      "change": "map-fields",
+      "program": "fields",
+      "fastLabel": "fields in a JavaScript Map",
+      "slowLabel": "fields in the VM Table (as shipped)",
+      "fast": 688,
+      "slow": 750,
+      "fastMedian": 755,
+      "slowMedian": 810
+    },
+    {
+      "change": "map-fields",
+      "program": "instantiation",
+      "fastLabel": "fields in a JavaScript Map",
+      "slowLabel": "fields in the VM Table (as shipped)",
+      "fast": 595,
+      "slow": 712,
+      "fastMedian": 640,
+      "slowMedian": 796
+    },
+    {
+      "change": "counter",
+      "program": "fib",
+      "fastLabel": "no instruction counter",
+      "slowLabel": "counter (as shipped)",
+      "fast": 1853,
+      "slow": 1910,
+      "fastMedian": 2006,
+      "slowMedian": 2105
+    },
+    {
+      "change": "engines",
+      "program": "for-range loop",
+      "fastLabel": "tree-walker",
+      "slowLabel": "VM",
+      "fast": 653,
+      "slow": 814,
+      "fastMedian": 744,
+      "slowMedian": 955
+    }
+  ]
+}

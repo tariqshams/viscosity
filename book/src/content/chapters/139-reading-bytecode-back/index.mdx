@@ -1,0 +1,291 @@
+---
+n: 139
+day: 35
+part: IV
+title: 'Reading bytecode back: a disassembler'
+tagline: 'Bytes are for the machine; people need words. A disassembler turns a chunk back into one readable line per instruction, and the only hard part is knowing where each instruction starts.'
+objectives:
+  - Read every column of the real disassembler's output, including jumps and their targets.
+  - Explain why a disassembler must decode from the start, and use the operand shapes to step from one instruction to the next.
+  - Show how a runtime error turns the offset of the failing instruction into a source line.
+  - Write a small disassembler that steps over each instruction's operands correctly.
+introduces: [disassembler]
+uses: [bytecode, opcode, virtual-machine, chunk, constant-pool, array, index, byte, strings, source-location, runtime-error, typescript, template-literal, string-methods, drip, compiler, while-loop, return]
+sources: [v8-sparkplug]
+---
+import DisasmSteps from '../../../components/diagrams/ch139/DisasmSteps';
+import InstrShapes from '../../../components/diagrams/ch139/InstrShapes';
+import ErrorLine from '../../../components/diagrams/ch139/ErrorLine';
+
+## Bytes are for the machine
+
+When the compiler gets something wrong, the bytes are where the mistake
+lives, and reading `0, 0, 0, 8, 1, 0, 0, 1, 20, 33, 4, 1, 49` by hand,
+with the opcode table open beside you, is slow and very easy to get
+wrong. In the last two chapters you have been reading listings like
+this one instead, for `print 1.5 + 2;` and `print "hi";`:
+
+```text
+== <script> ==
+0000    1 const               0 '1.5'
+0003    | const               1 '2'
+0006    | add
+0007    | print
+0008    2 const               2 'hi'
+0011    | print
+0012    | none
+0013    | return
+```
+
+That text is made by a small program in the companion,
+`companion/ts/src/vm/debug.ts`, called a **disassembler**. This chapter
+looks at what each column means, how the program finds them, and the one
+thing that makes it tricky.
+
+<Analogy title="sheet music from a piano roll">
+A pianist cannot read the holes of a player-piano roll at a glance, so
+someone transcribes the roll back into sheet music: the same notes,
+written in the form people read. The roll still plays the piano; the
+sheet music is only for people.
+<span slot="breaks">Sheet music can say more than the roll (how loudly,
+how sweetly); a disassembly says exactly what the bytes say and nothing
+more, except that it also looks up each constant's value so you do not
+have to.</span>
+</Analogy>
+
+## Reading the columns
+
+Each line of the listing is one instruction, and has up to four parts:
+
+- The **offset**, such as `0003`: the index in `code` of the
+  instruction's opcode, padded to four digits.
+- The **source line**, or `|` when it is the same line as the byte
+  before; as such, a new number in this column marks where a new line of
+  your program begins.
+- The **name**, such as `const` or `add`: the opcode, printed in the
+  lower-case, dotted form.
+- The **operands**, if the instruction has any. For `const` that is the
+  constant's number and then, in quotes, the value it names, looked up
+  in the pool.
+
+The offsets go 0, 3, 6, 7: a `const` is three bytes long and an `add`
+one, so the gaps between offsets are the lengths of the instructions.
+`== <script> ==` names the chunk; a function's chunk follows its
+script's, under its own name.
+
+<Prompts ids={['offset-what', 'pipe-what', 'gap-is-length']} />
+
+## Where does the next instruction start?
+
+The disassembler cannot loop over the bytes one at a time, because some
+bytes are opcodes and some are operands, and nothing in a byte says
+which it is. It has to decode one instruction, which tells it how long
+that instruction is, and only then does it know where the next one
+starts. The loop at the top of `debug.ts` does exactly that (rewrapped
+here to fit):
+
+```ts
+for (let offset = 0;
+     offset < chunk.code.length; ) {
+  const [text, next] =
+    disassembleInstruction(chunk, offset);
+  lines.push(text);
+  offset = next;
+}
+```
+
+`disassembleInstruction` returns two things: the text for the
+instruction at `offset`, and the offset of the instruction after it.
+The loop has no `offset++`; it moves by whatever the instruction says.
+Step through it on the chunk for a small block:
+
+<DisasmSteps client:visible />
+
+<Analogy title="a sentence with no spaces">
+Try reading "itisnotable". Split it one way and it says "it is not
+able"; split it another and it says "it is notable", which means
+something quite different. You only read it correctly if you start at
+the beginning and know where each word ends. Bytecode is the same,
+except that the opcode at the start of each word tells you exactly how
+long the word is.
+<span slot="breaks">A person can often guess the right split from
+meaning; a disassembler has no meaning to go on, so it never guesses: it
+starts at offset 0 and steps by each instruction's length.</span>
+</Analogy>
+
+How does `disassembleInstruction` know the length? Every opcode has one
+of a few **operand shapes**, the ones the comments in `chunk.ts` label
+with `k`, `s` and `j`:
+
+<Figure takeaway="The opcode decides the shape, and the shape decides the length." caption="Drip's operand shapes. k and j are two bytes, high byte first; s is one byte. closure is the only instruction whose length varies: two more bytes for each variable it captures.">
+  <InstrShapes />
+</Figure>
+
+The real function is a `switch` with one group of `case`s per shape.
+Its lines are long, so here is a shortened sketch of three of the
+groups, keeping the real names:
+
+```ts
+// a sketch of disassembleInstruction
+switch (op) {
+  case Op.Const: // and the other k ops
+    return [prefix + name + ' ' +
+      constant(short(offset + 1)),
+      offset + 3];
+  case Op.LoadLocal: // and the s ops
+    return [prefix + name + ' ' +
+      code[offset + 1], offset + 2];
+  default: // no operands
+    return [prefix + name, offset + 1];
+}
+```
+
+`prefix` is the offset and line columns, and `name` is the padded
+opcode name. For a `k` instruction, `short(offset + 1)` rebuilds the
+two-byte operand (in the real code, `(code[at] << 8) | code[at + 1]`:
+shift the high byte left by eight binary places, which multiplies it by
+256, and combine it with the low byte), `constant(...)` formats the
+index and the quoted value, and the next instruction is three bytes on.
+An `s` instruction prints its one operand byte and moves on by two;
+anything without operands moves on by one.
+
+<Callout kind="definition">
+A **disassembler** prints bytecode as readable text, one instruction
+per line, usually with its offset, its source line, its name and its
+operands. It must decode instructions in order from the start, because
+only the opcode says how many operand bytes follow.
+</Callout>
+
+<Formal title="Where each instruction starts">
+
+```text
+offset₀ = 0
+offsetᵢ₊₁ = offsetᵢ + length(code[offsetᵢ])
+```
+
+<span slot="read">The first instruction starts at offset 0. Each later
+one starts where the one before it started, plus the length of that
+instruction, and the length depends only on its opcode (the byte at its
+offset). That is why the walk has to begin at 0.</span>
+</Formal>
+
+<Examples of="disassembler">
+
+```text
+{ let a = 2; print a + 1; }
+
+0000    1 const               0 '2'
+0003    | load.local          1
+0005    | const               1 '1'
+0008    | add
+```
+
+```text
+let n = 3;
+if n > 2 {
+  print "big";
+}
+
+0012    | gt
+0013    | jump.unless        13 -> 20
+0016    3 const               4 'big'
+0019    | print
+0020    4 none
+```
+
+```text
+let i = 0;
+while i < 3 {
+  i += 1;
+}
+
+0013    | jump.unless        13 -> 30
+0023    | store.global        4 'i'
+0026    | pop
+0027    4 loop               27 -> 6
+```
+
+</Examples>
+
+The first is the block from the diagram, written on one line, so every
+byte has line 1: three shapes in four instructions, three, two, three
+and one bytes long. The second shows how jumps print: `jump.unless` has
+a two-byte `j` operand (here the bytes `0, 4`, a distance of 4), and the
+disassembler prints the jump's own offset and then, after the arrow, the
+offset it lands on: 13 + 3 + 4 = 20, the instruction after the `print`,
+which is where the program goes when `n > 2` is false. The third shows a
+backward jump, from a real loop (lines picked from the listing): `loop`
+at 27 jumps back to offset 6, where the condition `i < 3` is worked out
+again. The chapter *Branches and loops in bytecode* builds both kinds of
+jump.
+
+<Prompts ids={['decode-in-order', 'invoke-length', 'jump-target']} />
+
+## The lines array at work
+
+Why carry a line number for every byte? Because when an instruction
+fails, the VM only knows *where in the code* it is, an offset into
+`code`; the line has to be looked up. This program:
+
+```text
+print 1;
+print 2 +
+  -"a";
+```
+
+prints `1`, and then stops with:
+
+```text
+runtime error: cannot negate a string
+  at line 3 in script
+```
+
+<Figure takeaway="The failing byte's offset finds its line." caption="The neg instruction at offset 10 fails. The VM has already moved ip on to 11, so it reads lines[ip - 1], which is 3.">
+  <ErrorLine />
+</Figure>
+
+The `neg` that failed was written while the compiler was reading the
+`-` on line 3, so `lines[10]` is 3. In `vm.ts` the error report reads
+`fn.chunk.lines[f.ip - 1]` for each call that is running; it subtracts
+1 because the instruction pointer `ip` (the number saying which byte
+runs next, the subject of *A machine with a stack*) has already moved
+past the failing instruction's opcode. Look also at offset 11: the `add`
+is tagged with line 2, the line of the `+`, so an error in the addition
+would point at the line where the `+` is written. One number per byte is
+simple and wasteful (most neighbours repeat), and the second exercise
+below builds a more compact version.
+
+<Prompts ids={['vm-knows-offset', 'add-line-2']} />
+
+<Callout kind="engine" label="Under the hood">
+Offsets are how real engines talk about positions in bytecode too.
+V8's Sparkplug compiles Ignition's bytecode to machine code, and then
+does not keep the current bytecode offset up to date while that machine
+code runs; instead it stores a two-way mapping between ranges of machine
+code and bytecode offsets, and looks the offset up only when something
+(a stack trace, the debugger) asks for it<Cite id="v8-sparkplug" />:
+the same bargain as Drip's `lines`, paying a little memory so that the
+fast path never has to think about it.
+</Callout>
+
+## Your turn
+
+<Exercise id="disassemble" />
+
+<Exercise id="runLines" />
+
+## What you learned
+
+- A **disassembler** prints each instruction's offset, line (or `|`),
+  name and operands, and looks up the value of each constant.
+- It must decode from offset 0 and step by each instruction's length,
+  because bytes do not say whether they are opcodes or operands; the
+  opcode's shape (none, `s`, `k`, `j`, `k s`, or `closure`'s variable
+  tail) gives the length.
+- Jumps print as `offset -> target`, where the target is the offset
+  after the jump plus (or, for `loop`, minus) its distance.
+- A runtime error finds its line by reading `lines` at `ip - 1`.
+
+Next: the loop that runs a chunk, and the stack it keeps its values on.
+
+<Quiz />

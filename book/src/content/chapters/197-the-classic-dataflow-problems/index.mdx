@@ -1,0 +1,250 @@
+---
+n: 197
+day: 50
+part: VI
+title: 'The classic dataflow problems'
+tagline: 'Which assignment gave x the value it has here? Describe each block by the definitions it creates and the ones it wipes out, let those flow round the CFG, and you have the first and most famous dataflow problem.'
+objectives:
+  - Compute a block’s gen and kill sets, and apply the transfer function OUT = gen ∪ (IN − kill).
+  - Write the equations for reaching definitions and say why it is a forward “may” problem.
+  - Fill in the table of reaching definitions for a loop, round by round, to a fixpoint.
+  - Connect reaching definitions to constants, to “used before assigned”, and to where SSA puts its phis.
+introduces: [gen-kill, reaching-definitions]
+uses: [dataflow, lattice, fixpoint, worklist, cfg, basic-block, three-address-code, ssa, phi-node, ssa-construction, typescript, set, map, array, function, for-loop]
+sources: [aho2006, kildall1973, coopertorczon2022]
+---
+import GenKillFigure from '../../../components/diagrams/ch197/GenKillFigure';
+import ReachSteps from '../../../components/diagrams/ch197/ReachSteps';
+
+## Which assignment was it?
+
+Here is the loop from the last chapter again, with every assignment
+given a label, `d1` to `d5` (the `d` is for **definition**, the
+compiler's word for an instruction that gives a variable a value):
+
+```text
+b0: d1: i = 0
+    d2: x = 0
+b1: if i < 3 goto b2 else b3
+b2: d3: y = i * 2
+    d4: x = x + y
+    d5: i = i + 1
+    goto b1
+b3: print x
+    print y
+```
+
+Stand at `print x` and ask: which of these assignments could have given
+`x` the value it has right now? If the loop ran zero times, it was `d2`
+(`x = 0`); if it ran at least once, it was `d4`. A compiler wants this
+answer all the time: if only one definition can reach a use, and that
+definition is a constant, the use can be replaced by the constant (the
+Constant folding and propagation chapter does exactly that); and if two
+can, they meet somewhere, which is where SSA puts a phi. This question
+is called **reaching definitions**, and to answer it we first need a
+compact way to describe what each block does to the answer.
+
+## What a block creates and destroys
+
+A block can do only two things to the set of definitions flowing
+through it. It can **create** some: every assignment in the block is a
+new definition that now reaches onward. And it can **destroy** some: if
+the block assigns `x`, every other definition of `x` is wiped out,
+because after this block `x` holds the new value, whatever it held
+before.
+
+<Analogy title="a noticeboard with one hook per name">
+Imagine a noticeboard with one hook for each name. Pinning up a new
+notice for "x" means taking down whatever notice hung on the "x" hook
+before. Walking past a stretch of corridor, you can describe what it
+did to the board as two lists: the notices it put up, and the old ones
+it took down.
+<span slot="breaks">A real board shows one notice per hook. Where two
+corridors meet, the analysis keeps the notices from both boards,
+because either corridor could have been the way you came.</span>
+</Analogy>
+
+<Analogy title="a passport's stamps and cancellations">
+A border post adds its own stamp to your passport and can cancel an
+older visa. To describe what a border post does, you do not need to
+know whose passport it is: "adds this stamp, cancels these visas" is
+enough to work out the passport's pages on the far side.
+<span slot="breaks">A passport belongs to one traveller with one
+history; here, one set of definitions stands for every path at once,
+and a definition is cancelled by any later definition of the same
+variable, not by a rule about countries.</span>
+</Analogy>
+
+<Figure takeaway="A block’s whole effect is: take away its kill set, then add its gen set." caption="The loop body b2 when all five definitions reach its start. Its kill set (the other definitions of x, y and i) removes d1 and d2; its gen set adds d3, d4 and d5.">
+  <GenKillFigure />
+</Figure>
+
+<Callout kind="definition">
+For a block B, **gen[B]** is the set of facts the block creates and
+**kill[B]** the set of facts it destroys; for reaching definitions,
+gen[B] holds B's definitions that are not overwritten later in B, and
+kill[B] holds every other definition of a variable B assigns. Many
+analyses have a transfer function of this **gen/kill** form, which
+needs only two sets per block<Cite id="aho2006" />.
+</Callout>
+
+<Formal title="The gen/kill transfer function">
+
+```text
+OUT[B] = gen[B] ∪ (IN[B] − kill[B])
+```
+
+<span slot="read">The fact at the end of block B is: take the fact at
+its start, remove (− reads "minus", "without") everything in B's kill
+set, and then add (∪, "union") everything in its gen set.</span>
+</Formal>
+
+The order inside the brackets matters: kill first, then gen. In b2,
+`d4: x = x + y` kills `d2` (the other definition of `x`) but is itself
+in gen, and since gen is added after kill, `d4` survives.
+
+<Examples of="gen-kill">
+
+```text
+b: d7: x = 1
+gen = {d7}   kill = other defs of x
+```
+
+```text
+b: d7: x = 1
+   d8: x = 2
+gen = {d8}   kill = {d7, other defs of x}
+```
+
+<Run id="gen-kill" />
+
+</Examples>
+
+The first is the simplest block, one definition: it generates itself and
+kills every other definition of `x`. The second assigns `x` twice, and
+only the last assignment leaves the block, so `d7` is not in gen (it is
+killed before the block even ends). The runnable one computes gen and
+kill for the real loop body b2 from a list of its instructions and all
+the definitions in the function, and prints `gen d3 d4 d5` and
+`kill d1 d2`; try adding a second assignment to `y`.
+
+<Prompts ids={['gen-what', 'kill-what', 'transfer-gk', 'last-def-gen']} />
+
+## Reaching definitions
+
+With gen and kill in hand, the question is a dataflow problem like the
+ones you have solved. It looks back in time, so it is **forward**. And
+it asks whether a definition reaches along **some** path, so it is a
+**may** problem, whose meet is union: a definition that arrives along
+either edge into a join may have been the last one.
+
+<Callout kind="definition">
+A definition `d` of a variable `v` **reaches** a point `p` if there is
+a path from `d` to `p` along which `v` is not assigned again.
+**Reaching definitions** computes, for the start and end of every
+block, the set of definitions that reach it<Cite id="aho2006" />.
+</Callout>
+
+<Formal title="Reaching definitions">
+
+```text
+OUT[entry] = gen[entry]
+IN[B]  = ⋃ OUT[P]   for P ∈ pred(B)
+OUT[B] = gen[B] ∪ (IN[B] − kill[B])
+start: OUT[B] = ∅ for every B
+```
+
+<span slot="read">At the start of the entry nothing reaches, so the
+entry's OUT is its own gen set. Every other block's IN is the union, over
+all its predecessors, of their OUT sets; each OUT is the block's gen
+set together with what reaches its start minus what it kills. Every
+OUT starts as the empty set, which union leaves alone, and the
+equations are applied until nothing changes.</span>
+</Formal>
+
+Step through it on the loop. It needs two rounds because the back edge
+brings the loop body's definitions to the loop test only after the body
+has been computed once:
+
+<ReachSteps client:visible />
+
+The whole answer fits in one table:
+
+| block | gen | kill | IN | OUT |
+|---|---|---|---|---|
+| b0 | d1 d2 | d4 d5 | ∅ | d1 d2 |
+| b1 | ∅ | ∅ | d1–d5 | d1–d5 |
+| b2 | d3 d4 d5 | d1 d2 | d1–d5 | d3 d4 d5 |
+| b3 | ∅ | ∅ | d1–d5 | d1–d5 |
+
+<Examples of="reaching-definitions">
+
+```text
+d1: x = 1 ; print x
+reaching print: {d1}
+```
+
+```text
+if c { d1: x = 1 } else { d2: x = 2 }
+reaching the join: {d1, d2}
+```
+
+```text
+loop test b1: d1 and d5 (both i)
+SSA: i₂ = φ(i₁, i₃)
+```
+
+</Examples>
+
+The first has one definition and no way round it, so exactly one
+reaches the use. The second is a join: both definitions arrive and
+both are kept, because the analysis cannot know which branch ran. The
+third is the realistic one, from the table: at the loop test, two
+definitions of `i` reach, `i = 0` from before the loop and `i = i + 1`
+from its body, and that is precisely the place, and the reason, the
+SSA chapters put a phi for `i`. SSA makes reaching definitions
+unnecessary for local variables, since each use names its one
+definition and phis mark the joins; however, for variables SSA does
+not track, such as fields stored in memory, the question comes back.
+
+<Prompts ids={['reach-what', 'reach-may', 'reach-start-empty', 'phi-where']} />
+
+<Callout kind="pitfall">
+Reaching definitions cannot tell you that `y` might be used before it
+is assigned: at `print y`, the set `{d3}` says only which definitions
+may reach, not that there is also a path (the loop running zero times)
+on which none does. To ask that, add a pretend definition "y is
+undefined" at the entry, or use the "definitely assigned" analysis of
+the Dataflow analysis chapter.
+</Callout>
+
+<Callout kind="engine" label="Under the hood">
+Kildall's 1973 framework treated problems like this one as instances of
+one algorithm<Cite id="kildall1973" />, and reaching definitions is the
+first of the classic problems in the standard textbook's dataflow
+chapter (followed there by live variables and available expressions),
+written with gen and kill sets<Cite id="aho2006" />.
+Production compilers rarely run it on local variables today, because
+they are in SSA form; it survives in analyses of memory, and as the
+clearest way to learn the framework<Cite id="coopertorczon2022" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="reaching" />
+
+## What you learned
+
+- A block's effect on a set of facts is described by **gen** (facts it
+  creates) and **kill** (facts it destroys):
+  `OUT = gen ∪ (IN − kill)`.
+- For reaching definitions, gen holds a block's last definition of each
+  variable and kill every other definition of the variables it assigns.
+- **Reaching definitions** is a forward "may" problem: union at joins,
+  every OUT starting empty, iterated to a fixpoint.
+- Where several definitions of a variable reach a join, SSA needs a phi.
+
+Next: two "must" problems, one forward and one backward, built from the
+same gen and kill sets.
+
+<Quiz />

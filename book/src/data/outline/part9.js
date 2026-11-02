@@ -1,14 +1,14 @@
 export default {
-  id: 'IX', track: 'A', days: '61–63', title: 'Beyond JavaScript',
+  id: 'IX', track: 'A', days: '67–69', title: 'Beyond JavaScript',
   blurb: 'A Python front-end plugin, WebAssembly as a target, the research frontier, and shipping Viscosity.',
   chapters: [
-    { n: 243, title: 'A second language: why plugins pay off', introduces: { 'multi-language-ir': 'one IR serving several source languages' } },
-    { n: 244, title: 'A small Python front-end', introduces: { 'python-subset': 'the part of Python Viscosity understands', 'indentation-tokens': 'INDENT/DEDENT tokens for significant whitespace' } },
-    { n: 245, title: 'Lowering Python to VIR', introduces: { 'semantic-differences': 'where Python and JavaScript behave differently' } },
-    { n: 246, title: 'Emitting Python with column storage', introduces: { 'python-array-module': 'Python’s array module for compact numeric columns' } },
-    { n: 247, title: 'WebAssembly as a target', introduces: { webassembly: 'a portable low-level binary format', 'linear-memory': 'WebAssembly’s single flat memory' } },
-    { n: 248, title: 'The research frontier', introduces: { 'open-problems': 'what nobody has solved yet' } },
-    { n: 249, title: 'Shipping Viscosity', introduces: { 'npm-package': 'publishing a library to npm', 'semantic-versioning': 'major.minor.patch versions' } },
-    { n: 250, title: 'Capstone: what you have built', introduces: { capstone: 'putting it all together' } },
+    { n: 266, title: 'A second language: why plugins pay off', introduces: { 'multi-language-ir': 'one IR serving several source languages' } },
+    { n: 267, title: 'A small Python front-end', introduces: { 'python-subset': 'the part of Python Viscosity understands', 'indentation-tokens': 'INDENT/DEDENT tokens for significant whitespace' } },
+    { n: 268, title: 'Lowering Python to VIR', introduces: { 'semantic-differences': 'where Python and JavaScript behave differently' } },
+    { n: 269, title: 'Emitting Python with column storage', introduces: { 'python-array-module': 'Python’s array module for compact numeric columns' } },
+    { n: 270, title: 'WebAssembly as a target', introduces: { webassembly: 'a portable low-level binary format', 'linear-memory': 'WebAssembly’s single flat memory' } },
+    { n: 271, title: 'The research frontier', introduces: { 'open-problems': 'what nobody has solved yet' } },
+    { n: 272, title: 'Shipping Viscosity', introduces: { 'npm-package': 'publishing a library to npm', 'semantic-versioning': 'major.minor.patch versions' } },
+    { n: 273, title: 'Capstone: what you have built', introduces: { capstone: 'putting it all together' } },
   ],
 };

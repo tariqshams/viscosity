@@ -1,0 +1,257 @@
+---
+n: 201
+day: 51
+part: VI
+title: 'Constant folding and propagation'
+tagline: 'Some of the arithmetic in a program has the same answer every time it runs; a compiler can work it out once, while compiling, as long as it gets exactly the answer the machine would have got, odd corners included.'
+objectives:
+  - Fold an instruction whose operands are all constants, and say why the result must match the run-time answer exactly.
+  - List what a folder must leave alone even when every operand is a constant, and why.
+  - Tell a safe algebraic shortcut (x * 0, x + 0) from one that changes a JavaScript program.
+  - Write a folder for a block of SSA instructions given as data.
+introduces: [constant-folding]
+uses: [ir, three-address-code, temporary, ssa, basic-block, cfg, phi-node, dataflow, compiler, side-effect, ieee754, float64, optimizing-tiers, dead-code-elimination, object, method, numbers, strings, map, array, for-of, function, arrow-function]
+sources: [v8-constant-folding-reducer, coopertorczon2022]
+---
+import FoldSteps from '../../../components/diagrams/ch201/FoldSteps';
+import FoldGate from '../../../components/diagrams/ch201/FoldGate';
+
+## The same sum, a hundred times
+
+Here is a loop that builds a hundred particles, with the count written
+as a small sum (the kind of thing people write to show where a number
+comes from, such as `60 * 60 * 24` for the seconds in a day):
+
+```js
+const ps = [];
+for (let i = 0; i < 2 * 50; i++) {
+  ps.push({ x: i, vx: 1 });
+}
+```
+
+Viscosity lowers the loop test into its IR, VIR, and this is the real
+block it prints for it (block `b1`, the loop header from the
+control-flow graph chapters):
+
+```text
+b1:  ; preds b0 b3
+  %3 = phi %2, %14
+  %4 = const 2
+  %5 = const 50
+  %6 = binop * %4, %5
+  %7 = binop < %3, %6
+  condbr %7, b2, b4
+```
+
+Every time round the loop, `%6` multiplies 2 by 50 and gets 100; the
+answer never changes, because neither operand can. A compiler can do
+that multiplication once, while it compiles, and write `const 100` in
+its place. That small act has a name, **constant folding**, and it is
+the first optimization of this part, because it is the simplest one
+that changes the program, and so the first place we have to be careful.
+
+<Analogy title="adding up the bill before you go out">
+Planning a trip, you add up the train fares at home the night before,
+write the total on a card and take the card with you; you do not redo
+the same sum at every station. The sum was always going to come out
+the same, so doing it early costs nothing and saves work later.
+<span slot="breaks">At home you might round the fares or forget a
+penny, and nobody would mind; a compiler has no such freedom. Its
+"early sum" must give exactly, to the last bit, the answer the machine
+would have given while the program ran, or the program changes.</span>
+</Analogy>
+
+<Analogy title="a ready-mixed cake">
+A packet of cake mix has the flour, sugar and baking powder already
+weighed and mixed at the factory; at home you only add the parts that
+change from kitchen to kitchen (the eggs, the milk). The factory did the
+work that is the same for everyone, once, for millions of cakes.
+<span slot="breaks">The factory mixes ingredients it can see. A
+compiler can only fold what it *knows*: the moment one operand comes
+from outside (a parameter, user input, a value from a loop), it must
+leave that part of the recipe to be done at run time.</span>
+</Analogy>
+
+## Folding one instruction
+
+In SSA (the form where every value is defined exactly once) the rule
+fits in a sentence: when every operand of an instruction is a `const`,
+and the operation is one the compiler is allowed to do early (the next
+two sections say which), work it out now and replace the instruction
+with a `const` holding the answer. Step through it on the loop header:
+
+<FoldSteps client:visible />
+
+Notice what happened to `%7`. Its second operand became a constant, but
+its first, `%3`, is the loop counter (a phi that is 0, then 1, then 2),
+so `%7` stays as it is; one unknown operand is enough to stop a fold.
+Notice also that nothing had to be copied anywhere: `%7` already
+referred to `%6`, and `%6` is now `const 100`, so every user of `%6` sees
+the constant at once. That is SSA paying off again; without it, the
+compiler would first have to check that no other assignment could
+change the value between the definition and the use.
+
+<Callout kind="definition">
+**Constant folding** replaces an instruction whose operands are all
+constants with a single constant: the result of doing the operation at
+compile time. It is allowed only when the operation has no side effects,
+cannot throw an exception, and gives exactly the value it would have
+given at run time.
+</Callout>
+
+<Formal title="The folding rule">
+
+```text
+%a = const x    %b = const y
+op is pure and total on (x, y)
+──────────────────────────────
+%d = op %a, %b
+    ⟶  %d = const ⟦op⟧(x, y)
+```
+
+<span slot="read">If %a is the constant x and %b is the constant y, and
+op has no side effects and gives an answer (rather than throwing) for
+those two values, then the instruction %d = op %a, %b may be rewritten
+as %d = const, where the double brackets ⟦op⟧ mean "the operation op
+as the language defines it", applied to x and y.</span>
+</Formal>
+
+<Prompts ids={['fold-what', 'fold-one-unknown', 'fold-ssa-free']} />
+
+## The answer must be the machine's answer
+
+The second line of that rule hides the hard part. The folder runs
+inside the compiler, but its answer must be the one the *program* would
+have computed, and JavaScript has some surprising answers:
+
+<Run id="corners" />
+
+`'1' + 2` is the string `'12'`, because `+` joins strings; `1 / 0` is
+`Infinity`, not an error; `0.1 + 0.2` carries the rounding of a 64-bit
+float (`0.30000000000000004`); `0 * -1` is negative zero, a real and
+different value (`1 / -0` is `-Infinity`); and `2 ** 53 + 1` comes back
+as `2 ** 53`, because a float64 cannot hold the odd number above it. A
+folder written in JavaScript gets all of this right for free by doing
+the very same operation. A folder written in C++ or Rust (V8's is in
+C++) must copy JavaScript's rules exactly, or it changes your program.
+
+<Examples of="constant-folding">
+
+```text
+%0 = const 2
+%1 = const 50
+%2 = binop * %0, %1  ⟶  %2 = const 100
+```
+
+```text
+%1 = const "1"
+%2 = const 2
+%3 = binop + %1, %2  ⟶  %3 = const "12"
+%4 = const 0
+%5 = binop / %4, %4  ⟶  %5 = const NaN
+```
+
+```text
+%4 = const 1
+%5 = const 0
+%6 = binop < %4, %5  ⟶  %6 = const false
+condbr %6, b1, b2    ; can only go to b2
+```
+
+</Examples>
+
+The first is the loop header again, the plainest case: two numbers and
+an operation that cannot surprise anyone. The second shows that the
+folded constant can be a string or `NaN` ("not a number"), whatever the
+language says the answer is, never what feels natural. The third is the
+one with the biggest payoff: a comparison folds to a boolean, and now
+the branch that tests it can only ever go one way, so a whole block
+becomes unreachable. The next chapter, on constant propagation, takes
+that idea much further.
+
+A common slip is folding with "the obvious" answer instead of the
+computed one:
+
+```text
+%3 = binop + %1, %2  ; 0.1 + 0.2
+%3 = const 0.3       ; wrong
+%3 = const 0.30000000000000004  ; right
+```
+
+The first rewrite looks tidier, and any test that prints the result
+would show the program now printing `0.3` where it used to print
+`0.30000000000000004`.
+
+<Prompts ids={['fold-exact', 'fold-host']} />
+
+## What must never be folded
+
+Constant operands are necessary, but not enough. Before folding, ask
+four questions, in this order:
+
+<Figure takeaway="Fold only when all four answers are yes." caption="The four questions a folder asks. The first rules out unknowns; the second and third rule out instructions that do more than produce a value; the last is about computing the answer exactly as the language does.">
+  <FoldGate />
+</Figure>
+
+A `call` with constant arguments, such as `console.log(5)`, prints; its
+result may be thrown away, but the printing may not. Reading `xs[9]`
+can throw if `xs` is not an array. And in JavaScript even `+` can run
+code: if an operand is an object, `+` first calls that object's
+`valueOf` method, which may print or change things. That is why a
+JavaScript folder only folds `+` on primitive constants (numbers,
+strings, booleans), which a `const` instruction always holds.
+
+<Callout kind="pitfall">
+**Algebra is not always safe.** Folding has a cousin, *algebraic
+simplification*, which uses identities when only one operand is known:
+`x * 1` becomes `x`, `x - x` becomes `0`. In JavaScript most of these
+are wrong unless `x` is known to be a number: `'3' * 1` is the number
+`3`, not the string `'3'`; `x - x` is `NaN` when `x` is `NaN`; and
+`x + 0` is not even `x` for numbers, because `-0 + 0` is `+0`. A
+compiler that has proved `x` is a number (as Viscosity's numeric
+inference does) may use some of them; one that has not must leave them.
+</Callout>
+
+<Prompts ids={['fold-never', 'plus-object', 'algebra-trap']} />
+
+<Callout kind="engine" label="Under the hood">
+V8's optimizing compiler, TurboFan, has a `ConstantFoldingReducer`.
+TurboFan's typer works out a type for each node of its graph, and when
+that type allows only a single value (`null`, `undefined`, `NaN`, `-0`,
+one particular object, or one plain number) and the node can be
+removed safely, the reducer replaces it with that
+constant<Cite id="v8-constant-folding-reducer" />. Textbooks treat
+folding as the first and simplest of the scalar optimizations that the
+rest of this part builds on<Cite id="coopertorczon2022" />.
+
+Viscosity, by contrast, has **no** folding pass: it rewrites only the
+code that touches the collections it changes, and leaves your
+arithmetic to the JavaScript engine. You can see the cost of that in
+its own output. Its size estimate counts loop trips only when the loop
+bound is a `const` instruction, so for `i < 100` the explanation says
+"about 100 elements", while for `i < 2 * 50` it says "size unknown
+statically": the bound is a `binop`, which nobody folded.
+</Callout>
+
+## Your turn
+
+<Exercise id="fold" />
+
+## What you learned
+
+- **Constant folding** replaces an instruction whose operands are all
+  constants with the constant it computes, at compile time.
+- The answer must be exactly the run-time answer, quirks included:
+  strings, `NaN`, `Infinity`, `-0` and float rounding.
+- Instructions with side effects, or that can throw, are never folded,
+  even with constant operands; in JavaScript that includes `+` on
+  objects.
+- Algebraic shortcuts such as `x * 1 → x` need a proof that `x` is a
+  number.
+- In SSA, folding needs no copying: every user of a folded value sees
+  the constant at once.
+
+Next: constants that travel between blocks, through phis and branches,
+and an algorithm that is optimistic about both.
+
+<Quiz />

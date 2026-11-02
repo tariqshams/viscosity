@@ -1,0 +1,264 @@
+---
+n: 215
+day: 54
+part: VI
+title: 'Loop unrolling and vectorisation'
+tagline: 'A loop pays a small toll on every trip, for its test and its jump; unrolling pays it once for several trips at a time. Lay those copies side by side and, when no copy needs another''s result, they become one SIMD instruction.'
+objectives:
+  - Unroll a loop by a factor k, including the remainder loop for the trips left over.
+  - Say what unrolling saves, and what it costs.
+  - Describe auto-vectorisation as unrolling by the lane count and then merging the copies.
+  - Decide whether a simple loop can be vectorised, by asking whether any trip needs a value written a few trips earlier.
+introduces: [loop-unrolling, auto-vectorization]
+uses: [natural-loop, induction-variable, loop-invariant, licm, loop-preheader, strength-reduction, simd, vectorization, lane, float64, ieee754, typed-array, aos-vs-soa, branch-prediction, pipeline, register, array, index, for-loop]
+sources: [llvm-passes, llvm-vectorizers]
+---
+import UnrollSteps from '../../../components/diagrams/ch215/UnrollSteps';
+import LanesFigure from '../../../components/diagrams/ch215/LanesFigure';
+
+## The toll on every trip
+
+Here is the smallest useful loop there is, a sum:
+
+```js
+let s = 0;
+for (let i = 0; i < a.length; i++) {
+  s += a[i];
+}
+```
+
+The work we care about is one addition per element; however, every trip
+also compares `i` with the length, jumps back (or out), and adds one to
+`i`, so for each useful add there are three instructions of
+bookkeeping. Chapter 55 showed that the processor predicts the jump
+well, which keeps it cheap, but cheap is not free. The previous
+chapters made each trip do less work; this one makes the loop take
+fewer trips.
+
+<Analogy title="carrying shopping in from the car">
+With ten bags in the boot you could carry one bag per walk, ten walks
+in all; carry four at a time and it takes three walks, two full ones and
+a last one with the two bags left over. The walking is the loop's
+bookkeeping; the bags are the work.
+<span slot="breaks">You have only two hands, and a processor has only
+so many registers to hold the copies' values, and every copy makes
+the program bigger, so more is not always better.</span>
+</Analogy>
+
+## Unrolling
+
+**Unrolling** a loop by a factor `k` writes `k` copies of its body in
+each trip and steps the counter by `k`. The trips that do not fill a
+whole group of `k` (when the trip count is not a multiple of `k`) run in
+a small **remainder loop** afterwards, which is the leftover bags of the
+analogy and the "tail" of chapter 56. Step through ten elements
+unrolled by four:
+
+<UnrollSteps client:visible />
+
+<Callout kind="definition">
+**Loop unrolling** by a factor `k` replaces a loop's body with `k`
+copies of it, for trips `i`, `i + 1`, ..., `i + k - 1`, and steps the
+induction variable by `k`; a **remainder** loop runs the last
+`n mod k` trips one at a time. The program does the same work in the
+same order, with one test and one jump per `k` trips instead of per
+trip.
+</Callout>
+
+<Formal title="Unrolling by k">
+
+```text
+for i in [0, n):  B(i)
+  ≡
+for i in [0, n - n mod k) step k:
+  B(i); B(i+1); …; B(i+k-1)
+for i in [n - n mod k, n):  B(i)
+```
+
+<span slot="read">Running the body B for every i from 0 up to n is the
+same as running k copies of B per step for every multiple of k up to the
+last whole group, then running B one at a time for the few i that are
+left, from n minus (n mod k) up to n.</span>
+</Formal>
+
+Unrolling is always allowed, because it runs exactly the same bodies in
+exactly the same order. What it buys is fewer tests and jumps, and,
+more importantly, a bigger body in which later passes can find work to
+overlap or merge; what it costs is code size and registers. LLVM has a
+`loop-unroll` pass, and an "unroll and jam" pass that unrolls an outer
+loop and merges the copies of the inner one<Cite id="llvm-passes" />.
+
+<Examples of="loop-unrolling">
+
+```js
+for (let i = 0; i < 8; i += 2) {
+  s += a[i];
+  s += a[i + 1];
+}
+```
+
+```js
+let i = 0;
+for (; i + 4 <= n; i += 4) {
+  s += a[i] + a[i + 1]
+     + a[i + 2] + a[i + 3];
+}
+for (; i < n; i++) s += a[i]; // rest
+```
+
+```js
+let s0 = 0, s1 = 0, i = 0;
+for (; i + 2 <= n; i += 2) {
+  s0 += a[i];
+  s1 += a[i + 1];
+}
+s = s0 + s1; // then add any rest
+```
+
+</Examples>
+
+The first is the simplest case: eight elements, two per trip, four
+trips, and no remainder because 8 is a multiple of 2. The second is the
+general form: the main loop runs while a whole group of four still
+fits (`i + 4 <= n`), and the second loop picks up whatever is left, from
+zero to three elements; forgetting it is the classic mistake, and with
+`n = 10` it silently leaves out `a[8]` and `a[9]`. The third is what
+the LLVM vectorizer's documentation describes for exactly this kind of
+sum: two (or more) separate running totals, so that the processor can
+work on both additions at once instead of each waiting for the last
+one<Cite id="llvm-vectorizers" />. For whole numbers that is exact; for
+fractions it adds in a different grouping, which chapter 56 showed can
+change the answer, so a compiler does it only when allowed.
+
+<Prompts ids={['unroll-what', 'remainder', 'unroll-cost', 'unroll-legal']} />
+
+## Vectorisation: unroll, then merge the copies
+
+Look at four copies of a body side by side, after unrolling
+`c[i] = a[i] + b[i]` by four:
+
+```js
+c[i]     = a[i]     + b[i];
+c[i + 1] = a[i + 1] + b[i + 1];
+c[i + 2] = a[i + 2] + b[i + 2];
+c[i + 3] = a[i + 3] + b[i + 3];
+```
+
+It is the same operation on four neighbouring elements, which is
+exactly what one SIMD instruction does (chapter 56): load four `a`s
+into one register, four `b`s into another, add lane by lane, store four
+`c`s. Turning the copies into that single instruction is the step that
+makes unrolling a vectoriser.
+
+<Analogy title="a baker's tray">
+A baker does not bake one roll at a time; twelve rolls go in on one
+tray, and one bake does them all, because every roll needs exactly the
+same thing.
+<span slot="breaks">If one roll needed the crumbs from the roll before
+it, they could not all bake at once; a loop where a trip needs an
+earlier trip's result has the same problem. And an oven treats every
+roll alike, while a loop body with an `if` needs the compiler to work
+out both sides and pick per lane.</span>
+</Analogy>
+
+<Callout kind="definition">
+**Auto-vectorisation** is the compiler doing chapter 56's vectorisation
+for you: it unrolls a loop by the number of lanes `W`, checks that the
+`W` copies may run at the same time without changing the result, merges
+them into SIMD instructions, and adds a remainder loop for the leftover
+trips. LLVM's loop vectoriser is on by default and "widens instructions
+in loops to operate on multiple consecutive iterations"<Cite id="llvm-vectorizers" />.
+</Callout>
+
+The question the compiler must answer is whether any copy needs a value
+that another copy *in the same group* writes. A lane reads its inputs
+at the same moment as the other lanes, so if trip `i + 1` needs what
+trip `i` wrote, the lane for `i + 1` reads the old value. Try it: this
+runs a loop body four lanes at a time (every lane reads first, then
+every lane writes) and compares it with the ordinary loop:
+
+<Run id="lanes" />
+
+`dbl` (each element doubled) gives the same answer both ways, because
+no trip reads another trip's element. `prev` (each element one more than
+the one before) does not: in the ordinary loop each trip sees the value
+the previous trip just wrote, while in a group of four lanes, three of
+them read values that have not been written yet.
+
+<Figure takeaway="Lanes run together, so a lane cannot see what a neighbouring lane writes." caption="Top: c[i] = a[i] + b[i]; each lane reads only its own elements, so four lanes are safe. Bottom: x[i] = x[i - 1] + 1; each lane needs the value the lane to its left is writing at the same moment.">
+  <LanesFigure />
+</Figure>
+
+<Examples of="auto-vectorization">
+
+```js
+// safe: no trip reads another's write
+for (let i = 0; i < n; i++)
+  c[i] = a[i] + b[i];
+```
+
+```js
+// 4 lanes: safe (reads are 4 back)
+// 8 lanes: not safe
+for (let i = 4; i < n; i++)
+  a[i] = a[i - 4] * 2;
+```
+
+```js
+// Viscosity's output: SoA columns
+for (let i = 0; i < ps.length; i++)
+  ps.x[i] += ps.vx[i];
+```
+
+</Examples>
+
+The first is the easy case again. The second is the interesting one:
+each trip reads the element four places back. With four lanes, the
+group `i` to `i + 3` reads `i - 4` to `i - 1`, all written by the
+previous group, which has finished, so the answer is unchanged; with
+eight lanes, the lane for `i + 4` would read `a[i]`, which a lane in its
+own group is writing, so it is not. How far back a trip reads, and so
+how many lanes are safe, is the subject of the next chapter. The third
+is the realistic one: after Viscosity's struct-of-arrays rewrite, the
+particle update reads and writes two contiguous `Float64Array` columns,
+element `i` of each per trip, which is the shape a vectoriser wants.
+Whether a JavaScript engine vectorises it is up to the engine; as in
+chapter 56, this book does not assume it.
+
+Two more obstacles from the LLVM documentation are worth knowing. If
+two arrays might overlap in memory, the vectoriser adds a check that
+runs while the program runs and falls back to the plain loop when they
+do; and a sum of floating-point numbers is only vectorised when
+reordering the additions is allowed<Cite id="llvm-vectorizers" />.
+
+<Prompts ids={['autovec-what', 'lane-reads', 'distance-lanes', 'autovec-overlap']} />
+
+<Callout kind="engine" label="Under the hood">
+Viscosity neither unrolls nor vectorises; it changes how the data is
+laid out and leaves the loops alone. The two jobs fit together,
+though: a vectoriser needs each lane's values next to each other in
+memory, and a struct of arrays puts every field's values next to each
+other, while an array of objects scatters them (chapter 56 showed why that
+forces a slower gather).
+</Callout>
+
+## Your turn
+
+<Exercise id="sumUnrolled" />
+
+<Exercise id="canVectorize" />
+
+## What you learned
+
+- **Loop unrolling** by `k` runs `k` copies of the body per trip and
+  steps by `k`, with a **remainder** loop for the last `n mod k` trips;
+  it is always allowed, and trades code size and registers for fewer
+  tests and jumps.
+- **Auto-vectorisation** unrolls by the lane count and merges the
+  copies into SIMD instructions, when no copy needs a value another copy
+  in its group writes.
+- A trip that reads the element `d` places back allows up to `d` lanes;
+  overlap between arrays and floating-point reordering are the other
+  common obstacles.
+
+<Quiz />

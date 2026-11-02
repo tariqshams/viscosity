@@ -1,0 +1,269 @@
+---
+n: 159
+day: 40
+part: IV
+title: 'Tracing and sweeping: white, grey and black'
+tagline: 'Marking is a walk from the roots that colours every object it reaches, with a to-do pile instead of recursion; sweeping is one more walk, down the object list, that unlinks everything the first walk never reached.'
+objectives:
+  - Trace tri-colour marking with a grey stack, and explain why the stack replaces recursion.
+  - Say what blackening each kind of object marks, lists and instances included.
+  - Walk the sweep over the object list, and explain why the string table must be weak.
+  - Explain when the VM collects, and why the threshold grows with what survived.
+introduces: [tricolor, mark-sweep]
+uses: [heap-object, object-list, interning, hash-table, global-table, call-frame, stack-slot, virtual-machine, upvalue, closure, vm-list, drip, stack-and-heap, memory, reference, pointer, object, array, recursion, call-stack, stack-overflow, garbage-collection, roots]
+sources: [v8-trash-talk, v8-concurrent-marking]
+---
+import GcSteps from '../../../components/diagrams/ch159/GcSteps';
+import SweepSteps from '../../../components/diagrams/ch159/SweepSteps';
+
+## Finding everything the roots reach
+
+The chapter "Reclaiming memory: mark and sweep" said which objects are
+live (those a chain of references leads to from a root) and listed the
+VM's roots. Now the collector has to *find* them all, and the obvious
+way is recursion: mark an object, then mark everything it refers to,
+and so on. However, a Drip program can build a chain as long as it
+likes:
+
+```text
+let head = none;
+for i in 0..200000 {
+  head = [i, head];
+}
+```
+
+Each list holds the one before it, so a recursive marker would make one
+host call per link, 200,000 deep, and overflow JavaScript's own call
+stack (the chapter "Recursion and the call stack" showed what that
+looks like). So the collector keeps its own pile of work instead.
+
+<Analogy title="a to-do list of phone calls">
+You are trying to reach everyone in a club. You start with the few
+numbers you have and write them on a to-do list; each time you phone
+someone, you cross them off and ask for every number *they* have,
+adding any name you have not seen before. When the list is empty you
+have reached everyone you can, and anyone you never heard of is out of
+reach.
+<span slot="breaks">People forget numbers and lines are busy; the
+collector asks every object exactly once and always gets a complete
+answer, because an object's references are all written in it.</span>
+</Analogy>
+
+<Analogy title="chalk marks in a cave">
+Exploring a cave, you chalk a cross at the mouth of every tunnel you
+notice (grey: seen, not yet walked), and a tick once you have walked it
+to the end and chalked its side tunnels (black). Tunnels with no mark
+when you run out of crosses are ones you never found (white).
+<span slot="breaks">A cave explorer can get lost or walk a tunnel
+twice; the collector's marks are exact, and the `isMarked` check means
+nothing is ever walked twice, even when tunnels loop back.</span>
+</Analogy>
+
+The pile is an array called `gray`, and marking an object pushes it
+there:
+
+```ts
+private markObject(o: Obj | null) {
+  if (!o || o.isMarked) return;
+  o.isMarked = true;
+  this.gray.push(o); // grey: reached, ...
+}
+```
+
+(The comment is shortened.) The early return does two jobs: nothing is
+traced twice, and a cycle cannot send marking round for ever. Then
+`collect` pops grey objects one at a time and **blackens** each one,
+which means marking everything it refers to; what that is depends on
+its type:
+
+```ts
+case 'string': case 'native': return;
+case 'upvalue':
+  this.markValue(o.closed); return;
+case 'list':
+  for (const v of o.items)
+    this.markValue(v);
+  return;
+case 'function':
+  this.markObject(o.name);
+  for (const c of o.chunk.constants)
+    this.markValue(c);
+  return;
+case 'closure':
+  this.markObject(o.fn);
+  for (const u of o.upvalues)
+    this.markObject(u);
+  return;
+```
+
+(The first half of `blacken`'s `switch`, wrapped.) Strings and natives
+refer to no other heap object. A closed upvalue keeps its value alive.
+A **list** keeps every item alive, which is why the long chain above is
+fully marked, one list at a time, with the pile never more than a
+couple of entries deep. A function keeps its name and its constants
+(strings, numbers and the functions nested inside it). A closure keeps
+its function and its upvalues. The other half does the same for a class
+(its name and its method table), an instance (its class and its field
+table) and a bound method (its receiver and its method).
+
+<GcSteps client:visible />
+
+<Callout kind="definition">
+**Tri-colour marking** sorts objects into three sets while marking.
+**White**: not reached yet. **Grey**: reached (marked) but its
+references not yet traced; in the companion, the objects on the `gray`
+stack. **Black**: reached and fully traced. Marking makes the roots
+grey, then blackens grey objects one at a time, greying every white
+object they refer to, and ends when nothing is grey. Whatever is still
+white is unreachable.
+</Callout>
+
+<Formal title="The tri-colour invariant">
+
+```text
+no black object refers to a white one
+grey = ∅  ⇒  white = garbage
+```
+
+<span slot="read">At every moment of marking, no black object refers
+directly to a white one, because blackening greys everything an object
+refers to before it counts as black. So when there are no grey objects
+left, every object a live one refers to is marked, and the white ones
+are exactly the unreachable ones.</span>
+</Formal>
+
+<Examples of="tricolor">
+
+```text
+let xs = [[1], [2]];
+# xs's list, then [1] and [2]: grey, black
+```
+
+```text
+let a = [];
+push(a, a);   # a list that holds itself
+```
+
+```text
+class Box { init(f) { self.f = f; } }
+let b = new Box(fn () { return 1; });
+```
+
+</Examples>
+
+In the first, a global holds the outer list, so it is greyed from the
+root; blackening it greys the two inner lists, and blackening those
+finds only numbers, which are not objects. In the second, the list
+refers to itself: blackening it calls `markValue` on itself, sees
+`isMarked` already set, and stops. The third is the realistic chain:
+the global `b` greys the instance; the instance greys its class `Box`
+and the closure in field `f`; the closure greys its function, and the
+function greys its constants, until the pile is empty.
+
+<Prompts ids={['grey-meaning', 'why-gray-stack', 'blacken-list', 'invariant']} />
+
+## Sweeping, and a weak table
+
+With marking done, **sweep** walks the object list once. Marked objects
+stay, and are reset to white for the next collection; unmarked ones are
+unlinked:
+
+<SweepSteps client:visible />
+
+Once an object is unlinked, nothing in the VM refers to it, and V8's
+own collector can reclaim its memory whenever it likes.
+
+One table needs care: the string table of the chapter "String
+interning". It refers to every string, so if it were a root no string
+would ever die; and if it kept an entry for a string that sweep frees,
+`copyString` could later hand out a dead string. So it is **weak**: it
+does not keep its strings alive, and between marking and sweeping
+`collect` calls `strings.removeWhite()`, which turns every entry whose
+string is unmarked into a tombstone.
+
+Last comes the timing. Collecting costs time, so `allocate` only
+collects once `bytesAllocated` passes `nextGC`, and every sweep sets
+the next threshold from what survived:
+
+```ts
+this.nextGC = Math.max(1024 * 1024,
+  this.bytesAllocated *
+    GC_HEAP_GROW_FACTOR);
+```
+
+`GC_HEAP_GROW_FACTOR` is 2, so the next collection comes when the heap
+has doubled, but never below 1 MiB. A program with a large live heap
+therefore collects less often, instead of re-marking the same big heap
+over and over.
+
+<Examples of="mark-sweep">
+
+```text
+collect():
+  1. mark the roots (grey)
+  2. blacken until nothing is grey
+  3. strings.removeWhite()
+  4. sweep the object list
+  then nextGC = max(1 MiB, 2 × survivors)
+```
+
+```text
+survived 300 KiB -> next at 1 MiB
+survived 2 MiB   -> next at 4 MiB
+```
+
+<Run id="chain" />
+
+</Examples>
+
+The first is the whole of `Heap.collect`, in order; step 3 must come
+after marking (so the table knows which strings are live) and before
+sweeping (so it never points at a freed one). The second shows the
+growth rule with sizes as the heap counts them (a rough fixed size per
+object): a small survivor set leaves the 1 MiB floor in charge, a large
+one pushes the next collection further away. The runnable one builds
+the 200,000-list chain from the start of the chapter and walks it, so
+the collector has to mark through every link while it runs.
+
+<Callout kind="definition">
+**Mark-sweep** collection has two phases. **Mark** finds every object
+reachable from the roots. **Sweep** visits every allocated object (here
+by walking the object list) and frees the unmarked ones, resetting the
+marked ones for next time. A **weak** table, like the string table,
+does not keep its entries alive: entries for unmarked keys are removed
+after marking and before sweeping.
+</Callout>
+
+<Prompts ids={['weak-strings', 'reset-white', 'grow-factor', 'sweep-all']} />
+
+<Callout kind="engine" label="Under the hood">
+V8 marks with the same three colours, kept as two mark bits per object,
+and a marking worklist plays the part of the grey stack; because it
+marks *while JavaScript runs*, it also needs a write barrier, so that a
+black object cannot gain a reference to a white one behind the
+marker's back<Cite id="v8-concurrent-marking" />. After marking, it
+sweeps the gaps left by dead objects into free lists for reuse, and
+compacts some fragmented pages<Cite id="v8-trash-talk" />. The
+companion stops the program while it collects, so it needs no barrier.
+</Callout>
+
+## Your turn
+
+<Exercise id="toyGc" />
+
+<Exercise id="weakTable" />
+
+## What you learned
+
+- Marking keeps a **grey stack** instead of recursing, so a 200,000-link
+  chain needs no deep host calls, and the `isMarked` check stops cycles.
+- **Blackening** marks what an object refers to: a list's items, a
+  function's constants, a closure's function and upvalues, an
+  instance's class and fields.
+- **Tri-colour** invariant: no black object refers to a white one, so
+  when nothing is grey, white means garbage.
+- **Sweep** walks the object list once, unlinking white objects and
+  resetting black ones. The string table is weak, and the next
+  collection comes when the heap has doubled (at least 1 MiB).
+
+<Quiz />

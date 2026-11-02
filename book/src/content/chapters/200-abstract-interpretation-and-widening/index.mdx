@@ -1,0 +1,283 @@
+---
+n: 200
+day: 50
+part: VI
+title: 'Abstract interpretation and widening'
+tagline: 'Run the program, but on descriptions of values instead of values: “some positive number”, “somewhere from 0 to 9”. Do it carefully and every answer is true of every real run; add one clever jump, and even loops that count for ever give an answer.'
+objectives:
+  - Describe abstract interpretation as running a program on abstract values from an abstract domain.
+  - Compute with signs and with intervals, and check that an abstract operation is sound.
+  - Explain why intervals need widening on loops, and apply the widening operator by hand.
+  - Read Viscosity’s numeric and non-negative-integer analyses as abstract interpretations over small, finite domains.
+introduces: [abstract-interpretation, abstract-domain, widening]
+uses: [monotone-framework, lattice, dataflow, fixpoint, worklist, cfg, ssa, phi-node, static-analysis, recursion, set, function, numbers]
+sources: [cousot1977, kamullman1977]
+---
+import SignsFigure from '../../../components/diagrams/ch200/SignsFigure';
+import WidenSteps from '../../../components/diagrams/ch200/WidenSteps';
+
+## Running a program on descriptions
+
+Can the index in `xs[i]` ever be negative here?
+
+```js
+let i = 0;
+while (i < n) {
+  xs[i] = 0;
+  i = i + 1;
+}
+```
+
+Running the program cannot answer that, because `n` could be anything
+and one run tells you about one `n`. Reading it, you reason quite
+differently: "`i` starts at 0; adding 1 to something that is not
+negative gives something that is not negative; so `i` is never
+negative". You ran the program in your head, but on *descriptions* of
+values ("not negative") rather than on values. Patrick and Radhia
+Cousot made that way of reasoning precise in 1977, and called it
+**abstract interpretation**<Cite id="cousot1977" />.
+
+<Analogy title="checking a recipe's units without cooking it">
+You can check that a recipe makes sense without a kitchen: "grams of
+flour plus grams of sugar is grams", "minutes times degrees" is
+nonsense. You are working with *kinds* of quantity, not amounts, and
+yet what you learn is true for every batch you will ever bake.
+<span slot="breaks">Units throw away almost everything (how much flour
+is left?); an abstract domain is designed to keep exactly the
+detail one question needs, such as the sign, or a range.</span>
+</Analogy>
+
+The set of descriptions is called an **abstract domain**, and it is a
+lattice. The simplest useful one is **signs**: a value is `−`
+(negative), `0`, `+` (positive), `⊤` ("any number", we know nothing)
+or `⊥` ("no value yet", the starting point before anything has
+arrived). Each operation gets an abstract version: `+` plus `+` is
+`+`, but `−` plus `+` could be anything, so it is `⊤`.
+
+<Figure takeaway="An abstract domain is a lattice of descriptions, with an abstract version of every operation." caption="The signs domain, drawn the way abstract interpretation draws it: “no value yet” at the bottom, “any number” at the top, and the join going up. Right: abstract addition.">
+  <SignsFigure />
+</Figure>
+
+Notice the picture is the dataflow lattice turned upside down: facts
+start at `⊥` and climb, and where paths meet we take the **join** (the
+lowest description that covers both), because a value arriving from
+either side must fit the description.
+
+<Callout kind="definition">
+**Abstract interpretation** runs a program on abstract values instead
+of concrete ones, to learn facts that hold on every run. The **abstract
+domain** is the lattice of abstract values, together with an abstract
+version of each operation and a join for merging paths. Each abstract
+value stands for a set of concrete values: `+` stands for every
+positive number<Cite id="cousot1977" />.
+</Callout>
+
+<Examples of="abstract-domain abstract-interpretation">
+
+```text
+3 → +     −2 → −     + + + = +
+```
+
+```text
+x = −3 → −     y = x * x → +
+z = y + 1 → +  (so z ≠ 0)
+```
+
+<Run id="signs" />
+
+</Examples>
+
+The first shows abstraction (each number becomes its sign) and one row
+of the table. The second runs a tiny program on signs: a negative times
+a negative is positive, and positive plus positive is positive, so `z`
+can never be zero, a fact a compiler could use to remove a check for
+division by zero. The runnable one is an abstract interpreter for
+signs in a dozen lines; it prints `x - y + z +`, and you can change the
+program and the tables.
+
+<Prompts ids={['ai-what', 'domain-what', 'join-up']} />
+
+## Sound, or useless
+
+An abstract answer is only worth having if it is true of every real
+run. That property is called **soundness**: whatever the concrete
+program computes must be inside the description the abstract program
+computes. Saying `⊤` is always sound (it describes every number) but
+tells you nothing; saying `+` for `−2 + 5` is sound and useful; saying
+`+` for `−5 + 2` is a lie.
+
+<Analogy title="a forecast range">
+A forecast of "12 to 18 degrees" is correct if the real temperature
+lands anywhere in that range. "−50 to 50" is also correct, and
+worthless; "15 to 16" is precise, and wrong if it turns out 17.
+<span slot="breaks">A forecaster is allowed to be wrong sometimes; a
+sound analysis never is, which is why, when in doubt, it widens its
+answer rather than guessing.</span>
+</Analogy>
+
+<Formal title="Soundness of an abstract operation">
+
+```text
+γ(+) = { 1, 2, 3, … }  (and fractions)
+x ∈ γ(a), y ∈ γ(b)  ⟹  x + y ∈ γ(a +♯ b)
+```
+
+<span slot="read">γ (gamma) maps an abstract value to the set of
+concrete values it stands for: γ of plus is every positive number. An
+abstract operation, written with a sharp sign (+♯ is "abstract plus"),
+is sound if, whenever x is one of the values a stands for and y one of
+the values b stands for, the real sum x + y is one of the values that
+a +♯ b stands for.</span>
+</Formal>
+
+<Prompts ids={['sound-what', 'top-sound']} />
+
+## Intervals, and loops that never settle
+
+Signs cannot say "between 0 and 9", which is what a bounds check needs.
+The **interval** domain can: an abstract value `[lo, hi]` stands for
+every number from `lo` to `hi`, the join is the smallest interval
+covering both (`[0, 0] ⊔ [1, 1] = [0, 1]`), and abstract `+` adds the
+ends (`[0, 2] + [1, 1] = [1, 3]`). However, intervals have a problem the
+lattices so far did not: **infinite height**. On the loop above, the
+interval for `i` at the loop test grows by one every round, `[0, 0]`,
+`[0, 1]`, `[0, 2]`, and never stops.
+
+<Analogy title="buying a bigger bin">
+If your bin overflows every week, you could buy one a little bigger
+each time, and go on doing that for ever. Or, the second time it
+overflows, you buy the biggest bin the shop sells, and stop worrying.
+<span slot="breaks">The biggest bin wastes space; widening likewise
+gives up some precision, and a careful analysis then shrinks the
+answer back a little using what the loop tests (a step called
+narrowing).</span>
+</Analogy>
+
+The fix, also from the Cousots, is **widening**<Cite id="cousot1977" />:
+at a loop header, compare the new interval with the old one, and any
+bound that moved jumps straight to infinity. A bound can only jump
+once, so the climb is over within a couple of rounds. Step through
+both:
+
+<WidenSteps client:visible />
+
+<Callout kind="definition">
+**Widening** is an operator, written `∇`, used in place of the join at
+loop headers when a domain has infinite height: its result is above
+both of its arguments, as a join's would be, but chosen so that any
+chain of widenings stops after finitely many steps. The analysis
+then reaches a sound fixpoint, perhaps less precise than the true
+one<Cite id="cousot1977" />.
+</Callout>
+
+<Formal title="Widening intervals">
+
+```text
+[a, b] ∇ [c, d] = [ c < a ? −∞ : a ,
+                    d > b ? +∞ : b ]
+```
+
+<span slot="read">Widen the old interval from a to b by the new one
+from c to d: if the new lower bound c is below the old one, the lower
+bound becomes minus infinity, otherwise it stays a; if the new upper
+bound d is above the old one, the upper bound becomes plus infinity,
+otherwise it stays b. (The question mark and colon read "if so, this;
+otherwise, that".)</span>
+</Formal>
+
+<Examples of="widening">
+
+```text
+[0, 0] ∇ [0, 1] = [0, +∞]
+```
+
+```text
+[3, 8] ∇ [2, 8] = [−∞, 8]
+[3, 8] ∇ [4, 6] = [3, 8]
+```
+
+```text
+i = 0; while (i < n) i = i + 1
+header: [0, +∞], so i ≥ 0 always
+```
+
+</Examples>
+
+The first is the counting loop's step: the upper bound moved, so it
+jumps. The second shows the lower bound jumping instead, and a new
+interval inside the old one leaving it unchanged. The third is the
+realistic answer: `i` is never negative, which is the bound a compiler
+needs before it can drop the check for a negative index.
+
+<Prompts ids={['infinite-height', 'widen-what', 'widen-sound']} />
+
+## Viscosity's domains
+
+Viscosity's numeric inference is an abstract interpretation of VIR
+over the smallest useful domain, `{number, maybe-not}`: every
+instruction has an abstract version (a sum of two numbers is a number),
+and a phi takes the join. For the index of an element access it asks a
+second question, "is this a non-negative integer?", with a function
+that reads like the signs interpreter, simplified here from
+`packages/core/src/analysis.ts`:
+
+```ts
+const nonNegInt = (v, seen) => {
+  // assume, for cycles through phis
+  if (seen.has(v.id)) return true;
+  seen.add(v.id);
+  const all = () => v.args.every(
+    (a) => nonNegInt(inst(a), seen));
+  switch (v.op) {
+    case 'const':
+      return Number.isInteger(v.value)
+        && v.value >= 0;
+    case 'binop':
+      return (v.operator === '+' ||
+        v.operator === '*') && all();
+    case 'phi': return all();
+    default: return false;
+  }
+};
+```
+
+`seen` holds the values already being checked, and `all()` asks the
+same question of every operand. A constant is checked directly; a sum
+or product of non-negative integers is one; a phi is one if all its
+operands are; anything else is "don't know" (the real function also
+accepts a unary `+`). The first line is the optimistic start: when the search
+comes back round a loop to a phi it is already checking, it assumes
+the best and lets the other operands decide. Both domains are finite,
+so Viscosity never needs widening; to prove an index is *in* bounds, it
+looks for the loop test `i < xs.length` guarding the access, rather
+than tracking intervals.
+
+<Prompts ids={['viscosity-domains']} />
+
+<Callout kind="engine" label="Under the hood">
+The Cousots' 1977 paper models program properties as a lattice and
+the analysis as computing, or approximating, a fixpoint<Cite id="cousot1977" />;
+the dataflow problems of the last few chapters are all instances, and
+the meet-over-all-paths gap of the last chapter is the same loss of
+precision seen from the dataflow side<Cite id="kamullman1977" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="intervals" />
+
+## What you learned
+
+- **Abstract interpretation** runs a program on abstract values to
+  learn facts true of every run; the **abstract domain** is the lattice
+  of those values, with abstract operations and a join.
+- An analysis is **sound** if every concrete result lies inside the
+  abstract one. `⊤` is always sound, and useless.
+- Intervals have infinite height, so loops never settle; **widening**
+  jumps a moving bound to infinity, so the analysis stops, soundly.
+- Viscosity uses tiny finite domains, so it needs no widening.
+
+Next: the first optimization built on all of this, working out
+constants before the program runs.
+
+<Quiz />

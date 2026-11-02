@@ -1,0 +1,216 @@
+---
+n: 172
+day: 43
+part: V
+title: 'Elements kinds'
+tagline: 'To JavaScript, every array element is just a value; V8 quietly sorts arrays into kinds, from "only small integers" to "anything at all", and an array can only ever move one way.'
+objectives:
+  - Explain what an elements kind is, and name the SMI, DOUBLE and ELEMENTS kinds and their backing stores.
+  - Predict an array's kind after a sequence of writes, using the one-way lattice.
+  - Spot the numbers that look like small integers but are not (-0, NaN, Infinity, 2 ** 31).
+  - Read an array's kind from real %DebugPrint output, and see it change in a log of an element load.
+introduces: [elements-kind]
+uses: [array, index, length, push, array-loop, object, property, smi, heap-number, ieee754, float64, typed-array, object-header, shape, transition-tree, inline-cache, monomorphic, polymorphic, aos-vs-soa, undefined, typeof]
+sources: [v8-elements-kinds, v8-src-elements-kind, v8-fast-properties]
+---
+import LatticeSteps from '../../../components/diagrams/ch172/LatticeSteps';
+import BackingStores from '../../../components/diagrams/ch172/BackingStores';
+
+## Two arrays that look the same
+
+To JavaScript, these hold the same kind of thing: `typeof` says
+`'number'` for every element of both.
+
+```js
+const a = [1, 2, 3];
+const b = [1, 2, 3.5];
+```
+
+V8 sees two different arrays. The chapter on how JavaScript stores
+numbers and objects showed that it keeps small integers as **Smis** and
+other numbers as doubles, and if V8 knows an array holds only Smis, it
+can optimize operations on it for exactly that case<Cite id="v8-elements-kinds" />.
+One stray `3.5` changes how the whole array is stored, and what the
+optimizing compiler may assume. V8 keeps **elements** (the values at
+integer indices) apart from an object's named
+properties<Cite id="v8-fast-properties" />, and for each array it tracks
+what kind of elements it holds<Cite id="v8-elements-kinds" />.
+
+## Three kinds, one way down
+
+There are three basic kinds. **SMI** means every element is a small
+integer; **DOUBLE** means every element is a number, stored as a raw
+64-bit double; **ELEMENTS** means anything goes, and each slot is an
+ordinary tagged value. Each new value can push the array to a more
+general kind, never back.
+
+<Analogy title="pantry shelves">
+Picture three shelves: the top one takes only identical jars, the middle
+one any tin, the bottom one anything at all. Things only ever move down:
+once you have put a cardboard box on the bottom shelf with everything
+else, nobody carries the jars back up, even after the box is eaten.
+<span slot="breaks">Moving a jar to a lower shelf leaves the jar
+unchanged; when V8 moves an array from SMI to DOUBLE it rewrites every
+element into a new backing store of a different format.</span>
+</Analogy>
+
+<Analogy title="a load of laundry">
+A load of whites stays a whites load only while every item is white; put
+in one red sock and it becomes a mixed load, and taking the sock out
+again does not make it a whites load, because the wash has already been
+set for colours.
+<span slot="breaks">The sock really does change the other clothes; a
+DOUBLE array still holds its integers exactly (1 is stored as 1.0), and
+only the engine's assumptions about the array change.</span>
+</Analogy>
+
+Step through one array's life:
+
+<LatticeSteps client:visible />
+
+You can watch this happen with `%DebugPrint` (start Node with
+`--allow-natives-syntax`). Run the stepper's first four lines with a
+`%DebugPrint(a)` after each one and keep the lines that name the kind
+(Node v22.23.4, V8 12.4):
+
+```
+$ node --allow-natives-syntax kinds.js \
+    | grep '^ - elements kind'
+ - elements kind: PACKED_SMI_ELEMENTS
+ - elements kind: PACKED_DOUBLE_ELEMENTS
+ - elements kind: PACKED_DOUBLE_ELEMENTS
+ - elements kind: PACKED_ELEMENTS
+```
+
+The third line is the one to notice: `a[3] = 4` wrote an integer over the
+double, and the array stayed DOUBLE. The same output shows where the kind
+lives: inside the array's map, as in `<Map[32](PACKED_SMI_ELEMENTS)>`,
+so a change of kind is a map transition, like the property transitions
+of the shapes chapter. It also names the **backing store**, the separate
+block that holds the elements:
+
+<Figure caption="The three basic kinds and the backing stores %DebugPrint names for them (Node 22)." takeaway="DOUBLE arrays hold raw numbers; ELEMENTS arrays hold anything, as tagged values or pointers.">
+  <BackingStores />
+</Figure>
+
+<Callout kind="definition">
+An array's **elements kind** records what its indexed elements can hold.
+The basic kinds are **SMI** (small integers), **DOUBLE** (any number,
+stored as untagged doubles<Cite id="v8-src-elements-kind" />) and
+**ELEMENTS** (any value). Kinds form a **lattice** (an ordering in which
+any two kinds have a most specific kind above both), and an array only
+ever moves to a more general kind<Cite id="v8-elements-kinds" />. V8
+records the kind in the array's map.
+</Callout>
+
+<Formal title="The lattice, and a write">
+
+```text
+SMI ⊑ DOUBLE ⊑ ELEMENTS
+kindOf(v) = SMI      if v is a Smi
+          = DOUBLE   if v is another number
+          = ELEMENTS otherwise
+after a[i] = v :  kind ← kind ⊔ kindOf(v)
+```
+
+<span slot="read">⊑ reads "is at least as specific as": every SMI array
+could also be stored as DOUBLE, and every DOUBLE array as ELEMENTS. Each
+value has a most specific kind it fits. After writing v, the array's kind
+becomes the join (⊔, "the more general of the two") of its old kind and
+v's kind; a join never moves up the list, which is why there is no way
+back.</span>
+</Formal>
+
+<Examples of="elements-kind">
+
+```js
+[1, 2, 3]   // PACKED_SMI_ELEMENTS
+```
+
+```js
+const t = [1.5, 2];  // DOUBLE
+t[0] = 1;            // still DOUBLE
+```
+
+```js
+// all PACKED_DOUBLE_ELEMENTS:
+[1, 2].push(-0)   // negative zero
+[1, 2].push(NaN)
+[1, 2].push(2 ** 31)
+// but this stays PACKED_SMI_ELEMENTS:
+[1, 2].push(2 ** 31 - 1)
+```
+
+</Examples>
+
+(Read `[1, 2].push(v)` in the third as "an array `[1, 2]` after
+`push(v)`"; `push` itself returns the new length.) The first is the
+simplest case, a literal of small integers. The second shows the one-way
+rule: the literal starts DOUBLE because of `1.5`, and overwriting it with
+an integer leaves it DOUBLE. The third is the trap in real code: `-0`,
+`NaN` and `Infinity` are doubles, not Smis<Cite id="v8-elements-kinds" />,
+and so is any integer too big for a Smi, which in this Node build means
+anything from 2<sup>31</sup> up (each line checked with `%DebugPrint`). One
+`-0` from a calculation such as `0 * -1` is enough to move an array of
+counters to DOUBLE.
+
+<Prompts ids={['ek-what', 'ek-three', 'ek-one-way', 'ek-in-map', 'ek-double-store', 'ek-minus-zero', 'ek-big-int']} />
+
+Which values fit in a Smi? Try a few:
+
+<Run id="smi-test" />
+
+## Kinds meet inline caches
+
+Elements kinds matter most to optimized code. An element load such as
+`xs[i]` has an inline cache like a property load, and what it remembers
+is the array's map, which includes its kind. The V8 post on elements
+kinds warns that a helper called with arrays of several kinds makes its
+element loads polymorphic<Cite id="v8-elements-kinds" />. In V8 12.4 the
+log shows a subtler picture:
+
+```
+// first(xs) { return xs[0]; } called
+// with SMI, then DOUBLE, then ELEMENTS
+KeyedLoadIC 1:31 0 1 0
+KeyedLoadIC 1:31 1 1 0
+KeyedLoadIC 1:31 1 1 0
+```
+
+The site stayed in state `1`, and each new kind was logged as a change
+from `1` to `1`: the cache's entry was replaced, rather than a second
+entry added. Either way the load has to be ready for the most general
+kind it has seen, so one kind per hot call site is still the safe
+habit<Cite id="v8-elements-kinds" />.
+
+<Prompts ids={['ek-polymorphic']} />
+
+<Callout kind="engine" label="Under the hood">
+The 2017 post that explains the lattice counts 21 different elements
+kinds<Cite id="v8-elements-kinds" />; this chapter and the next cover the
+six common ones. Typed arrays have specialized kinds of their
+own<Cite id="v8-elements-kinds" />: `%DebugPrint` reports
+`FLOAT64ELEMENTS` for a `Float64Array`, which is one more reason
+Viscosity's struct-of-arrays columns are `Float64Array`s, since a
+column's kind is fixed and can never fall from SMI to DOUBLE halfway
+through a loop.
+</Callout>
+
+## Your turn
+
+<Exercise id="kindOfWrites" />
+
+## What you learned
+
+- Every array has an **elements kind**: **SMI**, **DOUBLE** or
+  **ELEMENTS**, recorded in its map, with a backing store to match.
+- The kinds form a **lattice**: each write moves the array to the join of
+  its kind and the value's, so it never moves back.
+- `-0`, `NaN`, `Infinity` and integers from 2<sup>31</sup> up are doubles,
+  not Smis.
+- Element loads remember the array's map, kind included; one kind per hot
+  site keeps them simple.
+
+Next: the other half of every kind's name, PACKED or HOLEY.
+
+<Quiz />

@@ -1,0 +1,253 @@
+---
+n: 168
+day: 42
+part: V
+title: 'Shapes in depth'
+tagline: 'Two objects with the same properties can look completely different to V8; it depends on the order you added them and how you made the object, and you can ask the engine which is which.'
+objectives:
+  - Explain what a shape (V8 calls it a map) stores, and what an object stores itself.
+  - Trace how a transition tree grows as properties are added, and why a different order gives a different shape.
+  - Read real %DebugPrint and %HaveSameMap output for objects and their maps.
+  - Build a transition tree of your own, in a dozen lines of JavaScript.
+introduces: [shape, transition-tree]
+uses: [object, property, dot-access, bracket-access, object-header, field-representation, hash-table, constructor, new, instance, class, drip-class, field, memory, pointer, tree, undefined, ignition, optimizing-tiers, for-loop, string-building]
+sources: [v8-fast-properties, v8-slack-tracking, v8-src-map-12-4, v8-react-cliff, v8-maglev]
+---
+import ShapeShare from '../../../components/diagrams/ch168/ShapeShare';
+import TransitionSteps from '../../../components/diagrams/ch168/TransitionSteps';
+
+## Same keys, different objects
+
+Here are five objects with the same two properties, and a V8 internal,
+`%HaveSameMap`, that asks whether two objects have the same shape (start
+Node with `--allow-natives-syntax` to use it):
+
+```js
+const a = { x: 1, y: 2 };
+const b = { x: 5, y: 6 };
+const c = { y: 2, x: 1 };
+const d = {}; d.x = 1; d.y = 2;
+const e = {}; e.x = 7; e.y = 8;
+%HaveSameMap(a, b); // true
+%HaveSameMap(a, c); // false
+%HaveSameMap(d, e); // true
+%HaveSameMap(a, d); // false
+```
+
+(Node v22.23.4, V8 12.4.) `a` and `b` match, which seems fair; `a` and
+`c` do not, although they differ only in order; and `a` and `d` do not
+either, although they have the same keys in the same order. By the end of
+this chapter all four answers will be obvious.
+
+## A shape is a shared description
+
+The problem shapes solve is the one your Drip VM never solved: where does
+`p.x` live? In the chapter on classes and methods in the VM, every Drip
+instance kept its own hash table of fields, names and all, so ten
+thousand particles meant ten thousand tables, each storing `"x"` and
+`"vx"` again, and every `p.x` was a hash lookup.
+
+<Analogy title="a printed form">
+A school prints one form for every pupil: name in box 1, class in box 2.
+Each pupil's sheet holds only their answers, and to find someone's class
+you go straight to box 2, because the form says so; thousands of sheets
+share one description of the layout.
+<span slot="breaks">A school's form never changes once printed; a
+JavaScript object can gain a property at any moment, and then it has to
+move to a different "form", which is what the second half of this
+chapter is about.</span>
+</Analogy>
+
+<Analogy title="a spreadsheet's header row">
+A spreadsheet writes the column names once, in the header row; each row
+below holds only values, and "the third column is the price" is true for
+every row.
+<span slot="breaks">In a spreadsheet every row has the same columns; in
+JavaScript two objects next to each other in an array can have different
+shapes, and the engine has to check which one it is looking at.</span>
+</Analogy>
+
+The chapter on how JavaScript stores numbers and objects showed that
+every V8 object starts with a pointer to its **hidden class**; engine
+writers also say **shape**, and V8's own name is
+**map**<Cite id="v8-slack-tracking" />. The map holds the layout: which
+named properties exist, in what order, and where each value is stored.
+The names themselves live in the map's **descriptor array**, not in the
+object<Cite id="v8-fast-properties" />; the object holds only its values.
+
+<Figure caption="Particles made the same way share one map. Each object is a map pointer plus its own values; the names x and vx are stored once, in the map." takeaway="The shape holds the names and the layout; the object holds the values.">
+  <ShapeShare />
+</Figure>
+
+<Callout kind="definition">
+A **shape** (in V8, a **map**; also a **hidden class**) describes an
+object's layout: its named properties, their order, and where each value
+lives. Objects with the same properties added in the same order share one
+shape<Cite id="v8-fast-properties" />. The shape also records each field's
+representation, as in the chapter on field representations<Cite id="v8-react-cliff" />.
+</Callout>
+
+<Examples of="shape">
+
+```js
+%HaveSameMap(a, b); // true
+```
+
+```
+// %DebugPrint(a), trimmed
+ - map: 0x… <Map[40]…> [FastProperties]
+    #x: 1 (const data field 0), in-object
+    #y: 2 (const data field 1), in-object
+ - instance size: 40
+ - inobject properties: 2
+```
+
+```js
+const ps = [];
+for (let i = 0; i < 1000; i++)
+  ps.push({ x: i, vx: 1 });
+ps.every((p) => %HaveSameMap(p, ps[0]));
+// true: a thousand objects, one map
+```
+
+</Examples>
+
+The first is the simplest case: two literals with the same keys in the
+same order share a map. The second shows what that map says about `a`:
+`x` is field 0 and `y` is field 1, both stored inside the object itself
+(**in-object**), which is 40 bytes long with room for exactly two
+properties. The third is the realistic one: a thousand particles built by
+one line of code all share a single map, so the names `x` and `vx` are
+stored once, not a thousand times.
+
+<Prompts ids={['shape-what', 'shape-names', 'drip-vs-v8']} />
+
+## Shapes form a tree
+
+JavaScript has no fixed classes: any object can gain a property at any
+time, so V8 cannot know an object's shape in advance. Instead, each time
+an object gets a new property, it moves to a new shape, and V8 links the
+shapes together<Cite id="v8-fast-properties" />.
+
+<Analogy title="directions through a building">
+"Through the left door, then the right door" always brings you to the
+same room, and so does anyone else who takes the same turns in the same
+order; "right, then left" brings you somewhere else, even though you used
+the same two words.
+<span slot="breaks">A building's rooms exist before anyone walks through;
+a transition tree grows as objects are made, and the first object to take
+a new turn is the one that builds the room.</span>
+</Analogy>
+
+<Analogy title="an automated phone menu">
+Press 1 for bookings, then 2 for changes: everyone who presses 1 then 2
+ends up with the same recorded message, and the system never needs a
+separate message per caller.
+<span slot="breaks">A phone menu is designed in advance and has a fixed
+number of branches; V8 adds a new branch the first time any object adds a
+property nobody added at that point before.</span>
+</Analogy>
+
+Step through the tree growing as the opening's objects are built:
+
+<TransitionSteps client:visible />
+
+<Callout kind="definition">
+A **transition tree** links shapes: the root is the empty shape, and each
+edge says "add this property". Adding a property follows an existing
+edge if there is one, and creates a new shape if not. The same properties
+in the same order lead to the same shape; a different order leads down a
+different branch<Cite id="v8-fast-properties" />. In V8's source each map
+keeps a **back pointer** to the map it came from<Cite id="v8-src-map-12-4" />.
+</Callout>
+
+<Formal title="A shape is a path from the root">
+
+```text
+shape({})             = S₀
+shape(o after o.k=v)  = T(shape(o), k)
+keys k₁…kₙ, in order  ⇒
+  shape = T(…T(T(S₀,k₁),k₂)…,kₙ)
+```
+
+<span slot="read">An empty object has the root shape S₀. Adding a new
+property k to o moves o to T(shape of o, k), the child of its shape along
+the edge labelled k (T is the transition, made the first time it is
+needed). So an object's shape is found by starting at the root and
+following its keys in the order they were added (⇒ reads "gives");
+since T(T(S₀, x), y)
+and T(T(S₀, y), x) are different paths, order matters.</span>
+</Formal>
+
+<Examples of="transition-tree">
+
+```js
+%HaveSameMap(a, c); // false: x,y vs y,x
+```
+
+```
+// %DebugPrint(d), trimmed
+ - instance size: 56
+ - inobject properties: 4
+ - unused property fields: 2
+ - back pointer: 0x… <Map[56]…>
+```
+
+```js
+// half the particles built x first,
+// half vx first
+const qs = ps.map((p, i) => i % 2
+  ? { x: p.x, vx: 1 }
+  : { vx: 1, x: p.x });
+qs.every((q) => %HaveSameMap(q, qs[0]));
+// false: two branches, two maps
+```
+
+</Examples>
+
+The first is the order rule: `c` walked the `y` edge first, so it ended
+on a different branch. The second answers `a` against `d`: `d` started
+as `{}`, and in this run V8 gave an empty object room for four in-object
+properties (two still unused), while the literal `{ x: 1, y: 2 }` got
+exactly two, so although both walked `x` then `y`, they started from
+different roots with different sizes; the back pointer is the edge back
+to `d`'s previous map. The third is the realistic mistake: a program that
+builds particles in two places, with the keys written in two orders, ends
+up with two maps, and every loop over them now sees two shapes, which
+matters a great deal in the chapter on inline caches.
+
+<Prompts ids={['tree-what', 'order-matters', 'literal-vs-built', 'mixed-order', 'back-pointer']} />
+
+Code can see the order too, which is why an engine must remember it:
+
+<Run id="order-visible" />
+
+<Callout kind="engine" label="Under the hood">
+Shapes are why V8's optimizing tiers can be fast. In 2023 the V8 team
+described Maglev reading `o.x`: if feedback says `o` always had one
+shape, it emits a check of that shape and then a plain load at a fixed
+offset<Cite id="v8-maglev" />. For Viscosity the lesson is the one the
+benchmarks taught: build every element of a collection the same way, in
+the same order, and V8 sees one shape; a struct-of-arrays layout goes
+further, since a `Float64Array` column has no shapes at all.
+</Callout>
+
+## Your turn
+
+<Exercise id="shapeTree" />
+
+<Exercise id="orderMismatches" />
+
+## What you learned
+
+- A **shape** (V8's **map**) describes an object's layout once; objects
+  that share it store only their values.
+- Shapes form a **transition tree**: adding a property follows or
+  creates an edge, so the *order* of additions decides the shape.
+- How an object is made matters too: a literal and `{}` plus additions get
+  different in-object room, and so different maps.
+
+Next: what happens when objects outgrow their room, and when V8 gives up
+on shapes for an object altogether.
+
+<Quiz />

@@ -1,0 +1,263 @@
+---
+n: 368
+day: 92
+part: XIII
+title: 'Escape and alias analysis in Rust'
+tagline: 'Every refusal in `viscosity explain` is one sentence from `describe_use`. In Rust it looks at which operand the value is before it looks at the instruction, follows whole arrays into known functions, treats every phi as a merge it can’t see through, and now points at the code with `--frames`.'
+objectives:
+  - Explain why describe_use takes the value as well as the use, and read its operand-specific cases.
+  - Trace an array into a known function, and say why an element is never followed.
+  - Explain how phis and second names are handled without points-to sets.
+  - Read `explain --frames` output for a refusal, and write the operand-aware reasons.
+introduces: [rust-escape-pass]
+uses: [rust-collections-pass, rust-shape-pass, escape-analysis, escape-sites, alias-analysis, points-to, aliasing, safety-analysis, bailout, optimization-report, phi-node, ssa, call-graph, vir, viscosity-rs, cross-implementation-tests, fuzzing, differential-testing, match, pattern, enum, option, slice, string-vs-str, rust-iterator, rust-closure]
+sources: ['llvm-alias-analysis', 'coopertorczon2022']
+---
+import OperandSteps from '../../../components/diagrams/ch368/OperandSteps';
+
+## A refusal, pointed at
+
+Here is a program that does three bad things with elements of `ps`:
+
+```js
+const ps = [];
+for (let i = 0; i < 99; i++)
+  ps.push({ x: i });
+const box = {};
+box.k = ps[1];
+ps[2][0] = 5;
+const t = [];
+t[ps[3]] = 1;
+```
+
+`viscosity explain --frames`, a new option in both engines’ CLIs,
+prints each refusal with the line it is about and carets
+under the code. Real output of the Rust CLI (the message lines are
+wrapped here, the frames are not):
+
+```
+ps (line 1) {x} → kept as array of
+  objects
+  · unsafe: line 8: an element is used
+    as an index
+    8 | t[ps[3]] = 1;
+      |   ^^^^^
+  · unsafe: line 6: an element is
+    written with an index store
+    6 | ps[2][0] = 5;
+      | ^^^^^
+  · unsafe: line 5: an element is
+    stored into an object property
+    5 | box.k = ps[1];
+      |         ^^^^^
+t (line 7) {} → kept as array of
+  objects
+  · unsafe: the array is written with
+    an index store at line 8
+    8 | t[ps[3]] = 1;
+      | ^
+```
+
+Lines 6 and 8 are both `index.set` in VIR. One reason says “written
+with an index store”, the other “used as an index”. The difference is
+which operand the element is.
+
+<Prompts ids={['esr-frames']} />
+
+## describe_use asks “which operand?” first
+
+<Callout kind="intuition">
+“Ana is in the photo” could mean Ana took it, or Ana is standing in
+it. Knowing the photo exists isn’t enough: you need her place in it.
+`describe_use` asks the same of a value and an instruction.
+</Callout>
+
+The function takes a use *and* the value being described, and its
+first `match` only handles cases where the operand matters. Trimmed
+from `analysis.rs`:
+
+```rust
+let i = match u {
+    Use::Term { func, .. } => {
+        let f = &self.m.func(func).name;
+        return format!("returned or \
+            branched on in {f}()");
+    }
+    Use::Inst(i) => self.inst(i),
+};
+// Stores: say which operand v was.
+match &i.op {
+    Op::FieldSet { field }
+        if i.args[0] == v =>
+        return format!("modified \
+            directly (its .{field} is \
+            assigned) at line {line}"),
+    Op::IndexSet if i.args[0] == v =>
+        return format!("written with \
+            an index store at line \
+            {line}"),
+    Op::IndexSet | Op::IndexGet
+        if i.args[1] == v =>
+        return format!("used as an \
+            index at line {line}"),
+    _ => {}
+}
+match &i.op { /* ...by kind */ }
+```
+
+The second `match` describes the instruction in general: a `field.set`
+where the value isn’t the object is “stored into an object property”,
+an `index.set` “stored into an array”, a store to a binding “stored in
+another variable (e)”, and so on, down to “used by code Viscosity
+doesn’t model (destructuring)” for opaques. The TS version takes `v`
+as optional; in Rust it is always given.
+
+<OperandSteps client:visible />
+
+<Prompts ids={['esr-what', 'esr-operand', 'esr-index-set', 'esr-term']} />
+
+## Elements: field access only
+
+`element_uses` walks every use of every `index.get`. A `field.get` or
+`field.set` with the element as operand 0, on a field the records
+have, becomes an `ElementAccess`, and everything else is an escape.
+The message starts with the element’s own line, so a repeat of that
+line at the end is cut off:
+
+```rust
+let why = self.describe_use(u, ig.inst);
+let why = [" at line ", " near line "]
+    .iter()
+    .find_map(|p| why.strip_suffix(
+        &format!("{p}{line}")))
+    .unwrap_or(&why);
+let msg = format!(
+    "line {line}: an element is {why}");
+```
+
+The reference does this with a regular expression,
+`/ (?:at|near) line N$/`. Two `strip_suffix` calls match the same
+strings, without a regex crate.
+
+<Callout kind="definition">
+**The escape and alias passes in Rust** are the use checks of
+`analysis.rs`. The array may only be read for `.length`, pushed fresh
+records, indexed, or passed to a known function (followed into the
+parameter). Each element may only have its fields read or written.
+Any other use is a bailout whose reason, from `describe_use`, depends
+on the instruction and on which operand the value is, with the
+source site kept for `--frames`.
+</Callout>
+
+<Prompts ids={['esr-allowed', 'esr-strip']} />
+
+## Into known functions
+
+Chapter 366 showed the array being followed into `step`’s parameter.
+The uses inside are then checked like any others, so an element that
+leaves `step` is caught there:
+
+```js
+function step(qs) {
+  for (let i = 0; i < qs.length; i++)
+    qs[i].y += qs[i].x;
+  return qs[0];
+}
+const best = step(ps);
+console.log(best.y);
+```
+
+(Rewrapped: in the real file, the loop is one line, line 4, after the
+same two lines that build `ps`.)
+
+```
+ps (line 1) {x, y} → kept as array of
+  objects
+  · unsafe: line 5: an element is
+    returned or branched on in step()
+    5 |   return qs[0];
+      |          ^^^^^
+```
+
+Delete the `return` and `ps` becomes a struct of arrays, with “loop at
+line 4 in step() touches 2 of 2 fields”. Add a second call
+`step([])`, and the function is no longer called only with `ps`:
+“passed to step(), which is also called with other values”.
+
+Only whole arrays are followed. An element passed to a function, even
+a known one, is an escape: `bump(ps[0])` gives “an element is passed
+to a function call”. Following an element would mean proving the
+callee only touches its fields, and nothing in the pass does that.
+
+<Prompts ids={['esr-follow', 'esr-element-call']} />
+
+## Aliases without points-to sets
+
+Viscosity has no points-to sets. It needs none, because SSA already
+says when two names are one value, and anything else is refused.
+`const e = ps[0]; e.x += 1;` is fine: `e` *is* the `index.get`. But a
+second home is an escape: putting the element in an object, an array,
+or a captured variable (`const f = () => e` turns `e` into a binding,
+so the element is “stored in another variable (e)”).
+
+Phis are the other way to get a second name. After the same three
+lines that build `ps`, then real output, wrapped:
+
+```js
+let p = ps[0];
+if (ps.length > 9) p = ps[9];
+console.log(p.x);
+```
+
+```
+  · unsafe: line 5: an element is merged
+    with other values (a variable
+    reassigned along different paths)
+    5 | if (ps.length > 9) p = ps[9];
+      |                        ^^^^^
+  · unsafe: line 4: an element is merged
+    with other values (a variable
+    reassigned along different paths)
+    near line 5
+    4 | let p = ps[0];
+      |         ^^^^^
+```
+
+A phi has no position. `line_of` gives it the latest line among the
+values it merges, here 5. For the element read on line 5 that repeat
+is cut. For the one on line 4 it is new information, so it stays. The
+TS version builds the phi text with a template and `trimEnd()`; Rust
+has two match arms, with and without a line.
+
+<Prompts ids={['esr-captured', 'esr-phi', 'esr-phi-line']} />
+
+<Callout kind="engine" label="Under the hood">
+Each bailout records its site the first time its message is seen:
+`use_site` returns the escaping value’s own span when it is a load of
+the array’s name, otherwise the using instruction’s span, and element
+messages point at the element’s `index.get`. The frame counts columns
+in code points, so the UTF-8 byte offsets of Rust and the UTF-16
+offsets of TypeScript put the carets in the same place. Thirteen
+`.frames.txt` fixtures, and the fuzzer’s comparison of both engines’
+`--frames` text, keep it that way.
+</Callout>
+
+## Your turn
+
+<Exercise id="reasons" />
+
+## What you learned
+
+- **The escape and alias passes in Rust** allow only `.length`,
+  fresh pushes, indexing and known calls on the array, and only field
+  access on elements. Everything else is a refusal.
+- `describe_use` checks **which operand** the value is before the
+  instruction kind: `e.k = 1` modifies `e`, `box.k = e` aliases it.
+- Arrays are followed into **known functions**; elements never are.
+- There are no points-to sets: SSA identifies one value under one name,
+  and **phis** and stores into other places are refused. A phi’s line is
+  the latest of its operands’.
+- `explain --frames` shows each refusal’s line with carets under the
+  recorded site.
+
+<Quiz />

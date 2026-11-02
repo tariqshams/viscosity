@@ -1,0 +1,295 @@
+---
+n: 178
+day: 45
+part: V
+title: 'Mark-compact and the write barrier'
+tagline: 'The old generation is too big to copy, so V8 marks it while your program keeps running, sweeps the gaps into free-lists and moves only the worst pages. All of that rests on one small check that runs every time your code stores a pointer.'
+objectives:
+  - Explain Mark-Compact’s mark, sweep and compact steps, and why only some pages are compacted.
+  - Show what goes wrong when marking runs alongside the program, and how a write barrier prevents it.
+  - Name both jobs of V8’s write barrier, and say which stores need it.
+  - Read a Mark-Compact line in `--trace-gc` output, and check that its cost follows the live data.
+introduces: [mark-compact, write-barrier]
+uses: [garbage-collection, roots, mark-sweep, tricolor, generational-gc, heap-object, stack-and-heap, memory, pointer, address, reference, object, property, scavenger, optimizing-tiers]
+sources: [v8-trash-talk, v8-orinoco-scavenger, v8-concurrent-marking, v8-maglev]
+---
+import MarkSweepCompact from '../../../components/diagrams/ch178/MarkSweepCompact';
+import BarrierSteps from '../../../components/diagrams/ch178/BarrierSteps';
+
+## The other line in the trace
+
+The previous chapter ran a loop that keeps one object in ten and
+counted 25 scavenges in its `--trace-gc` output; in the middle of them
+sat one line of a different kind (real output, Node v22.23.4, which runs
+V8 12.4, trimmed):
+
+```
+67 ms: Mark-Compact 13.4 (28.7) -> 10.2 …
+  … finalize incremental marking via
+  stack guard; GC in old space requested
+```
+
+The Scavenger promotes survivors into the old generation, and the old
+generation fills up too, slowly; when it does, V8 runs its *major*
+collector, Mark-Compact, over the whole heap. The line says the objects
+took 13.4 MB before and 10.2 MB after. The reason at the end says that
+the collection was asked for by the old space, and that it *finished*
+some marking which had already been going on. This chapter explains
+both halves of that sentence.
+
+## Mark-Compact
+
+The old generation is big, and its objects tend to stay in use, so the
+Scavenger's trick (copy everything that survives) would mean copying
+almost everything, and keeping half of a big heap empty for it. Instead,
+Mark-Compact does three things<Cite id="v8-trash-talk" />:
+
+1. **Mark.** Starting from the roots, find every object still in use,
+   exactly as your Drip collector does, with the white, grey and black
+   colours of *Garbage collection: mark and sweep*.
+2. **Sweep.** The gaps left by dead objects go onto **free-lists**,
+   sorted by size, so that later allocations can reuse them.
+3. **Compact, but only some pages.** The heap is divided into pages,
+   and a page full of small gaps is wasteful; so V8 picks the most
+   fragmented pages and moves their survivors elsewhere, emptying them.
+   The other pages are only swept, because copying lots of long-lived
+   objects is expensive<Cite id="v8-trash-talk" />.
+
+<Analogy title="a multi-storey car park at closing time">
+At the end of the day the attendant walks every level and notes which
+spaces still hold a car (mark), writes the empty spaces on a board by
+the entrance so new arrivals can find one (sweep), and, on the one
+level with only two cars left, asks their owners to move down a floor
+so that level can be shut (compact).
+<span slot="breaks">A driver moves their own car and knows where it
+went; when V8 moves an object, every pointer to it, anywhere in the
+heap, has to be found and updated to the new address.</span>
+</Analogy>
+
+<Figure takeaway="Mark finds what is in use; sweep reuses the gaps; compact empties only the worst pages." caption="Mark-Compact on two toy pages. Page B is mostly gaps, so its one survivor is moved into a free slot on page A and page B is emptied; page A is only swept.">
+  <MarkSweepCompact />
+</Figure>
+
+Marking a big heap all at once could stop the program for a long time,
+so V8 marks in the background: concurrent marking starts as the heap
+approaches a limit, helper threads mark while JavaScript runs, and the
+main thread pauses only for a short finishing step, then compacts in
+parallel<Cite id="v8-trash-talk" />. That finishing step is the
+"finalize incremental marking" in the trace above. In V8 12.4,
+`node --v8-options` lists `--concurrent-marking`,
+`--concurrent-sweeping` and `--parallel-compaction` as on by default.
+
+<Callout kind="definition">
+**Mark-Compact** is V8's old-generation (whole-heap) collector. It
+**marks** live objects from the roots with tri-colour marking,
+**sweeps** the gaps left by dead objects into free-lists, and
+**compacts** a few fragmented pages by moving their
+survivors<Cite id="v8-trash-talk" />. Most of its marking runs
+concurrently with JavaScript.
+</Callout>
+
+What should Mark-Compact cost? Marking visits the objects in use;
+sweeping, which runs on other threads, deals with the gaps. So the
+pause should follow the *live* data. This program fills an array with a
+million objects, forces a full collection with `gc()` (available only
+with `--expose-gc`), prints the length so the array is still in use,
+then drops it and collects again:
+
+```js
+let keep = [];
+for (let i = 0; i < 1e6; i++)
+  keep.push({ x: i });
+gc();
+console.log(keep.length);
+keep = null;
+gc();
+```
+
+<Examples of="mark-compact">
+
+```text
+gc(), 43.8 MB still in use:
+Mark-Compact 54.9 -> 43.8 MB, 38.35 ms
+```
+
+```text
+gc() after keep = null:
+Mark-Compact 44.4 -> 3.7 MB, 4.13 ms
+```
+
+```text
+started by V8 itself, mid-loop:
+Mark-Compact 13.4 -> 10.2 MB, …
+… finalize incremental marking
+```
+
+</Examples>
+
+The first collection runs while the million objects are still in use,
+so it marks almost 44 MB of them, and the pause is 38 ms. The second
+runs after `keep = null`: the array and all its objects are now
+garbage, about 40 MB of it, and yet the pause is only 4 ms, because
+there is almost nothing left to mark. The third is the line from the
+top of the chapter, where V8 decided on its own to collect, after
+marking had already been running in the background. (Each run is from
+this book's machine, Node v22.23.4, once each, trimmed; the times wobble
+between runs.)
+
+<Prompts ids={['mc-what', 'mc-free-list', 'mc-some', 'mc-concurrent']} />
+
+## A program that moves pointers behind the marker's back
+
+Concurrent marking has a problem. While a helper thread marks, your
+JavaScript keeps running and keeps changing pointers, and it can hide a
+live object from the marker. Step through how:
+
+<BarrierSteps client:visible />
+
+<Analogy title="a census taken while people move house">
+Census takers go street by street counting who lives where. If, on
+census day, a family moves from a street not yet counted into a street
+that has already been done, nobody counts them at all, unless the rule
+is that anyone who moves that day must tell the census office.
+<span slot="breaks">A family that is missed is still a family; an
+object the marker misses is freed, and the program's next read of it
+finds memory that now holds something else.</span>
+</Analogy>
+
+The fix is a small piece of code that runs on every pointer store into
+an object. V8's barrier for concurrent marking does this after each
+`object.field = value`<Cite id="v8-concurrent-marking" />:
+
+```cpp
+if (color(value) == white &&
+    atomic_color_transition(
+        value, white, grey)) {
+  marking_worklist.push(value);
+}
+```
+
+In words: if the value being stored has not been found yet, turn it
+grey (the "atomic" part makes sure that only one thread does so, even
+if the marker reaches it at the same moment) and put it on the
+worklist, so the marker is sure to visit it. That keeps the rule the
+whole of tri-colour marking depends on: no black object ever points at
+a white one.
+
+<Formal title="The invariant the barrier keeps">
+
+```text
+∀ a, b :  black(a) ∧ (a → b)  ⇒  ¬white(b)
+```
+
+<span slot="read">For every pair of objects a and b: if a is black and
+a points to b, then b is not white. In other words, a finished object
+never points at one the marker has not found yet, so when the worklist
+is empty, every object still in use has been found.</span>
+</Formal>
+
+## The barrier's other job
+
+The same barrier has a second job, and you have already met it: the
+Scavenger's remembered set. A scavenge does not look at the old
+generation at all, so it would miss a young object held only by an old
+one; the write barrier therefore records each **old-to-new** pointer,
+and those records become extra roots for the next
+scavenge<Cite id="v8-trash-talk" />. In the parallel Scavenger these
+remembered sets are kept per page, and they are usually most of a
+scavenge's roots<Cite id="v8-orinoco-scavenger" />.
+
+<Analogy title="a branch library's list of loans">
+A small branch library clears its shelves every week of books nobody
+there has asked for. Before it does, it checks one list: books it has
+lent to the main library. A book on that list is wanted, even though no
+one in the branch has mentioned it.
+<span slot="breaks">A librarian writes the list once per loan; V8's
+barrier runs on every pointer store, so it has to decide in a moment
+whether this store needs writing down, and nearly always it does
+not.</span>
+</Analogy>
+
+<Callout kind="definition">
+A **write barrier** is code that runs when a pointer is stored into an
+object. V8's has two jobs: record **old-to-new** pointers, which become
+extra roots for the Scavenger, and, during concurrent marking, turn a
+newly referenced white object grey so that no live object stays
+unmarked<Cite id="v8-trash-talk" /><Cite id="v8-concurrent-marking" />.
+</Callout>
+
+Barriers cost time on every store, so compilers avoid them when they
+can prove they are not needed. Maglev, one of V8's optimizing tiers,
+skips the barrier entirely when storing into an object it has only
+just allocated, as long as no other allocation happened in
+between<Cite id="v8-maglev" />.
+
+<Examples of="write-barrier">
+
+```js
+// oldObj is old, kid is young
+oldObj.child = kid;
+// barrier records oldObj: old-to-new
+```
+
+```js
+// during marking: done is black,
+// fresh is white
+done.next = fresh;
+// barrier turns fresh grey
+```
+
+```js
+const p = { next: null };
+p.next = q;
+// p was just allocated: Maglev
+// may skip the barrier here
+```
+
+</Examples>
+
+The first is the remembered-set job: a young object is stored into an
+old one, so the barrier writes the old object down, and the next
+scavenge will treat `oldObj.child` as a root. (The other way round,
+`kid.parent = oldObj`, needs no record: the Scavenger already looks at
+every young object it copies.) The second is the marking job: a
+finished object is made to point at an unfound one, so the barrier
+greys it, exactly as in the stepper. The third is the barrier being
+skipped: `p` was allocated a moment ago, with nothing allocated since,
+so Maglev knows it is young and that nothing has had a chance to
+change that, which is the case its developers describe. (In V8 12.4,
+`node --v8-options` lists Maglev itself as off by default, so Node 22
+does not run this tier unless you ask for it; the example shows the
+idea, not what your Node does.)
+
+<Prompts ids={['wb-what', 'wb-marking', 'wb-old-new', 'wb-skip']} />
+
+<Callout kind="engine" label="Under the hood">
+Your Drip VM's collector stops the program, marks and sweeps, and it
+needs no barrier, because nothing runs while it works and it has only
+one generation. Both features V8 adds, generations and concurrent
+marking, shorten its pauses, and both are paid for in the same place:
+a few extra instructions after every pointer store. That is one more
+reason Viscosity's columns help: storing a number into a
+`Float64Array` stores no pointer at all, so there is nothing for a
+barrier to check.
+</Callout>
+
+## Your turn
+
+<Exercise id="barrier" />
+
+## What you learned
+
+- **Mark-Compact** collects the whole heap: it **marks** from the
+  roots (mostly concurrently, while JavaScript runs), **sweeps** gaps
+  into free-lists, and **compacts** only the most fragmented pages.
+- Its pause follows the live data: 38 ms with 44 MB in use, 4 ms once
+  it was garbage, in this chapter's runs.
+- Marking alongside the program can hide a live object; the **write
+  barrier** greys any white object stored into another, keeping the
+  rule that no black object points at a white one.
+- The same barrier records **old-to-new** pointers, which become the
+  Scavenger's extra roots.
+- Barriers cost time on every pointer store, so compilers skip them when
+  they can prove a store is safe.
+
+<Quiz />

@@ -1,0 +1,248 @@
+---
+n: 155
+day: 39
+part: IV
+title: 'The frame pointer: one stack, many windows'
+tagline: 'Every call reads the same shared stack through its own window, which starts at one number in its frame; that number is why arguments never need copying, and why a return can tidy up in a single step.'
+objectives:
+  - Explain why the arguments of a call are already in the callee's slots, with nothing copied.
+  - Work out a local's stack index from its slot number and its frame's frame pointer.
+  - Trace how return cuts the stack back to the frame pointer, and what sits in slot 0 for functions, methods and new.
+  - Say honestly what the VM's calls gained over the tree-walker's, and why not more.
+introduces: [frame-pointer]
+uses: [call-frame, stack-slot, compile-time-scope, jump, function, call, parameter, argument, return, arity, recursion, call-stack, environment, instruction-pointer, dispatch-loop, stack-machine, virtual-machine, bytecode, disassembler, bound-method, method, constructor, tree-walking-interpreter, drip, array, numbers]
+sources: [mdn-call-stack]
+---
+import FrameSteps from '../../../components/diagrams/ch155/FrameSteps';
+import WindowFigure from '../../../components/diagrams/ch155/WindowFigure';
+import CallBench from '../../../components/diagrams/ch155/CallBench';
+
+## The arguments are already in place
+
+In the tree-walker, calling `add(1, 2)` made a new environment, a
+fresh `Map`, and copied each argument into it under its parameter's
+name. Now look at the VM's stack at the moment `call 2` runs:
+
+```text
+index:  0       1        2   3
+value:  script  fn add   1   2
+```
+
+The compiler pushed the callee and then the arguments, left to right.
+Inside `add`, slot 0 is the function, slot 1 is `a` and slot 2 is
+`b`; so if `add`'s slot 0 is *declared* to be index 1, the
+argument `1` is already sitting in slot 1 and `2` in slot 2. Nothing
+needs to be copied, renamed or allocated. All the call has to record
+is that one number, 1, and the last chapter showed where: in the
+frame's `slots` field, computed in `call` as
+`slots: this.sp - argCount - 1`.
+
+<Analogy title="a ruler under a sliding magnifier">
+Picture one long ruler (the stack) and a magnifying glass that slides
+along it, with its own little scale etched on the glass starting at
+0. Whatever you are working on, you read positions off the glass:
+"mark 2". Slide the glass to a new place and "mark 2" means a
+different spot on the same ruler. A call slides a new glass along;
+a return takes it away, and you are back to the caller's glass.
+<span slot="breaks">A glass only shows a few marks; a frame's window
+runs from its slot 0 all the way up to the top of the stack, which
+is why a callee's window overlaps its caller's top end (the
+arguments are in both).</span>
+</Analogy>
+
+<Analogy title="directions from a landmark">
+"Third house after the church" is a perfectly good address, as long
+as everyone knows which church you mean; the same words said in
+another village lead to a different house. The bytecode
+`load.local 2` is the directions, and the frame pointer is the church.
+<span slot="breaks">Directions in a real village can be ambiguous;
+the VM's arithmetic is exact. And the VM always uses the newest
+frame's landmark, never one chosen by whoever is reading.</span>
+</Analogy>
+
+<Callout kind="definition">
+A frame's **frame pointer** (`slots` in Drip's VM) is the stack index
+of its slot 0. Every local of that call is found relative to it:
+slot *i* lives at `stack[slots + i]`. Because `call` sets it to the
+callee's own position, the callee and its arguments become slots 0,
+1, 2, and so on, of the new frame without being moved.
+</Callout>
+
+<Formal title="Frame pointer arithmetic">
+
+```text
+slots   = sp − argc − 1     (at a call)
+addr(i) = slots + i         (slot i)
+sp      := slots            (at a return)
+```
+
+<span slot="read">At a call, the frame pointer is the stack top minus
+the number of arguments minus one, the callee's index. Slot i of the
+call is at index slots plus i. At a return, the stack top goes back
+down to the frame pointer.</span>
+</Formal>
+
+This is what `frame.slots` meant in `load.local`, back in the chapter
+on stack slots: `stack[frame.slots + readByte()]`. The same bytes of
+`fib`'s bytecode work for every call of `fib`, because each call
+reads them through its own frame pointer:
+
+<Figure takeaway="One instruction, a different cell in every call." caption="Inside fib(2), which has called fib(1). load.local 1 means 'my n'; the frame pointers, 1 and 3, turn it into stack index 2 in one call and 4 in the other.">
+  <WindowFigure />
+</Figure>
+
+<Prompts ids={['no-copy', 'fp-what', 'fp-formula', 'same-bytes']} />
+
+## Returning cuts back to the window
+
+The `return` instruction, from `vm.ts` (wrapped):
+
+```ts
+case Op.Return: {
+  const result = this.pop();
+  this.closeUpvalues(frame.slots);
+  this.frames.pop();
+  if (this.frames.length === 0) {
+    this.sp = 0;
+    return;
+  }
+  this.sp = frame.slots;
+  this.push(result);
+  reload();
+  break;
+}
+```
+
+`frame` is still the frame that is finishing. Setting `sp` to its
+`slots` throws away the callee, its arguments, its locals and any
+temporaries in a single assignment (nothing is erased; those cells
+will be overwritten by the next push), and the result is pushed
+exactly where the callee was. (`closeUpvalues` rescues any captured
+locals first; that is the chapter on upvalues.) Step through `fib(2)`
+and watch the windows open, overlap and close:
+
+<FrameSteps client:visible />
+
+Try a deeper recursion, and a constructor, yourself:
+
+<Run id="windows" />
+
+## What sits in slot 0
+
+For a plain function, slot 0 holds the function itself. For a method
+it holds the receiver, which the compiler names `self` (it puts a
+local called `self` in entry 0 of the method's locals array), so
+`self` is `load.local 0`. The VM arranges this in one line before it
+pushes the frame. For a bound method:
+
+```ts
+this.stack[this.sp - argCount - 1] =
+  callee.receiver;
+```
+
+and for `new P(4)`, the class in that position is replaced by the new
+instance in the same way, before `init` is called.
+
+<Examples of="frame-pointer">
+
+```text
+call 2 with: script, fn add, 1, 2
+slots = 4 − 2 − 1 = 1
+a = stack[1 + 1] = 1
+b = stack[1 + 2] = 2
+```
+
+```text
+print f(3), where f(y) calls sq(y):
+f:  slots = 3 − 1 − 1 = 1, y at 2
+sq: slots = 5 − 1 − 1 = 3, x at 4
+```
+
+```text
+== init ==   (class P, new P(4))
+0000    3 load.local          0
+0002    | load.local          1
+0004    | set.prop            0 'x'
+0007    | pop
+0008    4 load.local          0
+0010    | return
+```
+
+</Examples>
+
+The first is the smallest case: four values on the stack and two
+arguments, so the window starts at index 1, and `a` and `b` are
+exactly where the script pushed them. The second is a call inside a
+call: `f`'s window starts at 1; inside `f` the stack has grown to five
+values (`script`, `fn f`, `3`, `fn sq`, `3`) when `sq` is called, so
+`sq`'s window starts at 3, and its `x` is the copy of `y` that `f`
+pushed. The third is a real initialiser: `self` is slot 0 (the new
+instance that replaced the class), `x` is slot 1, and an `init`
+always ends by returning `load.local 0`, the instance, which is why
+`new P(4)` produces it.
+
+<Prompts ids={['return-sp', 'slot-zero-method', 'stack-size']} />
+
+The stack itself is one array, made once when the VM starts:
+`STACK_MAX` is `FRAMES_MAX * 256`, room for 256 frames with 256 slots
+each, which is the most the one-byte operands and the depth check
+allow. A call never allocates anything on it; it only moves numbers.
+
+## Did it make calls faster?
+
+The tree-walker paid for every Drip call with several TypeScript
+calls, a new environment and a `Map`; the VM pays one small record
+and some arithmetic. You might expect a large speed-up. In this
+book's benchmark run, however, it was modest, and some programs got
+*slower*:
+
+<Figure takeaway="The VM is not much faster here, and slower on programs that allocate a lot." caption="Speed-up of the bytecode VM over the tree-walker for each benchmark program, from companion/ts/results/drip-bench-2026-11-02.json (best of three runs, compile time included). Right of the dashed line, the VM was faster.">
+  <CallBench />
+</Figure>
+
+The call-heavy programs gained the most: recursive `fib` ran 1.24
+times as fast on the VM, and `method_calls` 1.3 times. Programs that
+create many objects, `instantiation` and `trees`, ran slower. Two
+things in this companion explain much of that. First, both
+interpreters are TypeScript running on V8, whose JIT compiler turns
+the tree-walker's small, simple methods into fast machine code too,
+so the tree-walker was never as slow as its design suggests; the VM
+pays its own way for every instruction (a `switch`, `readByte` calls,
+type checks and a counter). Second, the VM manages its own heap, with
+its own garbage collector and its own hash tables for fields, on top
+of JavaScript's, so every object it creates costs more than the
+tree-walker's. The chapter "Measuring and speeding up the VM" comes
+back to these costs and what can be done about them.
+
+<Prompts ids={['bench-honest']} />
+
+<Callout kind="engine" label="Under the hood">
+This is the call stack<Cite id="mdn-call-stack" /> laid out in
+memory: one region per call in progress, added when a function is
+called and removed when it returns, with each call's own values
+reached from where its region starts. The later chapters on native
+code meet the same idea again, with a machine register playing the
+part of the `slots` number.
+</Callout>
+
+## Your turn
+
+<Exercise id="window" />
+
+## What you learned
+
+- The callee and its arguments are pushed in order, so they already
+  are the new call's slots 0, 1, 2, ...: nothing is copied.
+- The **frame pointer** (`slots`) is the stack index of a call's slot
+  0, set to `sp − argc − 1`; slot `i` is at `slots + i`.
+- `return` sets `sp` back to the frame pointer and pushes the result
+  where the callee was.
+- Slot 0 holds the function, or `self` for a method; `new` and bound
+  methods put the receiver there before the call.
+- The VM's calls are cheaper in design, but in this book's benchmark
+  run the VM was only up to 1.3 times faster, and slower on
+  allocation-heavy programs.
+
+Next: closures, and variables that must outlive their call's window.
+
+<Quiz />

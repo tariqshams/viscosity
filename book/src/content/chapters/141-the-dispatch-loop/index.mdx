@@ -1,0 +1,264 @@
+---
+n: 141
+day: 36
+part: IV
+title: 'The dispatch loop'
+tagline: 'At the centre of the VM is one loop and one switch: read an opcode, jump to the code for it, run it, and go round again. Here it is, from the real VM, with what each turn costs.'
+objectives:
+  - Read the top of the VM's real run loop and say what each line is for.
+  - Follow one opcode, sub, through its case, including the type check that peeks before it pops.
+  - Explain the cost every instruction pays for dispatch, and why it limits a VM written in TypeScript.
+  - Write the dispatch loop for a small stack machine with two-byte constant numbers.
+introduces: [dispatch-loop]
+uses: [bytecode, opcode, virtual-machine, chunk, constant-pool, stack-machine, instruction-pointer, array, push, index, arrow-function, closure, typeof, runtime-error, typescript, call-stack, register, branch-prediction, cpu, interpreter-overhead, drip, for-loop, if]
+sources: [v8-ignition, v8-sparkplug]
+---
+import DispatchSteps from '../../../components/diagrams/ch141/DispatchSteps';
+import StackVsRegister from '../../../components/diagrams/ch141/StackVsRegister';
+
+## Fifty-three kinds of instruction, one loop
+
+*A machine with a stack* gave the VM its two pieces of state: a stack
+for values, and `ip` for where it is in the code. What is still missing
+is the part that does the work: something that looks at each opcode in
+turn and runs the right code for it, fifty-three different kinds of
+instruction, millions of times a second. In Drip's VM all of that is
+one method, `run`, in `companion/ts/src/vm/vm.ts`, and almost all of
+`run` is a single loop around a single `switch`.
+
+<Analogy title="a sorting office">
+In a post office sorting room, someone takes the next letter off the
+pile, reads the postcode, and drops the letter into the pigeonhole for
+that area; then the next letter, and the next, all day. Reading the
+postcode and choosing the pigeonhole is the dispatch; whatever happens
+to the letter afterwards is the real work.
+<span slot="breaks">A sorter can glance ahead and grab a handful of
+letters for the same pigeonhole at once; the dispatch loop handles
+exactly one instruction per turn, in order, and never skips ahead
+(though real processors try to guess what comes next, as we will
+see).</span>
+</Analogy>
+
+## The top of run
+
+Here are the first lines of `run`, rewrapped to fit; the helpers you met
+in *A machine with a stack* sit between the third line and the loop:
+
+```ts
+let frame =
+  this.frames[this.frames.length - 1];
+let code = frame.closure.fn.chunk.code;
+let constants =
+  frame.closure.fn.chunk.constants;
+const stack = this.stack;
+// readByte, readShort, readConstant ...
+for (;;) {
+  this.instructionsExecuted++;
+  const instruction = code[frame.ip++];
+  switch (instruction) {
+```
+
+The first lines copy what the loop needs most into local variables: the
+running function's `frame` (with its `ip`), its `code` and its
+`constants`, and the stack. Reading a local variable is cheaper than
+following `this.frames[...].closure.fn.chunk.code` on every instruction,
+so the loop only does that long walk again (in a helper called `reload`)
+after an instruction that changes which function is running, such as a
+call or a return. Then the loop itself: `for (;;)` has no condition, so
+it runs until a `case` leaves it; each turn counts the instruction (a
+tally kept for measuring the VM), **fetches** the opcode at `ip` while
+moving `ip` past it, and hands it to the `switch`, which **dispatches**:
+it jumps to the `case` for that opcode. The cases are in the same order
+as the opcode table, from `Op.Const` to `Op.Method`.
+
+<Prompts ids={['dispatch-what', 'locals-cached', 'loop-ends']} />
+
+## One case, closely
+
+Most cases are a few lines. Here is the real one for `sub`, rewrapped:
+
+```ts
+case Op.Sub: {
+  this.numbers('-');
+  const b = this.pop() as number;
+  stack[this.sp - 1] =
+    (stack[this.sp - 1] as number) - b;
+  break;
+}
+```
+
+First, `this.numbers('-')` checks that the top two values are numbers,
+and reports a runtime error if they are not. Then `b`, the right
+operand, is popped: it was pushed last, so it is on top. The left
+operand is *not* popped; its slot, `stack[this.sp - 1]`, is overwritten
+with the result, which has the same effect as popping both and pushing
+the answer, with one less change to `sp`. (`as number` only tells
+TypeScript what the value is; it does nothing when the program runs.)
+`break` ends the case, and the loop goes round for the next opcode. The
+check, shortened here because its error lines are long, looks before it
+takes anything:
+
+```ts
+private numbers(op: string): void {
+  const a = this.peek(1);
+  const b = this.peek(0);
+  if (typeof a === 'number' &&
+      typeof b === 'number') return;
+  // a comparison reports "cannot compare
+  // ... with '<'"; anything else reports
+  // "cannot use '-' on ... and ..."
+}
+```
+
+It uses `peek`, not `pop`, so if the check fails the stack is left just
+as the instruction found it. Step through `sub` being dispatched twice,
+once with numbers and once without:
+
+<DispatchSteps client:visible />
+
+<Callout kind="definition">
+The **dispatch loop** is the VM's main loop: fetch the opcode at `ip`,
+**dispatch** on it (here with a `switch`) to the code for that
+instruction, run that code, and repeat. The work of fetching and
+choosing is paid on every instruction, on top of the instruction's own
+work, so it is the interpreter's overhead in its purest form.
+</Callout>
+
+<Formal title="What one instruction costs">
+
+```text
+cost(program) = Σ over instructions run
+                  (fetch + dispatch + work)
+```
+
+<span slot="read">The time a program takes is roughly the sum, over
+every instruction the VM runs (the Σ reads "the sum of"), of fetching
+its opcode, dispatching to its case, and doing its real work. The first
+two are the same small amount for every instruction, however simple its
+work, which is why a VM with many tiny instructions pays a lot of
+overhead.</span>
+</Formal>
+
+<Examples of="dispatch-loop">
+
+```ts
+case Op.None: this.push(null); break;
+```
+
+```text
+print 10 - "a";
+
+runtime error: cannot use '-' on a
+  number and a string
+  at line 1 in script
+```
+
+```ts
+case Op.Add: {
+  const b = this.peek(0);
+  const a = this.peek(1);
+  // two numbers: add them;
+  // two strings: join them;
+  // else: "cannot add ... and ..."
+  break;
+}
+```
+
+</Examples>
+
+The first is the simplest real case (one line in the file): `none`
+pushes Drip's `none`, which is JavaScript's `null` inside the VM, and
+breaks. The second is the failing `sub` from the diagram, as you would
+see it in a terminal (the message is one line there, wrapped here): the
+check found a string, reported it with the line, and stopped the
+program. The third is the outline of the real `add` case, shortened:
+`+` works on two numbers *or* two strings, so `add` cannot use
+`numbers()`; it peeks at both values, adds two numbers or joins two
+strings into a new string, and otherwise reports `cannot add a number
+and a string`. One opcode, three possible outcomes, all decided at run
+time, every time it runs.
+
+Run this program and predict, before you do, which line stops it and
+which check (`numbers()` in `sub`, the type tests in `add`, or the one
+in `lt`) does the stopping:
+
+<Run id="errors-vm" />
+
+<Prompts ids={['pop-order', 'check-before-pop', 'overwrite-in-place']} />
+
+## What dispatch costs, and why it matters here
+
+Every turn of the loop pays for the same few steps whatever the
+instruction does: count it, read a byte, move `ip`, and jump through a
+`switch` with fifty-three cases. For `add` the real work is one
+addition, so the dispatch can easily cost as much as the work. Real
+interpreters have this problem too: the V8 team describe decoding
+operands and dispatching to the next bytecode as overheads that an
+interpreter cannot get rid of, and note that dispatching stays fast only
+while the processor's **branch prediction** (its guess of where a jump
+will land) keeps guessing right<Cite id="v8-sparkplug" />.
+
+<Analogy title="a chef who checks the order board between every step">
+A chef who, after every single step (crack an egg, whisk, pour), walks
+back to the order board to read what to do next spends much of the
+evening walking. Cooking a long dish with few, big steps wastes less
+time on walking than cooking it with many tiny ones.
+<span slot="breaks">The chef gets tired; the loop does not, and the
+"walk" is a few machine instructions. It only matters because it happens
+for every one of millions of instructions.</span>
+</Analogy>
+
+For Drip's VM there is an extra twist. The whole `run` method is
+TypeScript, so V8 has to compile it to machine code like any other
+JavaScript (compiling hot code is what V8's tiers above Ignition
+do<Cite id="v8-ignition" />). How fast our dispatch is depends on how
+well V8 compiles one very large function with a fifty-three-way
+`switch`, whose values come from a plain array of numbers. That is part
+of the honest answer to the benchmark in *A machine made of software*:
+the tree-walker's `switch` on node kinds is compiled by the same V8, so
+replacing one `switch` per node with one `switch` per instruction saves
+less than you might hope. The chapter *Measuring and speeding up the
+VM* measures it, and tries the classic fix: superinstructions, single
+instructions that do the work of several, so that there are fewer turns
+of the loop.
+
+<Figure takeaway="A stack machine names nothing; a register machine names its operands." caption="a + b inside a function. Left, Drip's real bytecode: three instructions, values passing through the stack. Right, a sketch in words of a register machine with an accumulator, the style of V8's Ignition: fewer instructions, each naming a register.">
+  <StackVsRegister />
+</Figure>
+
+V8's own interpreter made a different choice from Drip's, partly for
+this reason. Ignition is a register machine: each bytecode names the
+registers it reads and writes, and a special accumulator register is
+the unwritten input and output of many bytecodes, so that a chain of
+operations can keep its in-between result in the accumulator rather
+than moving it through a stack<Cite id="v8-ignition" />. Fewer, larger
+instructions mean fewer turns of the dispatch loop; the price is a
+compiler that has to decide which register each value lives in. Drip
+keeps the stack, which makes its compiler much simpler, as the next
+chapter shows.
+
+<Prompts ids={['branch-prediction-dispatch', 'ignition-register']} />
+
+## Your turn
+
+<Exercise id="stack-run" />
+
+<Exercise id="checked-sub" />
+
+## What you learned
+
+- The **dispatch loop** is `for (;;)` around a `switch`: fetch the
+  opcode at `ip`, dispatch to its `case`, run it, repeat; `return` (or
+  an error) is the only way out.
+- `run` copies the frame, code and constants into local variables, and
+  only reloads them when a call or return changes the running function.
+- A case like `sub` checks its operands with `peek` first, pops the right
+  operand, and overwrites the left operand's slot with the result.
+- Fetch and dispatch are paid on every instruction; in a VM written in
+  TypeScript, how cheap they are is up to V8, which is part of why this
+  VM is only a little faster than the tree-walker.
+
+Next: the compiler that writes these bytes, straight from the source,
+with no tree in between.
+
+<Quiz />

@@ -1,0 +1,233 @@
+---
+n: 218
+day: 55
+part: VI
+title: 'The polyhedral model'
+tagline: 'Interchange, tiling, skewing and vectorisation each came with a rule of their own. Seen as points in a shape, with array indexes and new loop orders as simple linear maps, they all become one question: does every dependence still point forwards?'
+objectives:
+  - Say whether an array index is affine in the loop counters, and write an affine access as a matrix and a vector.
+  - Describe a loop nest's iterations as the whole-number points inside a set of inequalities.
+  - Write interchange and skewing as affine schedules, and check a schedule's legality against distance vectors.
+  - Explain how skewing turns a nest that cannot be tiled into one that can.
+introduces: [affine-access, polyhedral-model]
+uses: [loop-tiling, dependence-analysis, loop-interchange-fusion, auto-vectorization, induction-variable, natural-loop, cache-line, array, index, for-loop, length]
+sources: [feautrier1991, feautrier1992, wolflam1991, bondhugula2008, polly-readme]
+---
+import SkewSteps from '../../../components/diagrams/ch218/SkewSteps';
+import DomainFigure from '../../../components/diagrams/ch218/DomainFigure';
+
+## One question instead of five
+
+Look back over the last few chapters and you find a rule for each
+transformation: interchange is legal if the swapped direction vectors
+still start with `<`; tiling if no direction vector has a `>`;
+vectorising with `W` lanes if no distance is between 1 and `W - 1`. And
+there was a nest we could not tile at all, `a[i][j] = a[i - 1][j + 1]`,
+with its awkward `(<, >)`. The **polyhedral model** (*polyhedron* is the
+mathematician's word for a many-sided shape) replaces this collection of
+rules with one picture: the iterations of a loop nest are points in a
+shape, the array indexes are linear maps of those points, and every
+transformation is a new order for the points, chosen so that every
+dependence still points forwards. It needs one thing from the program,
+though: the indexes must be of a particular, simple kind.
+
+## Affine indexes
+
+<Analogy title="seat numbers in a theatre">
+In a theatre with 30 seats per row, the seat in row `r`, place `s` can
+have ticket number `30 × r + s`: a fixed number times each coordinate,
+plus a fixed offset. Given the row and place you can always work it out,
+and the same rule runs backwards and forwards.
+<span slot="breaks">A real theatre has curved rows of different
+lengths; the polyhedral model allows shapes like that for the loops
+(the next section), but the numbering rule itself must stay this simple,
+or the model cannot describe it.</span>
+</Analogy>
+
+<Callout kind="definition">
+An array index is **affine** in the loop counters `i₁, …, iₖ` if it is
+`c₁·i₁ + … + cₖ·iₖ + c₀`, where every `c` is a constant (or a value the
+loops do not change, such as `n`, provided it does not multiply a
+counter). An access with affine indexes is an **affine access**: it maps
+each iteration to an element by a matrix times the iteration vector,
+plus a constant vector.
+</Callout>
+
+<Formal title="An affine access as a matrix">
+
+```text
+a[i + 1][2·j − i]   at iteration (i, j):
+  ⎡ 1  0⎤ ⎡i⎤   ⎡1⎤
+  ⎣−1  2⎦ ⎣j⎦ + ⎣0⎦
+```
+
+<span slot="read">The first index is one times i plus zero times j plus
+one; the second is minus one times i plus two times j plus zero. Writing
+those coefficients as rows of a matrix, the element touched is the
+matrix times the vector (i, j), plus the vector (1, 0).</span>
+</Formal>
+
+<Examples of="affine-access">
+
+```js
+a[i];  a[2 * i + 1];  a[i - 1];
+```
+
+```js
+c[y * 512 + x]  // affine: 512·y + x
+c[y * n + x]    // n times y: not
+```
+
+```js
+a[i * i];   a[idx[i]];  // not affine
+```
+
+</Examples>
+
+The first line is all affine: the identity, the "every other element"
+access from chapter 213, and a neighbour one step back. The second is
+the `heat` benchmark's flattened grid: with the width a known constant,
+`512 · y + x` is affine in `(y, x)`, but if the width is a value `n`
+the program reads at run time, `y * n` multiplies a counter by an
+unknown, and the strict model cannot express it as written. The third
+line is the kind that defeats the model: `i * i` grows by a different
+amount each trip, and `a[idx[i]]` (a gather through another array)
+depends on data the compiler cannot see.
+
+Viscosity's bounds proof lives at the simplest corner of this world: it
+proves `ps[i]` in bounds when the index is exactly the counting phi
+`i`, the identity access, and leaves `ps[i - 1]` checked, although
+`i - 1` is just as affine (the induction variable chapter's table).
+
+<Prompts ids={['affine-what', 'affine-not', 'affine-matrix']} />
+
+## Iterations as points
+
+<Analogy title="pegs inside a rubber band">
+Picture a pegboard with a peg at every whole-number point, and stretch
+rubber bands across it: the pegs inside all the bands are the
+iterations the loop nest runs, one peg per `(i, j)`.
+<span slot="breaks">A pegboard has a fixed size; a loop's bounds are
+often a value like `n` known only when the program runs, so the model
+works with the inequalities themselves, for every `n` at once, not with
+a drawing.</span>
+</Analogy>
+
+A loop nest whose bounds are affine (`0 ≤ i < n`, `0 ≤ j ≤ i`) runs
+exactly the whole-number points that satisfy those inequalities, its
+**iteration domain**. A rectangle for the usual nests; a triangle for
+`for (j = 0; j <= i; j++)`:
+
+<Figure takeaway="A loop nest's iterations are the whole-number points inside its bounds." caption="The domain of for (i = 0; i < 5; i++) for (j = 0; j <= i; j++): the points with 0 ≤ i ≤ 4 and 0 ≤ j ≤ i, a triangle. Each dot is one run of the body.">
+  <DomainFigure />
+</Figure>
+
+A **schedule** then gives each point a time, also a vector compared
+entry by entry (`(1, 5)` comes before `(2, 0)`), and the loops are
+regenerated to visit the points in order of their times. The original
+nest's schedule is the point itself, `θ(i, j) = (i, j)`. Interchange is
+`θ(i, j) = (j, i)`. **Skewing** is `θ(i, j) = (i, i + j)`: it leans the
+shape over, so that a dependence that went one row down and one column
+back now goes straight down. A schedule is **legal** when, for every
+dependence from iteration `s` to iteration `t`, `θ(s)` comes before
+`θ(t)`; for linear schedules and constant distances `d`, that is "θ(d)
+starts with a positive entry". Feautrier showed how to compute exact
+dependences between array elements in this setting, and how to choose
+such schedules automatically<Cite id="feautrier1991" /><Cite id="feautrier1992" />.
+
+<SkewSteps client:visible />
+
+<Callout kind="definition">
+The **polyhedral model** describes a loop nest by, for each statement,
+its **iteration domain** (the whole-number points satisfying its affine
+loop bounds), its **affine accesses**, and a **schedule** (an affine map
+from points to times, compared lexicographically). Loop transformations
+become new schedules, and a schedule is legal when every dependence
+goes from an earlier time to a later one.
+</Callout>
+
+<Formal title="The model in four lines">
+
+```text
+D = { (i, j) ∈ ℤ² | A·(i, j) + b ≥ 0 }
+access:  x ↦ F·x + f
+schedule: θ(x) = M·x + m
+legal ⟺ ∀ dep s → t:  θ(s) ≺ θ(t)
+```
+
+<span slot="read">The domain D is the set of pairs of whole numbers
+that satisfy a list of linear inequalities. An access sends point x to
+the element F times x plus f. A schedule sends x to the time M times x
+plus m. It is legal exactly when, for every dependence from s to t, the
+time of s comes before the time of t.</span>
+</Formal>
+
+<Examples of="polyhedral-model">
+
+```text
+for i < 5, j <= i:
+  D = { (i, j) | 0 ≤ i ≤ 4, 0 ≤ j ≤ i }
+```
+
+```text
+interchange  M = [0 1; 1 0]
+  d = (1, -1)  ↦  (-1, 1): illegal
+```
+
+```text
+skew  M = [1 0; 1 1]
+  d = (1, -1)  ↦  (1, 0): legal,
+  and no negative entry: tileable
+```
+
+</Examples>
+
+The first is the triangle from the figure, written as its inequalities.
+The second checks interchange on our awkward nest: the matrix swaps the
+entries, so the distance `(1, -1)` becomes `(-1, 1)`, which starts with
+a negative entry, so a reader would run before its writer. The third is
+the way out, the one the stepper shows: skewing turns the same distance
+into `(1, 0)`, which is legal, and since no entry is negative the
+skewed nest is fully permutable and can be tiled. Wolf and Lam's
+algorithm used exactly this combination, skewing to make tiling legal,
+among its transformations<Cite id="wolflam1991" />; tools such as Pluto
+choose such schedules automatically for both locality and
+parallelism<Cite id="bondhugula2008" />, and LLVM's Polly brings the
+polyhedral model to a production compiler toolkit<Cite id="polly-readme" />.
+
+<Prompts ids={['domain-what', 'schedule-what', 'schedule-legal', 'skew-why']} />
+
+<Callout kind="engine" label="Under the hood">
+In polyhedral terms, Viscosity's bounds proof is a one-dimensional
+question: the loop's domain is `0 ≤ i < ps.length` (from the counting
+phi and the header test), the access is the identity map, and "in
+bounds" means the access maps the whole domain inside the array. It
+answers that question with the pattern match you saw two chapters ago,
+not with inequalities. Reasoning with the inequalities would also prove
+`ps[i - 1]` when `i` starts at 1 (from `1 ≤ i` it follows that
+`0 ≤ i - 1`), at the price of a bigger and slower analysis.
+</Callout>
+
+<Prompts ids={['viscosity-1d']} />
+
+## Your turn
+
+<Exercise id="legalSchedule" />
+
+<Exercise id="domainPoints" />
+
+## What you learned
+
+- An index is **affine** when it is constants times the loop counters
+  plus a constant; affine accesses are a matrix times the iteration
+  vector, plus a vector. `i * i` and `a[idx[i]]` are not affine.
+- The **polyhedral model** sees a nest as its **iteration domain** (the
+  whole-number points inside its affine bounds), its accesses, and a
+  **schedule** that gives each point a time.
+- Interchange, skewing and tiling are new schedules; a schedule is legal
+  when it maps every dependence distance to a time difference that
+  starts with a positive entry.
+- Skewing `(i, j) ↦ (i, i + j)` turns the distance `(1, -1)` into
+  `(1, 0)`, which makes the nest tileable.
+
+<Quiz />

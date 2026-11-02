@@ -1,0 +1,246 @@
+---
+n: 257
+day: 65
+part: VIII
+title: 'Rewriting field accesses'
+tagline: 'The storage is ready, but the program still says ps[i].x everywhere. Viscosity rewrites each of those spots, and only those, as small edits to your source, and keeps even the error messages the same.'
+objectives:
+  - Explain how Viscosity edits source ranges instead of reprinting the program, and why edits are applied back to front.
+  - List the five rewrites (creation, push, direct access, aliases, for-of) and apply them by hand.
+  - Say when an access needs a bounds check, and how the check reproduces the original TypeError.
+  - Write a small tokenizer that rewrites `a[i].f` into `a.f[i]`.
+introduces: [access-rewriting]
+uses: [soa-container, column-storage, codegen, pretty-printing, source-to-source, identity-transform, safety-analysis, access-pattern, alias-analysis, aliasing, for-of, scanner, token, identifier, string-index, throw, error-object, try-catch, typed-array, differential-testing, induction-variable]
+sources: [ecma262, mdn-unsigned-right-shift, ispcdocs]
+---
+import RewriteSteps from '../../../components/diagrams/ch257/RewriteSteps';
+import Playground from '../../../components/playground/Playground';
+
+## Every `ps[i].x` has to change
+
+Chapter 256 built the container. But the program doesn’t know about
+it yet:
+
+```js
+const ps = [];
+for (let i = 0; i < 1000; i++)
+  ps.push({ x: i, vx: 1 });
+for (let i = 0; i < ps.length; i++)
+  ps[i].x += ps[i].vx;
+console.log(ps[7].x);
+```
+
+Each line that touches `ps` must now speak to the container: create it,
+push into it, and read element 7’s `x` from the `x` column. And nothing
+else may change, not a space, not a comment, because the output is
+code a person may read, diff and debug.
+
+<Callout kind="intuition">
+Editing a printed contract with a pen: you strike out a few words and
+write the new ones above, and every other word stays exactly where it
+was. Start from the last page and work towards the first, and the page
+and line numbers in your list of changes stay correct as you go.
+</Callout>
+
+## Edits, not reprinting
+
+A compiler can emit code by printing the whole program again from its
+tree, or by changing only what must change. Viscosity does the second. While
+it walks the plan, the emitter in `frontend-js/src/emit.ts` collects
+edits. Each one is a range of the original text and its replacement.
+Then it applies them all at once (simplified):
+
+```js
+edits.sort((x, y) => y.start - x.start);
+let out = source;
+let lastStart = Infinity;
+for (const e of edits) {
+  if (e.end > lastStart)
+    throw new Error('internal error: ' +
+      'overlapping rewrites');
+  out = out.slice(0, e.start) + e.text +
+    out.slice(e.end);
+  lastStart = e.start;
+}
+```
+
+Sorting by `start`, largest first, means each edit only shifts text that
+comes after it, which has already been edited. Two edits that overlap
+would mean the compiler tried to rewrite the same text twice, so that
+is an internal error, not something to guess about. Step through the
+program above:
+
+<RewriteSteps client:visible />
+
+The third step’s `+=` is worth a second look. `ps[i].x` is read and
+written by the same expression, and the analysis records it as both.
+Edits are keyed by their range, so the read and the write become one
+edit, and `+=` itself is left alone: `ps.x[i] += ps.vx[i]` works because
+a typed-array element is as good an assignment target as a property.
+The same goes for `++`, `--` and `**=`; the corpus file `update_ops.js`
+tests them all.
+
+<Callout kind="definition">
+**Access rewriting** replaces every use of a transformed collection with
+the matching use of its container: `a[i].f` becomes `a.f[i]`, an
+element variable becomes an index, and creation and `push` change to
+match. Viscosity does it as text edits on the original source, so
+everything it doesn’t rewrite comes out byte for byte the same.
+</Callout>
+
+<Prompts ids={['rw-what', 'rw-edits', 'rw-back', 'rw-compound']} />
+
+## The five rewrites
+
+The emitter makes five kinds of edit (shown here before → after):
+
+```js
+// 1. creation
+const ps = [];
+const ps = new __Vsc_ps();
+// 2. push: one argument per field
+ps.push({ x: a, vx: b });
+ps.push(a, b);
+// 3. direct access
+ps[i].x
+ps.x[i]
+// 4. an element variable holds an index
+const p = ps[i]; p.x
+const p = i; ps.x[p]
+// 5. for-of becomes a counting loop
+for (const p of ps) p.x
+for (let p = 0; p < ps.length; p++)
+  ps.x[p]
+```
+
+Rewrites 4 and 5 are the clever ones. An element variable used to hold a
+reference to an object. Afterwards it holds a number, the index, and
+every `p.x` becomes a column read at that index. Here is a real
+compile:
+
+```js
+for (let i = 0; i < ps.length; i++) {
+  const p = ps[i];
+  p.x += p.vx;
+}
+let s = 0;
+for (const p of ps) s += p.x;
+```
+
+becomes
+
+```js
+for (let i = 0; i < ps.length; i++) {
+  const p = i;
+  ps.x[p] += ps.vx[p];
+}
+let s = 0;
+for (let p = 0; p < ps.length; p++) s +=
+  ps.x[p];
+```
+
+(The last line is one line in the output, wrapped here.) The `const`
+of the for-of became `let`, because the loop now counts with it.
+
+This is only correct because of chapter 252. A variable that now holds
+`5` instead of an object would break `p === q`, `console.log(p)` or
+`f(p)`. The safety analysis proved that every use of `p` is a field
+read or write; anything else would have been a bailout.
+
+<Prompts ids={['rw-push', 'rw-alias', 'rw-forof']} />
+
+Open the compiled code for this program and find all five rewrites.
+Then run both versions:
+
+<Playground client:visible title="Find the five rewrites" initial={`const ps = [];
+for (let i = 0; i < 1000; i++)
+  ps.push({ x: i, vx: 0.5 });
+for (let i = 0; i < ps.length; i++) {
+  const p = ps[i];
+  p.x += p.vx;
+}
+let s = 0;
+for (const p of ps) s += p.x;
+console.log(s, ps[3].x);`} />
+
+## Keeping the errors the same
+
+What if an index is out of range? In the original, `ps[100]` on a
+100-element array is `undefined`, and `ps[100].x` throws a `TypeError`.
+After the rewrite, `ps.x[100]` reads a `Float64Array`. That doesn’t
+throw, and worse, the column has spare slots up to `cap`, so it quietly
+returns `0`. The program would print a wrong number instead of failing.
+
+So every access is checked unless the analysis proved it in bounds. The
+proof is a simple pattern: the index is the loop’s counter, and the
+loop’s condition is `i < ps.length`. An access with any other
+index, such as `ps[7].x`, goes through a helper the emitter adds to the
+file (wrapped here):
+
+```js
+function __vsc_bc(c, i, f, w) {
+  if (i >>> 0 === i && i < c.length)
+    return i;
+  throw new TypeError(w
+    ? `Cannot set properties of undefined`
+      + ` (setting '${f}')`
+    : `Cannot read properties of undefined`
+      + ` (reading '${f}')`);
+}
+```
+
+`i >>> 0` reads `i` as an unsigned 32-bit integer<Cite id="mdn-unsigned-right-shift" />,
+so `i >>> 0 === i` holds only for whole numbers from 0 up, which rules
+out `-1`, `1.5` and `NaN` (anything that would have been `undefined`
+in the original). Then the index must be below the length, not the
+capacity. If either test fails, the helper throws the error the original
+program would have thrown. A compound update such as `ps[k].x += 1`
+passes `false`, because the original fails on the read first: “Cannot
+read properties of undefined (reading 'x')”, as in V8.
+
+<Run id="messages" />
+
+<Prompts ids={['rw-spare', 'rw-proven', 'rw-shift', 'rw-bc']} />
+
+Those messages are V8’s wording. The language specification only says
+that a `TypeError` is thrown; each error’s `message` is
+implementation-defined<Cite id="ecma262" />. If your browser isn’t built
+on V8, the first two lines above may read differently from the last
+two. Viscosity copies V8 because its differential tests run in Node and
+compare errors exactly (chapter 225). The option `--bounds assume` drops
+the checks, for programs you trust never to go out of range.
+
+<Prompts ids={['rw-msg']} />
+
+<Callout kind="engine" label="Under the hood">
+ISPC makes the same rewrite inside the compiler. For an `soa<8>` array
+you keep writing `pts[10].x`, and the generated code finds the block
+and the slot for you<Cite id="ispcdocs" />. Viscosity does it in the
+source instead, so you can read exactly what will run. The rewrite also
+reaches across function boundaries when the analysis can follow the
+array: in the corpus file `alias_forof.js`, a function `step(arr, dt)`
+that is only ever called with `ps` has its `arr[i]` rewritten to use
+`arr.x[p]` and `arr.v[p]`.
+</Callout>
+
+## Your turn
+
+<Exercise id="rewrite" />
+
+<Exercise id="boundsCheck" />
+
+## What you learned
+
+- **Access rewriting** turns `a[i].f` into `a.f[i]`, and rewrites
+  creation, `push`, element variables and for-of loops to match.
+- Viscosity collects edits on source ranges and applies them **back to
+  front**, so offsets stay valid. Everything else is copied unchanged,
+  and overlapping edits are an internal error.
+- A compound update like `+=` is one edit: the column element is an
+  ordinary assignment target.
+- Element variables become indexes, and for-of becomes a counting loop.
+  The safety analysis is what makes that correct.
+- Accesses not proven in bounds go through `__vsc_bc`, which throws the
+  same `TypeError`, with V8’s message, that the original would have.
+
+<Quiz />

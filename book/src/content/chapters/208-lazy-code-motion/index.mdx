@@ -1,0 +1,215 @@
+---
+n: 208
+day: 52
+part: VI
+title: 'Lazy code motion'
+tagline: 'Partial redundancy elimination can put its copies anywhere that is safe, and the earliest safe place is usually the worst one. Lazy code motion keeps the same savings and then pushes every copy as late as it will go.'
+objectives:
+  - Explain why computing an expression as early as possible keeps its result alive, and in a register, for longer than needed.
+  - Find the earliest safe places for an expression from anticipability and availability.
+  - Postpone those places as far as possible, and drop insertions that only their own block would use.
+  - Implement lazy code motion for one expression over a CFG given as data.
+introduces: [lazy-code-motion]
+uses: [pre, anticipable-expressions, critical-edge, available-expressions, very-busy-expressions, liveness, gvn, dataflow, fixpoint, cfg, basic-block, ssa, phi-node, register, array, for-of, while-loop, function, arrow-function]
+sources: [knoop1992, aho2006, gcc-lcm]
+---
+import LcmSteps from '../../../components/diagrams/ch208/LcmSteps';
+import BusyVsLazy from '../../../components/diagrams/ch208/BusyVsLazy';
+
+## The earliest place is the wrong place
+
+Take a function that computes `a + b` on one arm of an `if` and again at
+the end:
+
+```text
+b0: (entry: a and b are set here)
+b1: condbr %c, b2, b3
+b2: x = a + b        ; then b4
+b3: (nothing)        ; then b4
+b4: y = a + b
+    return
+```
+
+On the path through `b2`, the second `a + b` repeats the first: a
+partial redundancy. The last chapter's rule says a copy may go anywhere
+the expression is anticipable and not yet available, and here
+`a + b` is anticipable everywhere from `b0` on (every path computes it
+before `a` or `b` change). So one legal answer is to compute it once,
+at the very start, in `b0`, and use that everywhere. That is what
+"compute everything as early as possible" (sometimes called *busy* code
+motion) does.
+
+It is legal, and it removes the redundancy, but it is a bad place. The
+value must now be kept from `b0` until `b4`, across the whole function,
+and the liveness chapter told us what that costs: a long-lived value
+holds a register for its whole life, and registers are few. The best
+placement does the same number of additions on every path but computes
+each one as **late** as possible, so its value lives no longer than it
+must:
+
+<Figure takeaway="Same work on every path; much shorter lives." caption="Left: one copy in b0, live (the bar) all the way to b4. Right: lazy placement, one copy in b2 and one in b3, each live only until b4. Both do one addition per path.">
+  <BusyVsLazy />
+</Figure>
+
+<Analogy title="money from a cash machine">
+You will need twenty pounds today whichever way you go, so you could
+draw it out first thing; but then you carry it all day and might lose
+it. Better: on each route, draw it at the last machine before the shop.
+You still visit one machine per route, and the money is in your pocket
+for minutes instead of hours.
+<span slot="breaks">A cash machine might be out of order; the compiler
+can put a copy in any block it likes. Its real limit is the reverse:
+it may never put the copy so late that some path reaches the use
+without having passed one.</span>
+</Analogy>
+
+<Analogy title="chopping vegetables">
+A cook could chop everything at nine in the morning for a dinner at
+seven, but the chopped vegetables then take up the counter all day.
+Chopping each one just before it goes in the pan uses the same knife
+work and keeps the counter clear.
+<span slot="breaks">In a kitchen, chopping early can be a good idea
+(it frees the cook later). A compiler's copy costs the same whenever
+it runs, so later is better, as long as it is still in time.</span>
+</Analogy>
+
+<Prompts ids={['lcm-why-late', 'busy-cost']} />
+
+## Four questions, one expression at a time
+
+Knoop, Rüthing and Steffen showed how to find that best placement with
+a few more dataflow problems, each a yes or no for each block when we
+look at one expression at a time<Cite id="knoop1992" />. (A compiler
+does every expression at once, with a bit per expression; one at a time
+is the same algorithm.) The formulation below follows Aho et
+al.<Cite id="aho2006" /> and assumes critical edges are split.
+
+<Prompts ids={['one-at-a-time']} />
+
+1. **Anticipated** on entry to `b`: from the last chapter.
+2. **Will be available** on entry to `b`: true if, on every path to
+   `b`, the expression is anticipated or already "available" somewhere
+   and not killed afterwards; in other words, if we placed copies as
+   early as possible, `b` would already have one.
+3. **Earliest**: anticipated, but not already available. These are the
+   busy placements.
+4. **Postponable** on entry to `b`: every predecessor either is an
+   earliest point or is itself postponable, and does not use the
+   expression. A copy at the earliest point could slide down to here.
+5. **Latest**: a block where a copy may sit (earliest or postponable)
+   and where it cannot slide any further, because this block uses the
+   expression, or because some successor could not take it.
+6. **Used**: whether the copy's result is needed after the block. A
+   copy at a latest point that only its own block uses is pointless;
+   leave the original instruction alone there.
+
+<Formal title="Lazy code motion for one expression">
+
+```text
+EARL(b) = ANT(b) ∧ ¬AV(b)
+POST(b) = ∀p. (EARL(p) ∨ POST(p))
+               ∧ ¬use(p)
+OK(b)   = EARL(b) ∨ POST(b)
+LATE(b) = OK(b) ∧ (use(b) ∨ ∃s. ¬OK(s))
+insert at b:   LATE(b) ∧ USEDout(b)
+replace in b:  use(b) ∧
+               ¬(LATE(b) ∧ ¬USEDout(b))
+```
+
+<span slot="read">Earliest means anticipated and not available.
+Postponable on entry to b means that every predecessor p (∀p reads "for
+all p") was earliest or postponable, and did not use the expression.
+OK means a copy may sit at the start of b. Latest means OK, and either b
+uses the expression or there exists (∃) a successor s that is not OK.
+Insert t = a + b at the start of every latest block whose t is used
+afterwards; in every block that computes the expression, use t instead,
+except where the block's own copy would serve only itself.</span>
+</Formal>
+
+The sliding is easiest to see on a straight line of blocks, where only
+the last one uses the expression; change `use[1]` to `true` and watch
+the latest point move up:
+
+<Run id="slide" />
+
+Now step through all of it on the example:
+
+<LcmSteps client:visible />
+
+<Callout kind="definition">
+**Lazy code motion** is a form of partial redundancy elimination that
+places each inserted computation as late as possible while still
+computing the expression no more often than before on any path. It
+finds the earliest safe points (anticipated, not available), postpones
+them along paths that do not use the expression, inserts at the latest
+points whose result is used later, and replaces the original
+computations with the new temporary.
+</Callout>
+
+<Prompts ids={['earliest-what', 'postpone-what', 'latest-what', 'used-why']} />
+
+<Examples of="lazy-code-motion">
+
+```text
+b2: x = a + b    b3: ...    b4: y = a + b
+; insert at b2, b3; b2 and b4 use t
+```
+
+```text
+b1: x = a + b    b2: ...    b3: y = a + b
+; insert at b1, b2; b3 uses t: the
+; PRE of the last chapter
+```
+
+```text
+b1: (pre-loop)   b2: x = a + b   (body)
+b3: condbr %c, b5, b4    b5: br b2
+; do-while: insert at b1, body uses t
+```
+
+</Examples>
+
+The first is the chapter's example: the copy has slid from `b0` down to
+the last moment on each path. The second is the last chapter's
+partial redundancy, and lazy code motion makes the same choice PRE made
+there; in `b1` the "insertion" and the original are the same
+computation, so in practice `b1` keeps computing `a + b` into `t`. The
+third is a `do`-`while` whose body computes a loop-invariant `a + b`
+(`b5` is the split back edge): the copy goes before the loop, in `b1`,
+and stops there, because sliding into the body would compute it on
+every trip. For a `while` loop, which may run zero times, nothing is
+anticipated before the loop, and lazy code motion leaves the body alone.
+
+<Prompts ids={['dowhile-hoist']} />
+
+<Callout kind="engine" label="Under the hood">
+GCC's `lcm.cc` is a generic lazy code motion engine: it takes, per
+block, bitmaps of which expressions are computed, transparent (not
+killed) and anticipatable, and returns where computations are
+redundant and where to place new ones; its comments list partial
+redundancy elimination, load and store motion and the placement of
+register saves among its users. GCC's RTL-level PRE in `gcse.cc` says
+it is based on Morel and Renvoise's paper, Chow's thesis and Knoop,
+Rüthing and Steffen's lazy code motion<Cite id="gcc-lcm" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="lcm" />
+
+## What you learned
+
+- Placing copies as early as possible removes redundancy but keeps
+  values alive, and in registers, far longer than needed.
+- **Lazy code motion** finds the earliest safe points (anticipated, not
+  available), postpones them while no path uses the expression, and
+  inserts at the latest points whose result is used later.
+- It computes the expression no more often than before on any path, and
+  every temporary lives as briefly as possible.
+- It is a handful of yes or no dataflow problems per expression; real
+  compilers solve them for all expressions at once with bit vectors.
+
+Next: copying whole functions into their callers, and what that does for
+everything you have just learned.
+
+<Quiz />

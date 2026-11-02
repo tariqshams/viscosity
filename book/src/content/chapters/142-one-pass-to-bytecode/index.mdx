@@ -1,0 +1,292 @@
+---
+n: 142
+day: 36
+part: IV
+title: 'One pass from source to bytecode'
+tagline: 'The bytecode compiler never builds a tree. It reads one token at a time and writes bytes as it goes, and the same Pratt loop that built Part III''s trees puts them in exactly the right order.'
+objectives:
+  - Explain what makes Drip's bytecode compiler single-pass, and what it gives up.
+  - Say what emitting an instruction does, and which source line each byte is tagged with.
+  - Trace the compiler on an expression and predict the bytes it emits, in order.
+  - Explain why `>=` has an instruction of its own rather than being "not less than".
+introduces: [single-pass-compiler, emit]
+uses: [pratt-parser, binding-power, prefix-infix, precedence, associativity, scanner, token, token-type, lookahead, ast, tree-walking-interpreter, compiler, compiler-pipeline, front-end-back-end, bytecode, opcode, chunk, constant-pool, disassembler, stack-machine, dispatch-loop, ieee754, differential-testing-intro, arrow-function, closure, recursion, call-stack, drip, while-loop]
+sources: [v8-sparkplug]
+---
+import CompileSteps from '../../../components/diagrams/ch142/CompileSteps';
+import TwoRoutes from '../../../components/diagrams/ch142/TwoRoutes';
+
+## A tree nobody needs
+
+In Part III, `print 1 + 2 * 3 - 4;` went through three stages: the
+scanner made a list of every token, the parser built a syntax tree, and
+the interpreter walked the tree. If we compiled that tree to bytecode,
+we would build the whole tree, walk it once to write the bytes, and
+throw it away: a lot of building for something used once.
+
+Drip's bytecode compiler skips the middle. It parses and writes bytes
+in the same breath, so the tree never exists: source in, a chunk out,
+in one reading of the source from start to finish.
+
+<Figure takeaway="One pass keeps two tokens and no tree." caption="Part III's route builds a whole token list and a whole tree before anything runs. The bytecode compiler holds two tokens at a time and writes bytes straight into the chunk.">
+  <TwoRoutes />
+</Figure>
+
+<Analogy title="an interpreter at a conference">
+An interpreter translating a speech live does not wait for the speech to
+end, write it down and translate the transcript; she listens a few words
+ahead and speaks the translation as she goes, never holding the whole
+speech in her head, only the sentence in progress.
+<span slot="breaks">She can rephrase a sentence she has already started;
+our compiler can only add to the end of what it has written (with one
+exception, filling in jump distances, which *Branches and loops in
+bytecode* explains).</span>
+</Analogy>
+
+## One token at a time
+
+The compiler does not even ask for all the tokens at once. Its scanner,
+in `companion/ts/src/vm/scanner.ts`, hands out one token each time
+`scanToken()` is called (a test checks that it produces exactly the
+tokens of Part III's scanner), and the compiler keeps only two of them:
+`current`, the **lookahead** it has not used yet, and `previous`, the one
+it has just consumed. This is the real `advance`, from
+`companion/ts/src/vm/compiler.ts`:
+
+```ts
+function advance() {
+  previous = current;
+  for (;;) {
+    current = scanner.scanToken();
+    if (current.type !== 'error') break;
+    errorAt(current, current.lexeme);
+  }
+}
+```
+
+The current token becomes the previous one, and the scanner is asked for
+a new current one. A scanning problem (an unknown character, say) comes
+back as an `'error'` token whose lexeme is the message, so `advance`
+reports it and asks again, and compiling carries on.
+
+<Callout kind="definition">
+A **single-pass compiler** reads the source once, from start to end,
+and produces its output during that one reading, without first building
+a complete in-between form such as a syntax tree. It is quick and needs
+little memory, but every decision must be made with only what it has
+read so far.
+</Callout>
+
+<Examples of="single-pass-compiler">
+
+```text
+print 1 + 2;
+
+0000    1 const               0 '1'
+0003    | const               1 '2'
+0006    | add
+0007    | print
+```
+
+```text
+print 1 +;
+print 2;
+
+line 1: expected an expression, found ';'
+```
+
+```text
+print -(1 + 2) * 3;
+
+0006    | add
+0007    | neg
+0008    | const               2 '3'
+0011    | mul
+```
+
+</Examples>
+
+The first is the whole compiler in miniature: four instructions, in the
+order the tokens were read. Notice what it does *not* do: work out
+`1 + 2` itself, which a compiler holding the whole tree could easily do
+(*constant folding*), so the VM adds the same two numbers every time.
+The second shows errors found in the same single reading: the compiler
+had already written bytes for `print 1 +` when it met the `;`, so it
+reports the error (in the tree-walker's exact words) and throws its
+chunk away; nothing runs, not even `print 2`.
+The third (lines from the middle of the listing) shows brackets at work:
+`add` comes before `neg`, because the sum must finish before the minus
+applies to it; brackets change the order of the bytes and emit none.
+
+<Prompts ids={['single-pass-what', 'two-tokens', 'what-lost']} />
+
+## Emit
+
+Writing bytes is a few small functions in `compiler.ts`. They are long
+lines in the file, so here they are rewrapped:
+
+```ts
+function emitAt(line: number,
+                ...bytes: number[]) {
+  const c = chunk();
+  for (const b of bytes) c.write(b, line);
+}
+const emit = (...bytes: number[]) =>
+  emitAt(previous.line, ...bytes);
+const emitConstantOp = (line: number,
+    op: number, k: number) =>
+  emitAt(line, op, (k >> 8) & 0xff,
+    k & 0xff);
+```
+
+`emitAt` writes any number of bytes to the end of the current function's
+chunk, each tagged with `line`, through the chunk's `write`. `emit` is
+the everyday version: it tags the bytes with the line of `previous`, the
+token just consumed. `emitConstantOp` writes an instruction with a
+two-byte constant number, splitting `k` into its high byte (`k >> 8`,
+masked to eight bits with `& 0xff`) and its low byte. Every rule in the
+compiler writes code through these three.
+
+<Analogy title="a till roll">
+At a shop till, each item you scan prints one more line at the bottom of
+the receipt, straight away, in the order you scanned it; nothing is ever
+printed in the middle of the roll. The receipt is the chunk, scanning an
+item is reading a token, and printing a line is emitting.
+<span slot="breaks">The till prints exactly one line per item; the
+compiler may read a token and emit nothing yet (a `+` waits for its
+right operand), or emit several instructions for one token.</span>
+</Analogy>
+
+<Callout kind="definition">
+To **emit** an instruction is to append its bytes to the end of the
+chunk being compiled, each tagged with a source line. Emitting only
+ever appends, so the order of the emit calls *is* the order in which the
+VM will run the instructions.
+</Callout>
+
+<Examples of="emit">
+
+```ts
+emit(Op.Print);
+// code: [..., 33]
+```
+
+```ts
+emitConstantOp(line, Op.Const, 300);
+// code: [..., 0, 1, 44]
+```
+
+```text
+print 1;
+print 2 +
+  -"a";
+
+0004    2 const               1 '2'
+0007    3 const               2 'a'
+0010    | neg
+0011    2 add
+0012    3 print
+```
+
+</Examples>
+
+The first appends one byte, 33, for a `print`, tagged with the line of
+the token just consumed. The second appends three bytes for `const 300`:
+the opcode 0 and the constant number split into 1 and 44. The third, from a
+real program, shows the line tag chosen with care: `add` is emitted
+*after* its right operand, while the compiler is already on line 3, but
+the rule for `+` uses `emitAt(op.line, ...)`, the line of the `+` token,
+so an error in the addition would point at line 2, where the `+` is.
+`print` gets line 3, the line of the `;` just consumed.
+
+<Prompts ids={['emit-what', 'emit-at-op']} />
+
+## Pratt rules that write bytes
+
+The compiler parses expressions with the Pratt loop of *Prefix and infix
+operators*: the same functions, in the same order, as Part III's parser
+(`parsePrecedence`, `prefixRule`, `continueExpression`, `infix`), except
+that every rule emits code instead of returning a node. Here is the part
+of `infix` for the plain binary operators (`+`, `*`, `<` and the rest),
+exactly as it is in the file:
+
+```ts
+default:
+  parsePrecedence(INFIX_PREC[op.type]! + 1);
+  emitAt(op.line, BINARY_OPS[op.type]!);
+```
+
+`INFIX_PREC` gives each operator its precedence (`TERM` for `+`,
+`FACTOR` for `*`), and `BINARY_OPS` maps it to its opcode. Look where
+the emit is: the rule compiles its right operand *first* and emits its
+own opcode *after* (the left operand was emitted before the rule was
+called): the children-first order of *Why bytecode?*, falling out of the
+order of two lines. The `+ 1` asks for operators strictly tighter than
+this one, which makes operators of equal strength group to the left, as
+in Part III. The prefix rules work the same way: a number emits its
+`const` at once; a minus compiles its operand and then emits `neg`;
+brackets compile the inside and emit nothing. Watch the rules compile
+`print 1 + 2 * 3 - 4;`:
+
+<CompileSteps client:visible />
+
+<Prompts ids={['emit-after', 'prec-plus-one']} />
+
+## An instruction for every comparison
+
+Drip's VM has a separate opcode for each of the six comparisons, `eq`,
+`ne`, `lt`, `le`, `gt` and `ge`, although `a >= b` could be written as
+"not `a < b`" with one fewer opcode. The reason is the strange number
+`NaN` (not a number, the result of `0 / 0`): under the IEEE 754 rules
+of *How JavaScript stores numbers and objects*, every `<`, `<=`, `>` and
+`>=` with `NaN` on either side is false:
+
+```text
+print 0 / 0 >= 1;    # false
+print !(0 / 0 < 1);  # true
+```
+
+"Not less than" is true for `NaN`, but "greater than or equal" is false,
+so compiling one as the other would make the VM disagree with the
+tree-walker. Running the same programs on both engines (the differential
+testing of *Edge cases and differential testing*) is exactly how such a disagreement
+would be caught; giving `>=` its own instruction means there is none to
+catch.
+
+<Run id="exprs-vm" />
+
+(Statements are short: `print` emits its expression, then `print`; an
+expression statement such as `1 + 2;` emits its expression, then `pop`,
+so the unused value does not stay on the stack.)
+
+<Prompts ids={['ge-own-op']} />
+
+<Callout kind="engine" label="Under the hood">
+V8's baseline compiler, Sparkplug, is single-pass in the same spirit,
+one level down: it turns bytecode into machine code in one linear walk
+over the bytecode, with no in-between form, its core a `switch` inside
+a `for` loop. It can be that simple because the bytecode compiler
+before it has already done the hard work, such as working out where
+every variable lives<Cite id="v8-sparkplug" />.
+</Callout>
+
+## Your turn
+
+<Exercise id="mini-compile" />
+
+## What you learned
+
+- A **single-pass compiler** parses and generates code in the same
+  reading of the source; Drip's never builds a syntax tree, and pulls
+  one token at a time, keeping only `previous` and `current`.
+- To **emit** is to append bytes to the chunk, tagged with a line (the
+  previous token's, or the operator's for binary operators); emission
+  order is execution order.
+- Pratt rules emit their operands first and their opcode last, so the
+  bytes come out children-first without a tree.
+- Each comparison has its own opcode, because with `NaN`, "not less
+  than" is not "greater than or equal".
+
+Next: what a Drip value actually looks like inside the VM.
+
+<Quiz />
