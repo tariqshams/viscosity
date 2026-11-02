@@ -1,75 +1,42 @@
-// Chapter 51 cards: recall prompts, examples, exercises and quiz.
+// Chapter 50 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 50, 50.
 
 export const prompts = {
-  'memory-what': {
-    q: 'What is a good one-line picture of a computer’s memory (RAM)?',
-    a: 'One enormous array of bytes.',
-  },
   'address-what': {
-    q: 'What is an **address**?',
-    a: 'The index of a byte in memory: its position in that giant array.',
+    q: 'In the model of memory as one long array of bytes, what is an **address**?',
+    a: 'The index of a byte in that array: a plain whole number saying where the byte is.',
   },
   'byte-holds': {
-    q: 'How much does the byte at one address hold?',
-    a: 'One whole number from 0 to 255 (8 bits). Bigger values take several neighbouring bytes.',
-  },
-  'contig-what': {
-    q: 'What does it mean for values to be **contiguous**?',
-    a: 'They are stored side by side in memory, with no gaps between them.',
+    q: 'How many different values can one byte hold, and what range is that as an unsigned number?',
+    a: '256 values (8 bits): the whole numbers 0 to 255. Bigger values take several neighbouring bytes.',
   },
   'f64-addr': {
     q: 'A `Float64Array` starts at address 1000. At what address does element 3 start?',
     a: '1000 + 3 × 8 = 1024, because each element takes 8 bytes.',
   },
-  'int32-addr': {
-    q: 'An `Int32Array` starts at address 100. Where does element 5 start, and why is the step different from a `Float64Array`’s?',
-    a: '100 + 5 × 4 = 120: each Int32 element takes 4 bytes, not 8.',
-  },
-  'why-instant': {
-    q: 'Why does writing `xs[999999]` of a `Float64Array` take no longer than writing `xs[0]`?',
-    a: 'The elements are contiguous, so the address is worked out with one multiply and one add; nothing is searched.',
-  },
-  byteoffset: {
-    q: 'What does a typed array’s `byteOffset` tell you?',
-    a: 'The byte in its ArrayBuffer where its first element starts: the nearest thing to an address JavaScript shows you.',
-  },
-  'pointer-what': {
-    q: 'What is a **pointer**?',
-    a: 'A stored address: a number that says where something else lives in memory.',
+  'locate-any-elem': {
+    q: 'Why does working out where element 999,999 of a `Float64Array` is take no more steps than for element 0?',
+    a: 'The elements are contiguous and equal in size, so the address is base + i × 8: one multiply and one add, with no searching.',
   },
   'alias-memory': {
     q: 'In memory terms, what does `const q = p;` copy when `p` refers to an object?',
     a: 'The address stored in `p`. Both now hold the same number, so they point at the same object.',
   },
   deref: {
-    q: 'What three things does the engine do to run `p.x`?',
+    q: 'For an object that keeps its field `x` at a fixed offset, what three steps does reading `p.x` take?',
     a: 'Read the address stored in `p`, add the offset of `x` inside the object, and read the bytes there.',
   },
   'pointer-size': {
-    q: 'How many bytes does a full pointer take on a 64-bit machine, and why?',
+    q: 'How many bytes does a full, uncompressed pointer take on a 64-bit machine, and why?',
     a: '8 bytes, because an address there is 64 bits long.',
   },
-  'stack-heap': {
-    q: 'What lives on the call stack, and what lives on the heap?',
-    a: 'The stack holds one frame per active call (its parameters and local variables); the heap holds objects.',
-  },
   'heap-lifetime': {
-    q: 'A function creates an object, returns it, and finishes. Why does the object survive?',
-    a: 'Objects live on the heap, which outlasts call frames: it stays while something can still reach it.',
-  },
-  'stack-overflow': {
-    q: 'Why does a recursion that never stops end in “Maximum call stack size exceeded”?',
-    a: 'Every call pushes a frame, and the stack has a limited size; eventually there is no room for another frame.',
+    q: 'A JavaScript function creates an object, returns it, and finishes. Why does the object survive the call?',
+    a: 'Objects live on the heap, not in the call’s frame; an object stays while something can still reach it.',
   },
   'aos-is-pointers': {
-    q: 'What does an array of objects actually hold in its slots?',
-    a: 'Pointers: each slot holds the address of an object that lives elsewhere on the heap.',
-  },
-  'null-zero': {
-    q: 'In the toy memory, why can address `0` mean “no next node”?',
-    a: 'No node is ever stored at address 0, so it can never be a real node’s address; it plays the part of `null`.',
+    q: 'What does each slot of a JavaScript array of objects hold?',
+    a: 'A reference (a pointer) to an object that lives elsewhere on the heap, not the object’s fields.',
   },
 };
 
@@ -181,73 +148,8 @@ This layout has a name in the book's benchmark, \`aos-packed\`: the same order a
       },
     ],
   },
-  elemAt: {
-    optional: true,
-    title: 'Which element is at this address?',
-    prompt: 'Work the formula backwards. A typed array starts at address `base`, and each element takes `size` bytes. Write `elemAt(base, size, a)` that returns the index of the element whose bytes include address `a`. (You may assume `a` is inside the array.)',
-    starter: `function elemAt(base, size, a) {
-  // your code here
-}
-
-// Float64Array at 1000; byte 1029:
-// 3:
-console.log(elemAt(1000, 8, 1029));`,
-    solution: `function elemAt(base, size, a) {
-  const into = a - base;
-  return Math.floor(into / size);
-}`,
-    tests: `test('the first byte is element 0', () => {
-  expect(elemAt(1000, 8, 1000)).toBe(0);
-});
-test('the start of element 3', () => {
-  expect(elemAt(1000, 8, 1024)).toBe(3);
-});
-test('a byte inside element 3', () => {
-  expect(elemAt(1000, 8, 1031)).toBe(3);
-});
-test('4-byte elements', () => {
-  expect(elemAt(100, 4, 121)).toBe(5);
-});
-test('one-byte elements', () => {
-  expect(elemAt(0, 1, 37)).toBe(37);
-});`,
-    hints: [
-      'First work out how many bytes `a` is past the start of the array.',
-      'That distance is some whole number of elements plus a few leftover bytes. Dividing by `size` tells you how many whole elements fit.',
-      '`Math.floor((a - base) / size)` drops the leftover part.',
-    ],
-    walkthrough: `**How to think about it.** The chapter's formula goes from an index to an address: \`a = base + i * size\`. Here you have the address and want the index, so undo each step in reverse order: first take away the \`base\`, then divide by \`size\`. The only twist is that \`a\` may land in the *middle* of an element (byte 1029 is five bytes into element 3, which covers 1024 to 1031), so the division will not always come out whole, and you want to round down to the element it falls in.
-
-**The solution, line by line.**
-
-- \`function elemAt(base, size, a) {\` takes the start, the element size and the address.
-- \`  const into = a - base;\` is how far into the array the address is, in bytes. For 1029 with a base of 1000 that is 29.
-- \`  return Math.floor(into / size);\` divides by the element size (29 / 8 = 3.625) and rounds down to 3, because bytes 24 to 31 of the array all belong to element 3.
-- \`}\` closes the function.
-
-With one-byte elements (\`size\` 1) the answer is the distance itself, which is how a \`Uint8Array\` works: index and byte offset are the same number.
-
-**Common wrong attempts.**
-
-- \`Math.floor(a / size)\` forgets to take away the base, so it answers "which element would this be if the array started at address 0" (125 instead of 3).
-- \`Math.round(into / size)\` rounds 3.625 *up* to 4, putting the last bytes of each element in the next one.`,
-    wrong: [
-      {
-        code: `function elemAt(base, size, a) {
-  return Math.floor(a / size);
-}`,
-        why: 'This forgets to subtract `base` first, so it measures from address 0 instead of from the start of the array.',
-      },
-      {
-        code: `function elemAt(base, size, a) {
-  const into = a - base;
-  return Math.round(into / size);
-}`,
-        why: 'Rounding to the nearest whole number sends the second half of each element to the next index; round down with `Math.floor`.',
-      },
-    ],
-  },
   sumList: {
+    optional: true,
     title: 'Follow the pointers',
     prompt: 'Memory is modelled as an array `mem`. Each list node takes two slots: `mem[p]` is its value and `mem[p + 1]` is the address of the next node, with `0` meaning “no next node”. Write `sumList(mem, head)` that starts at address `head` and returns the sum of every value in the list. If `head` is `0`, the list is empty.',
     starter: `function sumList(mem, head) {
@@ -308,7 +210,7 @@ You cannot use a \`for\` loop over indexes here, because the nodes are not in ad
 - Starting at \`mem[head + 1]\` jumps to the second node before adding the first value.
 - Writing \`p = p + 2\` instead of \`p = mem[p + 1]\` assumes the next node sits right after this one; it only works when the nodes happen to be stored in order.
 
-Hold on to one detail: you cannot know the *next* address until you have read the current node. A later chapter shows why the hardware finds that so hard to speed up.`,
+Hold on to one detail: you cannot know the *next* address until you have read the current node. *Prefetching, pointer chasing, branches and SIMD* shows why the hardware finds that so hard to speed up.`,
     wrong: [
       {
         code: `function sumList(mem, head) {
@@ -487,94 +389,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does one address in memory name?',
-    options: [
-      {
-        t: 'One variable, whatever its size',
-        why: 'A variable can take many bytes; it is found by the address of its first byte.',
-      },
-      {
-        t: 'One bit',
-        why: 'Addresses count bytes, groups of 8 bits, not single bits.',
-      },
-      {
-        t: 'One byte, holding a number from 0 to 255',
-        correct: true,
-        why: 'Memory is an array of bytes, and an address is an index into it.',
-      },
-      {
-        t: 'One object',
-        why: 'Objects take many bytes, and most addresses are in the middle of something.',
-      },
-    ],
-  },
-  {
-    q: 'Which word describes how a Float64Array’s elements are stored?',
-    options: [
-      {
-        t: 'Contiguous',
-        correct: true,
-        why: 'The elements sit side by side in one block, with no gaps.',
-      },
-      {
-        t: 'Scattered',
-        why: 'That describes objects created one at a time, which can end up anywhere.',
-      },
-      {
-        t: 'Aliased',
-        why: 'Aliasing is about two names for one object, not about layout.',
-      },
-      {
-        t: 'Sorted',
-        why: 'Sorting is about the values; contiguous is about where they are stored.',
-      },
-    ],
-  },
-  {
-    q: 'An `Int32Array` (4 bytes per element) starts at address 100. Which element contains address 113?',
-    options: [
-      {
-        t: 'Element 13',
-        why: 'That would be true for one-byte elements starting at 100.',
-      },
-      {
-        t: 'Element 28',
-        why: 'That divides the whole address by 4 without taking away the start.',
-      },
-      {
-        t: 'Element 4',
-        why: 'Element 4 starts at 116, after address 113.',
-      },
-      {
-        t: 'Element 3',
-        correct: true,
-        why: '113 − 100 = 13 bytes in; 13 / 4 is 3 and a bit, so it is inside element 3 (bytes 112 to 115).',
-      },
-    ],
-  },
-  {
-    q: 'Why is reading element 999,999 of a big `Float64Array` as fast as reading element 0?',
-    options: [
-      {
-        t: 'The engine remembers where every element is in a list',
-        why: 'No list is needed: the address is computed from the index.',
-      },
-      {
-        t: 'The address is start + index × 8, one multiply and one add',
-        correct: true,
-        why: 'Contiguous, equal-sized elements make the position a sum.',
-      },
-      {
-        t: 'Typed arrays are stored on disk',
-        why: 'They live in memory like everything else a running program uses.',
-      },
-      {
-        t: 'It is not: the engine counts along from element 0',
-        why: 'Counting along would make long arrays slow; nothing is counted.',
-      },
-    ],
-  },
-  {
     q: 'In memory, what is a JavaScript reference to an object?',
     options: [
       {
@@ -637,28 +451,6 @@ export const quiz = [
         t: 'Objects live on the heap, which outlasts call frames',
         correct: true,
         why: 'The heap keeps an object as long as something can still reach it.',
-      },
-    ],
-  },
-  {
-    q: 'To read `ps[i].x` for every particle in an array of objects, what must the machine do each time?',
-    options: [
-      {
-        t: 'Read x straight out of the array’s own slot',
-        why: 'The slot holds an address, not the x value.',
-      },
-      {
-        t: 'Search the heap for an object with the right index',
-        why: 'No searching: the pointer says exactly where to go.',
-      },
-      {
-        t: 'Read the pointer in slot i, then go to that address plus the offset of x and read there',
-        correct: true,
-        why: 'Two steps per element: load the pointer, then load from where it points.',
-      },
-      {
-        t: 'Copy the object onto the stack first',
-        why: 'Reading a property follows the pointer; no copy is made.',
       },
     ],
   },

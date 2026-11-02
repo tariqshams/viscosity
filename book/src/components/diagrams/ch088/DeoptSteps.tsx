@@ -1,4 +1,4 @@
-// 'Deoptimization': speculate, guard, bail out. The feedback values and the trace
+// 'Tiers, speculation and deoptimisation': speculate, guard, bail out. The feedback values and the trace
 // messages quoted in the notes are real output from Node v22.23.4 (V8 12.4):
 // %DebugPrint of the feedback vector, then --trace-opt --trace-deopt for the
 // same program. The "optimized code" box is a sketch, not V8's machine code.

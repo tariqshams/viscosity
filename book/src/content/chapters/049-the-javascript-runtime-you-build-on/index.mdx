@@ -3,13 +3,196 @@ n: 49
 day: 1
 part: II
 title: 'The JavaScript runtime you build on'
-tagline: 'TODO: one sentence on what this chapter gives the reader.'
+tagline: 'An interpreter written in TypeScript is only as correct as your model of the JavaScript underneath it. Here are the run-time facts the rest of the Core leans on, each in a few lines.'
 objectives:
-  - TODO: first objective.
-  - TODO: second objective.
+  - Predict what a Map or Set finds when its keys are objects, and key a table by contents when that is what you need.
+  - Say what a closure keeps alive, and where a class's methods are stored.
+  - Describe how a thrown error travels, and how a custom error class carries extra data.
+  - Explain when a generator's body runs, and in what order synchronous code, promise callbacks and timers run.
 introduces: []
-uses: []
-sources: []
+uses: [reference, aliasing, identity, mutation, map, set, hash-intuition, closure, class, method, this, instanceof, extends, prototype-chain, throw, try-catch, error-object, error-propagation, call-stack, iterator-protocol, generator, yield, lazy-sequence, for-of, event-loop, promise, microtask, template-literal, object, function]
+sources: [mdn-equality, mdn-map, mdn-closures, mdn-prototype-chain, mdn-error, mdn-iteration-protocols, mdn-microtask-guide]
 ---
+import MapKeySteps from '../../../components/diagrams/ch049/MapKeySteps';
+import EventLoop from '../../../components/diagrams/ch049/EventLoop';
 
+## The language under the language
 
+Drip, the language the Core builds, is written in TypeScript, so every
+value a Drip program makes is a JavaScript value underneath, and every
+Drip rule is enforced by JavaScript code. When that code surprises you,
+it is nearly always one of a handful of run-time facts: what `=`
+copies, what a `Map` compares its keys by, what a closure keeps, where
+a method lives, how an error travels, when a generator runs, and what
+the event loop does while your interpreter runs (nothing). This chapter
+gives each one in a few lines, with the Prelude chapter that teaches it
+in full.
+
+<Analogy title="a cloakroom ticket">
+You hand in your coat and get a ticket. The ticket is not the coat; a
+friend holding a copy of your ticket collects the same coat, and a
+stranger whose coat looks exactly like yours still has a different
+ticket and gets a different coat.
+<span slot="breaks">A ticket shows its number; a JavaScript reference
+never shows the address inside it. And strings and numbers are not
+coats at all: two equal strings count as the same key, whoever made
+them.</span>
+</Analogy>
+
+## References, and what a Map compares
+
+A variable that holds an object holds a reference to it, so `=` copies
+the reference and both names reach one object (*References: two names,
+one object*). `Map` and `Set` compare keys the same way `===` mostly
+does: numbers and strings by value, objects by
+identity<Cite id="mdn-equality" /><Cite id="mdn-map" />, and they find
+a key by hashing it rather than by searching (*Hashing: finding without
+searching*).
+
+<Examples of="identity map">
+
+```js
+const a = { x: 1 };
+const b = a;
+const c = { x: 1 };
+const m = new Map([[a, 'A']]);
+m.get(b);         // 'A'
+m.get(c);         // undefined
+const t = new Map([['1,2', 'A']]);
+t.get(`${1},${2}`); // 'A'
+```
+
+</Examples>
+
+`b = a` copies the reference, so `m.get(b)` finds the key; `c` is a
+lookalike with the same contents in a different place, so `m.get(c)`
+misses. When an engine wants to look things up by contents (a pair of
+numbers, say), it builds a string or number key from them, as the last
+two lines do. Step through it:
+
+<MapKeySteps client:visible />
+
+<Prompts ids={['eq-copies', 'map-object-key', 'map-content-key']} />
+
+## Closures and classes
+
+A function remembers the variables around the place it was written, and
+keeps them alive as long as the function itself is reachable (*Closures:
+functions that remember*)<Cite id="mdn-closures" />. A class puts its
+methods on one shared prototype object, and reading `t.is` walks the
+prototype chain from the instance to find it (*Overriding and the
+prototype chain*)<Cite id="mdn-prototype-chain" />.
+
+<Examples of="closure prototype-chain">
+
+```js
+function counter() {
+  let n = 0;
+  return () => ++n;
+}
+const next = counter();
+next(); next(); // 2
+
+class Tok {
+  constructor(k) { this.k = k; }
+  is(k) { return this.k === k; }
+}
+const t = new Tok('num');
+Object.hasOwn(t, 'k');  // true
+Object.hasOwn(t, 'is'); // false
+```
+
+</Examples>
+
+`counter` has returned, yet `n` lives on inside the arrow function,
+which is why the second call gives 2: a closure captures the variable
+itself, not a copy of its value. In `Tok`, the field `k` is the
+instance's own, while `is` lives once on `Tok.prototype` and every
+instance finds it there, so a million tokens share one copy of each
+method.
+
+<Prompts ids={['closure-keeps', 'method-on-proto']} />
+
+## Errors that carry data
+
+`throw` unwinds the call stack, frame by frame, until a `try` with a
+`catch` takes it (*Error objects and how errors travel*); a class that
+`extends Error` can carry what the catcher needs<Cite id="mdn-error" />.
+The book's interpreter reports run-time errors this way:
+
+```js
+class RuntimeError extends Error {
+  constructor(line, msg) {
+    super(msg);
+    this.line = line;
+  }
+}
+try { throw new RuntimeError(3, 'bad'); }
+catch (e) {
+  if (e instanceof RuntimeError)
+    console.log(e.line, e.message); // 3 bad
+}
+```
+
+The `instanceof` test matters: a `catch` catches everything, including
+your own bugs, so it should handle the errors it expects and throw the
+rest on.
+
+<Prompts ids={['throw-unwinds', 'catch-rethrow']} />
+
+## Generators, and the event loop
+
+A `function*` returns an iterator without running its body; each
+`next()` runs it up to the next `yield` and pauses there, which makes it
+a natural shape for a stream of tokens produced only when asked for
+(*Iterators and generators*)<Cite id="mdn-iteration-protocols" />.
+
+```js
+function* digits(s) {
+  for (const ch of s)
+    if (ch >= '0' && ch <= '9') yield ch;
+}
+[...digits('a1b2')]; // ['1', '2']
+```
+
+Finally, the event loop, only as far as an engine needs it.
+JavaScript runs one job at a time, to the end; promise callbacks wait as
+microtasks until the current job finishes, and timers wait for a later
+turn (*Asynchronous code: promises and the event loop*)<Cite id="mdn-microtask-guide" />.
+
+<Figure takeaway="A job runs to the end; then microtasks; then the next task." caption="One turn of the event loop. The current job (orange) is never interrupted; queued promise callbacks (blue) run as soon as it ends; a timer (grey) waits for a later task.">
+  <EventLoop />
+</Figure>
+
+```js
+setTimeout(() => console.log('timer'));
+Promise.resolve()
+  .then(() => console.log('micro'));
+console.log('sync');
+// sync, micro, timer
+```
+
+So an interpreter's main loop, which is ordinary synchronous code, is
+never interrupted by a timer or a promise; nothing else on the page or
+in the process runs until it returns.
+
+<Prompts ids={['generator-lazy', 'microtask-order']} />
+
+## Your turn
+
+<Exercise id="interner" />
+
+## What you learned
+
+- `Map` and `Set` find objects by **identity** and strings by value.
+- A **closure** keeps its variables alive; methods live once on the
+  **prototype**.
+- A thrown error unwinds frames to the nearest `catch`; an error class
+  can carry data.
+- A generator runs only when asked; a job runs to the end before any
+  microtask or timer.
+
+Next: *Bytes, floats and memory*, where the Core turns from the language
+to the machine under it.
+
+<Quiz />

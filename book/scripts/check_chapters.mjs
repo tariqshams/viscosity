@@ -238,7 +238,9 @@ for (const folder of folders) {
 
   // 4. prompts
   const promptKeys = Object.keys(cards.prompts);
-  if (promptKeys.length < 8 || promptKeys.length > 15) err(folder, `${promptKeys.length} recall prompts (want 8–15)`);
+  // Core chapters have a tighter time budget, so they may use fewer cards.
+  const [pLo, qLo] = CORE_PARTS.has(fm.part) ? [6, 4] : [8, 5];
+  if (promptKeys.length < pLo || promptKeys.length > 15) err(folder, `${promptKeys.length} recall prompts (want ${pLo}–15)`);
   const used = [...body.matchAll(/<Prompts\s+ids=\{\[([^\]]*)\]\}/g)].flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]));
   for (const k of promptKeys) {
     const count = used.filter((u) => u === k).length;
@@ -252,7 +254,7 @@ for (const folder of folders) {
 
   // 5. quiz
   const quiz = cards.quiz;
-  if (quiz.length < 5 || quiz.length > 8) err(folder, `${quiz.length} quiz questions (want 5–8)`);
+  if (quiz.length < qLo || quiz.length > 8) err(folder, `${quiz.length} quiz questions (want ${qLo}–8)`);
   const positions = new Set();
   quiz.forEach((q, i) => {
     const correct = q.options.filter((o) => o.correct);
@@ -361,6 +363,8 @@ for (const folder of folders) {
   for (const t of [...Object.values(cards.prompts).flatMap((p) => [p.q, p.a]), ...cards.quiz.flatMap((q) => [q.q, ...q.options.flatMap((o) => [o.t, o.why])])]) {
     for (const re of BANNED) if (re.test(t)) err(folder, `a card uses the banned word or phrase ${re}`);
   }
+  // Recall prompts are collected as they are read, so they must be on the main path, not in a dropdown.
+  for (const m of mdx.matchAll(/<More\b[^>]*>([\s\S]*?)<\/More>/g)) if (/<Prompts\b/.test(m[1])) err(folder, 'a <Prompts> inside a <More> dropdown (prompts belong on the main path)');
   // Cards must stand alone: an expert who never read the book can answer them.
   for (const [k, p] of Object.entries(cards.prompts)) for (const re of CONTEXT_WORDS) if (re.test(p.q)) err(folder, `prompt "${k}" leans on the book's context (${re}); ask it so it stands alone`);
   cards.quiz.forEach((q, i) => { for (const re of CONTEXT_WORDS) if (re.test(q.q)) err(folder, `quiz question ${i + 1} leans on the book's context (${re}); ask it so it stands alone`); });

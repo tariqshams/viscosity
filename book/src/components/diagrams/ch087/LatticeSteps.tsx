@@ -1,4 +1,4 @@
-// 'Elements kinds': one array walking down the elements-kind lattice. Every kind
+// 'Shapes, inline caches and elements kinds': one array walking down the elements-kind lattice. Every kind
 // shown at every step is what %DebugPrint printed in Node v22.23.4
 // (V8 12.4) for the same lines of code. The backing store names
 // (FixedArray, FixedDoubleArray) come from the same output.

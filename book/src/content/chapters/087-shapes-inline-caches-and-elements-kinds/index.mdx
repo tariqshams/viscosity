@@ -3,183 +3,103 @@ n: 87
 day: 10
 part: V
 title: 'Shapes, inline caches and elements kinds'
-tagline: 'Two objects with the same properties can look completely different to V8; it depends on the order you added them and how you made the object, and you can ask the engine which is which.'
+tagline: 'Two objects with the same properties can look completely different to V8; it depends on the order you added them and how you made them, and every property access in your code remembers which kinds it has met.'
 objectives:
   - Explain what a shape (V8 calls it a map) stores, and what an object stores itself.
   - Trace how a transition tree grows as properties are added, and why a different order gives a different shape.
-  - Read real %DebugPrint and %HaveSameMap output for objects and their maps.
-  - Build a transition tree of your own, in a dozen lines of JavaScript.
-  - Explain what an inline cache remembers at a property access, and why that makes the access fast.
-  - Say what makes an access monomorphic, and read V8's real --log-ic output for one.
-  - Find the feedback slots of a function's property loads in its bytecode, including two loads that share one.
-  - Build a one-entry inline cache yourself, and see why it must check the shape before trusting its slot.
-  - Trace an inline cache from monomorphic to polymorphic to megamorphic, and say where V8 12.4 draws the line.
-  - Read V8's real --log-ic output for a site that sees five shapes.
-  - Explain what the stub cache is, and why a megamorphic site gives the optimising tiers nothing to build on.
-  - Spot megamorphic sites in ordinary code, such as an interpreter reading node.type, and keep hot ones monomorphic.
-  - Explain what an elements kind is, and name the SMI, DOUBLE and ELEMENTS kinds and their backing stores.
-  - Predict an array's kind after a sequence of writes, using the one-way lattice.
-  - Spot the numbers that look like small integers but are not (-0, NaN, Infinity, 2 ** 31).
-  - Read an array's kind from real %DebugPrint output, and see it change in a log of an element load.
+  - Explain what an inline cache remembers at a property access, and why a hit is fast.
+  - Trace one access from monomorphic to polymorphic to megamorphic, and say where V8 12.4 draws the line.
+  - Name the SMI, DOUBLE and ELEMENTS kinds, and predict an array's kind after a sequence of writes.
+  - Build a one-entry inline cache, and see why it must check the shape before trusting its slot.
 introduces: [shape, transition-tree, inline-cache, monomorphic, polymorphic, megamorphic, elements-kind]
-uses: [object, property, dot-access, bracket-access, object-header, field-representation, hash-table, constructor, new, instance, class, drip-class, field, memory, pointer, tree, undefined, ignition, optimizing-tiers, for-loop, string-building, dictionary-mode, tiering, bytecode, opcode, constant-pool, function, closure, array-of-objects, for-of, aos-vs-soa, typed-array, inheritance, super, ast, tree-walking-interpreter, array, index, length, push, array-loop, smi, heap-number, ieee754, float64, typeof]
-sources: [v8-fast-properties, v8-slack-tracking, v8-src-map-12-4, v8-react-cliff, v8-maglev, v8-src-interpreter-12-4, v8-src-ic-12-4, v8-improved-code-caching, v8-sparkplug, holzle1991, v8-src-tiering-12-4, v8-fast-super, v8-elements-kinds, v8-src-elements-kind]
+uses: [object, property, dot-access, object-header, field-representation, hash-table, class, drip-class, field, tree, bytecode, constant-pool, function, ast, tree-walking-interpreter, array, push, smi, heap-number, ieee754, typeof, typed-array, aos-vs-soa]
+sources: [v8-fast-properties, v8-slack-tracking, v8-src-map-12-4, v8-src-interpreter-12-4, v8-src-ic-12-4, v8-src-tiering-12-4, v8-maglev, holzle1991, v8-fast-super, v8-elements-kinds, v8-src-elements-kind]
 ---
 import ShapeShare from '../../../components/diagrams/ch087/ShapeShare';
 import TransitionSteps from '../../../components/diagrams/ch087/TransitionSteps';
-import HitMissSteps from '../../../components/diagrams/ch087/HitMissSteps';
-import SlotMap from '../../../components/diagrams/ch087/SlotMap';
 import ICSteps from '../../../components/diagrams/ch087/ICSteps';
 import StubTable from '../../../components/diagrams/ch087/StubTable';
 import LatticeSteps from '../../../components/diagrams/ch087/LatticeSteps';
-import BackingStores from '../../../components/diagrams/ch087/BackingStores';
-
-{/* ── merge: from old chapter 87, Shapes in depth ── */}
 
 ## Same keys, different objects
 
-Here are five objects with the same two properties, and a V8 internal,
-`%HaveSameMap`, that asks whether two objects have the same shape (start
-Node with `--allow-natives-syntax` to use it):
+Here are four objects with the same two properties, and a V8 internal
+that asks whether two objects have the same layout (Node allows these `%`
+helpers under `--allow-natives-syntax`):
 
 ```js
 const a = { x: 1, y: 2 };
 const b = { x: 5, y: 6 };
 const c = { y: 2, x: 1 };
 const d = {}; d.x = 1; d.y = 2;
-const e = {}; e.x = 7; e.y = 8;
 %HaveSameMap(a, b); // true
 %HaveSameMap(a, c); // false
-%HaveSameMap(d, e); // true
 %HaveSameMap(a, d); // false
 ```
 
-(Node v22.23.4, V8 12.4.) `a` and `b` match, which seems fair; `a` and
-`c` do not, although they differ only in order; and `a` and `d` do not
-either, although they have the same keys in the same order. By the end of
-this chapter all four answers will be obvious.
+(Node v22.23.4, V8 12.4.) `c` differs from `a` only in order, and `d` not
+even in that, yet neither matches. The question behind this is one your
+Drip VM answered with a hash lookup per instance (*Classes and method
+calls in the VM*): where does `p.x` live?
 
 ## A shape is a shared description
 
-The problem shapes solve is the one your Drip VM never solved: where does
-`p.x` live? In the chapter "Objects and method calls in the VM", every Drip
-instance kept its own hash table of fields, names and all, so ten
-thousand particles meant ten thousand tables, each storing `"x"` and
-`"vx"` again, and every `p.x` was a hash lookup.
-
 <Analogy title="a printed form">
 A school prints one form for every pupil: name in box 1, class in box 2.
-Each pupil's sheet holds only their answers, and to find someone's class
-you go straight to box 2, because the form says so; thousands of sheets
-share one description of the layout.
-<span slot="breaks">A school's form never changes once printed; a
-JavaScript object can gain a property at any moment, and then it has to
-move to a different "form", which is what the second half of this
-chapter is about.</span>
+Each sheet holds only answers, and to find a class you go straight to box
+2; thousands of sheets share one description of the layout.
+<span slot="breaks">A printed form never changes; a JavaScript object can
+gain a property at any moment, and then it has to move to a different
+"form", which is what the transition tree is for.</span>
 </Analogy>
 
-<Analogy extra title="a spreadsheet's header row">
-A spreadsheet writes the column names once, in the header row; each row
-below holds only values, and "the third column is the price" is true for
-every row.
-<span slot="breaks">In a spreadsheet every row has the same columns; in
-JavaScript two objects next to each other in an array can have different
-shapes, and the engine has to check which one it is looking at.</span>
-</Analogy>
-
-The chapter on how JavaScript stores numbers and objects showed that
-every V8 object starts with a pointer to its **hidden class**; engine
-writers also say **shape**, and V8's own name is
-**map**<Cite id="v8-slack-tracking" />. The map holds the layout: which
-named properties exist, in what order, and where each value is stored.
-The names themselves live in the map's **descriptor array**, not in the
-object<Cite id="v8-fast-properties" />; the object holds only its values.
+Every V8 object starts with a pointer to its hidden class (*How
+JavaScript stores numbers, objects and fields*), which V8 calls a
+**map**<Cite id="v8-slack-tracking" />; the map holds the property names,
+their order and where each value is stored, and the object holds only
+values<Cite id="v8-fast-properties" />.
 
 <Figure caption="Particles made the same way share one map. Each object is a map pointer plus its own values; the names x and vx are stored once, in the map." takeaway="The shape holds the names and the layout; the object holds the values.">
   <ShapeShare />
 </Figure>
 
-<Callout kind="definition">
-A **shape** (in V8, a **map**; also a **hidden class**) describes an
-object's layout: its named properties, their order, and where each value
-lives. Objects with the same properties added in the same order share one
-shape<Cite id="v8-fast-properties" />. The shape also records each field's
-representation, as in the chapter on field representations<Cite id="v8-react-cliff" />.
-</Callout>
-
-<Examples of="shape">
-
-```js
-%HaveSameMap(a, b); // true
-```
-
-```
-// %DebugPrint(a), trimmed
- - map: 0x… <Map[40]…> [FastProperties]
-    #x: 1 (const data field 0), in-object
-    #y: 2 (const data field 1), in-object
- - instance size: 40
- - inobject properties: 2
-```
-
-```js
-const ps = [];
-for (let i = 0; i < 1000; i++)
-  ps.push({ x: i, vx: 1 });
-ps.every((p) => %HaveSameMap(p, ps[0]));
-// true: a thousand objects, one map
-```
-
-</Examples>
-
-The first is the simplest case: two literals with the same keys in the
-same order share a map. The second shows what that map says about `a`:
-`x` is field 0 and `y` is field 1, both stored inside the object itself
-(**in-object**), which is 40 bytes long with room for exactly two
-properties. The third is the realistic one: a thousand particles built by
-one line of code all share a single map, so the names `x` and `vx` are
-stored once, not a thousand times.
-
-<Prompts ids={['shape-what', 'shape-names', 'drip-vs-v8']} />
-
-## Shapes form a tree
-
-JavaScript has no fixed classes: any object can gain a property at any
-time, so V8 cannot know an object's shape in advance. Instead, each time
-an object gets a new property, it moves to a new shape, and V8 links the
-shapes together<Cite id="v8-fast-properties" />.
-
-<Analogy extra title="directions through a building">
-"Through the left door, then the right door" always brings you to the
-same room, and so does anyone else who takes the same turns in the same
-order; "right, then left" brings you somewhere else, even though you used
-the same two words.
-<span slot="breaks">A building's rooms exist before anyone walks through;
-a transition tree grows as objects are made, and the first object to take
-a new turn is the one that builds the room.</span>
-</Analogy>
-
-<Analogy extra title="an automated phone menu">
-Press 1 for bookings, then 2 for changes: everyone who presses 1 then 2
-ends up with the same recorded message, and the system never needs a
-separate message per caller.
-<span slot="breaks">A phone menu is designed in advance and has a fixed
-number of branches; V8 adds a new branch the first time any object adds a
-property nobody added at that point before.</span>
-</Analogy>
-
-Step through the tree growing as the opening's objects are built:
+Since any object can gain a property at any time, each addition moves it
+to a new shape, and V8 links the shapes into a
+tree<Cite id="v8-fast-properties" />:
 
 <TransitionSteps client:visible />
 
 <Callout kind="definition">
-A **transition tree** links shapes: the root is the empty shape, and each
-edge says "add this property". Adding a property follows an existing
-edge if there is one, and creates a new shape if not. The same properties
-in the same order lead to the same shape; a different order leads down a
-different branch<Cite id="v8-fast-properties" />. In V8's source each map
-keeps a **back pointer** to the map it came from<Cite id="v8-src-map-12-4" />.
+A **shape** (in V8, a **map**; also a hidden class) describes an object's
+layout: its named properties, their order, and where each value and its
+representation live<Cite id="v8-fast-properties" />. Shapes form a
+**transition tree**: the root is an empty shape, each edge says "add this
+property", and adding a property follows an existing edge or creates a new
+shape. The same properties added in the same order, from the same root,
+lead to the same shape.
 </Callout>
+
+<Examples of="shape transition-tree">
+
+```
+// %DebugPrint(a), trimmed
+ - map: <Map[40]…> [FastProperties]
+    #x: 1 (const data field 0), in-object
+ - inobject properties: 2
+// %DebugPrint(d), trimmed
+ - inobject properties: 4
+ - unused property fields: 2
+```
+
+</Examples>
+
+`a`'s map stores `x` as field 0, inside the object (**in-object**), with
+room for exactly two properties; `b` shares it, and `c` walked the `y`
+edge first, onto another branch. `d` took `a`'s edges from a different
+root: V8 gave the empty `{}` room for four properties, two still unused,
+so the layouts differ.
+
+<More title="More: the tree as a formula, and more runs">
 
 <Formal title="A shape is a path from the root">
 
@@ -191,31 +111,22 @@ keys k₁…kₙ, in order  ⇒
 ```
 
 <span slot="read">An empty object has the root shape S₀. Adding a new
-property k to o moves o to T(shape of o, k), the child of its shape along
-the edge labelled k (T is the transition, made the first time it is
-needed). So an object's shape is found by starting at the root and
-following its keys in the order they were added (⇒ reads "gives");
-since T(T(S₀, x), y)
-and T(T(S₀, y), x) are different paths, order matters.</span>
+property k to o moves it to T(shape of o, k), the child along the edge
+labelled k, made the first time it is needed. So an object's shape is
+found by following its keys from the root in the order they were added;
+T(T(S₀, x), y) and T(T(S₀, y), x) are different paths, so order
+matters.</span>
 </Formal>
 
-<Examples of="transition-tree">
+A thousand particles built by one line share one map, and building half
+of them with the keys in the other order gives two:
 
 ```js
-%HaveSameMap(a, c); // false: x,y vs y,x
-```
-
-```
-// %DebugPrint(d), trimmed
- - instance size: 56
- - inobject properties: 4
- - unused property fields: 2
- - back pointer: 0x… <Map[56]…>
-```
-
-```js
-// half the particles built x first,
-// half vx first
+const ps = [];
+for (let i = 0; i < 1000; i++)
+  ps.push({ x: i, vx: 1 });
+ps.every((p) => %HaveSameMap(p, ps[0]));
+// true: a thousand objects, one map
 const qs = ps.map((p, i) => i % 2
   ? { x: p.x, vx: 1 }
   : { vx: 1, x: p.x });
@@ -223,248 +134,84 @@ qs.every((q) => %HaveSameMap(q, qs[0]));
 // false: two branches, two maps
 ```
 
-</Examples>
-
-The first is the order rule: `c` walked the `y` edge first, so it ended
-on a different branch. The second answers `a` against `d`: `d` started
-as `{}`, and in this run V8 gave an empty object room for four in-object
-properties (two still unused), while the literal `{ x: 1, y: 2 }` got
-exactly two, so although both walked `x` then `y`, they started from
-different roots with different sizes; the back pointer is the edge back
-to `d`'s previous map. The third is the realistic mistake: a program that
-builds particles in two places, with the keys written in two orders, ends
-up with two maps, and every loop over them now sees two shapes, which
-matters a great deal in the chapter on inline caches.
-
-<Prompts ids={['tree-what', 'order-matters', 'literal-vs-built', 'mixed-order', 'back-pointer']} />
-
-Code can see the order too, which is why an engine must remember it:
+Each map also keeps a **back pointer** to the map it came
+from<Cite id="v8-src-map-12-4" />. Code can see property order too, which
+is why an engine must remember it:
 
 <Run id="order-visible" />
 
-<Callout kind="engine" label="Under the hood">
-Shapes are why V8's optimising tiers can be fast. In 2023 the V8 team
-described Maglev reading `o.x`: if feedback says `o` always had one
-shape, it emits a check of that shape and then a plain load at a fixed
-offset<Cite id="v8-maglev" />. For Viscosity the lesson is the one the
-benchmarks taught: build every element of a collection the same way, in
-the same order, and V8 sees one shape; a struct-of-arrays layout goes
-further, since a `Float64Array` column has no shapes at all.
-</Callout>
+What happens when an object outgrows its in-object room, or when V8 gives
+up on shapes for an object and stores its properties in a hash table, is
+the subject of the deep dive *Slack tracking and dictionary mode*.
 
-## Your turn
+</More>
 
-<Exercise id="shapeTree" />
+<Prompts ids={['shape-what', 'order-matters', 'literal-vs-built']} />
 
-<Exercise id="orderMismatches" />
+## Every access remembers what it found
 
-## What you learned
-
-- A **shape** (V8's **map**) describes an object's layout once; objects
-  that share it store only their values.
-- Shapes form a **transition tree**: adding a property follows or
-  creates an edge, so the *order* of additions decides the shape.
-- How an object is made matters too: a literal and `{}` plus additions get
-  different in-object room, and so different maps.
-
-Next: what happens when objects outgrow their room, and when V8 gives up
-on shapes for an object altogether.
-
-
-{/* ── merge: from old chapter 87, Inline caches ── */}
-
-## One line, any object
-
-Here is about the smallest function that reads a property, and the
-bytecode Ignition makes for it:
+Here is the smallest function that reads a property, and its bytecode
+(`node --print-bytecode`, trimmed):
 
 ```
 // function getX(o) { return o.x; }
-// node --print-bytecode (trimmed)
-@ 0 : GetNamedProperty a0, [0], [0]
-@ 4 : Return
+GetNamedProperty a0, [0], [0]
+Return
 ```
 
-`a0` is `o`; the first `[0]` is entry 0 of the constant pool, the name
-`"x"`; and the second `[0]` is a feedback slot. V8's source describes this
-bytecode in one line: it "calls the LoadIC at FeedBackVector slot
-`<slot>`"<Cite id="v8-src-interpreter-12-4" />, where IC stands for
-**inline cache**. The problem it solves: `getX` might be handed any object
-at all, and the shapes chapter showed that where `x` lives depends on the
-object's shape. Searching the shape's descriptors on every call would be
-slow, so each access remembers what it found last time.
+The first `[0]` is the name `"x"`; the second is a **feedback slot**,
+where this bytecode "calls the LoadIC"<Cite id="v8-src-interpreter-12-4" />,
+an **inline cache**. Rather than search the shape's names on every call,
+the access keeps the shapes it has seen, each with a **handler** ("map M:
+load field 0"): a known map costs one comparison and one load, and an
+unknown one gets the full lookup, whose answer is
+added<Cite id="v8-src-ic-12-4" />.
 
-## Remember what you found
-
-<Analogy title="a postman's round">
-A postman new to a round looks every address up in the street index.
-After a week he knows that number 12 is the blue door on the left, and
-goes straight there; he still glances at the number on the door, in case
-the street has changed. One glance instead of a search.
-<span slot="breaks">A postman remembers a whole street; one inline cache
-remembers only what it has seen at one line of one function, and knows
-nothing about the same property read anywhere else.</span>
-</Analogy>
-
-<Analogy extra title="a note on the cupboard">
-In a shared kitchen someone sticks a note on the cupboard: "mugs: second
-shelf, left". The next person reads the note instead of opening every
-door, but only trusts it while the cupboard is still the one the note
-was written about.
-<span slot="breaks">A note in a kitchen can be wrong without anyone
-noticing; an inline cache checks the object's shape every single time
-before trusting what it remembered, so it is never wrong, only sometimes
-slow.</span>
-</Analogy>
-
-An inline cache keeps, for one access in the code, pairs of *shape* and
-*how to get the property for that shape* (say, "map M: load field 0").
-When an object arrives, it compares the object's shape with what it
-remembers: if they match, it does the remembered load; if not, it does
-the slow lookup and remembers the new answer<Cite id="v8-src-ic-12-4" />.
-Step through one access as a thousand particles of one shape arrive:
-
-<HitMissSteps client:visible />
+<ICSteps client:visible />
 
 <Callout kind="definition">
 An **inline cache** (IC) is a small memory, at one property access in the
-code, of the shapes seen there, each with a **handler** saying how to do
-the access for that shape. A hit costs a shape check and the remembered
-action; a miss falls back to the full lookup and updates the cache. In
-V8, each IC lives in a feedback slot of the function's feedback
-vector<Cite id="v8-src-interpreter-12-4" />. An IC that has seen exactly
-one shape is **monomorphic** ("one form").
+code, of the shapes seen there, each with a handler saying how to do the
+access for that shape; in V8 it lives in a feedback slot. It is
+**monomorphic** when it has seen one shape, **polymorphic** when it has
+seen a few (in V8 12.4, up to four, the default of
+`--max-valid-polymorphic-map-count`<Cite id="v8-src-tiering-12-4" />), and
+**megamorphic** past that, when it stops keeping its own list and looks
+up the pair (shape, name) in the **stub cache**, one table shared by all
+megamorphic accesses<Cite id="v8-src-ic-12-4" />.
 </Callout>
 
-<Formal title="An inline cache as a small table">
-
-```text
-IC : Shape ⇀ Handler
-load(o) = IC(shape(o))(o)   if defined
-        = slow(o), and add
-          shape(o) ↦ handler  otherwise
-monomorphic ⇔ |dom IC| = 1
-```
-
-<span slot="read">An IC is a partial function (the half-arrow ⇀ means
-"defined only for some shapes") from shapes to handlers. To load from o,
-look up o's shape: if the IC has an entry, run that handler on o; if
-not, do the slow lookup and add an entry mapping (↦) o's shape to the
-handler it found. The IC is monomorphic exactly when its domain (dom, the
-set of shapes it has entries for) has one member.</span>
-</Formal>
-
-V8 can log every change of an IC's state with `--log-ic` (you may see
-`--trace-ic` mentioned online; this Node build refuses it, with `node:
-bad option: --trace-ic`). Each line gives the kind of access, its line
-and column, the old and new state, and the property name; the states are
-`0` (uninitialised) and `1` (monomorphic), and the next chapter meets the
-others<Cite id="v8-src-ic-12-4" />.
-
-<Examples of="inline-cache monomorphic">
+<Examples of="inline-cache monomorphic polymorphic megamorphic">
 
 ```
-// getX called with ten { x: i }
-// node --log-ic --logfile=ic.log
+// --log-ic: getX, ten calls each with
+// {x}, {x,a}, {x,b}, {x,c}, {x,d}
 LoadIC 1:29 0 1 x
-```
-
-```
-// function len(p) {
-//   return p.x * p.x + p.y * p.y;
-// }
-LoadIC 1:28 0 1 x
-LoadIC 1:40 0 1 y
-```
-
-```
-// step(p) { p.x += p.vx; }, over
-// 100 particles { x: i, vx: 1 }
-LoadIC  4:20 0 1 x
-LoadIC  4:29 0 1 vx
-StoreIC 4:24 0 1 x
+LoadIC 1:29 1 P x
+LoadIC 1:29 P P x
+LoadIC 1:29 P P x
+LoadIC 1:29 P N x
 ```
 
 </Examples>
 
-The first is the simplest case (Node v22.23.4, V8 12.4, my run, keeping only the
-lines for `getX`): line 1, column 29 is the `x` in `o.x`; the
-first call moved it from `0` to `1`, and the other nine calls, all with
-the same shape, changed nothing, so there is nothing more to log. The
-second has *four* loads but only two lines, and the bytecode explains
-why: in V8 12.4 both loads of `p.x` in that expression use the same
-feedback slot, `[2]`, and both loads of `p.y` use slot `[5]`, so there are
-two caches, not four. The third is the realistic one, a particle update:
-the load of `p.x`, the load of `p.vx` and the store back into `p.x` each
-have a cache, each became monomorphic on the first particle, and none
-ever changed again, because every particle was built the same way.
+Each line is one change of state of the `x` in `o.x`: `0` is
+uninitialised, `1` monomorphic, `P` polymorphic, `N`
+megamorphic<Cite id="v8-src-ic-12-4" />. The first shape made the site
+monomorphic, and its other nine calls changed nothing; the next three
+joined the list; the fifth sent it to `N`, for good.
 
-<Figure caption="The feedback vector of len, from --print-bytecode: each operation that can see different kinds of value points at a slot, and the two loads of p.x share one." takeaway="An inline cache is a feedback slot; usually one per access, sometimes shared.">
-  <SlotMap />
+<Figure caption="A polymorphic site keeps its own short list; megamorphic sites share one table keyed by map and name." takeaway="Past four shapes, a site stops remembering and starts asking.">
+  <StubTable />
 </Figure>
 
-<Prompts ids={['ic-what', 'ic-hit', 'ic-miss', 'ic-per-site', 'mono-what', 'ic-shared-slot']} />
+This matters to V8's optimising compilers: for a monomorphic `o.x`,
+Maglev emits one shape check and a load at a fixed
+offset<Cite id="v8-maglev" />, a polymorphic site still gives a short list
+of cases<Cite id="holzle1991" />, and a megamorphic one (such as a
+tree-walker's `n.type`, one shape per node class) gives nothing.
 
-Here is a tiny cache of your own, running on objects whose shape is a
-string of their keys:
-
-<Run id="tiny-ic" />
-
-## Why the optimising tiers care
-
-The feedback is not only for Ignition: Sparkplug keeps the feedback
-vector in its stack frame, because most operations need
-it<Cite id="v8-sparkplug" />. And in 2023 the V8 team described what
-Maglev does with a monomorphic `o.x`: it emits a check that `o` still has
-that shape, then a plain load at a fixed offset, and after that it knows
-the shape and does not check it again<Cite id="v8-maglev" />. The idea is
-old: Hölzle, Chambers and Ungar wrote about inline caches for Self in
-1991, and noted that the receiver types a cache records are information
-an optimising compiler can use<Cite id="holzle1991" />.
-
-The word *inline* is historical: V8's old baseline compiler patched the
-fast path into its machine code. Since Ignition (Chrome 59), the caches
-are *data-driven*: the remembered shapes live in feedback vectors,
-separate from the bytecode, and that separation is also what let V8 cache
-bytecode after a script has run<Cite id="v8-improved-code-caching" />.
-
-<Prompts ids={['maglev-mono', 'data-driven']} />
-
-<Callout kind="engine" label="Under the hood">
-Inline caches and shapes only work together: V8 says inline caches do not
-work on dictionary-mode objects at all<Cite id="v8-fast-properties" />.
-That is one more reason Viscosity's struct-of-arrays layout helps: in
-`xs[i] += vxs[i]` there are no named properties left to look up, since
-each column is a typed array read by index.
-</Callout>
-
-## Your turn
-
-<Exercise id="monoIC" />
-
-## What you learned
-
-- An **inline cache** remembers, at one property access, the shapes it
-  has seen and how to read the property for each; in V8 it is a feedback
-  slot.
-- A hit is a shape check plus a load; a miss does the full lookup and
-  updates the cache.
-- **Monomorphic** means one shape seen, the best case; build the objects
-  a hot loop reads in one way and its accesses stay monomorphic, and
-  Maglev turns them into a check plus a direct load.
-
-Next: what happens at a site that sees two shapes, four, or twenty.
-
-
-{/* ── merge: from old chapter 87, Polymorphic and megamorphic sites ── */}
-
-## One site, many shapes
-
-The previous chapter's caches each saw one shape, because every particle
-was built the same way. Real code is not always so tidy. Your Drip
-tree-walking interpreter had a line that looked at whatever node it was
-handed and asked what kind it was, and every kind of node was a
-different class. Here is that idea in JavaScript, with five node classes:
+<More title="More: an interpreter's node.type, mixins, and one shape against twenty">
 
 ```js
 class Num { constructor(v) {
@@ -474,358 +221,118 @@ class Add { constructor(l, r) {
   this.r = r; } }
 // ...and Mul, Neg and Var, alike
 const kindOf = (n) => n.type;
+// --log-ic, ten calls per class:
+// 0 1, 1 P, P P, P P, P N
 ```
 
-Every class sets `type` first, so `type` is always field 0; but objects
-made by different classes have different maps, so the one load `n.type`
-in `kindOf` meets five shapes. What does its cache do?
+Different classes give different maps even with the same fields, so
+`kindOf`'s one load goes megamorphic. The V8 team's 2021 post on `super`
+shows another case: a `super.m()` call inside a mixin, where each use of
+the mixin creates a new class<Cite id="v8-fast-super" />. Do not reshape a
+whole program around this, though: two or three shapes is polymorphic,
+which is fine, and what matters is the hot loop. The deep dive *Stub
+caches and feedback vectors* looks inside the stub cache and the feedback
+vector. (The runs use ten calls per shape because in Node 22 a function
+gets its feedback vector only after about eight calls, and shapes seen
+before that are never recorded.) Try one shape against twenty on your
+device:
 
-## A short list, then a shared table
+<Run id="mono-vs-mega" />
 
-<Analogy title="a receptionist">
-A receptionist at a small office recognises the four people who come in
-every day, and waves each of them through at once. When strangers start
-arriving by the dozen, she stops trying to remember faces and looks
-everyone up in the building's directory, which every desk shares.
-<span slot="breaks">A receptionist might learn a fifth face in time; in my
-V8 12.4 test, a site that had gone megamorphic stayed so through 100,000
-more calls that all brought the same shape.</span>
-</Analogy>
+</More>
 
-<Analogy extra title="a key ring">
-With up to four keys on a ring you try each in turn, and that is still
-quick. Give someone twenty doors, and trying keys stops making sense; they
-go to the caretaker's cabinet, where every key hangs under a label for its
-door.
-<span slot="breaks">The cabinet is slow because you have to walk to it;
-the stub cache is a fast hash table, but every lookup still costs a hash
-and a compare, and it tells the optimising compiler nothing about which
-shapes to expect.</span>
-</Analogy>
+<Prompts ids={['ic-what', 'poly-what', 'mega-what', 'count-shapes']} />
 
-Step through one access as five different shapes arrive:
+## Arrays have kinds
 
-<ICSteps client:visible />
+`typeof` says `'number'` for every element of `[1, 2, 3]` and of
+`[1, 2, 3.5]`, but V8 keeps small integers as Smis and other numbers as
+doubles, and an array known to hold only Smis can be optimised for
+exactly that<Cite id="v8-elements-kinds" />. So V8 labels each array's
+**elements** (its values at integer indices) with what they can hold, and
+each write can only make the label more general:
+
+<LatticeSteps client:visible />
 
 <Callout kind="definition">
-An inline cache is **polymorphic** ("many forms") when it has seen
-several shapes and keeps an entry for each, and **megamorphic** ("huge
-number of forms") when it has seen too many to list. In the V8 inside
-Node 22, "too many" means more than four: the flag
-`--max-valid-polymorphic-map-count` defaults to
-4<Cite id="v8-src-tiering-12-4" />. A megamorphic access stops keeping
-entries of its own and uses the **stub cache**, a table shared by all
-megamorphic loads that maps a shape and a name to a
-handler<Cite id="v8-src-ic-12-4" />.
+An array's **elements kind** records what its indexed elements can hold:
+**SMI** (small integers), **DOUBLE** (any number, stored as raw 64-bit
+doubles<Cite id="v8-src-elements-kind" />) or **ELEMENTS** (any value).
+The kinds are ordered from specific to general, and an array only ever
+moves towards a more general kind<Cite id="v8-elements-kinds" />. V8
+records the kind in the array's map, so a change of kind is a map
+transition.
 </Callout>
 
-<Formal title="The states of one site (V8 12.4)">
+<Examples of="elements-kind">
 
-```text
-n = number of different shapes seen
-state = 0  if n = 0     (uninitialized)
-        1  if n = 1     (monomorphic)
-        P  if 2 ≤ n ≤ 4 (polymorphic)
-        N  if n > 4     (megamorphic)
-```
-
-<span slot="read">Count the different shapes that have reached the site
-(not the number of accesses). None: state 0. One: state 1. Two to four:
-P. More than four: N. The letters are the ones V8's own log
-prints<Cite id="v8-src-ic-12-4" />, and the count only grows, so the
-state only moves down the list.</span>
-</Formal>
-
-<Figure caption="A polymorphic site keeps its own short list; megamorphic sites share one table keyed by map and name." takeaway="Past four shapes, a site stops remembering and starts asking.">
-  <StubTable />
-</Figure>
-
-<Examples of="polymorphic megamorphic">
-
-```
-// getX called with { x } and { x, y }
-LoadIC 1:29 0 1 x
-LoadIC 1:29 1 P x
-```
-
-```
-// getX called ten times each with
-// { x }, { x, a }, { x, b },
-// { x, c }, { x, d }
-LoadIC 1:29 0 1 x
-LoadIC 1:29 1 P x
-LoadIC 1:29 P P x
-LoadIC 1:29 P P x
-LoadIC 1:29 P N x
-```
-
-```
-// kindOf(n) over the five node classes,
-// ten calls each
-LoadIC 6:25 0 1 type
-LoadIC 6:25 1 P type
-LoadIC 6:25 P P type
-LoadIC 6:25 P P type
-LoadIC 6:25 P N type
+```js
+// %DebugPrint shows, for each array:
+[1, 2, 3]          // PACKED_SMI
+const t = [1.5, 2];  // PACKED_DOUBLE
+t[0] = 1;            // still DOUBLE
+[1, 2].push(-0)      // now DOUBLE
+[1, 2].push(2 ** 31) // now DOUBLE
 ```
 
 </Examples>
 
-All three are real `node --log-ic` runs (Node v22.23.4, V8 12.4, Node's
-own lines removed). The first is the smallest polymorphic site: two
-shapes, so `0 → 1` on the first and `1 → P` on the second. The second
-walks the whole ladder: the third and fourth shapes are added to the list
-(`P → P`), and the fifth sends the site to `N`. (Why ten calls each? A function only gets its feedback vector after about eight calls in Node 22, and
-with five calls each, the first shape was never recorded and the site
-stopped at `P`.) The third is the interpreter case: one innocent-looking
-`n.type`, five classes, and the site is megamorphic, which is worth
-knowing before you write a tree-walker in JavaScript for real.
+(Read `[1, 2].push(v)` as the array after the push.) `t` starts at
+DOUBLE because of `1.5`, and an integer written over it changes nothing.
+The last two are the traps: `-0`, `NaN` and `Infinity` are doubles, not
+Smis<Cite id="v8-elements-kinds" />, and so is any integer from
+2<sup>31</sup> up in this build, so one `-0` from `0 * -1` moves an array
+of counters to DOUBLE.
 
-<Prompts ids={['poly-what', 'mega-what', 'log-letters', 'count-shapes', 'eight-calls']} />
-
-## Why the optimising tiers care
-
-A monomorphic site gives Maglev something precise to build on: check one
-shape, then load at a fixed offset<Cite id="v8-maglev" />. A polymorphic
-site still gives it a short list of cases, which is the observation
-Hölzle, Chambers and Ungar made for Self in 1991: the types a polymorphic
-inline cache records are information an optimising compiler can
-use<Cite id="holzle1991" />. A megamorphic site gives it nothing: the
-stub cache is shared, so it says nothing about which shapes *this* line
-sees.
-
-Megamorphic sites turn up in ordinary code. A helper called with many
-kinds of object is one; the V8 team's 2021 post on `super` shows another,
-a `super.m()` call inside a mixin, where each use of the mixin creates a
-new class, so that one access site goes megamorphic<Cite id="v8-fast-super" />.
-Try one shape against twenty on your device:
-
-<Run id="mono-vs-mega" />
-
-<Callout kind="pitfall">
-Do not reshape a whole program around this. A site that sees two or three
-shapes is polymorphic, not megamorphic, and what matters is the *hot*
-code: the inner loop that reads `p.x` for every particle. Make every
-particle with the same function, in the same order, and that loop sees
-one shape.
-</Callout>
-
-<Prompts ids={['stub-shared', 'mixin-mega', 'poly-ok']} />
-
-## Your turn
-
-<Exercise id="icStates" />
-
-## What you learned
-
-- **Polymorphic**: several shapes seen at one site, each with its own
-  entry; in the V8 inside Node 22, up to four.
-- **Megamorphic**: more than four; the site gives up its own entries and
-  looks up (shape, name) in the shared **stub cache**.
-- The states count different shapes, not accesses, and only move one way.
-- Different classes mean different shapes even with the same fields, so
-  an interpreter's `node.type` is a classic megamorphic site.
-
-Next: arrays get their own version of shapes, elements kinds.
-
-
-{/* ── merge: from old chapter 87, Elements kinds ── */}
-
-## Two arrays that look the same
-
-To JavaScript, these hold the same kind of thing: `typeof` says
-`'number'` for every element of both.
-
-```js
-const a = [1, 2, 3];
-const b = [1, 2, 3.5];
-```
-
-V8 sees two different arrays. The chapter on how JavaScript stores
-numbers and objects showed that it keeps small integers as **Smis** and
-other numbers as doubles, and if V8 knows an array holds only Smis, it
-can optimise operations on it for exactly that case<Cite id="v8-elements-kinds" />.
-One stray `3.5` changes how the whole array is stored, and what the
-optimising compiler may assume. V8 keeps **elements** (the values at
-integer indices) apart from an object's named
-properties<Cite id="v8-fast-properties" />, and for each array it tracks
-what kind of elements it holds<Cite id="v8-elements-kinds" />.
-
-## Three kinds, one way down
-
-There are three basic kinds. **SMI** means every element is a small
-integer; **DOUBLE** means every element is a number, stored as a raw
-64-bit double; **ELEMENTS** means anything goes, and each slot is an
-ordinary tagged value. Each new value can push the array to a more
-general kind, never back.
-
-<Analogy title="pantry shelves">
-Picture three shelves: the top one takes only identical jars, the middle
-one any tin, the bottom one anything at all. Things only ever move down:
-once you have put a cardboard box on the bottom shelf with everything
-else, nobody carries the jars back up, even after the box is eaten.
-<span slot="breaks">Moving a jar to a lower shelf leaves the jar
-unchanged; when V8 moves an array from SMI to DOUBLE it rewrites every
-element into a new backing store of a different format.</span>
-</Analogy>
-
-<Analogy extra title="a load of laundry">
-A load of whites stays a whites load only while every item is white; put
-in one red sock and it becomes a mixed load, and taking the sock out
-again does not make it a whites load, because the wash has already been
-set for colours.
-<span slot="breaks">The sock really does change the other clothes; a
-DOUBLE array still holds its integers exactly (1 is stored as 1.0), and
-only the engine's assumptions about the array change.</span>
-</Analogy>
-
-Step through one array's life:
-
-<LatticeSteps client:visible />
-
-You can watch this happen with `%DebugPrint` (start Node with
-`--allow-natives-syntax`). Run the stepper's first four lines with a
-`%DebugPrint(a)` after each one and keep the lines that name the kind
-(Node v22.23.4, V8 12.4):
-
-```
-$ node --allow-natives-syntax kinds.js \
-    | grep '^ - elements kind'
- - elements kind: PACKED_SMI_ELEMENTS
- - elements kind: PACKED_DOUBLE_ELEMENTS
- - elements kind: PACKED_DOUBLE_ELEMENTS
- - elements kind: PACKED_ELEMENTS
-```
-
-The third line is the one to notice: `a[3] = 4` wrote an integer over the
-double, and the array stayed DOUBLE. The same output shows where the kind
-lives: inside the array's map, as in `<Map[32](PACKED_SMI_ELEMENTS)>`,
-so a change of kind is a map transition, like the property transitions
-of the shapes chapter. It also names the **backing store**, the separate
-block that holds the elements:
-
-<Figure caption="The three basic kinds and the backing stores %DebugPrint names for them (Node 22)." takeaway="DOUBLE arrays hold raw numbers; ELEMENTS arrays hold anything, as tagged values or pointers.">
-  <BackingStores />
-</Figure>
-
-<Callout kind="definition">
-An array's **elements kind** records what its indexed elements can hold.
-The basic kinds are **SMI** (small integers), **DOUBLE** (any number,
-stored as untagged doubles<Cite id="v8-src-elements-kind" />) and
-**ELEMENTS** (any value). Kinds form a **lattice** (an ordering in which
-any two kinds have a most specific kind above both), and an array only
-ever moves to a more general kind<Cite id="v8-elements-kinds" />. V8
-records the kind in the array's map.
-</Callout>
+<More title="More: the lattice as a formula, element loads, and which numbers are Smis">
 
 <Formal title="The lattice, and a write">
 
 ```text
 SMI ⊑ DOUBLE ⊑ ELEMENTS
-kindOf(v) = SMI      if v is a Smi
-          = DOUBLE   if v is another number
-          = ELEMENTS otherwise
 after a[i] = v :  kind ← kind ⊔ kindOf(v)
 ```
 
-<span slot="read">⊑ reads "is at least as specific as": every SMI array
-could also be stored as DOUBLE, and every DOUBLE array as ELEMENTS. Each
-value has a most specific kind it fits. After writing v, the array's kind
-becomes the join (⊔, "the more general of the two") of its old kind and
-v's kind; a join never moves up the list, which is why there is no way
-back.</span>
+<span slot="read">⊑ reads "is at least as specific as". After writing v,
+the array's kind becomes the join (⊔, "the more general of the two") of
+its old kind and the most specific kind v fits; a join never moves back
+up the list.</span>
 </Formal>
 
-<Examples of="elements-kind">
-
-```js
-[1, 2, 3]   // PACKED_SMI_ELEMENTS
-```
-
-```js
-const t = [1.5, 2];  // DOUBLE
-t[0] = 1;            // still DOUBLE
-```
-
-```js
-// all PACKED_DOUBLE_ELEMENTS:
-[1, 2].push(-0)   // negative zero
-[1, 2].push(NaN)
-[1, 2].push(2 ** 31)
-// but this stays PACKED_SMI_ELEMENTS:
-[1, 2].push(2 ** 31 - 1)
-```
-
-</Examples>
-
-(Read `[1, 2].push(v)` in the third as "an array `[1, 2]` after
-`push(v)`"; `push` itself returns the new length.) The first is the
-simplest case, a literal of small integers. The second shows the one-way
-rule: the literal starts DOUBLE because of `1.5`, and overwriting it with
-an integer leaves it DOUBLE. The third is the trap in real code: `-0`,
-`NaN` and `Infinity` are doubles, not Smis<Cite id="v8-elements-kinds" />,
-and so is any integer too big for a Smi, which in this Node build means
-anything from 2<sup>31</sup> up (each line checked with `%DebugPrint`). One
-`-0` from a calculation such as `0 * -1` is enough to move an array of
-counters to DOUBLE.
-
-<Prompts ids={['ek-what', 'ek-three', 'ek-one-way', 'ek-in-map', 'ek-double-store', 'ek-minus-zero', 'ek-big-int']} />
-
-Which values fit in a Smi? Try a few:
+An element load such as `xs[i]` has an inline cache that remembers the
+array's map, kind included, so a helper called with arrays of several
+kinds has to be ready for the most general one<Cite id="v8-elements-kinds" />.
+The 2017 post counts 21 kinds in all, including the HOLEY versions for
+arrays with missing slots (the deep dive *Stub caches and feedback
+vectors*) and fixed kinds for typed arrays: `%DebugPrint` reports
+`FLOAT64ELEMENTS` for a `Float64Array`, whose kind can never change.
 
 <Run id="smi-test" />
 
-## Kinds meet inline caches
+</More>
 
-Elements kinds matter most to optimised code. An element load such as
-`xs[i]` has an inline cache like a property load, and what it remembers
-is the array's map, which includes its kind. The V8 post on elements
-kinds warns that a helper called with arrays of several kinds makes its
-element loads polymorphic<Cite id="v8-elements-kinds" />. In V8 12.4 the
-log shows a subtler picture:
-
-```
-// first(xs) { return xs[0]; } called
-// with SMI, then DOUBLE, then ELEMENTS
-KeyedLoadIC 1:31 0 1 0
-KeyedLoadIC 1:31 1 1 0
-KeyedLoadIC 1:31 1 1 0
-```
-
-The site stayed in state `1`, and each new kind was logged as a change
-from `1` to `1`: the cache's entry was replaced, rather than a second
-entry added. Either way the load has to be ready for the most general
-kind it has seen, so one kind per hot call site is still the safe
-habit<Cite id="v8-elements-kinds" />.
-
-<Prompts ids={['ek-polymorphic']} />
+<Prompts ids={['ek-one-way', 'ek-minus-zero']} />
 
 <Callout kind="engine" label="Under the hood">
-The 2017 post that explains the lattice counts 21 different elements
-kinds<Cite id="v8-elements-kinds" />; this chapter and the next cover the
-six common ones. Typed arrays have specialised kinds of their
-own<Cite id="v8-elements-kinds" />: `%DebugPrint` reports
-`FLOAT64ELEMENTS` for a `Float64Array`, which is one more reason
-Viscosity's struct-of-arrays columns are `Float64Array`s, since a
-column's kind is fixed and can never fall from SMI to DOUBLE halfway
-through a loop.
+Build every element of a collection in one place, in one order, and a
+hot loop sees one shape; Viscosity's `Float64Array` columns go further,
+with no named properties to look up and a kind that never changes.
 </Callout>
 
 ## Your turn
 
+<Exercise id="monoIC" />
+
+Extra practice:
+
+<Exercise id="shapeTree" />
+
+<Exercise id="icStates" />
+
 <Exercise id="kindOfWrites" />
 
-## What you learned
-
-- Every array has an **elements kind**: **SMI**, **DOUBLE** or
-  **ELEMENTS**, recorded in its map, with a backing store to match.
-- The kinds form a **lattice**: each write moves the array to the join of
-  its kind and the value's, so it never moves back.
-- `-0`, `NaN`, `Infinity` and integers from 2<sup>31</sup> up are doubles,
-  not Smis.
-- Element loads remember the array's map, kind included; one kind per hot
-  site keeps them simple.
-
-Next: the other half of every kind's name, PACKED or HOLEY.
-
 <Quiz />
+
+Next: *Tiers, speculation and deoptimisation*, where V8's optimising
+compilers read all this feedback, bet on it, and back out when the bet
+fails.

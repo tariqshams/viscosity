@@ -98,7 +98,7 @@ only what is new. Pointers name chapters by title, never by number.
 | exactly one open analogy, each analogy with a non-empty `slot="breaks"` | every chapter |
 | at least 2 diagrams, at least one steppable | every chapter |
 | every `introduces` concept appears in some `<Examples of>` (one example is enough) | every chapter |
-| open reading time 9–14 minutes; at most 2 required exercises | core chapters |
+| open reading time 9–15 minutes; at most 2 required exercises; recall prompts never in a dropdown | core chapters |
 | open reading time 9–18 minutes | every other chapter |
 | no concept used before it is introduced, in book order | every chapter |
 | no card question leaning on the book's context | every card |
@@ -120,7 +120,7 @@ only what is new. Pointers name chapters by title, never by number.
 
 Reading time counts only what is open: prose, code, prompts, quiz, required
 exercises and open runnable examples (`src/lib/minutes.js`). Core chapters
-are 9 to 14 open minutes, so four fit in an hour with reviews; other
+are 9 to 15 open minutes, so four fit in an hour with reviews; other
 chapters are 9 to 18. When a chapter will not fit, move depth into a
 dropdown or a deep dive first; split it only when its main path alone is
 too long.

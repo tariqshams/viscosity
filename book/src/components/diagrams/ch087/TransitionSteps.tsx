@@ -3,7 +3,7 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
 // A transition tree growing as properties are added, following the V8
 // blog's "Fast properties in V8" (2017). The divergence for a different
-// order matches the real %HaveSameMap run shown in 'Shapes in depth'.
+// order matches the real %HaveSameMap run shown in 'Shapes, inline caches and elements kinds'.
 const CODE = `const a = {};
 a.x = 1;
 a.y = 2;

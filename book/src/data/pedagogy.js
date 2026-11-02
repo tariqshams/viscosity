@@ -25,7 +25,7 @@ export const MIN_EXAMPLES = 1;
  */
 export const CORE_PARTS = new Set(['II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX']);
 /** Open reading time, in minutes, for core chapters and for all others. */
-export const CORE_MINUTES = [9, 14];
+export const CORE_MINUTES = [9, 15];
 export const OTHER_MINUTES = [9, 18];
 /** Core chapters: at most this many required (non-optional) exercises. */
 export const CORE_MAX_EXERCISES = 2;

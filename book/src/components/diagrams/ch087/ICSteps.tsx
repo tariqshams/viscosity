@@ -3,7 +3,7 @@ import { Arrow, Box, Svg, T, tok } from '../../viz/svg';
 
 // One inline cache at `o.x` going 0 → 1 → P → N, following V8's
 // InlineCacheState and UpdatePolymorphicIC (V8 12.4 source) and the real
-// --log-ic run shown in 'Polymorphic and megamorphic sites'.
+// --log-ic run shown in 'Shapes, inline caches and elements kinds'.
 type Shape = 'A' | 'B' | 'C' | 'D' | 'E';
 const SHAPE_KEYS: Record<Shape, string> = { A: '{x}', B: '{x, a}', C: '{x, b}', D: '{x, c}', E: '{x, d}' };
 const COLORS: Record<Shape, string> = { A: 'brand', B: 'accent', C: 'warn', D: 'safe', E: 'danger' };

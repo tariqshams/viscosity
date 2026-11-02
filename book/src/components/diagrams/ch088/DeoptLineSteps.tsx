@@ -1,4 +1,4 @@
-// Chapter 88: one real --trace-deopt line, read part by part. Produced by
+// 'Tiers, speculation and deoptimisation': one real --trace-deopt line, read part by part. Produced by
 // `node --trace-opt --trace-deopt opt.js` on Node v22.23.4
 // (V8 12.4.254.21-node.57); the line is split only for the phone width.
 // Kinds and reasons: src/common/globals.h, src/deoptimizer/deoptimize-reason.h.

@@ -3,124 +3,58 @@ n: 51
 day: 1
 part: II
 title: 'Caches, lines and locality'
-tagline: 'Your processor can add two numbers far faster than it can fetch one from memory. Meet the worker that runs your code, the few boxes it keeps numbers in, and the small, fast memory that sits beside it to hide the wait.'
+tagline: 'Your processor can add two numbers far faster than it can fetch one from memory. Meet the caches that hide the wait, the 64-byte lines they move, and the two kinds of locality that decide whether a loop flies or crawls.'
 objectives:
-  - Describe what a CPU does with each instruction, and what registers are for.
-  - Read a few lines of simple machine instructions and say which ones touch memory.
-  - Explain why a CPU keeps a cache, and what a cache holds.
-  - Predict which reads in a short program can be served from a cache.
-  - Put registers, L1, L2, L3 and main memory in order of size and speed.
-  - Define latency, a cache hit and a cache miss.
-  - Work out the average cost of a read from a hit rate, and see why a few misses dominate.
-  - Read a benchmark chart and connect a slowdown to data outgrowing the caches.
-  - Explain what a cache line is, and work out which line an address falls in.
-  - Explain spatial locality, and why a loop over a typed array has so much of it.
-  - Compute the stride of a loop over different layouts, and count the lines it fetches.
-  - Say why walking down a column of a grid stored row by row is slow.
-  - Explain temporal locality, and why fusing two loops can halve the lines fetched.
-  - Tell latency from bandwidth, and estimate how long streaming a big array must take.
-  - Work out what share of the bytes a loop fetches it actually uses.
-  - Explain a real benchmark of three layouts in terms of lines and bytes.
+  - Say what a CPU does with each instruction, and why it keeps values in registers.
+  - Put registers, L1, L2, L3 and main memory in order, and work out the average cost of a read from a hit rate.
+  - Work out which cache line an address is in, and count the lines a loop touches from its stride.
+  - Tell spatial from temporal locality, and latency from bandwidth, and use them to explain a benchmark of three layouts.
 introduces: [cpu, register, cpu-cache, cache-hierarchy, latency, cache-miss, cache-line, spatial-locality, stride, temporal-locality, bandwidth]
-uses: [memory, address, pointer, contiguous, stack-and-heap, array-of-objects, typed-array, float64, byte, array, index, array-loop, set, object, function, parameter, return, while-loop, if, comparison, test, numbers, strings, for-loop, for-of, console-log, bit-ops]
+uses: [memory, address, pointer, contiguous, stack-and-heap, array-of-objects, typed-array, float64, byte, array, index, set, object, for-loop, for-of, numbers, bit-ops]
 sources: [apple-wwdc25-cpu, slotin-amh-hierarchy, slotin-amh-pipelining, slotin-amh-cache-lines, slotin-amh-locality, linux-x86-kconfig-cpu]
 ---
 import CpuSteps from '../../../components/diagrams/ch051/CpuSteps';
-import CpuCacheMemory from '../../../components/diagrams/ch051/CpuCacheMemory';
 import LatencyLadder from '../../../components/diagrams/ch051/LatencyLadder';
 import CacheTrip from '../../../components/diagrams/ch051/CacheTrip';
-import BenchBars from '../../../components/bench/BenchBars';
-import LineSteps from '../../../components/diagrams/ch051/LineSteps';
 import StrideSteps from '../../../components/diagrams/ch051/StrideSteps';
 import FuseSteps from '../../../components/diagrams/ch051/FuseSteps';
-import UsefulBytes from '../../../components/diagrams/ch051/UsefulBytes';
+import BenchBars from '../../../components/bench/BenchBars';
 import LiveBench from '../../../components/bench/LiveBench';
 
-{/* ── merge: from old chapter 51, The CPU and its caches ── */}
+## The same loop, two speeds
 
-## Who actually runs the loop?
-
-Here is a loop you have written many times, summing a column of numbers:
+This book's benchmark ran one loop, summing every particle's `mass`, on
+a thousand particles and on a million:
 
 ```js
-let s = 0;
-for (let i = 0; i < xs.length; i++) {
-  s += xs[i];
-}
+for (let i = 0; i < ps.length; i++)
+  s += ps[i].mass;
 ```
 
-So far we have talked about this loop as if JavaScript itself ran it.
-However, JavaScript is a description; something has to *do* the adding,
-and that something is a piece of hardware with no idea what a variable,
-a loop or an array is. In this chapter we meet it, see the very small
-steps it takes, and find the one step that is far slower than all the
-others.
+<BenchBars suite="sum-one-field" n={1000} title="Sum every mass: 1,000 particles"
+  highlight={['aos']} layouts={['aos', 'soa']}
+  caption="With a thousand particles, every element is cheap." />
 
-## The CPU: a fast, literal worker
+<BenchBars suite="sum-one-field" n={1000000} title="Sum every mass: 1,000,000 particles"
+  highlight={['aos']} layouts={['aos', 'soa']}
+  caption="The same loop costs several times more per element with a million particles. Compare the array-of-objects bars." />
 
-<Analogy title="a cook following a recipe">
-A cook reads the next line of the recipe, works out what it means ("dice
-one onion"), does it, and moves on to the next line. The cook keeps the
-few things being worked on right now within arm's reach on the chopping
-board; everything else stays in the cupboards.
-<span slot="breaks">A cook can skip a line or improvise; the processor
-does exactly what each instruction says, billions of times a second.
-And a real modern processor overlaps its steps rather than finishing one
-line before starting the next (a later chapter shows how).</span>
-</Analogy>
+The work per particle is identical, yet the cost per particle is not;
+only the amount of data changed. To see why, we need the hardware that
+runs the loop, and the memory beside it.
 
-<Analogy extra title="mental arithmetic">
-When you add up a shopping bill in your head, you can hold two or three
-numbers at once ("so far 14, plus this 3"); anything more you have to
-write down and look up again, which is much slower.
-<span slot="breaks">You forget and make slips; the processor's few
-boxes hold their numbers exactly, as 64-bit patterns, until something
-replaces them.</span>
-</Analogy>
+## The CPU and its registers
 
-Step through one turn of the loop. The instructions here are made up
-and simplified, but their shape is real.
+The **CPU** (the processor) runs a program by repeating three steps for
+each instruction: **fetch** it from memory, **decode** what it asks
+for, and **execute** it<Cite id="slotin-amh-pipelining" />. It keeps the
+values it is working on in **registers**, a few tiny storage slots
+inside the CPU itself and the fastest storage there
+is<Cite id="slotin-amh-hierarchy" /><Cite id="apple-wwdc25-cpu" />.
 
 <CpuSteps client:visible />
 
-<Callout kind="definition">
-The **CPU** (central processing unit, or processor) runs a program by
-repeating three steps for each instruction: **fetch** it from memory,
-**decode** what it asks for, and **execute** it<Cite id="slotin-amh-pipelining" />.
-As it goes, it reads and changes **registers** and
-memory<Cite id="apple-wwdc25-cpu" />. **Registers** are a few tiny
-storage slots inside the CPU itself, where it keeps the values it is
-working on right now; they are the fastest storage there
-is<Cite id="slotin-amh-hierarchy" />.
-</Callout>
-
-<Formal title="The CPU's loop">
-
-```text
-repeat:
-  ins ← mem[pc]        (fetch)
-  op  ← decode(ins)    (decode)
-  do op; pc ← next     (execute)
-```
-
-<span slot="read">Forever: read the instruction at the address held in
-pc (the program counter, a register that says where in the program the
-CPU is), work out what it asks for, do it, and move pc on to the next
-instruction. The arrow ← means "becomes".</span>
-</Formal>
-
 <Examples of="cpu register">
-
-```text
-load  r0, [100]    ; r0 = mem[100]
-add   r0, r0, 1    ; r0 = r0 + 1
-store [100], r0    ; mem[100] = r0
-```
-
-```text
-mul r3, r0, r1     ; r3 = a * b
-add r3, r3, r2     ; r3 = r3 + c
-```
 
 ```text
 loop:
@@ -131,268 +65,64 @@ loop:
 
 </Examples>
 
-The first is `n = n + 1` for a variable kept in memory at address 100:
-the CPU cannot add to memory directly here, so it **loads** the value
-into register `r0`, adds 1 there, and **stores** it back; one line of
-JavaScript became three instructions, and two of them touch memory. In
-the second, `a`, `b` and `c` are already in registers `r0` to `r2`, so
-`a * b + c` is two instructions that never leave the CPU. The third is
-the loop from the diagram, the realistic case: a good compiler keeps
-`s` in `r0` and the address of `xs[i]` in `r2` for the whole loop, so
-each turn makes one trip to memory, for the new element, and everything
-else happens in registers.
+The instructions are made up, but their shape is real: a good compiler
+keeps `s` in `r0` and the address of `xs[i]` in `r2`, so each turn makes
+one trip to memory (the `load`), and that trip is the slow part.
 
-<Prompts ids={['cpu-loop', 'register-what', 'register-why', 'load-store']} />
+<Prompts ids={['register-why']} />
 
-## The warehouse problem
+## A ladder of caches
 
-Adding two registers takes the CPU almost no time. Fetching a number
-from main memory takes a very long time by comparison: on the CPUs
-Apple describes, a read that has to go all the way to main memory is
-about fifty times slower than the fast path<Cite id="apple-wwdc25-cpu" />.
-If every `load` paid that price, the CPU would spend nearly all of its
-time waiting. The fix is to keep copies of recently used data close by.
+A read that goes all the way to main memory is, on the chips Apple
+describes, about fifty times slower than the fast
+path<Cite id="apple-wwdc25-cpu" />, so CPUs keep copies of recently used
+data close by, in several caches.
 
-<Analogy extra title="a desk drawer and a warehouse">
-All your stock is in a warehouse across town, and a trip there takes an
-hour, so you keep a desk drawer for the things you are using right now.
-Every time you need something, you look in the drawer first; only if it
-is not there do you make the trip, and you put what you fetched in the
-drawer on your way back.
-<span slot="breaks">You choose what goes in your drawer; a cache
-decides on its own, from what the program has recently read, and you
-cannot ask it to keep anything. And the warehouse still holds the
-original: the drawer only ever holds copies.</span>
+<Analogy title="an office with three stores">
+You keep a desk drawer for what you are using now, a shelf for this
+week's work, and a storeroom down the hall for the month; the warehouse
+across town has everything. You look in the drawer first, then the
+shelf, then the storeroom, and only then make the trip across town.
+<span slot="breaks">The caches hold copies, so one value can be in all
+three at once; and each cache fills itself, from what the program has
+recently read, without being asked.</span>
 </Analogy>
 
-<Analogy extra title="milk in the fridge">
-You keep milk in the fridge rather than walking to the shop for every
-cup of tea. The fridge is small, so it cannot hold the whole shop, but
-it holds what you use most.
-<span slot="breaks">When the fridge is full you decide what to throw
-out; a cache throws out older copies by itself to make room for new
-ones, which is why data you have not touched for a while has to be
-fetched again.</span>
-</Analogy>
-
-<Figure takeaway="Registers are inside the CPU; the cache is small and close; memory is huge and far." caption="Where a value can be. Main memory holds everything; the cache holds copies of a few recently used values (here, the numbers at addresses 16 and 24); registers hold the handful of values the CPU is working on this instant.">
-  <CpuCacheMemory />
+<Figure takeaway="Each level is bigger and slower than the one above." caption="The memory ladder: rough 2021 figures for commodity hardware from Slotin’s Algorithms for Modern Hardware, on a log scale. Your machine will differ, but not by orders of magnitude.">
+  <LatencyLadder />
 </Figure>
 
 <Callout kind="definition">
 A **CPU cache** is a small, fast memory between the CPU and main memory
-that keeps copies of recently used data<Cite id="slotin-amh-hierarchy" />.
-When the CPU reads an address, it looks in the cache first; if a copy is
-there, the read is quick, and if not, the value is fetched from main
-memory and a copy is left in the cache for next time. The hardware does
-all of this by itself: no instruction asks for it.
+that keeps copies of recently used data; the hardware checks it on
+every read. Modern CPUs have a **cache hierarchy**: **L1**, smallest and
+fastest, inside each core; then **L2** and **L3**, bigger and slower;
+then main memory<Cite id="slotin-amh-hierarchy" />. **Latency** is how
+long one access takes: roughly 2 nanoseconds for L1 and 100 for main
+memory on those 2021 figures<Cite id="slotin-amh-hierarchy" />.
 </Callout>
-
-<Formal title="One read, with a cache">
-
-```text
-read(a):  a ∈ C  →  quick
-          a ∉ C  →  slow; then C ← C ∪ {a}
-```
-
-<span slot="read">To read address a: if a is in the cache C (∈ means
-"is in"), the read is quick. If it is not (∉), the read is slow, and
-afterwards the cache also holds a (C becomes C together with a). A real
-cache also has to throw something out when it is full; this rule leaves
-that out.</span>
-</Formal>
-
-<Examples of="cpu-cache">
-
-```js
-const a = xs[0]; // slow: from memory
-const b = xs[0]; // quick: a copy is
-                 // in the cache now
-```
-
-<Run id="toy-cache" />
-
-```js
-// 1,000 float64s are 8,000 bytes
-for (let k = 0; k < 2; k++) {
-  for (const v of xs) s += v;
-}
-// pass 2 reads cached copies
-```
-
-</Examples>
-
-In the first, the first read of `xs[0]` has to go out to memory, and the
-second, a moment later, finds the copy that the first one left behind.
-The runnable example is a toy cache built from a `Set` (from *Map and
-Set*): `read` reports where each value came from, so you can watch the
-repeated addresses become quick; try changing the list. The third is the
-realistic case: a thousand float64s take 8,000 bytes, which is less than
-even the smallest cache in the rough figures the next chapter
-uses<Cite id="slotin-amh-hierarchy" />, so after the first pass the
-whole array is sitting in the cache and the second pass never waits for
-main memory.
-
-<Prompts ids={['cache-why', 'cache-copy', 'cache-auto', 'second-read']} />
-
-<Callout kind="engine" label="Under the hood">
-Two jobs follow from this chapter, and this book does both. The first
-belongs to the engine's optimising compiler: turn JavaScript into
-instructions, and keep the busiest values in registers so that as few
-instructions as possible touch memory (choosing which values get the
-few registers turns out to be a real puzzle, which a later part of the
-book solves). The second is Viscosity's: arrange the data so that the
-reads which do go to memory find their copies in the cache as often as
-possible. The next chapter measures how much that matters.
-</Callout>
-
-## Your turn
-
-<Exercise id="tinyCpu" />
-
-<Exercise id="countTrips" />
-
-## What you learned
-
-- The **CPU** fetches, decodes and executes one instruction after
-  another, keeping its place in the program counter.
-- **Registers** are a few tiny storage slots inside the CPU; values are
-  loaded into them from memory, worked on, and stored back.
-- Main memory is far slower than the CPU, so a **CPU cache** keeps
-  copies of recently used data close by, and the hardware checks it
-  first on every read.
-
-
-{/* ── merge: from old chapter 51, Cache levels, latency and misses ── */}
-
-## The same loop, two speeds
-
-Here is a loop over the particles from the chapter on objects. It adds
-up every `mass`:
-
-```js
-let s = 0;
-for (let i = 0; i < ps.length; i++) {
-  s += ps[i].mass;
-}
-```
-
-This book's benchmark ran exactly this loop on a thousand particles and
-on a million. The work per particle is identical, one read and one add,
-yet the time *per particle* was not:
-
-<BenchBars suite="sum-one-field" n={1000} title="Sum every mass: 1,000 particles"
-  highlight={['aos']} layouts={['aos', 'soa']}
-  caption="With a thousand particles, every element is cheap." />
-
-<BenchBars suite="sum-one-field" n={1000000} title="Sum every mass: 1,000,000 particles"
-  highlight={['aos']} layouts={['aos', 'soa']}
-  caption="The same loop costs several times more per element when there are a million particles. Compare the array-of-objects bars." />
-
-Nothing about the code changed; only the amount of data did. The last
-chapter gave the CPU one cache, and that is enough to guess the reason;
-however, to measure it we need the real picture, which has several
-caches and a price for each.
-
-## A ladder of caches
-
-A cache can be fast or big, but not both: a small memory can sit close
-to the CPU and answer quickly, while a big one has to be further away.
-So rather than one cache, modern CPUs have several, each bigger and
-slower than the one before.
-
-<Analogy title="an office with three stores">
-You keep a desk drawer for what you are using right now, a shelf in
-your office for this week's work, and a storeroom down the hall for the
-rest of the month; the warehouse across town has everything. You look
-in the drawer first, then the shelf, then the storeroom, and only then
-make the trip across town.
-<span slot="breaks">In an office, each thing is in one place; the caches
-hold *copies*, and the same value can be in all three at once. And you
-fill your drawer by choice, while each cache fills itself.</span>
-</Analogy>
-
-<Analogy extra title="a library and its stacks">
-A book on your desk takes no time to open. One on the open shelves of
-the reading room takes a short walk; one in the basement stacks means
-waiting for a librarian; one from another branch takes days.
-<span slot="breaks">A library's slowest step is days; the CPU's slowest
-step, main memory, is around a ten-millionth of a second. It feels long
-only because the CPU does so much in that time.</span>
-</Analogy>
-
-<Figure takeaway="Each level is bigger and slower than the one above." caption="The memory ladder. Figures are rough values for commodity hardware in 2021 from Slotin’s Algorithms for Modern Hardware; your machine will differ, but not by orders of magnitude. The bars use a log scale, so each step to the right multiplies the time.">
-  <LatencyLadder />
-</Figure>
-
-The time a read takes has a name. Think of ordering a pizza: the
-**latency** is how long you wait between ordering and the doorbell,
-however many pizzas the shop can bake in an hour (that second number is
-a different idea, and a later chapter needs it).
-
-<Callout kind="definition">
-Modern CPUs have a **cache hierarchy**: **L1** is the smallest and
-fastest, and sits inside each core (a modern chip has several
-**cores**, each a complete processor of its own); **L2** and then **L3**
-are bigger and slower; **main memory** is far bigger and slower
-still<Cite id="slotin-amh-hierarchy" />. **Latency** is how long one
-access takes, from asking for the data to receiving it. On rough 2021
-figures, L1 answers in about 2 **nanoseconds** (billionths of a second)
-and main memory in about 100<Cite id="slotin-amh-hierarchy" />; on the chips Apple describes,
-main memory is about fifty times slower than the fast
-path<Cite id="apple-wwdc25-cpu" />. Exact figures differ from chip to
-chip; the gap of one to two orders of magnitude is what matters.
-</Callout>
-
-A billionth of a second is hard to feel, so the first example below
-stretches time.
-
-<Examples of="cache-hierarchy latency">
-
-<Run id="human-scale" />
-
-```js
-// three reads in a row, each waiting
-// for the last: all from main memory
-3 * 100; // 300 ns
-// the same three reads from L1
-3 * 2;   // 6 ns
-```
-
-```js
-// a million particles, 6 float64s each
-1000000 * 6 * 8; // 48,000,000 bytes
-// about 48 MB: far bigger than L3
-```
-
-</Examples>
-
-The runnable one pretends an L1 read takes one second and scales the
-other levels to match; main memory comes out at nearly a minute. The
-second does the sum for three reads that cannot overlap (each one needs
-the result of the one before): from main memory they cost about 300
-nanoseconds, from L1 about 6, fifty times less. The third is the
-benchmark's million particles: six 8-byte fields each come to 48
-megabytes, far more than the rough cache sizes in the ladder, so most of
-that data can only be in main memory.
-
-<Prompts ids={['hierarchy-order', 'latency-what', 'core-what']} />
-
-## Hits and misses
-
-Now follow one read through the ladder, then a second read of the same
-thing, then a read of something new:
 
 <CacheTrip client:visible />
 
-<Callout kind="definition">
-When the data the CPU needs is already in a cache, that is a **hit**.
-When it isn't, that is a **cache miss**, and the CPU must look further
-down the hierarchy, perhaps all the way to main memory, leaving copies
-in the caches on the way back. The first read of any data is a miss
-(unless the hardware fetched it early, which a later chapter explains). Misses cost far more than hits, so a few of them can
-dominate a loop's running time.
-</Callout>
+When the data is already in a cache, the read is a **hit**; when it is
+not, it is a **cache miss**, and the CPU looks further down, leaving
+copies on the way back.
+
+<Examples of="cpu-cache cache-hierarchy latency cache-miss">
+
+```js
+// 9 hits at 2 ns, 1 miss at 100 ns
+(9 * 2 + 1 * 100) / 10;  // 11.8 ns
+// 1,000,000 particles × 6 float64s
+1000000 * 6 * 8;  // 48 MB: beyond L3
+```
+
+</Examples>
+
+A 90% hit rate still costs nearly six times the all-hit 2 ns, because
+one miss costs as much as fifty hits. That solves the puzzle: a
+thousand particles (48 KB) fit in the caches, so nearly every read hits;
+a million come to 48 MB, so the loop keeps missing.
 
 <Formal title="The average cost of a read">
 
@@ -400,578 +130,157 @@ dominate a loop's running time.
 t̄ = h · t_hit + (1 − h) · t_miss
 ```
 
-<span slot="read">The average time of a read, t-bar, is the hit rate h
-(the fraction of reads that hit, between 0 and 1) times the cost of a
-hit, plus the fraction that miss, one minus h, times the cost of a
+<span slot="read">The average time of a read is the hit rate h times
+the cost of a hit, plus the miss rate, one minus h, times the cost of a
 miss.</span>
 </Formal>
 
-<Examples of="cache-miss">
+<Prompts ids={['hierarchy-order', 'few-misses', 'small-fits']} />
 
-```js
-// 9 hits at 2 ns, 1 miss at 100 ns
-const avg = (9 * 2 + 1 * 100) / 10;
-console.log(avg); // 11.8
-```
+## Memory moves in lines
 
-```js
-// a toy cache with 4 slots: address
-// a may only go in slot a % 4
-// reads: 0, 4, 0, 4
-// 0 % 4 = 0 and 4 % 4 = 0, so each
-// read throws the other out: 4 misses
-```
-
-```js
-// 1,000 particles: 48,000 bytes
-// fits in L2 on the ladder, so after
-// the first pass nearly every read hits
-// 1,000,000 particles: 48 MB
-// does not fit: reads keep missing
-```
-
-</Examples>
-
-The first is the formula with numbers in: a 90% hit rate sounds good,
-yet the average read costs 11.8 nanoseconds, nearly six times the 2 of
-all hits, because the one miss in ten costs as much as fifty hits. The
-second shows that a miss is not only about size: in a cache where each
-address has exactly one slot it may use, two addresses that want the
-same slot keep throwing each other out, so all four reads miss even
-though the cache is mostly empty (real caches soften this, but it can
-still happen). The third is this chapter's puzzle, solved: a thousand
-particles fit, so once the loop has run, nearly every read hits; a
-million do not, so the loop keeps missing, and every miss is a trip of
-around a hundred nanoseconds.
-
-<Prompts ids={['miss-what', 'hit-again', 'first-touch', 'few-misses', 'small-fits']} />
-
-<Callout kind="engine" label="Under the hood">
-Look again at the two charts. The struct-of-arrays bars stay short at
-both sizes, while the array-of-objects bars grow. With the objects, each
-`mass` sits inside its own object, surrounded by fields the loop never
-uses, and the loop must also read a pointer to reach it. A
-`Float64Array` of masses packs nothing but masses, so far fewer bytes
-pass through the caches for the same answer, and far fewer reads miss.
-Of the loops in this book's benchmark that only read particles, this is
-the one where struct of arrays beat array of objects by the most. The next chapter shows exactly how
-the hardware moves those bytes, and why packing pays off so well; it is
-the first real argument for Viscosity.
-</Callout>
-
-## Your turn
-
-<Exercise id="toyCache" />
-
-<Exercise id="avgTime" />
-
-## What you learned
-
-- The **cache hierarchy**: registers, then **L1**, **L2** and **L3**,
-  then main memory, each bigger and slower than the last.
-- **Latency** is how long one access takes: a few nanoseconds for L1,
-  around a hundred for main memory on rough 2021 figures.
-- A **hit** finds the data in a cache; a **cache miss** sends the CPU
-  further down. A handful of misses can dominate a loop, as the average
-  `h · t_hit + (1 − h) · t_miss` shows.
-- When data outgrows the caches, the same loop gets slower per element.
-
-
-{/* ── merge: from old chapter 51, Cache lines and locality ── */}
-
-## Fewer reads, same time?
-
-Here is a strange experiment. Make a big `Float64Array`, then add 1 to
-every element; then do it again, but only to every 8th element:
-
-```js
-for (let i = 0; i < n; i += 1) xs[i] += 1;
-for (let i = 0; i < n; i += 8) xs[i] += 1;
-```
-
-The second loop does one eighth of the work, so you would expect it to
-take about one eighth of the time. Try it:
-
-<Run id="every-eighth" />
-
-`touch(step)` adds 1 to every `step`-th element and returns how many
-milliseconds that took (`performance.now()` is a clock in
-milliseconds); each loop runs once first, to warm up, and then is timed.
-If your machine behaves like most, the second loop is nowhere near
-eight times faster. Something other than the number of reads is
-setting the pace.
-
-## Memory moves in blocks
-
-<Analogy title="a box of screws">
-The warehouse from the last two chapters does not ship single screws.
-Ask for one and it sends the whole box the screw came in; if the next
-thing you need is in that box too, it is already on your desk, and if
-not, the rest of the box was carried for nothing.
-<span slot="breaks">A box is packed with whatever the warehouse chose;
-a cache line is always the same fixed run of neighbouring bytes, decided
-by the address alone. And you can open a box and take one screw out,
-while the cache always stores the whole line.</span>
-</Analogy>
-
-<Analogy extra title="photocopying a page">
-To keep one sentence from a library book, you photocopy the whole page
-it is on: the copier only does pages. If the next sentence you want is
-on the same page, you already have it.
-<span slot="breaks">You choose which page to copy; the line is chosen by
-the address you read. And copying a page is quick, while fetching a line
-from main memory is the slowest thing the CPU does.</span>
-</Analogy>
-
-The box, or page, is called a **cache line**. On most processors it is
-64 bytes<Cite id="slotin-amh-cache-lines" />, every level of the ladder
-moves data in blocks of that size<Cite id="slotin-amh-hierarchy" />,
-and Linux assumes 64-byte lines for 64-bit x86
-processors<Cite id="linux-x86-kconfig-cpu" />. Some chips use bigger lines;
-Apple describes its caches as using 64- or 128-byte
-lines<Cite id="apple-wwdc25-cpu" />. This book uses 64.
-
-Eight `float64`s fill one line, so every eighth element of `xs` is in a
-*different* line, and the second loop still has to fetch every line of
-the array: the same lines, the same trips to memory, nearly the same
-time (an experiment in Slotin's book finds the same thing for every
-16th 4-byte integer<Cite id="slotin-amh-cache-lines" />).
-
-<Callout kind="definition">
-A **cache line** is the block that caches move between levels: 64 bytes
-on most mainstream processors. Asking for one byte fetches its whole
-line<Cite id="slotin-amh-cache-lines" />. Memory is divided into lines
-at fixed boundaries, so line 0 is bytes 0 to 63, line 1 is bytes 64 to
-127, and so on.
-</Callout>
-
-<Formal title="Which line, and where in it">
-
-```text
-line(a)   = ⌊ a / 64 ⌋
-offset(a) = a mod 64
-```
-
-<span slot="read">The line of address a is a divided by 64, rounded
-down (that is what the ⌊ ⌋ brackets mean). Its offset, how far into the
-line it is, is the remainder after dividing by 64.</span>
-</Formal>
+Caches do not move single values. They move a **cache line**, a fixed
+block of neighbouring bytes: 64 bytes on most mainstream
+processors<Cite id="slotin-amh-cache-lines" />, the size Linux assumes
+for 64-bit x86<Cite id="linux-x86-kconfig-cpu" /> (some chips, such as
+Apple's, also use 128<Cite id="apple-wwdc25-cpu" />; this book uses 64).
+Asking for one byte fetches its whole line.
 
 <Examples of="cache-line">
 
 ```js
-Math.floor(200 / 64); // 3
-200 % 64;             // 8: byte 8 of line 3
-```
-
-```js
-Math.floor(63 / 64); // 0
-Math.floor(64 / 64); // 1: a new line
-```
-
-```js
-// 64 is 2 ** 6, so the hardware can
-// split an address with bit operations
-const a = 200;
-a >> 6; // 3, the line
-a & 63; // 8, the offset
+Math.floor(200 / 64); // 3: line 3
+200 % 64;             // 8: its byte 8
+200 >> 6;             // 3, by bits
 ```
 
 </Examples>
 
-The first is the formula with numbers in: address 200 is in line 3
-(which covers 192 to 255), 8 bytes from its start. The second is the
-boundary: 63 is the last byte of line 0 and 64 is the first of line 1,
-so two neighbouring bytes can still be in different lines. The third is
-how the hardware really does it, using the bit operations from *Bits
-and bytes*: because 64 is 2⁶, shifting right by 6 divides by 64, and
-`& 63` keeps the low 6 bits, which are the remainder. No division is
-needed at all.
+Because 64 is 2⁶, the hardware splits an address with a shift instead
+of a division (*Bits and bytes*). One consequence surprises everyone
+once: eight float64s fill a line, so touching every 8th element of a big
+`Float64Array` still fetches every line, and is nowhere near eight
+times faster<Cite id="slotin-amh-cache-lines" />.
 
-<Prompts ids={['line-what', 'line-of', 'line-offset', 'eighth-why']} />
+<More title="Try it: every element against every 8th">
 
-## Counting lines, not reads
+`touch(step)` adds 1 to every `step`-th element of a 64 MB array and
+returns the milliseconds taken, after a warm-up run of each.
 
-Now take the loop from the last chapter, summing every `mass`, and
-count lines instead of reads. The objects here use a toy layout, one per
-line, to keep the picture simple:
+<Run id="every-eighth" />
 
-<LineSteps client:visible />
+</More>
 
-The objects need a new line for every particle, plus the lines holding
-the pointers; the `Float64Array` needs one line per eight particles.
-That is the right way to think about the cost of memory: count the
-lines a loop touches, not the values it reads<Cite id="slotin-amh-cache-lines" />.
-A loop that uses all of each line it fetches has good **spatial
-locality**.
+<Prompts ids={['line-what', 'eighth-why']} />
 
-<Callout kind="definition">
-**Spatial locality** means using data *near* data you just used, so it
-arrives in lines you have already fetched<Cite id="slotin-amh-locality" />.
-A loop over a contiguous typed array, in order, has as much spatial
-locality as a loop can have: every byte of every line it fetches is
-used. (There is a second kind, using the *same* data again soon, which
-the next chapter takes up.)
-</Callout>
+## Stride and spatial locality
 
-<Prompts ids={['count-lines', 'spatial-what']} />
-
-## Stride
-
-The distance in memory from one read to the next has a name, the loop's
-**stride**, and it decides how many reads share each line.
-
-<Analogy extra title="reading every sixth word">
-If you read only every sixth word of a book, you still have to turn
-every page, because every page has some of the words you want. Read
-every three-hundredth word instead, and you skip whole pages.
-<span slot="breaks">Turning a page costs almost nothing; fetching a line
-is the expensive part, and the words you skip on each page are bytes
-carried through the caches for no use.</span>
-</Analogy>
-
-Step through three layouts of the same masses:
+So count the lines a loop touches, not the values it reads; that
+depends on the distance from one read to the next.
 
 <StrideSteps client:visible />
 
 <Callout kind="definition">
 The **stride** of a loop is the distance in memory between consecutive
-accesses. Reading one field of packed records with `k` fields of 8
-bytes, the stride is `8 × k` bytes. When the stride is small, many reads
-share a line; once it reaches 64 bytes, every read pays for a whole line
-of its own.
+accesses. Small strides share lines; from 64 bytes up, every read pays
+for a line of its own. **Spatial locality** is using data near data you
+just used, so it arrives in lines already
+fetched<Cite id="slotin-amh-locality" />; a loop along a typed array
+uses every byte of every line.
 </Callout>
 
-<Formal title="Lines touched by n reads with stride s">
-
-```text
-s < 64:  about ⌈ n · s / 64 ⌉ lines
-s ≥ 64:  n lines
-```
-
-<span slot="read">With a stride s smaller than a line, n reads spread
-over about n times s bytes, which is n times s divided by 64 lines,
-rounded up (⌈ ⌉). With a stride of a line or more, every read has a line
-to itself, so n reads touch n lines.</span>
-</Formal>
-
-<Examples of="spatial-locality stride">
+<Examples of="stride spatial-locality">
 
 ```js
-// Float64Array of masses: stride 8
-for (let i = 0; i < n; i++) s += mass[i];
-// 8 reads per line
-```
-
-```js
-// packed: 6 fields per particle,
-// mass is field 4: stride 6 * 8 = 48
-for (let i = 0; i < n; i++) {
-  s += buf[i * 6 + 4];
-}
-```
-
-```js
-// a grid of w columns, stored row by
-// row: g[r * w + c]
-// along a row: stride 8, fast
-// down a column: stride w * 8, slow
-```
-
-</Examples>
-
-The first is a plain column of masses: consecutive elements, 8 bytes
-apart, so eight reads share each line and nothing fetched is wasted. The
-second is the packed buffer from the chapter on memory, with six fields
-per particle in one `Float64Array`: reading only the mass jumps 6
-elements, 48 bytes, each time, so eight reads touch six lines and most
-of every line is other fields. The third is realistic and very common:
-images, spreadsheets and game maps are grids stored one row after
-another, so element `(r, c)` is at index `r * w + c`. Walking along a
-row is stride 8; walking down a column jumps a whole row each step, and
-once a row is 64 bytes or more (eight columns of float64s), every read
-of the column costs its own line. Here are the two walks side by side:
-
-```js
-// along rows: stride 8
-for (let r = 0; r < h; r++)
+// grid of w columns, row by row
+for (let r = 0; r < h; r++)  // stride 8
   for (let c = 0; c < w; c++)
     s += g[r * w + c];
-// down columns: stride w * 8
-for (let c = 0; c < w; c++)
+for (let c = 0; c < w; c++)  // stride 8w
   for (let r = 0; r < h; r++)
     s += g[r * w + c];
 ```
 
-Both add up exactly the same numbers; only the order of the two loops
-differs. For a big grid, the first touches each line once, while the
-second may fetch every line again for each column, since by the time it
-comes back to a line the cache has probably thrown it out.
+</Examples>
 
-<Prompts ids={['stride-what', 'stride-64', 'column-walk']} />
+Images and maps are grids stored row after row, so cell `(r, c)` is at
+`r * w + c`. Both loops add the same numbers; the first has stride 8,
+eight reads to a line, while the second jumps a whole row each step, so
+on a big grid every read costs its own line.
 
-<Callout kind="engine" label="Under the hood">
-This is the heart of Viscosity. Your code says `ps[i].mass`, and as far
-as the hardware is concerned that means "fetch the line holding this
-particle, use 8 bytes of it". Viscosity's compiler rewrites the loop to
-read `mass[i]` from a `Float64Array` instead: stride 8, every byte used.
-Whether that is worth it depends on the loop; one that reads *every*
-field of each particle uses whole lines either way, so the benefit
-shrinks, and the cost model in a later part of the book has to tell
-those cases apart. The next chapter measures the three layouts from the
-diagram.
-</Callout>
+<Prompts ids={['stride-64', 'column-walk']} />
 
-## Your turn
-
-<Exercise id="countLines" />
-
-<Exercise id="fieldLines" />
-
-## What you learned
-
-- Memory moves in **cache lines**: 64-byte blocks on most mainstream
-  processors. The line of address `a` is `⌊a / 64⌋` (or `a >> 6`).
-- Count lines touched, not values read.
-- **Spatial locality** is using data near what you just used; a loop
-  over a typed array, in order, uses every byte it fetches.
-- **Stride** is the distance between consecutive accesses. Small strides
-  share lines; strides of 64 bytes or more pay for a line on every read.
-
-
-{/* ── merge: from old chapter 51, Reuse and bandwidth ── */}
-
-## Same work, twice the fetching?
-
-You need two numbers from a big array: the sum of its values, and the
-sum of their squares. Here are two ways to write it:
-
-```js
-// two passes
-for (const v of xs) a += v;
-for (const v of xs) b += v * v;
-
-// one pass
-for (const v of xs) {
-  a += v;
-  b += v * v;
-}
-```
-
-Both do the same additions and multiplications, and both read every
-element with stride 8, the best spatial locality there is. Yet on an
-array too big for the caches, the second can be much faster. The
-difference is not *where* the data is but *when* it is used again; and
-once the loop is as good as it can be on both counts, a second limit
-takes over: how many bytes per second the memory can deliver.
-
-## Using it again while it is close
-
-<Analogy title="chopping onions once">
-If three of tonight's dishes need chopped onion, you chop it all while
-the board, the knife and the onions are out, rather than putting
-everything away after the first dish and getting it all out again for
-the second.
-<span slot="breaks">You decide what to put away; the cache puts things
-away by itself, to make room, and it cannot know you will want them
-again later. You have to arrange the code so that "again" comes soon.</span>
-</Analogy>
-
-<Analogy extra title="re-reading the open page">
-Checking a sentence on the page you have open costs a glance. Checking
-it after you have returned the book to the library means fetching the
-book again.
-<span slot="breaks">A book stays returned until you fetch it; a line
-that was thrown out of L1 may still be in L2 or L3, so "fetching it
-again" is sometimes only a short trip down the ladder.</span>
-</Analogy>
+## Reuse, and how fast bytes can flow
 
 <FuseSteps client:visible />
 
 <Callout kind="definition">
-**Temporal locality** means using the *same* data again soon, while it
-is still in a cache<Cite id="slotin-amh-locality" />. Whether "soon" is
-soon enough depends on how much other data is touched in between: if
-that is more than the cache holds, the data has been thrown out and must
-be fetched again.
+**Temporal locality** is using the *same* data again soon, while it is
+still in a cache<Cite id="slotin-amh-locality" />; "soon" means before
+more data than the cache holds has passed through. **Bandwidth** is how
+many bytes per second can flow from memory to the CPU when many
+accesses overlap: roughly ten gigabytes per second from main memory on
+the 2021 figures<Cite id="slotin-amh-hierarchy" />. A loop streaming
+through a big array cannot finish faster than its bytes can flow.
 </Callout>
 
-<Formal title="When a reuse hits (in the toy cache)">
-
-```text
-reuse of line ℓ hits  ⟺  d(ℓ) < C
-```
-
-<span slot="read">In the toy cache, which holds C lines and throws out
-the one used longest ago, using line ℓ again is a hit exactly when d,
-the number of *other* lines touched since ℓ was last used, is smaller
-than C. In the two-pass loop, d is 5 and C is 2, so every reuse
-misses.</span>
-</Formal>
-
-<Examples of="temporal-locality">
+<Examples of="temporal-locality bandwidth">
 
 ```js
-for (let i = 0; i < n; i++) {
-  const v = xs[i]; // read once
-  a += v;
-  b += v * v;      // used again
-}
+for (const v of xs) { a += v; b += v * v; }
+// a million float64s at ~10 GB/s:
+1000000 * 8 / 10e9;   // 0.0008 s
+// mass from 6-field records:
+1000000 * 48 / 10e9;  // 0.0048 s
 ```
 
-```js
-// recomputing reads xs again later:
-const mean = sum(xs) / n;
-let ss = 0;
-for (const v of xs) ss += (v - mean) ** 2;
-```
+</Examples>
+
+The fused loop uses each value twice while its line is cached, where
+two loops over a big array fetch it twice. The sums are floors: a
+million masses in a `Float64Array` take at least 0.8 ms to stream, and
+inside 48-byte records, which drag five unused fields along, six times
+as long.
+
+<More title="Try it: two passes against one">
 
 <Run id="fuse-loops" />
 
-</Examples>
+</More>
 
-The first is the smallest reuse of all: one value read into `v` and
-used twice in the same turn of the loop, where it is certainly still in
-a register. The second is the common case where fusing is *not*
-possible: the spread of the values needs their mean, and the mean needs
-a whole pass, so a big array is read twice whatever you do; the second
-pass will miss on every line. The runnable one times the two-pass and
-fused versions of the sums on a 64-megabyte array; on most machines the
-fused loop is clearly faster, and you can shrink `n` until both fit in
-the caches and watch the gap close.
-
-<Prompts ids={['temporal-what', 'fuse-why', 'reuse-soon']} />
-
-## How fast can bytes flow?
-
-So far every cost has been a wait: how long until one line arrives.
-However, a loop that streams through a big array asks for line after
-line, and the CPU can have many requests on the way at once (the next
-chapter shows how), so for such a loop the limit is a different number.
-
-<Analogy extra title="a motorway">
-How long one car takes to drive from one city to the next is one
-number; how many cars per hour the motorway can carry is another. Adding
-lanes does not make any single journey shorter, but it does let more
-cars arrive each hour.
-<span slot="breaks">Cars arrive one by one, whenever they set off; memory
-delivers whole 64-byte lines, and only when the CPU asks for them (or
-something asks on its behalf).</span>
-</Analogy>
-
-<Analogy extra title="a hosepipe">
-The time before water first comes out of the far end depends on the
-length of the hose; how much comes out each second depends on its
-width.
-<span slot="breaks">Water is useful whatever drop it is; a fetched line
-is often mostly bytes the loop does not want, and those take up the
-width just the same.</span>
-</Analogy>
-
-<Callout kind="definition">
-**Bandwidth** is how many bytes per second can flow from memory to the
-CPU. **Latency** is how long one access takes; bandwidth is how much can
-arrive per second when many accesses overlap. A rough 2021 table puts
-main memory at around ten gigabytes per second, and L1 several times
-higher<Cite id="slotin-amh-hierarchy" />. A loop that streams through
-a big array cannot finish faster than its bytes can flow, and every
-unused byte in a fetched line takes up some of that flow.
-</Callout>
-
-<Formal title="The streaming limit">
-
-```text
-time ≥ bytes fetched / B
-useful share = bytes used / bytes fetched
-```
-
-<span slot="read">A loop takes at least as long as the bytes it fetches
-divided by the bandwidth B. The useful share is the part of those bytes
-that the loop actually uses; the rest is bandwidth spent for
-nothing.</span>
-</Formal>
-
-<Examples of="bandwidth">
-
-```js
-// a million float64s, read once,
-// at about 10 GB per second
-1000000 * 8 / 10e9; // 0.0008 s
-```
-
-```js
-// the same masses from a packed
-// buffer: six times the bytes
-1000000 * 48 / 10e9; // 0.0048 s
-```
-
-```js
-// a 1920 × 1080 image, 4 bytes a pixel
-1920 * 1080 * 4; // 8,294,400 bytes
-// about 0.8 ms to stream at 10 GB/s
-```
-
-</Examples>
-
-The first is the floor for summing a million masses held in a
-`Float64Array`: 8 million bytes at ten billion bytes a second (`10e9`
-is 10 × 10⁹) is 0.8 milliseconds, however clever the code. The second
-reads the same million masses from the packed buffer, where each mass
-drags the line it shares with five other fields, so the stream is 48
-bytes per mass and the floor is six times higher. The third is a
-realistic check on anything that touches every pixel of a full-HD
-image: just moving the bytes once costs most of a millisecond, before
-any work is done on them.
-
-<Figure takeaway="Only the coloured part of each bar is useful; the rest uses bandwidth for nothing." caption="Bytes fetched to sum the masses of eight particles, with the toy layouts from the line-counting diagram of the last chapter. Every layout uses the same 64 bytes of masses; they differ in how much else comes along.">
-  <UsefulBytes />
-</Figure>
-
-<Prompts ids={['bandwidth-what', 'latency-vs-bandwidth', 'stream-floor', 'useful-share']} />
+<Prompts ids={['fuse-why', 'latency-vs-bandwidth']} />
 
 ## Three layouts, measured
 
-This book's benchmark measured exactly these three layouts:
-
 <BenchBars suite="sum-one-field" n={100000} title="Sum every mass: three layouts"
   highlight={['soa']} layouts={['aos', 'aos-packed', 'soa']}
-  caption="Same answer, three strides. Objects are slowest; the packed buffer (stride 48) is in between; the struct of arrays (stride 8) is fastest." />
+  caption="Same answer, three strides: objects slowest, the packed buffer (stride 48) in between, the struct of arrays (stride 8) fastest." />
 
-The order matches the bytes fetched. The packed buffer removes the
-objects and pointers, but it still drags five unused fields through the
-caches for every mass; the struct of arrays fetches nothing it does not
-use. Now measure it on the device you are reading this on: pick "sum
-every mass" to repeat the chart above, or the particle update loop,
-`x += vx`.
+The order matches the bytes fetched. Viscosity's rewrite from
+`ps[i].mass` to `mass[i]` cuts the bytes moved to the bytes used (a loop
+that reads every field gains less). Measure it on your own device:
 
 <LiveBench client:visible />
-
-<Prompts ids={['soa-vs-packed']} />
-
-<Callout kind="engine" label="Under the hood">
-Viscosity's rewrite from `ps[i].mass` to `mass[i]` is a bandwidth
-argument as much as a latency one: it cuts the bytes a loop must move
-down to the bytes it uses. It also explains when the rewrite is *not*
-worth much. A loop that reads every field of every particle uses whole
-lines in any layout, so its useful share is already high, and the
-difference between layouts shrinks; a cost model has to know which
-fields each loop reads before it can say which layout wins.
-</Callout>
 
 ## Your turn
 
 <Exercise id="countFetches" />
 
-<Exercise id="usefulShare" />
+<Exercise id="tinyCpu" />
+
+<Exercise id="toyCache" />
+
+<Exercise id="countLines" />
 
 ## What you learned
 
-- **Temporal locality** is using the same data again soon, before other
-  data pushes it out of the cache; fusing loops that read the same array
-  is the classic way to get it.
-- **Bandwidth** is how many bytes per second can flow; latency is how
-  long one access takes. A streaming loop is limited by bandwidth.
-- Every unused byte in a fetched line wastes bandwidth, which is why a
-  `Float64Array` of one field beats a packed buffer of six.
+- The **CPU** works in **registers**; the **cache hierarchy** trades
+  size for **latency**, and a few **cache misses** dominate.
+- Memory moves in 64-byte **cache lines**: count lines, not reads.
+- **Stride** sets **spatial locality**; **temporal locality** is reuse
+  while cached; **bandwidth** is a streaming loop's floor.
+
+Next: *Prefetching, pointer chasing, branches and SIMD*, where the CPU
+starts guessing ahead.
 
 <Quiz />

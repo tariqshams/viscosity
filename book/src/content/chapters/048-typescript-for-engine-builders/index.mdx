@@ -3,13 +3,205 @@ n: 48
 day: 1
 part: II
 title: 'TypeScript for engine builders'
-tagline: 'TODO: one sentence on what this chapter gives the reader.'
+tagline: 'An engine is a few dozen kinds of thing passed from pass to pass, and the bugs you fear are a forgotten kind and two ids mixed up. Four TypeScript tools, used together, make the checker catch both before anything runs.'
 objectives:
-  - TODO: first objective.
-  - TODO: second objective.
+  - Write a tagged union with an exhaustive switch, and read the error the checker gives when a case is missing.
+  - Write a generic function with a constraint, and say what the constraint lets the body do.
+  - Use branded types so that two kinds of numeric id cannot be swapped, at no run-time cost.
+  - Choose the strict compiler options an engine project should turn on, and say what each one catches.
 introduces: []
-uses: []
-sources: []
+uses: [typescript, type-annotation, type-checking, type-erasure, union-type, narrowing, discriminated-union, exhaustiveness, generic, generic-constraint, generic-inference, branded-type, tsconfig, strict-mode-ts, tree, recursion, throw, function, return, object, property, array, undefined]
+sources: [ts-narrowing, ts-generics, ts-type-compatibility, ts-option-strict, ts-option-nouncheckedindexedaccess, ts-tsconfig-json]
 ---
+import NarrowSteps from '../../../components/diagrams/ch048/NarrowSteps';
+import BrandErasure from '../../../components/diagrams/ch048/BrandErasure';
 
+## What goes wrong in an engine
 
+A compiler is a set of passes that hand each other data: tokens become
+a tree, the tree becomes instructions, and the instructions are
+rewritten and run. Each is a family of a few dozen kinds, and the ids
+that connect them (node 12, slot 3) are all plain numbers. So the two
+bugs that hurt most are a pass that forgets one kind, usually the one
+added last week, and a function handed a slot number where it wanted a
+node number, which runs happily and goes wrong three passes later.
+TypeScript catches both before anything runs, with four tools from the
+Prelude; each section names the Prelude chapter with the full version.
+
+<Analogy title="a pre-flight checklist">
+A pilot does not trust memory; the checklist names every item, and the
+plane does not leave until each is ticked. Add an item, and every crew
+must tick it from then on, whether or not they know why it was added.
+<span slot="breaks">The checker works only before the program runs, and
+its types are then erased, so data arriving from outside (a file, a
+network) is not checked unless your own code checks it.</span>
+</Analogy>
+
+## Tagged unions and the `never` check
+
+Every tree in the book is a **tagged union** (*Tagged unions: the shape
+of every syntax tree*): one object type per kind, each with a literal
+`kind` field, so testing `kind` narrows the value to one variant; a
+`never` parameter then makes the checker prove every kind is handled.
+
+<Examples of="discriminated-union exhaustiveness">
+
+```ts
+type Expr =
+  | { kind: 'num'; value: number }
+  | { kind: 'neg'; arg: Expr }
+  | { kind: 'add'; left: Expr;
+      right: Expr };
+
+function unreachable(x: never): never {
+  throw new Error('unhandled ' + x);
+}
+
+function evaluate(e: Expr): number {
+  switch (e.kind) {
+    case 'num': return e.value;
+    case 'neg': return -evaluate(e.arg);
+    case 'add': return evaluate(e.left)
+                     + evaluate(e.right);
+    default: return unreachable(e);
+  }
+}
+```
+
+</Examples>
+
+`Expr` has three variants, two of which hold smaller expressions, which
+makes it a tree. `unreachable` accepts only `never`, the type with no
+values, so calling it is legal only where every variant has been ruled
+out; its `throw` stays, because types are erased and bad data can still
+arrive at run time. Each `case` narrows `e` (so `e.value` is allowed in
+the first), and `default` sees `never`:
+
+<NarrowSteps client:visible />
+
+Add `{ kind: 'mul'; ... }` to `Expr` and forget its case, and TypeScript
+5.9 stops at the `default` with *Argument of type '\{ kind: "mul"; ... \}'
+is not assignable to parameter of type 'never'*, naming the missing
+case<Cite id="ts-narrowing" />.
+
+<Prompts ids={['never-values', 'never-error', 'keep-throw-48']} />
+
+## Generics, with a constraint
+
+A **generic** function has a type parameter, a blank that each call
+fills in, usually by inference from the arguments (*Generics: types with
+blanks*); a **constraint**, `T extends ...`, says what every filling
+must have, which is what lets the body use it (*TypeScript III:
+generics in depth*)<Cite id="ts-generics" />.
+
+<Examples of="generic generic-constraint">
+
+```ts
+type Result<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: string };
+
+function where<T extends { line: number }>(
+  n: T, msg: string,
+): Result<T> {
+  return n.line > 0
+    ? { ok: true, value: n }
+    : { ok: false, error: msg };
+}
+```
+
+</Examples>
+
+`Result<T>` is a tagged union with a blank in it, tagged by the boolean
+`ok`: a way to return a value or an error without throwing. `where`
+takes any node with a numeric `line`; the constraint is what lets the
+body read `n.line`, and because the result is `Result<T>`, a caller
+that passes a call node gets a call node back, with every other field
+still typed.
+
+<Prompts ids={['constraint-why', 'generic-keeps']} />
+
+## Branded ids
+
+TypeScript compares object types by their shape, not their name, so two
+aliases of `number` are interchangeable (*Branded types: same shape,
+different meaning*)<Cite id="ts-type-compatibility" />. A **brand** adds
+a property no real value has, which makes the two types different to
+the checker and changes nothing at run time.
+
+<Examples of="branded-type">
+
+```ts
+type NodeId = number &
+  { readonly __brand: 'NodeId' };
+type SlotId = number &
+  { readonly __brand: 'SlotId' };
+
+const nodeId = (n: number) => n as NodeId;
+declare function slotOf(s: SlotId): number;
+
+const n = nodeId(3);
+slotOf(n);
+// error: 'NodeId' is not assignable
+// to parameter of type 'SlotId'
+```
+
+</Examples>
+
+Each id is `number` intersected with an object whose `__brand` is a
+different literal, so neither is assignable to the other. `nodeId` is
+the one place that makes a `NodeId`, with an `as` cast (no real number
+has a `__brand`); keep such makers few. At run time `n` is the plain
+number 3, since the brand is erased with every other type.
+
+<Figure takeaway="Different types while checking; the same number when running." caption="NodeId (blue) and SlotId (teal) are distinct to the checker, so passing one where the other is wanted is an error (red). After erasure both are plain numbers.">
+  <BrandErasure />
+</Figure>
+
+<Prompts ids={['brand-cost', 'brand-why']} />
+
+## Strict, and a little stricter
+
+All of this needs a strict checker. `"strict": true` in `tsconfig.json`
+turns on a family of checks, among them that `null` and `undefined` are
+separate types and that no parameter silently becomes `any` (*The
+toolchain: tsconfig and modules*)<Cite id="ts-option-strict" />. Engine
+code indexes arrays all day, so one more option is worth it.
+
+<Examples of="strict-mode-ts tsconfig">
+
+```ts
+// tsconfig.json: "strict": true and
+// "noUncheckedIndexedAccess": true
+const regs: number[] = [1, 2];
+const r = regs[5];
+r.toFixed();
+// error: 'r' is possibly 'undefined'.
+```
+
+</Examples>
+
+**noUncheckedIndexedAccess** gives every read by index the type
+`T | undefined`, since an index can be out of
+range<Cite id="ts-option-nouncheckedindexedaccess" />. Here `regs[5]`
+really is `undefined`, and the option makes you handle that; without it, `r` is typed `number` and the program fails only when
+it runs.
+
+<Prompts ids={['strict-null', 'unchecked-index']} />
+
+## Your turn
+
+<Exercise id="allResults" />
+
+## What you learned
+
+- A **tagged union** plus a `never` check proves every kind is handled.
+- A **generic** keeps the caller's type; a **constraint** lets the body
+  use a field of it.
+- **Branded ids** stop two kinds of number being swapped, at no cost.
+- `strict` and `noUncheckedIndexedAccess` cover nulls and bad indexes.
+
+Next: *The JavaScript runtime you build on*, the run-time half of the
+refresher.
+
+<Quiz />

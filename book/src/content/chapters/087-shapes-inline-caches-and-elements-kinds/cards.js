@@ -1,137 +1,45 @@
-// Chapter 65 cards: recall prompts, examples, exercises and quiz.
+// Chapter 87 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 87, 87, 87, 87.
 
 export const prompts = {
   'shape-what': {
-    q: 'What does a **shape** (a V8 map) describe?',
-    a: 'An object’s layout: which named properties it has, in what order, and where each value is stored.',
-  },
-  'shape-names': {
-    q: 'In V8, where are an object’s property *names* stored?',
-    a: 'In its map’s descriptor array, shared by every object with that map. The object stores only the values.',
-  },
-  'drip-vs-v8': {
-    q: 'Why do 10,000 Drip particles cost more memory for names than 10,000 V8 objects with one shape?',
-    a: 'Each Drip instance has its own field hash table holding the names; V8 objects share one map that holds them once.',
-  },
-  'tree-what': {
-    q: 'What is a **transition tree**?',
-    a: 'The tree of shapes linked by “add property” edges, starting from the empty shape. Adding a property follows an existing edge or creates a new shape.',
+    q: 'What does a **shape** (a V8 map) describe, and what does an object with that shape store itself?',
+    a: 'The layout: which named properties exist, in what order, and where each value is stored. The object stores only its values.',
   },
   'order-matters': {
-    q: 'Why do `{ x: 1, y: 2 }` and `{ y: 2, x: 1 }` have different shapes?',
+    q: 'In V8, why do `{ x: 1, y: 2 }` and `{ y: 2, x: 1 }` have different shapes?',
     a: 'Their properties were added in a different order, so they took different branches of the transition tree.',
   },
   'literal-vs-built': {
-    q: 'Why did `{ x: 1, y: 2 }` and `{}` plus `d.x = 1; d.y = 2` get different maps in the chapter’s run?',
-    a: 'They had different layouts: the literal had two in-object slots, the empty object had four.',
-  },
-  'mixed-order': {
-    q: 'Half the particles are built `{ x, vx }` and half `{ vx, x }`. How many maps do they have?',
-    a: 'Two: the two orders walk two branches of the transition tree, so a loop over them sees two shapes.',
-  },
-  'back-pointer': {
-    q: 'What does the **back pointer** in a V8 map point to?',
-    a: 'The map it came from: its parent in the transition tree, one property fewer.',
+    q: 'In V8 12.4, `{ x: 1, y: 2 }` and `d = {}; d.x = 1; d.y = 2` add the same keys in the same order. Why do they still get different maps?',
+    a: 'They start from different initial maps with different in-object room: the literal is sized for exactly two properties, while `{}` gets room for four.',
   },
   'ic-what': {
     q: 'What does an **inline cache** remember?',
-    a: 'At one property access in the code: the shapes seen there, each with how to read the property for that shape (for example, “load slot 0”).',
-  },
-  'ic-hit': {
-    q: 'What does a hit in an inline cache cost?',
-    a: 'A check of the object’s shape plus the remembered load: no search through the shape’s descriptors.',
-  },
-  'ic-miss': {
-    q: 'What happens on an inline cache miss?',
-    a: 'The full, slow property lookup runs, and the cache records the new shape and its handler.',
-  },
-  'ic-per-site': {
-    q: 'Why does `o.x` in `getX` have its own cache, separate from `p.x` in another function?',
-    a: 'Each access in the code has its own feedback slot (its own IC), because different places usually see different shapes.',
-  },
-  'mono-what': {
-    q: 'What does **monomorphic** mean for an inline cache?',
-    a: 'Only one shape has been seen at that access.',
-  },
-  'maglev-mono': {
-    q: 'What can Maglev do with a monomorphic `o.x`?',
-    a: 'Emit one check that `o` still has that shape, then a plain load at a fixed offset, and skip later checks of the same object.',
-  },
-  'data-driven': {
-    q: 'Since Ignition, where do V8’s inline caches keep the shapes they have seen?',
-    a: 'In the function’s feedback vector, as data separate from the bytecode, rather than patched into machine code.',
-  },
-  'ic-shared-slot': {
-    q: 'In V8 12.4, `p.x * p.x` contains two loads of `p.x`. How many inline caches do they use?',
-    a: 'One: the bytecode gives both loads the same feedback slot, so `--log-ic` shows a single line for `x`.',
+    a: 'At one property access in the code: the shapes seen there, each with a handler saying how to do the access for that shape (for example, “load field 0”).',
   },
   'poly-what': {
-    q: 'What does **polymorphic** mean, and what was its limit in the V8 inside Node 22?',
-    a: 'Several shapes have been seen at one site; up to four (max_valid_polymorphic_map_count defaults to 4).',
+    q: 'What does **polymorphic** mean for an inline cache, and how many shapes may a polymorphic site keep in V8 12.4 (Node 22)?',
+    a: 'It has seen several shapes and keeps an entry for each; up to four (`--max-valid-polymorphic-map-count` defaults to 4).',
   },
   'mega-what': {
-    q: 'What does a **megamorphic** access do instead of keeping its own entries?',
-    a: 'It uses the stub cache, a table shared by all megamorphic loads that maps a shape and a name to a handler.',
-  },
-  'log-letters': {
-    q: 'In `--log-ic` output, what do `0`, `1`, `P` and `N` mean?',
-    a: 'Uninitialised, monomorphic, polymorphic and megamorphic.',
+    q: 'In V8, what does a **megamorphic** access use instead of its own list of shapes?',
+    a: 'The stub cache: one table shared by all megamorphic accesses, mapping a shape and a property name to a handler.',
   },
   'count-shapes': {
-    q: 'A site sees shape A a thousand times, then shape B once. What state is it in?',
+    q: 'An inline cache sees shape A a thousand times, then shape B once. What state is it in?',
     a: 'Polymorphic: the states count different shapes (two here), not accesses.',
   },
-  'eight-calls': {
-    q: 'Why did the experiments call `getX` ten times per shape rather than five?',
-    a: 'In Node 22 a function gets its feedback vector only after about eight calls; shapes seen before that are never recorded.',
-  },
-  'stub-shared': {
-    q: 'Why does a megamorphic site give Maglev or TurboFan nothing to specialise on?',
-    a: 'It keeps no shapes of its own; the stub cache is shared by every megamorphic load, so it says nothing about what this site sees.',
-  },
-  'mixin-mega': {
-    q: 'Why can a `super.m()` call inside a mixin become megamorphic?',
-    a: 'Each use of the mixin creates a new class, so the one call site meets a new shape every time.',
-  },
-  'poly-ok': {
-    q: 'Should you worry about a site that sees two or three shapes?',
-    a: 'Usually not: it is polymorphic, not megamorphic. Worry about the hot loops, and keep those monomorphic.',
-  },
-  'ek-what': {
-    q: 'What is an array’s *elements kind* in V8?',
-    a: 'A label V8 keeps for each array saying what its indexed elements can hold: small integers, any numbers, or anything.',
-  },
-  'ek-three': {
-    q: 'Name the three basic elements kinds, from most specific to most general.',
-    a: 'SMI (small integers), DOUBLE (any number), ELEMENTS (any value).',
-  },
   'ek-one-way': {
-    q: 'An array of Smis gets `4.56` pushed, then that slot is overwritten with `4`. What is its elements kind now?',
-    a: '`PACKED_DOUBLE_ELEMENTS`. Transitions only go towards more general kinds, never back.',
+    q: 'In V8, an array of Smis gets `4.56` pushed, then that slot is overwritten with `4`. What is its elements kind now?',
+    a: '`PACKED_DOUBLE_ELEMENTS`. Elements kinds only move towards more general kinds, never back.',
   },
   'ek-minus-zero': {
-    q: 'Why does `push(-0)` move an array of small integers to a DOUBLE kind?',
-    a: '`-0` is not a Smi: a Smi is an integer, and integers have no negative zero. Only a double can hold it.',
-  },
-  'ek-double-store': {
-    q: 'How does a `PACKED_DOUBLE_ELEMENTS` array store its numbers?',
-    a: 'As raw 64-bit doubles side by side in a FixedDoubleArray, not as pointers to boxed HeapNumbers.',
-  },
-  'ek-in-map': {
-    q: 'Where does V8 record an array’s elements kind?',
-    a: 'In its map (the shape). A kind change is a transition to another map, like adding a property.',
-  },
-  'ek-polymorphic': {
-    q: 'A helper loops over arrays of Smis, doubles and strings. Why can it be slower than three helpers that each see one kind?',
-    a: 'Its element loads see several kinds, so they must be ready for the most general one; the 2017 V8 post describes them as polymorphic, and in V8 12.4’s log the cache’s entry was replaced with each new kind.',
-  },
-  'ek-big-int': {
-    q: 'In this Node build, which is the smallest positive integer that moves an array of Smis to DOUBLE?',
-    a: '2³¹ (2147483648): a Smi here holds at most 2³¹ − 1.',
+    q: 'In V8, why does pushing `-0` move an array of small integers to a DOUBLE kind?',
+    a: '`-0` is not a Smi: a Smi is an integer, and integers have no negative zero, so only a double can hold it.',
   },
 };
+
 
 export const examples = {
   'order-visible': {
@@ -145,31 +53,6 @@ console.log(JSON.stringify(c));
 // Code can see the order, so an
 // engine must remember it: that is
 // why order is part of a shape.`,
-  },
-  'tiny-ic': {
-    title: 'A one-entry cache you can watch',
-    code: `// shape: the keys, joined
-const shapeOf = (o) =>
-  Object.keys(o).join();
-let shape = null, slot = -1;
-let hits = 0, misses = 0;
-function getX(o) {
-  const s = shapeOf(o);
-  if (s === shape) {
-    hits++;
-  } else {
-    misses++;
-    shape = s;
-    slot = Object.keys(o).indexOf('x');
-  }
-  return Object.values(o)[slot];
-}
-for (let i = 0; i < 1000; i++) {
-  getX({ x: i, vx: 1 });
-}
-console.log({ hits, misses });
-// Try { vx: 1, x: i } for half
-// of them: what happens?`,
   },
   'mono-vs-mega': {
     title: 'One shape against twenty',
@@ -228,6 +111,7 @@ for (const v of vs) {
 
 export const exercises = {
   shapeTree: {
+    optional: true,
     title: 'Simulate a transition tree',
     prompt: 'A shape is `{ keys, next }`: `keys` lists property names in order, and `next` is a `Map` from a property name to the child shape. Write `addProp(shape, key)`, which returns the shape after adding `key`. If `shape` already has a transition for `key`, return that child; otherwise create it, record it in `shape.next`, and return it. `shapeOf` and `slotOf` are given.',
     starter: `const ROOT = {
@@ -362,92 +246,6 @@ function slotOf(shape, key) {
       },
     ],
   },
-  orderMismatches: {
-    optional: true,
-    title: 'Detect property-order mismatches',
-    prompt: 'Write `orderMismatches(objs)`. For each object, look at its keys (`Object.keys`). If an *earlier* object had the same set of keys in a different order, the object is a mismatch. Return the indexes of all mismatches, in order. Objects with different sets of keys never mismatch each other.',
-    starter: `function orderMismatches(objs) {
-  return [];
-}`,
-    solution: `function orderMismatches(objs) {
-  const first = new Map();
-  const out = [];
-  objs.forEach((o, i) => {
-    const ks = Object.keys(o);
-    const set = [...ks].sort().join();
-    const order = ks.join();
-    const seen = first.get(set);
-    if (seen === undefined) {
-      first.set(set, order);
-    } else if (seen !== order) {
-      out.push(i);
-    }
-  });
-  return out;
-}`,
-    tests: `test('one object built in the other order', () => {
-  const os = [{ x: 1, y: 2 }, { x: 3, y: 4 },
-    { y: 5, x: 6 }];
-  expect(orderMismatches(os)).toEqual([2]);
-});
-test('different key sets are not mismatches', () => {
-  expect(orderMismatches([{ x: 1 }, { x: 1, y: 2 }]))
-    .toEqual([]);
-});
-test('several groups at once', () => {
-  const os = [{ x: 1, y: 2 }, { a: 1, b: 2 },
-    { y: 1, x: 2 }, { b: 1, a: 2 }, { a: 0, b: 0 }];
-  expect(orderMismatches(os)).toEqual([2, 3]);
-});
-test('compared with the first, not the previous', () => {
-  const os = [{ x: 1, y: 2 }, { y: 1, x: 2 },
-    { y: 3, x: 4 }];
-  expect(orderMismatches(os)).toEqual([1, 2]);
-});`,
-    hints: [
-      'Two strings per object: the keys in their real order (`ks.join()`), and the keys sorted (the *set*), which ignores order.',
-      'Use a `Map` from the sorted set to the first order you saw for it.',
-      'If the set is new, remember its order. Otherwise compare: a different order is a mismatch.',
-    ],
-    walkthrough: `**How to think about it.** Two objects take the same branch of the transition tree only if they have the same keys *in the same order*. So you need two descriptions of each object: one that ignores order (to put objects with the same keys in one group) and one that keeps it (to see whether an object took the group's usual branch). Compare every object with the *first* of its group, since that is the shape most code will have met first.
-
-**The solution, line by line.**
-
-- \`const first = new Map();\` maps each set of keys to the first order seen for it.
-- \`const out = [];\` collects the indexes of mismatches.
-- \`objs.forEach((o, i) => {\` visits each object with its index.
-- \`const ks = Object.keys(o);\` gets its keys in insertion order, the order the engine keeps.
-- \`const set = [...ks].sort().join();\` sorts a *copy* (sorting \`ks\` itself would destroy the order) and joins it into a string such as \`"x,y"\`, the same for \`{x, y}\` and \`{y, x}\`.
-- \`const order = ks.join();\` is the real order, such as \`"y,x"\`.
-- \`const seen = first.get(set);\` looks up the group's first order.
-- \`if (seen === undefined) { first.set(set, order); }\` makes this object the first of a new group.
-- \`else if (seen !== order) { out.push(i); }\` flags an object with the group's keys in a different order.
-- \`});\` and \`return out;\` finish.
-
-The last test is the subtle one: objects 1 and 2 agree with each other but both differ from object 0, so both are flagged.
-
-**Common wrong attempts.**
-
-- Comparing each object with the previous one: different key sets get flagged, and two mismatches in a row hide each other.
-- Sorting \`ks\` in place: \`order\` is then always sorted, and nothing is ever a mismatch.`,
-    wrong: [
-      {
-        code: `function orderMismatches(objs) {
-  const out = [];
-  const n = objs.length;
-  for (let i = 1; i < n; i++) {
-    const a = Object.keys(objs[i - 1]);
-    const b = Object.keys(objs[i]);
-    if (a.join() !== b.join()) {
-      out.push(i);
-    }
-  }
-  return out;
-}`,
-        why: 'This compares each object with the previous one, and flags any difference, even different key sets. Group objects by their set of keys and compare each with the first of its group.',
-      },
-    ],
-  },
   monoIC: {
     title: 'A monomorphic inline cache',
     prompt: 'Objects here are `{ shape, vals }`, made by `make(keys, vals)`, and objects with the same keys share one `shape` object. `slowLookup(o, key)` finds a key’s slot the slow way. Write `makeIC(key)`: it returns a function `ic(o)` that returns the value of `key` in `o`. It remembers one shape and its slot. If `o.shape` is the remembered shape, read `o.vals[slot]` directly and add 1 to `ic.hits`. Otherwise call `slowLookup`, remember the new shape and slot, add 1 to `ic.misses`, and return the value.',
@@ -567,7 +365,7 @@ test('a new shape replaces the old one', () => {
 - Caching the slot without the shape: the first object's slot is then used for every later object, and \`{ y, x }\` gets its \`y\` read as \`x\`.
 - Comparing keys (\`o.shape.keys.join() === ...\`) instead of identity: the answers are right, but every hit now does the slow work the cache exists to avoid.
 
-Notice the last test: alternating between two shapes makes almost every access miss, because a one-entry cache *thrashes*. That is exactly why V8 lets a site remember several shapes, which is the next chapter.`,
+Notice the last test: alternating between two shapes makes almost every access miss, because a one-entry cache *thrashes*. That is exactly why V8 lets a site remember several shapes: the polymorphic state.`,
     wrong: [
       {
         code: `// Simulated objects: { shape, vals }.
@@ -606,6 +404,7 @@ function makeIC(key) {
     ],
   },
   icStates: {
+    optional: true,
     title: 'From monomorphic to megamorphic',
     prompt: 'Simulate V8’s IC states. `icStates(seq)` gets the shapes reaching one access site, in order (for example `["A", "A", "B"]`). Return the state after each access: `"1"` if one shape has been seen, `"P"` for two to four, and `"N"` once a fifth different shape arrives. Once `"N"`, it stays `"N"`.',
     starter: `function icStates(seq) {
@@ -633,7 +432,7 @@ function makeIC(key) {
   expect(icStates(['A', 'A', 'A']))
     .toEqual(['1', '1', '1']);
 });
-test('the chapter run: five shapes', () => {
+test('the --log-ic run: five shapes', () => {
   const out = icStates(['A', 'B', 'C', 'D', 'E']);
   expect(out).toEqual(['1', 'P', 'P', 'P', 'N']);
 });
@@ -652,7 +451,7 @@ test('megamorphic is for good', () => {
       'A shape already in the set changes nothing. A *new* shape when the set already holds four is the fifth: go megamorphic.',
       'Once the flag is set, return `"N"` straight away for every later access.',
     ],
-    walkthrough: `**How to think about it.** The chapter's Formal box is the whole specification: the state depends on how many *different* shapes have arrived, and once a fifth arrives the site is megamorphic for good. So you need to remember two things between accesses: the set of shapes seen so far, and whether the site has already given up. Then each access is a short series of questions, asked in the right order.
+    walkthrough: `**How to think about it.** The definition of the states is the whole specification: the state depends on how many *different* shapes have arrived, and once a fifth arrives the site is megamorphic for good. So you need to remember two things between accesses: the set of shapes seen so far, and whether the site has already given up. Then each access is a short series of questions, asked in the right order.
 
 **The solution, line by line.**
 
@@ -689,6 +488,7 @@ Trace the second test: A gives \`1\`; B, C and D each give \`P\` (two, three, fo
     ],
   },
   kindOfWrites: {
+    optional: true,
     title: 'Follow the lattice',
     prompt: 'An array starts as `[]` (which V8 reports as `PACKED_SMI_ELEMENTS`) and the values in `vs` are pushed onto it, in order. Write `kindOfWrites(vs)`, which returns the elements kind V8 reports afterwards: `\'PACKED_SMI_ELEMENTS\'`, `\'PACKED_DOUBLE_ELEMENTS\'` or `\'PACKED_ELEMENTS\'`. `isSmi` is given. Remember that the kind never moves back.',
     starter: `function isSmi(v) {
@@ -757,7 +557,7 @@ test('anything else is ELEMENTS, for good', () => {
       'Give each value a level: 0 for a Smi, 1 for any other number, 2 for anything else. The array’s level is the largest level seen so far.',
       'Write `baseOf(v)` (test `isSmi` first, then `typeof v === \'number\'`), keep `base = Math.max(base, baseOf(v))` in a loop, and build the name from `[\'SMI_\', \'DOUBLE_\', \'\'][base]`.',
     ],
-    walkthrough: `**How to think about it.** The chapter's Formal box says the kind after each write is the *join* of the old kind and the new value's kind, and that a join never moves back up. If you number the kinds 0 (SMI), 1 (DOUBLE) and 2 (ELEMENTS), the join is just the larger number, so the whole lattice becomes \`Math.max\`. What the starter gets wrong is looking only at the last value: the array remembers its history.
+    walkthrough: `**How to think about it.** The lattice says the kind after each write is the *join* of the old kind and the new value's kind, and that a join never moves back up. If you number the kinds 0 (SMI), 1 (DOUBLE) and 2 (ELEMENTS), the join is just the larger number, so the whole lattice becomes \`Math.max\`. What the starter gets wrong is looking only at the last value: the array remembers its history.
 
 **The solution, line by line.**
 
@@ -831,7 +631,7 @@ export const quiz = [
     ],
   },
   {
-    q: '`const a = {}; a.x = 1; a.y = 2;` and then `const b = {}; b.x = 3; b.y = 4;`. How many new shapes does `b` create?',
+    q: 'In V8, `const a = {}; a.x = 1; a.y = 2;` and then `const b = {}; b.x = 3; b.y = 4;`. How many new shapes does `b` create?',
     options: [
       {
         t: 'Two',
@@ -853,237 +653,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does the order of property additions matter to V8?',
-    options: [
-      {
-        t: 'Each addition follows an edge from the current shape, so a different order walks a different branch',
-        correct: true,
-        why: 'And code can observe the order (`Object.keys`), so the engine must keep it anyway.',
-      },
-      {
-        t: 'V8 sorts properties alphabetically',
-        why: 'It doesn’t: insertion order is kept, as `Object.keys` shows.',
-      },
-      {
-        t: 'It doesn’t: only the set of keys matters',
-        why: '`%HaveSameMap(a, c)` was false for `{x, y}` against `{y, x}`.',
-      },
-      {
-        t: 'Properties added later are stored in a dictionary',
-        why: 'Later properties still get fast slots; dictionary mode is a separate decision.',
-      },
-    ],
-  },
-  {
-    q: '`a = { x: 1, y: 2 }` and `d = {}; d.x = 1; d.y = 2;` have the same keys in the same order, but different maps. Why?',
-    options: [
-      {
-        t: 'The values are different',
-        why: 'They are the same values, 1 and 2, and values do not choose the map here anyway.',
-      },
-      {
-        t: 'They have different layouts: the literal got exactly two in-object slots, while `{}` was given room for four',
-        correct: true,
-        why: '`%DebugPrint` shows `inobject properties: 2` against `4`; different layouts need different maps.',
-      },
-      {
-        t: '`d` is in dictionary mode',
-        why: '`%DebugPrint(d)` shows fast properties, with `x` and `y` in-object.',
-      },
-    ],
-  },
-  {
-    q: 'A program builds half its particles as `{ x, vx }` and half as `{ vx, x }`. What does V8 see?',
-    options: [
-      {
-        t: 'One shape, since the keys are the same',
-        why: '`%HaveSameMap` said false for exactly this program: order is part of the shape.',
-      },
-      {
-        t: 'A thousand shapes, one per object',
-        why: 'Objects built the same way share; there are only two ways here.',
-      },
-      {
-        t: 'Dictionary mode for all of them',
-        why: 'Nothing here deletes or adds many computed keys; both shapes are fast.',
-      },
-      {
-        t: 'Two shapes, one per branch of the transition tree',
-        correct: true,
-        why: 'And every loop over the array now meets two shapes instead of one.',
-      },
-    ],
-  },
-  {
-    q: 'An inline cache at `o.x` is monomorphic for shape A. An object of shape A arrives. What does the access cost?',
-    options: [
-      {
-        t: 'A search of A’s descriptors for `x`',
-        why: 'That search happened once, on the first miss. Now its result is remembered.',
-      },
-      {
-        t: 'A hash-table lookup of `"x"`',
-        why: 'That would be a dictionary-mode object or a megamorphic site.',
-      },
-      {
-        t: 'A shape check and a load from the remembered slot',
-        correct: true,
-        why: 'That is the whole fast path.',
-      },
-      {
-        t: 'Nothing: the value itself is cached',
-        why: 'The cache remembers *where* `x` lives for a shape, not its value, which differs per object.',
-      },
-    ],
-  },
-  {
-    q: 'Why is it safe for a cache to reuse a slot number once the shape matches?',
-    options: [
-      {
-        t: 'A shape fixes where each property lives, so the same shape means the same slot',
-        correct: true,
-        why: 'That is what a shape is: a shared description of the layout.',
-      },
-      {
-        t: 'Property slots never change in JavaScript',
-        why: 'They do differ between shapes, as `{ x, y }` and `{ y, x }` showed.',
-      },
-      {
-        t: 'V8 re-checks the property name on every hit',
-        why: 'Skipping that is the point of the cache. The shape check makes it unnecessary.',
-      },
-      {
-        t: 'All objects store `x` in slot 0',
-        why: 'Only objects whose shape puts it there.',
-      },
-    ],
-  },
-  {
-    q: 'A function is called a million times, always with objects made by one constructor in the same way. Its `p.x` is…',
-    options: [
-      {
-        t: 'megamorphic, because it ran so many times',
-        why: 'The states count different shapes, not calls.',
-      },
-      {
-        t: 'monomorphic',
-        correct: true,
-        why: 'One way of building the objects means one shape at that site.',
-      },
-      {
-        t: 'polymorphic, because each object is different',
-        why: 'The objects hold different values but share one shape.',
-      },
-      {
-        t: 'uninitialised',
-        why: 'It has run, so it has seen at least one shape.',
-      },
-    ],
-  },
-  {
-    q: '`function len(p) { return p.x * p.x + p.y * p.y; }` logged only two `LoadIC` lines. Why not four?',
-    options: [
-      {
-        t: 'Two of the loads never ran',
-        why: 'All four run on every call; the multiplications need them.',
-      },
-      {
-        t: 'In V8 12.4 the two loads of `p.x` share one feedback slot, and so do the two of `p.y`',
-        correct: true,
-        why: 'The bytecode shows slot `[2]` twice and `[5]` twice: two caches, each logged once when it became monomorphic.',
-      },
-      {
-        t: '`--log-ic` only logs the first two caches of a function',
-        why: 'It logs every state change; the third example logged three lines for one function.',
-      },
-    ],
-  },
-  {
-    q: 'What made V8’s inline caches “data-driven” after Ignition?',
-    options: [
-      {
-        t: 'The remembered shapes live in feedback vectors, separate from the bytecode, instead of being patched into machine code',
-        correct: true,
-        why: 'The 2018 code-caching post credits this separation for being able to cache bytecode after a script has run.',
-      },
-      {
-        t: 'They are stored in a database',
-        why: 'Data-driven here means they live in ordinary V8 heap data, the feedback vector.',
-      },
-      {
-        t: 'They are written in JavaScript',
-        why: 'The language of the implementation isn’t what the term means.',
-      },
-      {
-        t: 'They learn from many users’ browsers',
-        why: 'Feedback is collected per function, in one running program.',
-      },
-    ],
-  },
-  {
-    q: 'In the five-shape `--log-ic` run, which line shows the access becoming megamorphic?',
-    options: [
-      {
-        t: '`LoadIC 1:29 0 1 x`',
-        why: 'That is the first shape: uninitialised to monomorphic.',
-      },
-      {
-        t: '`LoadIC 1:29 1 P x`',
-        why: 'That is the second shape: monomorphic to polymorphic.',
-      },
-      {
-        t: '`LoadIC 1:29 P N x`',
-        correct: true,
-        why: 'The fifth shape exceeded the limit of four, so the state went from P to N.',
-      },
-      {
-        t: '`LoadIC 1:29 P P x`',
-        why: 'Still polymorphic: a third or fourth shape was added to the list.',
-      },
-    ],
-  },
-  {
-    q: 'What does a megamorphic access use instead of its own list of shapes?',
-    options: [
-      {
-        t: 'The object’s dictionary',
-        why: 'The object is still a fast object; it is the access site that gave up.',
-      },
-      {
-        t: 'The stub cache, shared by all megamorphic loads, keyed by shape and name',
-        correct: true,
-        why: 'V8’s source describes the stub cache as mapping a map and a name to a handler.',
-      },
-      {
-        t: 'The constant pool',
-        why: 'The constant pool holds the name `"x"`, not shapes or handlers.',
-      },
-    ],
-  },
-  {
-    q: 'Five AST node classes all set `this.type` first. Why is `n.type` in `kindOf` megamorphic?',
-    options: [
-      {
-        t: 'Because `type` is at a different offset in each class',
-        why: 'It is field 0 in all of them; the offset is not the issue.',
-      },
-      {
-        t: 'Because objects of different classes have different maps, so the site sees five shapes',
-        correct: true,
-        why: 'And five is more than the limit of four.',
-      },
-      {
-        t: 'Because `kindOf` is an arrow function',
-        why: 'Arrow functions get inline caches like any other function.',
-      },
-      {
-        t: 'Because strings are slow to read',
-        why: 'The value being a string has nothing to do with the state of the load.',
-      },
-    ],
-  },
-  {
-    q: 'A site sees shapes A, B, A, C, B, D, A, in that order. What state is it in at the end?',
+    q: 'In V8 12.4 (Node 22), the inline cache at one property access sees shapes A, B, A, C, B, D, A, in that order. What state is it in at the end?',
     options: [
       {
         t: 'Megamorphic: seven accesses',
@@ -1101,47 +671,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which change is most worth making for speed?',
-    options: [
-      {
-        t: 'A helper used in three places, seeing three shapes, rewritten into three copies',
-        why: 'Three shapes is polymorphic, which is fine unless it is very hot.',
-      },
-      {
-        t: 'A hot particle loop whose objects are built in two places in two key orders, changed to build them one way',
-        correct: true,
-        why: 'The loop is hot, and one way of building gives every access in it one shape.',
-      },
-      {
-        t: 'Every object in the program given the same keys',
-        why: 'Unnecessary and unreadable; only the hot code’s sites matter.',
-      },
-    ],
-  },
-  {
-    q: 'Which line moves `const a = [1, 2, 3]` from a SMI kind to a DOUBLE kind?',
-    options: [
-      {
-        t: '`a.push(4)`',
-        why: '4 is a small integer, so it is a Smi and the kind stays SMI.',
-      },
-      {
-        t: '`a.push(-0)`',
-        correct: true,
-        why: 'Negative zero is not an integer value a Smi can hold, so the array needs doubles.',
-      },
-      {
-        t: '`a[1] = 7`',
-        why: 'Overwriting with another small integer changes nothing.',
-      },
-      {
-        t: '`a.length`',
-        why: 'Reading the length doesn’t change the elements at all.',
-      },
-    ],
-  },
-  {
-    q: '`const a = [1.5, 2]`, then `a[0] = 1`. What does V8 report?',
+    q: 'In V8, `const a = [1.5, 2]`, then `a[0] = 1`. Which elements kind does `%DebugPrint(a)` report?',
     options: [
       {
         t: '`PACKED_SMI_ELEMENTS`, because every element is now an integer',
@@ -1163,68 +693,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which pushed value keeps `[1, 2]` at `PACKED_SMI_ELEMENTS` in this Node build?',
+    q: 'In code run by V8, which change is most worth making for speed?',
     options: [
       {
-        t: '`2 ** 31`',
-        why: 'That is one past the largest Smi here, so it needs a double.',
+        t: 'A helper used in three places, seeing three shapes, rewritten into three copies',
+        why: 'Three shapes is polymorphic, which is fine unless it is very hot.',
       },
       {
-        t: '`Infinity`',
-        why: 'Infinity is a double, not an integer a Smi can hold.',
-      },
-      {
-        t: '`2 ** 31 - 1`',
+        t: 'A hot particle loop whose objects are built in two places in two key orders, changed to build them one way',
         correct: true,
-        why: 'The largest Smi in this build; `%DebugPrint` still reports SMI.',
+        why: 'The loop is hot, and one way of building gives every access in it one shape.',
       },
       {
-        t: '`0 * -1`',
-        why: 'That is `-0`, which is a double.',
-      },
-    ],
-  },
-  {
-    q: 'In `%DebugPrint` output, an array’s kind appears inside its map: `<Map[32](PACKED_SMI_ELEMENTS)>`. What does that tell you?',
-    options: [
-      {
-        t: 'The elements kind is part of the array’s shape, so changing kind means a map transition',
-        correct: true,
-        why: 'The same output lists `(transition to HOLEY_SMI_ELEMENTS)` among the map’s transitions, like the property transitions of the shapes chapter.',
-      },
-      {
-        t: 'Each element has its own map',
-        why: 'The map belongs to the array object. The elements are stored in a separate backing store.',
-      },
-      {
-        t: 'The kind is stored in every element’s tag bits',
-        why: 'Smis do have a tag bit, but the kind is a property of the whole array, recorded once.',
-      },
-      {
-        t: 'Maps are only used for arrays',
-        why: 'Every heap object has a map; the shapes chapter met them for ordinary objects.',
-      },
-    ],
-  },
-  {
-    q: 'Viscosity stores struct-of-arrays columns as `Float64Array`s. What does that mean for elements kinds?',
-    options: [
-      {
-        t: 'A column starts as SMI and moves to DOUBLE on the first fraction',
-        why: 'That is how a plain array behaves. A typed array has its own fixed kind.',
-      },
-      {
-        t: 'Columns become holey when the program deletes an element',
-        why: 'A typed array can’t have holes: every index below its length holds a number.',
-      },
-      {
-        t: 'A column has one fixed kind, `FLOAT64ELEMENTS`, and never transitions',
-        correct: true,
-        why: '`%DebugPrint` reports `FLOAT64ELEMENTS` for a `Float64Array`, and its elements are always raw doubles.',
-      },
-      {
-        t: 'Typed arrays always use the general ELEMENTS kind',
-        why: 'They can only hold numbers of one type, so they get their own specialised kinds.',
+        t: 'Every object in the program given the same keys',
+        why: 'Unnecessary and unreadable; only the hot code’s sites matter.',
       },
     ],
   },

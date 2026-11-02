@@ -15,7 +15,7 @@ const STATES: S[] = [
   { line: 0, phase: 'execute', regs: [0, 2.5, 16], mem: true, changed: 1, note: 'Execute. This one has to reach out to memory, at address 16, for the value 2.5. Hold on to that: going out to memory is the slow part, and the rest of this chapter is about it.' },
   { line: 1, phase: 'fetch', regs: [0, 2.5, 16], note: 'Fetch the next instruction. The CPU just repeats this loop: fetch, decode, execute, billions of times a second.' },
   { line: 1, phase: 'execute', regs: [2.5, 2.5, 16], changed: 0, note: 'Add r1 to r0. Both numbers are already in registers, so this is about as fast as anything the CPU does.' },
-  { line: 2, phase: 'execute', regs: [2.5, 2.5, 24], changed: 2, note: 'Add 8 to r2. Now it holds 24, the address of xs[1]. The address arithmetic from the chapter on memory, done by the CPU itself. Then the loop starts over.' },
+  { line: 2, phase: 'execute', regs: [2.5, 2.5, 24], changed: 2, note: 'Add 8 to r2. Now it holds 24, the address of xs[1]. The address arithmetic of a typed array (base + i × 8), done by the CPU itself. Then the loop starts over.' },
 ];
 
 const PH: Phase[] = ['fetch', 'decode', 'execute'];
