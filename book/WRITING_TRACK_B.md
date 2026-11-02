@@ -1,20 +1,21 @@
 # Brief for Track B chapter writers (*Viscosity*, by Tariq Shams)
 
-Monorepo: /home/user/viscosity. Book: book/. Track A (chapters 1–273) took a
-reader who knew only `if`/`for` in JavaScript to building, in TypeScript, a
-Drip tree-walking interpreter and bytecode VM (book/companion/ts) and the
-Viscosity AoS→SoA layout optimizer (engine/ts). Track B (121–200) teaches
-Rust from scratch, then rebuilds the VM and Viscosity in Rust, the way
-Crafting Interpreters goes from Java to C.
+Monorepo: /home/user/viscosity. Book: book/. Track A (Parts I to X; see
+src/data/outline for the current chapter numbers) takes a reader who knows
+only `if` and loops in some language to building, in TypeScript, a Drip
+tree-walking interpreter and bytecode VM (book/companion/ts), the whole of
+compiler theory, and the Viscosity AoS→SoA layout optimizer (engine/ts).
+Track B (Parts XI to XIV) teaches Rust from scratch, then rebuilds the VM
+and Viscosity in Rust.
 
 The real Rust code exists and is the source of truth:
 - book/companion/rust: drip-rs, the Drip bytecode VM in Rust. It is std-only
   with `#![forbid(unsafe_code)]`, typed arena handles (`Gc<T>`), mark-sweep GC
-  with explicit roots, and an SoA hash table. It passes the 246-program corpus
-  and 95 stress-GC programs. Its README explains the design. The benchmarks
-  are in results/drip-rs-bench-2026-10-31.{json,md}.
+  with explicit roots, and an SoA hash table. It passes the Drip corpus (334
+  programs) and the stress-GC suite (165 programs). Its README explains the
+  design. The benchmarks are in results/drip-rs-bench-2026-11-02.{json,md}.
 - engine/rust: the Viscosity port (crates vir, core, frontend-js on oxc
-  0.156, cli, wasm). It has 122/122 byte-identical parity fixtures with the
+  0.156, cli, wasm). It has 190/190 byte-identical parity fixtures (54 Python) with the
   TS engine. See README.md and results/compile-speed-2026-10-31.md.
 - The TS versions, for comparisons: book/companion/ts/src/vm, engine/ts/packages/*.
 

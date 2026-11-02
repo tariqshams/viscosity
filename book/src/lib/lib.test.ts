@@ -68,3 +68,24 @@ describe('runWithTestsAsync', () => {
     expect(r.pending).toBe(1);
   });
 });
+
+describe('parseTestOutput', () => {
+  it('sees #[should_panic] tests, which rustc prints with " - should panic"', async () => {
+    const { parseTestOutput } = await import('./rust.js');
+    const out = [
+      'test tests::panics_ok - should panic ... ok',
+      'test tests::never_panics - should panic ... FAILED',
+      'test tests::plain ... ok',
+      '',
+      'failures:',
+      '',
+      '---- tests::never_panics stdout ----',
+      'note: test did not panic as expected at t.rs:4:28',
+      '',
+      'failures:',
+    ].join('\n');
+    expect(parseTestOutput(out).map((t: { name: string; ok: boolean }) => [t.name, t.ok])).toEqual([
+      ['panics ok', true], ['never panics', false], ['plain', true],
+    ]);
+  });
+});

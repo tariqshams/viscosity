@@ -19,7 +19,7 @@ export function testCrate(code, tests) {
 /** Parse `cargo test` output into per-test results. */
 export function parseTestOutput(text) {
   const results = [];
-  for (const m of text.matchAll(/^test (?:tests::)?(\S+) \.\.\. (ok|FAILED)$/gm)) {
+  for (const m of text.matchAll(/^test (?:tests::)?(\S+)(?: - should panic)? \.\.\. (ok|FAILED)$/gm)) {
     results.push({ name: m[1].replace(/_/g, ' '), ok: m[2] === 'ok' });
   }
   const failures = [...text.matchAll(/---- (?:tests::)?(\S+) stdout ----\n([\s\S]*?)(?=\n\n----|\nfailures:|$)/g)];
