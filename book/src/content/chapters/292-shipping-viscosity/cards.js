@@ -11,7 +11,7 @@ export const prompts = {
   },
   'pkg-scope': {
     q: 'What is the `@viscosity/` in `@viscosity/cli`?',
-    a: 'A scope: a namespace owned by an npm user or organization.',
+    a: 'A scope: a namespace owned by an npm user or organisation.',
   },
   'pkg-ts': {
     q: 'Why did the first installed CLI fail with ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING?',

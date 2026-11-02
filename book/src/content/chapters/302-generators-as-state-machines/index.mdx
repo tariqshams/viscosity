@@ -151,7 +151,7 @@ switch (_a.label) {
     return [4 /*yield*/, i];
   case 2: _a.sent(); _a.label = 3;
   case 3: i++; return [3, 1];
-  case 4: return [2, "done"];
+  case 4: return [2, 'done'];
 }
 ```
 
@@ -177,7 +177,7 @@ generators: the body is a `switch` on `_a.label` (its state number),
 and instead of returning a value it returns a small instruction to a
 helper, `__generator`, from the `tslib` library: `[4, i]` means "yield
 `i`, and add one to the label", `[3, 1]` means "jump to label 1", and
-`[2, "done"]` means "return"<Cite id="tslib-generator" /> (the `/*break*/`
+`[2, 'done']` means "return"<Cite id="tslib-generator" /> (the `/*break*/`
 and `/*return*/` comments it adds are trimmed here, and short lines
 joined). The second is V8: a
 generator function starts with `SwitchOnGeneratorState`, a jump table

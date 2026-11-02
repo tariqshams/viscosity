@@ -72,7 +72,7 @@ out):
 
 The name and version are the only fields npm requires, and together
 they identify the package. `@viscosity/` is a **scope**, a namespace
-that belongs to one user or organization, where only they can add
+that belongs to one user or organisation, where only they can add
 packages<Cite id="npm-publish-docs" />. `bin` asks npm to install a
 `viscosity` command that runs `bin/viscosity.mjs`<Cite id="npm-package-json" />;
 `files` limits the tarball to those paths; `engines` says which Node
@@ -115,7 +115,7 @@ nothing else. The second asks the public registry about the real CLI:
 its tarball holds five files (the bin file, the bundle, `package.json`
 and the two licence files). The third is a trimmed piece of
 `@viscosity/wasm`'s `package.json`, the Rust engine compiled to
-WebAssembly from the previous chapter: an `exports` map lets one package
+WebAssembly from *WebAssembly as a target*: an `exports` map lets one package
 name hand Node one build and a browser bundler another.
 
 <Prompts ids={['pkg-what', 'pkg-identity', 'pkg-scope', 'pkg-dryrun', 'pkg-files']} />
@@ -237,7 +237,7 @@ to the viscosity.dev domain is still the author's decision.)
   failed through npm's link); a bundle and a bin entry fixed them.
 - On 2026-11-02, version 0.0.1 went to npm (`@viscosity/cli`,
   `@viscosity/wasm`) and crates.io (six crates, in dependency order,
-  one of them a day's lesson in rate limits).
+  the last one ten minutes late, held back by a rate limit).
 
 Next: what the number 0.0.1 on all of them actually promises.
 

@@ -1,4 +1,4 @@
-// Chapter 286 (second half) cards. Keys are stable ids: never rename them.
+// Chapter 287 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'ps-what': {
@@ -99,7 +99,7 @@ test('an indent needs a colon', () => {
       'After pushing a line that ends with `:`, expect `INDENT`, skip it, and push the result of calling `block()` again for the inner block.',
       'When the inner `block()` returns, the current token is its `DEDENT`: skip it with `i++` so the outer block can carry on.',
     ],
-    walkthrough: `**How to think about it.** This is \`block()\` from \`parser.ts\`, with whole lines in place of statements, so think of INDENT as \`{\` and DEDENT as \`}\`. Work the second test by hand: \`'if x:'\` ends with a colon, so a block must follow; the INDENT opens it; \`'y = 1'\` is inside; the DEDENT closes it; \`'z = 2'\` is back outside. The natural shape is a recursive helper, \`block()\`, that reads lines until it meets a DEDENT and returns them, calling itself whenever a line ends with a colon. The one subtle point is who skips the DEDENT: \`block()\` *stops* at it without consuming it, and the caller that opened the block skips it, exactly as the real parser does with its final \`p++\`.
+    walkthrough: `**How to think about it.** This is \`block()\` from \`parser.ts\`, with whole lines in place of statements, so think of INDENT as \`{\` and DEDENT as \`}\`. Work the second test by hand: \`'if x:'\` ends with a colon, so a block must follow; the INDENT opens it; \`'y = 1'\` is inside; the DEDENT closes it; \`'z = 2'\` is back outside. The natural shape is a recursive helper, \`block()\`, that reads lines until it meets a DEDENT and returns them, calling itself whenever a line ends with a colon. The one subtle point is who skips the DEDENT: \`block()\` *stops* at it without consuming it, and the caller that opened the block skips it (the real parser does the same skip with the final \`p++\` at the end of \`block()\` itself; either way, each DEDENT is skipped exactly once).
 
 **The solution, line by line.**
 

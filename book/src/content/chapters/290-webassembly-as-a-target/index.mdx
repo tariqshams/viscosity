@@ -20,10 +20,12 @@ import ColumnsInMemory from '../../../components/diagrams/ch290/ColumnsInMemory'
 
 In Part IV you wrote a bytecode VM for Drip. Your compiler and your VM
 agreed on a private format (which byte means "add", how a constant is
-stored), and nobody else in the world could run your bytecode. Now
-imagine a bytecode format that every browser and Node already
+stored), and nobody else in the world could run your bytecode. *A tiny
+JIT* then borrowed a format that every browser and Node already
 understand, specified so precisely that independent engines run it the
-same way. That is **WebAssembly**, the last target this track looks at.
+same way: **WebAssembly**. There it was a door to machine code; here it
+is the last target this track looks at, together with the one part that
+JIT never needed, its memory.
 
 <Analogy title="a shipping container">
 A shipper does not care which port, crane or lorry handles the box,
@@ -38,9 +40,10 @@ running a single instruction of it.</span>
 
 ## Forty-one bytes
 
-Here is a whole WebAssembly program, written by hand as 41 bytes. It
-exports one function, `add`, that adds two 32-bit integers. Every byte
-has a job; step through them:
+Here is a whole WebAssembly program, written by hand as 41 bytes (a
+cousin of the JIT's `sq` module, so this is a quick refresher). It
+exports one function, `add`, that adds two 32-bit integers; step
+through the bytes:
 
 <ModuleBytes client:visible />
 
@@ -79,7 +82,7 @@ be treated as registers<Cite id="wasm-spec-core" />, and engines compile
 modules to machine code.
 
 <Callout kind="definition">
-**WebAssembly** (Wasm) is a standardized, portable, low-level binary
+**WebAssembly** (Wasm) is a standardised, portable, low-level binary
 format for code. A **module** is a preamble (`\0asm`, version 1)
 followed by **sections**: types, functions, memories, exports, code and
 others. Function bodies are bytecode for a typed **stack machine**.
@@ -248,7 +251,7 @@ layout, decided by whom.
 
 ## What you learned
 
-- **WebAssembly** is a standardized, portable binary format for code:
+- **WebAssembly** is a standardised, portable binary format for code:
   a preamble (`\0asm`, version 1) and **sections** with ids, lengths
   and contents, with lengths in LEB128. Bodies are bytecode for a
   **stack machine** that engines **validate** and then compile.

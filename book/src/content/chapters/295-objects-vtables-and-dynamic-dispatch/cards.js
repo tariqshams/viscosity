@@ -192,11 +192,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does `ld t1, 8(a1)` do in a C++ virtual call, where `a1` already holds the object’s vptr?',
+    q: 'What does `ld a5, 8(a1)` do in a C++ virtual call, where `a1` already holds the object’s vptr?',
     options: [
       { t: 'Reads the object’s field at offset 8', why: '`a1` holds the vtable’s address, not the object’s, so offset 8 is in the table.' },
       { t: 'Calls the method in slot 8', why: 'It only loads; the jump comes next. And slots are 8 bytes each, so offset 8 is slot 1.' },
-      { t: 'Loads the address of the method in slot 1', correct: true, why: 'Each slot is one 8-byte address, so offset 8 is slot 1; `jr t1` then jumps there.' },
+      { t: 'Loads the address of the method in slot 1', correct: true, why: 'Each slot is one 8-byte address, so offset 8 is slot 1; `jr a5` then jumps there.' },
     ],
   },
   {

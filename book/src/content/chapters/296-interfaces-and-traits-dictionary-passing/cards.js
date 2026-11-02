@@ -199,7 +199,7 @@ export const quiz = [
   {
     q: 'C++ keeps the vptr inside the object; Rust and Go keep the table beside the pointer. What does the Rust and Go choice allow?',
     options: [
-      { t: 'Faster calls, because there is one fewer load', why: 'Both do a load of the table entry; the difference is where the table address comes from.' },
+      { t: 'Calls that need no table at all', why: 'A call through a `&dyn` or an interface value still reads the method from a table; what changes is where the table’s address comes from (the pointer, not the object).' },
       { t: 'Objects that change class at run time', why: 'Neither language allows that; the gain is about interfaces.' },
       { t: 'Interfaces with no methods', why: 'Those exist in all three languages.' },
       { t: 'Any value, even a plain number or struct, can be used through an interface without a vptr in its layout', correct: true, why: 'The table is only attached when a pointer to the value is turned into a `&dyn` or an interface value.' },

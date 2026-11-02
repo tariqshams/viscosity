@@ -32,7 +32,8 @@ print sum(300, 0);
 ```
 
 Drip allows calls to nest 256 deep, so the second call fails; the same
-function in Node 22 dies at about `sum(100000, 0)` with
+function in Node 22 dies before `sum(10000, 0)` (at about 9,000
+calls on this book's machine) with
 `RangeError: Maximum call stack size exceeded`<Cite id="mdn-too-much-recursion" />.
 Yet it is really a loop: each call hands over a smaller `n` and a bigger
 `acc`, and once the inner call returns, the outer one passes the answer

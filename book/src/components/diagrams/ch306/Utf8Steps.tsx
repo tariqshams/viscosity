@@ -33,7 +33,7 @@ export default function Utf8Steps() {
             {st.marks && (
               <Box x={8 + k * 98} y={78} w={92} h={24} fill={tok('panel')} stroke={tok(COLS[k])}>
                 <T x={54 + k * 98} y={90} size={11} mono anchor="middle">
-                  <tspan fill={tok('muted')}>{MARKS[k]}</tspan>{g}
+                  <tspan fill={tok('muted')}>{MARKS[k]}</tspan><tspan fill={tok(COLS[k])}>{g}</tspan>
                 </T>
               </Box>
             )}

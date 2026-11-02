@@ -44,9 +44,9 @@ const STATES = [
   { hi: 0, note: 'Sorting moves whole records. With columns, every column must be permuted the same way, and the comparator receives elements that no longer exist as objects. Viscosity refuses any method but push.' },
   { hi: 1, note: 'Half the records have a tag. One shape per collection is the rule Viscosity relies on, so it refuses. Engines handle varying shapes with run-time checks; a compiler that must prove things can’t guess.' },
   { hi: 2, note: 'A class instance isn’t a fresh object literal, and the lowering treats class declarations as code it doesn’t model. This one is an engineering gap: understanding simple constructors is known technique, just not built here.' },
-  { hi: 3, note: 'Exported means some other file might touch it. Viscosity analyzes one file at a time, so it refuses. Proving things about a whole program, possibly with code you can’t see, is a real research problem.' },
+  { hi: 3, note: 'Exported means some other file might touch it. Viscosity analyses one file at a time, so it refuses. Proving things about a whole program, possibly with code you can’t see, is a real research problem.' },
   { hi: 4, note: 'Transformed, but only halfway: pos is a column of objects, so pos.x is still a pointer chase. Flattening nested records into their own columns is what the multi-level research tackled inside a JIT.' },
-  { hi: 5, note: 'Here Viscosity transforms with no size estimate at all. Whether that pays depends on n, which only the running program knows. A profile (chapter 281) helps, for the inputs you profiled.' },
+  { hi: 5, note: 'Here Viscosity transforms with no size estimate at all. Whether that pays depends on n, which only the running program knows. A profile (see Profile-guided optimization) helps, for the inputs you profiled.' },
 ];
 
 export default function FrontierSteps() {

@@ -7,11 +7,11 @@ export const prompts = {
   },
   'cap-links': {
     q: 'Why does Viscosity have to prove safety, when the run-time research could transform arrays without proofs?',
-    a: 'A JIT can speculate and deoptimize if it is wrong (Part V). Viscosity runs before the program and has no way back.',
+    a: 'A JIT can speculate and deoptimise if it is wrong (Part V). Viscosity runs before the program and has no way back.',
   },
   'cap-pipeline': {
     q: 'Name Viscosity’s four pipeline stages, in order.',
-    a: 'The plugin lowers source to VIR; the core analyzes; the planner decides layouts; the plugin emits rewritten source.',
+    a: 'The plugin lowers source to VIR; the core analyses; the planner decides layouts; the plugin emits rewritten source.',
   },
 
   'cap-vm-slow': {

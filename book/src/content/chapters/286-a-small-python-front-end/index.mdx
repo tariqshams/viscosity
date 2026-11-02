@@ -71,8 +71,8 @@ line, the top of the stack, and the tokens that come out:
 This is the heart of `frontend-python/src/tokens.ts`, which runs at the
 start of every logical line. It is quoted as it is, except that
 `top()` stands for `indents[indents.length - 1]` so the lines fit, and
-two small guards and the code that skips blank and comment-only lines
-are left out:
+a bounds check, a line that resets a flag and the code that
+skips blank and comment-only lines are left out:
 
 ```ts
 let col = 0;

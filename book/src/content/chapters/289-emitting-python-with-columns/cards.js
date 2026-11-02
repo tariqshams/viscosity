@@ -37,7 +37,7 @@ export const prompts = {
   },
   'pa-js': {
     q: 'Same plan, same safety proofs: why does JavaScript get columns by default but Python doesn’t?',
-    a: 'Measurement: V8’s optimizing compiler reads Float64Array elements as raw doubles, while CPython boxes every read. The cost model follows the data.',
+    a: 'Measurement: V8’s optimising compiler reads Float64Array elements as raw doubles, while CPython boxes every read. The cost model follows the data.',
   },
 };
 

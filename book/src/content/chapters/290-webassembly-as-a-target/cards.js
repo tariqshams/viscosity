@@ -3,7 +3,7 @@
 export const prompts = {
   'wasm-what': {
     q: 'What is WebAssembly, in one sentence?',
-    a: 'A standardized, portable, low-level binary format for code, which browsers and Node can validate, compile and run.',
+    a: 'A standardised, portable, low-level binary format for code, which browsers and Node can validate, compile and run.',
   },
   'wasm-magic': {
     q: 'What are the first 8 bytes of every WebAssembly module?',
@@ -326,7 +326,7 @@ export const quiz = [
     q: 'After `mem.grow(1)`, an old `Float64Array` over `mem.buffer` has length 0. What should a SoA back end do?',
     options: [
       { t: 'Nothing: the view will update by itself', why: 'A detached buffer stays detached. The old view is useless.' },
-      { t: 'Never grow the memory', why: 'Then collections couldn’t grow; amortized growth needs bigger storage.' },
+      { t: 'Never grow the memory', why: 'Then collections couldn’t grow; amortised growth needs bigger storage.' },
       { t: 'Create new views over the new `mem.buffer` after every grow', correct: true, why: 'Growing detaches the old buffer and creates a new one, so views must be made again.' },
       { t: 'Copy the old view into a new ArrayBuffer', why: 'The old view has no data left to copy, and the data is still in the memory anyway.' },
     ],
@@ -336,7 +336,7 @@ export const quiz = [
     options: [
       { t: 'Viscosity compiles hot loops to WebAssembly', why: 'No engine in the repository emits WebAssembly.' },
       { t: 'The TypeScript engine has a WebAssembly plugin', why: 'Its plugins are the JavaScript and Python front-ends, which rewrite source.' },
-      { t: 'The book’s playground runs the Rust engine as WebAssembly', why: 'The playground uses the TypeScript engine, bundled as JavaScript by `packages/playground/build.mjs`.' },
+      { t: 'The book’s playground compiles your program to WebAssembly before running it', why: 'Switched to Rust, the playground runs the *compiler* as WebAssembly, but what it produces is still JavaScript or Python.' },
       { t: 'The Rust port can be compiled to WebAssembly, but it still emits JavaScript', correct: true, why: 'Its `wasm` crate wraps `compile(source)` for the browser. That runs the compiler as WebAssembly; the output is JavaScript.' },
     ],
   },

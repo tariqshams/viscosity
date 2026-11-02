@@ -1,4 +1,4 @@
-// Chapter 292 (second half) cards. Keys are stable ids: never rename them.
+// Chapter 293 cards. Keys are stable ids: never rename them.
 
 export const prompts = {
   'sv-rules': {
@@ -230,7 +230,7 @@ export const quiz = [
       { t: 'It must be a major release by semver’s rules', why: 'Semver’s rules are about the declared API. Identical output fits a fix or a feature.' },
       { t: 'It can’t happen, because the differential tests would fail', why: 'Those tests check output and layouts in the corpus, not your program’s speed.' },
       { t: 'Semver says nothing until the project declares whether decisions are part of its public API', correct: true, why: 'The numbers only mean something relative to a declared API; deciding that is part of shipping.' },
-      { t: 'It should be a patch, because speed never matters', why: 'For an optimizer, speed is the whole point; that’s why it needs deciding.' },
+      { t: 'It should be a patch, because speed never matters', why: 'For an optimiser, speed is the whole point; that’s why it needs deciding.' },
     ],
   },
   {

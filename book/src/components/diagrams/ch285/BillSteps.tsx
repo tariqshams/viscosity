@@ -16,7 +16,7 @@ const STATES: S[] = [
   { mode: 'grid', langs: 3, hi: 2, total: '18 pieces of analysis', note: 'A third language makes it 18. The bill is languages × analyses, and every new analysis is paid once per language too.' },
   { mode: 'ir', langs: 2, hi: -1, total: '6 analyses + 2 plugins', note: 'With VIR in the middle, the analyses run once, on VIR. Each language pays for one plugin: a parser, a lowering, an emitter. The bill is languages + analyses.' },
   { mode: 'ir', langs: 2, hi: 1, total: 'Python: 1,085 lines', note: 'The real Python plugin is 1,085 lines in five files: tokens 106, parser 342, lower 445, emit 148, index 44. The core it plugs into is 1,347 lines, and it got every one of them without writing any.' },
-  { mode: 'ir', langs: 2, hi: 1, leak: true, total: 'a few dozen core lines', note: 'Not quite free. A few dozen lines in the core ask module.language: a Python “number” must be a float, an index must be an int, and CPython’s measured cost changes the verdict.' },
+  { mode: 'ir', langs: 2, hi: 1, leak: true, total: 'a handful of core lines', note: 'Not quite free. A handful of lines in the core ask module.language: a Python “number” must be a float, an index must be an int, and CPython’s measured cost changes the verdict.' },
 ];
 
 export default function BillSteps() {

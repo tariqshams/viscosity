@@ -237,7 +237,7 @@ list already holds float objects, so reading `p.x` hands one over.
 CPython is an interpreter, and the cost of making objects dwarfs
 anything a cache line can give back.
 
-In JavaScript the same plan wins, because V8's optimizing compiler
+In JavaScript the same plan wins, because V8's optimising compiler
 reads `Float64Array` elements as raw doubles (`FINDINGS.md`, section
 6). Same IR, same analyses, same safety proofs; the measurement differs,
 so the cost model's verdict differs. That is why a Python report says

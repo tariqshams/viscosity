@@ -28,8 +28,8 @@ const STATES: S[] = [
   { tabs: 3, changed: [2, 0], note: 'Circle overrides both methods, so both of its slots change; the numbering never does: area is slot 0 in every table in this family.' },
   { tabs: 3, obj: 'sq', note: 'new Sq(2) makes an object whose first word is the vtable pointer (vptr), pointing at Sq’s table, followed by its field s.' },
   { tabs: 3, obj: 'sq', hiVptr: true, ins: 'ld a1, 0(a0)', note: 'The call o.area(): first load the object’s first word. a0 holds the object’s address, so a1 now holds the address of Sq’s table.' },
-  { tabs: 3, obj: 'sq', hiVptr: true, hiSlot: 0, ins: 'ld t1, 0(a1)', note: 'Second load: slot 0 of that table (offset 0, since each slot is 8 bytes). t1 now holds the address of Sq.area.' },
-  { tabs: 3, obj: 'sq', hiSlot: 0, ins: 'jr t1', note: 'Jump to it. Sq.area runs with the same object in a0 and returns 2 × 2 = 4. Nothing was searched; no name was compared.' },
+  { tabs: 3, obj: 'sq', hiVptr: true, hiSlot: 0, ins: 'ld a5, 0(a1)', note: 'Second load: slot 0 of that table (offset 0, since each slot is 8 bytes). a5 now holds the address of Sq.area.' },
+  { tabs: 3, obj: 'sq', hiSlot: 0, ins: 'jr a5', note: 'Jump to it. Sq.area runs with the same object in a0 and returns 2 × 2 = 4. Nothing was searched; no name was compared.' },
   { tabs: 3, obj: 'ci', hiVptr: true, hiSlot: 0, ins: 'same 3 lines', note: 'Hand the same compiled code a Circle and its vptr leads to Circle’s table, whose slot 0 is Ci.area. The code did not change; the data it walked through did.' },
 ];
 
@@ -82,7 +82,7 @@ export default function VtableSteps() {
         </Box>
         <T x={250} y={174} size={11} fill={tok('muted')}>instruction now</T>
         <T x={8} y={206} size={11} fill={tok('muted')}>a0 = object address;  a1 = its vtable;</T>
-        <T x={8} y={224} size={11} fill={tok('muted')}>t1 = the method’s address</T>
+        <T x={8} y={224} size={11} fill={tok('muted')}>a5 = the method’s address</T>
       </Svg>
     </StepFrame>
   );

@@ -179,7 +179,7 @@ ahead of time:
   ∀ runs r.  out(P', r) = out(P, r)
 at run time:
   check(layout)  ⇒ fast path
-  ¬check(layout) ⇒ deoptimize
+  ¬check(layout) ⇒ deoptimise
 ```
 
 <span slot="read">Ahead of time, the rewritten program P prime must
@@ -235,7 +235,7 @@ reads "the array is written with an index store at line 5".
 ## Measuring the frontier
 
 How do you choose which edge to work on? The same way Part VIII chose
-its optimizations: measure. Run `viscosity explain` over a corpus of
+its optimisations: measure. Run `viscosity explain` over a corpus of
 real programs and count the reasons; the refusal that blocks the most
 programs is the one worth an idea. (Over the engine's own 40-program
 JavaScript test corpus, 27 collections become struct of arrays, 2

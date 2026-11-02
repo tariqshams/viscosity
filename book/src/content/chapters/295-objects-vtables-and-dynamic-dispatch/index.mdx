@@ -113,7 +113,9 @@ uses: the full list of method names, before the program runs.
 ## Number the methods: the vtable
 
 The trick is to swap names for numbers. The compiler gives each of
-`Shape`'s methods a **slot number** (`area` 0, `name` 1), and each
+`Shape`'s methods a **slot number** (`area` 0, `name` 1; a compiled
+language would have `Shape` declare `area` with no body, as the C++
+below does), and each
 class gets an array whose slot 0 holds the address of that class's
 `area` and slot 1 its `name`. A subclass copies its parent's array,
 overwrites the slots it overrides, and adds new methods after them.
@@ -210,16 +212,16 @@ double use(Shape* p) { return p->area(); }
 ```
 
 (with the bodies as in the Drip version), clang 18 with
-`--target=riscv64 -O2 -S` emits this (real output, trimmed, my comments
-after `#`):
+`--target=riscv64 -march=rv64gc -mabi=lp64d -O2 -S` emits this (real
+output, trimmed, my comments after `#`):
 
 <Examples of="vtable object-layout">
 
 ```text
 _Z3useP5Shape:       # use(Shape*)
   ld   a1, 0(a0)     # a1 = p's vptr
-  ld   t1, 0(a1)     # t1 = slot 0
-  jr   t1            # jump to area
+  ld   a5, 0(a1)     # a5 = slot 0
+  jr   a5            # jump to area
 ```
 
 ```text
@@ -243,7 +245,7 @@ _Z2mkd:              # new Sq(s)
 
 The first is the whole virtual call: `a0` holds `p` (chapter 233), one
 load fetches the vptr, a second fetches slot 0, and `jr` jumps there (a
-tail call); a call to `name` differs only in `ld t1, 8(a1)`, slot 1.
+tail call); a call to `name` differs only in `ld a5, 8(a1)`, slot 1.
 The second is `Sq`'s vtable: two words the ABI requires (the "offset to
 top" and a pointer to type information), then `Sq::area`, then the
 inherited `Shape::name`. The third builds an `Sq`: `operator new`

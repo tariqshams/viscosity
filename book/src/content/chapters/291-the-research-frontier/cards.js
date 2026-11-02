@@ -23,11 +23,11 @@ export const prompts = {
   },
   'op-class': {
     q: 'Why is “arrays of class instances” a gap rather than an open problem for Viscosity?',
-    a: 'Recognizing the fields a simple constructor creates is known technique; Viscosity just doesn’t lower classes yet.',
+    a: 'Recognising the fields a simple constructor creates is known technique; Viscosity just doesn’t lower classes yet.',
   },
   'op-proof': {
     q: 'Why can a JIT try layouts that Viscosity must refuse?',
-    a: 'A JIT can speculate and deoptimize when it is wrong. Viscosity runs before the program and has no way back, so it must prove safety.',
+    a: 'A JIT can speculate and deoptimise when it is wrong. Viscosity runs before the program and has no way back, so it must prove safety.',
   },
   'op-cost': {
     q: 'Name one measurement from this book that shows the cost model is still rough.',
@@ -281,7 +281,7 @@ export const quiz = [
     options: [
       { t: 'Explain every decision before the program runs', why: 'That is Viscosity’s advantage, not the JIT’s.' },
       { t: 'Run in any JavaScript engine', why: 'It needs a modified engine; Viscosity’s output is plain JavaScript.' },
-      { t: 'Guess a layout and deoptimize if the guess turns out wrong', correct: true, why: 'Speculation with a way back, which an ahead-of-time compiler lacks.' },
+      { t: 'Guess a layout and deoptimise if the guess turns out wrong', correct: true, why: 'Speculation with a way back, which an ahead-of-time compiler lacks.' },
       { t: 'Avoid the cost of the conversion', why: 'The run-time version pays for converting; Viscosity allocates columns from the start.' },
     ],
   },
@@ -306,7 +306,7 @@ export const quiz = [
   {
     q: 'How does a language like Odin approach SoA?',
     options: [
-      { t: 'It analyzes your program and chooses automatically', why: 'That’s Viscosity’s approach.' },
+      { t: 'It analyses your program and chooses automatically', why: 'That’s Viscosity’s approach.' },
       { t: 'It converts arrays at run time', why: 'That’s the GraalJS research.' },
       { t: 'It has no SoA support', why: 'It has the `#soa` directive.' },
       { t: 'You mark the array `#soa` and keep the ordinary indexing syntax', correct: true, why: '`v_soa[0].x` works on an `#soa` array, and `v_soa.x[0]` reaches the column.' },
