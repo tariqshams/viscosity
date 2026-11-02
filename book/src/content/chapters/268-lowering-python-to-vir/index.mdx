@@ -253,9 +253,10 @@ record of `i * 1.0`, `1.5` and `2.0`. Keywords in a *different* order
 from the fields, such as `P(y=1.0, x=v)`, are not lowered to a record
 at all: Python evaluates arguments left to right, and moving them into
 field order could change that order, so the plugin refuses rather than
-guess. (The report then says the list "appends something that is not a
-fresh dataclass instance", with a note in brackets about defaults that
-does not fit this case; that wording still needs work.)
+guess. The report then says the list "appends something that is not a
+fresh dataclass instance", and its note in brackets names both
+conditions: a dataclass call is modelled only with its arguments in
+field order and literal defaults.
 
 <Callout kind="pitfall">
 Defaults are a false friend, and the plugin got them wrong at first

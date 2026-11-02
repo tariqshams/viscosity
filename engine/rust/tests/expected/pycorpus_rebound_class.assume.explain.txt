@@ -1,5 +1,5 @@
 ps (line 14) {} → kept as array of objects
-  · unsafe: line 16: appends something that is not a fresh dataclass instance (dataclasses with non-literal defaults are not modelled)
+  · unsafe: line 16: appends something that is not a fresh dataclass instance (a dataclass call is modelled only with its arguments in field order and literal defaults)
   · unsafe: line 19: reads .x, which the records don't have
   · unsafe: line 18: reads .x, which the records don't have
   · unsafe: line 18: adds a new property .x to an element

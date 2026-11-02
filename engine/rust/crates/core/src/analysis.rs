@@ -549,7 +549,7 @@ impl<'m> Analyzer<'m> {
                 let r = i.args[1];
                 if !matches!(self.m.inst(r).op, Op::RecordNew { .. }) {
                     let what = if self.py {
-                        "appends something that is not a fresh dataclass instance (dataclasses with non-literal defaults are not modelled)"
+                        "appends something that is not a fresh dataclass instance (a dataclass call is modelled only with its arguments in field order and literal defaults)"
                     } else {
                         "pushes something that is not a fresh object literal"
                     };
