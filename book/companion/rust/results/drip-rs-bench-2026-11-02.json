@@ -1,0 +1,110 @@
+{
+  "env": {
+    "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "date": "2026-11-02T07:39:43.783Z",
+    "runs": 3,
+    "tsResults": "drip-bench-2026-11-02.json",
+    "tsEnv": {
+      "node": "v22.23.4",
+      "v8": "12.4.254.21-node.57",
+      "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+      "date": "2026-11-02T07:39:29.562Z",
+      "runs": 3,
+      "note": "Best of N, each in a fresh process. Includes compile time. Shared cloud VM."
+    },
+    "note": "drip-rs: best of N wall-clock runs, each a fresh process, compile time included. TypeScript numbers are copied from tsResults (each a fresh process, best of 3). Same shared cloud VM for both, so expect noise."
+  },
+  "rows": [
+    {
+      "program": "closures",
+      "rust": 139,
+      "stdout": "240000 1600000",
+      "tsTree": 811,
+      "tsVm": 655,
+      "speedupVsTsVm": 4.71,
+      "speedupVsTsTree": 5.83
+    },
+    {
+      "program": "fib",
+      "rust": 406,
+      "stdout": "2178309",
+      "tsTree": 2365,
+      "tsVm": 1906,
+      "speedupVsTsVm": 4.69,
+      "speedupVsTsTree": 5.83
+    },
+    {
+      "program": "fields",
+      "rust": 193,
+      "stdout": "Body { x: -50, y: 1000000, vx: -1, vy: 2 } Body { x: -499990, y: 18, vx: -1, vy: -2 }",
+      "tsTree": 530,
+      "tsVm": 712,
+      "speedupVsTsVm": 3.69,
+      "speedupVsTsTree": 2.75
+    },
+    {
+      "program": "instantiation",
+      "rust": 140,
+      "stdout": "0",
+      "tsTree": 428,
+      "tsVm": 623,
+      "speedupVsTsVm": 4.45,
+      "speedupVsTsTree": 3.06
+    },
+    {
+      "program": "method_calls",
+      "rust": 167,
+      "stdout": "200000 200000",
+      "tsTree": 918,
+      "tsVm": 704,
+      "speedupVsTsVm": 4.22,
+      "speedupVsTsTree": 5.5
+    },
+    {
+      "program": "particles",
+      "rust": 83,
+      "stdout": "1000 499443.75 true",
+      "tsTree": 446,
+      "tsVm": 380,
+      "speedupVsTsVm": 4.58,
+      "speedupVsTsTree": 5.37
+    },
+    {
+      "program": "sieve",
+      "rust": 283,
+      "stdout": "78498",
+      "tsTree": 1317,
+      "tsVm": 1216,
+      "speedupVsTsVm": 4.3,
+      "speedupVsTsTree": 4.65
+    },
+    {
+      "program": "sort",
+      "rust": 248,
+      "stdout": "1310939",
+      "tsTree": 1394,
+      "tsVm": 1224,
+      "speedupVsTsVm": 4.94,
+      "speedupVsTsTree": 5.62
+    },
+    {
+      "program": "strings",
+      "rust": 305,
+      "stdout": "0 240000",
+      "tsTree": 365,
+      "tsVm": 383,
+      "speedupVsTsVm": 1.26,
+      "speedupVsTsTree": 1.2
+    },
+    {
+      "program": "trees",
+      "rust": 156,
+      "stdout": "292868 32767",
+      "tsTree": 597,
+      "tsVm": 749,
+      "speedupVsTsVm": 4.8,
+      "speedupVsTsTree": 3.83
+    }
+  ]
+}
