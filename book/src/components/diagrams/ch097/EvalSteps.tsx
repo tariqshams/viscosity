@@ -73,7 +73,7 @@ export default function EvalSteps() {
                   <T x={n.x + 34} y={n.y - 17} size={12} mono anchor="middle" weight={700}>{v}</T>
                 </g>
               )}
-              {waiting && !active && <T x={n.x - 22} y={n.y} size={10} anchor="end" fill={tok('accent')}>waiting</T>}
+              {waiting && !active && <T x={n.x - 22} y={n.y} size={11} anchor="end" fill={tok('accent')}>waiting</T>}
             </g>
           );
         })}

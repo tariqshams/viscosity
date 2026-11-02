@@ -8,20 +8,20 @@ objectives:
   - Explain why a single global table breaks block scope.
   - Build an environment with define, get and assign, where get and assign walk the parent chain.
   - Trace a lookup through the scope chain, and say which variable a shadowed name means.
-  - Explain why executeBlock restores the old environment in a finally block.
+  - Explain why executeBlock puts the old environment back in a finally block.
 introduces: [environment, scope-chain, shadowing]
-uses: [scope, block-scope, lexical-scope, closure, map, class, constructor, method, this, reference, recursion, throw, try-catch, typescript, type-annotation, union-type, drip, keyword, identifier, ast-node, expression-vs-statement, evaluate, tree-walking-interpreter, runtime-value, runtime-error, global-variable, side-effect, program-as-list, variables, strings, numbers, if, console-log]
-sources: [nystrom2021, mdn-closures]
+uses: [scope, block-scope, lexical-scope, map, class, constructor, method, this, reference, recursion, throw, try-catch, typescript, type-annotation, union-type, drip, keyword, identifier, ast-node, expression-vs-statement, evaluate, tree-walking-interpreter, runtime-value, runtime-error, global-variable, side-effect, program-as-list, variables, strings, numbers, if, console-log]
+sources: [mdn-block, mdn-closures]
 ---
 import EnvSteps from '../../../components/diagrams/ch099/EnvSteps';
+import ShadowPicture from '../../../components/diagrams/ch099/ShadowPicture';
 
 ## Two variables, one name
 
-At the end of the last chapter, every Drip variable lived in one table:
-the globals. `let` wrote a name into it, and using the name read it back.
-That works until someone writes a block:
+At the end of the last chapter every Drip variable lived in one table,
+the globals, and that works until someone writes a block:
 
-```js
+```text
 let a = "global";
 {
   let a = "block";
@@ -30,208 +30,215 @@ let a = "global";
 print a;
 ```
 
-Drip, like JavaScript, has block scope (chapter 11), so this should print
-`block` and then `global`. The inner `a` is a *different variable* that
-happens to share a name, and it should vanish at the closing `}`. With
-one table, the second `let` simply overwrites the first, and the program
-prints `block` twice. The outer `a` is lost for good.
-
-One table per program is not enough. You need one table per *block*,
-and a way for the tables to find each other.
+Drip, like JavaScript<Cite id="mdn-block" />, has block scope, so this
+should print `block` and then `global`: the inner `a` is a *different
+variable* that happens to share a name, and it should vanish at the
+closing `}`. With one table, however, the second `let` overwrites the
+first, the program prints `block` twice, and the outer `a` is lost for
+good. One table per program is not enough; we need one table per
+*block*, and a way for the tables to find each other.
 
 ## Environments
 
-<Callout kind="intuition">
-Think of a stack of notepads, one per block you are inside. Each new pad
-is tied by a string to the pad that was open when it was made. To write
-a new name, you always use the pad in front of you. To find a name, you
-check that pad, and if it isn't there, you follow the string to the next
-pad, and the next.
-</Callout>
+<Analogy title="sticky notes on nested folders">
+Each folder in a filing cabinet has a sticky note on its cover listing a
+few names and numbers, and every folder sits inside a bigger folder. To
+add a name you write on the note in your hand; to find one, you read
+that note first, and if it is not there you look at the note on the
+folder around it, and so on outwards.
+<span slot="breaks">You can open any folder in the cabinet; the
+interpreter only ever looks outwards from where it is, never into a
+folder nested deeper or beside it.</span>
+</Analogy>
 
-That picture is a small class. Here is the heart of `Environment` from
-the companion's `runtime.ts`, slightly simplified:
+That picture is a small class. The companion's `runtime.ts` keeps
+exactly this data in its `Environment`:
 
 ```ts
 class Environment {
   values = new Map<string, Value>();
   enclosing: Environment | null;
-  constructor(
-    enclosing: Environment | null = null,
-  ) {
+  constructor(enclosing:
+      Environment | null = null) {
     this.enclosing = enclosing;
   }
-  define(name: string, v: Value) {
-    this.values.set(name, v);
+  define(name: string, value: Value) {
+    this.values.set(name, value);
   }
 }
 ```
 
-The `Map` (chapter 17) holds this block's names and their runtime values.
+The `Map` holds this block's names and their runtime values;
 `enclosing` is a reference to the parent environment, or `null` for the
-globals, which have no parent. `define` only ever touches *this* table:
-it is what `let` calls. If the name is already here, it is replaced,
-which is fine at the top level, where Drip lets you redefine a global.
-(Declaring the same name twice in one *block* is rejected before the
-program runs, by a pass you'll write in chapter 105.)
+globals, which have no parent. `define` only ever touches *this* table,
+and it is what `let` calls.
 
 <Callout kind="definition">
 An **environment** is a table from names to values, plus a reference to
 an **enclosing** (parent) environment. The interpreter always has one
-**current** environment. `let` **defines** a name in the current
-environment and never looks anywhere else.
+**current** environment, and `let` **defines** a name in the current
+environment without looking anywhere else.
 </Callout>
 
 <Prompts ids={['env-what', 'env-parent', 'define-current']} />
 
 ## Looking a name up
 
-Reading a variable is where the parent arrow earns its keep:
+Reading a variable is where the parent arrow earns its keep. Here is a
+lookup that walks the chain (we will meet the companion's faster
+version in a moment):
 
 ```ts
 get(name: string): Value {
-  if (this.values.has(name)) {
+  if (this.values.has(name))
     return this.values.get(name)!;
-  }
-  if (this.enclosing) {
+  if (this.enclosing)
     return this.enclosing.get(name);
-  }
-  throw new RuntimeError(
-    `Undefined variable '${name}'.`);
+  throw new RuntimeError(/* token */,
+    `undefined variable '${name}'`);
 }
 ```
 
-Check here. If that fails, ask the parent, which checks *its* table and
-asks *its* parent: a recursive walk (chapter 19) along a chain of
-references. Only when the walk falls off the end, past the globals, is
-the name truly undefined, and that is a runtime error. (The real `get`
-takes the name's token rather than a string, so the error can say which
-line it came from.)
-
-Step through the program below. Watch where each `let` writes, and which
-boxes each lookup checks:
+Check here; on a miss, ask the parent, which checks *its* table and asks
+*its* parent, a recursive walk along a chain of references. Only when
+the walk falls off the end, past the globals, is the name truly
+undefined. `assign` walks the same way and overwrites the first table
+that has the name, so it never creates a variable. Step through the
+program and watch where each `let` writes and which boxes each lookup
+checks:
 
 <EnvSteps client:visible />
 
+<Formal title="Looking a name up">
+
+```text
+look(E, x) = E.values(x)    if x in E
+look(E, x) = look(P, x)     if not, and
+                            E's parent is P
+look(E, x) = error          otherwise
+```
+
+<span slot="read">To look up the name x starting at environment E: if E
+has x, the answer is its value there; if not, and E has a parent P, the
+answer is whatever looking x up from P gives; and if E has no parent,
+x is undefined, which is an error.</span>
+</Formal>
+
 <Callout kind="definition">
 The **scope chain** is the line of environments from the current one,
-through each parent, to the globals. Looking a name up walks the chain
-and stops at the **first** environment that has it. If none does, the
-lookup fails with a runtime error. When an inner environment defines a
-name that an outer one also has, the inner variable **shadows** the
-outer one: inside that block, the outer variable can't be reached by
-name at all.
+through each parent, to the globals. A lookup walks it and stops at the
+**first** environment that has the name; if none does, it is a runtime
+error. When an inner environment defines a name that an outer one also
+has, the inner variable **shadows** the outer one: inside that block,
+the outer variable cannot be reached by name at all.
 </Callout>
 
-Because each block's environment is made while the interpreter is inside
-the enclosing block, the chain always mirrors how the blocks are nested
-in the source text. It is chapter 11's rooms with one-way glass, built
-out of `Map`s and arrows. MDN describes JavaScript's own scopes the same
-way, as a chain of outer scopes that inner code can see<Cite id="mdn-closures" />.
+<Figure takeaway="The lookup stops at the first match, so the nearer a hides the farther one." caption="Inside the inner block, a lookup of a starts at the current environment and stops there; the global a is still alive, only hidden. A lookup of b finds nothing nearby and walks out to the globals.">
+  <ShadowPicture />
+</Figure>
+
+<Analogy title="a nickname at home">
+At home your family calls you "Bee", and anyone saying "Bee" there means
+you, even though your aunt across town is also called Bee; the nearer
+Bee wins, and the farther one is untouched.
+<span slot="breaks">Your aunt can still be reached by her full name; a
+shadowed Drip variable cannot be reached at all from inside the block,
+because Drip has no "full name" for it.</span>
+</Analogy>
+
+<Examples of="environment scope-chain shadowing">
+
+```text
+let n = 1;
+{ print n; }   # 1: found one level up
+```
+
+```text
+let n = 1;
+{ n = 2; }     # assign walks out
+{ let n = 3; } # a new n, gone at }
+print n;       # 2
+```
 
 <Run id="shadow" />
 
-<Prompts ids={['lookup-order', 'undefined-end', 'shadow-what']} />
+</Examples>
 
-## Assigning: walk, then write
+In the first, the block's own table is empty, so the lookup walks one
+step out and finds the global `n`. The second shows that `let` and `=`
+do opposite things to the chain: `n = 2;` walks outwards and changes the
+global, while `let n = 3;` makes a new `n` that shadows it and vanishes
+at the `}`, so the last line prints `2`. The runnable one has three
+levels and an assignment that lands in the middle one.
 
-`n = 2` must change an *existing* variable, wherever it lives. So
-`assign` walks the chain just like `get`, and writes into the first
-table that already has the name:
+A common slip is to use the outer value to start the inner one:
 
-```ts
-assign(name: string, v: Value) {
-  if (this.values.has(name)) {
-    this.values.set(name, v);
-    return;
-  }
-  if (this.enclosing) {
-    this.enclosing.assign(name, v);
-    return;
-  }
-  throw new RuntimeError(
-    `Undefined variable '${name}'.`);
-}
+```text
+let a = 1;
+{ let a = a + 1; }
+# line 2: cannot read 'a' in its own
+# initialiser
+{ let b = a + 1; print b; }   # 2
 ```
 
-Notice that `assign` never creates a variable. Assigning to a name that
-nobody declared is an error, not a quiet new global.
+Drip refuses the first block before anything runs (a compile error, so
+exit code 65), because the inner `a` already exists, unset, while its
+own initialiser runs; giving it a different name works. Declaring the
+same name twice in one block (`{ let x = 1; let x = 2; }`) is refused
+the same way, with `'x' is already declared in this scope`, while at the
+top level a second `let` replaces a global. A pass called the resolver
+checks these rules, and has its own chapter.
 
-<Callout kind="pitfall">
-`let` and `=` look alike but do opposite things to the chain. Inside a
-block, `n = 2;` walks outward and changes the outer `n`. `let n = 2;`
-makes a new `n` right here, which shadows the outer one and disappears
-at the `}`. The outer `n` is untouched.
-</Callout>
-
-```js
-let n = 1;
-{ n = 2; }
-print n; // 2
-{ let n = 3; }
-print n; // still 2
-```
-
-<Prompts ids={['assign-vs-let']} />
+<Prompts ids={['lookup-order', 'undefined-end', 'shadow-what', 'assign-vs-let']} />
 
 ## Entering and leaving a block
 
-The interpreter keeps the current environment in a field, `this.env`.
-A block statement makes a fresh environment whose parent is the current
+The interpreter keeps the current environment in a field, `this.env`. A
+block statement makes a fresh environment whose parent is the current
 one, and runs its statements inside it:
 
 ```ts
 case 'block':
-  this.executeBlock(s.statements,
+  return this.executeBlock(s.statements,
     new Environment(this.env));
-  return;
 ```
 
 ```ts
-executeBlock(stmts: Stmt[],
+executeBlock(statements: Stmt[],
              env: Environment) {
   const previous = this.env;
+  this.env = env;
   try {
-    this.env = env;
-    for (const s of stmts) {
-      this.execute(s);
-    }
+    for (const s of statements) { /*...*/ }
   } finally {
     this.env = previous;
   }
 }
 ```
 
-Leaving the block is just switching back to `previous`. The block's own
-environment isn't destroyed by hand: once nothing refers to it, it is
-garbage like any other unreachable object.
+Leaving the block means switching back to `previous`; nobody destroys
+the block's environment by hand, because once nothing refers to it, it
+is garbage like any other unreachable object. The `finally` is there
+because a block does not always end at its `}`: a runtime error halfway
+through throws straight out, and without the `finally` the interpreter
+would be left inside the dead block's environment.
 
-Why `finally`? Because a block doesn't always end at its `}`. A runtime
-error halfway through throws straight out of `execute`. Without the
-`finally`, `this.env` would be left pointing at the dead inner
-environment. In chapter 103 you'll see a second, more everyday reason:
-`return`.
-
-<Prompts ids={['block-new-env', 'finally-why', 'shadow-ends']} />
+<Prompts ids={['block-new-env', 'finally-why']} />
 
 <Callout kind="engine" label="Under the hood">
-Every variable read here is a `Map` lookup, repeated once per
-environment on the way up the chain. A variable used inside five
-nested blocks but declared at the top costs six lookups, every time
-the line runs. Chapter 105 fixes the worst of this: a resolver works
-out *before* running how many hops up each variable lives, and the
-interpreter jumps straight there with `getAt(distance, name)`. That
-is why the companion's `interpreter.ts` reads variables through a
-`lookUp` helper instead of calling `get` directly. The bytecode VM of
-chapter 129 goes further and keeps local variables in numbered stack
-slots, with no names left at run time at all. This design of an
-environment as a table with a parent link follows *Crafting
-Interpreters*, which Drip is based on<Cite id="nystrom2021" />.
+The walking `get` costs one `Map` lookup per environment on the way up,
+every time the line runs. The companion does better: its `Environment`
+has `getAt(distance, name)` and `assignAt` instead of `get` and
+`assign`, because the resolver works out *before* running how many hops
+up each local variable lives, and the interpreter jumps straight there.
+It finds the same variable as the walk, only faster. JavaScript's own
+scopes form the same chain of outer scopes that inner code can
+see<Cite id="mdn-closures" />.
 </Callout>
 
 ## Your turn
 
-The core exercise builds the whole class. The extra one is in Drip.
+The core exercise builds the class; the extra one is in Drip.
 
 <Exercise id="environment" />
 
@@ -240,16 +247,16 @@ The core exercise builds the whole class. The extra one is in Drip.
 ## What you learned
 
 - An **environment** is a table from names to values with a reference
-  to its **enclosing** environment. The globals have no parent.
-- `let` **defines** in the current environment only.
-- `get` and `assign` walk the **scope chain** outward and stop at the
-  first match. Falling off the end is a runtime error.
-- An inner variable **shadows** an outer one with the same name, until
+  to its **enclosing** environment; the globals have no parent, and
+  `let` defines in the current one only.
+- Lookups and assignments walk the **scope chain** outwards and stop at
+  the first match; falling off the end is a runtime error.
+- An inner variable **shadows** an outer one with the same name until
   its block ends.
-- Each block runs in a fresh environment, and `executeBlock` restores
-  the previous one in `finally`, even if something is thrown.
+- Each block runs in a fresh environment, and `executeBlock` puts the
+  old one back in `finally`.
 
-Next: `if`, `while` and `for`, and why `for` never reaches the
-interpreter at all.
+Next: `if`, `while` and `for`, and the statements that break out of
+loops.
 
 <Quiz />

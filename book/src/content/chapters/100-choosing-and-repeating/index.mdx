@@ -3,240 +3,279 @@ n: 100
 day: 25
 part: III
 title: 'Choosing and repeating: if, while and for'
-tagline: 'Drip learns to choose and to repeat. Two of the three new statements are a few lines each, borrowed from TypeScript, and the third never reaches the interpreter at all.'
+tagline: 'Drip learns to choose and to repeat. if and while are a few lines each, break and continue are a value handed back up, and for teaches a lesson about rewriting one construct as another.'
 objectives:
   - Implement if and while in a tree-walking interpreter, using truthiness.
-  - Desugar a for loop into a block, a while loop and another block, and explain each wrapper.
-  - Explain why and and or are not ordinary binary operators, and predict the value they produce.
+  - Explain how break and continue travel out of nested statements as a completion value.
+  - Say what for i in a..b does, and why rewriting it as a while loop is harder than it looks.
+  - Explain why && and || are not ordinary binary operators, and predict the value they produce.
 introduces: [control-flow, desugaring, short-circuit]
-uses: [environment, scope-chain, shadowing, truthiness, evaluate, tree-walking-interpreter, runtime-value, side-effect, program-as-list, ast, ast-node, expression-vs-statement, parser, recursive-descent, precedence, binding-power, keyword, literal, drip, while-loop, block-scope, discriminated-union, object, array, function, return, if, for-loop, booleans, comparison, variables, numbers, strings, console-log]
-sources: [nystrom2021, mdn-while, mdn-logical-or]
+uses: [environment, scope-chain, shadowing, truthiness, evaluate, tree-walking-interpreter, runtime-value, runtime-error, side-effect, program-as-list, global-variable, ast, ast-node, expression-vs-statement, parser, recursive-descent, keyword, drip, while-loop, block-scope, discriminated-union, object, array, function, return, if, for-loop, booleans, comparison, logical-operators, variables, numbers, strings, console-log]
+sources: [mdn-while, mdn-break, mdn-continue, mdn-for, mdn-logical-or]
 ---
-import DesugarSteps from '../../../components/diagrams/ch100/DesugarSteps';
+import LoopSteps from '../../../components/diagrams/ch100/LoopSteps';
+import DesugarFor from '../../../components/diagrams/ch100/DesugarFor';
 
-## A program that can't change its mind
+## A program that cannot change its mind
 
-Every Drip program so far runs straight down the page. Each statement
-runs exactly once, in order, and then the program ends. You can't print
-the numbers 1 to 100 without writing 100 `print` statements, and you
-can't do something only *sometimes*.
+Every Drip program so far runs straight down the page: each statement
+runs exactly once, in order, and then the program ends. You cannot print
+"big" only when a number is big, and you cannot add up the numbers from
+1 to 100 without writing a hundred lines. Real programs choose and
+repeat, and this chapter teaches the interpreter both.
 
-This chapter adds the three statements that fix that: `if`, `while` and
-`for`. Plus two operators, `and` and `or`, which turn out to be control
-flow in disguise.
+## Choosing: if and else
 
-## Choosing: if
+<Analogy title="points on a railway">
+A train runs along one track until it reaches a set of points, where a
+lever sends it left or right; which way depends on how the lever is set
+at the moment the train arrives.
+<span slot="breaks">A train always ends up somewhere; an `if` with no
+`else` may take neither branch, and simply carry on with the next
+statement.</span>
+</Analogy>
 
-<Callout kind="intuition">
-The interpreter is a reader working through a recipe. An `if` is a step
-that says "if the oven is hot, do this; otherwise, do that". The reader
-checks once, follows one branch, and never even reads the other.
-</Callout>
-
-The parser already turns `if (c) A else B` into a node with three
-children: `condition`, `then` and an optional `else`. Running it takes
-three lines of the companion's `interpreter.ts`:
+Drip writes the condition without brackets and the body always in
+braces: `if n > 3 { print "big"; }`. The interpreter's part is three
+lines of `execute`:
 
 ```ts
-case 'if': {
-  const c = this.evaluate(s.condition);
-  if (isTruthy(c)) this.execute(s.then);
-  else if (s.else) this.execute(s.else);
-  return;
-}
+case 'if':
+  if (isTruthy(this.evaluate(s.condition)))
+    return this.execute(s.then);
+  if (s.else) return this.execute(s.else);
+  return NORMAL;
 ```
 
-Evaluate the condition, ask whether it's truthy with chapter 97's
-`isTruthy` (only `nil` and `false` are falsey), and execute *one* of the
-branches. The other branch's tree is never visited, so a runtime error
-hiding in it can't happen.
+It evaluates the condition, asks Drip's truthiness rule (so `0` and `""`
+choose the `then` branch), and runs one branch or neither. Each branch
+is a block, so it gets its own environment, exactly as in the last
+chapter. There is no special node for `else if`: when the parser sees
+`else if`, it parses the second `if` as the whole `else` branch, so a
+chain of them is ifs nested inside elses.
 
-Notice the trick: Drip's `if` is implemented with TypeScript's `if`. The
-interpreter makes a decision in its own language whenever the program
-it's running makes one.
+<Callout kind="definition">
+**Control flow** is the order in which a program's statements run, and
+the parts of a language that change it: `if` chooses which statement
+runs next, and loops send the program back to run statements again.
+</Callout>
 
-One parsing detail: in `if (a) if (b) x; else y;` the `else` belongs to
-the inner `if`. The inner `ifStatement` call parses its then-branch and
-then greedily takes any `else` that follows, before the outer one gets a
-look.
+<Prompts ids={['if-truthy', 'else-if-nested']} />
 
-<Prompts ids={['if-one-branch', 'dangling-else']} />
+## Repeating: while, break and continue
 
-## Repeating: while
-
-`while` has the same shape, and borrows TypeScript's `while`
-(chapter 9)<Cite id="mdn-while" />:
+`while` repeats its body while the condition is truthy, and each time
+round the body gets a fresh environment:
 
 ```ts
 case 'while':
   while (isTruthy(
-    this.evaluate(s.condition))) {
-    this.execute(s.body);
+      this.evaluate(s.condition))) {
+    const c = this.executeBlock(s.body,
+      new Environment(this.env));
+    if (c === BREAK) break;
+    if (c === RETURN) return c;
   }
-  return;
+  return NORMAL;
 ```
 
-The condition is re-evaluated before every trip round the loop, so the
-body must change something the condition reads, or the loop never stops.
-(Drip has no `break`, so the condition is the only way out, for now.)
+What is `c`? `break` and `continue` may sit deep inside the body (in an
+`if`, in a block in an `if`), and they must stop work at every level on
+the way out. So every `execute` hands back a small **completion** value
+saying how the statement finished: `NORMAL`, `BREAK`, `CONTINUE` or
+`RETURN`. The `break` statement just returns `BREAK`; `executeBlock`
+stops its own list at the first statement that does not finish normally
+and passes the value up. The loop then decides: `BREAK` ends it,
+`CONTINUE` goes straight to the next test of the condition, and
+`RETURN` (for functions, later) keeps travelling. Both statements apply
+to the innermost loop, as in JavaScript<Cite id="mdn-break" /><Cite id="mdn-continue" />,
+and outside a loop they are compile errors (`'break' outside a loop`).
 
-<Callout kind="definition">
-**Control flow** is the order in which a program's statements run.
-`if` and `while` make that order depend on runtime values: which
-statement runs next is decided by evaluating a condition and testing
-its **truthiness**. A tree-walking interpreter implements each of
-them with the matching control flow of its host language.
-</Callout>
+<LoopSteps client:visible />
 
-<Prompts ids={['control-flow-what', 'while-reeval']} />
+<Prompts ids={['completion-why', 'continue-skips', 'break-outside']} />
 
-## The loop that isn't there: for
+## for, and rewriting one loop as another
 
-A `for` loop packs four things into one line:
+Drip has one more loop, `for i in a..b { ... }`, which runs the body
+with `i` set to `a`, `a + 1`, and so on while `i < b`. It looks like
+something we could build out of parts we already have: a block, a
+`let`, a `while` and a `+=`. Turning a construct into simpler ones like
+that is called **desugaring** (the nicer spelling is the "sugar"), and
+it is often done in the parser so that the back end has fewer kinds of
+node to run.
 
-```js
-for (let i = 0; i < 3; i = i + 1)
-  print i;
-```
+<Analogy title="recipe shorthand">
+A recipe says "make a white sauce", and an experienced cook expands that
+into melt butter, stir in flour, add milk slowly; the short form is
+easier to read and means exactly the long one.
+<span slot="breaks">A cook can expand loosely; a desugaring must keep
+*every* behaviour of the original, including the odd cases, or programs
+quietly change meaning.</span>
+</Analogy>
 
-You could add a fifth kind of statement and a new `case` to the
-interpreter. But look at what it *means*: run the initializer once, then
-while the condition holds, run the body and then the increment. That is
-a `while` loop you already know how to run. So the parser rewrites it
-into one, and the interpreter never hears the word `for`:
+<Figure takeaway="A rewrite must keep every behaviour, and continue is the one that breaks this one." caption="A for loop and the while loop it seems to mean. The hidden end and k must not clash with your names, i must be fresh each time round, and a continue in the body would skip the k += 1 on the right, looping for ever.">
+  <DesugarFor />
+</Figure>
 
-<DesugarSteps client:visible />
-
-Here is the end of `forStatement` in `parser.ts`, lightly simplified
-(`block` and `exprStmt` stand for the plain node objects the real code
-spells out):
+Look at the right-hand side carefully. `b` must be evaluated once, so it
+needs a hidden variable; `i` is a fresh variable each time round
+(assigning to it does not change which values come next), so the
+counter has to be a different hidden `k`; and a `continue` in the body
+jumps straight back to the test, *skipping* `k += 1`, so the loop never
+ends. For these reasons the companion keeps a real `for` node and runs
+it directly, in `forLoop`:
 
 ```ts
-let body = statement();
-if (increment) {
-  body = block([body,
-    exprStmt(increment)]);
+let i = start; // start and end: numbers
+next = () => (i < end ? i++ : undefined);
+for (let v = next(); v !== undefined;
+     v = next()) {
+  const loopEnv = new Environment(this.env);
+  loopEnv.define(s.name.lexeme, v);
+  // run the body; BREAK ends the loop
 }
-body = { kind: 'while',
-         condition, body };
-if (initializer) {
-  body = block([initializer, body]);
-}
-return body;
 ```
 
-Each part is optional. With no increment, the body is left alone; with
-no initializer, there's no outer block. A missing condition, as in
-`for (;;)`, becomes the literal `true`: a loop that runs forever.
-
-The outer block matters. Because it gets its own environment (chapter
-99), the loop's `i` lives only as long as the loop, and it can shadow an
-`i` outside:
-
-```js
-let i = "before";
-for (let i = 0; i < 3; i = i + 1) {
-  print i;
-}
-print i; // before
-```
+`start` and `end` are evaluated once, before the loop, and checked to be
+numbers (`a range must start with a number, not a string`). Each value
+gets its own `loopEnv`, which is how each time round has a fresh `i`,
+the same choice JavaScript makes for `let` in a `for`<Cite id="mdn-for" />.
 
 <Callout kind="definition">
-**Desugaring** means rewriting a construct in terms of simpler ones
-the language already has. The convenient form is **syntactic sugar**.
-Drip's parser desugars `for` into a block containing the initializer
-and a `while` loop whose body is a block of the original body and the
-increment. Every pass that walks the tree afterwards (the interpreter,
-and the resolver of chapter 105) gets `for` loops for free.
+**Desugaring** is rewriting a construct of a language in terms of
+simpler constructs it already has, so that the rest of the
+implementation needs to handle fewer kinds of node. In Drip, `else if`
+is desugared into an `if` inside an `else`.
 </Callout>
 
-<Callout kind="pitfall">
-Desugaring is only correct if the rewrite means *exactly* the same
-thing. Drip has no `continue`. If it did, this rewrite would break: a
-`continue` jumping to the end of the body would also skip the increment,
-which lives in the same block. Real languages with `continue` have to
-handle the increment more carefully.
-</Callout>
+<Examples of="control-flow desugaring">
 
-<Prompts ids={['desugar-what', 'for-outer-block', 'for-no-cond', 'for-free']} />
-
-## and, or: operators that skip
-
-`and` and `or` look like binary operators, and they sit in the Pratt
-table with binding powers like the rest (`and` binds tighter than `or`).
-But the `binary` case evaluates both sides *before* it looks at the
-operator. For these two, that's wrong:
-
-```js
-let ok = false and (calls = calls + 1);
+```text
+if 0 { print "yes"; }   # yes: 0 is truthy
 ```
 
-Once the left side is `false`, the answer is known, and the assignment
-on the right must not happen. So the parser makes a separate `logical`
-node, and the interpreter treats it like a tiny `if`:
+```text
+for i in 0..3 { print i; }  # 0, 1, 2
+for i in 3..0 { print i; }  # nothing
+```
+
+<Run id="loops" />
+
+</Examples>
+
+The first runs its body because `0` is truthy in Drip. In the second,
+the range stops *before* `b`, so `0..3` gives three values and `3..0`
+gives none at all. The runnable one adds up the numbers from 1 to 100
+that are not multiples of 3: `continue` skips the multiples, and the
+total is `3367`.
+
+<Prompts ids={['desugar-what', 'for-end-once', 'continue-trap']} />
+
+## && and || skip the right side
+
+`&&` and `||` look like binary operators, but they cannot be, because a
+binary node evaluates *both* children before it looks at the operator.
+`false && x` already knows its answer after the left side, and so does
+`true || x`; the right side should never run. The parser therefore gives
+them their own node, `logical`, and the interpreter evaluates the right
+side only when it is needed:
 
 ```ts
 case 'logical': {
-  const l = this.evaluate(e.left);
-  if (e.operator.type === 'or') {
-    return isTruthy(l)
-      ? l : this.evaluate(e.right);
-  }
-  return isTruthy(l)
-    ? this.evaluate(e.right) : l;
+  const left = this.evaluate(e.left);
+  if (e.operator.type === '||')
+    return isTruthy(left) ? left
+      : this.evaluate(e.right);
+  return isTruthy(left)
+    ? this.evaluate(e.right) : left;
 }
 ```
 
-Look at what comes back: not `true` or `false`, but one of the operand
-*values*. `nil or "default"` is `"default"`, and `1 and 2` is `2`.
-JavaScript's `||` and `&&` behave the same way<Cite id="mdn-logical-or" />.
+The result is one of the operands, not always a boolean, which is also
+how JavaScript's `||` behaves<Cite id="mdn-logical-or" />.
 
-<Run id="shortCircuit" />
+<Analogy title="a door with two checks">
+A doorman checks your ticket first and your coat second; if you have no
+ticket he sends you away without even looking at your coat.
+<span slot="breaks">The doorman answers yes or no; Drip's `&&` and `||`
+hand back one of the values they looked at, which may be a number or a
+string.</span>
+</Analogy>
 
 <Callout kind="definition">
-**Short-circuit** evaluation means an operator skips evaluating its
-right operand when the left one already decides the result. In Drip,
-`a or b` returns `a` if it is truthy, and otherwise evaluates and
-returns `b`. `a and b` returns `a` if it is falsey, and otherwise
-evaluates and returns `b`. The skipped side's side effects never
-happen.
+An operator **short-circuits** when it skips evaluating its right side
+because the left side already decides the result: `&&` stops at a falsey
+left side and `||` at a truthy one. Each produces the operand it stopped
+at.
 </Callout>
 
-<Prompts ids={['logical-not-binary', 'or-value', 'and-skip']} />
+<Formal title="The two rules for &&">
 
-<Callout kind="engine" label="Under the hood">
-The tree-walker gets its control flow for free by borrowing
-TypeScript's `if` and `while`. The bytecode VM in Part IV can't: it
-runs a flat list of instructions with no nesting at all. In chapter 130
-its compiler turns `if`, `while`, `for`, `and` and `or` into
-**jumps**: instructions that say "if the value on top of the stack is
-falsey, continue at instruction 42". Short-circuiting is then just a
-jump over the right operand's code. The approach here, including
-desugaring `for` in the parser, follows *Crafting
-Interpreters*<Cite id="nystrom2021" />.
-</Callout>
+```text
+a ⇓ v    v falsey
+─────────────────
+   a && b ⇓ v
+
+a ⇓ v    v truthy    b ⇓ w
+──────────────────────────
+       a && b ⇓ w
+```
+
+<span slot="read">Read ⇓ as "evaluates to". First rule: if a evaluates
+to a falsey v, then a && b evaluates to v, and b is not mentioned above
+the line at all, so it is never evaluated. Second rule: if a evaluates
+to a truthy v and b evaluates to w, the whole expression is w. The
+rules for || are the same with truthy and falsey swapped.</span>
+</Formal>
+
+<Examples of="short-circuit">
+
+```text
+print none || "default";  # default
+```
+
+```text
+print 1 && 2;    # 2
+print 0 || 5;    # 0: 0 is truthy
+```
+
+```text
+print false && missing;   # false
+```
+
+</Examples>
+
+`none` is falsey, so `||` moves on and returns `"default"`, the common
+way to give a fallback value. `1 && 2` returns its right operand, `2`,
+because the left was truthy; `0 || 5` returns `0`, because in Drip `0`
+is truthy. The last line is the proof that the right side never runs:
+`missing` was never defined, yet there is no runtime error.
+
+<Prompts ids={['logical-not-binary']} />
 
 ## Your turn
 
-The core exercise is the desugaring itself, in plain JavaScript.
+The core exercise adds `if`, `while`, `break`, `continue` and the
+short-circuit operators to a small interpreter; the extra one is a Drip
+loop.
 
-<Exercise id="desugarFor" />
+<Exercise id="mini-flow" />
 
-<Exercise id="powersOfTwo" />
+<Exercise id="skip-threes" />
 
 ## What you learned
 
-- **Control flow** is the order statements run in. `if` runs one branch
-  and `while` re-checks its condition before every trip, both using
-  **truthiness**, both borrowed from TypeScript.
-- **Desugaring** rewrites a construct into simpler ones. The parser turns
-  `for` into `{ init; while (cond) { body; incr } }`, and a missing
-  condition becomes `true`.
-- The outer block keeps the loop variable local to the loop.
-- `and` and `or` **short-circuit**: they skip the right side when the
-  left decides, and they return an operand's value, not a boolean.
+- **Control flow** is which statement runs next: `if` picks a branch by
+  truthiness, and `while` repeats with a fresh environment each time.
+- `break` and `continue` travel outwards as a completion value until the
+  innermost loop handles them.
+- **Desugaring** rewrites a construct as simpler ones; `else if` is
+  desugared, while `for` keeps its own node because the rewrite is
+  easy to get wrong.
+- `&&` and `||` **short-circuit**: they skip the right side when the left
+  decides, and produce an operand.
 
-Next: functions, the last thing Drip needs before it can run real
-programs.
+Next: lists, the first value in Drip that holds other values.
 
 <Quiz />

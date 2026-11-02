@@ -3,210 +3,339 @@ n: 97
 day: 25
 part: III
 title: 'Running expressions: a tree that computes'
-tagline: 'The parser hands over a tree. Now it finally does something: one recursive function walks it from the leaves up and works out what it is worth, and stops with a clear message when the types make no sense.'
+tagline: 'The parser hands over a tree, and nobody asked for a tree. One recursive function walks it from the leaves up, works out what it is worth, and stops with a plain message when the values make no sense together.'
 objectives:
-  - Evaluate an expression tree by hand, children before parents.
-  - Say how each kind of Drip value is represented in the TypeScript interpreter.
-  - Predict which Drip values count as true, and how that differs from JavaScript.
-  - Explain when Drip raises a runtime error, and read the message it prints.
+  - Evaluate an expression tree by hand, children before parents, and say why that order is forced.
+  - Say how each kind of Drip value is held by the TypeScript interpreter, and how print shows it.
+  - Predict which Drip values count as true, and where that differs from JavaScript.
+  - Read a Drip runtime error, and say why it is not a syntax error.
 introduces: [evaluate, tree-walking-interpreter, runtime-value, truthiness, runtime-error]
-uses: [interpreter, compiler-pipeline, front-end-back-end, drip, dynamic-typing, language-spec, ast, ast-node, expression-vs-statement, literal, token, source-location, pratt-parser, syntax-error, tree, recursion, call-stack, function, return, discriminated-union, union-type, narrowing, typescript, throw, error-object, class, ieee754, booleans, numbers, strings, comparison, if]
-sources: [nystrom2021]
+uses: [interpreter, compiler-pipeline, front-end-back-end, drip, dynamic-typing, language-spec, ast, ast-node, expression-vs-statement, literal, token, source-location, pratt-parser, syntax-error, tree, recursion, call-stack, function, return, discriminated-union, union-type, narrowing, typescript, typeof, throw, error-object, class, ieee754, booleans, numbers, strings, comparison, if]
+sources: [mdn-falsy, mdn-number, mdn-error, v8-ignition]
 ---
 import EvalSteps from '../../../components/diagrams/ch097/EvalSteps';
+import ValueMap from '../../../components/diagrams/ch097/ValueMap';
 
 ## A tree is not an answer
 
-After eight chapters of scanning and parsing, `1 + 2 * 3 - 4` has become
-a beautiful tree: `(- (+ 1 (* 2 3)) 4)`. But nobody asked for a tree.
-They asked for `3`. The parser is the front end of the pipeline. This
-chapter starts the back end, and in a tree-walking interpreter the back
-end is surprisingly small.
+After all the chapters on parsing, `print 1 + 2 * 3 - 4;` has become a
+tidy tree, `(- (+ 1 (* 2 3)) 4)`; however, nobody who types that line
+wants a tree, they want to see `3`. This chapter starts the back end of
+the pipeline, which in our interpreter is one function that looks at a
+node and works out what it is worth.
 
 ## Walking the tree
 
-<Callout kind="intuition">
-Picture a company asked for its total sales. The boss can't answer
-alone, so she asks her two managers. Each manager asks their own team.
-The people at the bottom just know their number and say it. Then the
-answers flow back up, each manager adding up what they heard, until the
-boss has the total. Nobody answers before everyone below them has.
-</Callout>
+Precedence was settled when the tree was built (the `*` sits below the
+`+`), and a node's value depends only on its children's values, so the
+rule is "ask the children, then combine what they say".
 
-That is the whole algorithm. A node's value depends only on its
-children's values, so ask the children first, then combine:
+<Analogy title="a company adding up its sales">
+The boss is asked for the year's total and cannot answer alone, so she
+asks her two managers; each manager asks their own team, and the people
+at the bottom simply know their own number and say it. The answers flow
+back up, each manager adding what they heard, until the boss has the
+total, and nobody answers before everyone below them has.
+<span slot="breaks">Managers can ask their teams at the same time; the
+interpreter asks one child at a time, always the left one first, which
+matters as soon as asking can print something or fail.</span>
+</Analogy>
+
+<Analogy title="brackets on a pocket calculator">
+For `(2 × 3) + 1` you work out the inner bracket first, note the 6, and
+use it in the outer sum.
+<span slot="breaks">A person spots shortcuts (anything times zero is
+zero, so why work out the rest?); the interpreter never does, and it
+visits every node, even a lone `4`.</span>
+</Analogy>
+
+Step through the tree for `1 + 2 * 3 - 4` and watch the calls wait on
+each other, then the values climb back up:
 
 <EvalSteps client:visible />
 
-Here is the core of it, simplified from `evaluate` in
-`companion/ts/src/interpreter.ts`:
+Here is the heart of `evaluate` in `companion/ts/src/interpreter.ts`,
+with the cases for later chapters left out:
 
 ```ts
-function evaluate(e: Expr): Value {
+evaluate(e: Expr): Value {
   switch (e.kind) {
     case 'literal':
       return e.value;
     case 'grouping':
-      return evaluate(e.expression);
+      return this.evaluate(e.expression);
     case 'unary': {
-      const right = evaluate(e.right);
+      const right = this.evaluate(e.right);
       if (e.operator.type === '!')
         return !isTruthy(right);
-      return -num(e.operator, right);
+      if (typeof right !== 'number')
+        throw new RuntimeError(e.operator,
+          'cannot negate ' +
+          describe(right));
+      return -right;
     }
     case 'binary': {
-      const l = evaluate(e.left);
-      const r = evaluate(e.right);
-      return binary(e.operator, l, r);
+      const l = this.evaluate(e.left);
+      const r = this.evaluate(e.right);
+      return this.arithmetic(/* ... */);
     }
   }
 }
 ```
 
-One `case` per kind of node, and TypeScript's narrowing on `kind` knows
-which fields each case may touch. A grouping node does nothing of its
-own: the parentheses already did their work when the tree was shaped.
+There is one `case` per kind of node, and narrowing on `kind` tells
+TypeScript which fields each case may touch. A **literal** already holds its value, put there by
+the scanner, so it returns it. A **grouping** does nothing of its own:
+the brackets did their work when they shaped the tree. A **unary** node
+evaluates its one child and then applies `!` or `-`; a **binary** node
+evaluates its left child, then its right child, and only then applies
+the operator (`==` and `!=` are checked first; everything else goes to
+`arithmetic`, which we read below).
 
 <Callout kind="definition">
 To **evaluate** an expression is to compute the value it stands for. A
-**tree-walking interpreter** runs a program by walking its syntax tree
-directly: a recursive function visits each node, evaluates its children,
-and combines their values. No other form of the program is produced.
+**tree-walking interpreter** runs a program by visiting its syntax tree
+directly: a recursive function evaluates a node's children, combines
+their values, and returns the result.
 </Callout>
+
+<Formal title="Evaluating a sum">
+
+```text
+e₁ ⇓ v₁    e₂ ⇓ v₂    v₁, v₂ numbers
+────────────────────────────────────
+         e₁ + e₂ ⇓ v₁ + v₂
+```
+
+<span slot="read">The arrow ⇓ reads "evaluates to". Above the line are
+the things that must be true first: e₁ evaluates to v₁, e₂ evaluates to
+v₂, and both are numbers. Below the line is what follows: the sum
+evaluates to the two values added: children first, as in the
+code.</span>
+</Formal>
+
+<Examples of="evaluate tree-walking-interpreter">
+
+```text
+print 7;            # 7
+```
+
+```text
+print (1 + 2) * 3;  # 9
+print -(2 - 5);     # 3
+```
+
+```text
+print 10 + 2 * 0.5; # 11
+```
+
+</Examples>
+
+The first tree is one literal node, so `evaluate` returns `7`. In the second, the brackets make `+` the left child of `*`, so the
+sum is finished first and the answer is `9`; the next line's unary minus
+waits for its child, `2 - 5`, which is `-3`, and negates it. The third is a
+particle at 10 moving at speed 2 for half a second: `2 * 0.5` is `1`, and
+`10 + 1` is `11`.
 
 <Prompts ids={['evaluate-what', 'children-first', 'grouping-nothing', 'tree-walker-what']} />
 
 ## What a value looks like
 
-While a Drip program runs, its values have to live *somewhere*. The
-interpreter is written in TypeScript, so the easiest home is a
-TypeScript value:
+While a Drip program runs, its values have to live somewhere, and since
+the interpreter is written in TypeScript, the easiest home is a
+TypeScript value. This is the `Value` type from `runtime.ts`:
 
 ```ts
-// runtime.ts (functions, classes: later)
 type Value = null | boolean | number
-  | string | DripCallable | DripInstance;
+  | string | DripList | DripFunction
+  | NativeFunction | DripClass
+  | DripInstance;
 ```
 
-```
-Drip         in the interpreter
-nil          null
-true         true
-12.5         the number 12.5
-"hi"         the string 'hi'
-```
+<Figure takeaway="Simple Drip values borrow the host's own values." caption="The left column is what you write in Drip; the right is what the interpreter holds. Lists, functions, classes and instances are objects of the interpreter's own classes, met in later chapters.">
+  <ValueMap />
+</Figure>
 
-Borrowing the host's values means `+` on two Drip numbers is just `+`
-on two JavaScript numbers. `print` needs one small adjustment, made by
-`stringify`: `null` must print as `nil`.
+Borrowing the host's values means `+` on two Drip numbers *is* `+` on
+two JavaScript numbers, so Drip numbers are 64-bit IEEE 754
+doubles<Cite id="mdn-number" />. Only printing differs: `stringify` shows `null`
+as `none`, `NaN` as `nan` and `Infinity` as `inf`.
 
 <Callout kind="definition">
-A **runtime value** is the representation of a Drip value while the
-program runs. Drip's tree-walker reuses JavaScript values: `nil` is
-`null`, and booleans, numbers and strings are their JavaScript
-counterparts. The Drip type of a value is therefore just its JavaScript
-type, checked with `typeof`.
+A **runtime value** is how a value of the language is held while the
+program runs. Drip's tree-walker reuses JavaScript values for the simple
+ones (`none` is `null`, and booleans, numbers and strings are
+themselves), so a Drip value's type can be checked with `typeof`.
 </Callout>
 
-<Run id="values" />
+<Examples of="runtime-value">
 
-<Prompts ids={['nil-is-null', 'drip-type-check']} />
+```text
+print none;    # none
+```
+
+```text
+print 10 / 4;  # 2.5
+print 1 / 0;   # inf
+```
+
+```text
+print 0.1 + 0.2;  # 0.30000000000000004
+print 3 == "3";   # false
+```
+
+</Examples>
+
+`none` is held as `null` and printed by its Drip name. `10 / 4` is
+`2.5`, because division never rounds down, and `1 / 0` is JavaScript's
+`Infinity`, shown as `inf`. In the third, the sum is a double's nearest
+answer, and `3 == "3"` is `false`: the companion's `isEqual` is `a === b`, so values of different
+types are never equal.
+
+<Prompts ids={['none-is-null']} />
 
 ## What counts as true
 
-`!` needs to know whether a value is “true enough”, and so will `if`
-and `while` in chapter 100. Drip's rule fits on one line:
+`!` needs to know whether a value is "true enough", and so will `if` and
+`while` soon. Drip's rule fits on one line of `runtime.ts`:
 
 ```ts
-const isTruthy = (v: Value) =>
+const isTruthy = (v: Value): boolean =>
   v !== null && v !== false;
 ```
 
-Only `nil` and `false` are false. Everything else, including `0` and
-the empty string `""`, is true. That is *not* JavaScript's rule, where
-`0` and `''` are also falsy. The example above shows it: `!0` printed
-`false`, because `0` is truthy in Drip.
+Only `none` and `false` are false, and every other value is true,
+including `0`, the empty string and the empty list. That is a smaller
+list than JavaScript's, where `0`, `-0`, `NaN`, `""`, `null` and
+`undefined` all count as false too<Cite id="mdn-falsy" />.
 
 <Callout kind="definition">
-**Truthiness** is the rule that decides which values count as true where
-a condition is expected. In Drip, `nil` and `false` are **falsey** and
-every other value is **truthy**.
+**Truthiness** is the rule that decides which values count as true
+where a condition is expected. In Drip, `none` and `false` are
+**falsey** and every other value is **truthy**.
 </Callout>
+
+<Examples of="truthiness">
+
+```text
+print !none;  # true
+```
+
+```text
+print !0;     # false
+print !"";    # false
+```
+
+```text
+print !(3 > 4);  # true
+```
+
+</Examples>
+
+`none` is falsey, so `!none` is `true`. `0` and `""` are truthy in Drip,
+so negating them gives `false` (in JavaScript `!0` is `true`). The last
+is the everyday case: a comparison makes a real boolean, and `!` flips
+it. A common slip in the interpreter is writing `!right` instead of
+`!isTruthy(right)`, which borrows JavaScript's rule.
 
 <Prompts ids={['truthy-zero']} />
 
-## When the types are wrong
+## When the values make no sense together
 
-Drip is dynamically typed: nothing checks `"1" - 1` before the program
-runs. So the interpreter checks while it runs, right before it applies
-each operator:
+Drip is dynamically typed, so nothing checks `"1" - 1` before the
+program runs; instead, `arithmetic` checks just before it applies each
+operator:
 
 ```ts
-case '+':
+if (op === '+') {
   if (typeof l === 'number' &&
       typeof r === 'number') return l + r;
   if (typeof l === 'string' &&
       typeof r === 'string') return l + r;
-  throw new RuntimeError(op,
-    'Operands must be two numbers or ' +
-    'two strings.');
-case '-':
-  nums(op, l, r); // throws if not numbers
-  return l - r;
+  throw new RuntimeError(at, `cannot add `
+    + `${describe(l)} and ${describe(r)}`);
+}
 ```
 
-Try `'1' - 1` in JavaScript and you get `0`: the string is quietly
-converted. Drip refuses. `RuntimeError` carries the operator's token,
-and the token knows its line, so the message can say where:
+The other operators need two numbers, checked the same way. In
+JavaScript `'1' - 1` is `0`, because the string is quietly converted;
+Drip refuses. `describe` names a type with its article (`a number`,
+`none`), and `RuntimeError` extends `Error`<Cite id="mdn-error" /> with
+the line of the operator's token. The runner catches it, prints it, and
+exits with code 70:
 
 <Run id="type-error" />
 
-The first `print` ran and printed `3`. The second stopped the program.
-Drip prints the message, then `[line 2]`, and exits with code 70: not
-65, because this program was perfectly valid Drip. It went wrong while
-running.
+The first `print` showed `3`; the second stopped the program with
+`runtime error: cannot use '-' on a string and a number` and
+`at line 2 in script`, and the third never ran. The exit code is 70, not
+a compile error's 65, because this was good Drip that went wrong only
+while running.
 
 <Callout kind="definition">
-A **runtime error** is an error found while the program runs, such as
-an operator applied to values of the wrong type. Drip reports the
-message and the line of the operator's token, stops the program, and
-exits with code 70. A syntax error, by contrast, is found before
-anything runs.
+A **runtime error** is an error found while the program runs, such as an
+operator given values of the wrong types. Drip prints
+`runtime error:` and the message, then where it happened, stops the
+program and exits with code 70. A syntax error, by contrast, is found
+before anything runs.
 </Callout>
 
-<Prompts ids={['runtime-vs-syntax', 'token-for-line', 'plus-rule']} />
+<Examples of="runtime-error">
+
+```text
+print -"hi";
+# cannot negate a string
+```
+
+```text
+print 1 < "2";
+# cannot compare a number and a string
+# with '<'
+```
+
+```text
+print 2 + " cups";      # error
+print str(2) + " cups"; # 2 cups
+```
+
+</Examples>
+
+Unary minus needs a number. The comparison names both types and the
+operator, so you can see which side was wrong. The last pair is the
+spot-the-difference you will meet most: the first line stops with
+`cannot add a number and a string`; the second turns the number into a
+string with the built-in `str`, so `+` joins two strings.
+
+<Prompts ids={['runtime-vs-syntax', 'token-for-line']} />
 
 <Callout kind="engine" label="Under the hood">
-Because Drip numbers *are* JavaScript numbers, they are 64-bit IEEE 754
-doubles, the format from chapters 34 and 57. So `print 0.1 + 0.2;`
-prints `0.30000000000000004` in Drip, exactly as in JavaScript. The
-price of walking the tree is just as concrete: every node costs a
-function call and a `switch`, even a lone `4`. Chapter 107 measures that
-overhead, and Part IV removes most of it with bytecode. Drip's design
-follows Lox from *Crafting Interpreters*<Cite id="nystrom2021" />.
+Walking the tree has a price: every node costs a function call and a
+`switch`, even a lone `4`. V8 avoids paying it again and again by
+turning each function into a compact bytecode that its Ignition
+interpreter runs<Cite id="v8-ignition" />; Part IV does the same for
+Drip.
 </Callout>
 
 ## Your turn
 
-Write the evaluator yourself, in plain JavaScript, with Drip's type
-rules and truthiness. The extra one is `stringify`.
+The core exercise is the evaluator itself, in JavaScript; the second is
+a Drip program to mend.
 
 <Exercise id="mini-eval" />
 
-<Exercise id="stringify" />
+<Exercise id="fix-total" />
 
 ## What you learned
 
 - To **evaluate** a tree, evaluate the children, then combine their
-  values. Values flow from the leaves up to the root.
-- A **tree-walking interpreter** does exactly that, with one recursive
-  function and one `case` per kind of node.
-- Drip's **runtime values** are JavaScript values: `nil` is `null`,
-  and booleans, numbers and strings are themselves.
-- **Truthiness** in Drip: only `nil` and `false` are false. `0` and
-  `""` are true.
-- Operators check their operand types as they run. A mismatch is a
-  **runtime error**: a message, the line, and exit code 70.
+  values; values flow from the leaves up to the root.
+- A **tree-walking interpreter** does that with one recursive function
+  and one `case` per kind of node.
+- Drip's **runtime values** borrow JavaScript's: `none` is `null`.
+- **Truthiness**: only `none` and `false` are false; `0` and `""` are
+  true.
+- Operators check their operands as they run, and a mismatch is a
+  **runtime error**: a message, a line, and exit code 70.
 
 Next: statements, which do things instead of producing values, and the
 variables they remember.

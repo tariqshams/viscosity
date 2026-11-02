@@ -19,7 +19,7 @@ export const prompts = {
   },
   'undefined-end': {
     q: 'What happens when a lookup walks past the globals without finding the name?',
-    a: 'It throws a runtime error: `Undefined variable \'name\'.`',
+    a: 'It throws a runtime error: `runtime error: undefined variable \'name\'`',
   },
   'shadow-what': {
     q: 'What does it mean for an inner variable to *shadow* an outer one?',
@@ -36,10 +36,6 @@ export const prompts = {
   'finally-why': {
     q: 'Why does `executeBlock` restore the old environment in a `finally`?',
     a: 'So it is restored even when something is thrown out of the block, such as a runtime error.',
-  },
-  'shadow-ends': {
-    q: 'When does a shadowing variable stop hiding the outer one?',
-    a: 'When its block ends and the interpreter switches back to the previous environment.',
   },
 };
 
@@ -65,7 +61,7 @@ export const exercises = {
   environment: {
     title: 'An environment with a parent',
     prompt:
-      'Finish the `Environment` class. `define(name, v)` stores a value in **this** environment. `get(name)` returns the value from the nearest environment that has the name, checking this one first and then each parent. `assign(name, v)` changes the value in the nearest environment that has the name. If no environment in the chain has the name, `get` and `assign` must throw an `Error` whose message is `Undefined variable \'NAME\'.` (with the real name).',
+      'Finish the `Environment` class. `define(name, v)` stores a value in **this** environment. `get(name)` returns the value from the nearest environment that has the name, checking this one first and then each parent. `assign(name, v)` changes the value in the nearest environment that has the name. If no environment in the chain has the name, `get` and `assign` must throw an `Error` whose message is `undefined variable \'NAME\'` (with the real name).',
     starter: `class Environment {
   constructor(parent = null) {
     this.values = new Map();
@@ -102,7 +98,7 @@ console.log(inner.get('a'));`,
       return this.parent.get(name);
     }
     throw new Error(
-      \`Undefined variable '\${name}'.\`);
+      \`undefined variable '\${name}'\`);
   }
   assign(name, v) {
     if (this.values.has(name)) {
@@ -114,7 +110,7 @@ console.log(inner.get('a'));`,
       return;
     }
     throw new Error(
-      \`Undefined variable '\${name}'.\`);
+      \`undefined variable '\${name}'\`);
   }
 }`,
     tests: `test('define then get', () => {
@@ -145,7 +141,7 @@ test('assign changes the owner', () => {
   expect(g.get('n')).toBe(2);
   expect(b.values.has('n')).toBe(false);
 });
-test('nil-like values are found', () => {
+test('none (null) values are found', () => {
   const g = new Environment();
   g.define('z', null);
   const b = new Environment(g);
@@ -162,31 +158,31 @@ test('unknown names throw', () => {
   try { b.assign('q', 1); } catch (e) {
     m2 = e.message;
   }
-  expect(m1).toBe("Undefined variable 'q'.");
-  expect(m2).toBe("Undefined variable 'q'.");
+  expect(m1).toBe("undefined variable 'q'");
+  expect(m2).toBe("undefined variable 'q'");
 });`,
     hints: [
+      'Sort the methods first: which one must look only at this table, and which two must walk outwards to the parent?',
       '`define` is one line: put the pair in `this.values`.',
       '`get`: if `this.values.has(name)`, return the value. Otherwise, if there is a parent, return `this.parent.get(name)`. Otherwise throw.',
       '`assign` has the same shape as `get`, but sets the value where it finds the name instead of returning it.',
     ],
-    walkthrough: `The three methods split into "here only" and "walk the chain".
+    walkthrough: `**How to think about it.** Sort the three methods into two kinds before writing any code. \`define\` is "here only": it is what \`let\` calls, and if it ever looked at a parent, an inner \`let\` could not shadow anything. \`get\` and \`assign\` are "walk the chain": check this table, and on a miss hand the same question to the parent. The parent runs the very same method, so the walk continues outwards by recursion, and only an environment with no parent (the globals) can reach the error.
 
-- **\`define\`** is "here only": \`this.values.set(name, v)\`. It is what \`let\` uses, so it must never look at parents, or an inner \`let\` couldn't shadow anything.
-- **\`get\`** checks its own table with \`has\` (not by testing the value, because a variable can hold \`null\`, Drip's \`nil\`). On a miss it hands the question to its parent. Because the parent runs the same method, the walk continues all the way up by recursion. Only the globals, with \`parent === null\`, can reach the \`throw\`.
-- **\`assign\`** walks exactly like \`get\`, and writes into the first table that has the name. It never creates a new entry: that's \`define\`'s job, and the test "assign changes the owner" checks that the inner table stays empty.
+**The solution, line by line.**
 
-\`\`\`js
-get(name) {
-  if (this.values.has(name))
-    return this.values.get(name);
-  if (this.parent)
-    return this.parent.get(name);
-  throw new Error(...);
-}
-\`\`\`
+- \`constructor(parent = null) { this.values = new Map(); this.parent = parent; }\` is given: a table, and an arrow to the parent (\`null\` for the globals).
+- \`define(name, v) { this.values.set(name, v); }\` writes into this table only. A second \`define\` of the same name in the same table replaces the old value, which is what Drip does for globals.
+- \`if (this.values.has(name)) { return this.values.get(name); }\` in \`get\` asks "is the name *here*?" with \`has\`, not by testing the value, because a variable may hold \`null\` (Drip's \`none\`) or \`false\`.
+- \`if (this.parent) { return this.parent.get(name); }\` passes the question outwards, and returns whatever the rest of the chain answers.
+- The \`throw new Error(...)\` line is reached only when there is no parent left to ask, and uses Drip's exact message, \`undefined variable 'q'\` for the name \`q\`.
+- \`assign\` has the same three steps, with \`this.values.set(name, v); return;\` where \`get\` returned the value: it writes into the first table that *has* the name, and never makes a new entry (the test "assign changes the owner" checks that the inner table stays empty).
 
-This is the companion's \`Environment\` in \`runtime.ts\`, minus types and tokens.`,
+**Common wrong attempts.**
+
+- Writing \`assign\` as \`this.values.set(name, v)\`: that is \`define\` under another name. It makes a new variable in the inner table, so the outer \`n\` stays 1, and unknown names are silently created instead of throwing.
+- Testing \`const v = this.values.get(name); if (v) return v;\`: a variable holding \`null\`, \`false\` or \`0\` looks missing, so the walk carries on past it and ends in a wrong error, or finds an outer variable with the same name.
+- Forgetting the \`return\` before \`this.parent.get(name)\`: the method then falls through to the \`throw\` even when the parent found the name.`,
     wrong: [
       {
         code: `class Environment {
@@ -205,7 +201,7 @@ This is the companion's \`Environment\` in \`runtime.ts\`, minus types and token
       return this.parent.get(name);
     }
     throw new Error(
-      \`Undefined variable '\${name}'.\`);
+      \`undefined variable '\${name}'\`);
   }
   assign(name, v) {
     this.values.set(name, v);
@@ -229,7 +225,7 @@ This is the companion's \`Environment\` in \`runtime.ts\`, minus types and token
       return this.parent.get(name);
     }
     throw new Error(
-      \`Undefined variable '\${name}'.\`);
+      \`undefined variable '\${name}'\`);
   }
   assign(name, v) {
     if (this.values.has(name)) {
@@ -241,7 +237,7 @@ This is the companion's \`Environment\` in \`runtime.ts\`, minus types and token
       return;
     }
     throw new Error(
-      \`Undefined variable '\${name}'.\`);
+      \`undefined variable '\${name}'\`);
   }
 }`,
         why: 'Testing `if (v)` treats a variable that holds `null` (or `false`, or `0`) as missing, so `get(\'z\')` throws. Use `this.values.has(name)` to ask whether the name exists.',
@@ -270,11 +266,24 @@ print x;`,
 outer`,
     hints: [
       'Which statement creates a new variable in the current environment, and which one walks outward?',
-      'Turn the assignment inside the block into a declaration.',
+      'Turn the assignment inside the block into a declaration, so the block has its own `x`.',
+      'Put `let` in front of `x = "inner";`.',
     ],
-    walkthrough: `\`x = "inner";\` is an assignment, so the interpreter calls \`assign\`, which walks the chain from the block's environment, finds \`x\` in the globals and overwrites it.
+    walkthrough: `**How to think about it.** Read the block's first line and ask which method it calls. \`x = "inner";\` is an assignment, so the interpreter walks the chain from the block's (empty) environment, finds \`x\` in the globals and overwrites it; after the \`}\` the global already says \`"inner"\`. To leave the global alone, the block needs an \`x\` of its own, and only \`let\` makes one.
 
-\`let x = "inner";\` is a declaration, so it calls \`define\` on the block's own environment. Now there are two \`x\`s. Inside the block, the lookup for \`print x\` stops at the block's \`x\` (shadowing). After the \`}\`, the block's environment is gone and \`print x\` finds the untouched global.`,
+**The solution, line by line.**
+
+- \`let x = "outer";\` defines the global \`x\`.
+- \`{\` starts a block: a new environment whose parent is the globals.
+- \`let x = "inner";\` defines a second \`x\` in the block's environment. It is legal because it is in a different scope from the first.
+- \`print x;\` looks \`x\` up starting in the block's environment, finds the inner one first (shadowing) and prints \`inner\`.
+- \`}\` ends the block, and the interpreter switches back to the globals.
+- \`print x;\` now finds the untouched global and prints \`outer\`.
+
+**Common wrong attempts.**
+
+- Changing the first line to \`let x = "inner";\` gives one \`x\` again, which never holds \`"outer"\`, so both lines print \`inner\`.
+- Adding \`let x = x;\` at the top of the block, to "copy" the outer value in, is a compile error: \`cannot read 'x' in its own initialiser\`, because the inner \`x\` already exists while its initialiser runs.`,
     wrong: [
       {
         code: `let x = "inner";
@@ -304,7 +313,7 @@ print a;
       { t: '`2` then `2`', why: 'That is what one global table would do. With environments, the inner `let` makes a separate `a`.' },
       { t: '`2` then `1`', correct: true, why: 'The inner `a` shadows the outer one inside the block and disappears at `}`.' },
       { t: '`1` then `1`', why: 'Inside the block, the lookup finds the inner `a` first, which is 2.' },
-      { t: 'A runtime error: `a` is declared twice', why: 'The two declarations are in different environments, so there is no clash.' },
+      { t: 'A compile error: `a` is declared twice', why: 'The two declarations are in different scopes, so there is no clash; only two `let a` in the same block are refused.' },
     ],
   },
   {
@@ -319,7 +328,7 @@ print n;
     options: [
       { t: '`1`', why: 'There is no `let` in the block, so nothing new is defined there. The assignment changes the outer `n`.' },
       { t: 'A runtime error: `n` is not defined in the block', why: 'The lookup walks to the parent and finds the global `n`.' },
-      { t: '`nil`', why: '`n` holds a number the whole time.' },
+      { t: '`none`', why: '`n` holds a number the whole time.' },
       { t: '`2`', correct: true, why: '`assign` walks out of the block’s empty environment and updates the global `n`.' },
     ],
   },
@@ -354,9 +363,9 @@ print n;
     q: 'In the program `{ let z = 1; } print z;` what happens?',
     options: [
       { t: 'It prints `1`', why: '`z` lived in the block’s environment, which is no longer on the chain.' },
-      { t: 'It prints `nil`', why: 'Drip doesn’t make up a value for a missing name. It reports an error.' },
-      { t: 'A runtime error: `Undefined variable \'z\'.`', correct: true, why: 'After the block, the current environment is the globals, and they have no `z`.' },
-      { t: 'A syntax error', why: 'The program parses fine. The problem only shows up when `print z` runs.' },
+      { t: 'It prints `none`', why: 'Drip does not make up a value for a missing name; it reports an error.' },
+      { t: 'A runtime error: `undefined variable \'z\'`', correct: true, why: 'After the block, the current environment is the globals, and they have no `z`.' },
+      { t: 'A compile error', why: 'The program parses and resolves fine: `z` outside the block is treated as a global. The problem only shows up when `print z` runs.' },
     ],
   },
 ];
