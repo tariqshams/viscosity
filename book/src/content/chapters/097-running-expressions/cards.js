@@ -51,10 +51,10 @@ export const examples = {
     code: `print 7;
 print 10 / 4;
 print "drip" + "!";
-print nil;
+print none;
 print 2 < 3;
 print !0;
-print !nil;
+print !none;
 print !"";`,
   },
   'type-error': {

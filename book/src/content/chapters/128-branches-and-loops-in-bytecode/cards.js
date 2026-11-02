@@ -53,9 +53,9 @@ fn bump() {
   return true;
 }
 
-print false and bump();
-print true or bump();
-print nil or "default";
+print false && bump();
+print true || bump();
+print none || "default";
 print n;`,
   },
 };
@@ -196,9 +196,11 @@ ${MID}${PATCH_OK}`,
     title: 'Powers of two',
     prompt:
       'Using a `for` loop, print every power of two that is less than 100: `1`, `2`, `4`, `8`, `16`, `32`, `64`, one per line.',
-    starter: `// your code here`,
-    solution: `for (let p = 1; p < 100; p = p * 2) {
+    starter: `# your code here`,
+    solution: `let p = 1;
+while p < 100 {
   print p;
+  p = p * 2;
 }`,
     tests: `1
 2
@@ -214,14 +216,18 @@ ${MID}${PATCH_OK}`,
     walkthrough: `\`for (let p = 1; p < 100; p = p * 2)\` compiles to the same shape as in the chapter: the initializer leaves 1 in slot 1, the condition is followed by a \`JUMP_IF_FALSE\` to the exit, a \`JUMP\` skips the increment on the way in, and two \`LOOP\`s tie body → increment → condition. When \`p\` reaches 128, the condition is false and the loop exits.`,
     wrong: [
       {
-        code: `for (let p = 1; p < 100; p = p + 2) {
+        code: `let p = 1;
+while p < 100 {
   print p;
+  p = p + 2;
 }`,
         why: '`p + 2` counts odd numbers: 1, 3, 5, …. Doubling is `p * 2`.',
       },
       {
-        code: `for (let p = 2; p < 100; p = p * 2) {
+        code: `let p = 2;
+while p < 100 {
   print p;
+  p = p * 2;
 }`,
         why: 'This misses the first power of two, 1 (which is 2 to the power 0).',
       },

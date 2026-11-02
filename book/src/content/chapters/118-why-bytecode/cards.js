@@ -70,7 +70,7 @@ console.log(st.pop()); // 7`,
     title: 'Drip on the bytecode VM',
     lang: 'drip-vm',
     code: `fn fib(n) {
-  if (n < 2) return n;
+  if n < 2 { return n; }
   return fib(n - 1) + fib(n - 2);
 }
 

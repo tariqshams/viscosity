@@ -51,7 +51,7 @@ export const examples = {
   m() { print "method"; }
 }
 fn f() { print "field"; }
-let a = A();
+let a = new A();
 a.m();
 a.m = f;
 a.m();`,
@@ -66,49 +66,49 @@ export const exercises = {
       'Fill in the four method bodies so the program prints `Ada` then `18`. `Account.init(owner)` stores `owner` and a `balance` of 0. `deposit(x)` adds `x` to the balance and returns `this`, so calls can chain. `Savings.init(owner, rate)` reuses `Account`’s `init` and stores `rate`. `Savings.deposit(x)` deposits `x` plus `x * rate` by reusing `Account`’s `deposit`.',
     starter: `class Account {
   init(owner) {
-    // owner, and a balance of 0
+    # owner, and a balance of 0
   }
   deposit(x) {
-    // add x; return this
+    # add x; return this
   }
 }
 
-class Savings < Account {
+class Savings extends Account {
   init(owner, rate) {
-    // reuse Account's init
+    # reuse Account's init
   }
   deposit(x) {
-    // deposit x + x * rate
+    # deposit x + x * rate
   }
 }
 
-let s = Savings("Ada", 0.5);
+let s = new Savings("Ada", 0.5);
 s.deposit(10).deposit(2);
 print s.owner;
 print s.balance;`,
     solution: `class Account {
   init(owner) {
-    this.owner = owner;
-    this.balance = 0;
+    self.owner = owner;
+    self.balance = 0;
   }
   deposit(x) {
-    this.balance = this.balance + x;
-    return this;
+    self.balance = self.balance + x;
+    return self;
   }
 }
 
-class Savings < Account {
+class Savings extends Account {
   init(owner, rate) {
     super.init(owner);
-    this.rate = rate;
+    self.rate = rate;
   }
   deposit(x) {
-    let more = x * this.rate;
+    let more = x * self.rate;
     return super.deposit(x + more);
   }
 }
 
-let s = Savings("Ada", 0.5);
+let s = new Savings("Ada", 0.5);
 s.deposit(10).deposit(2);
 print s.owner;
 print s.balance;`,
@@ -142,28 +142,28 @@ deposit(x) {
       {
         code: `class Account {
   init(owner) {
-    this.owner = owner;
-    this.balance = 0;
+    self.owner = owner;
+    self.balance = 0;
   }
   deposit(x) {
-    this.balance = this.balance + x;
-    return this;
+    self.balance = self.balance + x;
+    return self;
   }
 }
 
-class Savings < Account {
+class Savings extends Account {
   init(owner, rate) {
     super.init(owner);
-    this.rate = rate;
-    return this;
+    self.rate = rate;
+    return self;
   }
   deposit(x) {
-    let more = x * this.rate;
+    let more = x * self.rate;
     return super.deposit(x + more);
   }
 }
 
-let s = Savings("Ada", 0.5);
+let s = new Savings("Ada", 0.5);
 s.deposit(10).deposit(2);
 print s.owner;
 print s.balance;`,
@@ -172,27 +172,27 @@ print s.balance;`,
       {
         code: `class Account {
   init(owner) {
-    this.owner = owner;
-    this.balance = 0;
+    self.owner = owner;
+    self.balance = 0;
   }
   deposit(x) {
-    this.balance = this.balance + x;
-    return this;
+    self.balance = self.balance + x;
+    return self;
   }
 }
 
-class Savings < Account {
+class Savings extends Account {
   init(owner, rate) {
     super.init(owner);
-    this.rate = rate;
+    self.rate = rate;
   }
   deposit(x) {
-    let more = x * this.rate;
-    return this.deposit(x + more);
+    let more = x * self.rate;
+    return self.deposit(x + more);
   }
 }
 
-let s = Savings("Ada", 0.5);
+let s = new Savings("Ada", 0.5);
 s.deposit(10).deposit(2);
 print s.owner;
 print s.balance;`,

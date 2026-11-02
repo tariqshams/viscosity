@@ -42,9 +42,9 @@ export const examples = {
     lang: 'drip',
     code: `print 7 / 2;
 print "drip" + "drop";
-print 3 < 4 and 4 < 5;
+print 3 < 4 && 4 < 5;
 print !true;
-print nil;
+print none;
 
 let cups = 3;
 cups = cups + 1;
@@ -55,17 +55,17 @@ print 0.1 + 0.2;`,
     title: 'if, while and for',
     lang: 'drip',
     code: `let n = 1;
-while (n < 50) {
+while n < 50 {
   n = n * 2;
 }
 print n;
 
-for (let i = 0; i < 3; i = i + 1) {
+for i in 0..3 {
   print i;
 }
 
-if (0) print "0 is true";
-else print "0 is false";`,
+if 0 { print "0 is true"; }
+else { print "0 is false"; }`,
   },
   functions: {
     title: 'Functions and a closure',
@@ -94,22 +94,22 @@ print makeCounter;`,
     lang: 'drip',
     code: `class Cup {
   init(ml) {
-    this.ml = ml;
+    self.ml = ml;
   }
   pour(x) {
-    this.ml = this.ml - x;
-    return this.ml;
+    self.ml = self.ml - x;
+    return self.ml;
   }
 }
 
-class Mug < Cup {
+class Mug extends Cup {
   pour(x) {
     print "careful, hot";
     return super.pour(x);
   }
 }
 
-let m = Mug(300);
+let m = new Mug(300);
 print m.pour(50);
 print m;`,
   },
@@ -122,14 +122,14 @@ export const exercises = {
     prompt:
       'Write a Drip function `sumTo(n)` that **returns** `1 + 2 + … + n`. The program then prints `sumTo(10)` and `sumTo(100)`, so the expected output is `55` and then `5050`.',
     starter: `fn sumTo(n) {
-  // your code here
+  # your code here
 }
 
 print sumTo(10);
 print sumTo(100);`,
     solution: `fn sumTo(n) {
   let total = 0;
-  for (let i = 1; i <= n; i = i + 1) {
+  for i in 1..n + 1 {
     total = total + i;
   }
   return total;
@@ -166,7 +166,7 @@ Check: 1 + 2 + ... + 10 is 55, and 1 + ... + 100 is 5050 (pair 1 with 100, 2 wit
       {
         code: `fn sumTo(n) {
   let total = 0;
-  for (let i = 1; i < n; i = i + 1) {
+  for i in 1..n {
     total = total + i;
   }
   return total;
@@ -179,7 +179,7 @@ print sumTo(100);`,
       {
         code: `fn sumTo(n) {
   let total = 0;
-  for (let i = 1; i <= n; i = i + 1) {
+  for i in 1..n + 1 {
     total = total + i;
   }
   print total;
@@ -198,28 +198,28 @@ print sumTo(100);`,
     prompt:
       'Write a Drip class `Counter`. Its `init()` sets a field `n` to 0. Its method `inc()` adds 1 to `n` and **returns** the new value. Each instance has its own count, so the program below should print `1`, `2`, then `1`.',
     starter: `class Counter {
-  // your code here
+  # your code here
 }
 
-let a = Counter();
+let a = new Counter();
 print a.inc();
 print a.inc();
-let b = Counter();
+let b = new Counter();
 print b.inc();`,
     solution: `class Counter {
   init() {
-    this.n = 0;
+    self.n = 0;
   }
   inc() {
-    this.n = this.n + 1;
-    return this.n;
+    self.n = self.n + 1;
+    return self.n;
   }
 }
 
-let a = Counter();
+let a = new Counter();
 print a.inc();
 print a.inc();
-let b = Counter();
+let b = new Counter();
 print b.inc();`,
     tests: `1
 2
@@ -251,7 +251,7 @@ Then \`a\` counts \`1\`, \`2\`, and \`b\`, a new instance with its own \`n\`, pr
       {
         code: `class Counter {
   init() {
-    this.n = 0;
+    self.n = 0;
   }
   inc() {
     n = n + 1;
@@ -259,27 +259,27 @@ Then \`a\` counts \`1\`, \`2\`, and \`b\`, a new instance with its own \`n\`, pr
   }
 }
 
-let a = Counter();
+let a = new Counter();
 print a.inc();
 print a.inc();
-let b = Counter();
+let b = new Counter();
 print b.inc();`,
         why: 'A bare `n` is not the field: Drip looks for a variable `n`, finds none, and stops with “Undefined variable \'n\'.”. Write `this.n`.',
       },
       {
         code: `class Counter {
   init() {
-    this.n = 0;
+    self.n = 0;
   }
   inc() {
-    this.n = this.n + 1;
+    self.n = self.n + 1;
   }
 }
 
-let a = Counter();
+let a = new Counter();
 print a.inc();
 print a.inc();
-let b = Counter();
+let b = new Counter();
 print b.inc();`,
         why: 'The count goes up, but `inc` returns nothing, so every `print` shows `nil`. End with `return this.n;`.',
       },

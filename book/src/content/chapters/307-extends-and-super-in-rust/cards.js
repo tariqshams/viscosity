@@ -47,17 +47,17 @@ export const examples = {
     code: `class Base {
   m() { print "Base.m"; }
 }
-class Derived < Base {
+class Derived extends Base {
   m() { super.m(); }
 }
 class Other {
   m() { print "Other.m"; }
 }
-let d = Derived();
+let d = new Derived();
 d.m();
 Base = Other;
 d.m();
-let g = Derived().m;
+let g = new Derived().m;
 g();`,
   },
 };

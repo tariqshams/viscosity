@@ -55,7 +55,7 @@ export const examples = {
 print -(1 + 2) * 3;
 print !(2 >= 3);
 print "a" + "b" == "ab";
-1 + 2; // compiled, then popped`,
+1 + 2; # compiled, then popped`,
   },
 };
 
@@ -163,63 +163,6 @@ ${foot}`,
       emit([OPCODE[op]]);
 ${foot}`,
         why: 'With `PREC[op]` the inner call also takes the next operator of the same strength, so `8 - 3 - 1` becomes `8 - (3 - 1)`. Use `PREC[op] + 1` for left grouping.',
-      },
-    ],
-  },
-  'at-least': {
-    optional: true,
-    title: 'Greater or equal, NaN-proof',
-    lang: 'drip-vm',
-    prompt:
-      'On this VM, `a >= b` compiles to “not (a < b)”, which is wrong when either side is `NaN`. Rewrite `atLeast` so it gives the right answer on the VM for all four calls, still without using `>=` or `<=`. The expected output is `true`, `true`, `false`, `false`.',
-    starter: `fn atLeast(a, b) {
-  return a >= b;
-}
-
-let nan = 0 / 0;
-print atLeast(2, 1);
-print atLeast(1, 1);
-print atLeast(0, 1);
-print atLeast(nan, 1);`,
-    solution: `fn atLeast(a, b) {
-  return a > b or a == b;
-}
-
-let nan = 0 / 0;
-print atLeast(2, 1);
-print atLeast(1, 1);
-print atLeast(0, 1);
-print atLeast(nan, 1);`,
-    tests: `true
-true
-false
-false`,
-    hints: [
-      '`>` and `==` each compile to a single instruction (`OP_GREATER`, `OP_EQUAL`), and each is false when a `NaN` is involved.',
-      '“At least” means “greater, or equal”.',
-      'Return `a > b or a == b`.',
-    ],
-    walkthrough: `\`a >= b\` becomes \`OP_LESS, OP_NOT\`. For \`NaN\`, \`NaN < 1\` is false, and \`NOT\` turns it into true. The rewrite avoids any \`NOT\`:
-
-\`\`\`
-return a > b or a == b;
-\`\`\`
-
-\`OP_GREATER\` uses JavaScript’s \`>\`, which is false for \`NaN\`, and \`OP_EQUAL\` uses \`===\`, also false for \`NaN\`. So the result is false, as IEEE 754 intends.
-
-The cost is two comparisons and a short-circuit jump instead of one comparison. The real fix belongs in the VM: separate \`OP_GREATER_EQUAL\` and \`OP_LESS_EQUAL\` instructions, one more line each in the dispatch loop. That’s the trade-off the compiler made: fewer opcodes, at the price of a corner case.`,
-    wrong: [
-      {
-        code: `fn atLeast(a, b) {
-  return !(a < b);
-}
-
-let nan = 0 / 0;
-print atLeast(2, 1);
-print atLeast(1, 1);
-print atLeast(0, 1);
-print atLeast(nan, 1);`,
-        why: 'This is exactly what `>=` already compiles to: `LESS` then `NOT`, which turns NaN’s false into true.',
       },
     ],
   },

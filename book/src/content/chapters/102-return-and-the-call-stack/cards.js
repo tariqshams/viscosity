@@ -204,14 +204,14 @@ function callFn(body, log) {
     prompt:
       'Write a recursive Drip function `pow(b, e)` that **returns** `b` to the power `e`, for whole numbers `e >= 0`. Use the facts `pow(b, 0)` is 1 and `pow(b, e)` is `b * pow(b, e - 1)`. The program should print `1024`, `81` and `1`.',
     starter: `fn pow(b, e) {
-  // your code here
+  # your code here
 }
 
 print pow(2, 10);
 print pow(3, 4);
 print pow(5, 0);`,
     solution: `fn pow(b, e) {
-  if (e == 0) return 1;
+  if e == 0 { return 1; }
   return b * pow(b, e - 1);
 }
 
@@ -231,7 +231,7 @@ The host stack is tallest at the base case: eleven Drip calls deep, each with it
     wrong: [
       {
         code: `fn pow(b, e) {
-  if (e == 0) return 1;
+  if e == 0 { return 1; }
   print b * pow(b, e - 1);
 }
 

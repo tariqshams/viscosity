@@ -239,11 +239,13 @@ function read(vm, u) {
     starter: `let f1;
 let f2;
 let f3;
-for (let i = 1; i <= 3; i = i + 1) {
+let i = 1;
+while i <= 3 {
   fn show() { print i; }
-  if (i == 1) f1 = show;
-  if (i == 2) f2 = show;
-  if (i == 3) f3 = show;
+  if i == 1 { f1 = show; }
+  if i == 2 { f2 = show; }
+  if i == 3 { f3 = show; }
+  i = i + 1;
 }
 f1();
 f2();
@@ -251,12 +253,12 @@ f3();`,
     solution: `let f1;
 let f2;
 let f3;
-for (let i = 1; i <= 3; i = i + 1) {
+for i in 1..4 {
   let j = i;
   fn show() { print j; }
-  if (i == 1) f1 = show;
-  if (i == 2) f2 = show;
-  if (i == 3) f3 = show;
+  if i == 1 { f1 = show; }
+  if i == 2 { f2 = show; }
+  if i == 3 { f3 = show; }
 }
 f1();
 f2();
@@ -286,12 +288,12 @@ Now each \`show\` captures \`j\`. \`j\` is a local of the body block, and \`reso
 let f2;
 let f3;
 let j;
-for (let i = 1; i <= 3; i = i + 1) {
+for i in 1..4 {
   j = i;
   fn show() { print j; }
-  if (i == 1) f1 = show;
-  if (i == 2) f2 = show;
-  if (i == 3) f3 = show;
+  if i == 1 { f1 = show; }
+  if i == 2 { f2 = show; }
+  if i == 3 { f3 = show; }
 }
 f1();
 f2();

@@ -52,7 +52,7 @@ let b = "a" + "b";
 print a == b;
 
 let s = "";
-for (let i = 0; i < 3; i = i + 1) {
+for i in 0..3 {
   s = s + "na";
 }
 print s;

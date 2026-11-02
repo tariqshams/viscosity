@@ -42,16 +42,15 @@ export const prompts = {
 
 export const examples = {
   cup: {
-    title: 'A bound method keeps its receiver, and init returns this',
+    title: 'A bound method keeps its receiver',
     lang: 'drip-vm',
     code: `class Cup {
-  init(n) { this.n = n; }
-  sip() { print this.n; }
+  init(n) { self.n = n; }
+  sip() { print self.n; }
 }
-let s = Cup("tea").sip;
+let s = new Cup("tea").sip;
 s();
-let c = Cup("milk");
-print c.init("oat") == c;
+let c = new Cup("milk");
 print c.n;
 print s;`,
   },

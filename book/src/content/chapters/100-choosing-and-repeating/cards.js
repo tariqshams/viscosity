@@ -52,13 +52,13 @@ export const examples = {
     title: 'and and or skip, and return values',
     lang: 'drip',
     code: `let calls = 0;
-let ok = false and (calls = calls + 1);
+let ok = false && (calls = calls + 1);
 print ok;
 print calls;
 
-print nil or "default";
-print 1 and 2 and 3;
-print 0 or "zero is truthy";`,
+print none || "default";
+print 1 && 2 && 3;
+print 0 || "zero is truthy";`,
   },
 };
 
@@ -223,11 +223,13 @@ function desugarFor(f) {
     title: 'Powers of two',
     prompt:
       'Write a Drip `for` loop that prints every power of two below 100, one per line, starting from `1`: `1`, `2`, `4`, ... `64`.',
-    starter: `// One for loop. Its increment
-// doesn't have to add 1.
+    starter: `# One for loop. Its increment
+# doesn't have to add 1.
 `,
-    solution: `for (let p = 1; p < 100; p = p * 2) {
+    solution: `let p = 1;
+while p < 100 {
   print p;
+  p = p * 2;
 }`,
     tests: `1
 2
@@ -255,8 +257,10 @@ function desugarFor(f) {
 The body runs before each doubling, so 1 is printed first. After printing 64, \`p\` becomes 128, the condition is false, and the loop ends without printing it.`,
     wrong: [
       {
-        code: `for (let p = 1; p <= 128; p = p * 2) {
+        code: `let p = 1;
+while p <= 128 {
   print p;
+  p = p * 2;
 }`,
         why: '`p <= 128` lets 128 through, which isn’t below 100. Stop at `p < 100`.',
       },

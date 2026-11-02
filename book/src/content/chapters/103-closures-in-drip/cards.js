@@ -80,11 +80,13 @@ export const exercises = {
     starter: `let f1;
 let f2;
 let f3;
-for (let i = 1; i <= 3; i = i + 1) {
+let i = 1;
+while i <= 3 {
   fn show() { print i; }
-  if (i == 1) f1 = show;
-  if (i == 2) f2 = show;
-  if (i == 3) f3 = show;
+  if i == 1 { f1 = show; }
+  if i == 2 { f2 = show; }
+  if i == 3 { f3 = show; }
+  i = i + 1;
 }
 f1();
 f2();
@@ -97,10 +99,10 @@ f3();`,
 let f1;
 let f2;
 let f3;
-for (let i = 1; i <= 3; i = i + 1) {
-  if (i == 1) f1 = capture(i);
-  if (i == 2) f2 = capture(i);
-  if (i == 3) f3 = capture(i);
+for i in 1..4 {
+  if i == 1 { f1 = capture(i); }
+  if i == 2 { f2 = capture(i); }
+  if i == 3 { f3 = capture(i); }
 }
 f1();
 f2();
@@ -133,12 +135,12 @@ There is a second fix. The loop body is a block, and each pass runs it with a ne
 let f2;
 let f3;
 let j;
-for (let i = 1; i <= 3; i = i + 1) {
+for i in 1..4 {
   j = i;
   fn show() { print j; }
-  if (i == 1) f1 = show;
-  if (i == 2) f2 = show;
-  if (i == 3) f3 = show;
+  if i == 1 { f1 = show; }
+  if i == 2 { f2 = show; }
+  if i == 3 { f3 = show; }
 }
 f1();
 f2();
@@ -154,10 +156,10 @@ f3();`,
 let f1;
 let f2;
 let f3;
-for (let i = 1; i <= 3; i = i + 1) {
-  if (i == 1) f1 = capture(i);
-  if (i == 2) f2 = capture(i);
-  if (i == 3) f3 = capture(i);
+for i in 1..4 {
+  if i == 1 { f1 = capture(i); }
+  if i == 2 { f2 = capture(i); }
+  if i == 3 { f3 = capture(i); }
 }
 f1();
 f2();

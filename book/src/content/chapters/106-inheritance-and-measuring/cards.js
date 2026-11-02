@@ -52,59 +52,59 @@ export const examples = {
     title: 'Inherit, override, super',
     lang: 'drip',
     code: `class Animal {
-  init(name) { this.name = name; }
+  init(name) { self.name = name; }
   speak() {
-    print this.name + " makes a sound";
+    print self.name + " makes a sound";
   }
-  hello() { print "I am " + this.name; }
+  hello() { print "I am " + self.name; }
 }
 
-class Dog < Animal {
+class Dog extends Animal {
   speak() {
     super.speak();
-    print this.name + " barks";
+    print self.name + " barks";
   }
 }
 
-let d = Dog("Rex");
+let d = new Dog("Rex");
 d.hello();
 d.speak();`,
   },
 };
 
 const shape = `class Shape {
-  init(name) { this.name = name; }
+  init(name) { self.name = name; }
   show() {
-    print this.name;
-    print this.area();
+    print self.name;
+    print self.area();
   }
 }`;
 
 const tail = `
   area() {
-    return this.side * this.side;
+    return self.side * self.side;
   }
 }
-Square(3).show();`;
+new Square(3).show();`;
 
 export const exercises = {
   square: {
     title: 'A square is a shape',
     lang: 'drip',
     prompt:
-      '`Square` inherits from `Shape`, but `Square(3).show()` fails with `Undefined property \'name\'.` Fix `Square`’s `init` so the program prints `square` and then `9`. Don’t change `Shape`.',
+      '`Square` inherits from `Shape`, but `new Square(3).show()` stops with a runtime error, because no `name` field exists. Fix `Square`’s `init` so the program prints `square` and then `9`. Don’t change `Shape`.',
     starter: `${shape}
 
-class Square < Shape {
+class Square extends Shape {
   init(side) {
-    this.side = side;
+    self.side = side;
   }${tail}`,
     solution: `${shape}
 
-class Square < Shape {
+class Square extends Shape {
   init(side) {
     super.init("square");
-    this.side = side;
+    self.side = side;
   }${tail}`,
     tests: `square
 9`,
@@ -113,41 +113,41 @@ class Square < Shape {
       'You want to run the superclass’s `init` on this same instance, from inside `Square`’s `init`.',
       'Add `super.init("square");` as the first line of `Square`’s `init`.',
     ],
-    walkthrough: `\`Square\` has its own \`init\`, so \`findMethod("init")\` stops at \`Square\` and \`Shape\`’s \`init\` never runs. Nothing sets \`this.name\`, and \`show\` fails when it reads it.
+    walkthrough: `\`Square\` has its own \`init\`, so \`findMethod("init")\` stops at \`Square\` and \`Shape\`’s \`init\` never runs. Nothing sets \`self.name\`, and \`show\` fails when it reads it.
 
 The fix is to call the overridden initializer explicitly:
 
 \`\`\`
 init(side) {
   super.init("square");
-  this.side = side;
+  self.side = side;
 }
 \`\`\`
 
-- **\`super.init\`** looks up \`init\` starting at \`Shape\`, the superclass of the class this method is *written in*, and binds it to the current \`this\`. So \`Shape\`’s \`init\` sets \`name\` on the square.
-- **\`this.area()\`** inside \`show\` is a normal method call on a \`Square\` instance, so it finds \`Square\`’s \`area\`, even though \`show\` was written in \`Shape\`. Methods are found from the instance’s class; only \`super\` is fixed by where it is written.
+- **\`super.init\`** looks up \`init\` starting at \`Shape\`, the superclass of the class this method is *written in*, and binds it to the current \`self\`. So \`Shape\`’s \`init\` sets \`name\` on the square.
+- **\`self.area()\`** inside \`show\` is a normal method call on a \`Square\` instance, so it finds \`Square\`’s \`area\`, even though \`show\` was written in \`Shape\`. Methods are found from the instance’s class; only \`super\` is fixed by where it is written.
 
-\`this.init("square")\` would be a trap: it finds \`Square\`’s own \`init\` again, which calls itself until the stack overflows.`,
+\`self.init("square")\` is not allowed at all: \`init\` is a keyword, so Drip only lets you reach the parent's initializer through \`super.init\`, which is exactly the one you want.`,
     wrong: [
       {
         code: `${shape}
 
-class Square < Shape {
+class Square extends Shape {
   init(side) {
-    this.init("square");
-    this.side = side;
+    super.init(side);
+    self.side = side;
   }${tail}`,
-        why: '`this.init` finds `Square`’s own `init`, the one already running, so it calls itself forever: a stack overflow. `super.init` starts the search at `Shape`.',
+        why: 'This does run `Shape`’s `init`, but it hands it the side, so the name is set to `3` and the program prints `3`, then `9`. Pass the name, `"square"`.',
       },
       {
         code: `${shape}
 
-class Square < Shape {
+class Square extends Shape {
   init(side) {
-    Shape.init("square");
-    this.side = side;
+    self.side = side;
+    self.name = side;
   }${tail}`,
-        why: 'A class isn’t an instance, so `Shape.init` is a runtime error: `Only instances have properties.` Use `super.init(...)`.',
+        why: 'Setting the field by hand skips `Shape`’s `init` (and would miss anything else it sets up), and here it stores the side, not the name. Call `super.init("square")` instead.',
       },
     ],
   },

@@ -298,7 +298,7 @@ export const exercises = {
       'Add statements between the `let`s and the `print`s so that the values of `a` and `b` are swapped. The program must print `right` and then `left`. Don’t change the `let`s or the `print`s.',
     starter: `let a = "left";
 let b = "right";
-// swap a and b here
+# swap a and b here
 
 print a;
 print b;`,

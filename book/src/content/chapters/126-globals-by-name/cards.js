@@ -224,7 +224,7 @@ test('SET of an unknown name', () => {
     prompt:
       'Write the body of `tick()` so that it adds 1 to the global `count` and prints the new value. Notice that `count` is defined *after* `tick`. The program should print `1`, `2`, `3` and then `3`.',
     starter: `fn tick() {
-  // your code here
+  # your code here
 }
 
 let count = 0;

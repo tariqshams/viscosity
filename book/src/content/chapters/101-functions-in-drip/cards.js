@@ -68,7 +68,7 @@ let x = "global";
 
 let start = clock();
 let sum = 0;
-for (let i = 0; i < 100000; i = i + 1) {
+for i in 0..100000 {
   sum = sum + i;
 }
 print sum;
@@ -243,16 +243,16 @@ The message says "1 arguments" for arity 1. That's the companion's (and the Lox 
     title: 'Your first Drip function',
     prompt:
       'The loop below calls `square`, which doesn’t exist yet. Above it, declare a Drip function `square(n)` that prints `n * n`, so the program prints `1`, `4`, `9`, `16`, `25`.',
-    starter: `// declare square here
+    starter: `# declare square here
 
-for (let i = 1; i <= 5; i = i + 1) {
+for i in 1..6 {
   square(i);
 }`,
     solution: `fn square(n) {
   print n * n;
 }
 
-for (let i = 1; i <= 5; i = i + 1) {
+for i in 1..6 {
   square(i);
 }`,
     tests: `1
@@ -271,7 +271,7 @@ Each trip round the loop evaluates \`square(i)\`: look up \`square\`, evaluate \
 The declaration has to come before the loop. Drip runs the program top to bottom, so if the loop came first, \`square\` wouldn't be defined yet when it is looked up.`,
     wrong: [
       {
-        code: `for (let i = 1; i <= 5; i = i + 1) {
+        code: `for i in 1..6 {
   square(i);
 }
 
@@ -285,7 +285,7 @@ fn square(n) {
   print i * i;
 }
 
-for (let i = 1; i <= 5; i = i + 1) {
+for i in 1..6 {
   square(i);
 }`,
         why: '`square` takes no parameters, so `square(i)` fails the arity check: `Expected 0 arguments but got 1.` (And `i` lives in the loop, which `square` can’t see.)',

@@ -65,13 +65,13 @@ console.log(negate(nil));`,
     title: 'Drip on the VM: tags in action',
     lang: 'drip-vm',
     expectError: true,
-    code: `print nil;
+    code: `print none;
 print true;
 print 3 + 0.5;
 print -0;
 print 1 == "1";
-print nil == false;
-print !nil;
+print none == false;
+print !none;
 print !0;
 print -"a";`,
   },

@@ -234,7 +234,7 @@ vm.frames.push({ fn, ip: 0, slots });
     prompt:
       'The starter adds up 1 to `n` recursively. It works for 10, but `sum(1000)` needs a thousand frames and the VM stops with `Stack overflow.` Rewrite `sum` with a `while` loop so the program prints `55` and then `500500`.',
     starter: `fn sum(n) {
-  if (n == 0) return 0;
+  if n == 0 { return 0; }
   return n + sum(n - 1);
 }
 
@@ -242,7 +242,7 @@ print sum(10);
 print sum(1000);`,
     solution: `fn sum(n) {
   let t = 0;
-  while (n > 0) {
+  while n > 0 {
     t = t + n;
     n = n - 1;
   }
@@ -262,7 +262,7 @@ print sum(1000);`,
       {
         code: `fn sum(n) {
   let t = 0;
-  while (n > 0) {
+  while n > 0 {
     n = n - 1;
     t = t + n;
   }

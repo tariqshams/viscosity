@@ -47,8 +47,8 @@ let Total = 1;
 let total = 2;
 print Total + total;
 
-// Try: let if = 3;
-// Try: print 2x;`,
+# Try: let if = 3;
+# Try: print 2x;`,
   },
 };
 

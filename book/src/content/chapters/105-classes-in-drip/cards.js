@@ -50,7 +50,7 @@ export const examples = {
     expectError: true,
     code: `class Box {}
 
-let b = Box();
+let b = new Box();
 b.size = 3;
 print b.size;
 b.size = b.size + 1;
@@ -62,8 +62,8 @@ print b.colour;`,
     title: 'A method as a callback',
     lang: 'drip',
     code: `class Tally {
-  init() { this.n = 0; }
-  add() { this.n = this.n + 1; }
+  init() { self.n = 0; }
+  add() { self.n = self.n + 1; }
 }
 
 fn twice(f) {
@@ -71,7 +71,7 @@ fn twice(f) {
   f();
 }
 
-let t = Tally();
+let t = new Tally();
 twice(t.add);
 print t.n;
 print t.add == t.add;`,
@@ -83,12 +83,12 @@ fn twice(f) {
   f();
   f();
 }
-let t = Tally();
+let t = new Tally();
 twice(t.add);
 print t.value();
 t.add();
 print t.value();
-print Tally().value();`;
+print new Tally().value();`;
 
 export const exercises = {
   tally: {
@@ -103,55 +103,55 @@ export const exercises = {
 }
 ${program}`,
     solution: `class Tally {
-  init() { this.n = 0; }
-  add() { this.n = this.n + 1; }
-  value() { return this.n; }
+  init() { self.n = 0; }
+  add() { self.n = self.n + 1; }
+  value() { return self.n; }
 }
 ${program}`,
     tests: `2
 3
 0`,
     hints: [
-      'Every piece of per-instance data is a field, reached through `this`.',
-      '`init() { this.n = 0; }` creates the field. Use `this.n` in the other two methods as well.',
-      '`add() { this.n = this.n + 1; }` and `value() { return this.n; }`.',
+      'Every piece of per-instance data is a field, reached through `self`.',
+      '`init() { self.n = 0; }` creates the field. Use `self.n` in the other two methods as well.',
+      '`add() { self.n = self.n + 1; }` and `value() { return self.n; }`.',
     ],
     walkthrough: `\`n\` belongs to each tally, so it has to be a field:
 
 \`\`\`
 class Tally {
-  init() { this.n = 0; }
-  add() { this.n = this.n + 1; }
-  value() { return this.n; }
+  init() { self.n = 0; }
+  add() { self.n = self.n + 1; }
+  value() { return self.n; }
 }
 \`\`\`
 
-- **\`this.n = 0\`** in \`init\` creates the field. There is no declaration; assignment is enough.
-- **\`twice(t.add)\`** works because reading \`t.add\` binds the method: its closure holds \`this = t\`. When \`twice\` calls \`f()\` with no dot, \`this\` is still \`t\`, so \`t.n\` becomes 2.
-- **\`Tally().value()\`** is a brand-new instance with its own fields, so it prints \`0\`.
+- **\`self.n = 0\`** in \`init\` creates the field. There is no declaration; assignment is enough.
+- **\`twice(t.add)\`** works because reading \`t.add\` binds the method: its closure holds \`self = t\`. When \`twice\` calls \`f()\` with no dot, \`self\` is still \`t\`, so \`t.n\` becomes 2.
+- **\`new Tally().value()\`** is a brand-new instance with its own fields, so it prints \`0\`.
 
-Writing \`n\` without \`this.\` doesn’t mean “my field”: the resolver finds no local \`n\`, treats it as a global, and the program stops with \`Undefined variable 'n'.\``,
+Writing \`n\` without \`self.\` doesn’t mean “my field”: the resolver finds no local \`n\`, treats it as a global, and the program stops with \`Undefined variable 'n'.\``,
     wrong: [
       {
         code: `class Tally {
-  init() { this.n = 0; }
+  init() { self.n = 0; }
   add() { n = n + 1; }
-  value() { return this.n; }
+  value() { return self.n; }
 }
 ${program}`,
-        why: 'Inside a method, a bare `n` is a variable, not a field. There is no such variable, so it is a runtime error. Fields are always reached through `this.`.',
+        why: 'Inside a method, a bare `n` is a variable, not a field. There is no such variable, so it is a runtime error. Fields are always reached through `self.`.',
       },
       {
         code: `class Tally {
   init() {
-    this.n = 0;
-    return this;
+    self.n = 0;
+    return self;
   }
-  add() { this.n = this.n + 1; }
-  value() { return this.n; }
+  add() { self.n = self.n + 1; }
+  value() { return self.n; }
 }
 ${program}`,
-        why: 'An initializer always returns `this` by itself, and `return` with a value inside `init` is a resolver error, so nothing runs. Remove the `return`.',
+        why: 'An initializer always returns the instance by itself, and `return` with a value inside `init` is a compile error, so nothing runs. Remove the `return`.',
       },
     ],
   },
