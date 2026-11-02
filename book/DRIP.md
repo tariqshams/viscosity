@@ -75,6 +75,21 @@ print len(ps);        # 3
 | class | `class C {}` | `class C` |
 | instance | `new C(...)` | `C { x: 1, y: 2 }` (fields in the order they were first set; no fields: `C {}`) |
 
+Printing, in detail:
+
+- Inside a list or an instance, strings are quoted, with `\n`, `\t`, `\"`
+  and `\\` written as escapes: `["a\tb"]`. At the top level (`print`,
+  `str`) a string is just its characters.
+- Instance fields print with their values in the same nested form:
+  `P { name: "ann", tags: ["a"] }`.
+- A list or instance that contains itself prints the inner occurrence as
+  `[...]` or `C {...}`.
+- Very large and very small numbers use JavaScript's layout:
+  `1e+21`, `1.5e-7` (plain decimals from 1e-7 up to 1e21).
+- A method read from an instance (a bound method) prints like its
+  function: `fn speak`. Each read makes a new bound method, so
+  `o.m == o.m` is false.
+
 **Truthiness:** `false` and `none` are false; everything else (including
 `0`, `""` and `[]`) is true.
 
@@ -139,7 +154,13 @@ Notes:
   `xs[i]`) evaluated once.
 - `&&` and `||` short-circuit and produce one of their operands (like
   JavaScript): `none || 3` is `3`.
-- Up to 255 parameters and 255 arguments.
+- Up to 255 parameters, 255 arguments and 255 elements in a list
+  literal.
+- A statement that starts with `fn (` is an expression statement (an
+  anonymous function, perhaps called at once: `fn () { ... }();`);
+  `fn` followed by a name is a declaration.
+- `init` is a keyword, so `o.init()` is a syntax error; only `new` and
+  `super.init(...)` run an initialiser.
 
 ## Semantics
 
@@ -147,7 +168,9 @@ Notes:
 `let x;` sets it to `none`. Scope is lexical. Redeclaring a name in the
 same *local* scope is a compile error; at the top level (globals) it is
 allowed and replaces the old value. Reading a local variable in its own
-initialiser is a compile error. Using an undefined global is a runtime
+initialiser is a compile error, even from inside a function written in
+the initialiser (`let f = fn () { return f; };` in a block: declare a
+named `fn` to recurse). Using an undefined global is a runtime
 error.
 
 **Statements.** `print` prints the value and a newline. `while` repeats
@@ -162,12 +185,21 @@ innermost loop and are compile errors outside one.
   runs once per element, in order, reading the length each time round (so
   pushing inside the loop extends it).
 - In both, the loop variable is a fresh variable for each iteration
-  (closures capture that iteration's value) and is local to the loop.
+  (closures capture that iteration's value) and is local to the loop;
+  the body is a block of its own inside it, so it may shadow the
+  variable. Assigning to the variable does not change which values come
+  next.
+- A range evaluates `a`, then `b`, and only then checks that both are
+  numbers.
 
 **Functions.** `fn name(params) { body }` declares a function; `fn
 (params) { body }` is an anonymous function expression. Functions are
 values and closures: they capture variables, not copies. Calling with the
-wrong number of arguments is a runtime error. A function without `return`
+wrong number of arguments is a runtime error. Calls may nest 256 deep
+(the script counts as one); one more is the runtime error `stack
+overflow`. Arguments are evaluated left to right after the callee; in a
+method call `o.m(args)` the method is looked up after the arguments are
+evaluated. A function without `return`
 (or with a bare `return;`) returns `none`. `return` outside a function is
 a compile error.
 
@@ -200,7 +232,7 @@ operand (as in JavaScript). `-` negates a number; `!` negates truthiness.
 | Function | Does |
 |---|---|
 | `clock()` | seconds since the program started, as a number |
-| `len(x)` | length of a list or string (string length in characters) |
+| `len(x)` | length of a list or string (string length in Unicode code points) |
 | `push(xs, v)` | appends `v` to list `xs`; returns `none` |
 | `pop(xs)` | removes and returns the last element; error if empty |
 | `str(x)` | the value as a string, exactly as `print` would show it |
@@ -218,7 +250,44 @@ line 3: expected '}' to close the block, found end of file
 
 and no code runs. The implementations report the first error in each
 statement and keep going (error recovery), printing every error; the
-corpus pins the exact list.
+corpus pins the exact list. In detail:
+
+- Syntax errors come first. After one, the parser skips to the start of
+  the next statement (just after a `;`, at a keyword that starts a
+  statement, or at the `}` that closes the current block, skipping any
+  braces it opens on the way). If a `{` that should open a body is
+  missing, no body is parsed.
+- The static rules (a redeclared local, reading a local in its own
+  initialiser, `return`, `break`, `continue`, `self` or `super` out of
+  place, a class extending itself) are only checked, and reported in
+  source order, when there are no syntax errors.
+- An error names the line of the token it is about; a missing `;` is
+  reported on the line of the token before it, and `end of file` on the
+  last line that has anything on it. Found tokens are named as `'}'`,
+  `'print'`, `a string` or `end of file`.
+
+The messages:
+
+| compile error | when |
+|---|---|
+| `unexpected character '@'` | a character Drip doesn't use (also a lone `&` or `\|`) |
+| `unterminated string` | at the line the string starts on |
+| `unknown escape '\q' in a string` | |
+| `expected <what>, found <token>` | e.g. `expected ';' after the value`, `expected '{' after the condition`, `expected a loop variable name after 'for'` |
+| `expected an expression, found <token>` | |
+| `cannot assign to this expression` | `a + b = 1` |
+| `a function cannot have more than 255 parameters` | also `a call cannot have more than 255 arguments`, `a list cannot have more than 255 elements` |
+| `'x' is already declared in this scope` | |
+| `cannot read 'x' in its own initialiser` | |
+| `'return' outside a function`, `'break' outside a loop`, `'continue' outside a loop` | |
+| `'init' cannot return a value` | |
+| `cannot use 'self' outside a method`, `cannot use 'super' outside a method` | |
+| `cannot use 'super' in a class that does not extend another` | |
+| `a class cannot extend itself` | |
+
+The bytecode VMs also have limits of their own, which the corpus does
+not pin: 256 locals and 256 captured variables per function, 65,536
+constants per function, and jumps of up to 65,535 bytes.
 
 **Runtime errors** stop the program and are reported as
 
@@ -228,7 +297,40 @@ runtime error: cannot add a number and a string
   at line 12 in script
 ```
 
-(the message, then one `at` line per active call, innermost first).
+(the message, then one `at` line per active call, innermost first: `fn
+name`, `anonymous fn` or `script`). Each `at` line gives the line being
+run in that call; for the calls further out, the line of the call (its
+`(`, or `new`).
+
+Values are described with their article: `none`, `a boolean`, `a
+number`, `a string`, `a list`, `a function`, `a class`, `a Point
+instance` (`an` before a vowel).
+
+| runtime error | when |
+|---|---|
+| `cannot add a number and a string` | `+` on anything but two numbers or two strings |
+| `cannot use '-' on a string and a number` | `- * / %` |
+| `cannot compare a string and a number with '<'` | `< <= > >=` |
+| `cannot negate a string` | |
+| `undefined variable 'x'` | reading or assigning a global that doesn't exist |
+| `cannot call a number` | |
+| `cannot call a class: use 'new Point(...)'` | |
+| `area() takes 2 arguments but got 1` | (`anonymous fn takes ...` for an anonymous one) |
+| `Point has no init, so it takes no arguments, but got 2` | |
+| `'new' needs a class, not a function` | |
+| `stack overflow` | |
+| `Point has no property 'z'` | |
+| `cannot read 'x' of a number`, `cannot set 'x' on a list` | properties of a non-instance |
+| `Shape has no method 'm'` | `super.m` |
+| `a class can only extend a class, not a number` | |
+| `cannot index a string` | |
+| `a list index must be a number, not a string` | |
+| `index 1.5 is not a whole number` | |
+| `index 3 is out of range for a list of length 3` | |
+| `a range must start with a number, not a string` | also `a range must end with ...` |
+| `cannot loop over a number` | `for x in` something that isn't a list |
+| `len() needs a list or a string, not a number` | also `push() needs a list, not ...`, `pop() needs ...` |
+| `cannot pop from an empty list` | |
 
 The exact messages are pinned by the corpus, which is the source of truth
 for wording; implementations must match it byte for byte.
