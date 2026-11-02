@@ -1,223 +1,252 @@
-// Chapter 355 cards. Keys are stable ids: never rename them.
-
-const RES = `// What one benchmark run produced.
-#[derive(Debug, Clone, PartialEq)]
-enum Res {
-    // Time to finish the work, in ms.
-    Ms(f64),
-    // Work done in a fixed time,
-    // such as batches finished.
-    Work(f64),
-    // Didn't run: a compile error.
-    Failed,
-}
-`;
-
-const GEO = `fn geomean(xs: &[f64]) -> Option<f64> {
-    if xs.is_empty() {
-        return None;
-    }
-    let mut logs = 0.0;
-    for x in xs {
-        logs += x.ln();
-    }
-    Some((logs / xs.len() as f64).exp())
-}
-`;
-
-const SUMMARY = `fn summary(old: &[Res], new: &[Res])
-    -> Option<f64> {
-    let mut xs = Vec::new();
-    for (a, b) in old.iter().zip(new) {
-        if let Some(s) = speedup(a, b) {
-            xs.push(s);
-        }
-    }
-    geomean(&xs)
-}
-`;
+// Chapter 355 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 export const prompts = {
-  'three-what': {
-    q: 'Which three implementations of Drip does this book benchmark?',
-    a: 'The TypeScript tree-walker (Part III), the TypeScript bytecode VM (Part IV) and drip-rs, the Rust port of that VM (Part XII).',
+  'bm-how': {
+    q: 'How was each time in the 2026-11-02 benchmark tables measured?',
+    a: 'Best of three runs, each in a fresh process, on the same shared cloud VM, for all three implementations.',
   },
-  'ts-method': {
-    q: 'How were the TypeScript times in `drip-bench-2026-10-31.json` taken?',
-    a: 'One run per program, each in a fresh Node process, timed with `performance.now()` around compiling and running the program.',
+  'bm-compile': {
+    q: 'Do the benchmark times include compiling the Drip program?',
+    a: 'Yes: each time is the whole run of a fresh process, start-up and compiling included.',
   },
-  'rs-method': {
-    q: 'How were drip-rs’s times taken?',
-    a: 'Best of three runs, each a fresh process of the release build, timed by the shell from start to exit.',
+  'bm-geo': {
+    q: 'Why summarise speed-ups with a geometric mean rather than an ordinary average?',
+    a: 'It treats 2× and 0.5× as equal and opposite (their geometric mean is 1); the ordinary average of 2 and 0.5 is 1.25, which would call a wash a win.',
   },
-  'not-same-clock': {
-    q: 'Name one way the TypeScript and Rust timings don’t measure exactly the same thing.',
-    a: 'The TS timer starts after Node has started and loaded the VM’s code; the shell’s timer around drip-rs includes process start-up. Also one run versus best of three.',
+  'bm-vm-loses': {
+    q: 'On which four benchmark programs is the TypeScript VM slower than the tree-walker?',
+    a: '`fields`, `instantiation`, `strings` and `trees`.',
   },
-  'design-vs-lang': {
-    q: 'Why do the drip-rs vs TS VM ratios vary less than the TS VM vs tree-walker ratios?',
-    a: 'The two VMs are the same design doing the same work per instruction; only the language changed. The tree-walker is a different design, better or worse depending on the program.',
+  'bm-spread': {
+    q: 'Why does drip-rs’s speed-up over the TypeScript VM vary so little from program to program?',
+    a: 'The two VMs run the same bytecode with the same instructions, so they do the same work per step; only the cost of a step differs.',
   },
-  'zoo-batch-why': {
-    q: 'Why does `zoo_batch` take about 10 seconds on all three implementations?',
-    a: 'It loops until `clock()` says 10 seconds have passed. Its useful result is the number of batches it finished, not its time.',
+  'bm-map': {
+    q: 'Where does the tree-walker keep an instance’s fields, and why does that help it?',
+    a: 'In a JavaScript `Map`, so the hash table is V8’s own code, written in C++, rather than a table written in TypeScript.',
   },
-  'zoo-batch-ratio': {
-    q: 'For a fixed-time benchmark, how do you compute a speed-up?',
-    a: 'Work done by the new version divided by work done by the old one, such as batches finished: the inverse of a time ratio.',
+  'bm-two-gcs': {
+    q: 'Why does the TypeScript VM pay for garbage collection twice?',
+    a: 'It runs its own mark-and-sweep collector over its heap, and V8’s collector still has to free the JavaScript objects underneath.',
   },
-  'streq-why': {
-    q: 'Why does `string_equality` fail on both VMs but run on the tree-walker?',
-    a: 'Each use of a global adds its name to the chunk’s constants, and a one-byte operand allows only 256. The tree-walker has no constant table.',
-  },
-  'geomean': {
-    q: 'Why summarize speed-ups with a geometric mean rather than an arithmetic one?',
-    a: 'Ratios multiply. The geometric mean of a/b is exactly 1 over that of b/a, so the summary doesn’t depend on which side you call the baseline.',
-  },
-  'impl-comparison': {
-    q: 'What is an **implementation comparison**, and what can’t it tell you?',
-    a: 'Running the same programs, same inputs, same machine, on several implementations. It can’t say why one is faster, or whether a language is.',
+  'bm-design': {
+    q: 'In one sentence: why does the same VM design win in Rust but not in TypeScript?',
+    a: 'Its hand-built hash table, collector and dispatch only pay off once compiled to machine code; in TypeScript they compete with V8’s built-in versions.',
   },
 };
 
-export const exercises = {
-  summarize: {
-    lang: 'rust',
-    title: 'Speed-ups that know what was measured',
-    prompt:
-      'A benchmark result is a `Res`: a time (`Ms`), the work a fixed-time run got done, such as zoo_batch’s batch count (`Work`), or a failure. Write `speedup(old, new)`: for two times, `old / new`; for two `Work` counts, `new / old`, because more work is better; for anything else (a failure, or two different kinds), `None`. Write `geomean(xs)`, the geometric mean (`None` for no values). Then `summary(old, new)`: the geometric mean of the speed-ups of the pairs that have one. The tests use the committed results.',
-    starter: `${RES}
-fn speedup(old: &Res, new: &Res)
-    -> Option<f64> {
-    todo!()
+export const examples = {
+  bench: {
+    lang: 'drip-vm',
+    title: 'A small fields benchmark',
+    code: `class Body {
+  init(x, vx) {
+    self.x = x;
+    self.vx = vx;
+  }
+}
+let a = new Body(0, 1);
+let t = clock();
+for i in 0..20000 {
+  a.x += a.vx;
+  if a.x > 100 { a.vx = -a.vx; }
+  if a.x < -100 { a.vx = -a.vx; }
+}
+print a.x;
+print clock() - t >= 0;`,
+  },
+};
+
+const head = `// One benchmark: the program, the
+// old time and the new time, in ms.
+type Row = (&'static str, f64, f64);
+
+// How many times as fast new is.
+fn speedup(old: f64, new: f64) -> f64 {`;
+
+const solution = `${head}
+    old / new
 }
 
+// The n-th root of the product, or
+// None for no values.
 fn geomean(xs: &[f64]) -> Option<f64> {
-    todo!()
-}
-
-fn summary(old: &[Res], new: &[Res])
-    -> Option<f64> {
-    todo!()
-}`,
-    solution: `${RES}
-fn speedup(old: &Res, new: &Res)
-    -> Option<f64> {
-    use Res::*;
-    match (old, new) {
-        (Ms(a), Ms(b)) => Some(a / b),
-        (Work(a), Work(b)) => {
-            Some(b / a)
-        }
-        _ => None,
+    if xs.is_empty() {
+        return None;
     }
+    let logs: f64 =
+        xs.iter().map(|x| x.ln()).sum();
+    let n = xs.len() as f64;
+    Some((logs / n).exp())
 }
 
-${GEO}
-${SUMMARY}`,
-    tests: `use Res::*;
+// The programs that got slower.
+fn slower(rows: &[Row]) -> Vec<&str> {
+    rows.iter()
+        .filter(|r| r.2 > r.1)
+        .map(|r| r.0)
+        .collect()
+}`;
+
+const tests = `// drip-bench-2026-11-02: tree, TS VM.
+const TREE_VM: [Row; 10] = [
+    ("closures", 811.0, 655.0),
+    ("fib", 2365.0, 1906.0),
+    ("fields", 530.0, 712.0),
+    ("instantiation", 428.0, 623.0),
+    ("method_calls", 918.0, 704.0),
+    ("particles", 446.0, 380.0),
+    ("sieve", 1317.0, 1216.0),
+    ("sort", 1394.0, 1224.0),
+    ("strings", 365.0, 383.0),
+    ("trees", 597.0, 749.0),
+];
+// drip-rs-bench-2026-11-02: TS VM, drip-rs.
+const VM_RS: [Row; 10] = [
+    ("closures", 655.0, 139.0),
+    ("fib", 1906.0, 406.0),
+    ("fields", 712.0, 193.0),
+    ("instantiation", 623.0, 140.0),
+    ("method_calls", 704.0, 167.0),
+    ("particles", 380.0, 83.0),
+    ("sieve", 1216.0, 283.0),
+    ("sort", 1224.0, 248.0),
+    ("strings", 383.0, 305.0),
+    ("trees", 749.0, 156.0),
+];
+
+fn ratios(rows: &[Row]) -> Vec<f64> {
+    rows.iter().map(|r| speedup(r.1, r.2)).collect()
+}
 
 fn close(a: f64, b: f64) -> bool {
     (a - b).abs() < 0.005
 }
 
 #[test]
-fn times_divide_old_by_new() {
-    // fib: TS VM 5685 ms, drip-rs 1460 ms.
-    assert!(close(speedup(&Ms(5685.0), &Ms(1460.0)).unwrap(), 3.89));
+fn a_speedup_is_old_over_new() {
+    assert!(close(speedup(1906.0, 406.0), 4.69));
+    assert!(close(speedup(530.0, 712.0), 0.74));
 }
 
 #[test]
-fn batches_divide_new_by_old() {
-    // zoo_batch: TS VM 844 batches, drip-rs 3060 (hand count in the .md).
-    assert!(close(speedup(&Work(844.0), &Work(3060.0)).unwrap(), 3.63));
-}
-
-#[test]
-fn failures_and_mixed_kinds_have_no_speedup() {
-    assert_eq!(speedup(&Failed, &Failed), None);
-    assert_eq!(speedup(&Ms(13874.0), &Failed), None);
-    assert_eq!(speedup(&Ms(10011.0), &Work(3060.0)), None);
-}
-
-#[test]
-fn geometric_mean() {
-    assert!(close(geomean(&[2.0, 8.0]).unwrap(), 4.0));
+fn geomean_basics() {
     assert_eq!(geomean(&[]), None);
-    // Symmetric: the mean of the inverses is the inverse of the mean.
-    let g = geomean(&[3.89, 0.77, 5.68]).unwrap();
-    let h = geomean(&[1.0 / 3.89, 1.0 / 0.77, 1.0 / 5.68]).unwrap();
-    assert!(close(g * h, 1.0));
+    assert!(close(geomean(&[2.0, 0.5]).unwrap(), 1.0));
+    assert!(close(geomean(&[4.0]).unwrap(), 4.0));
 }
 
 #[test]
-fn ts_vm_to_drip_rs_on_the_committed_run() {
-    let ts = [Ms(13078.0), Ms(16501.0), Ms(5685.0), Ms(3570.0), Ms(2042.0), Ms(1085.0), Ms(2781.0), Failed, Ms(21327.0), Ms(1749.0)];
-    let rs = [Ms(2672.0), Ms(4220.0), Ms(1460.0), Ms(628.0), Ms(577.0), Ms(316.0), Ms(795.0), Failed, Ms(4858.0), Ms(528.0)];
-    assert!(close(summary(&ts, &rs).unwrap(), 4.00));
-    assert_eq!(summary(&[Failed], &[Failed]), None);
-}`,
-    hints: [
-      'Match on the pair: `match (old, new) { (Res::Ms(a), Res::Ms(b)) => ..., ... }`. A final `_ => None` covers failures and mixed kinds.',
-      'The geometric mean is `exp` of the average of the `ln`s. Check for an empty slice first.',
-      'In `summary`, zip the two slices, keep each `Some` speed-up in a `Vec`, and hand it to `geomean`.',
-    ],
-    walkthrough: `The type does the thinking. A result is one of three things, and \`speedup\` handles each pair explicitly:
-
-\`\`\`rust
-match (old, new) {
-    (Res::Ms(a), Res::Ms(b)) => Some(a / b),
-    (Res::Work(a), Res::Work(b)) => Some(b / a),
-    _ => None,
+fn the_ts_vm_is_about_even_with_the_tree_walker() {
+    let g = geomean(&ratios(&TREE_VM)).unwrap();
+    assert!(close(g, 1.01), "{g}");
 }
-\`\`\`
 
-A time is “less is better” and a batch count is “more is better”, so the division flips. That is the zoo_batch lesson: its 10-second time says nothing, and its batch count, 3060 against 844, says drip-rs did 3.63 times the work. Putting a time next to a count, or anything next to a failure, gives \`None\` instead of a number that means nothing. That is why \`string_equality\` drops out of the summary instead of counting as zero or infinity.
+#[test]
+fn drip_rs_against_the_ts_vm() {
+    let g = geomean(&ratios(&VM_RS)).unwrap();
+    assert!(close(g, 3.94), "{g}");
+}
 
-The geometric mean multiplies the ratios and takes the nth root, computed with logarithms so large products don’t overflow. On the nine timed programs it gives 4.00 for drip-rs against the TS VM. The arithmetic mean of the same ratios is 4.06, and the arithmetic mean of the *inverse* ratios doesn’t come out as its inverse, which is why benchmark suites summarize ratios geometrically.`,
+#[test]
+fn four_programs_got_slower() {
+    assert_eq!(slower(&TREE_VM), [
+        "fields", "instantiation", "strings", "trees",
+    ]);
+    assert!(slower(&VM_RS).is_empty());
+}`;
+
+export const exercises = {
+  summarize: {
+    lang: 'rust',
+    title: 'Speed-ups and their geometric mean',
+    prompt: `Each benchmark is a \`Row\`: the program's name, the old time and the new time, in milliseconds. Write:
+
+1. \`speedup(old, new)\`: how many times as fast the new one is.
+2. \`geomean(xs)\`: the geometric mean of the values, or \`None\` if there are none. (Hint: the mean of the logarithms, then \`exp\`.)
+3. \`slower(rows)\`: the names of the programs whose new time is bigger than their old time, in order.
+
+The tests use the committed results of 2026-11-02, and check the chapter's numbers: the TypeScript VM is 1.01 times the tree-walker, drip-rs 3.94 times the TypeScript VM.`,
+    starter: `${head}
+    todo!()
+}
+
+fn geomean(xs: &[f64]) -> Option<f64> {
+    todo!()
+}
+
+fn slower(rows: &[Row]) -> Vec<&str> {
+    todo!()
+}`,
+    solution,
+    tests,
+    hints: [
+      'A speed-up is old time divided by new time, so a program that took 1906 ms and now takes 406 ms is 4.69 times as fast.',
+      'The geometric mean of n values is the n-th root of their product. Multiplying ten numbers is fine here, but adding logarithms is safer: `exp(sum of ln(x) / n)`. Return `None` first if the slice is empty.',
+      '`slower` is a filter and a map: `rows.iter().filter(|r| r.2 > r.1).map(|r| r.0).collect()`. `r.1` is the old time and `r.2` the new.',
+    ],
+    walkthrough: `**How to think about it.** There are three small questions here: how much faster is one run than another (a ratio), what is the typical ratio over many programs (a mean that suits ratios), and which programs went the wrong way (a filter). The only subtle one is the mean. Speed-ups multiply: if one change makes a program 2× faster and the next 3× faster, the total is 6×, not 5×. So the natural summary is the value that, multiplied by itself n times, gives the product of all n speed-ups: the geometric mean. It also makes 2× and 0.5× cancel, which is the fair reading of "one program got twice as fast and another twice as slow".
+
+**The solution, line by line.**
+
+- \`old / new\` is the speed-up. Bigger than 1 means the new one is faster; \`speedup(530.0, 712.0)\` is 0.74, slower.
+- \`if xs.is_empty() { return None; }\` handles the case with no values, where there is no mean to give (and dividing by zero would give \`NaN\`).
+- \`let logs: f64 = xs.iter().map(|x| x.ln()).sum();\` adds the natural logarithms. A product of many ratios could overflow or lose precision; a sum of logarithms does not, and \`ln(a × b) = ln a + ln b\`.
+- \`let n = xs.len() as f64;\` is the count, as an \`f64\` so it can divide.
+- \`Some((logs / n).exp())\`: the mean of the logarithms, turned back into a ratio with \`exp\`. For \`[2.0, 0.5]\` the logarithms are +0.693 and −0.693, their mean 0, and \`exp(0)\` is 1.
+- \`rows.iter().filter(|r| r.2 > r.1).map(|r| r.0).collect()\` keeps the rows whose new time is larger than the old one and collects their names; the order of the input is kept.
+
+On the committed results this gives 1.01 for the TypeScript VM against the tree-walker, with \`fields\`, \`instantiation\`, \`strings\` and \`trees\` slower, and 3.94 for drip-rs against the TypeScript VM, with none slower.
+
+**Common wrong attempts.**
+
+- The ordinary average of the ratios reports the TypeScript VM as 1.04 times the tree-walker, a win that is not there: the big ratios pull an ordinary average up more than the small ones pull it down.
+- Dividing new by old reports every number upside down.`,
     wrong: [
       {
-        code: `${RES}
-fn speedup(old: &Res, new: &Res)
-    -> Option<f64> {
-    use Res::*;
-    match (old, new) {
-        (Ms(a), Ms(b)) => Some(a / b),
-        (Work(a), Work(b)) => {
-            Some(a / b)
-        }
-        _ => None,
-    }
-}
-
-${GEO}
-${SUMMARY}`,
-        why: 'For a fixed-time run more batches is better, so the ratio is `new / old`. This reports drip-rs as 0.28× on zoo_batch.',
-      },
-      {
-        code: `${RES}
-fn speedup(old: &Res, new: &Res)
-    -> Option<f64> {
-    use Res::*;
-    match (old, new) {
-        (Ms(a), Ms(b)) => Some(a / b),
-        (Work(a), Work(b)) => {
-            Some(b / a)
-        }
-        _ => None,
-    }
+        code: `${head}
+    old / new
 }
 
 fn geomean(xs: &[f64]) -> Option<f64> {
     if xs.is_empty() {
         return None;
     }
-    let s: f64 = xs.iter().sum();
-    Some(s / xs.len() as f64)
+    let sum: f64 = xs.iter().sum();
+    Some(sum / xs.len() as f64)
 }
 
-${SUMMARY}`,
-        why: 'That is the arithmetic mean: 5.0 for [2, 8] instead of 4.0, and not symmetric under inverting the ratios.',
+fn slower(rows: &[Row]) -> Vec<&str> {
+    rows.iter()
+        .filter(|r| r.2 > r.1)
+        .map(|r| r.0)
+        .collect()
+}`,
+        why: 'This is the ordinary average, not the geometric mean: 2× and 0.5× average to 1.25, and the TypeScript VM would come out 1.04× the tree-walker.',
+      },
+      {
+        code: `${head}
+    new / old
+}
+
+fn geomean(xs: &[f64]) -> Option<f64> {
+    if xs.is_empty() {
+        return None;
+    }
+    let logs: f64 =
+        xs.iter().map(|x| x.ln()).sum();
+    let n = xs.len() as f64;
+    Some((logs / n).exp())
+}
+
+fn slower(rows: &[Row]) -> Vec<&str> {
+    rows.iter()
+        .filter(|r| r.2 > r.1)
+        .map(|r| r.0)
+        .collect()
+}`,
+        why: 'The ratio is upside down: fib’s 4.69× comes out as 0.21. A speed-up is old time divided by new time.',
       },
     ],
   },
@@ -225,51 +254,43 @@ ${SUMMARY}`,
 
 export const quiz = [
   {
-    q: 'On `instantiation`, the TS VM took 3570 ms and the tree-walker 2742 ms. What follows?',
+    q: 'What is the geometric mean of the TypeScript VM’s speed-ups over the tree-walker on the ten programs of 2026-11-02?',
     options: [
-      { t: 'Bytecode VMs are slower than tree-walkers', why: 'On seven of the nine timed programs the TS VM was faster, up to 4.78×.' },
-      { t: 'In this one run, this program was slower on the TS VM; the run alone can’t say why', correct: true, why: 'One run per program on a shared VM. A profile of each would be the next step.' },
-      { t: 'The measurement is wrong', why: 'Nothing suggests that. A different design can lose on some programs.' },
+      { t: 'About 1.24', why: 'That is fib’s and closures’ speed-up, not the mean over all ten.' },
+      { t: 'About 1.01', correct: true, why: 'Six wins of at most 1.30× and four losses down to 0.69× cancel out almost exactly.' },
+      { t: 'About 3.94', why: 'That is drip-rs against the TypeScript VM.' },
     ],
   },
   {
-    q: 'drip-rs ran 3.31× to 5.68× as fast as the TS VM. Which claim does that support?',
+    q: 'On `fields`, the TypeScript VM is 0.74 times the tree-walker but drip-rs is 3.69 times the TypeScript VM. What does that suggest?',
     options: [
-      { t: 'Rust is about four times faster than JavaScript', why: 'This is one port of one program, with its own design choices, on one machine. A different JavaScript VM, or a different Rust one, would give other numbers.' },
-      { t: 'This Rust port of this VM ran these programs 3.3–5.7× as fast as its TypeScript twin, in these runs', correct: true, why: 'That is exactly what was measured, with its scope attached.' },
-      { t: 'The Rust VM uses a better algorithm', why: 'It is the same algorithm by design: the same compiler, opcodes and collector.' },
+      { t: 'The bytecode for `fields` is badly compiled', why: 'drip-rs runs exactly the same bytecode and is fast.' },
+      { t: 'The cost is in how each instruction is carried out in TypeScript, not in the instructions themselves', correct: true, why: 'Same bytecode, very different cost per instruction.' },
+      { t: 'The tree-walker cheats by skipping work', why: 'All three pass the same corpus and print the same output.' },
     ],
   },
   {
-    q: 'What should a speed-up for `zoo_batch` be based on?',
+    q: 'According to the profiles in this chapter, which work does the TypeScript VM do itself that the tree-walker leaves to V8?',
     options: [
-      { t: 'Its time, as for the other programs', why: 'Every implementation stops at 10 seconds by design, so the times are all about 10 s.' },
-      { t: 'The batches each finished: drip-rs’s count divided by the other’s', correct: true, why: 'The committed files give drip-rs 3060 batches; the .md’s hand count gives the TS VM 844, so about 3.6×.' },
-      { t: 'Nothing: fixed-time benchmarks can’t be compared', why: 'They compare work done instead of time taken.' },
+      { t: 'Parsing the program', why: 'Both parse in TypeScript; compiling was under 1% of samples.' },
+      { t: 'Printing the output', why: 'Both print the same way.' },
+      { t: 'Hash-table lookups for fields and globals, and garbage collection', correct: true, why: 'Its own `table.ts` and `heap.ts`, against the tree-walker’s `Map` and V8’s collector.' },
     ],
   },
   {
-    q: 'Why is `string_equality` missing from both VMs’ columns?',
+    q: 'Why is a single run never used as a benchmark result in this book?',
     options: [
-      { t: 'It is too slow to finish', why: 'It never starts: compiling fails, with exit code 65.' },
-      { t: 'Its chunk needs more than 256 constants, the most a one-byte operand can address', correct: true, why: 'Every use of a global like `a1` adds another copy of its name to the constants. Both VMs print the same 1700 error lines.' },
-      { t: 'The Rust VM has a bug the TypeScript VM shares by accident', why: 'It is the specified limit, kept on purpose in both, as in clox.' },
+      { t: 'On a shared cloud machine one run can vary from the next by tens of percent', correct: true, why: 'So the tables report the best of three fresh runs, and close results are read as “about the same”.' },
+      { t: 'The first run is always slower because of the disk', why: 'Each run is a fresh process anyway; the variation is mostly other work on the machine.' },
+      { t: 'Rust programs need warming up', why: 'drip-rs is compiled ahead of time; there is nothing to warm up.' },
     ],
   },
   {
-    q: 'The TS times are single runs and drip-rs’s are best of three. Which way does that tilt the comparison?',
+    q: 'What makes a comparison between implementations meaningful at all?',
     options: [
-      { t: 'Slightly in drip-rs’s favour', correct: true, why: 'The best of three runs is never slower than a single one, so drip-rs got three chances at a quiet moment.' },
-      { t: 'In TypeScript’s favour', why: 'Taking a minimum can only lower drip-rs’s numbers.' },
-      { t: 'Not at all', why: 'On a noisy VM, best-of-three versus one run matters by a few to tens of percent.' },
-    ],
-  },
-  {
-    q: 'Why does the summary use a geometric mean of the speed-ups?',
-    options: [
-      { t: 'It is always larger, which looks better', why: 'It is never larger than the arithmetic mean.' },
-      { t: 'It gives every program the same weight whichever side is the baseline: inverting all ratios inverts the mean', correct: true, why: 'With an arithmetic mean, “A vs B” and “B vs A” tell different stories.' },
-      { t: 'It ignores the slowest program', why: 'Every program counts; failures are left out because they have no ratio.' },
+      { t: 'That they are written in different languages', why: 'Two implementations in the same language can be compared too.' },
+      { t: 'That they pass the same tests, so they are doing the same work, measured the same way on the same machine', correct: true, why: 'A faster implementation that prints a different answer has not won anything.' },
+      { t: 'That the newest one is fastest', why: 'The TypeScript VM is newer than the tree-walker, and not faster on average.' },
     ],
   },
 ];

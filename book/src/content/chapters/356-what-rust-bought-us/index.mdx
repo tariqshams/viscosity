@@ -7,155 +7,203 @@ tagline: 'drip-rs is finished: the same output as the TypeScript VM, byte for by
 objectives:
   - List the designs ownership forced on drip-rs, and why each was needed.
   - Tell the bugs Rust caught at compile time from the ones it could not see.
-  - Count what the port cost in lines, and say what the count does and doesn’t mean.
+  - Count what the port cost in lines and build time, and say what the count does and does not mean.
   - State drip-rs’s speed-up with its scope and caveats.
 introduces: [rust-tradeoffs]
 uses: [drip-rs, implementation-comparison, profiling, unchecked-indexing, ownership, borrow, shared-vs-mutable, borrow-checker, arena, typed-index, object-handle, rc, arena-gc, garbage-collection, roots, mark-sweep, match-dispatch, exhaustiveness, unsafe, release-build, shared-corpus, cargo-test, enum, vec, option]
-sources: [klabnik2026, nystrom2021]
+sources: [klabnik2026]
 ---
 import LedgerSteps from '../../../components/diagrams/ch356/LedgerSteps';
+import LocBars from '../../../components/diagrams/ch356/LocBars';
 
 ## The port is done
 
-Part XII set a goal in chapter 332: the same output, the same error
-messages on the same lines, the same exit codes as the TypeScript VM,
-for all 246 corpus programs. drip-rs meets it, plus 95 programs with a
-collection before every allocation. It runs the benchmarks about four
-times as fast. Was it worth it? That depends on what you count, so this
-chapter counts everything it can.
+Part XII set itself one goal in *Planning drip-rs*: a Rust VM that
+behaves exactly like the TypeScript VM, the same output, the same error
+messages on the same lines and the same exit codes, on every program.
+drip-rs meets it: all 334 corpus tests pass, so do the 165 stress-GC
+programs that collect before every allocation, and on 2026-11-02
+`compare_with_ts.mjs` found its output identical to the TypeScript VM's
+on 343 corpus programs and 2,000 mangled ones. It runs the ten
+benchmarks about four times as fast. Was it worth it? That depends on
+what you count, so this chapter counts everything it can, the costs as
+carefully as the gains.
 
-<Callout kind="intuition">
+<Analogy title="the bills after a renovation">
 After a renovation you go through the bills. Some costs you chose, some
-the building code forced on you. Some problems the inspector caught
-before you moved in; one or two only showed up when you ran the taps.
-And the place is warmer. All of it goes in the ledger.
-</Callout>
+the building regulations forced on you. Some problems the inspector
+caught before you moved in; one or two only showed up when you ran the
+taps. And the house is warmer. All of it goes in the ledger.
+<span slot="breaks">A house's costs are paid once; a codebase's
+extra lines are read again by everyone who works on it, and its
+design choices shape every later change, so some of the costs here
+keep being paid.</span>
+</Analogy>
+
+<Analogy title="learning to drive a manual car">
+A manual gearbox makes you think about things an automatic does for
+you, and for a while every journey is harder; in return you get more
+control and better fuel economy.
+<span slot="breaks">A driver who masters the clutch stops noticing it;
+Rust's borrowing rules also become habit, but they keep shaping the
+design (arenas, handles, passed-in roots) long after they stop feeling
+like friction.</span>
+</Analogy>
 
 <LedgerSteps client:visible />
 
+<Prompts ids={['rt-goal', 'rt-ledger']} />
+
 ## What ownership forced
 
-Four designs in drip-rs exist because of the borrowing rules, not
-because a VM needs them:
+Some of drip-rs's designs exist because of Rust's ownership rules (from
+*Ownership* and *Borrowing*), not because a VM needs them:
 
 - **Arenas and handles.** Objects that point at each other in any
-  pattern can't be references, so each kind lives in an `Arena<T>` owned
-  by the heap, and links are `Gc<T>` indices (chapters 315, 340).
-- **Explicit roots.** The heap can't borrow the VM that owns it, so the
-  VM hands its roots to `collect()` as `&dyn Trace` (chapter 347).
-- **Registers.** The loop can't hold `&self.chunk` while it pushes, so
-  `ip` and an `Rc<Chunk>` live in the `Vm` itself (chapter 337).
-- **Mark bits outside the objects.** Marking writes and tracing reads;
-  kept apart, they never fight over one borrow (chapter 347).
+  pattern, cycles included, cannot be Rust references, so each kind
+  lives in its own `Arena<T>` (there are nine, from strings to bound
+  methods) owned by the `Heap`, and links between objects are `Gc<T>`
+  handles, typed indices (from *Arenas and typed indices* and *Heap
+  objects in an arena*).
+- **Roots passed in.** The heap cannot borrow the VM that owns it, so
+  the VM hands its roots to `Heap::collect` as `&dyn Trace` values (from
+  *A garbage collector in Rust*).
+- **Read first, then write.** Holding a reference into the heap while
+  changing it is E0502, so code reads what it needs into locals first:
+  the one `clone()` of a table in the whole VM is the `inherit`
+  instruction's, from *extends and super in Rust*.
 
-None of these is strange: clox, for one, keeps the running frame in a
-local variable for speed, which is the registers by another
-route<Cite id="nystrom2021" />. But the TypeScript VM could skip all four,
-and Rust could not.
+The TypeScript VM could skip all three; a JavaScript object can point at
+any other, and V8 frees them. None of the three is strange (arenas with
+indices are an old technique in any language), but Rust made them
+compulsory, and the code is longer for it.
 
 <Prompts ids={['forced-arena', 'forced-roots']} />
 
-## What it caught
+## What it caught, and what it could not
 
-The earlier chapters show the compiler's refusals: a missing opcode arm
-(E0004, chapter 337), a class handle passed for an instance (E0308,
-chapter 332), a reference into a heap that might move (E0502, chapters
-337 and 340), two mutable borrows of the compiler at once (E0499,
-chapters 343 to 346). Each was a compile error, found in seconds. The
-last two, in C, could have been a dangling pointer or two writers to one
-object, found when something broke.
+Each Rust chapter of this Part met the compiler's refusals: two mutable
+borrows of the compiler at once (E0499), a reference into a heap that
+was about to change (E0502), and the two below.
 
-At run time, every index is checked. A freed slot holds `None`, so a
-stale handle that finds it panics with a message, and `#![forbid(unsafe_code)]`
-means no line of drip-rs can turn either check off.
+<Examples of="rust-tradeoffs">
 
-<Prompts ids={['caught-compile']} />
+```text
+error[E0004]: non-exhaustive patterns:
+  `Op::Print` not covered
+4 |     match op {
+  |           ^^ pattern `Op::Print`
+  |              not covered
+```
 
-## What it couldn't catch
-
-A `Gc<T>` is a number. If the VM forgets a root, the program compiles,
-and the collector frees an object that is still in use. In normal mode
-the arena reuses freed slots. A later object can move into the slot,
-and the stale handle reads *it*: no crash, no undefined behaviour, just
-the wrong answer. Run it:
+```text
+error[E0308]: mismatched types
+7 |     fields(c);
+  |            ^ expected
+  |   `Gc<ObjInstance>`,
+  |   found `Gc<ObjClass>`
+```
 
 <Run id="stale-handle" />
 
-That is why drip-rs has two test modes. Debug and stress modes never
-reuse a slot, so the stale read finds `None` and panics. And the 95
-stress-GC programs collect before every allocation, so a missing root
-shows up at its first chance. Rust made the bug *safe*. Making it
-*impossible* took tests.
+</Examples>
 
-<Prompts ids={['missed-root', 'safe-not-correct']} />
+The first is rustc 1.97 on a three-variant enum whose `match` forgets
+one (trimmed and wrapped): drip-rs's `Vm::run` matches on all 53
+`OpCode` variants, and adding a 54th opcode without an arm for it is a
+compile error, not a silent fall-through. The second is a toy with
+drip-rs's `Gc<T>` shape: a handle to a class passed where a handle to
+an instance is wanted. The TypeScript VM has types too, but its
+casts, such as `this.peek(0) as ObjClass`, switch them off wherever a
+value comes off the stack; drip-rs opens such values with a `match`. Each of these was found in
+seconds, by the compiler, before any test ran; in C the borrowing
+mistakes could have been a dangling pointer or two writers to one
+object, found only when something broke. At run time, every index is
+checked, and `#![forbid(unsafe_code)]` means no line of drip-rs can turn
+the checks off.
+
+The third, which you can run, is what Rust cannot see. A `Gc<T>` is a
+number. If the VM forgets to pass a root, the program compiles, and the
+collector frees an object that is still in use; in normal mode the
+arena reuses the slot, the next object moves in, and the stale handle
+reads *it*. No crash and no undefined behaviour, just the wrong answer:
+the example prints `zoo` where it meant `fib`. That is why drip-rs's
+debug and stress modes never reuse a slot (a stale read then panics) and
+why the 165 stress-GC programs exist. Rust made the bug **safe**;
+making it **impossible** took tests.
+
+<Formal title="Safe is not the same as correct">
+
+```text
+safe(P)    ⇒ no undefined behaviour in P
+safe(P)    ⇏ correct(P)
+passes(P, C) ⇒ correct on the programs in C
+```
+
+<span slot="read">If a program P is written in safe Rust, it has no
+undefined behaviour; but being safe does not make it correct. Passing
+the corpus C shows it is correct on the programs in C, and nothing
+more.</span>
+</Formal>
+
+<Prompts ids={['caught-compile', 'missed-root', 'safe-not-correct']} />
 
 ## What it cost
 
-I counted code lines in both: not blank, not comments, and for Rust,
-nothing from a module's `#[cfg(test)]` on (2026-10-31, with a short
-script):
+I counted code lines in both VMs on 2026-11-02: not blank, not
+comments, and for Rust nothing from a module's `#[cfg(test)]` onwards.
 
-```
-             TypeScript   Rust
-compiler            537    804
-vm                  362    611
-heap / gc           144    348
-object + value       55    236
-scanner              80    209
-everything else     186    355
-total             1,364  2,563
-```
+<LocBars />
 
-Rust has 1.88× the lines and 1.53× the non-blank characters. Lines
-inflate because rustfmt wraps at 90 columns; the average Rust line has
-22.6 non-blank characters, the TypeScript one 27.8. Some of the extra
-is not about ownership at all. `value.rs` reimplements JavaScript's
-number printing, which the TypeScript VM gets from `String(n)`. The
-opcodes need a table to decode bytes. And `main.rs` is a 50-line CLI with
-no twin in `ts/src/vm`. The rest is the price of arenas, handles and
-explicit roots, and of `Result` on every path that can fail.
-
-There is also time to build: a clean release build with `lto` took
-5.4 seconds here. The TypeScript VM has no build step.
+drip-rs is 3,328 lines against the TypeScript VM's 1,714, 1.94 times as
+many. Not all of the extra is about ownership. `value.rs` reimplements
+JavaScript's way of printing numbers, which the TypeScript VM gets from
+`String(n)`; the scanner works on bytes and spells out each case; and
+`main.rs` is a 50-line command line with no twin inside `ts/src/vm`.
+Seven `unreachable!` calls mark facts the types cannot express ("the
+compiler always puts a class here"). The rest is the price of arenas,
+handles and passed-in roots, and of a `Result` on every path that can
+fail. There is also the build: a clean release build with `lto` took
+about 7.5 seconds here, where the TypeScript VM runs straight from
+source.
 
 <Prompts ids={['cost-lines', 'cost-where']} />
 
 ## What it bought
 
-Speed, on the committed run: 3.31× to 5.68× the TypeScript VM on the
-nine timed programs, geometric mean 4.00×, and about 3.6× the work on
-zoo_batch. The caveats from chapter 355 stay attached: one TypeScript
-run against best of three, timers that start in different places, a
-shared VM.
-
-Where did the speed come from? Not from skipping checks: chapter 354
-measured four unchecked reads and found the gain inside the noise. The
-biggest single win was a design decision forced by the borrow checker,
-the registers. Without them fib ran 39.27 billion instructions instead
-of 20.19, and took twice as long.
+Speed, on the committed run of 2026-11-02: from 1.26 to 4.94 times the
+TypeScript VM's speed on the ten programs, geometric mean 3.94, and 3.98
+against the tree-walker, with the caveats of *Benchmarks: three
+implementations* attached (best of three on a shared machine, start-up
+and compiling included). Where did it come from? Not from skipping
+checks: *Optimizing the Rust VM* measured an unchecked `read_byte` and
+found 8% fewer instructions and no measurable time. It came from the
+same design running as compiled machine code, and from keeping the hot
+state in fields of the `Vm`: removing just the chunk register made fib
+about 2.1 times slower. And it bought a single 594 KB executable that
+needs nothing installed, with no dependencies at all (its `Cargo.lock`
+lists only drip-rs itself).
 
 <Callout kind="definition">
 The **Rust trade-offs**, as drip-rs paid them: memory safety without a
-garbage-collected runtime, compile-time checks on exhaustiveness, types
-and borrows, and roughly 4× the speed of the TypeScript VM; in exchange,
-designs built around single ownership (arenas, handles, explicit roots,
-registers), nearly twice the code, a build step, and logic bugs, like a
-missed root, that types can't see.
+garbage-collected runtime, mistakes in types, borrows and exhaustiveness
+caught at compile time, and about four times the speed of the
+TypeScript VM; in exchange, nearly twice the code, a design shaped by
+ownership (arenas, handles, roots passed in), a build step, and logic
+bugs in safe code that only tests can find.
 </Callout>
 
 <Prompts ids={['speed-scope', 'biggest-win', 'rust-tradeoffs']} />
 
 <Callout kind="engine" label="Under the hood">
-Would a careful C port be faster still? Probably somewhat: no bounds
-checks, raw pointers instead of arena indices, clox's own tricks. This
-book has no C implementation to measure, so it makes no claim. What it
-can say is that drip-rs got its speed with no `unsafe`, and that a
-stale handle panics or misreads instead of corrupting memory. The Rust
-book names the bargain: the compiler's analysis is conservative, and it
-is "better for it to reject some valid programs than to accept some
-invalid programs"<Cite id="klabnik2026" />. drip-rs met those
-rejections in every chapter of this Part. Part XIII rebuilds Viscosity under the same
-rules.
+The Rust book describes the borrow checker's job as preventing data
+races and dangling references at compile time<Cite id="klabnik2026" />,
+and drip-rs shows both the reach and the limit of that: no reference in
+drip-rs can dangle, because objects are reached through handles, but a
+handle can still name a slot whose object has gone, which is the same
+mistake one level up. Part XIII builds a much larger Rust program, the
+Viscosity engine, on the same habits: arenas, typed indices, and a
+shared test suite to check what the types cannot.
 </Callout>
 
 ## Your turn
@@ -164,14 +212,12 @@ rules.
 
 ## What you learned
 
-- Ownership forced **arenas and handles**, **explicit roots**,
-  **registers** and **separate mark bits**.
-- The compiler caught exhaustiveness, handle-type and borrow errors.
-  It couldn't see a **forgotten root**: a safe, wrong read, which the
-  stress-GC tests turn into a panic.
-- The port cost **1.88× the lines** (1.53× the characters), partly from
-  formatting and work JavaScript does for free.
-- It bought **3.31×–5.68×** over the TypeScript VM in the committed run,
-  most of it from design, not from removing checks.
+- Ownership **forced** arenas with typed handles, roots passed in to the
+  collector, and reading before writing.
+- The compiler **caught** missing match arms, wrong handle types and
+  borrow conflicts; it **cannot** catch a forgotten root: safe, not
+  correct.
+- The port **cost** 1.94× the lines and a build step, and **bought**
+  3.94× the TypeScript VM's speed and one dependency-free binary.
 
 <Quiz />

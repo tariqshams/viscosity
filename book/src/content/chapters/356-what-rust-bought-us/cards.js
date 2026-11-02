@@ -31,45 +31,53 @@ fn counts(src: &str) -> (usize, usize) {
 `;
 
 export const prompts = {
+  'rt-goal': {
+    q: 'What goal did Part XII set for drip-rs, and does it meet it?',
+    a: 'To behave exactly like the TypeScript VM: same output, errors, lines and exit codes. It does: 334 corpus tests, 165 stress-GC programs, and no differences from the TypeScript VM on 343 corpus and 2,000 mangled programs.',
+  },
+  'rt-ledger': {
+    q: 'Name one gain and one cost of the port to Rust.',
+    a: 'Gains: about 3.94× the TypeScript VM’s speed, compile-time checks, no unsafe code, one small binary. Costs: 1.94× the lines, designs forced by ownership, a build step, bugs it cannot see.',
+  },
   'forced-arena': {
     q: 'What did ownership force on drip-rs’s heap, compared with the TypeScript VM?',
-    a: 'Objects live in arenas owned by the heap, and everything else holds `Gc<T>` handles, typed indices, instead of references.',
+    a: 'Objects live in nine arenas owned by the heap, and everything else holds `Gc<T>` handles, typed indices, instead of references.',
   },
   'forced-roots': {
     q: 'Why does drip-rs pass its roots into `collect()` instead of letting the heap ask the VM?',
-    a: 'The VM owns the heap; the heap can’t borrow the VM that owns it while being borrowed mutably itself.',
+    a: 'The VM owns the heap; the heap cannot borrow the VM that owns it while it is itself borrowed mutably.',
   },
   'caught-compile': {
-    q: 'Name two kinds of bug the Rust compiler caught while drip-rs was written.',
-    a: 'Any two of: a missing opcode arm (E0004), a handle of the wrong type (E0308), a reference into the arena kept across a mutation (E0502), two `&mut self` borrows at once (E0499).',
+    q: 'Name two kinds of mistake the Rust compiler caught while drip-rs was written.',
+    a: 'Any two of: a missing opcode arm (E0004), a handle of the wrong type (E0308), a reference into the heap kept across a change (E0502), two `&mut self` borrows at once (E0499).',
   },
   'missed-root': {
     q: 'What happens in drip-rs if the VM forgets to pass a root to the collector?',
-    a: 'It compiles. The object is freed while still in use; the stress-GC tests make the next use panic, but in normal mode a reused slot may hand back a different object.',
+    a: 'It compiles. The object is freed while still in use; in stress mode the next use panics, but in normal mode a reused slot may hand back a different object.',
   },
   'safe-not-correct': {
     q: 'A stale `Gc<T>` reads a slot that a new object now occupies. Is that undefined behaviour?',
-    a: 'No: the read is in bounds and well-typed, so it is safe. It is still wrong: a logic bug, not a memory-safety bug.',
+    a: 'No: the read is in bounds and well typed, so it is safe. It is still wrong: a logic bug, not a memory-safety bug.',
   },
   'cost-lines': {
     q: 'How many code lines are drip-rs and the TypeScript VM, by this chapter’s count?',
-    a: '2,563 in Rust against 1,364 in TypeScript: 1.88× the lines, but 1.53× the non-blank characters.',
+    a: '3,328 in Rust against 1,714 in TypeScript: 1.94 times as many.',
   },
   'cost-where': {
-    q: 'Give one reason drip-rs has more lines than the TypeScript VM that isn’t about ownership.',
-    a: 'JavaScript’s number printing had to be rewritten by hand; the opcodes need an explicit table; there is a CLI; and rustfmt wraps lines at 90 columns.',
+    q: 'Give one reason drip-rs has more lines than the TypeScript VM that is not about ownership.',
+    a: 'JavaScript’s number printing had to be rewritten by hand, the scanner spells out each byte case, and there is a 50-line command line with no twin in `ts/src/vm`.',
   },
   'speed-scope': {
     q: 'What is the honest one-line summary of drip-rs’s speed?',
-    a: 'On the committed run, 3.31× to 5.68× the TypeScript VM (geometric mean 4.00×) on nine programs; one run against best of three on a shared VM.',
+    a: 'On the committed run of 2026-11-02, 1.26× to 4.94× the TypeScript VM on ten programs, geometric mean 3.94×; best of three fresh runs on a shared machine.',
   },
   'biggest-win': {
-    q: 'Which single decision in drip-rs was worth the most speed in this Part’s measurements?',
-    a: 'The registers: without them fib ran about twice as long. Removing bounds checks was within the noise.',
+    q: 'Which measured change in this Part mattered more: removing a bounds check, or the chunk register?',
+    a: 'The chunk register: without it fib was about 2.1 times slower. The unchecked read saved 8% of instructions and no measurable time.',
   },
   'rust-tradeoffs': {
     q: 'In one sentence, what did Rust give drip-rs and what did it cost?',
-    a: 'Memory safety without a runtime and about 4× the speed of the TypeScript VM, paid for with nearly twice the lines and a design built around ownership.',
+    a: 'Memory safety without a runtime, compile-time checks and about four times the TypeScript VM’s speed, for nearly twice the lines and a design built around ownership.',
   },
 };
 
@@ -163,22 +171,27 @@ fn a_comment_with_code_after_is_code() {
       'Check for `#[cfg(test)]` first and set a flag; it stays set for the rest of the file.',
       'Skip a line if `t.is_empty() || t.starts_with("//")`; otherwise add one to `code` or `test` depending on the flag.',
     ],
-    walkthrough: `The whole job is three decisions per line, in the right order:
+    walkthrough: `**How to think about it.** A line count sounds like \`src.lines().count()\`, but a fair comparison between two codebases needs rules about what a "line of code" is, applied the same way to both. This chapter's rules are: blank lines and comment lines are not code, and a module's unit tests (everything from \`#[cfg(test)]\` on, where drip-rs keeps them) are counted apart. So each line needs three decisions, in order: has the test part started, is this line blank or a comment, and which counter does it go to.
 
-\`\`\`rust
-let t = line.trim();
-if t.starts_with("#[cfg(test)]") {
-    in_test = true;
-}
-if t.is_empty() || t.starts_with("//") {
-    continue;
-}
-if in_test { test += 1 } else { code += 1 }
-\`\`\`
+**The solution, line by line.**
 
-Setting the flag before skipping means the attribute line itself is a test line, and everything after it is too. That relies on drip-rs’s habit of putting its \`#[cfg(test)] mod tests\` at the bottom of each module, which holds for all six modules that have one.
+- \`const MARK: &str = "#[cfg(test)]";\` names the attribute that starts a test module, so the check below reads clearly.
+- \`let mut code = 0; let mut test = 0; let mut in_test = false;\` are the two counters and a flag saying whether we have reached the tests.
+- \`for line in src.lines()\` visits each line without its line ending.
+- \`let t = line.trim();\` removes leading and trailing whitespace, so an indented comment or a line of spaces looks the same as an unindented one.
+- \`if t.starts_with(MARK) { in_test = true; }\` sets the flag *before* the skip test, so the attribute line itself counts as a test line, and the flag stays set for the rest of the file. (That relies on drip-rs's habit of putting \`#[cfg(test)] mod tests\` at the bottom of each module, which holds for all six modules that have one.)
+- \`let skip = t.is_empty() || t.starts_with("//");\` is true for blank lines and for comment lines, including \`///\` and \`//!\` doc comments; \`if skip { continue; }\` moves on without counting.
+- \`if in_test { test += 1; } else { code += 1; }\` counts the line on the right side.
+- \`(code, test)\` returns both counts.
 
-Counting is full of choices like these, and each one moves the result. This chapter’s count also skipped \`/* */\` blocks and, in TypeScript, JSDoc lines that start with \`*\`. It didn’t count the integration tests in \`tests/\` at all. A different counter, such as one that counts comments or tokens, would give a different ratio. So the chapter gives two measures, lines and non-blank characters, and says how both were made.`,
+A line such as \`let a = 1; // one\` starts with code, so it counts as code; only lines that *start* with \`//\` are comments.
+
+**Common wrong attempts.**
+
+- Never looking for \`#[cfg(test)]\` counts the unit tests as code, which would make drip-rs look longer than it is.
+- Testing \`line\` instead of the trimmed \`t\` counts indented comments and lines of spaces as code.
+
+Counting is full of choices like these, and each one moves the result: this chapter's script also skipped \`/* */\` blocks and, in TypeScript, JSDoc lines starting with \`*\`, and it did not count the integration tests in \`tests/\` at all. A different counter would give a different ratio, which is why the chapter says exactly how it counted.`,
     wrong: [
       {
         code: `fn counts(src: &str) -> (usize, usize) {
@@ -228,51 +241,43 @@ fn counts(src: &str) -> (usize, usize) {
 
 export const quiz = [
   {
-    q: 'Which of these did Rust’s compiler *not* catch in drip-rs?',
+    q: 'Which of these designs in drip-rs exists because of Rust’s ownership rules rather than because a VM needs it?',
     options: [
-      { t: 'A `match` on opcodes missing an arm', why: 'That is E0004, an exhaustiveness error (chapter 337).' },
-      { t: 'Keeping a reference into the heap while pushing onto the stack', why: 'That is E0502 (chapter 337), and the reason for the registers.' },
-      { t: 'Forgetting to pass a root to the collector', correct: true, why: 'Handles are plain numbers to the compiler. Only the stress-GC tests find it.' },
+      { t: 'A stack of call frames', why: 'Every VM in this book has one, including the TypeScript VM.' },
+      { t: 'Objects in arenas, linked by typed `Gc<T>` handles', correct: true, why: 'Objects that point at each other in cycles cannot be plain Rust references.' },
+      { t: 'Bytecode with one-byte opcodes', why: 'The TypeScript VM uses the same instruction set.' },
     ],
   },
   {
-    q: 'In normal mode, a stale handle reads a slot that a new object now uses. What kind of bug is that?',
+    q: 'What does `#![forbid(unsafe_code)]` guarantee about drip-rs?',
     options: [
-      { t: 'Undefined behaviour, like a dangling pointer in C', why: 'The read is in bounds and of the right type, so Rust’s guarantees hold.' },
-      { t: 'A logic bug: safe, defined, and wrong', correct: true, why: 'Memory safety rules out corruption, not mistakes. That is why the stress and debug modes never reuse a slot, so the read panics instead.' },
-      { t: 'A compile error', why: 'Nothing about it is visible in the types.' },
+      { t: 'That it has no bugs', why: 'A forgotten root is still a bug in safe code.' },
+      { t: 'That no line of the crate can use `unsafe`, so every index stays checked and there is no undefined behaviour from drip-rs’s own code', correct: true, why: 'Safe Rust has no undefined behaviour; forbid keeps all of drip-rs in safe Rust.' },
+      { t: 'That it runs as fast as C', why: 'It says nothing about speed.' },
     ],
   },
   {
-    q: 'drip-rs has 1.88× the code lines of the TypeScript VM but 1.53× the non-blank characters. What explains most of the gap?',
+    q: 'The stale-handle example prints `zoo` where it meant `fib`. What kind of bug is that?',
     options: [
-      { t: 'Rust lines are shorter on average: rustfmt breaks long expressions over several lines', correct: true, why: 'Average code line: 22.6 non-blank characters in Rust, 27.8 in TypeScript, where some lines run to 152 columns.' },
-      { t: 'Rust has more comments', why: 'Comments weren’t counted in either measure.' },
-      { t: 'Rust’s test modules', why: 'They were excluded: 223 lines that aren’t in the 2,563.' },
+      { t: 'Undefined behaviour', why: 'Every access is in bounds and well typed; the language’s rules are all kept.' },
+      { t: 'A compile error that was ignored', why: 'It compiles with no errors or warnings.' },
+      { t: 'A logic bug in safe code: a handle kept after its object was freed', correct: true, why: 'Only tests, such as the stress-GC suite, can find it.' },
     ],
   },
   {
-    q: 'Which part of drip-rs has no counterpart in the TypeScript VM because JavaScript gives it for free?',
+    q: 'By this chapter’s count, how much longer is drip-rs than the TypeScript VM?',
     options: [
-      { t: 'The dispatch loop', why: 'Both VMs have one: `vm.ts` and `vm.rs`.' },
-      { t: 'Printing numbers exactly as JavaScript’s `String(n)` does', correct: true, why: '`value.rs` reimplements JavaScript’s number format (`1e+21`, `-0`), which TypeScript simply calls.' },
-      { t: 'The hash table', why: 'The TypeScript VM wrote its own too, in `table.ts`.' },
+      { t: 'About the same length', why: '3,328 lines against 1,714 is nearly double.' },
+      { t: 'About 1.94 times as long', correct: true, why: 'Code lines only: no blanks, no comments, no unit tests.' },
+      { t: 'About four times as long', why: 'Four is roughly its speed-up, not its length.' },
     ],
   },
   {
-    q: 'What is the most defensible summary of drip-rs’s speed?',
+    q: 'Where did most of drip-rs’s speed over the TypeScript VM come from, by this Part’s measurements?',
     options: [
-      { t: 'Rust is four times faster than TypeScript', why: 'One program, one port, one machine: it ranks two implementations, not two languages.' },
-      { t: 'drip-rs ran 3.31×–5.68× as fast as the TypeScript VM on nine programs, in one run each against best of three, on a shared VM', correct: true, why: 'The numbers, their scope and the method, all from the committed results.' },
-      { t: 'drip-rs is fast because it avoids bounds checks', why: 'It keeps every check; removing four of them saved about 8% of instructions and no measurable time.' },
-    ],
-  },
-  {
-    q: 'Which change bought the most speed in Part XII’s own measurements?',
-    options: [
-      { t: 'Turning off bounds checks with unsafe', why: 'Within the noise on fib, and forbidden in drip-rs anyway.' },
-      { t: 'Hoisting the hash table’s bounds check by hand', why: 'The optimizer had done it already; doing it again added instructions.' },
-      { t: 'Keeping ip and the chunk as registers', correct: true, why: 'Without them, fib ran 39.27 billion instructions instead of 20.19, and about twice as long.' },
+      { t: 'From removing bounds checks', why: 'drip-rs keeps them all, and removing one saved no measurable time.' },
+      { t: 'From a different instruction set', why: 'It runs the same bytecode as the TypeScript VM.' },
+      { t: 'From running the same design as compiled machine code, with the hot state in fields of the `Vm`', correct: true, why: 'Same bytecode, cheaper steps; and removing the chunk register alone made fib about 2.1 times slower.' },
     ],
   },
 ];

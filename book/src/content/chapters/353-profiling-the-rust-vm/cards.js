@@ -1,4 +1,5 @@
-// Chapter 353 cards. Keys are stable ids: never rename them.
+// Chapter 353 cards: recall prompts, examples, exercises and quiz.
+// Keys are stable ids: renaming one would orphan readers' review history.
 
 const ROW = `// A line of callgrind_annotate output.
 #[derive(Debug, PartialEq)]
@@ -51,46 +52,74 @@ fn sum_named(rows: &[Row], needle: &str)
 
 const TESTS = `#[test]
 fn parses_a_function_row() {
-    let r = parse_row("15,676,869,738 (77.66%)  ???:<drip::vm::Vm>::run [/tmp/ch165/target/release/drip-rs]").unwrap();
-    assert_eq!(r.ir, 15_676_869_738);
-    assert_eq!(r.pct, 77.66);
-    assert_eq!(r.name, "<drip::vm::Vm>::run");
+    let r = parse_row(
+        "1,247,700,494 (22.30%)  \\
+         /src/vm.rs:<drip::vm::Vm>::run \\
+         [/tmp/x/drip-rs]",
+    )
+    .unwrap();
+    assert_eq!(r.ir, 1_247_700_494);
+    assert_eq!(r.pct, 22.30);
+    assert_eq!(r.name,
+        "/src/vm.rs:<drip::vm::Vm>::run");
 }
 
 #[test]
 fn percent_with_a_space_inside() {
-    let r = parse_row(" 1,194,428,240 ( 5.92%)  ???:<drip::table::Table>::get [/tmp/x/drip-rs]").unwrap();
-    assert_eq!(r.ir, 1_194_428_240);
-    assert_eq!(r.pct, 5.92);
-    assert_eq!(r.name, "<drip::table::Table>::get");
+    let r = parse_row(
+        "  211,474,680 ( 3.78%)  \\
+         ???:<drip::vm::Vm>::read_string \\
+         [/tmp/x/drip-rs]",
+    )
+    .unwrap();
+    assert_eq!(r.ir, 211_474_680);
+    assert_eq!(r.pct, 3.78);
+    assert_eq!(r.name,
+        "<drip::vm::Vm>::read_string");
 }
 
 #[test]
 fn totals_and_rows_without_a_binary() {
-    let t = parse_row("20,186,274,402 (100.0%)  PROGRAM TOTALS").unwrap();
-    assert_eq!(t.ir, 20_186_274_402);
+    let t = parse_row(
+        "5,593,942,673 (100.0%)  \\
+         PROGRAM TOTALS",
+    )
+    .unwrap();
+    assert_eq!(t.ir, 5_593_942_673);
     assert_eq!(t.name, "PROGRAM TOTALS");
-    let r = parse_row("2,911,418,677 (14.42%)  /rustc/2d81/library/alloc/src/vec/mod.rs:<drip::vm::Vm>::run").unwrap();
-    assert_eq!(r.name, "/rustc/2d81/library/alloc/src/vec/mod.rs:<drip::vm::Vm>::run");
+    let r = parse_row(
+        "  592,129,066 (10.59%)  \\
+         /lib/vec/mod.rs:<drip::vm::Vm>::run",
+    )
+    .unwrap();
+    assert_eq!(r.name,
+        "/lib/vec/mod.rs:<drip::vm::Vm>::run");
 }
 
 #[test]
 fn headers_are_not_rows() {
-    assert_eq!(parse_row("Ir                      file:function"), None);
-    assert_eq!(parse_row("--------------------------------------"), None);
+    assert_eq!(parse_row(
+        "Ir                      file:function"),
+        None);
+    assert_eq!(parse_row("----------------"),
+        None);
     assert_eq!(parse_row(""), None);
 }
 
 #[test]
 fn sums_one_function_across_files() {
-    let text = "6,464,842,447 (32.03%)  /src/vm.rs:<drip::vm::Vm>::run [/b]
-2,911,418,677 (14.42%)  /lib/vec/mod.rs:<drip::vm::Vm>::run
-1,074,985,340 ( 5.33%)  /src/vm.rs:<drip::vm::Vm>::call [/b]
-2,523,229,490 (12.50%)  /lib/slice/index.rs:<drip::vm::Vm>::run";
-    let rows: Vec<Row> = text.lines().filter_map(parse_row).collect();
+    let text = "\\
+1,247,700,494 (22.30%)  /src/vm.rs:<drip::vm::Vm>::run [/b]
+  592,129,066 (10.59%)  /lib/vec/mod.rs:<drip::vm::Vm>::run
+  408,850,961 ( 7.31%)  /src/vm.rs:<drip::vm::Vm>::pop_numbers [/b]
+  496,965,445 ( 8.88%)  /lib/slice/index.rs:<drip::vm::Vm>::run";
+    let rows: Vec<Row> =
+        text.lines().filter_map(parse_row).collect();
     assert_eq!(rows.len(), 4);
-    assert_eq!(sum_named(&rows, "Vm>::run"), 11_899_490_614);
-    assert_eq!(sum_named(&rows, "Vm>::call"), 1_074_985_340);
+    assert_eq!(sum_named(&rows, "Vm>::run"),
+        2_336_795_005);
+    assert_eq!(sum_named(&rows, "pop_numbers"),
+        408_850_961);
 }`;
 
 const FOLD = `use std::collections::HashMap;
@@ -120,114 +149,57 @@ export const prompts = {
     a: 'Measuring where a program’s time (or instructions, or memory) goes, function by function or line by line, instead of timing it as a whole.',
   },
   'prof-sample': {
-    q: 'How does a sampling profiler such as `perf` find where time goes?',
-    a: 'It interrupts the program many times a second and records the call stack each time. Functions that are on the stack more often took more time.',
-  },
-  'cg-ir': {
-    q: 'What does callgrind count by default?',
-    a: 'Instructions executed (the event `Ir`), attributed to functions and source lines, plus who called whom and how often.',
+    q: 'How does a sampling profiler find where time goes, and how is callgrind different?',
+    a: 'A sampling profiler records the call stack many times a second; callgrind runs the program on a simulated CPU and counts every instruction.',
   },
   'cg-not-time': {
     q: 'Why is a callgrind instruction count not a time?',
-    a: 'It ignores cache misses, branch mispredictions and how many instructions the CPU overlaps. Two loops with very different counts can take the same time.',
-  },
-  'cg-slow': {
-    q: 'About how much slower did drip-rs run fib under callgrind on the book’s VM?',
-    a: 'About 60×: 88.6 s instead of about 1.4 s. The program runs on a simulated CPU.',
+    a: 'It treats every instruction the same, ignoring cache misses, mispredicted branches and how much the CPU overlaps; two loops with very different counts can take the same time.',
   },
   'self-incl': {
     q: 'What is the difference between a function’s **self** cost and its **inclusive** cost?',
     a: 'Self counts only its own instructions. Inclusive adds everything it called, directly or indirectly.',
   },
   'call-check': {
-    q: 'callgrind said `call_value` ran 29,860,705 times during fib(35). Why is that a good sign?',
-    a: 'fib(35) makes 29,860,703 Drip calls, plus two calls to `clock()`. The profile counted exactly what we can compute by hand.',
+    q: 'callgrind said `call_value` ran 7,049,155 times during fib(32). Why is that a good sign?',
+    a: 'fib(32) makes exactly 2 × fib(33) − 1 = 7,049,155 calls, so the profile counted what we can work out by hand.',
   },
   'inlined': {
-    q: 'Why does `Vm::run` have 77.7% self cost, with no boxes for `push` or `read_byte`?',
-    a: 'The release build inlined those small functions into `run`, so their instructions belong to `run`. Line tables (debug info) bring the source lines back.',
+    q: 'Why does `Vm::run` have 65.2% self cost in fib, with no rows of their own for `push` or `read_byte`?',
+    a: 'The release build (with `lto`) inlined those small functions into `run`, so their instructions count as `run`’s. Debug info lets callgrind split them out again by source line.',
   },
   'flame-what': {
     q: 'In a **flame graph**, what do a box’s width and its height above the bottom mean?',
-    a: 'Width: the share of samples (or cost) in which that function was on the stack at that place. Height: how deep in the call stack it is.',
+    a: 'Width: the share of the cost spent in that function on that call path (inclusive). Height: how deep in the call stack it is.',
   },
   'flame-x': {
     q: 'Does left-to-right order mean anything in a flame graph?',
-    a: 'No. It isn’t time order; flamegraph.pl just sorts the frames alphabetically so equal stacks merge.',
-  },
-  'flame-two': {
-    q: 'In zoo.drip, `Table::get` has 27.0% self cost but no single box that wide. Why?',
-    a: 'It is called from two places, `run` (21.7%) and `invoke_from_class` (5.3%), so it appears as two boxes on two stacks.',
+    a: 'No. It is not time order; boxes are only arranged so that identical call paths merge.',
   },
   'flame-flat': {
-    q: 'fib is deeply recursive in Drip. Why is drip-rs’s flame graph only four boxes tall?',
-    a: 'Drip calls are frames on the VM’s own stack, not Rust calls. The Rust stack is just main → run → call_value → call.',
+    q: 'fib recurses about thirty levels deep in Drip. Why is drip-rs’s flame graph for it only a few boxes tall?',
+    a: 'A Drip call is a frame on the VM’s own stack, not a Rust call; the Rust stack is just run → call_value → call.',
   },
 };
 
 export const examples = {
-  'count-ops': {
-    lang: 'rust',
-    title: 'Profiling by counting: a toy VM tallies its opcodes',
-    code: `#[derive(Clone, Copy, Debug)]
-enum Op {
-    Push(f64),
-    Add,
-    Jump(usize),
-    Halt,
+  stopwatch: {
+    lang: 'drip-vm',
+    title: 'A stopwatch profiler',
+    code: `let t = clock();
+let s = 0;
+for i in 0..20000 {
+  s += i % 7;
 }
-
-fn add(st: &mut Vec<f64>) {
-    let b = st.pop().expect("b");
-    let a = st.pop().expect("a");
-    st.push(a + b);
+let a = clock() - t;
+t = clock();
+let txt = "";
+for i in 0..20000 {
+  txt = str(i);
 }
-
-fn main() {
-    // A loop that never ends by itself:
-    // the counter stops it.
-    let code = [
-        Op::Push(1.0),
-        Op::Push(2.0),
-        Op::Add,
-        Op::Jump(0),
-        Op::Halt,
-    ];
-    let mut counts = [0u64; 4];
-    let mut st: Vec<f64> = vec![];
-    let mut ip = 0;
-    for _ in 0..1000 {
-        let op = code[ip];
-        ip += 1;
-        let k = match op {
-            Op::Push(_) => 0,
-            Op::Add => 1,
-            Op::Jump(_) => 2,
-            Op::Halt => 3,
-        };
-        counts[k] += 1;
-        match op {
-            Op::Push(v) => st.push(v),
-            Op::Add => add(&mut st),
-            Op::Jump(t) => {
-                st.clear();
-                ip = t;
-            }
-            Op::Halt => break,
-        }
-    }
-    let total: u64 =
-        counts.iter().sum();
-    let names =
-        ["Push", "Add", "Jump", "Halt"];
-    for k in 0..4 {
-        let n = names[k];
-        let c = counts[k];
-        let p = 100.0 * c as f64
-            / total as f64;
-        println!("{n:5}{c:5}{p:6.1}%");
-    }
-}`,
+let b = clock() - t;
+print b > a; # usually true: str is slow
+print s;`,
   },
 };
 
@@ -236,7 +208,7 @@ export const exercises = {
     lang: 'rust',
     title: 'Read callgrind_annotate’s output',
     prompt:
-      'Write `parse_row(line)`, which turns one line of `callgrind_annotate` output into a `Row`, or returns `None` for anything else (headers, rules, blank lines). A row is: the instruction count with commas, then the percentage in parentheses (there may be a space after `(`), then the name. Clean the name: drop a trailing ` [binary path]` if there is one, and a leading `???:`. Then write `sum_named(rows, needle)`, which adds up the `ir` of every row whose name contains `needle`. With line tables, one function is split across many files, and this puts it back together.',
+      'Write `parse_row(line)`, which turns one line of `callgrind_annotate` output into a `Row`, or returns `None` for anything else (headers, rules of dashes, blank lines). A row is: the instruction count with commas, then the percentage in parentheses (there may be a space after `(`), then the name. Clean the name: drop a trailing ` [binary path]` if there is one, and a leading `???:`. Then write `sum_named(rows, needle)`, which adds up the `ir` of every row whose name contains `needle`. With debug info, one inlined function is split across many files (`vm.rs`, `vec/mod.rs`, `slice/index.rs`...), and this puts it back together, as this chapter did for `Vm::run`.',
     starter: `${ROW}
 fn parse_row(line: &str)
     -> Option<Row> {
@@ -252,25 +224,29 @@ ${PARSE}
 ${SUM}`,
     tests: TESTS,
     hints: [
-      '`split_once(\' \')` splits off the number. Remove the commas with `replace(\',\', "")` and parse it as a `u64`; `.ok()?` turns a parse failure into `None`.',
-      'After the number, trim, then `strip_prefix(\'(\')`. `split_once("%)")` gives the percentage text and the rest. Trim the percentage before parsing it: it may be `" 5.92"`.',
-      'For the name, `find(" [")` locates the binary path; slice it off. `strip_prefix("???:").unwrap_or(name)` keeps names that have a real file instead.',
+      'Every row starts with a number. `line.trim().split_once(\' \')?` splits it off; remove the commas with `replace(\',\', "")` and parse it as a `u64`, with `.ok()?` turning a failure into `None`. That one step already rejects headers and rules.',
+      'After the number: `trim_start`, then `strip_prefix(\'(\')?`, then `split_once("%)")?` gives the percentage text and the rest. The percentage may be `" 3.78"`, so trim it before parsing it as an `f64`.',
+      'For the name, `rest.trim()`, then `if let Some(i) = name.find(" [") { name = &name[..i]; }` drops the binary, and `name.strip_prefix("???:").unwrap_or(name)` drops the unknown-file marker. `sum_named` is `rows.iter().filter(...).map(|r| r.ir).sum()`.',
     ],
-    walkthrough: `The format has three parts, and each \`?\` says “if this part isn’t here, it isn’t a row”:
+    walkthrough: `**How to think about it.** A row has three parts in a fixed order: a number, a percentage in brackets, a name. Rather than recognise headers and rules one by one, parse the three parts in order and let any part that is missing reject the line. In Rust that is what \`?\` on an \`Option\` is for: each step returns \`None\` early if its piece is not there, so the function needs no list of special cases.
 
-\`\`\`rust
-let (num, rest) = line.split_once(' ')?;
-let ir: u64 = num.replace(',', "").parse().ok()?;
-let rest = rest.trim_start().strip_prefix('(')?;
-let (pct, rest) = rest.split_once("%)")?;
-let pct: f64 = pct.trim().parse().ok()?;
-\`\`\`
+**The solution, line by line.**
 
-A header such as \`Ir   file:function\` fails at the first \`parse\`, because \`Ir\` isn’t a number, and a rule of dashes fails the same way. So the function rejects everything that isn’t a row without a list of special cases.
+- \`let line = line.trim();\` removes the padding callgrind_annotate puts before small numbers (\`  211,474,680\`).
+- \`let (num, rest) = line.split_once(' ')?;\` splits at the first space. A blank line has no space, so it is \`None\` here.
+- \`let ir: u64 = num.replace(',', "").parse().ok()?;\` drops the thousands commas and parses the number. \`Ir\` (the header) and a rule of dashes are not numbers, so they fail here.
+- \`let rest = rest.trim_start();\` and \`let rest = rest.strip_prefix('(')?;\` skip the spaces and the opening bracket.
+- \`let (pct, rest) = rest.split_once("%)")?;\` splits off the percentage text, and \`let pct: f64 = pct.trim().parse().ok()?;\` parses it. The \`trim\` matters: the percentage is padded to a fixed width, \`( 3.78%)\`, and \`" 3.78".parse::<f64>()\` fails.
+- \`let mut name = rest.trim();\` is what is left. \`if let Some(i) = name.find(" [") { name = &name[..i]; }\` cuts off the binary's path in square brackets, if the row has one (rows for inlined code do not).
+- \`let name = name.strip_prefix("???:").unwrap_or(name);\` drops the marker callgrind uses when it knows the function but not its file; \`unwrap_or(name)\` keeps names that have a real file.
+- \`Some(Row { ir, pct, name })\`, with \`name\` made into an owned \`String\` first, returns the row.
+- \`sum_named\` filters the rows whose name contains the needle and sums their \`ir\`: in the chapter's profile, the rows for \`Vm::run\` from \`vm.rs\`, \`vec/mod.rs\`, \`slice/index.rs\` and the rest add up to its 65.2% self cost.
 
-The percentage needs \`trim\` because callgrind_annotate pads it to a fixed width: \`( 5.92%)\`. That is the detail people miss.
+**Common wrong attempts.**
 
-\`sum_named\` is a filter and a sum. It matters with a line-table build: callgrind_annotate prints \`file:function\` pairs, and the instructions of \`Vec::push\` inlined into \`run\` are listed under \`vec/mod.rs:<drip::vm::Vm>::run\`. Summing every row whose name contains \`Vm>::run\` gives back the function-level view. In the chapter’s run, the rows for \`run\` add up to 77.6% of the program, the same self cost the build without line tables reported for it.`,
+- Parsing the percentage without \`trim\` loses every row under 10%, because of the padding space.
+- Forgetting to strip \`???:\` and \`[binary]\` leaves names that never equal the clean function name.
+- Splitting on whitespace with \`split_whitespace\` and taking the third piece breaks on names that contain spaces, such as \`PROGRAM TOTALS\`.`,
     wrong: [
       {
         code: `${ROW}
@@ -300,7 +276,7 @@ fn parse_row(line: &str)
 }
 
 ${SUM}`,
-        why: 'The percentage is padded: `( 5.92%)` leaves `" 5.92"`, which `parse` rejects, so every row under 10% disappears. Trim it first.',
+        why: 'The percentage is padded: `( 3.78%)` leaves `" 3.78"`, which `parse` rejects, so every row under 10% disappears. Trim it first.',
       },
       {
         code: `${ROW}
@@ -325,7 +301,7 @@ fn parse_row(line: &str)
 }
 
 ${SUM}`,
-        why: 'The name keeps its `???:` prefix and the `[binary]` suffix, so it never equals the clean function name the tests expect.',
+        why: 'The name keeps its `???:` prefix and its `[binary]` suffix, so it never equals the clean name the tests expect.',
       },
     ],
   },
@@ -334,7 +310,7 @@ ${SUM}`,
     optional: true,
     title: 'Folded stacks to flame-graph widths',
     prompt:
-      'flamegraph.pl reads **folded stacks**: one line per distinct stack, frames joined by `;`, then a count. Write `inclusive(folded)`, which returns the width of every box: for each stack *prefix* (such as `"main;run"`), the sum of the counts of every line that starts with that prefix. The test data are fib’s self costs from the chapter’s callgrind run.',
+      'flamegraph.pl reads **folded stacks**: one line per distinct call path, frames joined by `;`, then a count. Write `inclusive(folded)`, which returns the width of every box: for each path *prefix* (such as `"main;run"`), the sum of the counts of every line that starts with that prefix. The test data are fib’s self costs from this chapter’s callgrind run.',
     starter: `use std::collections::HashMap;
 
 fn inclusive(folded: &[(&str, u64)])
@@ -345,18 +321,20 @@ fn inclusive(folded: &[(&str, u64)])
     tests: `#[test]
 fn fib_widths() {
     let f = [
-        ("main;run", 15_676_869_738),
-        ("main;run;call_value", 716_657_004),
-        ("main;run;call_value;call", 2_418_717_018),
-        ("main;run;Table::get", 1_194_428_240),
-        ("main;run;close_upvalues", 179_164_224),
+        ("main;run", 3_647_937_915),
+        ("main;run;call_value", 204_425_495),
+        ("main;run;call_value;call", 570_981_555),
+        ("main;run;pop_numbers", 578_030_669),
+        ("main;run;Table::get", 338_359_440),
+        ("main;run;read_string", 211_474_680),
+        ("main;run;close_upvalues", 42_294_936),
     ];
     let w = inclusive(&f);
-    assert_eq!(w["main;run;call_value"], 3_135_374_022);
-    assert_eq!(w["main;run;call_value;call"], 2_418_717_018);
-    assert_eq!(w["main"], 20_185_836_224);
+    assert_eq!(w["main;run;call_value"], 775_407_050);
+    assert_eq!(w["main;run;call_value;call"], 570_981_555);
+    assert_eq!(w["main"], 5_593_504_690);
     assert_eq!(w["main;run"], w["main"]);
-    assert_eq!(w.len(), 6);
+    assert_eq!(w.len(), 8);
 }
 
 #[test]
@@ -369,22 +347,26 @@ fn same_function_two_paths_two_boxes() {
     assert_eq!(w["a"], 8);
 }`,
     hints: [
-      'Walk each stack with `split(\';\')`, building the prefix in a `String` as you go.',
-      'After adding each frame to the prefix, add the line’s count to `out[prefix]` with `entry(..).or_insert(0)`.',
+      'Each line adds its count to every box on its path, from the bottom frame up. Walk the path with `split(\';\')`.',
+      'Build the prefix in a `String` as you go: push a `;` (except before the first frame), then the frame.',
+      'After adding each frame, add the count to `out[prefix]` with `*out.entry(path.clone()).or_insert(0) += n;`.',
     ],
-    walkthrough: `Every line contributes its count to each box on its stack, from the bottom frame to the top:
+    walkthrough: `**How to think about it.** A folded line such as \`main;run;call_value 204425495\` says "this many units were spent with exactly this stack". Every box on that stack (\`main\`, \`main;run\`, \`main;run;call_value\`) was on the stack for those units, so each box's width is the sum over every line that passes through it. The key is the whole *prefix*, not the function name.
 
-\`\`\`rust
-for f in stack.split(';') {
-    if !path.is_empty() { path.push(';'); }
-    path.push_str(f);
-    *out.entry(path.clone()).or_insert(0) += n;
-}
-\`\`\`
+**The solution, line by line.**
 
-The key is the whole prefix, not the function name. That is why \`get\` reached from \`a\` and \`get\` reached through \`inv\` stay two boxes: a flame graph merges identical *stacks*, not identical functions. A box’s width minus the widths of the boxes on top of it is the self count, which is exactly what each folded line recorded.
+- \`let mut out = HashMap::new();\` will map each prefix to its width.
+- \`for &(stack, n) in folded\` takes each line: its path and its count.
+- \`let mut path = String::new();\` starts the prefix empty for this line.
+- \`for f in stack.split(';')\` walks the frames from the bottom up. \`if !path.is_empty() { path.push(';'); }\` adds the separator before every frame but the first, and \`path.push_str(f);\` extends the prefix.
+- \`*out.entry(path.clone()).or_insert(0) += n;\` adds the count to this prefix's box, creating it at 0 the first time. \`clone\` is needed because the map keeps its own copy of the key while \`path\` keeps growing.
+- \`out\` is returned.
 
-The fib totals come out a little short of callgrind’s own inclusive numbers (99 instructions for \`call_value\`, 5,368 for \`run\`), because the test leaves out tiny callees such as \`clock\` and number printing.`,
+With the fib data, \`main;run;call_value\` collects its own 204,425,495 and its child's 570,981,555, which is callgrind's inclusive 775,407,050 exactly; \`main\` collects everything, 5,593,504,690, a little under the program total because start-up and printing are left out of the test.
+
+**Common wrong attempts.**
+
+- Keying by the function name (\`f\`) instead of the prefix merges \`get\` reached from \`a\` with \`get\` reached through \`inv\`, and keys like \`"main;run"\` never appear: a flame graph merges identical *stacks*, not identical functions.`,
     wrong: [
       {
         code: `use std::collections::HashMap;
@@ -400,60 +382,50 @@ fn inclusive(folded: &[(&str, u64)])
     }
     out
 }`,
-        why: 'This keys by function name, not by stack prefix, so the two `get` boxes merge into one, and keys such as `"main;run"` never appear.',
+        why: 'This keys by function name, not by path prefix, so the two `get` boxes merge into one, and keys such as `"main;run"` never appear.',
       },
     ],
   },
 };
-
 export const quiz = [
   {
-    q: 'callgrind reports `Table::get` at 5.92% of fib’s instructions. What can you conclude about time?',
+    q: 'callgrind reports `Table::get` at 6.0% of fib’s instructions. What can you conclude about time?',
     options: [
-      { t: 'It took exactly 5.92% of the wall-clock time', why: 'Instruction counts ignore cache misses, mispredicted branches and overlap, so time shares can differ.' },
-      { t: 'It is a good first guess for its share of time, to be checked against a timing', correct: true, why: 'Counts point you at code worth a look. Only a before-and-after timing says whether changing it helps.' },
-      { t: 'Nothing, because callgrind is too slow to be useful', why: 'The slowdown doesn’t distort the counts: they are the same instructions the program would run natively.' },
+      { t: 'It took exactly 6.0% of the running time', why: 'Instruction counts ignore cache misses, mispredicted branches and overlap, so time shares can differ.' },
+      { t: 'It is a good first guess at its share of time, to be checked with a timing', correct: true, why: 'Counts point you at code worth a look; only a before-and-after timing says whether changing it helps.' },
+      { t: 'Nothing, because callgrind runs about seventy times slower', why: 'The slowdown does not change the counts: they are the instructions the program runs natively.' },
     ],
   },
   {
-    q: 'Two callgrind runs of zoo.drip reported 7,528,846,449 and 7,528,846,360 instructions. What does that show?',
+    q: '`call_value` has inclusive cost 13.9% and self cost 3.7% in fib. Where did the other 10.2% go?',
     options: [
-      { t: 'The machine was noisy', why: 'Wall-clock times of the same program varied by 25% on this VM; these counts differ by about one in a hundred million.' },
-      { t: 'Instruction counts are nearly deterministic, so tiny differences between builds can be compared', correct: true, why: 'That is callgrind’s great strength on a shared machine: other tenants can’t change how many instructions your program runs.' },
-      { t: 'The second run was faster', why: 'Fewer instructions isn’t the same as less time, and 89 out of 7.5 billion is nothing anyway.' },
+      { t: 'Into the functions that called it', why: 'A caller’s cost is never part of a function’s inclusive cost.' },
+      { t: 'Into the functions it called, here `call`', correct: true, why: 'Inclusive = self + callees, and `call` is 10.2%.' },
+      { t: 'Into callgrind itself', why: 'callgrind does not count its own simulation in the program’s events.' },
     ],
   },
   {
-    q: 'A function’s inclusive cost is 15.5% and its self cost is 3.6%. Where did the other 11.9% go?',
+    q: 'Why is drip-rs’s lead over the TypeScript VM so much smaller on `strings.drip` than on fib?',
     options: [
-      { t: 'Into the functions it called', correct: true, why: 'Inclusive = self + callees. For `call_value`, nearly all of it is `call`.' },
-      { t: 'Into the functions that called it', why: 'Callers’ costs are never part of a function’s inclusive cost.' },
-      { t: 'Into callgrind itself', why: 'callgrind doesn’t count its own simulation in the program’s events.' },
-      { t: 'Into the operating system', why: 'callgrind counts user-space instructions of the program; the kernel isn’t simulated.' },
+      { t: 'Its dispatch loop is slower on strings', why: 'The loop’s own share is only 17.9% there; most of the cost is elsewhere.' },
+      { t: 'Its garbage collector runs constantly', why: 'Collection does not appear near the top of the profile.' },
+      { t: 'Most of the program is spent formatting numbers into text and allocating strings, in library code', correct: true, why: '`format_number` alone is 48.2% of the instructions, and malloc and free are near the top.' },
     ],
   },
   {
-    q: 'In a flame graph, one box sits on top of `run` and is 6% of the width. What is it?',
+    q: 'In a flame graph, one box sits on top of `run` and is 10% of the width. What is it?',
     options: [
-      { t: 'A function that ran for 6% of the time, starting at that point of the timeline', why: 'The x axis isn’t time. Order is alphabetical in flamegraph.pl.' },
-      { t: 'A function that was called by `run` in 6% of the samples (or cost)', correct: true, why: 'Width is the share of stacks in which that function sat right on top of `run`.' },
-      { t: 'A function 6% of whose instructions were inlined into `run`', why: 'Inlined code has no box at all: it is part of `run`’s own width.' },
+      { t: 'A function that ran for 10% of the time, starting at that point of the timeline', why: 'The x axis is not time.' },
+      { t: 'A function 10% of whose instructions were inlined into `run`', why: 'Inlined code has no box: it is part of `run`’s own bare top.' },
+      { t: 'A function called by `run`, which, with its callees, took 10% of the cost', correct: true, why: 'Width is the inclusive cost on that call path.' },
     ],
   },
   {
-    q: 'Why does the release build’s profile show only five functions for all of fib?',
+    q: 'Why is a callgrind count more useful than a timing for comparing two builds on this book’s machine?',
     options: [
-      { t: 'callgrind skips small functions', why: 'It counts every instruction; callgrind_annotate only hides rows below a threshold.' },
-      { t: 'drip-rs has only five functions', why: 'vm.rs alone defines dozens: `push`, `pop`, `read_byte`, `peek` …' },
-      { t: 'With `lto` and inlining, the small helpers became part of `run`, `call` and the rest', correct: true, why: 'To see them again, build with line tables (`CARGO_PROFILE_RELEASE_DEBUG=line-tables-only`) and read costs per source line.' },
-    ],
-  },
-  {
-    q: 'Which of these would show you *which Drip function* is slow, rather than which part of drip-rs?',
-    options: [
-      { t: 'A flame graph of drip-rs from `perf`', why: 'It would show the Rust stack, which is flat: Drip calls live on the VM’s own frame st.' },
-      { t: 'Counting instructions or time per Drip function inside the VM itself', correct: true, why: 'Only the VM knows which Drip function is running. That is instrumentation, as in chapter 262, and drip-rs doesn’t do it.' },
-      { t: 'Running the Drip program twice and comparing', why: 'That times the whole program, not its parts.' },
+      { t: 'It is deterministic: other users of the shared machine cannot change how many instructions your program runs', correct: true, why: 'Timings here vary by tens of percent; counts vary by a few dozen instructions in billions.' },
+      { t: 'It is always the same as the time', why: 'It is not; a change can save instructions and no time, as the next chapter shows.' },
+      { t: 'It runs faster than the program', why: 'It runs about seventy times slower.' },
     ],
   },
 ];
