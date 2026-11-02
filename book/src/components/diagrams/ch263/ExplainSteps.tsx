@@ -7,12 +7,12 @@ import { Box, Svg, T, tok } from '../../viz/svg';
 type Line = { rows: string[]; from: string };
 
 const LINES: Line[] = [
-  { rows: ['es (line 2) {id, hp, x, tag}', '  → struct of arrays'], from: 'collection discovery (96), record shape (97), the plan' },
-  { rows: ['· loop at line 5 in <module>()', '  touches 3 of 4 fields (hp, tag, x)'], from: 'access patterns (98)' },
-  { rows: ['· loop at line 12 in <module>()', '  touches 2 of 4 fields (hp, x)'], from: 'access patterns (98)' },
-  { rows: ['· typed Float64Array columns for hp, x;', '  plain array columns for id, tag', '  (may hold non-numbers)'], from: 'numeric-field inference, column storage (103)' },
-  { rows: ['· about 300 elements'], from: 'size estimate, or a profile (109)' },
-  { rows: ['· 4 of 9 element accesses proven', '  in bounds'], from: 'bounds proofs (99), access rewriting (104)' },
+  { rows: ['es (line 2) {id, hp, x, tag}', '  → struct of arrays'], from: 'Finding collections, Record shapes, the plan' },
+  { rows: ['· loop at line 5 in <module>()', '  touches 3 of 4 fields (hp, tag, x)'], from: 'Access patterns' },
+  { rows: ['· loop at line 12 in <module>()', '  touches 2 of 4 fields (hp, x)'], from: 'Access patterns' },
+  { rows: ['· typed Float64Array columns for hp, x;', '  plain array columns for id, tag', '  (may hold non-numbers)'], from: 'Record shapes (numbers), Generating SoA storage' },
+  { rows: ['· about 300 elements'], from: 'size estimate, or Profile-guided optimization' },
+  { rows: ['· 4 of 9 element accesses proven', '  in bounds'], from: 'Proving it safe, Rewriting field accesses' },
 ];
 
 const STATES: { hi: number; note: string }[] = [
@@ -51,7 +51,7 @@ export default function ExplainSteps() {
           );
         })}
         <Box x={4} y={y + 16} w={392} h={50} fill={cur ? tok('accent', 0.1) : 'transparent'} stroke={cur ? tok('accent') : tok('line')} dash={!cur}>
-          <T x={14} y={y + 32} size={10} weight={700} fill={tok('muted')}>WRITTEN BY (CHAPTER)</T>
+          <T x={14} y={y + 32} size={11} weight={700} fill={tok('muted')}>WRITTEN BY (SEE THE CHAPTER)</T>
           <T x={14} y={y + 51} size={12}>{cur ? cur.from : 'step through to see'}</T>
         </Box>
       </Svg>

@@ -52,7 +52,36 @@ export const prompts = {
   },
 };
 
-export const examples = {};
+export const examples = {
+  affinity: {
+    title: 'Hotness and affinity, counted',
+    code: `const loops = [
+  { runs: 1000,
+    fields: ['x', 'y', 'vx', 'vy'] },
+  { runs: 100,
+    fields: ['x', 'health'] },
+  { runs: 1,
+    fields: ['health', 'name'] },
+];
+function hot(f) {
+  let n = 0;
+  for (const l of loops)
+    if (l.fields.includes(f))
+      n += l.runs;
+  return n;
+}
+function aff(f, g) {
+  let n = 0;
+  for (const l of loops)
+    if (l.fields.includes(f) &&
+        l.fields.includes(g))
+      n += l.runs;
+  return n;
+}
+console.log(hot('x'), hot('name'));
+console.log(aff('x', 'health'));`,
+  },
+};
 
 export const exercises = {
   coAccess: {
@@ -110,13 +139,27 @@ test('eight pairs in all', () => {
       'Sort a copy of the fields first, so that the same pair always gets the same key.',
       'Add `l.runs`, not 1: `aff[k] = (aff[k] ?? 0) + l.runs`.',
     ],
-    walkthrough: `This is the affinity half of the diagram.
+    walkthrough: `**How to think about it.** Affinity is a sum over loops, so the outer structure is "for each loop, add its runs to every pair of fields it uses". Two questions remain: how to visit every pair of a loop's fields exactly once, and how to name a pair so that \`x\` with \`hp\` and \`hp\` with \`x\` land on the same key. Try the first loop of the example by hand: fields \`x, y, vx, vy\` give six pairs (four fields choose two), each worth 1000.
 
-- **Every pair, once.** With fields sorted, the inner loop starts at \`a + 1\`, so each unordered pair is visited exactly once per loop, and a field is never paired with itself.
-- **A canonical key.** \`x\` and \`hp\` must give the same key whichever order a loop lists them in. Sorting first makes the key \`'hp+x'\` every time.
-- **Weight by runs.** A loop that runs 1000 times contributes 1000 to each of its pairs. Counting 1 per loop would make a once-per-game report look as important as the per-frame movement loop.
+**The solution, line by line.**
 
-The example has 6 pairs from \`move\`, 1 from \`damage\` and 1 from \`report\`: 8 keys. In a real compiler, the run counts would come from a profile or from the loop nesting, and the per-loop field lists from an access-pattern analysis like Viscosity’s.`,
+- \`const aff = {};\` is the result: one key per pair.
+- \`for (const l of loops) {\` visits each loop.
+- \`const fs = [...l.fields].sort();\` copies the field list (so the caller's array is not reordered) and sorts it, so a pair always comes out in alphabetical order: \`hp\` before \`x\`.
+- \`const n = fs.length;\` and the two loops \`for (let a = 0; a < n; a++)\` and \`for (let b = a + 1; b < n; b++)\` visit each unordered pair once: \`b\` starts after \`a\`, so a field is never paired with itself and no pair is seen twice.
+- \`const k = fs[a] + '+' + fs[b];\` builds the key, such as \`'vx+x'\`.
+- \`aff[k] = (aff[k] ?? 0) + l.runs;\` adds the loop's run count; \`?? 0\` starts a missing key at 0.
+- \`return aff;\` after both loops.
+
+The example gives 6 pairs from \`move\`, 1 from \`damage\` and 1 from \`report\`: 8 keys, and pairs never used together, such as \`name+vx\`, never get a key at all.
+
+**Common wrong attempts.**
+
+- Skipping the sort makes \`x+hp\` and \`hp+x\` two keys for one pair, so the counts are split between them.
+- Adding \`1\` instead of \`l.runs\` counts loops, not runs: the once-a-game report then weighs as much as the per-frame movement loop.
+- Starting the inner loop at \`b = 0\` counts every pair twice and pairs each field with itself.
+
+In a real compiler, the per-loop field lists come from an access-pattern analysis like Viscosity's, and the runs from loop trip counts or from a profile.`,
     wrong: [
       {
         code: `function coAccess(loops) {
@@ -210,7 +253,11 @@ test('a high threshold: every field alone', () => {
       'For each pair with affinity ≥ t, find the leader of each field and make one point to the other.',
       'At the end, collect fields by their leader with a Map, which keeps insertion order.',
     ],
-    walkthrough: `This is a tiny union-find. \`g\` maps each field to another field in its group, and following the links (\`find\`) ends at the group’s leader. Merging two groups is one assignment: point one leader at the other.
+    walkthrough: `**How to think about it.** Groups that can be joined through a chain of strong pairs are a classic job for a small **union-find**: each field points at another field of its group, following the pointers ends at the group's leader, and joining two groups is one assignment.
+
+**The solution, in order.** \`g[f] = f\` makes every field the leader of its own group. \`find\` follows pointers until it reaches a field that points at itself. For each pair with affinity at least \`t\`, \`g[find(a)] = find(b)\` points one leader at the other, merging the groups. Finally a \`Map\` collects the fields by leader; a Map keeps insertion order, and we insert in the order of \`fields\`, so the groups come out in the order the tests want.
+
+This is a tiny union-find. \`g\` maps each field to another field in its group, and following the links (\`find\`) ends at the group’s leader. Merging two groups is one assignment: point one leader at the other.
 
 Linking matters: \`health\` and \`y\` are never used together, but at threshold 50 \`health\` joins via \`x\`. That is usually what you want, because a group is one storage unit, and \`x\` can only live in one.
 
@@ -263,20 +310,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `mixed_columns.js`, which fields get `Float64Array` columns?',
-    options: [
-      { t: '`hp` and `x`', correct: true, why: 'Only those are proven to always hold numbers.' },
-      { t: '`x` and `tag`, the ones the hot loop reads', why: 'The choice is by type, not by heat; `tag` holds null or objects.' },
-      { t: 'All four', why: '`id` holds strings and `tag` holds objects.' },
-      { t: 'None, because one field is a string', why: 'One non-numeric field doesn’t stop SoA; it just gets a plain column. That rule is for AoSoA.' },
-    ],
-  },
-  {
     q: 'Why is SoA called the finest possible hot/cold split?',
     options: [
       { t: 'Because it only works for hot fields.', why: 'SoA stores every field, hot or cold.' },
       { t: 'Because it sorts fields by hotness.', why: 'Column order doesn’t matter in SoA; each column is separate.' },
-      { t: 'Because it always runs fastest.', why: 'Chapter 59 showed SoA losing at materialization.' },
+      { t: 'Because it always runs fastest.', why: 'It does not: *When SoA loses: materialization and AoSoA* showed it losing badly.' },
       { t: 'Because each field is its own group, so a loop loads exactly the fields it touches.', correct: true, why: 'There is nothing left to split.' },
     ],
   },

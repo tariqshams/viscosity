@@ -11,11 +11,7 @@ export const prompts = {
   },
   'ao-pow2': {
     q: 'Why must Viscosity’s AoSoA block size be a power of two?',
-    a: 'So the block and lane are a shift and a mask (`i >> s`, `i & (B-1)`) instead of a division and a remainder.',
-  },
-  'ao-lane-mask': {
-    q: 'For B = 8, what does `i & 7` compute?',
-    a: 'The lane: `i % 8`, the element’s position inside its block.',
+    a: 'So the block and lane are a shift and a mask (`i >> s`, `i & (B-1)`) instead of a division and a remainder; with 6 there are no bits to read off.',
   },
   'ao-cap-blocks': {
     q: 'Why does the AoSoA container round its capacity up with `Math.ceil(cap / 8) * 8`?',
@@ -35,21 +31,33 @@ export const prompts = {
   },
   'ao-why-not-auto': {
     q: 'Why does Viscosity’s cost model never choose AoSoA by itself?',
-    a: 'In this book’s V8 measurements it rarely beat SoA, and was slower at small sizes.',
-  },
-  'ao-ispc': {
-    q: 'Where does a block of 8 pay off, as in ISPC’s `soa<8>`?',
-    a: 'When the block matches SIMD lanes, so one vector load fills a register with 8 values of a field.',
+    a: 'In this book’s V8 measurements it rarely beat SoA, even with a hand-written block-by-block loop, and was slower at small sizes.',
   },
 };
 
-export const examples = {};
+export const examples = {
+  'aosoa-push': {
+    title: 'A tiny AoSoA store (F = 2, B = 4)',
+    code: `const F = 2, B = 4, S = 2;
+const data = new Float64Array(16);
+function slot(i, k) {
+  return (i >> S) * F * B + k * B
+    + (i & (B - 1));
+}
+for (let i = 0; i < 8; i++) {
+  data[slot(i, 0)] = i;      // x
+  data[slot(i, 1)] = 10 * i; // y
+}
+console.log(slot(5, 1));
+console.log(data.join(' '));`,
+  },
+};
 
 export const exercises = {
   aosoaSlot: {
     title: 'An AoSoA index function',
     prompt:
-      'Write `slot(i, k, F, B)`: the index in the shared `Float64Array` of field `k` of element `i`, for `F` fields in blocks of `B`. Use a shift and a mask, like Viscosity. If `B` is not a power of two, throw an error.',
+      'Write `slot(i, k, F, B)`: the index in the shared `Float64Array` of field `k` of element `i`, for `F` fields in blocks of `B`. Use a shift and a mask, like Viscosity. Refuse what Viscosity refuses: if `B` is not a power of two of at least 2, throw an error.',
     starter: `function slot(i, k, F, B) {
   // your code here
   return 0;
@@ -57,8 +65,8 @@ export const exercises = {
 
 console.log(slot(10, 1, 3, 8));`,
     solution: `function slot(i, k, F, B) {
-  if (!(B > 0 && (B & (B - 1)) === 0))
-    throw new Error('B must be 2^n');
+  if (!(B >= 2 && (B & (B - 1)) === 0))
+    throw new Error('bad block size');
   const sh = Math.log2(B);
   return (i >> sh) * F * B + k * B
     + (i & (B - 1));
@@ -76,24 +84,36 @@ test('element 8 starts block 1', () => {
 test('blocks of 4, two fields', () => {
   expect(slot(5, 1, 2, 4)).toBe(13);
 });
-test('B = 1 is packed AoS', () => {
-  expect(slot(5, 2, 3, 1)).toBe(17);
+test('B = 1 is refused, like aosoa(1)', () => {
+  expect(() => slot(5, 2, 3, 1)).toThrow();
 });
 test('B = 6 is refused', () => {
   expect(() => slot(1, 0, 3, 6)).toThrow();
 });`,
     hints: [
-      'Block number: `i >> Math.log2(B)`. Lane: `i & (B - 1)`.',
-      'A block is `F * B` slots; inside it, field `k` starts at `k * B`.',
-      'A power of two has exactly one bit set, so `(B & (B - 1)) === 0`.',
+      'Work out the three parts separately: where the block starts, where the field starts inside the block, and the lane.',
+      'Block number: `i >> Math.log2(B)`; a block is `F * B` slots long. Inside it, field `k` starts at `k * B`. Lane: `i & (B - 1)`.',
+      'A power of two has exactly one bit set, so `(B & (B - 1)) === 0` exactly when B is a power of two (for B > 0). Check `B >= 2` too, and throw before doing any arithmetic.',
     ],
-    walkthrough: `This is the formula the emitter writes, with F and B as parameters instead of constants.
+    walkthrough: `**How to think about it.** This is the formula the emitter writes, with F and B as parameters instead of numbers baked in. Before writing code, do one case by hand, the one from the diagram: element 10, field 1 (y), three fields, blocks of 8. Block \`10 >> 3 = 1\`, and each block is \`3 * 8 = 24\` slots, so block 1 starts at 24; field 1 starts \`1 * 8 = 8\` slots into the block, at 32; the lane is \`10 & 7 = 2\`, so the answer is 34. Now turn each of those three steps into an expression, and add the check first, so that a bad B never reaches the arithmetic.
 
-- **Block start:** \`(i >> sh) * F * B\`. Shifting right by \`log2(B)\` drops the lane bits, which is \`Math.floor(i / B)\` for non-negative \`i\`. Each block has \`F * B\` slots.
-- **Field start inside the block:** \`k * B\`, because each field has B slots per block.
-- **Lane:** \`i & (B - 1)\` keeps the low bits, which is \`i % B\`.
-- **The power-of-two check.** For B = 6, \`i >> log2(6)\` would shift by 2.58…, which JavaScript truncates to 2, giving blocks of 4: silently wrong. So refuse, like Viscosity does. \`B & (B - 1)\` clears the lowest set bit; it is 0 only when B has a single bit set.
-- **B = 1** gives \`i * F + k\`: packed AoS, a block per element. And with B at least the length, AoSoA becomes SoA. AoSoA sits between the two.`,
+**The solution, line by line.**
+
+- \`function slot(i, k, F, B) {\` takes the element, the field number, the number of fields and the block size.
+- \`  if (!(B >= 2 && (B & (B - 1)) === 0))\` asks "is B at least 2 and a power of two?" and goes on only if the answer is no. \`B - 1\` flips the lowest set bit of B and every bit below it, so \`B & (B - 1)\` clears that lowest set bit; the result is 0 exactly when B had a single bit set. For 8 (\`1000\`) it is \`1000 & 0111 = 0\`; for 6 (\`110\`) it is \`110 & 101 = 100\`, which is not 0.
+- \`    throw new Error('bad block size');\` refuses, as Viscosity's planner does for \`aosoa(6)\` and \`aosoa(1)\`.
+- \`  const sh = Math.log2(B);\` is the shift: 3 for B = 8, 2 for B = 4. Because B passed the check, this is a whole number.
+- \`  return (i >> sh) * F * B + k * B\` is the start of the block (block number times the slots per block) plus the start of field k inside it.
+- \`    + (i & (B - 1));\` adds the lane: the low \`sh\` bits of i, which is \`i % B\`.
+- \`}\` closes the function.
+
+Check it against the tests: \`slot(5, 1, 2, 4)\` is block \`5 >> 2 = 1\`, starting at \`1 * 2 * 4 = 8\`, plus field offset \`1 * 4 = 4\`, plus lane \`5 & 3 = 1\`: 13.
+
+**Common wrong attempts.**
+
+- Adding \`k\` instead of \`k * B\` treats a block as if fields were interleaved; each field owns B slots per block, so field 1 starts B slots in, not 1.
+- \`i * F + k\` is the packed AoS index (what B = 1 would give). In AoSoA, neighbouring elements' values of one field are neighbours in memory, which this formula never produces.
+- \`Math.floor(i / B)\` and \`i % B\` give the right numbers, but without the check they accept B = 6. Worse, with the shift, \`Math.log2(6)\` is 2.58..., and \`i >> 2.58\` silently shifts by 2, giving blocks of 4: wrong answers with no error. That is why Viscosity refuses such a block size up front.`,
     wrong: [
       {
         code: `function slot(i, k, F, B) {
@@ -114,7 +134,7 @@ test('B = 6 is refused', () => {
   const blk = Math.floor(i / B);
   return blk * F * B + k * B + i % B;
 }`,
-        why: 'The arithmetic is right, but it accepts B = 6. Viscosity refuses block sizes that aren’t powers of two; so must you.',
+        why: 'The arithmetic is right, but it accepts B = 6 and B = 1. Viscosity refuses block sizes that are not powers of two of at least 2; so must you.',
       },
     ],
   },
@@ -122,7 +142,7 @@ test('B = 6 is refused', () => {
     optional: true,
     title: 'Loop over blocks, not elements',
     prompt:
-      'The generated code works out a block and lane for every access. A hand-written loop can avoid that. Write `blockSum(data, n, k, F, B)`: the sum of field `k` over the first `n` elements, looping over blocks and then lanes. Careful: the last block may be only partly used, and its spare slots may hold anything.',
+      'The generated code works out a block and lane for every access. A hand-written loop (like the benchmark’s `aosoa8` kernels) can avoid that. Write `blockSum(data, n, k, F, B)`: the sum of field `k` over the first `n` elements, looping over blocks and then lanes. Careful: the last block may be only partly used, and its spare slots may hold anything.',
     starter: `function blockSum(data, n, k, F, B) {
   // your code here
   return 0;
@@ -158,15 +178,27 @@ test('empty', () => {
   expect(blockSum(build(0, 2, 4), 0, 0, 2, 4)).toBe(0);
 });`,
     hints: [
-      'Outer loop over blocks: `for (let b = 0; b * B < n; b++)`.',
-      'Field k of block b starts at `b * F * B + k * B`; its B values are consecutive.',
-      'In the last block only `n - b * B` lanes are real: use `Math.min(B, n - b * B)`.',
+      'Two loops: an outer one over blocks, an inner one over the lanes of a block.',
+      'Field k of block b starts at `b * F * B + k * B`, and its B values are consecutive. The outer loop runs while `b * B < n`.',
+      'In the last block only `n - b * B` lanes are real: loop to `Math.min(B, n - b * B)`, never to B.',
     ],
-    walkthrough: `Inside a block, field k is a run of B consecutive doubles, so the inner loop is a plain sequential scan, just like a SoA column. The block arithmetic happens once per block instead of once per element.
+    walkthrough: `**How to think about it.** Inside a block, field k is a run of B consecutive doubles, so once you know where that run starts, the inner loop is a plain scan, just like a SoA column. The block arithmetic then happens once per block instead of once per element. The trap is the end: capacity is whole blocks, so slots past \`n\` exist and hold whatever was there (the tests fill them with 1000 to make the bug visible).
 
-The partial block is the trap. Capacity is whole blocks, so slots past \`n\` exist and hold whatever was there (here 1000, to make the bug visible). Stopping at \`Math.min(B, n - b * B)\` is the AoSoA version of chapter 258’s rule: compare with length, never with capacity.
+**The solution, line by line.**
 
-Viscosity’s emitter doesn’t restructure loops this way: it rewrites each access in place, which is simpler to prove correct.`,
+- \`let s = 0;\` is the running sum.
+- \`for (let b = 0; b * B < n; b++) {\` visits each block that holds at least one real element: for n = 10 and B = 8 that is blocks 0 and 1.
+- \`const base = b * F * B + k * B;\` is the slot of field k's first lane in block b.
+- \`const m = Math.min(B, n - b * B);\` is how many lanes of this block are real: 8 for block 0, but only \`10 - 8 = 2\` for block 1.
+- \`for (let l = 0; l < m; l++) s += data[base + l];\` adds those lanes, one after another in memory.
+- \`return s;\` after the outer loop.
+
+**Common wrong attempts.**
+
+- Looping \`l < B\` in every block adds the spare slots of a partly used last block. This is the AoSoA version of the rule from *Growing collections*: compare with the length, never with the capacity.
+- Looping \`b * B <= n\` visits one block too many when n is a multiple of B.
+
+Viscosity's emitter does not restructure loops this way: it rewrites each access in place, which is far simpler to prove correct, and which is why its AoSoA code can only be slower than this loop.`,
     wrong: [
       {
         code: `function blockSum(data, n, k, F, B) {
@@ -205,15 +237,6 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `ps[1002].z` compile to a call to `__vsc_aosoa(...)` instead of the inline formula?',
-    options: [
-      { t: 'Its index is wrapped in a bounds check, and the helper evaluates it once.', correct: true, why: 'The formula uses the index twice; an expression like `__vsc_bc(...)` shouldn’t run twice.' },
-      { t: '1002 is not a multiple of 8.', why: 'Any index works with the formula; the block and lane handle it.' },
-      { t: 'The z field is stored in a separate array.', why: 'All fields share one `data` array in AoSoA.' },
-      { t: 'Literals can’t be shifted.', why: '`1002 >> 3` is perfectly valid JavaScript.' },
-    ],
-  },
-  {
     q: 'The AoSoA container grows from 16 to 32 elements. What does `grow()` do?',
     options: [
       { t: 'Moves each field’s values to new positions.', why: 'Blocks are self-contained, so the existing ones keep their positions.' },
@@ -235,7 +258,7 @@ export const quiz = [
     q: 'What did this book’s V8 measurements show about AoSoA with blocks of 8?',
     options: [
       { t: 'It was the fastest layout at every size.', why: 'Plain SoA beat it in the update and random-access suites.' },
-      { t: 'It was rarely better than SoA, and often slower than objects at 1,000 elements.', correct: true, why: 'Index arithmetic costs more than it saves when there are no SIMD lanes to fill.' },
+      { t: 'It was rarely better than SoA, and often slower than objects at 1,000 elements.', correct: true, why: 'With no SIMD lanes to fill, blocks bought little that plain columns did not already give, and at small sizes the extra work cost more than it saved.' },
       { t: 'It was identical to SoA.', why: 'It was measurably slower in most suites.' },
       { t: 'It wasn’t measured.', why: 'The `aosoa8` layout is in every suite of the benchmark run.' },
     ],

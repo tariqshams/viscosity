@@ -9,10 +9,6 @@ export const prompts = {
     q: 'What is profile-guided optimization (PGO)?',
     a: 'Compiling with measurements from real runs of the program (a profile), not only with what the source reveals.',
   },
-  'measured-wins': {
-    q: 'In the planner, a collection has both a static size estimate and a measured size. Which is used?',
-    a: 'The measured one: `size = measured ?? estimate`.',
-  },
   'inst-what': {
     q: 'What is instrumentation?',
     a: 'Code added to a program to record what it does while it runs, without changing what it does.',
@@ -165,14 +161,29 @@ test('trackers are independent', () => {
       'In `profile`, loop over `seen` and read `a.length` now, not when the array was tracked.',
       'Keep the maximum per name: start from 0 when a name is new, then `Math.max(old, a.length)`.',
     ],
-    walkthrough: `This is the prelude that \`viscosity profile\` puts in front of your program, as a reusable object.
+    walkthrough: `**How to think about it.** This is the prelude that \`viscosity profile\` puts in front of your program, turned into a reusable object. Two facts decide the design. First, the tracked array is usually empty when it is tracked (\`const ps = __vsc_track("ps", [])\`), and its interesting length exists only later; so \`track\` must remember the *array*, and \`profile\` must read its length at the moment it is called. Second, instrumentation must not change the program, so \`track\` must hand back the very array it was given.
 
-- **Return the same array.** Instrumentation must not change behaviour. If \`track\` returned a copy, the program would push into the copy, \`===\` comparisons would change, and you would be measuring a different program.
-- **Remember the array, not its length.** At \`track\` time the array is usually empty: \`const ps = __vsc_track("ps", [])\`. Its interesting length exists only later, so you keep a reference and read \`.length\` in \`profile()\`, just as the real exit hook does.
-- **Max per name.** Code that runs \`const ps = []\` several times (a function called twice, say) tracks several arrays under one name. The profile is keyed by name, so it keeps the largest.
-- **The closure** holds \`seen\`, so two trackers don’t share state.
+**The solution, line by line.**
 
-The real hook then writes the result with \`JSON.stringify\` to the file named by \`VSC_PROFILE_OUT\`.`,
+- \`const seen = [];\` inside \`makeTracker\` is private to this tracker: the returned methods close over it (a closure), so two trackers never share state.
+- \`track(name, arr) {\` takes the collection's name and the array.
+- \`seen.push([name, arr]);\` remembers the pair: the name, and a reference to the array itself, not a copy and not its length.
+- \`return arr;\` hands back the same array, so \`track('a', a) === a\` and every later \`push\` lands in the array the program is using.
+- \`profile() {\` builds the result when asked.
+- \`const p = {};\` maps names to \`{ maxLength }\`.
+- \`for (const [n, a] of seen) {\` visits each tracked pair, unpacking the name and the array.
+- \`const old = p[n] ? p[n].maxLength : 0;\` is the largest length seen so far under this name, or 0 for a new name.
+- \`const len = a.length;\` reads the length now, which is the point.
+- \`p[n] = { maxLength: Math.max(old, len) };\` keeps the larger, so the order in which arrays were tracked does not matter.
+- \`return p;\` after the loop.
+
+**Common wrong attempts.**
+
+- Recording \`arr.length\` inside \`track\` stores 0 for an array that was just created; the real hook reads lengths at exit for exactly this reason.
+- Writing \`p[n] = { maxLength: a.length }\` lets the last array under a name win, even if an earlier one was longer. Code that runs \`const ps = []\` in a function called twice tracks two arrays under one name.
+- Returning a copy (\`[...arr]\`) changes the program: \`===\` is false, and the program's pushes go into an array the tracker never sees.
+
+The real hook finally writes \`p\` with \`JSON.stringify\` to the file named by the \`VSC_PROFILE_OUT\` environment variable.`,
     wrong: [
       {
         code: `function makeTracker() {
@@ -298,12 +309,23 @@ test('a measured 0 is still a measurement', () => {
       'Pick the size: the measurement if there is one, else the estimate. `??` does exactly this; `||` does not, because 0 is falsy.',
       'Then three cases: known and small (keep), unknown, known and large.',
     ],
-    walkthrough: `This mirrors the size step in \`core/src/plan.ts\`, \`measured ?? c.sizeEstimate\`, and the text \`describe()\` writes.
+    walkthrough: `**How to think about it.** This mirrors the size step in \`core/src/plan.ts\` (\`measured ?? c.sizeEstimate\`) and the text \`describe()\` writes. First pick the number: a measurement, if there is one, beats a guess. Then there are three cases: the size is known and small (keep), the size is unknown (go ahead: the threshold cannot apply), and the size is known and large (go ahead, and say how big). Do one by hand: \`sizeLine(1000, 20, 64)\` has a measurement, 20, which is below 64, so the answer is keep, with "(measured)".
 
-- **The measurement wins.** An estimate is a guess from the source; a measurement is what actually happened. The estimate is only a fallback.
-- **\`??\`, not \`||\`.** A measured length of 0 is real information: the array stayed empty in the profiling run. \`measured || est\` would throw it away and use the estimate instead.
-- **Unknown means go ahead.** With no number at all, the threshold can’t apply, and the planner lets the other evidence (a hot loop over numeric fields) decide.
-- **Say where the number came from.** “(measured)” tells the reader of the report that this decision depends on a profiling run, so a different input could change it.`,
+**The solution, line by line.**
+
+- \`const m = measured !== undefined;\` records whether there is a measurement at all. A measured 0 is a measurement, so compare with \`undefined\` rather than testing truthiness.
+- \`const n = m ? measured : est;\` picks the size: the measurement, else the estimate (which may be \`null\`).
+- \`if (n !== null && n < min) {\` is the keep case: known, and below the threshold.
+- \`const tag = m ? ' (measured)' : '';\` says where the number came from.
+- The \`return\` builds \`'about ' + n + ' elements' + tag + ': below the ' + min + '-element threshold'\`, with \`keep: true\`.
+- \`if (n === null)\` is the unknown case: return \`'size unknown statically'\` with \`keep: false\`.
+- Otherwise the size is known and large: \`tag\` is \`' (measured by profiling)'\` or empty, and the text is \`'about ' + n + ' elements' + tag\`, with \`keep: false\`.
+
+**Common wrong attempts.**
+
+- \`measured || est\` treats a measured 0 as missing (0 is falsy) and falls back to the estimate; \`??\` or an explicit \`undefined\` check keeps it.
+- \`est ?? measured\` gets the order backwards: the estimate wins whenever there is one, so a profile would only matter when the size is unknown.
+- Forgetting the tag makes the report hide that the decision depends on one profiling run; a reader then cannot tell that a different input might change it.`,
     wrong: [
       {
         code: `function sizeLine(est, measured, min) {
@@ -411,15 +433,6 @@ export const quiz = [
       { t: 'Viscosity runs the program many times', why: 'It runs it once.' },
       { t: 'V8 doesn’t use profiles', why: 'It does: shape and type feedback drives its optimizing compilers.' },
       { t: 'V8 specializes code on feedback that affects correctness; Viscosity’s profile only picks between two proven-equivalent layouts', correct: true, why: 'A wrong guess in V8 would compute wrong results unless guarded. A wrong guess in Viscosity is just slower.' },
-    ],
-  },
-  {
-    q: 'Which is the best input to profile with?',
-    options: [
-      { t: 'The smallest input that runs, so profiling is quick', why: 'Small inputs give small sizes, and Viscosity would keep collections it should transform.' },
-      { t: 'A typical production workload, produced by the program without arguments', correct: true, why: '`viscosity profile` passes no arguments, and the decisions will fit whatever run it measured.' },
-      { t: 'It doesn’t matter: the profile only affects safety', why: 'It affects only the size decision, which depends entirely on the input.' },
-      { t: 'Random input, to cover all cases', why: 'A profile isn’t a test. It should look like the runs you want to be fast.' },
     ],
   },
 ];

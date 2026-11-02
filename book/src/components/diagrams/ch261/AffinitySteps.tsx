@@ -48,7 +48,7 @@ export default function AffinitySteps() {
             <g key={f}>
               <T x={8} y={114 + k * 18} size={11} mono>{f}</T>
               <rect x={60} y={107 + k * 18} width={w} height={13} rx={2} fill={tok(COL[f], 0.85)} />
-              {st.hot && <T x={64 + w} y={114 + k * 18} size={10} mono fill={tok('muted')}>{v}</T>}
+              {st.hot && <T x={64 + w} y={114 + k * 18} size={11} mono fill={tok('muted')}>{v}</T>}
             </g>
           );
         })}
@@ -59,7 +59,7 @@ export default function AffinitySteps() {
             <g key={a + b}>
               <T x={222} y={114 + k * 18} size={11} mono>{a}+{b}</T>
               <rect x={318} y={107 + k * 18} width={Math.max(1, (v / 1000) * 50)} height={13} rx={2} fill={tok('brand', v ? 0.7 : 0.2)} />
-              <T x={392} y={114 + k * 18} size={10} mono anchor="end" fill={tok('muted')}>{v}</T>
+              <T x={392} y={114 + k * 18} size={11} mono anchor="end" fill={tok('muted')}>{v}</T>
             </g>
           );
         })}
@@ -73,7 +73,7 @@ export default function AffinitySteps() {
                   const w = [220, 72, 76][g];
                   return (
                     <Box key={g} x={x} y={248} w={w} h={40} fill={tok(g === 0 ? 'brand' : 'panel', g === 0 ? 0.12 : 1)} stroke={g === 0 ? tok('brand') : tok('line')}>
-                      <T x={x + w / 2} y={262} size={10} anchor="middle" fill={tok('muted')}>{['hot', 'warm', 'cold'][g]}</T>
+                      <T x={x + w / 2} y={262} size={11} anchor="middle" fill={tok('muted')}>{['hot', 'warm', 'cold'][g]}</T>
                       <T x={x + w / 2} y={278} size={11} mono anchor="middle">{fs.join(' ')}</T>
                     </Box>
                   );
@@ -81,7 +81,7 @@ export default function AffinitySteps() {
               : FIELDS.map((f, k) => (
                   <Box key={f} x={8 + k * 65} y={248} w={60} h={40} fill={tok(COL[f], 0.15)} stroke={tok(COL[f])}>
                     <T x={38 + k * 65} y={262} size={11} mono anchor="middle">{f}</T>
-                    <T x={38 + k * 65} y={278} size={9} mono anchor="middle" fill={tok('muted')}>{f === 'name' ? 'plain []' : 'Float64'}</T>
+                    <T x={38 + k * 65} y={278} size={11} mono anchor="middle" fill={tok('muted')}>{f === 'name' ? 'plain []' : 'Float64'}</T>
                   </Box>
                 ))}
           </g>

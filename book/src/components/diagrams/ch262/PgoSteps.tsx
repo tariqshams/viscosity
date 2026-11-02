@@ -41,28 +41,28 @@ export default function PgoSteps() {
             <g key={h}>
               <Box x={6} y={ys[k]} w={190} h={48} fill={on(h) ? tok('brand', 0.14) : 'transparent'} stroke={!vis(h) ? tok('line') : on(h) ? tok('brand') : tok('ink', 0.5)} dash={!vis(h)}>
                 <T x={16} y={ys[k] + 16} size={12} weight={700}>{a}</T>
-                <T x={16} y={ys[k] + 34} size={10} mono fill={tok('muted')}>{b}</T>
+                <T x={16} y={ys[k] + 34} size={11} mono fill={tok('muted')}>{b}</T>
               </Box>
               {k < 4 && <Arrow x1={100} y1={ys[k] + 48} x2={100} y2={ys[k + 1] - 2} />}
             </g>
           );
         })}
         <Arrow x1={196} y1={ys[0] + 24} x2={196} y2={ys[4] + 24} bend={-0.6} dash color={tok('muted')} />
-        <T x={292} y={160} size={10} anchor="middle" fill={tok('muted')}>the same source,</T>
-        <T x={292} y={174} size={10} anchor="middle" fill={tok('muted')}>compiled with the profile</T>
+        <T x={292} y={160} size={11} anchor="middle" fill={tok('muted')}>the same source,</T>
+        <T x={292} y={174} size={11} anchor="middle" fill={tok('muted')}>compiled with the profile</T>
 
         <Box x={214} y={8} w={180} h={102} fill={tok('panel')}>
-          <T x={224} y={24} size={10} weight={700} fill={tok('muted')}>ORIGINAL PROGRAM</T>
-          <T x={224} y={44} size={10} mono>{'const ps = [];'}</T>
-          <T x={224} y={60} size={10} mono>{'function spawn(x) {'}</T>
-          <T x={224} y={74} size={10} mono>{'  ps.push({ x, vx: 1 }); }'}</T>
-          <T x={224} y={92} size={10} mono fill={tok('brand')}>{`for (… < ${st.n} …) spawn(i);`}</T>
+          <T x={224} y={24} size={11} weight={700} fill={tok('muted')}>ORIGINAL PROGRAM</T>
+          <T x={224} y={44} size={11} mono>{'const ps = [];'}</T>
+          <T x={224} y={60} size={11} mono>{'function spawn(x) {'}</T>
+          <T x={224} y={74} size={11} mono>{'  ps.push({x, vx: 1}); }'}</T>
+          <T x={224} y={92} size={11} mono fill={tok('brand')}>{`… i < ${st.n} …: spawn(i)`}</T>
         </Box>
 
         {vis('prof') && (
           <Box x={214} y={194} w={180} h={48} fill={tok('safe', 0.08)} stroke={tok('safe')}>
-            <T x={224} y={210} size={10} weight={700} fill={tok('muted')}>p.json</T>
-            <T x={224} y={228} size={10} mono>{`{"ps": {"maxLength": ${st.n}}}`}</T>
+            <T x={224} y={210} size={11} weight={700} fill={tok('muted')}>p.json</T>
+            <T x={224} y={228} size={11} mono>{`{"ps":{"maxLength":${st.n}}}`}</T>
           </Box>
         )}
         {vis('run') && !vis('prof') && (

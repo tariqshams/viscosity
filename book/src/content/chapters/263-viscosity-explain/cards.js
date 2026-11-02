@@ -34,7 +34,7 @@ export const prompts = {
     a: 'So you can fix them all in one go, instead of discovering them one compile at a time.',
   },
   'rep-act': {
-    q: 'The report says “line 9: an element is passed to a method call” for `console.log(ps[3])`. What change lets Viscosity transform `ps`?',
+    q: 'The report says “line 5: an element is passed to a method call” for `console.log(ps[3])`. What change lets Viscosity transform `ps`?',
     a: 'Print fields instead of the element, e.g. `console.log(ps[3].x)`, so no real element object is needed.',
   },
   'rep-tested': {
@@ -44,6 +44,47 @@ export const prompts = {
   'rep-engines': {
     q: 'How does V8’s `--trace-elements-transitions` differ from `viscosity explain`?',
     a: 'It is a debug-build log of events as the program runs, for engine developers. Viscosity’s report is written once, before running, about every collection.',
+  },
+};
+
+export const examples = {
+  'mini-planner': {
+    title: 'A planner that says why',
+    code: `// Decide, and say why, in one step.
+function plan(c) {
+  const out = { name: c.name };
+  const keep = (why) => {
+    out.verdict = 'kept as objects';
+    out.reasons = [why];
+    return out;
+  };
+  if (c.unsafe)
+    return keep('unsafe: ' + c.unsafe);
+  if (c.numeric === 0)
+    return keep('no numeric field');
+  if (c.size < 64)
+    return keep('about ' + c.size +
+      ' elements: below 64');
+  out.verdict = 'struct of arrays';
+  out.reasons = ['about ' + c.size +
+    ' elements'];
+  return out;
+}
+const cs = [
+  { name: 'ps', unsafe: '',
+    numeric: 2, size: 1000 },
+  { name: 'log', unsafe: 'escapes',
+    numeric: 1, size: 5000 },
+  { name: 'pts', unsafe: '',
+    numeric: 2, size: 2 },
+];
+for (const c of cs) {
+  const p = plan(c);
+  console.log(p.name + ' → ' +
+    p.verdict);
+  for (const r of p.reasons)
+    console.log('  · ' + r);
+}`,
   },
 };
 
@@ -107,13 +148,25 @@ test('nothing found', () => {
       'The verdict line is `name + \' (line \' + line + \') {\' + fields.join(\', \') + \'} → \' + verdict`.',
       'Then push `\'  · \' + r` for each reason, and join everything with `\\n` once at the end.',
     ],
-    walkthrough: `This is \`explain()\` from \`core/src/plan.ts\`, without the template literals.
+    walkthrough: `**How to think about it.** This is \`explain()\` from \`core/src/plan.ts\`, written with \`+\` instead of template literals. Notice first what it does *not* do: it decides nothing. All the judgement happened in the planner, which stored its reasons in the decision; this function only turns data into text. So start from the output you want for one decision, \`ps (line 2) {x, y} → kept as array of objects\` followed by \`  · no loop reads or writes its fields\`, and build it piece by piece.
 
-- **The function decides nothing.** All the judgment happened in the planner, which stored its reasons in the decision. \`formatReport\` only turns that data into text. That separation is what keeps the report honest: there is no second copy of the logic to drift.
-- **One verdict line, then the evidence.** The arrow separates the identity of the collection from the decision. The \`·\` lines are indented under it, so several collections read as separate blocks.
-- **Join once.** Collecting lines in an array and joining with \`\\n\` at the end avoids a trailing newline and makes the empty case (\`''\`) fall out for free, which the CLI then replaces with “No arrays of objects found.”.
+**The solution, line by line.**
 
-The real version also uses the same words for every layout everywhere, which matters because tests compare reports byte for byte.`,
+- \`function verdict(d) {\` is a helper for the words after the arrow, so the main loop stays readable.
+- \`if (d.layout === 'aos') return 'kept as array of objects';\` and \`if (d.layout === 'soa') return 'struct of arrays';\` translate the planner's internal names into words a reader understands.
+- \`return 'AoSoA, blocks of ' + d.blockSize;\` is the only verdict with a number in it.
+- \`function formatReport(ds) {\` and \`const lines = [];\` start an array of output lines.
+- \`for (const d of ds) {\` visits each decision, in the order the planner made them.
+- \`const fs = d.fields.join(', ');\` gives \`x, y\`, with a space after each comma (an array turned into a string directly would give \`x,y\`).
+- \`lines.push(d.name + ' (line ' + d.line + ') {' + fs + '} → ' + verdict(d));\` is the verdict line.
+- \`for (const r of d.reasons) lines.push('  · ' + r);\` adds one indented line per stored reason.
+- \`return lines.join('\\n');\` joins once at the end: no trailing newline, and an empty list gives \`''\` for free (the CLI then prints "No arrays of objects found.").
+
+**Common wrong attempts.**
+
+- Building one string with \`+= ... + '\\n'\` leaves a stray newline at the end, which a byte-for-byte test catches at once.
+- A two-way \`aos ? ... : 'struct of arrays'\` reports an AoSoA collection as a struct of arrays and loses its block size.
+- Printing \`d.layout\` itself shows \`aos\`, the internal name, and \`'{' + d.fields\` prints \`x,y\` without the space.`,
     wrong: [
       {
         code: `function formatReport(ds) {
@@ -204,13 +257,20 @@ test('unknown size does not stop it', () => {
       'For unsafe uses, `map` every one to `\'unsafe: \' + u`, so the reader sees all of them.',
       'A `null` size means unknown: the threshold can’t apply, so it doesn’t stop the transform.',
     ],
-    walkthrough: `This is the shape of \`plan()\` in \`core/src/plan.ts\`, without annotations and modes.
+    walkthrough: `**How to think about it.** This is the shape of \`plan()\` in \`core/src/plan.ts\`, without annotations and modes. The order of the checks is the policy: safety first, because nothing may override it; then the checks that say "no gain is possible" (no numeric field, no loop); and last the size, which is a judgement call and the only place a profile matters. Each check that fails returns at once, with its reason, so a collection can never be kept silently.
 
-- **Order is policy.** Safety comes first because nothing may override it. Then the cheap checks that say “no gain is possible” (no numeric field, no loop), and last the size, which is a judgment call and the only place a profile matters.
-- **All unsafe uses, then one reason.** Safety failures are usually independent bugs the programmer may want to fix together. The later checks are a single verdict: once there is no numeric field, it doesn’t matter that there is also no loop.
-- **Unknown is not small.** \`null < 64\` is \`true\` in JavaScript (null becomes 0), which is exactly the bug in the starter-style check. Test for \`null\` first.
+**The solution, line by line.**
 
-Because each \`return\` carries its reason, there is no way to keep a collection silently.`,
+- \`if (c.unsafe.length > 0) return c.unsafe.map((u) => 'unsafe: ' + u);\` lists *every* unsafe use, because they are usually separate problems the programmer will want to fix together.
+- \`if (c.numeric === 0) return ['no numeric field'];\` stops at the first "no gain" reason: once there is nothing to put in a typed column, it does not matter that there is also no loop.
+- \`if (c.loops === 0) return ['no loop over its fields'];\` comes next.
+- \`if (c.size !== null && c.size < min) return ['too small: ' + c.size + ' < ' + min];\` applies the threshold only to a known size.
+- \`return null;\` means nothing stopped it: transform.
+
+**Common wrong attempts.**
+
+- Collecting every failed check gives a tiny, loop-free, unsafe collection four reasons; only the unsafe uses are listed in full.
+- Comparing \`c.size < min\` without the \`null\` test reports an unknown size as "too small: null < 64", because \`null < 64\` is \`true\` in JavaScript (\`null\` becomes 0 in a comparison).`,
     wrong: [
       {
         code: `function whyKept(c, min) {

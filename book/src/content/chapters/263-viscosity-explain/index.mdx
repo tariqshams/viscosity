@@ -3,28 +3,27 @@ n: 263
 day: 66
 part: VIII
 title: 'viscosity explain'
-tagline: 'An optimizer that won’t say what it did leaves you guessing. Viscosity writes down every decision and the evidence behind it, and because the planner writes the reasons while it decides, the explanation can’t drift from what actually happened.'
+tagline: 'An optimizer that will not say what it did leaves you guessing. Viscosity writes down every decision and the evidence behind it, and because the planner writes the reasons while it decides, the explanation cannot drift from what actually happened.'
 objectives:
-  - Read every line of a `viscosity explain` report and say which analysis produced it.
-  - Explain why the report is built from the same data as the decision, not computed afterwards.
-  - Use the reason for a kept collection to change a program so Viscosity can transform it.
+  - Read every line of a `viscosity explain` report and say which part of the compiler produced it.
+  - Explain why the report is built from the same data as the decision, not worked out afterwards.
+  - Use the reason for a kept collection, with or without a code frame, to change a program so Viscosity can transform it.
   - Say how the report is itself tested, byte for byte.
 introduces: [optimization-report]
 uses: [function, array, object, for-loop, for-of, string-building, template-literal, array-of-objects, record-shape, collection-discovery, access-pattern, hot-loop, safety-analysis, bailout, cost-model, annotation, column-storage, access-rewriting, pgo, differential-testing, elements-kind, engine-tracing, field-representation]
 sources: [v8-elements-kinds]
 ---
 import ExplainSteps from '../../../components/diagrams/ch263/ExplainSteps';
+import FrameAnatomy from '../../../components/diagrams/ch263/FrameAnatomy';
 import Playground from '../../../components/playground/Playground';
 
 ## The silent optimizer
 
-You run Viscosity on your program. It gets no faster. Was there nothing
-to do? Did it try and give up? Did it transform the wrong array? An
-optimizer that only hands back code leaves you reading generated code
-to find out.
-
-So Viscosity has a second output. Here is a corpus program, and what
-`viscosity explain` says about it:
+You run Viscosity on your program, and it gets no faster. Was there
+nothing to do? Did it try and give up? Did it transform the wrong array?
+An optimizer that only hands back code leaves you reading generated
+code to find out. So Viscosity has a second output; here is a corpus
+program, `escapes_log.js`, and what `viscosity explain` says about it:
 
 ```js
 const ps = [];
@@ -35,34 +34,36 @@ for (let i = 0; i < ps.length; i++)
 console.log(ps[3]);
 ```
 
-```
+```text
 ps (line 2) {x, y} → kept as array of
   objects
   · unsafe: line 5: an element is passed
     to a method call
 ```
 
-(Line numbers refer to the real file, which has a header comment on
-line 1 and each loop on one line. The reports in this chapter are real
-CLI output, with long lines wrapped.) One line, and you
-know what to change: `console.log` receives a real element object, so
-the object has to exist.
+(The real file has a test header on line 1 and each loop on one line;
+every report in this chapter is real CLI output, with long lines
+wrapped.) One line, and you know what to change: `console.log` receives
+a real element object, so the object has to exist.
 
-<Callout kind="intuition">
-A mechanic who says “fixed it” is less useful than one who hands you an
-itemized list: what they replaced, what they checked and left alone,
-and why. You can check the list, and next time you know what to ask for.
-</Callout>
+<Analogy title="an itemised garage bill">
+A mechanic who says "fixed it" is less use than one who hands you an
+itemised bill: what they replaced, what they checked and left alone, and
+why. You can check the list, and next time you know what to ask for.
+<span slot="breaks">A mechanic writes the bill after the work and could
+leave something out; Viscosity's report is not written afterwards at
+all, as we will see, which is the whole point.</span>
+</Analogy>
 
 <Prompts ids={['rep-why']} />
 
 ## Anatomy of a report
 
 A transformed collection has a longer report. This one is for
-`mixed_columns.js`, which has strings, numbers, `null` and objects in
+`mixed_columns.js`, which keeps strings, numbers, `null` and objects in
 its fields:
 
-```
+```text
 es (line 2) {id, hp, x, tag} → struct of
   arrays
   · loop at line 5 in <module>() touches
@@ -77,43 +78,43 @@ es (line 2) {id, hp, x, tag} → struct of
     bounds
 ```
 
-Each line comes from a different part of the compiler you built in
-this part of the book. Step through it:
+Each line comes from a different part of the compiler this part of the
+book built; step through it:
 
 <ExplainSteps client:visible />
 
 The order is always the same: the verdict, the hot loops, the columns,
 the size, the bounds proofs. A report is meant to be read in a few
-seconds, so it says which loops (with line numbers), which fields, and
-how many checks the safety guarantees cost.
+seconds, so it names loops by line number, fields by name, and says how
+many checks the safety guarantee costs.
 
 <Prompts ids={['rep-verdict', 'rep-loops', 'rep-bounds']} />
 
 ## The planner writes the reasons
 
-Here is the whole of `explain()` from `core/src/plan.ts`, simplified:
+Here is `explain()` from `core/src/plan.ts`, simplified (the real one
+can also print code frames, below):
 
 ```ts
 function explain(p) {
   const lines = [];
   for (const cp of p.collections) {
     const c = cp.collection;
-    lines.push(`${c.name} ` +
-      `(line ${c.line}) ` +
-      `{${c.fields.join(', ')}} → ` +
-      VERDICT[cp.layout]);
-    for (const r of cp.reasons) {
+    const fs = c.fields.join(', ');
+    lines.push(`${c.name} (line ` +
+      `${c.line}) {${fs}} → ` +
+      verdict(cp));
+    for (const r of cp.reasons)
       lines.push(`  · ${r}`);
-    }
   }
   return lines.join('\n');
 }
 ```
 
-It analyzes nothing. It prints `cp.reasons`, a list of strings the
-planner filled in at the moment it decided. Every place the planner
-keeps a collection passes the reason to `keep(...)`, so a kept
-collection always says why:
+It analyses nothing. It prints `cp.reasons`, a list of strings the
+planner filled in at the moment it decided: every place `plan()` keeps a
+collection goes through `keep(...)`, which takes the reason, so a kept
+collection always says why.
 
 ```ts
 if (c.numericFields.size === 0) {
@@ -126,7 +127,17 @@ if (c.numericFields.size === 0) {
 
 A report computed afterwards, by a separate function guessing what the
 planner probably did, could go out of date the first time someone
-changed the planner. One computed from the decision itself can’t.
+changed the planner; one built from the decision itself cannot.
+
+<Analogy title="marks written in the margin">
+A teacher who writes "missing units, minus one" beside the answer at the
+moment of taking the mark off leaves a record that cannot disagree with
+the mark; a teacher who tries to remember the reasons a week later may
+well get them wrong.
+<span slot="breaks">A teacher can still make a slip of the pen; the
+planner's reason is the very value it acted on, so there is nothing to
+copy wrongly.</span>
+</Analogy>
 
 <Callout kind="definition">
 An **optimization report** is a compiler output, alongside the code,
@@ -135,45 +146,72 @@ alone, and the evidence for each. It is most trustworthy when the
 decision procedure records its own reasons as it runs.
 </Callout>
 
+<Formal title="The shape of a report">
+
+```text
+report  → entry*
+entry   → header reason+
+header  → NAME "(line" N ")" "{" fields "}"
+          "→" verdict
+reason  → "  · " TEXT frame?
+```
+
+<span slot="read">A report is any number (the star) of entries, one per
+collection. Each entry is a header followed by one or more (the plus)
+reasons. A header is the name, its line, its fields in braces, an arrow
+and the verdict. A reason is two spaces, a dot, a space and the text,
+optionally (the question mark) followed by a code frame.</span>
+</Formal>
+
 <Prompts ids={['rep-what', 'rep-same-data']} />
 
 ## Why it was kept
 
-The planner tries its checks in a fixed order, and a kept collection’s
-report names the check that stopped it. Safety comes first, and lists
-every unsafe use found, so you can fix them all at once. After that the
-first failing check is the reason:
+The planner tries its checks in a fixed order, and a kept collection's
+report names the check that stopped it. Safety comes first and lists
+every unsafe use found, so you can fix them all at once; after that the
+first failing check is the reason: a bad `aosoa` request, an
+`@viscosity aos` annotation, opt-in mode, Python without opting in, no
+numeric field, no loop over the fields, and finally the size threshold.
+`viscosity explain --frames` adds, under each unsafe use, the source
+line with carets under the code it is about:
 
-1. **unsafe:** an escape, an unknown index, a shape mismatch (chapters
-   252–253)
-2. **annotation:** `@viscosity aos`, or an `aosoa` request with
-   non-numeric fields (chapter 255)
-3. **opt-in mode:** not annotated
-4. **Python only:** CPython columns measured slower, so opt in
-   (chapter 264)
-5. **no numeric field:** no typed columns to gain
-6. **no loop** over the fields: nothing to pay for the change
-7. **too small:** below the 64-element threshold, estimated or measured
+<Figure caption="One refusal from escapes_log.js with its code frame, as explain --frames prints it (the reason line is wrapped here)." takeaway="The frame points at the exact code that stopped the transformation.">
+  <FrameAnatomy />
+</Figure>
 
-Four real reasons, one from each of four corpus files:
+<Examples of="optimization-report">
 
-```
+```text
 · unsafe: line 6: indexes the array with
   something that may not be a number
-· no field is provably numeric, so there
-  are no typed columns to gain
-· no loop reads or writes its fields, so
-  a new layout cannot pay off
+```
+
+```text
 · about 2 elements: below the 64-element
   threshold, where the benefit is too
   small
 ```
 
-Each one points at what you could change: the index, the field’s
-values, the missing loop, the size. Try it on the real compiler. This
-program is kept because of the last line. Change it to print
-`ps[3].x` and watch the verdict flip. Then make one `y` a string, and
-see which column becomes a plain array:
+```text
+· unsafe: the array is put inside another
+  object at line 8
+    8 | const keep = { ps };
+      |                ^^
+```
+
+</Examples>
+
+The first is the whole reason for `string_index.js`: one unsafe use, an
+index Viscosity cannot prove is a number. The second is `small_auto.js`,
+safe but too small to be worth it. The third is one of ten frames for a
+program written for the Rust port, `many_bailouts.js`, which collects
+nearly every refusal there is; the carets sit under `ps`, the array that
+is stored inside an object. Each points at what you could change: the
+index, the size, the escape. Try it on the real compiler: this program
+is kept because of its last line. Change it to print `ps[3].x` and watch
+the verdict flip; then make one `y` a string, and see which column
+becomes a plain array.
 
 <Playground client:visible title="Make it transformable" initial={`const ps = [];
 for (let i = 0; i < 1000; i++) {
@@ -185,25 +223,27 @@ for (let i = 0; i < ps.length; i++) {
 }
 console.log(ps[3]);`} />
 
+Below it is a planner in miniature that records each reason at the
+moment it decides, exactly as `keep(...)` does; it prints one report
+line per collection.
+
+<Run id="mini-planner" />
+
 <Prompts ids={['rep-order', 'rep-all-unsafe', 'rep-act']} />
 
 ## A report is a contract
 
-Because the report is text, it can be tested like code. Three places in
-the repository do:
-
-- The **differential test** passes `r.explain` as the failure message
-  when a decision is wrong, so a failing test says why Viscosity
-  decided what it did.
-- The **mini-parser test** compiles every corpus and benchmark program
-  with both parsers and requires byte-identical reports, not just code.
-- For the **Rust port** (Part XIII), the reference's report and compiled
-  code are stored for every test program in both bounds modes. A parity
-  test requires the port to reproduce them byte for byte, and it does:
-  all 122 fixture pairs matched when this chapter was written, and all
-  190 do today.
-
-So changing a word in a reason is a visible diff in a review. That’s
+Because the report is text, it can be tested like code, and three places
+in the repository do. The **differential test** from *Testing
+compilers* passes `r.explain` as the failure message when a decision is
+wrong, so a failing test says why Viscosity decided what it did. The
+**mini-parser test** compiles every corpus and benchmark program with
+both parsers and requires byte-identical reports, not only code. And for
+the **Rust port**, the reference's report and compiled code are stored
+for every test program in both bounds modes, plus fourteen `--frames`
+reports; run for this chapter, the parity test printed
+`parity: 190/190 (54 Python)`, and its frames test passed. Changing a
+word in a reason is therefore a visible diff in a review, which is
 deliberate: if people read the reports, the reports are part of the
 interface.
 
@@ -211,13 +251,11 @@ interface.
 
 <Callout kind="engine" label="Under the hood">
 Engines explain themselves too, though to engine developers rather than
-users. In debug builds, V8’s `--trace-elements-transitions` flag prints
-a line whenever an array’s elements kind changes, with the script
-location<Cite id="v8-elements-kinds" />. This book’s own benchmark
-findings used a similar flag, `--trace-generalization`, to see why a
-TypeScript class field became slow (chapter 57). Those are logs of
-events, written as the program runs. Viscosity’s report is written once,
-before the program runs, about every collection.
+users. In debug builds, V8's `--trace-elements-transitions` flag prints
+a line whenever an array's elements kind changes, with the script
+location<Cite id="v8-elements-kinds" />. Those are logs of events,
+written as the program runs; Viscosity's report is written once, before
+the program runs, about every collection.
 </Callout>
 
 <Prompts ids={['rep-engines']} />
@@ -231,13 +269,11 @@ before the program runs, about every collection.
 ## What you learned
 
 - An **optimization report** explains every decision: what changed,
-  what was kept, and the evidence. `viscosity explain` prints one
-  verdict line per collection, then one `·` line per reason.
-- A transformed collection lists its hot loops, its columns, its size
-  and its bounds proofs. A kept one names what stopped it, every unsafe
-  use or the first failed check.
+  what was kept, and the evidence; `viscosity explain` prints a verdict
+  line per collection, then one `·` line per reason (`--frames` adds the
+  code).
 - The planner records the reasons as it decides, and `explain()` only
-  prints them, so the report can’t drift from the decision.
-- The report is tested byte for byte, as part of Viscosity’s interface.
+  prints them, so the report cannot drift from the decision.
+- The report is tested byte for byte, as part of Viscosity's interface.
 
 <Quiz />

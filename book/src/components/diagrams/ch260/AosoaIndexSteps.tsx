@@ -12,8 +12,8 @@ const CODE = `// fields x, y, vx (F = 3), B = 8
 const FIELDS = ['x', 'y', 'vx'];
 const COL = ['f1', 'f2', 'f3'];
 const B = 8;
-const SW = 15;
-const X0 = 20;
+const SW = 16;
+const X0 = 8;
 
 type S = { line: number | null; block?: number; field?: number; lane?: number; slot?: number; also?: number[]; calc: string; note: string };
 
@@ -23,8 +23,8 @@ const STATES: S[] = [
   { line: 2, block: 1, calc: '1 * 24 = 24', note: 'Each block holds F × B = 3 × 8 = 24 slots, so block 1 starts at slot 24.' },
   { line: 3, block: 1, field: 1, calc: '24 + 1 * 8 = 32', note: 'Inside the block, field k starts at k × 8. y is field 1, so its 8 values start at slot 32.' },
   { line: 4, block: 1, field: 1, lane: 2, slot: 34, calc: '32 + (10 & 7) = 34', note: 'Last, the lane: 10 & 7 keeps the low 3 bits, which is 10 % 8 = 2. So y of element 10 is slot 34.' },
-  { line: 4, block: 1, field: 1, slot: 34, also: [32, 33, 35, 36, 37, 38, 39], calc: 'elements 8..15: slots 32..39', note: 'Neighbouring elements’ y values are neighbours in memory: 8 doubles, exactly one 64-byte cache line. A loop over i streams through them like SoA, but all of one element’s fields stay inside one block.' },
-  { line: null, calc: 'B = 6: i / 6 and i % 6', note: 'This is why B must be a power of two. With 6, the block and lane need a real division and remainder. Viscosity stops with the error “AoSoA block size must be a power of two”.' },
+  { line: 4, block: 1, field: 1, slot: 34, also: [32, 33, 35, 36, 37, 38, 39], calc: 'elements 8..15: slots 32..39', note: 'Neighbouring elements’ y values are neighbours in memory: 8 doubles, exactly one 64-byte cache line. A loop over i streams through them as it would through a SoA column, yet all of one element’s fields stay inside one block of 24 slots.' },
+  { line: null, calc: 'B = 6: i / 6 and i % 6', note: 'This is why B must be a power of two. With 6 there are no bits to read off: the block and lane need a real division and a remainder. So the planner keeps a collection annotated aosoa(6) as objects, with the reason “the block size must be a power of two (2, 4, 8, 16, ...)”.' },
 ];
 
 export default function AosoaIndexSteps() {
@@ -53,8 +53,8 @@ export default function AosoaIndexSteps() {
                 return (
                   <g key={`${k}-${l}`}>
                     <rect x={x} y={y} width={SW - 2} height={26} rx={2} fill={tok(COL[k], a)} stroke={hit ? tok('ink') : 'none'} strokeWidth={2} />
-                    {l === 0 && <T x={x + 1} y={y + 36} size={9} mono fill={tok('muted')}>{f}</T>}
-                    {hit && <T x={x + (SW - 2) / 2} y={y + 13} size={9} mono anchor="middle" fill={tok('paper')} weight={700}>{slot}</T>}
+                    {l === 0 && <T x={x + 1} y={y + 37} size={11} mono fill={tok('muted')}>{f}</T>}
+                    {hit && <T x={x + (SW - 2) / 2} y={y + 13} size={11} mono anchor="middle" fill={tok('paper')} weight={700}>{slot}</T>}
                   </g>
                 );
               }))}

@@ -43,7 +43,7 @@ export const prompts = {
   },
   'corpus-limit': {
     q: 'What can a hand-written corpus never find?',
-    a: 'A case nobody thought of. Random program generation (fuzzing) is the tool for that.',
+    a: 'A case nobody thought of. Random program generation (fuzzing) is the tool for that, and each bug it finds becomes a new corpus file.',
   },
 };
 
@@ -221,14 +221,27 @@ test('explores many different programs', () => {
       'In `fuzz`, create `rand` once, before the loop, so each program continues the same random sequence.',
       'Compare `f(p)` and `g(p)` with `!==`, and return `p` itself, so the failure can be replayed.',
     ],
-    walkthrough: `This is chapter 225’s fuzzer, aimed at a layout compiler, which is what Viscosity would need to go beyond its corpus.
+    walkthrough: `**How to think about it.** This is a fuzzer of the kind *Fuzzing and test-case reduction* built, aimed at a layout compiler, which is what \`engine/rust/scripts/fuzz.mjs\` does for Viscosity at full size. There are two pieces: a generator that only ever makes valid programs, and a loop that runs every program through both versions and stops at the first disagreement. Two traps decide the details: a program that prints nothing can never disagree, so \`get\` must be among the statements; and the random generator must be made once, or every program comes out the same.
 
-- **Valid by construction.** \`gen\` only produces well-formed statements with arguments in range, so any disagreement is a real bug, not a malformed input. That is the hardest part of a real program generator, and here the language is small enough to make it easy.
-- **Every statement matters.** Without \`get\`, a program prints nothing, and two programs that print nothing always agree. Generating observations is as important as generating work, just like the corpus rule “print what could differ”.
-- **One generator, many programs.** Seeding once and drawing on makes every program different but the whole run reproducible: the same seed gives the same first failure, which you can then shrink and add to the corpus.
-- **What it finds.** Seed 1 finds a \`get\` past the end that prints \`0\` instead of \`none\`: the column has 4 slots, and unused slots hold 0. The \`--bounds assume\` bug from chapter 225, in miniature. Other seeds find the other bug: a fifth \`push\` is silently dropped, because the column never grows (chapter 258).
+**The solution, line by line.**
 
-Fix \`runSoA\` (keep \`n\` and check \`a < n\`; grow the column) and the fuzzer goes quiet.`,
+- \`function gen(rand) {\` takes the generator, so the caller decides the seed.
+- \`const len = 1 + rand(8);\` picks a length from 1 to 8 (\`rand(8)\` is 0 to 7).
+- \`const prog = [];\` and \`for (let i = 0; i < len; i++) {\` build that many statements.
+- \`const r = rand(3);\` picks one of three kinds, equally likely.
+- \`prog.push(['push', rand(10)]);\` is a push of 0 to 9; \`prog.push(['inc', 1 + rand(3)]);\` an increment of 1 to 3; \`prog.push(['get', rand(6)]);\` a read of index 0 to 5, which can go past the end on purpose.
+- \`return prog;\` after the loop.
+- \`function fuzz(seed, n, f, g) {\` and \`const rand = makeRand(seed);\` make **one** generator for the whole run, so each program differs from the last but the run as a whole can be repeated exactly.
+- \`for (let t = 0; t < n; t++) { const p = gen(rand); if (f(p) !== g(p)) return p; }\` is the differential loop: the original (\`f\`) is the oracle, and the first program where the outputs differ is returned, ready to shrink and add to a corpus.
+- \`return null;\` means no disagreement in \`n\` programs, which is evidence, not proof.
+
+**What it finds.** Seed 1 finds a \`get\` past the end that prints \`0\` instead of \`none\`: the column has 4 slots, and unused slots hold 0, so checking against the capacity rather than the length is the bug. Change the check to \`a < n\` and run seed 1 again, and it finds the second: after five pushes, \`get 4\` prints nothing at all, because the fifth \`push\` was silently dropped (a \`Float64Array\` ignores writes past its end, and this column never grows). Fix \`runSoA\` (keep \`n\`, check \`a < n\`, and grow the column) and the fuzzer goes quiet.
+
+**Common wrong attempts.**
+
+- Calling \`makeRand(seed)\` inside the loop restarts the generator for every program, so the fuzzer tests one program \`n\` times.
+- Generating only \`push\` and \`inc\` gives programs that print nothing, and empty outputs always agree.
+- \`1 + rand(7)\` or \`rand(8)\` for the length gives 1 to 7, or allows empty programs, which the tests reject.`,
     wrong: [
       {
         code: `// Given: a seeded random generator.
@@ -474,7 +487,7 @@ export const quiz = [
   {
     q: 'What makes a collection of test programs a corpus in Viscosity’s sense?',
     options: [
-      { t: 'It is randomly generated', why: 'Viscosity’s corpus is hand-written; random generation is fuzzing.' },
+      { t: 'It is randomly generated', why: 'Viscosity’s corpus is hand-written (some files after a fuzzer found the bug); random generation is fuzzing.' },
       { t: 'It is curated, one case per program, and the tests are generated from it', correct: true, why: 'Adding a case means adding a file.' },
       { t: 'It contains only programs that pass', why: 'A corpus file is kept precisely so it keeps passing; a failing one is a bug report.' },
       { t: 'It is stored in a database', why: 'It is a folder of ordinary source files.' },
@@ -501,8 +514,8 @@ export const quiz = [
   {
     q: 'What is true of the Rust port’s parity testing today?',
     options: [
-      { t: 'There are no fixtures yet', why: '244 fixture files are in engine/rust/tests/expected.' },
-      { t: 'The TypeScript compiler generates the fixtures, and the Rust port matches every one byte for byte', correct: true, why: '`parity.rs` compares the code and the report for every program in both bounds modes: 122 pairs, all equal.' },
+      { t: 'There are no fixtures yet', why: '402 fixture files are in engine/rust/tests/expected.' },
+      { t: 'The TypeScript compiler generates the fixtures, and the Rust port matches every one byte for byte', correct: true, why: '`parity.rs` compares the code and the report for every program in both bounds modes: 190 pairs, all equal when run for this chapter.' },
       { t: 'The parity test compares only the explain reports', why: 'It compares the compiled code too, byte for byte.' },
       { t: 'Rust is the oracle for TypeScript', why: 'The reference implementation is TypeScript.' },
     ],

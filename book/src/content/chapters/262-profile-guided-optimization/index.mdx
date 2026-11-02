@@ -3,24 +3,25 @@ n: 262
 day: 66
 part: VIII
 title: 'Profile-guided optimization'
-tagline: 'Some questions a compiler can’t answer by reading the code, like “how many elements will this array hold?”. So Viscosity runs the program once, counts, and compiles with the answer.'
+tagline: 'Some questions a compiler cannot answer by reading the code, like “how many elements will this array hold?”. So Viscosity runs the program once, counts, and compiles with the answer, and it can do so calmly, because a wrong count can only ever cost speed.'
 objectives:
   - Explain what profile-guided optimization is and which question it answers for Viscosity.
   - Describe how `viscosity profile` instruments a program without changing what it does.
-  - Read how a measured size replaces the static estimate in the cost model.
-  - Say why a profile can cost Viscosity speed but never correctness.
+  - Read how a measured size replaces the static estimate in the planner, and where that happens.
+  - Say why a profile can cost Viscosity speed but never correctness, and how that differs from a JIT.
 introduces: [pgo, instrumentation]
 uses: [function, array, push, length, closure, object, array-of-objects, identity, cost-model, collection-discovery, hot-loop, safety-analysis, bailout, type-feedback, speculation, deoptimization, benchmark-isolation, source-to-source]
 sources: [v8-maglev]
 ---
 import PgoSteps from '../../../components/diagrams/ch262/PgoSteps';
+import ProfileGate from '../../../components/diagrams/ch262/ProfileGate';
 
-## A question the code can’t answer
+## A question the code cannot answer
 
-In chapter 254 the cost model got one rule that has nothing to do with
-safety: below 64 elements, a new layout isn’t worth it. That rule needs a
-number. For most programs the analysis can count, because the elements
-are pushed in a loop with a constant bound. Here it can’t:
+*The cost model* gave Viscosity one rule that has nothing to do with
+safety: below 64 elements, a new layout is not worth it. That rule needs
+a number, and for most programs the analysis can count, because the
+elements are pushed in a loop with a constant bound. Here it cannot:
 
 ```js
 const ps = [];
@@ -36,48 +37,59 @@ for (let f = 0; f < 100; f++) {
 console.log(ps[0].x);
 ```
 
-The estimate counts literal elements, and pushes in top-level loops
-with a constant trip count. This push sits inside `spawn`, so the count
-depends on how often `spawn` is called, and the analysis gives up. This
-is what `viscosity explain` says (long lines wrapped):
+The estimate in `core/src/analysis.ts` counts literal elements and
+pushes in loops with constant trip counts, but only in the top-level
+code: a push inside a function depends on how often the function is
+called, so it gives up. `viscosity explain` says "size unknown
+statically", so the threshold cannot apply, and Viscosity turns 20
+elements into columns: safe, but pointless. You can read the 20 off
+this program; a real program's count comes from a file, the network or
+a user, and nobody can read it off the source.
 
-```
-ps (line 1) {x, vx} → struct of arrays
-  · loop at line 7 in <module>() touches
-    2 of 2 fields (vx, x)
-  · typed Float64Array columns for all 2
-    fields
-  · size unknown statically
-  · 2 of 3 element accesses proven in
-    bounds
-```
-
-“Size unknown”, so the threshold can’t apply, and Viscosity transforms
-20 elements into columns. It is safe, but pointless. You can read this
-program and see the 20. A real program’s count comes from a file, a
-network or a user, and nobody can read it off the source.
-
-<Prompts ids={['pgo-why-here']} />
-
-<Callout kind="intuition">
-A tailor can guess your size from your age and height, or can measure
-you. Measuring takes a minute and gives the right answer, for you, on
+<Analogy title="a tailor with a tape measure">
+A tailor can guess your size from your height and age, or can measure
+you; measuring takes a minute and gives the right answer, for you, on
 the day you were measured.
-</Callout>
+<span slot="breaks">You will not grow into a different person by next
+week; a program can be measured on a small input and then run on a huge
+one.</span>
+</Analogy>
+
+<Analogy title="a shop ordering from last year's sales">
+A shop orders this winter's stock from last winter's sales book rather
+than from a hunch; if this winter turns out different, the shop has too
+many umbrellas or too few, but it never sells anything it should not.
+<span slot="breaks">A shop that misjudges loses money on every item;
+Viscosity's worst case is a program exactly as fast as it was before
+compiling.</span>
+</Analogy>
 
 ## Run it, count, compile
 
 Viscosity answers the question by running the program. The command is
-`viscosity profile`, and the output goes back in with `--profile`:
+`viscosity profile`, and its output goes back in with `--profile`. Step
+through the loop, with every line of output taken from real runs of
+the program above:
 
-```
+<PgoSteps client:visible />
+
+<Callout kind="definition">
+**Profile-guided optimization (PGO)** is compiling with measurements
+taken from real runs of the program, rather than only with what can be
+worked out from the source. The measurements are the **profile**. The
+usual loop is: instrument the program, run it on typical input, record,
+and recompile with the record.
+</Callout>
+
+<Examples of="pgo">
+
+```text
 $ viscosity profile spawn.js -o p.json
 $ cat p.json
-{
-  "ps": {
-    "maxLength": 20
-  }
-}
+{ "ps": { "maxLength": 20 } }
+```
+
+```text
 $ viscosity explain spawn.js \
     --profile p.json
 ps (line 1) {x, vx} → kept as array of
@@ -87,48 +99,55 @@ ps (line 1) {x, vx} → kept as array of
     benefit is too small
 ```
 
-Both outputs are real, from runs for this chapter. Step through the
-whole loop:
+```text
+# the same program with 5000 calls:
+ps (line 1) {x, vx} → struct of arrays
+  · about 5000 elements (measured by
+    profiling)
+```
 
-<PgoSteps client:visible />
+</Examples>
 
-<Callout kind="definition">
-**Profile-guided optimization (PGO)** is compiling with measurements
-taken from real runs of the program, instead of relying only on what can
-be worked out from the source. The measurements are the **profile**.
-The usual loop is: instrument, run on typical input, record, recompile.
-</Callout>
+The first runs the program once and writes the profile (the real file
+spreads it over several lines). The second compiles with it:
+the measured 20 is below 64, so `ps` stays an array of objects, and the
+report says the number was measured. The third is the same program with
+the loop bound changed to 5000: profiled again, the measured size clears
+the threshold and the verdict flips (the report's other lines are left
+out here).
 
-<Prompts ids={['pgo-what', 'measured-wins']} />
+<Prompts ids={['pgo-why-here', 'pgo-what']} />
 
 ## Instrumentation
 
 To count, `viscosity profile` builds a slightly different program. It
-finds the collections the same way the compiler does (chapter 249), and
-wraps the expression that creates each one. From `cli/src/profile.ts`,
-simplified:
+finds the collections the same way the compiler does (*Finding
+collections*) and wraps the expression that creates each one. From
+`cli/src/profile.ts`, slightly simplified:
 
 ```ts
-function instrument(src, plugin) {
-  const m = plugin.lower(src).module;
-  const cs = analyze(m).collections;
-  // Edit from the end: offsets stay valid.
-  cs.sort((a, b) =>
-    b.init.src.start - a.init.src.start);
-  let out = src;
-  for (const c of cs) {
-    const { start, end } = c.init.src;
-    out = out.slice(0, start) +
-      `__vsc_track("${c.name}", ` +
-      out.slice(start, end) + ')' +
-      out.slice(end);
-  }
-  return PRELUDE + out;
+const a = analyze(plugin.lower(src).module);
+const edits = a.collections
+  .map((c) => ({ start: c.init.src.start,
+    end: c.init.src.end, name: c.name }))
+  .sort((x, y) => y.start - x.start);
+let out = src;
+for (const e of edits) {
+  const q = JSON.stringify(e.name);
+  out = out.slice(0, e.start) +
+    `__vsc_track(${q}, ` +
+    out.slice(e.start, e.end) + ')' +
+    out.slice(e.end);
 }
+return prelude + out;
 ```
 
-So `const ps = [];` becomes `const ps = __vsc_track("ps", []);`. The
-prelude defines the tracker and an exit hook:
+Line by line: the program is lowered and analysed exactly as for
+compiling; each collection contributes the start and end of its
+creating expression and its name; the edits are sorted from the end of
+the file backwards, so that inserting text never shifts the offsets of
+edits still to come; and each edit wraps the expression in a call. The
+prelude, put in front, defines the tracker and an exit hook:
 
 ```js
 const __vsc_seen = [];
@@ -138,24 +157,29 @@ function __vsc_track(name, arr) {
 }
 process.on('exit', () => {
   const p = {};
-  for (const [n, a] of __vsc_seen) {
-    const old = p[n]?.maxLength ?? 0;
-    p[n] = {
-      maxLength: Math.max(old, a.length) };
-  }
-  writeFileSync(
-    process.env.VSC_PROFILE_OUT,
-    JSON.stringify(p, null, 2));
+  for (const [n, a] of __vsc_seen)
+    p[n] = { maxLength: Math.max(
+      p[n]?.maxLength ?? 0, a.length) };
+  // ...write p to $VSC_PROFILE_OUT
 });
 ```
 
-`__vsc_track` returns the *same* array it was given. Nothing is copied
+`__vsc_track` returns the *same* array it was given; nothing is copied
 or wrapped, so every `push`, every `===` and every `console.log` behaves
-as before. A profile of a program that behaves differently would be a
-profile of the wrong program.
+as before, because a profile of a program that behaves differently would
+be a profile of the wrong program. The exit hook reads each tracked
+array's length once, at the very end, and keeps the largest per name.
+The instrumented copy runs once in a fresh Node process with its output
+thrown away; nothing is timed, it only counts.
 
-The profile run is the original program, run once in its own Node
-process with its output thrown away. Nothing is timed: it counts.
+<Analogy title="a traffic counter across a road">
+A council counts cars by laying a thin rubber tube across the road; each
+wheel that rolls over it is counted, and the traffic carries on exactly
+as before.
+<span slot="breaks">Some drivers do slow down for the tube; good
+instrumentation must change nothing a program can notice, and Viscosity's
+only visible cost is a little extra time.</span>
+</Analogy>
 
 <Callout kind="definition">
 **Instrumentation** is code added to a program to record what it does
@@ -164,83 +188,94 @@ instrumentation changes nothing the program can observe, and costs as
 little as possible.
 </Callout>
 
-<Prompts ids={['inst-what', 'track-return', 'exit-hook']} />
+<Examples of="instrumentation">
 
-Try it in the browser. This is the same instrumentation, done by hand:
+```js
+const ps = [];
+// instrumented:
+const ps = __vsc_track("ps", []);
+```
+
+```js
+const grid = [{ h: 0 }, { h: 1 }];
+// instrumented:
+const grid = __vsc_track("grid",
+  [{ h: 0 }, { h: 1 }]);
+```
+
+```text
+viscosity: the profiled program failed
+  (exit code 1)
+```
+
+</Examples>
+
+The first is the real rewrite of our program's first line. The second
+shows that the whole creating expression is wrapped, literal elements
+and all, so the tracker sees the array the program will use. The third
+is what you get if the program throws while being profiled: no profile
+at all, because the sizes of half a run could mislead the planner. Try
+the same instrumentation by hand, and change `waves` to 5000:
 
 <Run id="track" />
 
+<Prompts ids={['inst-what', 'track-return', 'exit-hook']} />
+
 ## Where the number goes
 
-The profile reaches exactly one line of the planner. From
+The profile reaches exactly one place in the planner, from
 `core/src/plan.ts`:
 
 ```ts
 const measured =
   opts.profile?.[c.name]?.maxLength;
 const size = measured ?? c.sizeEstimate;
-if (size !== null && size < opts.minSize) {
+if (size !== null && size < opts.minSize)
   // keep: "about N elements (measured)"
-}
 ```
 
-A measurement, when there is one, beats the estimate. And the report
-says which it used: “(measured)” on a kept collection, “(measured by
-profiling)” on a transformed one. Profile the same program with 5000
-calls to `spawn` and the verdict flips:
+A measurement, when there is one, beats the estimate (`??` takes the
+right side only when the left is missing, so a measured 0 still
+counts). Look at *where* that line sits:
 
+<Figure caption="The planner's checks for an unannotated collection, in order. Any yes keeps the objects, with that reason." takeaway="A profile can only move the last rung, after every safety check has passed.">
+  <ProfileGate />
+</Figure>
+
+<Formal title="The size the threshold sees">
+
+```text
+size(c) = profile(c)   if c was measured
+        = estimate(c)  otherwise
+keep(c) ⟸ size(c) known ∧ size(c) < 64
 ```
-ps (line 1) {x, vx} → struct of arrays
-  · …
-  · about 5000 elements (measured by
-    profiling)
-```
 
-Look at *where* that line sits. By the time the planner reads the
-profile, the collection has already passed every safety check, has a
-numeric field, and has a loop over its fields. A profile can’t rescue an
-unsafe collection, because none of those checks look at it.
+<span slot="read">The size of collection c is its measured length if the
+profile has one, and the static estimate otherwise; c is kept as objects
+if (⟸, "it follows from") its size is known and less than 64.</span>
+</Formal>
 
-<Prompts ids={['profile-safety']} />
+So a wrong profile can only pick between two programs already proven to
+behave identically (*Proving it safe*), and the worst a stale profile
+can do is choose the slower of two right answers. There are rough edges,
+visible in the code: profiles are keyed by the variable's name, so two
+collections both called `ps` share an entry; `viscosity profile` passes
+the program no command-line arguments, so it must produce its typical
+workload by itself; it cannot profile Python yet ("Python profiling is
+not supported yet"); and the profile type has room for per-field read
+counts that nothing records yet.
 
-<Callout kind="pitfall">
-A profile describes one run. Profile with a tiny test input, deploy
-with a million elements, and Viscosity will have kept a collection as
-objects that should have been columns. Profile with the input you
-care about. Note that `viscosity profile` runs the program with no
-command-line arguments, so the program must produce its typical
-workload on its own.
-</Callout>
-
-<Prompts ids={['profile-input']} />
-
-## Why a wrong profile is only slow
-
-Here is the property that makes Viscosity’s PGO calm. Both layouts were
-already proven to behave identically (chapter 252). The profile only
-chooses between two correct programs. So the worst a stale or
-unrepresentative profile can do is pick the slower of two right
-answers.
-
-<Prompts ids={['profile-correct']} />
-
-There are rough edges, visible in the code. Profiles are keyed by the
-array’s variable name, so two collections both called `ps` in different
-functions share one entry. And lengths are read once, at exit. For a
-collection Viscosity can transform that is the same as the maximum,
-because such a collection only ever grows: only `.push` and `.length`
-are allowed. The `profile` type also has room for per-field read
-counts, but nothing records or reads them yet.
+<Prompts ids={['profile-safety', 'profile-input', 'profile-correct']} />
 
 <Callout kind="engine" label="Under the hood">
 A JIT does profile-guided optimization all the time, during the same
 run. V8 records feedback about the shapes and types each operation sees,
 and its optimizing compilers use it to generate specialized code; if an
 assumption later breaks, the code is thrown away and execution
-deoptimizes<Cite id="v8-maglev" />. That is the price of using a
-profile for decisions that affect correctness: every assumption needs
-a guard. Viscosity’s profile is collected ahead of time and only picks
-a size threshold, so its output needs no guard at all.
+deoptimizes<Cite id="v8-maglev" /> (*Speculation and deoptimization*).
+That is the price of a profile that affects correctness: every
+assumption needs a guard. Viscosity's profile is collected ahead of time
+and only picks a size threshold, so its output needs no guard at all.
 </Callout>
 
 <Prompts ids={['jit-pgo']} />
@@ -254,14 +289,11 @@ a size threshold, so its output needs no guard at all.
 ## What you learned
 
 - **Profile-guided optimization** compiles with measurements from a real
-  run. Viscosity measures the one thing it can’t always compute: how big
+  run; Viscosity measures the one thing it cannot always compute, how big
   each collection gets.
-- **Instrumentation** wraps each collection’s creation in
-  `__vsc_track`, which returns the same array, so the program behaves
-  exactly as before. An exit hook writes the lengths to a JSON profile.
-- In the planner, `measured ?? estimate`: a measurement wins, and the
-  report says “(measured)”.
-- The profile is read only after every safety check passes, so a bad
-  profile can cost speed, never correctness. Profile with typical input.
+- **Instrumentation** wraps each collection's creation in `__vsc_track`,
+  which returns the same array, and an exit hook writes the lengths.
+- In the planner, `measured ?? estimate`, read only after every safety
+  check, so a bad profile costs speed, never correctness.
 
 <Quiz />

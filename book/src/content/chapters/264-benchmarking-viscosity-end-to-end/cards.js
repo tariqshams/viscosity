@@ -18,12 +18,12 @@ export const prompts = {
     a: 'It keeps the work observable, so it can’t be removed as dead code, and it lets the harness check both versions computed the same thing.',
   },
   'e2e-fresh': {
-    q: 'Why does every run of every version get a new Node process?',
+    q: 'Why does every run of every version get a fresh process?',
     a: 'So no run inherits the other version’s type feedback, compiled code or garbage.',
   },
   'e2e-median': {
-    q: 'In the rerun of particles, one compiled run took 135 ms and the others about 90. Why doesn’t it spoil the result?',
-    a: 'The harness reports the median, and an outlier is never in the middle.',
+    q: 'In the committed particles runs on Node, one compiled run took 135 ms while the best took 90. Why doesn’t that one run spoil the result?',
+    a: 'The harness reports the best and the median, and a single slow outlier is neither the fastest run nor the one in the middle.',
   },
   'e2e-wins': {
     q: 'Which committed programs gained most, and what do they have in common?',
@@ -38,8 +38,8 @@ export const prompts = {
     a: 'No. The proof was generalized, so the checks became unnecessary: 12 of 12 accesses proven in bounds.',
   },
   'e2e-noise': {
-    q: 'The committed n-body speed-up is 1.09×; a rerun gave 1.20×. What should you claim?',
-    a: 'Only that n-body gets a little faster: differences that small are within run-to-run noise on a shared VM.',
+    q: 'One committed run gave ledger 5.11×; the later matrix gave 3.75× (best). What should you claim?',
+    a: 'Only the coarse picture: ledger is several times faster. Timings on that shared VM varied by up to about 2× between runs.',
   },
   'e2e-python': {
     q: 'In CPython, what did column storage cost and what did it save?',
@@ -84,10 +84,10 @@ function speedup(a, b) {
   return +(ma / mb).toFixed(2);
 }`,
     tests: `const run = (ms, check = 'c') => ({ ms, check });
-test('the rerun of particles', () => {
-  const a = [442, 379, 397, 393, 378].map((m) => run(m));
-  const b = [92, 135, 89, 89, 91].map((m) => run(m));
-  expect(speedup(a, b)).toBe(4.32);
+test('the committed particles runs on Node', () => {
+  const a = [410.6, 393, 497.3, 429, 399.3, 395.8, 423.3, 459.9, 574.4].map((m) => run(m));
+  const b = [118.1, 94.2, 114, 95.3, 117.7, 90, 135, 123.9, 103.7].map((m) => run(m));
+  expect(speedup(a, b)).toBe(3.71);
 });
 test('an outlier does not move the median', () => {
   const a = [100, 100, 100].map((m) => run(m));
@@ -119,14 +119,25 @@ test('does not reorder the inputs', () => {
       'For the median, copy before sorting: `[...xs].sort((x, y) => x - y)`. Without the comparator, numbers sort as strings.',
       'Divide the two medians and round with `+(x).toFixed(2)`.',
     ],
-    walkthrough: `This is the core of \`packages/bench/src/e2e.ts\`, made a little stricter.
+    walkthrough: `**How to think about it.** This is the core of the harness (\`packages/bench/src/e2e.ts\` and the matrix script), made a little stricter. Two rules come from *Benchmarking honestly* and *Noisy numbers: the median, p95 and a fresh process*: correctness before speed, so the checksums are checked first and a mismatch throws; and a robust summary, so one slow run (the committed particles data has a 135 ms run among others from 90 to 124) cannot drag the answer about. The median does that: it ignores how far an outlier is from the rest.
 
-- **Correctness before speed.** The checksum check comes first, and it throws. A compiled program that is fast and wrong has no speed-up worth reporting; stopping the benchmark makes sure nobody quotes one. Checking every run, not just the last, also catches a program whose output varies from run to run, which would make the comparison meaningless.
-- **Median, not mean.** The starter averages, so one slow run (the 135 ms one) drags the compiled time up and the speed-up down. The median ignores how far an outlier is from the rest.
-- **Sort a copy, numerically.** \`sort()\` mutates its array, and without a comparator it compares numbers as strings (\`'135' < '89'\`). Both are classic benchmark-script bugs.
-- **Upper median.** For an even count, \`Math.floor(n / 2)\` takes the upper of the two middle values, exactly as the harness does. Odd counts (3 or 5 runs) avoid the question.
+**The solution, line by line.**
 
-The real harness throws on a mismatch between the two versions’ last checksums; checking every run is a small extra guard.`,
+- \`function median(xs) {\` is a helper.
+- \`const s = [...xs].sort((x, y) => x - y);\` sorts a *copy* (\`sort\` changes the array it is called on) with a numeric comparator; without one, numbers are compared as strings, and \`'135' < '90'\`.
+- \`return s[Math.floor(s.length / 2)];\` takes the middle element; for an even count this is the upper of the two middle values, as the e2e harness does.
+- \`function speedup(a, b) {\` and \`const want = a[0].check;\` take the first run's checksum as the reference.
+- \`for (const r of [...a, ...b]) { if (r.check !== want) throw new Error('checksum: ' + r.check); }\` checks every run of both versions: a fast wrong answer must stop the benchmark, and a program whose own output varies from run to run cannot be compared at all.
+- \`const ma = median(a.map((r) => r.ms));\` and the same for \`b\` pull out the times and summarise them.
+- \`return +(ma / mb).toFixed(2);\` divides original by compiled (bigger is faster) and rounds; \`toFixed\` returns a string, and the \`+\` in front turns it back into a number.
+
+For the committed particles runs, the medians are 423.3 and 114 ms, and the answer is 3.71, exactly the matrix's median speed-up.
+
+**Common wrong attempts.**
+
+- Averaging (the starter) lets the 135 ms run and the 574.4 ms run pull the means about; the answer comes out 4.01.
+- \`sort()\` without a comparator sorts \`'90'\` after \`'135'\`, so the "median" of the compiled runs becomes 123.9.
+- Checking only the last run's checksum, as the simplest harness does, misses a run that went wrong earlier.`,
     wrong: [
       {
         code: `function speedup(a, b) {
@@ -172,15 +183,15 @@ function speedup(a, b) {
   const slowB = Math.max(...b);
   return slowB < Math.min(...a);
 }`,
-    tests: `test('particles: clearly faster', () => {
-  expect(clearlyFaster([442, 379, 397, 393, 378], [92, 135, 89, 89, 91])).toBe(true);
+    tests: `test('particles on Node: clearly faster', () => {
+  expect(clearlyFaster([410.6, 393, 497.3, 429, 399.3, 395.8, 423.3, 459.9, 574.4], [118.1, 94.2, 114, 95.3, 117.7, 90, 135, 123.9, 103.7])).toBe(true);
 });
-test('n-body rerun: overlapping', () => {
-  expect(clearlyFaster([64, 88, 59, 59, 74], [52, 55, 56, 53, 53])).toBe(true);
-  expect(clearlyFaster([64, 88, 52, 59, 74], [52, 55, 56, 53, 53])).toBe(false);
+test('n-body on Node: overlapping', () => {
+  expect(clearlyFaster([62.6, 71.3, 63.4, 81.2, 92.6, 62, 73.6, 72.8, 61.6], [51.3, 72.9, 72.9, 71.9, 57, 57.3, 68.1, 62.8, 63.5])).toBe(false);
 });
-test('boids rerun', () => {
-  expect(clearlyFaster([83, 88, 69, 73, 62], [56, 53, 46, 63, 47])).toBe(false);
+test('boids: overlapping on Node, clear on Bun', () => {
+  expect(clearlyFaster([103.2, 68.6, 66, 60.1, 92, 63.3, 57.4, 121.9, 111.4], [43.8, 49.2, 53, 78.8, 66.6, 71.9, 46.1, 82.1, 56.6])).toBe(false);
+  expect(clearlyFaster([96.4, 101, 67.6, 75.4, 73, 90.1, 83.4, 71.9, 64.1], [58.3, 55.9, 58, 39, 49.7, 61.2, 34.6, 37.2, 40.3])).toBe(true);
 });
 test('a tie is not faster', () => {
   expect(clearlyFaster([10, 12], [10, 9])).toBe(false);
@@ -189,20 +200,28 @@ test('a tie is not faster', () => {
       'The question is about the worst compiled run and the best original run.',
       '`Math.max(...b)` is the slowest compiled run; `Math.min(...a)` is the fastest original.',
     ],
-    walkthrough: `The slowest compiled run has to beat the fastest original run.
+    walkthrough: `**How to think about it.** "Clearly faster" here means the two sets of runs do not overlap at all: even the compiled program's worst run beat the original's best. So you need only two numbers, the slowest compiled run and the fastest original run.
 
-- **Totals hide overlap.** The starter compares sums, so it says “faster” whenever the compiled runs are faster on average, even if some original runs beat some compiled ones.
-- **Non-overlapping ranges are a strong, simple signal.** For particles (378–442 ms against 89–135 ms) there is no doubt. For the boids rerun, the fastest original run (62 ms) beat the slowest compiled run (63 ms), even though the medians said 1.39×.
-- **It is not a statistical test.** With more runs, ranges overlap more easily, and real benchmark tools use confidence intervals instead. But as a first check on a noisy machine, “do the ranges overlap?” stops you from over-claiming a 1.09×.
+**The solution, line by line.**
 
-These run times are the real per-run values from the chapter’s rerun (the n-body set is used twice, once with one value changed).`,
+- \`const slowB = Math.max(...b);\` spreads the compiled times into \`Math.max\` and takes the slowest.
+- \`return slowB < Math.min(...a);\` compares it with the fastest original run; a tie is not faster, so the comparison is strict.
+
+All the test data is the committed per-run data from the benchmark matrix. For particles on Node the ranges are 393 to 574.4 ms against 90 to 135 ms: no doubt at all. For n-body on Node, the slowest compiled run (72.9 ms) was slower than the fastest original run (61.6 ms), although the best-of-9 speed-up was 1.2×. Boids overlaps on Node but not on Bun.
+
+**Common wrong attempts.**
+
+- Comparing sums or means (the starter) says "faster" whenever the compiled runs are faster on average, even if many original runs beat many compiled ones.
+- Comparing the two *fastest* runs lets one lucky compiled run decide; for n-body on Node it says true.
+
+This is not a statistical test: with more runs, ranges overlap more easily, and real benchmark tools use confidence intervals. But as a first check on a noisy machine, "do the ranges overlap?" stops you over-claiming a 1.2×.`,
     wrong: [
       {
         code: `function clearlyFaster(a, b) {
   const fastB = Math.min(...b);
   return fastB < Math.min(...a);
 }`,
-        why: 'It compares the best compiled run with the best original run, so one lucky compiled run is enough. For boids it says true although a compiled run (63 ms) was slower than an original one (62 ms).',
+        why: 'It compares the best compiled run with the best original run, so one lucky compiled run is enough. For n-body on Node it says true although a compiled run (72.9 ms) was slower than an original one (61.6 ms).',
       },
     ],
   },
@@ -237,11 +256,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'A rerun gives ledger 3.68× where the committed results say 5.11×. What is the best conclusion?',
+    q: 'The 3-run results file says ledger 5.11×; the later 9-run matrix says 3.75× (best). What is the best conclusion?',
     options: [
-      { t: 'The compiler regressed', why: 'The compiled time barely moved (46 → 49 ms); the original’s did (237 → 180 ms).' },
+      { t: 'The compiler regressed', why: 'The compiled time barely moved (46 ms, then 44.6 ms best); the original’s moved far more (237 ms, then 167.5 ms best).' },
       { t: 'One of the two runs is wrong and must be discarded', why: 'Both are honest measurements of a noisy machine.' },
-      { t: 'Report the average, 4.4×', why: 'Averaging two noisy medians doesn’t remove the noise; it hides it.' },
+      { t: 'Report the average, 4.4×', why: 'Averaging two noisy figures doesn’t remove the noise; it hides it.' },
       { t: 'Ledger is several times faster; the exact factor varies with machine noise', correct: true, why: 'Claim what both runs support, at the resolution they support.' },
     ],
   },
@@ -250,7 +269,7 @@ export const quiz = [
     options: [
       { t: 'To use more CPU cores', why: 'Runs are sequential.' },
       { t: 'Because Node can only run one file per process', why: 'The point is isolation, not a Node restriction.' },
-      { t: 'So no run inherits type feedback, compiled code or garbage from another', correct: true, why: 'The same isolation rule as chapter 61.' },
+      { t: 'So no run inherits type feedback, compiled code or garbage from another', correct: true, why: 'The isolation rule from *Noisy numbers: the median, p95 and a fresh process*.' },
       { t: 'To skip JIT warm-up', why: 'A fresh process starts cold; warm-up is included in every run.' },
     ],
   },
