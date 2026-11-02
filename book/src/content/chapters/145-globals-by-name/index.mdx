@@ -3,194 +3,245 @@ n: 145
 day: 37
 part: IV
 title: 'Globals by name'
-tagline: 'The VM can add and print, but it can’t remember a single name. Three new instructions and the hash table you just built give it memory, and one of them hides a neat little trick.'
+tagline: 'Three instructions and the hash table you just built give the VM a memory for names, and one of them saves a lookup with a small trick: store first, and undo if the name was new.'
 objectives:
-  - Explain how the compiler turns a variable name into a constant-pool operand.
-  - Trace DEFINE_GLOBAL, GET_GLOBAL and SET_GLOBAL against the VM’s globals table.
-  - "Explain SET_GLOBAL’s trick: set first, and undo if the name was new."
-  - Say why a function can use a global that is defined after it.
+  - Explain how the compiler turns a variable's name into a two-byte constant operand.
+  - Trace define.global, load.global and store.global against the VM's globals table.
+  - "Explain store.global's trick: set first, and undo if the name was new."
+  - Say why a function can use a global that is defined after it, and what name lookups cost.
 introduces: [global-table]
-uses: [global-variable, hash-table, hash-function, open-addressing, interning, heap-object, constant-pool, chunk, opcode, bytecode, virtual-machine, stack-machine, disassembler, single-pass-compiler, emit, dispatch-loop, runtime-error, side-effect, expression-vs-statement, environment, map, drip, identifier, native-function, function, call, variables, strings, numbers]
-sources: [nystrom2021, cpython-dis]
+uses: [global-variable, hash-table, hash-function, open-addressing, load-factor, interning, heap-object, constant-pool, chunk, opcode, bytecode, virtual-machine, stack-machine, disassembler, single-pass-compiler, emit, dispatch-loop, runtime-error, side-effect, expression-vs-statement, environment, map, drip, identifier, native-function, function, call, variables, strings, numbers]
+sources: [cpython-dis]
 ---
 import GlobalSteps from '../../../components/diagrams/ch145/GlobalSteps';
+import NameToValue from '../../../components/diagrams/ch145/NameToValue';
 
-## A VM with no memory
+## A VM with no memory for names
 
-By the end of chapter 144 the VM is a good calculator. It compiles
-`print (1 + 2) * 3;` to bytecode and runs it. But try this:
+So far the VM can work out `print (1 + 2) * 3;`, but give it this and
+it has nowhere to keep `total`:
 
-```js
+```text
 let total = 10;
 total = total + 5;
 print total;
 ```
 
-The compiler has no idea what `let` means, and the VM has nowhere to
-put `total`. In chapter 100 the tree-walker solved this with a `Map`
-from names to values. The VM will do the same thing, with one change:
-the table is the hash table you built in chapter 143, and its keys are
-the interned strings of chapter 144.
+The tree-walker kept a `Map` from names to values; the VM does the
+same, with the hash table of *Finding things fast*, keyed by the
+interned strings of *String interning*.
 
-<Callout kind="intuition">
-A cloakroom. You hand over your coat, and it goes on a hook. To get it
-back you say your name, and the attendant looks it up. Globals work
-exactly like that: the name is the ticket, and every visit means a
-look-up at the counter.
-</Callout>
+<Analogy title="a cloakroom">
+You hand your coat over and it goes on some hook; to get it back you
+give your name, and the attendant looks it up.
+<span slot="breaks">A real cloakroom gives you a numbered ticket, so
+the next look-up is instant; a global instruction keeps only the
+*name*, and looks it up every time it runs. (Locals, in the next
+chapter, are the numbered tickets.)</span>
+</Analogy>
+
+<Analogy title="the noticeboard in a shared kitchen">
+Anyone in the building can read the board ("milk: Sam") or rub out
+Sam's name and write Ana's.
+<span slot="breaks">Anyone can add a new line to a real board; in Drip
+only `let` adds a name, and assigning to an undeclared name is an
+error, which the trick later in this chapter has to catch.</span>
+</Analogy>
 
 ## A name becomes a constant
 
-A bytecode instruction can't carry a string inside it: its operands
-are single bytes. So the compiler puts the variable's *name* into the
-chunk's constant pool, as a string, and the instruction refers to it by
-index. Here is the helper in `compiler.ts`:
+An instruction cannot carry a string: after the opcode come only bytes.
+So the compiler puts the *name* in the constant pool, as a string, and
+the instruction gives its index (from `vm/compiler.ts`, line breaks
+added to fit the page):
 
 ```ts
 const identifierConstant =
-  (name: VmToken) =>
-    makeConstant(
-      heap.copyString(name.lexeme));
+  (name: string) =>
+    makeConstant(heap.copyString(name));
 ```
 
-`copyString` interns the name, so every mention of `total` in the
-program becomes a pointer to the *same* string object. And here is how
-a `let` is compiled, slightly simplified:
+`copyString` interns the name, so every mention of `total` refers to
+the *same* string object. A helper, `emitConstantOp`, then writes the
+opcode and the index in two bytes, high byte first (`(k >> 8) & 0xff`)
+and low byte second (`k & 0xff`), so one function can name up to 65,536
+constants. Here is how a `let` is compiled:
 
 ```ts
 function letDeclaration() {
-  const global = parseVariable(
-    'Expect variable name.');
+  consume('identifier',
+    'a variable name after \'let\'');
+  const name = previous;
+  declareVariable(name);
   if (match('=')) expression();
-  else emit(OP.NIL);
-  consume(';', ...);
-  emit(OP.DEFINE_GLOBAL, global);
+  else emit(Op.None);
+  consume(';',
+    '\';\' after the variable declaration');
+  defineVariable(name);
 }
 ```
 
-`parseVariable` consumes the name and returns its constant index.
-Then the initializer is compiled, which leaves its value on top of the
-stack at run time. No initializer? Push `nil`. Finally, one
-instruction says "store the top of the stack under this name".
+`letDeclaration` reads the name, compiles the initialiser (which leaves
+its value on the stack when the program runs) or emits `none` if there
+is none, checks the `;`, and calls `defineVariable`. At the top level,
+that emits `define.global` with `identifierConstant(name.lexeme)` as its
+operand (inside a block it does something else, the next chapter's
+subject). Reading and assigning go through `namedVariable`, which emits
+`load.global` or `store.global` the same way when the name is not a
+local.
 
-Reading and assigning go through `namedVariable`. When a name isn't a
-local (the next chapter), it becomes a global:
+Here is the companion disassembler's output for a three-line program:
 
-```ts
-arg = identifierConstant(name);
-if (canAssign && match('=')) {
-  expression();
-  emit(OP.SET_GLOBAL, arg);
-} else {
-  emit(OP.GET_GLOBAL, arg);
-}
-```
-
-Here is the real disassembly of a four-line program:
-
-```js
+```text
 let a = 1;
 print a;
 a = a + 2;
-print a;
 ```
 
 ```text
-== script ==
-0000    1 OP_CONSTANT         1 '1'
-0002    | OP_DEFINE_GLOBAL    0 'a'
-0004    2 OP_GET_GLOBAL       2 'a'
-0006    | OP_PRINT
-0007    3 OP_GET_GLOBAL       4 'a'
-0009    | OP_CONSTANT         5 '2'
-0011    | OP_ADD
-0012    | OP_SET_GLOBAL       3 'a'
-0014    | OP_POP
-0015    4 OP_GET_GLOBAL       6 'a'
-0017    | OP_PRINT
-0018    5 OP_NIL
-0019    | OP_RETURN
+== <script> ==
+0000    1 const               0 '1'
+0003    | define.global       1 'a'
+0006    2 load.global         2 'a'
+0009    | print
+0010    3 load.global         4 'a'
+0013    | const               5 '2'
+0016    | add
+0017    | store.global        3 'a'
+0020    | pop
+0021    | none
+0022    | return
 ```
 
-Look at the constant numbers after the global instructions: 0, 2, 4, 3,
-6. Each mention of `a` added a new entry to the pool. They are all the
-same interned string, though, so the waste is a few slots of the pool,
-not a few copies of the text. (Constant 0 comes before constant 1
-because the name is read before the initializer.) And `a = a + 2`
-ends in `POP`: an assignment produces a value, and an expression
-statement throws it away.
+Every instruction with a constant is three bytes long (the offsets go
+up by 3). The constants for `a` are 1, 2, 4 and 3: each mention adds
+a pool entry, but all hold the same interned string, so the cost is a
+few pool slots, not copies of the text. (In `a = a + 2` the target is
+read first, so its constant, 3, comes before the right-hand side's.)
+The line ends in `pop`: an assignment produces a value, and an
+expression statement throws it away.
 
-<Prompts ids={['name-in-pool', 'many-constants', 'let-no-init']} />
+<NameToValue />
+
+<Prompts ids={['name-in-pool', 'two-bytes']} />
 
 ## Three instructions
 
-Now the VM side, from the dispatch loop in `vm.ts`:
+Now the VM side, from the dispatch loop in `vm/vm.ts` (`readString`
+reads two operand bytes and returns that constant as a string object):
 
 ```ts
-case OP.DEFINE_GLOBAL:
-  this.globals.set(readString(),
-    this.peek(0));
-  this.pop();
-  break;
-case OP.GET_GLOBAL: {
+case Op.LoadGlobal: {
   const name = readString();
   const v = this.globals.get(name);
   if (v === undefined)
-    this.runtimeError(`Undefined ` +
-      `variable '${name.chars}'.`);
-  this.push(v);
+    this.runtimeError(
+      `undefined variable '${name.chars}'`);
+  this.push(v!);
   break;
 }
+case Op.DefineGlobal:
+  this.globals.set(readString(),
+    this.peek(0));
+  this.sp--;
+  break;
 ```
 
-`readString` reads the operand byte and fetches that constant.
-`DEFINE_GLOBAL` *peeks* at the value, stores it, and only then pops.
-That order looks fussy, but it keeps the value on the stack, where the
-garbage collector of chapter 150 can see it, until it is safely in the
-table. `DEFINE_GLOBAL` never complains about an existing name: like
-the tree-walker, Drip lets a second `let` at the top level simply
-replace the first.
+`load.global` pushes the value stored under the name, or stops with
+Drip's runtime error. `define.global` *peeks* at the value, stores it,
+and only then drops it (`this.sp--`), so the value is always somewhere
+a garbage collection would find it (a habit the VM keeps everywhere).
+It never complains about an existing name: as in the tree-walker, a
+second top-level `let` replaces the first.
 
 <Callout kind="definition">
-The VM's **global table** is one hash table (`vm.globals`, a `Table`)
-mapping interned name strings to values. `DEFINE_GLOBAL` stores and
-pops the value on top of the stack. `GET_GLOBAL` pushes the value
-stored under a name, or reports `Undefined variable`. `SET_GLOBAL`
-overwrites an existing name and leaves the value on the stack. Each
-takes one operand: the constant-pool index of the name.
+The VM's **global table** is one hash table (`vm.globals`) mapping
+interned name strings to values. `define.global` stores the value on
+top of the stack under a name and pops it; `load.global` pushes the
+value stored under a name, or reports `undefined variable`;
+`store.global` overwrites an *existing* name and leaves the value on
+the stack. Each takes one operand: the two-byte constant index of the
+name.
 </Callout>
 
-<Prompts ids={['global-table-what', 'peek-then-pop', 'redefine']} />
+<Formal title="The three instructions">
 
-## The SET_GLOBAL trick
+```text
+G : name ⇀ value          (the globals)
+define n:  G := G[n ↦ v], pop v
+load n:    push G(n)   if n ∈ dom G
+store n:   G := G[n ↦ v]  if n ∈ dom G
+otherwise: undefined variable 'n'
+```
 
-Assigning to a name that was never defined must be an error. The
-obvious code looks the name up, checks it is there, and then stores:
-two hash look-ups. The VM does it in one:
+<span slot="read">G is a partial map (the half arrow) from names to
+values: not every name has one. define sets n to v, the value on top of
+the stack, and pops it. load pushes G of n if n is in G's domain, the
+names it has; store replaces n's value only if n is there. Otherwise
+both are a runtime error.</span>
+</Formal>
+
+<Examples of="global-table">
+
+```text
+let x;
+0000    1 none
+0001    | define.global       0 'x'
+```
+
+```text
+b = 5;
+runtime error: undefined variable 'b'
+  at line 1 in script
+let b = 5; # fine: this defines b
+```
+
+```text
+print len;    # native fn len
+let len = 3;
+print len;    # 3
+```
+
+</Examples>
+
+First, `let` with no initialiser: the compiler emits `none`, so
+`define.global` always has a value to store. Second, the mistake to
+know: assigning to a name no `let` defined is a runtime error, while
+`let b = 5;` works. Third, a surprise: the natives are globals in the
+same table, so a top-level `let len` replaces the native `len`.
+
+<Prompts ids={['global-table-what', 'peek-then-pop']} />
+
+## The store.global trick
+
+Assigning to an undefined name must be an error. The obvious code looks
+the name up, checks it is there, then stores: two lookups. The VM does
+one:
 
 ```ts
-case OP.SET_GLOBAL: {
+case Op.StoreGlobal: {
   const name = readString();
   if (this.globals.set(name,
       this.peek(0))) {
+    // Assigning never creates a global:
+    // undo and complain.
     this.globals.delete(name);
-    this.runtimeError(`Undefined ` +
-      `variable '${name.chars}'.`);
+    this.runtimeError(
+      `undefined variable '${name.chars}'`);
   }
   break;
 }
 ```
 
-`Table.set` returns `true` when the key was *new*. For a correct
-program that never happens, so the common case costs a single `set`.
-For a mistaken one, the VM has just created a variable that shouldn't
-exist, so it deletes it again before reporting the error. A program
-that is about to stop anyway can afford the extra work. Notice also
-that there is no `pop`: the value stays, because `print a = 3;` needs
-it.
+`Table.set` returns `true` when the key was *new*, which in a correct
+program never happens here, so a correct assignment costs one `set`. In
+a mistaken one the VM has just created a variable that should not
+exist, so it deletes it (leaving a tombstone) and reports the error; a
+program about to stop can afford that. There is no pop: the value
+stays, because `print a = 3;` needs it.
 
-Step through the whole story, including a slot collision and the
-tombstone that chapter 143's `delete` leaves behind:
+Step through it, with the real slots (watch for a growth you might not
+expect, and the undo's tombstone):
 
 <GlobalSteps client:visible />
 
@@ -199,36 +250,33 @@ tombstone that chapter 143's `delete` leaves behind:
 ## Found late, on purpose
 
 A global is looked up by name *when the instruction runs*, not when it
-is compiled. That has a useful consequence. A function body can mention
-a global that doesn't exist yet, as long as it exists by the time the
-function is called:
+is compiled, so a function can mention a global that does not exist yet,
+as long as it exists by the time the function is called:
 
 <Run id="late-global" />
 
-When `show` is compiled, `greeting` is just a string in its constant
-pool. By the time `show()` runs `GET_GLOBAL`, the `let` has run and the
-name is in the table. That is what lets two top-level functions call
-each other, whichever comes first in the file.
+When `show` is compiled, `greeting` is only a string in its constant
+pool; by the time `show()` runs `load.global`, the `let` has run. That
+is also what lets two top-level functions call each other, whichever
+comes first in the file.
 
 <Prompts ids={['late-binding']} />
 
 <Callout kind="engine" label="Under the hood">
-Every global access hashes into a table at run time. Interning makes
-this cheaper than it sounds: each string object carries its hash, so
-nothing is rehashed while the program runs, and keys are compared by
-identity, not character by character. CPython does the same
-kind of thing: its `LOAD_GLOBAL` instruction names a global by an index
-into a table of names<Cite id="cpython-dis" />, while local variables
-use a different instruction that takes a plain index. Drip is about to
-make the same split. The three global instructions, and the
-set-then-undo trick, follow clox from *Crafting
-Interpreters*<Cite id="nystrom2021" />.
+Every global access is a hash-table lookup while the program runs, and
+in this book's benchmark run of 2 November 2026 it shows: the VM beat
+the tree-walker on six programs of ten, only by 1.08× to 1.3×, and lost
+on four, worst on `instantiation` (0.69×) and `fields` (0.74×, 712 ms
+against 530 ms). `fields` reads two globals and their fields millions
+of times, each a lookup in one of the VM's own tables, written in
+JavaScript, where the tree-walker uses the engine's built-in `Map`; a
+faster loop does not help when the lookups are the work. CPython's
+`LOAD_GLOBAL` also names a global by an index into a table of names,
+while locals use another instruction with a plain
+index<Cite id="cpython-dis" />. Drip is about to make the same split.
 </Callout>
 
 ## Your turn
-
-The core exercise is a small VM loop: you write the three global
-instructions. The extra one is a Drip program for the real VM.
 
 <Exercise id="globals-vm" />
 
@@ -236,16 +284,14 @@ instructions. The extra one is a Drip program for the real VM.
 
 ## What you learned
 
-- The compiler stores a global's **name** in the constant pool, and the
-  global instructions take its index as their operand.
+- The compiler stores a global's **name** in the constant pool, and
+  the global instructions take its index as a two-byte operand.
 - The VM's **global table** is a hash table keyed by interned strings.
-- `DEFINE_GLOBAL` stores then pops. `GET_GLOBAL` pushes or reports
-  `Undefined variable`. `SET_GLOBAL` stores and leaves the value on the
-  stack.
-- `SET_GLOBAL` sets first and deletes again if the key was new: one
-  look-up for correct programs.
+- `define.global` stores, then pops; `load.global` pushes or reports
+  `undefined variable`; `store.global` sets first, leaves the value,
+  and deletes the key again if it was new.
 - Globals are found by name at run time, so a function can use a
-  global defined after it.
+  global defined after it; the price is a lookup on every access.
 
 Next: local variables, which skip the table entirely.
 

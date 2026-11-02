@@ -1,41 +1,33 @@
-// Chapter 145 cards. Keys are stable ids: never rename them.
+// Chapter 145 cards: recall prompts, examples, exercises and quiz.
 
 export const prompts = {
   'name-in-pool': {
-    q: 'A global instruction like `GET_GLOBAL` can only carry one-byte operands. How does it say *which* variable?',
-    a: 'The variable’s name is stored as a string in the chunk’s constant pool, and the operand is that constant’s index.',
+    q: 'An instruction like `load.global` can only carry bytes after its opcode. How does it say *which* variable?',
+    a: 'The variable’s name is stored as a string in the constant pool, and the operand is that constant’s index.',
   },
-  'many-constants': {
-    q: 'Each mention of a global adds a new constant to the pool. Why doesn’t that store the name’s text many times?',
-    a: 'The names are interned, so every entry points at the same string object.',
-  },
-  'let-no-init': {
-    q: 'What does the compiler emit for the initializer of `let x;`, which has none?',
-    a: '`OP_NIL`, so `DEFINE_GLOBAL` always finds a value on top of the stack.',
+  'two-bytes': {
+    q: 'How many bytes is `define.global 1 \'a\'`, and why?',
+    a: 'Three: the opcode, then the constant index in two bytes (high byte first), so a function can have 65,536 constants.',
   },
   'global-table-what': {
     q: 'What is the VM’s **global table**?',
     a: 'One hash table (`vm.globals`) mapping interned name strings to values, shared by the whole program.',
   },
   'peek-then-pop': {
-    q: 'Why does `DEFINE_GLOBAL` peek at the value, store it, and only then pop it?',
-    a: 'So the value stays on the stack, where the garbage collector can see it, until it is safely in the table.',
-  },
-  'redefine': {
-    q: 'What does `DEFINE_GLOBAL` do if the name is already in the table?',
-    a: 'It overwrites it. A second top-level `let` of the same name is allowed.',
+    q: 'In what order does `define.global` handle the value on the stack?',
+    a: 'It peeks at it, stores it in the table, and only then drops it, so the value is never in neither place.',
   },
   'set-returns-new': {
-    q: 'In `SET_GLOBAL`, what does it mean when `globals.set(...)` returns `true`?',
+    q: 'In `store.global`, what does it mean when `globals.set(...)` returns `true`?',
     a: 'The key was new: the variable was never defined, so the assignment is an error.',
   },
   'why-delete': {
-    q: 'Why does `SET_GLOBAL` call `globals.delete(name)` before reporting the error?',
-    a: 'Its `set` has just created a variable that shouldn’t exist. Deleting undoes that.',
+    q: 'Why does `store.global` call `globals.delete(name)` before reporting the error?',
+    a: 'Its `set` has just created a variable that should not exist. Deleting undoes that.',
   },
   'set-no-pop': {
-    q: 'Why doesn’t `SET_GLOBAL` pop the value it stores?',
-    a: 'Assignment is an expression, so its value must stay on the stack (for `print a = 3;`). An expression statement pops it later.',
+    q: 'Why does `store.global` not pop the value it stores?',
+    a: 'An assignment is an expression, so its value must stay on the stack (for `print a = 3;`). An expression statement pops it later.',
   },
   'late-binding': {
     q: 'Why can a function body use a global that is only defined *after* the function?',
@@ -77,7 +69,7 @@ class Table {
 
 const undef = (n) => {
   throw new Error(
-    \`Undefined variable '\${n}'.\`);
+    \`undefined variable '\${n}'\`);
 };
 `;
 
@@ -126,7 +118,7 @@ const SET_OK = `      const n = k[code[ip++]];
 export const exercises = {
   'globals-vm': {
     title: 'Three global instructions',
-    prompt: `\`run(code, k, g)\` is a tiny VM. \`code\` is an array of bytes, \`k\` is the constant pool, and \`g\` is a globals \`Table\` whose \`set\` returns \`true\` when the key was new, just like the real one. \`CONST\`, \`POP\`, \`PRINT\` and \`ADD\` work already. Each of \`DEF\`, \`GET\` and \`SET\` has one operand: the index in \`k\` of the variable's name. Fill them in:
+    prompt: `\`run(code, k, g)\` is a tiny VM. \`code\` is an array of bytes, \`k\` is the constant pool, and \`g\` is a globals \`Table\` whose \`set\` returns \`true\` when the key was new, just like the real one. \`CONST\`, \`POP\`, \`PRINT\` and \`ADD\` work already. Each of \`DEF\`, \`GET\` and \`SET\` has one operand byte (the real VM uses two, but one keeps this small): the index in \`k\` of the variable's name. Fill them in:
 
 - \`DEF\` stores the top of the stack under the name, then pops it.
 - \`GET\` pushes the name's value, or calls \`undef(name)\` if there is none.
@@ -178,14 +170,20 @@ test('SET of an unknown name', () => {
       '`DEF`: `g.set(n, top())`, then `stack.pop()`. `GET`: `g.get(n)` returns `undefined` for a missing name.',
       '`SET`: `if (g.set(n, top())) { g.delete(n); undef(n); }`. No pop.',
     ],
-    walkthrough: `This is the VM's dispatch loop for globals, in miniature.
+    walkthrough: `**How to think about it.** All three instructions have the same shape: one operand byte, which is an index into the constant pool, where the variable's name is. So each starts by reading that byte (moving \`ip\` past it) and fetching the name. After that, each is a single table operation plus one decision about the stack: \`DEF\` consumes the value, \`GET\` produces one, and \`SET\` leaves the value where it is, because an assignment is an expression whose value something after it (\`PRINT\` or \`POP\`) still needs. The tests check exactly these stack effects, through \`out\` and \`left\`.
 
-- **The operand.** All three instructions are two bytes long. Reading \`code[ip++]\` both fetches the name's index and moves \`ip\` past it. Forget it, and the next "instruction" is really the operand.
-- **\`DEF\`** stores, then pops, like the real \`DEFINE_GLOBAL\`. It never checks whether the name exists: a second \`let\` simply replaces the first.
-- **\`GET\`** treats \`undefined\` as "no such variable". That works because no Drip value is ever \`undefined\` (\`nil\` is \`null\`).
-- **\`SET\`** is the trick. In a correct program \`set\` returns \`false\` and nothing else happens: one table operation. If it returns \`true\`, the assignment just *created* the variable, so delete it before reporting the error. And no pop: the assignment's value is still needed by whatever comes next, \`PRINT\` or \`POP\`.
+**The solution, line by line.**
 
 \`\`\`js
+} else if (op === DEF) {
+  const n = k[code[ip++]];
+  g.set(n, top());
+  stack.pop();
+} else if (op === GET) {
+  const n = k[code[ip++]];
+  const v = g.get(n);
+  if (v === undefined) undef(n);
+  stack.push(v);
 } else if (op === SET) {
   const n = k[code[ip++]];
   if (g.set(n, top())) {
@@ -193,7 +191,18 @@ test('SET of an unknown name', () => {
     undef(n);
   }
 }
-\`\`\``,
+\`\`\`
+
+- \`const n = k[code[ip++]];\` (in all three) reads the operand byte, steps \`ip\` past it, and looks the name up in the constant pool. Forget the \`++\` and the operand is run as the next instruction.
+- \`DEF\`: \`g.set(n, top());\` stores the value on top of the stack under the name, *then* \`stack.pop();\` drops it, the same order as the real \`define.global\`. It never checks whether the name exists, because a second \`let\` replaces the first.
+- \`GET\`: \`const v = g.get(n);\` looks the name up; \`if (v === undefined) undef(n);\` reports a missing name (no Drip value is ever \`undefined\`, so it can only mean "absent"); \`stack.push(v);\` pushes the value.
+- \`SET\`: \`if (g.set(n, top())) {\` stores the value and asks whether the name was new. In a correct program it was not, \`set\` returns \`false\`, and nothing more happens: one table operation. If it was new, the assignment has just created a variable, so \`g.delete(n);\` removes it and \`undef(n);\` reports the error. There is no pop.
+
+**Common wrong attempts.**
+
+- \`DEF\` that stores but never pops: every \`let\` leaves a stray value on the stack, and the test that checks \`left\` fails.
+- \`SET\` that pops (\`g.set(n, stack.pop())\`): then \`print a = 5;\` has nothing left to print.
+- \`SET\` that reports the error but forgets \`g.delete(n)\`: the variable that should never have existed stays in the table.`,
     wrong: [
       {
         code: vm(`      const n = k[code[ip++]];
@@ -250,7 +259,25 @@ print count;`,
       'Assign to the global: `count = count + 1;`. Don’t declare a new one.',
       'Then `print count;`.',
     ],
-    walkthrough: `Inside \`tick\`, \`count\` isn't a local, so the compiler emits \`GET_GLOBAL\` and \`SET_GLOBAL\` with the name \`"count"\` as their operand. When \`tick\` is compiled, no \`count\` exists, and that's fine: nothing is looked up until \`tick()\` runs, and by then \`let count = 0;\` has put it in the table. Each call reads, adds and writes the same global, so the last \`print count;\` sees 3.`,
+    walkthrough: `**How to think about it.** Inside \`tick\`, \`count\` is not declared, so it is not a local: the compiler treats it as a global and emits \`load.global\` and \`store.global\` with the name \`"count"\` as their constant. When \`tick\` is compiled, no \`count\` exists yet, and that is fine, because nothing is looked up until \`tick()\` runs, and by then \`let count = 0;\` has put the name in the table. So the body only has to read, add and write the global, then print it.
+
+**The solution, line by line.**
+
+\`\`\`text
+fn tick() {
+  count = count + 1;
+  print count;
+}
+\`\`\`
+
+- \`count = count + 1;\` compiles to \`load.global 'count'\`, \`const 1\`, \`add\`, \`store.global 'count'\` and \`pop\`. The \`store.global\` finds \`count\` already in the table (its \`set\` returns \`false\`), so the assignment simply replaces 0 with 1, then 2, then 3.
+- \`print count;\` is another \`load.global\` and \`print\`, so each call prints the new value.
+- The last line of the program, \`print count;\`, reads the same global, which the three calls left at 3.
+
+**Common wrong attempts.**
+
+- \`let count = count + 1;\` inside the function: \`let\` in a function makes a new *local*, and its initialiser then reads that same new local, so the compiler stops with \`line 2: cannot read 'count' in its own initialiser\` (the next chapter explains locals).
+- Writing \`count + 1;\` without assigning: the sum is computed and thrown away, so every call prints 0.`,
     wrong: [
       {
         code: `fn tick() {
@@ -263,7 +290,7 @@ tick();
 tick();
 tick();
 print count;`,
-        why: 'Inside a function, `let` makes a *local*, and its initializer then refers to that same new local. The compiler stops with "Can’t read local variable in its own initializer." (more on that next chapter). Assign to the global instead.',
+        why: 'Inside a function, `let` makes a *local*, and its initialiser then reads that same new local, so the compiler stops with `line 2: cannot read \'count\' in its own initialiser`. Assign to the global instead.',
       },
     ],
   },
@@ -271,42 +298,33 @@ print count;`,
 
 export const quiz = [
   {
-    q: `In this disassembly line, what is the \`0\`?
+    q: `In this disassembly line, what is the \`1\`?
 \`\`\`
-0002    | OP_DEFINE_GLOBAL    0 'a'
+0003    | define.global       1 'a'
 \`\`\``,
     options: [
       { t: 'The value being stored', why: 'The value is on top of the stack, pushed by the instruction before.' },
-      { t: 'The index of the constant holding the name "a"', correct: true, why: 'Global instructions take the constant-pool index of the name string.' },
-      { t: 'The slot in the globals hash table', why: 'The table slot comes from the name’s hash at run time; the compiler doesn’t know it.' },
-      { t: 'The line number', why: 'The line is the `|` column, meaning "same line as before".' },
+      { t: 'The index of the constant holding the name "a"', correct: true, why: 'Global instructions take the constant-pool index of the name string, in two bytes.' },
+      { t: 'The slot in the globals hash table', why: 'The table slot comes from the name’s hash at run time; the compiler does not know it.' },
+      { t: 'The line number', why: 'The line is the `|` column, meaning “same line as before”.' },
     ],
   },
   {
-    q: 'What does `print a = 3;` compile to, after the `CONSTANT` for 3?',
+    q: 'What does `print a = 3;` compile to, after the `const` for 3?',
     options: [
-      { t: '`SET_GLOBAL a`, then `POP`, then `PRINT`', why: 'With a `POP` in between, `PRINT` would have nothing to print.' },
-      { t: '`DEFINE_GLOBAL a`, then `PRINT`', why: 'Assignment never defines. It would also pop the value.' },
-      { t: '`SET_GLOBAL a`, then `PRINT`', correct: true, why: '`SET_GLOBAL` leaves the value on the stack, and `PRINT` pops it.' },
-      { t: '`PRINT`, then `SET_GLOBAL a`', why: 'The assignment is evaluated first; print takes its value.' },
+      { t: '`store.global a`, then `pop`, then `print`', why: 'With a `pop` in between, `print` would have nothing to print.' },
+      { t: '`define.global a`, then `print`', why: 'Assignment never defines. It would also pop the value.' },
+      { t: '`print`, then `store.global a`', why: 'The assignment is worked out first; `print` takes its value.' },
+      { t: '`store.global a`, then `print`', correct: true, why: '`store.global` leaves the value on the stack, and `print` pops it.' },
     ],
   },
   {
     q: 'The program is just `b = 5;`, and `b` was never defined. What does the VM do?',
     options: [
-      { t: 'Creates `b`, as JavaScript does without strict mode', why: 'Drip requires a `let`. The new key is deleted again.' },
-      { t: 'The compiler rejects it', why: 'The compiler can’t know which globals will exist; this is found at run time.' },
-      { t: 'Ignores the assignment', why: 'It reports an error and stops.' },
-      { t: 'Stores `b`, sees `set` return true, deletes `b`, and reports `Undefined variable \'b\'.`', correct: true, why: 'That’s the set-then-undo trick: one table operation in the normal case.' },
-    ],
-  },
-  {
-    q: 'Why does the trick in `SET_GLOBAL` make correct programs faster?',
-    options: [
-      { t: 'It skips hashing the name', why: 'The name is still hashed (well, its stored hash is used) for the one look-up.' },
-      { t: 'A correct assignment needs one table operation instead of a check plus a store', correct: true, why: 'Checking with `get` first would be a second look-up on every assignment.' },
-      { t: 'It caches the slot index in the bytecode', why: 'Nothing is written back into the bytecode.' },
-      { t: 'It avoids pushing the value', why: 'The value is pushed either way, and stays on the stack.' },
+      { t: 'Creates `b`, as sloppy-mode JavaScript would', why: 'Drip requires a `let`. The new key is deleted again.' },
+      { t: 'Stores `b`, sees `set` return true, deletes `b`, and reports `undefined variable \'b\'`', correct: true, why: 'That is the set-then-undo trick: one table operation in the normal case.' },
+      { t: 'The compiler rejects it', why: 'The compiler cannot know which globals will exist; this is found at run time.' },
+      { t: 'Ignores the assignment', why: 'It reports a runtime error and stops.' },
     ],
   },
   {
@@ -319,19 +337,19 @@ x = 2;
 f();
 \`\`\``,
     options: [
-      { t: '`1` then `2`', correct: true, why: 'Each call looks `x` up by name at that moment, so it sees the current value.' },
-      { t: 'A compile error: `x` is used before it is declared', why: 'The compiler doesn’t check globals; it only stores the name.' },
-      { t: '`1` then `1`', why: 'Nothing copies the value into `f`. Each `GET_GLOBAL` reads the table afresh.' },
+      { t: '`1` then `2`', correct: true, why: 'Each call runs `load.global x` at that moment, so it sees the current value.' },
+      { t: 'A compile error: `x` is used before it is declared', why: 'The compiler does not check globals; it only stores the name.' },
+      { t: '`1` then `1`', why: 'Nothing copies the value into `f`. Each `load.global` reads the table afresh.' },
       { t: 'A runtime error at the first `f()`', why: 'By then `let x = 1;` has run, so `x` is in the table.' },
     ],
   },
   {
     q: 'Which statement about the VM’s globals is true?',
     options: [
-      { t: 'They live in stack slots', why: 'That is locals, next chapter. Globals live in a hash table.' },
+      { t: 'They live in stack slots', why: 'That is locals, in the next chapter. Globals live in a hash table.' },
       { t: 'They are found by comparing names character by character', why: 'Keys are interned, so the table compares string objects by identity.' },
-      { t: 'They are stored in the chunk’s constant pool', why: 'Only the names are constants. The values are in `vm.globals`.' },
-      { t: 'They are found by name at run time, in a hash table keyed by interned strings', correct: true, why: 'Every global instruction does a look-up in `vm.globals` while the program runs.' },
+      { t: 'They are found by name at run time, in a hash table keyed by interned strings', correct: true, why: 'Every global instruction does a lookup in `vm.globals` while the program runs.' },
+      { t: 'They are stored in the constant pool', why: 'Only the names are constants. The values are in `vm.globals`.' },
     ],
   },
 ];

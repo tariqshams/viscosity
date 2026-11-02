@@ -1,4 +1,4 @@
-// Chapter 144 cards. Keys are stable ids: never rename them.
+// Chapter 144 cards: recall prompts, examples, exercises and quiz.
 
 export const prompts = {
   'intern-what': {
@@ -14,12 +14,16 @@ export const prompts = {
     a: 'No. The joined characters are hashed and found in the intern table, and the existing `"hi"` is returned.',
   },
   'equal-identity': {
-    q: 'With interning, how does `OP_EQUAL` compare two strings?',
+    q: 'With interning, how does the VM’s `eq` instruction compare two strings?',
     a: 'With `===` on the references: one comparison, however long the strings are.',
+  },
+  'name-literal-same': {
+    q: 'A program has a variable `a` and the string literal `"a"`. How many string objects hold `a`?',
+    a: 'One. The compiler asks `copyString` for both, and the second request finds the first.',
   },
   'findstring-chars': {
     q: 'Where does the companion VM compare a string’s characters?',
-    a: 'Only in `findString`, when interning, and only after the hashes match.',
+    a: 'Only in `findString`, while interning, and only after the hashes match.',
   },
   'hash-first': {
     q: 'Why does `findString` compare `k.hash === hash` before `k.chars === chars`?',
@@ -31,15 +35,11 @@ export const prompts = {
   },
   'intern-cost': {
     q: 'What does interning cost?',
-    a: 'Every new string, including every concatenation, is hashed and looked up when it is made.',
+    a: 'Every new string, including every concatenation and every `str(...)`, is hashed and looked up when it is made.',
   },
   'weak-table': {
     q: 'Why must the intern table hold strings weakly?',
     a: 'Otherwise every string would stay reachable through it and none could ever be freed.',
-  },
-  'constants-dup': {
-    q: 'All mentions of a global name are one interned object. Why did `string_equality` still run out of constants?',
-    a: 'The compiler adds a new constant-pool entry for every mention, even when it holds the same object.',
   },
 };
 
@@ -115,7 +115,11 @@ test('only new strings are made', () => {
       'If you find one, return it straight away, without counting.',
       'Otherwise make `{ chars }`, count it, store it in the table under `chars`, and return it.',
     ],
-    walkthrough: `\`\`\`js
+    walkthrough: `**How to think about it.** Interning is a promise: "for the same characters, you always get the same object". The only way to keep it is to remember every object you have handed out, keyed by its characters, and to look there *before* making anything. So the method has two paths: a found path (return what you made before, and make nothing) and a new path (make it, remember it, return it). \`this.made\` only goes up on the new path, which is how the tests check you are not making extra objects.
+
+**The solution, line by line.**
+
+\`\`\`js
 intern(chars) {
   const old = this.table.get(chars);
   if (old !== undefined) return old;
@@ -126,11 +130,19 @@ intern(chars) {
 }
 \`\`\`
 
-- **Look up first.** That is the whole of interning: never make a second object for characters you have seen.
-- **Store what you make.** Forget \`this.table.set\` and every call makes a new object, because the table never learns about the first one.
-- **Identity follows.** Since each distinct string has one object, \`intern(a) === intern(b)\` exactly when \`a\` and \`b\` have the same characters.
+- \`const old = this.table.get(chars);\` asks the \`Map\` whether these characters have been interned before. A \`Map\` gives \`undefined\` for a key it does not have.
+- \`if (old !== undefined) return old;\` is the found path: hand back the very object made earlier, so two calls with \`"hi"\` and \`"h" + "i"\` give the same object.
+- \`const s = { chars };\` is the new path: make the one and only object for these characters (\`{ chars }\` is short for \`{ chars: chars }\`).
+- \`this.made++;\` counts it.
+- \`this.table.set(chars, s);\` remembers it, so the next request takes the found path.
+- \`return s;\` hands it out.
 
-The JavaScript \`Map\` is doing the hard part here: it hashes \`chars\` and compares characters for you. The companion VM can’t key a table by raw characters, since its \`Table\` compares by identity, so it uses \`findString\`, which hashes and compares characters itself. The extra exercise builds that.`,
+The JavaScript \`Map\` does the hard part here: it hashes \`chars\` and compares characters for you. The companion VM cannot key a table by raw characters, since its \`Table\` compares keys by identity, so it uses \`findString\`, which hashes and compares characters itself; the extra exercise builds that.
+
+**Common wrong attempts.**
+
+- Looking up but never storing: the lookup always misses, so every call makes a new object, and \`made\` keeps growing.
+- Making the object first and storing it every time: the table is overwritten on each call, so two requests for \`"hi"\` return two different objects. The look-up must come before anything is made.`,
     wrong: [
       {
         code: `${ctor}
@@ -221,11 +233,15 @@ test('same hash, other chars: keep going', () => {
   expect(findString(ks, vs, 'real', 5)).toBe(s);
 });`,
     hints: [
-      'The probe loop is chapter 143’s: start at `h & mask`, step with `i = (i + 1) & mask`.',
+      'The probe loop is the one in `Table.find`: start at `h & mask`, step with `i = (i + 1) & mask`.',
       'A `null` key with a `null` value means “not here”: return `null`. A `null` key with `TOMB` means keep going.',
       'A matching hash isn’t enough: two different strings can share a hash. Check `k.chars === chars` too.',
     ],
-    walkthrough: `\`\`\`js
+    walkthrough: `**How to think about it.** This is the probe loop of \`Table.find\` with a different question at each slot. \`find\` holds a key object and asks "is this the same object?"; \`findString\` holds only characters and a hash, so it asks "is this a string with my hash *and* my characters?". Everything else stays: start at \`h & mask\`, step with wrap-around, stop with "absent" at a truly empty slot, and step over tombstones.
+
+**The solution, line by line.**
+
+\`\`\`js
 function findString(ks, vs, chars, h) {
   const mask = ks.length - 1;
   let i = h & mask;
@@ -242,11 +258,20 @@ function findString(ks, vs, chars, h) {
 }
 \`\`\`
 
-- **Hash, then characters.** \`k.hash === h\` is a number comparison, so it throws out almost every wrong key for almost nothing. But hashes can collide, as the “imposter” test shows, so the characters get the final say.
-- **Tombstones** are stepped over: a key you are looking for may have been placed beyond a slot that has since been deleted.
-- **Return the object**, not \`true\`: the caller wants *the* existing string, so it can use it instead of allocating.
+- \`const mask = ks.length - 1;\` is 7 for the 8-slot tables in the tests.
+- \`let i = h & mask;\` starts where a string with this hash would have been put.
+- \`for (;;) {\` loops until a \`return\`; it always ends because the table always has an empty slot.
+- \`const k = ks[i];\` reads the string object in this slot, or \`null\`.
+- \`if (k === null) {\` means no string here. \`if (vs[i] === null) return null;\` is a truly empty slot: no string with these characters exists. If the value is \`TOMB\`, the \`if\` does nothing and the loop steps on.
+- \`} else if (k.hash === h &&\` compares two numbers first; for a different string this is almost always false, and the characters are never read.
+- \`k.chars === chars) {\` only runs when the hashes agree, and settles it, because different strings can share a hash.
+- \`return k;\` returns the existing object itself, so the caller can use it instead of making a new one.
+- \`i = (i + 1) & mask;\` steps on, wrapping from 7 to 0.
 
-This is the companion VM’s \`findString\` line for line, apart from the names.`,
+**Common wrong attempts.**
+
+- Matching on the hash alone: the "imposter" test has a different string with the same hash, and it is returned by mistake. Hashes narrow the search; characters decide.
+- Returning \`null\` at any slot with no key: a tombstone then looks like the end of the path, and a string stored beyond a deleted slot is never found.`,
     wrong: [
       {
         code: `const TOMB = true;
@@ -288,10 +313,10 @@ function findString(ks, vs, chars, h) {
 
 export const quiz = [
   {
-    q: 'Why does `print "ab" == "a" + "b";` print `true` on the VM, when `OP_EQUAL` is just `===`?',
+    q: 'Why does `print "ab" == "a" + "b";` print `true` on the VM, when `eq` is just `===`?',
     options: [
-      { t: 'OP_EQUAL secretly compares characters for strings', why: 'It doesn’t: it is `a === b`, nothing more.' },
-      { t: 'The compiler folds `"a" + "b"` into `"ab"` before running', why: 'This compiler emits `OP_ADD`; the join happens at runtime.' },
+      { t: '`eq` secretly compares characters for strings', why: 'It does not: `valuesEqual` is `a === b`, nothing more.' },
+      { t: 'The compiler joins `"a" + "b"` into `"ab"` before running', why: 'This compiler emits `add`; the join happens while the program runs.' },
       { t: '`copyString` finds the existing `"ab"` in the intern table and returns it, so both sides are the same object', correct: true, why: 'Interning makes equal strings identical, so `===` is enough.' },
       { t: 'JavaScript strings are always compared by value', why: 'The operands are `ObjString` objects, compared by reference.' },
     ],
@@ -333,12 +358,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'A program mentions the global `a1` 300 times. With interning, how many `ObjString` objects for `"a1"` exist, and how many constant-pool entries hold it?',
+    q: 'In the book’s benchmark run, the `strings` program took 383 ms on the VM and 365 ms on the tree-walker. Which explanation fits?',
     options: [
-      { t: '300 objects and 300 entries', why: 'Interning means only one object.' },
-      { t: 'One object, and 300 entries all pointing at it', correct: true, why: 'Interning shares objects; this compiler doesn’t share constant slots.' },
-      { t: 'One object and one entry', why: 'That would need a compiler that reuses constants, which this one doesn’t.' },
-      { t: '300 objects and one entry', why: 'That is backwards: objects are shared, entries aren’t.' },
+      { t: 'The VM compares strings character by character', why: 'The opposite: interning makes the VM’s comparisons one `===`.' },
+      { t: 'The program does little but build strings, and on the VM every one of them is hashed and looked up in the intern table', correct: true, why: 'About 1.4 million strings are made; interning’s cost is paid on each, and its savings have little to work on.' },
+      { t: 'The VM has no garbage collector for strings', why: 'It has one; the intern table even lets unused strings go.' },
+      { t: 'The tree-walker interns strings more cleverly', why: 'The tree-walker does not intern at all; it uses plain JavaScript strings.' },
     ],
   },
 ];
