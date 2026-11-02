@@ -65,6 +65,7 @@ function rewritePaths(text) {
   return text
     .replace(/(chapters\/)(\d{3})(-[a-z0-9-]+)/g, (_, a, n, s) => `${a}${pad(map(Number(n)))}${s}`)
     .replace(/(diagrams\/ch)(\d{3})\b/g, (_, a, n) => `${a}${pad(map(Number(n)))}`)
+    .replace(/(\.\.\/ch)(\d{3})(?=\/)/g, (_, a, n) => `${a}${pad(map(Number(n)))}`)
     .replace(/(refs-new\/)(\d{3})(-[a-z0-9-]+)/g, (_, a, n, s) => `${a}${pad(map(Number(n)))}${s}`);
 }
 

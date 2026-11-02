@@ -12,8 +12,9 @@ Status: **working, pre-release.** The TypeScript compiler (JavaScript,
 TypeScript and Python front-ends) and its Rust port (JavaScript and Python;
 byte-for-byte identical output on 190 fixture pairs, kept honest by a
 differential fuzzer, also built to WebAssembly) are built and tested, as
-are three Drip implementations (tree-walker, TS VM, drip-rs). The book's
-200 chapters are written. Version 0.0.1 is published: the npm packages
+are three Drip implementations (tree-walker, TS VM, drip-rs). The book is
+being expanded from 200 to 286 chapters (the original 200 are written and
+being rewritten to a new teaching standard; 86 more are planned). Version 0.0.1 is published: the npm packages
 (`npm install -g @viscosity/cli`, `npm install @viscosity/wasm`) and the
 six Rust crates on crates.io (`cargo install viscosity-cli`).
 

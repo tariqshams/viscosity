@@ -5,7 +5,7 @@
 //   Dom(b) = {b} ∪ (intersection of Dom(p) over b's predecessors)
 import { StepFrame, useSteps } from '../../viz/stepper';
 import { Svg, T, tok } from '../../viz/svg';
-import { BLOCKS, BlockBox, Edge, SUCC } from '../ch075/collatz';
+import { BLOCKS, BlockBox, Edge, SUCC } from '../ch102/collatz';
 
 const ALL = 'all';
 type Sets = Record<number, string>;
