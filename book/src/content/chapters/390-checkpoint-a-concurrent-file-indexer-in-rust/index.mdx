@@ -11,7 +11,7 @@ objectives:
   - Measure the result, find the slow stage, and say what would fix it.
 introduces: [checkpoint-rust]
 uses: [rust, cargo, crate, rust-functions, ownership, borrow, slice, string-vs-str, option, result, question-mark, vec, hashmap, rust-iterator, rust-closure, cargo-test, rust-thread, send-sync, arc-mutex, channel, release-build, recursion]
-sources: [klabnik2026, rust-std-thread, node-worker-threads]
+sources: [klabnik2026, rust-std-thread, node-worker-threads-v22]
 ---
 import PipelineSteps from '../../../components/diagrams/ch390/PipelineSteps';
 import IndexShape from '../../../components/diagrams/ch390/IndexShape';
@@ -145,7 +145,7 @@ w.on('message', (part) => {
 Node's `worker_threads` follow the same plan, a worker per job and
 messages back, but every value sent is *copied* (cloned) into the
 other thread, because JavaScript threads share no ordinary
-objects<Cite id="node-worker-threads" />. Rust moves the partial index
+objects<Cite id="node-worker-threads-v22" />. Rust moves the partial index
 through the channel without copying it, and its types prove that no
 two threads touch the same data unguarded.
 

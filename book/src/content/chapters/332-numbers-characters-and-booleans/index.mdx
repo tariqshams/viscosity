@@ -11,7 +11,7 @@ objectives:
   - Say what happens when an integer overflows in a debug build and in a release build, and ask for wrapping on purpose.
 introduces: [scalar-types]
 uses: [rust, cargo, crate, let-mut, variables, numbers, booleans, strings, typescript, type-annotation, type-checking, float64, ieee754, smi, byte, bit, binary, char-code, string-index, chunk, constant-pool, test, array, index]
-sources: [rust-book-data-types, rustref-operator-expr, rustref-int-overflow, cargo-profiles, klabnik2026]
+sources: [rust-book-data-types, rustref-operator-expr, rustref-overflow-not-unsafe, cargo-profiles, klabnik2026]
 ---
 import TypeWidths from '../../../components/diagrams/ch332/TypeWidths';
 import OverflowSteps from '../../../components/diagrams/ch332/OverflowSteps';
@@ -232,7 +232,7 @@ attempt to add with overflow
 run.) In a release build rustc leaves that check out by default, and the
 same program prints 0<Cite id="cargo-profiles" />. The Rust Reference is
 clear that the overflow is an error in your program either way; the
-release build just does not catch it<Cite id="rustref-int-overflow" />.
+release build just does not catch it<Cite id="rustref-overflow-not-unsafe" />.
 If you *want* wrapping (a byte counter, a hash), say so with
 `wrapping_add`, and if you want to be told, use `checked_add`.
 

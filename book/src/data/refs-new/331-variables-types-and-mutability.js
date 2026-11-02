@@ -29,7 +29,7 @@ export default [
     shaped: 'Chapter 331-b: Rust’s scalar types, their defaults, integer division and overflow.',
   },
   {
-    id: 'rustref-int-overflow',
+    id: 'rustref-overflow-not-unsafe',
     authors: ['The Rust Reference contributors'],
     title: 'Behavior not considered unsafe: Integer overflow',
     venue: 'The Rust Reference (src/behavior-not-considered-unsafe.md)',
@@ -38,7 +38,7 @@ export default [
     url: 'https://doc.rust-lang.org/reference/behavior-not-considered-unsafe.html',
     accessed: '2026-11-02',
     checkedAgainst: 'Read raw from raw.githubusercontent.com/rust-lang/reference/master/src/behavior-not-considered-unsafe.md on 2026-11-02: “If a program contains arithmetic overflow, the programmer has made an error”; when debug assertions are enabled (for example in a non-optimized build) “implementations must insert dynamic checks that panic on overflow. Other kinds of builds may result in panics or silently wrapped values on overflow, at the implementation’s discretion”; implicit wrapping must use two’s complement; i32::wrapping_add provides wrapping addition. The panic message “attempt to add with overflow” was reproduced with rustc 1.97.0.',
-    shaped: 'Chapter 331-b: overflow is an error, checked in debug builds.',
+    shaped: 'Chapter 332: overflow is an error, checked in debug builds.',
   },
   {
     id: 'rustref-operator-expr',

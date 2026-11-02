@@ -61,7 +61,7 @@ export default [
     shaped: 'Chapter 386: how JavaScript on Node reaches C code, for comparison.',
   },
   {
-    id: 'node-worker-threads',
+    id: 'node-worker-threads-v22',
     authors: ['The Node.js Project'],
     title: 'Node.js documentation: Worker threads',
     venue: 'nodejs/node, doc/api/worker_threads.md (v22.x)',

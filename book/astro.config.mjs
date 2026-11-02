@@ -2,6 +2,7 @@ import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import react from '@astrojs/react';
 import { REDIRECTS } from './src/data/redirects.js';
+import drip from './src/lib/drip.tmLanguage.json' with { type: 'json' };
 
 // The book is MDX chapters (src/content/chapters/NNN-slug/index.mdx) with
 // React islands for the interactive parts: review prompts, quizzes, the code
@@ -23,6 +24,8 @@ export default defineConfig({
       themes: { light: 'github-light', dark: 'github-dark' },
       defaultColor: false,
       wrap: false,
+      // Drip, the book's own language (DRIP.md), so its code is coloured too.
+      langs: [drip],
     },
   },
   vite: { worker: { format: 'es' } },

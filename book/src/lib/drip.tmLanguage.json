@@ -1,0 +1,55 @@
+{
+  "name": "drip",
+  "displayName": "Drip",
+  "scopeName": "source.drip",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#declaration" },
+    { "include": "#keyword" },
+    { "include": "#constant" },
+    { "include": "#native" },
+    { "include": "#call" },
+    { "include": "#operator" }
+  ],
+  "repository": {
+    "comment": { "name": "comment.line.number-sign.drip", "match": "#.*$" },
+    "string": {
+      "name": "string.quoted.double.drip",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [{ "name": "constant.character.escape.drip", "match": "\\\\." }]
+    },
+    "number": { "name": "constant.numeric.drip", "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b" },
+    "declaration": {
+      "patterns": [
+        {
+          "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": { "1": { "name": "storage.type.function.drip" }, "2": { "name": "entity.name.function.drip" } }
+        },
+        {
+          "match": "\\b(class)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(extends)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
+          "captures": {
+            "1": { "name": "storage.type.class.drip" },
+            "2": { "name": "entity.name.type.class.drip" },
+            "3": { "name": "storage.modifier.extends.drip" },
+            "4": { "name": "entity.other.inherited-class.drip" }
+          }
+        }
+      ]
+    },
+    "keyword": {
+      "patterns": [
+        { "name": "keyword.control.drip", "match": "\\b(break|continue|else|for|if|in|return|while)\\b" },
+        { "name": "storage.type.drip", "match": "\\b(class|extends|fn|let|init)\\b" },
+        { "name": "keyword.other.drip", "match": "\\b(new|print)\\b" },
+        { "name": "variable.language.drip", "match": "\\b(self|super)\\b" }
+      ]
+    },
+    "constant": { "name": "constant.language.drip", "match": "\\b(true|false|none)\\b" },
+    "native": { "name": "support.function.builtin.drip", "match": "\\b(clock|len|push|pop|str)\\b(?=\\s*\\()" },
+    "call": { "name": "entity.name.function.drip", "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*\\()" },
+    "operator": { "name": "keyword.operator.drip", "match": "&&|\\|\\||\\.\\.|[+\\-*/%]=?|==|!=|<=|>=|[<>!=]" }
+  }
+}
