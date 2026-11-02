@@ -3,54 +3,69 @@ n: 349
 day: 88
 part: XII
 title: 'Method calls and init in Rust'
-tagline: 'A bound method is an instance and a closure tied together. In TypeScript that is an object with two references. In drip-rs it is two Copy fields in an arena slot, and calling it takes one line that Rust only accepts because those fields are Copy.'
+tagline: 'A bound method is an instance and a closure tied together. In TypeScript that is an object with two references; in drip-rs it is two Copy fields in an arena slot, and calling it takes one line that Rust only accepts because those fields are Copy.'
 objectives:
-  - Read drip-rs’s ObjBoundMethod and bind_method, and say why the receiver stays on the stack while the object is allocated.
-  - Explain why call_value destructures self.heap[bound] instead of copying the whole object.
-  - Follow a class call through init, and the compiler’s Initializer kind through emit_return.
+  - Read drip-rs’s ObjBoundMethod and the get.prop arm that makes one, and say why the receiver stays on the stack while it is allocated.
+  - Explain why call_value destructures self.heap[bound] instead of copying the whole object out.
+  - Follow new through init, and the compiler’s Initializer kind through emit_return.
   - Write the bound-method and class arms of call_value for a small VM, with tests.
 introduces: [rust-bound-method]
 uses: [drip-rs, rust-instances, object-handle, value-enum, match-dispatch, frame-stack, arena-gc, string-interner, compiler-state, bound-method, initializer, method-invocation, drip-class, call-frame, stack-slot, roots, interning, hash-table, struct, enum, match, pattern, option, result, question-mark, borrow, borrow-checker, self-receiver, move, ownership, arena, typed-index, runtime-error, drip, this, method, class, instance]
-sources: [nystrom2021, rust-std-ops-index]
+sources: [rust-std-ops-index]
 ---
 import BoundSteps from '../../../components/diagrams/ch349/BoundSteps';
+import TwoPaths from '../../../components/diagrams/ch349/TwoPaths';
 
 ## The cake, one more time
 
-Chapter 160's class, run by drip-rs:
-
-```
+```drip
 class Cake {
-  init(f) { this.f = f; }
-  taste() { print "Mmm, " + this.f; }
+  init(f) { self.f = f; }
+  taste() { print "Mmm, " + self.f; }
 }
-let c = Cake("lemon");
+let c = new Cake("lemon");
 c.taste();
 let t = c.taste;
 t();
-print t;
+print t; # fn taste
 ```
 
-It prints `Mmm, lemon` twice, then `<fn taste>`, exactly like the
-TypeScript VM. `drip-rs --disassemble` shows the same split as in
-chapter 160: `c.taste()` is one `OP_INVOKE`, while `let t = c.taste;` is
-`OP_GET_PROPERTY 13 'taste'`, which has to build a bound method. That
-object, and the `init` call in `Cake("lemon")`, are this chapter.
+It prints `Mmm, lemon` twice, then `fn taste`, exactly like the
+TypeScript VM. `drip-rs --disassemble` shows the split from the chapter
+*Invoking methods, and inheritance in the VM*: `c.taste()` is one
+`invoke 'taste' (0 args)`, while `let t = c.taste;` is
+`get.prop 'taste'`, which has to build a **bound method**, a value that
+remembers both the method and the instance it was read from, so that a
+later `t()` knows what `self` is. That object, and the `init` behind
+`new Cake("lemon")`, are this chapter.
+
+<Figure caption="c.taste() goes straight to the method; c.taste on its own makes a bound method, which a later call unpacks into slot 0." takeaway="Only reading a method without calling it allocates.">
+  <TwoPaths />
+</Figure>
 
 ## A bound method is two handles
 
-<Callout kind="intuition">
-A remote control already paired with one television. Pressing a
-button (calling the method) works on that set (the receiver), whoever
-holds the remote and wherever they carry it.
-</Callout>
+<Analogy title="a remote already paired with one television">
+Pressing a button (calling the method) works on that set (the
+receiver), whoever holds the remote and wherever they carry it.
+<span slot="breaks">Pairing a remote is done once; drip-rs makes a new
+bound method every time a method is read from an instance, so
+`c.taste == c.taste` is `false`: two reads, two objects.</span>
+</Analogy>
 
-The TypeScript object is `{ type: 'bound', receiver, method }`. The
-Rust one, from `src/object.rs`:
+<Analogy title="a letter in a stamped, addressed envelope">
+The letter is the method, the address on the envelope is the receiver;
+whoever posts it, it reaches the same house.
+<span slot="breaks">A posted letter is used up; a bound method can be
+called any number of times, and each call gets the same receiver.</span>
+</Analogy>
+
+The TypeScript object is `{ type: 'bound', receiver, method }`. The Rust
+one, from `object.rs`:
 
 ```rust
-/// A method together with the instance
-/// it was looked up on.
+/// A method together with the instance it
+/// was looked up on.
 pub struct ObjBoundMethod {
     pub receiver: Value,
     pub method: Gc<ObjClosure>,
@@ -59,176 +74,187 @@ pub struct ObjBoundMethod {
 
 It lives in its own arena, `heap.bound_methods`, and a value refers to
 it as `Value::BoundMethod(Gc<ObjBoundMethod>)`. The receiver is kept as
-a `Value`, as clox keeps it, which is exactly what a call writes back
-onto the stack. When the collector traces one, it marks both fields. Printing one prints its method, `<fn taste>`.
-
-`GetProperty` looks in the instance's fields first (chapter 348). When
-that misses, it calls `bind_method`, adapted from `src/vm.rs`:
+a `Value`, which is exactly what a call will write back onto the stack,
+and the collector traces both fields. `get.prop` makes one when the
+instance has no field of that name (the chapter *Objects in Rust*), from
+`vm.rs` (rewrapped):
 
 ```rust
-fn bind_method(
-    &mut self, class: Gc<ObjClass>,
-    name: StrRef,
-) -> Run {
-    let methods = &self.heap[class].methods;
-    let Some(method) = methods.get(name)
-    else {
-        return Err(
-            self.undefined_property(name));
-    };
-    let receiver = self.peek(0);
-    let bound = self.alloc(ObjBoundMethod {
-        receiver,
-        method: as_closure(method),
-    });
-    self.pop();
-    self.push(Value::BoundMethod(bound));
-    Ok(())
-}
+let class = self.heap[instance].class;
+let Some(method) =
+    self.heap[class].methods.get(name)
+else { return Err(self.no_property(...)); };
+let receiver = self.peek(0);
+let bound = self.alloc(ObjBoundMethod {
+    receiver,
+    method: as_closure(method),
+});
+self.set_peek(0, Value::BoundMethod(bound));
 ```
 
-Two details. The table stores `Value`s, so `as_closure` opens the
+Two details. The method table stores `Value`s, so `as_closure` opens the
 `Value::Closure` with a `match` and calls `unreachable!` on anything
-else. TypeScript wrote `method as ObjClosure`, a promise the type
-checker takes on trust. And the order matters: `alloc` may run a
-collection (chapter 347), so the receiver stays on the stack, a root,
-until the bound method exists. Only then is it popped.
+else, where TypeScript wrote `method as ObjClosure`, a promise the type
+checker takes on trust. And the order matters: `alloc` may collect, so
+the receiver stays on the stack, a root, until the bound method exists,
+and only then does `set_peek` overwrite it with the handle.
 
 <Prompts ids={['bm-fields', 'bm-receiver-root', 'bm-as-closure']} />
 
 ## Calling it: copy two fields out
 
-`call_value`'s first arm, from `src/vm.rs`:
+`call_value`'s arm for a bound method, from `vm.rs` (rewrapped):
 
 ```rust
 Value::BoundMethod(bound) => {
     let ObjBoundMethod { receiver, method }
         = self.heap[bound];
     // The receiver goes in slot 0, where
-    // the method finds `this`.
+    // the method finds `self`.
     self.set_peek(arg_count, receiver);
     self.call(method, arg_count)
 }
 ```
 
-The tempting line is `let b = self.heap[bound];`. On a toy with a
-`Vec<Bound>`, rustc 1.97 says (trimmed):
+Here is the spot the difference. The tempting line is
+`let b = self.heap[bound];`, and on a toy with a `Vec<Bound>` rustc
+1.97 says (trimmed):
 
-```
+```text
 error[E0507]: cannot move out of index
   of `Vec<Bound>`
-17 |     let b = bounds[0];
-   |             ^^^^^^^^^ move occurs
-   because value has type `Bound`, which
-   does not implement the `Copy` trait
+4 |     let b = bounds[0];
+  |             ^^^^^^^^^ move occurs
+  value has type `Bound`, which does not
+  implement the `Copy` trait
 ```
 
-Indexing gives a place, and `let b = place` would move the object out
-of the arena, leaving a hole<Cite id="rust-std-ops-index" />. The
-destructuring pattern instead binds each field by value. `Value` and
-`Gc<T>` are both `Copy`, so each field is copied and the object stays
-put. TypeScript's `callee.receiver` is just a reference read, so the
-question never comes up there.
-
-Then `set_peek(arg_count, receiver)` overwrites the callee's own slot,
-which `call` turns into the new frame's slot 0. Inside the method,
-`this` is `GET_LOCAL 0`, so it is the receiver.
+Indexing gives a *place* (a location, not a value), and `let b = place`
+would move the object out of the arena and leave a
+hole<Cite id="rust-std-ops-index" />. The destructuring pattern instead
+binds each field by value: `Value` and `Gc<T>` are both `Copy`, so each
+field is copied and the object stays put (the chapter *Ownership*
+explains moves and copies). TypeScript's `callee.receiver` is a plain
+reference read, so the question never comes up there. Then
+`set_peek(arg_count, receiver)` overwrites the callee's own slot, which
+`call` turns into the new frame's slot 0; inside the method, `self`
+compiles to `load.local 0`, so it is the receiver.
 
 <BoundSteps client:visible />
 
 <Callout kind="definition">
 A **bound method in drip-rs** is an `ObjBoundMethod`, holding a
 `receiver: Value` and a `method: Gc<ObjClosure>`, in the heap's
-`bound_methods` arena, and a `Value::BoundMethod` handle to it.
-`bind_method` makes one when a property read finds a method: it
-allocates while the receiver is still on the stack, then replaces the
-receiver with the handle. Calling one copies both fields out with a
-destructuring pattern, puts the receiver in the callee's slot, and calls
-the closure.
+`bound_methods` arena, with a `Value::BoundMethod` handle to it.
+`get.prop` makes one when a property read finds a method: it allocates
+while the receiver is still on the stack, then overwrites the receiver
+with the handle. Calling one copies both fields out with a destructuring
+pattern, puts the receiver in the callee's slot, and calls the closure.
 </Callout>
+
+<Formal title="What a bound method and new mean">
+
+```text
+bound(r, m)(a₁, …, aₙ)
+  = m(a₁, …, aₙ)   with slot 0 = r
+new C(a₁, …, aₙ)
+  = o              after C.init(a₁, …, aₙ)
+                   runs with slot 0 = o
+```
+
+<span slot="read">Calling a bound method made from the receiver r and
+the method m is calling m with the same arguments, except that slot 0,
+where self lives, holds r. And new C with some arguments makes a fresh
+instance o, runs C's init with those arguments and o in slot 0 (if C has
+an init), and produces o.</span>
+</Formal>
 
 <Prompts ids={['bm-destructure', 'bm-slot0']} />
 
 ## Initializers
 
-Calling a class is the `Value::Class` arm. Chapter 348 showed its first
-half: allocate the instance while the class is still in the callee's
-slot, then overwrite that slot with it. The second half, from
-`src/vm.rs`:
+`new` is `Vm::new_instance`. The chapter *Objects in Rust* showed its
+first half: allocate the instance while the class is still in its slot,
+then overwrite that slot with it. The second half (rewrapped):
 
 ```rust
-let methods = &self.heap[class].methods;
-match methods.get(self.init_string) {
+match self.heap[class].methods
+    .get(self.init_string) {
     Some(init) => self.call(
         as_closure(init), arg_count),
     None if arg_count != 0 => {
-        let msg = format!(
-            "Expected 0 arguments \
-             but got {arg_count}.");
-        Err(self.runtime_error(msg))
+        // "Cake has no init, so it takes no
+        // arguments, but got 2"
     }
     None => Ok(()),
 }
 ```
 
 `init_string` is `"init"`, interned once in `Vm::new` and listed in
-`VmRoots`, so the lookup allocates nothing and the string can't be
-collected. `get` returns a copied `Option<Value>`, so the borrow in
-`methods` ends before `call` needs `&mut self`. TypeScript's two `if`s
+`VmRoots`, so the lookup allocates nothing and the string cannot be
+collected. `get` returns a copied `Option<Value>`, so the borrow of the
+class ends before `call` needs `&mut self`. TypeScript's two `if`s
 become one `match` with a guard, which says in one place what happens
-in all three cases.
-
-The compiler's half: `method()` picks `FunctionKind::Initializer` when
-the name is `init`, an enum variant where TypeScript compared the string
-`'initializer'`. Then:
+in all three cases. The compiler's half: `method()` picks
+`FunctionKind::Initializer` when the name is the keyword `init` (an
+enum variant where TypeScript compared the string `'initializer'`), and
+then `emit_return` ends every initializer with `load.local 0` and
+`return`, so `new` always produces the instance (rewrapped):
 
 ```rust
-fn emit_return(&mut self) {
-    if self.state().kind
-        == FunctionKind::Initializer
-    {
-        // An initializer returns `this`,
-        // which is in slot 0.
-        self.emit_op_with(
-            OpCode::GetLocal, 0);
-    } else {
-        self.emit_op(OpCode::Nil);
-    }
-    self.emit_op(OpCode::Return);
+if self.state().kind
+    == FunctionKind::Initializer {
+    // An initializer returns `self`, which
+    // is in slot 0.
+    let line = self.previous.line;
+    self.emit_op_byte_at(line,
+        OpCode::LoadLocal, 0);
+} else {
+    self.emit_op(OpCode::None);
 }
 ```
 
-`FunctionKind` is `Copy`, so `self.state().kind` is copied out and the
-borrow ends before `emit_op` needs `&mut self`, the habit from chapter
-343. `return_statement` does the same, `let kind = self.state().kind;`,
-before it reports `Can't return a value from an initializer.`
+<Examples of="rust-bound-method">
+
+```drip
+let t = c.taste;
+t(); # Mmm, lemon
+print c.taste == c.taste; # false
+```
+
+```drip
+class A {
+  init() { return 1; }
+}
+# line 2: 'init' cannot return a value
+```
 
 <Run id="cup" />
 
+</Examples>
+
+The first, after the Cake program, reads the method into a variable and
+calls it later; the bound
+method carries `c` along, so `self.f` still finds `"lemon"`. Its last
+line shows that every read makes a new `ObjBoundMethod`, and bound
+methods compare by identity. The second is the compiler's half of
+`init`: `return_statement` sees `FunctionKind::Initializer` and reports
+the static error (a bare `return;` is allowed, and still returns
+`self`). The third is a realistic class with an `init`, a method that
+changes a field, and a bound method passed around as a value.
+
 <Prompts ids={['init-string', 'init-match', 'init-kind']} />
 
-## Invoke, briefly
-
-`c.taste()` skips all of this. `invoke` opens the receiver with
-`let Value::Instance(instance) = self.peek(arg_count) else { ... }`,
-checks the fields (a field holding a function wins), and otherwise calls
-`invoke_from_class`, which finds the method and calls it with the
-receiver already in slot 0. No bound method, no allocation, as in
-chapter 160.
-
-<Prompts ids={['invoke-alloc']} />
-
 <Callout kind="engine" label="Under the hood">
-Every Drip method call still hashes its name into a table, in both VMs,
-as in clox<Cite id="nystrom2021" />. What Rust changed is the shape of
-the objects. A bound method is not a JavaScript object with two
-references the engine must trace. It is a 4-byte handle to 24 bytes in
-an arena slot: a 16-byte `Value` and a 4-byte `Gc`, padded (I printed
-`size_of` for both with rustc 1.97). In the
-committed benchmark run
-(`results/drip-rs-bench-2026-10-31.md`), `method_call.drip` took 316 ms
-in drip-rs and 1085 ms in the TypeScript VM. Chapter 355 asks where
-that difference comes from.
+`c.taste()` skips the bound method entirely: `invoke` opens the receiver
+with `let Value::Instance(instance) = self.peek(arg_count) else { ... }`,
+checks the fields (a field holding a function wins), and otherwise calls
+the class's method with the receiver already in slot 0, so a normal
+method call allocates nothing. A bound method, when one is made, is 24
+bytes in an arena slot, a 16-byte `Value` and a 4-byte handle, padded
+(printed with `size_of` on rustc 1.97). In this book's benchmark run
+(`drip-rs-bench-2026-11-02.md`), `method_calls` took 167 ms on drip-rs
+and 704 ms on the TypeScript VM.
 </Callout>
 
 ## Your turn
@@ -239,13 +265,12 @@ that difference comes from.
 
 - A **bound method** in drip-rs is `ObjBoundMethod { receiver, method }`
   in an arena, reached through `Value::BoundMethod`.
-- `bind_method` **allocates before it pops**, so the receiver is a root
-  if a collection runs.
-- Indexing the heap gives a place. **Destructure** it to copy the `Copy`
+- `get.prop` **allocates before it overwrites** the receiver, so the
+  receiver is a root if a collection runs.
+- Indexing the heap gives a place: **destructure** it to copy the `Copy`
   fields out; `let b = self.heap[bound];` would be a move (E0507).
-- Calling a bound method or a class **overwrites the callee's slot**,
-  which becomes slot 0, `this`.
-- `init` is found with the interned **`init_string`**, and
-  `FunctionKind::Initializer` makes every return produce slot 0.
+- Calling a bound method or running `init` **uses the callee's slot** as
+  slot 0, `self`; `FunctionKind::Initializer` makes every `init` return
+  slot 0.
 
 <Quiz />

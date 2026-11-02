@@ -8,7 +8,7 @@ export const prompts = {
   },
   'fs-rc': {
     q: 'Why does each drip-rs frame hold an `Rc<Chunk>` rather than a `&Chunk`?',
-    a: 'A `&Chunk` would borrow the heap for as long as the frame lives. An `Rc` clone is the frame’s own pointer to the frozen chunk, and costs a count bump.',
+    a: 'A `&Chunk` would borrow the heap for as long as the frame lives. An `Rc` clone is the frame’s own pointer to the finished chunk, and costs one count bump.',
   },
   'fs-stale': {
     q: 'When is the `ip` field of a drip-rs `CallFrame` up to date?',
@@ -19,87 +19,37 @@ export const prompts = {
     a: '`call` itself saves the caller’s `ip` and loads the callee’s `ip`, chunk and slots into the registers.',
   },
   'fs-slots': {
-    q: 'In `call`, why is `slots` `stack.len() - argc - 1`?',
-    a: 'The frame’s slot 0 is the callee itself, just below its `argc` arguments.',
+    q: 'In `call`, why is `slots` equal to `stack.len() - arg_count - 1`?',
+    a: 'The frame’s slot 0 is the callee itself (or `self` in a method), just below its `arg_count` arguments.',
   },
   'fs-overflow': {
-    q: 'What does drip-rs do when a call would make a 65th frame?',
-    a: '`call` returns `Err(runtime_error("Stack overflow."))`, because `frames.len() == FRAMES_MAX` (64).',
+    q: 'What does drip-rs do when a call would make a 257th frame?',
+    a: '`call` returns `Err(self.runtime_error("stack overflow"))`, because `frames.len() == FRAMES_MAX` (256).',
   },
   'fs-pop-frame': {
-    q: 'What does `pop_frame` return when the script’s own frame returns?',
-    a: '`None`: there is no caller to load. The `Return` arm then pops the script’s closure and `run` returns `Ok(())`.',
-  },
-  'fs-native': {
-    q: 'How does a drip-rs native function receive its arguments?',
-    a: 'As a borrowed slice of the value stack, `&self.stack[start..]`. TypeScript copies them with `slice`.',
+    q: 'What does `pop_frame` return when the script’s own frame returns, and what does the `Return` arm do then?',
+    a: '`None`, because there is no caller to load. The `Return` arm clears the stack and `run` returns `Ok(())`.',
   },
   'fs-trace': {
     q: 'In `runtime_error`, why does the top frame use `self.ip` instead of `frame.ip`?',
-    a: 'The running frame’s `ip` field is stale; only the register has its current position.',
-  },
-  'fs-roots': {
-    q: 'What does the collector trace in each call frame?',
-    a: 'Its closure handle. The `Rc<Chunk>` is Rust-owned memory and needs no tracing; the function reached through the closure keeps the chunk’s constants alive.',
+    a: 'The running frame’s `ip` field is out of date (it is only written when that frame makes a call); only the register has its current position.',
   },
 };
 
 export const examples = {
-  'rc-frames': {
-    title: 'Frames sharing one chunk',
-    lang: 'rust',
-    code: `use std::rc::Rc;
-
-struct Chunk {
-    code: Vec<u8>,
+  fact: {
+    lang: 'drip-vm',
+    title: 'One frame per call',
+    code: `fn fact(n) {
+  if n <= 1 { return 1; }
+  return n * fact(n - 1);
 }
-
-struct Frame {
-    chunk: Rc<Chunk>,
-    ip: usize,
-}
-
-fn main() {
-    // The function owns its chunk.
-    let fib = Rc::new(Chunk {
-        code: vec![7, 8, 9],
-    });
-    let mut frames: Vec<Frame> =
-        Vec::with_capacity(64);
-    // fib calls itself, three deep.
-    for depth in 0..3 {
-        frames.push(Frame {
-            chunk: Rc::clone(&fib),
-            ip: depth * 4,
-        });
-        println!(
-            "{} frames, count {}",
-            frames.len(),
-            Rc::strong_count(&fib)
-        );
-    }
-    // The register: one more owner.
-    let top = &frames[2].chunk;
-    let reg = Rc::clone(top);
-    println!("byte {}", reg.code[1]);
-    println!(
-        "count {}",
-        Rc::strong_count(&fib)
-    );
-    // Return: the frame moves out...
-    let done = frames.pop().unwrap();
-    println!("its ip was {}", done.ip);
-    drop(done);
-    // ...and its clone goes with it.
-    println!(
-        "count {}",
-        Rc::strong_count(&fib)
-    );
-}`,
+print fact(5);
+print fact(20);`,
   },
 };
 
-const callStarter = `#[derive(Debug, PartialEq)]
+const crHead = `#[derive(Debug, PartialEq)]
 struct Frame {
     func: usize,
     ip: usize,
@@ -107,10 +57,19 @@ struct Frame {
 }
 
 struct Func {
+    name: &'static str,
     arity: usize,
 }
 
-const FRAMES_MAX: usize = 64;
+const FRAMES_MAX: usize = 256;
+
+fn plural(n: usize) -> String {
+    if n == 1 {
+        "1 argument".to_string()
+    } else {
+        format!("{n} arguments")
+    }
+}
 
 struct Vm {
     funcs: Vec<Func>,
@@ -141,7 +100,7 @@ impl Vm {
     }
 `;
 
-const callTodo = `
+const cr = (callBody, retBody) => `${crHead}
     // Call funcs[func]. The callee and
     // its argc arguments are on top of
     // the stack.
@@ -150,46 +109,40 @@ const callTodo = `
         func: usize,
         argc: usize,
     ) -> Result<(), String> {
-        todo!()
+${callBody}
     }
 
     // Return from the running frame.
     // false: there was no caller.
     fn ret(&mut self) -> bool {
-        todo!()
+${retBody}
     }
 }`;
 
-const callOk = `
-    // Call funcs[func]. The callee and
-    // its argc arguments are on top of
-    // the stack.
-    fn call(
-        &mut self,
-        func: usize,
-        argc: usize,
-    ) -> Result<(), String> {
-        let f = &self.funcs[func];
-        let arity = f.arity;
-        if argc != arity {
+const CHECKS = `        let f = &self.funcs[func];
+        if argc != f.arity {
+            let n = f.name;
+            let a = plural(f.arity);
+            let m = format!(
+                "{n}() takes {a}");
             return Err(format!(
-                "Expected {} arguments \\
-                 but got {}.",
-                arity, argc
+                "{m} but got {argc}"
             ));
         }
         let depth = self.frames.len();
         if depth == FRAMES_MAX {
-            let m = "Stack overflow.";
+            let m = "stack overflow";
             return Err(m.to_string());
-        }
-        // Save the caller's ip.
+        }`;
+
+const SAVE = `        // Save the caller's ip.
         let c = self.frames.last_mut();
         if let Some(c) = c {
             c.ip = self.ip;
-        }
-        let n = self.stack.len();
-        let slots = n - argc - 1;
+        }`;
+
+const PUSH = (slots) => `        let n = self.stack.len();
+        let slots = ${slots};
         self.frames.push(Frame {
             func,
             ip: 0,
@@ -198,15 +151,9 @@ const callOk = `
         // Load the callee.
         self.ip = 0;
         self.slots = slots;
-        Ok(())
-    }
-`;
+        Ok(())`;
 
-const retOk = `
-    // Return from the running frame.
-    // false: there was no caller.
-    fn ret(&mut self) -> bool {
-        let r = self.pop();
+const RET = `        let r = self.pop();
         let top = self.frames.pop();
         let f = top.expect("a frame");
         self.stack.truncate(f.slots);
@@ -218,15 +165,13 @@ const retOk = `
                 self.stack.push(r);
                 true
             }
-        }
-    }
-}`;
+        }`;
 
-const traceStarter = `use std::rc::Rc;
+const stHead = `use std::rc::Rc;
 
 struct Frame {
-    // "" for the top-level script
-    name: &'static str,
+    // None for the top-level script
+    name: Option<&'static str>,
     // the chunk's line table
     lines: Rc<Vec<u32>>,
     ip: usize,
@@ -241,13 +186,44 @@ struct Vm {
 impl Vm {
     // The message, then one line per
     // frame, innermost first:
-    // "[line 2] in f()" or
-    // "[line 5] in script".
+    // "  at line 2 in fn f" or
+    // "  at line 5 in script".
     fn trace(&self, msg: &str)
         -> Vec<String> {
-        todo!()
+`;
+
+const st = (body) => `${stHead}${body}
     }
 }`;
+
+const PICK = `if d == top {
+                self.ip
+            } else {
+                f.ip
+            }`;
+
+const traceBody = (pick, rev) => `        let mut out = Vec::new();
+        out.push(format!(
+            "runtime error: {msg}"));
+        let top = self.frames.len()
+            .saturating_sub(1);
+        let fs = self.frames.iter();
+        let fs = fs.enumerate()${rev};
+        for (d, f) in fs {
+            let ip = ${pick};
+            let line = f.lines[ip - 1];
+            let place = match f.name {
+                Some(n) => {
+                    format!("fn {n}")
+                }
+                None => "script".into(),
+            };
+            let at = "  at line";
+            out.push(format!(
+                "{at} {line} in {place}"
+            ));
+        }
+        out`;
 
 export const exercises = {
   callReturn: {
@@ -255,18 +231,20 @@ export const exercises = {
     title: 'call and return',
     prompt: `This VM is a frame stack shaped like drip-rs's. \`frames\` is a \`Vec<Frame>\`, and the running frame's \`ip\` and \`slots\` are registers, fields of the \`Vm\`. Write:
 
-1. \`call(func, argc)\`. The callee and its \`argc\` arguments are already on the stack. Check the arity (\`"Expected 2 arguments but got 1."\`) and the depth (\`"Stack overflow."\` when 64 frames already exist). Then save the register \`ip\` into the caller's frame, if there is a caller, push the new frame with \`ip: 0\` and \`slots\` at the callee's own slot, and load the registers.
+1. \`call(func, argc)\`. The callee and its \`argc\` arguments are already on the stack. Check the arity, with drip-rs's message (\`"add() takes 2 arguments but got 1"\`; the helper \`plural\` makes "1 argument" or "2 arguments"), then the depth (\`"stack overflow"\` when \`FRAMES_MAX\` frames already exist). Then save the register \`ip\` into the caller's frame, if there is a caller, push the new frame with \`ip: 0\` and \`slots\` at the callee's own slot, and load the registers.
 2. \`ret()\`. Pop the result and the frame. Drop the frame's slots from the stack. If a caller is left, load its \`ip\` and \`slots\` into the registers, push the result and return \`true\`. If not, return \`false\`.
 
-Don't change \`frames.last()\`'s \`ip\` while it runs: only \`call\` writes it.`,
-    starter: callStarter + callTodo,
-    solution: callStarter + callOk + retOk,
+Don't change the running frame's \`ip\` field while it runs: only \`call\` writes it.`,
+    starter: cr('        todo!()', '        todo!()'),
+    solution: cr(`${CHECKS}
+${SAVE}
+${PUSH('n - argc - 1')}`, RET),
     tests: `fn vm() -> Vm {
-    // 0: script, 1: add(a, b), 2: f()
+    // 0: the script, 1: add(a, b), 2: f()
     let fs = vec![
-        Func { arity: 0 },
-        Func { arity: 2 },
-        Func { arity: 0 },
+        Func { name: "", arity: 0 },
+        Func { name: "add", arity: 2 },
+        Func { name: "f", arity: 0 },
     ];
     let mut vm = Vm::new(fs);
     vm.push(0.0); // the script itself
@@ -292,9 +270,9 @@ fn the_script_gets_the_first_frame() {
 #[test]
 fn call_saves_the_callers_ip() {
     let mut vm = vm();
-    vm.ip = 12;
+    vm.ip = 17;
     call_add(&mut vm);
-    assert_eq!(vm.frames[0].ip, 12);
+    assert_eq!(vm.frames[0].ip, 17);
     let f = Frame { func: 1, ip: 0, slots: 1 };
     assert_eq!(vm.frames[1], f);
     assert_eq!((vm.ip, vm.slots), (0, 1));
@@ -303,20 +281,20 @@ fn call_saves_the_callers_ip() {
 #[test]
 fn ret_restores_the_caller() {
     let mut vm = vm();
-    vm.ip = 12;
+    vm.ip = 17;
     call_add(&mut vm);
     vm.ip = 6;
     vm.push(3.0); // the result
     assert!(vm.ret());
     assert_eq!(vm.stack, [0.0, 3.0]);
-    assert_eq!((vm.ip, vm.slots), (12, 0));
+    assert_eq!((vm.ip, vm.slots), (17, 0));
     assert_eq!(vm.frames.len(), 1);
 }
 
 #[test]
 fn the_last_return_ends_the_script() {
     let mut vm = vm();
-    vm.push(0.0); // nil
+    vm.push(0.0); // none
     assert!(!vm.ret());
     assert!(vm.frames.is_empty());
     assert!(vm.stack.is_empty());
@@ -327,7 +305,7 @@ fn the_arity_is_checked() {
     let mut vm = vm();
     vm.push(1.0);
     vm.push(5.0);
-    let m = "Expected 2 arguments but got 1.";
+    let m = "add() takes 2 arguments but got 1";
     assert_eq!(vm.call(1, 1), Err(m.into()));
     assert_eq!(vm.frames.len(), 1);
 }
@@ -335,144 +313,84 @@ fn the_arity_is_checked() {
 #[test]
 fn deep_recursion_overflows() {
     let mut vm = vm();
-    for _ in 0..63 {
+    for _ in 0..255 {
         vm.push(2.0);
         vm.call(2, 0).unwrap();
     }
-    assert_eq!(vm.frames.len(), 64);
+    assert_eq!(vm.frames.len(), 256);
     vm.push(2.0);
-    let m = "Stack overflow.";
+    let m = "stack overflow";
     assert_eq!(vm.call(2, 0), Err(m.into()));
-    assert_eq!(vm.frames.len(), 64);
+    assert_eq!(vm.frames.len(), 256);
 }`,
     hints: [
-      'In `call`, check arity, then depth, before changing anything, so a failed call leaves the frames as they were.',
-      '`let c = self.frames.last_mut(); if let Some(c) = c { c.ip = self.ip; }` borrows `self.frames` and reads `self.ip`: two different fields, so it compiles.',
-      'The callee sits just below its arguments, so its slot is `stack.len() - argc - 1`.',
-      'In `ret`, truncate the stack to the popped frame’s `slots` before pushing the result, or the result is cut off with the callee’s slots.',
+      'Write `call` as four steps in order: check, save, push, load. Which of them can fail, and so must come first?',
+      'The callee sits just below its arguments, so its slot is `self.stack.len() - argc - 1`. Save the caller’s `ip` with `if let Some(c) = self.frames.last_mut() { c.ip = self.ip; }` before pushing.',
+      'For `ret`: `let r = self.pop();`, pop the frame, `self.stack.truncate(f.slots)`, then `match self.frames.last()`: `None => false`, `Some(c) =>` load `c.ip` and `c.slots`, push `r`, `true`.',
     ],
-    walkthrough: `\`call\` does drip-rs's three steps in order.
+    walkthrough: `**How to think about it.** There are two places a running function's position could live: in its frame, or in the VM's registers. This VM, like drip-rs, keeps it in the registers, which means a frame's \`ip\` field is a *note for later*, written only at the moment the frame is paused. So \`call\` has to do four things in order: refuse the call if it is wrong (before anything changes), write the caller's note, push the callee's frame, and point the registers at the callee. \`ret\` undoes it: throw the finished frame away and read the caller's note back into the registers.
 
-**Check.** Arity first, then depth, and return before touching anything. In drip-rs these become runtime errors with a stack trace; here they are strings.
+**\`call\`, line by line.**
 
-**Save.** \`self.frames.last_mut()\` is the caller, if there is one. Its \`ip\` field has been stale the whole time it ran, because the loop advanced the register instead. Now it is about to pause, so the register is written into it. The borrow checker allows \`c.ip = self.ip\` because \`c\` borrows only \`self.frames\`.
+- \`let f = &self.funcs[func];\` borrows the function's description. The borrow ends before anything below needs \`&mut self\`, because \`f\` is not used after the checks.
+- \`if argc != f.arity { return Err(format!(...)); }\` builds drip-rs's wording, \`add() takes 2 arguments but got 1\`, with \`plural\` choosing "argument" or "arguments".
+- \`let depth = self.frames.len();\` and \`if depth == FRAMES_MAX { ... }\` refuse a 257th frame with \`stack overflow\`. Both checks come before any change, so a refused call leaves the VM exactly as it was (the test checks \`frames.len()\` afterwards).
+- \`let c = self.frames.last_mut();\` and \`if let Some(c) = c { c.ip = self.ip; }\` save the register into the caller's frame. For the script's own call there is no caller, so nothing is saved.
+- \`let n = self.stack.len();\` and \`let slots = n - argc - 1;\` find the callee's own slot, one below its first argument. In \`call_add\` the stack is \`[script, add, 1, 2]\`, so \`slots\` is \`4 - 2 - 1 = 1\`.
+- \`self.frames.push(Frame { func, ip: 0, slots });\` pushes the new frame. Its \`ip\` is 0 and will not be written again until it makes a call of its own.
+- \`self.ip = 0;\` and \`self.slots = slots;\` load the registers, and \`Ok(())\` reports success.
 
-**Push and load.** The new frame starts at \`ip: 0\`. Its \`slots\` is the index of the callee, \`len - argc - 1\`, so argument 1 is at \`slots + 1\`, as \`GetLocal 1\` expects. Then the registers get the callee's values. That is why drip-rs's \`Call\` arm needs no \`reload()\`.
+**\`ret\`, line by line.**
 
-\`ret\` is the mirror image. Pop the result, then pop the frame by value. \`truncate(f.slots)\` drops the callee, its arguments and its locals at once. Then \`self.frames.last()\` is the caller: copy its saved \`ip\` and \`slots\` into the registers and push the result where the callee used to be. With no caller, the script has ended, which drip-rs's \`pop_frame\` reports as \`None\`.`,
+- \`let r = self.pop();\` takes the result off the top.
+- \`let top = self.frames.pop();\` and \`let f = top.expect("a frame");\` take the finished frame out by value.
+- \`self.stack.truncate(f.slots);\` drops the callee and every argument and local in one step. In the test, \`[script, add, 1, 2]\` becomes \`[script]\`.
+- \`match self.frames.last() {\`: with no caller left (\`None\`), the script has finished, so return \`false\`. With a caller (\`Some(c)\`), load \`c.ip\` and \`c.slots\` into the registers, push the result where the callee used to be, and return \`true\`.
+
+**Common wrong attempts.**
+
+- Advancing \`self.frames.last_mut().ip\` as the code runs, the TypeScript habit, instead of saving the register in \`call\`: the caller's note then holds an old position, and returning jumps back to the wrong place.
+- \`let slots = n - argc;\` points one slot too high, at the first argument: every \`load.local\` reads the wrong slot, and \`ret\` leaves the callee on the stack.
+- Pushing the result before truncating cuts the result off with the slots.`,
     wrong: [
       {
-        code: callStarter + `
-    fn call(
-        &mut self,
-        func: usize,
-        argc: usize,
-    ) -> Result<(), String> {
-        let f = &self.funcs[func];
-        let arity = f.arity;
-        if argc != arity {
-            return Err(format!(
-                "Expected {} arguments \\
-                 but got {}.",
-                arity, argc
-            ));
-        }
-        let depth = self.frames.len();
-        if depth == FRAMES_MAX {
-            let m = "Stack overflow.";
-            return Err(m.to_string());
-        }
-        let n = self.stack.len();
-        let slots = n - argc - 1;
-        self.frames.push(Frame {
-            func,
-            ip: 0,
-            slots,
-        });
-        self.ip = 0;
-        self.slots = slots;
-        Ok(())
-    }
-` + retOk,
-        why: 'This is the TypeScript habit: there, the frame object is updated as the loop runs. Here the caller’s `ip` lives only in the register, which `call` overwrites, so returning jumps to a stale position.',
+        code: cr(`${CHECKS}
+${PUSH('n - argc - 1')}`, RET),
+        why: 'It never saves the caller’s `ip`, the TypeScript habit of updating the frame as the loop runs. Here the caller’s position lives only in the register, which `call` overwrites, so returning jumps back to a stale position.',
       },
       {
-        code: callStarter + callOk.replace('let slots = n - argc - 1;', 'let slots = n - argc;') + retOk,
-        why: '`slots` must point at the callee, one below the first argument. Off by one, every `GetLocal` reads the wrong slot and `ret` leaves the callee on the stack.',
-      },
-      {
-        code: callStarter + callOk + `
-    fn ret(&mut self) -> bool {
-        let r = self.pop();
-        let top = self.frames.pop();
-        let f = top.expect("a frame");
-        match self.frames.last() {
-            None => false,
-            Some(c) => {
-                self.ip = c.ip;
-                self.slots = c.slots;
-                self.stack.push(r);
-                let s = f.slots;
-                self.stack.truncate(s);
-                true
-            }
-        }
-    }
-}`,
-        why: 'Truncating after pushing cuts the result off too, and on the last return the script’s slots are never dropped.',
+        code: cr(`${CHECKS}
+${SAVE}
+${PUSH('n - argc')}`, RET),
+        why: '`slots` must point at the callee, one below the first argument. Off by one, every `load.local` reads the wrong slot and `ret` leaves the callee on the stack.',
       },
     ],
   },
   stackTrace: {
-    lang: 'rust',
     optional: true,
-    title: 'A stack trace from stale frames',
-    prompt: `Write \`trace\`, the stack-trace half of drip-rs's \`runtime_error\`. Return the message, then one line per frame, innermost first: \`"[line N] in name()"\`, or \`"[line N] in script"\` when the name is empty.
+    lang: 'rust',
+    title: 'A stack trace from out-of-date frames',
+    prompt: `Write \`trace\`, the stack-trace half of drip-rs's \`runtime_error\`. Return \`"runtime error: "\` plus the message, then one line per frame, innermost first: \`"  at line N in fn name"\`, or \`"  at line N in script"\` when the name is \`None\`.
 
-The line is \`lines[ip - 1]\`, because \`ip\` is already past the failing instruction. For every paused frame, \`ip\` is the frame's own field. For the top frame, that field is stale: use the register \`self.ip\`.`,
-    starter: traceStarter,
-    solution: traceStarter.replace('        todo!()', `        let mut out = Vec::new();
-        out.push(msg.to_string());
-        let top = self.frames.len()
-            .saturating_sub(1);
-        let fs = self.frames.iter();
-        let fs = fs.enumerate().rev();
-        for (d, f) in fs {
-            let ip = if d == top {
-                self.ip
-            } else {
-                f.ip
-            };
-            let line = f.lines[ip - 1];
-            let p = if f.name == "" {
-                "script".to_string()
-            } else {
-                format!("{}()", f.name)
-            };
-            out.push(format!(
-                "[line {}] in {}",
-                line, p
-            ));
-        }
-        out`),
-    tests: `// fn f() {
-//   return -nil;
-// }
-// fn g() { f(); }
-// g();
+The line is \`lines[ip - 1]\`, because \`ip\` is already past the failing instruction. For every paused frame, \`ip\` is the frame's own field. For the top frame, that field is out of date: use the register \`self.ip\`.`,
+    starter: st('        todo!()'),
+    solution: st(traceBody(PICK, '.rev()')),
+    tests: `// fn f(x) { return -x; }   (line 2)
+// fn g() { return f("hi"); } (line 5)
+// print g();                 (line 7)
 fn vm() -> Vm {
-    let script = Rc::new(vec![5, 5, 5]);
-    let g = Rc::new(vec![4, 4, 4, 4]);
+    let script = Rc::new(vec![7, 7, 7]);
+    let g = Rc::new(vec![5, 5, 5, 5]);
     let f = Rc::new(vec![2, 2, 2]);
     Vm {
         frames: vec![
-            Frame { name: "", lines: script,
-                ip: 3 },
-            Frame { name: "g", lines: g,
-                ip: 4 },
-            // stale: never written yet
-            Frame { name: "f", lines: f,
-                ip: 0 },
+            Frame { name: None,
+                lines: script, ip: 3 },
+            Frame { name: Some("g"),
+                lines: g, ip: 4 },
+            // out of date: never written
+            Frame { name: Some("f"),
+                lines: f, ip: 0 },
         ],
         ip: 3,
     }
@@ -480,13 +398,13 @@ fn vm() -> Vm {
 
 #[test]
 fn innermost_frame_first() {
-    let m = "Operand must be a number.";
+    let m = "cannot negate a string";
     let t = vm().trace(m);
     assert_eq!(t, [
-        "Operand must be a number.",
-        "[line 2] in f()",
-        "[line 4] in g()",
-        "[line 5] in script",
+        "runtime error: cannot negate a string",
+        "  at line 2 in fn f",
+        "  at line 5 in fn g",
+        "  at line 7 in script",
     ]);
 }
 
@@ -496,7 +414,7 @@ fn the_top_frame_uses_the_register() {
     vm.frames[2].lines =
         Rc::new(vec![1, 2, 9]);
     let t = vm.trace("x");
-    assert_eq!(t[1], "[line 9] in f()");
+    assert_eq!(t[1], "  at line 9 in fn f");
 }
 
 #[test]
@@ -504,67 +422,44 @@ fn a_lone_script() {
     let lines = Rc::new(vec![1, 7]);
     let vm = Vm {
         frames: vec![Frame {
-            name: "", lines, ip: 0,
+            name: None, lines, ip: 0,
         }],
         ip: 2,
     };
-    assert_eq!(vm.trace("boom"),
-        ["boom", "[line 7] in script"]);
+    assert_eq!(vm.trace("boom"), [
+        "runtime error: boom",
+        "  at line 7 in script",
+    ]);
 }`,
     hints: [
-      '`self.frames.iter().enumerate().rev()` gives `(depth, frame)` pairs, innermost first.',
-      'The top frame is at depth `frames.len() - 1`. Compare each depth with it to choose between `self.ip` and `f.ip`.',
+      'Walk the frames from the last (innermost) to the first: `self.frames.iter().enumerate().rev()` gives each frame with its index.',
+      'The top frame is index `self.frames.len() - 1` (use `saturating_sub(1)` so an empty list cannot underflow). For it, use `self.ip`; for the others, `f.ip`.',
+      'The line is `f.lines[ip - 1]`. Name the place with `match f.name { Some(n) => format!("fn {n}"), None => "script".into() }`.',
     ],
-    walkthrough: `The order comes from \`.rev()\`: frames are stored outermost first, but a trace reads from the error outwards.
+    walkthrough: `**How to think about it.** A stack trace answers "which line was each call on?", innermost first. For a paused frame the answer is in its saved \`ip\`; for the running frame it is in the register, because its own field is only a note written when it pauses. And \`ip\` always points one past the instruction that was running, so the line is that of \`ip - 1\`.
 
-The interesting line is the choice of \`ip\`. Every paused frame had its \`ip\` written by \`call\` at the moment it called the next frame, so that field is exact. The top frame has never called anything since it started (or since its last call returned), so its field is out of date. In the test, the stale \`f\` frame says \`ip: 0\`, and \`lines[0 - 1]\` would even underflow. The register says 3, the position just past \`NEGATE\`, which is on line 2.
+**The solution, line by line.**
 
-drip-rs writes \`saturating_sub(1)\` for the top index so that an empty frame list doesn't underflow. In drip-rs that can't happen during a run, but the guard costs nothing.`,
+- \`let mut out = Vec::new();\` and \`out.push(format!("runtime error: {msg}"));\` start with the message.
+- \`let top = self.frames.len().saturating_sub(1);\` is the index of the running frame. \`saturating_sub\` stops at 0 instead of underflowing, as drip-rs's \`runtime_error\` does.
+- \`let fs = fs.enumerate().rev();\` walks the frames from the innermost out, with their indices.
+- \`let ip = if d == top { self.ip } else { f.ip };\` is the whole point of the exercise: the register for the top frame, the saved note for the rest.
+- \`let line = f.lines[ip - 1];\` looks the line up in that frame's own line table.
+- \`let place = match f.name { ... };\` names the place, \`fn f\` or \`script\`, as drip-rs does (it also has \`anonymous fn\`, left out here).
+- \`out.push(format!("  at line {line} in {place}"));\` adds the line, with its two-space indent.
+
+**Common wrong attempts.**
+
+- Using \`f.ip\` for every frame: the top frame's field is 0, so \`ip - 1\` underflows and the program panics (in general it would name the wrong line).
+- Forgetting \`.rev()\`: the script comes first, but drip-rs and the TypeScript VM both print the innermost call first.`,
     wrong: [
       {
-        code: traceStarter.replace('        todo!()', `        let mut out = Vec::new();
-        out.push(msg.to_string());
-        let fs = self.frames.iter();
-        for f in fs.rev() {
-            let ip = f.ip;
-            let line = f.lines[ip - 1];
-            let p = if f.name == "" {
-                "script".to_string()
-            } else {
-                format!("{}()", f.name)
-            };
-            out.push(format!(
-                "[line {}] in {}",
-                line, p
-            ));
-        }
-        out`),
-        why: 'The top frame’s `ip` field is stale. Here it is 0, so `f.ip - 1` underflows and the test panics; in general it names the wrong line.',
+        code: st(traceBody('f.ip', '.rev()')),
+        why: 'The top frame’s `ip` field is out of date. Here it is 0, so `ip - 1` underflows and the test panics; in general it names the wrong line.',
       },
       {
-        code: traceStarter.replace('        todo!()', `        let mut out = Vec::new();
-        out.push(msg.to_string());
-        let top = self.frames.len() - 1;
-        let fs = self.frames.iter();
-        for (d, f) in fs.enumerate() {
-            let ip = if d == top {
-                self.ip
-            } else {
-                f.ip
-            };
-            let line = f.lines[ip - 1];
-            let p = if f.name == "" {
-                "script".to_string()
-            } else {
-                format!("{}()", f.name)
-            };
-            out.push(format!(
-                "[line {}] in {}",
-                line, p
-            ));
-        }
-        out`),
-        why: 'Without `.rev()` the script comes first. drip-rs, clox and the TypeScript VM all print the innermost call first.',
+        code: st(traceBody(PICK, '')),
+        why: 'Without `.rev()` the script comes first. drip-rs and the TypeScript VM both print the innermost call first.',
       },
     ],
   },
@@ -574,55 +469,46 @@ export const quiz = [
   {
     q: 'Why can’t drip-rs’s loop keep `let frame = self.frames.last_mut().unwrap();` across a call, as the TypeScript loop keeps `frame`?',
     options: [
-      { t: 'Because `CallFrame` isn’t `Copy`', why: '`last_mut` returns a reference; nothing is copied or moved.' },
-      { t: 'Because `call` needs `&mut self`, and `frame` is still a live mutable borrow into `self.frames`: E0499', correct: true, why: 'And the check is not fussiness: pushing a frame can reallocate the `Vec` and move the frame `frame` points to.' },
-      { t: 'Because frames live in the heap’s arena', why: 'Frames are in the VM’s own `Vec`, not the object heap.' },
-      { t: 'It can; drip-rs just chose registers for speed', why: 'rustc rejects it. Registers are also faster (chapter 337), but the borrow error comes first.' },
+      { t: '`last_mut` is slower than indexing', why: 'Speed is not the issue: the code does not compile at all.' },
+      { t: '`call` pushes onto `self.frames`, which needs `&mut self` while `frame` still borrows it, and a push may move the frames', correct: true, why: 'That is E0499. drip-rs keeps the running frame’s state in registers instead.' },
+      { t: 'A `CallFrame` cannot be mutated', why: '`call` writes `caller.ip = self.ip` through `last_mut()`; it just doesn’t hold that borrow across the push.' },
+      { t: 'Frames are stored in the heap’s arenas', why: 'They are a plain `Vec<CallFrame>` on the `Vm`.' },
     ],
   },
   {
-    q: 'The script runs `add(1, 2)` with its register `ip` at 12. Right after `call` returns `Ok`, what is true?',
+    q: 'The script runs `add(1, 2)` with its register `ip` at 17. Right after `call` returns `Ok`, what is true?',
     options: [
-      { t: 'The script frame’s `ip` is 12, and the register `ip` is 0', correct: true, why: '`call` saved 12 into the caller, then loaded the callee’s `ip`.' },
-      { t: 'Both are 12', why: 'The register now belongs to `add`, which starts at byte 0.' },
-      { t: 'The script frame’s `ip` is still 0', why: 'That was true while the script ran. `call` writes it before pushing the callee.' },
-      { t: 'The script frame was removed from `frames` while `add` runs', why: 'Frames stay in the `Vec` until they return; `add` is pushed on top.' },
+      { t: 'The script’s frame says `ip: 17`, and the register `ip` is 0', correct: true, why: '`call` saved the register into the caller’s frame, then loaded the callee’s `ip`.' },
+      { t: 'The script’s frame still says `ip: 0`', why: 'That was true while the script ran. `call` writes the field just before pushing.' },
+      { t: 'The register `ip` is still 17 until the loop reloads', why: 'drip-rs has no reload: `call` loads the registers itself.' },
+      { t: '`add`’s frame says `ip: 17`', why: 'The new frame starts at `ip: 0`; 17 is the caller’s position.' },
     ],
   },
   {
     q: 'What does `pop_frame` returning `None` mean?',
     options: [
+      { t: 'The frame stack was already empty', why: '`pop_frame` expects a running frame; an empty stack would panic at its `expect`.' },
       { t: 'A runtime error happened', why: 'Errors travel as `Err(RuntimeError)`, not through `pop_frame`.' },
-      { t: 'The frame `Vec` was already empty', why: 'It pops a frame first, with `expect`. `None` is about what is left after.' },
-      { t: 'The frame that returned was a native', why: 'Natives never get a frame: `call_value` runs them directly.' },
-      { t: 'The frame that just returned had no caller, so the script is finished', correct: true, why: 'The `Return` arm then pops the script’s closure and leaves `run` with `Ok(())`.' },
+      { t: 'The returning frame was the script’s, so there is no caller: the program has finished', correct: true, why: '`self.frames.last()?` returns early. The `Return` arm clears the stack and `run` returns `Ok(())`.' },
+      { t: 'The callee returned `none`', why: 'The return value is popped before `pop_frame`; it has nothing to do with the `Option`.' },
     ],
   },
   {
-    q: 'How many `Rc` clones of `fib`’s chunk exist while `fib` is three calls deep and running?',
+    q: 'A trace reads `at line 2 in fn f`, then `at line 5 in fn g`, then `at line 7 in script`. Where did the 2 come from?',
     options: [
-      { t: 'One: an `Rc` is shared, not cloned', why: '`Rc::clone` makes another owner each time and increments the count.' },
-      { t: 'Three: one per frame', why: 'Close, but the running frame’s chunk is also in the VM’s `chunk` register.' },
-      { t: 'Five: one in the function object, three in the frames, one in the register', correct: true, why: 'The function owns the original; each frame and the register hold clones. The bytes exist once.' },
-      { t: 'None: frames hold a `Gc<ObjFunction>`', why: 'They hold the closure’s handle and an `Rc<Chunk>`.' },
+      { t: 'From `f`’s frame’s `ip` field', why: 'That field is out of date while `f` runs (it is still 0). The trace uses the register for the top frame.' },
+      { t: 'From the VM’s `ip` register, looked up in `f`’s chunk as `lines[ip - 1]`', correct: true, why: '`f` is the running frame, so only the register knows where it is.' },
+      { t: 'From the line of the call `f("hi")`', why: 'That is line 5, the one shown for `g`.' },
+      { t: 'From the compiler, which stores each function’s first line', why: 'Each byte has its own line in `chunk.lines`; the trace looks up the running byte.' },
     ],
   },
   {
-    q: 'A native function gets its arguments how?',
+    q: 'How does a drip-rs native such as `len` get its arguments?',
     options: [
-      { t: 'As `&self.stack[start..]`, a borrowed slice of the value stack', correct: true, why: '`NativeFn` is `fn(&[Value]) -> Value`. Nothing is copied.' },
-      { t: 'As a new `Vec<Value>` copied from the stack', why: 'That is what the TypeScript VM’s `slice` does. drip-rs borrows.' },
-      { t: 'In a new call frame, like a closure', why: 'Natives don’t get frames.' },
-      { t: 'Through the `globals` table', why: 'Globals hold the native itself, not its arguments.' },
-    ],
-  },
-  {
-    q: 'Why does `runtime_error` use `self.ip` for the innermost frame?',
-    options: [
-      { t: 'The innermost frame has no `ip` field', why: 'Every `CallFrame` has one.' },
-      { t: 'Because that frame’s `ip` field is stale: only `call` writes it, and the running frame hasn’t called anything', correct: true, why: 'Paused frames have exact saved values; the running one is only in the register.' },
-      { t: 'To skip a bounds check', why: 'It’s about correctness, not speed.' },
-      { t: 'Because frames are stored innermost first', why: 'They are stored outermost first; the loop uses `.rev()`.' },
+      { t: 'They are copied into a new `Vec` with `to_vec`', why: 'Nothing is copied: `call_native` reads them where they are.' },
+      { t: 'It is pushed a `CallFrame` of its own', why: 'Natives run without a frame, straight from `call_value`.' },
+      { t: 'Through a function pointer `fn(&[Value]) -> Value`', why: 'drip-rs uses an enum, `Native`, and matches on it in `call_native`.' },
+      { t: '`call_native` reads them from the top of the stack, where they stay until it finishes', correct: true, why: 'So a collection the native causes cannot free them; one `truncate` drops them with the callee afterwards.' },
     ],
   },
 ];

@@ -6,13 +6,9 @@ export const prompts = {
     q: 'Does `Heap::alloc` in drip-rs ever start a collection?',
     a: 'No. The caller (the VM or the compiler) asks `should_collect()` first and, if so, calls `collect` with its roots.',
   },
-  'ag-rule': {
-    q: 'Because allocation may collect first, what must hold for the object passed to `Vm::alloc`?',
-    a: 'Everything it refers to must already be reachable from a root, since the new object itself isn’t yet.',
-  },
   'ag-dyn': {
     q: 'Why does `collect` take `&[&dyn Trace]` rather than a generic `&[T]`?',
-    a: 'One call mixes root types, such as the compiler’s roots and its `Vec<FunctionState>`; a slice of trait objects can hold different types.',
+    a: 'One call mixes root types: the compiler passes whatever roots the VM gave it together with its own `Vec<FunctionState>`, and a slice of trait objects can hold values of different types.',
   },
   'ag-bitmap': {
     q: 'Where are drip-rs’s mark bits, and why not in the objects?',
@@ -24,11 +20,11 @@ export const prompts = {
   },
   'ag-gray': {
     q: 'Which drip-rs objects never go on the gray stack, and why?',
-    a: 'Strings and natives. They refer to no other objects, so marking one makes it black at once.',
+    a: 'Strings and natives. They refer to no other objects, so `Gray` has no variant for them and marking one makes it black at once.',
   },
   'ag-free': {
     q: 'What does `Arena::remove(i, true)` do with slot `i`?',
-    a: 'Takes the object out (the slot becomes `None`, the object is dropped) and pushes `i` on the free list, which the next `insert` pops.',
+    a: 'Takes the object out with `take` (the slot becomes `None` and the object is dropped) and, because `reuse` is true, pushes `i` on the free list, which the next `insert` pops.',
   },
   'ag-weak': {
     q: 'Why does `collect` prune the string table before sweeping?',
@@ -36,7 +32,7 @@ export const prompts = {
   },
   'ag-stress': {
     q: 'What does drip-rs’s stress mode change?',
-    a: '`should_collect()` is always true, so a collection runs before every allocation, and freed slots are never reused.',
+    a: '`should_collect()` is always true, so a collection runs before every allocation, and `poison_freed` is set, so freed slots are never reused.',
   },
   'ag-poison': {
     q: 'Why must stress mode also stop reusing freed slots?',
@@ -120,7 +116,18 @@ fn main() {
   },
 };
 
-const msStarter = `struct Obj {
+export const exercises = {
+  markSweep: {
+    lang: 'rust',
+    title: 'Mark, trace, sweep',
+    prompt: `Here is a one-arena heap in drip-rs's style. A handle is an index into \`objs\`; a freed slot is \`None\`; \`alloc\` reuses an index from \`free\` before growing. Write \`collect(roots)\`:
+
+1. Make a fresh mark bitmap, \`vec![false; n]\`, and a gray stack. Mark each root and push it gray.
+2. Pop gray objects until none are left, marking and pushing each object they refer to that isn't marked yet.
+3. Sweep: for every unmarked slot that holds an object, take it out (the slot becomes \`None\`), count it in \`freed\`, and push its index on \`free\`, unless \`poison\` is set.
+
+The bitmap is a local, separate from \`self\`, so you can read \`self.get(h).refs\` while you write \`marks\`.`,
+    starter: `struct Obj {
     refs: Vec<usize>,
 }
 
@@ -160,9 +167,7 @@ impl Heap {
         let o = self.objs[h].as_ref();
         o.expect("use after free")
     }
-`;
 
-const msTodo = `
     // Free every object the roots
     // can't reach.
     fn collect(
@@ -171,9 +176,48 @@ const msTodo = `
     ) {
         todo!()
     }
-}`;
+}`,
+    solution: `struct Obj {
+    refs: Vec<usize>,
+}
 
-const markOk = `
+struct Heap {
+    objs: Vec<Option<Obj>>,
+    free: Vec<usize>,
+    // Never reuse a freed slot.
+    poison: bool,
+    freed: usize,
+}
+
+impl Heap {
+    fn new(poison: bool) -> Heap {
+        Heap {
+            objs: Vec::new(),
+            free: Vec::new(),
+            poison,
+            freed: 0,
+        }
+    }
+
+    fn alloc(
+        &mut self,
+        refs: Vec<usize>,
+    ) -> usize {
+        let obj = Some(Obj { refs });
+        let top = self.free.pop();
+        if let Some(i) = top {
+            self.objs[i] = obj;
+            return i;
+        }
+        self.objs.push(obj);
+        self.objs.len() - 1
+    }
+
+    fn get(&self, h: usize) -> &Obj {
+        let o = self.objs[h].as_ref();
+        o.expect("use after free")
+    }
+
     // Free every object the roots
     // can't reach.
     fn collect(
@@ -200,9 +244,7 @@ const markOk = `
                 }
             }
         }
-`;
-
-const sweepOk = `        // 3. Sweep.
+        // 3. Sweep.
         for i in 0..n {
             if marks[i] {
                 continue;
@@ -216,21 +258,7 @@ const sweepOk = `        // 3. Sweep.
             }
         }
     }
-}`;
-
-export const exercises = {
-  markSweep: {
-    lang: 'rust',
-    title: 'Mark, trace, sweep',
-    prompt: `Here is a one-arena heap in drip-rs's style. A handle is an index into \`objs\`; a freed slot is \`None\`; \`alloc\` reuses an index from \`free\` before growing. Write \`collect(roots)\`:
-
-1. Make a fresh mark bitmap, \`vec![false; n]\`, and a gray stack. Mark each root and push it gray.
-2. Pop gray objects until none are left, marking and pushing each object they refer to that isn't marked yet.
-3. Sweep: for every unmarked slot that holds an object, take it out (the slot becomes \`None\`), count it in \`freed\`, and push its index on \`free\`, unless \`poison\` is set.
-
-The bitmap is a local, separate from \`self\`, so you can read \`self.get(h).refs\` while you write \`marks\`.`,
-    starter: msStarter + msTodo,
-    solution: msStarter + markOk + sweepOk,
+}`,
     tests: `// 0 -> 1 -> 2, and 3 on its own
 fn heap(poison: bool) -> Heap {
     let mut h = Heap::new(poison);
@@ -315,18 +343,73 @@ fn a_stale_handle_panics() {
     h.get(3);
 }`,
     hints: [
-      'Mark when you push gray, and push only if the bit was still false. That one check is what stops a cycle from looping forever.',
-      '`self.get(h)` borrows `self` shared; `marks` and `gray` are locals, so changing them inside the loop is fine.',
-      '`self.objs[i].take()` returns the old `Option` and leaves `None` behind. Count and free only when it was `Some`: a slot freed earlier is already `None`.',
+      'Do it in the three steps of `Heap::collect`: mark the roots, trace until nothing is gray, sweep. Start with a local bitmap, `let mut marks = vec![false; n];`, and a local `let mut gray = Vec::new();`.',
+      'Mark an object at the moment you push it gray, and push it only if its bit was still false: that one check is what stops a cycle from looping for ever. `self.get(h)` borrows `self` shared while `marks` and `gray` are locals, so changing them inside the loop is fine.',
+      'For the sweep, loop over every index; skip marked ones; `self.objs[i].take()` returns the old `Option` and leaves `None`. Count and free only when it was `Some` (a slot freed earlier is already `None`), and push `i` on `self.free` unless `self.poison` is set.',
     ],
-    walkthrough: `**Mark.** The bitmap is built fresh, one \`false\` per slot. That's drip-rs's \`marks.reset(self)\`, and it is why the fifth test passes: whatever survived the first collection gets no head start in the second. Each root is marked and pushed gray.
+    walkthrough: `**How to think about it.** A collection answers one question, "which objects can the program still reach?", and frees the rest. Reaching is following references, starting from the roots, and the only danger is going round a cycle for ever; marking each object the first time it is seen, and never pushing a marked one again, removes that danger. Keep the three phases of drip-rs's \`Heap::collect\` in mind (mark, trace, sweep), and keep the bitmap in a local, apart from \`self\`, just as drip-rs lifts its \`Marks\` out of the heap.
 
-**Trace.** Pop a gray handle and look at what it refers to. Anything unmarked gets marked and pushed. Marking at push time means each object is pushed at most once, so the loop ends even on a cycle. Notice the borrows: \`self.get(h)\` is a shared borrow of the heap, and \`marks\` is a separate local. That is exactly why drip-rs keeps its \`Marks\` outside the objects, and lifts it out of the heap with \`mem::take\` before tracing.
+**The solution, line by line.**
 
-**Sweep.** Every slot whose bit is still \`false\` is garbage, but only if it holds an object: slots freed by an earlier collection are already \`None\`, which \`take\` reports. Freed indices go on the free list, so \`alloc\` reuses them, unless \`poison\` is on. Then the slot stays \`None\` for good, and \`get\` on a stale handle panics, as drip-rs's \`use_after_free\` does in stress mode.`,
+- \`let n = self.objs.len();\` is the number of slots, live or free.
+- \`let mut marks = vec![false; n];\` is a fresh bitmap, one \`false\` per slot. That is drip-rs's \`marks.reset(self)\`, and it is why the test \`each_collection_starts_fresh\` passes: what survived the first collection gets no head start in the second.
+- \`let mut gray = Vec::new();\` is the gray stack: marked, but not yet looked inside.
+- \`for &r in roots { if !marks[r] { marks[r] = true; gray.push(r); } }\` marks each root and makes it gray.
+- \`while let Some(h) = gray.pop() {\` takes the next gray object until none are left.
+- \`let o = self.get(h);\` borrows the object shared. \`marks\` and \`gray\` are locals, not part of \`self\`, so writing them below does not clash with this borrow.
+- \`for &r in &o.refs { if !marks[r] { marks[r] = true; gray.push(r); } }\` marks and pushes everything it refers to that is not marked yet. In the cycle tests, object 0 refers to 1 and 1 to 0; the second time round, 0 is already marked, so nothing is pushed and the loop ends.
+- \`for i in 0..n { if marks[i] { continue; }\` visits every slot and skips the survivors.
+- \`let o = self.objs[i].take();\` takes the object out, leaving \`None\`.
+- \`if o.is_some() { self.freed += 1; if !self.poison { self.free.push(i); } }\` counts and frees only slots that held an object, and puts the index on the free list only when slots may be reused. With \`poison\`, the slot stays \`None\` for good, so \`get\` on a stale handle panics with "use after free", as drip-rs's arenas do in stress mode.
+
+**Common wrong attempts.**
+
+- Marking the roots but never tracing: only the roots survive, so object 1, reachable from root 0, is freed while still in use.
+- Ignoring \`poison\`: a freed slot is handed out again, so a stale handle quietly reads the new object instead of panicking.
+- Freeing every unmarked slot without checking \`is_some()\`: slots freed by an earlier collection are counted again and pushed on the free list a second time, so two allocations could be given the same slot.`,
     wrong: [
       {
-        code: msStarter + `
+        code: `struct Obj {
+    refs: Vec<usize>,
+}
+
+struct Heap {
+    objs: Vec<Option<Obj>>,
+    free: Vec<usize>,
+    // Never reuse a freed slot.
+    poison: bool,
+    freed: usize,
+}
+
+impl Heap {
+    fn new(poison: bool) -> Heap {
+        Heap {
+            objs: Vec::new(),
+            free: Vec::new(),
+            poison,
+            freed: 0,
+        }
+    }
+
+    fn alloc(
+        &mut self,
+        refs: Vec<usize>,
+    ) -> usize {
+        let obj = Some(Obj { refs });
+        let top = self.free.pop();
+        if let Some(i) = top {
+            self.objs[i] = obj;
+            return i;
+        }
+        self.objs.push(obj);
+        self.objs.len() - 1
+    }
+
+    fn get(&self, h: usize) -> &Obj {
+        let o = self.objs[h].as_ref();
+        o.expect("use after free")
+    }
+
     fn collect(
         &mut self,
         roots: &[usize],
@@ -337,11 +420,92 @@ fn a_stale_handle_panics() {
         for &r in roots {
             marks[r] = true;
         }
-` + sweepOk,
+        // 3. Sweep.
+        for i in 0..n {
+            if marks[i] {
+                continue;
+            }
+            let o = self.objs[i].take();
+            if o.is_some() {
+                self.freed += 1;
+                if !self.poison {
+                    self.free.push(i);
+                }
+            }
+        }
+    }
+}`,
         why: 'Without tracing, only the roots survive. Object 1 is reachable from root 0, yet it is freed: the next `get(1)` would be a use after free.',
       },
       {
-        code: msStarter + markOk + `        for i in 0..n {
+        code: `struct Obj {
+    refs: Vec<usize>,
+}
+
+struct Heap {
+    objs: Vec<Option<Obj>>,
+    free: Vec<usize>,
+    // Never reuse a freed slot.
+    poison: bool,
+    freed: usize,
+}
+
+impl Heap {
+    fn new(poison: bool) -> Heap {
+        Heap {
+            objs: Vec::new(),
+            free: Vec::new(),
+            poison,
+            freed: 0,
+        }
+    }
+
+    fn alloc(
+        &mut self,
+        refs: Vec<usize>,
+    ) -> usize {
+        let obj = Some(Obj { refs });
+        let top = self.free.pop();
+        if let Some(i) = top {
+            self.objs[i] = obj;
+            return i;
+        }
+        self.objs.push(obj);
+        self.objs.len() - 1
+    }
+
+    fn get(&self, h: usize) -> &Obj {
+        let o = self.objs[h].as_ref();
+        o.expect("use after free")
+    }
+
+    // Free every object the roots
+    // can't reach.
+    fn collect(
+        &mut self,
+        roots: &[usize],
+    ) {
+        let n = self.objs.len();
+        let mut marks = vec![false; n];
+        let mut gray = Vec::new();
+        // 1. Mark the roots.
+        for &r in roots {
+            if !marks[r] {
+                marks[r] = true;
+                gray.push(r);
+            }
+        }
+        // 2. Trace until none are gray.
+        while let Some(h) = gray.pop() {
+            let o = self.get(h);
+            for &r in &o.refs {
+                if !marks[r] {
+                    marks[r] = true;
+                    gray.push(r);
+                }
+            }
+        }
+        for i in 0..n {
             if marks[i] {
                 continue;
             }
@@ -356,7 +520,74 @@ fn a_stale_handle_panics() {
         why: 'This ignores `poison`. A freed slot is handed out again, so a stale handle quietly reads the new object instead of panicking.',
       },
       {
-        code: msStarter + markOk + `        for i in 0..n {
+        code: `struct Obj {
+    refs: Vec<usize>,
+}
+
+struct Heap {
+    objs: Vec<Option<Obj>>,
+    free: Vec<usize>,
+    // Never reuse a freed slot.
+    poison: bool,
+    freed: usize,
+}
+
+impl Heap {
+    fn new(poison: bool) -> Heap {
+        Heap {
+            objs: Vec::new(),
+            free: Vec::new(),
+            poison,
+            freed: 0,
+        }
+    }
+
+    fn alloc(
+        &mut self,
+        refs: Vec<usize>,
+    ) -> usize {
+        let obj = Some(Obj { refs });
+        let top = self.free.pop();
+        if let Some(i) = top {
+            self.objs[i] = obj;
+            return i;
+        }
+        self.objs.push(obj);
+        self.objs.len() - 1
+    }
+
+    fn get(&self, h: usize) -> &Obj {
+        let o = self.objs[h].as_ref();
+        o.expect("use after free")
+    }
+
+    // Free every object the roots
+    // can't reach.
+    fn collect(
+        &mut self,
+        roots: &[usize],
+    ) {
+        let n = self.objs.len();
+        let mut marks = vec![false; n];
+        let mut gray = Vec::new();
+        // 1. Mark the roots.
+        for &r in roots {
+            if !marks[r] {
+                marks[r] = true;
+                gray.push(r);
+            }
+        }
+        // 2. Trace until none are gray.
+        while let Some(h) = gray.pop() {
+            let o = self.get(h);
+            for &r in &o.refs {
+                if !marks[r] {
+                    marks[r] = true;
+                    gray.push(r);
+                }
+            }
+        }
+        for i in 0..n {
             if !marks[i] {
                 self.objs[i] = None;
                 self.freed += 1;
@@ -375,57 +606,113 @@ fn a_stale_handle_panics() {
 
 export const quiz = [
   {
-    q: 'Who decides when drip-rs collects garbage?',
+    q: 'Which part of drip-rs decides that a collection should run?',
     options: [
-      { t: '`Heap::alloc`, when `bytes_allocated` passes `next_gc`', why: 'That is the TypeScript design. `Heap::alloc` never collects.' },
-      { t: 'Rust’s ownership system, when the last `Gc<T>` is dropped', why: '`Gc<T>` is `Copy` and owns nothing; dropping one does nothing.' },
-      { t: 'The caller: the VM or compiler asks `should_collect()` and then calls `collect` with its roots', correct: true, why: 'Only the caller can name the roots it holds.' },
-      { t: 'A background thread', why: 'drip-rs is single-threaded.' },
+      {
+        t: '`Heap::alloc`, whenever the heap is too big',
+        why: '`Heap::alloc` never collects: it cannot see the roots.',
+      },
+      {
+        t: 'The allocating caller (the VM or the compiler), which asks `should_collect()` and then calls `collect` with its roots',
+        correct: true,
+        why: '`Vm::alloc` calls `collect_if_needed` first; the compiler has its own version that adds its half-built functions.',
+      },
+      {
+        t: 'A background thread',
+        why: 'drip-rs collects on the same thread, between instructions, only when asked.',
+      },
+      {
+        t: 'Rust’s ownership system, when a `Gc` handle is dropped',
+        why: 'A `Gc` is a `Copy` index; dropping one frees nothing.',
+      },
     ],
   },
   {
-    q: 'Why does `collect` take roots as `&[&dyn Trace]`?',
+    q: 'Why are drip-rs’s mark bits kept in a separate `Marks` value instead of in each object?',
     options: [
-      { t: 'Trait objects are faster than generics', why: 'They add a virtual call. The reason is flexibility.' },
-      { t: 'So one slice can hold roots of different types, such as `VmRoots` and `Vec<FunctionState>`', correct: true, why: 'The compiler passes `&[self.roots, &self.functions]`.' },
-      { t: 'Because `Trace` has generic methods', why: 'It has one plain method, `trace(&self, &mut Marks)`.' },
-      { t: 'So the heap can keep the roots after `collect` returns', why: 'They are borrowed for the call only.' },
+      {
+        t: 'To save memory',
+        why: 'A `Vec<bool>` per arena uses about as much as a flag per object; the reason is borrowing.',
+      },
+      {
+        t: 'Rust objects cannot have `bool` fields',
+        why: 'They can; the problem is reading and writing the same struct at once.',
+      },
+      {
+        t: 'So that `blacken` can read the heap through `&self` while it writes the bits through `&mut Marks`',
+        correct: true,
+        why: 'With the bits inside the objects, the read borrow and the write borrow overlap (error E0502).',
+      },
+      {
+        t: 'So that the TypeScript VM can share them',
+        why: 'The two VMs share nothing at run time.',
+      },
     ],
   },
   {
-    q: 'What would go wrong if drip-rs kept a mark bit inside each object, in the arena?',
+    q: 'What does `std::mem::take(&mut self.marks)` do at the start of `collect`?',
     options: [
-      { t: 'Objects would be too large for a `Gc<T>`', why: 'A handle is an index; object size doesn’t matter to it.' },
-      { t: 'Nothing; it’s only a style choice', why: 'The borrow checker objects, as the E0502 example shows.' },
-      { t: 'Sweep couldn’t find the objects', why: 'Sweep walks the arenas either way.' },
-      { t: 'Tracing an object (a read borrow of the heap) and marking what it refers to (a write) would overlap', correct: true, why: 'With the bits in a separate `Marks`, the two borrows are of different values.' },
+      {
+        t: 'Moves the bitmap out of the heap, leaving an empty `Marks` in its place, so it can be borrowed apart from the heap',
+        correct: true,
+        why: 'At the end, `self.marks = marks;` puts it back, so its memory is reused next time.',
+      },
+      {
+        t: 'Clears every mark bit',
+        why: 'That is `marks.reset(self)`, the next line.',
+      },
+      {
+        t: 'Copies the bitmap',
+        why: 'It moves it; nothing is copied.',
+      },
+      {
+        t: 'Frees the bitmap’s memory',
+        why: 'The bitmap is kept and put back afterwards.',
+      },
     ],
   },
   {
-    q: 'After a sweep, why does drip-rs not unmark the survivors, as the TypeScript sweep does?',
+    q: 'In stress mode, why must freed slots never be reused?',
     options: [
-      { t: 'The next collection builds a cleared bitmap anyway, in `marks.reset`', correct: true, why: 'Every bit vector is resized to its arena and set to `false`.' },
-      { t: 'Survivors stay marked forever', why: 'Then garbage could never be found among them.' },
-      { t: 'Unmarking happens in `alloc`', why: '`alloc` doesn’t touch the marks.' },
-      { t: 'Because strings are never gray', why: 'That is about the gray stack, not unmarking.' },
+      {
+        t: 'Reusing them would be too slow under stress',
+        why: 'Speed is not the point of stress mode.',
+      },
+      {
+        t: 'So that a stale handle finds `None` and panics with “use after free”, instead of quietly reading whatever object moved into its slot',
+        correct: true,
+        why: 'That turns a missing root into a loud, immediate failure.',
+      },
+      {
+        t: 'The free list is not allowed to grow during a collection',
+        why: 'It may grow; stress mode simply never adds to it.',
+      },
+      {
+        t: 'Strings must stay interned for ever',
+        why: 'Unmarked strings are still freed; only their slots are not handed out again.',
+      },
     ],
   },
   {
-    q: 'In stress mode, why must freed slots not be reused?',
+    q: 'A scratch copy of drip-rs stops tracing `open_upvalues` in `VmRoots`. What happens?',
     options: [
-      { t: 'Reusing slots is slow', why: 'It is fast; that isn’t the reason.' },
-      { t: 'Stress mode allocates too much to keep a free list', why: 'The free list costs little.' },
-      { t: 'So a stale handle hits `None` and panics, instead of reading the new object that took its slot', correct: true, why: 'Both objects have the same type, so the type system can’t tell them apart.' },
-      { t: 'Because the bitmap can’t be resized', why: 'It is resized every collection.' },
-    ],
-  },
-  {
-    q: 'With `open_upvalues` removed from the VM’s roots, why did all 246 corpus programs still pass normally?',
-    options: [
-      { t: 'Upvalues are never collected', why: 'The stress run freed one, which is how it panicked.' },
-      { t: 'A missing root only matters if a collection runs at the wrong moment, and normally collections are rare', correct: true, why: 'Stress mode makes every allocation that moment, so the bug showed on the sixth program.' },
-      { t: 'The corpus has no closures', why: 'It has a whole `closure/` folder.' },
-      { t: 'The compiler roots the upvalues instead', why: 'Upvalues are created at run time, by the VM.' },
+      {
+        t: 'It no longer compiles',
+        why: 'It compiles, with a warning that the field is never read.',
+      },
+      {
+        t: 'Every corpus program fails',
+        why: 'The normal suite still passed, 334 of 334: collections rarely run at the wrong moment.',
+      },
+      {
+        t: 'Nothing: open upvalues are also reachable from closures',
+        why: 'A new upvalue is reachable only from the open list until its closure exists, and allocating that closure may collect.',
+      },
+      {
+        t: 'The stress suite fails, starting with `closures/assign_after_capture.drip`, with “use after free” on an `ObjUpvalue`',
+        correct: true,
+        why: '25 of the 165 stress programs failed: the collection before the closure’s allocation freed the new upvalue.',
+      },
     ],
   },
 ];

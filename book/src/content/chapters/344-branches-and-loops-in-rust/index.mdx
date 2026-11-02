@@ -3,51 +3,71 @@ n: 344
 day: 86
 part: XII
 title: 'Branches and loops in Rust'
-tagline: 'A forward jump is written before anyone knows where it goes, so the compiler leaves two bytes blank and comes back for them. In Rust that hole is a usize, and coming back for it has one rule: report the error before you take hold of the code.'
+tagline: 'A forward jump is written before anyone knows where it lands, so the compiler leaves two bytes blank and comes back for them. In Rust the note that says where the blank is must be a number, never a reference, and the error has to be reported before the code is borrowed.'
 objectives:
-  - Map drip-rs’s emit_jump, patch_jump and emit_loop to the TypeScript versions, and explain each difference.
-  - Explain why patch_jump checks for errors before it borrows the chunk’s code.
-  - Trace the bytes of a compiled while loop, with both jump offsets.
+  - Map drip-rs’s emit_jump, patch_jump and emit_loop onto the TypeScript versions, and explain each difference.
+  - Work out a jump’s two operand bytes by hand, forwards and backwards.
+  - Explain why patch_jump reports its error before it borrows the chunk’s code.
   - Write emit_jump and patch_jump for a small compiler, with tests.
 introduces: [patch-jump]
 uses: [drip-rs, compiler-state, rust-locals, match-dispatch, opcode-enum, jump, backpatching, instruction-pointer, short-circuit, control-flow, disassembler, scalar-types, bit-ops, byte, borrow, shared-vs-mutable, borrow-checker, self-receiver, option, struct, impl, vec, release-build, drip]
-sources: [rustref-numeric-cast, rustref-int-overflow, nystrom2021]
+sources: [rustref-numeric-cast, rustref-int-overflow]
 ---
 import JumpSteps from '../../../components/diagrams/ch344/JumpSteps';
+import JumpMath from '../../../components/diagrams/ch344/JumpMath';
 
-## Two holes in a while loop
+## A blank in the middle of the code
 
-Here is `let i = 0; while (i < 3) { print i; i = i + 1; }`, from
-drip-rs's disassembler (the TypeScript VM prints the same):
+Here is the bytecode drip-rs makes for the loop
+`let i = 0; while i < 3 { print i; i += 1; }`, from `drip-rs
+--disassemble` with the columns narrowed to fit (the TypeScript VM
+prints the same bytes):
 
-```
-0004    2 OP_GET_GLOBAL       2 'i'
-0006    | OP_CONSTANT         3 '3'
-0008    | OP_LESS
-0009    | OP_JUMP_IF_FALSE    9 -> 27
-0012    | OP_POP
-0013    3 OP_GET_GLOBAL       4 'i'
+```text
+0006    2 load.global     2 'i'
+0009    | const           3 '3'
+0012    | lt
+0013    | jump.unless    13 -> 34
+0016    3 load.global     4 'i'
   ... the body ...
-0024    5 OP_LOOP            24 -> 4
-0027    | OP_POP
+0031    5 loop           31 -> 6
+0034    | none
 ```
 
-When the compiler writes the `JUMP_IF_FALSE` at offset 9, the body
-isn't compiled yet, so nobody knows that the exit is at 27. Chapter 152's
-answer was backpatching: write a placeholder, remember where it is, and
-fill it in later. drip-rs does exactly the same. What changes is the
-types, and one ordering rule.
+The `jump.unless` at 13 says "if the condition is false, skip to 34";
+however, when the compiler writes that instruction, the body has not
+been compiled yet, so nobody knows that the loop ends at 34. The
+chapter *Backpatching: if, for, break and continue* solved this in
+TypeScript: write a placeholder, remember where it is, and fill it in
+later. drip-rs does the same; Rust changes two details, which are what
+the "remember where" note may be, and the order the patch works in.
 
-<Callout kind="intuition">
-Writing a letter that says "see page ___" before you know how long the
-middle will be. You leave the blank, put a sticky note on that page of
-your own draft, and fill the number in when you get there. The sticky
-note is just a page number, not your hand holding the page down.
-</Callout>
+<Analogy title="a coat-check ticket">
+You hand your coat over and get a numbered ticket, so your hands are
+free all evening, and the number finds the coat when you come back.
+Holding the coat yourself would also "remember" it, but you could carry
+nothing else. A `usize` offset is the ticket; a `&mut` reference into
+the code would be holding the coat, and the borrow checker would not let
+the compiler touch the chunk again until it let go.
+<span slot="breaks">A cloakroom never moves your coat to a different
+hook; an offset into a `Vec` only stays right because the compiler
+always appends to the code and never removes bytes from the middle.</span>
+</Analogy>
+
+<Analogy title="“see page __” in a report">
+Writing a report, you type "the results are on page __" before the
+results exist, and fill in the number once you know it. The blank is as
+wide as the number will be, so filling it in never moves the rest of
+the page.
+<span slot="breaks">A page number can grow to three digits if it needs
+to; the blank in a jump is always two bytes, so a jump of more than
+65,535 bytes cannot be written at all, and drip-rs reports it as an
+error instead.</span>
+</Analogy>
 
 ## Leaving the hole
 
-From `src/compiler.rs`, as are the next listings (adapted to fit):
+From `compiler.rs` (the signature rewrapped to fit):
 
 ```rust
 fn emit_jump(&mut self, op: OpCode)
@@ -59,37 +79,26 @@ fn emit_jump(&mut self, op: OpCode)
 }
 ```
 
-It returns where the two offset bytes are. TypeScript returned a
-`number`; drip-rs returns a `usize`, the type of a `Vec` index, so it
-can never be negative. The caller keeps it in a local:
-`let exit_jump = self.emit_jump(OpCode::JumpIfFalse);`. That local is a
-plain number. It borrows nothing, so the compiler is free to compile the
-whole body before coming back. Holding a `&mut u8` into the code
-instead would lock the chunk for the entire body.
+The first three lines write the opcode and two placeholder bytes. The
+last line is the function's value (no `return` needed, as *Functions
+and expressions* showed): the length minus two, which is the position
+of the first placeholder. TypeScript's `emitJump` returned a `number`;
+this returns a `usize`, Rust's type for positions in a `Vec`. The caller
+keeps it in a local (`let exit_jump = self.emit_jump(...)`), and a plain
+number borrows nothing, so the whole body can be compiled before the
+compiler comes back.
 
 <Prompts ids={['pj-returns', 'pj-number']} />
 
 ## Filling it in
 
-The TypeScript version, trimmed:
-
-```ts
-const jump =
-  chunk().code.length - offset - 2;
-if (jump > 0xffff) error('Too much...');
-chunk().code[offset] = (jump >> 8) & 0xff;
-chunk().code[offset + 1] = jump & 0xff;
-```
-
-And drip-rs's, adapted:
-
 ```rust
 fn patch_jump(&mut self, offset: usize) {
-    let len = self.chunk().code.len();
-    let jump = len - offset - 2;
+    let jump = self.chunk().code.len()
+        - offset - 2;
     if jump > u16::MAX as usize {
-        self.error("Too much code to \
-            jump over.");
+        self.static_error(self.previous,
+            "too much code to jump over");
     }
     let code = &mut self.chunk().code;
     code[offset] = (jump >> 8) as u8;
@@ -97,115 +106,160 @@ fn patch_jump(&mut self, offset: usize) {
 }
 ```
 
-The `- 2` is the same: a jump is measured from the end of its own
-operand. `as u8` keeps the low 8 bits, which is what TypeScript's
-`& 0xff` did<Cite id="rustref-numeric-cast" />. And `code` is borrowed
-once for both writes, where TypeScript called `chunk()` twice.
+Line by line: `jump` is the distance from the end of the operand
+(`offset + 2`, where the VM's `ip` will be) to the end of the code,
+where the next instruction will go. If it does not fit in a `u16`, it
+is a **static error** (one drip-rs prints only when there are no syntax
+errors; it is pushed onto a `Vec` and compiling carries on). Then `code` borrows the bytes
+once, for both writes: `(jump >> 8) as u8` is the high byte, and
+`jump as u8` keeps only the low 8 bits, which is what TypeScript's
+`& 0xff` did<Cite id="rustref-numeric-cast" />. The high byte goes first
+because the VM's `read_short`, from the chapter *The VM loop in Rust*,
+rebuilds the number as `(high << 8) | low`.
 
-The order of the middle lines matters. Take `code` first and check
+The order of the middle lines matters. Here is the spot the difference:
+in a small copy of `patch_jump`, take `code` first and report
 afterwards, and rustc 1.97 refuses (trimmed):
 
-```
+```text
 error[E0499]: cannot borrow `*self` as
   mutable more than once at a time
- 7 | let code = &mut self.chunk().code;
-   |                 ---- first mutable
-   |                      borrow
-...
-10 |     self.error("Too much code...");
+7  | let code = &mut self.chunk().code;
+   |                 ---- first borrow
+10 |     self.static_error("too much...");
    |     ^^^^ second mutable borrow
-11 | }
 12 | code[offset] = (jump >> 8) as u8;
    | ---- first borrow later used here
 ```
 
-`code` reaches into `self` through `chunk()`, and `self.error` needs
-`self` too, to set `had_error` and `panic_mode` and push a message. So the error comes
-first, while nothing is borrowed. It is chapter 339's read-first habit
-again: finish everything that needs all of `self` before borrowing a
-piece of it.
+`code` reaches into `self` through `chunk()`, and `static_error` takes
+`&mut self` to push its message. Rust's rule from the chapter
+*Borrowing* (one `&mut` at a time) forbids both being alive at once, so
+drip-rs reports first, while nothing is borrowed, and only then takes
+hold of the code. It is the read-first habit from *A Pratt compiler in
+Rust, part 2*: finish everything that needs all of `self` before
+borrowing a piece of it.
+
+Step through the loop above being compiled:
 
 <JumpSteps client:visible />
 
 <Callout kind="definition">
-**Backpatching a jump in Rust**: `emit_jump` writes the opcode and two
-placeholder bytes, and returns the operand's position as a `usize`. The
-caller keeps that number while it compiles the code to be jumped over.
-`patch_jump(offset)` then computes the distance from the end of the
-operand to the end of the code, reports an error if it doesn't fit in
-16 bits, and only then borrows the code to write the two bytes, high
-byte first.
+**Backpatching a jump in drip-rs**: `emit_jump` writes the opcode and
+two placeholder bytes and returns their position as a `usize`, which the
+caller keeps while the skipped code compiles. `patch_jump(offset)` then
+works out the distance from the end of the operand to the end of the
+code, reports a static error if it does not fit in 16 bits, and only
+then borrows the code to write the two bytes, high byte first.
 </Callout>
+
+<Formal title="Where a jump lands">
+
+```text
+forward:  jump = len − (at + 2)
+          (at + 2) + jump = len
+backward: offset = (len₁ + 2) − start
+          (len₁ + 2) − offset = start
+```
+
+<span slot="read">For a forward jump whose operand starts at "at", the
+distance is the code's length minus the place just after the operand, so
+when the VM, standing there, adds it, it arrives at the first
+instruction after the skipped code. For a loop, len₁ is the length just
+after the loop opcode; the VM stands two bytes further on, and
+subtracting the offset takes it back to the start.</span>
+</Formal>
+
+<Figure caption="Both jumps are measured from the byte after their operand, where the VM stands when it adds or subtracts." takeaway="Forward: len minus (at + 2). Backward: (len + 2) minus the start.">
+  <JumpMath />
+</Figure>
 
 <Prompts ids={['pj-minus-two', 'pj-as-u8', 'pj-order', 'pj-big-endian']} />
 
-## Loops and the rest
+## Loops, and the jumps that go back
 
-A loop's jump goes backwards, to a place already known, so it needs no
-patching:
+A loop's last jump goes backwards, to a place already compiled, so it
+needs no hole (rewrapped):
 
 ```rust
 fn emit_loop(&mut self, loop_start: usize) {
     self.emit_op(OpCode::Loop);
-    let len = self.chunk().code.len();
-    let offset = len - loop_start + 2;
+    let offset = self.chunk().code.len()
+        - loop_start + 2;
     if offset > u16::MAX as usize {
-        self.error("Loop body too large.");
+        self.static_error(self.previous,
+            "loop body too large");
     }
-    self.emit((offset >> 8) as u8);
-    self.emit(offset as u8);
+    let line = self.previous.line;
+    self.emit_short_at(line, offset);
 }
 ```
 
-The `+ 2` counts the two operand bytes not yet written. In the listing,
-`LOOP` is at 24, so `offset` is 25 − 4 + 2 = 23, and the VM, with its
-`ip` at 27 after the operand, lands on 27 − 23 = 4.
+The `+ 2` counts the two operand bytes not yet written: in the listing, `loop` is at 31, so after the opcode the length is 32, the
+offset is 32 − 6 + 2 = 28, and the VM, with `ip` at 34 after the operand,
+lands on 34 − 28 = 6. On the VM side each jump is a three-line arm of
+the `match` in `vm.rs`: `Jump` reads the offset with `read_short` and
+does `self.ip += offset`, `JumpUnless` does the same only if the value
+it pops is falsey (so neither path needs a `pop` afterwards), and
+`Loop` does `self.ip -= offset`. The variants that `&&` and `||` use,
+`jump.unless.keep` and `jump.if.keep`, only peek, because the value they
+jump with is the expression's answer.
 
-`for_statement` uses an `Option` where TypeScript used `-1`: a `for`
-with no condition has nothing to exit on.
+<Examples of="patch-jump">
 
 ```rust
-let mut exit_jump = None;
-if !self.matches(TokenKind::Semicolon) {
-    // ... the condition ...
-    let j = self.emit_jump(
-        OpCode::JumpIfFalse);
-    exit_jump = Some(j);
-}
-// ... increment, body, emit_loop ...
-if let Some(exit_jump) = exit_jump {
-    self.patch_jump(exit_jump);
-    self.emit_op(OpCode::Pop);
-}
+// a jump over nothing at all
+let at = c.emit_jump(OpCode::Jump);
+c.patch_jump(at); // operand 00 00
 ```
 
-`and` and `or` are the same two calls in miniature. `and` is
-`emit_jump(JumpIfFalse)`, `Pop`, the right operand, then `patch_jump`.
-The VM side is three short arms of the `match`:
+```text
+if x > 3 { ... } else { ... }
+0013    | jump.unless    13 -> 23
+0016    3 const           4 'big'
+0020    4 jump           20 -> 27
+0023    5 const           5 'small'
+```
 
 ```rust
-OpCode::Jump => {
-    let offset = self.read_short();
-    self.ip += offset;
-}
-OpCode::Loop => {
-    let offset = self.read_short();
-    self.ip -= offset;
+// break, in while_statement
+let lp = self.state().loops.pop()
+    .expect("a loop");
+for b in lp.breaks {
+    self.patch_jump(b);
 }
 ```
 
-<Prompts ids={['pj-loop-plus', 'pj-option-exit']} />
+</Examples>
+
+The first is the smallest case: patched at once, the distance is
+`len − (at + 2) = 0`, so it lands on the very next instruction. The
+second, an `if` with an `else`, has two holes open at once: the
+`jump.unless` at 13 is patched (to 23) when the `else` is reached, and
+the `jump` at 20, which skips the else-branch, after it (to 27). The
+third is `break`: each one emits a `jump` and pushes its `usize` onto
+the loop's `breaks`, and `while_statement` patches them all once the
+loop is finished. A `continue`
+in a `while` needs no hole, since it jumps back with `emit_loop`; the
+loop records that as `continue_target: Some(loop_start)`. In a `for`,
+`continue` must skip forwards past the body, so the target is `None`
+there and its jumps go on a `continues` list instead, an `Option` doing
+the job TypeScript gave to `-1`.
+
+Try it: here is a `for`, a `while`, a `break` and a `continue` in one
+program.
+
+<Run id="primes" />
+
+<Prompts ids={['pj-loop-plus', 'pj-continue-target']} />
 
 <Callout kind="engine" label="Under the hood">
-Two bytes limit a jump to 65,535 bytes, the same limit clox
-has<Cite id="nystrom2021" />. `self.ip -= offset` is `usize`
-arithmetic. If a bad offset ever took `ip` below zero, a debug build
-would panic on the overflow, and a release build, with overflow checks
-off, would wrap around<Cite id="rustref-int-overflow" />. Neither can
-read the wrong memory, because the next instruction is read with
-`self.chunk.code[self.ip]`, and indexing a `Vec` out of bounds panics.
-The compiler never emits such an offset. But a bug in it would show up
-as a clean panic, not as nonsense output.
+`self.ip -= offset` is `usize` arithmetic: if a bad offset took `ip`
+below zero, a debug build would panic on the overflow and a release
+build would wrap around to a huge number<Cite id="rustref-int-overflow" />.
+Neither reads the wrong memory, because the next byte is read with
+`self.chunk.code[self.ip]`, and indexing a `Vec` out of bounds panics;
+a compiler bug shows up as a clean panic, not as nonsense output.
 </Callout>
 
 ## Your turn
@@ -216,14 +270,12 @@ as a clean panic, not as nonsense output.
 
 ## What you learned
 
-- **`emit_jump`** writes the opcode and `0xff 0xff`, and returns the
-  operand's position as a `usize`. Keeping a number instead of a
-  reference leaves the chunk free while the jumped-over code compiles.
-- **`patch_jump`** computes `len - offset - 2`, checks it fits in a
+- **`emit_jump`** writes the opcode and `0xff 0xff` and returns the
+  operand's position as a `usize`, a number that borrows nothing.
+- **`patch_jump`** works out `len − offset − 2`, checks it fits in a
   `u16`, and writes it high byte first with `as u8`.
-- **Report before you borrow**: `self.error` needs all of `self`, so it
-  must come before `let code = &mut self.chunk().code;`.
-- `emit_loop` adds 2 for its own operand. A missing `for` condition is
-  `None`, not `-1`.
+- **Report before you borrow**: `static_error` needs all of `self`.
+- **`emit_loop`** adds 2 for its own operand; `break` jumps wait in a
+  `Vec<usize>` until the loop ends.
 
 <Quiz />

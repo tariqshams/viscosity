@@ -3,8 +3,8 @@
 
 export const prompts = {
   'ri-shape': {
-    q: 'What two fields does drip-rs’s `ObjInstance` have?',
-    a: '`class: Gc<ObjClass>`, a handle to its class, and `fields: Table`, its field table.',
+    q: 'What three fields does drip-rs’s `ObjInstance` have?',
+    a: '`class: Gc<ObjClass>`, a handle to its class; `fields: Table`, its field table; and `field_order: Vec<StrRef>`, the field names in the order they were first set.',
   },
   'ri-class-word': {
     q: 'Why is the TypeScript field `klass` but the drip-rs field `class`?',
@@ -15,100 +15,64 @@ export const prompts = {
     a: 'Field names are `StrRef`s, interned handles that carry their hash, so the table can hash and compare keys without the characters.',
   },
   'ri-alloc-safe': {
-    q: 'When a class is called, why can drip-rs allocate the instance before putting it anywhere?',
-    a: 'The instance’s only reference is its class, which is still on the stack in the callee’s slot, so a collection during `alloc` keeps it.',
+    q: 'In `new_instance`, why can drip-rs allocate the instance before putting it anywhere?',
+    a: 'The instance’s only reference is its class, which is still on the stack (under the arguments), so a collection during `alloc` keeps the class alive.',
   },
   'ri-slot': {
-    q: 'Where does the new instance go after a class is called?',
-    a: 'Into the callee’s stack slot, with `set_peek(argc, ..)`, replacing the class. An initializer finds it there as `this`.',
+    q: 'Where does a new instance go once it is allocated?',
+    a: 'Into the class’s stack slot, with `set_peek(arg_count, Value::Instance(instance))`. An `init` finds it there as `self`, in slot 0.',
   },
   'ri-copy': {
-    q: 'Why can `GetProperty` call `self.pop()` right after `self.heap[inst].fields.get(name)`?',
+    q: 'Why can `get.prop` call `self.set_peek(0, value)` right after `self.heap[instance].fields.get(name)`?',
     a: '`get` returns `Option<Value>`, a copy, so the shared borrow of the heap has already ended.',
   },
   'ri-shadow': {
     q: 'An instance has a field and its class a method, both named `go`. What does `obj.go` give?',
-    a: 'The field: `GetProperty` checks the fields first and only falls back to the class’s methods.',
+    a: 'The field: `get.prop` (and `invoke`) check the fields first and only fall back to the class’s methods.',
   },
   'ri-e0499': {
-    q: 'Why is `self.heap[inst].fields.set(self.read_string(), v)` rejected?',
-    a: 'The table is borrowed mutably as the receiver, then the argument needs `&mut self` to advance `ip`: E0499. Read the name into a local first.',
-  },
-  'ri-result': {
-    q: 'What does `SetProperty` leave on the stack?',
-    a: 'The assigned value, in place of the instance and the value: an assignment is an expression.',
-  },
-  'ri-errors': {
-    q: 'What does drip-rs report for `n.x = 2;` when `n` is a number, and for `123.foo;`?',
-    a: '“Only instances have fields.” and “Only instances have properties.”, both runtime errors (exit code 70).',
+    q: 'Why is a one-liner like `self.heap[i].fields.set(self.read_string(), v)` rejected?',
+    a: 'The table is borrowed mutably as the receiver, then the argument needs `&mut self` to move `ip` on: E0499. Read the name into a local first.',
   },
 };
 
 export const examples = {
-  'read-then-write': {
-    title: 'Read the operands, then write',
-    lang: 'rust',
-    code: `use std::collections::HashMap;
-
-struct Inst {
-    fields: HashMap<u8, f64>,
+  particles: {
+    lang: 'drip-vm',
+    title: 'A list of records, updated in a loop',
+    code: `class Point {}
+let ps = [];
+for i in 0..3 {
+  let p = new Point();
+  p.x = i;
+  p.vx = 1;
+  push(ps, p);
 }
-
-struct Vm {
-    insts: Vec<Inst>,
-    code: Vec<u8>,
-    ip: usize,
+for p in ps {
+  p.x += p.vx;
 }
-
-impl Vm {
-    fn read_byte(&mut self) -> u8 {
-        self.ip += 1;
-        self.code[self.ip - 1]
-    }
-
-    fn set_property(
-        &mut self,
-        i: usize,
-        v: f64,
-    ) {
-        // Read every operand first...
-        let name = self.read_byte();
-        // ...then borrow the table.
-        let inst = &mut self.insts[i];
-        inst.fields.insert(name, v);
-        // Uncomment for E0499:
-        // self.insts[i].fields.insert(
-        //     self.read_byte(), v);
-    }
-}
-
-fn main() {
-    let new = || Inst {
-        fields: HashMap::new(),
-    };
-    let mut vm = Vm {
-        insts: vec![new(), new()],
-        code: vec![7, 7],
-        ip: 0,
-    };
-    vm.set_property(0, 3.0);
-    vm.set_property(1, 4.0);
-    // Same name, different tables.
-    for (i, inst) in
-        vm.insts.iter().enumerate()
-    {
-        println!("inst {i}: {:?}",
-            inst.fields);
-    }
-}`,
+print ps[2];
+print ps[0].x;`,
   },
 };
 
-const propStarter = `use std::collections::HashMap;
+export const exercises = {
+  properties: {
+    lang: 'rust',
+    title: 'get.prop and set.prop',
+    prompt: `This VM has drip-rs's shape in small: values hold handles, \`heap\` is the instance arena, and each \`Instance\` owns a field table (a \`HashMap\` here, drip-rs's \`Table\` there) and \`order\`, the names in the order they were first set. Write the two property instructions:
+
+1. \`get_prop(name)\`. The receiver is on top of the stack. If it isn't an instance, return \`Err\` with \`cannot read 'foo' of a number\` (use \`what\`). If the instance has the field, replace the receiver with the field's value. If not, return \`Err\` with \`Point has no property 'x'\`, using the instance's class name (drip-rs would try the class's methods first; there are none here).
+2. \`set_prop(name)\`. The stack ends with the receiver and then the value. If the receiver isn't an instance, return \`Err\` with \`cannot set 'x' on a number\`. Otherwise add or overwrite the field, push the name onto \`order\` only if it is new, and leave just the value on the stack.
+
+Check the receiver before you change anything.`,
+    starter: `use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Value {
-    Nil,
+    // Drip's none (named so that it is
+    // not confused with Option's None)
+    Empty,
     Num(f64),
     Inst(usize), // a handle
 }
@@ -117,17 +81,19 @@ use Value::*;
 type Name = &'static str;
 
 struct Instance {
+    class: Name,
     fields: HashMap<Name, Value>,
+    // names in the order first set
+    order: Vec<Name>,
 }
 
-const NO_GET: &str =
-    "Only instances have properties.";
-const NO_SET: &str =
-    "Only instances have fields.";
-
-fn undef(name: Name) -> String {
-    let m = "Undefined property";
-    format!("{m} '{name}'.")
+// How errors name a value.
+fn what(v: Value) -> &'static str {
+    match v {
+        Empty => "none",
+        Num(_) => "a number",
+        Inst(_) => "an instance",
+    }
 }
 
 struct Vm {
@@ -157,96 +123,181 @@ impl Vm {
         self.stack[n - 1 - d]
     }
 
-    // What calling a class makes.
-    fn new_inst(&mut self) -> Value {
-        let fields = HashMap::new();
-        let i = Instance { fields };
-        self.heap.push(i);
+    fn set_peek(
+        &mut self,
+        d: usize,
+        v: Value,
+    ) {
+        let n = self.stack.len();
+        self.stack[n - 1 - d] = v;
+    }
+
+    // What new C() makes.
+    fn new_inst(&mut self, c: Name)
+        -> Value {
+        self.heap.push(Instance {
+            class: c,
+            fields: HashMap::new(),
+            order: Vec::new(),
+        });
         Inst(self.heap.len() - 1)
     }
-`;
 
-const getOk = `
-    // GetProperty: [.., inst] becomes
-    // [.., the field's value].
-    fn get_property(
-        &mut self,
-        name: Name,
-    ) -> Result<(), String> {
-        let Inst(i) = self.peek(0)
-        else {
-            return Err(NO_GET.into());
-        };
-        let fs = &self.heap[i].fields;
-        match fs.get(name).copied() {
-            Some(v) => {
-                self.pop();
-                self.push(v);
-                Ok(())
-            }
-            None => Err(undef(name)),
-        }
-    }
-`;
-
-const setOk = `
-    // SetProperty: [.., inst, value]
-    // becomes [.., value].
-    fn set_property(
-        &mut self,
-        name: Name,
-    ) -> Result<(), String> {
-        let Inst(i) = self.peek(1)
-        else {
-            return Err(NO_SET.into());
-        };
-        let v = self.peek(0);
-        let inst = &mut self.heap[i];
-        inst.fields.insert(name, v);
-        self.pop();
-        self.pop();
-        self.push(v);
-        Ok(())
-    }
-}`;
-
-export const exercises = {
-  properties: {
-    lang: 'rust',
-    title: 'GetProperty and SetProperty',
-    prompt: `This VM has drip-rs's shape in small: values hold handles, \`heap\` is the instance arena, and each \`Instance\` owns a field table (a \`HashMap\` here, drip-rs's \`Table\` there). Write the two property instructions:
-
-1. \`get_property(name)\`. The receiver is on top of the stack. If it isn't an instance, return \`Err\` with \`NO_GET\`. If the instance has the field, replace the receiver with the field's value. If not, return \`Err(undef(name))\`, which reads \`Undefined property 'x'.\` (drip-rs would try the class's methods first; there are none here).
-2. \`set_property(name)\`. The stack ends with the receiver and then the value. If the receiver isn't an instance, return \`Err\` with \`NO_SET\`. Otherwise add or overwrite the field, and leave just the value on the stack.
-
-Check the receiver before you change anything.`,
-    starter: propStarter + `
-    fn get_property(
+    // get.prop: [.., inst] becomes
+    // [.., value].
+    fn get_prop(
         &mut self,
         name: Name,
     ) -> Result<(), String> {
         todo!()
     }
 
-    fn set_property(
+    // set.prop: [.., inst, value]
+    // becomes [.., value].
+    fn set_prop(
         &mut self,
         name: Name,
     ) -> Result<(), String> {
         todo!()
     }
 }`,
-    solution: propStarter + getOk + setOk,
-    tests: `// p.x = 3, leaving the value on the stack
+    solution: `use std::collections::HashMap;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Value {
+    // Drip's none (named so that it is
+    // not confused with Option's None)
+    Empty,
+    Num(f64),
+    Inst(usize), // a handle
+}
+use Value::*;
+
+type Name = &'static str;
+
+struct Instance {
+    class: Name,
+    fields: HashMap<Name, Value>,
+    // names in the order first set
+    order: Vec<Name>,
+}
+
+// How errors name a value.
+fn what(v: Value) -> &'static str {
+    match v {
+        Empty => "none",
+        Num(_) => "a number",
+        Inst(_) => "an instance",
+    }
+}
+
+struct Vm {
+    stack: Vec<Value>,
+    // The instance arena.
+    heap: Vec<Instance>,
+}
+
+impl Vm {
+    fn new() -> Vm {
+        Vm {
+            stack: Vec::new(),
+            heap: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, v: Value) {
+        self.stack.push(v);
+    }
+
+    fn pop(&mut self) -> Value {
+        self.stack.pop().unwrap()
+    }
+
+    fn peek(&self, d: usize) -> Value {
+        let n = self.stack.len();
+        self.stack[n - 1 - d]
+    }
+
+    fn set_peek(
+        &mut self,
+        d: usize,
+        v: Value,
+    ) {
+        let n = self.stack.len();
+        self.stack[n - 1 - d] = v;
+    }
+
+    // What new C() makes.
+    fn new_inst(&mut self, c: Name)
+        -> Value {
+        self.heap.push(Instance {
+            class: c,
+            fields: HashMap::new(),
+            order: Vec::new(),
+        });
+        Inst(self.heap.len() - 1)
+    }
+
+    // get.prop: [.., inst] becomes
+    // [.., value].
+    fn get_prop(
+        &mut self,
+        name: Name,
+    ) -> Result<(), String> {
+        let r = self.peek(0);
+        let Inst(i) = r else {
+            let w = what(r);
+            let s = "cannot read";
+            return Err(format!(
+                "{s} '{name}' of {w}"));
+        };
+        let fs = &self.heap[i].fields;
+        let c = self.heap[i].class;
+        let Some(&v) = fs.get(name)
+        else {
+            let p = "has no property";
+            return Err(format!(
+                "{c} {p} '{name}'"));
+        };
+        self.set_peek(0, v);
+        Ok(())
+    }
+
+    // set.prop: [.., inst, value]
+    // becomes [.., value].
+    fn set_prop(
+        &mut self,
+        name: Name,
+    ) -> Result<(), String> {
+        let r = self.peek(1);
+        let Inst(i) = r else {
+            let w = what(r);
+            let s = "cannot set";
+            return Err(format!(
+                "{s} '{name}' on {w}"));
+        };
+        let v = self.peek(0);
+        let o = &mut self.heap[i];
+        let f = &mut o.fields;
+        if f.insert(name, v).is_none() {
+            o.order.push(name);
+        }
+        self.pop();
+        self.set_peek(0, v);
+        Ok(())
+    }
+}`,
+    tests: `// p.x = v, leaving the value on the stack
 fn set_x(vm: &mut Vm, p: Value, v: f64) {
     vm.push(p);
     vm.push(Num(v));
-    vm.set_property("x").unwrap();
+    vm.set_prop("x").unwrap();
 }
 
 #[test]
 fn set_leaves_the_value() {
     let mut vm = Vm::new();
-    let p = vm.new_inst();
+    let p = vm.new_inst("Point");
     set_x(&mut vm, p, 3.0);
     assert_eq!(vm.stack, [Num(3.0)]);
     let f = vm.heap[0].fields["x"];
@@ -256,135 +307,480 @@ fn set_leaves_the_value() {
 #[test]
 fn get_reads_the_field() {
     let mut vm = Vm::new();
-    let p = vm.new_inst();
+    let p = vm.new_inst("Point");
     set_x(&mut vm, p, 3.0);
     vm.pop();
     vm.push(p);
-    vm.get_property("x").unwrap();
+    vm.get_prop("x").unwrap();
     assert_eq!(vm.stack, [Num(3.0)]);
 }
 
 #[test]
-fn setting_again_overwrites() {
+fn overwriting_keeps_the_order() {
     let mut vm = Vm::new();
-    let p = vm.new_inst();
+    let p = vm.new_inst("Point");
     set_x(&mut vm, p, 3.0);
-    set_x(&mut vm, p, 5.0);
     vm.push(p);
-    vm.get_property("x").unwrap();
+    vm.push(Num(4.0));
+    vm.set_prop("y").unwrap();
+    set_x(&mut vm, p, 5.0);
+    assert_eq!(vm.heap[0].order, ["x", "y"]);
+    vm.push(p);
+    vm.get_prop("x").unwrap();
     assert_eq!(vm.peek(0), Num(5.0));
 }
 
 #[test]
 fn instances_have_their_own_fields() {
     let mut vm = Vm::new();
-    let p = vm.new_inst();
-    let q = vm.new_inst();
+    let p = vm.new_inst("Point");
+    let q = vm.new_inst("Point");
     set_x(&mut vm, p, 1.0);
     vm.push(q);
-    let m = "Undefined property 'x'.";
-    let r = vm.get_property("x");
+    let m = "Point has no property 'x'";
+    let r = vm.get_prop("x");
     assert_eq!(r, Err(m.to_string()));
 }
 
 #[test]
-fn a_nil_field_is_still_a_field() {
+fn a_none_field_is_still_a_field() {
     let mut vm = Vm::new();
-    let p = vm.new_inst();
+    let p = vm.new_inst("Point");
     vm.push(p);
-    vm.push(Nil);
-    vm.set_property("y").unwrap();
+    vm.push(Empty);
+    vm.set_prop("y").unwrap();
     vm.push(p);
-    vm.get_property("y").unwrap();
-    assert_eq!(vm.stack, [Nil, Nil]);
+    vm.get_prop("y").unwrap();
+    assert_eq!(vm.stack, [Empty, Empty]);
 }
 
 #[test]
-fn only_instances_have_properties() {
+fn reading_a_number_is_an_error() {
     let mut vm = Vm::new();
     vm.push(Num(123.0));
-    let r = vm.get_property("foo");
-    assert_eq!(r, Err(NO_GET.into()));
+    let m = "cannot read 'foo' of a number";
+    let r = vm.get_prop("foo");
+    assert_eq!(r, Err(m.to_string()));
 }
 
 #[test]
-fn only_instances_have_fields() {
+fn setting_on_a_number_is_an_error() {
     let mut vm = Vm::new();
     vm.push(Num(1.0));
     vm.push(Num(2.0));
-    let r = vm.set_property("x");
-    assert_eq!(r, Err(NO_SET.into()));
+    let m = "cannot set 'x' on a number";
+    let r = vm.set_prop("x");
+    assert_eq!(r, Err(m.to_string()));
     assert_eq!(vm.stack.len(), 2);
 }`,
     hints: [
-      '`let Inst(i) = self.peek(0) else { return Err(..) };` checks the receiver and names its handle in one step.',
-      'For `set_property`, the receiver is `peek(1)` and the value `peek(0)`.',
-      '`fields.get(name).copied()` gives an `Option<Value>` that owns its value, so you can `pop` and `push` afterwards.',
-      'In `set_property`, read the value into a local before you borrow `self.heap[i]` mutably.',
+      'Both instructions start the same way: look at the receiver without popping it (`peek(0)` for get, `peek(1)` for set) and open it with `let Inst(i) = r else { ... };`, returning the error in the `else`.',
+      'For get, `let Some(&v) = self.heap[i].fields.get(name) else { ... };` copies the value out or reports `Point has no property ...` (the class name is `self.heap[i].class`); then `self.set_peek(0, v)`.',
+      'For set, read `let v = self.peek(0);` first, then borrow `let o = &mut self.heap[i];`. `HashMap::insert` returns the old value, so `if o.fields.insert(name, v).is_none() { o.order.push(name); }` adds the name only once. Finish with `self.pop(); self.set_peek(0, v);`.',
     ],
-    walkthrough: `**get_property.** The \`let ... else\` checks the type and gets the handle together, as drip-rs's arm does. Then one lookup. \`.copied()\` turns \`Option<&Value>\` into \`Option<Value>\`; \`Value\` is \`Copy\`, so nothing is borrowed from the heap once the \`match\` has its value, and the arms are free to \`pop\` and \`push\`. A missing field is an error here. In drip-rs it would fall through to \`bind_method\` on the class, and only become "Undefined property" if there were no method either.
+    walkthrough: `**How to think about it.** Both instructions are three steps: check the receiver, do one table operation, and leave the right thing on the stack. Look at the stack shapes first. Before \`get.prop\` it ends \`[.., inst]\` and after it \`[.., value]\`; before \`set.prop\` it ends \`[.., inst, value]\` and after it \`[.., value]\`, because an assignment is an expression whose value is the value assigned. Nothing should change before the receiver has been checked, so an error leaves the stack exactly as it was.
 
-**set_property.** The receiver is one below the value: the compiler emitted the object, then the right-hand side, then \`SET_PROPERTY\`. Check it first, so a failed set leaves the stack alone. Read the value into a local, then take \`&mut self.heap[i]\` and insert. The insert both adds new fields and overwrites old ones. Finally pop the value and the instance and push the value back: \`p.x = 3\` is an expression whose value is 3.
+**\`get_prop\`, line by line.**
 
-The nil test is there because a field holding \`nil\` is still a field. Code that treated a \`Nil\` result as "missing" would report an error for it.`,
+- \`let r = self.peek(0);\` looks at the receiver without popping it.
+- \`let Inst(i) = r else { ... };\` opens it. If it is not an instance, the \`else\` block builds drip-rs's message, \`cannot read 'foo' of a number\`, with \`what\` naming the value, and returns.
+- \`let fs = &self.heap[i].fields;\` borrows the instance's table, shared, and \`let c = self.heap[i].class;\` copies its class name for the error message.
+- \`let Some(&v) = fs.get(name) else { ... };\` looks the field up. \`get\` gives an \`Option<&Value>\`, and the pattern \`Some(&v)\` copies the value out, which is fine because \`Value\` is \`Copy\`. With no such field, the \`else\` block returns \`Point has no property 'x'\`. A field that holds \`Empty\` is \`Some(&Empty)\`, so it is still a field (the test \`a_none_field_is_still_a_field\`).
+- \`self.set_peek(0, v);\` replaces the receiver with the field's value. This needs \`&mut self\`, and it is allowed because \`fs\` is not used again, so its borrow has ended.
+- \`Ok(())\` reports success.
+
+**\`set_prop\`, line by line.**
+
+- \`let r = self.peek(1);\` and \`let Inst(i) = r else { ... };\` check the receiver, which is one below the value, and report \`cannot set 'x' on a number\` otherwise.
+- \`let v = self.peek(0);\` reads the value into a local *before* any mutable borrow: the read-first habit.
+- \`let o = &mut self.heap[i];\` borrows the one instance mutably, and \`let f = &mut o.fields;\` its table.
+- \`if f.insert(name, v).is_none() {\` adds or overwrites the field. \`insert\` returns the old value, so \`None\` means the name is new, and only then does \`o.order.push(name);\` record it (like drip-rs's \`if object.fields.set(name, value) { object.field_order.push(name); }\`).
+- \`self.pop();\` drops the value, and \`self.set_peek(0, v);\` puts it where the instance was, leaving \`[.., value]\`.
+- \`Ok(())\` reports success.
+
+**Common wrong attempts.**
+
+- Popping the value and stopping there: the instance is left on the stack, so \`p.x = 3\` evaluates to \`p\`, and the compiler's \`pop\` after it drops the wrong thing.
+- Pushing the name onto \`order\` on every set: overwriting \`x\` then lists it twice, and the instance would print \`x\` twice.
+- Returning \`Empty\` for a missing field, as JavaScript gives \`undefined\`: Drip reports \`Point has no property 'x'\`, and a field holding \`none\` must stay different from no field at all.`,
     wrong: [
       {
-        code: propStarter + getOk + `
-    fn set_property(
+        code: `use std::collections::HashMap;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Value {
+    // Drip's none (named so that it is
+    // not confused with Option's None)
+    Empty,
+    Num(f64),
+    Inst(usize), // a handle
+}
+use Value::*;
+
+type Name = &'static str;
+
+struct Instance {
+    class: Name,
+    fields: HashMap<Name, Value>,
+    // names in the order first set
+    order: Vec<Name>,
+}
+
+// How errors name a value.
+fn what(v: Value) -> &'static str {
+    match v {
+        Empty => "none",
+        Num(_) => "a number",
+        Inst(_) => "an instance",
+    }
+}
+
+struct Vm {
+    stack: Vec<Value>,
+    // The instance arena.
+    heap: Vec<Instance>,
+}
+
+impl Vm {
+    fn new() -> Vm {
+        Vm {
+            stack: Vec::new(),
+            heap: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, v: Value) {
+        self.stack.push(v);
+    }
+
+    fn pop(&mut self) -> Value {
+        self.stack.pop().unwrap()
+    }
+
+    fn peek(&self, d: usize) -> Value {
+        let n = self.stack.len();
+        self.stack[n - 1 - d]
+    }
+
+    fn set_peek(
+        &mut self,
+        d: usize,
+        v: Value,
+    ) {
+        let n = self.stack.len();
+        self.stack[n - 1 - d] = v;
+    }
+
+    // What new C() makes.
+    fn new_inst(&mut self, c: Name)
+        -> Value {
+        self.heap.push(Instance {
+            class: c,
+            fields: HashMap::new(),
+            order: Vec::new(),
+        });
+        Inst(self.heap.len() - 1)
+    }
+
+    // get.prop: [.., inst] becomes
+    // [.., value].
+    fn get_prop(
         &mut self,
         name: Name,
     ) -> Result<(), String> {
-        let Inst(i) = self.peek(1)
+        let r = self.peek(0);
+        let Inst(i) = r else {
+            let w = what(r);
+            let s = "cannot read";
+            return Err(format!(
+                "{s} '{name}' of {w}"));
+        };
+        let fs = &self.heap[i].fields;
+        let c = self.heap[i].class;
+        let Some(&v) = fs.get(name)
         else {
-            return Err(NO_SET.into());
+            let p = "has no property";
+            return Err(format!(
+                "{c} {p} '{name}'"));
+        };
+        self.set_peek(0, v);
+        Ok(())
+    }
+
+    // set.prop: [.., inst, value]
+    // becomes [.., value].
+    fn set_prop(
+        &mut self,
+        name: Name,
+    ) -> Result<(), String> {
+        let r = self.peek(1);
+        let Inst(i) = r else {
+            let w = what(r);
+            let s = "cannot set";
+            return Err(format!(
+                "{s} '{name}' on {w}"));
         };
         let v = self.pop();
-        let inst = &mut self.heap[i];
-        inst.fields.insert(name, v);
+        let o = &mut self.heap[i];
+        let f = &mut o.fields;
+        if f.insert(name, v).is_none() {
+            o.order.push(name);
+        }
         Ok(())
     }
 }`,
-        why: 'This leaves the instance on the stack instead of the value. `p.x = 3` must evaluate to 3, and the compiler’s `POP` after it would drop the wrong thing.',
+        why: 'This leaves the instance on the stack instead of the value. `p.x = 3` must evaluate to 3, and the compiler’s `pop` after it would drop the wrong thing.',
       },
       {
-        code: propStarter + `
-    fn get_property(
+        code: `use std::collections::HashMap;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Value {
+    // Drip's none (named so that it is
+    // not confused with Option's None)
+    Empty,
+    Num(f64),
+    Inst(usize), // a handle
+}
+use Value::*;
+
+type Name = &'static str;
+
+struct Instance {
+    class: Name,
+    fields: HashMap<Name, Value>,
+    // names in the order first set
+    order: Vec<Name>,
+}
+
+// How errors name a value.
+fn what(v: Value) -> &'static str {
+    match v {
+        Empty => "none",
+        Num(_) => "a number",
+        Inst(_) => "an instance",
+    }
+}
+
+struct Vm {
+    stack: Vec<Value>,
+    // The instance arena.
+    heap: Vec<Instance>,
+}
+
+impl Vm {
+    fn new() -> Vm {
+        Vm {
+            stack: Vec::new(),
+            heap: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, v: Value) {
+        self.stack.push(v);
+    }
+
+    fn pop(&mut self) -> Value {
+        self.stack.pop().unwrap()
+    }
+
+    fn peek(&self, d: usize) -> Value {
+        let n = self.stack.len();
+        self.stack[n - 1 - d]
+    }
+
+    fn set_peek(
+        &mut self,
+        d: usize,
+        v: Value,
+    ) {
+        let n = self.stack.len();
+        self.stack[n - 1 - d] = v;
+    }
+
+    // What new C() makes.
+    fn new_inst(&mut self, c: Name)
+        -> Value {
+        self.heap.push(Instance {
+            class: c,
+            fields: HashMap::new(),
+            order: Vec::new(),
+        });
+        Inst(self.heap.len() - 1)
+    }
+
+    // get.prop: [.., inst] becomes
+    // [.., value].
+    fn get_prop(
         &mut self,
         name: Name,
     ) -> Result<(), String> {
-        let Inst(i) = self.peek(0)
+        let r = self.peek(0);
+        let Inst(i) = r else {
+            let w = what(r);
+            let s = "cannot read";
+            return Err(format!(
+                "{s} '{name}' of {w}"));
+        };
+        let fs = &self.heap[i].fields;
+        let c = self.heap[i].class;
+        let Some(&v) = fs.get(name)
         else {
-            return Err(NO_GET.into());
+            let p = "has no property";
+            return Err(format!(
+                "{c} {p} '{name}'"));
+        };
+        self.set_peek(0, v);
+        Ok(())
+    }
+
+    // set.prop: [.., inst, value]
+    // becomes [.., value].
+    fn set_prop(
+        &mut self,
+        name: Name,
+    ) -> Result<(), String> {
+        let r = self.peek(1);
+        let Inst(i) = r else {
+            let w = what(r);
+            let s = "cannot set";
+            return Err(format!(
+                "{s} '{name}' on {w}"));
+        };
+        let v = self.peek(0);
+        let o = &mut self.heap[i];
+        o.fields.insert(name, v);
+        o.order.push(name);
+        self.pop();
+        self.set_peek(0, v);
+        Ok(())
+    }
+}`,
+        why: 'It records the name every time, so overwriting `x` lists it twice in `order`, and the instance would print `x` twice.',
+      },
+      {
+        code: `use std::collections::HashMap;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Value {
+    // Drip's none (named so that it is
+    // not confused with Option's None)
+    Empty,
+    Num(f64),
+    Inst(usize), // a handle
+}
+use Value::*;
+
+type Name = &'static str;
+
+struct Instance {
+    class: Name,
+    fields: HashMap<Name, Value>,
+    // names in the order first set
+    order: Vec<Name>,
+}
+
+// How errors name a value.
+fn what(v: Value) -> &'static str {
+    match v {
+        Empty => "none",
+        Num(_) => "a number",
+        Inst(_) => "an instance",
+    }
+}
+
+struct Vm {
+    stack: Vec<Value>,
+    // The instance arena.
+    heap: Vec<Instance>,
+}
+
+impl Vm {
+    fn new() -> Vm {
+        Vm {
+            stack: Vec::new(),
+            heap: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, v: Value) {
+        self.stack.push(v);
+    }
+
+    fn pop(&mut self) -> Value {
+        self.stack.pop().unwrap()
+    }
+
+    fn peek(&self, d: usize) -> Value {
+        let n = self.stack.len();
+        self.stack[n - 1 - d]
+    }
+
+    fn set_peek(
+        &mut self,
+        d: usize,
+        v: Value,
+    ) {
+        let n = self.stack.len();
+        self.stack[n - 1 - d] = v;
+    }
+
+    // What new C() makes.
+    fn new_inst(&mut self, c: Name)
+        -> Value {
+        self.heap.push(Instance {
+            class: c,
+            fields: HashMap::new(),
+            order: Vec::new(),
+        });
+        Inst(self.heap.len() - 1)
+    }
+
+    // get.prop: [.., inst] becomes
+    // [.., value].
+    fn get_prop(
+        &mut self,
+        name: Name,
+    ) -> Result<(), String> {
+        let r = self.peek(0);
+        let Inst(i) = r else {
+            let w = what(r);
+            let s = "cannot read";
+            return Err(format!(
+                "{s} '{name}' of {w}"));
         };
         let fs = &self.heap[i].fields;
         let v = fs.get(name).copied();
-        self.pop();
-        self.push(v.unwrap_or(Nil));
+        let v = v.unwrap_or(Empty);
+        self.set_peek(0, v);
         Ok(())
     }
-` + setOk,
-        why: 'This is JavaScript’s habit, where a missing property reads as `undefined`. Drip reports “Undefined property”, and a field that holds `nil` must stay distinguishable from no field at all.',
-      },
-      {
-        code: propStarter + getOk + `
-    fn set_property(
+
+    // set.prop: [.., inst, value]
+    // becomes [.., value].
+    fn set_prop(
         &mut self,
         name: Name,
     ) -> Result<(), String> {
-        let Inst(i) = self.peek(0)
-        else {
-            return Err(NO_SET.into());
+        let r = self.peek(1);
+        let Inst(i) = r else {
+            let w = what(r);
+            let s = "cannot set";
+            return Err(format!(
+                "{s} '{name}' on {w}"));
         };
-        let v = self.peek(1);
-        let inst = &mut self.heap[i];
-        inst.fields.insert(name, v);
+        let v = self.peek(0);
+        let o = &mut self.heap[i];
+        let f = &mut o.fields;
+        if f.insert(name, v).is_none() {
+            o.order.push(name);
+        }
         self.pop();
-        self.pop();
-        self.push(v);
+        self.set_peek(0, v);
         Ok(())
     }
 }`,
-        why: 'The operands are the other way round: the receiver is pushed first, so it is `peek(1)`, and the value is on top.',
+        why: 'This is JavaScript’s habit, where a missing property reads as `undefined`. Drip reports `Point has no property ...`, and a field that holds `none` must stay different from no field at all.',
       },
     ],
   },
@@ -392,57 +788,113 @@ The nil test is there because a field holding \`nil\` is still a field. Code tha
 
 export const quiz = [
   {
-    q: 'What does `Value::Instance` hold in drip-rs?',
+    q: 'What does `print p;` show after `p.x = 3; p.y = 4; p.x = 5;` on a new `Point`?',
     options: [
-      { t: 'The instance’s fields, inline', why: 'A `Value` is 16 bytes; the fields are in a `Table` inside the heap object.' },
-      { t: 'A `Gc<ObjInstance>` handle into the instance arena', correct: true, why: 'The object, with its class handle and field table, lives in the arena.' },
-      { t: 'An `Rc<RefCell<ObjInstance>>`', why: 'drip-rs’s only `Rc` is `Rc<Chunk>`.' },
-      { t: 'The class handle', why: 'That is `Value::Class`. The instance holds its class handle inside.' },
+      {
+        t: '`Point { x: 5, y: 4 }`',
+        correct: true,
+        why: 'Overwriting `x` does not add it to `field_order` again, so it keeps its first place.',
+      },
+      {
+        t: '`Point { y: 4, x: 5 }`',
+        why: 'That would mean the last write decides the order; `field_order` records the first.',
+      },
+      {
+        t: '`Point instance`',
+        why: 'New Drip prints an instance with its fields.',
+      },
+      {
+        t: 'The fields in hash-table order',
+        why: 'That is what `field_order` exists to avoid.',
+      },
     ],
   },
   {
-    q: 'When `Point()` runs, why is it safe to call `alloc` for the instance before anything holds it?',
+    q: 'In `new_instance`, why is it safe to call `self.alloc(ObjInstance { class, .. })` before the instance is on the stack?',
     options: [
-      { t: '`alloc` never collects', why: '`Vm::alloc` may collect first.' },
-      { t: 'Instances are never collected', why: 'They are, once unreachable.' },
-      { t: 'The instance is a root until `init` returns', why: 'Nothing makes it a root; it isn’t on the stack until `set_peek`.' },
-      { t: 'The only object it refers to, its class, is still on the stack in the callee’s slot', correct: true, why: 'A collection inside `alloc` keeps the class. The new instance itself is created after.' },
+      {
+        t: 'Allocating never collects',
+        why: '`Vm::alloc` may collect first.',
+      },
+      {
+        t: 'Instances are never collected',
+        why: 'They are, once nothing reaches them.',
+      },
+      {
+        t: 'The instance’s only reference, the class, is still on the stack, so a collection keeps it; the new instance itself refers to nothing else yet',
+        correct: true,
+        why: 'That is the rule from the collector chapter: what a new object refers to must already be reachable.',
+      },
+      {
+        t: 'The class is a global',
+        why: 'It may well be a local class; the reason is that it is on the stack.',
+      },
     ],
   },
   {
-    q: 'In `GetProperty`, an instance has a field `go` and its class has a method `go`. What happens?',
+    q: 'An instance has a field `go` and its class a method `go`. What does `obj.go` give?',
     options: [
-      { t: 'The method is bound and returned', why: 'Only if no field is found.' },
-      { t: 'A runtime error: the name is ambiguous', why: 'Drip doesn’t treat this as an error.' },
-      { t: 'The field’s value replaces the instance on the stack', correct: true, why: 'Fields are checked first, so they shadow methods.' },
-      { t: 'Both are pushed', why: 'One value replaces the receiver.' },
+      {
+        t: 'A bound method for the class’s `go`',
+        why: 'Methods are only tried when no field matches.',
+      },
+      {
+        t: 'A runtime error: the name is ambiguous',
+        why: 'Drip has a fixed rule, so nothing is ambiguous.',
+      },
+      {
+        t: 'Whichever was defined last',
+        why: 'The order of definition does not matter.',
+      },
+      {
+        t: 'The field’s value',
+        correct: true,
+        why: '`get.prop` looks in the fields first; fields shadow methods.',
+      },
     ],
   },
   {
-    q: 'Why does drip-rs read the name and value into locals before `self.heap[inst].fields.set(..)`?',
+    q: 'Why does drip-rs’s `set.prop` arm read the name and the value into locals before `let object = &mut self.heap[instance];`?',
     options: [
-      { t: 'Reading the name needs `&mut self` (it advances `ip`), which can’t overlap the mutable borrow of the table', correct: true, why: 'The one-line version is E0499.' },
-      { t: 'To make the code faster', why: 'The locals are free either way; the order is forced by the borrow checker.' },
-      { t: 'Because `Table::set` takes ownership of the heap', why: 'It takes `&mut self` on the table only.' },
-      { t: 'So a collection can’t run in between', why: '`set` doesn’t allocate heap objects, so no collection can happen there.' },
+      {
+        t: 'To make the arm faster',
+        why: 'The reason is borrowing, not speed.',
+      },
+      {
+        t: 'Reading the name needs `&mut self` (it moves `ip` on), which cannot happen while the instance is mutably borrowed',
+        correct: true,
+        why: 'Done the other way round, as one expression, it is error E0499.',
+      },
+      {
+        t: 'Because `Table::set` takes ownership of its arguments',
+        why: '`StrRef` and `Value` are `Copy`; ownership is not the issue.',
+      },
+      {
+        t: 'The TypeScript VM does it the same way, so the port copies it',
+        why: 'The TypeScript arm can read operands in the middle of the call; Rust forbids that here.',
+      },
     ],
   },
   {
-    q: 'After `p.x = 3;` runs `SET_PROPERTY`, what is on top of the stack?',
+    q: 'What does `n.x = 2;` report when `n` is the number 1?',
     options: [
-      { t: 'The instance `p`', why: 'The instance is popped.' },
-      { t: '`3`, the assignment’s value, which the next `POP` drops', correct: true, why: 'Two pops and a push leave the value, as for any assignment expression.' },
-      { t: 'Nothing new: both operands are popped', why: 'The value is pushed back.' },
-      { t: '`nil`', why: 'An assignment evaluates to the assigned value.' },
-    ],
-  },
-  {
-    q: 'What does drip-rs count as an instance’s size when pacing collections?',
-    options: [
-      { t: 'The number of fields times 16 bytes', why: 'drip-rs doesn’t look inside the table.' },
-      { t: 'Nothing: instances aren’t counted', why: '`alloc` adds every object’s `size()`.' },
-      { t: 'A fixed 48 bytes', why: 'That is the TypeScript heap’s figure.' },
-      { t: '`size_of::<ObjInstance>()`, which leaves out the field table’s buffers', correct: true, why: '64 bytes on x86-64 with rustc 1.97, however many fields it has.' },
+      {
+        t: `\`undefined variable 'x'\``,
+        why: 'That is for globals, not properties.',
+      },
+      {
+        t: `\`cannot set 'x' on a number\``,
+        correct: true,
+        why: '`set.prop` checks `peek(1)` first, and only instances have properties.',
+      },
+      {
+        t: `\`Number has no property 'x'\``,
+        why: 'That form names a class, which a number does not have.',
+      },
+      {
+        t: 'Nothing: the assignment is ignored',
+        why: 'Drip never ignores a failed assignment; it is a runtime error, exit code 70.',
+      },
     ],
   },
 ];

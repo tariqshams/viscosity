@@ -67,8 +67,8 @@ const STATES: S[] = [
   },
 ];
 
-const SX = 98;
-const SW = 70;
+const SX = 92;
+const SW = 76;
 const rowY = (r: number) => 58 + r * 62;
 
 export default function GcSteps() {
@@ -83,8 +83,8 @@ export default function GcSteps() {
         </Box>
         {st.rows.map((row, r) => (
           <g key={row.name}>
-            <T x={8} y={rowY(r) + 12} size={10} mono weight={700}>{row.name}</T>
-            <T x={8} y={rowY(r) + 26} size={8} mono fill={tok('muted')}>free: [{row.free.join(', ')}]</T>
+            <T x={8} y={rowY(r) + 12} size={11} mono weight={700}>{row.name}</T>
+            <T x={8} y={rowY(r) + 26} size={11} mono fill={tok('muted')}>free: [{row.free.join(', ')}]</T>
             {row.slots.map((v, k) => {
               const hot = isHot(r, k);
               const x = SX + k * (SW + 6);
@@ -93,32 +93,31 @@ export default function GcSteps() {
                   <Box x={x} y={rowY(r)} w={SW} h={26} r={3} dash={v === null}
                     fill={v === null ? tok('paper') : hot ? tok('brand', 0.16) : tok('panel')}
                     stroke={hot ? tok('brand') : tok('line')}>
-                    <T x={x + 4} y={rowY(r) + 7} size={7} mono fill={tok('muted')}>{k}</T>
-                    <T x={x + SW / 2} y={rowY(r) + 14} size={10} mono anchor="middle" fill={v === null ? tok('muted') : tok('ink')}>{v ?? 'None'}</T>
+                    <T x={x + SW / 2} y={rowY(r) + 14} size={11} mono anchor="middle" fill={v === null ? tok('muted') : tok('ink')}>{k}: {v ?? 'None'}</T>
                   </Box>
-                  <Box x={x + SW / 2 - 9} y={rowY(r) + 30} w={18} h={14} r={2}
+                  <Box x={x + SW / 2 - 11} y={rowY(r) + 30} w={22} h={17} r={2}
                     fill={row.marks[k] ? tok('safe', 0.25) : tok('paper')} stroke={row.marks[k] ? tok('safe') : tok('line')}>
-                    <T x={x + SW / 2} y={rowY(r) + 37} size={8} mono anchor="middle" fill={tok('ink')}>{row.marks[k] ? '1' : '0'}</T>
+                    <T x={x + SW / 2} y={rowY(r) + 38.5} size={11} mono anchor="middle" fill={tok('ink')}>{row.marks[k] ? '1' : '0'}</T>
                   </Box>
                 </g>
               );
             })}
           </g>
         ))}
-        <T x={260} y={52} size={10} mono weight={700} fill={tok('muted')}>gray: Vec&lt;Gray&gt;</T>
+        <T x={260} y={52} size={11} mono weight={700} fill={tok('muted')}>gray: Vec&lt;Gray&gt;</T>
         <Box x={260} y={60} w={132} h={64} r={4} fill={tok('panel')} stroke={st.gray.length ? tok('accent') : tok('line')}>
-          {st.gray.length === 0 && <T x={326} y={92} size={10} mono anchor="middle" fill={tok('muted')}>(empty)</T>}
+          {st.gray.length === 0 && <T x={326} y={92} size={11} mono anchor="middle" fill={tok('muted')}>(empty)</T>}
           {st.gray.map((g, k) => (
-            <T key={k} x={268} y={78 + k * 16} size={9} mono fill={tok('ink')}>{g}</T>
+            <T key={k} x={268} y={78 + k * 16} size={11} mono fill={tok('ink')}>{g}</T>
           ))}
         </Box>
-        <T x={260} y={142} size={10} mono weight={700} fill={tok('muted')}>interned (weak)</T>
+        <T x={260} y={142} size={11} mono weight={700} fill={tok('muted')}>interned (weak)</T>
         <Box x={260} y={150} w={132} h={30} r={4} fill={tok('panel')} stroke={tok('line')}>
-          <T x={268} y={165} size={9} mono fill={tok('ink')}>{st.table}</T>
+          <T x={268} y={165} size={11} mono fill={tok('ink')}>{st.table}</T>
         </Box>
-        <T x={8} y={262} size={9} fill={tok('muted')}>Small boxes under the slots: the Marks bitmap, one bool per slot.</T>
-        <T x={8} y={278} size={9} fill={tok('muted')}>roots: [&amp;a], where a is instances slot 0.</T>
-        <T x={8} y={294} size={9} fill={tok('muted')}>Dashed slot: freed (None).</T>
+        <T x={8} y={262} size={11} fill={tok('muted')}>Small boxes under the slots: the Marks bitmap, one bool per slot.</T>
+        <T x={8} y={278} size={11} fill={tok('muted')}>roots: [&amp;a], where a is instances slot 0.</T>
+        <T x={8} y={294} size={11} fill={tok('muted')}>Dashed slot: freed (None).</T>
       </Svg>
     </StepFrame>
   );

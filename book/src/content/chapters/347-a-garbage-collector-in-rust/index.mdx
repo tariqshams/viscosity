@@ -3,9 +3,9 @@ n: 347
 day: 87
 part: XII
 title: 'A garbage collector in Rust'
-tagline: 'drip-rs’s collector is the TypeScript one turned inside out. It never decides to run by itself, it is handed its roots, its mark bits live in a bitmap of their own, and its freed slots go on free lists. Then 95 programs run with a collection before every allocation, to catch the one root you forgot.'
+tagline: 'drip-rs’s collector is the TypeScript one turned inside out. It never decides to run by itself, it is handed its roots, its mark bits live in a bitmap of their own, and its freed slots go on free lists. Then 165 programs run with a collection before every allocation, to catch the one root you forgot.'
 objectives:
-  - Map drip-rs’s collect, blacken and sweep to the TypeScript heap’s collector.
+  - Map drip-rs’s collect, blacken and sweep onto the TypeScript heap’s collector.
   - Explain why roots are passed as &dyn Trace values and why the mark bits live outside the objects.
   - Explain how free lists, stress mode and never-reused slots turn a missing root into a panic.
   - Write mark and sweep over an arena with a free list, with tests.
@@ -14,232 +14,235 @@ uses: [drip-rs, object-handle, upvalue-handle, frame-stack, string-interner, com
 sources: [klabnik2026, rust-reference-trait-object, rust-std-mem-take, rust-std-size-of]
 ---
 import GcSteps from '../../../components/diagrams/ch347/GcSteps';
+import MarksBeside from '../../../components/diagrams/ch347/MarksBeside';
 
 ## Who decides to collect?
 
-Chapter 158's TypeScript heap collects from inside `allocate`. It finds
-the roots through `heap.vm`, the compiler's functions, and an
-`extraRoots` stack that `heap.push(v)` fills to protect a half-built
-value. Chapter 332 showed why drip-rs can't: the heap is part of the VM
-and can't borrow it back. So the caller decides. Adapted from
-`src/vm.rs`:
+The TypeScript heap of *Reclaiming memory: mark and sweep* collects from
+inside `allocate`: it finds the roots through `heap.vm`, the compiler's
+functions, and an `extraRoots` stack that protects a half-built value.
+drip-rs cannot do that, because the heap is a field of the VM and
+cannot borrow the VM back. So whoever allocates decides, from `vm.rs`
+(rewrapped):
 
 ```rust
-fn alloc<T: HeapObject>(&mut self, obj: T)
-    -> Gc<T> {
+fn alloc<T: HeapObject>(
+    &mut self, object: T) -> Gc<T> {
+    self.collect_if_needed();
+    self.heap.alloc(object)
+}
+
+fn collect_if_needed(&mut self) {
     if self.heap.should_collect() {
         self.collect_garbage();
     }
-    self.heap.alloc(obj)
 }
 ```
 
-`Heap::alloc` itself never collects. `should_collect()` is true once
-`bytes_allocated` passes `next_gc`, or always in stress mode. The price
-is one rule, in the comment on `Vm::alloc`: everything the new object
-refers to must already be reachable from a root. That is what chapter
-346's closure argument checked.
+`Heap::alloc` itself never collects. `should_collect()` is true once the
+bytes allocated pass `next_gc`, or always in stress mode, and
+`collect_garbage` builds the VM's roots and calls `heap.collect`. The
+price is one rule, written in the comment on `Vm::alloc`: anything the
+new object refers to must already be reachable from a root, because the
+new object itself is not yet. That is the argument the chapter
+*Capturing variables in Rust* made for closures.
 
-<Callout kind="intuition">
-A librarian clearing out a storeroom. She doesn't guess what people
-still need; each reading room hands her its list of call numbers. She
-ticks them off on a clipboard of her own, not on the books, follows
-every "see also" to tick more, and then shelves away everything left
-unticked, writing each empty shelf number on a "free" list for the next
-delivery.
-</Callout>
+<Analogy title="a librarian clearing a storeroom">
+She does not guess what people still need: each reading room hands her
+a list of call numbers. She ticks them off on a clipboard of her own,
+not on the books, follows every "see also" to tick more, and then clears
+every shelf left unticked, writing its number on a "free" list for the
+next delivery.
+<span slot="breaks">A librarian can ask a reader whether a book is still
+wanted; the collector can only follow references, so an object that is
+reachable but will never be used again is kept, and one that is in use
+but nobody listed as a root is freed.</span>
+</Analogy>
+
+<Analogy title="a lost-property office">
+Every item on the shelf has a ticket; at the end of the month, the staff
+keep whatever a current ticket, or another kept item's label, points
+to, and everything else goes, its shelf space marked as free.
+<span slot="breaks">The office throws things out on a calendar; drip-rs
+collects when the bytes allocated pass a threshold (1 MiB at first,
+then twice whatever survived), or before every allocation in stress
+mode.</span>
+</Analogy>
 
 ## Roots are trait objects
 
-Anything that can report the handles it holds implements one trait,
-from `src/gc.rs`:
+Anything that can report the handles it holds implements one trait, from
+`gc.rs`, and the collector takes its roots as a slice of trait
+objects<Cite id="rust-reference-trait-object" />:
 
 ```rust
 pub trait Trace {
     fn trace(&self, marks: &mut Marks);
 }
 
-impl Trace for Value {
-    fn trace(&self, m: &mut Marks) {
-        match *self {
-            Value::Closure(c) => m.mark(c),
-            // ...an arm per object kind,
-            // none for nil, bool, number
-        }
-    }
-}
-```
-
-There are impls for `Gc<T>`, `StrRef`, `Table`, `Option<T>`, `[T]` and
-`Vec<T>`, so `self.stack.trace(marks)` marks a whole stack. The
-collector takes its roots as a slice of trait objects
-<Cite id="rust-reference-trait-object" />:
-
-```rust
 pub fn collect(&mut self,
                roots: &[&dyn Trace])
 ```
 
-`dyn` is needed because one call mixes types. The VM passes
-`&[&roots]`, its `VmRoots` of borrowed fields (stack, frames, globals,
-open upvalues, the `"init"` string). The compiler passes
-`&[self.roots, &self.functions]`: whatever the VM gave it, plus its own
-`Vec<FunctionState>` of half-built functions (chapter 339).
+There are impls for `Gc<T>`, `StrRef`, `Value` (an arm per object kind,
+none for `none`, booleans and numbers), `Table`, `Option<T>`, `[T]` and
+`Vec<T>`, so `self.stack.trace(marks)` marks a whole stack. `dyn` is
+needed because one call can mix types: the VM passes `&[&roots]`, a
+`VmRoots` of borrowed fields (the stack, the frames, the globals, the
+open upvalues and the interned `"init"`); the compiler passes
+`&[self.roots, &self.functions]`, whatever the VM gave it plus its own
+half-built functions (*A Pratt compiler in Rust, part 2*); and
 `--disassemble`, with no VM at all, passes `&()`.
 
-<Run id="dyn-roots" />
-
-<Prompts ids={['ag-alloc', 'ag-rule', 'ag-dyn']} />
+<Prompts ids={['ag-alloc', 'ag-dyn']} />
 
 ## Mark bits outside the objects
 
-TypeScript objects have an `isMarked` field in their header. Put a mark
-bit in the arena and try to mark what an object refers to:
+TypeScript objects have an `isMarked` field. Put a mark bit in each
+object of a Rust arena, and marking what an object refers to fails
+(rustc 1.97, on a toy, trimmed):
 
-```rust
-fn blacken(&mut self, i: usize) {
-    for &r in &self.nodes[i].refs {
-        self.mark(r); // sets a mark bit
-    }
-}
-```
-
-rustc 1.97 (trimmed):
-
-```
+```text
 error[E0502]: cannot borrow `*self` as
   mutable because it is also borrowed
   as immutable
-13 | for &r in &self.nodes[i].refs {
+6  | for &r in &self.nodes[i].refs {
    |           ------------------- immutable
-14 |     self.mark(r);
+7  |     self.mark(r); // sets a bit
    |     ^^^^^^^^^^^^ mutable borrow
 ```
 
-Tracing reads objects; marking writes bits. With both in one struct,
-the read borrow and the write borrow overlap. So drip-rs keeps the bits
-in a separate `Marks` value, one `Vec<bool>` per arena plus the gray
-stack, and lifts it out of the heap while it works. Adapted from
-`Heap::collect`:
+Tracing reads objects; marking writes bits; with both in one struct,
+the two borrows overlap. So drip-rs keeps the bits in a separate
+`Marks` value, one `Vec<bool>` per arena plus the gray stack, and lifts
+it out of the heap while it works. From `Heap::collect` (comments
+trimmed):
 
 ```rust
 let mut marks =
     std::mem::take(&mut self.marks);
 marks.reset(self);
-for root in roots {           // 1. mark
+for root in roots {                  // 1.
     root.trace(&mut marks);
 }
-while let Some(o) = marks.gray.pop() {
-    self.blacken(o, &mut marks); // 2.
+while let Some(object) = marks.gray.pop() {
+    self.blacken(object, &mut marks); // 2.
 }
-self.interned.retain_keys(    // 3.
+self.interned.retain_keys(           // 3.
     |s| marks.strings[s.handle.index()]);
-self.sweep(&marks);           // 4.
+self.sweep(&marks);                  // 4.
 self.marks = marks;
 ```
 
-`mem::take` swaps an empty `Marks` in and hands back the real one
-<Cite id="rust-std-mem-take" />. Now `blacken(&self, o, &mut marks)`
-borrows the heap shared and the bitmap mutably, two separate values.
-`reset` resizes every bit vector to its arena and clears it, so each
-collection starts from a fresh bitmap, and sweep never has to unmark
-survivors, as the TypeScript sweep does. The vectors' memory is reused
-from one collection to the next.
+`mem::take` swaps an empty `Marks` in and hands back the real
+one<Cite id="rust-std-mem-take" />, so `blacken(&self, object, &mut marks)`
+borrows the heap shared and the bitmap mutably: two separate values.
+`reset` sizes every bit vector to its arena and clears it, so each
+collection starts fresh and sweep never has to unmark survivors (the
+TypeScript sweep does). Step 3 is the weak string table: entries for
+unmarked strings are dropped before the strings themselves are freed.
+The gray stack holds a `Gray`, an enum with one variant per kind of
+object that can refer to others; strings and natives refer to nothing,
+so marking one turns it black at once.
 
-The gray stack holds a `Gray`, an enum with one variant per object kind
-that can refer to others. Strings and natives have none: marking one
-turns it black at once, where TypeScript pushes every object gray.
+<Figure caption="The mark bits live beside the heap, not inside its objects, so reading objects and writing bits are borrows of two different values." takeaway="Separate the bits from the objects and the borrow checker is satisfied.">
+  <MarksBeside />
+</Figure>
 
 <GcSteps client:visible />
 
 <Callout kind="definition">
-drip-rs's **arena GC** is mark and sweep over one arena per object
-type. Marking fills a mark bitmap, a `Vec<bool>` per arena kept outside
-the objects and cleared at the start of every collection, starting from
-roots passed in as `&dyn Trace`. Sweeping visits every arena slot, frees
-each live one whose bit is false, and pushes its index on that arena's
-**free list**, which `insert` pops before growing the arena.
+drip-rs's **arena GC** is mark and sweep over one arena per object type.
+Marking fills a bitmap kept outside the objects (a `Vec<bool>` per
+arena, cleared at the start of every collection), starting from roots
+passed in as `&dyn Trace`. Sweeping visits every slot, frees each live
+one whose bit is false, and pushes its index on that arena's **free
+list**, which `Arena::insert` pops before growing the arena.
 </Callout>
+
+<Formal title="What survives a collection">
+
+```text
+R₀ = roots
+Rₖ₊₁ = Rₖ ∪ { p | o ∈ Rₖ, o → p }
+live = R, the first Rₖ with Rₖ₊₁ = Rₖ
+freed = slots − live
+```
+
+<span slot="read">Start with the set of objects the roots name. Each
+round, add every object that something already in the set refers to.
+When a round adds nothing, the set is everything reachable, and that is
+what survives; every other live slot is freed. The gray stack is the
+round still to be done: the objects added but not yet looked inside.</span>
+</Formal>
 
 <Prompts ids={['ag-bitmap', 'ag-take', 'ag-gray']} />
 
-## Sweep and the free list
+## Sweep, free lists and stress
 
-Sweep runs the same loop over all eight arenas (stamped out by a small
-`macro_rules!`), freeing with `Arena::remove`, from `src/object.rs`:
+Sweep runs the same loop over all nine arenas (stamped out by a small
+`macro_rules!`), freeing with `Arena::remove(i, reuse)`: the slot is
+`take`n, so it becomes `None` and the object is dropped (with its
+`Box<str>`, its tables or its `Vec`s), and if `reuse` is true the index
+goes on the arena's free list. The TypeScript sweep unlinks the object
+from its list instead. Pacing is the same in both VMs: subtract what was
+freed, then set `next_gc` to twice what is left, but at least 1 MiB.
+
+A missing root is the classic collector bug, and it hides: it bites only
+if a collection runs at exactly the wrong moment. **Stress mode** makes
+every moment that moment: `should_collect()` is always true, and it also
+sets `poison_freed`, so `reuse` is false and no slot is handed out
+again. A stale handle then finds `None` and panics with "use after free"
+instead of quietly reading whatever object moved in, which does the job
+of the TypeScript heap's poisoning. `tests/stress_gc.rs` runs the 165
+corpus programs in ten folders (closures, classes, inheritance, strings,
+functions, lists, methods, fields, for and programs) this way.
+
+<Examples of="arena-gc">
 
 ```rust
-pub fn remove(&mut self, index: usize,
-              reuse: bool) -> Option<T> {
-    let object = self.slots[index].take();
-    if reuse && object.is_some() {
-        self.free.push(index as u32);
-    }
-    object
-}
+// from the unit test in gc.rs
+let class = heap.alloc(ObjClass {
+    name: kept, methods: Table::new() });
+heap.collect(&[&class]); // freed == 1
 ```
 
-The slot becomes `None` and the object is dropped, with its `Box<str>`
-or its tables. The TypeScript sweep unlinks the object from its list
-instead. Pacing is the same
-in both VMs: subtract what was freed from `bytes_allocated`, and set
-`next_gc` to twice what is left, but at least 1 MiB.
+<Run id="dyn-roots" />
 
-<Prompts ids={['ag-free', 'ag-weak']} />
-
-## A collection before every allocation
-
-A missing root is the classic collector bug, and it hides: it bites
-only if a collection runs at the wrong moment. Stress mode makes every
-moment that moment: `should_collect()` is always
-true, so the heap collects before every allocation. It also sets
-`poison_freed`, so `remove` never puts a slot on the free list. A stale
-handle then finds `None` and panics with "use after free", instead of
-quietly reading whatever object moved in. That does the job of the
-TypeScript heap's poisoning, which deletes a dead object's fields.
-
-`tests/stress_gc.rs` runs the 95 corpus programs in `closure/`,
-`class/`, `inheritance/`, `string/`, `function/`, `super/`, `method/`
-and `field/` this way. To see it catch something, I deleted one line
-from a scratch copy of drip-rs, `self.open_upvalues.trace(marks)` in
-`VmRoots`. The normal corpus suite still passed, 246 of 246. The stress
-suite panicked on its sixth program, `class/local_reference_self.drip`
-(reformatted a little):
-
-```
-{
-  class Foo {
-    returnSelf() { return Foo; }
-  }
-  print Foo().returnSelf();
-}
-```
-
-```
-test class/local_reference_self.drip
+```text
+test closures/assign_after_capture.drip
   ... FAILED
----- class/local_reference_self.drip
-  panicked: use after free: an
-  object of type ObjUpvalue was
-  collected while still in use
+panicked at src/object.rs:143:5:
+use after free: an object of type
+ObjUpvalue was collected while still
+in use
 ```
 
-The method captures the local `Foo`. At `OP_CLOSURE`, the new upvalue
-was reachable only from the open list, now unrooted, so the closure's
-own allocation freed it. The backtrace showed the panic later, inside
-`blacken`, when a collection traced the method closure's dangling
-handle.
+</Examples>
 
-<Prompts ids={['ag-stress', 'ag-poison']} />
+The first is the smallest collection: two interned strings, `"kept"`
+and `"lost"`, and a class named `"kept"` as the only root. The class is
+marked, blackening it marks its name, and `"lost"`, which nothing
+reaches, is the one object freed. The second runs a tiny copy of
+`Trace` and `&dyn Trace` so you can see one slice of roots mix a
+`VmRoots` with a `Vec`. The third is a real bug, planted on purpose: I
+deleted one line from a scratch copy of drip-rs,
+`self.open_upvalues.trace(marks);` in `VmRoots`. The normal corpus suite
+still passed, 334 of 334; the stress suite failed 25 of its 165
+programs, starting with its 21st, `closures/assign_after_capture.drip`.
+At `closure`, the new upvalue was reachable only from the now-unrooted
+open list, so the closure's own allocation freed it, and the next
+`close_upvalues` panicked on the stale handle.
+
+<Prompts ids={['ag-free', 'ag-weak', 'ag-stress', 'ag-poison']} />
 
 <Callout kind="engine" label="Under the hood">
-A `Vec<bool>` spends a byte per mark bit, since `bool` is one byte
-<Cite id="rust-std-size-of" />, where a packed bitset would need an
-eighth of that. And `reset` and `sweep` visit every slot, freed ones
+A `Vec<bool>` spends a byte per mark bit, since `bool` is one
+byte<Cite id="rust-std-size-of" />, where a packed bitset would need an
+eighth of that; and `reset` and `sweep` visit every slot, freed ones
 too, where the TypeScript sweep walks only its list of allocated
-objects. In
-exchange, the bitmap is a plain value that the borrow checker can see
-is separate from the heap, and a slot index is enough to find any
+objects. In exchange the bitmap is a plain value the borrow checker can
+see is separate from the heap, and a slot index is enough to find any
 object's bit. Both are choices a later optimization could revisit.
 </Callout>
 
@@ -249,17 +252,16 @@ object's bit. Both are choices a later optimization could revisit.
 
 ## What you learned
 
-- In drip-rs, **allocation never collects**. The VM asks
-  `should_collect()` and calls `collect` with its roots, so a new
-  object's references must already be reachable.
+- In drip-rs, **allocation never collects** by itself: the VM or the
+  compiler asks `should_collect()` and calls `collect` with its roots,
+  so a new object's references must already be reachable.
 - Roots are **`&dyn Trace`** values: the VM's borrowed fields, the
   compiler's functions, or `()`.
 - **Mark bits live in a separate bitmap**, taken out of the heap with
-  `mem::take` and cleared at each collection, so tracing (reads) and
-  marking (writes) never borrow the same thing.
-- **Sweep** frees unmarked slots and pushes them on per-arena **free
-  lists**; the weak string table drops unmarked strings first.
-- **Stress mode** collects before every allocation and never reuses a
-  slot, so a missing root panics at once. 95 programs run this way.
+  `mem::take`, so tracing (reads) and marking (writes) never borrow the
+  same thing.
+- **Sweep** frees unmarked slots onto per-arena **free lists**; **stress
+  mode** collects before every allocation and never reuses a slot, so a
+  missing root panics at once.
 
 <Quiz />

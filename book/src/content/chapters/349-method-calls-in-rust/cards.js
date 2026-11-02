@@ -7,11 +7,11 @@ export const prompts = {
     a: '`receiver: Value` and `method: Gc<ObjClosure>`.',
   },
   'bm-receiver-root': {
-    q: 'Why does `bind_method` pop the receiver only after allocating the bound method?',
-    a: '`alloc` may start a collection. While the receiver is on the stack it is a root, so it can’t be freed before the bound method holds it.',
+    q: 'Why does the `get.prop` arm overwrite the receiver with the bound method only after allocating it?',
+    a: '`alloc` may start a collection. While the receiver is on the stack it is a root, so it cannot be freed before the bound method holds it.',
   },
   'bm-as-closure': {
-    q: 'What does `as_closure(method)` do in `bind_method`, and what did TypeScript write instead?',
+    q: 'What does `as_closure(method)` do in the `get.prop` arm, and what did TypeScript write instead?',
     a: 'It opens the `Value::Closure` from the methods table with a `match`, and calls `unreachable!` for anything else. TypeScript wrote the unchecked cast `method as ObjClosure`.',
   },
   'bm-destructure': {
@@ -20,29 +20,25 @@ export const prompts = {
   },
   'bm-slot0': {
     q: 'What does calling a bound method do with its receiver?',
-    a: 'Writes it over the callee’s stack slot with `set_peek(arg_count, receiver)`. That slot becomes the method’s slot 0, which is `this`.',
+    a: 'Writes it over the callee’s stack slot with `set_peek(arg_count, receiver)`. That slot becomes the method’s slot 0, which is where `self` lives.',
   },
   'init-string': {
     q: 'Where does the VM’s `init_string` come from, and why must the collector know about it?',
-    a: 'It is `"init"`, interned once in `Vm::new`. It is in `VmRoots`, because a string nothing marks would be freed and the lookups would break.',
+    a: 'It is `"init"`, interned once in `Vm::new`. It is in `VmRoots`, because a string nothing marks would be freed, and the lookups of `init` would break.',
   },
   'init-match': {
-    q: 'Calling a class: what are the three arms of the `match` on `methods.get(self.init_string)`?',
-    a: '`Some(init)`: call it. `None if arg_count != 0`: “Expected 0 arguments but got N.”. `None`: done, the instance is the result.',
+    q: '`new C(args)`: what are the three arms of the `match` on `methods.get(self.init_string)`?',
+    a: '`Some(init)`: call it. `None if arg_count != 0`: “C has no init, so it takes no arguments, but got N”. `None`: done, the instance is the result.',
   },
   'init-kind': {
     q: 'How does drip-rs make every return from `init` produce the instance?',
-    a: '`method()` gives `init` the kind `FunctionKind::Initializer`, and `emit_return` then emits `GetLocal 0` instead of `Nil` before `Return`.',
-  },
-  'invoke-alloc': {
-    q: 'How many bound methods does `c.taste()` allocate in drip-rs?',
-    a: 'None. It compiles to `Invoke`, which calls the method with the receiver already in slot 0.',
+    a: '`method()` gives `init` the kind `FunctionKind::Initializer`, and `emit_return` then emits `load.local 0` instead of `none` before `return`.',
   },
 };
 
 export const examples = {
   cup: {
-    title: 'A bound method keeps its receiver',
+    title: 'init, a method, and a bound method passed around',
     lang: 'drip-vm',
     code: `class Cup {
   init(n) { self.n = n; }
@@ -56,7 +52,17 @@ print s;`,
   },
 };
 
-const head = `#[derive(Clone, Copy, Debug, PartialEq)]
+export const exercises = {
+  callValue: {
+    lang: 'rust',
+    title: 'Calling bound methods, and new',
+    prompt: `This small VM is shaped like drip-rs: values are a \`Copy\` enum of handles, and objects live in \`Vec\`s. \`call(f, argc)\` records a call and its slot 0, and \`call_value\` is written. Write two helpers:
+
+- **\`call_bound(b, argc)\`**: copy the receiver and method out of \`self.bounds[b]\`, write the receiver over the callee's slot (\`set_peek(argc, ..)\`), and call the method.
+- **\`new_instance(argc)\`**: the class is \`argc\` slots below the top; if it isn't a class, return \`Err\` with \`'new' needs a class\`. Push the class's index onto \`instances\` (the new instance's index is the last one) and write \`Instance(index)\` over the class's slot. Then call \`init\` if the class has one; else, with arguments, return \`Err(no_init(name, argc))\`; else return \`Ok(())\`.
+
+\`BoundObj\` is deliberately not \`Copy\`, like drip-rs's \`ObjBoundMethod\`.`,
+    starter: `#[derive(Clone, Copy, Debug, PartialEq)]
 enum Value {
     Num(f64),
     Class(usize),
@@ -73,6 +79,7 @@ struct BoundObj {
 }
 
 struct ClassObj {
+    name: &'static str,
     init: Option<usize>,
 }
 
@@ -88,12 +95,24 @@ struct Vm {
 
 type Run = Result<(), String>;
 
-const NOT_CALLABLE: &str = concat!(
-    "Can only call functions ",
-    "and classes.",
-);
+const NO_CLASS: &str =
+    "'new' needs a class";
+const NOT_CALLABLE: &str =
+    "cannot call that";
+
+fn no_init(n: &str, k: usize)
+    -> String {
+    let m = "has no init, so it takes";
+    let a = "no arguments, but got";
+    format!("{n} {m} {a} {k}")
+}
 
 impl Vm {
+    fn peek(&self, d: usize) -> Value {
+        let n = self.stack.len();
+        self.stack[n - 1 - d]
+    }
+
     fn set_peek(
         &mut self,
         d: usize,
@@ -126,8 +145,114 @@ impl Vm {
             Value::Bound(b) => {
                 self.call_bound(b, argc)
             }
-            Value::Class(c) => {
-                self.call_class(c, argc)
+            Value::Closure(f) => {
+                self.call(f, argc)
+            }
+            _ => {
+                Err(NOT_CALLABLE.into())
+            }
+        }
+    }
+
+    fn call_bound(
+        &mut self,
+        b: usize,
+        argc: usize,
+    ) -> Run {
+        todo!()
+    }
+
+    // new C(args): the class is argc
+    // slots below the top.
+    fn new_instance(
+        &mut self,
+        argc: usize,
+    ) -> Run {
+        todo!()
+    }
+}`,
+    solution: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Value {
+    Num(f64),
+    Class(usize),
+    Instance(usize),
+    Bound(usize),
+    Closure(usize),
+}
+
+// Not Copy, like drip-rs's
+// ObjBoundMethod.
+struct BoundObj {
+    receiver: Value,
+    method: usize,
+}
+
+struct ClassObj {
+    name: &'static str,
+    init: Option<usize>,
+}
+
+struct Vm {
+    stack: Vec<Value>,
+    bounds: Vec<BoundObj>,
+    classes: Vec<ClassObj>,
+    // The class of each instance.
+    instances: Vec<usize>,
+    // Each call: (closure, slot 0).
+    calls: Vec<(usize, usize)>,
+}
+
+type Run = Result<(), String>;
+
+const NO_CLASS: &str =
+    "'new' needs a class";
+const NOT_CALLABLE: &str =
+    "cannot call that";
+
+fn no_init(n: &str, k: usize)
+    -> String {
+    let m = "has no init, so it takes";
+    let a = "no arguments, but got";
+    format!("{n} {m} {a} {k}")
+}
+
+impl Vm {
+    fn peek(&self, d: usize) -> Value {
+        let n = self.stack.len();
+        self.stack[n - 1 - d]
+    }
+
+    fn set_peek(
+        &mut self,
+        d: usize,
+        v: Value,
+    ) {
+        let n = self.stack.len();
+        self.stack[n - 1 - d] = v;
+    }
+
+    // Record the call and its slot 0.
+    fn call(
+        &mut self,
+        f: usize,
+        argc: usize,
+    ) -> Run {
+        let n = self.stack.len();
+        let base = n - argc - 1;
+        self.calls.push((f, base));
+        Ok(())
+    }
+
+    // The callee is argc slots below
+    // the top of the stack.
+    fn call_value(
+        &mut self,
+        callee: Value,
+        argc: usize,
+    ) -> Run {
+        match callee {
+            Value::Bound(b) => {
+                self.call_bound(b, argc)
             }
             Value::Closure(f) => {
                 self.call(f, argc)
@@ -137,23 +262,12 @@ impl Vm {
             }
         }
     }
-`;
 
-const boundSig = `
     fn call_bound(
         &mut self,
         b: usize,
         argc: usize,
-    ) -> Run {`;
-
-const classSig = `
-    fn call_class(
-        &mut self,
-        c: usize,
-        argc: usize,
-    ) -> Run {`;
-
-const boundBody = `
+    ) -> Run {
         let BoundObj {
             receiver,
             method,
@@ -161,61 +275,48 @@ const boundBody = `
         self.set_peek(argc, receiver);
         self.call(method, argc)
     }
-`;
 
-const classBody = `
+    // new C(args): the class is argc
+    // slots below the top.
+    fn new_instance(
+        &mut self,
+        argc: usize,
+    ) -> Run {
+        let v = self.peek(argc);
+        let Value::Class(c) = v else {
+            return Err(NO_CLASS.into());
+        };
         self.instances.push(c);
         let n = self.instances.len();
         let i = Value::Instance(n - 1);
         self.set_peek(argc, i);
-        match self.classes[c].init {
+        let k = &self.classes[c];
+        match k.init {
             Some(f) => {
                 self.call(f, argc)
             }
             None if argc != 0 => {
-                Err(format!(
-                    "Expected 0 \\
-                     arguments \\
-                     but got {argc}."))
+                let n = k.name;
+                Err(no_init(n, argc))
             }
             None => Ok(()),
         }
     }
-}`;
-
-const starter = `${head}${boundSig}
-        todo!()
-    }
-${classSig}
-        todo!()
-    }
-}`;
-
-const solution = `${head}${boundSig}${boundBody}${classSig}${classBody}`;
-
-export const exercises = {
-  callValue: {
-    lang: 'rust',
-    title: 'Calling bound methods and classes',
-    prompt: `This small VM is shaped like drip-rs: values are a \`Copy\` enum of handles, and objects live in \`Vec\`s. \`call(f, argc)\` records a call and its slot 0, and \`call_value\` is written. Write its two helpers:
-
-- **\`call_bound(b, argc)\`**: copy the receiver and method out of \`self.bounds[b]\`, write the receiver over the callee's slot (\`set_peek(argc, ..)\`), and call the method.
-- **\`call_class(c, argc)\`**: push \`c\` onto \`instances\` (the new instance's index is the last one), and write \`Instance(index)\` over the callee's slot. Then call \`init\` if the class has one; else, with arguments, return \`Err("Expected 0 arguments but got N.")\`; else return \`Ok(())\`.
-
-\`BoundObj\` is deliberately not \`Copy\`, like drip-rs's \`ObjBoundMethod\`.`,
-    starter,
-    solution,
+}`,
     tests: `use Value::*;
 
-// Class 0 has init (closure 5), class 1
-// has none. Instance 0 already exists.
+// Class 0, Cup, has init (closure 5);
+// class 1, Mug, has none. Instance 0
+// already exists.
 fn vm() -> Vm {
     Vm {
         stack: Vec::new(),
         bounds: Vec::new(),
         classes: vec![
-            ClassObj { init: Some(5) },
-            ClassObj { init: None },
+            ClassObj { name: "Cup",
+                init: Some(5) },
+            ClassObj { name: "Mug",
+                init: None },
         ],
         instances: vec![0],
         calls: Vec::new(),
@@ -238,11 +339,11 @@ fn a_bound_method_puts_its_receiver_in_slot_0() {
 }
 
 #[test]
-fn a_class_with_init_calls_it_on_a_new_instance() {
+fn new_with_init_calls_it_on_a_new_instance() {
     let mut v = vm();
     v.stack = vec![Class(0), Num(1.0),
         Num(2.0)];
-    v.call_value(Class(0), 2).unwrap();
+    v.new_instance(2).unwrap();
     assert_eq!(v.instances, [0, 0]);
     assert_eq!(v.stack[0], Instance(1));
     assert_eq!(v.stack.len(), 3);
@@ -250,10 +351,10 @@ fn a_class_with_init_calls_it_on_a_new_instance() {
 }
 
 #[test]
-fn a_class_without_init_just_makes_an_instance() {
+fn new_without_init_just_makes_an_instance() {
     let mut v = vm();
     v.stack = vec![Num(0.0), Class(1)];
-    v.call_value(Class(1), 0).unwrap();
+    v.new_instance(0).unwrap();
     assert_eq!(v.stack,
         [Num(0.0), Instance(1)]);
     assert_eq!(v.instances, [0, 1]);
@@ -264,49 +365,311 @@ fn a_class_without_init_just_makes_an_instance() {
 fn arguments_without_init_are_an_error() {
     let mut v = vm();
     v.stack = vec![Class(1), Num(1.0)];
-    let e = v.call_value(Class(1), 1);
-    let m = "Expected 0 arguments but got 1.";
+    let e = v.new_instance(1);
+    let m = "Mug has no init, so it takes \\
+        no arguments, but got 1";
     assert_eq!(e, Err(m.to_string()));
 }
 
 #[test]
-fn closures_and_numbers_still_work() {
+fn new_needs_a_class() {
+    let mut v = vm();
+    v.stack = vec![Num(3.0)];
+    let e = v.new_instance(0);
+    assert_eq!(e, Err(NO_CLASS.into()));
+}
+
+#[test]
+fn closures_still_work() {
     let mut v = vm();
     v.stack = vec![Closure(3)];
     v.call_value(Closure(3), 0).unwrap();
     assert_eq!(v.calls, [(3, 0)]);
-    let e = v.call_value(Num(1.0), 0);
-    assert_eq!(e, Err(NOT_CALLABLE.into()));
 }`,
     hints: [
-      'In `call_bound`, `let bm = self.bounds[b];` is a move out of a `Vec` and won’t compile. Destructure instead: `let BoundObj { receiver, method } = self.bounds[b];` copies the two `Copy` fields.',
-      'Then `self.set_peek(argc, receiver);` and `self.call(method, argc)`.',
-      'In `call_class`, write the instance over the slot first, then `match self.classes[c].init` with three arms: `Some(f) => ...`, `None if argc != 0 => Err(...)`, and `None => Ok(())`.',
+      'Both helpers end the same way: write something over the callee’s slot with `set_peek(argc, ..)` (so it becomes slot 0 of the new frame), then call.',
+      'For `call_bound`, copy the two fields out with a destructuring pattern, `let BoundObj { receiver, method } = self.bounds[b];`. Binding the whole struct would try to move it out of the `Vec`.',
+      'For `new_instance`: `let Value::Class(c) = self.peek(argc) else { ... };`, push `c` onto `instances`, `set_peek(argc, Instance(len - 1))`, then `match self.classes[c].init { Some(f) => self.call(f, argc), None if argc != 0 => Err(..), None => Ok(()) }`.',
     ],
-    walkthrough: `**Copy the fields, not the object.** \`self.bounds[b]\` is a place inside the \`Vec\`. \`let bm = self.bounds[b];\` would move the whole \`BoundObj\` out and leave a hole, so rustc rejects it (E0507). The pattern \`let BoundObj { receiver, method } = self.bounds[b];\` binds each field by value instead, and since \`Value\` and \`usize\` are \`Copy\`, each is copied. This is drip-rs's line exactly.
+    walkthrough: `**How to think about it.** Every call in this VM ends with a frame whose slot 0 is the callee's slot, so the whole trick of methods is to put the right value in that slot before calling: for a bound method, the receiver it remembered; for \`new\`, the brand-new instance. Draw the stack: \`[.., callee, arg1, .., argN]\`. The callee is \`argc\` places below the top, which is exactly what \`set_peek(argc, ..)\` overwrites. The other Rust question is how to read a non-\`Copy\` object out of a \`Vec\` without moving it.
 
-**The callee's slot becomes slot 0.** \`set_peek(argc, receiver)\` overwrites the bound method with its receiver. \`call\` then records \`stack.len() - argc - 1\`, that same slot, as the frame's base. So the method's \`this\` is the receiver. A class call does the same with the new instance.
+**\`call_bound\`, line by line.**
 
-**Three cases, one \`match\`.** Look for \`init\` first. Only when there is none do arguments become an error, so \`Some(f)\` comes before the guarded \`None\` arm, and the guard is what separates the error from the plain \`None\`.
+- \`let BoundObj { receiver, method } = self.bounds[b];\` is a destructuring pattern on the place \`self.bounds[b]\`. Each field is bound by value, and both are \`Copy\` (\`Value\` and \`usize\`), so they are copied and the object stays in the \`Vec\`.
+- \`self.set_peek(argc, receiver);\` writes the receiver over the bound method's own slot. In the first test the stack \`[Num(0), Bound(0), Num(7)]\` becomes \`[Num(0), Instance(0), Num(7)]\`.
+- \`self.call(method, argc)\` calls the method, whose slot 0 is now the receiver: \`(9, 1)\` is recorded.
 
-**No push.** The instance replaces the class; it isn't pushed on top. With no \`init\`, the instance is left right where the call's result belongs.`,
+**\`new_instance\`, line by line.**
+
+- \`let v = self.peek(argc);\` reads the value under the arguments, and \`let Value::Class(c) = v else { return Err(NO_CLASS.into()); };\` returns \`'new' needs a class\` if it is anything else.
+- \`self.instances.push(c);\` makes the instance (here it is just a record of its class).
+- \`let n = self.instances.len();\` and \`let i = Value::Instance(n - 1);\` make its handle: the last index.
+- \`self.set_peek(argc, i);\` writes the instance over the class's slot, where \`init\` will find it as \`self\`.
+- \`let k = &self.classes[c];\` borrows the class, and \`match k.init {\` looks for an initializer. \`Option<usize>\` is \`Copy\`, so \`Some(f)\` copies the closure's index.
+- \`Some(f) => { self.call(f, argc) }\` runs \`init\` with all the arguments. \`k\` is not used in this arm, so its borrow has ended and \`self.call\` may borrow \`self\` mutably.
+- \`None if argc != 0 => { let n = k.name; Err(no_init(n, argc)) }\` is the guard: no \`init\` but arguments given is drip-rs's error, \`Mug has no init, so it takes no arguments, but got 1\`.
+- \`None => Ok(()),\` is the plain case: the instance in the slot is the result of \`new\`.
+
+**Common wrong attempts.**
+
+- \`let bm = self.bounds[b];\` tries to move a \`BoundObj\` out of the \`Vec\`. It is not \`Copy\`, so rustc rejects it with E0507.
+- Checking \`argc != 0\` before looking for \`init\`: \`new Cup(1, 2)\` then fails even though \`Cup\` has an \`init\`. The error belongs only to classes without one.
+- Pushing the receiver or instance instead of writing it over the callee's slot: the stack grows by one, slot 0 of the new frame still holds the bound method or class, and \`self\` is wrong.`,
     wrong: [
       {
-        code: `${head}${boundSig}
+        code: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Value {
+    Num(f64),
+    Class(usize),
+    Instance(usize),
+    Bound(usize),
+    Closure(usize),
+}
+
+// Not Copy, like drip-rs's
+// ObjBoundMethod.
+struct BoundObj {
+    receiver: Value,
+    method: usize,
+}
+
+struct ClassObj {
+    name: &'static str,
+    init: Option<usize>,
+}
+
+struct Vm {
+    stack: Vec<Value>,
+    bounds: Vec<BoundObj>,
+    classes: Vec<ClassObj>,
+    // The class of each instance.
+    instances: Vec<usize>,
+    // Each call: (closure, slot 0).
+    calls: Vec<(usize, usize)>,
+}
+
+type Run = Result<(), String>;
+
+const NO_CLASS: &str =
+    "'new' needs a class";
+const NOT_CALLABLE: &str =
+    "cannot call that";
+
+fn no_init(n: &str, k: usize)
+    -> String {
+    let m = "has no init, so it takes";
+    let a = "no arguments, but got";
+    format!("{n} {m} {a} {k}")
+}
+
+impl Vm {
+    fn peek(&self, d: usize) -> Value {
+        let n = self.stack.len();
+        self.stack[n - 1 - d]
+    }
+
+    fn set_peek(
+        &mut self,
+        d: usize,
+        v: Value,
+    ) {
+        let n = self.stack.len();
+        self.stack[n - 1 - d] = v;
+    }
+
+    // Record the call and its slot 0.
+    fn call(
+        &mut self,
+        f: usize,
+        argc: usize,
+    ) -> Run {
+        let n = self.stack.len();
+        let base = n - argc - 1;
+        self.calls.push((f, base));
+        Ok(())
+    }
+
+    // The callee is argc slots below
+    // the top of the stack.
+    fn call_value(
+        &mut self,
+        callee: Value,
+        argc: usize,
+    ) -> Run {
+        match callee {
+            Value::Bound(b) => {
+                self.call_bound(b, argc)
+            }
+            Value::Closure(f) => {
+                self.call(f, argc)
+            }
+            _ => {
+                Err(NOT_CALLABLE.into())
+            }
+        }
+    }
+
+    fn call_bound(
+        &mut self,
+        b: usize,
+        argc: usize,
+    ) -> Run {
         let bm = self.bounds[b];
         let r = bm.receiver;
         self.set_peek(argc, r);
         self.call(bm.method, argc)
     }
-${classSig}${classBody}`,
+
+    // new C(args): the class is argc
+    // slots below the top.
+    fn new_instance(
+        &mut self,
+        argc: usize,
+    ) -> Run {
+        let v = self.peek(argc);
+        let Value::Class(c) = v else {
+            return Err(NO_CLASS.into());
+        };
+        self.instances.push(c);
+        let n = self.instances.len();
+        let i = Value::Instance(n - 1);
+        self.set_peek(argc, i);
+        let k = &self.classes[c];
+        match k.init {
+            Some(f) => {
+                self.call(f, argc)
+            }
+            None if argc != 0 => {
+                let n = k.name;
+                Err(no_init(n, argc))
+            }
+            None => Ok(()),
+        }
+    }
+}`,
         why: '`let bm = self.bounds[b];` tries to move a `BoundObj` out of the `Vec`. It isn’t `Copy`, so this is E0507. Destructure the two fields instead.',
       },
       {
-        code: `${head}${boundSig}${boundBody}${classSig}
+        code: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Value {
+    Num(f64),
+    Class(usize),
+    Instance(usize),
+    Bound(usize),
+    Closure(usize),
+}
+
+// Not Copy, like drip-rs's
+// ObjBoundMethod.
+struct BoundObj {
+    receiver: Value,
+    method: usize,
+}
+
+struct ClassObj {
+    name: &'static str,
+    init: Option<usize>,
+}
+
+struct Vm {
+    stack: Vec<Value>,
+    bounds: Vec<BoundObj>,
+    classes: Vec<ClassObj>,
+    // The class of each instance.
+    instances: Vec<usize>,
+    // Each call: (closure, slot 0).
+    calls: Vec<(usize, usize)>,
+}
+
+type Run = Result<(), String>;
+
+const NO_CLASS: &str =
+    "'new' needs a class";
+const NOT_CALLABLE: &str =
+    "cannot call that";
+
+fn no_init(n: &str, k: usize)
+    -> String {
+    let m = "has no init, so it takes";
+    let a = "no arguments, but got";
+    format!("{n} {m} {a} {k}")
+}
+
+impl Vm {
+    fn peek(&self, d: usize) -> Value {
+        let n = self.stack.len();
+        self.stack[n - 1 - d]
+    }
+
+    fn set_peek(
+        &mut self,
+        d: usize,
+        v: Value,
+    ) {
+        let n = self.stack.len();
+        self.stack[n - 1 - d] = v;
+    }
+
+    // Record the call and its slot 0.
+    fn call(
+        &mut self,
+        f: usize,
+        argc: usize,
+    ) -> Run {
+        let n = self.stack.len();
+        let base = n - argc - 1;
+        self.calls.push((f, base));
+        Ok(())
+    }
+
+    // The callee is argc slots below
+    // the top of the stack.
+    fn call_value(
+        &mut self,
+        callee: Value,
+        argc: usize,
+    ) -> Run {
+        match callee {
+            Value::Bound(b) => {
+                self.call_bound(b, argc)
+            }
+            Value::Closure(f) => {
+                self.call(f, argc)
+            }
+            _ => {
+                Err(NOT_CALLABLE.into())
+            }
+        }
+    }
+
+    fn call_bound(
+        &mut self,
+        b: usize,
+        argc: usize,
+    ) -> Run {
+        let BoundObj {
+            receiver,
+            method,
+        } = self.bounds[b];
+        self.set_peek(argc, receiver);
+        self.call(method, argc)
+    }
+
+    // new C(args): the class is argc
+    // slots below the top.
+    fn new_instance(
+        &mut self,
+        argc: usize,
+    ) -> Run {
+        let v = self.peek(argc);
+        let Value::Class(c) = v else {
+            return Err(NO_CLASS.into());
+        };
+        let k = &self.classes[c];
         if argc != 0 {
-            return Err(format!(
-                "Expected 0 arguments \\
-                 but got {argc}."));
+            let n = k.name;
+            let e = no_init(n, argc);
+            return Err(e);
         }
         self.instances.push(c);
         let n = self.instances.len();
@@ -320,10 +683,106 @@ ${classSig}${classBody}`,
         }
     }
 }`,
-        why: 'Checks the argument count before looking for `init`, so `Cake("lemon")` fails even though `init(f)` takes one argument. The error belongs only to classes without `init`.',
+        why: 'It checks the argument count before looking for `init`, so `new Cup(1, 2)` fails even though `Cup` has an `init`. The error belongs only to classes without one.',
       },
       {
-        code: `${head}${boundSig}
+        code: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Value {
+    Num(f64),
+    Class(usize),
+    Instance(usize),
+    Bound(usize),
+    Closure(usize),
+}
+
+// Not Copy, like drip-rs's
+// ObjBoundMethod.
+struct BoundObj {
+    receiver: Value,
+    method: usize,
+}
+
+struct ClassObj {
+    name: &'static str,
+    init: Option<usize>,
+}
+
+struct Vm {
+    stack: Vec<Value>,
+    bounds: Vec<BoundObj>,
+    classes: Vec<ClassObj>,
+    // The class of each instance.
+    instances: Vec<usize>,
+    // Each call: (closure, slot 0).
+    calls: Vec<(usize, usize)>,
+}
+
+type Run = Result<(), String>;
+
+const NO_CLASS: &str =
+    "'new' needs a class";
+const NOT_CALLABLE: &str =
+    "cannot call that";
+
+fn no_init(n: &str, k: usize)
+    -> String {
+    let m = "has no init, so it takes";
+    let a = "no arguments, but got";
+    format!("{n} {m} {a} {k}")
+}
+
+impl Vm {
+    fn peek(&self, d: usize) -> Value {
+        let n = self.stack.len();
+        self.stack[n - 1 - d]
+    }
+
+    fn set_peek(
+        &mut self,
+        d: usize,
+        v: Value,
+    ) {
+        let n = self.stack.len();
+        self.stack[n - 1 - d] = v;
+    }
+
+    // Record the call and its slot 0.
+    fn call(
+        &mut self,
+        f: usize,
+        argc: usize,
+    ) -> Run {
+        let n = self.stack.len();
+        let base = n - argc - 1;
+        self.calls.push((f, base));
+        Ok(())
+    }
+
+    // The callee is argc slots below
+    // the top of the stack.
+    fn call_value(
+        &mut self,
+        callee: Value,
+        argc: usize,
+    ) -> Run {
+        match callee {
+            Value::Bound(b) => {
+                self.call_bound(b, argc)
+            }
+            Value::Closure(f) => {
+                self.call(f, argc)
+            }
+            _ => {
+                Err(NOT_CALLABLE.into())
+            }
+        }
+    }
+
+    fn call_bound(
+        &mut self,
+        b: usize,
+        argc: usize,
+    ) -> Run {
         let BoundObj {
             receiver,
             method,
@@ -331,26 +790,35 @@ ${classSig}${classBody}`,
         self.stack.push(receiver);
         self.call(method, argc)
     }
-${classSig}
+
+    // new C(args): the class is argc
+    // slots below the top.
+    fn new_instance(
+        &mut self,
+        argc: usize,
+    ) -> Run {
+        let v = self.peek(argc);
+        let Value::Class(c) = v else {
+            return Err(NO_CLASS.into());
+        };
         self.instances.push(c);
         let n = self.instances.len();
         let i = Value::Instance(n - 1);
-        self.stack.push(i);
-        match self.classes[c].init {
+        self.set_peek(argc, i);
+        let k = &self.classes[c];
+        match k.init {
             Some(f) => {
                 self.call(f, argc)
             }
             None if argc != 0 => {
-                Err(format!(
-                    "Expected 0 \\
-                     arguments \\
-                     but got {argc}."))
+                let n = k.name;
+                Err(no_init(n, argc))
             }
             None => Ok(()),
         }
     }
 }`,
-        why: 'Pushes the receiver or instance instead of writing it over the callee’s slot. The stack grows by one, the frame’s slot 0 still holds the bound method or class, and `this` is wrong.',
+        why: 'It pushes the receiver instead of writing it over the callee’s slot. The stack grows by one, the frame’s slot 0 still holds the bound method, and `self` is wrong.',
       },
     ],
   },
@@ -358,57 +826,113 @@ ${classSig}
 
 export const quiz = [
   {
-    q: 'What does drip-rs store in an `ObjBoundMethod`?',
+    q: 'What does `let t = c.taste;` compile to, and what does it allocate?',
     options: [
-      { t: 'A copy of the instance and a copy of the closure', why: 'Objects are never copied into each other. It holds a `Value` and a handle.' },
-      { t: 'A `receiver: Value` and a `method: Gc<ObjClosure>`', correct: true, why: 'Two `Copy` fields: a tagged value and a 4-byte arena index.' },
-      { t: 'An `Rc<ObjInstance>` and an `Rc<ObjClosure>`', why: 'drip-rs’s objects live in arenas managed by its own collector, not behind `Rc`.' },
-      { t: 'The method’s name, to look up again at call time', why: 'The method was already found by `bind_method`; it stores the closure handle.' },
+      {
+        t: '`invoke`, and nothing',
+        why: '`invoke` is for `c.taste()`, a call straight away.',
+      },
+      {
+        t: '`get.prop`, which allocates an `ObjBoundMethod` holding `c` and the `taste` closure',
+        correct: true,
+        why: '`c` has no field `taste`, so the arm finds the method and binds it.',
+      },
+      {
+        t: '`get.prop`, which copies the closure into `t`',
+        why: 'The closure alone would lose `c`; a bound method carries both.',
+      },
+      {
+        t: '`load.global`, and a new closure',
+        why: 'Reading a property is `get.prop`; closures are only made by `closure`.',
+      },
     ],
   },
   {
-    q: 'In `bind_method`, why is `self.pop()` called after `self.alloc(...)` and not before?',
+    q: 'Why does the `get.prop` arm call `self.alloc(ObjBoundMethod { .. })` before `self.set_peek(0, ...)`?',
     options: [
-      { t: 'So the receiver is on the stack, a GC root, if the allocation runs a collection', correct: true, why: 'Popping first would leave the instance reachable from nowhere during the collection.' },
-      { t: '`pop` would invalidate the handle returned by `alloc`', why: 'Handles are indices; popping the stack doesn’t touch the arena.' },
-      { t: 'The borrow checker requires it', why: 'Either order compiles. The order is about the collector, which the compiler can’t see.' },
-      { t: 'To keep the stack the same length as in TypeScript', why: 'The final stack is the same in either order. Only the collector cares.' },
+      {
+        t: '`set_peek` needs the handle that `alloc` returns, and until then the receiver must stay on the stack as a root',
+        correct: true,
+        why: 'If the allocation collects, the receiver on the stack survives; afterwards the bound method holds it.',
+      },
+      {
+        t: '`alloc` pops the receiver itself',
+        why: '`alloc` never touches the stack.',
+      },
+      {
+        t: 'The order does not matter',
+        why: 'It does: a receiver taken off the stack first could be freed by the collection.',
+      },
+      {
+        t: 'Bound methods must be allocated before instances',
+        why: 'Each kind of object has its own arena; there is no such rule.',
+      },
     ],
   },
   {
-    q: '`let b = self.heap[bound];` fails with E0507. Which line does drip-rs use instead?',
+    q: 'Why does `let ObjBoundMethod { receiver, method } = self.heap[bound];` compile, when `let b = self.heap[bound];` does not?',
     options: [
-      { t: '`let b = self.heap[bound].clone();`', why: '`ObjBoundMethod` doesn’t implement `Clone`, and copying the whole object isn’t needed.' },
-      { t: '`let b = &mut self.heap[bound];`', why: 'That borrow would conflict with the `&mut self` calls that follow.' },
-      { t: '`let b = std::mem::take(&mut self.heap[bound]);`', why: 'That would empty the object while the handle may still be in use, and the type has no `Default`.' },
-      { t: '`let ObjBoundMethod { receiver, method } = self.heap[bound];`', correct: true, why: 'The pattern copies the two `Copy` fields and leaves the object where it is.' },
+      {
+        t: 'The pattern borrows the object',
+        why: 'It copies the two fields; nothing stays borrowed.',
+      },
+      {
+        t: '`ObjBoundMethod` is `Copy`',
+        why: 'It is not, which is why the second line fails.',
+      },
+      {
+        t: 'Indexing gives a place; the pattern copies each `Copy` field out, while binding the whole struct would move it out of the arena (E0507)',
+        correct: true,
+        why: '`Value` and `Gc<T>` are both `Copy`, so the fields can be copied and the object stays put.',
+      },
+      {
+        t: 'The heap’s `Index` returns a clone',
+        why: '`Index::index` returns a reference; nothing is cloned.',
+      },
     ],
   },
   {
-    q: 'A program calls `Point(1, 2)` and `Point` has no `init`. What happens?',
+    q: 'What does `new Mug(1)` report when `Mug` has no `init`?',
     options: [
-      { t: 'The instance is created and the arguments are ignored', why: 'That would hide a bug. The `None if arg_count != 0` arm reports it.' },
-      { t: 'A compile error', why: 'The compiler doesn’t know what `Point` will be at run time.' },
-      { t: 'Runtime error “Expected 0 arguments but got 2.”, exit code 70', correct: true, why: 'The guarded `None` arm. Both VMs print the same message and trace.' },
-      { t: 'It calls the superclass’s `init`', why: 'Point has no superclass here, and copied-down methods would already be in its table.' },
+      {
+        t: '`Mug() takes 0 arguments but got 1`',
+        why: 'That form is for functions; a class without `init` has its own message.',
+      },
+      {
+        t: `\`cannot call a class: use 'new Mug(...)'\``,
+        why: 'That is for calling a class without `new`.',
+      },
+      {
+        t: 'Nothing: the argument is ignored',
+        why: 'Drip reports it; arguments are never silently dropped.',
+      },
+      {
+        t: '`Mug has no init, so it takes no arguments, but got 1`',
+        correct: true,
+        why: 'The `None if arg_count != 0` arm of `new_instance`.',
+      },
     ],
   },
   {
-    q: 'Why does `emit_return` start with `if self.state().kind == FunctionKind::Initializer` and still compile, even though it then calls `self.emit_op_with(...)`?',
+    q: 'How does drip-rs make `new` always produce the instance, even when `init` ends with a bare `return;`?',
     options: [
-      { t: '`state()` returns a shared reference', why: 'It returns `&mut FunctionState`. What matters is how long it is used.' },
-      { t: 'The comparison reads a `Copy` value and the borrow ends before `emit_op_with` borrows `self` again', correct: true, why: 'Chapter 343’s habit: read what you need, then emit.' },
-      { t: 'Because `emit_op_with` takes `&self`', why: 'It pushes bytes, so it takes `&mut self`.' },
-      { t: 'The compiler state is cloned on every call to `state()`', why: 'Nothing is cloned; it is a borrow of the last `FunctionState`.' },
-    ],
-  },
-  {
-    q: 'Which source compiles to an instruction that allocates a bound method?',
-    options: [
-      { t: '`c.taste();`', why: 'That is `Invoke`: no bound method.' },
-      { t: '`let t = c.taste;`', correct: true, why: '`GetProperty` finds no field and calls `bind_method`.' },
-      { t: '`Cake("lemon");`', why: 'That allocates an instance and calls `init` directly.' },
-      { t: '`this.f = f;`', why: 'A field write: `SetProperty`.' },
+      {
+        t: 'The VM throws away whatever `init` returns',
+        why: 'The VM does no such thing; the compiler makes `init` return the right value.',
+      },
+      {
+        t: '`FunctionKind::Initializer` makes `emit_return` emit `load.local 0` before `return`, and slot 0 holds the instance',
+        correct: true,
+        why: `And \`return value;\` in \`init\` is the static error \`'init' cannot return a value\`.`,
+      },
+      {
+        t: '`init` is a native function',
+        why: 'It is an ordinary method compiled from Drip.',
+      },
+      {
+        t: 'The instance is pushed again after the call',
+        why: 'The call’s result replaces the callee’s slot; it is the instance because `init` returns slot 0.',
+      },
     ],
   },
 ];

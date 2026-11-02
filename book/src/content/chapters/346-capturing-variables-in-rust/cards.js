@@ -8,15 +8,15 @@ export const prompts = {
   },
   'uh-enum': {
     q: 'What are the two variants of drip-rs’s `ObjUpvalue`, and what does each hold?',
-    a: '`Open(usize)`, the stack slot of a variable still on the stack, and `Closed(Value)`, the variable itself after its frame returned.',
+    a: '`Open(usize)`, the stack slot of a variable still on the stack, and `Closed(Value)`, the variable itself once its scope has ended.',
   },
   'uh-two-lookups': {
-    q: 'How many heap lookups does `GetUpvalue` make in drip-rs?',
-    a: 'Two: `heap[closure].upvalues[i]` for the handle, then `heap[up]` for the upvalue. Then a stack read if it’s `Open`.',
+    q: 'How many heap lookups does drip-rs’s `LoadUpvalue` arm make?',
+    a: 'Two: `heap[closure].upvalues[index]` for the handle, then `heap[upvalue]` for the upvalue. Then a stack read if it is `Open`.',
   },
   'uh-sorted': {
     q: 'How is drip-rs’s `open_upvalues` ordered, and why that way?',
-    a: 'By stack slot, lowest first, so its end matches the top of the stack: closing pops from the end.',
+    a: 'By stack slot, lowest first, so its end matches the top of the stack: capture searches from the end and close pops from the end.',
   },
   'uh-share': {
     q: 'Why does `capture_upvalue` look for an existing upvalue before making one?',
@@ -24,7 +24,7 @@ export const prompts = {
   },
   'uh-close': {
     q: 'What does closing an upvalue do to the heap in drip-rs?',
-    a: '`heap[up] = ObjUpvalue::Closed(stack[slot])`: the object in the same arena slot is overwritten, so the handle stays valid.',
+    a: '`self.heap[upvalue] = ObjUpvalue::Closed(self.stack[slot])`: the object in the same arena slot is overwritten, so the handle stays valid and every closure holding it sees the variable.',
   },
   'uh-order': {
     q: 'In what order does drip-rs build a closure, and how does TypeScript differ?',
@@ -34,63 +34,36 @@ export const prompts = {
     q: 'Why can the local `upvalues` Vec in `Vm::closure` go unrooted while `alloc` might collect?',
     a: 'Each handle in it is also in `open_upvalues` (a root) or in the enclosing closure, which the running frame keeps alive.',
   },
-  'uh-insert': {
-    q: 'What does `Vec::insert` cost, and why is it fine for the open-upvalue list?',
-    a: 'Time proportional to the elements after the index. The list only holds variables of running frames: at most 3 across the corpus.',
-  },
 };
 
 export const examples = {
-  'shared-upvalue': {
+  shared: {
+    lang: 'drip-vm',
     title: 'Two closures, one handle',
-    lang: 'rust',
-    code: `#[derive(Clone, Copy, Debug)]
-enum Up {
-    Open(usize),
-    Closed(f64),
+    code: `fn make_pair() {
+  let n = 0;
+  fn inc() { n += 1; }
+  fn get() { return n; }
+  return [inc, get];
 }
-
-struct Closure {
-    name: &'static str,
-    ups: Vec<usize>, // handles
-}
-
-fn main() {
-    let mut stack = vec![0.0, 5.0];
-    // The upvalue arena.
-    let mut ups = vec![Up::Open(1)];
-    // Both capture slot 1: handle 0.
-    let inc = Closure {
-        name: "inc",
-        ups: vec![0],
-    };
-    let get = Closure {
-        name: "get",
-        ups: vec![0],
-    };
-    println!("{:?}", ups[get.ups[0]]);
-
-    // The frame returns: close it.
-    if let Up::Open(s) = ups[0] {
-        ups[0] = Up::Closed(stack[s]);
-    }
-    stack.truncate(1);
-
-    // inc writes through its handle...
-    let h = inc.ups[0];
-    if let Up::Closed(v) = &mut ups[h] {
-        *v += 1.0;
-    }
-    // ...and get sees the write.
-    let h = get.ups[0];
-    println!("{} sees {:?}", get.name,
-        ups[h]);
-    println!("{} wrote it", inc.name);
-}`,
+let p = make_pair();
+let inc = p[0];
+let get = p[1];
+inc();
+inc();
+print get();`,
   },
 };
 
-const capStarter = `#[derive(Clone, Copy, Debug, PartialEq)]
+export const exercises = {
+  captureClose: {
+    lang: 'rust',
+    title: 'capture and close',
+    prompt: `Here is drip-rs's upvalue machinery in miniature. \`ups\` is the upvalue arena, so a handle is a \`usize\` index into it. \`open\` holds the handles of the open upvalues, sorted by slot, lowest first. Write:
+
+1. \`capture(slot)\`. Search \`open\` from the end. If an upvalue for \`slot\` exists, return its handle, so closures share it. Stop as soon as you pass below \`slot\`. Otherwise push \`Up::Open(slot)\` onto \`ups\` and insert its handle into \`open\` where it keeps the order.
+2. \`close(last)\`. While the last open upvalue's slot is \`>= last\`, overwrite it in the arena with \`Up::Closed\` of the stack value, and pop it from \`open\`.`,
+    starter: `#[derive(Clone, Copy, Debug, PartialEq)]
 enum Up {
     Open(usize),
     Closed(f64),
@@ -122,9 +95,55 @@ impl Vm {
             _ => unreachable!(),
         }
     }
-`;
 
-const captureOk = `
+    // The open upvalue for slot: the
+    // existing one, if there is one.
+    fn capture(
+        &mut self,
+        slot: usize,
+    ) -> usize {
+        todo!()
+    }
+
+    // Close every open upvalue at or
+    // above stack slot last.
+    fn close(&mut self, last: usize) {
+        todo!()
+    }
+}`,
+    solution: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Up {
+    Open(usize),
+    Closed(f64),
+}
+
+struct Vm {
+    stack: Vec<f64>,
+    // The upvalue arena: a handle is
+    // an index into it.
+    ups: Vec<Up>,
+    // Open handles, sorted by slot,
+    // lowest first.
+    open: Vec<usize>,
+}
+
+impl Vm {
+    fn new(stack: Vec<f64>) -> Vm {
+        Vm {
+            stack,
+            ups: Vec::new(),
+            open: Vec::new(),
+        }
+    }
+
+    // The slot of an open upvalue.
+    fn slot(&self, h: usize) -> usize {
+        match self.ups[h] {
+            Up::Open(s) => s,
+            _ => unreachable!(),
+        }
+    }
+
     // The open upvalue for slot: the
     // existing one, if there is one.
     fn capture(
@@ -148,9 +167,7 @@ const captureOk = `
         self.open.insert(i, h);
         h
     }
-`;
 
-const closeOk = `
     // Close every open upvalue at or
     // above stack slot last.
     fn close(&mut self, last: usize) {
@@ -166,60 +183,7 @@ const closeOk = `
             self.open.pop();
         }
     }
-}`;
-
-const rwStarter = `#[derive(Clone, Copy, Debug, PartialEq)]
-enum Up {
-    Open(usize),
-    Closed(f64),
-}
-
-struct Vm {
-    stack: Vec<f64>,
-    ups: Vec<Up>,
-}
-
-impl Vm {
-    // GetUpvalue: read the variable.
-    fn get(&self, h: usize) -> f64 {
-        todo!()
-    }
-
-    // SetUpvalue: write the variable.
-    fn set(
-        &mut self,
-        h: usize,
-        v: f64,
-    ) {
-        todo!()
-    }
-}`;
-
-export const exercises = {
-  captureClose: {
-    lang: 'rust',
-    title: 'capture and close',
-    prompt: `Here is drip-rs's upvalue machinery in miniature. \`ups\` is the upvalue arena, so a handle is a \`usize\` index into it. \`open\` holds the handles of the open upvalues, sorted by slot, lowest first. Write:
-
-1. \`capture(slot)\`. Search \`open\` from the end. If an upvalue for \`slot\` exists, return its handle, so closures share it. Stop as soon as you pass below \`slot\`. Otherwise push \`Up::Open(slot)\` onto \`ups\` and insert its handle into \`open\` where it keeps the order.
-2. \`close(last)\`. While the last open upvalue's slot is \`>= last\`, overwrite it in the arena with \`Up::Closed\` of the stack value, and pop it from \`open\`.`,
-    starter: capStarter + `
-    // The open upvalue for slot: the
-    // existing one, if there is one.
-    fn capture(
-        &mut self,
-        slot: usize,
-    ) -> usize {
-        todo!()
-    }
-
-    // Close every open upvalue at or
-    // above stack slot last.
-    fn close(&mut self, last: usize) {
-        todo!()
-    }
 }`,
-    solution: capStarter + captureOk + closeOk,
     tests: `fn vm() -> Vm {
     let s = vec![0.0, 10.0, 20.0, 30.0];
     Vm::new(s)
@@ -288,19 +252,71 @@ fn a_capture_after_closing_is_new() {
     assert_eq!(vm.ups[b], Up::Open(2));
 }`,
     hints: [
-      'Walk `i` down from `open.len()`, looking at `open[i - 1]`. When its slot is below `slot`, `i` is where the new handle goes.',
-      'The new handle is the index of the upvalue you just pushed: `ups.len() - 1`.',
-      'In `close`, copy the stack value into a local before writing `self.ups[h]`.',
-      '`>= last`, not `> last`: the slot at `last` itself is going away too.',
+      'Start with `capture`. The list is sorted lowest first, so the upvalues nearest the top of the stack are at the end: walk an index `i` down from `self.open.len()` and look at `self.open[i - 1]`.',
+      'Three cases for the handle you look at: its slot equals `slot` (return it: that is the sharing), it is below `slot` (stop: `i` is where a new handle belongs), or it is above (keep going with `i -= 1`).',
+      'A new upvalue is `self.ups.push(Up::Open(slot));`, its handle `self.ups.len() - 1`, inserted with `self.open.insert(i, h)`. For `close`, loop `while let Some(&h) = self.open.last()`, break when `self.slot(h) < last`, else copy `self.stack[s]` into a local, write `self.ups[h] = Up::Closed(v)` and pop.',
     ],
-    walkthrough: `**capture.** The open list is sorted with the highest slot at the end, and most captures are of variables near the top of the stack, so the search starts at the end. Three outcomes: the slot matches, so return the existing handle (this is what makes two closures over one variable share it); the slot is lower, so stop, because everything earlier is lower still; or keep going. When the loop ends, \`i\` is the position that keeps the list sorted. Push \`Up::Open(slot)\` onto the arena; its handle is its index. \`insert(i, h)\` shifts the handles above it.
+    walkthrough: `**How to think about it.** Two questions decide everything here. First, *where is the variable?* An upvalue is either still pointing at a stack slot (\`Open\`) or holding the value itself (\`Closed\`). Second, *who else is looking at it?* Closures over the same variable must share one upvalue, so \`capture\` must find an existing one before it makes another. The sorted \`open\` list answers both quickly: the upvalues nearest the top of the stack are at its end, which is where both \`capture\` (new closures capture recent variables) and \`close\` (scopes end at the top) look.
 
-**close.** The open upvalues that point into the dying part of the stack are exactly a suffix of the list, because it's sorted. So pop from the end while the slot is \`>= last\`. Closing is one assignment: \`self.ups[h] = Up::Closed(v)\`. The arena slot keeps its index, which is the whole point: every closure holding \`h\` now reads the closed value, and none of them had to be told.
+**\`capture\`, line by line.**
 
-After closing, the slot is free for a new variable, so a later capture of the same slot number makes a new upvalue. That is the last test.`,
+- \`let mut i = self.open.len();\` starts just past the end of the list.
+- \`while i > 0 {\` walks down while there is something to look at.
+- \`let h = self.open[i - 1];\` and \`let s = self.slot(h);\` read the handle and the slot it points at.
+- \`if s == slot { return h; }\` is the sharing: an upvalue for this slot exists, so hand back the same handle. In the test \`capturing_a_slot_twice_shares\`, the second call returns the first handle and the arena still has one upvalue.
+- \`if s < slot { break; }\` stops as soon as we pass below the slot we want: everything further down is lower still, so there is no match, and \`i\` is exactly where a new handle keeps the order.
+- \`i -= 1;\` moves on to the next one down.
+- \`self.ups.push(Up::Open(slot));\` allocates the new upvalue in the arena, and \`let h = self.ups.len() - 1;\` is its handle.
+- \`self.open.insert(i, h);\` puts the handle where it keeps the list sorted, and \`h\` is returned.
+
+**\`close\`, line by line.**
+
+- \`while let Some(&h) = self.open.last() {\` looks at the highest open upvalue, as long as there is one.
+- \`let s = self.slot(h);\` and \`if s < last { break; }\` stop at the first upvalue below the scope being closed. Note \`<\`: the slot \`last\` itself is going away too, so it must be closed.
+- \`let v = self.stack[s];\` copies the variable's current value out of the stack. Doing it in its own line keeps the read of \`self.stack\` apart from the write to \`self.ups\`.
+- \`self.ups[h] = Up::Closed(v);\` overwrites the object in its arena slot. The handle \`h\` is unchanged, so every closure holding it now sees the closed value.
+- \`self.open.pop();\` removes the handle from the open list.
+
+**Common wrong attempts.**
+
+- Allocating a new upvalue every time, without searching: two closures over one variable then get different upvalues, and after closing, a write through one is invisible to the other.
+- Breaking on \`s <= last\` in \`close\`: the upvalue for slot \`last\` is left open, pointing at a slot that is about to be popped.
+- Pushing new handles at the end instead of inserting: a lower slot captured later breaks the order, and \`close\` stops at the wrong place.`,
     wrong: [
       {
-        code: capStarter + `
+        code: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Up {
+    Open(usize),
+    Closed(f64),
+}
+
+struct Vm {
+    stack: Vec<f64>,
+    // The upvalue arena: a handle is
+    // an index into it.
+    ups: Vec<Up>,
+    // Open handles, sorted by slot,
+    // lowest first.
+    open: Vec<usize>,
+}
+
+impl Vm {
+    fn new(stack: Vec<f64>) -> Vm {
+        Vm {
+            stack,
+            ups: Vec::new(),
+            open: Vec::new(),
+        }
+    }
+
+    // The slot of an open upvalue.
+    fn slot(&self, h: usize) -> usize {
+        match self.ups[h] {
+            Up::Open(s) => s,
+            _ => unreachable!(),
+        }
+    }
+
     fn capture(
         &mut self,
         slot: usize,
@@ -319,11 +335,83 @@ After closing, the slot is free for a new variable, so a later capture of the sa
         self.open.insert(i, h);
         h
     }
-` + closeOk,
+
+    // Close every open upvalue at or
+    // above stack slot last.
+    fn close(&mut self, last: usize) {
+        while let Some(&h) =
+            self.open.last()
+        {
+            let s = self.slot(h);
+            if s < last {
+                break;
+            }
+            let v = self.stack[s];
+            self.ups[h] = Up::Closed(v);
+            self.open.pop();
+        }
+    }
+}`,
         why: 'This makes a new upvalue every time. Two closures over the same variable get different upvalues, so a write through one is invisible to the other once they close.',
       },
       {
-        code: capStarter + captureOk + `
+        code: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Up {
+    Open(usize),
+    Closed(f64),
+}
+
+struct Vm {
+    stack: Vec<f64>,
+    // The upvalue arena: a handle is
+    // an index into it.
+    ups: Vec<Up>,
+    // Open handles, sorted by slot,
+    // lowest first.
+    open: Vec<usize>,
+}
+
+impl Vm {
+    fn new(stack: Vec<f64>) -> Vm {
+        Vm {
+            stack,
+            ups: Vec::new(),
+            open: Vec::new(),
+        }
+    }
+
+    // The slot of an open upvalue.
+    fn slot(&self, h: usize) -> usize {
+        match self.ups[h] {
+            Up::Open(s) => s,
+            _ => unreachable!(),
+        }
+    }
+
+    // The open upvalue for slot: the
+    // existing one, if there is one.
+    fn capture(
+        &mut self,
+        slot: usize,
+    ) -> usize {
+        let mut i = self.open.len();
+        while i > 0 {
+            let h = self.open[i - 1];
+            let s = self.slot(h);
+            if s == slot {
+                return h;
+            }
+            if s < slot {
+                break;
+            }
+            i -= 1;
+        }
+        self.ups.push(Up::Open(slot));
+        let h = self.ups.len() - 1;
+        self.open.insert(i, h);
+        h
+    }
+
     fn close(&mut self, last: usize) {
         while let Some(&h) =
             self.open.last()
@@ -341,7 +429,39 @@ After closing, the slot is free for a new variable, so a later capture of the sa
         why: 'The slot at `last` goes away too: `Return` closes from the frame’s base, and `CloseUpvalue` from the slot being popped. Leaving it open leaves a handle pointing at a dead slot.',
       },
       {
-        code: capStarter + `
+        code: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Up {
+    Open(usize),
+    Closed(f64),
+}
+
+struct Vm {
+    stack: Vec<f64>,
+    // The upvalue arena: a handle is
+    // an index into it.
+    ups: Vec<Up>,
+    // Open handles, sorted by slot,
+    // lowest first.
+    open: Vec<usize>,
+}
+
+impl Vm {
+    fn new(stack: Vec<f64>) -> Vm {
+        Vm {
+            stack,
+            ups: Vec::new(),
+            open: Vec::new(),
+        }
+    }
+
+    // The slot of an open upvalue.
+    fn slot(&self, h: usize) -> usize {
+        match self.ups[h] {
+            Up::Open(s) => s,
+            _ => unreachable!(),
+        }
+    }
+
     fn capture(
         &mut self,
         slot: usize,
@@ -356,7 +476,23 @@ After closing, the slot is free for a new variable, so a later capture of the sa
         self.open.push(h);
         h
     }
-` + closeOk,
+
+    // Close every open upvalue at or
+    // above stack slot last.
+    fn close(&mut self, last: usize) {
+        while let Some(&h) =
+            self.open.last()
+        {
+            let s = self.slot(h);
+            if s < last {
+                break;
+            }
+            let v = self.stack[s];
+            self.ups[h] = Up::Closed(v);
+            self.open.pop();
+        }
+    }
+}`,
         why: 'Pushing at the end breaks the order when a lower slot is captured later, and then `close` stops at the wrong place.',
       },
     ],
@@ -365,24 +501,57 @@ After closing, the slot is free for a new variable, so a later capture of the sa
     lang: 'rust',
     optional: true,
     title: 'Reading and writing through a handle',
-    prompt: `Write the heart of \`GetUpvalue\` and \`SetUpvalue\`. \`get(h)\` reads the variable behind handle \`h\`: from the stack if the upvalue is \`Open\`, from the upvalue itself if it is \`Closed\`. \`set(h, v)\` writes it in the same place. An open upvalue must stay open after \`set\`.`,
-    starter: rwStarter,
-    solution: rwStarter.replace(`    fn get(&self, h: usize) -> f64 {
+    prompt: 'Write the heart of `LoadUpvalue` and `StoreUpvalue`. `get(h)` reads the variable behind handle `h`: from the stack if the upvalue is `Open`, from the upvalue itself if it is `Closed`. `set(h, v)` writes it in the same place. An open upvalue must stay open after `set`.',
+    starter: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Up {
+    Open(usize),
+    Closed(f64),
+}
+
+struct Vm {
+    stack: Vec<f64>,
+    ups: Vec<Up>,
+}
+
+impl Vm {
+    // LoadUpvalue: read the variable.
+    fn get(&self, h: usize) -> f64 {
         todo!()
-    }`, `    fn get(&self, h: usize) -> f64 {
+    }
+
+    // StoreUpvalue: write the variable.
+    fn set(
+        &mut self,
+        h: usize,
+        v: f64,
+    ) {
+        todo!()
+    }
+}`,
+    solution: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Up {
+    Open(usize),
+    Closed(f64),
+}
+
+struct Vm {
+    stack: Vec<f64>,
+    ups: Vec<Up>,
+}
+
+impl Vm {
+    // LoadUpvalue: read the variable.
+    fn get(&self, h: usize) -> f64 {
         match self.ups[h] {
             Up::Open(s) => {
                 self.stack[s]
             }
             Up::Closed(v) => v,
         }
-    }`).replace(`    fn set(
-        &mut self,
-        h: usize,
-        v: f64,
-    ) {
-        todo!()
-    }`, `    fn set(
+    }
+
+    // StoreUpvalue: write the variable.
+    fn set(
         &mut self,
         h: usize,
         v: f64,
@@ -393,7 +562,8 @@ After closing, the slot is free for a new variable, so a later capture of the sa
             }
             Up::Closed(c) => *c = v,
         }
-    }`),
+    }
+}`,
     tests: `fn vm() -> Vm {
     Vm {
         stack: vec![0.0, 7.0],
@@ -430,38 +600,63 @@ fn writing_a_closed_one_stays_in_it() {
     assert_eq!(vm.stack, [0.0, 7.0]);
 }`,
     hints: [
-      '`get` can `match self.ups[h]` by value: `Up` is `Copy`.',
-      'For `set`, match on `&mut self.ups[h]`, so the `Closed` arm gets a `&mut f64` to write through. Writing `self.stack[*s]` in the other arm is allowed: `ups` and `stack` are different fields.',
+      'Each function is one `match` on the upvalue with two arms, one per variant.',
+      '`get` can `match self.ups[h]` by value, because `Up` is `Copy`: `Open(s)` gives `self.stack[s]`, `Closed(v)` gives `v`.',
+      'For `set`, match on `&mut self.ups[h]`, so the `Closed` arm gets a `&mut f64` to write through (`*c = v`). Writing `self.stack[*s] = v` in the other arm is allowed: `ups` and `stack` are different fields.',
     ],
-    walkthrough: `\`get\` is a two-armed \`match\`. Because \`Up\` is \`Copy\`, matching \`self.ups[h]\` copies the enum out and the borrow ends at once.
+    walkthrough: `**How to think about it.** An upvalue is a signpost to a variable. Reading or writing through it means first asking which kind of signpost it is: \`Open\` points at a stack slot, so the variable is there; \`Closed\` holds the variable inside itself. Both operations are one \`match\` with two arms, and the only Rust question is how to get write access in \`set\`.
 
-\`set\` needs to change the \`Closed\` value in place, so it matches on \`&mut self.ups[h]\`. In the \`Open\` arm, \`s\` is a \`&mut usize\` and \`*s\` is the slot. The arm writes \`self.stack[*s]\` while \`self.ups[h]\` is still mutably borrowed: two different fields, so the borrow checker allows it. drip-rs's \`SetUpvalue\` arm has the same shape, with \`self.heap[up]\` and \`self.stack\`.
+**\`get\`, line by line.**
 
-The tempting shortcut, \`self.ups[h] = Up::Closed(v)\`, closes an open upvalue early. The variable's stack slot keeps the old value, and the function that owns the local would never see the write.`,
+- \`match self.ups[h] {\` copies the upvalue out (it is \`Copy\`) and looks at its variant.
+- \`Up::Open(s) => { self.stack[s] }\` reads the variable from its stack slot.
+- \`Up::Closed(v) => v,\` returns the value the upvalue holds.
+
+**\`set\`, line by line.**
+
+- \`match &mut self.ups[h] {\` matches on a mutable reference to the upvalue in the arena, so each arm's bindings are references into it.
+- \`Up::Open(s) => { self.stack[*s] = v }\` writes the stack slot. \`s\` is a \`&mut usize\`, hence \`*s\`. Borrowing \`self.stack\` while \`self.ups[h]\` is borrowed is fine, because they are different fields of \`self\`; the upvalue stays \`Open\`.
+- \`Up::Closed(c) => *c = v,\` writes through \`c\`, a \`&mut f64\` into the \`Closed\` variant itself.
+
+This is exactly the shape of drip-rs's \`StoreUpvalue\` arm, which matches on \`&mut self.heap[upvalue]\`.
+
+**Common wrong attempts.**
+
+- \`self.ups[h] = Up::Closed(v);\` for every write: it closes an open upvalue early. The variable's own stack slot keeps the old value, so the function that owns the variable, which reads it with \`load.local\`, never sees the write.
+- Matching \`self.ups[h]\` by value in \`set\`: the arms then bind copies, and writing to a copy changes nothing in the arena.`,
     wrong: [
       {
-        code: rwStarter.replace(`    fn get(&self, h: usize) -> f64 {
-        todo!()
-    }`, `    fn get(&self, h: usize) -> f64 {
+        code: `#[derive(Clone, Copy, Debug, PartialEq)]
+enum Up {
+    Open(usize),
+    Closed(f64),
+}
+
+struct Vm {
+    stack: Vec<f64>,
+    ups: Vec<Up>,
+}
+
+impl Vm {
+    // LoadUpvalue: read the variable.
+    fn get(&self, h: usize) -> f64 {
         match self.ups[h] {
             Up::Open(s) => {
                 self.stack[s]
             }
             Up::Closed(v) => v,
         }
-    }`).replace(`    fn set(
-        &mut self,
-        h: usize,
-        v: f64,
-    ) {
-        todo!()
-    }`, `    fn set(
+    }
+
+    // StoreUpvalue: write the variable.
+    fn set(
         &mut self,
         h: usize,
         v: f64,
     ) {
         self.ups[h] = Up::Closed(v);
-    }`),
+    }
+}`,
         why: 'This closes an open upvalue early. The local’s own stack slot keeps the old value, so the function that owns the variable doesn’t see the write.',
       },
     ],
@@ -470,57 +665,113 @@ The tempting shortcut, \`self.ups[h] = Up::Closed(v)\`, closes an open upvalue e
 
 export const quiz = [
   {
-    q: 'Which TypeScript fields does drip-rs’s `ObjUpvalue` enum replace?',
+    q: 'Two closures made in the same call both capture `n`. How many `ObjUpvalue`s are there for `n`?',
     options: [
-      { t: 'Only `nextOpen`', why: '`nextOpen` is replaced by the `open_upvalues` Vec. The enum replaces the other two.' },
-      { t: '`slot` (with -1 for closed) and `closed`: the variant says which one is meaningful', correct: true, why: '`Open(slot)` or `Closed(value)`, never a stale mix.' },
-      { t: '`type` and `isMarked`', why: 'Those are header fields every drip-rs object drops (chapter 340).' },
-      { t: 'None: it has the same three fields', why: 'An enum variant carries only its own data.' },
+      {
+        t: 'Two, one per closure',
+        why: '`capture_upvalue` finds the existing open upvalue for that slot and returns its handle.',
+      },
+      {
+        t: 'One, and both closures hold its handle',
+        correct: true,
+        why: 'That is why a write through one closure is seen by the other, before and after closing.',
+      },
+      {
+        t: 'None until the frame returns',
+        why: 'The upvalue is made when the first closure is created, as `Open(slot)`.',
+      },
+      {
+        t: 'One per call of either closure',
+        why: 'Calling a closure makes no upvalues; they are made when the closure is created.',
+      },
     ],
   },
   {
-    q: 'Two closures capture the same local, and its frame returns. What happens in the heap?',
+    q: 'After `close_upvalues` closes an upvalue, what has changed for the closures that hold it?',
     options: [
-      { t: 'Each closure gets its own copy of the value', why: 'They share one upvalue handle, so there is one copy.' },
-      { t: 'The upvalue moves to a new arena slot with a new handle', why: 'Closing overwrites the object where it is. The handle doesn’t change.' },
-      { t: 'The one upvalue object is overwritten with `Closed(value)` in its slot; both closures still hold its handle', correct: true, why: 'That is why closing needs no visit to the closures.' },
-      { t: 'Nothing, until a collection runs', why: '`close_upvalues` runs at `Return`, before the frame’s slots are dropped.' },
+      {
+        t: 'Their handles are updated to point at a new object',
+        why: 'The handles never change; that is the point of overwriting in place.',
+      },
+      {
+        t: 'They must be re-created',
+        why: 'Nothing is re-created: the same closures go on working.',
+      },
+      {
+        t: 'Nothing in the closures: the object in the same arena slot is now `Closed(value)`',
+        correct: true,
+        why: '`self.heap[upvalue] = ObjUpvalue::Closed(self.stack[slot])` replaces the object behind the unchanged handle.',
+      },
+      {
+        t: 'They lose access to the variable',
+        why: 'They now read it from the upvalue itself instead of the stack.',
+      },
     ],
   },
   {
-    q: 'drip-rs’s open list is `[Gc(4), Gc(1), Gc(7)]` with slots 2, 5 and 9. What does `close_upvalues(5)` do?',
+    q: 'The open list holds upvalues for slots `[1, 4, 6]`. Which does `close_upvalues(4)` close?',
     options: [
-      { t: 'Closes all three', why: 'Slot 2 is below 5, so the loop stops there.' },
-      { t: 'Closes only `Gc(7)`', why: 'Slot 5 is `>= 5`, so `Gc(1)` closes too.' },
-      { t: 'Closes `Gc(4)` first, since it is first in the Vec', why: 'Closing pops from the end: the highest slots are there.' },
-      { t: 'Closes `Gc(7)`, then `Gc(1)`, and stops at `Gc(4)`', correct: true, why: 'It pops from the end while the slot is at or above `last`.' },
+      {
+        t: 'Only 6',
+        why: 'The test is `slot < last` to stop, so slot 4 itself is closed too.',
+      },
+      {
+        t: '1, 4 and 6',
+        why: 'It stops at the first slot below 4.',
+      },
+      {
+        t: 'Only 4',
+        why: 'It starts from the end of the list, at 6.',
+      },
+      {
+        t: '4 and 6, leaving `[1]`',
+        correct: true,
+        why: 'Everything at or above `last` is going away, and the list is sorted, so it pops from the end until a lower slot.',
+      },
     ],
   },
   {
-    q: 'Why does drip-rs capture all upvalues before allocating the closure?',
+    q: 'Why does `Vm::closure` capture every upvalue before allocating the `ObjClosure`?',
     options: [
-      { t: 'A `&mut` to the new closure couldn’t stay alive across `capture_upvalue`, which needs all of `self`', correct: true, why: 'rustc reports E0499. And the order also means the closure never holds a half-filled list.' },
-      { t: 'So the collector can never run during `OP_CLOSURE`', why: 'It can: both `capture_upvalue` and `alloc` may collect. The design makes that safe.' },
-      { t: 'Because closures are immutable after allocation', why: 'They aren’t: `heap[c]` is writable through `IndexMut`.' },
-      { t: 'To make capturing faster', why: 'It’s about borrowing and GC safety, not speed.' },
+      {
+        t: 'Holding a `&mut` to a new closure while calling `capture_upvalue`, which needs `&mut self`, is error E0499',
+        correct: true,
+        why: 'So drip-rs builds the list in a local `Vec` first, then allocates the closure with it.',
+      },
+      {
+        t: 'Allocating first would be slower',
+        why: 'The order is forced by the borrow checker, not chosen for speed.',
+      },
+      {
+        t: 'The TypeScript VM does it in the same order',
+        why: 'TypeScript allocates the closure first and fills in its upvalues afterwards.',
+      },
+      {
+        t: 'Upvalues must be allocated before closures in the arena',
+        why: 'Each kind of object has its own arena, so there is no such rule.',
+      },
     ],
   },
   {
-    q: 'While `Vm::closure` runs, a collection happens. Why isn’t the local `upvalues` Vec’s content freed?',
+    q: 'Why is the local `upvalues` `Vec` in `Vm::closure` safe from a collection that `alloc` might run?',
     options: [
-      { t: 'Local Vecs are always roots', why: 'The collector sees only what it is passed; a local Vec is invisible to it.' },
-      { t: 'Upvalues are never collected', why: 'They are, once nothing reaches them.' },
-      { t: 'Each handle in it is also in `open_upvalues` or in the enclosing closure, which are reachable from roots', correct: true, why: 'The comment in `vm.rs` makes exactly this argument.' },
-      { t: 'Because `alloc` never collects', why: '`Vm::alloc` calls `collect_if_needed` first. Only `Heap::alloc` never collects.' },
-    ],
-  },
-  {
-    q: 'In `SetUpvalue`, why does `match &mut self.heap[up] { Open(slot) => self.stack[*slot] = value, .. }` compile?',
-    options: [
-      { t: 'Because `ObjUpvalue` is `Copy`', why: 'It is matched through `&mut`, not copied.' },
-      { t: 'The mutable borrows are of two different fields, `self.heap` and `self.stack`', correct: true, why: 'Disjoint field borrows are allowed (chapter 302).' },
-      { t: 'Because `value` was read before the match', why: 'That avoids a different conflict (with `peek`), but isn’t why the two `&mut`s coexist.' },
-      { t: 'It doesn’t; drip-rs clones the upvalue first', why: 'drip-rs writes through the `&mut` directly.' },
+      {
+        t: 'The collector does not run during `Closure`',
+        why: 'It may: `alloc` asks `should_collect()` first, and stress mode always says yes.',
+      },
+      {
+        t: 'Local variables are always roots in Rust',
+        why: 'The collector only sees what it is given; a local `Vec` is invisible to it.',
+      },
+      {
+        t: 'Every handle in it is also in `open_upvalues` (a root) or in the enclosing closure, which the running frame keeps alive',
+        correct: true,
+        why: 'That is the argument in the comment in `vm.rs`.',
+      },
+      {
+        t: 'Upvalues are never collected',
+        why: 'They are, once no closure and no open list refers to them.',
+      },
     ],
   },
 ];
