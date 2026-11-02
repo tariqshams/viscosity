@@ -23,11 +23,11 @@ export const prompts = {
     a: 'A variable read on any one path is needed; deleting its store would break that path.',
   },
   'loop-round': {
-    q: 'In the sum loop, why is `n` not yet live at the end of the body after the first round?',
-    a: 'The body was worked out before the header, which reads `n`; the second round carries `n` round the back edge.',
+    q: 'Liveness is computed for a loop by visiting the body before the header. Why may a variable read only in the header be missing from the body’s live-out set after the first round?',
+    a: 'When the body was computed, the header’s live-in set was still empty; a later round carries the variable round the back edge.',
   },
   'ssa-easier': {
-    q: 'Why did DCE on SSA not need liveness?',
+    q: 'Why does mark-and-sweep dead code elimination on SSA not need a liveness analysis?',
     a: 'Each value has one definition, so it is needed exactly when a live instruction uses it; there is no overwriting to reason about.',
   },
   'phi-use': {
@@ -457,20 +457,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does Viscosity not compute liveness?',
+    q: 'Which back-end pass is the main client of liveness?',
     options: [
       {
-        t: 'Its IR is not a CFG',
-        why: 'VIR is a CFG of basic blocks in SSA form.',
+        t: 'Instruction selection',
+        why: 'Choosing instructions depends on the operations, not on which values are alive at the same time.',
       },
       {
-        t: 'It emits JavaScript, so it never assigns registers; the engine that runs the output does its own',
+        t: 'Register allocation',
         correct: true,
-        why: 'Register allocation is the main client of liveness, and Viscosity never gets that far down.',
+        why: 'Two values live at the same point cannot share a register, so the allocator is built on liveness.',
       },
       {
-        t: 'Its programs have no loops',
-        why: 'Loops over collections are exactly what Viscosity cares about.',
+        t: 'Parsing',
+        why: 'Parsing happens long before there is a control-flow graph to analyse.',
       },
     ],
   },

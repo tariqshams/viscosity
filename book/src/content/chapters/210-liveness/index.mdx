@@ -84,7 +84,8 @@ With branches, a variable is live at the end of a block if it is live
 at the start of *any* successor, because any one path that reads it is
 enough to make the old value matter. So facts flow backwards along the
 edges, and merge by **union**. This is a dataflow problem like those of
-the dataflow chapters, only run in reverse: what a block reads before
+*Dataflow, fixpoints and constant propagation* and *The classic
+dataflow problems*, only run in reverse: what a block reads before
 writing is its *use* set (its "gen"), and what it writes is its *def*
 set (its "kill").
 
@@ -104,7 +105,7 @@ such as one ending in return, has nothing live after it.</span>
 </Formal>
 
 With a loop, the equations depend on each other round the cycle, so we
-do what the dataflow chapters do: start every set empty (nothing is
+do what every dataflow analysis does: start every set empty (nothing is
 known to be live) and keep recomputing until a whole round changes
 nothing. Because the problem runs backwards, visiting blocks from last
 to first gets there in fewer rounds. Step through a loop that sums
@@ -163,7 +164,8 @@ there.
 ## Liveness for SSA values
 
 In SSA, each value has one definition, so it is live from that
-definition to its last use, and DCE did not need any of this. Liveness
+definition to its last use, and *Dead code elimination* did not need
+any of this. Liveness
 still matters for SSA, though, because it tells a register allocator
 which values are alive at the same time and so cannot share a register.
 One detail trips people up: a phi's operand is not used in the phi's

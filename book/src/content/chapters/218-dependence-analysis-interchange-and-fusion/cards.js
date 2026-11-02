@@ -267,7 +267,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does swapping the loops of a column-by-column grid walk usually make it faster?',
+    q: 'Why does swapping the loops of a column-by-column walk over a grid stored row by row usually make it faster?',
     options: [
       {
         t: 'It does fewer additions',
@@ -276,7 +276,7 @@ export const quiz = [
       {
         t: 'The inner loop then walks along a row, stride one, so each cache line fetched is used in full',
         correct: true,
-        why: 'Column order jumps a whole row per step; in this chapter’s run it was about four times slower.',
+        why: 'Column order jumps a whole row per step, so most of each cache line fetched goes unused.',
       },
       {
         t: 'It removes the bounds checks',

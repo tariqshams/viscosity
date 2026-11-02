@@ -20,7 +20,8 @@ import ViscosityPipeline from '../../../components/diagrams/ch224/ViscosityPipel
 
 Every optimisation in this part needs something worked out first:
 constant propagation wants def-use lists, dead code elimination wants
-liveness, loop-invariant code motion wants dominators and loops. Put a
+the use list of every value, loop-invariant code motion wants dominators
+and loops, and register allocation wants liveness. Put a
 dozen of them in a row and two problems appear at once. If each one
 works out its own dominator tree, the same tree is built a dozen times;
 and if they share one, then the moment a pass deletes a block, the
@@ -235,7 +236,7 @@ cache becomes a bug. Asking for analyses through a manager would fix
 both at once: `safety` would ask for `numeric`, so the order would follow
 by itself, and each transform would declare what it keeps.
 
-<Prompts ids={['visc-fixed', 'memo-safe']} />
+<Prompts ids={['fixed-pipeline', 'memo-safe']} />
 
 <Callout kind="engine" label="Under the hood">
 LLVM's new pass manager is the realistic model: analysis managers that
@@ -266,7 +267,9 @@ because nothing changes the IR, with its order written by hand.
 - Viscosity runs a fixed pipeline, lower → analyze → plan → emit, with
   no pass manager; that is safe only because nothing changes the IR.
 
-Next: how to know any of these passes are right, by testing the compiler
-itself.
+Next, *Machine code and assembly*: the start of a native back end, where
+the IR finally becomes instructions a processor runs. (How to know that
+any of these passes are right is the subject of *Testing compilers:
+differential, round-trip, fuzzing and shrinking*.)
 
 <Quiz />

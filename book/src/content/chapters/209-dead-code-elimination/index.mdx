@@ -30,7 +30,8 @@ function h(a) {
 ```
 
 And here is the real VIR that Viscosity prints for it (in the same file
-as `g` from the last chapter, which is why the numbers start at 11):
+as `g` from *Dataflow, fixpoints and constant propagation*, which is
+why the numbers start at 11):
 
 ```text
 func h(%11):
@@ -44,7 +45,7 @@ func h(%11):
 ```
 
 `%15` is `u`, and nothing reads it; `%14` is read only by `%15`. Both
-do work whose answer goes nowhere. The last two chapters make far more
+do work whose answer goes nowhere. Constant propagation makes far more
 of this: once SCCP has proved that `g` returns 20, almost every
 instruction in `g` is computing something nobody needs any more. This
 chapter is about how a compiler finds such code, and when it is allowed

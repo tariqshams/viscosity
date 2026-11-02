@@ -387,7 +387,7 @@ export const quiz = [
       {
         t: 'It starts by assuming values computed the same way are equal, and splits them only when shown to differ',
         correct: true,
-        why: 'An optimistic start, like SCCP’s ⊤, which is what lets self-dependent values be proved equal.',
+        why: 'An optimistic start, like SCCP’s, which is what lets self-dependent values be proved equal.',
       },
     ],
   },

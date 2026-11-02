@@ -18,7 +18,7 @@ import CriticalEdge from '../../../components/diagrams/ch213/CriticalEdge';
 
 ## Wasted on one path, needed on another
 
-Global value numbering left one case behind. Here, `a + b` is computed
+*Global value numbering* left one case behind. Here, `a + b` is computed
 in one arm of an `if`, and again after the join:
 
 ```text
@@ -72,8 +72,8 @@ throw an exception, it would make a program fail that used to work. So
 PRE only inserts a computation at a point where, on **every** path
 leaving that point, the program is certain to compute it anyway, before
 any of its operands change. Such an expression is **anticipable** (or
-"anticipated") there; it is the very busy expression of the classic
-dataflow problems, under its PRE name.
+"anticipated") there; it is the very busy expression of *Available and
+very busy expressions*, under its PRE name.
 
 <Analogy extra title="packing an umbrella">
 You pack an umbrella at the door only if every route you might take
@@ -158,8 +158,8 @@ do { x = a + b; ... } while (c)
 
 </Examples>
 
-The first is the chapter's example. The second is the case dominator
-GVN missed at the end of the last chapter: `a + b` is already available
+The first is the example from the top. The second is the case dominator
+GVN missed at the end of *Global value numbering*: `a + b` is already available
 on both paths, from two different instructions, so PRE inserts nothing
 and only adds the phi. The third is a loop: from the second trip on,
 `a + b` repeats what the previous trip computed (its operands do not
@@ -169,7 +169,8 @@ the one inside fully redundant: PRE moves loop-invariant work out of
 loops as a side effect, which was one of the selling points of the
 original method<Cite id="morelrenvoise1979" />. (For a `while` loop,
 whose body may run zero times, `a + b` is not anticipable before the
-loop, so PRE leaves it alone; the Loops chapters come back to this.)
+loop, so PRE leaves it alone; *Loop-invariant code motion* comes back
+to this.)
 
 <Examples of="anticipable-expressions">
 

@@ -18,7 +18,8 @@ import FamilyFigure from '../../../components/diagrams/ch216/FamilyFigure';
 
 ## A multiply on every trip
 
-Two chapters ago we met this loop, which reads every other element of
+*Induction variables, the call graph and inlining* met this loop, which
+reads every other element of
 `a` starting at index 1:
 
 ```js
@@ -29,9 +30,9 @@ for (let i = 0; i < n; i++) {
 ```
 
 Every trip multiplies `i` by 2 and adds 1, although we know (from the
-induction variable chapter) that `j` simply goes 1, 3, 5, 7, climbing
+same chapter) that `j` simply goes 1, 3, 5, 7, climbing
 by 2. There is a multiply hidden in almost every array access, too:
-chapter 51 showed that element `i` of a `Float64Array` sits `8 × i`
+*Bytes, floats and memory* showed that element `i` of a `Float64Array` sits `8 × i`
 bytes from its start, so the machine works out `start + 8 × i` for every
 read. A multiply is never cheaper than an add, and on many processors
 it is slower; in a loop that runs millions of times that adds up, so
@@ -60,7 +61,7 @@ we will see; with whole numbers they do not.</span>
 
 ## Turning the multiply into an add
 
-The induction variables of two chapters ago come in **families**: a derived
+Induction variables come in **families**: a derived
 variable `j = c × i + d` belongs to the family of the basic variable
 `i`, with multiplier `c` and offset `d`, where `c` and `d` do not change
 in the loop. Since `i` steps by `s`, `j` steps by `c × s`; so we can
@@ -143,8 +144,9 @@ a;         // 0.9999999999999999
 
 Ten additions of `0.1` round ten times, and the small errors pile up;
 the multiply rounds once. With whole numbers there is nothing to round
-(a float64 holds every whole number up to 2⁵³ exactly, as the chapter on
-floats and typed arrays showed), so
+(a float64 holds every whole number up to 2⁵³ exactly, which follows
+from the IEEE 754 format of *How JavaScript stores numbers, objects and
+fields*), so
 compilers reduce integer induction variables, and leave floating-point
 ones alone unless you have allowed them to change your answers.
 
@@ -159,8 +161,8 @@ test `i < n`. Everything else reads `j`. But `j = 2 × i + 1`, and since
 `2` is positive, `i < n` is true exactly when `2 × i + 1 < 2 × n + 1`,
 which is `j < 2n + 1`. So the test can use `j` instead, with the bound
 `2n + 1` worked out once in the preheader, and then nothing uses `i` at
-all: its phi and its `+ 1` are dead code, which chapter 209's pass
-deletes.
+all: its phi and its `+ 1` are dead code, which the pass of *Dead code
+elimination* deletes.
 
 <Callout kind="definition">
 **Induction variable elimination** removes an induction variable that
@@ -207,7 +209,8 @@ loop leaves behind after the loop rather than inside it<Cite id="llvm-passes" />
 
 <Callout kind="engine" label="Under the hood">
 Viscosity does neither of these things; it keeps your loops exactly as
-written. Its bounds proof (two chapters ago) is one reason that is a
+written. Its bounds proof (from *Induction variables, the call graph and
+inlining*) is one reason that is a
 good choice: the proof looks for a phi that steps by exactly `+ 1` and
 the test `i < ps.length`, and a loop rewritten to step a pointer by 8
 would no longer match. Simple counters are easy to reason about, which

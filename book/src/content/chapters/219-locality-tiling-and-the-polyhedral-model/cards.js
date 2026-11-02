@@ -26,12 +26,12 @@ export const prompts = {
     q: 'When is tiling a loop nest legal?',
     a: 'When no dependence has a `>` in its direction vector, so the strip loops may be interchanged.',
   },
-  'tile-size': {
-    q: 'In this chapter’s run, which tile size made the 2048 × 2048 transpose fastest, and by how much?',
-    a: '32: about 21.5 ms against 47.6 ms untiled, more than twice as fast.',
+  'tile-size-machine': {
+    q: 'Why is there no single best tile size for loop tiling?',
+    a: 'A tile only helps while its data stays in the cache until the tile is done, so the best size depends on the machine’s cache sizes (and must usually be measured).',
   },
   'aosoa-tile': {
-    q: 'In Viscosity’s AoSoA layout with blocks of 8, what does `i >> 3` compute?',
+    q: 'In an AoSoA layout with blocks of 8 elements, what does `i >> 3` compute for element `i`?',
     a: 'The block that element `i` lives in: `i` divided by 8, rounded down.',
   },
 };
@@ -318,7 +318,7 @@ export const quiz = [
       {
         t: 'No: tiling includes an interchange, and `(<, >)` cannot be interchanged',
         correct: true,
-        why: 'The loops are not fully permutable. (A compiler could first skew the nest, the subject of the next chapter.)',
+        why: 'The loops are not fully permutable. (A compiler can sometimes skew the nest first to make it tileable.)',
       },
       {
         t: 'Only with tiles of size 1',
@@ -327,7 +327,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In this chapter’s run, why was a tile size of 128 slower than 32?',
+    q: 'Tiling the transpose of a 2048 × 2048 array of 8-byte numbers, why can a tile size of 128 be slower than 32?',
     options: [
       {
         t: 'Because 128 does not divide 2048',
@@ -345,20 +345,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'How does Viscosity’s AoSoA layout relate to tiling?',
+    q: 'How does an array-of-structs-of-arrays (AoSoA) layout relate to loop tiling?',
     options: [
       {
-        t: 'It tiles the data: blocks of B elements, each field’s B values together',
+        t: 'It tiles the data rather than the loop: blocks of B elements, with each field’s B values together',
         correct: true,
-        why: 'The index `(i >> 3) * 16 + field + (i & 7)` names a block and a place within it.',
+        why: 'With two fields and B = 8, element i’s field f sits at `(i >> 3) * 16 + 8 * f + (i & 7)`: a block number and a place within the block.',
       },
       {
-        t: 'It tiles every loop that reads the collection',
-        why: 'Viscosity keeps loops as written; only the layout changes.',
+        t: 'It changes the order in which a loop visits the elements',
+        why: 'The loop visits the elements in the same order; only where each value sits in memory changes.',
       },
       {
-        t: 'It is chosen automatically whenever a loop is nested',
-        why: 'Automatic mode chooses struct of arrays; AoSoA needs an annotation.',
+        t: 'It is a kind of loop fusion',
+        why: 'Fusion merges two loops; AoSoA rearranges data and leaves the loops alone.',
       },
     ],
   },

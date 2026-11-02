@@ -48,7 +48,7 @@ detail one question needs, such as the sign, or a range.</span>
 </Analogy>
 
 The set of descriptions is called an **abstract domain**, and it is a
-lattice. The simplest useful one is **signs**: a value is `−`
+lattice (in the sense of *Dataflow, fixpoints and constant propagation*). The simplest useful one is **signs**: a value is `−`
 (negative), `0`, `+` (positive), `⊤` ("any number", we know nothing)
 or `⊥` ("no value yet", the starting point before anything has
 arrived). Each operation gets an abstract version: `+` plus `+` is
@@ -213,8 +213,9 @@ needs before it can drop the check for a negative index.
 
 ## Viscosity's domains
 
-Viscosity's numeric inference is an abstract interpretation of VIR
-over the smallest useful domain, `{number, maybe-not}`: every
+Viscosity's numeric inference (from *Finding collections, and inferring
+shapes*) is an abstract interpretation of VIR over the smallest useful
+domain, `{number, maybe-not}`: every
 instruction has an abstract version (a sum of two numbers is a number),
 and a phi takes the join. For the index of an element access it asks a
 second question, "is this a non-negative integer?", with a function
@@ -252,13 +253,14 @@ so Viscosity never needs widening; to prove an index is *in* bounds, it
 looks for the loop test `i < xs.length` guarding the access, rather
 than tracking intervals.
 
-<Prompts ids={['viscosity-domains']} />
+<Prompts ids={['finite-no-widen']} />
 
 <Callout kind="engine" label="Under the hood">
 The Cousots' 1977 paper models program properties as a lattice and
 the analysis as computing, or approximating, a fixpoint<Cite id="cousot1977" />;
-the dataflow problems of the last few chapters are all instances, and
-the meet-over-all-paths gap of the last chapter is the same loss of
+the dataflow problems of *The classic dataflow problems* and *Available
+and very busy expressions* are all instances, and the
+meet-over-all-paths gap of *Lattices and monotone frameworks* is the same loss of
 precision seen from the dataflow side<Cite id="kamullman1977" />.
 </Callout>
 

@@ -15,7 +15,7 @@ export const prompts = {
     a: 'Code size, and registers to hold the copies’ values; past a point the bigger body is slower, not faster.',
   },
   'unroll-legal': {
-    q: 'Why is unrolling always allowed, when vectorising is not?',
+    q: 'Why is unrolling (with a remainder loop for leftover trips) always allowed, when vectorising is not?',
     a: 'Unrolling runs the same bodies in the same order; vectorising runs some of them at the same time.',
   },
   'autovec-what': {
@@ -31,7 +31,7 @@ export const prompts = {
     a: 'Up to 4: a group of 4 only reads elements the previous group wrote.',
   },
   'autovec-overlap': {
-    q: 'What does LLVM’s vectoriser do when two arrays might overlap in memory?',
+    q: 'What does LLVM’s loop vectoriser do when two arrays might overlap in memory?',
     a: 'Adds a check that runs while the program runs, and falls back to the plain loop if they overlap.',
   },
 };
@@ -325,11 +325,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does Viscosity’s struct-of-arrays output suit a vectoriser better than an array of objects?',
+    q: 'Why does a struct-of-arrays layout suit a vectoriser better than an array of objects?',
     options: [
       {
         t: 'Because typed arrays are always vectorised by JavaScript engines',
-        why: 'This book does not assume any engine vectorises JavaScript.',
+        why: 'Whether an engine vectorises is up to the engine; what the layout changes is whether one vector load can fill the lanes.',
       },
       {
         t: 'Because each field’s values sit next to each other, so one vector load fills all the lanes',
@@ -337,8 +337,8 @@ export const quiz = [
         why: 'In an array of objects, the same field of neighbouring elements is spread apart and needs a gather.',
       },
       {
-        t: 'Because Viscosity unrolls the loops for it',
-        why: 'Viscosity keeps loops as written; it only changes the layout.',
+        t: 'Because the loop over a struct of arrays runs fewer trips',
+        why: 'The number of trips is the same; only where each field’s values sit in memory changes.',
       },
     ],
   },

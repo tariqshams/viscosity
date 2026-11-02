@@ -30,9 +30,9 @@ export const prompts = {
     q: 'What does skewing `(i, j) ↦ (i, i + j)` do to the distance `(1, -1)`, and why does it help?',
     a: 'It becomes `(1, 0)`: legal, and with no negative entry, so the skewed nest can be tiled.',
   },
-  'viscosity-1d': {
-    q: 'In polyhedral terms, what does Viscosity’s bounds proof show?',
-    a: 'That the identity access maps the domain `0 ≤ i < ps.length` inside the array.',
+  'bounds-polyhedral': {
+    q: 'In polyhedral terms, what does proving that `ps[i]` stays in bounds in `for (let i = 0; i < ps.length; i++)` amount to?',
+    a: 'Showing that the access function (here the identity, i ↦ i) maps every point of the iteration domain 0 ≤ i < ps.length into the array’s index range.',
   },
 };
 
@@ -275,7 +275,7 @@ export const quiz = [
       {
         t: 'The distance becomes `(1, 0)`, which has no negative entry, so the skewed loops are fully permutable',
         correct: true,
-        why: 'That is the condition for tiling from the last chapter.',
+        why: 'That is the condition for tiling.',
       },
       {
         t: 'Tiling never needs legality checks after skewing',
@@ -296,8 +296,8 @@ export const quiz = [
         why: 'Its README lists those among the transformations.',
       },
       {
-        t: 'To choose data layouts, as Viscosity does',
-        why: 'Polly transforms loops; Viscosity changes data layouts.',
+        t: 'To choose data layouts',
+        why: 'Polly transforms loops (when each iteration runs), not where data sits.',
       },
     ],
   },

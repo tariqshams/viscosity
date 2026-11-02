@@ -7,7 +7,7 @@ export const prompts = {
     a: 'The bytes a processor runs directly: a sequence of instructions, each a fixed bit pattern (32 bits in base RISC-V) that the hardware decodes.',
   },
   'vm-vs-cpu': {
-    q: 'Part IV’s VM ran bytecode with a dispatch loop. What runs machine code?',
+    q: 'A bytecode virtual machine runs bytecode with a dispatch loop. What runs machine code?',
     a: 'The processor itself: its fetch, decode and execute loop is hardware, with no interpreter program in between.',
   },
   'byte-order': {
@@ -222,7 +222,7 @@ export const quiz = [
       {
         t: '4 bytes',
         correct: true,
-        why: 'Every base instruction is 32 bits, so the sumsq listing’s nine instructions are 36 bytes.',
+        why: 'Every base instruction is 32 bits, so nine instructions take 36 bytes.',
       },
       {
         t: 'It depends on how many operands the instruction has',
@@ -267,7 +267,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the listing, what does the line `loop:` produce in the machine code?',
+    q: 'In RISC-V assembly, what does a line `loop:` produce in the machine code?',
     options: [
       {
         t: 'One instruction that marks the start of the loop',
@@ -276,7 +276,7 @@ export const quiz = [
       {
         t: 'Nothing: it names the address of the next instruction, which jumps can use',
         correct: true,
-        why: 'The assembler records that loop is offset 8 and puts the right distance into `j loop` and nothing else.',
+        why: 'The assembler records the address it names and puts the right distance into each jump that refers to it, such as `j loop`.',
       },
       {
         t: 'A comment',

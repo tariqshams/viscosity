@@ -50,7 +50,8 @@ chart back into a list before it can emit machine code.</span>
 <Callout kind="definition">
 A **graph IR** stores a program as a graph whose nodes are operations and
 whose edges say which operation uses which, rather than (or as well as)
-as a list in a fixed order. The CFG of chapter 89 is already a graph,
+as a list in a fixed order. The CFG of *IR, three-address code and
+control-flow graphs* is already a graph,
 of blocks; a graph IR goes further and makes the instructions themselves
 the nodes.
 </Callout>
@@ -180,7 +181,7 @@ evaluation is spelled out. **A-normal form** (ANF) keeps ordinary
 returns but also names every intermediate value; Flanagan, Sabry, Duba
 and Felleisen showed that a compiler can get the benefits of CPS from
 this simpler form<Cite id="flanagan1993" />. ANF should look familiar: it
-is close to the three-address code of chapter 89. Here is one
+is close to three-address code. Here is one
 computation three ways:
 
 <Run id="cps" />
@@ -232,7 +233,7 @@ same multiply after partial lowering: two `affine` loops over buffers,
 an `arith` multiply, and the `toy.print` still there, unlowered, in the
 same function<Cite id="mlir-toy" />. The third is the last stage, in the
 `llvm` dialect, where printing has become a call to C's `printf`. The
-`affine` loops are the polyhedral model of chapter 220 made into a
+`affine` loops are *The polyhedral model* made into a
 dialect, so loop transformations happen while the loops still exist.
 
 <Callout kind="definition">

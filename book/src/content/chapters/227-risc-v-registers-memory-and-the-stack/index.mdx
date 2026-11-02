@@ -27,7 +27,7 @@ instead of it: 32 integer registers, each 64 bits wide on RV64.
 To the base instructions, `x1` to `x31` are interchangeable (only
 `x0` is special); the names and roles below are an agreement among software, recorded in the
 RISC-V psABI (the processor-specific application binary interface,
-which the next chapter is about)<Cite id="riscv-psabi" />:
+the subject of *Calling conventions and the ABI*)<Cite id="riscv-psabi" />:
 
 ```text
 x0        zero     always 0
@@ -44,7 +44,7 @@ x28-x31   t3-t6    temporaries
 So `a0` is `x10` and `sp` is `x2`; an assembler accepts either name.
 The `t` registers are scratch space, the `s` registers keep their
 values across calls, and the `a` registers carry arguments in and
-results out; why is the next chapter's story.
+results out; why is the story of *Calling conventions and the ABI*.
 
 <Prompts ids={['abi-names']} />
 
@@ -201,7 +201,7 @@ assembler turns `li t0, 4096` into `lui t0, 1`). The third is clang's
 real code for reading a global variable `g`: `lui` loads the upper 20
 bits of `g`'s address and the load supplies the lower 12 as its offset
 (`%hi` and `%lo` ask the assembler and linker to split the address,
-the same split as the last chapter's `li`). An array element is the
+the same split as `li` in *Instruction sets and RISC-V*). An array element is the
 same story: `xs[i]` needs `i × 8` added to the base first, which the
 Code shape chapter works through.
 
@@ -211,7 +211,8 @@ Code shape chapter works through.
 
 A function that needs memory of its own (to save a register, or for a
 local that does not fit) takes it from the **stack**, the call stack of
-frames from chapter 19 and the VM of chapter 82. On RISC-V the stack is only memory plus an
+frames from *Recursion and the call stack* and *Frames: calling and
+returning*. On RISC-V the stack is only memory plus an
 agreement: register `x2`, called `sp`, holds the address of its top,
 and the stack grows *downwards*, towards lower addresses. The hardware
 knows nothing of this; the manual says the base ISA has no dedicated
@@ -271,8 +272,8 @@ The first is the smallest frame: claim, use, release. The second is
 real: `sumsq` compiled *without* optimisation, which
 keeps every variable in a stack slot rather than a register. It claims
 48 bytes (a multiple of 16), saves `ra` and `s0`, then sets `s0` to the
-old `sp` so that `s0` serves as a **frame pointer** (chapter 82's idea,
-in hardware form) and the slots are named by negative offsets from it:
+old `sp` so that `s0` serves as a **frame pointer** (the idea from
+*Frames: calling and returning*, in hardware form) and the slots are named by negative offsets from it:
 `n` at `-24(s0)`, and a few lines later `s` and `i` at `-32(s0)` and
 `-40(s0)`. The optimised
 `sumsq` never touched memory at all. The third is the mistake to
@@ -299,7 +300,8 @@ breaks the promise every other function relies on.
   stays 16-byte aligned, and frames are claimed and released by
   arithmetic on it.
 
-Next: the agreement about where arguments, results and the return
-address go when one function calls another.
+Next, *Calling conventions and the ABI*: the agreement about where
+arguments, results and the return address go when one function calls
+another.
 
 <Quiz />

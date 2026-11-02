@@ -18,7 +18,7 @@ import GcdFigure from '../../../components/diagrams/ch218/GcdFigure';
 
 ## Which trip needs which?
 
-The last chapter asked one narrow question, whether four trips can run
+*Loop unrolling and vectorisation* asked one narrow question, whether four trips can run
 at once; however, every interesting loop transformation asks a version
 of the same thing. Swapping two nested loops, merging two loops into
 one, splitting one into two: each runs the trips in a different order,
@@ -192,7 +192,8 @@ and Allen and Kennedy's book is the standard tour of them<Cite id="allenkennedy2
 
 ## Swapping, merging and splitting loops
 
-**Loop interchange** swaps two nested loops. Chapter 51 showed why you
+**Loop interchange** swaps two nested loops. *Caches, lines and
+locality* showed why you
 would want to: walking a grid stored row by row down its columns jumps a
 whole row per step and wastes most of every cache line. On the machine
 these chapters were written on (Node v22.23.4, a shared four-core Intel
@@ -205,7 +206,7 @@ becomes `(=, <)`, fine; but our nest's `(<, >)` becomes `(>, <)`, which
 would run a reader before its writer, so that nest must not be swapped.
 
 **Loop fusion** merges two neighbouring loops over the same range into
-one, so data is used again while it is still in the cache (chapter 51).
+one, so data is used again while it is still in the cache.
 It is illegal when the second loop, at trip `i`, would need something
 the first loop only writes at a later trip. **Loop fission** (or
 distribution) is the reverse: splitting one loop into two, for example
@@ -255,7 +256,7 @@ The first is the column-sum fixed by interchange: with `i` outside,
 `j` walks along a row, stride one, and the sum is the same because no
 trip writes anything (the only dependence is through `s`, and
 reordering a sum of whole numbers does not change it; of fractions, it
-might, chapter 52). The second is two loops over the particles, one for
+might, since every floating-point addition rounds). The second is two loops over the particles, one for
 `x` and one for `y`, fused into one pass; the two statements touch
 different columns, so nothing ties them. The third cannot be fused:
 trip `i` of the second loop reads `a[i + 1]`, which the first loop

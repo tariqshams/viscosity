@@ -26,13 +26,13 @@ export const prompts = {
     q: 'Constant propagation rewrites instructions but no blocks or edges. Which analyses can it report as preserved?',
     a: 'The CFG analyses, such as dominators and loops, which depend only on blocks and edges.',
   },
-  'visc-fixed': {
-    q: 'Does Viscosity have a pass manager today? What does it run instead?',
-    a: 'No. It runs one fixed pipeline: lower → analyze → plan → emit.',
+  'fixed-pipeline': {
+    q: 'What does a compiler without a pass manager usually run instead?',
+    a: 'A fixed pipeline: each stage (for example lower, analyse, plan, emit) called once, in order, by hand, with no general caching or invalidation.',
   },
   'memo-safe': {
-    q: 'Viscosity’s `info(f)` caches dominators and loops and never clears the cache. Why is that safe today, and when would it stop being safe?',
-    a: 'Nothing changes the IR while `analyze` runs; a transformation between two stages would make the cached results stale.',
+    q: 'A compiler caches each function’s dominator tree and never clears the cache. Why can that be safe, and what change would make it unsafe?',
+    a: 'It is safe while nothing changes the IR after the trees are built; adding a transformation that changes a function’s CFG would leave its cached tree stale.',
   },
 };
 
@@ -425,29 +425,25 @@ export const quiz = [
     ],
   },
   {
-    q: 'What is the honest description of Viscosity’s pipeline?',
+    q: 'Why does LLVM’s new pass manager have each transformation return the set of analyses it preserved?',
     options: [
       {
-        t: 'A fixed sequence, lower → analyze → plan → emit, with no general pass manager',
+        t: 'So that analyses can run in parallel with transformations',
+        why: 'The report is about which cached results are still valid, not about running passes at once.',
+      },
+      {
+        t: 'So the manager can invalidate every cached analysis the change may have broken, and keep the rest',
         correct: true,
-        why: 'That is `compile` in `packages/core/src/index.ts`: four calls in a row.',
+        why: 'Only the transformation knows what it changed; anything it does not list as preserved is thrown away.',
       },
       {
-        t: 'An LLVM-style pass manager with cached analyses',
-        why: 'That is the design sketched in this chapter, not the code that exists.',
-      },
-      {
-        t: 'It reruns every analysis until a fixpoint',
-        why: 'Numeric inference iterates internally, but the pipeline itself runs once.',
-      },
-      {
-        t: 'It has no analyses, only a parser',
-        why: '`analyze` runs numeric inference, escape checks, bounds and more.',
+        t: 'So that it can print a report for the user',
+        why: 'The set is used by the manager itself, to keep its cache correct.',
       },
     ],
   },
   {
-    q: 'In a pass manager, why do analyses request other analyses through `get` instead of calling them directly?',
+    q: 'In a pass manager, why do analyses request the analyses they depend on from the manager instead of calling them directly?',
     options: [
       {
         t: 'It is faster to type',
@@ -469,24 +465,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'In the diagram, four passes asked for analyses eight times in total, yet only six were computed. Why not fewer?',
+    q: 'Why can a caching pass manager still compute the same analysis several times in one pipeline?',
     options: [
       {
-        t: 'The cache was too small',
-        why: 'Size wasn’t the issue; validity was.',
+        t: 'The cache is too small to hold it',
+        why: 'Size is not the issue; validity is.',
       },
       {
-        t: 'Transformations invalidated some results, so they had to be recomputed for the new IR',
-        correct: true,
-        why: 'Caching saves work only while results stay valid. After a change, correctness wins.',
-      },
-      {
-        t: 'The manager recomputes every analysis twice to be safe',
+        t: 'It recomputes every analysis twice to be safe',
         why: 'It recomputes only on a miss.',
       },
       {
-        t: 'layout ran first',
-        why: 'layout ran last, and got two hits.',
+        t: 'A transformation in between invalidated the cached result, so it must be recomputed for the new IR',
+        correct: true,
+        why: 'Caching saves work only while results stay valid; after a change, correctness wins.',
       },
     ],
   },

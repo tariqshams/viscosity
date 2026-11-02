@@ -43,7 +43,7 @@ func f(%0, %1):
 ```
 
 `%2` and `%3` are the same operation on the same two values, and in SSA
-neither `%0` nor `%1` can change in between, so they must be equal.
+(from *SSA and phi nodes, built on the fly*) neither `%0` nor `%1` can change in between, so they must be equal.
 A compiler could compute the product once and use `%2` wherever `%3`
 appears; the second multiplication is a **common subexpression**, and
 removing it is **common subexpression elimination**. The hard part is
@@ -188,7 +188,8 @@ JavaScript adds one more trap. If `a` might be an object, each `a + b`
 calls `a.valueOf()`, so two "identical" additions run that method
 twice, and merging them would run it once. A JavaScript compiler only
 numbers `+` this way once it knows the operands are primitives, the
-same type fact that made `+` safe to delete in the DCE chapter.
+same type fact that made `+` safe to delete in *Dead code
+elimination*.
 
 <Prompts ids={['load-kill', 'call-kill', 'plus-twice']} />
 
@@ -226,7 +227,8 @@ compares `JSON.stringify(c.fields)` with `JSON.stringify(r.fields)`.
 - Loads are forgotten after a store to the same place, and all of them
   after an unknown call; in JavaScript, `+` needs primitive operands.
 
-Next: the same idea across a whole function, using dominators to know
-which earlier values every path has already computed.
+Next, *Global value numbering*: the same idea across a whole function,
+using dominators to know which earlier values every path has already
+computed.
 
 <Quiz />

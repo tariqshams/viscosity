@@ -18,7 +18,7 @@ import LiSteps from '../../../components/diagrams/ch226/LiSteps';
 
 ## One program, many chips
 
-The last chapter turned `sumsq` into 36 bytes. Those bytes run
+*Machine code and assembly* turned `sumsq` into 36 bytes. Those bytes run
 unchanged on a small chip in a sensor or on a big server processor,
 from different makers, built in completely different ways, as long as
 each chip implements the same instructions. Nobody tested the bytes on
@@ -104,7 +104,7 @@ a `u` means the values are compared or loaded as unsigned; `slt` is
 stores (`ld`, `sd`, `lwu`) and a few "word" instructions such as
 `addiw` that work on the low 32 bits. Notice what is missing: no
 multiply (that is M), no instruction that adds a memory value to a
-register (the next chapter explains why), and no "move" or "load
+register (*RISC-V: registers, memory and the stack* explains why), and no "move" or "load
 constant" (those are pseudoinstructions).
 
 A program sees 32 integer registers, `x0` to `x31`, plus the program
@@ -163,7 +163,7 @@ bottom jumps back while `i ≠ n`, one branch per trip instead of our
 two (the Code shape chapter is about exactly this choice). One honest
 detail: left alone, clang went further and replaced the loop with a
 formula for the final sum (an induction-variable rewrite, as in
-chapter 93); this listing was made with that rewrite switched off
+*Induction variables, the call graph and inlining*); this listing was made with that rewrite switched off
 (`-mllvm -replexitval=never`) so that the loop stays visible.
 
 <Prompts ids={['rv64im', 'base-small', 'x0-what', 'm-separate']} />
@@ -229,7 +229,7 @@ constants:
 - Constants beyond 12 bits are built with **lui** and **addi**, with
   the upper part rounded up when the low part is negative.
 
-Next: how those registers are used, how memory is reached, and the
-stack.
+Next, *RISC-V: registers, memory and the stack*: how those registers are
+used, how memory is reached, and the stack.
 
 <Quiz />

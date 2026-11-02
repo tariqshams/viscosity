@@ -323,7 +323,7 @@ export const quiz = [
       },
       {
         t: 'Phis must be the only instructions in a header',
-        why: 'Headers usually hold the loop’s test too, as `sum`’s `b1` does.',
+        why: 'Headers usually hold the loop’s test as well.',
       },
     ],
   },
@@ -368,7 +368,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Which instruction can be hoisted out of `for (let x = 0; x < n; x++) s += y * W + x;` with no guard, whatever `n` is?',
+    q: 'With `y` and `W` numbers, which instruction can be hoisted out of `for (let x = 0; x < n; x++) s += y * W + x;` with no guard, whatever `n` is?',
     options: [
       {
         t: '`s += ...`',
@@ -386,14 +386,14 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `nbody`’s inner `j` loop, what must a compiler prove before hoisting the read `b[i].x`?',
+    q: 'In `for (let j = 0; j < b.length; j++) { const dx = b[j].x - b[i].x; ... }`, where `i` is the outer loop’s counter, what must a compiler prove before hoisting the read `b[i].x`?',
     options: [
       {
         t: 'That `b[i].x` is a number',
         why: 'Its type does not matter for moving it; whether it can change or fail does.',
       },
       {
-        t: 'That the `j` loop runs exactly 1,500 times',
+        t: 'That the `j` loop runs a known number of times',
         why: 'It only needs to know the loop runs at least once (or use a guard).',
       },
       {
@@ -408,20 +408,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does Viscosity do about loop-invariant code?',
+    q: 'Why does an invariant-looking memory read, such as `o.n`, need one more check than invariant arithmetic before it is hoisted?',
     options: [
       {
-        t: 'It hoists invariant reads into preheaders it creates',
-        why: 'Viscosity moves no code.',
-      },
-      {
-        t: 'Nothing: it keeps your loops as written and leaves any hoisting to the engine that runs the output',
+        t: 'Something in the loop may write that memory, so the read may not give the same answer on every trip',
         correct: true,
-        why: 'It uses loop facts to describe the program (fields touched, trip counts, bounds), not to move code.',
+        why: 'Arithmetic on SSA values depends only on its operands; a read also depends on every store and call in the loop that may alias it.',
       },
       {
-        t: 'It rejects loops that contain invariant code',
-        why: 'Invariant code is harmless; it does not affect the layout decision.',
+        t: 'Memory reads are slower than arithmetic',
+        why: 'That is why hoisting them pays, not a condition for doing it.',
+      },
+      {
+        t: 'Reads cannot be placed in a preheader',
+        why: 'A preheader can hold any instruction; the question is whether moving it there is correct.',
       },
     ],
   },

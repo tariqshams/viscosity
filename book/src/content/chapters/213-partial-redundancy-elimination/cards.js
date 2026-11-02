@@ -11,8 +11,8 @@ export const prompts = {
     a: 'Inserts the expression on the paths where it is missing, so that the partially redundant computation becomes fully redundant, then replaces it with the value already computed.',
   },
   'no-path-slower': {
-    q: 'After PRE inserts `a + b` at the end of `b2`, why is the path through `b2` no slower?',
-    a: 'That path computed `a + b` in `b3` before; now it computes it in `b2` instead, and `b3` reuses it. The work moved; it did not grow.',
+    q: 'PRE inserts a copy of a partially redundant expression at the end of the predecessor that lacked it. Why is the path through that predecessor no slower?',
+    a: 'That path used to compute the expression after the join; now it computes it once in the predecessor and the join reuses it. The work moved; it did not grow.',
   },
   'ant-what': {
     q: 'When is an expression **anticipable** at a point?',
@@ -412,7 +412,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'How does PRE remove that partial redundancy?',
+    q: '`a + b` is computed in b1, one arm of an `if` whose other arm is b2, and again in b3 after the join. How does classic PRE remove the redundancy?',
     options: [
       {
         t: 'Deletes the computation in b3',
@@ -420,7 +420,7 @@ export const quiz = [
       },
       {
         t: 'Moves the computation from b1 into b0',
-        why: 'That is legal too (the next chapter calls it busy code motion), but it is not this chapter’s method, which inserts only in the predecessor where the value is missing.',
+        why: 'That is legal too (it is busy code motion, which places code as early as possible), but classic PRE inserts only in the predecessor where the value is missing.',
       },
       {
         t: 'Inserts `a + b` at the end of b2, then replaces b3’s computation with a phi of the two copies',
@@ -484,7 +484,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'In `while (c) { x = a + b; }`, with `a` and `b` unchanged in the loop, PRE leaves `a + b` inside. Why?',
+    q: 'In `while (c) { x = a + b; }`, with `a` and `b` unchanged in the loop, PRE on the loop as written leaves `a + b` inside. Why?',
     options: [
       {
         t: 'The body may run zero times, so `a + b` is not anticipable before the loop',

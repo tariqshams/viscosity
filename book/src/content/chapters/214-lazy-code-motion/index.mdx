@@ -31,7 +31,8 @@ b4: y = a + b
 ```
 
 On the path through `b2`, the second `a + b` repeats the first: a
-partial redundancy. The last chapter's rule says a copy may go anywhere
+partial redundancy. The rule of *Partial redundancy elimination* says a
+copy may go anywhere
 the expression is anticipable and not yet available, and here
 `a + b` is anticipable everywhere from `b0` on (every path computes it
 before `a` or `b` change). So one legal answer is to compute it once,
@@ -86,7 +87,7 @@ al.<Cite id="aho2006" /> and assumes critical edges are split.
 
 <Prompts ids={['one-at-a-time']} />
 
-1. **Anticipated** on entry to `b`: from the last chapter.
+1. **Anticipated** on entry to `b`: from *Partial redundancy elimination*.
 2. **Will be available** on entry to `b`: true if, on every path to
    `b`, the expression is anticipated or already "available" somewhere
    and not killed afterwards; in other words, if we placed copies as
@@ -158,7 +159,7 @@ b2: x = a + b    b3: ...    b4: y = a + b
 ```text
 b1: x = a + b    b2: ...    b3: y = a + b
 ; insert at b1, b2; b3 uses t: the
-; PRE of the last chapter
+; PRE example
 ```
 
 ```text
@@ -169,9 +170,9 @@ b3: condbr %c, b5, b4    b5: br b2
 
 </Examples>
 
-The first is the chapter's example: the copy has slid from `b0` down to
-the last moment on each path. The second is the last chapter's
-partial redundancy, and lazy code motion makes the same choice PRE made
+The first is the example from the top: the copy has slid from `b0` down
+to the last moment on each path. The second is the partial redundancy
+from *Partial redundancy elimination*, and lazy code motion makes the same choice PRE made
 there; in `b1` the "insertion" and the original are the same
 computation, so in practice `b1` keeps computing `a + b` into `t`. The
 third is a `do`-`while` whose body computes a loop-invariant `a + b`
@@ -209,7 +210,8 @@ Rüthing and Steffen's lazy code motion<Cite id="gcc-lcm" />.
 - It is a handful of yes or no dataflow problems per expression; real
   compilers solve them for all expressions at once with bit vectors.
 
-Next: copying whole functions into their callers, and what that does for
-everything you have just learned.
+Next, *Loop-invariant code motion*: moving work that does not change
+out of loops, which lazy code motion does only for loops that are sure
+to run.
 
 <Quiz />

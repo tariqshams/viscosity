@@ -7,7 +7,7 @@ tagline: 'Some loops waste the cache whichever way round you nest them. Cutting 
 objectives:
   - Explain why swapping loops cannot fix a matrix transpose, using cache lines and reuse.
   - Tile a two-deep loop nest by hand, including the partial tiles at the edges.
-  - Say when tiling is legal, in terms of the direction vectors from the last chapter.
+  - Say when tiling is legal, in terms of direction vectors.
   - Relate tile size to what fits in a cache, using a measured run.
 introduces: [loop-tiling]
 uses: [dependence-analysis, loop-interchange-fusion, loop-unrolling, natural-loop, induction-variable, cpu-cache, cache-hierarchy, cache-miss, cache-line, spatial-locality, temporal-locality, stride, typed-array, float64, aosoa, aos-vs-soa, array, index, for-loop]
@@ -28,7 +28,8 @@ for (let i = 0; i < n; i++)
     b[j * n + i] = a[i * n + j];
 ```
 
-`a` is read along a row, stride one, which chapter 51 showed is the
+`a` is read along a row, stride one, which *Caches, lines and locality*
+showed is the
 cache's favourite pattern. `b`, however, is written down a column: each
 step jumps a whole row of `n` elements, so every write lands in a
 different cache line. The next element of that same line, `b[j * n + i
@@ -184,11 +185,11 @@ your own device (a smaller grid, so it runs quickly):
 
 <Run id="tiled" />
 
-<Prompts ids={['tile-size', 'interchange-not-enough']} />
+<Prompts ids={['tile-size-machine', 'interchange-not-enough']} />
 
 <Callout kind="engine" label="Under the hood">
 Viscosity does not tile loops; it can, however, tile *data*. Its AoSoA
-layout (chapter 55) stores a collection in blocks of `B` elements, one
+layout (from *When SoA loses: materialization and AoSoA*) stores a collection in blocks of `B` elements, one
 field after another inside each block. With `// @viscosity aosoa(8)`
 above `ps`, the loop `ps[i].x += ps[i].vx` compiles to:
 

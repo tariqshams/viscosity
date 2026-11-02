@@ -7,8 +7,8 @@ export const prompts = {
     a: 'Instructions whose results can never affect what the program does.',
   },
   'dce-roots': {
-    q: 'In mark-and-sweep DCE, which instructions are the roots?',
-    a: 'Those whose effect can be seen: returns and throws, calls, stores, and branches.',
+    q: 'In simple (not aggressive) mark-and-sweep DCE, which instructions are the roots?',
+    a: 'Those whose effect can be seen: returns and throws, calls that may have effects, stores, and branches.',
   },
   'plus-effect': {
     q: 'Why can’t a JavaScript compiler always delete an unused `w + h`?',
@@ -306,25 +306,25 @@ return %0
       },
       {
         t: 'Running DCE first would delete the calls that inlining needs',
-        why: 'Calls are roots, so DCE never deletes them.',
+        why: 'A call that may have effects is a root, so DCE keeps it; the reason for the order is the junk those passes leave behind.',
       },
     ],
   },
   {
-    q: 'What does Viscosity do about dead code?',
+    q: 'A store sits in a basic block that no path from the function’s entry reaches. May the compiler delete it?',
     options: [
       {
-        t: 'It runs mark-and-sweep DCE before its layout analyses',
-        why: 'Viscosity has no DCE pass; it rewrites only the code that touches collections.',
+        t: 'No: stores are roots',
+        why: 'A store is a root because running it changes memory; a store that can never run changes nothing.',
       },
       {
-        t: 'It deletes any value whose use list is empty',
-        why: 'It builds use lists, but not to delete code; and an empty use list doesn’t mean dead, since calls and stores matter.',
-      },
-      {
-        t: 'It leaves dead code alone, but builds the use lists a DCE would need and classifies instructions by what they can do',
+        t: 'Yes: the block can never run, so the whole block can be removed',
         correct: true,
-        why: '`buildUses` gives every value’s users, and `analysis.ts` asks whether an instruction is inert, may throw, or has effects.',
+        why: 'Unreachable code is deleted block by block, whatever it contains, since none of its effects can ever happen.',
+      },
+      {
+        t: 'Only if nothing ever reads the location it writes',
+        why: 'That is the question for a store that does run; for one that never runs, it does not matter who reads the location.',
       },
     ],
   },

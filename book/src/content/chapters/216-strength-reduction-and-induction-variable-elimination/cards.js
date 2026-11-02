@@ -11,11 +11,11 @@ export const prompts = {
     a: 'Start `4 × 0 + 3 = 3`, step `4 × 1 = 4`.',
   },
   'sr-floats': {
-    q: 'Why do compilers not strength-reduce `x = 0.1 * k`?',
+    q: 'Unless allowed to change floating-point results (as with fast-math options), why do compilers not strength-reduce `x = 0.1 * k`?',
     a: 'Adding 0.1 repeatedly rounds on every add, so the sum drifts from the multiply’s single rounding: the results would change.',
   },
   'sr-address': {
-    q: 'Which multiply does almost every array loop contain, even if the source has none?',
+    q: 'Which multiply does almost every array loop contain once compiled to machine code, even if the source has none?',
     a: 'The address of element `i`: start plus element size times `i` (8 × i for a `Float64Array`).',
   },
   'ive-what': {
@@ -23,7 +23,7 @@ export const prompts = {
     a: 'A counter used only by the loop’s test and its own update, once the test has been rewritten to use another member of its family.',
   },
   'ive-sign': {
-    q: 'With `j = -2 * i`, what does the test `i < n` become?',
+    q: 'Assuming no overflow, with `j = -2 * i`, what does the test `i < n` become?',
     a: '`j > -2 * n`: multiplying by a negative number flips the comparison.',
   },
   'ive-dce': {
@@ -297,7 +297,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'After strength reduction, `i` is used only in the test `i < n`, and `j = 3 * i + 1`. What can replace the test?',
+    q: 'After strength reduction, `i` is used only in the test `i < n`, and `j = 3 * i + 1`. Assuming no overflow, what can replace the test?',
     options: [
       {
         t: '`j < n`',
@@ -337,7 +337,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'With `j = -2 * i + 10`, a compiler rewrites `i < n` as `j < -2 * n + 10`. What is wrong?',
+    q: 'Assuming no overflow, with `j = -2 * i + 10`, a compiler rewrites `i < n` as `j < -2 * n + 10`. What is wrong?',
     options: [
       {
         t: 'Nothing',

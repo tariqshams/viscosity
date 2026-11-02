@@ -30,7 +30,7 @@ for (let i = 0; i < a.length; i++) {
 The work we care about is one addition per element; however, every trip
 also compares `i` with the length, jumps back (or out), and adds one to
 `i`, so for each useful add there are three instructions of
-bookkeeping. Chapter 52 showed that the processor predicts the jump
+bookkeeping. *Prefetching, pointer chasing, branches and SIMD* showed that the processor predicts the jump
 well, which keeps it cheap, but cheap is not free. The previous
 chapters made each trip do less work; this one makes the loop take
 fewer trips.
@@ -51,7 +51,7 @@ the program bigger, so more is not always better.</span>
 each trip and steps the counter by `k`. The trips that do not fill a
 whole group of `k` (when the trip count is not a multiple of `k`) run in
 a small **remainder loop** afterwards, which is the leftover bags of the
-analogy and the "tail" of chapter 52. Step through ten elements
+analogy and the "tail" of SIMD loops. Step through ten elements
 unrolled by four:
 
 <UnrollSteps client:visible />
@@ -127,7 +127,7 @@ the LLVM vectoriser's documentation describes for exactly this kind of
 sum: two (or more) separate running totals, so that the processor can
 work on both additions at once instead of each waiting for the last
 one<Cite id="llvm-vectorizers" />. For whole numbers that is exact; for
-fractions it adds in a different grouping, which chapter 52 showed can
+fractions it adds in a different grouping, which can
 change the answer, so a compiler does it only when allowed.
 
 <Prompts ids={['unroll-what', 'remainder', 'unroll-cost', 'unroll-legal']} />
@@ -145,7 +145,7 @@ c[i + 3] = a[i + 3] + b[i + 3];
 ```
 
 It is the same operation on four neighbouring elements, which is
-exactly what one SIMD instruction does (chapter 52): load four `a`s
+exactly what one SIMD instruction does (from *Prefetching, pointer chasing, branches and SIMD*): load four `a`s
 into one register, four `b`s into another, add lane by lane, store four
 `c`s. Turning the copies into that single instruction is the step that
 makes unrolling a vectoriser.
@@ -162,8 +162,8 @@ out both sides and pick per lane.</span>
 </Analogy>
 
 <Callout kind="definition">
-**Auto-vectorisation** is the compiler doing chapter 52's vectorisation
-for you: it unrolls a loop by the number of lanes `W`, checks that the
+**Auto-vectorisation** is the compiler writing the SIMD code for you:
+it unrolls a loop by the number of lanes `W`, checks that the
 `W` copies may run at the same time without changing the result, merges
 them into SIMD instructions, and adds a remainder loop for the leftover
 trips. LLVM's loop vectoriser is on by default and "widens instructions
@@ -218,12 +218,13 @@ group `i` to `i + 3` reads `i - 4` to `i - 1`, all written by the
 previous group, which has finished, so the answer is unchanged; with
 eight lanes, the lane for `i + 4` would read `a[i]`, which a lane in its
 own group is writing, so it is not. How far back a trip reads, and so
-how many lanes are safe, is the subject of the next chapter. The third
+how many lanes are safe, is the subject of the next chapter,
+*Dependence analysis, interchange and fusion*. The third
 is the realistic one: after Viscosity's struct-of-arrays rewrite, the
 particle update reads and writes two contiguous `Float64Array` columns,
 element `i` of each per trip, which is the shape a vectoriser wants.
-Whether a JavaScript engine vectorises it is up to the engine; as in
-chapter 52, this book does not assume it.
+Whether a JavaScript engine vectorises it is up to the engine, and
+this book does not assume it.
 
 Two more obstacles from the LLVM documentation are worth knowing. If
 two arrays might overlap in memory, the vectoriser adds a check that
@@ -238,8 +239,8 @@ Viscosity neither unrolls nor vectorises; it changes how the data is
 laid out and leaves the loops alone. The two jobs fit together,
 though: a vectoriser needs each lane's values next to each other in
 memory, and a struct of arrays puts every field's values next to each
-other, while an array of objects scatters them (chapter 52 showed why that
-forces a slower gather).
+other, while an array of objects scatters them (which, as
+*Prefetching, pointer chasing, branches and SIMD* showed, forces a slower gather).
 </Callout>
 
 ## Your turn

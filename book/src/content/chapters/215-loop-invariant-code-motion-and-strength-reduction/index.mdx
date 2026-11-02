@@ -33,15 +33,17 @@ for (let i = 0; i < b.length; i++) {
 
 The inner loop runs 1,500 times for every `i`, and on every one of those
 trips it reads `b[i].x` and `b[i].y` again, although `i` does not change
-inside the `j` loop and nothing in that loop writes to `b`. The last
-chapter called such values **loop-invariant**. This chapter moves them
+inside the `j` loop and nothing in that loop writes to `b`. *Induction
+variables, the call graph and inlining* called such values
+**loop-invariant**. This chapter moves them
 out of the loop, so they are worked out once per `i` rather than once per
 `j`; the technique is called loop-invariant code motion, and before we
 can do it we need somewhere to move them to.
 
 ## A block of its own: the preheader
 
-"Before the loop" sounds obvious, but in a CFG it is not. The header has
+"Before the loop" sounds obvious, but in a CFG it is not. The header of
+a natural loop (from *Dominators and natural loops*) has
 at least two predecessors: the block that enters the loop, and the
 latch that comes back round. Code placed in the header runs on every
 trip, which is what we are trying to avoid; code placed in "the block
@@ -100,10 +102,10 @@ b1 → b2 → b5        b2 is the inner
 </Examples>
 
 In the first, the loop headed by `b1` is entered only from `b0`, and
-`b0`'s only edge goes to `b1` (as in last chapter's `sum`), so `b0`
+`b0`'s only edge goes to `b1`, so `b0`
 already is a preheader and nothing needs adding. In the second, two
 blocks enter the header, so a new block `P` is placed in front of it,
-as in the figure. The third is the inner loop of `sum`: `b2` (which sets
+as in the figure. The third is the inner loop of a nested pair: `b2` (which sets
 `k = 0`) sits between the outer loop's test and the inner header `b5`,
 is outside the inner loop, and leads only to `b5`, so it is the inner
 loop's preheader; it runs once per trip of the *outer* loop.
@@ -123,11 +125,12 @@ second case exactly, as the next section shows.</span>
 </Analogy>
 
 Hoisting is then three steps: find the loop's invariant instructions
-with last chapter's sweep, check that each is safe to move, and move
+with the small fixpoint from *Induction variables, the call graph and
+inlining*, check that each is safe to move, and move
 each safe one to the end of the preheader, keeping the order in which
 they were found, so that every operand is computed before the
-instruction that uses it. Step through it on the inner loop of the grid
-walk from last chapter, `c[y * W + x] = 0`:
+instruction that uses it. Step through it on the inner loop of a grid
+walk, `c[y * W + x] = 0`:
 
 <LicmSteps client:visible />
 

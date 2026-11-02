@@ -41,7 +41,8 @@ This part goes the last mile, from IR to those numbers, for a real
 chip family called **RISC-V**. (To be plain: Viscosity has no native
 back end. It is a source-to-source compiler, JavaScript in and faster
 JavaScript out, and it leaves machine code to V8; this part is the
-general craft, and chapter 250 puts the pieces together for Drip.)
+general craft, and *Drip to RISC-V, end to end* puts the pieces
+together for Drip.)
 
 We will follow one small function all the way down, the sum of the
 squares below `n`:
@@ -88,7 +89,8 @@ func sumsq(%0):
 `%0` is `n`, the phi `%6` is `s` and the phi `%3` is `i`; b1 tests
 `i < n`, b2 is the loop body and b4 returns `s`. (Drip's numbers are
 64-bit floats; in this part we treat `sumsq`'s values as 64-bit whole
-numbers, as a typed Drip from chapter 192 could prove, because floats
+numbers, as a typed Drip (from *A type checker for typed Drip*) could
+prove, because floats
 use a separate set of registers and the ideas carry over unchanged.)
 By the end of the part, this is what we want to produce:
 
@@ -107,7 +109,8 @@ done:
     ret
 ```
 
-The names `a0`, `t0`, `t1` and `t2` are **registers** (chapter 51),
+The names `a0`, `t0`, `t1` and `t2` are **registers** (from *Caches,
+lines and locality*),
 agreed nicknames for four of RISC-V's 32 registers, `x0` to `x31`:
 `a0` holds `n` on the way in and the answer on the way out, `t0` holds
 `s`, `t1` holds `i` and `t2` holds `i * i`. The later chapters of this
@@ -155,9 +158,9 @@ Step through how the processor reads one instruction,
 <EncodeSteps client:visible />
 
 The **opcode** in the lowest seven bits says which format the rest
-follows, so decoding is a few shifts and masks (chapter 34's bit
-operations), done in hardware by chapter 51's fetch, decode and
-execute loop, with no dispatch loop or interpreter in between.
+follows, so decoding is a few shifts and masks (the bit operations of
+*Bits and bytes*), done in hardware by the processor's own fetch,
+decode and execute loop, with no dispatch loop or interpreter in between.
 
 <Callout kind="definition">
 **Machine code** is a program in the form a processor executes
@@ -198,7 +201,8 @@ keep the lowest five bits (0x1f is five ones); the immediate is the top
 ## Assembly language: machine code you can read
 
 Nobody writes those numbers by hand. We write **assembly language**,
-and an *assembler* (chapter 246 builds one) turns each line into its
+and an *assembler* (*Assemblers, object files and linking* builds one)
+turns each line into its
 bits. In the `sumsq` listing, a line is an operation name and its
 operands, destination first: `add t0, t0, t2` means "t0 becomes t0 + t2", and
 `addi t1, t1, 1` adds the constant (the **immediate**) 1. A name
@@ -211,8 +215,8 @@ Some lines are **pseudoinstructions**: convenient spellings the
 assembler expands into real instructions<Cite id="riscv-asm-manual" />.
 `li t0, 0` ("load immediate") is really `addi t0, x0, 0`; `mv a0, t0`
 is `addi a0, t0, 0`; `j loop` is `jal x0, loop`; and `ret` is
-`jalr x0, 0(ra)`, a jump to the address held in `ra` (chapter 228 is
-about that one).
+`jalr x0, 0(ra)`, a jump to the address held in `ra` (*Calling
+conventions and the ABI* is about that one).
 
 <Analogy extra title="Morse code and its letters">
 A telegraph line carries only dots and dashes, but operators think and
@@ -277,7 +281,7 @@ address in `x0`", which throws it away. Pull the fields out yourself:
 - The running example, `sumsq`, goes from Drip to VIR to RISC-V; the
   rest of the part fills in each step.
 
-Next: the agreement that makes those bytes mean the same thing on
-every chip, and a tour of RISC-V itself.
+Next, *Instruction sets and RISC-V*: the agreement that makes those
+bytes mean the same thing on every chip, and a tour of RISC-V itself.
 
 <Quiz />

@@ -246,12 +246,12 @@ export const quiz = [
     ],
   },
   {
-    q: 'Why does `sumsq` compiled with `-O0` contain so many `sd` and `ld` instructions, when the `-O2` version has none?',
+    q: 'A small loop function compiled for RISC-V with clang at `-O0` contains many `sd` and `ld` instructions; at `-O2` it has none. Why?',
     options: [
       {
         t: 'Without optimisation every variable lives in a stack slot, loaded and stored around each use',
         correct: true,
-        why: 'The unoptimised compiler gives n, s and i slots at -24, -32 and -40 from s0; the optimiser keeps them in registers.',
+        why: 'At -O0 each variable gets its own slot in the stack frame; the optimiser keeps them in registers.',
       },
       {
         t: 'RISC-V requires all variables to be in memory',

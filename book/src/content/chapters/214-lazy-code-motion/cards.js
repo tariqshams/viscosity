@@ -7,8 +7,8 @@ export const prompts = {
     a: 'Its result then lives for the shortest time, so it holds a register for less of the program; the number of computations on each path is the same.',
   },
   'busy-cost': {
-    q: 'In the chapter’s example, what is wrong with computing `a + b` once in `b0`?',
-    a: 'Nothing for correctness, but the value must be kept alive from `b0` to `b4`, across the whole function.',
+    q: '`a + b` is anticipated at a function’s entry but used only in blocks near the end. What is wrong with computing it once at the entry?',
+    a: 'Nothing for correctness, but its value must be kept alive (usually in a register) from the entry to its last use, across most of the function.',
   },
   'earliest-what': {
     q: 'What are the **earliest** points for an expression?',
@@ -23,12 +23,12 @@ export const prompts = {
     a: 'A copy may sit there, and it cannot slide further: the block uses the expression, or some successor could not take the copy.',
   },
   'one-at-a-time': {
-    q: 'The chapter computes lazy code motion for one expression at a time. How do compilers handle all expressions together?',
+    q: 'How do compilers run lazy code motion for every expression of a function at once?',
     a: 'They give each expression one bit and solve the same equations on bit vectors, so every expression is handled at once.',
   },
   'dowhile-hoist': {
-    q: 'In the `do`-`while` example, why does the copy of `a + b` stop in the block before the loop instead of sliding into the body?',
-    a: 'The body uses `a + b`, so the copy cannot be postponed past it; and putting it inside would compute it on every trip.',
+    q: 'Lazy code motion hoists a loop-invariant `a + b` out of a `do`-`while` body. Why does the copy stop in the block before the loop instead of being postponed into the body?',
+    a: 'The body’s other predecessor is the back edge, where the copy is neither earliest nor postponable, so the copy cannot slide past the loop entry; inside, it would run on every trip.',
   },
   'used-why': {
     q: 'Why does lazy code motion check whether an inserted copy is used after its block?',
@@ -488,7 +488,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'What does the final `used` analysis prevent?',
+    q: 'In lazy code motion, what does the final “used” analysis prevent?',
     options: [
       {
         t: 'Inserting a copy whose result only its own block would use',

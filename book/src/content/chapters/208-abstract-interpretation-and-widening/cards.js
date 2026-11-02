@@ -23,7 +23,7 @@ export const prompts = {
     a: 'It is useless: it describes every number, so it proves nothing.',
   },
   'infinite-height': {
-    q: 'Why can an interval analysis go on for ever on a counting loop?',
+    q: 'Without widening, why can an interval analysis go on for ever on a counting loop?',
     a: 'Intervals have infinite height: the upper bound can grow by one every round, without end.',
   },
   'widen-what': {
@@ -34,9 +34,9 @@ export const prompts = {
     q: 'Widening loses precision. Why is the result still sound?',
     a: 'Its result is above the join of both arguments, so it still covers every value that can arrive.',
   },
-  'viscosity-domains': {
-    q: 'Why does Viscosity never need widening?',
-    a: 'Its domains are finite and tiny (number or maybe-not; non-negative integer or don’t know), so iteration always settles.',
+  'finite-no-widen': {
+    q: 'Why does an abstract interpretation over a finite domain, such as {number, maybe-not}, never need widening?',
+    a: 'A finite lattice has finite height, so each value can only climb a bounded number of times and iteration always settles.',
   },
 };
 
@@ -466,7 +466,7 @@ export const quiz = [
     ],
   },
   {
-    q: 'Viscosity’s `nonNegInt` returns true when it meets a phi it is already checking. What does that amount to?',
+    q: 'A recursive check “is this SSA value a non-negative integer?” returns true when it reaches a phi it is already checking. What does that amount to?',
     options: [
       {
         t: 'A bug: it should return false to be safe.',
@@ -475,7 +475,7 @@ export const quiz = [
       {
         t: 'An optimistic assumption round a cycle, which the other operands then confirm or refute.',
         correct: true,
-        why: 'Like starting a loop phi at the top: the phi’s answer is decided by its non-cyclic operands.',
+        why: 'Like starting a loop phi at the most optimistic fact: the phi’s answer is then decided by its operands from outside the cycle.',
       },
       {
         t: 'Widening.',

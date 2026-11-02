@@ -1,357 +1,139 @@
-// Chapter 95 cards: recall prompts, examples, exercises and quiz.
+// Chapter 221 cards: recall prompts, examples, exercises and quiz.
 // Keys are stable ids: renaming one would orphan readers' review history.
-// Merged from old chapters 95, 95.
 
 export const prompts = {
-  'ipa-what': {
-    q: 'What does an interprocedural analysis do that an intraprocedural one cannot?',
-    a: 'It follows facts across calls (into parameters, back out of returns) instead of assuming the worst at every call.',
+  'alloc-site-merge': {
+    q: 'In a points-to analysis that names each object by its allocation site alone, what happens to two objects made by one helper function for two different callers?',
+    a: 'They become one abstract object, so stores through either caller’s reference land in the same abstract fields (a false alias).',
   },
-  'call-as-copy': {
-    q: 'For points-to purposes, what two copies is the call `r = f(x)`?',
-    a: 'The argument x is copied into f’s parameter, and f’s return value is copied into r.',
+  'call-ctx-not-enough': {
+    q: 'Why does analysing a factory function separately per call site not, by itself, separate the objects it returns?',
+    a: 'Every context returns the same abstract object (the one allocation site); the call contexts separate the function’s variables, not the objects it creates.',
   },
-  'cg-needs-pts': {
-    q: 'Why must a JavaScript analysis build the call graph and the points-to sets together?',
-    a: 'A callee is a value: the targets of `g(x)` are the function objects in pts(g), which the points-to analysis is still computing.',
+  'heap-context': {
+    q: 'What is a heap context in a points-to analysis?',
+    a: 'A context attached to an abstract object: the object is named by its allocation site together with (a prefix of) the context of the function that allocated it.',
   },
-  unrealizable: {
-    q: 'What impossible path does a context-insensitive analysis follow through `id`?',
-    a: 'In at one call site and out to a different caller’s result; a real call always returns to where it came from.',
+  'heap-wrapper': {
+    q: 'A factory `box()` is called only from inside `make()`, which has two callers. How many sites of heap context does it take to separate the two objects?',
+    a: 'Two: with one site both objects are labelled by the call inside make; the second site names make’s caller.',
   },
-  'call-string': {
-    q: 'In a call-string context, what labels a function’s facts?',
-    a: 'The chain of call sites that led to this call, usually the last k of them.',
+  'ctx-growth': {
+    q: 'What is an upper bound on the number of k-limited call-string contexts of one function, in terms of the number of call sites?',
+    a: 'The number of call sites to the power k (and never more than the number of distinct call chains that reach it).',
   },
-  'k-limit': {
-    q: 'Why does `wrap(q) { return id(q); }` defeat a 1-call-site analysis of `id`?',
-    a: 'Every call to id now comes from the one site inside wrap, so with k = 1 all callers of wrap share one context again.',
+  'ctx-saturate': {
+    q: 'In a program without recursion, why does raising k beyond the length of the longest call chain add no contexts?',
+    a: 'Each context is a chain of real call sites; once k covers the whole chain there is nothing left to tell apart.',
   },
-  'object-sens': {
-    q: 'What is the context in an object-sensitive analysis?',
-    a: 'The allocation site of the receiver object (the object the method is called on), not the call site.',
+  'ctx-cost-twice': {
+    q: 'Why do heap contexts make a context-sensitive analysis grow faster than call contexts alone?',
+    a: 'Each extra context multiplies not only each function’s copies of its variables but also the abstract objects, and every points-to set and field can mention each of them.',
   },
-  cloning: {
-    q: 'How can context sensitivity be pictured as cloning?',
-    a: 'Copy each function once per context, then run a context-insensitive analysis on the larger program.',
+  'ctx-column': {
+    q: 'How is context sensitivity expressed in a Datalog points-to analysis?',
+    a: 'As extra columns: relations such as Pts carry a context (and objects a heap context), and rules pass the context along so facts from different contexts never join.',
   },
-  'summary-what': {
-    q: 'What does a function summary record?',
-    a: 'What the function does with what flows in (parameters returned, stored, passed on; fields read and written), computed once.',
+  'records-finite': {
+    q: 'Plain Datalog always terminates. What breaks that guarantee once rules can build record values such as a call string `[s, c]`, and what restores it?',
+    a: 'Building records creates new values, so a recursive call could make ever longer call strings; cutting each context to k sites leaves finitely many values, so evaluation stops.',
   },
-  'summary-precise': {
-    q: 'Why does applying `id`’s summary give `a = id(o1)` the answer {o1}, not {o1, o2}?',
-    a: 'The summary is a rule (“result gets the parameter’s set”) applied to each call’s own argument, so callers never share facts.',
+  'naive-cost': {
+    q: 'What work does naive Datalog evaluation repeat in every round?',
+    a: 'It matches every rule against all known facts again, re-deriving every fact found in earlier rounds.',
   },
-  'go-tags': {
-    q: 'What does Go’s compiler call its per-function escape summaries, and where are they used?',
-    a: '“Parameter tags”; they are used at static call sites to decide whether the arguments escape.',
+  'semi-naive': {
+    q: 'In semi-naive Datalog evaluation, which matches does a round (after the first) make?',
+    a: 'Only those that use at least one fact derived in the previous round (the delta).',
   },
-  'summary-recursion': {
-    q: 'How is a recursive function summarised, when its summary depends on itself?',
-    a: 'Start every summary at “does nothing”, recompute them all, and repeat until none changes (a fixpoint).',
-  },
-  'datalog-parts': {
-    q: 'In Datalog, what is a fact and what is a rule?',
-    a: 'A fact is a row of a relation, like `Assign(a, c)`; a rule `head :- body` derives new rows when its body holds.',
-  },
-  'datalog-join': {
-    q: 'In `Pts(t, h) :- Assign(f, t), Pts(f, h).`, what does the shared variable `f` do?',
-    a: 'It joins the two tables: an Assign row and a Pts row combine only when they agree on f.',
-  },
-  'datalog-stops': {
-    q: 'Why is Datalog evaluation guaranteed to stop?',
-    a: 'Rules never invent new values, so only finitely many facts are possible, and each round must add one or stop.',
-  },
-  'datalog-why': {
-    q: 'What does writing an analysis in Datalog save the analysis writer?',
-    a: 'Writing and debugging the fixpoint loops and joins by hand: the engine evaluates the rules, so the rules are the whole analysis.',
+  'semi-naive-once': {
+    q: 'In semi-naive evaluation of a rule with two derived atoms in its body, how is each match kept from being made twice in one round?',
+    a: 'One version of the rule per atom: that atom against the new facts, the atoms before it against only the older facts, and the atoms after it against all facts.',
   },
 };
 
 export const examples = {
-  wrapper: {
-    title: 'Two calls through a wrapper',
-    code: `function id(p) { return p; }
-function wrap(q) { return id(q); }
-const a = wrap({ n: 1 });
-const b = wrap({ n: 2 });
-a.n = 10;
-console.log(b.n); // still 2
-console.log(a === b); // false`,
-  },
-  pathRounds: {
-    title: 'Two path rules, run by hand',
-    code: `// Path(x, y) :- Edge(x, y).
-// Path(x,z) :- Edge(x,y), Path(y,z).
-const edge = [[1, 2], [2, 3], [3, 4]];
-const path = new Set();
-const add = (x, y) => {
-  const k = x + '>' + y;
-  if (path.has(k)) return false;
-  path.add(k);
-  return true;
-};
-let round = 0;
-let grew = true;
-while (grew) {
-  round++;
-  const old = [...path];
-  grew = false;
-  for (const [x, y] of edge) {
-    if (add(x, y)) grew = true;
-    for (const p of old) {
-      const [y2, z] = p.split('>');
-      if (String(y) !== y2) continue;
-      if (add(x, z)) grew = true;
+  contextCount: {
+    title: 'How many contexts reach box',
+    code: `// Each function calls the next one
+// from two different sites.
+const calls = [
+  ['main', 'parse', 's1'],
+  ['main', 'parse', 's2'],
+  ['parse', 'node', 's3'],
+  ['parse', 'node', 's4'],
+  ['node', 'box', 's5'],
+  ['node', 'box', 's6'],
+];
+function contexts(k) {
+  // function -> its set of contexts
+  const seen = new Map();
+  const work = [['main', []]];
+  while (work.length) {
+    const [f, ctx] = work.pop();
+    const key = ctx.join(',');
+    if (!seen.has(f)) {
+      seen.set(f, new Set());
+    }
+    if (seen.get(f).has(key)) continue;
+    seen.get(f).add(key);
+    for (const [from, to, s] of calls) {
+      if (from !== f) continue;
+      const c = [s, ...ctx].slice(0, k);
+      work.push([to, c]);
     }
   }
-  const all = [...path].join(' ');
-  console.log(round, all);
+  return seen.get('box').size;
+}
+for (let k = 0; k <= 4; k++) {
+  console.log('k =', k, 'box:',
+    contexts(k));
 }`,
   },
 };
 
 export const exercises = {
-  contexts: {
-    title: 'k call sites of context',
-    prompt: 'Functions take one parameter. `fns` maps a name to its body: `[\'param\']` (returns its parameter), `[\'new\', site]` (returns a fresh object made at `site`) or `[\'call\', g, site]` (returns `g(param)`, called at `site`). `calls` lists top-level calls `[v, f, o, s]`: `v = f(new object at site o)`, at call site `s`. No function calls itself. Write `analyze(fns, calls, k)` returning, for each `v`, its sorted points-to set, using contexts of the last `k` call sites (`k = 0` is context-insensitive).',
-    starter: `function analyze(fns, calls, k) {
-  // your code here
-  return {};
-}
-
-const fns = { id: ['param'] };
-console.log(analyze(fns, [
-  ['a', 'id', 'o1', 's1'],
-  ['b', 'id', 'o2', 's2'],
-], 1)); // a: ['o1'], b: ['o2']`,
-    solution: `function analyze(fns, calls, k) {
-  const pts = new Map();
-  const get = (key) => {
-    if (!pts.has(key)) {
-      pts.set(key, new Set());
-    }
-    return pts.get(key);
-  };
-  let changed = true;
-  const add = (key, o) => {
-    const t = get(key);
-    const n = t.size;
-    t.add(o);
-    if (t.size !== n) changed = true;
-  };
-  const flow = (from, to) => {
-    for (const o of get(from)) {
-      add(to, o);
-    }
-  };
-  const visit = (f, s, ctx, arg) => {
-    const c = [s, ...ctx].slice(0, k);
-    const at = f + '@' + c.join(',');
-    flow(arg, at + ':p');
-    const body = fns[f];
-    if (body[0] === 'param') {
-      flow(at + ':p', at + ':r');
-    } else if (body[0] === 'new') {
-      add(at + ':r', body[1]);
-    } else {
-      const [, g, t] = body;
-      const p = at + ':p';
-      const r = visit(g, t, c, p);
-      flow(r, at + ':r');
-    }
-    return at + ':r';
-  };
-  while (changed) {
-    changed = false;
-    for (const [v, f, o, s] of calls) {
-      const arg = 'arg@' + s;
-      add(arg, o);
-      flow(visit(f, s, [], arg), v);
-    }
-  }
-  const out = {};
-  for (const [v] of calls) {
-    out[v] = [...get(v)].sort();
-  }
-  return out;
-}`,
-    tests: `const fns = { id: ['param'], wrap: ['call', 'id', 's3'], mk: ['new', 'om'] };
-const viaId = [['a', 'id', 'o1', 's1'], ['b', 'id', 'o2', 's2']];
-const viaWrap = [['a', 'wrap', 'o1', 's1'], ['b', 'wrap', 'o2', 's2']];
-test('k = 0 merges the two callers of id', () => {
-  expect(analyze(fns, viaId, 0)).toEqual({ a: ['o1', 'o2'], b: ['o1', 'o2'] });
-});
-test('k = 1 keeps them apart', () => {
-  expect(analyze(fns, viaId, 1)).toEqual({ a: ['o1'], b: ['o2'] });
-});
-test('a wrapper defeats k = 1', () => {
-  expect(analyze(fns, viaWrap, 1)).toEqual({ a: ['o1', 'o2'], b: ['o1', 'o2'] });
-});
-test('k = 2 sees through the wrapper', () => {
-  expect(analyze(fns, viaWrap, 2)).toEqual({ a: ['o1'], b: ['o2'] });
-});
-test('a fresh object does not depend on context', () => {
-  const calls = [['a', 'mk', 'o1', 's1'], ['b', 'mk', 'o2', 's2']];
-  expect(analyze(fns, calls, 0)).toEqual({ a: ['om'], b: ['om'] });
-});`,
-    hints: [
-      'Name every set with a string key: `\'id@s1:p\'` for id’s parameter in context [s1], `\'id@s1:r\'` for its return value. With k = 0 the context part is empty, so every call shares `\'id@:p\'`.',
-      'Write `visit(f, s, ctx, arg)`: build the callee context `[s, ...ctx].slice(0, k)`, flow the argument’s set into the parameter, handle the body (for `call`, visit `g` from inside, in the new context), and return the key of the return value’s set.',
-      'Sets can still grow after a caller has read them (the second call to id adds to the shared return). Wrap the loop over `calls` in `while (changed)` and note growth inside one `add` helper.',
-    ],
-    walkthrough: `**How to think about it.** Everything here is Andersen's copy rule plus one new idea: the *name* of a set includes a context. A call is two copies (argument to parameter, return to result), so if we give "id's parameter in context c" its own key, the same flow helper handles every case, and choosing \`k\` simply decides how many call sites go into that key. With \`k = 0\` the context is empty and every call to \`id\` shares one parameter and one return, which is exactly the single shelf from the chapter.
-
-**The solution, line by line.**
-
-- \`pts\`, \`get\` and \`add\` are the familiar map of sets; \`add\` sets \`changed\` whenever a set really grows, so we know when to stop.
-- \`flow(from, to)\` copies one set into another: the inclusion rule.
-- \`visit(f, s, ctx, arg)\` analyses a call to \`f\` from site \`s\`, made while the caller ran in context \`ctx\`, whose argument is in the set \`arg\`.
-- \`const c = [s, ...ctx].slice(0, k);\` builds the callee's context: this site in front of the caller's chain, cut to \`k\` sites. That one line is the whole of call-string sensitivity.
-- \`const at = f + '@' + c.join(',');\` names this function-in-context, so \`at + ':p'\` is its parameter and \`at + ':r'\` its return value.
-- \`flow(arg, at + ':p');\` is the first copy: argument into parameter.
-- For \`['param']\`, the return value is the parameter: \`flow(at + ':p', at + ':r')\`.
-- For \`['new', site]\`, the return value is that fresh site.
-- For \`['call', g, t]\`, the body calls \`g\` at site \`t\` with our parameter, *from our context \`c\`*, so \`const r = visit(g, t, c, p);\` analyses that inner call, and \`flow(r, at + ':r')\` makes its return ours.
-- \`return at + ':r';\` gives the caller the key of the return set.
-- The \`while (changed)\` loop runs over the top-level calls: each puts its fresh object in an argument set, visits, and does the second copy, \`flow(..., v)\`, return into result.
-- Finally each result variable's set is sorted.
-
-**Why the loop is needed.** With \`k = 0\`, the first call reads \`id@:r\` when it holds only \`o1\`; the second call then adds \`o2\` to that very set. Without another round, \`a\` would wrongly stay at \`['o1']\` (wrongly *precise*, which for an analysis is the dangerous direction).
-
-**Common wrong attempts.**
-
-- One pass without \`while (changed)\`: \`a\` misses \`o2\` when \`k = 0\`.
-- Using only the current site as the context (\`[s]\` instead of \`[s, ...ctx].slice(0, k)\`): then \`id\` is always analysed in context \`[s3]\` inside \`wrap\`, even with \`k = 2\`, and the last-but-one test fails. The caller's context has to be carried along.`,
-    wrong: [
-      {
-        code: `function analyze(fns, calls, k) {
-  const pts = new Map();
-  const get = (key) => {
-    if (!pts.has(key)) {
-      pts.set(key, new Set());
-    }
-    return pts.get(key);
-  };
-  const flow = (from, to) => {
-    for (const o of get(from)) {
-      get(to).add(o);
-    }
-  };
-  const visit = (f, s, ctx, arg) => {
-    const c = [s, ...ctx].slice(0, k);
-    const at = f + '@' + c.join(',');
-    flow(arg, at + ':p');
-    const body = fns[f];
-    if (body[0] === 'param') {
-      flow(at + ':p', at + ':r');
-    } else if (body[0] === 'new') {
-      get(at + ':r').add(body[1]);
-    } else {
-      const [, g, t] = body;
-      const p = at + ':p';
-      const r = visit(g, t, c, p);
-      flow(r, at + ':r');
-    }
-    return at + ':r';
-  };
-  for (const [v, f, o, s] of calls) {
-    const arg = 'arg@' + s;
-    get(arg).add(o);
-    flow(visit(f, s, [], arg), v);
-  }
-  const out = {};
-  for (const [v] of calls) {
-    out[v] = [...get(v)].sort();
-  }
-  return out;
-}`,
-        why: 'One pass only. With k = 0 the first call reads id’s shared return set before the second call adds o2 to it, so `a` misses o2.',
-      },
-      {
-        code: `function analyze(fns, calls, k) {
-  const pts = new Map();
-  const get = (key) => {
-    if (!pts.has(key)) {
-      pts.set(key, new Set());
-    }
-    return pts.get(key);
-  };
-  let changed = true;
-  const add = (key, o) => {
-    const t = get(key);
-    const n = t.size;
-    t.add(o);
-    if (t.size !== n) changed = true;
-  };
-  const flow = (from, to) => {
-    for (const o of get(from)) {
-      add(to, o);
-    }
-  };
-  const visit = (f, s, arg) => {
-    const c = [s].slice(0, k);
-    const at = f + '@' + c.join(',');
-    flow(arg, at + ':p');
-    const body = fns[f];
-    if (body[0] === 'param') {
-      flow(at + ':p', at + ':r');
-    } else if (body[0] === 'new') {
-      add(at + ':r', body[1]);
-    } else {
-      const [, g, t] = body;
-      const p = at + ':p';
-      const r = visit(g, t, p);
-      flow(r, at + ':r');
-    }
-    return at + ':r';
-  };
-  while (changed) {
-    changed = false;
-    for (const [v, f, o, s] of calls) {
-      const arg = 'arg@' + s;
-      add(arg, o);
-      flow(visit(f, s, arg), v);
-    }
-  }
-  const out = {};
-  for (const [v] of calls) {
-    out[v] = [...get(v)].sort();
-  }
-  return out;
-}`,
-        why: 'The context forgets the caller’s chain: id inside wrap is always just [s3], so even k = 2 merges the two calls to wrap.',
-      },
-    ],
-  },
-  tinyDatalog: {
-    title: 'A Datalog engine in forty lines',
-    prompt: 'A fact is an array like `[\'New\', \'a\', \'o1\']`. A rule is `{ head, body }`: `head` is one atom and `body` a list of atoms, where strings starting with `?` are variables, like `{ head: [\'Pts\', \'?v\', \'?h\'], body: [[\'New\', \'?v\', \'?h\']] }`. Write `solve(facts, rules)` that derives every fact the rules allow (repeat until nothing new) and returns all facts, input and derived, as sorted strings like `\'Pts(a,o1)\'`.',
+  semiNaive: {
+    title: 'A semi-naive Datalog engine',
+    prompt: 'A fact is an array like `[\'Edge\', \'1\', \'2\']`. A rule is `{ head, body }`: `head` is one atom and `body` a list of atoms, where strings starting with `?` are variables. Write `solve(facts, rules)` that evaluates the rules semi-naively to the fixpoint and returns `{ facts, firings }`: every fact, input and derived, as sorted strings like `\'Path(1,2)\'`, and `firings`, the number of rule matches made (one each time a whole body matched, whether or not the head was new). In round 1 every input fact counts as new; in each later round, make only the matches that use at least one fact derived in the round before, and never the same match twice.',
     starter: `function solve(facts, rules) {
   // your code here
-  return [];
+  return { facts: [], firings: 0 };
 }
 
-const out = solve(
-  [['New', 'a', 'o1']],
-  [{ head: ['Pts', '?v', '?h'],
-     body: [['New', '?v', '?h']] }]);
-console.log(out); // has 'Pts(a,o1)'`,
+const pathRules = [
+  { head: ['Path', '?x', '?y'],
+    body: [['Edge', '?x', '?y']] },
+  { head: ['Path', '?x', '?z'],
+    body: [['Edge', '?x', '?y'],
+      ['Path', '?y', '?z']] },
+];
+const edges = [
+  ['Edge', '1', '2'],
+  ['Edge', '2', '3'],
+  ['Edge', '3', '4'],
+  ['Edge', '4', '5'],
+];
+const out = solve(edges, pathRules);
+console.log(out.firings); // 10`,
     solution: `function solve(facts, rules) {
-  const known = new Map();
   const key = (f) => f[0] + '(' +
     f.slice(1).join(',') + ')';
+  const known = new Map();
   for (const f of facts) {
     known.set(key(f), f);
   }
-  const match = (at, fact, env) => {
-    if (at[0] !== fact[0]) return null;
-    const n = at.length;
-    if (n !== fact.length) return null;
+  let delta = new Map(known);
+  let old = new Map();
+  let firings = 0;
+  const match = (q, fact, env) => {
+    if (q[0] !== fact[0]) return null;
+    if (q.length !== fact.length) {
+      return null;
+    }
     const e = { ...env };
-    for (let i = 1; i < n; i++) {
-      const a = at[i];
+    for (let i = 1; i < q.length; i++) {
+      const a = q[i];
       if (!a.startsWith('?')) {
         if (a !== fact[i]) return null;
       } else if (a in e) {
@@ -364,259 +146,251 @@ console.log(out); // has 'Pts(a,o1)'`,
     }
     return e;
   };
-  const extend = (envs, at) => {
+  const extend = (envs, q, from) => {
     const next = [];
     for (const env of envs) {
-      for (const f of known.values()) {
-        const e = match(at, f, env);
+      for (const f of from.values()) {
+        const e = match(q, f, env);
         if (e) next.push(e);
       }
     }
     return next;
   };
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const r of rules) {
-      let envs = [{}];
-      for (const at of r.body) {
-        envs = extend(envs, at);
-      }
-      for (const env of envs) {
-        const h = r.head.map((x, i) =>
-          i > 0 && x.startsWith('?')
-            ? env[x] : x);
-        if (!known.has(key(h))) {
-          known.set(key(h), h);
-          changed = true;
-        }
+  const fire = (r, envs, fresh) => {
+    for (const env of envs) {
+      firings++;
+      const h = r.head.map((x, m) =>
+        m > 0 && x.startsWith('?')
+          ? env[x] : x);
+      const k = key(h);
+      if (!known.has(k)) {
+        fresh.set(k, h);
       }
     }
+  };
+  while (delta.size > 0) {
+    const fresh = new Map();
+    for (const r of rules) {
+      const n = r.body.length;
+      for (let i = 0; i < n; i++) {
+        let envs = [{}];
+        r.body.forEach((q, j) => {
+          const from = j < i ? old
+            : j === i ? delta : known;
+          envs = extend(envs, q, from);
+        });
+        fire(r, envs, fresh);
+      }
+    }
+    old = new Map(known);
+    for (const [k, f] of fresh) {
+      known.set(k, f);
+    }
+    delta = fresh;
   }
-  return [...known.keys()].sort();
+  const out = [...known.keys()].sort();
+  return { facts: out, firings };
 }`,
-    tests: `const pts = [
-  { head: ['Pts', '?v', '?h'], body: [['New', '?v', '?h']] },
-  { head: ['Pts', '?t', '?h'], body: [['Assign', '?f', '?t'], ['Pts', '?f', '?h']] },
+    tests: `const pathRules = [
+  { head: ['Path', '?x', '?y'], body: [['Edge', '?x', '?y']] },
+  { head: ['Path', '?x', '?z'], body: [['Edge', '?x', '?y'], ['Path', '?y', '?z']] },
 ];
+const chain = (n) => Array.from({ length: n - 1 }, (_, i) => ['Edge', String(i + 1), String(i + 2)]);
 const only = (xs, p) => xs.filter((s) => s.startsWith(p));
-test('one rule, one fact', () => {
-  expect(only(solve([['New', 'a', 'o1']], pts), 'Pts')).toEqual(['Pts(a,o1)']);
+test('the chain of five: ten paths', () => {
+  expect(only(solve(chain(5), pathRules).facts, 'Path').length).toBe(10);
+});
+test('the chain of five: each match made once', () => {
+  expect(solve(chain(5), pathRules).firings).toBe(10);
 });
 test('input facts are kept', () => {
-  expect(solve([['New', 'a', 'o1']], pts)).toEqual(['New(a,o1)', 'Pts(a,o1)']);
-});
-test('a join on the shared variable', () => {
-  const facts = [['New', 'a', 'o1'], ['New', 'b', 'o2'], ['Assign', 'a', 'c']];
-  expect(only(solve(facts, pts), 'Pts')).toEqual(['Pts(a,o1)', 'Pts(b,o2)', 'Pts(c,o1)']);
-});
-test('chains need several rounds', () => {
-  const facts = [['Assign', 'c', 'd'], ['Assign', 'b', 'c'], ['Assign', 'a', 'b'], ['New', 'a', 'o1']];
-  expect(only(solve(facts, pts), 'Pts(d')).toEqual(['Pts(d,o1)']);
+  expect(only(solve(chain(3), pathRules).facts, 'Edge')).toEqual(['Edge(1,2)', 'Edge(2,3)']);
 });
 test('cycles stop', () => {
-  const facts = [['Assign', 'a', 'b'], ['Assign', 'b', 'a'], ['New', 'a', 'o1']];
-  expect(only(solve(facts, pts), 'Pts')).toEqual(['Pts(a,o1)', 'Pts(b,o1)']);
+  const out = solve([['Edge', 'a', 'b'], ['Edge', 'b', 'a']], pathRules);
+  expect(out.facts).toEqual(['Edge(a,b)', 'Edge(b,a)', 'Path(a,a)', 'Path(a,b)', 'Path(b,a)', 'Path(b,b)']);
+  expect(out.firings).toBe(6);
 });
-test('a recursive rule on paths', () => {
-  const rules = [
-    { head: ['Path', '?x', '?y'], body: [['Edge', '?x', '?y']] },
-    { head: ['Path', '?x', '?z'], body: [['Edge', '?x', '?y'], ['Path', '?y', '?z']] },
-  ];
-  const out = solve([['Edge', '1', '2'], ['Edge', '2', '3']], rules);
-  expect(only(out, 'Path')).toEqual(['Path(1,2)', 'Path(1,3)', 'Path(2,3)']);
+test('two derived atoms in one body: no match counted twice', () => {
+  const rules = [pathRules[0], { head: ['Path', '?x', '?z'], body: [['Path', '?x', '?y'], ['Path', '?y', '?z']] }];
+  const out = solve(chain(5), rules);
+  expect(only(out.facts, 'Path').length).toBe(10);
+  expect(out.firings).toBe(14);
 });`,
     hints: [
-      'Keep every known fact in a `Map` from its string form (`\'Pts(a,o1)\'`) to the array, so “is this new?” is one lookup. Start it with the input facts.',
-      'Write `match(at, fact, env)` for an atom `at`: it returns a new set of variable bindings if the fact fits the atom under the bindings `env` already has, or `null`. A constant must equal the fact’s value; a variable already bound must equal it too; an unbound variable gets bound.',
-      'For each rule, start with one empty binding `[{}]` and, atom by atom, replace the list with every way of extending each binding by a matching fact. Fill the head from each final binding, add it if new, and repeat all the rules while anything was added.',
+      'Keep three maps from a fact’s string to the fact: `known` (everything so far), `delta` (what was new last round; at the start, all the input facts) and `old` (what was known before last round; at the start, nothing). Stop when `delta` is empty.',
+      'For each rule and each position `i` in its body, match the atoms one at a time, building up variable bindings: atom `i` against `delta`, atoms before `i` against `old`, atoms after `i` against `known`. Every binding that survives all the atoms is one firing.',
+      'Collect new heads in a separate `fresh` map during the round, and only add them to `known` at the end, after setting `old` to a copy of `known`; otherwise a fact found in this round would be joined with in the same round, and some matches would be counted twice.',
     ],
-    walkthrough: `**How to think about it.** A rule says "for every way of choosing facts that fit the body, the head is a fact". So evaluating one rule means enumerating those ways, and each way is a *binding*: which value each variable stands for. Build the bindings one body atom at a time: start with the empty binding, and for each atom, extend every binding you have by every known fact that fits the atom without contradicting it. Whatever bindings survive all the atoms each give one head fact. Then the fixpoint: repeat all the rules until a round adds nothing. It stops because the heads only use values that already appear in facts, so there are finitely many possible facts.
+    walkthrough: `**How to think about it.** A naive engine re-makes every match each round. The observation behind semi-naive evaluation is that any match whose facts are all old was already made in an earlier round, so a round only needs the matches that use at least one fact that was new last round. The care is in not counting a match twice when it uses *two* new facts: we decide that a match belongs to the *first* body position that holds a new fact. So, for position \`i\`, atom \`i\` must be new, every atom before it must be old (otherwise the match belongs to an earlier position), and the atoms after it may be anything.
 
 **The solution, line by line.**
 
-- \`const known = new Map();\` holds every fact, keyed by a string such as \`Pts(a,o1)\`; \`key(f)\` builds that string. Starting it with the input facts means they appear in the output too.
-- \`match(at, fact, env)\` (\`at\` is the atom) first checks the relation name and the number of columns; a \`New\` atom can only match a \`New\` fact of the same width.
-- \`const e = { ...env };\` copies the bindings (with the spread syntax from chapter 8), so a failed match never spoils the binding we started from.
-- In the loop over columns: a constant (no \`?\`) must equal the fact's value; a variable already in \`e\` must equal it too (this is what makes a shared variable a *join*); a new variable is bound to the fact's value.
-- \`return e;\` : the fact fits, under these bindings.
-- \`while (changed) {\` : the fixpoint loop.
-- \`let envs = [{}];\` : one way so far, binding nothing.
-- \`extend(envs, at)\` returns every extension of every binding in \`envs\` by every fact that matches the atom \`at\`. Applying it to each body atom in turn leaves \`envs\` holding every complete way to satisfy the body.
-- \`r.head.map(...)\` fills in the head: column 0 is the relation name, and any \`?\` variable is replaced by its bound value.
-- \`if (!known.has(key(h))) { ...; changed = true; }\` adds a genuinely new fact and asks for another round.
-- Finally all keys are returned sorted.
+- \`key\` turns a fact into the string form the tests want, and \`known\` holds every fact by that key.
+- \`let delta = new Map(known);\` makes all input facts new in round 1, and \`let old = new Map();\` says nothing is older than that.
+- \`match(q, fact, env)\` is the usual unifier: same relation and arity, constants equal, a variable either bound to the same value already or bound now. It returns the extended bindings or \`null\`.
+- \`while (delta.size > 0)\` is the fixpoint test: a round with nothing new to join with can find nothing.
+- For each rule, the loop over \`i\` makes one version of the rule per body position.
+- \`const from = j < i ? old : j === i ? delta : known;\` (split over two lines) is the whole idea: before \`i\`, old facts only; at \`i\`, new facts only; after \`i\`, anything.
+- \`extend(envs, q, from)\` matches one atom against one map of facts, for every set of bindings so far, and keeps the bindings that still work.
+- \`fire\` takes every binding that survived all the atoms: each is a firing, \`firings++\`, then the head is built by replacing its variables, and kept in \`fresh\` if it is not yet known.
+- At the end of the round, \`old\` becomes a copy of \`known\` (everything before this round's additions), the fresh facts join \`known\`, and \`fresh\` becomes the next \`delta\`.
+
+On the chain of five nodes this makes 4 matches in round 1 and then 3, 2, 1 and 0, ten in all, one per path fact; for \`Path(x, z) :- Path(x, y), Path(y, z)\` it makes 14, exactly the number of different ways the two body atoms can match at the fixpoint, because each match is made once, in the round after its newest fact appeared.
 
 **Common wrong attempts.**
 
-- Running the rules once: a chain \`a → b → c → d\` needs one round per step, so \`Pts(d,o1)\` is missed.
-- Binding a variable without checking an earlier binding (always \`e[a] = fact[i]\`): then \`Assign(?f, ?t), Pts(?f, ?h)\` pairs *every* Assign with *every* Pts, and \`c\` gets objects it was never assigned. The join is the whole point of shared variables.
-- Matching against facts added during the same rule's enumeration is not wrong (it only speeds things up); what matters is that the outer loop keeps going until nothing is new. This is the simple "naive" evaluation; real engines only join against facts that are new since the last round ("semi-naive"), which gives the same answer much faster.`,
+- Keeping the naive loop (every rule against all of \`known\` each round) gets the facts right but makes 40 matches on the chain instead of 10.
+- Matching atom \`i\` against \`delta\` but *every* other atom against \`known\`: with two derived atoms, a match that uses two new facts is made once for each, 18 instead of 14.
+- Matching every atom against \`delta\`: after round 1 the \`Edge\` facts are never new again, so the recursive rule finds nothing and most paths are missed.`,
     wrong: [
       {
         code: `function solve(facts, rules) {
-  const known = new Map();
   const key = (f) => f[0] + '(' +
     f.slice(1).join(',') + ')';
+  const known = new Map();
   for (const f of facts) {
     known.set(key(f), f);
   }
-  const match = (at, fact, env) => {
-    if (at[0] !== fact[0]) return null;
+  let firings = 0;
+  const match = (q, fact, env) => {
+    if (q[0] !== fact[0]) return null;
+    if (q.length !== fact.length) {
+      return null;
+    }
     const e = { ...env };
-    const n = at.length;
-    for (let i = 1; i < n; i++) {
-      const a = at[i];
+    for (let i = 1; i < q.length; i++) {
+      const a = q[i];
       if (!a.startsWith('?')) {
         if (a !== fact[i]) return null;
+      } else if (a in e) {
+        if (e[a] !== fact[i]) {
+          return null;
+        }
       } else {
         e[a] = fact[i];
       }
     }
     return e;
   };
-  for (const r of rules) {
-    let envs = [{}];
-    for (const at of r.body) {
-      const next = [];
-      const fs = [...known.values()];
-      for (const env of envs) {
-        for (const f of fs) {
-          const e = match(at, f, env);
-          if (e) next.push(e);
-        }
-      }
-      envs = next;
-    }
+  const extend = (envs, q, from) => {
+    const next = [];
     for (const env of envs) {
-      const h = r.head.map((x, i) =>
-        i > 0 && x.startsWith('?')
-          ? env[x] : x);
-      known.set(key(h), h);
+      for (const f of from.values()) {
+        const e = match(q, f, env);
+        if (e) next.push(e);
+      }
     }
-  }
-  return [...known.keys()].sort();
-}`,
-        why: 'Two mistakes: a variable is rebound without checking its earlier value, so joins become cross products, and the rules run only once, so chains are not followed to the end.',
-      },
-    ],
-  },
-  paramTags: {
-    optional: true,
-    title: 'Escape summaries for functions',
-    prompt: 'Each function has one parameter `p` and a list of statements about it: `[\'store\']` (p is stored in a global), `[\'return\']` (p is returned), `[\'call\', g]` (p is passed to g, result ignored) or `[\'retcall\', g]` (returns `g(p)`). Functions may call each other and themselves. Write `paramTags(fns)` returning, for each function, `{ escapes, returned }`: whether p may end up in a global, and whether p may be returned.',
-    starter: `function paramTags(fns) {
-  // your code here
-  return {};
-}
-
-console.log(paramTags({
-  keep: [['store']],
-  pass: [['call', 'keep']],
-}).pass); // { escapes: true, ... }`,
-    solution: `function paramTags(fns) {
-  const tag = {};
-  for (const f in fns) {
-    tag[f] = {
-      escapes: false, returned: false };
-  }
+    return next;
+  };
+  const fire = (r, envs, fresh) => {
+    for (const env of envs) {
+      firings++;
+      const h = r.head.map((x, m) =>
+        m > 0 && x.startsWith('?')
+          ? env[x] : x);
+      const k = key(h);
+      if (!known.has(k)) {
+        fresh.set(k, h);
+      }
+    }
+  };
   let changed = true;
   while (changed) {
     changed = false;
-    for (const f in fns) {
-      let esc = false;
-      let ret = false;
-      for (const [op, g] of fns[f]) {
-        if (op === 'store') esc = true;
-        if (op === 'return') ret = true;
-        const calls = op === 'call' ||
-          op === 'retcall';
-        if (calls && tag[g].escapes) {
-          esc = true;
-        }
-        if (op === 'retcall' &&
-            tag[g].returned) ret = true;
+    const fresh = new Map();
+    for (const r of rules) {
+      let envs = [{}];
+      for (const q of r.body) {
+        envs = extend(envs, q, known);
       }
-      const t = tag[f];
-      if (esc !== t.escapes ||
-          ret !== t.returned) {
-        tag[f] = {
-          escapes: esc, returned: ret };
-        changed = true;
-      }
+      fire(r, envs, fresh);
     }
+    for (const [k, f] of fresh) {
+      known.set(k, f);
+    }
+    if (fresh.size > 0) changed = true;
   }
-  return tag;
+  const out = [...known.keys()].sort();
+  return { facts: out, firings };
 }`,
-    tests: `test('direct store and return', () => {
-  expect(paramTags({ keep: [['store']], id: [['return']] })).toEqual({
-    keep: { escapes: true, returned: false },
-    id: { escapes: false, returned: true },
-  });
-});
-test('a summary is used at a call', () => {
-  const t = paramTags({ keep: [['store']], pass: [['call', 'keep']] });
-  expect(t.pass).toEqual({ escapes: true, returned: false });
-});
-test('returning a call that returns p', () => {
-  const t = paramTags({ id: [['return']], wrap: [['retcall', 'id']] });
-  expect(t.wrap).toEqual({ escapes: false, returned: true });
-});
-test('order of functions does not matter', () => {
-  const t = paramTags({ a: [['call', 'b']], b: [['call', 'c']], c: [['store']] });
-  expect(t.a.escapes).toBe(true);
-});
-test('recursion reaches a fixpoint', () => {
-  const t = paramTags({ loop: [['call', 'loop'], ['retcall', 'loop']] });
-  expect(t.loop).toEqual({ escapes: false, returned: false });
-});`,
-    hints: [
-      'Start every function’s tag at `{ escapes: false, returned: false }`: the optimistic “does nothing” summary.',
-      'Recompute each function’s tag from its statements, reading the *current* tags of the functions it calls.',
-      'Repeat the whole recomputation until no tag changes. A function that only calls itself never becomes true.',
-    ],
-    walkthrough: `**How to think about it.** This is the functional approach in miniature, and it is how Go's parameter tags work in spirit: each function gets a summary of what happens to its parameter, and a call reads the callee's summary instead of its body. A function's summary depends on its callees' summaries, perhaps including its own, so we start every summary at the most optimistic value ("does nothing with p") and recompute until nothing changes. Starting optimistic and only ever moving towards "escapes" or "returned" gives the least fixpoint, the most precise safe answer.
-
-**The solution, line by line.**
-
-- The first loop gives every function the "does nothing" tag.
-- \`while (changed)\` repeats rounds until a round changes no tag.
-- For each function, \`esc\` and \`ret\` are recomputed from scratch from its statements.
-- \`store\` makes p escape; \`return\` makes p returned.
-- For \`call\` and \`retcall\`, p escapes if the callee's current tag says its parameter escapes.
-- For \`retcall\` only, p is returned if the callee returns its parameter (we return what it returns); a plain \`call\` ignores the result.
-- If the new tag differs from the old, it is stored and another round is requested.
-
-**Common wrong attempts.** Computing each function once, in order, fails when a function calls one defined after it (the fourth test). Starting pessimistic (everything \`true\`) and never lowering gives a safe but useless answer. Recursing into callees without memory loops forever on \`loop\`.`,
-    wrong: [
+        why: 'This is naive evaluation: every round matches every rule against all known facts, so the facts are right but the chain of five takes 40 matches instead of 10.',
+      },
       {
-        code: `function paramTags(fns) {
-  const tag = {};
-  for (const f in fns) {
-    tag[f] = {
-      escapes: false, returned: false };
+        code: `function solve(facts, rules) {
+  const key = (f) => f[0] + '(' +
+    f.slice(1).join(',') + ')';
+  const known = new Map();
+  for (const f of facts) {
+    known.set(key(f), f);
   }
-  for (const f in fns) {
-    for (const [op, g] of fns[f]) {
-      if (op === 'store') {
-        tag[f].escapes = true;
-      }
-      if (op === 'return') {
-        tag[f].returned = true;
-      }
-      if (op === 'call' &&
-          tag[g].escapes) {
-        tag[f].escapes = true;
-      }
-      if (op === 'retcall' &&
-          tag[g].returned) {
-        tag[f].returned = true;
+  let delta = new Map(known);
+  let firings = 0;
+  const match = (q, fact, env) => {
+    if (q[0] !== fact[0]) return null;
+    if (q.length !== fact.length) {
+      return null;
+    }
+    const e = { ...env };
+    for (let i = 1; i < q.length; i++) {
+      const a = q[i];
+      if (!a.startsWith('?')) {
+        if (a !== fact[i]) return null;
+      } else if (a in e) {
+        if (e[a] !== fact[i]) {
+          return null;
+        }
+      } else {
+        e[a] = fact[i];
       }
     }
+    return e;
+  };
+  const extend = (envs, q, from) => {
+    const next = [];
+    for (const env of envs) {
+      for (const f of from.values()) {
+        const e = match(q, f, env);
+        if (e) next.push(e);
+      }
+    }
+    return next;
+  };
+  const fire = (r, envs, fresh) => {
+    for (const env of envs) {
+      firings++;
+      const h = r.head.map((x, m) =>
+        m > 0 && x.startsWith('?')
+          ? env[x] : x);
+      const k = key(h);
+      if (!known.has(k)) {
+        fresh.set(k, h);
+      }
+    }
+  };
+  while (delta.size > 0) {
+    const fresh = new Map();
+    for (const r of rules) {
+      const n = r.body.length;
+      for (let i = 0; i < n; i++) {
+        let envs = [{}];
+        r.body.forEach((q, j) => {
+          const from =
+            j === i ? delta : known;
+          envs = extend(envs, q, from);
+        });
+        fire(r, envs, fresh);
+      }
+    }
+    for (const [k, f] of fresh) {
+      known.set(k, f);
+    }
+    delta = fresh;
   }
-  return tag;
+  const out = [...known.keys()].sort();
+  return { facts: out, firings };
 }`,
-        why: 'One pass in order: `a` reads `b`’s tag before `b` has read `c`’s, so `a` wrongly does not escape. Summaries need a fixpoint.',
+        why: 'Only one atom is forced to be new, and all the others may be anything, so a match that uses two new facts is made twice: 18 matches instead of 14 for the rule with two Path atoms.',
       },
     ],
   },
@@ -624,198 +398,110 @@ test('recursion reaches a fixpoint', () => {
 
 export const quiz = [
   {
-    q: 'An intraprocedural analysis meets `const r = f(x);`. What must it assume?',
+    q: '`function mk() { return {}; }` is called as `a = mk()` and `b = mk()`. A points-to analysis analyses `mk` separately per call site but names objects by allocation site only. What does it say about `a` and `b`?',
     options: [
       {
-        t: 'That `r` is a copy of `x`',
-        why: 'It cannot know that without looking inside `f`.',
-      },
-      {
-        t: 'That `f` may store `x` anywhere and `r` may point at anything',
+        t: 'They may alias',
         correct: true,
-        why: 'Without crossing the call, the worst case is the only safe one.',
+        why: 'Both point at the one abstract object for the site inside mk; call contexts separate mk’s variables, not the object it creates.',
       },
       {
-        t: 'That `f` has no effect',
-        why: 'That would be unsound: `f` might store `x` in a global.',
+        t: 'They never alias',
+        why: 'That is true of every run, but proving it needs a heap context, so that the two allocations become two abstract objects.',
+      },
+      {
+        t: 'Nothing: it cannot follow the call',
+        why: 'A context-sensitive analysis is interprocedural; it follows the call and sees the allocation.',
       },
     ],
   },
   {
-    q: 'With `id(p) { return p; }` called as `a = id(o1)` and `b = id(o2)`, what does a context-insensitive points-to analysis give for `a`?',
+    q: 'In a k-limited call-string analysis of a program without recursion, what happens to the number of contexts of a function as k grows past the length of the longest call chain reaching it?',
     options: [
       {
-        t: '`{o1}`',
-        why: 'That is the precise answer, but with one shared parameter, `p` holds both objects.',
+        t: 'It keeps doubling',
+        why: 'Doubling needs a new level of call sites to choose from; past the longest chain there is none.',
       },
       {
-        t: '`{}`',
-        why: 'The return copies something into `a`.',
-      },
-      {
-        t: '`{o1, o2}`',
+        t: 'It stays the same',
         correct: true,
-        why: 'Both calls copy into the one `p`, and the return copies all of `p` back to every caller.',
+        why: 'Every context is a real chain of call sites, and once k covers the whole chain there are no more sites to tell apart.',
       },
       {
-        t: 'unknown: the call is a closed door',
-        why: 'An interprocedural analysis follows the call; it just merges the callers.',
+        t: 'It drops to one',
+        why: 'More context never merges contexts that a shorter context kept apart.',
       },
     ],
   },
   {
-    q: 'Why do analyses keep only the last k call sites of context, rather than the whole chain?',
+    q: 'A Datalog rule builds callee contexts as records, `Ctx(g, [s, c1]) :- Call(s, f, g), Ctx(f, [c1, c2]).` Why does evaluation still stop on a recursive program?',
     options: [
       {
-        t: 'Recursion makes chains of call sites unboundedly long, so the set of contexts must be cut to stay finite',
+        t: 'Because Datalog rules never create new values',
+        why: 'Plain Datalog rules do not, but a record constructor such as [s, c1] does; that is exactly why the limit is needed.',
+      },
+      {
+        t: 'Because recursive calls are skipped',
+        why: 'Nothing in the rule skips them; a recursive call is a Call fact like any other.',
+      },
+      {
+        t: 'Because the rule drops c2, so every context has at most two sites and there are finitely many',
         correct: true,
-        why: 'With k sites there are finitely many contexts, so the fixpoint is still reached.',
-      },
-      {
-        t: 'Because older call sites never matter',
-        why: 'They can matter: the wrapper example needs two sites.',
-      },
-      {
-        t: 'Because JavaScript has at most k nested calls',
-        why: 'JavaScript allows deep call chains (up to the stack limit).',
+        why: 'k-limiting keeps the set of possible record values finite, so the fixpoint is reached.',
       },
     ],
   },
   {
-    q: '`put(b, v)` calls `b.set(v)` at one site; `put` is called with two different boxes. Which context separates the two calls to `set`?',
+    q: 'Naive and semi-naive evaluation are run on the same Datalog program. What differs in their results?',
     options: [
       {
-        t: '1 call site',
-        why: 'Every call to `set` comes from the same site inside `put`.',
+        t: 'Semi-naive may miss facts that need old facts',
+        why: 'A match can mix old and new facts; it is made as long as at least one fact is new, so nothing is missed.',
       },
       {
-        t: 'Context-insensitive',
-        why: 'That merges everything.',
-      },
-      {
-        t: 'The function’s name',
-        why: 'Every call is to the same function, `set`.',
-      },
-      {
-        t: 'Object sensitivity: the receiver’s allocation site',
+        t: 'Nothing: they derive the same facts, in the same number of rounds; semi-naive makes fewer matches',
         correct: true,
-        why: 'The receivers are two different boxes, so `set` gets two contexts.',
+        why: 'Semi-naive skips only matches whose facts are all old, which were already made in an earlier round.',
+      },
+      {
+        t: 'Semi-naive needs more rounds',
+        why: 'Each round finds the same new facts as the naive round would, so the number of rounds is the same.',
       },
     ],
   },
   {
-    q: 'Why can’t a JavaScript points-to analysis first build the call graph and then compute points-to sets?',
+    q: 'In semi-naive evaluation of `Path(x, z) :- Path(x, y), Path(y, z)`, a match uses two facts that were both new in the last round. How many times should the round make it?',
     options: [
       {
-        t: 'Because calls are rare in JavaScript',
-        why: 'They are everywhere.',
+        t: 'Never, since it was made in an earlier round',
+        why: 'Both facts are new, so no earlier round could have made this match.',
       },
       {
-        t: 'It can; the order does not matter',
-        why: 'The call graph depends on the sets, so building it first would have to guess.',
+        t: 'Twice, once per new fact',
+        why: 'That is the bug of forcing only one atom to be new and letting the others match anything; it double-counts.',
       },
       {
-        t: 'Because callees are values: the targets of `g(x)` are whatever function objects pts(g) holds',
+        t: 'Once',
         correct: true,
-        why: 'Each new set can add call edges, and each edge adds copies, so both grow together to one fixpoint.',
+        why: 'It belongs to the first position holding a new fact; the version for the second position requires the first atom to be old, so it skips this match.',
       },
     ],
   },
   {
-    q: 'What is the main advantage of a function summary over analysing a function once per calling context?',
+    q: 'Why must a Datalog engine finish a relation before applying any rule that uses it under negation (`!Killed(x)`)?',
     options: [
       {
-        t: 'It is more precise than any context-sensitive analysis',
-        why: 'It can match one, but a summary must be safe for every input, which can cost precision.',
-      },
-      {
-        t: 'The function is analysed once, yet each call still gets an answer for its own arguments',
+        t: 'A fact added to it later would make an earlier conclusion false, and a growing fixpoint never takes facts back',
         correct: true,
-        why: 'The summary is a rule from inputs to outputs, applied per call.',
+        why: 'So relations used under "not" are computed in an earlier layer (stratum) and are complete when the rule runs.',
       },
       {
-        t: 'It removes the need for a call graph',
-        why: 'A call still needs to know which function’s summary to apply.',
-      },
-    ],
-  },
-  {
-    q: 'Go reports `p does not escape` for `func read(p *P) float64`. What can it do with that at the call `read(&P{7, 8})`?',
-    options: [
-      {
-        t: 'Nothing: escape analysis is only about one function',
-        why: 'The point of the tag is to be used at call sites.',
+        t: 'Negation is slower to evaluate',
+        why: 'Speed is not the issue; without the ordering the answer itself can be wrong.',
       },
       {
-        t: 'Inline `read`',
-        why: 'The output was produced with inlining turned off (-l); the decision comes from the summary.',
-      },
-      {
-        t: 'Remove the call',
-        why: 'The call still computes p.x.',
-      },
-      {
-        t: 'Allocate the new `P` on the stack, since the callee never keeps it',
-        correct: true,
-        why: 'Go printed `&P{...} does not escape` for that call.',
-      },
-    ],
-  },
-  {
-    q: 'Facts: `New(a, o1)`, `Assign(a, b)`, `Assign(b, c)`. Rules: `Pts(v, h) :- New(v, h).` and `Pts(t, h) :- Assign(f, t), Pts(f, h).` How many rounds derive something new?',
-    options: [
-      {
-        t: 'One',
-        why: 'Round 1 only finds Pts(a, o1); R2 needs Pts facts to join with.',
-      },
-      {
-        t: 'Three: Pts(a, o1), then Pts(b, o1), then Pts(c, o1)',
-        correct: true,
-        why: 'Each round extends the chain by one copy; the fourth round adds nothing.',
-      },
-      {
-        t: 'It never stops, because rules can apply forever',
-        why: 'Rules invent no values, so only finitely many facts exist.',
-      },
-    ],
-  },
-  {
-    q: 'What makes `Assign(f, t), Pts(f, h)` a join?',
-    options: [
-      {
-        t: 'The comma',
-        why: 'The comma means “and”; the join comes from what the two parts share.',
-      },
-      {
-        t: 'The variable `f` appears in both, so only rows that agree on `f` combine',
-        correct: true,
-        why: 'Without the shared variable it would pair every row with every row.',
-      },
-      {
-        t: 'Both relations have two columns',
-        why: 'Width only matters for matching an atom to a fact.',
-      },
-      {
-        t: 'The head mentions `t` and `h`',
-        why: 'The head says what to produce; the body’s shared variables do the joining.',
-      },
-    ],
-  },
-  {
-    q: 'How does Doop make its rules consider only code the program can actually reach?',
-    options: [
-      {
-        t: 'It deletes unreachable methods before running',
-        why: 'Reachability is itself computed by the rules, together with the points-to sets.',
-      },
-      {
-        t: 'It runs the program first',
-        why: 'Doop is a static analysis; it never runs the program.',
-      },
-      {
-        t: 'Its rules include a `Reachable(?method)` condition, and other rules derive `Reachable` and call-graph edges from the points-to sets',
-        correct: true,
-        why: 'So the call graph and the sets grow together to one fixpoint.',
+        t: 'Negated atoms cannot share variables',
+        why: 'They can and usually do; the variables must be bound by a positive atom, which is a different rule.',
       },
     ],
   },

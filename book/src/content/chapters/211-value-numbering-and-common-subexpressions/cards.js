@@ -23,12 +23,12 @@ export const prompts = {
     a: '`a * b` equals `b * a`, so both orders should share a key; `a - b` and `b - a` give different answers.',
   },
   'load-kill': {
-    q: 'Two `field.get %0 .x` have a `field.set %0, %3 .x` between them. May the second read reuse the first?',
-    a: 'No. The store changed `p.x`, so the store must remove the key of that read from the table.',
+    q: 'Two reads of `p.x` have a store to `p.x` between them. May value numbering reuse the first read for the second?',
+    a: 'No. The store may change `p.x`, so it must remove that read’s key from the table (and the key of any read that may alias the stored field).',
   },
   'call-kill': {
-    q: 'Why can’t the two `load sq` around `call %23, %22` be merged?',
-    a: 'The call runs code the compiler cannot see, which could assign a new value to `sq`; an unknown call forgets every load.',
+    q: 'Why must local value numbering forget every remembered memory read at a call to an unknown function?',
+    a: 'The callee runs code the compiler cannot see, which may write any memory the program can reach, including every location read before the call.',
   },
   'plus-twice': {
     q: 'Why may a JavaScript compiler not merge two identical `a + b` when `a` might be an object?',
@@ -428,11 +428,11 @@ export const quiz = [
     ],
   },
   {
-    q: 'In Viscosity’s VIR for `sq(p) + sq(3)`, why may `%25 = load sq` not reuse `%23 = load sq`?',
+    q: 'In `sq(p) + sq(3)`, the global `sq` is read once before each call. Why may the second read not reuse the first?',
     options: [
       {
-        t: 'They are in different blocks',
-        why: 'They are in the same block, b0.',
+        t: 'Reads of globals are never numbered',
+        why: 'They can be; two reads with no possible write between them give the same value.',
       },
       {
         t: 'Loads are never equal',
@@ -464,20 +464,20 @@ export const quiz = [
     ],
   },
   {
-    q: 'Viscosity prints both `%2 = binop * %0, %1` and `%3 = binop * %0, %1` for `f`. Why?',
+    q: 'What redundancy does local value numbering, run on one basic block at a time, miss?',
     options: [
       {
-        t: 'It has no value numbering pass: it leaves arithmetic to the JavaScript engine',
+        t: 'A computation repeated later in the same block',
+        why: 'That is exactly what it finds.',
+      },
+      {
+        t: 'A computation already made in an earlier block that every path to this one passes through',
         correct: true,
-        why: 'It rewrites only the code around collections, and the engine running the output does its own optimising.',
+        why: 'Its table starts empty in each block; finding these needs a global method that knows which blocks dominate which.',
       },
       {
-        t: 'The two products might differ',
-        why: 'They cannot: same operation, same SSA operands.',
-      },
-      {
-        t: 'Its value numbering ran but found nothing',
-        why: 'There is no value numbering pass in Viscosity’s core.',
+        t: 'Two multiplications with their operands in different orders',
+        why: 'Sorting the operands of commutative operations handles that within a block.',
       },
     ],
   },

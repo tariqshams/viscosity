@@ -3,301 +3,226 @@ n: 222
 day: 14
 part: XII
 title: 'Type and shape inference'
-tagline: 'JavaScript never says that a field holds numbers, or that every element has the same fields; Viscosity has to work both out from the code alone, and the trick that makes it work on loops is to guess the best answer and then try to knock the guess down.'
+tagline: 'A fact that says only "number" or "maybe not" throws away most of what an analysis could know. A lattice of kinds, facts refined on the edges of a test, and shapes that merge instead of failing keep much more of it.'
 objectives:
-  - Give each SSA value a fact, and explain why that makes the facts flow-sensitive and why a merge of different facts is a union.
-  - Run an optimistic fixpoint on a loop by hand, and say why a pessimistic start proves nothing there.
-  - Infer a collection's record shape from its object literals, and say why field order is part of the shape.
-  - Contrast inferring facts ahead of time (Viscosity) with watching them at run time (V8's feedback).
+  - Use sets of kinds as a lattice for JavaScript values, and write the rule for `+` over it.
+  - Refine a value's kinds on the two edges of a `typeof` test by giving it a new name on each edge, and say why that is sound only for SSA values.
+  - Explain why narrowing a field is not safe across a call or a store without alias analysis.
+  - Join two record shapes into one with optional fields, read TypeScript's version of it, and say why a struct-of-arrays rewrite still demands equal shapes.
 introduces: []
-uses: [typescript, type-annotation, type-erasure, typeof, union-type, narrowing, hindley-milner, shape, transition-tree, type-feedback, speculation, deoptimization, typed-array, float64, field-representation, aos-vs-soa, ssa, phi-node, dataflow, lattice, fixpoint, worklist, constant-propagation, escape-analysis, call-graph, static-analysis, type-inference, shape-inference]
-sources: [ts-basics, ts-narrowing, v8-maglev]
+uses: [typescript, typeof, union-type, narrowing, shape, typed-array, aos-vs-soa, ssa, phi-node, dataflow, lattice, fixpoint, alias-analysis, static-analysis, type-inference, shape-inference, object, array, set, arrow-function, for-of]
+sources: [ts-narrowing]
 ---
-import LatticeSteps from '../../../components/diagrams/ch222/LatticeSteps';
-import UnionMerge from '../../../components/diagrams/ch222/UnionMerge';
-import Playground from '../../../components/playground/Playground';
+import KindLattice from '../../../components/diagrams/ch222/KindLattice';
+import NarrowSteps from '../../../components/diagrams/ch222/NarrowSteps';
 
-{/* ── remnant of old chapter 103: keep only what goes beyond the core ── */}
+## Where the core left off
 
-## Two facts nobody wrote down
+You met type and shape inference in *Finding collections, and inferring
+shapes*: one fact per SSA value, a two-level lattice ("number" above
+"maybe not"), an optimistic fixpoint for loops, and record shapes that
+must match exactly, field order included. That is all a `Float64Array`
+column needs. This chapter goes further, in the direction a more
+ambitious compiler (or a type checker such as TypeScript's) has to go:
+facts that say *which* kinds a value may be, facts refined by the tests
+the program itself makes, and shapes that can be combined instead of
+rejected.
 
-Before Viscosity can give a field its own `Float64Array` column (a typed
-array that stores raw 64-bit numbers), it needs two facts that no
-JavaScript program ever states: that every element has **the same
-fields**, so there is one set of columns, and that the field only ever
-holds **numbers**, so a typed array can store it. Getting the second one
-wrong changes what the program prints, because a `Float64Array` quietly
-turns a string such as `'far'` into `NaN`. Viscosity cannot ask the
-programmer, and it does not trust TypeScript annotations either, because
-they are erased before the code runs and never change what it
-does<Cite id="ts-basics" />; as such, it has to deduce both facts from
-the code itself.
+Here is a small program the two-level lattice handles badly:
 
-You have met inference before: Hindley–Milner (chapter 196) worked out
-every type in a language that was designed for it. JavaScript was not:
-one variable may hold a number on one line and a string on the next, so
-the question becomes "what can this value be *here*?".
-
-<Analogy title="a detective with no confession">
-A detective has no one admitting anything, only evidence. "The butler did
-it" is a guess; the real work is checking every clue against the guess,
-dropping it the moment one clue contradicts it, and keeping it only if
-every clue fits.
-<span slot="breaks">A detective may convict on a strong hunch; Viscosity
-never acts on a hunch, only on a guess that every one of its rules has
-confirmed, and when in doubt it keeps your objects as they are.</span>
-</Analogy>
-
-<Analogy extra title="sorting the post without opening it">
-A sorting office decides where each parcel goes from the outside alone:
-the label, the size, the weight. It never opens one, so a parcel with no
-clear label goes in the "we cannot be sure" pile.
-<span slot="breaks">A parcel's label was written by someone who knew what
-was inside; a compiler has no labels at all and reads what it needs from
-how each value was made.</span>
-</Analogy>
-
-<Callout kind="definition">
-**Type inference** deduces the types of values from how they are made and
-used, without annotations. In a dynamic language it is done per value,
-at each point in the program. Viscosity's version answers one question
-per value: is it provably a number?
-</Callout>
-
-<Prompts ids={['ti-what', 'ti-annotations']} />
-
-## Facts belong to values, not to variables
-
-In SSA (chapter 90) every assignment makes a new value, so a variable
-that changes its mind becomes several values, and each can carry its own
-fact. That makes the facts **flow-sensitive**: the same name can have a
-different fact at different points. Where paths meet, a phi joins its
-inputs, and the joined fact is a **union**: "a number *or* a string".
-
-<Figure takeaway="Each SSA value has its own fact; a phi joins them." caption="x is 1 on one path and 'one' on the other. x1 and x2 each have an exact fact; the phi x3 can be either, a union. Viscosity's lattice has only two levels, so the union is recorded as “maybe not a number”.">
-  <UnionMerge />
-</Figure>
-
-TypeScript's checker does the same kind of flow analysis: its handbook
-shows one variable observed with a different type at each point, and a
-union where paths re-merge<Cite id="ts-narrowing" />. Viscosity's lattice
-is coarser, with only *number* above *maybe not*, because that is all a
-`Float64Array` needs to know.
-
-<Formal title="Two rules and a join">
-
-```text
-n(a) = num    n(b) = num
-────────────────────────
-     n(a + b) = num
-
-num ⊔ num   = num
-num ⊔ other = maybe not
+```js
+let x = c ? 1 : 'one';
+if (typeof x === 'number') {
+  total = total + x;   // x is a number here
+} else {
+  label = x + '!';     // and a string here
+}
 ```
 
-<span slot="read">If a is a number and b is a number, then a + b is a
-number. Joining two facts at a phi (the ⊔ sign, read "join") keeps
-"number" only when both sides are numbers; anything else becomes
-"maybe not".</span>
+Inside the first branch, `x` is certainly a number, because the program
+has just checked; however, an analysis with one fact per value says
+"maybe not" for `x` everywhere, so `total` falls to "maybe not" too, and
+it cannot even say that `label` is a string, since "maybe not a number"
+covers strings, booleans and objects alike.
+
+<Analogy title="the guest list at the door">
+Outside a venue the crowd is mixed, but past the door where ages are
+checked, everyone inside is old enough; nobody needs to look at the
+guests again, because passing the door is the proof.
+<span slot="breaks">A door checks each person as they pass, at the moment
+they pass; an analysis learns the fact from the condition alone, ahead
+of time, and the fact holds only as long as nothing can change the value
+after the check.</span>
+</Analogy>
+
+## A lattice of kinds
+
+The first step is a richer fact: the **set of kinds** a value may have,
+drawn from `number`, `string`, `boolean`, `undefined`, `null` and
+`object` (leaving out functions, symbols and bigints to keep the example
+small). Sets ordered by inclusion form a lattice: the join is union, the
+empty set (no value seen yet) is the optimistic start at the bottom,
+and the set of every kind (nothing known) is the top.
+
+<Figure takeaway="Join is union: from any two sets, go up to the smallest set that contains both." caption="The lattice for three kinds. The empty set (grey) is where an optimistic analysis starts, single kinds (green) are exact facts, pairs (amber) are unions, and the full set (red) says nothing.">
+  <KindLattice />
+</Figure>
+
+Each operation then needs a rule from kinds to kinds, and the rule for
+`+` is where JavaScript's own definition matters: if either side is a
+string, the result is a string; otherwise, if either side is an object,
+the object is first converted to a primitive (by its `valueOf` or
+`toString`), which may give a number or a string; and otherwise the
+result is a number (`true + 1` is `2`, `null + 1` is `1`, and
+`undefined + 1` is `NaN`, which is still a number).
+
+<Formal title="The rule for + on kinds">
+
+```text
+K(a + b) = ⋃ over x ∈ K(a), y ∈ K(b) of
+  {string}          if x or y is string
+  {number, string}  else, if x or y
+                    is object
+  {number}          otherwise
+```
+
+<span slot="read">The kinds of a + b are the union, over every pair of a
+kind x of a and a kind y of b, of: string, if either is a string;
+otherwise number or string, if either is an object; otherwise number.</span>
 </Formal>
 
 <Examples of="type-inference">
 
 ```js
-const a = 2 * 3;   // number
+// K(a) = {number}, K(b) = {number}
+a + b      // {number}
 ```
 
 ```js
-let x = 1;          // x1: number
-if (c) x = 'one';   // x2: string
-use(x);  // x3 = phi: number | string
+// K(x) = {number, string}
+x + 1      // {number, string}
+x + '!'    // {string}
 ```
 
-```js
-function f(p) { return p + 1; }
-f(2); f(3);   // every call passes a number:
-              // p and p + 1 are numbers
-```
+<Run id="plusKinds" />
 
 </Examples>
 
-The first is a constant times a constant. The second is the diagram: after the `if`, `x` is the phi's value, a union, so Viscosity says
-"maybe not". The third is the realistic case: `p` is a parameter of a
-known function (one whose every call site is visible, as in the last
-chapter), and every call passes a number.
+The first is the exact case. The second shows why the extra precision
+pays: even when `x` is not known to be a number, `x + '!'` is known to
+be a string. The runnable checks the rule against JavaScript itself,
+including the two surprises: an array plus a number is a string
+(`[] + 1` is `'1'`), while an object with a `valueOf` that returns a
+number gives a number.
 
-<Prompts ids={['ti-flow', 'ti-union']} />
+<Prompts ids={['kinds-lattice', 'plus-string', 'plus-object']} />
 
-## Rules for one value
+## Facts on the edges of a test
 
-Each value's fact comes from a small rule. Simplified, from
-`packages/core/src/analysis.ts`:
+The second step uses the program's own tests. On the true edge of
+`typeof x === 'number'`, `x`'s kinds can be intersected with
+`{number}`; on the false edge, `number` can be removed. The catch is
+that SSA gives `x` one fact everywhere, so there is nowhere to put a
+different fact for each branch. The fix is to give the value a new name
+on each edge, a copy placed at the start of the branch (often called a
+**π-node**), whose fact is the refined one:
 
-```ts
-switch (i.op) {
-  case 'const':
-    return typeof i.value === 'number';
-  case 'binop':
-    return ARITH.has(i.operator!)
-      && n(i.args[0]) && n(i.args[1]);
-  case 'phi': return i.args.every(n);
-  case 'param':  // every caller passes one
-    return sites.every((s) =>
-      n(s.args[i.index! + 1]));
-  default: return false;
+<NarrowSteps client:visible />
+
+<Callout kind="definition">
+**Narrowing** (or *refinement*) gives a value a smaller set of possible
+types on the control-flow edges where a test guarantees it, such as the
+two edges out of `typeof x === 'number'`. In an SSA-based analysis it
+is done by inserting a copy of the value at the start of each branch, so
+that each copy can carry its own fact; at the next φ the facts are
+joined again.
+</Callout>
+
+TypeScript's checker does the same: its handbook shows a union narrowed
+to a different type inside each branch of a `typeof` test, by the
+control flow analysis that follows each path through the code, and it
+also warns about a quirk any such analysis must respect: `typeof null`
+is `'object'`, so the true edge of `typeof x === 'object'` keeps `null`
+as well as objects<Cite id="ts-narrowing" />.
+
+Narrowing is sound for an SSA value because the value can never change
+after the test. A field is different:
+
+```js
+if (typeof p.x === 'number') {
+  log(p);          // may set p.x = 'far'
+  total += p.x;    // no longer proven
 }
 ```
 
-`n(v)` reads the current fact for `v`. A constant is a number if its
-JavaScript `typeof` says so. `+` counts only when both sides are numbers,
-since `1 + '1'` is `'11'`. A phi needs *every* input to be a number,
-which is the join from above. A parameter needs every call site to pass
-a number; and anything the rules do not know falls to `default`: not a
-number.
+Between the test and the use, any call or store that might reach the
+same object can undo the test, so a compiler may keep a field's
+narrowed fact only across code that alias analysis (from *Alias
+analysis and points-to*) proves cannot write that field.
 
-<Prompts ids={['ti-plus', 'ti-param']} />
+<Prompts ids={['narrow-edges', 'narrow-copy', 'narrow-null', 'narrow-field']} />
 
-## The loop problem
+## Shapes that merge
 
-The rules refer to each other. In a loop, the phi at the top depends on
-the addition at the bottom, which depends on the phi; where do you
-start? Step through both answers:
-
-<LatticeSteps client:visible />
-
-<Callout kind="definition">
-An **optimistic** analysis starts every value on a cycle at the best
-answer ("number") and knocks down whatever a rule contradicts, round
-after round, until a whole round changes nothing. A **pessimistic** one
-starts at the worst answer and adds only what it can prove, so on a cycle
-it never gets started: each value waits for the other.
-</Callout>
-
-This is the lattice and fixpoint machinery of chapters 92, 92 and 92. A
-fact can only fall, and there are finitely many facts, so the rounds
-must end; as a guard, the real code stops after 1000 rounds and, if it
-has not settled, throws away every guess (it **fails closed**):
+The core rejected a collection whose records had different shapes. A
+type checker cannot afford to reject; instead it **joins** the shapes:
+a field present in every record stays, with its kinds joined, and a
+field present in only some becomes optional. TypeScript does this when
+it infers the element type of an array of object literals; with tsc
+6.0.2, `[{ x: 1, y: 0 }, { x: 1, y: 0, z: 2 }]` gets this type:
 
 ```ts
-const MAX_ROUNDS = 1000;
-// Fail closed: if the fixpoint did not
-// converge, nothing is proven.
+({ x: number; y: number; z?: undefined; }
+ | { x: number; y: number; z: number; })[]
 ```
 
-<Prompts ids={['ti-optimistic', 'ti-terminates']} />
+It keeps both shapes as a union, but writes the missing `z` into the
+first as an optional field that can only be `undefined`, so that reading
+`p.z` from any element type-checks and gives `number | undefined`.
 
-One string is enough to spread. Here records are pushed by `add(i, 0)`
-in a loop and then once by `add(5, 'far')`; `viscosity explain` gives
-`x` a typed column and `y` a plain array column (a field that may hold
-non-numbers still gets a column, only an ordinary array). Change the last
-loop to `ps[i].x += ps[i].y` and it says "no field is provably numeric",
-because `x + y` might now be a string, so `x` falls too:
+A struct-of-arrays rewrite still has to demand equal shapes, and the
+reason is what a column means: a `z` column for records that lack `z`
+needs a separate "present" flag for each row, because `'z' in p`,
+`Object.keys(p)` and `JSON.stringify(p)` all distinguish a missing
+field from one holding `undefined`, and the rewritten program must
+print exactly what the original did. Joined shapes are the right
+answer for a checker, which only has to say what *may* be read; a
+layout rewrite needs facts that hold for every record.
 
-<Playground client:visible title="Which columns are typed?" initial={`const ps = [];
-function add(a, b) {
-  ps.push({ x: a, y: b });
-}
-for (let i = 0; i < 100; i++) add(i, 0);
-add(5, 'far');
-for (let i = 0; i < ps.length; i++)
-  ps[i].x *= 2;
-console.log(ps[100].x, ps[100].y);`} />
+<More title="Shapes as a lattice">
 
-## Shapes from object literals
+Shapes ordered by "has at least these fields" also form a lattice, but
+an infinite one, since there is no limit on field names; analyses keep
+it finite by only ever using the field names that appear in the
+program. A shape join is then: the fields common to both, each with its
+kinds joined, plus the remaining fields marked optional. Order is a
+separate question: TypeScript's object types ignore it, while V8's
+hidden classes (from *Shapes, inline caches and elements kinds*) do
+not, since `{x, y}` and `{y, x}` are reached by different transitions.
 
-The other fact is the shape. Viscosity only accepts records made by
-object literals (in `push({...})` or in an array literal), and each
-becomes a `record.new` instruction carrying its field list. The first
-list it meets becomes the collection's shape; every other one must match
-it exactly, order included:
+</More>
 
-```ts
-if (c.fields.length === 0)
-  c.fields = [...r.fields!];
-else if (JSON.stringify(c.fields)
-    !== JSON.stringify(r.fields))
-  bail(c, `${where}: records with ` +
-    'different fields or field order');
-```
-
-<Analogy extra title="pasting rows into a spreadsheet">
-You can paste a stack of forms into one spreadsheet only if every form
-has the same boxes in the same order; one form with an extra box, or
-with "y" before "x", and the columns no longer line up.
-<span slot="breaks">A spreadsheet happily leaves a cell empty; Viscosity
-has no "missing" value, so a record with a missing field is a different
-shape, not a row with a gap.</span>
-</Analogy>
-
-<Callout kind="definition">
-**Shape inference** deduces an object's layout (its fields and their
-order) statically, from the code that creates the objects. Viscosity's
-rule for combining the shapes of a collection is the strictest possible:
-they must all be equal.
-</Callout>
-
-<Examples of="shape-inference">
-
-```js
-ps.push({ x: i, y: 0 });  // shape {x, y}
-```
-
-```js
-ps.push({ x: 1, y: 0, z: 2 });
-// unsafe: records with different fields
-// or field order ({x, y} vs {x, y, z})
-```
-
-```js
-if (i % 2) ps.push({ x: i, y: 1 });
-else ps.push({ y: 1, x: i });
-// unsafe: ... ({x, y} vs {y, x})
-```
-
-</Examples>
-
-The first is a single literal, so the shape is its field list. The
-second adds one record with an extra field, and the third alternates two
-orders; both are real `explain` messages, and both keep the array of
-objects. Why should order matter when `{x, y}` and `{y, x}` hold the same
-data? Partly for Viscosity, which reads each column's value from a fixed
-position in the literal; and partly because JavaScript itself can tell
-the two apart:
-
-<Run id="order" />
-
-<Prompts ids={['si-what', 'si-order']} />
-
-<Callout kind="engine" label="Under the hood">
-V8 learns the same two facts by watching rather than proving: its type
-feedback records which shapes and number representations each operation
-has seen, its optimising tiers specialise on that, and deoptimisation is
-the way back when a guess turns out wrong<Cite id="v8-maglev" />.
-Viscosity runs before the program and has no way back, so a guess has
-to become a proof, which is why one string or one reordered literal is
-enough to change its decision.
-</Callout>
+<Prompts ids={['shape-join', 'ts-optional-undefined']} />
 
 ## Your turn
 
-<Exercise id="unifyShapes" />
-
-<Exercise id="inferNumeric" />
+<Exercise id="kindsRules" />
 
 ## What you learned
 
-- **Type inference** deduces types from how values are made and used.
-  Facts attach to SSA values, so they are **flow-sensitive**, and a phi
-  joins them into a **union**; Viscosity keeps only "number" or
-  "maybe not".
-- Loops make the rules circular. An **optimistic** fixpoint starts at
-  "number" and knocks guesses down; it fails closed if it never settles.
-- One string spreads: through `+`, phis and stores into fields.
-- **Shape inference** takes the field lists of the object literals; in
-  Viscosity they must match exactly, order included.
-- V8 watches and can undo a guess; Viscosity must prove.
+- **Sets of kinds** form a lattice whose join is union; it can say "a
+  string" or "a number or a string" where a two-level lattice says
+  only "maybe not".
+- The rule for `+` follows JavaScript: a string on either side gives a
+  string, an object may give a number or a string, anything else gives
+  a number.
+- **Narrowing** refines a value on the edges of a test, using a new
+  name per edge; it is sound for SSA values, and for fields only where
+  alias analysis rules out a write.
+- Type checkers **join** shapes, making missing fields optional; a
+  layout rewrite still needs equal shapes.
 
 Next: the graph-shaped IRs that some compilers use instead of lists of
-instructions.
+instructions, in *Sea of nodes and other IR designs*.
 
 <Quiz />
