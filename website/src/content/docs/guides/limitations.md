@@ -3,8 +3,8 @@ title: Limitations
 description: What Viscosity does not do (yet).
 ---
 
-- **Version 0.0.1.** Everything is published (npm and crates.io; see
-  [Install](/start/install/)), but it is an early release: under Cargo's
+- **Version 0.0.x.** Everything is published (npm at 0.0.2, crates.io at
+  0.0.1; see [Install](/start/install/)), but it is an early release: under Cargo's
   rules every 0.0.z version is incompatible with the next.
 - **No TypeScript in the Rust engine.** TypeScript input needs the
   TypeScript engine.

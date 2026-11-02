@@ -11,16 +11,15 @@ by typed arrays. Your code keeps the same behaviour.
 Website: [viscosity.dev](https://viscosity.dev) (the compiler's docs) and
 [viscosity.dev/book](https://viscosity.dev/book) (the book).
 
-Status: **version 0.0.1, published; early, so expect rough edges.**
+Status: **early releases on npm (0.0.2) and crates.io (0.0.1); expect rough edges.**
 The TypeScript compiler (JavaScript, TypeScript and Python front-ends) and its Rust port (JavaScript and Python;
 byte-for-byte identical output on 190 fixture pairs, kept honest by a
 differential fuzzer, also built to WebAssembly) are built and tested, as
 are three Drip implementations (tree-walker, TS VM, drip-rs). The book has
 458 chapters, all written to its teaching standard (each with analogies,
-diagrams, worked examples and proven exercises). Version 0.0.1 is published:
-the npm packages
+diagrams, worked examples and proven exercises). Published: the npm packages at 0.0.2
 (`npm install -g @viscosity/cli`, `npm install @viscosity/wasm`) and the
-six Rust crates on crates.io (`cargo install viscosity-cli`).
+six Rust crates on crates.io at 0.0.1 (`cargo install viscosity-cli`).
 
 Measured end to end, original vs compiled, best of 9 fresh processes on a
 shared 4-vCPU VM

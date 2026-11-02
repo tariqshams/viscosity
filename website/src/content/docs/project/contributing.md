@@ -86,8 +86,8 @@ are listed, with the corpus program that covers each, in
 
 ## Packaging
 
-The npm packages and the six crates are published (0.0.1, with
-`scripts/release.sh`). All of them can also be built from the repository:
+The npm packages (0.0.2) and the six crates (0.0.1) are published, with
+`scripts/release.sh`. All of them can also be built from the repository:
 
 - the CLI: `npm pack` in `engine/ts/packages/cli` (see [Install](/start/install/));
 - `@viscosity/wasm`: `node packages/wasm/build.mjs` in `engine/rust`, and

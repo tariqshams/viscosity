@@ -3,12 +3,12 @@ title: Install
 description: Getting Viscosity running.
 ---
 
-Viscosity is in early development. Version 0.0.1 is published: two npm
-packages and six Rust crates. From npm:
+Viscosity is in early development. Two npm packages (0.0.2) and six Rust
+crates (0.0.1) are published. From npm:
 
 ```sh
 npm install -g @viscosity/cli    # the `viscosity` command
-viscosity --version              # viscosity 0.0.1
+viscosity --version              # viscosity 0.0.2
 npx @viscosity/cli explain app.js
 npm install @viscosity/wasm      # the Rust engine as WebAssembly
 ```
