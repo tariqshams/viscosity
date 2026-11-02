@@ -69,12 +69,26 @@ These are errors in the parts listed in `STRICT_PARTS` (in
 `src/data/pedagogy.js`) and warnings elsewhere; a part is added to
 `STRICT_PARTS` when its rewrite lands.
 
-## The time budget still holds
+## Everything explained in detail
 
-A chapter is still 12 to 18 minutes. If a chapter cannot teach its ideas
-this thoroughly inside the budget, it is **split** into two chapters
-(`scripts/renumber.mjs` makes room), never crammed. Examples are short:
-a one-line example is a fine example.
+- **Exercises** come with a full worked solution in their `walkthrough`:
+  the reasoning first (how to think about the problem, what to try, and
+  why), then the solution line by line, each line quoted and explained in
+  plain words, then the common wrong attempts and why they fail. Hints
+  build up gradually, from a nudge to nearly the answer.
+- **Examples** are explained, never just shown: what each line does, what
+  it prints and why. Longer examples are walked through line by line.
+- **Concepts** are explained until they are easy; nothing is left for the
+  reader to decode alone.
+
+## The time budget still holds; the book grows instead
+
+A chapter is still 12 to 18 minutes. Thoroughness wins over brevity: if a
+chapter cannot teach its ideas fully inside the budget, it is **split**
+into two chapters (`scripts/renumber.mjs` makes room), never crammed and
+never cut short. Walkthroughs are read after an exercise is attempted and
+do not count towards the minutes. Examples stay short: a one-line example
+is a fine example, as long as it is explained.
 
 ## Components
 
