@@ -20,8 +20,8 @@ use std::mem::size_of;
 use std::ops::{Index, IndexMut};
 
 use crate::object::{
-    Arena, Gc, ObjBoundMethod, ObjClass, ObjClosure, ObjFunction, ObjInstance, ObjNative,
-    ObjString, ObjUpvalue, StrRef, hash_string,
+    Arena, Gc, ObjBoundMethod, ObjClass, ObjClosure, ObjFunction, ObjInstance, ObjList,
+    ObjNative, ObjString, ObjUpvalue, StrRef, hash_string,
 };
 use crate::table::Table;
 use crate::value::Value;
@@ -32,6 +32,7 @@ const GC_HEAP_GROW_FACTOR: usize = 2;
 
 pub struct Heap {
     pub strings: Arena<ObjString>,
+    pub lists: Arena<ObjList>,
     pub functions: Arena<ObjFunction>,
     pub natives: Arena<ObjNative>,
     pub upvalues: Arena<ObjUpvalue>,
@@ -62,6 +63,7 @@ impl Heap {
     pub fn new() -> Self {
         Heap {
             strings: Arena::default(),
+            lists: Arena::default(),
             functions: Arena::default(),
             natives: Arena::default(),
             upvalues: Arena::default(),
@@ -117,7 +119,7 @@ impl Heap {
     fn add_string(&mut self, chars: Box<str>, hash: u32) -> StrRef {
         let handle = self.alloc(ObjString { chars, hash });
         let s = StrRef { handle, hash };
-        self.interned.set(s, Value::Nil);
+        self.interned.set(s, Value::None);
         s
     }
 
@@ -129,6 +131,7 @@ impl Heap {
     /// How many objects are alive, of every kind.
     pub fn live_objects(&self) -> usize {
         self.strings.live_count()
+            + self.lists.live_count()
             + self.functions.live_count()
             + self.natives.live_count()
             + self.upvalues.live_count()
@@ -166,6 +169,7 @@ impl Heap {
     /// Mark everything a gray object refers to, making it black.
     fn blacken(&self, object: Gray, marks: &mut Marks) {
         match object {
+            Gray::List(l) => self.lists[l].items.trace(marks),
             Gray::Function(f) => {
                 let function = &self.functions[f];
                 function.name.trace(marks);
@@ -187,6 +191,7 @@ impl Heap {
                 class.methods.trace(marks);
             }
             Gray::Instance(i) => {
+                // The names in `field_order` are keys of `fields`.
                 let instance = &self.instances[i];
                 instance.class.trace(marks);
                 instance.fields.trace(marks);
@@ -216,6 +221,7 @@ impl Heap {
             };
         }
         sweep!(strings);
+        sweep!(lists);
         sweep!(functions);
         sweep!(natives);
         sweep!(upvalues);
@@ -249,6 +255,7 @@ impl<T: HeapObject> IndexMut<Gc<T>> for Heap {
 /// one turns it straight to black.
 #[derive(Clone, Copy)]
 pub enum Gray {
+    List(Gc<ObjList>),
     Function(Gc<ObjFunction>),
     Upvalue(Gc<ObjUpvalue>),
     Closure(Gc<ObjClosure>),
@@ -261,6 +268,7 @@ pub enum Gray {
 #[derive(Default)]
 pub struct Marks {
     strings: Vec<bool>,
+    lists: Vec<bool>,
     functions: Vec<bool>,
     natives: Vec<bool>,
     upvalues: Vec<bool>,
@@ -279,6 +287,7 @@ impl Marks {
             bits.resize(len, false);
         }
         clear(&mut self.strings, heap.strings.capacity());
+        clear(&mut self.lists, heap.lists.capacity());
         clear(&mut self.functions, heap.functions.capacity());
         clear(&mut self.natives, heap.natives.capacity());
         clear(&mut self.upvalues, heap.upvalues.capacity());
@@ -327,8 +336,9 @@ impl Trace for StrRef {
 impl Trace for Value {
     fn trace(&self, marks: &mut Marks) {
         match *self {
-            Value::Nil | Value::Bool(_) | Value::Number(_) => {}
+            Value::None | Value::Bool(_) | Value::Number(_) => {}
             Value::String(s) => s.trace(marks),
+            Value::List(l) => marks.mark(l),
             Value::Function(f) => marks.mark(f),
             Value::Native(n) => marks.mark(n),
             Value::Closure(c) => marks.mark(c),
@@ -408,6 +418,7 @@ macro_rules! heap_object {
     };
 }
 
+heap_object!(ObjList, lists, List);
 heap_object!(ObjFunction, functions, Function);
 heap_object!(ObjUpvalue, upvalues, Upvalue);
 heap_object!(ObjClosure, closures, Closure);

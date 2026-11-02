@@ -1,61 +1,96 @@
 //! The scanner (book chapter 48, and the Rust port in Part X).
 //!
-//! Like clox's, this scanner works on demand: the compiler asks for one
-//! token at a time, and nothing is stored up front. A token borrows its
-//! lexeme straight out of the source text, so scanning never allocates.
-//! Errors come back as `Error` tokens whose lexeme is the message.
+//! It works on demand: the compiler asks for one token at a time, and
+//! nothing is stored up front. A token borrows its lexeme straight out of
+//! the source text, so scanning never allocates. A problem comes back as
+//! an `Error` token that says what went wrong; the compiler reports it.
+//! The tokens are exactly those of the TypeScript scanners.
 
 /// Every kind of token Drip has.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
-    // Single-character tokens.
+    // Punctuation.
     LeftParen,
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
     Comma,
     Dot,
-    Minus,
-    Plus,
+    DotDot,
     Semicolon,
-    Slash,
+    // Operators.
+    Plus,
+    Minus,
     Star,
-    // One or two character tokens.
+    Slash,
+    Percent,
     Bang,
     BangEqual,
     Equal,
     EqualEqual,
-    Greater,
-    GreaterEqual,
     Less,
     LessEqual,
+    Greater,
+    GreaterEqual,
+    AndAnd,
+    OrOr,
+    PlusEqual,
+    MinusEqual,
     // Literals.
     Identifier,
     String,
     Number,
     // Keywords.
-    And,
+    Break,
     Class,
+    Continue,
     Else,
+    Extends,
     False,
     Fn,
     For,
     If,
+    In,
+    Init,
     Let,
-    Nil,
-    Or,
+    New,
+    None,
     Print,
     Return,
+    SelfKw,
     Super,
-    This,
     True,
     While,
     // Bookkeeping.
-    Error,
+    Error(ScanError),
     Eof,
 }
 
-/// A token: its kind, the text it came from, and the line it ended on.
+/// What an `Error` token is about. Its lexeme is the offending text: the
+/// character, or the letter after the backslash, or the opening quote.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScanError {
+    UnexpectedCharacter,
+    UnknownEscape,
+    UnterminatedString,
+}
+
+impl ScanError {
+    /// The message the compiler reports, given the token's lexeme.
+    pub fn message(self, lexeme: &str) -> String {
+        match self {
+            ScanError::UnexpectedCharacter => format!("unexpected character '{lexeme}'"),
+            ScanError::UnknownEscape => {
+                format!("unknown escape '\\{lexeme}' in a string")
+            }
+            ScanError::UnterminatedString => "unterminated string".to_string(),
+        }
+    }
+}
+
+/// A token: its kind, the text it came from, and the line it starts on.
 #[derive(Clone, Copy, Debug)]
 pub struct Token<'src> {
     pub kind: TokenKind,
@@ -64,9 +99,18 @@ pub struct Token<'src> {
 }
 
 impl<'src> Token<'src> {
-    /// A token the compiler makes up, such as `this` or `super`.
+    /// A token the compiler makes up, such as `self` or `super`.
     pub fn synthetic(lexeme: &'src str, line: usize) -> Self {
         Token { kind: TokenKind::Identifier, lexeme, line }
+    }
+
+    /// How an error message names the token: `'}'`, `a string`, `end of file`.
+    pub fn describe(&self) -> String {
+        match self.kind {
+            TokenKind::Eof => "end of file".to_string(),
+            TokenKind::String => "a string".to_string(),
+            _ => format!("'{}'", self.lexeme),
+        }
     }
 }
 
@@ -77,11 +121,21 @@ pub struct Scanner<'src> {
     start: usize,
     current: usize,
     line: usize,
+    /// The line of the last non-blank character: where end of file is
+    /// reported, rather than on the empty line after a final newline.
+    last_line: usize,
 }
 
 impl<'src> Scanner<'src> {
     pub fn new(source: &'src str) -> Self {
-        Scanner { source, bytes: source.as_bytes(), start: 0, current: 0, line: 1 }
+        Scanner {
+            source,
+            bytes: source.as_bytes(),
+            start: 0,
+            current: 0,
+            line: 1,
+            last_line: 1,
+        }
     }
 
     /// Scan and return the next token.
@@ -89,8 +143,9 @@ impl<'src> Scanner<'src> {
         self.skip_whitespace();
         self.start = self.current;
         if self.at_end() {
-            return self.make(TokenKind::Eof);
+            return self.make_at(TokenKind::Eof, self.last_line);
         }
+        self.last_line = self.line;
         let c = self.advance();
         if is_alpha(c) {
             return self.identifier();
@@ -104,25 +159,36 @@ impl<'src> Scanner<'src> {
             b')' => self.make(T::RightParen),
             b'{' => self.make(T::LeftBrace),
             b'}' => self.make(T::RightBrace),
-            b';' => self.make(T::Semicolon),
+            b'[' => self.make(T::LeftBracket),
+            b']' => self.make(T::RightBracket),
             b',' => self.make(T::Comma),
-            b'.' => self.make(T::Dot),
-            b'-' => self.make(T::Minus),
-            b'+' => self.make(T::Plus),
-            b'/' => self.make(T::Slash),
+            b';' => self.make(T::Semicolon),
             b'*' => self.make(T::Star),
-            b'!' => self.make_if_equal(T::BangEqual, T::Bang),
-            b'=' => self.make_if_equal(T::EqualEqual, T::Equal),
-            b'<' => self.make_if_equal(T::LessEqual, T::Less),
-            b'>' => self.make_if_equal(T::GreaterEqual, T::Greater),
+            b'/' => self.make(T::Slash),
+            b'%' => self.make(T::Percent),
+            b'.' => self.make_if(b'.', T::DotDot, T::Dot),
+            b'+' => self.make_if(b'=', T::PlusEqual, T::Plus),
+            b'-' => self.make_if(b'=', T::MinusEqual, T::Minus),
+            b'!' => self.make_if(b'=', T::BangEqual, T::Bang),
+            b'=' => self.make_if(b'=', T::EqualEqual, T::Equal),
+            b'<' => self.make_if(b'=', T::LessEqual, T::Less),
+            b'>' => self.make_if(b'=', T::GreaterEqual, T::Greater),
+            b'&' if self.peek() == b'&' => {
+                self.current += 1;
+                self.make(T::AndAnd)
+            }
+            b'|' if self.peek() == b'|' => {
+                self.current += 1;
+                self.make(T::OrOr)
+            }
             b'"' => self.string(),
             _ => {
-                // Skip the rest of a multi-byte UTF-8 character, so the
-                // next token starts on a character boundary.
+                // Take the whole UTF-8 character, so the error names it and
+                // the next token starts on a character boundary.
                 while is_continuation(self.peek()) {
                     self.current += 1;
                 }
-                self.error("Unexpected character.")
+                self.make(T::Error(ScanError::UnexpectedCharacter))
             }
         }
     }
@@ -146,21 +212,21 @@ impl<'src> Scanner<'src> {
     }
 
     fn make(&self, kind: TokenKind) -> Token<'src> {
-        Token { kind, lexeme: &self.source[self.start..self.current], line: self.line }
+        self.make_at(kind, self.line)
     }
 
-    /// For `!=`, `==`, `<=` and `>=`: the long form if `=` follows.
-    fn make_if_equal(&mut self, long: TokenKind, short: TokenKind) -> Token<'src> {
-        if self.peek() == b'=' {
+    fn make_at(&self, kind: TokenKind, line: usize) -> Token<'src> {
+        Token { kind, lexeme: &self.source[self.start..self.current], line }
+    }
+
+    /// For two-character tokens: the long form if `next` follows.
+    fn make_if(&mut self, next: u8, long: TokenKind, short: TokenKind) -> Token<'src> {
+        if self.peek() == next {
             self.current += 1;
             self.make(long)
         } else {
             self.make(short)
         }
-    }
-
-    fn error(&self, message: &'static str) -> Token<'src> {
-        Token { kind: TokenKind::Error, lexeme: message, line: self.line }
     }
 
     fn skip_whitespace(&mut self) {
@@ -171,8 +237,9 @@ impl<'src> Scanner<'src> {
                     self.line += 1;
                     self.current += 1;
                 }
-                b'/' if self.peek_next() == b'/' => {
+                b'#' => {
                     // A comment runs to the end of the line.
+                    self.last_line = self.line;
                     while self.peek() != b'\n' && !self.at_end() {
                         self.current += 1;
                     }
@@ -204,19 +271,69 @@ impl<'src> Scanner<'src> {
         self.make(TokenKind::Number)
     }
 
+    /// A string literal. Its lexeme keeps the quotes and the escapes as
+    /// written; [`unescape`] decodes them.
     fn string(&mut self) -> Token<'src> {
+        let start_line = self.line;
+        // The first unknown escape: where its letter is, and its line.
+        let mut bad_escape: Option<(usize, usize)> = None;
         while self.peek() != b'"' && !self.at_end() {
-            if self.peek() == b'\n' {
+            let c = self.advance();
+            if c == b'\n' {
                 self.line += 1;
             }
-            self.current += 1;
+            if c == b'\\' && !self.at_end() {
+                let at = self.current;
+                let e = self.advance();
+                if e == b'\n' {
+                    self.line += 1;
+                }
+                if !matches!(e, b'n' | b't' | b'"' | b'\\') && bad_escape.is_none() {
+                    bad_escape = Some((at, self.line));
+                }
+                while is_continuation(self.peek()) {
+                    self.current += 1;
+                }
+            }
         }
+        self.last_line = self.line;
         if self.at_end() {
-            return self.error("Unterminated string.");
+            return self
+                .make_at(TokenKind::Error(ScanError::UnterminatedString), start_line);
         }
         self.current += 1; // the closing quote
-        self.make(TokenKind::String)
+        if let Some((at, line)) = bad_escape {
+            let len = self.source[at..].chars().next().map_or(1, char::len_utf8);
+            let lexeme = &self.source[at..at + len];
+            return Token {
+                kind: TokenKind::Error(ScanError::UnknownEscape),
+                lexeme,
+                line,
+            };
+        }
+        self.make_at(TokenKind::String, start_line)
     }
+}
+
+/// A string literal's characters: the lexeme without its quotes, with its
+/// escapes decoded. The scanner has already rejected unknown escapes.
+pub fn unescape(lexeme: &str) -> String {
+    let inner = &lexeme[1..lexeme.len() - 1];
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some(other) => out.push(other), // `\"` and `\\`
+            None => {}
+        }
+    }
+    out
 }
 
 fn is_alpha(c: u8) -> bool {
@@ -228,25 +345,28 @@ fn is_continuation(c: u8) -> bool {
     c & 0b1100_0000 == 0b1000_0000
 }
 
-/// Drip's reserved words. A `match` on the text compiles to much the same
-/// thing as clox's hand-written trie.
+/// Drip's reserved words.
 fn keyword(text: &str) -> Option<TokenKind> {
     use TokenKind as T;
     Some(match text {
-        "and" => T::And,
+        "break" => T::Break,
         "class" => T::Class,
+        "continue" => T::Continue,
         "else" => T::Else,
+        "extends" => T::Extends,
         "false" => T::False,
         "fn" => T::Fn,
         "for" => T::For,
         "if" => T::If,
+        "in" => T::In,
+        "init" => T::Init,
         "let" => T::Let,
-        "nil" => T::Nil,
-        "or" => T::Or,
+        "new" => T::New,
+        "none" => T::None,
         "print" => T::Print,
         "return" => T::Return,
+        "self" => T::SelfKw,
         "super" => T::Super,
-        "this" => T::This,
         "true" => T::True,
         "while" => T::While,
         _ => return None,
@@ -273,10 +393,24 @@ mod tests {
     fn scans_keywords_numbers_and_operators() {
         use TokenKind as T;
         assert_eq!(
-            kinds("let x = 1.5 >= fn_name; // comment"),
+            kinds("let x = 1.5 >= fn_name; # comment"),
             [T::Let, T::Identifier, T::Equal, T::Number, T::GreaterEqual]
                 .into_iter()
                 .chain([T::Identifier, T::Semicolon, T::Eof])
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            kinds("0..3 x += [1] && y || z % 2"),
+            [T::Number, T::DotDot, T::Number, T::Identifier, T::PlusEqual]
+                .into_iter()
+                .chain([
+                    T::LeftBracket,
+                    T::Number,
+                    T::RightBracket,
+                    T::AndAnd,
+                    T::Identifier
+                ])
+                .chain([T::OrOr, T::Identifier, T::Percent, T::Number, T::Eof])
                 .collect::<Vec<_>>()
         );
     }
@@ -285,11 +419,26 @@ mod tests {
     fn reports_errors_as_tokens() {
         let mut scanner = Scanner::new("\"open\n");
         let t = scanner.scan_token();
-        assert_eq!(t.kind, TokenKind::Error);
-        assert_eq!(t.lexeme, "Unterminated string.");
-        assert_eq!(t.line, 2);
+        assert_eq!(t.kind, TokenKind::Error(ScanError::UnterminatedString));
+        assert_eq!(t.line, 1);
         let mut scanner = Scanner::new("é");
-        assert_eq!(scanner.scan_token().lexeme, "Unexpected character.");
+        let t = scanner.scan_token();
+        assert_eq!(
+            ScanError::UnexpectedCharacter.message(t.lexeme),
+            "unexpected character 'é'"
+        );
         assert_eq!(scanner.scan_token().kind, TokenKind::Eof);
+        let mut scanner = Scanner::new("\"a\nb\\q\"");
+        let t = scanner.scan_token();
+        assert_eq!(t.line, 2);
+        assert_eq!(
+            ScanError::UnknownEscape.message(t.lexeme),
+            "unknown escape '\\q' in a string"
+        );
+    }
+
+    #[test]
+    fn decodes_escapes() {
+        assert_eq!(unescape(r#""a\nb\t\"\\""#), "a\nb\t\"\\");
     }
 }

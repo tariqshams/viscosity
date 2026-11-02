@@ -21,26 +21,29 @@ scripts/bench.sh                    # benchmarks; writes results/drip-rs-bench-<
 
 `drip-rs <file>` prints the program's output on stdout and its errors on
 stderr. It exits with 0, 65 after a compile error, 70 after a runtime
-error, or 64 when used wrongly, like `drip --vm` and clox.
+error, 66 if the file can't be read, or 64 when used wrongly, like
+`drip --vm`.
 
 The tests:
 
-- `tests/corpus.rs` runs every corpus program the VM is meant to run: 246
-  of the 265, skipping the `scanning`, `expressions` and `benchmark` folders, the
-  same skip list as `SKIP.vm` in `../ts/test/corpus.ts`. It checks each
-  one with a port of `check()` from that file: expected output, compile
-  errors with their line numbers, the runtime error message and its line,
-  and the exit code. The VM is clox's twin, so `// [c line N]`
-  expectations apply and `// [java line N]` ones are ignored. Freed heap
-  slots are never reused in this suite, so a collector bug panics instead
-  of quietly reading another object.
-- `tests/stress_gc.rs` runs the 95 programs in `closure/`, `class/`,
-  `inheritance/`, `string/`, `function/`, `super/`, `method/` and `field/`
-  with a collection before every allocation.
+- `tests/corpus.rs` runs every program in the book's Drip corpus
+  (`../corpus`, 334 programs; the benchmarks have their own script) and
+  checks each one with a port of `check()` from `../ts/test/corpus.ts`:
+  the exact output, the exact list of compile errors, the runtime error
+  and its stack trace, and the exit code. Freed heap slots are never
+  reused in this suite, so a collector bug panics instead of quietly
+  reading another object.
+- `tests/stress_gc.rs` runs the 165 programs in `closures/`, `classes/`,
+  `inheritance/`, `strings/`, `functions/`, `lists/`, `methods/`,
+  `fields/`, `for/` and `programs/` with a collection before every
+  allocation.
 - `tests/vm.rs` covers the collector, the disassembler and the binary.
 - Unit tests in the modules cover the scanner, the opcodes, the arenas,
   the hash table, interning, and number formatting (compared with what
   Node prints for 42 doubles).
+- `node scripts/compare_with_ts.mjs` runs drip-rs and the TypeScript VM
+  on the whole corpus, benchmarks included, and on thousands of mangled
+  programs, and checks they print exactly the same bytes.
 
 The two corpus suites bring their own `main` (`harness = false`), so they
 print one line per program.
@@ -86,20 +89,20 @@ Some design choices the chapters explain:
 
 ## Behaviour notes
 
-- Numbers print as JavaScript's `String(n)` does, as the TypeScript VM's
-  `formatNumber` prints them: `1e+21`, `1.5e-7`, `0.30000000000000004`,
-  `NaN`, `Infinity`, and `-0` for negative zero. Rust's `{:e}` already
-  gives the shortest round-trip digits; `value::format_number` lays them
-  out with JavaScript's thresholds (plain decimals for 1e-7 ≤ |n| < 1e21).
+- Numbers print as the TypeScript VM's `formatNumber` prints them, which
+  is JavaScript's `String(n)` with Drip's names for the odd ones: `1e+21`,
+  `1.5e-7`, `0.30000000000000004`, `nan`, `inf`, `-inf`, and `-0` for
+  negative zero. Rust's `{:e}` already gives the shortest round-trip
+  digits; `value::format_number` lays them out with JavaScript's
+  thresholds (plain decimals for 1e-7 <= |n| < 1e21).
 - String hashes are FNV-1a over UTF-8 bytes; the TypeScript VM hashes
   UTF-16 code units. They agree on ASCII strings, and nothing a program can
   see depends on the hash.
-- A non-ASCII character outside a string is one "Unexpected character."
-  error, as in the TypeScript VM. (The Rust scanner skips the whole UTF-8
-  character, so the next token still starts on a character boundary.)
-- The one-byte constant operand limits a chunk to 256 constants, as in
-  clox and the TypeScript VM. So `benchmark/string_equality.drip` fails to
-  compile in both VMs, with the same error.
+- A non-ASCII character outside a string is one "unexpected character"
+  error naming the whole character, as in the TypeScript VM.
+- Constant operands are two bytes, so a function can have 65,536
+  constants; locals and captured variables are addressed by one byte, so
+  a function can have 256 of each.
 - In "debug" and "stress" modes the arenas never reuse a freed slot, so a
   use after free panics. This does the job of the TypeScript heap's
   poisoning of freed objects.
@@ -109,15 +112,10 @@ Some design choices the chapters explain:
 `scripts/bench.sh` times each `../corpus/benchmark` program (the same set
 as `../ts/scripts/bench.mjs`), best of three runs, each in a fresh process,
 and puts them beside the TypeScript tree-walker and VM numbers from
-`../ts/results/drip-bench-2026-10-31.json`. See `results/` for the
+`../ts/results/drip-bench-2026-11-02.json`. See `results/` for the
 latest table. All the numbers come from the same shared cloud VM, so
 allow for noise of tens of percent.
 
 ## Credits
 
 Written by Tariq Shams for *Viscosity*. MIT licensed.
-
-The compiler and VM follow clox from *Crafting Interpreters* by Robert
-Nystrom. The test corpus in `../corpus` is adapted from that book's test
-suite, which is MIT licensed, Copyright (c) 2015 Robert Nystrom; its
-license is in `../corpus/LICENSE-craftinginterpreters`.

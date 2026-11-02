@@ -43,7 +43,7 @@ impl Table {
         let i = find(&self.keys, &self.values, key);
         let is_new = self.keys[i].is_none();
         // Reusing a tombstone doesn't change the count: it was counted.
-        if is_new && self.values[i] == Value::Nil {
+        if is_new && self.values[i] == Value::None {
             self.count += 1;
         }
         self.keys[i] = Some(key);
@@ -86,7 +86,7 @@ impl Table {
         let mut index = hash as usize & mask;
         loop {
             match self.keys[index] {
-                None if self.values[index] == Value::Nil => return None,
+                None if self.values[index] == Value::None => return None,
                 None => {} // a tombstone: keep probing
                 Some(key) if key.hash == hash && &*strings[key.handle].chars == chars => {
                     return Some(key);
@@ -120,7 +120,7 @@ impl Table {
 
     fn grow(&mut self, capacity: usize) {
         let mut keys = vec![None; capacity];
-        let mut values = vec![Value::Nil; capacity];
+        let mut values = vec![Value::None; capacity];
         // Tombstones are not copied, so recount from zero.
         let mut count = 0;
         for (key, value) in self.iter() {
@@ -144,7 +144,7 @@ fn find(keys: &[Option<StrRef>], values: &[Value], key: StrRef) -> usize {
     let mut tombstone = None;
     loop {
         match keys[index] {
-            None if values[index] == Value::Nil => return tombstone.unwrap_or(index),
+            None if values[index] == Value::None => return tombstone.unwrap_or(index),
             None => {
                 tombstone.get_or_insert(index);
             }
@@ -168,14 +168,14 @@ mod tests {
         for (i, &k) in keys.iter().enumerate() {
             assert!(table.set(k, Value::Number(i as f64)));
         }
-        assert!(!table.set(keys[3], Value::Nil));
+        assert!(!table.set(keys[3], Value::None));
         for &k in keys.iter().step_by(2) {
             assert!(table.delete(k));
         }
         assert!(!table.delete(keys[0]));
         for (i, &k) in keys.iter().enumerate() {
             let expected = match i {
-                3 => Some(Value::Nil),
+                3 => Some(Value::None),
                 _ if i % 2 == 0 => None,
                 _ => Some(Value::Number(i as f64)),
             };

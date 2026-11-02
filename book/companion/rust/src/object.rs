@@ -1,8 +1,9 @@
 //! Heap objects, the arenas that hold them, and the typed handles that
 //! point into the arenas (book chapters 49, 50 and 56 to 59).
 //!
-//! clox links its objects together with raw pointers. Safe Rust can't do
-//! that without reference counting, and `Rc<RefCell<..>>` would hand
+//! The TypeScript VM's objects point at each other with plain references.
+//! Safe Rust can't share objects like that without reference counting,
+//! and `Rc<RefCell<..>>` would hand
 //! memory management to Rust instead of to our own garbage collector. So
 //! each kind of object lives in an [`Arena`], a `Vec` of slots, and a
 //! reference to an object is a [`Gc`]: the index of its slot, typed so a
@@ -149,6 +150,11 @@ pub struct ObjString {
     pub hash: u32,
 }
 
+/// A list: a growable array of values, shared by reference.
+pub struct ObjList {
+    pub items: Vec<Value>,
+}
+
 pub struct ObjFunction {
     pub arity: usize,
     pub upvalue_count: usize,
@@ -156,16 +162,25 @@ pub struct ObjFunction {
     /// function's chunk in a register of its own, so reading a byte
     /// doesn't go through the heap (see `Vm::chunk`).
     pub chunk: Rc<Chunk>,
-    /// `None` for the top-level script.
+    /// `None` for the top-level script and for anonymous functions.
     pub name: Option<StrRef>,
+    pub is_script: bool,
 }
 
-/// A function written in Rust, such as `clock`.
-pub type NativeFn = fn(&[Value]) -> Value;
+/// The functions written in Rust. The VM runs them (`Vm::call_native`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Native {
+    Clock,
+    Len,
+    Push,
+    Pop,
+    Str,
+}
 
 pub struct ObjNative {
+    pub native: Native,
+    pub name: &'static str,
     pub arity: usize,
-    pub function: NativeFn,
 }
 
 /// A variable captured by a closure (chapter 56).
@@ -189,6 +204,8 @@ pub struct ObjClass {
 pub struct ObjInstance {
     pub class: Gc<ObjClass>,
     pub fields: Table,
+    /// Field names in the order they were first set: how it prints.
+    pub field_order: Vec<StrRef>,
 }
 
 /// A method together with the instance it was looked up on.

@@ -14,8 +14,11 @@ fn the_collector_frees_unreachable_objects_and_keeps_reachable_ones() {
     let outcome = vm.interpret(
         r#"
         let keep = "kept";
-        for (let i = 0; i < 2000; i = i + 1) { let s = "tmp" + "x"; }
-        class A {} let a = A(); a.f = keep + "!";
+        for i in 0..2000 { let s = "tmp" + str(i); let xs = [s, [s]]; }
+        class A {}
+        let a = new A();
+        a.f = keep + "!";
+        let list = [a, "in a list"];
         "#,
     );
     assert_eq!(outcome.exit_code, 0);
@@ -24,7 +27,7 @@ fn the_collector_frees_unreachable_objects_and_keeps_reachable_ones() {
     assert!(vm.heap.freed > 0);
     assert!(vm.heap.live_objects() <= before);
     // Globals survive, and the next program can use them.
-    assert_eq!(vm.interpret("print a.f;").stdout, ["kept!"]);
+    assert_eq!(vm.interpret("print a.f; print list[1];").stdout, ["kept!", "in a list"]);
 }
 
 #[test]
@@ -32,8 +35,8 @@ fn programs_that_allocate_a_lot_trigger_collections() {
     let mut vm = Vm::default();
     let outcome = vm.interpret(
         r#"
-        class Node { init(next) { this.next = next; } }
-        for (let i = 0; i < 100000; i = i + 1) { Node(Node(nil)); }
+        class Node { init(next) { self.next = next; } }
+        for i in 0..100000 { new Node(new Node(none)); }
         print "done";
         "#,
     );
@@ -44,11 +47,15 @@ fn programs_that_allocate_a_lot_trigger_collections() {
 #[test]
 fn a_runtime_error_leaves_the_vm_usable() {
     let mut vm = Vm::default();
-    let outcome = vm.interpret("let x = 1;\nfn f() { return -nil; }\nf();");
+    let outcome = vm.interpret("let x = 1;\nfn f() { return -none; }\nf();");
     assert_eq!(outcome.exit_code, 70);
     assert_eq!(
         outcome.stderr,
-        ["Operand must be a number.", "[line 2] in f()", "[line 3] in script"]
+        [
+            "runtime error: cannot negate none",
+            "  at line 2 in fn f",
+            "  at line 3 in script"
+        ]
     );
     assert_eq!(vm.interpret("print x;").stdout, ["1"]);
 }
@@ -61,14 +68,14 @@ fn the_disassembler_prints_readable_bytecode() {
     let text = disassemble_function(&heap, function).join("\n");
     for expected in [
         "== <script> ==",
-        "0000    1 OP_CLOSURE          1 <fn add>",
-        "OP_DEFINE_GLOBAL    0 'add'",
-        "0004    2 OP_GET_GLOBAL       2 'add'",
-        "OP_CALL             2",
+        "0000    1 closure             0 fn add",
+        "define.global       1 'add'",
+        "0006    2 load.global         2 'add'",
+        "call                2",
         "== add ==",
-        "0000    1 OP_GET_LOCAL        1",
-        "OP_ADD",
-        "OP_RETURN",
+        "0000    1 load.local          1",
+        "add",
+        "return",
     ] {
         assert!(text.contains(expected), "missing {expected:?} in\n{text}");
     }
@@ -94,11 +101,11 @@ fn run_cli(name: &str, source: &str) -> (String, String, i32) {
 fn the_cli_exits_like_the_typescript_one() {
     assert_eq!(run_cli("ok", "print 1 + 2;"), ("3\n".into(), "".into(), 0));
     let compile_error = run_cli("compile", "print 1 +;");
-    assert_eq!(compile_error.1, "[line 1] Error at ';': Expect expression.\n");
+    assert_eq!(compile_error.1, "line 1: expected an expression, found ';'\n");
     assert_eq!(compile_error.2, 65);
-    let runtime_error = run_cli("runtime", "print 1;\nprint nil + 1;");
+    let runtime_error = run_cli("runtime", "print 1;\nprint none + 1;");
     assert_eq!(runtime_error.0, "1\n");
-    let message = "Operands must be two numbers or two strings.\n[line 2] in script\n";
+    let message = "runtime error: cannot add none and a number\n  at line 2 in script\n";
     assert_eq!(runtime_error.1, message);
     assert_eq!(runtime_error.2, 70);
 }
@@ -107,5 +114,10 @@ fn the_cli_exits_like_the_typescript_one() {
 fn the_cli_explains_its_usage() {
     let output = Command::new(env!("CARGO_BIN_EXE_drip-rs")).output().expect("run");
     assert_eq!(output.status.code(), Some(64));
-    assert!(String::from_utf8_lossy(&output.stderr).starts_with("Usage: drip-rs"));
+    assert!(String::from_utf8_lossy(&output.stderr).starts_with("usage: drip-rs"));
+    let missing = Command::new(env!("CARGO_BIN_EXE_drip-rs"))
+        .arg("/no/such/file.drip")
+        .output()
+        .expect("run");
+    assert_eq!(missing.status.code(), Some(66));
 }

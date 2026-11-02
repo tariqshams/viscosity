@@ -8,14 +8,16 @@ use drip::Options;
 
 /// The folders that exercise the heap hardest, as in the TypeScript suite.
 const FOLDERS: &[&str] = &[
-    "closure",
-    "class",
+    "closures",
+    "classes",
     "inheritance",
-    "string",
-    "function",
-    "super",
-    "method",
-    "field",
+    "strings",
+    "functions",
+    "lists",
+    "methods",
+    "fields",
+    "for",
+    "programs",
 ];
 
 fn main() {

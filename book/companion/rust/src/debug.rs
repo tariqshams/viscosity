@@ -21,7 +21,11 @@ pub fn disassemble_chunk(heap: &Heap, chunk: &Chunk, name: &str) -> Vec<String> 
 /// Disassemble a function and, after it, every function nested in it.
 pub fn disassemble_function(heap: &Heap, function: Gc<ObjFunction>) -> Vec<String> {
     let f = &heap[function];
-    let name = f.name.map_or("<script>", |n| heap.str(n));
+    let name = match f.name {
+        Some(n) => heap.str(n),
+        None if f.is_script => "<script>",
+        None => "<fn>",
+    };
     let mut lines = disassemble_chunk(heap, &f.chunk, name);
     for constant in &f.chunk.constants {
         if let Value::Function(inner) = *constant {
@@ -46,45 +50,44 @@ pub fn disassemble_instruction(
     };
     let prefix = format!("{offset:04} {line} ");
     let Some(op) = OpCode::from_byte(code[offset]) else {
-        return (format!("{prefix}Unknown opcode {}", code[offset]), offset + 1);
+        return (format!("{prefix}unknown opcode {}", code[offset]), offset + 1);
     };
     let name = op.name();
-    let constant = |index: u8| chunk.constants[index as usize].display(heap).to_string();
+    let short = |at: usize| (code[at] as usize) << 8 | code[at + 1] as usize;
+    let constant = |k: usize| format!("{k:>4} '{}'", chunk.constants[k].format(heap));
     use OpCode::*;
     match op {
-        Constant | GetGlobal | DefineGlobal | SetGlobal | GetProperty | SetProperty
+        Const | LoadGlobal | DefineGlobal | StoreGlobal | GetProp | SetProp
         | GetSuper | Class | Method => {
-            let index = code[offset + 1];
-            let text = format!("{prefix}{name:<16} {index:>4} '{}'", constant(index));
-            (text, offset + 2)
+            (format!("{prefix}{name:<16} {}", constant(short(offset + 1))), offset + 3)
         }
-        GetLocal | SetLocal | GetUpvalue | SetUpvalue | Call => {
-            (format!("{prefix}{name:<16} {:>4}", code[offset + 1]), offset + 2)
-        }
-        Jump | JumpIfFalse | Loop => {
-            let jump = (code[offset + 1] as usize) << 8 | code[offset + 2] as usize;
+        LoadLocal | StoreLocal | LoadUpvalue | StoreUpvalue | Call | New | List
+        | IncLocal => (format!("{prefix}{name:<16} {:>4}", code[offset + 1]), offset + 2),
+        Jump | JumpUnless | JumpUnlessKeep | JumpIfKeep | Loop => {
+            let jump = short(offset + 1);
             let target = if op == Loop { offset + 3 - jump } else { offset + 3 + jump };
             (format!("{prefix}{name:<16} {offset:>4} -> {target}"), offset + 3)
         }
-        Invoke | SuperInvoke => {
-            let (index, args) = (code[offset + 1], code[offset + 2]);
+        Invoke | InvokeSuper => {
             let text = format!(
-                "{prefix}{name:<16} ({args} args) {index:>4} '{}'",
-                constant(index)
+                "{prefix}{name:<16} {} ({} args)",
+                constant(short(offset + 1)),
+                code[offset + 3]
             );
-            (text, offset + 3)
+            (text, offset + 4)
         }
-        OpCode::Closure => {
-            let index = code[offset + 1];
-            let mut text = format!("{prefix}{name:<16} {index:>4} {}", constant(index));
-            let mut next = offset + 2;
-            let Value::Function(function) = chunk.constants[index as usize] else {
+        Closure => {
+            let k = short(offset + 1);
+            let value = chunk.constants[k];
+            let mut text = format!("{prefix}{name:<16} {k:>4} {}", value.format(heap));
+            let mut next = offset + 3;
+            let Value::Function(function) = value else {
                 return (text, next);
             };
             for _ in 0..heap[function].upvalue_count {
                 let kind = if code[next] == 1 { "local" } else { "upvalue" };
                 let slot = code[next + 1];
-                text += &format!("\n{next:04}    |                     {kind} {slot}");
+                text += &format!("\n{next:04}    |   {kind} {slot}");
                 next += 2;
             }
             (text, next)
